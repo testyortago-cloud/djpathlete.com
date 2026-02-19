@@ -4,34 +4,31 @@ import { useState } from "react"
 import Link from "next/link"
 import { Search, ChevronLeft, ChevronRight } from "lucide-react"
 import { Input } from "@/components/ui/input"
-
-type ClientRow = {
-  id: string
-  first_name: string
-  last_name: string
-  email: string
-  role: string
-  status: string
-  created_at: string
-}
-
-// Placeholder data until Supabase is connected
-const mockClients: ClientRow[] = [
-  { id: "1", first_name: "Marcus", last_name: "Thompson", email: "marcus@test.com", role: "client", status: "active", created_at: "2025-01-15" },
-  { id: "2", first_name: "Sarah", last_name: "Kim", email: "sarah@test.com", role: "client", status: "active", created_at: "2025-02-01" },
-  { id: "3", first_name: "James", last_name: "Rodriguez", email: "james@test.com", role: "client", status: "active", created_at: "2025-02-10" },
-]
+import type { User, UserStatus } from "@/types/database"
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50]
 
-export function ClientList() {
+function getStatusClasses(status: UserStatus): string {
+  switch (status) {
+    case "active":
+      return "bg-success/10 text-success"
+    case "inactive":
+      return "bg-muted text-muted-foreground"
+    case "suspended":
+      return "bg-destructive/10 text-destructive"
+    default:
+      return "bg-muted text-muted-foreground"
+  }
+}
+
+export function ClientList({ users }: { users: User[] }) {
   const [search, setSearch] = useState("")
   const [roleFilter, setRoleFilter] = useState<string>("all")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(10)
 
-  const filtered = mockClients.filter((c) => {
+  const filtered = users.filter((c) => {
     const matchesSearch =
       !search ||
       c.first_name.toLowerCase().includes(search.toLowerCase()) ||
@@ -108,11 +105,13 @@ export function ClientList() {
                   </span>
                 </td>
                 <td className="px-4 py-3">
-                  <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-success/10 text-success capitalize">
+                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${getStatusClasses(client.status)}`}>
                     {client.status}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-muted-foreground">{client.created_at}</td>
+                <td className="px-4 py-3 text-muted-foreground">
+                  {new Date(client.created_at).toLocaleDateString()}
+                </td>
               </tr>
             ))}
             {paginated.length === 0 && (

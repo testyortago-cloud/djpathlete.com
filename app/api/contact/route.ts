@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { contactFormSchema } from "@/lib/validators/contact"
+import { createServiceRoleClient } from "@/lib/supabase"
 
 export async function POST(request: Request) {
   try {
@@ -15,9 +16,38 @@ export async function POST(request: Request) {
 
     const { name, email, subject, message } = result.data
 
-    // TODO: Integrate with email service (e.g., Resend, SendGrid) or store in database
-    // For now, log the submission and return success
-    console.log("Contact form submission:", { name, email, subject, message })
+    const supabase = createServiceRoleClient()
+
+    // Find all admin users to notify
+    const { data: admins, error: adminsError } = await supabase
+      .from("users")
+      .select("id")
+      .eq("role", "admin")
+
+    if (adminsError) {
+      console.error("Failed to fetch admin users:", adminsError)
+      // Still return success to the client — we don't want to expose internal errors
+      return NextResponse.json({ success: true })
+    }
+
+    if (admins && admins.length > 0) {
+      const notifications = admins.map((admin) => ({
+        user_id: admin.id,
+        type: "info" as const,
+        title: "New Contact Form Submission",
+        message: `From: ${name} (${email})\nSubject: ${subject}\n\n${message}`,
+        is_read: false,
+        link: null,
+      }))
+
+      const { error: insertError } = await supabase
+        .from("notifications")
+        .insert(notifications)
+
+      if (insertError) {
+        console.error("Failed to create contact notifications:", insertError)
+      }
+    }
 
     return NextResponse.json({ success: true })
   } catch {

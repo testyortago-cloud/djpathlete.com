@@ -56,6 +56,18 @@ export async function updateProgram(
   return data as Program
 }
 
+export async function getActiveProgramById(id: string) {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("programs")
+    .select("*")
+    .eq("id", id)
+    .eq("is_active", true)
+    .single()
+  if (error) throw error
+  return data as Program
+}
+
 export async function deleteProgram(id: string) {
   const supabase = getClient()
   const { error } = await supabase

@@ -1,8 +1,13 @@
-import { createServerSupabaseClient } from "@/lib/supabase"
+import { createServiceRoleClient } from "@/lib/supabase"
 import type { ExerciseProgress } from "@/types/database"
 
+/** Service-role client bypasses RLS — these functions are only called from server-side routes. */
+function getClient() {
+  return createServiceRoleClient()
+}
+
 export async function getProgress(userId: string, exerciseId?: string) {
-  const supabase = await createServerSupabaseClient()
+  const supabase = getClient()
   let query = supabase
     .from("exercise_progress")
     .select("*, exercises(*)")
@@ -19,7 +24,7 @@ export async function getProgress(userId: string, exerciseId?: string) {
 export async function logProgress(
   progress: Omit<ExerciseProgress, "id" | "created_at">
 ) {
-  const supabase = await createServerSupabaseClient()
+  const supabase = getClient()
   const { data, error } = await supabase
     .from("exercise_progress")
     .insert(progress)

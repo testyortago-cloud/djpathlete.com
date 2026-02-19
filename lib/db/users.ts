@@ -1,8 +1,13 @@
-import { createServerSupabaseClient } from "@/lib/supabase"
+import { createServiceRoleClient } from "@/lib/supabase"
 import type { User } from "@/types/database"
 
+/** Service-role client bypasses RLS — these functions are only called from server-side routes. */
+function getClient() {
+  return createServiceRoleClient()
+}
+
 export async function getUsers() {
-  const supabase = await createServerSupabaseClient()
+  const supabase = getClient()
   const { data, error } = await supabase
     .from("users")
     .select("*")
@@ -12,7 +17,7 @@ export async function getUsers() {
 }
 
 export async function getUserById(id: string) {
-  const supabase = await createServerSupabaseClient()
+  const supabase = getClient()
   const { data, error } = await supabase
     .from("users")
     .select("*")
@@ -23,7 +28,7 @@ export async function getUserById(id: string) {
 }
 
 export async function getUserByEmail(email: string) {
-  const supabase = await createServerSupabaseClient()
+  const supabase = getClient()
   const { data, error } = await supabase
     .from("users")
     .select("*")
@@ -40,7 +45,7 @@ export async function createUser(user: {
   last_name: string
   role?: string
 }) {
-  const supabase = await createServerSupabaseClient()
+  const supabase = getClient()
   const { data, error } = await supabase
     .from("users")
     .insert(user)
@@ -51,7 +56,7 @@ export async function createUser(user: {
 }
 
 export async function updateUser(id: string, updates: Partial<User>) {
-  const supabase = await createServerSupabaseClient()
+  const supabase = getClient()
   const { data, error } = await supabase
     .from("users")
     .update(updates)
@@ -63,7 +68,7 @@ export async function updateUser(id: string, updates: Partial<User>) {
 }
 
 export async function getUsersCount() {
-  const supabase = await createServerSupabaseClient()
+  const supabase = getClient()
   const { count, error } = await supabase
     .from("users")
     .select("*", { count: "exact", head: true })
@@ -76,7 +81,7 @@ export async function getUsersPaginated(
   perPage: number,
   search?: string
 ) {
-  const supabase = await createServerSupabaseClient()
+  const supabase = getClient()
   const from = (page - 1) * perPage
   const to = from + perPage - 1
   let query = supabase

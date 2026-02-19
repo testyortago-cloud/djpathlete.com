@@ -1,8 +1,13 @@
-import { createServerSupabaseClient } from "@/lib/supabase"
+import { createServiceRoleClient } from "@/lib/supabase"
 import type { ProgramExercise } from "@/types/database"
 
+/** Service-role client bypasses RLS — these functions are only called from server-side routes. */
+function getClient() {
+  return createServiceRoleClient()
+}
+
 export async function getProgramExercises(programId: string) {
-  const supabase = await createServerSupabaseClient()
+  const supabase = getClient()
   const { data, error } = await supabase
     .from("program_exercises")
     .select("*, exercises(*)")
@@ -17,7 +22,7 @@ export async function getProgramExercises(programId: string) {
 export async function addExerciseToProgram(
   programExercise: Omit<ProgramExercise, "id" | "created_at">
 ) {
-  const supabase = await createServerSupabaseClient()
+  const supabase = getClient()
   const { data, error } = await supabase
     .from("program_exercises")
     .insert(programExercise)
@@ -28,7 +33,7 @@ export async function addExerciseToProgram(
 }
 
 export async function removeExerciseFromProgram(id: string) {
-  const supabase = await createServerSupabaseClient()
+  const supabase = getClient()
   const { error } = await supabase
     .from("program_exercises")
     .delete()

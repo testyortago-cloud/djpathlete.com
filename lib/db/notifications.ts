@@ -1,8 +1,13 @@
-import { createServerSupabaseClient } from "@/lib/supabase"
+import { createServiceRoleClient } from "@/lib/supabase"
 import type { Notification } from "@/types/database"
 
+/** Service-role client bypasses RLS — these functions are only called from server-side routes. */
+function getClient() {
+  return createServiceRoleClient()
+}
+
 export async function getNotifications(userId: string) {
-  const supabase = await createServerSupabaseClient()
+  const supabase = getClient()
   const { data, error } = await supabase
     .from("notifications")
     .select("*")
@@ -13,7 +18,7 @@ export async function getNotifications(userId: string) {
 }
 
 export async function markAsRead(id: string) {
-  const supabase = await createServerSupabaseClient()
+  const supabase = getClient()
   const { data, error } = await supabase
     .from("notifications")
     .update({ is_read: true })
@@ -27,7 +32,7 @@ export async function markAsRead(id: string) {
 export async function createNotification(
   notification: Omit<Notification, "id" | "created_at">
 ) {
-  const supabase = await createServerSupabaseClient()
+  const supabase = getClient()
   const { data, error } = await supabase
     .from("notifications")
     .insert(notification)
