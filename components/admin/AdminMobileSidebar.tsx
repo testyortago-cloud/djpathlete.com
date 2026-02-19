@@ -33,7 +33,7 @@ export function AdminMobileSidebar({ open, onClose }: AdminMobileSidebarProps) {
       <div className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={onClose} />
 
       {/* Drawer */}
-      <div className="fixed inset-y-0 left-0 z-50 w-64 bg-primary text-primary-foreground lg:hidden">
+      <div className="fixed inset-y-0 left-0 z-50 w-64 bg-primary text-primary-foreground lg:hidden flex flex-col">
         <div className="flex items-center justify-between p-6">
           <span className="font-heading text-xl font-semibold text-white tracking-tight">
             DJP Athlete
@@ -42,7 +42,7 @@ export function AdminMobileSidebar({ open, onClose }: AdminMobileSidebarProps) {
             <X className="size-5" />
           </button>
         </div>
-        <nav className="flex-1 px-3 py-4 space-y-1">
+        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
           {navItems.map((item) => {
             const isActive = pathname.startsWith(item.href)
             const Icon = item.icon

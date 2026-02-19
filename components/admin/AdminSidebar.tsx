@@ -31,7 +31,7 @@ export function AdminSidebar() {
   const pathname = usePathname()
 
   return (
-    <aside className="hidden lg:flex lg:flex-col w-64 bg-primary text-primary-foreground min-h-screen">
+    <aside className="hidden lg:flex lg:flex-col w-64 bg-primary text-primary-foreground sticky top-0 h-screen">
       {/* Logo */}
       <div className="p-6">
         <Link href="/admin/dashboard" className="flex items-center">
@@ -43,7 +43,7 @@ export function AdminSidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 space-y-1">
+      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
         {navItems.map((item) => {
           const isActive = pathname.startsWith(item.href)
           const Icon = item.icon
