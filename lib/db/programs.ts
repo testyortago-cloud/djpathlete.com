@@ -1,8 +1,13 @@
-import { createServerSupabaseClient } from "@/lib/supabase"
+import { createServiceRoleClient } from "@/lib/supabase"
 import type { Program } from "@/types/database"
 
+/** Service-role client bypasses RLS — these functions are only called from server-side admin routes. */
+function getClient() {
+  return createServiceRoleClient()
+}
+
 export async function getPrograms() {
-  const supabase = await createServerSupabaseClient()
+  const supabase = getClient()
   const { data, error } = await supabase
     .from("programs")
     .select("*")
@@ -13,7 +18,7 @@ export async function getPrograms() {
 }
 
 export async function getProgramById(id: string) {
-  const supabase = await createServerSupabaseClient()
+  const supabase = getClient()
   const { data, error } = await supabase
     .from("programs")
     .select("*")
@@ -26,7 +31,7 @@ export async function getProgramById(id: string) {
 export async function createProgram(
   program: Omit<Program, "id" | "created_at" | "updated_at">
 ) {
-  const supabase = await createServerSupabaseClient()
+  const supabase = getClient()
   const { data, error } = await supabase
     .from("programs")
     .insert(program)
@@ -40,7 +45,7 @@ export async function updateProgram(
   id: string,
   updates: Partial<Omit<Program, "id" | "created_at">>
 ) {
-  const supabase = await createServerSupabaseClient()
+  const supabase = getClient()
   const { data, error } = await supabase
     .from("programs")
     .update(updates)
@@ -52,7 +57,7 @@ export async function updateProgram(
 }
 
 export async function deleteProgram(id: string) {
-  const supabase = await createServerSupabaseClient()
+  const supabase = getClient()
   const { error } = await supabase
     .from("programs")
     .update({ is_active: false })
