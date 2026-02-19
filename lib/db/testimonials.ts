@@ -1,8 +1,12 @@
-import { createServerSupabaseClient } from "@/lib/supabase"
+import { createServiceRoleClient } from "@/lib/supabase"
 import type { Testimonial } from "@/types/database"
 
+function getClient() {
+  return createServiceRoleClient()
+}
+
 export async function getTestimonials(activeOnly = true) {
-  const supabase = await createServerSupabaseClient()
+  const supabase = getClient()
   let query = supabase
     .from("testimonials")
     .select("*")
@@ -18,7 +22,7 @@ export async function getTestimonials(activeOnly = true) {
 }
 
 export async function getFeaturedTestimonials() {
-  const supabase = await createServerSupabaseClient()
+  const supabase = getClient()
   const { data, error } = await supabase
     .from("testimonials")
     .select("*")
