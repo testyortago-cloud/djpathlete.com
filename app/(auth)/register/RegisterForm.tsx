@@ -5,8 +5,6 @@ import { signIn } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Eye, EyeOff } from "lucide-react"
-import { SocialLoginButtons } from "@/components/auth/SocialLoginButtons"
-import { AuthDivider } from "@/components/auth/AuthDivider"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
@@ -92,9 +90,6 @@ export function RegisterForm() {
           Start your athletic journey with DJP Athlete
         </p>
       </div>
-
-      <SocialLoginButtons />
-      <AuthDivider />
 
       {error && (
         <div className="mb-4 rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
