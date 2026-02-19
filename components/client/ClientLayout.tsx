@@ -2,7 +2,8 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { LayoutDashboard, Dumbbell, TrendingUp, User, Settings } from "lucide-react"
+import { LayoutDashboard, Dumbbell, TrendingUp, User, Settings, LogOut } from "lucide-react"
+import { signOut } from "next-auth/react"
 import { cn } from "@/lib/utils"
 
 const navItems = [
@@ -48,6 +49,17 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
             )
           })}
         </nav>
+
+        {/* Logout */}
+        <div className="px-3 py-4 border-t border-border">
+          <button
+            onClick={() => signOut({ callbackUrl: "/login" })}
+            className="flex w-full items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-surface transition-colors"
+          >
+            <LogOut className="size-5" strokeWidth={1.5} />
+            Logout
+          </button>
+        </div>
       </aside>
 
       {/* Main content */}

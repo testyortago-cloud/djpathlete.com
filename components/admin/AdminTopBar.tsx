@@ -1,6 +1,7 @@
 "use client"
 
-import { Bell, Menu } from "lucide-react"
+import { Bell, Menu, LogOut } from "lucide-react"
+import { signOut } from "next-auth/react"
 
 interface AdminTopBarProps {
   onMenuClick?: () => void
@@ -27,6 +28,15 @@ export function AdminTopBar({ onMenuClick }: AdminTopBarProps) {
         {/* Notification bell */}
         <button className="relative p-2 text-muted-foreground hover:text-foreground hover:bg-surface rounded-lg transition-colors">
           <Bell className="size-5" />
+        </button>
+
+        {/* Logout */}
+        <button
+          onClick={() => signOut({ callbackUrl: "/login" })}
+          className="p-2 text-muted-foreground hover:text-foreground hover:bg-surface rounded-lg transition-colors"
+          aria-label="Logout"
+        >
+          <LogOut className="size-5" />
         </button>
 
         {/* User avatar placeholder */}

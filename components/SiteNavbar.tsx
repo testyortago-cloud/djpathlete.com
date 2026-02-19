@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { motion } from "framer-motion"
-import { Menu, X } from "lucide-react"
+import { Menu } from "lucide-react"
 import { NAV_ITEMS } from "@/lib/constants"
 import { Sheet, SheetTrigger, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 
@@ -12,6 +12,9 @@ export function SiteNavbar() {
   const [isScrolled, setIsScrolled] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const pathname = usePathname()
+
+  // Pages with dark hero backgrounds where nav text should be white
+  const isDarkHero = pathname === "/"
 
   useEffect(() => {
     setMobileMenuOpen(false)
@@ -22,6 +25,9 @@ export function SiteNavbar() {
     window.addEventListener("scroll", handleScroll)
     return () => window.removeEventListener("scroll", handleScroll)
   }, [])
+
+  // When scrolled, always use dark text (white bg). When not scrolled on dark hero, use white text.
+  const useLight = isDarkHero && !isScrolled
 
   return (
     <motion.nav
@@ -57,7 +63,9 @@ export function SiteNavbar() {
             {/* Logo */}
             <Link href="/" className="flex-shrink-0 flex items-center">
               <span
-                className="font-heading font-semibold text-primary tracking-tight transition-all duration-300"
+                className={`font-heading font-semibold tracking-tight transition-all duration-300 ${
+                  useLight ? "text-white" : "text-primary"
+                }`}
                 style={{ fontSize: isScrolled ? 18 : 22 }}
               >
                 DJP Athlete
@@ -66,32 +74,47 @@ export function SiteNavbar() {
 
             {/* Desktop Navigation */}
             <div className="hidden lg:flex items-center gap-1">
-              {NAV_ITEMS.map((item) => (
-                <Link
-                  key={item.label}
-                  href={item.href!}
-                  className={`px-3 py-2 rounded-md text-sm font-normal transition-colors ${
-                    pathname === item.href || pathname.startsWith(item.href + "/")
-                      ? "text-primary font-medium"
-                      : "text-foreground/70 hover:text-primary"
-                  }`}
-                >
-                  {item.label}
-                </Link>
-              ))}
+              {NAV_ITEMS.map((item) => {
+                const isActive = pathname === item.href || pathname.startsWith(item.href + "/")
+                return (
+                  <Link
+                    key={item.label}
+                    href={item.href!}
+                    className={`px-3 py-2 rounded-md text-sm transition-colors ${
+                      isActive
+                        ? useLight
+                          ? "text-white font-medium"
+                          : "text-primary font-medium"
+                        : useLight
+                          ? "text-white/70 hover:text-white font-normal"
+                          : "text-foreground/70 hover:text-primary font-normal"
+                    }`}
+                  >
+                    {item.label}
+                  </Link>
+                )
+              })}
             </div>
 
             {/* Desktop CTA */}
             <div className="hidden lg:flex items-center gap-3">
               <Link
                 href="/login"
-                className="text-sm font-medium text-primary hover:text-foreground/80 transition-colors whitespace-nowrap"
+                className={`text-sm font-medium transition-colors whitespace-nowrap ${
+                  useLight
+                    ? "text-white/80 hover:text-white"
+                    : "text-primary hover:text-foreground/80"
+                }`}
               >
                 Log in
               </Link>
               <Link
                 href="/contact"
-                className="bg-primary text-primary-foreground px-4 py-2.5 rounded-full text-sm font-medium hover:bg-primary/90 transition-all duration-200 hover:shadow-md whitespace-nowrap leading-4"
+                className={`px-4 py-2.5 rounded-full text-sm font-medium transition-all duration-200 hover:shadow-md whitespace-nowrap leading-4 ${
+                  useLight
+                    ? "bg-accent text-primary hover:bg-accent/90"
+                    : "bg-primary text-primary-foreground hover:bg-primary/90"
+                }`}
               >
                 Get Started
               </Link>
@@ -101,7 +124,10 @@ export function SiteNavbar() {
             <div className="lg:hidden">
               <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
                 <SheetTrigger asChild>
-                  <button className="p-2 text-foreground" aria-label="Open menu">
+                  <button
+                    className={`p-2 ${useLight ? "text-white" : "text-foreground"}`}
+                    aria-label="Open menu"
+                  >
                     <Menu className="w-6 h-6" />
                   </button>
                 </SheetTrigger>

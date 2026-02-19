@@ -11,7 +11,9 @@ import {
   BarChart3,
   Star,
   Settings,
+  LogOut,
 } from "lucide-react"
+import { signOut } from "next-auth/react"
 import { cn } from "@/lib/utils"
 
 const navItems = [
@@ -62,6 +64,17 @@ export function AdminSidebar() {
           )
         })}
       </nav>
+
+      {/* Logout */}
+      <div className="px-3 py-4 border-t border-white/10">
+        <button
+          onClick={() => signOut({ callbackUrl: "/login" })}
+          className="flex w-full items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+        >
+          <LogOut className="size-5" strokeWidth={1.5} />
+          Logout
+        </button>
+      </div>
     </aside>
   )
 }

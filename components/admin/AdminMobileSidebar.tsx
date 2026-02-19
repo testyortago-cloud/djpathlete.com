@@ -2,7 +2,8 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { X, LayoutDashboard, Users, Dumbbell, ClipboardList, CreditCard, BarChart3, Star, Settings } from "lucide-react"
+import { X, LayoutDashboard, Users, Dumbbell, ClipboardList, CreditCard, BarChart3, Star, Settings, LogOut } from "lucide-react"
+import { signOut } from "next-auth/react"
 import { cn } from "@/lib/utils"
 
 const navItems = [
@@ -41,7 +42,7 @@ export function AdminMobileSidebar({ open, onClose }: AdminMobileSidebarProps) {
             <X className="size-5" />
           </button>
         </div>
-        <nav className="px-3 py-4 space-y-1">
+        <nav className="flex-1 px-3 py-4 space-y-1">
           {navItems.map((item) => {
             const isActive = pathname.startsWith(item.href)
             const Icon = item.icon
@@ -63,6 +64,17 @@ export function AdminMobileSidebar({ open, onClose }: AdminMobileSidebarProps) {
             )
           })}
         </nav>
+
+        {/* Logout */}
+        <div className="px-3 py-4 border-t border-white/10">
+          <button
+            onClick={() => signOut({ callbackUrl: "/login" })}
+            className="flex w-full items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+          >
+            <LogOut className="size-5" strokeWidth={1.5} />
+            Logout
+          </button>
+        </div>
       </div>
     </>
   )
