@@ -2,6 +2,8 @@ import { NextResponse } from "next/server"
 import { hash } from "bcryptjs"
 import { registerSchema } from "@/lib/validators/register"
 import { createServiceRoleClient } from "@/lib/supabase"
+import { createEmailVerificationToken } from "@/lib/db/email-verification-tokens"
+import { sendVerificationEmail } from "@/lib/email"
 import type { User } from "@/types/database"
 
 export async function POST(request: Request) {
@@ -83,6 +85,17 @@ export async function POST(request: Request) {
     if (profileError) {
       console.error("Failed to create client profile:", profileError)
       // User was created but profile failed — don't block registration
+    }
+
+    // Send verification email (non-blocking — don't fail registration if this fails)
+    try {
+      const token = await createEmailVerificationToken(typedUser.id)
+      const baseUrl = process.env.NEXTAUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
+      const verifyUrl = `${baseUrl}/verify-email?token=${token}`
+      await sendVerificationEmail(typedUser.email, verifyUrl, typedUser.first_name)
+    } catch (emailError) {
+      console.error("Failed to send verification email:", emailError)
+      // Don't block registration if email fails
     }
 
     // Return user without password_hash

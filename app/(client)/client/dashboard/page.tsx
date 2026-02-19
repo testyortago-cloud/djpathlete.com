@@ -2,7 +2,9 @@ import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import { getAssignments } from "@/lib/db/assignments"
 import { getProgress } from "@/lib/db/progress"
+import { getUserById } from "@/lib/db/users"
 import { EmptyState } from "@/components/ui/empty-state"
+import { EmailVerificationBanner } from "@/components/client/EmailVerificationBanner"
 import { LayoutDashboard, Dumbbell, Activity, Flame } from "lucide-react"
 import Link from "next/link"
 import type { Program, ProgramAssignment } from "@/types/database"
@@ -19,6 +21,14 @@ export default async function ClientDashboardPage() {
 
   const userId = session.user.id
   const firstName = session.user.name?.split(" ")[0] ?? "Athlete"
+
+  let emailVerified = true
+  try {
+    const user = await getUserById(userId)
+    emailVerified = user.email_verified ?? true
+  } catch {
+    // Default to true if we can't check
+  }
 
   let activeAssignments: AssignmentWithProgram[] = []
   let totalWorkouts = 0
@@ -41,6 +51,8 @@ export default async function ClientDashboardPage() {
       <h1 className="text-2xl font-semibold text-primary mb-6">
         Welcome back, {firstName}
       </h1>
+
+      {!emailVerified && <EmailVerificationBanner userId={userId} />}
 
       {/* Stats Row */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">

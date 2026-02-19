@@ -53,3 +53,53 @@ export async function sendPasswordResetEmail(
     throw new Error("Failed to send email")
   }
 }
+
+export async function sendVerificationEmail(
+  to: string,
+  verifyUrl: string,
+  firstName: string
+) {
+  const { error } = await resend.emails.send({
+    from: FROM_EMAIL,
+    to,
+    subject: "Verify your DJP Athlete email",
+    html: `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 560px; margin: 0 auto; padding: 40px 20px;">
+        <div style="margin-bottom: 32px;">
+          <h1 style="font-size: 20px; font-weight: 600; color: #0E3F50; margin: 0 0 8px;">
+            DJP Athlete
+          </h1>
+        </div>
+
+        <p style="font-size: 16px; color: #1a1a1a; margin: 0 0 16px;">
+          Welcome, ${firstName}!
+        </p>
+
+        <p style="font-size: 14px; color: #666; line-height: 1.6; margin: 0 0 24px;">
+          Thanks for creating your account. Please verify your email address by clicking the button below.
+        </p>
+
+        <div style="margin: 32px 0;">
+          <a href="${verifyUrl}" style="display: inline-block; background-color: #0E3F50; color: #ffffff; font-size: 14px; font-weight: 600; text-decoration: none; padding: 12px 32px; border-radius: 9999px;">
+            Verify Email
+          </a>
+        </div>
+
+        <p style="font-size: 13px; color: #999; line-height: 1.5; margin: 0 0 8px;">
+          This link expires in 24 hours. If you didn't create this account, you can safely ignore this email.
+        </p>
+
+        <hr style="border: none; border-top: 1px solid #eee; margin: 32px 0;" />
+
+        <p style="font-size: 12px; color: #bbb; margin: 0;">
+          DJP Athlete &mdash; Elite Performance Coaching
+        </p>
+      </div>
+    `,
+  })
+
+  if (error) {
+    console.error("Failed to send verification email:", error)
+    throw new Error("Failed to send email")
+  }
+}
