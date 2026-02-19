@@ -112,11 +112,20 @@ export default function InPersonPage() {
     <>
       <JsonLd data={serviceSchema} />
 
-      {/* Hero — Video Background Placeholder */}
+      {/* Hero — Video Background */}
       <section className="relative min-h-[70vh] flex items-center justify-center bg-primary overflow-hidden">
-        {/* Animated gradient overlay placeholder for future video */}
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-primary via-primary/95 to-primary/80" />
-        <div className="absolute inset-0 bg-[linear-gradient(135deg,transparent_25%,rgba(196,155,122,0.06)_50%,transparent_75%)] animate-pulse" />
+        {/* YouTube video background */}
+        <div className="absolute inset-0 pointer-events-none">
+          <iframe
+            src="https://www.youtube.com/embed/h5YxEsY2vDI?autoplay=1&mute=1&loop=1&playlist=h5YxEsY2vDI&controls=0&showinfo=0&rel=0&modestbranding=1&playsinline=1&disablekb=1"
+            title="DJP Athlete Training"
+            allow="autoplay; encrypted-media"
+            className="absolute top-[60%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300%] h-[300%] min-w-full min-h-full object-cover"
+            style={{ border: 0 }}
+          />
+        </div>
+        {/* Dark overlay for text readability */}
+        <div className="absolute inset-0 bg-primary/70" />
 
         <div className="relative z-10 max-w-5xl mx-auto text-center px-4 sm:px-8 pt-32 pb-16 lg:pt-40 lg:pb-24">
           <div className="flex items-center justify-center gap-3 mb-4">
