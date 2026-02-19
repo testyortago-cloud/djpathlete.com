@@ -3,6 +3,7 @@ import type Stripe from "stripe"
 import { verifyWebhookSignature } from "@/lib/stripe"
 import { createPayment, getPaymentByStripeId, updatePayment } from "@/lib/db/payments"
 import { createAssignment } from "@/lib/db/assignments"
+import { ghlCreateContact, ghlTriggerWorkflow } from "@/lib/ghl"
 
 export async function POST(request: Request) {
   const body = await request.text()
@@ -59,6 +60,25 @@ export async function POST(request: Request) {
           status: "active",
           notes: null,
         })
+
+        // Sync purchase to GoHighLevel (non-blocking)
+        try {
+          const customerEmail = session.customer_details?.email
+          if (customerEmail) {
+            const contact = await ghlCreateContact({
+              email: customerEmail,
+              firstName: session.customer_details?.name?.split(" ")[0],
+              lastName: session.customer_details?.name?.split(" ").slice(1).join(" ") || undefined,
+              tags: ["purchased", `program-${programId}`],
+              source: "stripe-purchase",
+            })
+            if (contact?.id && process.env.GHL_WORKFLOW_NEW_PURCHASE) {
+              await ghlTriggerWorkflow(contact.id, process.env.GHL_WORKFLOW_NEW_PURCHASE)
+            }
+          }
+        } catch {
+          // GHL sync failure should not affect payment processing
+        }
 
         break
       }

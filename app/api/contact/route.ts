@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { contactFormSchema } from "@/lib/validators/contact"
 import { createServiceRoleClient } from "@/lib/supabase"
+import { ghlCreateContact, ghlTriggerWorkflow } from "@/lib/ghl"
 
 export async function POST(request: Request) {
   try {
@@ -47,6 +48,22 @@ export async function POST(request: Request) {
       if (insertError) {
         console.error("Failed to create contact notifications:", insertError)
       }
+    }
+
+    // Sync to GoHighLevel (non-blocking)
+    try {
+      const contact = await ghlCreateContact({
+        email,
+        firstName: name.split(" ")[0],
+        lastName: name.split(" ").slice(1).join(" ") || undefined,
+        tags: ["contact-form", "inquiry"],
+        source: "website-contact-form",
+      })
+      if (contact?.id && process.env.GHL_WORKFLOW_NEW_INQUIRY) {
+        await ghlTriggerWorkflow(contact.id, process.env.GHL_WORKFLOW_NEW_INQUIRY)
+      }
+    } catch {
+      // GHL sync failure should not affect contact form submission
     }
 
     return NextResponse.json({ success: true })

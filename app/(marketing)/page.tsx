@@ -14,8 +14,7 @@ import { FadeIn } from "@/components/shared/FadeIn"
 import { HeroContent } from "@/components/public/HeroContent"
 import { AnimatedStats } from "@/components/public/AnimatedStats"
 import { TestimonialCarousel } from "@/components/public/TestimonialCarousel"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { NewsletterForm } from "@/components/public/NewsletterForm"
 import { getFeaturedTestimonials } from "@/lib/db/testimonials"
 
 export const metadata: Metadata = {
@@ -357,23 +356,7 @@ export default async function HomePage() {
             Get insights on performance, training philosophy, and program
             updates. No spam. No fluff. Just the work.
           </p>
-          <form
-            className="flex flex-col sm:flex-row gap-3 max-w-md mx-auto"
-            action="#"
-          >
-            <Input
-              type="email"
-              placeholder="Your email address"
-              className="h-12 bg-white/10 border-white/20 text-primary-foreground placeholder:text-primary-foreground/50 focus-visible:border-accent focus-visible:ring-accent/30"
-              required
-            />
-            <Button
-              type="submit"
-              className="h-12 px-8 bg-accent text-primary hover:bg-accent/90 rounded-md font-semibold shrink-0"
-            >
-              Subscribe
-            </Button>
-          </form>
+          <NewsletterForm />
           <p className="text-xs text-primary-foreground/40 mt-4">
             We respect your privacy. Unsubscribe at any time.
           </p>

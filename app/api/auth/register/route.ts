@@ -4,6 +4,7 @@ import { registerSchema } from "@/lib/validators/register"
 import { createServiceRoleClient } from "@/lib/supabase"
 import { createEmailVerificationToken } from "@/lib/db/email-verification-tokens"
 import { sendVerificationEmail } from "@/lib/email"
+import { ghlCreateContact, ghlTriggerWorkflow } from "@/lib/ghl"
 import type { User } from "@/types/database"
 
 export async function POST(request: Request) {
@@ -96,6 +97,22 @@ export async function POST(request: Request) {
     } catch (emailError) {
       console.error("Failed to send verification email:", emailError)
       // Don't block registration if email fails
+    }
+
+    // Sync to GoHighLevel (non-blocking)
+    try {
+      const contact = await ghlCreateContact({
+        email: typedUser.email,
+        firstName: typedUser.first_name,
+        lastName: typedUser.last_name,
+        tags: ["registered-client"],
+        source: "website-registration",
+      })
+      if (contact?.id && process.env.GHL_WORKFLOW_NEW_CLIENT) {
+        await ghlTriggerWorkflow(contact.id, process.env.GHL_WORKFLOW_NEW_CLIENT)
+      }
+    } catch {
+      // GHL sync failure should not affect registration
     }
 
     // Return user without password_hash
