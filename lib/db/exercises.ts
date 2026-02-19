@@ -1,8 +1,13 @@
-import { createServerSupabaseClient } from "@/lib/supabase"
+import { createServiceRoleClient } from "@/lib/supabase"
 import type { Exercise } from "@/types/database"
 
+/** Service-role client bypasses RLS — these functions are only called from server-side admin routes. */
+function getClient() {
+  return createServiceRoleClient()
+}
+
 export async function getExercises() {
-  const supabase = await createServerSupabaseClient()
+  const supabase = getClient()
   const { data, error } = await supabase
     .from("exercises")
     .select("*")
@@ -13,7 +18,7 @@ export async function getExercises() {
 }
 
 export async function getExerciseById(id: string) {
-  const supabase = await createServerSupabaseClient()
+  const supabase = getClient()
   const { data, error } = await supabase
     .from("exercises")
     .select("*")
@@ -26,7 +31,7 @@ export async function getExerciseById(id: string) {
 export async function createExercise(
   exercise: Omit<Exercise, "id" | "created_at" | "updated_at">
 ) {
-  const supabase = await createServerSupabaseClient()
+  const supabase = getClient()
   const { data, error } = await supabase
     .from("exercises")
     .insert(exercise)
@@ -40,7 +45,7 @@ export async function updateExercise(
   id: string,
   updates: Partial<Omit<Exercise, "id" | "created_at">>
 ) {
-  const supabase = await createServerSupabaseClient()
+  const supabase = getClient()
   const { data, error } = await supabase
     .from("exercises")
     .update(updates)
@@ -52,7 +57,7 @@ export async function updateExercise(
 }
 
 export async function deleteExercise(id: string) {
-  const supabase = await createServerSupabaseClient()
+  const supabase = getClient()
   const { error } = await supabase
     .from("exercises")
     .update({ is_active: false })
