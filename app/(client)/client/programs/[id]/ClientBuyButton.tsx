@@ -1,7 +1,6 @@
 "use client"
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useState, useEffect } from "react"
 import { Loader2, ShoppingBag } from "lucide-react"
 import { toast } from "sonner"
 
@@ -10,8 +9,20 @@ interface ClientBuyButtonProps {
 }
 
 export function ClientBuyButton({ programId }: ClientBuyButtonProps) {
-  const router = useRouter()
   const [loading, setLoading] = useState(false)
+
+  // Reset loading if user navigates back from Stripe (e.g., presses back/escape)
+  useEffect(() => {
+    function handleFocus() {
+      setLoading(false)
+    }
+    window.addEventListener("pageshow", handleFocus)
+    window.addEventListener("focus", handleFocus)
+    return () => {
+      window.removeEventListener("pageshow", handleFocus)
+      window.removeEventListener("focus", handleFocus)
+    }
+  }, [])
 
   async function handleBuy() {
     setLoading(true)
@@ -19,7 +30,7 @@ export function ClientBuyButton({ programId }: ClientBuyButtonProps) {
       const res = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ programId, returnUrl: "/client/programs" }),
+        body: JSON.stringify({ programId, returnUrl: "/client/programs/success" }),
       })
 
       const data = await res.json()
@@ -30,6 +41,8 @@ export function ClientBuyButton({ programId }: ClientBuyButtonProps) {
 
       if (data.url) {
         window.location.href = data.url
+      } else {
+        throw new Error("No checkout URL received")
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to start checkout")
@@ -48,7 +61,7 @@ export function ClientBuyButton({ programId }: ClientBuyButtonProps) {
       ) : (
         <ShoppingBag className="size-4" />
       )}
-      Buy Now
+      {loading ? "Redirecting to checkout..." : "Buy Now"}
     </button>
   )
 }
