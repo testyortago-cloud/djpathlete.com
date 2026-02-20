@@ -18,6 +18,9 @@ export type SplitType = "full_body" | "upper_lower" | "push_pull_legs" | "push_p
 export type Periodization = "linear" | "undulating" | "block" | "reverse_linear" | "none"
 export type ExerciseRelationshipType = "progression" | "regression" | "alternative" | "variation"
 export type AiGenerationStatus = "pending" | "generating" | "completed" | "failed"
+export type AchievementType = "pr" | "streak" | "milestone" | "completion"
+export type PrType = "weight" | "reps" | "volume" | "estimated_1rm"
+export type TargetMetric = "weight" | "reps" | "time"
 
 export interface InjuryDetail {
   area: string
@@ -159,6 +162,8 @@ export interface ExerciseProgress {
   duration_seconds: number | null
   rpe: number | null
   notes: string | null
+  is_pr: boolean
+  pr_type: PrType | null
   created_at: string
 }
 
@@ -238,6 +243,31 @@ export interface AiGenerationLog {
   completed_at: string | null
 }
 
+export interface TrackedExercise {
+  id: string
+  assignment_id: string
+  exercise_id: string
+  target_metric: TargetMetric
+  notes: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface Achievement {
+  id: string
+  user_id: string
+  achievement_type: AchievementType
+  title: string
+  description: string | null
+  exercise_id: string | null
+  metric_value: number | null
+  icon: string
+  celebrated: boolean
+  earned_at: string
+  created_at: string
+}
+
 export interface Database {
   public: {
     Tables: {
@@ -305,6 +335,16 @@ export interface Database {
         Row: AiGenerationLog
         Insert: Omit<AiGenerationLog, "id" | "created_at">
         Update: Partial<Omit<AiGenerationLog, "id" | "created_at">>
+      }
+      tracked_exercises: {
+        Row: TrackedExercise
+        Insert: Omit<TrackedExercise, "id" | "created_at" | "updated_at">
+        Update: Partial<Omit<TrackedExercise, "id" | "created_at">>
+      }
+      achievements: {
+        Row: Achievement
+        Insert: Omit<Achievement, "id" | "created_at">
+        Update: Partial<Omit<Achievement, "id" | "created_at">>
       }
     }
   }

@@ -21,7 +21,10 @@ import { getUserById } from "@/lib/db/users"
 import { getProfileByUserId } from "@/lib/db/client-profiles"
 import { getAssignments } from "@/lib/db/assignments"
 import { getPayments } from "@/lib/db/payments"
+import { getProgress, getWorkoutStreak } from "@/lib/db/progress"
+import { getAchievements } from "@/lib/db/achievements"
 import { EmptyState } from "@/components/ui/empty-state"
+import { ClientProgressView } from "@/components/admin/ClientProgressView"
 import {
   GOAL_LABELS,
   EQUIPMENT_LABELS,
@@ -36,6 +39,8 @@ import type {
   ProgramAssignment,
   Payment,
   ClientProfile,
+  ExerciseProgress,
+  Exercise,
 } from "@/types/database"
 
 export const metadata = { title: "Client Detail" }
@@ -553,11 +558,55 @@ export default async function ClientDetailPage({
     notFound()
   }
 
-  const [profile, assignments, payments] = await Promise.all([
-    getProfileByUserId(id),
-    getAssignments(id),
-    getPayments(id),
-  ])
+  const [profile, assignments, payments, progressData, achievements, workoutStreak] =
+    await Promise.all([
+      getProfileByUserId(id),
+      getAssignments(id),
+      getPayments(id),
+      getProgress(id),
+      getAchievements(id),
+      getWorkoutStreak(id),
+    ])
+
+  // Build progress stats and shape data for the progress view
+  type ProgressWithExercise = ExerciseProgress & { exercises?: Exercise | null }
+  const allProgress = (progressData ?? []) as ProgressWithExercise[]
+
+  const totalWorkouts = new Set(
+    allProgress.map((p) =>
+      new Date(p.completed_at).toISOString().slice(0, 10)
+    )
+  ).size
+  const totalPRs = allProgress.filter((p) => p.is_pr).length
+  const uniqueExercises = new Set(allProgress.map((p) => p.exercise_id)).size
+
+  const recentProgress = allProgress.slice(0, 50).map((p) => ({
+    id: p.id,
+    exercise_name: p.exercises?.name ?? "Unknown Exercise",
+    weight_kg: p.weight_kg,
+    sets_completed: p.sets_completed,
+    reps_completed: p.reps_completed,
+    rpe: p.rpe,
+    is_pr: p.is_pr,
+    completed_at: p.completed_at,
+  }))
+
+  const progressStats = {
+    totalWorkouts,
+    totalPRs,
+    currentStreak: workoutStreak,
+    uniqueExercises,
+  }
+
+  const formattedAchievements = achievements.map((a) => ({
+    id: a.id,
+    achievement_type: a.achievement_type,
+    title: a.title,
+    description: a.description,
+    metric_value: a.metric_value,
+    earned_at: a.earned_at,
+    icon: a.icon,
+  }))
 
   return (
     <div>
@@ -623,6 +672,12 @@ export default async function ClientDetailPage({
         <QuestionnaireSection profile={profile} />
         <ProgramsSection
           assignments={assignments as AssignmentWithProgram[]}
+        />
+        <ClientProgressView
+          userId={id}
+          achievements={formattedAchievements}
+          recentProgress={recentProgress}
+          stats={progressStats}
         />
         <PaymentsSection payments={payments} />
       </div>

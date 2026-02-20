@@ -854,6 +854,128 @@ Test file convention: `src/__tests__/[mirror-path]/[filename].test.ts(x)`
 
 ---
 
+### 2.9 Key Lift Tracking & Celebrations
+
+**Goal:** Clients self-report weights/reps on flagged "key lifts", see their progress over time, and get celebrated when they hit PRs or milestones.
+
+#### Database
+
+```sql
+-- Tracked exercises: which exercises are monitored for a given program assignment
+tracked_exercises (
+  id uuid PK,
+  program_assignment_id uuid FK -> program_assignments.id,
+  exercise_id uuid FK -> exercises.id,
+  target_metric enum('weight', 'reps', 'time') DEFAULT 'weight',
+  notes text,                          -- e.g., "Focus on form before increasing weight"
+  created_by uuid FK -> users.id,      -- admin who flagged it
+  created_at, updated_at
+)
+
+-- Workout logs: client self-reported data per session
+workout_logs (
+  id uuid PK,
+  user_id uuid FK -> users.id,
+  program_assignment_id uuid FK -> program_assignments.id,
+  program_exercise_id uuid FK -> program_exercises.id,
+  exercise_id uuid FK -> exercises.id,
+  logged_at date NOT NULL DEFAULT CURRENT_DATE,
+  sets jsonb NOT NULL,                 -- [{ set_number: 1, weight_kg: 100, reps: 5 }, ...]
+  rpe int CHECK (1-10),               -- Rate of Perceived Exertion (optional)
+  notes text,
+  created_at
+)
+
+-- Achievements: earned milestones and PRs
+achievements (
+  id uuid PK,
+  user_id uuid FK -> users.id,
+  achievement_type enum('pr', 'streak', 'milestone', 'completion') NOT NULL,
+  title text NOT NULL,                 -- e.g., "Deadlift PR: 140kg"
+  description text,                    -- e.g., "New personal record on Deadlift!"
+  exercise_id uuid FK -> exercises.id, -- nullable, only for exercise-specific achievements
+  metric_value decimal,                -- the PR weight, streak count, etc.
+  icon text DEFAULT 'star',            -- Lucide icon name for display
+  celebrated boolean DEFAULT false,    -- has the client seen the celebration animation?
+  earned_at timestamptz NOT NULL DEFAULT NOW(),
+  created_at
+)
+```
+
+#### RLS
+- Clients: read/write own `workout_logs`, read own `tracked_exercises` and `achievements`
+- Admin: full access to all three tables
+
+#### Tasks
+
+1. **API routes:**
+   - `POST /api/workout-logs` — client logs a set (creates workout_log record)
+   - `GET /api/workout-logs?exerciseId=X&from=&to=` — client's log history for an exercise (with date range)
+   - `GET /api/tracked-exercises?assignmentId=X` — get tracked exercises for a program assignment
+   - `POST /api/admin/tracked-exercises` — admin flags an exercise as tracked for a client's assignment
+   - `DELETE /api/admin/tracked-exercises/[id]` — admin removes a tracked exercise
+   - `GET /api/achievements` — client's earned achievements
+   - `PATCH /api/achievements/[id]/celebrate` — mark achievement as celebrated (dismiss animation)
+2. **Zod validation schemas** for workout log submission, tracked exercise creation
+3. **PR detection engine** (`lib/pr-detection.ts`):
+   - After each workout log submission, compare against previous best for that exercise
+   - Detect PR types: heaviest weight (1RM estimate or actual), most reps at a given weight, best estimated volume (sets × reps × weight)
+   - Create `achievement` record when a PR is detected
+   - Detect streaks: X consecutive days/weeks of logging workouts
+   - Detect milestones: configurable thresholds (e.g., "100kg Deadlift Club", "50 workouts logged")
+4. **Client workout logging UI** (extends Program View from 2.8):
+   - On each exercise in the program day view, add a "Log Set" button
+   - Quick-entry form: weight (kg/lbs toggle), reps, optional RPE
+   - Shows previous best for that exercise as reference ("Last time: 100kg × 5")
+   - Multiple sets per exercise (add set, remove set)
+   - Auto-saves on entry (no separate submit button)
+5. **Client key lifts dashboard** (new section on client dashboard or dedicated `/client/progress` page):
+   - List of tracked exercises with sparkline charts showing trend
+   - Click into an exercise to see full history chart (line chart: weight over time, volume over time)
+   - PR badges displayed on the chart at the dates they were hit
+   - Current stats card per exercise: current best, all-time PR, total volume, session count
+6. **Celebration animations:**
+   - When a PR is detected, show a full-screen celebration overlay (confetti/stars animation using a lightweight library like `canvas-confetti` or custom Framer Motion)
+   - Achievement toast notification slides in with the achievement details
+   - Animation only shows once per achievement (marked as `celebrated` after display)
+   - Achievement type determines animation style:
+     - PR: confetti burst + "New Personal Record!" banner
+     - Streak: flying stars + streak count
+     - Milestone: badge unlock animation + milestone title
+7. **Achievements gallery** (`/client/achievements`):
+   - Grid of all earned achievements with icons, titles, dates
+   - Filter by type (PR, streak, milestone, completion)
+   - Share button (generates a shareable image/card — stretch goal)
+8. **Admin tracked exercise management:**
+   - On the program assignment detail page, admin can flag exercises as "tracked"
+   - Admin can see a client's workout log history and progress charts
+   - Admin can view a client's achievements
+   - Quick-add tracked exercises during program building (checkbox "Track this lift")
+
+#### Tests
+- API: POST workout log creates record, validates set data structure
+- API: GET workout logs returns filtered history for correct user/exercise
+- API: tracked exercises CRUD works, respects assignment ownership
+- API: achievements endpoint returns only client's own achievements
+- API: celebrate endpoint marks achievement as celebrated
+- PR detection: identifies new weight PR correctly
+- PR detection: identifies new rep PR correctly
+- PR detection: does not false-trigger when no improvement
+- PR detection: creates achievement record on PR detection
+- Streak detection: correctly counts consecutive logging days/weeks
+- Milestone detection: triggers at configured thresholds
+- Workout logging UI: renders set entry form, saves data
+- Workout logging UI: shows previous best as reference
+- Key lifts dashboard: renders tracked exercises with charts
+- Key lifts dashboard: clicking exercise shows full history
+- Celebration: PR animation triggers on new achievement
+- Celebration: animation only shows once (celebrated flag)
+- Achievements gallery: renders all achievements, filters work
+- Admin: can flag/unflag tracked exercises
+- Admin: can view client workout history and achievements
+
+---
+
 ## Phase 3: Integrations & Features (Weeks 6–8)
 
 ### 3.1 GoHighLevel Integration

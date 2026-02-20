@@ -23,6 +23,7 @@ import { Badge } from "@/components/ui/badge"
 import { Slider } from "@/components/ui/slider"
 import { Textarea } from "@/components/ui/textarea"
 import { AiCoachDialog } from "@/components/client/AiCoachDialog"
+import { CelebrationOverlay } from "@/components/client/CelebrationOverlay"
 import type { Exercise, ProgramExercise } from "@/types/database"
 import type { WeightRecommendation } from "@/lib/weight-recommendation"
 
@@ -90,6 +91,14 @@ function ExerciseCard({
   const [submitting, setSubmitting] = useState(false)
   const [showAiCoach, setShowAiCoach] = useState(false)
   const [showExtra, setShowExtra] = useState(false)
+  const [celebrations, setCelebrations] = useState<
+    Array<{
+      achievement_type: string
+      title: string
+      description: string | null
+      icon: string
+    }>
+  >([])
 
   // Form state
   const [weight, setWeight] = useState<string>(
@@ -128,14 +137,21 @@ function ExerciseCard({
         }),
       })
 
+      const data = await res.json()
+
       if (!res.ok) {
-        const data = await res.json()
         throw new Error(data.error || "Failed to log workout")
       }
 
       toast.success(`${exercise.name} logged!`)
       setLoggedToday(true)
       setExpanded(false)
+
+      // Check for achievements and trigger celebrations
+      if (data.achievements && data.achievements.length > 0) {
+        setCelebrations(data.achievements)
+      }
+
       router.refresh()
     } catch (err) {
       toast.error(
@@ -423,6 +439,11 @@ function ExerciseCard({
         onOpenChange={setShowAiCoach}
         exerciseId={exercise.id}
         exerciseName={exercise.name}
+      />
+
+      <CelebrationOverlay
+        achievements={celebrations}
+        onComplete={() => setCelebrations([])}
       />
     </>
   )

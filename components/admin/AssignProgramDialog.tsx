@@ -55,7 +55,14 @@ export function AssignProgramDialog({
         throw new Error(data.error || "Failed to assign program")
       }
 
-      toast.success("Program assigned to client")
+      const selectedUserId = formData.get("user_id") as string
+      toast.success("Program assigned!", {
+        description: "Manage tracked exercises on the client detail page.",
+        action: {
+          label: "View Client",
+          onClick: () => router.push(`/admin/clients/${selectedUserId}`),
+        },
+      })
       onOpenChange(false)
       router.refresh()
     } catch (err) {

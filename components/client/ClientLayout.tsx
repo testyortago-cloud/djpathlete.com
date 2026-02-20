@@ -3,7 +3,7 @@
 import { useEffect } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { LayoutDashboard, Dumbbell, TrendingUp, User, Settings, ClipboardList, LogOut } from "lucide-react"
+import { LayoutDashboard, Dumbbell, TrendingUp, Trophy, User, Settings, ClipboardList, LogOut } from "lucide-react"
 import { signOut } from "next-auth/react"
 import { cn } from "@/lib/utils"
 import { InstallPrompt } from "@/components/client/InstallPrompt"
@@ -13,6 +13,7 @@ const navItems = [
   { label: "Dashboard", href: "/client/dashboard", icon: LayoutDashboard },
   { label: "Workouts", href: "/client/workouts", icon: Dumbbell },
   { label: "Progress", href: "/client/progress", icon: TrendingUp },
+  { label: "Achievements", href: "/client/achievements", icon: Trophy },
   { label: "Assessment", href: "/client/questionnaire", icon: ClipboardList },
   { label: "Profile", href: "/client/profile", icon: User },
   { label: "Settings", href: "/client/settings", icon: Settings },
