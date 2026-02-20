@@ -5,6 +5,8 @@ import { ProgramCard } from "@/components/public/ProgramCard"
 import { EmptyState } from "@/components/ui/empty-state"
 import { JsonLd } from "@/components/shared/JsonLd"
 
+export const dynamic = "force-dynamic"
+
 export const metadata: Metadata = {
   title: "Programs",
   description:
