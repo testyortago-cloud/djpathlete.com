@@ -4,6 +4,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
   LayoutDashboard,
+  Bot,
   Users,
   Dumbbell,
   ClipboardList,
@@ -19,6 +20,7 @@ import { cn } from "@/lib/utils"
 
 const navItems = [
   { label: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
+  { label: "AI Assistant", href: "/admin/ai-assistant", icon: Bot },
   { label: "Clients", href: "/admin/clients", icon: Users },
   { label: "Exercises", href: "/admin/exercises", icon: Dumbbell },
   { label: "Programs", href: "/admin/programs", icon: ClipboardList },

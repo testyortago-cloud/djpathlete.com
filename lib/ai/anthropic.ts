@@ -1,6 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk"
+import type { MessageParam } from "@anthropic-ai/sdk/resources/messages"
 import type { ZodSchema } from "zod"
 import type { AgentCallResult } from "@/lib/ai/types"
+import { AI_CHAT_MAX_TOKENS } from "@/lib/admin-ai-config"
 
 export const MODEL_SONNET = "claude-sonnet-4-20250514"
 export const MODEL_HAIKU = "claude-haiku-4-5-20251001"
@@ -8,7 +10,7 @@ const DEFAULT_MAX_TOKENS = 8192
 
 let _client: Anthropic | null = null
 
-function getClient(): Anthropic {
+export function getClient(): Anthropic {
   if (!_client) {
     _client = new Anthropic({
       apiKey: process.env.ANTHROPIC_API_KEY,
@@ -97,4 +99,23 @@ export async function callAgent<T>(
     content: validationResult.data,
     tokens_used,
   }
+}
+
+/**
+ * Stream a chat completion as SSE. Supports prompt caching via structured
+ * system blocks with cache_control.
+ */
+export function streamChat(opts: {
+  system: string | Array<{ type: "text"; text: string; cache_control?: { type: "ephemeral" } }>
+  messages: MessageParam[]
+  maxTokens?: number
+  model?: string
+}) {
+  const client = getClient()
+  return client.messages.stream({
+    model: opts.model ?? MODEL_SONNET,
+    max_tokens: opts.maxTokens ?? AI_CHAT_MAX_TOKENS,
+    system: opts.system,
+    messages: opts.messages,
+  })
 }

@@ -2,12 +2,13 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { X, LayoutDashboard, Users, Dumbbell, ClipboardList, CreditCard, BarChart3, Brain, Star, Settings, LogOut } from "lucide-react"
+import { X, LayoutDashboard, Bot, Users, Dumbbell, ClipboardList, CreditCard, BarChart3, Brain, Star, Settings, LogOut } from "lucide-react"
 import { signOut } from "next-auth/react"
 import { cn } from "@/lib/utils"
 
 const navItems = [
   { label: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
+  { label: "AI Assistant", href: "/admin/ai-assistant", icon: Bot },
   { label: "Clients", href: "/admin/clients", icon: Users },
   { label: "Exercises", href: "/admin/exercises", icon: Dumbbell },
   { label: "Programs", href: "/admin/programs", icon: ClipboardList },
