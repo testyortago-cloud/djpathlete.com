@@ -26,6 +26,13 @@ export type AchievementType = "pr" | "streak" | "milestone" | "completion"
 export type PrType = "weight" | "reps" | "volume" | "estimated_1rm"
 export type TargetMetric = "weight" | "reps" | "time"
 
+export interface SetDetail {
+  set_number: number
+  weight_kg: number | null
+  reps: number
+  rpe: number | null
+}
+
 export interface InjuryDetail {
   area: string
   side?: string
@@ -176,6 +183,7 @@ export interface ExerciseProgress {
   notes: string | null
   is_pr: boolean
   pr_type: PrType | null
+  set_details: SetDetail[] | null
   created_at: string
 }
 

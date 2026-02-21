@@ -20,23 +20,23 @@ export default async function ClientProfilePage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-primary mb-6">Profile</h1>
+      <h1 className="text-xl sm:text-2xl font-semibold text-primary mb-5">Profile</h1>
 
       {/* Read-only account info */}
-      <div className="bg-white rounded-xl border border-border p-6 mb-6">
-        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">
+      <div className="bg-white rounded-xl border border-border p-4 sm:p-6 mb-5">
+        <h2 className="text-[10px] sm:text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3 sm:mb-4">
           Account Information
         </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4">
           <div>
-            <p className="text-xs text-muted-foreground mb-1">Name</p>
-            <p className="text-sm font-medium text-foreground">
+            <p className="text-[10px] sm:text-xs text-muted-foreground mb-0.5">Name</p>
+            <p className="text-xs sm:text-sm font-medium text-foreground truncate">
               {session.user.name ?? "Not set"}
             </p>
           </div>
           <div>
-            <p className="text-xs text-muted-foreground mb-1">Email</p>
-            <p className="text-sm font-medium text-foreground">
+            <p className="text-[10px] sm:text-xs text-muted-foreground mb-0.5">Email</p>
+            <p className="text-xs sm:text-sm font-medium text-foreground truncate">
               {session.user.email ?? "Not set"}
             </p>
           </div>

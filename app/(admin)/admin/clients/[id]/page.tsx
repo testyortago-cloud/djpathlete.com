@@ -53,6 +53,7 @@ import type {
   ClientProfile,
   ExerciseProgress,
   Exercise,
+  SetDetail,
 } from "@/types/database"
 
 export const metadata = { title: "Client Detail" }
@@ -637,6 +638,7 @@ export default async function ClientDetailPage({
     rpe: p.rpe,
     is_pr: p.is_pr,
     completed_at: p.completed_at,
+    set_details: (p.set_details ?? null) as SetDetail[] | null,
   }))
 
   const progressStats = {

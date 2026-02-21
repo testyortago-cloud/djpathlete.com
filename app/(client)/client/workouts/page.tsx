@@ -3,12 +3,15 @@ import { redirect } from "next/navigation"
 import { getAssignments } from "@/lib/db/assignments"
 import { getProgramExercises } from "@/lib/db/program-exercises"
 import { getLatestProgressByExercises } from "@/lib/db/progress"
+import { getProfileByUserId } from "@/lib/db/client-profiles"
 import { getWeightRecommendation } from "@/lib/weight-recommendation"
+import type { ClientContext } from "@/lib/weight-recommendation"
 import { EmptyState } from "@/components/ui/empty-state"
-import { WorkoutDay } from "@/components/client/WorkoutDay"
+import { WorkoutTabs } from "@/components/client/WorkoutTabs"
 import { Dumbbell } from "lucide-react"
 import type { Program, ProgramAssignment, Exercise, ProgramExercise } from "@/types/database"
 
+export const dynamic = "force-dynamic"
 export const metadata = { title: "My Workouts | DJP Athlete" }
 
 type AssignmentWithProgram = ProgramAssignment & {
@@ -27,6 +30,22 @@ const dayLabels: Record<number, string> = {
   5: "Friday",
   6: "Saturday",
   7: "Sunday",
+}
+
+function getTodayDow(): number {
+  const jsDay = new Date().getDay()
+  return jsDay === 0 ? 7 : jsDay
+}
+
+function getCurrentWeek(startDate: string, totalWeeks: number): number {
+  const start = new Date(startDate)
+  const now = new Date()
+  const daysSinceStart = Math.floor(
+    (now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)
+  )
+  // Week 1 = first 7 days, clamp to valid range
+  const week = Math.floor(daysSinceStart / 7) + 1
+  return Math.max(1, Math.min(week, totalWeeks))
 }
 
 export default async function ClientWorkoutsPage() {
@@ -66,14 +85,26 @@ export default async function ClientWorkoutsPage() {
     ),
   ]
 
-  // Batch-fetch progress history for all exercises
+  // Batch-fetch progress history and client profile in parallel
   let progressByExercise: Record<string, import("@/types/database").ExerciseProgress[]> = {}
+  let clientCtx: ClientContext | null = null
   try {
-    if (allExerciseIds.length > 0) {
-      progressByExercise = await getLatestProgressByExercises(userId, allExerciseIds, 5)
+    const [progressResult, profile] = await Promise.all([
+      allExerciseIds.length > 0
+        ? getLatestProgressByExercises(userId, allExerciseIds, 5)
+        : Promise.resolve({} as Record<string, import("@/types/database").ExerciseProgress[]>),
+      getProfileByUserId(userId).catch(() => null),
+    ])
+    progressByExercise = progressResult
+    if (profile) {
+      clientCtx = {
+        weight_kg: profile.weight_kg,
+        gender: profile.gender,
+        experience_level: profile.experience_level,
+      }
     }
   } catch {
-    // Progress table may not exist yet
+    // Tables may not exist yet
   }
 
   // Check if an exercise was logged today
@@ -84,9 +115,86 @@ export default async function ClientWorkoutsPage() {
     return history[0].completed_at.slice(0, 10) === todayStr
   }
 
+  // Build structured data — grouped by week then by day
+  const tabPrograms = programExercises
+    .filter(({ assignment }) => assignment.programs)
+    .map(({ assignment, exercises }) => {
+      const program = assignment.programs!
+      const totalWeeks = program.duration_weeks || 1
+      const currentWeek = getCurrentWeek(assignment.start_date, totalWeeks)
+
+      // Group exercises by week_number, then by day_of_week
+      const weekMap = new Map<number, Map<number, ProgramExerciseWithExercise[]>>()
+
+      for (const ex of exercises) {
+        const week = ex.week_number
+        const day = ex.day_of_week
+        if (!weekMap.has(week)) weekMap.set(week, new Map())
+        const dayMap = weekMap.get(week)!
+        if (!dayMap.has(day)) dayMap.set(day, [])
+        dayMap.get(day)!.push(ex)
+      }
+
+      // Convert to structured weeks → days format
+      // If a week has no exercises defined, fall back to the closest
+      // earlier week (repeating weekly template pattern).
+      const definedWeeks = [...weekMap.keys()].sort((a, b) => a - b)
+
+      const weeks: Record<
+        number,
+        { day: number; dayLabel: string; assignmentId: string; exercises: ReturnType<typeof buildExerciseData> }[]
+      > = {}
+
+      for (let w = 1; w <= totalWeeks; w++) {
+        // Find the best source week: exact match, or the closest defined week <= w
+        let sourceWeek = definedWeeks[0] ?? 1
+        for (const dw of definedWeeks) {
+          if (dw <= w) sourceWeek = dw
+          else break
+        }
+        const dayMap = weekMap.get(sourceWeek)
+        if (dayMap) {
+          const isCurrentWeek = w === currentWeek
+          weeks[w] = [...dayMap.keys()]
+            .sort((a, b) => a - b)
+            .map((day) => ({
+              day,
+              dayLabel: dayLabels[day] ?? `Day ${day}`,
+              assignmentId: assignment.id,
+              exercises: buildExerciseData(dayMap.get(day)!, isCurrentWeek),
+            }))
+        }
+      }
+
+      return {
+        programName: program.name,
+        category: program.category,
+        assignmentId: assignment.id,
+        currentWeek,
+        totalWeeks,
+        weeks,
+      }
+    })
+
+  function buildExerciseData(dayExercises: ProgramExerciseWithExercise[], isCurrentWeek: boolean) {
+    return dayExercises
+      .filter((pe) => pe.exercises)
+      .map((pe) => {
+        const exercise = pe.exercises!
+        const history = progressByExercise[exercise.id] ?? []
+        const recommendation = getWeightRecommendation(history, exercise, pe, clientCtx)
+        return {
+          programExercise: pe as ProgramExercise,
+          exercise,
+          recommendation,
+          loggedToday: isCurrentWeek && wasLoggedToday(exercise.id),
+        }
+      })
+  }
+
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-primary mb-6">My Workouts</h1>
+      <h1 className="text-xl sm:text-2xl font-semibold text-primary mb-4">My Workouts</h1>
 
       {activeAssignments.length === 0 ? (
         <EmptyState
@@ -95,77 +203,7 @@ export default async function ClientWorkoutsPage() {
           description="You don't have any active workout programs. Once a program is assigned to you, your exercises will appear here."
         />
       ) : (
-        <div className="space-y-8">
-          {programExercises.map(({ assignment, exercises }) => {
-            const program = assignment.programs
-            if (!program) return null
-
-            // Group exercises by day_of_week
-            const exercisesByDay = exercises.reduce<
-              Record<number, ProgramExerciseWithExercise[]>
-            >((acc, ex) => {
-              const day = ex.day_of_week
-              if (!acc[day]) acc[day] = []
-              acc[day].push(ex)
-              return acc
-            }, {})
-
-            const sortedDays = Object.keys(exercisesByDay)
-              .map(Number)
-              .sort((a, b) => a - b)
-
-            return (
-              <div key={assignment.id}>
-                <div className="flex items-center gap-3 mb-4">
-                  <h2 className="text-lg font-semibold text-foreground">
-                    {program.name}
-                  </h2>
-                  <span className="rounded-full bg-primary/10 text-primary px-2 py-0.5 text-xs font-medium capitalize">
-                    {program.category.replace("_", " ")}
-                  </span>
-                </div>
-
-                {exercises.length === 0 ? (
-                  <p className="text-sm text-muted-foreground bg-white rounded-xl border border-border p-6">
-                    No exercises have been added to this program yet.
-                  </p>
-                ) : (
-                  <div className="space-y-4">
-                    {sortedDays.map((day) => {
-                      const dayExercises = exercisesByDay[day]
-                        .filter((pe) => pe.exercises)
-                        .map((pe) => {
-                          const exercise = pe.exercises!
-                          const history = progressByExercise[exercise.id] ?? []
-                          const recommendation = getWeightRecommendation(
-                            history,
-                            exercise,
-                            pe
-                          )
-                          return {
-                            programExercise: pe as ProgramExercise,
-                            exercise,
-                            recommendation,
-                            loggedToday: wasLoggedToday(exercise.id),
-                          }
-                        })
-
-                      return (
-                        <WorkoutDay
-                          key={day}
-                          day={day}
-                          dayLabel={dayLabels[day] ?? `Day ${day}`}
-                          exercises={dayExercises}
-                          assignmentId={assignment.id}
-                        />
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
+        <WorkoutTabs programs={tabPrograms} todayDow={getTodayDow()} />
       )}
     </div>
   )

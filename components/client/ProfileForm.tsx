@@ -106,8 +106,8 @@ export function ProfileForm({ profile }: ProfileFormProps) {
 
   return (
     <form onSubmit={handleSubmit}>
-      <div className="bg-white rounded-xl border border-border p-6 space-y-6">
-        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+      <div className="bg-white rounded-xl border border-border p-4 sm:p-6 space-y-5 sm:space-y-6">
+        <h2 className="text-[10px] sm:text-sm font-semibold text-muted-foreground uppercase tracking-wider">
           Athletic Profile
         </h2>
 
@@ -192,11 +192,11 @@ export function ProfileForm({ profile }: ProfileFormProps) {
           />
         </div>
 
-        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider pt-2">
+        <h2 className="text-[10px] sm:text-sm font-semibold text-muted-foreground uppercase tracking-wider pt-2">
           Physical Information
         </h2>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-3 gap-3 sm:gap-4">
           <div className="space-y-2">
             <Label htmlFor="date_of_birth">Date of Birth</Label>
             <Input
@@ -228,7 +228,7 @@ export function ProfileForm({ profile }: ProfileFormProps) {
           </div>
         </div>
 
-        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider pt-2">
+        <h2 className="text-[10px] sm:text-sm font-semibold text-muted-foreground uppercase tracking-wider pt-2">
           Emergency Contact
         </h2>
 

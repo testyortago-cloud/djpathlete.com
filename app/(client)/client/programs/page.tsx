@@ -68,62 +68,62 @@ export default async function ClientProgramsPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-primary mb-6">Programs</h1>
+      <h1 className="text-xl sm:text-2xl font-semibold text-primary mb-5">Programs</h1>
 
       {/* My Programs */}
       {ownedPrograms.length > 0 && (
-        <section className="mb-10">
-          <h2 className="text-lg font-semibold text-foreground mb-4">
+        <section className="mb-8">
+          <h2 className="text-base sm:text-lg font-semibold text-foreground mb-3">
             My Programs
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {ownedPrograms.map((program) => (
               <div
                 key={program.id}
-                className="bg-white rounded-xl border border-border p-5 flex flex-col"
+                className="bg-white rounded-xl border border-border p-4 sm:p-5 flex flex-col"
               >
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-primary/10 text-primary">
+                <div className="flex flex-wrap items-center gap-1.5 mb-2">
+                  <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] sm:text-xs font-medium bg-primary/10 text-primary">
                     {CATEGORY_LABELS[program.category] ?? program.category}
                   </span>
                   <span
-                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${DIFFICULTY_COLORS[program.difficulty] ?? "bg-muted text-muted-foreground"}`}
+                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] sm:text-xs font-medium ${DIFFICULTY_COLORS[program.difficulty] ?? "bg-muted text-muted-foreground"}`}
                   >
                     {DIFFICULTY_LABELS[program.difficulty] ?? program.difficulty}
                   </span>
-                  <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-success/10 text-success ml-auto">
+                  <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] sm:text-xs font-medium bg-success/10 text-success ml-auto">
                     <CheckCircle2 className="size-3" />
                     Owned
                   </span>
                 </div>
 
-                <h3 className="font-semibold text-foreground mb-1">
+                <h3 className="font-semibold text-foreground text-sm sm:text-base leading-snug mb-1">
                   {program.name}
                 </h3>
 
                 {program.description && (
-                  <p className="text-sm text-muted-foreground line-clamp-2 mb-4">
+                  <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2 mb-3 sm:mb-4">
                     {program.description}
                   </p>
                 )}
 
                 <div className="mt-auto pt-3 border-t border-border flex items-center justify-between">
-                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                  <div className="flex items-center gap-3 text-[10px] sm:text-xs text-muted-foreground">
                     <span className="flex items-center gap-1">
-                      <Clock className="size-3.5" />
+                      <Clock className="size-3 sm:size-3.5" />
                       {program.duration_weeks}w
                     </span>
                     <span className="flex items-center gap-1">
-                      <CalendarDays className="size-3.5" />
+                      <CalendarDays className="size-3 sm:size-3.5" />
                       {program.sessions_per_week}x/wk
                     </span>
                   </div>
                   <Link
                     href="/client/workouts"
-                    className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:text-primary/80 transition-colors"
+                    className="inline-flex items-center gap-1 text-xs sm:text-sm font-medium text-primary hover:text-primary/80 transition-colors"
                   >
                     Go to Workouts
-                    <ArrowRight className="size-3.5" />
+                    <ArrowRight className="size-3 sm:size-3.5" />
                   </Link>
                 </div>
               </div>
@@ -134,51 +134,51 @@ export default async function ClientProgramsPage() {
 
       {/* Available Programs */}
       <section>
-        <h2 className="text-lg font-semibold text-foreground mb-4">
+        <h2 className="text-base sm:text-lg font-semibold text-foreground mb-3">
           {ownedPrograms.length > 0 ? "Available Programs" : "Browse Programs"}
         </h2>
 
         {availablePrograms.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {availablePrograms.map((program) => (
               <Link
                 key={program.id}
                 href={`/client/programs/${program.id}`}
-                className="group bg-white rounded-xl border border-border p-5 hover:shadow-md transition-shadow flex flex-col"
+                className="group bg-white rounded-xl border border-border p-4 sm:p-5 hover:shadow-md transition-shadow flex flex-col"
               >
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-primary/10 text-primary">
+                <div className="flex flex-wrap items-center gap-1.5 mb-2">
+                  <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] sm:text-xs font-medium bg-primary/10 text-primary">
                     {CATEGORY_LABELS[program.category] ?? program.category}
                   </span>
                   <span
-                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${DIFFICULTY_COLORS[program.difficulty] ?? "bg-muted text-muted-foreground"}`}
+                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] sm:text-xs font-medium ${DIFFICULTY_COLORS[program.difficulty] ?? "bg-muted text-muted-foreground"}`}
                   >
                     {DIFFICULTY_LABELS[program.difficulty] ?? program.difficulty}
                   </span>
                 </div>
 
-                <h3 className="font-semibold text-foreground mb-1 group-hover:text-primary transition-colors">
+                <h3 className="font-semibold text-foreground text-sm sm:text-base leading-snug mb-1 group-hover:text-primary transition-colors">
                   {program.name}
                 </h3>
 
                 {program.description && (
-                  <p className="text-sm text-muted-foreground line-clamp-2 mb-4">
+                  <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2 mb-3 sm:mb-4">
                     {program.description}
                   </p>
                 )}
 
                 <div className="mt-auto pt-3 border-t border-border flex items-center justify-between">
-                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                  <div className="flex items-center gap-3 text-[10px] sm:text-xs text-muted-foreground">
                     <span className="flex items-center gap-1">
-                      <Clock className="size-3.5" />
+                      <Clock className="size-3 sm:size-3.5" />
                       {program.duration_weeks}w
                     </span>
                     <span className="flex items-center gap-1">
-                      <CalendarDays className="size-3.5" />
+                      <CalendarDays className="size-3 sm:size-3.5" />
                       {program.sessions_per_week}x/wk
                     </span>
                   </div>
-                  <span className="text-sm font-semibold text-primary">
+                  <span className="text-xs sm:text-sm font-semibold text-primary">
                     {formatPrice(program.price_cents)}
                   </span>
                 </div>
@@ -186,8 +186,8 @@ export default async function ClientProgramsPage() {
             ))}
           </div>
         ) : ownedPrograms.length > 0 ? (
-          <div className="bg-white rounded-xl border border-border p-6 text-center">
-            <p className="text-sm text-muted-foreground">
+          <div className="bg-white rounded-xl border border-border p-4 sm:p-6 text-center">
+            <p className="text-xs sm:text-sm text-muted-foreground">
               You own all available programs. Check back later for new ones!
             </p>
           </div>

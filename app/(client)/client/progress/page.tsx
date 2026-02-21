@@ -141,95 +141,64 @@ export default async function ClientProgressPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-primary mb-6">Progress</h1>
+      <h1 className="text-xl sm:text-2xl font-semibold text-primary mb-5">Progress</h1>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
-        <div className="bg-white rounded-xl border border-border p-4 flex items-center gap-4">
-          <div className="flex items-center justify-center size-10 rounded-full bg-primary/10">
-            <Activity className="size-5 text-primary" strokeWidth={1.5} />
+      {/* Summary Cards — horizontal scroll on mobile */}
+      <div className="flex gap-2.5 overflow-x-auto pb-1 mb-6 -mx-1 px-1 scrollbar-none sm:grid sm:grid-cols-3 lg:grid-cols-5 sm:gap-3 sm:overflow-visible sm:mx-0 sm:px-0">
+        {([
+          { value: totalWorkouts, label: "Workouts", icon: Activity, color: "bg-primary/10 text-primary" },
+          { value: thisMonthWorkouts, label: "This Month", icon: Calendar, color: "bg-success/10 text-success" },
+          { value: uniqueExercises, label: "Exercises", icon: Target, color: "bg-accent/10 text-accent" },
+          { value: prCount, label: "PRs", icon: Trophy, color: "bg-amber-500/10 text-amber-500" },
+          { value: currentStreak, label: "Streak", icon: Flame, color: "bg-orange-500/10 text-orange-500" },
+        ] as const).map(({ value, label, icon: Icon, color }) => (
+          <div
+            key={label}
+            className="bg-white rounded-xl border border-border p-3 sm:p-4 flex flex-col items-center text-center min-w-[90px] shrink-0 sm:shrink sm:min-w-0 sm:flex-row sm:text-left sm:items-center sm:gap-4"
+          >
+            <div className={`flex items-center justify-center size-8 sm:size-10 rounded-full shrink-0 ${color.split(" ")[0]}`}>
+              <Icon className={`size-4 sm:size-5 ${color.split(" ")[1]}`} strokeWidth={1.5} />
+            </div>
+            <div className="mt-1.5 sm:mt-0">
+              <p className="text-lg sm:text-2xl font-semibold text-foreground leading-none">
+                {value}
+              </p>
+              <p className="text-[10px] sm:text-sm text-muted-foreground leading-tight mt-0.5">
+                {label}
+              </p>
+            </div>
           </div>
-          <div>
-            <p className="text-2xl font-semibold text-foreground">
-              {totalWorkouts}
-            </p>
-            <p className="text-sm text-muted-foreground">Total Workouts</p>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl border border-border p-4 flex items-center gap-4">
-          <div className="flex items-center justify-center size-10 rounded-full bg-success/10">
-            <Calendar className="size-5 text-success" strokeWidth={1.5} />
-          </div>
-          <div>
-            <p className="text-2xl font-semibold text-foreground">
-              {thisMonthWorkouts}
-            </p>
-            <p className="text-sm text-muted-foreground">This Month</p>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl border border-border p-4 flex items-center gap-4">
-          <div className="flex items-center justify-center size-10 rounded-full bg-accent/10">
-            <Target className="size-5 text-accent" strokeWidth={1.5} />
-          </div>
-          <div>
-            <p className="text-2xl font-semibold text-foreground">
-              {uniqueExercises}
-            </p>
-            <p className="text-sm text-muted-foreground">Exercises Tracked</p>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl border border-border p-4 flex items-center gap-4">
-          <div className="flex items-center justify-center size-10 rounded-full bg-amber-500/10">
-            <Trophy className="size-5 text-amber-500" strokeWidth={1.5} />
-          </div>
-          <div>
-            <p className="text-2xl font-semibold text-foreground">{prCount}</p>
-            <p className="text-sm text-muted-foreground">Personal Records</p>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl border border-border p-4 flex items-center gap-4">
-          <div className="flex items-center justify-center size-10 rounded-full bg-orange-500/10">
-            <Flame className="size-5 text-orange-500" strokeWidth={1.5} />
-          </div>
-          <div>
-            <p className="text-2xl font-semibold text-foreground">
-              {currentStreak}
-            </p>
-            <p className="text-sm text-muted-foreground">Current Streak</p>
-          </div>
-        </div>
+        ))}
       </div>
 
-      {/* Key Lifts */}
+      {/* Key Lifts — horizontal scroll on mobile */}
       {keyLifts.length > 0 && (
-        <section className="mb-8">
-          <h2 className="text-lg font-semibold text-primary mb-4">Key Lifts</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <section className="mb-6">
+          <h2 className="text-base sm:text-lg font-semibold text-primary mb-3">Key Lifts</h2>
+          <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-none sm:grid sm:grid-cols-2 lg:grid-cols-3 sm:gap-4 sm:overflow-visible sm:mx-0 sm:px-0">
             {keyLifts.map((lift) => (
-              <KeyLiftCard key={lift.exerciseId} {...lift} />
+              <div key={lift.exerciseId} className="min-w-[260px] shrink-0 sm:shrink sm:min-w-0">
+                <KeyLiftCard {...lift} />
+              </div>
             ))}
           </div>
         </section>
       )}
 
       {/* Achievements link */}
-      <div className="mb-8">
+      <div className="mb-6">
         <Link
           href="/client/achievements"
-          className="inline-flex items-center gap-2 rounded-lg border border-border bg-white px-4 py-3 text-sm font-medium text-primary hover:bg-surface transition-colors"
+          className="inline-flex items-center gap-2 rounded-lg border border-border bg-white px-3 sm:px-4 py-2.5 sm:py-3 text-xs sm:text-sm font-medium text-primary hover:bg-surface transition-colors"
         >
           <Trophy className="size-4" strokeWidth={1.5} />
           View All Achievements
-          <ArrowRight className="size-4" strokeWidth={1.5} />
+          <ArrowRight className="size-3.5" strokeWidth={1.5} />
         </Link>
       </div>
 
       {/* Recent Activity */}
-      <h2 className="text-lg font-semibold text-primary mb-4">
+      <h2 className="text-base sm:text-lg font-semibold text-primary mb-3">
         Recent Activity
       </h2>
 
@@ -248,21 +217,20 @@ export default async function ClientProgressPage() {
               const formattedDate = date.toLocaleDateString("en-US", {
                 month: "short",
                 day: "numeric",
-                year: "numeric",
               })
 
-              // Build summary string
+              // Build summary parts
               const parts: string[] = []
               if (entry.sets_completed && entry.reps_completed) {
-                parts.push(`${entry.sets_completed} x ${entry.reps_completed}`)
+                parts.push(`${entry.sets_completed}x${entry.reps_completed}`)
               }
               if (entry.weight_kg) {
-                parts.push(`${entry.weight_kg} kg`)
+                parts.push(`${entry.weight_kg}kg`)
               }
               if (entry.duration_seconds) {
                 const mins = Math.floor(entry.duration_seconds / 60)
                 const secs = entry.duration_seconds % 60
-                parts.push(mins > 0 ? `${mins}m ${secs}s` : `${secs}s`)
+                parts.push(mins > 0 ? `${mins}m${secs > 0 ? ` ${secs}s` : ""}` : `${secs}s`)
               }
               if (entry.rpe) {
                 parts.push(`RPE ${entry.rpe}`)
@@ -271,32 +239,27 @@ export default async function ClientProgressPage() {
               return (
                 <div
                   key={entry.id}
-                  className="px-4 py-3 flex items-center justify-between gap-4"
+                  className="px-3 sm:px-4 py-2.5 sm:py-3 flex items-center justify-between gap-3"
                 >
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium text-foreground text-sm">
+                    <div className="flex items-center gap-1.5">
+                      <p className="font-medium text-foreground text-xs sm:text-sm truncate">
                         {exercise?.name ?? "Unknown Exercise"}
                       </p>
                       {entry.is_pr && (
-                        <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5">
+                        <span className="inline-flex items-center gap-0.5 text-[9px] sm:text-[10px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-1 sm:px-1.5 py-0.5 shrink-0">
                           <Trophy className="size-2.5" />
                           PR
                         </span>
                       )}
                     </div>
                     {parts.length > 0 && (
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {parts.join(" / ")}
-                      </p>
-                    )}
-                    {entry.notes && (
-                      <p className="text-xs text-muted-foreground mt-0.5 italic">
-                        {entry.notes}
+                      <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">
+                        {parts.join(" · ")}
                       </p>
                     )}
                   </div>
-                  <span className="text-xs text-muted-foreground whitespace-nowrap">
+                  <span className="text-[10px] sm:text-xs text-muted-foreground whitespace-nowrap shrink-0">
                     {formattedDate}
                   </span>
                 </div>

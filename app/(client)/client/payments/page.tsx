@@ -49,33 +49,33 @@ export default async function ClientPaymentsPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-primary mb-6">
+      <h1 className="text-xl sm:text-2xl font-semibold text-primary mb-5">
         Payment History
       </h1>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
-        <div className="bg-white rounded-xl border border-border p-4 flex items-center gap-4">
-          <div className="flex items-center justify-center size-10 rounded-full bg-success/10">
-            <DollarSign className="size-5 text-success" strokeWidth={1.5} />
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-6">
+        <div className="bg-white rounded-xl border border-border p-3 sm:p-4 flex flex-col items-center text-center sm:flex-row sm:text-left sm:items-center gap-2 sm:gap-4">
+          <div className="flex items-center justify-center size-9 sm:size-10 rounded-full bg-success/10 shrink-0">
+            <DollarSign className="size-4 sm:size-5 text-success" strokeWidth={1.5} />
           </div>
           <div>
-            <p className="text-2xl font-semibold text-foreground">
+            <p className="text-lg sm:text-2xl font-semibold text-foreground leading-none">
               {formatCents(totalSpent)}
             </p>
-            <p className="text-sm text-muted-foreground">Total Spent</p>
+            <p className="text-[10px] sm:text-sm text-muted-foreground leading-tight mt-0.5">Total Spent</p>
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-border p-4 flex items-center gap-4">
-          <div className="flex items-center justify-center size-10 rounded-full bg-primary/10">
-            <Hash className="size-5 text-primary" strokeWidth={1.5} />
+        <div className="bg-white rounded-xl border border-border p-3 sm:p-4 flex flex-col items-center text-center sm:flex-row sm:text-left sm:items-center gap-2 sm:gap-4">
+          <div className="flex items-center justify-center size-9 sm:size-10 rounded-full bg-primary/10 shrink-0">
+            <Hash className="size-4 sm:size-5 text-primary" strokeWidth={1.5} />
           </div>
           <div>
-            <p className="text-2xl font-semibold text-foreground">
+            <p className="text-lg sm:text-2xl font-semibold text-foreground leading-none">
               {purchaseCount}
             </p>
-            <p className="text-sm text-muted-foreground">Purchases</p>
+            <p className="text-[10px] sm:text-sm text-muted-foreground leading-tight mt-0.5">Purchases</p>
           </div>
         </div>
       </div>

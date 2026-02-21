@@ -29,15 +29,19 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         {/* Content */}
         <div className="relative z-10 flex flex-col justify-between w-full p-12 xl:p-16">
           {/* Logo */}
-          <Link href="/" className="flex items-center">
+          <Link href="/" className="flex items-center gap-3">
             <Image
-              src="/logos/logo-light.png"
+              src="/logos/logo-icon-light.png"
               alt="DJP Athlete"
-              width={140}
-              height={40}
+              width={160}
+              height={100}
               className="object-contain"
+              style={{ height: 48, width: "auto" }}
               priority
             />
+            <span className="font-heading font-semibold tracking-[0.2em] text-base uppercase text-white">
+              Athlete
+            </span>
           </Link>
 
           {/* Quote */}
@@ -91,14 +95,18 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
       <div className="flex w-full lg:w-1/2 flex-col bg-white">
         {/* Mobile logo header */}
         <header className="flex items-center justify-center py-8 lg:hidden">
-          <Link href="/" className="flex items-center">
+          <Link href="/" className="flex items-center gap-2.5">
             <Image
-              src="/logos/logo-dark.png"
+              src="/logos/logo-icon-dark.png"
               alt="DJP Athlete"
-              width={130}
-              height={38}
+              width={160}
+              height={100}
               className="object-contain"
+              style={{ height: 44, width: "auto" }}
             />
+            <span className="font-heading font-semibold tracking-[0.2em] text-sm uppercase text-foreground">
+              Athlete
+            </span>
           </Link>
         </header>
 

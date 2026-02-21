@@ -308,33 +308,33 @@ export function QuestionnaireForm({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Progress header */}
-      <div className="bg-white rounded-xl border border-border p-6">
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-sm font-medium text-muted-foreground">
+      <div className="bg-white rounded-xl border border-border p-4 sm:p-6">
+        <div className="flex items-center justify-between mb-2.5 sm:mb-3">
+          <p className="text-xs sm:text-sm font-medium text-muted-foreground">
             Step {currentStep} of {TOTAL_STEPS}
           </p>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             {STEP_INFO[currentStep - 1] && (
               <>
                 {(() => {
                   const StepIcon = STEP_INFO[currentStep - 1].icon
                   return (
-                    <StepIcon className="size-4 text-primary" />
+                    <StepIcon className="size-3.5 sm:size-4 text-primary" />
                   )
                 })()}
-                <span className="text-sm font-medium text-primary">
+                <span className="text-xs sm:text-sm font-medium text-primary">
                   {STEP_INFO[currentStep - 1].label}
                 </span>
               </>
             )}
           </div>
         </div>
-        <Progress value={progressValue} className="h-2" />
+        <Progress value={progressValue} className="h-1.5 sm:h-2" />
 
         {/* Step dots */}
-        <div className="flex items-center justify-between mt-4 gap-1">
+        <div className="flex items-center justify-between mt-3 sm:mt-4 gap-0.5 sm:gap-1">
           {STEP_INFO.map((step, index) => {
             const stepNum = index + 1
             const isComplete = stepNum < currentStep
@@ -343,7 +343,7 @@ export function QuestionnaireForm({
               <button
                 key={step.label}
                 onClick={() => goToStep(stepNum)}
-                className={`flex items-center justify-center size-8 rounded-full text-xs font-medium transition-all ${
+                className={`flex items-center justify-center size-6 sm:size-8 rounded-full text-[10px] sm:text-xs font-medium transition-all ${
                   isCurrent
                     ? "bg-primary text-primary-foreground"
                     : isComplete
@@ -352,7 +352,7 @@ export function QuestionnaireForm({
                 }`}
                 title={step.label}
               >
-                {isComplete ? <Check className="size-3.5" /> : stepNum}
+                {isComplete ? <Check className="size-3" /> : stepNum}
               </button>
             )
           })}
@@ -360,7 +360,7 @@ export function QuestionnaireForm({
       </div>
 
       {/* Form content */}
-      <div className="bg-white rounded-xl border border-border p-6 min-h-[400px] relative overflow-hidden">
+      <div className="bg-white rounded-xl border border-border p-4 sm:p-6 min-h-[350px] sm:min-h-[400px] relative overflow-hidden">
         <AnimatePresence mode="wait" custom={direction}>
           <motion.div
             key={currentStep}
@@ -409,29 +409,31 @@ export function QuestionnaireForm({
       <div className="flex items-center justify-between">
         <Button
           variant="outline"
+          size="sm"
           onClick={handleBack}
           disabled={currentStep === 1}
+          className="gap-1 text-xs sm:text-sm sm:size-auto"
         >
-          <ChevronLeft className="size-4" />
+          <ChevronLeft className="size-3.5 sm:size-4" />
           Back
         </Button>
 
         {currentStep < TOTAL_STEPS ? (
-          <Button onClick={handleNext}>
+          <Button size="sm" onClick={handleNext} className="gap-1 text-xs sm:text-sm sm:size-auto">
             Next
-            <ChevronRight className="size-4" />
+            <ChevronRight className="size-3.5 sm:size-4" />
           </Button>
         ) : (
-          <Button onClick={handleSubmit} disabled={isSubmitting}>
+          <Button size="sm" onClick={handleSubmit} disabled={isSubmitting} className="gap-1 text-xs sm:text-sm sm:size-auto">
             {isSubmitting ? (
               <>
-                <Loader2 className="size-4 animate-spin" />
+                <Loader2 className="size-3.5 animate-spin" />
                 Saving...
               </>
             ) : (
               <>
-                <Check className="size-4" />
-                Submit Questionnaire
+                <Check className="size-3.5 sm:size-4" />
+                Submit
               </>
             )}
           </Button>
@@ -1150,22 +1152,23 @@ function Step8Schedule({ formData, updateField }: StepProps) {
         {/* Day picker */}
         <div>
           <Label>Which days can you train?</Label>
-          <div className="grid grid-cols-7 gap-2 mt-3">
+          <div className="grid grid-cols-7 gap-1.5 sm:gap-2 mt-3">
             {DAY_NAMES.map((name, idx) => {
               const dayNum = idx + 1
               const selected = formData.preferred_day_names.includes(dayNum)
+              const shortName = name.slice(0, 3)
               return (
                 <button
                   key={name}
                   type="button"
                   onClick={() => toggleDay(dayNum)}
-                  className={`rounded-lg border py-3 text-center transition-all ${
+                  className={`rounded-lg border py-2.5 sm:py-3 text-center transition-all ${
                     selected
                       ? "border-primary bg-primary/5 ring-1 ring-primary text-primary font-semibold"
                       : "border-border hover:border-primary/40 text-foreground"
                   }`}
                 >
-                  <span className="text-sm font-medium">{name}</span>
+                  <span className="text-xs sm:text-sm font-medium">{shortName}</span>
                 </button>
               )
             })}
@@ -1175,7 +1178,7 @@ function Step8Schedule({ formData, updateField }: StepProps) {
         {/* Session duration */}
         <div>
           <Label>Session duration</Label>
-          <div className="grid grid-cols-5 gap-2 mt-3">
+          <div className="grid grid-cols-5 gap-1.5 sm:gap-2 mt-3">
             {SESSION_DURATIONS.map((duration) => {
               const selected = formData.preferred_session_minutes === duration
               return (
@@ -1185,14 +1188,14 @@ function Step8Schedule({ formData, updateField }: StepProps) {
                   onClick={() =>
                     updateField("preferred_session_minutes", duration)
                   }
-                  className={`rounded-lg border py-3 text-center transition-all ${
+                  className={`rounded-lg border py-2.5 sm:py-3 text-center transition-all ${
                     selected
                       ? "border-primary bg-primary/5 ring-1 ring-primary text-primary font-semibold"
                       : "border-border hover:border-primary/40 text-foreground"
                   }`}
                 >
-                  <span className="text-lg font-medium">{duration}</span>
-                  <span className="block text-xs text-muted-foreground">
+                  <span className="text-sm sm:text-lg font-medium">{duration}</span>
+                  <span className="block text-[10px] sm:text-xs text-muted-foreground">
                     min
                   </span>
                 </button>
@@ -1667,18 +1670,18 @@ function ReviewCard({
   children: React.ReactNode
 }) {
   return (
-    <div className="border border-border rounded-lg p-4">
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="text-sm font-semibold text-primary">{title}</h3>
+    <div className="border border-border rounded-lg p-3 sm:p-4">
+      <div className="flex items-center justify-between mb-1.5 sm:mb-2">
+        <h3 className="text-xs sm:text-sm font-semibold text-primary">{title}</h3>
         <button
           type="button"
           onClick={() => onEdit(stepNumber)}
-          className="text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+          className="text-[10px] sm:text-xs font-medium text-primary hover:text-primary/80 transition-colors"
         >
           Edit
         </button>
       </div>
-      {children}
+      <div className="text-xs sm:text-sm [&_p]:text-xs sm:[&_p]:text-sm">{children}</div>
     </div>
   )
 }

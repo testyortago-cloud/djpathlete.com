@@ -19,14 +19,12 @@ export default async function QuestionnairePage() {
 
   return (
     <div className="max-w-3xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-primary font-heading">
+      <div className="mb-5 sm:mb-8">
+        <h1 className="text-xl sm:text-2xl font-semibold text-primary font-heading">
           Athlete Questionnaire
         </h1>
-        <p className="text-muted-foreground mt-2">
-          Help us understand your fitness background, goals, and preferences so
-          we can create a personalized training program tailored to your needs.
-          This should take about 5 minutes.
+        <p className="text-sm sm:text-base text-muted-foreground mt-1.5">
+          Help us understand your goals and preferences to create your personalized program. About 5 minutes.
         </p>
       </div>
       <QuestionnaireForm initialProfile={initialProfile} />

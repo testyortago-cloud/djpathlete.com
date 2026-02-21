@@ -36,6 +36,7 @@ export async function POST(request: Request) {
       rpe,
       duration_seconds,
       notes,
+      set_details,
     } = parsed.data
 
     // Log the workout progress
@@ -49,6 +50,7 @@ export async function POST(request: Request) {
       rpe,
       duration_seconds,
       notes,
+      set_details: set_details ?? null,
       completed_at: new Date().toISOString(),
       is_pr: false,
       pr_type: null,
@@ -71,6 +73,7 @@ export async function POST(request: Request) {
       weight_kg: weight_kg ?? null,
       reps_completed,
       sets_completed,
+      set_details: set_details ?? null,
     })
 
     // 2. For each PR found, create an achievement and mark the progress record

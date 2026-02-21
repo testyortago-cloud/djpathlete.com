@@ -995,38 +995,6 @@ const clientProfiles = [
   },
 ]
 
-// ─── Sample Exercise Progress (for Marcus — so recommendations work) ────────
-
-const progressEntries = [
-  // Back Squat — 4 sessions, weight increasing, RPE logged
-  { user_id: CLIENT_MARCUS, exercise_id: EX.back_squat, sets_completed: 4, reps_completed: "5", weight_kg: 80, rpe: 7, completed_at: daysAgo(21) },
-  { user_id: CLIENT_MARCUS, exercise_id: EX.back_squat, sets_completed: 4, reps_completed: "5", weight_kg: 85, rpe: 7, completed_at: daysAgo(14) },
-  { user_id: CLIENT_MARCUS, exercise_id: EX.back_squat, sets_completed: 4, reps_completed: "5", weight_kg: 90, rpe: 8, completed_at: daysAgo(7) },
-  { user_id: CLIENT_MARCUS, exercise_id: EX.back_squat, sets_completed: 4, reps_completed: "5", weight_kg: 90, rpe: 8, completed_at: daysAgo(0) },
-
-  // Bench Press — 3 sessions, RPE increasing (plateauing)
-  { user_id: CLIENT_MARCUS, exercise_id: EX.bench_press, sets_completed: 4, reps_completed: "5", weight_kg: 60, rpe: 7, completed_at: daysAgo(14) },
-  { user_id: CLIENT_MARCUS, exercise_id: EX.bench_press, sets_completed: 4, reps_completed: "5", weight_kg: 65, rpe: 8, completed_at: daysAgo(7) },
-  { user_id: CLIENT_MARCUS, exercise_id: EX.bench_press, sets_completed: 4, reps_completed: "4", weight_kg: 65, rpe: 9, completed_at: daysAgo(0) },
-
-  // Deadlift — 2 sessions
-  { user_id: CLIENT_MARCUS, exercise_id: EX.deadlift, sets_completed: 3, reps_completed: "5", weight_kg: 100, rpe: 7, completed_at: daysAgo(10) },
-  { user_id: CLIENT_MARCUS, exercise_id: EX.deadlift, sets_completed: 3, reps_completed: "5", weight_kg: 105, rpe: 7, completed_at: daysAgo(3) },
-
-  // RDL — 2 sessions, no RPE (to test "log RPE" prompt)
-  { user_id: CLIENT_MARCUS, exercise_id: EX.rdl, sets_completed: 3, reps_completed: "10", weight_kg: 60, rpe: null, completed_at: daysAgo(7) },
-  { user_id: CLIENT_MARCUS, exercise_id: EX.rdl, sets_completed: 3, reps_completed: "10", weight_kg: 60, rpe: null, completed_at: daysAgo(0) },
-
-  // Barbell Row — 1 session only
-  { user_id: CLIENT_MARCUS, exercise_id: EX.barbell_row, sets_completed: 3, reps_completed: "8", weight_kg: 50, rpe: 6, completed_at: daysAgo(7) },
-]
-
-function daysAgo(n: number): string {
-  const d = new Date()
-  d.setDate(d.getDate() - n)
-  return d.toISOString()
-}
-
 // ─── Execute ────────────────────────────────────────────────────────────────
 
 async function seed() {
@@ -1034,7 +1002,9 @@ async function seed() {
 
   // 1. Clear existing data (order matters due to FK constraints)
   console.log("  Clearing old data...")
+  await supabase.from("achievements").delete().neq("id", "00000000-0000-0000-0000-000000000000")
   await supabase.from("exercise_progress").delete().neq("id", "00000000-0000-0000-0000-000000000000")
+  await supabase.from("tracked_exercises").delete().neq("id", "00000000-0000-0000-0000-000000000000")
   await supabase.from("program_assignments").delete().neq("id", "00000000-0000-0000-0000-000000000000")
   await supabase.from("program_exercises").delete().neq("id", "00000000-0000-0000-0000-000000000000")
   await supabase.from("programs").delete().neq("id", "00000000-0000-0000-0000-000000000000")
@@ -1087,14 +1057,6 @@ async function seed() {
   if (assignErr) throw new Error(`Assignments: ${assignErr.message}`)
   console.log(`  ✓ ${assignments.length} assignments\n`)
 
-  // 8. Exercise progress (sample history)
-  console.log("  Inserting sample exercise progress...")
-  const { error: progressErr } = await supabase.from("exercise_progress").insert(
-    progressEntries.map((p) => ({ ...p, assignment_id: null, duration_seconds: null, notes: null }))
-  )
-  if (progressErr) throw new Error(`Progress: ${progressErr.message}`)
-  console.log(`  ✓ ${progressEntries.length} progress entries for Marcus\n`)
-
   // Summary
   console.log("═══════════════════════════════════════════")
   console.log("  Seed complete! Test accounts:")
@@ -1109,7 +1071,7 @@ async function seed() {
   console.log("  Sarah  → Elite Performance Package")
   console.log("  James  → Foundation Strength Program")
   console.log("")
-  console.log("  Marcus has exercise history → weight recommendations will show")
+  console.log("  Clean slate — no exercise history (first week)")
   console.log("  All exercises have full AI metadata")
   console.log("  All client profiles have questionnaire data")
 }

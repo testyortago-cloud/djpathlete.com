@@ -18,9 +18,6 @@ export function PullToRefresh({ children }: PullToRefreshProps) {
   const isPulling = useRef(false)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  const isTouchDevice =
-    typeof window !== "undefined" && "ontouchstart" in window
-
   const handleTouchStart = useCallback(
     (e: React.TouchEvent) => {
       if (isRefreshing) return
@@ -73,11 +70,6 @@ export function PullToRefresh({ children }: PullToRefreshProps) {
       setPullDistance(0)
     }
   }, [pullDistance, isRefreshing, router])
-
-  // Don't add touch handlers on non-touch devices
-  if (!isTouchDevice) {
-    return <>{children}</>
-  }
 
   const pullProgress = Math.min(1, pullDistance / PULL_THRESHOLD)
   const showIndicator = pullDistance > 10 || isRefreshing

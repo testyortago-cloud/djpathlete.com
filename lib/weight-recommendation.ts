@@ -1,4 +1,4 @@
-import type { Exercise, ExerciseProgress, ProgramExercise } from "@/types/database"
+import type { Exercise, ExerciseProgress, ExperienceLevel, Gender, ProgramExercise } from "@/types/database"
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -48,6 +48,75 @@ function getIncrement(exercise: Pick<Exercise, "movement_pattern" | "is_compound
   return isLower && exercise.is_compound ? 5 : 2.5
 }
 
+// ─── Starting Weight Estimation ─────────────────────────────────────────────
+
+export interface ClientContext {
+  weight_kg: number | null
+  gender: Gender | null
+  experience_level: ExperienceLevel | null
+}
+
+/**
+ * Conservative body-weight multipliers by movement pattern.
+ * These target a comfortable first-session weight (not a 1RM).
+ * Male baseline — female multipliers are ~65% of male.
+ */
+const BW_MULTIPLIERS: Record<string, { compound: number; isolation: number }> = {
+  squat:      { compound: 0.40, isolation: 0.20 },
+  hinge:      { compound: 0.45, isolation: 0.20 },
+  push:       { compound: 0.30, isolation: 0.10 },
+  pull:       { compound: 0.25, isolation: 0.10 },
+  lunge:      { compound: 0.25, isolation: 0.15 },
+  carry:      { compound: 0.30, isolation: 0.20 },
+  rotation:   { compound: 0.10, isolation: 0.05 },
+  isometric:  { compound: 0.00, isolation: 0.00 },
+  locomotion: { compound: 0.00, isolation: 0.00 },
+}
+
+const EXPERIENCE_MULTIPLIER: Record<ExperienceLevel, number> = {
+  beginner: 1.0,
+  intermediate: 1.25,
+  advanced: 1.5,
+  elite: 1.75,
+}
+
+/** Round to the nearest 2.5 kg */
+function roundTo2_5(kg: number): number {
+  return Math.round(kg / 2.5) * 2.5
+}
+
+/**
+ * Estimate a conservative starting weight for a first-time exercise
+ * based on client body weight, gender, experience, and exercise type.
+ * Returns null if we can't make a reasonable estimate.
+ */
+function estimateStartingWeight(
+  exercise: Pick<Exercise, "is_bodyweight" | "is_compound" | "movement_pattern">,
+  client: ClientContext
+): number | null {
+  if (exercise.is_bodyweight) return null
+  if (!client.weight_kg || client.weight_kg <= 0) return null
+
+  const pattern = exercise.movement_pattern ?? "push"
+  // No weight estimate for timed/isometric/locomotion patterns
+  if (pattern === "isometric" || pattern === "locomotion") return null
+
+  const multipliers = BW_MULTIPLIERS[pattern] ?? BW_MULTIPLIERS.push
+  const baseMult = exercise.is_compound ? multipliers.compound : multipliers.isolation
+
+  // Gender factor: female starts ~65% of male estimate
+  const genderFactor = client.gender === "female" ? 0.65 : 1.0
+
+  // Experience factor
+  const expFactor = EXPERIENCE_MULTIPLIER[client.experience_level ?? "beginner"]
+
+  const estimated = client.weight_kg * baseMult * genderFactor * expFactor
+  const rounded = roundTo2_5(estimated)
+
+  // Floor at 5kg for barbell exercises, 2.5kg for others
+  return Math.max(exercise.is_compound ? 5 : 2.5, rounded)
+}
+
 /** Determine weight trend from recent history (newest first) */
 function computeTrend(history: ExerciseProgress[]): Trend {
   const weights = history
@@ -70,7 +139,8 @@ function computeTrend(history: ExerciseProgress[]): Trend {
 export function getWeightRecommendation(
   history: ExerciseProgress[],
   exercise: Pick<Exercise, "is_bodyweight" | "is_compound" | "movement_pattern" | "name">,
-  prescription?: Pick<ProgramExercise, "sets" | "reps" | "intensity_pct" | "rpe_target"> | null
+  prescription?: Pick<ProgramExercise, "sets" | "reps" | "intensity_pct" | "rpe_target"> | null,
+  client?: ClientContext | null
 ): WeightRecommendation {
   // Bodyweight exercise — no weight recommendation
   if (exercise.is_bodyweight) {
@@ -85,8 +155,22 @@ export function getWeightRecommendation(
     }
   }
 
-  // No history — start light
+  // No history — estimate starting weight from client profile
   if (history.length === 0) {
+    const startingKg = client ? estimateStartingWeight(exercise, client) : null
+
+    if (startingKg != null) {
+      return {
+        recommended_kg: startingKg,
+        reasoning: `Suggested starting weight based on your profile — adjust to what feels comfortable`,
+        confidence: "low",
+        estimated_1rm: null,
+        last_weight_kg: null,
+        last_rpe: null,
+        trend: "insufficient_data",
+      }
+    }
+
     return {
       recommended_kg: null,
       reasoning: "Start light, find your working weight",
@@ -100,14 +184,33 @@ export function getWeightRecommendation(
 
   // Latest entry (history is sorted newest-first)
   const latest = history[0]
-  const lastWeight = latest.weight_kg
-  const lastRpe = latest.rpe
   const trend = computeTrend(history)
 
-  // Estimate 1RM from last entry if weight and reps available
-  const lastReps = parseReps(latest.reps_completed)
-  const estimated1rm =
-    lastWeight && lastReps ? Math.round(estimate1RM(lastWeight, lastReps)) : null
+  // When set_details available, use last set's weight/RPE for progression,
+  // and best set for 1RM estimate. Fall back to flat fields for old entries.
+  const setDetails = latest.set_details
+  const hasSetDetails = setDetails && setDetails.length > 0
+
+  const lastWeight = hasSetDetails
+    ? setDetails[setDetails.length - 1].weight_kg
+    : latest.weight_kg
+  const lastRpe = hasSetDetails
+    ? setDetails[setDetails.length - 1].rpe
+    : latest.rpe
+
+  // Estimate 1RM: use best set if set_details available
+  let estimated1rm: number | null = null
+  if (hasSetDetails) {
+    const best = Math.max(
+      ...setDetails
+        .filter((s) => (s.weight_kg ?? 0) > 0 && s.reps > 0)
+        .map((s) => estimate1RM(s.weight_kg!, s.reps))
+    , 0)
+    estimated1rm = best > 0 ? Math.round(best) : null
+  } else {
+    const lastReps = parseReps(latest.reps_completed)
+    estimated1rm = lastWeight && lastReps ? Math.round(estimate1RM(lastWeight, lastReps)) : null
+  }
 
   // If prescription has intensity_pct and we have an estimated 1RM, use that
   if (prescription?.intensity_pct && estimated1rm) {

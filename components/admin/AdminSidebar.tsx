@@ -38,18 +38,22 @@ export function AdminSidebar() {
   return (
     <aside className="hidden lg:flex lg:flex-col w-64 bg-primary text-primary-foreground fixed top-0 left-0 h-screen z-30">
       {/* Logo */}
-      <div className="p-6">
-        <Link href="/admin/dashboard" className="flex items-center">
+      <div className="px-6 pt-8 pb-5">
+        <Link href="/admin/dashboard" className="flex items-center gap-2">
           <Image
-            src="/logos/logo-light.png"
+            src="/logos/logo-icon-light.png"
             alt="DJP Athlete"
-            width={130}
-            height={38}
+            width={120}
+            height={80}
             className="object-contain"
+            style={{ height: 72, width: "auto" }}
             priority
           />
+          <span className="font-heading font-semibold tracking-[0.2em] text-[11px] uppercase text-white">
+            Athlete
+          </span>
         </Link>
-        <p className="text-xs text-white/40 mt-1">Admin Dashboard</p>
+        <p className="text-[10px] text-white/40 mt-1">Admin Dashboard</p>
       </div>
 
       {/* Navigation */}

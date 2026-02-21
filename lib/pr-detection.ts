@@ -1,6 +1,6 @@
 import { createServiceRoleClient } from "@/lib/supabase"
 import { estimate1RM } from "@/lib/weight-recommendation"
-import type { ExerciseProgress, PrType } from "@/types/database"
+import type { ExerciseProgress, PrType, SetDetail } from "@/types/database"
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -42,6 +42,57 @@ async function fetchExerciseHistory(
     .order("completed_at", { ascending: false })
   if (error) throw error
   return (data ?? []) as ExerciseProgress[]
+}
+
+// ─── Set-level helpers ──────────────────────────────────────────────────────
+
+/** Get the heaviest weight from set_details, or fall back to flat weight_kg */
+function getMaxWeight(entry: ExerciseProgress): number {
+  if (entry.set_details && entry.set_details.length > 0) {
+    return Math.max(...entry.set_details.map((s) => s.weight_kg ?? 0))
+  }
+  return entry.weight_kg ?? 0
+}
+
+/** Get max reps at a given weight (or higher) from set_details, or fall back to flat reps */
+function getMaxRepsAtWeight(entry: ExerciseProgress, minWeight: number): number | null {
+  if (entry.set_details && entry.set_details.length > 0) {
+    const relevant = entry.set_details.filter((s) => (s.weight_kg ?? 0) >= minWeight)
+    if (relevant.length === 0) return null
+    return Math.max(...relevant.map((s) => s.reps))
+  }
+  if ((entry.weight_kg ?? 0) >= minWeight) {
+    return parseReps(entry.reps_completed)
+  }
+  return null
+}
+
+/** Get total volume (sum of weight*reps across all sets), or fall back to flat fields */
+function getTotalVolume(entry: ExerciseProgress): number {
+  if (entry.set_details && entry.set_details.length > 0) {
+    return entry.set_details.reduce((sum, s) => sum + (s.weight_kg ?? 0) * s.reps, 0)
+  }
+  const reps = parseReps(entry.reps_completed) ?? 0
+  const sets = entry.sets_completed ?? 0
+  const weight = entry.weight_kg ?? 0
+  return sets * reps * weight
+}
+
+/** Get best estimated 1RM from set_details, or fall back to flat fields */
+function getBest1RM(entry: ExerciseProgress): number {
+  if (entry.set_details && entry.set_details.length > 0) {
+    return Math.max(
+      ...entry.set_details
+        .filter((s) => (s.weight_kg ?? 0) > 0 && s.reps > 0)
+        .map((s) => estimate1RM(s.weight_kg!, s.reps))
+    , 0)
+  }
+  const weight = entry.weight_kg
+  const reps = parseReps(entry.reps_completed)
+  if (weight && weight > 0 && reps && reps > 0) {
+    return estimate1RM(weight, reps)
+  }
+  return 0
 }
 
 // ─── Individual PR Checks ───────────────────────────────────────────────────
@@ -96,9 +147,7 @@ function checkWeightPRFromHistory(
     return { isPr: false, prType: null, title: "", description: "", metricValue: null }
   }
 
-  const previousMaxWeight = Math.max(
-    ...history.map((h) => h.weight_kg ?? 0)
-  )
+  const previousMaxWeight = Math.max(...history.map((h) => getMaxWeight(h)))
 
   if (newWeightKg > previousMaxWeight) {
     return {
@@ -122,20 +171,14 @@ function checkRepPRFromHistory(
     return { isPr: false, prType: null, title: "", description: "", metricValue: null }
   }
 
-  // Find previous entries at the same or higher weight
-  const relevantEntries = history.filter(
-    (h) => h.weight_kg != null && h.weight_kg >= newWeightKg
+  // Find max reps at this weight or higher across all historical entries
+  const previousMaxReps = Math.max(
+    ...history.map((h) => getMaxRepsAtWeight(h, newWeightKg) ?? 0)
   )
 
-  if (relevantEntries.length === 0) {
-    // No previous entries at this weight or higher — not a rep PR
-    // (could be a weight PR instead, which is checked separately)
+  if (previousMaxReps === 0) {
     return { isPr: false, prType: null, title: "", description: "", metricValue: null }
   }
-
-  const previousMaxReps = Math.max(
-    ...relevantEntries.map((h) => parseReps(h.reps_completed) ?? 0)
-  )
 
   if (newReps > previousMaxReps) {
     return {
@@ -152,32 +195,26 @@ function checkRepPRFromHistory(
 
 function checkVolumePRFromHistory(
   history: ExerciseProgress[],
-  sets: number,
-  reps: number,
-  weightKg: number
+  _sets: number,
+  _reps: number,
+  _weightKg: number,
+  newVolume?: number,
 ): PrCheckResult {
   if (history.length === 0) {
     return { isPr: false, prType: null, title: "", description: "", metricValue: null }
   }
 
-  const newVolume = sets * reps * weightKg
+  const volume = newVolume ?? (_sets * _reps * _weightKg)
 
-  const previousMaxVolume = Math.max(
-    ...history.map((h) => {
-      const hReps = parseReps(h.reps_completed) ?? 0
-      const hSets = h.sets_completed ?? 0
-      const hWeight = h.weight_kg ?? 0
-      return hSets * hReps * hWeight
-    })
-  )
+  const previousMaxVolume = Math.max(...history.map((h) => getTotalVolume(h)))
 
-  if (newVolume > previousMaxVolume) {
+  if (volume > previousMaxVolume) {
     return {
       isPr: true,
       prType: "volume",
       title: "Volume PR!",
-      description: `New session volume record: ${newVolume.toLocaleString()}kg (previous: ${previousMaxVolume.toLocaleString()}kg)`,
-      metricValue: newVolume,
+      description: `New session volume record: ${volume.toLocaleString()}kg (previous: ${previousMaxVolume.toLocaleString()}kg)`,
+      metricValue: volume,
     }
   }
 
@@ -187,21 +224,16 @@ function checkVolumePRFromHistory(
 function checkEstimated1RMPRFromHistory(
   history: ExerciseProgress[],
   weightKg: number,
-  reps: number
+  reps: number,
+  new1RMOverride?: number,
 ): PrCheckResult {
   if (history.length === 0) {
     return { isPr: false, prType: null, title: "", description: "", metricValue: null }
   }
 
-  const new1RM = Math.round(estimate1RM(weightKg, reps))
+  const new1RM = new1RMOverride ?? Math.round(estimate1RM(weightKg, reps))
 
-  const previous1RMs = history
-    .filter((h) => h.weight_kg != null && h.weight_kg > 0 && h.reps_completed != null)
-    .map((h) => {
-      const hReps = parseReps(h.reps_completed) ?? 0
-      return estimate1RM(h.weight_kg!, hReps)
-    })
-
+  const previous1RMs = history.map((h) => getBest1RM(h)).filter((v) => v > 0)
   if (previous1RMs.length === 0) {
     return { isPr: false, prType: null, title: "", description: "", metricValue: null }
   }
@@ -236,6 +268,7 @@ export async function detectPRs(
     weight_kg: number | null
     reps_completed: string | null
     sets_completed: number | null
+    set_details?: SetDetail[] | null
   }
 ): Promise<PrCheckResult[]> {
   const history = await fetchExerciseHistory(userId, exerciseId)
@@ -243,8 +276,16 @@ export async function detectPRs(
   // Need at least 1 previous entry for anything to count as a PR
   if (history.length === 0) return []
 
-  const weightKg = data.weight_kg
-  const reps = parseReps(data.reps_completed)
+  const setDetails = data.set_details
+  const hasSetDetails = setDetails && setDetails.length > 0
+
+  // Derive key values from set_details when available, else from flat fields
+  const weightKg = hasSetDetails
+    ? Math.max(...setDetails.map((s) => s.weight_kg ?? 0))
+    : data.weight_kg
+  const reps = hasSetDetails
+    ? Math.max(...setDetails.map((s) => s.reps))
+    : parseReps(data.reps_completed)
   const sets = data.sets_completed
 
   // If no weight data, can't check weight-based PRs
@@ -259,27 +300,40 @@ export async function detectPRs(
     prs.push(weightResult)
   }
 
-  // Check rep PR (need reps)
-  if (reps != null && reps > 0) {
-    const repResult = checkRepPRFromHistory(history, weightKg, reps)
+  // Check rep PR (use max reps at max weight from set_details)
+  const repsForPR = hasSetDetails
+    ? Math.max(...setDetails.filter((s) => (s.weight_kg ?? 0) >= weightKg).map((s) => s.reps), 0)
+    : reps
+  if (repsForPR != null && repsForPR > 0) {
+    const repResult = checkRepPRFromHistory(history, weightKg, repsForPR)
     if (repResult.isPr) {
       repResult.title = `${exerciseName} — Rep PR!`
       prs.push(repResult)
     }
   }
 
-  // Check volume PR (need sets and reps)
-  if (sets != null && sets > 0 && reps != null && reps > 0) {
-    const volumeResult = checkVolumePRFromHistory(history, sets, reps, weightKg)
+  // Check volume PR
+  const newVolume = hasSetDetails
+    ? setDetails.reduce((sum, s) => sum + (s.weight_kg ?? 0) * s.reps, 0)
+    : (sets && reps ? sets * reps * weightKg : null)
+  if (newVolume != null && newVolume > 0) {
+    const volumeResult = checkVolumePRFromHistory(history, sets ?? 0, reps ?? 0, weightKg, newVolume)
     if (volumeResult.isPr) {
       volumeResult.title = `${exerciseName} — Volume PR!`
       prs.push(volumeResult)
     }
   }
 
-  // Check estimated 1RM PR (need reps)
-  if (reps != null && reps > 0) {
-    const e1rmResult = checkEstimated1RMPRFromHistory(history, weightKg, reps)
+  // Check estimated 1RM PR (best Epley across all sets)
+  const new1RM = hasSetDetails
+    ? Math.round(Math.max(
+        ...setDetails
+          .filter((s) => (s.weight_kg ?? 0) > 0 && s.reps > 0)
+          .map((s) => estimate1RM(s.weight_kg!, s.reps))
+      , 0))
+    : (reps != null && reps > 0 ? Math.round(estimate1RM(weightKg, reps)) : null)
+  if (new1RM != null && new1RM > 0) {
+    const e1rmResult = checkEstimated1RMPRFromHistory(history, weightKg, reps ?? 0, new1RM)
     if (e1rmResult.isPr) {
       e1rmResult.title = `${exerciseName} — Estimated 1RM PR!`
       prs.push(e1rmResult)

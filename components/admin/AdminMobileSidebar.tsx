@@ -37,14 +37,20 @@ export function AdminMobileSidebar({ open, onClose }: AdminMobileSidebarProps) {
 
       {/* Drawer */}
       <div className="fixed inset-y-0 left-0 z-50 w-64 bg-primary text-primary-foreground lg:hidden flex flex-col">
-        <div className="flex items-center justify-between p-6">
-          <Image
-            src="/logos/logo-light.png"
-            alt="DJP Athlete"
-            width={120}
-            height={34}
-            className="object-contain"
-          />
+        <div className="flex items-center justify-between px-6 py-5">
+          <div className="flex items-center gap-2">
+            <Image
+              src="/logos/logo-icon-light.png"
+              alt="DJP Athlete"
+              width={120}
+              height={80}
+              className="object-contain"
+              style={{ height: 72, width: "auto" }}
+            />
+            <span className="font-heading font-semibold tracking-[0.2em] text-[11px] uppercase text-white">
+              Athlete
+            </span>
+          </div>
           <button onClick={onClose} className="text-white/70 hover:text-white">
             <X className="size-5" />
           </button>

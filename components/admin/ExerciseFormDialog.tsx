@@ -110,16 +110,23 @@ const EQUIPMENT_LABELS: Record<string, string> = {
   bench: "Bench",
   squat_rack: "Squat Rack",
   leg_press: "Leg Press",
+  leg_curl_machine: "Leg Curl Machine",
+  lat_pulldown_machine: "Lat Pulldown Machine",
   rowing_machine: "Rowing Machine",
   treadmill: "Treadmill",
   bike: "Bike",
   box: "Box",
+  plyo_box: "Plyo Box",
   medicine_ball: "Medicine Ball",
   stability_ball: "Stability Ball",
   foam_roller: "Foam Roller",
   trx: "TRX",
   landmine: "Landmine",
   sled: "Sled",
+  battle_ropes: "Battle Ropes",
+  agility_ladder: "Agility Ladder",
+  cones: "Cones",
+  yoga_mat: "Yoga Mat",
 }
 
 const selectClass =

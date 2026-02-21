@@ -79,7 +79,6 @@ export function AchievementCard({ achievement }: AchievementCardProps) {
     {
       month: "short",
       day: "numeric",
-      year: "numeric",
     }
   )
 
@@ -87,24 +86,26 @@ export function AchievementCard({ achievement }: AchievementCardProps) {
     <motion.div
       whileHover={{ scale: 1.02 }}
       transition={{ type: "spring", stiffness: 300, damping: 20 }}
-      className={`bg-white rounded-xl border ${borderColor} p-4 transition-shadow hover:shadow-md`}
+      className={`bg-white rounded-xl border ${borderColor} p-3 sm:p-4 transition-shadow hover:shadow-md`}
     >
-      <div className="flex items-start gap-3">
+      <div className="flex items-start gap-2.5 sm:gap-3">
         <div
-          className={`flex shrink-0 items-center justify-center size-10 rounded-full ${iconBg}`}
+          className={`flex shrink-0 items-center justify-center size-9 sm:size-10 rounded-full ${iconBg}`}
         >
-          <Icon className={`size-5 ${iconColor}`} strokeWidth={1.5} />
+          <Icon className={`size-4 sm:size-5 ${iconColor}`} strokeWidth={1.5} />
         </div>
         <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-semibold text-foreground">
-            {achievement.title}
-          </h3>
+          <div className="flex items-start justify-between gap-2">
+            <h3 className="text-xs sm:text-sm font-semibold text-foreground leading-snug">
+              {achievement.title}
+            </h3>
+            <span className="text-[10px] text-muted-foreground/60 whitespace-nowrap shrink-0">{earnedDate}</span>
+          </div>
           {achievement.description && (
-            <p className="text-xs text-muted-foreground mt-0.5">
+            <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5 line-clamp-2">
               {achievement.description}
             </p>
           )}
-          <p className="text-xs text-muted-foreground/60 mt-2">{earnedDate}</p>
         </div>
       </div>
     </motion.div>

@@ -42,47 +42,47 @@ export default async function AchievementsPage() {
       {/* Back link */}
       <Link
         href="/client/progress"
-        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-4"
+        className="inline-flex items-center gap-1.5 text-xs sm:text-sm text-muted-foreground hover:text-foreground transition-colors mb-3"
       >
-        <ArrowLeft className="size-4" />
+        <ArrowLeft className="size-3.5" />
         Back to Progress
       </Link>
 
-      <h1 className="text-2xl font-semibold text-primary mb-6">Achievements</h1>
+      <h1 className="text-xl sm:text-2xl font-semibold text-primary mb-5">Achievements</h1>
 
       {/* Stats Summary */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-        <div className="bg-white rounded-xl border border-border p-4 flex items-center gap-4">
-          <div className="flex items-center justify-center size-10 rounded-full bg-amber-500/10">
-            <Trophy className="size-5 text-amber-500" strokeWidth={1.5} />
+      <div className="grid grid-cols-3 gap-2.5 sm:gap-4 mb-6">
+        <div className="bg-white rounded-xl border border-border p-3 sm:p-4 flex flex-col items-center text-center sm:flex-row sm:text-left sm:items-center gap-2 sm:gap-4">
+          <div className="flex items-center justify-center size-9 sm:size-10 rounded-full bg-amber-500/10 shrink-0">
+            <Trophy className="size-4 sm:size-5 text-amber-500" strokeWidth={1.5} />
           </div>
           <div>
-            <p className="text-2xl font-semibold text-foreground">
+            <p className="text-xl sm:text-2xl font-semibold text-foreground leading-none">
               {achievements.length}
             </p>
-            <p className="text-sm text-muted-foreground">Total Achievements</p>
+            <p className="text-[10px] sm:text-sm text-muted-foreground leading-tight mt-0.5">Total</p>
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-border p-4 flex items-center gap-4">
-          <div className="flex items-center justify-center size-10 rounded-full bg-primary/10">
-            <Star className="size-5 text-primary" strokeWidth={1.5} />
+        <div className="bg-white rounded-xl border border-border p-3 sm:p-4 flex flex-col items-center text-center sm:flex-row sm:text-left sm:items-center gap-2 sm:gap-4">
+          <div className="flex items-center justify-center size-9 sm:size-10 rounded-full bg-primary/10 shrink-0">
+            <Star className="size-4 sm:size-5 text-primary" strokeWidth={1.5} />
           </div>
           <div>
-            <p className="text-2xl font-semibold text-foreground">{prCount}</p>
-            <p className="text-sm text-muted-foreground">Personal Records</p>
+            <p className="text-xl sm:text-2xl font-semibold text-foreground leading-none">{prCount}</p>
+            <p className="text-[10px] sm:text-sm text-muted-foreground leading-tight mt-0.5">PRs</p>
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-border p-4 flex items-center gap-4">
-          <div className="flex items-center justify-center size-10 rounded-full bg-orange-500/10">
-            <Flame className="size-5 text-orange-500" strokeWidth={1.5} />
+        <div className="bg-white rounded-xl border border-border p-3 sm:p-4 flex flex-col items-center text-center sm:flex-row sm:text-left sm:items-center gap-2 sm:gap-4">
+          <div className="flex items-center justify-center size-9 sm:size-10 rounded-full bg-orange-500/10 shrink-0">
+            <Flame className="size-4 sm:size-5 text-orange-500" strokeWidth={1.5} />
           </div>
           <div>
-            <p className="text-2xl font-semibold text-foreground">
+            <p className="text-xl sm:text-2xl font-semibold text-foreground leading-none">
               {longestStreak}
             </p>
-            <p className="text-sm text-muted-foreground">Current Streak</p>
+            <p className="text-[10px] sm:text-sm text-muted-foreground leading-tight mt-0.5">Streak</p>
           </div>
         </div>
       </div>
