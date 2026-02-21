@@ -22,6 +22,7 @@ export type SplitType = "full_body" | "upper_lower" | "push_pull_legs" | "push_p
 export type Periodization = "linear" | "undulating" | "block" | "reverse_linear" | "none"
 export type ExerciseRelationshipType = "progression" | "regression" | "alternative" | "variation"
 export type AiGenerationStatus = "pending" | "generating" | "completed" | "failed"
+export type WeightUnit = "kg" | "lbs"
 export type AchievementType = "pr" | "streak" | "milestone" | "completion"
 export type PrType = "weight" | "reps" | "volume" | "estimated_1rm"
 export type TargetMetric = "weight" | "reps" | "time"
@@ -70,6 +71,7 @@ export interface ClientProfile {
   injuries: string | null
   height_cm: number | null
   weight_kg: number | null
+  weight_unit: WeightUnit
   emergency_contact_name: string | null
   emergency_contact_phone: string | null
   available_equipment: string[]
@@ -184,6 +186,7 @@ export interface ExerciseProgress {
   is_pr: boolean
   pr_type: PrType | null
   set_details: SetDetail[] | null
+  ai_next_weight_kg: number | null
   created_at: string
 }
 

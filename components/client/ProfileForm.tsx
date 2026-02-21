@@ -11,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { useWeightUnit } from "@/hooks/use-weight-unit"
 import type { ClientProfile, Gender, ExperienceLevel } from "@/types/database"
 
 interface ProfileFormProps {
@@ -32,6 +33,7 @@ const experienceLevelOptions: { value: ExperienceLevel; label: string }[] = [
 ]
 
 export function ProfileForm({ profile }: ProfileFormProps) {
+  const { unit, displayWeight, toKg, unitLabel } = useWeightUnit()
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<{
     type: "success" | "error"
@@ -49,7 +51,7 @@ export function ProfileForm({ profile }: ProfileFormProps) {
     profile?.height_cm?.toString() ?? ""
   )
   const [weightKg, setWeightKg] = useState(
-    profile?.weight_kg?.toString() ?? ""
+    displayWeight(profile?.weight_kg ?? null)?.toString() ?? ""
   )
   const [dateOfBirth, setDateOfBirth] = useState(
     profile?.date_of_birth ?? ""
@@ -75,7 +77,7 @@ export function ProfileForm({ profile }: ProfileFormProps) {
         goals: goals || null,
         injuries: injuries || null,
         height_cm: heightCm ? Number(heightCm) : null,
-        weight_kg: weightKg ? Number(weightKg) : null,
+        weight_kg: weightKg ? toKg(Number(weightKg)) : null,
         date_of_birth: dateOfBirth || null,
         gender: gender || null,
         emergency_contact_name: emergencyContactName || null,
@@ -217,7 +219,7 @@ export function ProfileForm({ profile }: ProfileFormProps) {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="weight_kg">Weight (kg)</Label>
+            <Label htmlFor="weight_kg">Weight ({unitLabel()})</Label>
             <Input
               id="weight_kg"
               type="number"

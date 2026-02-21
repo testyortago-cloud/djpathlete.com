@@ -25,6 +25,7 @@ export const workoutLogSchema = z.object({
   duration_seconds: z.number().int().min(0).nullable().optional().transform((v) => v ?? null),
   notes: z.string().max(500).nullable().optional().transform((v) => v || null),
   set_details: z.array(setDetailSchema).min(1).max(20).nullable().optional().transform((v) => v ?? null),
+  ai_next_weight_kg: z.number().min(0).nullable().optional().transform((v) => v ?? null),
 })
 
 export type WorkoutLogFormData = z.infer<typeof workoutLogSchema>

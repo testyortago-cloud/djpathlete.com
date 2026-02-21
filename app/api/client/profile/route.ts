@@ -21,6 +21,7 @@ const profileSchema = z.object({
     .optional(),
   emergency_contact_name: z.string().nullable().optional(),
   emergency_contact_phone: z.string().nullable().optional(),
+  weight_unit: z.enum(["kg", "lbs"]).optional(),
 })
 
 export async function PATCH(request: Request) {
@@ -76,6 +77,7 @@ export async function PATCH(request: Request) {
         exercise_dislikes: null,
         training_background: null,
         additional_notes: null,
+        weight_unit: "lbs",
       })
       return NextResponse.json(newProfile)
     }

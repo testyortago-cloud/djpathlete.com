@@ -44,6 +44,8 @@ Analyze the data and respond in exactly this format:
 - deload_recommended: boolean — true if performance is declining or RPE has been consistently high (9-10)
 - key_observations: string[] — 2-4 brief bullet points about their training patterns
 
+If the client might benefit from an exercise substitution (e.g., plateau for 3+ sessions, or the exercise seems mismatched for their experience level), suggest 1-2 specific alternative exercises by name that target the same muscle group with different equipment or movement variation. Keep substitution suggestions brief and natural within your coaching text.
+
 Example format:
 Your bench press has been progressing well. Consider adding 2.5kg next session since your RPE has been manageable at 7-8. Focus on maintaining your current rep range before pushing heavier.
 ---
@@ -82,8 +84,8 @@ export async function POST(request: Request) {
 
     console.log("[Coach DJP] Data fetched — history:", history?.length ?? 0, "exercise:", exercise?.name, "profile:", !!profile)
 
-    if (!history || history.length === 0) {
-      console.log("[Coach DJP] No history found, returning 400")
+    if ((!history || history.length === 0) && !current_session) {
+      console.log("[Coach DJP] No history and no current session, returning 400")
       return NextResponse.json(
         { error: "No training history found for this exercise. Log at least one session first." },
         { status: 400 }

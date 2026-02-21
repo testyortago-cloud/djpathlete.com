@@ -23,6 +23,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
+import { useWeightUnit } from "@/hooks/use-weight-unit"
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -38,6 +39,7 @@ interface CoachDjpPanelProps {
   onOpenChange: (open: boolean) => void
   exerciseId: string
   exerciseName: string
+  exerciseEquipment?: string | null
   onApplyWeight?: (weightKg: number) => void
   currentSets?: Array<{
     set_number: number
@@ -229,11 +231,14 @@ function InsightCard({
 function WeightCta({
   weightKg,
   onApply,
+  remainingSets,
 }: {
   weightKg: number
   onApply: () => void
+  remainingSets: number
 }) {
   const [applied, setApplied] = useState(false)
+  const { formatWeight, formatWeightCompact } = useWeightUnit()
 
   function handleClick() {
     setApplied(true)
@@ -249,35 +254,41 @@ function WeightCta({
     >
       <div className="space-y-1">
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-          Recommended Weight
+          {remainingSets > 0 ? "Recommended Weight" : "Weight for Next Session"}
         </p>
         <p className="text-2xl font-heading font-bold text-primary">
-          {weightKg} kg
+          {formatWeight(weightKg)}
         </p>
       </div>
-      <Button
-        className="w-full gap-2"
-        onClick={handleClick}
-        disabled={applied}
-      >
-        <AnimatePresence mode="wait">
-          {applied ? (
-            <motion.span
-              key="check"
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              className="flex items-center gap-2"
-            >
-              <Check className="size-4" />
-              Applied!
-            </motion.span>
-          ) : (
-            <motion.span key="label" className="flex items-center gap-2">
-              Apply {weightKg}kg to All Sets
-            </motion.span>
-          )}
-        </AnimatePresence>
-      </Button>
+      {remainingSets > 0 ? (
+        <Button
+          className="w-full gap-2"
+          onClick={handleClick}
+          disabled={applied}
+        >
+          <AnimatePresence mode="wait">
+            {applied ? (
+              <motion.span
+                key="check"
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                className="flex items-center gap-2"
+              >
+                <Check className="size-4" />
+                Applied!
+              </motion.span>
+            ) : (
+              <motion.span key="label" className="flex items-center gap-2">
+                Apply {formatWeightCompact(weightKg)} to {remainingSets === 1 ? "Last Set" : `${remainingSets} Remaining Sets`}
+              </motion.span>
+            )}
+          </AnimatePresence>
+        </Button>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          All sets completed — use this weight next session.
+        </p>
+      )}
     </motion.div>
   )
 }
@@ -289,6 +300,7 @@ export function CoachDjpPanel({
   onOpenChange,
   exerciseId,
   exerciseName,
+  exerciseEquipment,
   onApplyWeight,
   currentSets,
 }: CoachDjpPanelProps) {
@@ -573,15 +585,21 @@ export function CoachDjpPanel({
                 {/* Weight CTA — only after complete with a suggested weight */}
                 {isComplete &&
                   metadata?.suggested_weight_kg != null &&
-                  onApplyWeight && (
-                    <WeightCta
-                      weightKg={metadata.suggested_weight_kg}
-                      onApply={() => {
-                        onApplyWeight(metadata.suggested_weight_kg!)
-                        handleOpenChange(false)
-                      }}
-                    />
-                  )}
+                  onApplyWeight && (() => {
+                    const remaining = currentSets
+                      ? currentSets.filter((s) => s.reps === 0).length
+                      : 0
+                    return (
+                      <WeightCta
+                        weightKg={metadata.suggested_weight_kg!}
+                        remainingSets={remaining}
+                        onApply={() => {
+                          onApplyWeight(metadata.suggested_weight_kg!)
+                          handleOpenChange(false)
+                        }}
+                      />
+                    )
+                  })()}
               </motion.div>
             )}
           </AnimatePresence>

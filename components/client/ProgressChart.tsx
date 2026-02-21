@@ -10,6 +10,7 @@ import {
   CartesianGrid,
 } from "recharts"
 import { TrendingUp } from "lucide-react"
+import { useWeightUnit } from "@/hooks/use-weight-unit"
 
 interface ProgressDataPoint {
   date: string
@@ -33,33 +34,33 @@ function formatDate(dateStr: string) {
 function getMetricKey(metric: ProgressChartProps["metric"]): string {
   switch (metric) {
     case "weight":
-      return "weight_kg"
+      return "weight"
     case "estimated_1rm":
       return "estimated_1rm"
     case "volume":
       return "volume"
     default:
-      return "weight_kg"
+      return "weight"
   }
 }
 
-function getMetricLabel(metric: ProgressChartProps["metric"]): string {
+function getMetricLabel(metric: ProgressChartProps["metric"], unit: string): string {
   switch (metric) {
     case "weight":
-      return "Weight (kg)"
+      return `Weight (${unit})`
     case "estimated_1rm":
-      return "Est. 1RM (kg)"
+      return `Est. 1RM (${unit})`
     case "volume":
-      return "Volume (kg)"
+      return `Volume (${unit})`
     default:
-      return "Weight (kg)"
+      return `Weight (${unit})`
   }
 }
 
 interface ChartDataPoint {
   date: string
   formattedDate: string
-  weight_kg: number | null
+  weight: number | null
   reps: number | null
   estimated_1rm: number | null
   volume: number | null
@@ -69,10 +70,12 @@ interface ChartDataPoint {
 function CustomTooltip({
   active,
   payload,
+  unitLabel,
 }: {
   active?: boolean
   payload?: Array<{ payload: ChartDataPoint }>
   label?: string
+  unitLabel: string
 }) {
   if (!active || !payload || payload.length === 0) return null
 
@@ -83,9 +86,9 @@ function CustomTooltip({
       <p className="text-xs font-medium text-foreground mb-1">
         {data.formattedDate}
       </p>
-      {data.weight_kg != null && (
+      {data.weight != null && (
         <p className="text-xs text-muted-foreground">
-          Weight: <span className="font-medium text-foreground">{data.weight_kg} kg</span>
+          Weight: <span className="font-medium text-foreground">{data.weight} {unitLabel}</span>
         </p>
       )}
       {data.reps != null && (
@@ -95,7 +98,7 @@ function CustomTooltip({
       )}
       {data.estimated_1rm != null && (
         <p className="text-xs text-muted-foreground">
-          Est. 1RM: <span className="font-medium text-foreground">{data.estimated_1rm} kg</span>
+          Est. 1RM: <span className="font-medium text-foreground">{data.estimated_1rm} {unitLabel}</span>
         </p>
       )}
       {data.is_pr && (
@@ -128,6 +131,8 @@ function PRDot({ cx, cy, payload }: DotProps) {
 }
 
 export function ProgressChart({ data, metric, exerciseName }: ProgressChartProps) {
+  const { displayWeight, unitLabel } = useWeightUnit()
+
   if (data.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -144,21 +149,25 @@ export function ProgressChart({ data, metric, exerciseName }: ProgressChartProps
   const chartData: ChartDataPoint[] = data
     .slice()
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-    .map((d) => ({
-      date: d.date,
-      formattedDate: formatDate(d.date),
-      weight_kg: d.weight_kg,
-      reps: d.reps,
-      estimated_1rm: d.estimated_1rm,
-      volume:
-        d.weight_kg != null && d.reps != null
-          ? Math.round(d.weight_kg * d.reps)
-          : null,
-      is_pr: d.is_pr,
-    }))
+    .map((d) => {
+      const w = displayWeight(d.weight_kg)
+      const e1rm = displayWeight(d.estimated_1rm)
+      return {
+        date: d.date,
+        formattedDate: formatDate(d.date),
+        weight: w,
+        reps: d.reps,
+        estimated_1rm: e1rm,
+        volume:
+          w != null && d.reps != null
+            ? Math.round(w * d.reps)
+            : null,
+        is_pr: d.is_pr,
+      }
+    })
 
   const metricKey = getMetricKey(metric)
-  const metricLabel = getMetricLabel(metric)
+  const metricLabel = getMetricLabel(metric, unitLabel())
 
   return (
     <div className="w-full">
@@ -178,7 +187,7 @@ export function ProgressChart({ data, metric, exerciseName }: ProgressChartProps
             axisLine={false}
             width={40}
           />
-          <Tooltip content={<CustomTooltip />} />
+          <Tooltip content={<CustomTooltip unitLabel={unitLabel()} />} />
           <Line
             type="monotone"
             dataKey={metricKey}

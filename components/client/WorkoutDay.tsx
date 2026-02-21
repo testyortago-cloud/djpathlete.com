@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { motion, AnimatePresence } from "framer-motion"
@@ -20,6 +20,7 @@ import {
   Lightbulb,
   Plus,
   X,
+  ArrowLeftRight,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -41,8 +42,10 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
+import { useWeightUnit } from "@/hooks/use-weight-unit"
 import { CoachDjpPanel } from "@/components/client/CoachDjpPanel"
 import { CelebrationOverlay } from "@/components/client/CelebrationOverlay"
+import { ExerciseSwapSheet } from "@/components/client/ExerciseSwapSheet"
 import { extractYouTubeId } from "@/lib/youtube"
 import type { Exercise, ProgramExercise, TrainingTechnique } from "@/types/database"
 import type { WeightRecommendation } from "@/lib/weight-recommendation"
@@ -276,15 +279,21 @@ function ExerciseCard({
   hideNotes?: boolean
 }) {
   const router = useRouter()
+  const { unit, displayWeight, formatWeightCompact, toKg, unitLabel } = useWeightUnit()
   const [expanded, setExpanded] = useState(false)
   const [loggedToday, setLoggedToday] = useState(initialLogged)
   const [submitting, setSubmitting] = useState(false)
   const [showCoachDjp, setShowCoachDjp] = useState(false)
   const [showVideo, setShowVideo] = useState(false)
   const [showExtra, setShowExtra] = useState(false)
+  const [showSwap, setShowSwap] = useState(false)
+  const [swappedExercise, setSwappedExercise] = useState<Exercise | null>(null)
+
+  // Use swapped exercise for display, but keep original programExercise for sets/reps
+  const displayExercise = swappedExercise ?? exercise
 
   const hasVideo = Boolean(
-    exercise.video_url && extractYouTubeId(exercise.video_url)
+    displayExercise.video_url && extractYouTubeId(displayExercise.video_url)
   )
   const [celebrations, setCelebrations] = useState<
     Array<{
@@ -297,8 +306,9 @@ function ExerciseCard({
 
   // Parse prescribed reps for default (use lower end of range like "8" from "8-12")
   const prescribedReps = pe.reps?.match(/(\d+)/)?.[1] ?? ""
-  const defaultWeight = rec.recommended_kg != null ? String(rec.recommended_kg) : ""
-  const weightPlaceholder = rec.recommended_kg != null ? String(rec.recommended_kg) : "0"
+  const displayedRec = displayWeight(rec.recommended_kg)
+  const defaultWeight = displayedRec != null ? String(displayedRec) : ""
+  const weightPlaceholder = displayedRec != null ? String(displayedRec) : "0"
   const numSets = pe.sets ?? 3
 
   // Multi-set state
@@ -307,6 +317,7 @@ function ExerciseCard({
   )
   const [duration, setDuration] = useState<string>("")
   const [notes, setNotes] = useState<string>("")
+  const [aiSuggestedWeight, setAiSuggestedWeight] = useState<number | null>(null)
 
   function updateSetRow(idx: number, field: keyof SetRow, value: string | number | null) {
     setSetRows((prev) =>
@@ -333,14 +344,28 @@ function ExerciseCard({
   }
 
   function handleApplyWeight(kg: number) {
+    const display = displayWeight(kg)
     setSetRows((prev) =>
-      prev.map((row) => ({ ...row, weight: String(kg) }))
+      prev.map((row) => ({ ...row, weight: display != null ? String(display) : "" }))
+    )
+  }
+
+  function handleAiApplyWeight(kg: number) {
+    setAiSuggestedWeight(kg)
+    const display = displayWeight(kg)
+    // Only apply to sets that haven't been completed yet (no reps entered)
+    setSetRows((prev) =>
+      prev.map((row) => {
+        const hasReps = parseInt(row.reps, 10) > 0
+        return hasReps ? row : { ...row, weight: display != null ? String(display) : "" }
+      })
     )
   }
 
   function handleUseRecommended() {
-    if (rec.recommended_kg != null) {
-      handleApplyWeight(rec.recommended_kg)
+    const weight = aiSuggestedWeight ?? rec.recommended_kg
+    if (weight != null) {
+      handleApplyWeight(weight)
     }
   }
 
@@ -348,10 +373,10 @@ function ExerciseCard({
     e.preventDefault()
     if (submitting) return
 
-    // Build set_details array
+    // Build set_details array — convert display values back to kg
     const setDetails = setRows.map((row, i) => ({
       set_number: i + 1,
-      weight_kg: row.weight ? parseFloat(row.weight) : null,
+      weight_kg: row.weight ? toKg(parseFloat(row.weight)) : null,
       reps: parseInt(row.reps, 10) || 0,
       rpe: row.rpe,
     }))
@@ -370,7 +395,7 @@ function ExerciseCard({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          exercise_id: pe.exercise_id,
+          exercise_id: swappedExercise ? swappedExercise.id : pe.exercise_id,
           assignment_id: assignmentId,
           sets_completed: setDetails.length,
           reps_completed: String(avgReps),
@@ -379,6 +404,7 @@ function ExerciseCard({
           duration_seconds: duration ? parseInt(duration, 10) : null,
           notes: notes || null,
           set_details: setDetails,
+          ai_next_weight_kg: aiSuggestedWeight,
         }),
       })
 
@@ -388,7 +414,7 @@ function ExerciseCard({
         throw new Error(data.error || "Failed to log workout")
       }
 
-      toast.success(`${exercise.name} logged!`)
+      toast.success(`${displayExercise.name} logged!`)
       setLoggedToday(true)
       setExpanded(false)
       onLogged?.()
@@ -411,8 +437,31 @@ function ExerciseCard({
   // Check if at least one set has reps entered
   const hasValidSets = setRows.some((row) => parseInt(row.reps, 10) > 0)
 
+  // Auto-show duration & notes when all sets are filled
+  const allSetsFilled = setRows.length > 0 && setRows.every((row) => parseInt(row.reps, 10) > 0)
+  const autoShowTriggeredRef = useRef(false)
+
+  useEffect(() => {
+    if (allSetsFilled && !autoShowTriggeredRef.current) {
+      autoShowTriggeredRef.current = true
+      setShowExtra(true)
+    }
+  }, [allSetsFilled])
+
   // Nudge coach button when concerning patterns detected
   const coachNudge = shouldNudgeCoach(setRows)
+  const nudgeOpenedRef = useRef(false)
+
+  // Auto-open coach when concerning pattern first detected
+  useEffect(() => {
+    if (coachNudge && !nudgeOpenedRef.current && !showCoachDjp) {
+      nudgeOpenedRef.current = true
+      setShowCoachDjp(true)
+    }
+    if (!coachNudge) {
+      nudgeOpenedRef.current = false
+    }
+  }, [coachNudge, showCoachDjp])
 
   return (
     <>
@@ -450,17 +499,34 @@ function ExerciseCard({
                     loggedToday ? "text-muted-foreground" : "text-foreground"
                   )}
                 >
-                  {exercise.name}
+                  {displayExercise.name}
+                  {swappedExercise && (
+                    <span className="ml-1.5 text-[10px] font-normal text-accent">
+                      (swapped)
+                    </span>
+                  )}
                 </p>
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
+                {!loggedToday && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="gap-1 text-muted-foreground hover:text-primary"
+                    onClick={() => setShowSwap(true)}
+                    aria-label={`Swap ${displayExercise.name}`}
+                  >
+                    <ArrowLeftRight className="size-3" />
+                    Swap
+                  </Button>
+                )}
                 {hasVideo && (
                   <Button
                     size="sm"
                     variant="ghost"
                     className="gap-1 text-muted-foreground hover:text-primary"
                     onClick={() => setShowVideo(true)}
-                    aria-label={`Watch ${exercise.name} video`}
+                    aria-label={`Watch ${displayExercise.name} video`}
                   >
                     <Play className="size-3" />
                     Watch
@@ -484,14 +550,14 @@ function ExerciseCard({
 
             {/* Tags row */}
             <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-              {exercise.muscle_group && (
+              {displayExercise.muscle_group && (
                 <span
                   className={cn(
                     "rounded-full px-1.5 py-0.5 text-[10px] font-medium capitalize leading-none",
-                    getMuscleGroupColor(exercise.muscle_group)
+                    getMuscleGroupColor(displayExercise.muscle_group)
                   )}
                 >
-                  {exercise.muscle_group}
+                  {displayExercise.muscle_group}
                 </span>
               )}
               {rec.recommended_kg != null && (
@@ -500,7 +566,7 @@ function ExerciseCard({
                   className="gap-1 text-[10px] border-primary/20 text-primary"
                 >
                   <TrendIcon trend={rec.trend} />
-                  {rec.recommended_kg}kg
+                  {formatWeightCompact(rec.recommended_kg)}
                 </Badge>
               )}
             </div>
@@ -519,10 +585,10 @@ function ExerciseCard({
                   {formatRestTime(pe.duration_seconds)}
                 </span>
               )}
-              {exercise.equipment && (
+              {displayExercise.equipment && (
                 <span className="flex items-center gap-1">
                   <Weight className="size-3" strokeWidth={1.5} />
-                  {exercise.equipment}
+                  {displayExercise.equipment}
                 </span>
               )}
               {pe.tempo && (
@@ -564,22 +630,37 @@ function ExerciseCard({
             >
               <form onSubmit={handleSubmit} className="pt-4 space-y-4">
                 {/* Recommendation card */}
-                {rec.reasoning && (
-                  <div className="rounded-lg bg-primary/5 border border-primary/10 p-3 space-y-2">
+                {(rec.reasoning || aiSuggestedWeight != null) && (
+                  <div className={cn(
+                    "rounded-lg p-3 space-y-2",
+                    aiSuggestedWeight != null
+                      ? "bg-accent/10 border border-accent/20"
+                      : "bg-primary/5 border border-primary/10"
+                  )}>
                     <div className="flex items-start justify-between gap-2">
                       <p className="text-xs text-primary leading-relaxed">
-                        {rec.reasoning}
+                        {aiSuggestedWeight != null
+                          ? `Coach DJP recommends ${formatWeightCompact(aiSuggestedWeight)} for this exercise.`
+                          : rec.reasoning}
                       </p>
-                      {rec.confidence !== "none" && (
+                      {aiSuggestedWeight != null ? (
+                        <Badge
+                          variant="outline"
+                          className="shrink-0 text-[10px] border-accent/30 text-accent"
+                        >
+                          <Brain className="size-3 mr-0.5" />
+                          AI
+                        </Badge>
+                      ) : rec.confidence !== "none" ? (
                         <Badge
                           variant="outline"
                           className="shrink-0 text-[10px] capitalize"
                         >
                           {rec.confidence}
                         </Badge>
-                      )}
+                      ) : null}
                     </div>
-                    {rec.recommended_kg != null && (
+                    {(aiSuggestedWeight ?? rec.recommended_kg) != null && (
                       <Button
                         type="button"
                         size="sm"
@@ -587,7 +668,7 @@ function ExerciseCard({
                         className="text-xs gap-1 h-7"
                         onClick={handleUseRecommended}
                       >
-                        Use Recommended ({rec.recommended_kg}kg)
+                        Use Recommended ({formatWeightCompact(aiSuggestedWeight ?? rec.recommended_kg)})
                       </Button>
                     )}
                   </div>
@@ -600,7 +681,7 @@ function ExerciseCard({
                     <thead>
                       <tr className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
                         <th style={{ width: 28 }} className="text-left font-medium">#</th>
-                        <th className="text-left font-medium">kg</th>
+                        <th className="text-left font-medium">{unitLabel()}</th>
                         <th className="text-left font-medium">Reps</th>
                         <th style={{ width: 56 }} className="text-left font-medium">RPE</th>
                         <th style={{ width: 28 }} />
@@ -615,7 +696,7 @@ function ExerciseCard({
                           <td className="pr-1 align-middle">
                             <input
                               type="number"
-                              step="0.5"
+                              step={unit === "lbs" ? "1" : "0.5"}
                               min="0"
                               placeholder={weightPlaceholder}
                               value={row.weight}
@@ -789,23 +870,33 @@ function ExerciseCard({
       <CoachDjpPanel
         open={showCoachDjp}
         onOpenChange={setShowCoachDjp}
-        exerciseId={exercise.id}
-        exerciseName={exercise.name}
-        onApplyWeight={(kg) => handleApplyWeight(kg)}
+        exerciseId={displayExercise.id}
+        exerciseName={displayExercise.name}
+        exerciseEquipment={displayExercise.equipment}
+        onApplyWeight={(kg) => handleAiApplyWeight(kg)}
         currentSets={setRows.map((row, i) => ({
           set_number: i + 1,
-          weight_kg: row.weight ? parseFloat(row.weight) : null,
+          weight_kg: row.weight ? toKg(parseFloat(row.weight)) : null,
           reps: parseInt(row.reps, 10) || 0,
           rpe: row.rpe,
         }))}
       />
 
-      {hasVideo && exercise.video_url && (
+      <ExerciseSwapSheet
+        open={showSwap}
+        onOpenChange={setShowSwap}
+        exerciseId={exercise.id}
+        exerciseName={exercise.name}
+        muscleGroup={exercise.muscle_group}
+        onSwap={(newExercise) => setSwappedExercise(newExercise)}
+      />
+
+      {hasVideo && displayExercise.video_url && (
         <ExerciseVideoSheet
           open={showVideo}
           onOpenChange={setShowVideo}
-          videoUrl={exercise.video_url}
-          exerciseName={exercise.name}
+          videoUrl={displayExercise.video_url}
+          exerciseName={displayExercise.name}
         />
       )}
 

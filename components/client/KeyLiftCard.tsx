@@ -3,6 +3,7 @@
 import { ResponsiveContainer, LineChart, Line } from "recharts"
 import { Badge } from "@/components/ui/badge"
 import { Trophy, TrendingUp } from "lucide-react"
+import { useWeightUnit } from "@/hooks/use-weight-unit"
 
 interface KeyLiftCardProps {
   exerciseName: string
@@ -24,6 +25,7 @@ export function KeyLiftCard({
   recentData,
   onClick,
 }: KeyLiftCardProps) {
+  const { formatWeight, displayWeight } = useWeightUnit()
   const isPR = currentBest != null && allTimePR != null && currentBest >= allTimePR
 
   return (
@@ -54,19 +56,19 @@ export function KeyLiftCard({
         <div>
           <p className="text-xs text-muted-foreground">Current Best</p>
           <p className="text-lg font-semibold text-primary">
-            {currentBest != null ? `${currentBest} kg` : "--"}
+            {formatWeight(currentBest)}
           </p>
         </div>
         <div>
           <p className="text-xs text-muted-foreground">All-Time PR</p>
           <p className="text-lg font-semibold text-primary">
-            {allTimePR != null ? `${allTimePR} kg` : "--"}
+            {formatWeight(allTimePR)}
           </p>
         </div>
         <div>
           <p className="text-xs text-muted-foreground">Est. 1RM</p>
           <p className="text-sm font-medium text-foreground">
-            {estimated1RM != null ? `${estimated1RM} kg` : "--"}
+            {formatWeight(estimated1RM)}
           </p>
         </div>
         <div>
@@ -81,10 +83,10 @@ export function KeyLiftCard({
       {recentData.length >= 2 ? (
         <div className="h-12">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={recentData}>
+            <LineChart data={recentData.map((d) => ({ ...d, weight: displayWeight(d.weight_kg) ?? 0 }))}>
               <Line
                 type="monotone"
-                dataKey="weight_kg"
+                dataKey="weight"
                 stroke="#0E3F50"
                 strokeWidth={1.5}
                 dot={false}

@@ -186,6 +186,19 @@ export function getWeightRecommendation(
   const latest = history[0]
   const trend = computeTrend(history)
 
+  // If the AI Coach suggested a weight for this session, prioritize it
+  if (latest.ai_next_weight_kg != null) {
+    return {
+      recommended_kg: latest.ai_next_weight_kg,
+      reasoning: `Coach DJP recommended this weight based on your last session`,
+      confidence: "high",
+      estimated_1rm: null,
+      last_weight_kg: latest.weight_kg,
+      last_rpe: latest.rpe,
+      trend,
+    }
+  }
+
   // When set_details available, use last set's weight/RPE for progression,
   // and best set for 1RM estimate. Fall back to flat fields for old entries.
   const setDetails = latest.set_details

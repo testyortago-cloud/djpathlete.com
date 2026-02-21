@@ -37,6 +37,7 @@ export async function POST(request: Request) {
       duration_seconds,
       notes,
       set_details,
+      ai_next_weight_kg,
     } = parsed.data
 
     // Log the workout progress
@@ -51,6 +52,7 @@ export async function POST(request: Request) {
       duration_seconds,
       notes,
       set_details: set_details ?? null,
+      ai_next_weight_kg: ai_next_weight_kg ?? null,
       completed_at: new Date().toISOString(),
       is_pr: false,
       pr_type: null,

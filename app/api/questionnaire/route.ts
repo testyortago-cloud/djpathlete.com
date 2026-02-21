@@ -108,6 +108,7 @@ export async function POST(request: Request) {
         exercise_dislikes: profileUpdates.exercise_dislikes,
         training_background: profileUpdates.training_background,
         additional_notes: profileUpdates.additional_notes,
+        weight_unit: "kg",
       })
       return NextResponse.json({ profile: newProfile })
     }

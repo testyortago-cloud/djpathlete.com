@@ -1,7 +1,8 @@
 import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Mail, Lock, Bell, Trash2 } from "lucide-react"
+import { Mail, Lock, Bell, Trash2, Scale } from "lucide-react"
+import { WeightUnitToggle } from "@/components/client/WeightUnitToggle"
 
 export const metadata = { title: "Settings | DJP Athlete" }
 
@@ -52,6 +53,30 @@ export default async function ClientSettingsPage() {
               Change Password
             </Button>
           </div>
+        </div>
+      </div>
+
+      {/* Preferences Section */}
+      <div className="bg-white rounded-xl border border-border p-6 mb-6">
+        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">
+          Preferences
+        </h2>
+
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center size-9 rounded-full bg-primary/10">
+              <Scale className="size-4 text-primary" strokeWidth={1.5} />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-foreground">
+                Weight Unit
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Display weights in kilograms or pounds
+              </p>
+            </div>
+          </div>
+          <WeightUnitToggle />
         </div>
       </div>
 

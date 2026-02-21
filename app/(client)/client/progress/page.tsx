@@ -6,6 +6,7 @@ import { getAchievementsByType } from "@/lib/db/achievements"
 import { estimate1RM } from "@/lib/weight-recommendation"
 import { EmptyState } from "@/components/ui/empty-state"
 import { KeyLiftCard } from "@/components/client/KeyLiftCard"
+import { RecentActivity } from "@/components/client/RecentActivity"
 import {
   TrendingUp,
   Activity,
@@ -209,64 +210,19 @@ export default async function ClientProgressPage() {
           description="Your workout history will appear here once you start logging exercises. Keep pushing toward your goals!"
         />
       ) : (
-        <div className="bg-white rounded-xl border border-border overflow-hidden">
-          <div className="divide-y divide-border">
-            {progress.slice(0, 20).map((entry) => {
-              const exercise = entry.exercises
-              const date = new Date(entry.completed_at)
-              const formattedDate = date.toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-              })
-
-              // Build summary parts
-              const parts: string[] = []
-              if (entry.sets_completed && entry.reps_completed) {
-                parts.push(`${entry.sets_completed}x${entry.reps_completed}`)
-              }
-              if (entry.weight_kg) {
-                parts.push(`${entry.weight_kg}kg`)
-              }
-              if (entry.duration_seconds) {
-                const mins = Math.floor(entry.duration_seconds / 60)
-                const secs = entry.duration_seconds % 60
-                parts.push(mins > 0 ? `${mins}m${secs > 0 ? ` ${secs}s` : ""}` : `${secs}s`)
-              }
-              if (entry.rpe) {
-                parts.push(`RPE ${entry.rpe}`)
-              }
-
-              return (
-                <div
-                  key={entry.id}
-                  className="px-3 sm:px-4 py-2.5 sm:py-3 flex items-center justify-between gap-3"
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <p className="font-medium text-foreground text-xs sm:text-sm truncate">
-                        {exercise?.name ?? "Unknown Exercise"}
-                      </p>
-                      {entry.is_pr && (
-                        <span className="inline-flex items-center gap-0.5 text-[9px] sm:text-[10px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-1 sm:px-1.5 py-0.5 shrink-0">
-                          <Trophy className="size-2.5" />
-                          PR
-                        </span>
-                      )}
-                    </div>
-                    {parts.length > 0 && (
-                      <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">
-                        {parts.join(" · ")}
-                      </p>
-                    )}
-                  </div>
-                  <span className="text-[10px] sm:text-xs text-muted-foreground whitespace-nowrap shrink-0">
-                    {formattedDate}
-                  </span>
-                </div>
-              )
-            })}
-          </div>
-        </div>
+        <RecentActivity
+          entries={progress.slice(0, 20).map((entry) => ({
+            id: entry.id,
+            exercise_name: entry.exercises?.name ?? "Unknown Exercise",
+            sets_completed: entry.sets_completed,
+            reps_completed: entry.reps_completed,
+            weight_kg: entry.weight_kg,
+            duration_seconds: entry.duration_seconds,
+            rpe: entry.rpe,
+            is_pr: entry.is_pr,
+            completed_at: entry.completed_at,
+          }))}
+        />
       )}
     </div>
   )
