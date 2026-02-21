@@ -41,6 +41,7 @@ interface CoachDjpPanelProps {
   exerciseName: string
   exerciseEquipment?: string | null
   onApplyWeight?: (weightKg: number) => void
+  totalSets?: number
   currentSets?: Array<{
     set_number: number
     weight_kg: number | null
@@ -302,6 +303,7 @@ export function CoachDjpPanel({
   exerciseName,
   exerciseEquipment,
   onApplyWeight,
+  totalSets = 0,
   currentSets,
 }: CoachDjpPanelProps) {
   const [streaming, setStreaming] = useState(false)
@@ -586,9 +588,12 @@ export function CoachDjpPanel({
                 {isComplete &&
                   metadata?.suggested_weight_kg != null &&
                   onApplyWeight && (() => {
-                    const remaining = currentSets
-                      ? currentSets.filter((s) => s.reps === 0).length
+                    // Count sets the user has actually completed (actively logged reps)
+                    // vs total prescribed sets — pre-filled defaults don't count
+                    const completedCount = currentSets
+                      ? currentSets.filter((s) => s.reps > 0 && s.weight_kg != null && s.weight_kg > 0).length
                       : 0
+                    const remaining = Math.max(totalSets - completedCount, 0)
                     return (
                       <WeightCta
                         weightKg={metadata.suggested_weight_kg!}

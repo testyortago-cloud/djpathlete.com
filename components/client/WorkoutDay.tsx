@@ -874,6 +874,7 @@ function ExerciseCard({
         exerciseName={displayExercise.name}
         exerciseEquipment={displayExercise.equipment}
         onApplyWeight={(kg) => handleAiApplyWeight(kg)}
+        totalSets={numSets}
         currentSets={setRows.map((row, i) => ({
           set_number: i + 1,
           weight_kg: row.weight ? toKg(parseFloat(row.weight)) : null,
