@@ -35,6 +35,14 @@ export async function POST(request: Request) {
       )
     }
 
+    // Targeted programs can only be purchased by the targeted client
+    if (program.target_user_id && program.target_user_id !== session.user.id) {
+      return NextResponse.json(
+        { error: "This program is not available for purchase." },
+        { status: 403 }
+      )
+    }
+
     if (!program.price_cents) {
       return NextResponse.json(
         { error: "This program does not have a price. Please contact us." },

@@ -134,6 +134,7 @@ export interface Program {
   split_type: SplitType | null
   periodization: Periodization | null
   is_public: boolean
+  target_user_id: string | null
   is_ai_generated: boolean
   ai_generation_params: Record<string, unknown> | null
   created_at: string

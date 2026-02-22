@@ -3,6 +3,8 @@ import type {
   ProfileAnalysis,
   ProgramSkeleton,
   ExerciseAssignment,
+  ExerciseCoordination,
+  DayExerciseAssignment,
   SessionPlan,
   SessionContext,
   ValidationResult,
@@ -12,10 +14,12 @@ import type { ProgramCategory, ProgramDifficulty } from "@/types/database"
 import { callAgent, MODEL_HAIKU } from "@/lib/ai/anthropic"
 import {
   profileAnalysisSchema,
+  exerciseCoordinationSchema,
   sessionPlanSchema,
 } from "@/lib/ai/schemas"
 import {
   PROFILE_ANALYZER_PROMPT,
+  EXERCISE_COORDINATOR_PROMPT,
   SESSION_PLANNER_PROMPT,
 } from "@/lib/ai/prompts"
 import { buildProgramPlan } from "@/lib/ai/program-plan"
@@ -356,10 +360,65 @@ ${profile?.additional_notes ? `- Additional notes: ${profile.additional_notes}` 
       request,
       profile?.preferred_day_names,
     )
-    console.log(`[orchestrator] Program plan: ${sessionContexts.length} sessions across ${request.duration_weeks} weeks`)
 
-    // Step 5: Per-session agents (Sonnet, all parallel)
-    console.log(`[orchestrator] Step 5: Launching ${sessionContexts.length} per-session agents in parallel...`)
+    // Get unique day labels for coordination
+    const uniqueDayLabels = [...new Set(sessionContexts.map((s) => s.label))]
+    console.log(`[orchestrator] Program plan: ${sessionContexts.length} sessions across ${request.duration_weeks} weeks (${uniqueDayLabels.length} unique day templates)`)
+
+    // Step 5: Exercise Coordinator (Haiku, fast — assigns anchor exercises per day template)
+    console.log("[orchestrator] Step 5: Exercise Coordinator starting...")
+    const coordStart = Date.now()
+
+    const dayTemplatesContext = uniqueDayLabels.map((label) => {
+      const ctx = sessionContexts.find((s) => s.label === label)!
+      return { label, focus: ctx.focus }
+    })
+
+    const coordUserMessage = `Profile Analysis:
+${JSON.stringify({
+  training_age_category: analysis.training_age_category,
+  exercise_constraints: analysis.exercise_constraints,
+  volume_targets: analysis.volume_targets,
+  session_structure: analysis.session_structure,
+})}
+
+Client:
+- Experience level: ${clientDifficulty}
+- Movement confidence: ${profile?.movement_confidence ?? "comfortable"}
+- Goals: ${request.goals.join(", ")}
+${profile?.exercise_likes ? `- Exercise likes: ${profile.exercise_likes}` : ''}
+${profile?.exercise_dislikes ? `- Exercise dislikes: ${profile.exercise_dislikes}` : ''}
+
+Available Equipment: ${availableEquipment.join(", ")}
+
+Day Templates (assign exercises for each):
+${JSON.stringify(dayTemplatesContext)}
+
+Exercise Library (${compressed.length} exercises):
+${formatExerciseLibrary(compressed)}`
+
+    const coordResult = await callAgent<ExerciseCoordination>(
+      EXERCISE_COORDINATOR_PROMPT,
+      coordUserMessage,
+      exerciseCoordinationSchema,
+      { model: MODEL_HAIKU, cacheSystemPrompt: true }
+    )
+    tokenUsage.agent2 = coordResult.tokens_used
+
+    const coordination = coordResult.content
+    console.log(`[orchestrator] Coordinator done in ${Date.now() - coordStart}ms (${coordResult.tokens_used} tokens, ${coordination.days.length} day templates assigned)`)
+
+    // Build coordination lookup by day label
+    const coordLookup = new Map<string, DayExerciseAssignment>()
+    for (const day of coordination.days) {
+      coordLookup.set(day.label, day)
+    }
+
+    // Determine the midpoint week for accessory pool rotation
+    const midWeek = Math.ceil(request.duration_weeks / 2)
+
+    // Step 6: Per-session agents (Sonnet, all parallel)
+    console.log(`[orchestrator] Step 6: Launching ${sessionContexts.length} per-session agents in parallel...`)
     const sessionStart = Date.now()
 
     // Shared context for all session agents
@@ -390,6 +449,22 @@ ${JSON.stringify({
         clientDifficulty
       )
 
+      // Get coordination assignments for this day template
+      const dayCoord = coordLookup.get(ctx.label)
+      const usePoolA = ctx.week_number <= midWeek
+      const accessoryPool = dayCoord
+        ? (usePoolA ? dayCoord.accessory_pool_a : dayCoord.accessory_pool_b)
+        : []
+
+      const coordinationSection = dayCoord
+        ? `
+ASSIGNED EXERCISES (for cross-week consistency — you MUST use these):
+- Primary compound: ${dayCoord.primary_compound.exercise_name} (exercise_id: ${dayCoord.primary_compound.exercise_id}) — MUST use for the primary_compound slot
+- Secondary compound: ${dayCoord.secondary_compound.exercise_name} (exercise_id: ${dayCoord.secondary_compound.exercise_id}) — MUST use for the secondary_compound slot
+- Accessory pool for ${usePoolA ? 'weeks 1-' + midWeek : 'weeks ' + (midWeek + 1) + '-' + request.duration_weeks}: ${accessoryPool.map((e) => `${e.exercise_name} (${e.exercise_id})`).join(', ')}
+  Use exercises from this pool for your accessory and isolation slots. You may add warm-up/cool-down exercises freely from the exercise library.`
+        : ''
+
       const userMessage = `${sharedContext}
 
 Session Context:
@@ -400,6 +475,7 @@ Session Context:
 - Label: ${ctx.label}
 - Focus: ${ctx.focus}
 - slot_prefix: ${ctx.slot_prefix} (use this for slot_id format: ${ctx.slot_prefix}s1, ${ctx.slot_prefix}s2, etc.)
+${coordinationSection}
 
 Exercise Library (${sessionExercises.length} exercises, pre-filtered for this session):
 ${formatExerciseLibrary(sessionExercises)}`
@@ -422,22 +498,21 @@ ${formatExerciseLibrary(sessionExercises)}`
     for (const r of sessionResults) {
       sessionTokens += r.tokens
     }
-    // Track combined session agent tokens under agent2 (skeleton) + agent3 (exercises)
-    tokenUsage.agent2 = Math.round(sessionTokens / 2)
-    tokenUsage.agent3 = sessionTokens - tokenUsage.agent2
+    // agent2 = coordinator tokens (set above), agent3 = per-session agent tokens
+    tokenUsage.agent3 = sessionTokens
 
     const totalSlots = sessionResults.reduce((sum, r) => sum + r.plan.slots.length, 0)
     console.log(`[orchestrator] All ${sessionResults.length} sessions done in ${Date.now() - sessionStart}ms (${sessionTokens} tokens, ${totalSlots} total slots)`)
 
-    // Step 6: Reconstruct skeleton + assignment for validation
-    console.log("[orchestrator] Step 6: Reconstructing program structure...")
+    // Step 7: Reconstruct skeleton + assignment for validation
+    console.log("[orchestrator] Step 7: Reconstructing program structure...")
     const { skeleton, assignment } = reconstructFromSessionPlans(
       sessionResults.map((r) => ({ ctx: r.ctx, plan: r.plan })),
       analysis,
     )
 
-    // Step 7: Code-based validation
-    console.log("[orchestrator] Step 7: Code validation starting...")
+    // Step 8: Code-based validation
+    console.log("[orchestrator] Step 8: Code validation starting...")
     const validationStart = Date.now()
     const validation = validateProgram(
       skeleton,
@@ -454,8 +529,8 @@ ${formatExerciseLibrary(sessionExercises)}`
       console.log(`[orchestrator] Validation errors: ${errors.map((e) => e.message).join("; ")}`)
     }
 
-    // Step 8: Create the program in the database
-    console.log("[orchestrator] Step 8: Saving program to database...")
+    // Step 9: Create the program in the database
+    console.log("[orchestrator] Step 9: Saving program to database...")
     const programCategory = deriveProgramCategory(request.goals)
     const programDifficulty = mapDifficulty(clientDifficulty)
 
@@ -498,11 +573,12 @@ ${formatExerciseLibrary(sessionExercises)}`
       is_active: true,
       created_by: requestedBy,
       price_cents: null,
+      target_user_id: null,
     })
 
     console.log(`[orchestrator] Program created: ${program.id} — "${program.name}"`)
 
-    // Step 9: Add exercises to the program
+    // Step 10: Add exercises to the program
     const insertPromises = sessionResults.flatMap((r) =>
       r.plan.slots.map((slot, idx) =>
         addExerciseToProgram({
@@ -528,7 +604,7 @@ ${formatExerciseLibrary(sessionExercises)}`
     await Promise.all(insertPromises)
     console.log(`[orchestrator] ${insertPromises.length} exercises inserted into program`)
 
-    // Step 10: Update generation log
+    // Step 11: Update generation log
     const durationMs = Date.now() - startTime
     tokenUsage.total =
       tokenUsage.agent1 + tokenUsage.agent2 + tokenUsage.agent3 + tokenUsage.agent4

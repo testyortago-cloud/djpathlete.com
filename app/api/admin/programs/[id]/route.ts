@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { programFormSchema } from "@/lib/validators/program"
-import { updateProgram, deleteProgram } from "@/lib/db/programs"
+import { updateProgram, deleteProgram, getProgramById } from "@/lib/db/programs"
+import { getUserById } from "@/lib/db/users"
+import { sendProgramAvailableForPurchaseEmail } from "@/lib/email"
 
 export async function PATCH(
   request: Request,
@@ -18,7 +20,38 @@ export async function PATCH(
       )
     }
 
-    const program = await updateProgram(id, result.data)
+    const data = result.data
+
+    // Targeted programs must be private
+    if (data.target_user_id) {
+      data.is_public = false
+    }
+
+    // Check if target_user_id changed to a new user
+    const existing = await getProgramById(id)
+    const targetChanged =
+      data.target_user_id &&
+      data.target_user_id !== existing.target_user_id
+
+    const program = await updateProgram(id, data)
+
+    // Notify newly targeted client (non-blocking)
+    if (targetChanged && data.target_user_id && data.price_cents) {
+      getUserById(data.target_user_id)
+        .then((user) =>
+          sendProgramAvailableForPurchaseEmail(
+            user.email,
+            user.first_name,
+            program.name,
+            program.id,
+            user.id
+          )
+        )
+        .catch((err) =>
+          console.error("[API programs PATCH] Failed to send notification:", err)
+        )
+    }
+
     return NextResponse.json(program)
   } catch {
     return NextResponse.json(

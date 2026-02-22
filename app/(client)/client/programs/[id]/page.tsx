@@ -1,8 +1,8 @@
 import { auth } from "@/lib/auth"
 import { redirect, notFound } from "next/navigation"
 import Link from "next/link"
-import { Clock, CalendarDays, BarChart3, ArrowLeft, CheckCircle2 } from "lucide-react"
-import { getActiveProgramById } from "@/lib/db/programs"
+import { Clock, CalendarDays, BarChart3, ArrowLeft, CheckCircle2, Star } from "lucide-react"
+import { getActiveProgramById, getProgramById } from "@/lib/db/programs"
 import { getAssignmentByUserAndProgram } from "@/lib/db/assignments"
 import { ClientBuyButton } from "./ClientBuyButton"
 
@@ -58,11 +58,27 @@ export default async function ClientProgramDetailPage({ params }: Props) {
   try {
     program = await getActiveProgramById(id)
   } catch {
+    // If getActiveProgramById fails, check if it's a targeted program for this user
+    try {
+      const p = await getProgramById(id)
+      if (p.is_active && p.target_user_id === session.user.id) {
+        program = p
+      } else {
+        notFound()
+      }
+    } catch {
+      notFound()
+    }
+  }
+
+  // Block access if program is private, not targeted at this user, and not public
+  if (!program.is_public && program.target_user_id && program.target_user_id !== session.user.id) {
     notFound()
   }
 
   const assignment = await getAssignmentByUserAndProgram(session.user.id, program.id)
   const owned = !!assignment
+  const isTargeted = program.target_user_id === session.user.id
 
   return (
     <div>
@@ -73,6 +89,17 @@ export default async function ClientProgramDetailPage({ params }: Props) {
         <ArrowLeft className="size-4" />
         All Programs
       </Link>
+
+      {/* Created for you banner */}
+      {isTargeted && !owned && (
+        <div className="flex items-center gap-2 rounded-lg bg-accent/10 border border-accent/20 px-4 py-3 mb-4">
+          <Star className="size-4 text-accent shrink-0" />
+          <p className="text-sm text-foreground">
+            <span className="font-medium">Created for you by your coach.</span>{" "}
+            Purchase this program to get started!
+          </p>
+        </div>
+      )}
 
       {/* Badges */}
       <div className="flex items-center gap-2 mb-3">

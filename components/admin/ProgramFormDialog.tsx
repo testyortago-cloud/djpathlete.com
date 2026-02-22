@@ -14,7 +14,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Globe, Lock } from "lucide-react"
+import { Globe, Lock, UserCheck } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
   programFormSchema,
@@ -99,7 +99,20 @@ export function ProgramFormDialog({
   const [selectedCategories, setSelectedCategories] = useState<string[]>(
     Array.isArray(program?.category) ? program.category : program?.category ? [program.category] : []
   )
+  const [targetUserId, setTargetUserId] = useState<string | null>(program?.target_user_id ?? null)
+  const [clients, setClients] = useState<{ id: string; first_name: string; last_name: string }[]>([])
+  const [loadingClients, setLoadingClients] = useState(false)
 
+  // Fetch clients when dialog opens
+  useEffect(() => {
+    if (!open) return
+    setLoadingClients(true)
+    fetch("/api/admin/users?role=client")
+      .then((res) => res.json())
+      .then((data) => setClients(Array.isArray(data) ? data : []))
+      .catch(() => setClients([]))
+      .finally(() => setLoadingClients(false))
+  }, [open])
 
   // Sync state when switching between create/edit
   useEffect(() => {
@@ -107,6 +120,7 @@ export function ProgramFormDialog({
     setSelectedCategories(
       Array.isArray(program?.category) ? program.category : program?.category ? [program.category] : []
     )
+    setTargetUserId(program?.target_user_id ?? null)
   }, [program])
   const tour = useFormTour({ steps: PROGRAM_TOUR_STEPS, scrollContainerRef: dialogRef })
 
@@ -130,7 +144,8 @@ export function ProgramFormDialog({
       price_cents: priceCents,
       split_type: (formData.get("split_type") as string) || null,
       periodization: (formData.get("periodization") as string) || null,
-      is_public: isPublic,
+      is_public: targetUserId ? false : isPublic,
+      target_user_id: targetUserId || null,
     }
 
     console.log("[ProgramForm] Submitting data:", data)
@@ -372,19 +387,53 @@ export function ProgramFormDialog({
             )}
           </div>
 
+          {/* Target Client */}
+          <div className="space-y-2">
+            <Label htmlFor="target_user_id">
+              <span className="flex items-center gap-1.5">
+                <UserCheck className="size-3.5" />
+                Target Client
+              </span>
+            </Label>
+            <select
+              id="target_user_id"
+              value={targetUserId ?? ""}
+              onChange={(e) => {
+                const val = e.target.value || null
+                setTargetUserId(val)
+                if (val) setIsPublic(false)
+              }}
+              disabled={isSubmitting || loadingClients}
+              className={selectClass}
+            >
+              <option value="">No specific client</option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.first_name} {c.last_name}
+                </option>
+              ))}
+            </select>
+            {targetUserId && (
+              <p className="text-[11px] text-muted-foreground">
+                Only this client will see the program. Set a price so they can purchase it.
+              </p>
+            )}
+          </div>
+
           {/* Visibility */}
           <div className="space-y-2">
             <Label>Visibility</Label>
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
-                disabled={isSubmitting}
+                disabled={isSubmitting || !!targetUserId}
                 onClick={() => setIsPublic(false)}
                 className={cn(
                   "flex items-start gap-2.5 rounded-lg border-2 px-3 py-2.5 text-left transition-colors",
                   !isPublic
                     ? "border-primary bg-primary/5"
-                    : "border-border hover:border-muted-foreground/30"
+                    : "border-border hover:border-muted-foreground/30",
+                  targetUserId && "opacity-60 cursor-not-allowed"
                 )}
               >
                 <Lock className={cn("size-4 shrink-0 mt-0.5", !isPublic ? "text-primary" : "text-muted-foreground")} />
@@ -395,13 +444,14 @@ export function ProgramFormDialog({
               </button>
               <button
                 type="button"
-                disabled={isSubmitting}
+                disabled={isSubmitting || !!targetUserId}
                 onClick={() => setIsPublic(true)}
                 className={cn(
                   "flex items-start gap-2.5 rounded-lg border-2 px-3 py-2.5 text-left transition-colors",
                   isPublic
                     ? "border-primary bg-primary/5"
-                    : "border-border hover:border-muted-foreground/30"
+                    : "border-border hover:border-muted-foreground/30",
+                  targetUserId && "opacity-60 cursor-not-allowed"
                 )}
               >
                 <Globe className={cn("size-4 shrink-0 mt-0.5", isPublic ? "text-primary" : "text-muted-foreground")} />

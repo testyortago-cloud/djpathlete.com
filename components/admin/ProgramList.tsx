@@ -4,7 +4,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import Link from "next/link"
-import { Search, ChevronLeft, ChevronRight, Plus, Pencil, Trash2, ClipboardList, LayoutGrid, Sparkles, Globe, Lock, Users } from "lucide-react"
+import { Search, ChevronLeft, ChevronRight, Plus, Pencil, Trash2, ClipboardList, LayoutGrid, Sparkles, Globe, Lock, Users, UserCheck } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import {
@@ -243,6 +243,12 @@ export function ProgramList({ programs, athleteCounts = {} }: ProgramListProps) 
                         <span className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground shrink-0" title="Private — assigned clients only">
                           <Lock className="size-2.5" />
                           Private
+                        </span>
+                      )}
+                      {program.target_user_id && (
+                        <span className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-accent/15 text-accent shrink-0" title="Targeted — visible to specific client only">
+                          <UserCheck className="size-2.5" />
+                          Targeted
                         </span>
                       )}
                     </div>

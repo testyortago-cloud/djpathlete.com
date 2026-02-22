@@ -1,9 +1,9 @@
 import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import Link from "next/link"
-import { getPublicPrograms, getClientPrograms } from "@/lib/db/programs"
+import { getPublicPrograms, getClientPrograms, getTargetedPrograms } from "@/lib/db/programs"
 import { EmptyState } from "@/components/ui/empty-state"
-import { Clock, CalendarDays, ShoppingBag, CheckCircle2, ArrowRight } from "lucide-react"
+import { Clock, CalendarDays, ShoppingBag, CheckCircle2, ArrowRight, Star } from "lucide-react"
 import type { Program } from "@/types/database"
 
 export const metadata = { title: "Browse Programs | DJP Athlete" }
@@ -46,14 +46,19 @@ export default async function ClientProgramsPage() {
   let availablePrograms: Program[] = []
 
   try {
-    const [myPrograms, publicPrograms] = await Promise.all([
+    const [myPrograms, publicPrograms, targetedPrograms] = await Promise.all([
       getClientPrograms(userId),
       getPublicPrograms(),
+      getTargetedPrograms(userId),
     ])
 
     ownedPrograms = myPrograms
     const ownedIds = new Set(myPrograms.map((p) => p.id))
-    availablePrograms = publicPrograms.filter((p) => !ownedIds.has(p.id))
+    // Merge public + targeted, deduplicate, exclude owned
+    const mergedMap = new Map<string, Program>()
+    for (const p of publicPrograms) mergedMap.set(p.id, p)
+    for (const p of targetedPrograms) mergedMap.set(p.id, p)
+    availablePrograms = Array.from(mergedMap.values()).filter((p) => !ownedIds.has(p.id))
   } catch {
     // Render gracefully with empty data
   }
@@ -151,6 +156,12 @@ export default async function ClientProgramsPage() {
                   >
                     {DIFFICULTY_LABELS[program.difficulty] ?? program.difficulty}
                   </span>
+                  {program.target_user_id && (
+                    <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] sm:text-xs font-medium bg-accent/15 text-accent ml-auto">
+                      <Star className="size-3" />
+                      Created for you
+                    </span>
+                  )}
                 </div>
 
                 <h3 className="font-semibold text-foreground text-sm sm:text-base leading-snug mb-1 group-hover:text-primary transition-colors">

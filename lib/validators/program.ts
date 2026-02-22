@@ -66,6 +66,7 @@ export const programFormSchema = z.object({
   split_type: z.enum(SPLIT_TYPES).nullable().optional().transform((v) => v ?? null),
   periodization: z.enum(PERIODIZATION_TYPES).nullable().optional().transform((v) => v ?? null),
   is_public: z.boolean().optional().default(false),
+  target_user_id: z.string().uuid().nullable().optional().transform((v) => v ?? null),
 })
 
 export type ProgramFormData = z.infer<typeof programFormSchema>
