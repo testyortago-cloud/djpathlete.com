@@ -121,9 +121,9 @@ function filterExercisesForSession(
     return { exercise: ex, score }
   })
 
-  // Sort by score, take top 30 (enough variety without bloating context)
+  // Sort by score, take top 20 (enough variety while keeping tokens low for rate limits)
   scored.sort((a, b) => b.score - a.score)
-  const filtered = scored.slice(0, 30).map((s) => s.exercise)
+  const filtered = scored.slice(0, 20).map((s) => s.exercise)
 
   // Safety: if too few relevant exercises, return all
   if (filtered.length < 10) return exercises
@@ -440,7 +440,8 @@ ${JSON.stringify({
   available_equipment: availableEquipment,
 })}`
 
-    const sessionPromises = sessionContexts.map((ctx) => {
+    // Build session call functions (lazy — don't fire until invoked)
+    const sessionCallFns = sessionContexts.map((ctx) => () => {
       // Pre-filter exercises for this session's focus
       const sessionExercises = filterExercisesForSession(
         compressed,
@@ -492,7 +493,19 @@ ${formatExerciseLibrary(sessionExercises)}`
       }))
     })
 
-    const sessionResults = await Promise.all(sessionPromises)
+    // Process in batches to stay under API rate limits (30k input tokens/min)
+    const BATCH_SIZE = 8
+    const sessionResults: Array<{ ctx: SessionContext; plan: SessionPlan; tokens: number }> = []
+
+    for (let i = 0; i < sessionCallFns.length; i += BATCH_SIZE) {
+      const batch = sessionCallFns.slice(i, i + BATCH_SIZE)
+      const batchNum = Math.floor(i / BATCH_SIZE) + 1
+      const totalBatches = Math.ceil(sessionCallFns.length / BATCH_SIZE)
+      console.log(`[orchestrator] Session batch ${batchNum}/${totalBatches} (${batch.length} sessions)...`)
+
+      const batchResults = await Promise.all(batch.map((fn) => fn()))
+      sessionResults.push(...batchResults)
+    }
 
     let sessionTokens = 0
     for (const r of sessionResults) {
