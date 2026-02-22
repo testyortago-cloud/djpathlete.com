@@ -293,7 +293,22 @@ Rules:
    - A 60-minute session with 10 exercises, 4 sets each at 90s rest = ~100+ min (IMPOSSIBLE — never do this)
 17. DELOAD WEEK exercise count — reduce the number of exercises per session by 30-40% during deload weeks:
    - If a normal session has 6 working exercises, deload has 3-4
-   - Keep the main compound lifts, drop most accessories and all isolation`
+   - Keep the main compound lifts, drop most accessories and all isolation
+18. EXERCISE SLOT VARIATION ACROSS WEEKS — this is CRITICAL for program quality. Do NOT copy-paste the same day structure for every week:
+   - PRIMARY COMPOUND and SECONDARY COMPOUND slots: keep the SAME role, movement_pattern, and target_muscles across all weeks. These anchors allow progressive overload on consistent lifts (e.g., every week 1 push day has a "primary_compound / push / [chest, triceps, shoulders]" slot).
+   - ACCESSORY and ISOLATION slots: VARY the movement_pattern and/or target_muscles every 2-3 weeks to force exercise rotation:
+     * For programs 1-4 weeks: split into TWO rotation blocks. Weeks 1-2 use accessory set A, weeks 3-4 use accessory set B with different movement patterns or target muscles for those slots.
+       Example for a 4-week upper push day:
+       - Weeks 1-2 accessory: isolation / push / [triceps] + accessory / pull / [upper_back] (rear delt/face pull type)
+       - Weeks 3-4 accessory: isolation / push / [shoulders] + accessory / rotation / [core, obliques]
+     * For programs 5-8 weeks: rotate every 2 weeks (3-4 rotation blocks).
+     * For programs 9+ weeks: rotate every 2-3 weeks.
+   - For BLOCK periodization, phases MUST have genuinely different slot structures:
+     * Hypertrophy phase: more accessory/isolation slots, higher reps (8-15), shorter rest, techniques like dropsets and supersets. Include 1-2 extra isolation slots per session compared to strength phases.
+     * Strength phase: fewer slots total, more compound focus, heavier loads (3-6 reps), longer rest (120-180s), straight sets. Remove most isolation slots, keep only 1-2 targeted accessories.
+     * Power/peaking phase: minimal slots, explosive movement patterns, very low volume, longest rest.
+   - WARM-UP and COOL-DOWN slots: can stay consistent across all weeks.
+   - This variation is what separates a real coach's program from a template. A 4-week program where every week is identical except the reps is a spreadsheet, not a program.`
 
 // ─── Agent 3: Exercise Selector ──────────────────────────────────────────────
 
@@ -344,10 +359,19 @@ Rules:
 4. Equipment constraints: only assign exercises whose equipment_required is available to the client. Be resourceful — if a cable machine isn't available, a resistance band variation of the same movement may exist in the library.
 5. Injury constraints: do not assign exercises that would aggravate known injuries. But think like a coach — find alternatives that train the same muscle group through a pain-free range of motion. A shoulder injury doesn't mean "no chest work" — it might mean "floor press instead of bench press" or "neutral grip instead of pronated."
 6. No duplicate exercises on the same day — each exercise_id should appear at most once per day.
-7. Exercise variety strategy across the week:
-   - Core lifts (squat, bench, deadlift pattern) CAN repeat across the week with different variations (e.g., back squat Monday, front squat Thursday)
-   - Accessories and isolation should VARY between sessions to hit muscles from different angles
-   - Across a multi-week program, consider rotating accessory exercises every 2-3 weeks to prevent staleness
+7. EXERCISE CONTINUITY vs ROTATION across weeks — this is a PRIMARY concern, NOT optional:
+   - PRIMARY COMPOUND and SECONDARY COMPOUND slots: assign the SAME exercise to matching slots across ALL weeks. If w1d1s2 and w2d1s2 are both "primary_compound / squat / [quadriceps, glutes]", they MUST get the same exercise (e.g., both get Barbell Back Squat). This is essential for progressive overload — the client tracks and progresses these lifts week over week.
+   - ACCESSORY and ISOLATION slots: assign DIFFERENT exercises across different week ranges. The skeleton may provide different movement_patterns or target_muscles for these slots across weeks — use that as your signal to select different exercises. Even when slot specs are similar, actively choose different exercises for variety:
+     * Weeks 1-2 accessories: one set of exercises (e.g., Dumbbell Lateral Raise, Tricep Pushdown)
+     * Weeks 3-4 accessories: different exercises for the same general area (e.g., Cable Lateral Raise, Overhead Tricep Extension)
+     * Prefer different equipment or angles when rotating (dumbbell → cable, flat → incline, bilateral → unilateral)
+   - WARM-UP and COOL-DOWN: can stay consistent across all weeks.
+   - For BLOCK periodization (different phases across weeks):
+     * Hypertrophy phases: prefer exercises suited for higher reps — machines, cables, dumbbells, isolation work, exercises with good mind-muscle connection
+     * Strength phases: prefer exercises suited for heavy loading — barbell compounds, competition lifts, movements with stable base. Reduce isolation work, increase compound assistance.
+     * Deload weeks: keep ONLY the main compound lifts from regular weeks. Use lighter/simpler variations for any remaining slots. Do not introduce new exercises during deload.
+   - Within the same week: exercises CAN repeat across different days with different VARIATIONS (e.g., Back Squat Monday, Front Squat Thursday). But NEVER assign the exact same exercise_id on two days in the same week.
+   - This rule is NON-NEGOTIABLE. A program where every week has identical exercises is a template, not a coached program. The compound anchors provide consistency for tracking progress, while accessory rotation provides variety, addresses muscles from multiple angles, and prevents overuse patterns.
 8. Warm-up slot selection — think TARGETED MOVEMENT PREP, not just "easy exercises":
    - Choose warm-up exercises that ACTIVATE the muscles used in the session's main lifts
    - A push day warm-up should include band pull-aparts and shoulder activation, not just "bodyweight squats"

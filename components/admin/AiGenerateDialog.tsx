@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import Link from "next/link"
@@ -58,6 +58,10 @@ import {
   parseProfileSummary,
   type ProfileSummary,
 } from "@/lib/profile-utils"
+import { useFormTour } from "@/hooks/use-form-tour"
+import { FormTour } from "@/components/admin/FormTour"
+import { TourButton } from "@/components/admin/TourButton"
+import { AI_GENERATE_TOUR_STEPS } from "@/lib/tour-steps"
 import type { User, ClientProfile } from "@/types/database"
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -163,6 +167,9 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
   const [splitType, setSplitType] = useState("")
   const [periodization, setPeriodization] = useState("")
   const [additionalInstructions, setAdditionalInstructions] = useState("")
+
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const tour = useFormTour({ steps: AI_GENERATE_TOUR_STEPS, scrollContainerRef: dialogRef })
 
   // Profile state
   const [profileSummary, setProfileSummary] = useState<ProfileSummary | null>(null)
@@ -283,6 +290,7 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
 
   function handleOpenChange(newOpen: boolean) {
     if (!newOpen && !isGenerating) {
+      tour.close()
       resetForm()
     }
     if (!isGenerating) {
@@ -518,12 +526,15 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
   // Form view
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto overflow-x-hidden">
+      <DialogContent ref={dialogRef} className="sm:max-w-lg max-h-[90vh] overflow-y-auto overflow-x-hidden">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Sparkles className="size-5 text-accent" />
-            AI Program Generator
-          </DialogTitle>
+          <div className="flex items-center gap-2">
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="size-5 text-accent" />
+              AI Program Generator
+            </DialogTitle>
+            <TourButton onClick={tour.start} />
+          </div>
           <DialogDescription>
             Generate a complete training program using AI. Select a client and
             configure the program parameters below.
@@ -809,7 +820,7 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
                 </Badge>
               )}
             </Label>
-            <div className="grid grid-cols-2 gap-2">
+            <div id="ai-goals" className="grid grid-cols-2 gap-2">
               {FITNESS_GOALS.map((goalValue) => (
                 <label
                   key={goalValue}
@@ -957,6 +968,7 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
             </Button>
           </DialogFooter>
         </form>
+        <FormTour {...tour} />
       </DialogContent>
     </Dialog>
   )

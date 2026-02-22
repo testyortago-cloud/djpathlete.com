@@ -1,0 +1,81 @@
+AI METADATA REFERENCE — For Claude in Excel
+=============================================
+
+Use this reference when filling in columns I through P (the AI metadata columns).
+The first 8 columns (A-H) are filled by the coach. Your job is to fill columns I-P.
+
+COLUMN REFERENCE
+================
+
+I. movement_pattern (pick ONE)
+   Values: push | pull | squat | hinge | lunge | carry | rotation | isometric | locomotion
+   Leave blank if none clearly applies (e.g. some recovery exercises)
+
+J. primary_muscles (pipe-separated, pick 1-3)
+   Values: chest | upper_back | lats | shoulders | biceps | triceps | forearms | core | obliques | lower_back | glutes | quadriceps | hamstrings | calves | hip_flexors | adductors | abductors | traps | neck
+   Example: quadriceps|glutes
+
+K. secondary_muscles (pipe-separated, pick 0-3)
+   Same values as primary_muscles.
+   Example: hamstrings|core
+   Leave blank if no secondary muscles
+
+L. force_type (pick ONE)
+   Values: push | pull | static | dynamic
+   - push: pressing movements (bench press, squat drive phase)
+   - pull: pulling movements (rows, deadlifts, curls)
+   - static: isometric holds, anti-movement exercises
+   - dynamic: explosive or rhythmic movements (swings, jumps, runs)
+
+M. laterality (pick ONE)
+   Values: bilateral | unilateral | alternating
+   - bilateral: both sides work together (barbell squat, bench press)
+   - unilateral: one side at a time (single-leg RDL, pistol squat)
+   - alternating: sides alternate (walking lunges, lateral band walk)
+
+N. equipment_required (pipe-separated)
+   Values: barbell | dumbbell | kettlebell | cable_machine | smith_machine | resistance_band | pull_up_bar | bench | squat_rack | leg_press | leg_curl_machine | lat_pulldown_machine | rowing_machine | treadmill | bike | box | plyo_box | medicine_ball | stability_ball | foam_roller | trx | landmine | sled | battle_ropes | agility_ladder | cones | yoga_mat
+   Example: barbell|squat_rack
+   Leave blank for bodyweight exercises
+
+O. is_bodyweight
+   Values: true | false
+   true = no external load needed (push-ups, pull-ups, planks)
+
+P. is_compound
+   Values: true | false
+   true = multi-joint exercise (squat, deadlift, bench press)
+   false = single-joint isolation (bicep curl, leg extension, lateral raise)
+
+EXAMPLES (filled correctly)
+===========================
+
+name: Barbell Back Squat
+movement_pattern: squat
+primary_muscles: quadriceps|glutes
+secondary_muscles: hamstrings|core
+force_type: push
+laterality: bilateral
+equipment_required: barbell|squat_rack
+is_bodyweight: false
+is_compound: true
+
+name: Pull-Up
+movement_pattern: pull
+primary_muscles: lats|biceps
+secondary_muscles: upper_back|forearms
+force_type: pull
+laterality: bilateral
+equipment_required: pull_up_bar
+is_bodyweight: true
+is_compound: true
+
+name: Plank
+movement_pattern: isometric
+primary_muscles: core
+secondary_muscles: shoulders|glutes
+force_type: static
+laterality: bilateral
+equipment_required:
+is_bodyweight: true
+is_compound: false

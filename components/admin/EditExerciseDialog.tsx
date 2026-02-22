@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import {
@@ -14,6 +14,10 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { useFormTour } from "@/hooks/use-form-tour"
+import { FormTour } from "@/components/admin/FormTour"
+import { TourButton } from "@/components/admin/TourButton"
+import { EDIT_EXERCISE_TOUR_STEPS } from "@/lib/tour-steps"
 import type { Exercise, ExerciseCategory, ProgramExercise } from "@/types/database"
 import { getCategoryFields } from "@/lib/exercise-fields"
 
@@ -43,7 +47,9 @@ export function EditExerciseDialog({
   programExercise,
 }: EditExerciseDialogProps) {
   const router = useRouter()
+  const dialogRef = useRef<HTMLDivElement>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const tour = useFormTour({ steps: EDIT_EXERCISE_TOUR_STEPS, scrollContainerRef: dialogRef })
 
   if (!programExercise) return null
 
@@ -104,10 +110,13 @@ export function EditExerciseDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+    <Dialog open={open} onOpenChange={(o) => { if (!o) tour.close(); onOpenChange(o) }}>
+      <DialogContent ref={dialogRef} className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Edit Exercise Parameters</DialogTitle>
+          <div className="flex items-center gap-2">
+            <DialogTitle>Edit Exercise Parameters</DialogTitle>
+            <TourButton onClick={tour.start} />
+          </div>
           <DialogDescription>
             Update parameters for {programExercise.exercises.name}.
           </DialogDescription>
@@ -221,7 +230,7 @@ export function EditExerciseDialog({
                   </div>
                 )}
                 <div className="space-y-2">
-                  <Label htmlFor="edit-group-tag">Superset Group</Label>
+                  <Label htmlFor="edit-group-tag">Group Tag (Supersets)</Label>
                   <Input
                     id="edit-group-tag"
                     name="group_tag"
@@ -260,6 +269,7 @@ export function EditExerciseDialog({
             </form>
           )
         })()}
+        <FormTour {...tour} />
       </DialogContent>
     </Dialog>
   )

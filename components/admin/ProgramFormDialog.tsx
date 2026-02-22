@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import {
@@ -22,6 +22,10 @@ import {
   PERIODIZATION_TYPES,
   type ProgramFormData,
 } from "@/lib/validators/program"
+import { useFormTour } from "@/hooks/use-form-tour"
+import { FormTour } from "@/components/admin/FormTour"
+import { TourButton } from "@/components/admin/TourButton"
+import { PROGRAM_TOUR_STEPS } from "@/lib/tour-steps"
 import type { Program } from "@/types/database"
 
 interface ProgramFormDialogProps {
@@ -64,6 +68,18 @@ const PERIODIZATION_LABELS: Record<string, string> = {
   none: "None",
 }
 
+const FIELD_LABELS: Record<string, string> = {
+  name: "Name",
+  description: "Description",
+  category: "Category",
+  difficulty: "Difficulty",
+  duration_weeks: "Duration (weeks)",
+  sessions_per_week: "Sessions per week",
+  price_cents: "Price",
+  split_type: "Split type",
+  periodization: "Periodization",
+}
+
 const selectClass =
   "flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
 
@@ -74,8 +90,10 @@ export function ProgramFormDialog({
 }: ProgramFormDialogProps) {
   const router = useRouter()
   const isEditing = !!program
+  const dialogRef = useRef<HTMLDivElement>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errors, setErrors] = useState<Partial<Record<keyof ProgramFormData, string[]>>>({})
+  const tour = useFormTour({ steps: PROGRAM_TOUR_STEPS, scrollContainerRef: dialogRef })
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -108,7 +126,8 @@ export function ProgramFormDialog({
       setErrors(fieldErrors)
       const firstError = Object.entries(fieldErrors).find(([, v]) => v && v.length > 0)
       if (firstError) {
-        toast.error(`${firstError[0]}: ${firstError[1]?.[0]}`)
+        const label = FIELD_LABELS[firstError[0]] ?? firstError[0]
+        toast.error(`${label}: ${firstError[1]?.[0]}`)
       }
       return
     }
@@ -137,7 +156,8 @@ export function ProgramFormDialog({
           setErrors(fieldErrors)
           const firstError = Object.entries(fieldErrors).find(([, v]) => v && v.length > 0)
           if (firstError) {
-            toast.error(`${firstError[0]}: ${firstError[1]?.[0]}`)
+            const label = FIELD_LABELS[firstError[0]] ?? firstError[0]
+            toast.error(`${label}: ${firstError[1]?.[0]}`)
           } else {
             toast.error(errorData.error || "Request failed")
           }
@@ -157,10 +177,13 @@ export function ProgramFormDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+    <Dialog open={open} onOpenChange={(o) => { if (!o) tour.close(); onOpenChange(o) }}>
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto" ref={dialogRef}>
         <DialogHeader>
-          <DialogTitle>{isEditing ? "Edit Program" : "Add Program"}</DialogTitle>
+          <div className="flex items-center gap-2">
+            <DialogTitle>{isEditing ? "Edit Program" : "Add Program"}</DialogTitle>
+            <TourButton onClick={tour.start} />
+          </div>
           <DialogDescription>
             {isEditing
               ? "Update the program details below."
@@ -352,6 +375,7 @@ export function ProgramFormDialog({
             </Button>
           </DialogFooter>
         </form>
+        <FormTour {...tour} />
       </DialogContent>
     </Dialog>
   )

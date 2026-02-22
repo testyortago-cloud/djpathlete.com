@@ -816,7 +816,7 @@ const programs = [
     id: PROGRAM_ELITE,
     name: "Elite Performance Package",
     description: "Advanced training combining strength, power, and sport-specific conditioning for competitive athletes seeking peak performance.",
-    category: "hybrid", difficulty: "advanced", duration_weeks: 12, sessions_per_week: 5,
+    category: ["strength"], difficulty: "advanced", duration_weeks: 12, sessions_per_week: 5,
     price_cents: 34900, is_active: true, created_by: ADMIN_ID,
     split_type: "upper_lower", periodization: "undulating", is_ai_generated: false,
   },
@@ -835,88 +835,88 @@ const programs = [
 const programExercises = [
   // ── Foundation Strength (Full Body, 3x/wk: Mon/Wed/Fri) ──────────────────
   // Monday — Full Body A
-  { program_id: PROGRAM_FOUNDATION, exercise_id: EX.back_squat, day_of_week: 1, week_number: 1, order_index: 0, sets: 4, reps: "5", rest_seconds: 180, rpe_target: 7, intensity_pct: null, tempo: "3010", group_tag: null },
-  { program_id: PROGRAM_FOUNDATION, exercise_id: EX.bench_press, day_of_week: 1, week_number: 1, order_index: 1, sets: 4, reps: "5", rest_seconds: 180, rpe_target: 7, intensity_pct: null, tempo: "3010", group_tag: null },
-  { program_id: PROGRAM_FOUNDATION, exercise_id: EX.barbell_row, day_of_week: 1, week_number: 1, order_index: 2, sets: 3, reps: "8-10", rest_seconds: 120, rpe_target: 7, intensity_pct: null, tempo: "2010", group_tag: null },
-  { program_id: PROGRAM_FOUNDATION, exercise_id: EX.face_pull, day_of_week: 1, week_number: 1, order_index: 3, sets: 3, reps: "15", rest_seconds: 60, rpe_target: 6, intensity_pct: null, tempo: null, group_tag: null },
-  { program_id: PROGRAM_FOUNDATION, exercise_id: EX.plank, day_of_week: 1, week_number: 1, order_index: 4, sets: 3, reps: "30s", rest_seconds: 60, rpe_target: null, intensity_pct: null, tempo: null, group_tag: null },
+  { program_id: PROGRAM_FOUNDATION, exercise_id: EX.back_squat, day_of_week: 1, week_number: 1, order_index: 0, sets: 4, reps: "5", duration_seconds: null, rest_seconds: 180, notes: "Focus on depth — hip crease below knee", rpe_target: 7, intensity_pct: null, tempo: "3010", group_tag: null, technique: "straight_set" },
+  { program_id: PROGRAM_FOUNDATION, exercise_id: EX.bench_press, day_of_week: 1, week_number: 1, order_index: 1, sets: 4, reps: "5", duration_seconds: null, rest_seconds: 180, notes: "Retract shoulder blades, arch slightly", rpe_target: 7, intensity_pct: null, tempo: "3010", group_tag: null, technique: "straight_set" },
+  { program_id: PROGRAM_FOUNDATION, exercise_id: EX.barbell_row, day_of_week: 1, week_number: 1, order_index: 2, sets: 3, reps: "8-10", duration_seconds: null, rest_seconds: 120, notes: "Squeeze shoulder blades at the top", rpe_target: 7, intensity_pct: null, tempo: "2010", group_tag: null, technique: "straight_set" },
+  { program_id: PROGRAM_FOUNDATION, exercise_id: EX.face_pull, day_of_week: 1, week_number: 1, order_index: 3, sets: 3, reps: "15", duration_seconds: null, rest_seconds: 60, notes: "External rotate at end range", rpe_target: 6, intensity_pct: null, tempo: null, group_tag: null, technique: "straight_set" },
+  { program_id: PROGRAM_FOUNDATION, exercise_id: EX.plank, day_of_week: 1, week_number: 1, order_index: 4, sets: 3, reps: null, duration_seconds: 30, rest_seconds: 60, notes: "Squeeze glutes, brace core — no sagging", rpe_target: null, intensity_pct: null, tempo: null, group_tag: null, technique: "straight_set" },
 
   // Wednesday — Full Body B
-  { program_id: PROGRAM_FOUNDATION, exercise_id: EX.deadlift, day_of_week: 3, week_number: 1, order_index: 0, sets: 3, reps: "5", rest_seconds: 180, rpe_target: 7, intensity_pct: null, tempo: "2010", group_tag: null },
-  { program_id: PROGRAM_FOUNDATION, exercise_id: EX.overhead_press, day_of_week: 3, week_number: 1, order_index: 1, sets: 4, reps: "6-8", rest_seconds: 150, rpe_target: 7, intensity_pct: null, tempo: "2010", group_tag: null },
-  { program_id: PROGRAM_FOUNDATION, exercise_id: EX.lat_pulldown, day_of_week: 3, week_number: 1, order_index: 2, sets: 3, reps: "10-12", rest_seconds: 90, rpe_target: 7, intensity_pct: null, tempo: "2011", group_tag: null },
-  { program_id: PROGRAM_FOUNDATION, exercise_id: EX.leg_curl, day_of_week: 3, week_number: 1, order_index: 3, sets: 3, reps: "12", rest_seconds: 60, rpe_target: 6, intensity_pct: null, tempo: null, group_tag: null },
-  { program_id: PROGRAM_FOUNDATION, exercise_id: EX.db_curl, day_of_week: 3, week_number: 1, order_index: 4, sets: 2, reps: "12-15", rest_seconds: 60, rpe_target: 6, intensity_pct: null, tempo: null, group_tag: "A" },
-  { program_id: PROGRAM_FOUNDATION, exercise_id: EX.tricep_pushdown, day_of_week: 3, week_number: 1, order_index: 5, sets: 2, reps: "12-15", rest_seconds: 60, rpe_target: 6, intensity_pct: null, tempo: null, group_tag: "A" },
+  { program_id: PROGRAM_FOUNDATION, exercise_id: EX.deadlift, day_of_week: 3, week_number: 1, order_index: 0, sets: 3, reps: "5", duration_seconds: null, rest_seconds: 180, notes: "Reset each rep — no touch-and-go", rpe_target: 7, intensity_pct: null, tempo: "2010", group_tag: null, technique: "straight_set" },
+  { program_id: PROGRAM_FOUNDATION, exercise_id: EX.overhead_press, day_of_week: 3, week_number: 1, order_index: 1, sets: 4, reps: "6-8", duration_seconds: null, rest_seconds: 150, notes: "Tuck chin to let bar pass, lock out overhead", rpe_target: 7, intensity_pct: null, tempo: "2010", group_tag: null, technique: "straight_set" },
+  { program_id: PROGRAM_FOUNDATION, exercise_id: EX.lat_pulldown, day_of_week: 3, week_number: 1, order_index: 2, sets: 3, reps: "10-12", duration_seconds: null, rest_seconds: 90, notes: "Drive elbows to hips, lean back slightly", rpe_target: 7, intensity_pct: null, tempo: "2011", group_tag: null, technique: "straight_set" },
+  { program_id: PROGRAM_FOUNDATION, exercise_id: EX.leg_curl, day_of_week: 3, week_number: 1, order_index: 3, sets: 3, reps: "12", duration_seconds: null, rest_seconds: 60, notes: null, rpe_target: 6, intensity_pct: null, tempo: null, group_tag: null, technique: "straight_set" },
+  { program_id: PROGRAM_FOUNDATION, exercise_id: EX.db_curl, day_of_week: 3, week_number: 1, order_index: 4, sets: 2, reps: "12-15", duration_seconds: null, rest_seconds: 60, notes: "Superset with tricep pushdowns — no rest between", rpe_target: 6, intensity_pct: null, tempo: null, group_tag: "A1", technique: "superset" },
+  { program_id: PROGRAM_FOUNDATION, exercise_id: EX.tricep_pushdown, day_of_week: 3, week_number: 1, order_index: 5, sets: 2, reps: "12-15", duration_seconds: null, rest_seconds: 60, notes: "Superset with curls", rpe_target: 6, intensity_pct: null, tempo: null, group_tag: "A2", technique: "superset" },
 
   // Friday — Full Body C
-  { program_id: PROGRAM_FOUNDATION, exercise_id: EX.leg_press, day_of_week: 5, week_number: 1, order_index: 0, sets: 4, reps: "8-10", rest_seconds: 120, rpe_target: 7, intensity_pct: null, tempo: "3010", group_tag: null },
-  { program_id: PROGRAM_FOUNDATION, exercise_id: EX.push_up, day_of_week: 5, week_number: 1, order_index: 1, sets: 3, reps: "AMRAP", rest_seconds: 90, rpe_target: 8, intensity_pct: null, tempo: "2010", group_tag: null },
-  { program_id: PROGRAM_FOUNDATION, exercise_id: EX.rdl, day_of_week: 5, week_number: 1, order_index: 2, sets: 3, reps: "10", rest_seconds: 120, rpe_target: 7, intensity_pct: null, tempo: "3010", group_tag: null },
-  { program_id: PROGRAM_FOUNDATION, exercise_id: EX.db_lateral_raise, day_of_week: 5, week_number: 1, order_index: 3, sets: 3, reps: "15", rest_seconds: 60, rpe_target: 6, intensity_pct: null, tempo: null, group_tag: null },
-  { program_id: PROGRAM_FOUNDATION, exercise_id: EX.farmers_carry, day_of_week: 5, week_number: 1, order_index: 4, sets: 3, reps: "40m", rest_seconds: 90, rpe_target: 7, intensity_pct: null, tempo: null, group_tag: null },
+  { program_id: PROGRAM_FOUNDATION, exercise_id: EX.leg_press, day_of_week: 5, week_number: 1, order_index: 0, sets: 4, reps: "8-10", duration_seconds: null, rest_seconds: 120, notes: "Feet shoulder width, don't lock knees", rpe_target: 7, intensity_pct: null, tempo: "3010", group_tag: null, technique: "straight_set" },
+  { program_id: PROGRAM_FOUNDATION, exercise_id: EX.push_up, day_of_week: 5, week_number: 1, order_index: 1, sets: 3, reps: "AMRAP", duration_seconds: null, rest_seconds: 90, notes: "Full range — chest to floor", rpe_target: 8, intensity_pct: null, tempo: "2010", group_tag: null, technique: "amrap" },
+  { program_id: PROGRAM_FOUNDATION, exercise_id: EX.rdl, day_of_week: 5, week_number: 1, order_index: 2, sets: 3, reps: "10", duration_seconds: null, rest_seconds: 120, notes: "Feel the hamstring stretch, don't round back", rpe_target: 7, intensity_pct: null, tempo: "3010", group_tag: null, technique: "straight_set" },
+  { program_id: PROGRAM_FOUNDATION, exercise_id: EX.db_lateral_raise, day_of_week: 5, week_number: 1, order_index: 3, sets: 3, reps: "15", duration_seconds: null, rest_seconds: 60, notes: "Light weight, control the eccentric", rpe_target: 6, intensity_pct: null, tempo: null, group_tag: null, technique: "straight_set" },
+  { program_id: PROGRAM_FOUNDATION, exercise_id: EX.farmers_carry, day_of_week: 5, week_number: 1, order_index: 4, sets: 3, reps: "40m", duration_seconds: null, rest_seconds: 90, notes: "Stand tall, shoulders packed", rpe_target: 7, intensity_pct: null, tempo: null, group_tag: null, technique: "straight_set" },
 
   // ── Elite Performance (Upper/Lower, 5x/wk) ──────────────────────────────
   // Monday — Upper Strength
-  { program_id: PROGRAM_ELITE, exercise_id: EX.bench_press, day_of_week: 1, week_number: 1, order_index: 0, sets: 5, reps: "3", rest_seconds: 240, rpe_target: 8, intensity_pct: 85, tempo: "2010", group_tag: null },
-  { program_id: PROGRAM_ELITE, exercise_id: EX.barbell_row, day_of_week: 1, week_number: 1, order_index: 1, sets: 4, reps: "5", rest_seconds: 180, rpe_target: 8, intensity_pct: 80, tempo: "2011", group_tag: null },
-  { program_id: PROGRAM_ELITE, exercise_id: EX.overhead_press, day_of_week: 1, week_number: 1, order_index: 2, sets: 3, reps: "6-8", rest_seconds: 150, rpe_target: 8, intensity_pct: null, tempo: "2010", group_tag: null },
-  { program_id: PROGRAM_ELITE, exercise_id: EX.pull_up, day_of_week: 1, week_number: 1, order_index: 3, sets: 3, reps: "6-10", rest_seconds: 120, rpe_target: 8, intensity_pct: null, tempo: "2010", group_tag: null },
-  { program_id: PROGRAM_ELITE, exercise_id: EX.face_pull, day_of_week: 1, week_number: 1, order_index: 4, sets: 3, reps: "15-20", rest_seconds: 60, rpe_target: 6, intensity_pct: null, tempo: null, group_tag: null },
+  { program_id: PROGRAM_ELITE, exercise_id: EX.bench_press, day_of_week: 1, week_number: 1, order_index: 0, sets: 5, reps: "3", duration_seconds: null, rest_seconds: 240, notes: "Heavy triples — control the descent", rpe_target: 8, intensity_pct: 85, tempo: "2010", group_tag: null, technique: "straight_set" },
+  { program_id: PROGRAM_ELITE, exercise_id: EX.barbell_row, day_of_week: 1, week_number: 1, order_index: 1, sets: 4, reps: "5", duration_seconds: null, rest_seconds: 180, notes: "Match bench volume, strict form", rpe_target: 8, intensity_pct: 80, tempo: "2011", group_tag: null, technique: "straight_set" },
+  { program_id: PROGRAM_ELITE, exercise_id: EX.overhead_press, day_of_week: 1, week_number: 1, order_index: 2, sets: 3, reps: "6-8", duration_seconds: null, rest_seconds: 150, notes: null, rpe_target: 8, intensity_pct: null, tempo: "2010", group_tag: null, technique: "straight_set" },
+  { program_id: PROGRAM_ELITE, exercise_id: EX.pull_up, day_of_week: 1, week_number: 1, order_index: 3, sets: 3, reps: "6-10", duration_seconds: null, rest_seconds: 120, notes: "Add weight if bodyweight is easy", rpe_target: 8, intensity_pct: null, tempo: "2010", group_tag: null, technique: "straight_set" },
+  { program_id: PROGRAM_ELITE, exercise_id: EX.face_pull, day_of_week: 1, week_number: 1, order_index: 4, sets: 3, reps: "15-20", duration_seconds: null, rest_seconds: 60, notes: "Prehab — keep shoulders healthy", rpe_target: 6, intensity_pct: null, tempo: null, group_tag: null, technique: "straight_set" },
 
   // Tuesday — Lower Strength
-  { program_id: PROGRAM_ELITE, exercise_id: EX.back_squat, day_of_week: 2, week_number: 1, order_index: 0, sets: 5, reps: "3", rest_seconds: 240, rpe_target: 8, intensity_pct: 85, tempo: "3010", group_tag: null },
-  { program_id: PROGRAM_ELITE, exercise_id: EX.rdl, day_of_week: 2, week_number: 1, order_index: 1, sets: 4, reps: "6", rest_seconds: 180, rpe_target: 8, intensity_pct: 75, tempo: "3010", group_tag: null },
-  { program_id: PROGRAM_ELITE, exercise_id: EX.hip_thrust, day_of_week: 2, week_number: 1, order_index: 2, sets: 3, reps: "8-10", rest_seconds: 120, rpe_target: 8, intensity_pct: null, tempo: "2011", group_tag: null },
-  { program_id: PROGRAM_ELITE, exercise_id: EX.leg_curl, day_of_week: 2, week_number: 1, order_index: 3, sets: 3, reps: "10-12", rest_seconds: 90, rpe_target: 7, intensity_pct: null, tempo: null, group_tag: null },
-  { program_id: PROGRAM_ELITE, exercise_id: EX.farmers_carry, day_of_week: 2, week_number: 1, order_index: 4, sets: 3, reps: "40m", rest_seconds: 90, rpe_target: 7, intensity_pct: null, tempo: null, group_tag: null },
+  { program_id: PROGRAM_ELITE, exercise_id: EX.back_squat, day_of_week: 2, week_number: 1, order_index: 0, sets: 5, reps: "3", duration_seconds: null, rest_seconds: 240, notes: "Belt up, heavy triples", rpe_target: 8, intensity_pct: 85, tempo: "3010", group_tag: null, technique: "straight_set" },
+  { program_id: PROGRAM_ELITE, exercise_id: EX.rdl, day_of_week: 2, week_number: 1, order_index: 1, sets: 4, reps: "6", duration_seconds: null, rest_seconds: 180, notes: "Slow eccentric, pause at bottom stretch", rpe_target: 8, intensity_pct: 75, tempo: "3010", group_tag: null, technique: "straight_set" },
+  { program_id: PROGRAM_ELITE, exercise_id: EX.hip_thrust, day_of_week: 2, week_number: 1, order_index: 2, sets: 3, reps: "8-10", duration_seconds: null, rest_seconds: 120, notes: "Full lockout at top, 1s squeeze", rpe_target: 8, intensity_pct: null, tempo: "2011", group_tag: null, technique: "straight_set" },
+  { program_id: PROGRAM_ELITE, exercise_id: EX.leg_curl, day_of_week: 2, week_number: 1, order_index: 3, sets: 3, reps: "10-12", duration_seconds: null, rest_seconds: 90, notes: null, rpe_target: 7, intensity_pct: null, tempo: null, group_tag: null, technique: "straight_set" },
+  { program_id: PROGRAM_ELITE, exercise_id: EX.farmers_carry, day_of_week: 2, week_number: 1, order_index: 4, sets: 3, reps: "40m", duration_seconds: null, rest_seconds: 90, notes: "Go heavy — grip strength finisher", rpe_target: 7, intensity_pct: null, tempo: null, group_tag: null, technique: "straight_set" },
 
   // Thursday — Upper Hypertrophy
-  { program_id: PROGRAM_ELITE, exercise_id: EX.overhead_press, day_of_week: 4, week_number: 1, order_index: 0, sets: 4, reps: "8-10", rest_seconds: 120, rpe_target: 8, intensity_pct: null, tempo: "3010", group_tag: null },
-  { program_id: PROGRAM_ELITE, exercise_id: EX.lat_pulldown, day_of_week: 4, week_number: 1, order_index: 1, sets: 4, reps: "10-12", rest_seconds: 90, rpe_target: 8, intensity_pct: null, tempo: "2011", group_tag: null },
-  { program_id: PROGRAM_ELITE, exercise_id: EX.bench_press, day_of_week: 4, week_number: 1, order_index: 2, sets: 3, reps: "10-12", rest_seconds: 90, rpe_target: 8, intensity_pct: 70, tempo: "3010", group_tag: null },
-  { program_id: PROGRAM_ELITE, exercise_id: EX.db_curl, day_of_week: 4, week_number: 1, order_index: 3, sets: 3, reps: "12-15", rest_seconds: 60, rpe_target: 7, intensity_pct: null, tempo: null, group_tag: "A" },
-  { program_id: PROGRAM_ELITE, exercise_id: EX.tricep_pushdown, day_of_week: 4, week_number: 1, order_index: 4, sets: 3, reps: "12-15", rest_seconds: 60, rpe_target: 7, intensity_pct: null, tempo: null, group_tag: "A" },
-  { program_id: PROGRAM_ELITE, exercise_id: EX.db_lateral_raise, day_of_week: 4, week_number: 1, order_index: 5, sets: 3, reps: "15-20", rest_seconds: 60, rpe_target: 7, intensity_pct: null, tempo: null, group_tag: null },
+  { program_id: PROGRAM_ELITE, exercise_id: EX.overhead_press, day_of_week: 4, week_number: 1, order_index: 0, sets: 4, reps: "8-10", duration_seconds: null, rest_seconds: 120, notes: "Moderate weight, chase the pump", rpe_target: 8, intensity_pct: null, tempo: "3010", group_tag: null, technique: "straight_set" },
+  { program_id: PROGRAM_ELITE, exercise_id: EX.lat_pulldown, day_of_week: 4, week_number: 1, order_index: 1, sets: 4, reps: "10-12", duration_seconds: null, rest_seconds: 90, notes: "Full stretch at top, squeeze at bottom", rpe_target: 8, intensity_pct: null, tempo: "2011", group_tag: null, technique: "straight_set" },
+  { program_id: PROGRAM_ELITE, exercise_id: EX.db_bench_press, day_of_week: 4, week_number: 1, order_index: 2, sets: 3, reps: "10-12", duration_seconds: null, rest_seconds: 90, notes: "Deep stretch at bottom for chest growth", rpe_target: 8, intensity_pct: null, tempo: "3010", group_tag: null, technique: "straight_set" },
+  { program_id: PROGRAM_ELITE, exercise_id: EX.db_curl, day_of_week: 4, week_number: 1, order_index: 3, sets: 3, reps: "12-15", duration_seconds: null, rest_seconds: 60, notes: "Superset — curls then pushdowns, no rest", rpe_target: 7, intensity_pct: null, tempo: null, group_tag: "A1", technique: "superset" },
+  { program_id: PROGRAM_ELITE, exercise_id: EX.tricep_pushdown, day_of_week: 4, week_number: 1, order_index: 4, sets: 3, reps: "12-15", duration_seconds: null, rest_seconds: 60, notes: "Superset with curls", rpe_target: 7, intensity_pct: null, tempo: null, group_tag: "A2", technique: "superset" },
+  { program_id: PROGRAM_ELITE, exercise_id: EX.db_lateral_raise, day_of_week: 4, week_number: 1, order_index: 5, sets: 3, reps: "15-20", duration_seconds: null, rest_seconds: 60, notes: "Drop set on last set", rpe_target: 7, intensity_pct: null, tempo: null, group_tag: null, technique: "dropset" },
 
   // Friday — Lower Power
-  { program_id: PROGRAM_ELITE, exercise_id: EX.deadlift, day_of_week: 5, week_number: 1, order_index: 0, sets: 5, reps: "2", rest_seconds: 300, rpe_target: 9, intensity_pct: 90, tempo: "1010", group_tag: null },
-  { program_id: PROGRAM_ELITE, exercise_id: EX.box_jump, day_of_week: 5, week_number: 1, order_index: 1, sets: 4, reps: "5", rest_seconds: 120, rpe_target: 7, intensity_pct: null, tempo: null, group_tag: null },
-  { program_id: PROGRAM_ELITE, exercise_id: EX.bulgarian_split, day_of_week: 5, week_number: 1, order_index: 2, sets: 3, reps: "8/leg", rest_seconds: 120, rpe_target: 8, intensity_pct: null, tempo: "2010", group_tag: null },
-  { program_id: PROGRAM_ELITE, exercise_id: EX.kb_swing, day_of_week: 5, week_number: 1, order_index: 3, sets: 4, reps: "15", rest_seconds: 60, rpe_target: 7, intensity_pct: null, tempo: null, group_tag: null },
-  { program_id: PROGRAM_ELITE, exercise_id: EX.plank, day_of_week: 5, week_number: 1, order_index: 4, sets: 3, reps: "45s", rest_seconds: 45, rpe_target: null, intensity_pct: null, tempo: null, group_tag: null },
+  { program_id: PROGRAM_ELITE, exercise_id: EX.deadlift, day_of_week: 5, week_number: 1, order_index: 0, sets: 5, reps: "2", duration_seconds: null, rest_seconds: 300, notes: "Max effort doubles — full reset each rep", rpe_target: 9, intensity_pct: 90, tempo: "1010", group_tag: null, technique: "straight_set" },
+  { program_id: PROGRAM_ELITE, exercise_id: EX.box_jump, day_of_week: 5, week_number: 1, order_index: 1, sets: 4, reps: "5", duration_seconds: null, rest_seconds: 120, notes: "Step down between reps, focus on power", rpe_target: 7, intensity_pct: null, tempo: null, group_tag: null, technique: "straight_set" },
+  { program_id: PROGRAM_ELITE, exercise_id: EX.bulgarian_split, day_of_week: 5, week_number: 1, order_index: 2, sets: 3, reps: "8/leg", duration_seconds: null, rest_seconds: 120, notes: "Hold DBs at sides, front foot flat", rpe_target: 8, intensity_pct: null, tempo: "2010", group_tag: null, technique: "straight_set" },
+  { program_id: PROGRAM_ELITE, exercise_id: EX.kb_swing, day_of_week: 5, week_number: 1, order_index: 3, sets: 4, reps: "15", duration_seconds: null, rest_seconds: 60, notes: "Explosive hips, crisp lockout", rpe_target: 7, intensity_pct: null, tempo: null, group_tag: null, technique: "straight_set" },
+  { program_id: PROGRAM_ELITE, exercise_id: EX.plank, day_of_week: 5, week_number: 1, order_index: 4, sets: 3, reps: null, duration_seconds: 45, rest_seconds: 45, notes: "Brace hard — quality over duration", rpe_target: null, intensity_pct: null, tempo: null, group_tag: null, technique: "straight_set" },
 
-  // Saturday — Conditioning
-  { program_id: PROGRAM_ELITE, exercise_id: EX.sled_push, day_of_week: 6, week_number: 1, order_index: 0, sets: 6, reps: "20m", rest_seconds: 90, rpe_target: 8, intensity_pct: null, tempo: null, group_tag: null },
-  { program_id: PROGRAM_ELITE, exercise_id: EX.battle_ropes, day_of_week: 6, week_number: 1, order_index: 1, sets: 4, reps: "30s", rest_seconds: 60, rpe_target: 8, intensity_pct: null, tempo: null, group_tag: null },
-  { program_id: PROGRAM_ELITE, exercise_id: EX.med_ball_slam, day_of_week: 6, week_number: 1, order_index: 2, sets: 4, reps: "10", rest_seconds: 60, rpe_target: 8, intensity_pct: null, tempo: null, group_tag: null },
-  { program_id: PROGRAM_ELITE, exercise_id: EX.yoga_flow, day_of_week: 6, week_number: 1, order_index: 3, sets: 1, reps: "10min", rest_seconds: 0, rpe_target: null, intensity_pct: null, tempo: null, group_tag: null },
+  // Saturday — Conditioning Circuit
+  { program_id: PROGRAM_ELITE, exercise_id: EX.sled_push, day_of_week: 6, week_number: 1, order_index: 0, sets: 6, reps: "20m", duration_seconds: null, rest_seconds: 90, notes: "Low push position, drive through legs", rpe_target: 8, intensity_pct: null, tempo: null, group_tag: null, technique: "straight_set" },
+  { program_id: PROGRAM_ELITE, exercise_id: EX.battle_ropes, day_of_week: 6, week_number: 1, order_index: 1, sets: 4, reps: null, duration_seconds: 30, rest_seconds: 60, notes: "Alternating waves, stay low", rpe_target: 8, intensity_pct: null, tempo: null, group_tag: "B1", technique: "circuit" },
+  { program_id: PROGRAM_ELITE, exercise_id: EX.med_ball_slam, day_of_week: 6, week_number: 1, order_index: 2, sets: 4, reps: "10", duration_seconds: null, rest_seconds: 60, notes: "Full extension overhead, slam hard", rpe_target: 8, intensity_pct: null, tempo: null, group_tag: "B2", technique: "circuit" },
+  { program_id: PROGRAM_ELITE, exercise_id: EX.yoga_flow, day_of_week: 6, week_number: 1, order_index: 3, sets: 1, reps: null, duration_seconds: 600, rest_seconds: 0, notes: "Cool down — slow controlled breathing", rpe_target: null, intensity_pct: null, tempo: null, group_tag: null, technique: "straight_set" },
 
   // ── Athletic Speed & Power (4x/wk: Mon/Tue/Thu/Fri) ──────────────────────
   // Monday — Power
-  { program_id: PROGRAM_SPORT, exercise_id: EX.box_jump, day_of_week: 1, week_number: 1, order_index: 0, sets: 5, reps: "3", rest_seconds: 120, rpe_target: 7, intensity_pct: null, tempo: null, group_tag: null },
-  { program_id: PROGRAM_SPORT, exercise_id: EX.back_squat, day_of_week: 1, week_number: 1, order_index: 1, sets: 4, reps: "4", rest_seconds: 180, rpe_target: 8, intensity_pct: 80, tempo: "2010", group_tag: null },
-  { program_id: PROGRAM_SPORT, exercise_id: EX.hip_thrust, day_of_week: 1, week_number: 1, order_index: 2, sets: 3, reps: "8", rest_seconds: 120, rpe_target: 7, intensity_pct: null, tempo: "2011", group_tag: null },
-  { program_id: PROGRAM_SPORT, exercise_id: EX.kb_swing, day_of_week: 1, week_number: 1, order_index: 3, sets: 4, reps: "12", rest_seconds: 60, rpe_target: 7, intensity_pct: null, tempo: null, group_tag: null },
+  { program_id: PROGRAM_SPORT, exercise_id: EX.box_jump, day_of_week: 1, week_number: 1, order_index: 0, sets: 5, reps: "3", duration_seconds: null, rest_seconds: 120, notes: "Max height, soft landing, step down", rpe_target: 7, intensity_pct: null, tempo: null, group_tag: null, technique: "straight_set" },
+  { program_id: PROGRAM_SPORT, exercise_id: EX.back_squat, day_of_week: 1, week_number: 1, order_index: 1, sets: 4, reps: "4", duration_seconds: null, rest_seconds: 180, notes: "Explosive concentric, controlled descent", rpe_target: 8, intensity_pct: 80, tempo: "2010", group_tag: null, technique: "straight_set" },
+  { program_id: PROGRAM_SPORT, exercise_id: EX.hip_thrust, day_of_week: 1, week_number: 1, order_index: 2, sets: 3, reps: "8", duration_seconds: null, rest_seconds: 120, notes: "Pause 1s at lockout", rpe_target: 7, intensity_pct: null, tempo: "2011", group_tag: null, technique: "straight_set" },
+  { program_id: PROGRAM_SPORT, exercise_id: EX.kb_swing, day_of_week: 1, week_number: 1, order_index: 3, sets: 4, reps: "12", duration_seconds: null, rest_seconds: 60, notes: "Power finisher — snap the hips", rpe_target: 7, intensity_pct: null, tempo: null, group_tag: null, technique: "straight_set" },
 
   // Tuesday — Speed & Agility
-  { program_id: PROGRAM_SPORT, exercise_id: EX.sprint_intervals, day_of_week: 2, week_number: 1, order_index: 0, sets: 6, reps: "20s sprint / 60s rest", rest_seconds: 60, rpe_target: 9, intensity_pct: null, tempo: null, group_tag: null },
-  { program_id: PROGRAM_SPORT, exercise_id: EX.agility_ladder, day_of_week: 2, week_number: 1, order_index: 1, sets: 4, reps: "2 patterns", rest_seconds: 45, rpe_target: 7, intensity_pct: null, tempo: null, group_tag: null },
-  { program_id: PROGRAM_SPORT, exercise_id: EX.cone_drill, day_of_week: 2, week_number: 1, order_index: 2, sets: 5, reps: "1", rest_seconds: 90, rpe_target: 9, intensity_pct: null, tempo: null, group_tag: null },
-  { program_id: PROGRAM_SPORT, exercise_id: EX.hip_flexor, day_of_week: 2, week_number: 1, order_index: 3, sets: 2, reps: "30s/side", rest_seconds: 0, rpe_target: null, intensity_pct: null, tempo: null, group_tag: null },
+  { program_id: PROGRAM_SPORT, exercise_id: EX.sprint_intervals, day_of_week: 2, week_number: 1, order_index: 0, sets: 6, reps: null, duration_seconds: 20, rest_seconds: 60, notes: "20s max sprint / 60s walk recovery", rpe_target: 9, intensity_pct: null, tempo: null, group_tag: null, technique: "straight_set" },
+  { program_id: PROGRAM_SPORT, exercise_id: EX.agility_ladder, day_of_week: 2, week_number: 1, order_index: 1, sets: 4, reps: "2 patterns", duration_seconds: null, rest_seconds: 45, notes: "Quick feet — icky shuffle + in-out", rpe_target: 7, intensity_pct: null, tempo: null, group_tag: null, technique: "straight_set" },
+  { program_id: PROGRAM_SPORT, exercise_id: EX.cone_drill, day_of_week: 2, week_number: 1, order_index: 2, sets: 5, reps: "1", duration_seconds: null, rest_seconds: 90, notes: "5-10-5 pro agility — touch each line", rpe_target: 9, intensity_pct: null, tempo: null, group_tag: null, technique: "straight_set" },
+  { program_id: PROGRAM_SPORT, exercise_id: EX.hip_flexor, day_of_week: 2, week_number: 1, order_index: 3, sets: 2, reps: null, duration_seconds: 30, rest_seconds: 0, notes: "30s per side — gentle stretch, no bouncing", rpe_target: null, intensity_pct: null, tempo: null, group_tag: null, technique: "straight_set" },
 
   // Thursday — Upper Strength
-  { program_id: PROGRAM_SPORT, exercise_id: EX.bench_press, day_of_week: 4, week_number: 1, order_index: 0, sets: 4, reps: "5", rest_seconds: 180, rpe_target: 8, intensity_pct: null, tempo: "2010", group_tag: null },
-  { program_id: PROGRAM_SPORT, exercise_id: EX.pull_up, day_of_week: 4, week_number: 1, order_index: 1, sets: 4, reps: "5-8", rest_seconds: 120, rpe_target: 8, intensity_pct: null, tempo: "2010", group_tag: null },
-  { program_id: PROGRAM_SPORT, exercise_id: EX.med_ball_slam, day_of_week: 4, week_number: 1, order_index: 2, sets: 4, reps: "8", rest_seconds: 60, rpe_target: 8, intensity_pct: null, tempo: null, group_tag: null },
-  { program_id: PROGRAM_SPORT, exercise_id: EX.face_pull, day_of_week: 4, week_number: 1, order_index: 3, sets: 3, reps: "15", rest_seconds: 60, rpe_target: 6, intensity_pct: null, tempo: null, group_tag: null },
-  { program_id: PROGRAM_SPORT, exercise_id: EX.plank, day_of_week: 4, week_number: 1, order_index: 4, sets: 3, reps: "30s", rest_seconds: 45, rpe_target: null, intensity_pct: null, tempo: null, group_tag: null },
+  { program_id: PROGRAM_SPORT, exercise_id: EX.bench_press, day_of_week: 4, week_number: 1, order_index: 0, sets: 4, reps: "5", duration_seconds: null, rest_seconds: 180, notes: "Explosive press, controlled lower", rpe_target: 8, intensity_pct: null, tempo: "2010", group_tag: null, technique: "straight_set" },
+  { program_id: PROGRAM_SPORT, exercise_id: EX.pull_up, day_of_week: 4, week_number: 1, order_index: 1, sets: 4, reps: "5-8", duration_seconds: null, rest_seconds: 120, notes: "Full dead hang at bottom", rpe_target: 8, intensity_pct: null, tempo: "2010", group_tag: null, technique: "straight_set" },
+  { program_id: PROGRAM_SPORT, exercise_id: EX.med_ball_slam, day_of_week: 4, week_number: 1, order_index: 2, sets: 4, reps: "8", duration_seconds: null, rest_seconds: 60, notes: "Full extension — slam like you mean it", rpe_target: 8, intensity_pct: null, tempo: null, group_tag: null, technique: "straight_set" },
+  { program_id: PROGRAM_SPORT, exercise_id: EX.face_pull, day_of_week: 4, week_number: 1, order_index: 3, sets: 3, reps: "15", duration_seconds: null, rest_seconds: 60, notes: "Shoulder health — don't skip these", rpe_target: 6, intensity_pct: null, tempo: null, group_tag: null, technique: "straight_set" },
+  { program_id: PROGRAM_SPORT, exercise_id: EX.plank, day_of_week: 4, week_number: 1, order_index: 4, sets: 3, reps: null, duration_seconds: 30, rest_seconds: 45, notes: "Athletic brace — squeeze everything", rpe_target: null, intensity_pct: null, tempo: null, group_tag: null, technique: "straight_set" },
 
   // Friday — Conditioning
-  { program_id: PROGRAM_SPORT, exercise_id: EX.sled_push, day_of_week: 5, week_number: 1, order_index: 0, sets: 5, reps: "20m", rest_seconds: 90, rpe_target: 8, intensity_pct: null, tempo: null, group_tag: null },
-  { program_id: PROGRAM_SPORT, exercise_id: EX.battle_ropes, day_of_week: 5, week_number: 1, order_index: 1, sets: 4, reps: "30s", rest_seconds: 60, rpe_target: 8, intensity_pct: null, tempo: null, group_tag: null },
-  { program_id: PROGRAM_SPORT, exercise_id: EX.farmers_carry, day_of_week: 5, week_number: 1, order_index: 2, sets: 4, reps: "30m", rest_seconds: 90, rpe_target: 7, intensity_pct: null, tempo: null, group_tag: null },
-  { program_id: PROGRAM_SPORT, exercise_id: EX.foam_roll_it, day_of_week: 5, week_number: 1, order_index: 3, sets: 1, reps: "5min", rest_seconds: 0, rpe_target: null, intensity_pct: null, tempo: null, group_tag: null },
+  { program_id: PROGRAM_SPORT, exercise_id: EX.sled_push, day_of_week: 5, week_number: 1, order_index: 0, sets: 5, reps: "20m", duration_seconds: null, rest_seconds: 90, notes: "Low drive position", rpe_target: 8, intensity_pct: null, tempo: null, group_tag: null, technique: "straight_set" },
+  { program_id: PROGRAM_SPORT, exercise_id: EX.battle_ropes, day_of_week: 5, week_number: 1, order_index: 1, sets: 4, reps: null, duration_seconds: 30, rest_seconds: 60, notes: "Max effort waves", rpe_target: 8, intensity_pct: null, tempo: null, group_tag: "C1", technique: "circuit" },
+  { program_id: PROGRAM_SPORT, exercise_id: EX.farmers_carry, day_of_week: 5, week_number: 1, order_index: 2, sets: 4, reps: "30m", duration_seconds: null, rest_seconds: 90, notes: "Heavy as possible with good posture", rpe_target: 7, intensity_pct: null, tempo: null, group_tag: "C2", technique: "circuit" },
+  { program_id: PROGRAM_SPORT, exercise_id: EX.foam_roll_it, day_of_week: 5, week_number: 1, order_index: 3, sets: 1, reps: null, duration_seconds: 300, rest_seconds: 0, notes: "5min full body cool-down", rpe_target: null, intensity_pct: null, tempo: null, group_tag: null, technique: "straight_set" },
 ]
 
 // ─── Program Assignments ────────────────────────────────────────────────────
@@ -995,6 +995,118 @@ const clientProfiles = [
   },
 ]
 
+// ─── Exercise Relationships (Alternatives for client swapping) ──────────────
+
+const exerciseAlternatives = [
+  // Squat alternatives
+  { exercise_id: EX.back_squat, related_exercise_id: EX.front_squat, relationship_type: "alternative" },
+  { exercise_id: EX.back_squat, related_exercise_id: EX.goblet_squat, relationship_type: "alternative" },
+  { exercise_id: EX.back_squat, related_exercise_id: EX.leg_press, relationship_type: "alternative" },
+  { exercise_id: EX.back_squat, related_exercise_id: EX.bulgarian_split, relationship_type: "alternative" },
+  { exercise_id: EX.front_squat, related_exercise_id: EX.back_squat, relationship_type: "alternative" },
+  { exercise_id: EX.front_squat, related_exercise_id: EX.goblet_squat, relationship_type: "alternative" },
+  { exercise_id: EX.goblet_squat, related_exercise_id: EX.bw_squat, relationship_type: "alternative" },
+  { exercise_id: EX.goblet_squat, related_exercise_id: EX.leg_press, relationship_type: "alternative" },
+  { exercise_id: EX.leg_press, related_exercise_id: EX.back_squat, relationship_type: "alternative" },
+  { exercise_id: EX.leg_press, related_exercise_id: EX.goblet_squat, relationship_type: "alternative" },
+
+  // Hinge alternatives
+  { exercise_id: EX.deadlift, related_exercise_id: EX.sumo_deadlift, relationship_type: "alternative" },
+  { exercise_id: EX.deadlift, related_exercise_id: EX.rdl, relationship_type: "alternative" },
+  { exercise_id: EX.sumo_deadlift, related_exercise_id: EX.deadlift, relationship_type: "alternative" },
+  { exercise_id: EX.rdl, related_exercise_id: EX.db_rdl, relationship_type: "alternative" },
+  { exercise_id: EX.rdl, related_exercise_id: EX.deadlift, relationship_type: "alternative" },
+  { exercise_id: EX.db_rdl, related_exercise_id: EX.rdl, relationship_type: "alternative" },
+  { exercise_id: EX.db_rdl, related_exercise_id: EX.kb_swing, relationship_type: "alternative" },
+  { exercise_id: EX.kb_swing, related_exercise_id: EX.db_rdl, relationship_type: "alternative" },
+
+  // Push (chest) alternatives
+  { exercise_id: EX.bench_press, related_exercise_id: EX.db_bench_press, relationship_type: "alternative" },
+  { exercise_id: EX.bench_press, related_exercise_id: EX.incline_bench, relationship_type: "alternative" },
+  { exercise_id: EX.bench_press, related_exercise_id: EX.push_up, relationship_type: "alternative" },
+  { exercise_id: EX.db_bench_press, related_exercise_id: EX.bench_press, relationship_type: "alternative" },
+  { exercise_id: EX.db_bench_press, related_exercise_id: EX.push_up, relationship_type: "alternative" },
+  { exercise_id: EX.incline_bench, related_exercise_id: EX.bench_press, relationship_type: "alternative" },
+  { exercise_id: EX.incline_bench, related_exercise_id: EX.db_bench_press, relationship_type: "alternative" },
+  { exercise_id: EX.push_up, related_exercise_id: EX.bench_press, relationship_type: "alternative" },
+  { exercise_id: EX.push_up, related_exercise_id: EX.dips, relationship_type: "alternative" },
+  { exercise_id: EX.dips, related_exercise_id: EX.push_up, relationship_type: "alternative" },
+  { exercise_id: EX.dips, related_exercise_id: EX.cg_bench_press, relationship_type: "alternative" },
+
+  // Push (shoulder) alternatives
+  { exercise_id: EX.overhead_press, related_exercise_id: EX.db_ohp, relationship_type: "alternative" },
+  { exercise_id: EX.overhead_press, related_exercise_id: EX.pike_push_up, relationship_type: "alternative" },
+  { exercise_id: EX.db_ohp, related_exercise_id: EX.overhead_press, relationship_type: "alternative" },
+  { exercise_id: EX.db_ohp, related_exercise_id: EX.pike_push_up, relationship_type: "alternative" },
+  { exercise_id: EX.pike_push_up, related_exercise_id: EX.overhead_press, relationship_type: "alternative" },
+  { exercise_id: EX.db_lateral_raise, related_exercise_id: EX.cable_lat_raise, relationship_type: "alternative" },
+  { exercise_id: EX.cable_lat_raise, related_exercise_id: EX.db_lateral_raise, relationship_type: "alternative" },
+
+  // Pull (vertical) alternatives
+  { exercise_id: EX.pull_up, related_exercise_id: EX.lat_pulldown, relationship_type: "alternative" },
+  { exercise_id: EX.pull_up, related_exercise_id: EX.lat_pulldown_cg, relationship_type: "alternative" },
+  { exercise_id: EX.lat_pulldown, related_exercise_id: EX.pull_up, relationship_type: "alternative" },
+  { exercise_id: EX.lat_pulldown, related_exercise_id: EX.lat_pulldown_cg, relationship_type: "alternative" },
+  { exercise_id: EX.lat_pulldown_cg, related_exercise_id: EX.lat_pulldown, relationship_type: "alternative" },
+
+  // Pull (horizontal) alternatives
+  { exercise_id: EX.barbell_row, related_exercise_id: EX.db_row, relationship_type: "alternative" },
+  { exercise_id: EX.barbell_row, related_exercise_id: EX.cable_row, relationship_type: "alternative" },
+  { exercise_id: EX.barbell_row, related_exercise_id: EX.pendlay_row, relationship_type: "alternative" },
+  { exercise_id: EX.db_row, related_exercise_id: EX.barbell_row, relationship_type: "alternative" },
+  { exercise_id: EX.db_row, related_exercise_id: EX.cable_row, relationship_type: "alternative" },
+  { exercise_id: EX.cable_row, related_exercise_id: EX.barbell_row, relationship_type: "alternative" },
+  { exercise_id: EX.cable_row, related_exercise_id: EX.inverted_row, relationship_type: "alternative" },
+  { exercise_id: EX.pendlay_row, related_exercise_id: EX.barbell_row, relationship_type: "alternative" },
+  { exercise_id: EX.inverted_row, related_exercise_id: EX.cable_row, relationship_type: "alternative" },
+  { exercise_id: EX.inverted_row, related_exercise_id: EX.db_row, relationship_type: "alternative" },
+
+  // Lunge alternatives
+  { exercise_id: EX.bulgarian_split, related_exercise_id: EX.db_lunge, relationship_type: "alternative" },
+  { exercise_id: EX.bulgarian_split, related_exercise_id: EX.jumping_lunges, relationship_type: "alternative" },
+  { exercise_id: EX.db_lunge, related_exercise_id: EX.bulgarian_split, relationship_type: "alternative" },
+  { exercise_id: EX.db_lunge, related_exercise_id: EX.jumping_lunges, relationship_type: "alternative" },
+  { exercise_id: EX.jumping_lunges, related_exercise_id: EX.db_lunge, relationship_type: "alternative" },
+
+  // Glute alternatives
+  { exercise_id: EX.hip_thrust, related_exercise_id: EX.bb_hip_thrust, relationship_type: "alternative" },
+  { exercise_id: EX.hip_thrust, related_exercise_id: EX.glute_bridge, relationship_type: "alternative" },
+  { exercise_id: EX.bb_hip_thrust, related_exercise_id: EX.hip_thrust, relationship_type: "alternative" },
+  { exercise_id: EX.glute_bridge, related_exercise_id: EX.hip_thrust, relationship_type: "alternative" },
+
+  // Hamstring isolation alternatives
+  { exercise_id: EX.leg_curl, related_exercise_id: EX.seated_leg_curl, relationship_type: "alternative" },
+  { exercise_id: EX.seated_leg_curl, related_exercise_id: EX.leg_curl, relationship_type: "alternative" },
+
+  // Arm alternatives
+  { exercise_id: EX.db_curl, related_exercise_id: EX.barbell_curl, relationship_type: "alternative" },
+  { exercise_id: EX.barbell_curl, related_exercise_id: EX.db_curl, relationship_type: "alternative" },
+  { exercise_id: EX.tricep_pushdown, related_exercise_id: EX.cg_bench_press, relationship_type: "alternative" },
+  { exercise_id: EX.cg_bench_press, related_exercise_id: EX.tricep_pushdown, relationship_type: "alternative" },
+
+  // Chest isolation alternatives
+  { exercise_id: EX.pec_fly_machine, related_exercise_id: EX.cable_crossover, relationship_type: "alternative" },
+  { exercise_id: EX.cable_crossover, related_exercise_id: EX.pec_fly_machine, relationship_type: "alternative" },
+
+  // Metabolic alternatives
+  { exercise_id: EX.db_thruster, related_exercise_id: EX.kb_clean_press, relationship_type: "alternative" },
+  { exercise_id: EX.db_thruster, related_exercise_id: EX.man_maker, relationship_type: "alternative" },
+  { exercise_id: EX.kb_clean_press, related_exercise_id: EX.db_thruster, relationship_type: "alternative" },
+  { exercise_id: EX.devil_press, related_exercise_id: EX.burpees, relationship_type: "alternative" },
+  { exercise_id: EX.burpees, related_exercise_id: EX.devil_press, relationship_type: "alternative" },
+  { exercise_id: EX.man_maker, related_exercise_id: EX.db_thruster, relationship_type: "alternative" },
+
+  // Conditioning alternatives
+  { exercise_id: EX.battle_ropes, related_exercise_id: EX.mountain_climbers, relationship_type: "alternative" },
+  { exercise_id: EX.mountain_climbers, related_exercise_id: EX.battle_ropes, relationship_type: "alternative" },
+
+  // Recovery alternatives
+  { exercise_id: EX.yoga_flow, related_exercise_id: EX.cat_cow, relationship_type: "alternative" },
+  { exercise_id: EX.cat_cow, related_exercise_id: EX.yoga_flow, relationship_type: "alternative" },
+  { exercise_id: EX.worlds_greatest, related_exercise_id: EX.hip_flexor, relationship_type: "alternative" },
+  { exercise_id: EX.hip_flexor, related_exercise_id: EX.worlds_greatest, relationship_type: "alternative" },
+]
+
 // ─── Execute ────────────────────────────────────────────────────────────────
 
 async function seed() {
@@ -1005,6 +1117,7 @@ async function seed() {
   await supabase.from("achievements").delete().neq("id", "00000000-0000-0000-0000-000000000000")
   await supabase.from("exercise_progress").delete().neq("id", "00000000-0000-0000-0000-000000000000")
   await supabase.from("tracked_exercises").delete().neq("id", "00000000-0000-0000-0000-000000000000")
+  await supabase.from("exercise_relationships").delete().neq("id", "00000000-0000-0000-0000-000000000000")
   await supabase.from("program_assignments").delete().neq("id", "00000000-0000-0000-0000-000000000000")
   await supabase.from("program_exercises").delete().neq("id", "00000000-0000-0000-0000-000000000000")
   await supabase.from("programs").delete().neq("id", "00000000-0000-0000-0000-000000000000")
@@ -1057,6 +1170,12 @@ async function seed() {
   if (assignErr) throw new Error(`Assignments: ${assignErr.message}`)
   console.log(`  ✓ ${assignments.length} assignments\n`)
 
+  // 8. Exercise relationships (alternatives)
+  console.log("  Inserting exercise alternatives...")
+  const { error: relErr } = await supabase.from("exercise_relationships").insert(exerciseAlternatives)
+  if (relErr) throw new Error(`Exercise relationships: ${relErr.message}`)
+  console.log(`  ✓ ${exerciseAlternatives.length} alternative exercise links\n`)
+
   // Summary
   console.log("═══════════════════════════════════════════")
   console.log("  Seed complete! Test accounts:")
@@ -1073,6 +1192,7 @@ async function seed() {
   console.log("")
   console.log("  Clean slate — no exercise history (first week)")
   console.log("  All exercises have full AI metadata")
+  console.log(`  ${exerciseAlternatives.length} alternative exercise links for client swapping`)
   console.log("  All client profiles have questionnaire data")
 }
 

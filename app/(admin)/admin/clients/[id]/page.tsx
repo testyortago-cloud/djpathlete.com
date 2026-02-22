@@ -46,6 +46,7 @@ import {
   parseProfileSummary,
   hasQuestionnaireData,
 } from "@/lib/profile-utils"
+import { ClientDetailHeader } from "./ClientDetailHeader"
 import type {
   Program,
   ProgramAssignment,
@@ -681,6 +682,7 @@ export default async function ClientDetailPage({
               <h1 className="text-2xl font-semibold text-primary">
                 {user.first_name} {user.last_name}
               </h1>
+              <ClientDetailHeader client={user} />
               <span
                 className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${
                   STATUS_COLORS[user.status] ?? "bg-muted text-muted-foreground"

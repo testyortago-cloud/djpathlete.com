@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import {
@@ -14,6 +14,10 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { useFormTour } from "@/hooks/use-form-tour"
+import { FormTour } from "@/components/admin/FormTour"
+import { TourButton } from "@/components/admin/TourButton"
+import { ASSIGN_PROGRAM_TOUR_STEPS } from "@/lib/tour-steps"
 import type { User } from "@/types/database"
 
 interface AssignProgramDialogProps {
@@ -30,7 +34,9 @@ export function AssignProgramDialog({
   clients,
 }: AssignProgramDialogProps) {
   const router = useRouter()
+  const dialogRef = useRef<HTMLDivElement>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const tour = useFormTour({ steps: ASSIGN_PROGRAM_TOUR_STEPS, scrollContainerRef: dialogRef })
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -75,10 +81,13 @@ export function AssignProgramDialog({
   const today = new Date().toISOString().split("T")[0]
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+    <Dialog open={open} onOpenChange={(o) => { if (!o) tour.close(); onOpenChange(o) }}>
+      <DialogContent ref={dialogRef} className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Assign Program</DialogTitle>
+          <div className="flex items-center gap-2">
+            <DialogTitle>Assign Program</DialogTitle>
+            <TourButton onClick={tour.start} />
+          </div>
           <DialogDescription>
             Assign this program to a client with a start date.
           </DialogDescription>
@@ -143,6 +152,7 @@ export function AssignProgramDialog({
             </Button>
           </DialogFooter>
         </form>
+        <FormTour {...tour} />
       </DialogContent>
     </Dialog>
   )

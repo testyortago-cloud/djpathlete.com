@@ -1,9 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { Search, ArrowLeft } from "lucide-react"
+import { Search, ArrowLeft, Repeat2, Loader2 } from "lucide-react"
 import Image from "next/image"
 import {
   Dialog,
@@ -16,7 +16,12 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Badge } from "@/components/ui/badge"
 import { extractYouTubeId, getYouTubeThumbnailUrl } from "@/lib/youtube"
+import { useFormTour } from "@/hooks/use-form-tour"
+import { FormTour } from "@/components/admin/FormTour"
+import { TourButton } from "@/components/admin/TourButton"
+import { ADD_EXERCISE_TOUR_STEPS } from "@/lib/tour-steps"
 import type { Exercise, ExerciseCategory } from "@/types/database"
 import { getCategoryFields } from "@/lib/exercise-fields"
 
@@ -55,6 +60,58 @@ const CATEGORY_LABELS: Record<string, string> = {
   recovery: "Recovery",
 }
 
+interface AlternativeExercise {
+  id: string
+  exercises: { name: string }
+}
+
+function AlternativeExercisesReadonly({ exerciseId }: { exerciseId: string }) {
+  const [alternatives, setAlternatives] = useState<AlternativeExercise[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  const fetchAlternatives = useCallback(async () => {
+    try {
+      const response = await fetch(
+        `/api/admin/exercise-relationships?exerciseId=${exerciseId}`
+      )
+      if (!response.ok) throw new Error("Failed to fetch")
+      const data = await response.json()
+      setAlternatives(
+        data.filter((r: { relationship_type: string }) => r.relationship_type === "alternative")
+      )
+    } catch {
+      // Silently fail — informational only
+    } finally {
+      setIsLoading(false)
+    }
+  }, [exerciseId])
+
+  useEffect(() => {
+    fetchAlternatives()
+  }, [fetchAlternatives])
+
+  if (isLoading) return null
+  if (alternatives.length === 0) return null
+
+  return (
+    <div className="rounded-lg border border-border bg-surface/30 px-3 py-2.5 space-y-1.5">
+      <div className="flex items-center gap-1.5">
+        <Repeat2 className="size-3.5 text-primary" />
+        <span className="text-xs font-medium text-muted-foreground">
+          Alternatives ({alternatives.length})
+        </span>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {alternatives.map((alt) => (
+          <Badge key={alt.id} variant="secondary" className="text-xs">
+            {alt.exercises?.name ?? "Unknown"}
+          </Badge>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export function AddExerciseDialog({
   open,
   onOpenChange,
@@ -70,9 +127,12 @@ export function AddExerciseDialog({
   const [search, setSearch] = useState("")
   const [categoryFilter, setCategoryFilter] = useState("all")
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const tour = useFormTour({ steps: ADD_EXERCISE_TOUR_STEPS, scrollContainerRef: dialogRef })
 
   function resetAndClose(openState: boolean) {
     if (!openState) {
+      tour.close()
       setStep(1)
       setSelectedExercise(null)
       setSearch("")
@@ -163,11 +223,14 @@ export function AddExerciseDialog({
 
   return (
     <Dialog open={open} onOpenChange={resetAndClose}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent ref={dialogRef} className="sm:max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
         <DialogHeader>
-          <DialogTitle>
-            {step === 1 ? "Select Exercise" : "Configure Exercise"}
-          </DialogTitle>
+          <div className="flex items-center gap-2">
+            <DialogTitle>
+              {step === 1 ? "Select Exercise" : "Configure Exercise"}
+            </DialogTitle>
+            {step === 2 && <TourButton onClick={tour.start} />}
+          </div>
           <DialogDescription>
             {step === 1
               ? "Search and select an exercise from the library."
@@ -176,7 +239,7 @@ export function AddExerciseDialog({
         </DialogHeader>
 
         {step === 1 ? (
-          <div className="space-y-3">
+          <div className="space-y-3 overflow-y-auto min-h-0">
             {/* Search & filter */}
             <div className="flex gap-2">
               <div className="relative flex-1">
@@ -241,7 +304,7 @@ export function AddExerciseDialog({
             </div>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4 overflow-y-auto min-h-0">
             {(() => {
               const catFields = getCategoryFields(selectedExercise!.category as ExerciseCategory[])
               return (
@@ -256,6 +319,8 @@ export function AddExerciseDialog({
                     <ArrowLeft className="size-3.5" />
                     Back to selection
                   </Button>
+
+                  <AlternativeExercisesReadonly exerciseId={selectedExercise!.id} />
 
                   <p className="text-xs text-muted-foreground">Fields marked with * are recommended.</p>
 
@@ -315,7 +380,7 @@ export function AddExerciseDialog({
                       </div>
                     )}
                     <div className="space-y-2">
-                      <Label htmlFor="group_tag">Superset Group</Label>
+                      <Label htmlFor="group_tag">Group Tag (Supersets)</Label>
                       <Input id="group_tag" name="group_tag" placeholder="e.g. A1" />
                       <p className="text-xs text-muted-foreground">Same letter = done together (A1 + A2 = superset, B1 + B2 + B3 = tri-set). Leave blank for straight sets.</p>
                     </div>
@@ -350,6 +415,7 @@ export function AddExerciseDialog({
             })()}
           </form>
         )}
+        <FormTour {...tour} />
       </DialogContent>
     </Dialog>
   )

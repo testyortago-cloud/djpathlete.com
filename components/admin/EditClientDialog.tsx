@@ -17,18 +17,23 @@ import { Label } from "@/components/ui/label"
 import { useFormTour } from "@/hooks/use-form-tour"
 import { FormTour } from "@/components/admin/FormTour"
 import { TourButton } from "@/components/admin/TourButton"
-import { ADD_CLIENT_TOUR_STEPS } from "@/lib/tour-steps"
+import { EDIT_CLIENT_TOUR_STEPS } from "@/lib/tour-steps"
+import type { User } from "@/types/database"
 
-interface AddClientDialogProps {
+interface EditClientDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  client: User
 }
 
-export function AddClientDialog({ open, onOpenChange }: AddClientDialogProps) {
+const selectClass =
+  "flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+
+export function EditClientDialog({ open, onOpenChange, client }: EditClientDialogProps) {
   const router = useRouter()
   const dialogRef = useRef<HTMLDivElement>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const tour = useFormTour({ steps: ADD_CLIENT_TOUR_STEPS, scrollContainerRef: dialogRef })
+  const tour = useFormTour({ steps: EDIT_CLIENT_TOUR_STEPS, scrollContainerRef: dialogRef })
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -39,26 +44,27 @@ export function AddClientDialog({ open, onOpenChange }: AddClientDialogProps) {
       firstName: formData.get("firstName"),
       lastName: formData.get("lastName"),
       email: formData.get("email"),
-      phone: formData.get("phone") || undefined,
+      phone: formData.get("phone") || null,
+      status: formData.get("status"),
     }
 
     try {
-      const response = await fetch("/api/admin/clients", {
-        method: "POST",
+      const response = await fetch(`/api/admin/clients/${client.id}`, {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       })
 
       if (!response.ok) {
         const data = await response.json()
-        throw new Error(data.error || "Failed to add client")
+        throw new Error(data.error || "Failed to update client")
       }
 
-      toast.success("Client added — welcome email sent")
+      toast.success("Client updated successfully")
       onOpenChange(false)
       router.refresh()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to add client")
+      toast.error(err instanceof Error ? err.message : "Failed to update client")
     } finally {
       setIsSubmitting(false)
     }
@@ -69,62 +75,77 @@ export function AddClientDialog({ open, onOpenChange }: AddClientDialogProps) {
       <DialogContent ref={dialogRef} className="sm:max-w-md">
         <DialogHeader>
           <div className="flex items-center gap-2">
-            <DialogTitle>Add Client</DialogTitle>
+            <DialogTitle>Edit Client</DialogTitle>
             <TourButton onClick={tour.start} />
           </div>
           <DialogDescription>
-            Create a new client account. They&apos;ll receive an email with a
-            temporary password.
+            Update {client.first_name}&apos;s account details.
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="firstName">First Name *</Label>
+              <Label htmlFor="edit-firstName">First Name *</Label>
               <Input
-                id="firstName"
+                id="edit-firstName"
                 name="firstName"
                 required
                 maxLength={50}
-                placeholder="John"
+                defaultValue={client.first_name}
                 disabled={isSubmitting}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="lastName">Last Name *</Label>
+              <Label htmlFor="edit-lastName">Last Name *</Label>
               <Input
-                id="lastName"
+                id="edit-lastName"
                 name="lastName"
                 required
                 maxLength={50}
-                placeholder="Doe"
+                defaultValue={client.last_name}
                 disabled={isSubmitting}
               />
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="email">Email *</Label>
+            <Label htmlFor="edit-email">Email *</Label>
             <Input
-              id="email"
+              id="edit-email"
               name="email"
               type="email"
               required
-              placeholder="john@example.com"
+              defaultValue={client.email}
               disabled={isSubmitting}
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="phone">Phone</Label>
+            <Label htmlFor="edit-phone">Phone</Label>
             <Input
-              id="phone"
+              id="edit-phone"
               name="phone"
               type="tel"
+              defaultValue={client.phone ?? ""}
               placeholder="+1 (555) 000-0000"
               disabled={isSubmitting}
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="edit-status">Status</Label>
+            <select
+              id="edit-status"
+              name="status"
+              defaultValue={client.status}
+              disabled={isSubmitting}
+              className={selectClass}
+            >
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+              <option value="suspended">Suspended</option>
+            </select>
           </div>
 
           <DialogFooter>
@@ -137,7 +158,7 @@ export function AddClientDialog({ open, onOpenChange }: AddClientDialogProps) {
               Cancel
             </Button>
             <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Adding..." : "Add Client"}
+              {isSubmitting ? "Saving..." : "Save Changes"}
             </Button>
           </DialogFooter>
         </form>

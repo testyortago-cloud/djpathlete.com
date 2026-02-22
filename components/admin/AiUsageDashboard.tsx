@@ -138,7 +138,7 @@ export function AiUsageDashboard() {
       {/* Intro + Refresh */}
       <div className="flex items-start justify-between gap-4 mb-4">
         <p className="text-sm text-muted-foreground max-w-xl">
-          Tracks AI-powered program generation, coach suggestions, and exercise recommendations. Costs are estimated from Claude API token pricing.
+          Tracks AI-powered features: program generation, Coach DJP suggestions, and exercise swap recommendations. Each AI call uses tokens (like credits) &mdash; costs are estimated from Claude API pricing to help you monitor spending.
         </p>
         <Button variant="outline" size="sm" onClick={fetchData} disabled={loading} className="shrink-0">
           <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
@@ -153,7 +153,7 @@ export function AiUsageDashboard() {
             <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10">
               <Brain className="size-4 text-primary" />
             </div>
-            <p className="text-sm text-muted-foreground">Total Generations</p>
+            <p className="text-sm text-muted-foreground" title="Total number of AI requests across all features">Total Generations</p>
           </div>
           <p className="text-2xl font-semibold text-primary">
             {stats.total_generations}
@@ -173,7 +173,7 @@ export function AiUsageDashboard() {
             <div className="flex size-9 items-center justify-center rounded-lg bg-success/10">
               <CheckCircle className="size-4 text-success" />
             </div>
-            <p className="text-sm text-muted-foreground">Success Rate</p>
+            <p className="text-sm text-muted-foreground" title="Percentage of AI requests that completed without errors">Success Rate</p>
           </div>
           <p className="text-2xl font-semibold text-primary">{successRate}%</p>
           <p className="text-xs text-muted-foreground mt-1">
@@ -186,7 +186,7 @@ export function AiUsageDashboard() {
             <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10">
               <Coins className="size-4 text-primary" />
             </div>
-            <p className="text-sm text-muted-foreground">Avg Tokens</p>
+            <p className="text-sm text-muted-foreground" title="Average tokens (input + output text units) per AI request">Avg Tokens</p>
           </div>
           <p className="text-2xl font-semibold text-primary">
             {formatTokens(stats.avg_tokens_per_generation)}
@@ -201,7 +201,7 @@ export function AiUsageDashboard() {
             <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10">
               <Clock className="size-4 text-primary" />
             </div>
-            <p className="text-sm text-muted-foreground">Avg Duration</p>
+            <p className="text-sm text-muted-foreground" title="Average time for each AI request to complete">Avg Duration</p>
           </div>
           <p className="text-2xl font-semibold text-primary">
             {formatDuration(stats.avg_duration_ms)}
@@ -216,7 +216,7 @@ export function AiUsageDashboard() {
             <div className="flex size-9 items-center justify-center rounded-lg bg-accent/20">
               <DollarSign className="size-4 text-accent-foreground" />
             </div>
-            <p className="text-sm text-muted-foreground">Est. Cost</p>
+            <p className="text-sm text-muted-foreground" title="Estimated total cost based on Claude API token pricing">Est. Cost</p>
           </div>
           <p className="text-2xl font-semibold text-primary">
             {estimateCost(stats.total_tokens)}

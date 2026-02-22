@@ -5,8 +5,8 @@ import { getRelationships, createRelationship } from "@/lib/db/exercise-relation
 import type { ExerciseRelationshipType } from "@/types/database"
 
 const createRelationshipSchema = z.object({
-  exercise_id: z.string().uuid("Invalid exercise ID"),
-  related_exercise_id: z.string().uuid("Invalid related exercise ID"),
+  exercise_id: z.string().min(1, "Exercise ID is required"),
+  related_exercise_id: z.string().min(1, "Related exercise ID is required"),
   relationship_type: z.enum(["progression", "regression", "alternative", "variation"] as const),
   notes: z
     .string()
@@ -82,7 +82,14 @@ export async function POST(request: Request) {
     })
 
     return NextResponse.json(relationship, { status: 201 })
-  } catch (error) {
+  } catch (error: unknown) {
+    const pgError = error as { code?: string }
+    if (pgError?.code === "23505") {
+      return NextResponse.json(
+        { error: "This alternative already exists" },
+        { status: 409 }
+      )
+    }
     console.error("Exercise relationships POST error:", error)
     return NextResponse.json(
       { error: "Failed to create relationship" },

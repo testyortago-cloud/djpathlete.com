@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { ChevronDown } from "lucide-react"
@@ -29,6 +29,10 @@ import {
 } from "@/lib/validators/exercise"
 import { extractYouTubeId, getYouTubeEmbedUrl } from "@/lib/youtube"
 import { ExerciseRelationships } from "@/components/admin/ExerciseRelationships"
+import { useFormTour } from "@/hooks/use-form-tour"
+import { FormTour } from "@/components/admin/FormTour"
+import { TourButton } from "@/components/admin/TourButton"
+import { getExerciseTourSteps } from "@/lib/tour-steps"
 import type { Exercise } from "@/types/database"
 
 interface ExerciseFormDialogProps {
@@ -135,11 +139,18 @@ const selectClass =
 export function ExerciseFormDialog({
   open,
   onOpenChange,
-  exercise,
+  exercise: initialExercise,
 }: ExerciseFormDialogProps) {
   const router = useRouter()
+  const [exercise, setExercise] = useState(initialExercise)
   const isEditing = !!exercise
+  const dialogRef = useRef<HTMLDivElement>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Reset when the dialog reopens with a different exercise
+  useEffect(() => {
+    setExercise(initialExercise)
+  }, [initialExercise, open])
   const [errors, setErrors] = useState<Partial<Record<keyof ExerciseFormData, string[]>>>({})
   const [videoUrl, setVideoUrl] = useState(exercise?.video_url ?? "")
   const [aiOpen, setAiOpen] = useState(false)
@@ -149,6 +160,11 @@ export function ExerciseFormDialog({
   const [primaryMuscles, setPrimaryMuscles] = useState<string[]>(exercise?.primary_muscles ?? [])
   const [secondaryMuscles, setSecondaryMuscles] = useState<string[]>(exercise?.secondary_muscles ?? [])
   const [equipmentRequired, setEquipmentRequired] = useState<string[]>(exercise?.equipment_required ?? [])
+
+  const tour = useFormTour({
+    steps: getExerciseTourSteps(() => setAiOpen(true)),
+    scrollContainerRef: dialogRef,
+  })
 
   const youtubeId = videoUrl ? extractYouTubeId(videoUrl) : null
   const [iframeLoaded, setIframeLoaded] = useState(false)
@@ -209,8 +225,15 @@ export function ExerciseFormDialog({
         throw new Error(errorData.error || "Request failed")
       }
 
-      toast.success(isEditing ? "Exercise updated successfully" : "Exercise created successfully")
-      onOpenChange(false)
+      const responseData = await response.json()
+
+      if (isEditing) {
+        toast.success("Exercise updated successfully")
+        onOpenChange(false)
+      } else {
+        toast.success("Exercise created — add alternative exercises below, or close when done")
+        setExercise(responseData)
+      }
       router.refresh()
     } catch {
       toast.error(isEditing ? "Failed to update exercise" : "Failed to create exercise")
@@ -220,10 +243,13 @@ export function ExerciseFormDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+    <Dialog open={open} onOpenChange={(o) => { if (!o) tour.close(); onOpenChange(o) }}>
+      <DialogContent ref={dialogRef} className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{isEditing ? "Edit Exercise" : "Add Exercise"}</DialogTitle>
+          <div className="flex items-center gap-2">
+            <DialogTitle>{isEditing ? "Edit Exercise" : "Add Exercise"}</DialogTitle>
+            <TourButton onClick={tour.start} />
+          </div>
           <DialogDescription>
             {isEditing
               ? "Update the exercise details below."
@@ -251,7 +277,7 @@ export function ExerciseFormDialog({
           {/* Category (multi-select) */}
           <div className="space-y-2">
             <Label>Category *</Label>
-            <div className="flex flex-wrap gap-1.5">
+            <div id="category" className="flex flex-wrap gap-1.5">
               {EXERCISE_CATEGORIES.map((cat) => (
                 <button
                   key={cat}
@@ -305,7 +331,7 @@ export function ExerciseFormDialog({
                 placeholder="e.g. Quadriceps, Glutes"
                 disabled={isSubmitting}
               />
-              <p className="text-xs text-muted-foreground">Display label shown on exercise cards (e.g. &ldquo;Quadriceps&rdquo;)</p>
+              <p className="text-xs text-muted-foreground">Quick label for cards and lists (e.g. &ldquo;Chest &amp; Triceps&rdquo;). For AI matching, use Primary Muscles below.</p>
               {errors.muscle_group && (
                 <p className="text-xs text-destructive">{errors.muscle_group[0]}</p>
               )}
@@ -404,11 +430,12 @@ export function ExerciseFormDialog({
               onClick={() => setAiOpen(!aiOpen)}
               className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium text-foreground hover:bg-surface/50 transition-colors rounded-lg"
             >
-              AI Metadata
+              AI Metadata (for smart program generation)
               <ChevronDown className={`size-4 transition-transform ${aiOpen ? "rotate-180" : ""}`} />
             </button>
             {aiOpen && (
               <div className="px-4 pb-4 space-y-4 border-t border-border pt-4">
+                <p className="text-xs text-muted-foreground">These fields help the AI generate better programs and find suitable alternatives. They don&apos;t appear on exercise cards.</p>
                 {/* Movement Pattern & Force Type */}
                 <div className="grid sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
@@ -464,7 +491,7 @@ export function ExerciseFormDialog({
                 <div className="space-y-2">
                   <Label>Primary Muscles</Label>
                   <p className="text-xs text-muted-foreground">Used by AI for exercise matching and program balancing</p>
-                  <div className="flex flex-wrap gap-1.5">
+                  <div id="primary_muscles" className="flex flex-wrap gap-1.5">
                     {MUSCLE_OPTIONS.map((m) => (
                       <button
                         key={m}
@@ -487,7 +514,7 @@ export function ExerciseFormDialog({
                 <div className="space-y-2">
                   <Label>Secondary Muscles</Label>
                   <p className="text-xs text-muted-foreground">Muscles that assist in the movement</p>
-                  <div className="flex flex-wrap gap-1.5">
+                  <div id="secondary_muscles" className="flex flex-wrap gap-1.5">
                     {MUSCLE_OPTIONS.map((m) => (
                       <button
                         key={m}
@@ -509,7 +536,7 @@ export function ExerciseFormDialog({
                 {/* Equipment Required */}
                 <div className="space-y-2">
                   <Label>Equipment Required</Label>
-                  <div className="flex flex-wrap gap-1.5">
+                  <div id="equipment_required" className="flex flex-wrap gap-1.5">
                     {EQUIPMENT_OPTIONS.map((eq) => (
                       <button
                         key={eq}
@@ -529,7 +556,7 @@ export function ExerciseFormDialog({
                 </div>
 
                 {/* Bodyweight & Compound checkboxes */}
-                <div className="flex gap-6">
+                <div id="bodyweight_compound" className="flex gap-6">
                   <label className="flex items-center gap-2 text-sm">
                     <input
                       type="checkbox"
@@ -558,12 +585,14 @@ export function ExerciseFormDialog({
             )}
           </div>
 
-          {/* Exercise Relationships (only when editing an existing exercise) */}
+          {/* Alternative Exercises */}
           {isEditing && exercise && (
-            <ExerciseRelationships
-              exerciseId={exercise.id}
-              exerciseName={exercise.name}
-            />
+            <div id="exercise-alternatives">
+              <ExerciseRelationships
+                exerciseId={exercise.id}
+                exerciseName={exercise.name}
+              />
+            </div>
           )}
 
           <DialogFooter>
@@ -582,6 +611,7 @@ export function ExerciseFormDialog({
             </Button>
           </DialogFooter>
         </form>
+        <FormTour {...tour} />
       </DialogContent>
     </Dialog>
   )

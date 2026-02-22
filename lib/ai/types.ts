@@ -46,6 +46,7 @@ export interface ExerciseSlot {
   rpe_target: number | null
   tempo: string | null
   group_tag: string | null
+  technique: "straight_set" | "superset" | "dropset" | "giant_set" | "circuit" | "rest_pause" | "amrap"
 }
 
 export interface ProgramDay {

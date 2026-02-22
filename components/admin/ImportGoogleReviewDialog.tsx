@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import {
@@ -17,6 +17,10 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Star } from "lucide-react"
+import { useFormTour } from "@/hooks/use-form-tour"
+import { FormTour } from "@/components/admin/FormTour"
+import { TourButton } from "@/components/admin/TourButton"
+import { IMPORT_REVIEW_TOUR_STEPS } from "@/lib/tour-steps"
 
 interface ImportGoogleReviewDialogProps {
   open: boolean
@@ -28,7 +32,9 @@ export function ImportGoogleReviewDialog({
   onOpenChange,
 }: ImportGoogleReviewDialogProps) {
   const router = useRouter()
+  const dialogRef = useRef<HTMLDivElement>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const tour = useFormTour({ steps: IMPORT_REVIEW_TOUR_STEPS, scrollContainerRef: dialogRef })
   const [rating, setRating] = useState(5)
   const [bulkJson, setBulkJson] = useState("")
 
@@ -111,10 +117,13 @@ export function ImportGoogleReviewDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+    <Dialog open={open} onOpenChange={(o) => { if (!o) tour.close(); onOpenChange(o) }}>
+      <DialogContent ref={dialogRef} className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Import Google Reviews</DialogTitle>
+          <div className="flex items-center gap-2">
+            <DialogTitle>Import Google Reviews</DialogTitle>
+            <TourButton onClick={tour.start} />
+          </div>
           <DialogDescription>
             Add Google Business Profile reviews manually. Use the single form or
             paste a JSON array for bulk import.
@@ -147,7 +156,7 @@ export function ImportGoogleReviewDialog({
 
               <div className="space-y-2">
                 <Label>Rating *</Label>
-                <div className="flex gap-1">
+                <div id="review-rating" className="flex gap-1">
                   {Array.from({ length: 5 }, (_, i) => (
                     <button
                       key={i}
@@ -255,6 +264,7 @@ export function ImportGoogleReviewDialog({
             </form>
           </TabsContent>
         </Tabs>
+        <FormTour {...tour} />
       </DialogContent>
     </Dialog>
   )
