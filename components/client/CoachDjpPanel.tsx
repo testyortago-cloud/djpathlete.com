@@ -380,28 +380,19 @@ export function CoachDjpPanel({
             if (event.type === "delta") {
               accumulated += event.text
               setStreamingText(accumulated)
+            } else if (event.type === "analysis") {
+              // Structured analysis from generateObject — guaranteed valid
+              const data = event.data
+              setMetadata({
+                plateau_detected: !!data.plateau_detected,
+                suggested_weight_kg: data.suggested_weight_kg ?? null,
+                deload_recommended: !!data.deload_recommended,
+                key_observations: Array.isArray(data.key_observations)
+                  ? data.key_observations
+                  : [],
+              })
             } else if (event.type === "done") {
-              const separatorIndex = accumulated.indexOf("\n---\n")
-              if (separatorIndex !== -1) {
-                const recText = accumulated.slice(0, separatorIndex).trim()
-                const jsonText = accumulated.slice(separatorIndex + 5).trim()
-                setRecommendation(recText)
-                try {
-                  const parsed = JSON.parse(jsonText)
-                  setMetadata({
-                    plateau_detected: !!parsed.plateau_detected,
-                    suggested_weight_kg: parsed.suggested_weight_kg ?? null,
-                    deload_recommended: !!parsed.deload_recommended,
-                    key_observations: Array.isArray(parsed.key_observations)
-                      ? parsed.key_observations
-                      : [],
-                  })
-                } catch {
-                  setMetadata(null)
-                }
-              } else {
-                setRecommendation(accumulated.trim())
-              }
+              setRecommendation(accumulated.trim())
               setStreaming(false)
             } else if (event.type === "error") {
               throw new Error(event.message || "Stream error")
@@ -422,25 +413,7 @@ export function CoachDjpPanel({
 
       // If stream ended without a done event
       if (!recommendation && accumulated.trim()) {
-        const separatorIndex = accumulated.indexOf("\n---\n")
-        if (separatorIndex !== -1) {
-          setRecommendation(accumulated.slice(0, separatorIndex).trim())
-          try {
-            const parsed = JSON.parse(accumulated.slice(separatorIndex + 5).trim())
-            setMetadata({
-              plateau_detected: !!parsed.plateau_detected,
-              suggested_weight_kg: parsed.suggested_weight_kg ?? null,
-              deload_recommended: !!parsed.deload_recommended,
-              key_observations: Array.isArray(parsed.key_observations)
-                ? parsed.key_observations
-                : [],
-            })
-          } catch {
-            setMetadata(null)
-          }
-        } else {
-          setRecommendation(accumulated.trim())
-        }
+        setRecommendation(accumulated.trim())
       }
 
       setStreaming(false)
@@ -476,12 +449,7 @@ export function CoachDjpPanel({
   const isLoading = streaming && !streamingText
   const isStreaming = streaming && !!streamingText
 
-  // Strip metadata JSON from displayed streaming text
-  const displayText = isComplete
-    ? recommendation
-    : streamingText.includes("\n---\n")
-      ? streamingText.slice(0, streamingText.indexOf("\n---\n")).trim()
-      : streamingText
+  const displayText = isComplete ? recommendation : streamingText
 
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>

@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth"
 import { getProgress } from "@/lib/db/progress"
 import { getExerciseById } from "@/lib/db/exercises"
 import { getProfileByUserId } from "@/lib/db/client-profiles"
-import { streamChat } from "@/lib/ai/anthropic"
+import { streamChat, callAgent, MODEL_HAIKU } from "@/lib/ai/anthropic"
 
 export const maxDuration = 30
 
@@ -18,7 +18,9 @@ const requestSchema = z.object({
   })).optional(),
 })
 
-const SYSTEM_PROMPT = `You are an expert strength & conditioning coach analyzing a client's exercise history.
+// ─── Streaming prompt: coaching advice only (no JSON) ────────────────────────
+
+const COACHING_PROMPT = `You are an expert strength & conditioning coach analyzing a client's exercise history.
 You will receive the client's profile, exercise details, and their recent training log for a specific exercise.
 When set-level data is available (set_details array), analyze per-set patterns including:
 - RPE drift across sets (e.g., RPE creeping up from 7 to 9 suggests the weight is near the client's limit)
@@ -32,39 +34,42 @@ When a "current_session" array is provided, the client is mid-workout RIGHT NOW.
 - Flag if RPE is climbing too fast or reps are dropping off within this session
 - Be concise — they're between sets and need quick guidance
 
-Analyze the data and respond in exactly this format:
-
-1. First, write your personalized coaching recommendation (2-4 sentences). Be encouraging but honest. Focus on actionable advice.
-
-2. Then write a line containing only: ---
-
-3. Then write a JSON object with exactly these fields:
-- plateau_detected: boolean — true if the client has been stuck at the same weight/reps for 3+ sessions
-- suggested_weight_kg: number or null — a specific weight recommendation for their next session (null for bodyweight exercises)
-- deload_recommended: boolean — true if performance is declining or RPE has been consistently high (9-10)
-- key_observations: string[] — 2-4 brief bullet points about their training patterns
+Write a personalized coaching recommendation (2-4 sentences). Be encouraging but honest. Focus on actionable advice.
 
 If the client might benefit from an exercise substitution (e.g., plateau for 3+ sessions, or the exercise seems mismatched for their experience level), suggest 1-2 specific alternative exercises by name that target the same muscle group with different equipment or movement variation. Keep substitution suggestions brief and natural within your coaching text.
 
-Example format:
-Your bench press has been progressing well. Consider adding 2.5kg next session since your RPE has been manageable at 7-8. Focus on maintaining your current rep range before pushing heavier.
----
-{"plateau_detected":false,"suggested_weight_kg":82.5,"deload_recommended":false,"key_observations":["Consistent 3x/week frequency","RPE trending 7-8 range","Steady 2.5kg increases monthly"]}`
+IMPORTANT: Write ONLY the coaching text. No JSON, no metadata, no separators, no bullet lists of observations. Just the coaching recommendation as natural sentences.`
+
+// ─── Structured analysis schema ──────────────────────────────────────────────
+
+const coachAnalysisSchema = z.object({
+  plateau_detected: z.boolean(),
+  suggested_weight_kg: z.number().nullable(),
+  deload_recommended: z.boolean(),
+  key_observations: z.array(z.string()).min(2).max(4),
+})
+
+const ANALYSIS_PROMPT = `You are a data analyst for a strength & conditioning coach. Given a client's exercise history and profile, output a structured assessment.
+
+Rules:
+- plateau_detected: true ONLY if the client has been stuck at the same weight/reps for 3+ consecutive sessions
+- suggested_weight_kg: a specific weight for their next session (null for bodyweight exercises). Base this on their recent trends, RPE, and progressive overload principles.
+- deload_recommended: true ONLY if performance is clearly declining across sessions OR RPE has been consistently 9-10
+- key_observations: 2-4 brief bullet points about their training patterns (e.g., "Consistent 3x/week frequency", "RPE trending upward from 7 to 9")`
+
+// ─── Route handler ───────────────────────────────────────────────────────────
 
 export async function POST(request: Request) {
   try {
     const session = await auth()
-    console.log("[Coach DJP] Session:", session?.user?.id ? "authenticated" : "NO SESSION")
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     const body = await request.json()
-    console.log("[Coach DJP] Request body:", JSON.stringify(body))
     const parsed = requestSchema.safeParse(body)
 
     if (!parsed.success) {
-      console.error("[Coach DJP] Validation failed:", JSON.stringify(parsed.error.flatten()))
       return NextResponse.json(
         { error: "Invalid request", details: parsed.error.flatten() },
         { status: 400 }
@@ -73,7 +78,6 @@ export async function POST(request: Request) {
 
     const { exercise_id, current_session } = parsed.data
     const userId = session.user.id
-    console.log("[Coach DJP] Fetching data for exercise:", exercise_id, "user:", userId)
 
     // Fetch data in parallel
     const [history, exercise, profile] = await Promise.all([
@@ -82,10 +86,7 @@ export async function POST(request: Request) {
       getProfileByUserId(userId),
     ])
 
-    console.log("[Coach DJP] Data fetched — history:", history?.length ?? 0, "exercise:", exercise?.name, "profile:", !!profile)
-
     if ((!history || history.length === 0) && !current_session) {
-      console.log("[Coach DJP] No history and no current session, returning 400")
       return NextResponse.json(
         { error: "No training history found for this exercise. Log at least one session first." },
         { status: 400 }
@@ -126,11 +127,11 @@ export async function POST(request: Request) {
       ...(current_session ? { current_session } : {}),
     })
 
-    // Stream response via SSE (same pattern as admin AI chat)
-    const result = streamChat({
-      system: SYSTEM_PROMPT,
+    // 1) Stream coaching text
+    const streamResult = streamChat({
+      system: COACHING_PROMPT,
       messages: [{ role: "user", content: userMessage }],
-      maxTokens: 1024,
+      maxTokens: 512,
     })
 
     const encoder = new TextEncoder()
@@ -138,9 +139,33 @@ export async function POST(request: Request) {
     const readable = new ReadableStream({
       async start(controller) {
         try {
-          for await (const text of result.textStream) {
+          // Stream coaching text deltas
+          for await (const text of streamResult.textStream) {
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify({ type: "delta", text })}\n\n`)
+            )
+          }
+
+          // 2) After stream completes, get structured analysis via generateObject
+          //    Uses Haiku for speed + cost, with p-retry built in
+          try {
+            const analysisResult = await callAgent(
+              ANALYSIS_PROMPT,
+              userMessage,
+              coachAnalysisSchema,
+              { model: MODEL_HAIKU, maxTokens: 512, cacheSystemPrompt: true }
+            )
+
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({ type: "analysis", data: analysisResult.content })}\n\n`
+              )
+            )
+          } catch (analysisErr) {
+            // Analysis failure is non-fatal — coaching text already delivered
+            console.warn(
+              "[Coach DJP] Analysis generation failed:",
+              analysisErr instanceof Error ? analysisErr.message : analysisErr
             )
           }
 
