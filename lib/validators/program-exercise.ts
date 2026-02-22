@@ -1,7 +1,10 @@
 import { z } from "zod"
 
 export const programExerciseSchema = z.object({
-  exercise_id: z.string().uuid(),
+  exercise_id: z.string().regex(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    "Invalid exercise ID"
+  ),
   day_of_week: z.coerce.number().int().min(1).max(7),
   week_number: z.coerce.number().int().min(1),
   order_index: z.coerce.number().int().min(0),
