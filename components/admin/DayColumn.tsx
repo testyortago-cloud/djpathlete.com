@@ -15,6 +15,7 @@ interface DayColumnProps {
   onRemoveExercise: (pe: ProgramExercise & { exercises: Exercise }) => void
   onMoveUp: (pe: ProgramExercise & { exercises: Exercise }) => void
   onMoveDown: (pe: ProgramExercise & { exercises: Exercise }) => void
+  onDuplicateExercise?: (pe: ProgramExercise & { exercises: Exercise }) => void
 }
 
 export function DayColumn({
@@ -25,6 +26,7 @@ export function DayColumn({
   onRemoveExercise,
   onMoveUp,
   onMoveDown,
+  onDuplicateExercise,
 }: DayColumnProps) {
   const dayName = DAY_NAMES[dayOfWeek - 1]
 
@@ -50,6 +52,7 @@ export function DayColumn({
               onMoveDown={() => onMoveDown(pe)}
               onEdit={() => onEditExercise(pe)}
               onRemove={() => onRemoveExercise(pe)}
+              onDuplicate={onDuplicateExercise ? () => onDuplicateExercise(pe) : undefined}
             />
           ))
         )}

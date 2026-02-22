@@ -1,7 +1,7 @@
 "use client"
 
 import Image from "next/image"
-import { ChevronUp, ChevronDown, Pencil, Trash2 } from "lucide-react"
+import { ChevronUp, ChevronDown, Pencil, Trash2, Copy } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { extractYouTubeId, getYouTubeThumbnailUrl } from "@/lib/youtube"
 import type { Exercise, ProgramExercise } from "@/types/database"
@@ -14,6 +14,7 @@ interface ExerciseCardProps {
   onMoveDown: () => void
   onEdit: () => void
   onRemove: () => void
+  onDuplicate?: () => void
 }
 
 const CATEGORY_BORDER_COLORS: Record<string, string> = {
@@ -33,9 +34,11 @@ export function ExerciseCard({
   onMoveDown,
   onEdit,
   onRemove,
+  onDuplicate,
 }: ExerciseCardProps) {
   const exercise = programExercise.exercises
-  const borderColor = CATEGORY_BORDER_COLORS[exercise.category] ?? "border-l-muted-foreground"
+  const categories = Array.isArray(exercise.category) ? exercise.category : [exercise.category]
+  const borderColor = CATEGORY_BORDER_COLORS[categories[0]] ?? "border-l-muted-foreground"
 
   const youtubeId = exercise.video_url ? extractYouTubeId(exercise.video_url) : null
   const thumbnailUrl = youtubeId ? getYouTubeThumbnailUrl(youtubeId) : null
@@ -65,8 +68,13 @@ export function ExerciseCard({
           </div>
         )}
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
             <p className="text-sm font-medium text-foreground truncate">{exercise.name}</p>
+            {categories.map((cat) => (
+              <span key={cat} className="shrink-0 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground capitalize">
+                {cat.replace("_", " ")}
+              </span>
+            ))}
             {programExercise.group_tag && (
               <span className="shrink-0 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold bg-primary/10 text-primary">
                 {programExercise.group_tag}
@@ -112,6 +120,16 @@ export function ExerciseCard({
         >
           <Pencil className="size-3.5" />
         </Button>
+        {onDuplicate && (
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            onClick={onDuplicate}
+            title="Duplicate exercise"
+          >
+            <Copy className="size-3.5" />
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="icon-xs"

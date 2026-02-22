@@ -117,8 +117,10 @@ function ProgramDetail({
   todayDow: number
 }) {
   const weekKeys = Object.keys(program.weeks ?? {}).map(Number).sort((a, b) => a - b)
-  const safeCurrentWeek = weekKeys.includes(program.currentWeek)
-    ? program.currentWeek
+  // currentWeek=0 means program hasn't started yet — default to week 1
+  const effectiveCurrentWeek = program.currentWeek || 1
+  const safeCurrentWeek = weekKeys.includes(effectiveCurrentWeek)
+    ? effectiveCurrentWeek
     : weekKeys[0] ?? 1
 
   const [selectedWeek, setSelectedWeek] = useState(safeCurrentWeek)
@@ -128,7 +130,12 @@ function ProgramDetail({
 
   const days = program.weeks?.[selectedWeek] ?? []
   const allDays = days.map((d) => d.day).sort((a, b) => a - b)
-  const defaultDay = allDays.includes(todayDow) ? todayDow : allDays[0] ?? 1
+  // Only auto-select today's day when the program has started and we're on the current week
+  const programStarted = program.currentWeek > 0
+  const isCurrentWeekInit = programStarted && selectedWeek === effectiveCurrentWeek
+  const defaultDay = isCurrentWeekInit && allDays.includes(todayDow)
+    ? todayDow
+    : allDays[0] ?? 1
   const [selectedDay, setSelectedDay] = useState(defaultDay)
 
   // Reset selected day when week changes and current day isn't in new week
@@ -138,7 +145,8 @@ function ProgramDetail({
       .map((d) => d.day)
       .sort((a, b) => a - b)
     if (!newDays.includes(selectedDay)) {
-      const fallback = newDays.includes(todayDow)
+      const isNewWeekCurrent = programStarted && week === effectiveCurrentWeek
+      const fallback = isNewWeekCurrent && newDays.includes(todayDow)
         ? todayDow
         : newDays[0] ?? 1
       setSelectedDay(fallback)
@@ -169,7 +177,7 @@ function ProgramDetail({
     setSessionLoggedIds((prev) => new Set(prev).add(exerciseId))
   }
 
-  const isCurrentWeek = selectedWeek === program.currentWeek
+  const isCurrentWeek = programStarted && selectedWeek === effectiveCurrentWeek
 
   return (
     <div>

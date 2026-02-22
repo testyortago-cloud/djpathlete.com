@@ -43,6 +43,8 @@ function getCurrentWeek(startDate: string, totalWeeks: number): number {
   const daysSinceStart = Math.floor(
     (now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)
   )
+  // If program hasn't started yet, return 0 to signal "not started"
+  if (daysSinceStart < 0) return 0
   // Week 1 = first 7 days, clamp to valid range
   const week = Math.floor(daysSinceStart / 7) + 1
   return Math.max(1, Math.min(week, totalWeeks))

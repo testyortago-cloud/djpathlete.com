@@ -149,7 +149,7 @@ export type ExerciseWithRelationship = Exercise & {
 export async function getAlternativeExercises(
   exerciseId: string,
   exercise: {
-    category?: string | null
+    category?: string | string[] | null
     muscle_group?: string | null
     movement_pattern?: MovementPattern | null
     primary_muscles?: string[]
@@ -215,7 +215,8 @@ export async function getAlternativeExercises(
       .order("name", { ascending: true })
 
     if (exercise.category) {
-      query = query.eq("category", exercise.category)
+      const cats = Array.isArray(exercise.category) ? exercise.category : [exercise.category]
+      query = query.overlaps("category", cats)
     }
 
     // Further narrow by primary_muscles or movement_pattern when available

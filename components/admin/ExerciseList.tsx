@@ -100,7 +100,8 @@ export function ExerciseList({ exercises }: ExerciseListProps) {
       !search ||
       ex.name.toLowerCase().includes(search.toLowerCase()) ||
       (ex.muscle_group?.toLowerCase().includes(search.toLowerCase()) ?? false)
-    const matchesCategory = categoryFilter === "all" || ex.category === categoryFilter
+    const cats: string[] = Array.isArray(ex.category) ? ex.category : [ex.category]
+    const matchesCategory = categoryFilter === "all" || cats.includes(categoryFilter)
     const matchesDifficulty = difficultyFilter === "all" || ex.difficulty === difficultyFilter
     return matchesSearch && matchesCategory && matchesDifficulty
   })
@@ -408,8 +409,12 @@ export function ExerciseList({ exercises }: ExerciseListProps) {
                   </td>
                   <td className="px-4 py-3 font-medium text-foreground">{exercise.name}</td>
                   <td className="px-4 py-3">
-                    <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-primary/10 text-primary capitalize">
-                      {CATEGORY_LABELS[exercise.category] ?? exercise.category}
+                    <span className="inline-flex items-center gap-1 flex-wrap">
+                      {(Array.isArray(exercise.category) ? exercise.category : [exercise.category]).map((cat) => (
+                        <span key={cat} className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-primary/10 text-primary capitalize">
+                          {CATEGORY_LABELS[cat] ?? cat}
+                        </span>
+                      ))}
                     </span>
                   </td>
                   <td className="px-4 py-3">

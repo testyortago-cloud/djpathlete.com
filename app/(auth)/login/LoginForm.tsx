@@ -38,8 +38,12 @@ export function LoginForm() {
       return
     }
 
+    // Invalidate Next.js router cache before fetching fresh session
+    router.refresh()
+
     // Fetch fresh session to get user role for redirect
-    const sessionRes = await fetch("/api/auth/session")
+    // cache: "no-store" prevents browser from returning stale session after re-login
+    const sessionRes = await fetch("/api/auth/session", { cache: "no-store" })
     const sessionData = await sessionRes.json()
     const role = sessionData?.user?.role
 
@@ -50,7 +54,6 @@ export function LoginForm() {
     } else {
       router.push(role === "admin" ? "/admin/dashboard" : "/client/dashboard")
     }
-    router.refresh()
   }
 
   return (

@@ -234,7 +234,7 @@ function makeExercise(overrides: Partial<CompressedExercise> = {}): CompressedEx
   return {
     id: "ex-001",
     name: "Test Exercise",
-    category: "strength",
+    category: ["strength"],
     muscle_group: "chest",
     difficulty: "intermediate",
     equipment_required: [],

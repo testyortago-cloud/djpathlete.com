@@ -9,6 +9,7 @@ import { getUsers } from "@/lib/db/users"
 import { getPrograms } from "@/lib/db/programs"
 import { getPayments } from "@/lib/db/payments"
 import { getAssignments } from "@/lib/db/assignments"
+import { TimeRangeSelector } from "@/components/admin/TimeRangeSelector"
 import type { Payment, Program, ProgramAssignment, User } from "@/types/database"
 
 export const metadata = { title: "Analytics" }
@@ -25,18 +26,35 @@ function getMonthKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
 }
 
-/** Returns the last N months as { key, label } in chronological order. */
-function getLastNMonths(n: number): { key: string; label: string }[] {
+function getLastNMonths(n: number, earliest?: Date): { key: string; label: string }[] {
   const months: { key: string; label: string }[] = []
   const now = new Date()
-  for (let i = n - 1; i >= 0; i--) {
+  if (n === 0 && earliest) {
+    const start = new Date(earliest.getFullYear(), earliest.getMonth(), 1)
+    const d = new Date(start)
+    while (d <= now) {
+      months.push({ key: getMonthKey(d), label: getMonthLabel(d) })
+      d.setMonth(d.getMonth() + 1)
+    }
+    return months
+  }
+  for (let i = (n || 6) - 1; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
     months.push({ key: getMonthKey(d), label: getMonthLabel(d) })
   }
   return months
 }
 
-export default async function AnalyticsPage() {
+const VALID_MONTHS = [0, 1, 3, 6, 12] as const
+
+export default async function AnalyticsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ months?: string }>
+}) {
+  const params = await searchParams
+  const rawMonths = Number(params.months)
+  const months = VALID_MONTHS.includes(rawMonths as (typeof VALID_MONTHS)[number]) ? rawMonths : 6
   const [users, programs, payments, assignments] = await Promise.all([
     getUsers(),
     getPrograms(),
@@ -44,16 +62,30 @@ export default async function AnalyticsPage() {
     getAssignments(),
   ])
 
-  // ---- Revenue calculations ----
+  const now = new Date()
+
+  const allDates = [
+    ...(payments as Payment[]).map((p) => new Date(p.created_at)),
+    ...(users as User[]).map((u) => new Date(u.created_at)),
+  ]
+  const earliest = allDates.length > 0
+    ? new Date(Math.min(...allDates.map((d) => d.getTime())))
+    : now
+
+  const rangeStart =
+    months === 0
+      ? earliest
+      : new Date(now.getFullYear(), now.getMonth() - months, 1)
+
+  // ---- Revenue calculations (filtered by range) ----
   const succeededPayments = (payments as Payment[]).filter(
-    (p) => p.status === "succeeded"
+    (p) => p.status === "succeeded" && new Date(p.created_at) >= rangeStart
   )
   const totalRevenue = succeededPayments.reduce(
     (sum, p) => sum + p.amount_cents,
     0
   )
 
-  const now = new Date()
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
   const thisMonthRevenue = succeededPayments
     .filter((p) => new Date(p.created_at) >= monthStart)
@@ -64,10 +96,10 @@ export default async function AnalyticsPage() {
       ? Math.round(totalRevenue / succeededPayments.length)
       : 0
 
-  // ---- Monthly Revenue (last 6 months) ----
-  const last6 = getLastNMonths(6)
+  // ---- Monthly Revenue ----
+  const lastN = getLastNMonths(months, earliest)
   const revenueByMonth = new Map<string, { count: number; total: number }>()
-  for (const m of last6) {
+  for (const m of lastN) {
     revenueByMonth.set(m.key, { count: 0, total: 0 })
   }
   for (const p of succeededPayments) {
@@ -85,8 +117,11 @@ export default async function AnalyticsPage() {
     programMap.set(prog.id, prog.name)
   }
 
+  const filteredAssignments = (assignments as ProgramAssignment[]).filter(
+    (a) => new Date(a.created_at) >= rangeStart
+  )
   const assignmentCountByProgram = new Map<string, number>()
-  for (const a of assignments as ProgramAssignment[]) {
+  for (const a of filteredAssignments) {
     const current = assignmentCountByProgram.get(a.program_id) ?? 0
     assignmentCountByProgram.set(a.program_id, current + 1)
   }
@@ -100,9 +135,9 @@ export default async function AnalyticsPage() {
 
   const maxAssignments = programPopularity[0]?.count ?? 1
 
-  // ---- Client Growth (last 6 months) ----
+  // ---- Client Growth ----
   const clientsByMonth = new Map<string, number>()
-  for (const m of last6) {
+  for (const m of lastN) {
     clientsByMonth.set(m.key, 0)
   }
   const clients = (users as User[]).filter((u) => u.role === "client")
@@ -116,7 +151,10 @@ export default async function AnalyticsPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-primary mb-6">Analytics</h1>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-semibold text-primary">Analytics</h1>
+        <TimeRangeSelector currentMonths={months} />
+      </div>
 
       {/* Revenue Overview Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
@@ -125,7 +163,9 @@ export default async function AnalyticsPage() {
             <div className="flex size-9 items-center justify-center rounded-lg bg-success/10">
               <DollarSign className="size-4 text-success" />
             </div>
-            <p className="text-sm text-muted-foreground">Total Revenue</p>
+            <p className="text-sm text-muted-foreground">
+              {months === 0 ? "All-Time Revenue" : `Revenue (${months}mo)`}
+            </p>
           </div>
           <p className="text-2xl font-semibold text-primary">
             {formatCents(totalRevenue)}
@@ -149,9 +189,7 @@ export default async function AnalyticsPage() {
             <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10">
               <Hash className="size-4 text-primary" />
             </div>
-            <p className="text-sm text-muted-foreground">
-              Avg Transaction
-            </p>
+            <p className="text-sm text-muted-foreground">Avg Transaction</p>
           </div>
           <p className="text-2xl font-semibold text-primary">
             {formatCents(avgTransaction)}
@@ -183,7 +221,7 @@ export default async function AnalyticsPage() {
               </tr>
             </thead>
             <tbody>
-              {last6.map((month) => {
+              {lastN.map((month) => {
                 const data = revenueByMonth.get(month.key)
                 return (
                   <tr
@@ -270,7 +308,7 @@ export default async function AnalyticsPage() {
                 </tr>
               </thead>
               <tbody>
-                {last6.map((month) => {
+                {lastN.map((month) => {
                   const count = clientsByMonth.get(month.key) ?? 0
                   return (
                     <tr

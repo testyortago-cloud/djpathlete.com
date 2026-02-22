@@ -8,7 +8,7 @@ import type { Exercise, MovementPattern, ForceType, Laterality } from "@/types/d
 export interface CompressedExercise {
   id: string
   name: string
-  category: string
+  category: string[]
   difficulty: string
   muscle_group: string | null
   movement_pattern: MovementPattern | null

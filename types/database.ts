@@ -98,7 +98,7 @@ export interface Exercise {
   id: string
   name: string
   description: string | null
-  category: ExerciseCategory
+  category: ExerciseCategory[]
   muscle_group: string | null
   difficulty: ExerciseDifficulty
   equipment: string | null

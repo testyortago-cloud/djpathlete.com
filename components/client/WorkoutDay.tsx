@@ -47,8 +47,9 @@ import { CoachDjpPanel } from "@/components/client/CoachDjpPanel"
 import { CelebrationOverlay } from "@/components/client/CelebrationOverlay"
 import { ExerciseSwapSheet } from "@/components/client/ExerciseSwapSheet"
 import { extractYouTubeId } from "@/lib/youtube"
-import type { Exercise, ProgramExercise, TrainingTechnique } from "@/types/database"
+import type { Exercise, ExerciseCategory, ProgramExercise, TrainingTechnique } from "@/types/database"
 import type { WeightRecommendation } from "@/lib/weight-recommendation"
+import { getCategoryFields } from "@/lib/exercise-fields"
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -280,6 +281,7 @@ function ExerciseCard({
 }) {
   const router = useRouter()
   const { unit, displayWeight, formatWeightCompact, toKg, unitLabel } = useWeightUnit()
+  const fields = getCategoryFields(exercise.category as ExerciseCategory[])
   const [expanded, setExpanded] = useState(false)
   const [loggedToday, setLoggedToday] = useState(initialLogged)
   const [submitting, setSubmitting] = useState(false)
@@ -434,8 +436,12 @@ function ExerciseCard({
     }
   }
 
-  // Check if at least one set has reps entered
-  const hasValidSets = setRows.some((row) => parseInt(row.reps, 10) > 0)
+  // Check if at least one set has data entered (reps for rep-based, or duration for duration-based)
+  const hasValidSets = fields.showReps
+    ? setRows.some((row) => parseInt(row.reps, 10) > 0)
+    : fields.showDuration === "prominent"
+      ? duration !== "" && parseInt(duration, 10) > 0
+      : true // plyometric without duration — just needs sets
 
   // Auto-show duration & notes when all sets are filled
   const allSetsFilled = setRows.length > 0 && setRows.every((row) => parseInt(row.reps, 10) > 0)
@@ -560,7 +566,7 @@ function ExerciseCard({
                   {displayExercise.muscle_group}
                 </span>
               )}
-              {rec.recommended_kg != null && (
+              {fields.showWeight && rec.recommended_kg != null && (
                 <Badge
                   variant="outline"
                   className="gap-1 text-[10px] border-primary/20 text-primary"
@@ -629,8 +635,8 @@ function ExerciseCard({
               className="overflow-hidden"
             >
               <form onSubmit={handleSubmit} className="pt-4 space-y-4">
-                {/* Recommendation card */}
-                {(rec.reasoning || aiSuggestedWeight != null) && (
+                {/* Recommendation card — only for weight-based exercises */}
+                {fields.showWeight && (rec.reasoning || aiSuggestedWeight != null) && (
                   <div className={cn(
                     "rounded-lg p-3 space-y-2",
                     aiSuggestedWeight != null
@@ -674,98 +680,135 @@ function ExerciseCard({
                   </div>
                 )}
 
-                {/* Set-by-set table */}
-                <div>
-                  <Label className="text-xs font-medium">Sets</Label>
-                  <table className="w-full mt-1.5" style={{ borderCollapse: "separate", borderSpacing: "0 4px" }}>
-                    <thead>
-                      <tr className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
-                        <th style={{ width: 28 }} className="text-left font-medium">#</th>
-                        <th className="text-left font-medium">{unitLabel()}</th>
-                        <th className="text-left font-medium">Reps</th>
-                        <th style={{ width: 56 }} className="text-left font-medium">RPE</th>
-                        <th style={{ width: 28 }} />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {setRows.map((row, idx) => (
-                        <tr key={idx}>
-                          <td className="text-xs font-semibold text-muted-foreground text-center align-middle">
-                            {idx + 1}
-                          </td>
-                          <td className="pr-1 align-middle">
-                            <input
-                              type="number"
-                              step={unit === "lbs" ? "1" : "0.5"}
-                              min="0"
-                              placeholder={weightPlaceholder}
-                              value={row.weight}
-                              onChange={(e) => updateSetRow(idx, "weight", e.target.value)}
-                              className="w-full h-8 rounded-md border border-input bg-transparent px-2 text-xs shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
-                            />
-                          </td>
-                          <td className="pr-1 align-middle">
-                            <input
-                              type="number"
-                              min="0"
-                              max="999"
-                              placeholder={prescribedReps || "0"}
-                              value={row.reps}
-                              onChange={(e) => updateSetRow(idx, "reps", e.target.value)}
-                              className="w-full h-8 rounded-md border border-input bg-transparent px-2 text-xs shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
-                            />
-                          </td>
-                          <td className="pr-1 align-middle">
-                            <Select
-                              value={row.rpe != null ? String(row.rpe) : ""}
-                              onValueChange={(v) =>
-                                updateSetRow(idx, "rpe", v ? parseInt(v, 10) : null)
-                              }
-                            >
-                              <SelectTrigger className="h-8 text-xs px-1.5 [&_svg]:size-3" style={{ width: "100%" }}>
-                                <SelectValue placeholder="-" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {Array.from({ length: 10 }, (_, i) => i + 1).map(
-                                  (v) => (
-                                    <SelectItem key={v} value={String(v)}>
-                                      {v}
-                                    </SelectItem>
-                                  )
-                                )}
-                              </SelectContent>
-                            </Select>
-                          </td>
-                          <td className="align-middle">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="size-7 text-muted-foreground hover:text-destructive"
-                              onClick={() => removeSet(idx)}
-                              disabled={setRows.length <= 1}
-                              aria-label={`Remove set ${idx + 1}`}
-                            >
-                              <X className="size-3" />
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                {/* Set-by-set table — only for categories with weight or reps */}
+                {(fields.showWeight || fields.showReps) && (
+                  <div>
+                    <Label className="text-xs font-medium">Sets</Label>
+                    <div className="overflow-x-auto">
+                      <table className="w-full mt-1.5 min-w-[320px]" style={{ borderCollapse: "separate", borderSpacing: "0 4px" }}>
+                        <thead>
+                          <tr className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+                            <th style={{ width: 28 }} className="text-left font-medium">#</th>
+                            {fields.showWeight && (
+                              <th className="text-left font-medium">{unitLabel()}</th>
+                            )}
+                            {fields.showReps && (
+                              <th className="text-left font-medium">Reps</th>
+                            )}
+                            {fields.showRpe && (
+                              <th style={{ width: 56 }} className="text-left font-medium">RPE</th>
+                            )}
+                            <th style={{ width: 28 }} />
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {setRows.map((row, idx) => (
+                            <tr key={idx}>
+                              <td className="text-xs font-semibold text-muted-foreground text-center align-middle">
+                                {idx + 1}
+                              </td>
+                              {fields.showWeight && (
+                                <td className="pr-1 align-middle">
+                                  <input
+                                    type="number"
+                                    step={unit === "lbs" ? "1" : "0.5"}
+                                    min="0"
+                                    placeholder={weightPlaceholder}
+                                    value={row.weight}
+                                    onChange={(e) => updateSetRow(idx, "weight", e.target.value)}
+                                    className="w-full h-8 rounded-md border border-input bg-transparent px-2 text-xs shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+                                  />
+                                </td>
+                              )}
+                              {fields.showReps && (
+                                <td className="pr-1 align-middle">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="999"
+                                    placeholder={prescribedReps || "0"}
+                                    value={row.reps}
+                                    onChange={(e) => updateSetRow(idx, "reps", e.target.value)}
+                                    className="w-full h-8 rounded-md border border-input bg-transparent px-2 text-xs shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+                                  />
+                                </td>
+                              )}
+                              {fields.showRpe && (
+                                <td className="pr-1 align-middle">
+                                  <Select
+                                    value={row.rpe != null ? String(row.rpe) : ""}
+                                    onValueChange={(v) =>
+                                      updateSetRow(idx, "rpe", v ? parseInt(v, 10) : null)
+                                    }
+                                  >
+                                    <SelectTrigger className="h-8 text-xs px-1.5 [&_svg]:size-3" style={{ width: "100%" }}>
+                                      <SelectValue placeholder="-" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {Array.from({ length: 10 }, (_, i) => i + 1).map(
+                                        (v) => (
+                                          <SelectItem key={v} value={String(v)}>
+                                            {v}
+                                          </SelectItem>
+                                        )
+                                      )}
+                                    </SelectContent>
+                                  </Select>
+                                </td>
+                              )}
+                              <td className="align-middle">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-7 text-muted-foreground hover:text-destructive"
+                                  onClick={() => removeSet(idx)}
+                                  disabled={setRows.length <= 1}
+                                  aria-label={`Remove set ${idx + 1}`}
+                                >
+                                  <X className="size-3" />
+                                </Button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
 
-                  {/* Add set button */}
-                  {setRows.length < 20 && (
-                    <button
-                      type="button"
-                      className="flex items-center justify-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors w-full py-1.5 rounded-md hover:bg-muted/50"
-                      onClick={addSet}
+                    {/* Add set button */}
+                    {setRows.length < 20 && (
+                      <button
+                        type="button"
+                        className="flex items-center justify-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors w-full py-1.5 rounded-md hover:bg-muted/50"
+                        onClick={addSet}
+                      >
+                        <Plus className="size-3" />
+                        Add Set
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Duration — shown prominently for cardio/flexibility/recovery */}
+                {fields.showDuration === "prominent" && (
+                  <div className="space-y-1.5">
+                    <Label
+                      htmlFor={`duration-${pe.id}`}
+                      className="text-xs"
                     >
-                      <Plus className="size-3" />
-                      Add Set
-                    </button>
-                  )}
-                </div>
+                      Duration (seconds)
+                    </Label>
+                    <Input
+                      id={`duration-${pe.id}`}
+                      type="number"
+                      min="0"
+                      placeholder="e.g. 30"
+                      value={duration}
+                      onChange={(e) => setDuration(e.target.value)}
+                      className="h-9"
+                    />
+                  </div>
+                )}
 
                 {/* Collapsible extra fields */}
                 <button
@@ -773,7 +816,8 @@ function ExerciseCard({
                   className="text-xs text-muted-foreground hover:text-foreground transition-colors"
                   onClick={() => setShowExtra(!showExtra)}
                 >
-                  {showExtra ? "Hide" : "Show"} duration & notes
+                  {showExtra ? "Hide" : "Show"}{" "}
+                  {fields.showDuration === "prominent" ? "notes" : "duration & notes"}
                 </button>
 
                 <AnimatePresence>
@@ -785,23 +829,25 @@ function ExerciseCard({
                       transition={{ duration: 0.15 }}
                       className="overflow-hidden space-y-3"
                     >
-                      <div className="space-y-1.5">
-                        <Label
-                          htmlFor={`duration-${pe.id}`}
-                          className="text-xs"
-                        >
-                          Duration (seconds)
-                        </Label>
-                        <Input
-                          id={`duration-${pe.id}`}
-                          type="number"
-                          min="0"
-                          placeholder="Optional"
-                          value={duration}
-                          onChange={(e) => setDuration(e.target.value)}
-                          className="h-9"
-                        />
-                      </div>
+                      {fields.showDuration !== "prominent" && (
+                        <div className="space-y-1.5">
+                          <Label
+                            htmlFor={`duration-${pe.id}`}
+                            className="text-xs"
+                          >
+                            Duration (seconds)
+                          </Label>
+                          <Input
+                            id={`duration-${pe.id}`}
+                            type="number"
+                            min="0"
+                            placeholder="Optional"
+                            value={duration}
+                            onChange={(e) => setDuration(e.target.value)}
+                            className="h-9"
+                          />
+                        </div>
+                      )}
                       <div className="space-y-1.5">
                         <Label htmlFor={`notes-${pe.id}`} className="text-xs">
                           Notes
@@ -835,22 +881,24 @@ function ExerciseCard({
                     )}
                     Save Workout
                   </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={coachNudge ? "default" : "outline"}
-                    className={cn(
-                      "gap-1 relative",
-                      coachNudge && "animate-pulse bg-accent text-accent-foreground hover:bg-accent/90"
-                    )}
-                    onClick={() => setShowCoachDjp(true)}
-                  >
-                    <Brain className="size-3" />
-                    Coach DJP
-                    {coachNudge && (
-                      <span className="absolute -top-1 -right-1 size-2.5 rounded-full bg-error ring-2 ring-white" />
-                    )}
-                  </Button>
+                  {fields.showWeight && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={coachNudge ? "default" : "outline"}
+                      className={cn(
+                        "gap-1 relative",
+                        coachNudge && "animate-pulse bg-accent text-accent-foreground hover:bg-accent/90"
+                      )}
+                      onClick={() => setShowCoachDjp(true)}
+                    >
+                      <Brain className="size-3" />
+                      Coach DJP
+                      {coachNudge && (
+                        <span className="absolute -top-1 -right-1 size-2.5 rounded-full bg-error ring-2 ring-white" />
+                      )}
+                    </Button>
+                  )}
                   <Button
                     type="button"
                     size="sm"

@@ -5,9 +5,12 @@ import { createProgram } from "@/lib/db/programs"
 export async function POST(request: Request) {
   try {
     const body = await request.json()
+    console.log("[API programs POST] Body received:", JSON.stringify(body))
+
     const result = programFormSchema.safeParse(body)
 
     if (!result.success) {
+      console.error("[API programs POST] Validation failed:", result.error.flatten().fieldErrors)
       return NextResponse.json(
         { error: "Invalid form data", details: result.error.flatten().fieldErrors },
         { status: 400 }
@@ -23,7 +26,8 @@ export async function POST(request: Request) {
     })
 
     return NextResponse.json(program, { status: 201 })
-  } catch {
+  } catch (err) {
+    console.error("[API programs POST] Error:", err)
     return NextResponse.json(
       { error: "Failed to create program. Please try again." },
       { status: 500 }

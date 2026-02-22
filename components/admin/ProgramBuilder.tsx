@@ -49,6 +49,11 @@ export function ProgramBuilder({
   const [duplicateOpen, setDuplicateOpen] = useState(false)
   const [isDuplicating, setIsDuplicating] = useState(false)
 
+  // Duplicate exercise dialog
+  const [duplicateExTarget, setDuplicateExTarget] = useState<ProgramExerciseWithExercise | null>(null)
+  const [isDuplicatingEx, setIsDuplicatingEx] = useState(false)
+  const [isDuplicatingInPlace, setIsDuplicatingInPlace] = useState(false)
+
   // Group exercises for the selected week by day
   const weekExercises = programExercises.filter(
     (pe) => pe.week_number === selectedWeek
@@ -115,6 +120,65 @@ export function ProgramBuilder({
     }
   }
 
+  async function handleDuplicateInPlace(pe: ProgramExerciseWithExercise) {
+    if (isDuplicatingInPlace) return
+    setIsDuplicatingInPlace(true)
+
+    const dayExercises = getExercisesForDay(pe.day_of_week)
+    const index = dayExercises.findIndex((e) => e.id === pe.id)
+    const newOrderIndex = pe.order_index + 1
+
+    try {
+      const exercisesAfter = dayExercises.slice(index + 1)
+      if (exercisesAfter.length > 0) {
+        await Promise.all(
+          exercisesAfter.map((ex) =>
+            fetch(`/api/admin/programs/${programId}/exercises/${ex.id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ order_index: ex.order_index + 1 }),
+            })
+          )
+        )
+      }
+
+      const response = await fetch(
+        `/api/admin/programs/${programId}/exercises`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            exercise_id: pe.exercise_id,
+            week_number: pe.week_number,
+            day_of_week: pe.day_of_week,
+            order_index: newOrderIndex,
+            sets: pe.sets,
+            reps: pe.reps,
+            rest_seconds: pe.rest_seconds,
+            duration_seconds: pe.duration_seconds,
+            notes: pe.notes,
+            rpe_target: pe.rpe_target,
+            intensity_pct: pe.intensity_pct,
+            tempo: pe.tempo,
+            group_tag: pe.group_tag,
+          }),
+        }
+      )
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || "Failed to duplicate exercise")
+      }
+
+      toast.success(`Duplicated "${pe.exercises.name}"`)
+      router.refresh()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to duplicate exercise")
+    } finally {
+      setIsDuplicatingInPlace(false)
+    }
+  }
+
   async function handleDelete() {
     if (!deleteTarget) return
     setIsDeleting(true)
@@ -170,6 +234,63 @@ export function ProgramBuilder({
     }
   }
 
+  async function handleDuplicateExercise(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    if (!duplicateExTarget) return
+    setIsDuplicatingEx(true)
+
+    const formData = new FormData(e.currentTarget)
+    const targetWeek = Number(formData.get("targetWeek"))
+    const targetDay = Number(formData.get("targetDay"))
+
+    // Count existing exercises in the target day to set order_index
+    const targetDayExercises = programExercises.filter(
+      (pe) => pe.week_number === targetWeek && pe.day_of_week === targetDay
+    )
+
+    const body = {
+      exercise_id: duplicateExTarget.exercise_id,
+      week_number: targetWeek,
+      day_of_week: targetDay,
+      order_index: targetDayExercises.length,
+      sets: duplicateExTarget.sets,
+      reps: duplicateExTarget.reps,
+      rest_seconds: duplicateExTarget.rest_seconds,
+      duration_seconds: duplicateExTarget.duration_seconds,
+      notes: duplicateExTarget.notes,
+      rpe_target: duplicateExTarget.rpe_target,
+      intensity_pct: duplicateExTarget.intensity_pct,
+      tempo: duplicateExTarget.tempo,
+      group_tag: duplicateExTarget.group_tag,
+      technique: duplicateExTarget.technique,
+    }
+
+    try {
+      const response = await fetch(
+        `/api/admin/programs/${programId}/exercises`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        }
+      )
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || "Failed to duplicate exercise")
+      }
+
+      const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+      toast.success(`Duplicated to Week ${targetWeek}, ${DAY_NAMES[targetDay - 1]}`)
+      setDuplicateExTarget(null)
+      router.refresh()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to duplicate exercise")
+    } finally {
+      setIsDuplicatingEx(false)
+    }
+  }
+
   return (
     <div className="space-y-4">
       {/* Week selector */}
@@ -192,6 +313,7 @@ export function ProgramBuilder({
             onRemoveExercise={setDeleteTarget}
             onMoveUp={handleMoveUp}
             onMoveDown={handleMoveDown}
+            onDuplicateExercise={handleDuplicateInPlace}
           />
         ))}
       </div>
@@ -277,6 +399,63 @@ export function ProgramBuilder({
               </Button>
               <Button type="submit" disabled={isDuplicating}>
                 {isDuplicating ? "Duplicating..." : "Duplicate"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Duplicate Exercise Dialog */}
+      <Dialog open={!!duplicateExTarget} onOpenChange={(open) => !open && setDuplicateExTarget(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Duplicate Exercise</DialogTitle>
+            <DialogDescription>
+              Copy &ldquo;{duplicateExTarget?.exercises.name}&rdquo; with the same parameters to another week and day.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleDuplicateExercise} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="dupExWeek">Target Week *</Label>
+                <Input
+                  id="dupExWeek"
+                  name="targetWeek"
+                  type="number"
+                  min={1}
+                  max={totalWeeks}
+                  required
+                  defaultValue={selectedWeek}
+                  disabled={isDuplicatingEx}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="dupExDay">Target Day *</Label>
+                <select
+                  id="dupExDay"
+                  name="targetDay"
+                  required
+                  disabled={isDuplicatingEx}
+                  defaultValue={duplicateExTarget?.day_of_week ?? 1}
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map((name, i) => (
+                    <option key={i + 1} value={i + 1}>{name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setDuplicateExTarget(null)}
+                disabled={isDuplicatingEx}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isDuplicatingEx}>
+                {isDuplicatingEx ? "Duplicating..." : "Duplicate"}
               </Button>
             </DialogFooter>
           </form>

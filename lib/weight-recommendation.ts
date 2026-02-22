@@ -1,4 +1,5 @@
-import type { Exercise, ExerciseProgress, ExperienceLevel, Gender, ProgramExercise } from "@/types/database"
+import type { Exercise, ExerciseCategory, ExerciseProgress, ExperienceLevel, Gender, ProgramExercise } from "@/types/database"
+import { getCategoryFields } from "@/lib/exercise-fields"
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -138,10 +139,23 @@ function computeTrend(history: ExerciseProgress[]): Trend {
 
 export function getWeightRecommendation(
   history: ExerciseProgress[],
-  exercise: Pick<Exercise, "is_bodyweight" | "is_compound" | "movement_pattern" | "name">,
+  exercise: Pick<Exercise, "is_bodyweight" | "is_compound" | "movement_pattern" | "name" | "category">,
   prescription?: Pick<ProgramExercise, "sets" | "reps" | "intensity_pct" | "rpe_target"> | null,
   client?: ClientContext | null
 ): WeightRecommendation {
+  // Non-weight categories (cardio, flexibility, plyometric, recovery) — skip weight recommendation
+  if (exercise.category && !getCategoryFields(exercise.category as ExerciseCategory | ExerciseCategory[]).showWeight) {
+    return {
+      recommended_kg: null,
+      reasoning: "Focus on form and consistency",
+      confidence: "high",
+      estimated_1rm: null,
+      last_weight_kg: null,
+      last_rpe: null,
+      trend: "stable",
+    }
+  }
+
   // Bodyweight exercise — no weight recommendation
   if (exercise.is_bodyweight) {
     return {

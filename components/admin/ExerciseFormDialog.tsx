@@ -145,6 +145,7 @@ export function ExerciseFormDialog({
   const [aiOpen, setAiOpen] = useState(false)
 
   // Multi-select state
+  const [selectedCategories, setSelectedCategories] = useState<string[]>(exercise?.category ?? [])
   const [primaryMuscles, setPrimaryMuscles] = useState<string[]>(exercise?.primary_muscles ?? [])
   const [secondaryMuscles, setSecondaryMuscles] = useState<string[]>(exercise?.secondary_muscles ?? [])
   const [equipmentRequired, setEquipmentRequired] = useState<string[]>(exercise?.equipment_required ?? [])
@@ -166,7 +167,7 @@ export function ExerciseFormDialog({
     const data = {
       name: formData.get("name") as string,
       description: formData.get("description") as string,
-      category: formData.get("category") as string,
+      category: selectedCategories,
       muscle_group: formData.get("muscle_group") as string,
       difficulty: formData.get("difficulty") as string,
       equipment: formData.get("equipment") as string,
@@ -247,46 +248,50 @@ export function ExerciseFormDialog({
             )}
           </div>
 
-          {/* Category & Difficulty */}
-          <div className="grid sm:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="category">Category *</Label>
-              <select
-                id="category"
-                name="category"
-                defaultValue={exercise?.category ?? ""}
-                required
-                disabled={isSubmitting}
-                className={selectClass}
-              >
-                <option value="" disabled>Select category</option>
-                {EXERCISE_CATEGORIES.map((cat) => (
-                  <option key={cat} value={cat}>{CATEGORY_LABELS[cat]}</option>
-                ))}
-              </select>
-              {errors.category && (
-                <p className="text-xs text-destructive">{errors.category[0]}</p>
-              )}
+          {/* Category (multi-select) */}
+          <div className="space-y-2">
+            <Label>Category *</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {EXERCISE_CATEGORIES.map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => toggleItem(selectedCategories, cat, setSelectedCategories)}
+                  disabled={isSubmitting}
+                  className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
+                    selectedCategories.includes(cat)
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-background border-border text-muted-foreground hover:border-primary/50"
+                  }`}
+                >
+                  {CATEGORY_LABELS[cat]}
+                </button>
+              ))}
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="difficulty">Difficulty *</Label>
-              <select
-                id="difficulty"
-                name="difficulty"
-                defaultValue={exercise?.difficulty ?? ""}
-                required
-                disabled={isSubmitting}
-                className={selectClass}
-              >
-                <option value="" disabled>Select difficulty</option>
-                {EXERCISE_DIFFICULTIES.map((diff) => (
-                  <option key={diff} value={diff}>{DIFFICULTY_LABELS[diff]}</option>
-                ))}
-              </select>
-              {errors.difficulty && (
-                <p className="text-xs text-destructive">{errors.difficulty[0]}</p>
-              )}
-            </div>
+            {errors.category && (
+              <p className="text-xs text-destructive">{errors.category[0]}</p>
+            )}
+          </div>
+
+          {/* Difficulty */}
+          <div className="space-y-2">
+            <Label htmlFor="difficulty">Difficulty *</Label>
+            <select
+              id="difficulty"
+              name="difficulty"
+              defaultValue={exercise?.difficulty ?? ""}
+              required
+              disabled={isSubmitting}
+              className={selectClass}
+            >
+              <option value="" disabled>Select difficulty</option>
+              {EXERCISE_DIFFICULTIES.map((diff) => (
+                <option key={diff} value={diff}>{DIFFICULTY_LABELS[diff]}</option>
+              ))}
+            </select>
+            {errors.difficulty && (
+              <p className="text-xs text-destructive">{errors.difficulty[0]}</p>
+            )}
           </div>
 
           {/* Muscle Group & Equipment */}
@@ -300,6 +305,7 @@ export function ExerciseFormDialog({
                 placeholder="e.g. Quadriceps, Glutes"
                 disabled={isSubmitting}
               />
+              <p className="text-xs text-muted-foreground">Display label shown on exercise cards (e.g. &ldquo;Quadriceps&rdquo;)</p>
               {errors.muscle_group && (
                 <p className="text-xs text-destructive">{errors.muscle_group[0]}</p>
               )}
@@ -457,6 +463,7 @@ export function ExerciseFormDialog({
                 {/* Primary Muscles (multi-select via checkboxes) */}
                 <div className="space-y-2">
                   <Label>Primary Muscles</Label>
+                  <p className="text-xs text-muted-foreground">Used by AI for exercise matching and program balancing</p>
                   <div className="flex flex-wrap gap-1.5">
                     {MUSCLE_OPTIONS.map((m) => (
                       <button
@@ -479,6 +486,7 @@ export function ExerciseFormDialog({
                 {/* Secondary Muscles */}
                 <div className="space-y-2">
                   <Label>Secondary Muscles</Label>
+                  <p className="text-xs text-muted-foreground">Muscles that assist in the movement</p>
                   <div className="flex flex-wrap gap-1.5">
                     {MUSCLE_OPTIONS.map((m) => (
                       <button

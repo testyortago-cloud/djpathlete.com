@@ -89,7 +89,7 @@ export function ProgramFormDialog({
 
     const data = {
       name: formData.get("name") as string,
-      description: formData.get("description") as string,
+      description: (formData.get("description") as string) || null,
       category: formData.get("category") as string,
       difficulty: formData.get("difficulty") as string,
       duration_weeks: formData.get("duration_weeks") as string,
@@ -99,12 +99,21 @@ export function ProgramFormDialog({
       periodization: (formData.get("periodization") as string) || null,
     }
 
+    console.log("[ProgramForm] Submitting data:", data)
+
     const result = programFormSchema.safeParse(data)
     if (!result.success) {
       const fieldErrors = result.error.flatten().fieldErrors
+      console.error("[ProgramForm] Validation errors:", fieldErrors)
       setErrors(fieldErrors)
+      const firstError = Object.entries(fieldErrors).find(([, v]) => v && v.length > 0)
+      if (firstError) {
+        toast.error(`${firstError[0]}: ${firstError[1]?.[0]}`)
+      }
       return
     }
+
+    console.log("[ProgramForm] Validated data:", result.data)
 
     setIsSubmitting(true)
 
@@ -122,14 +131,26 @@ export function ProgramFormDialog({
 
       if (!response.ok) {
         const errorData = await response.json()
+        // Show specific server-side validation errors if available
+        if (errorData.details) {
+          const fieldErrors = errorData.details as Partial<Record<keyof ProgramFormData, string[]>>
+          setErrors(fieldErrors)
+          const firstError = Object.entries(fieldErrors).find(([, v]) => v && v.length > 0)
+          if (firstError) {
+            toast.error(`${firstError[0]}: ${firstError[1]?.[0]}`)
+          } else {
+            toast.error(errorData.error || "Request failed")
+          }
+          return
+        }
         throw new Error(errorData.error || "Request failed")
       }
 
       toast.success(isEditing ? "Program updated successfully" : "Program created successfully")
       onOpenChange(false)
       router.refresh()
-    } catch {
-      toast.error(isEditing ? "Failed to update program" : "Failed to create program")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : (isEditing ? "Failed to update program" : "Failed to create program"))
     } finally {
       setIsSubmitting(false)
     }

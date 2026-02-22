@@ -12,6 +12,7 @@ export async function POST(
     const result = programExerciseSchema.safeParse(body)
 
     if (!result.success) {
+      console.error("[API program exercises POST] Validation failed:", result.error.flatten().fieldErrors)
       return NextResponse.json(
         { error: "Invalid form data", details: result.error.flatten().fieldErrors },
         { status: 400 }

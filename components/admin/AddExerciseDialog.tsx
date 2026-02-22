@@ -17,7 +17,24 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { extractYouTubeId, getYouTubeThumbnailUrl } from "@/lib/youtube"
-import type { Exercise } from "@/types/database"
+import type { Exercise, ExerciseCategory } from "@/types/database"
+import { getCategoryFields } from "@/lib/exercise-fields"
+
+const FIELD_LABELS: Record<string, string> = {
+  sets: "Sets",
+  reps: "Reps",
+  rest_seconds: "Rest",
+  duration_seconds: "Duration",
+  rpe_target: "RPE Target",
+  intensity_pct: "Intensity",
+  tempo: "Tempo",
+  group_tag: "Superset Group",
+  notes: "Notes",
+  exercise_id: "Exercise",
+  week_number: "Week",
+  day_of_week: "Day",
+  order_index: "Order",
+}
 
 interface AddExerciseDialogProps {
   open: boolean
@@ -66,7 +83,8 @@ export function AddExerciseDialog({
 
   const filtered = exercises.filter((ex) => {
     const matchesSearch = !search || ex.name.toLowerCase().includes(search.toLowerCase())
-    const matchesCategory = categoryFilter === "all" || ex.category === categoryFilter
+    const cats: string[] = Array.isArray(ex.category) ? ex.category : [ex.category]
+    const matchesCategory = categoryFilter === "all" || cats.includes(categoryFilter)
     return matchesSearch && matchesCategory
   })
 
@@ -78,16 +96,31 @@ export function AddExerciseDialog({
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     if (!selectedExercise) return
-    setIsSubmitting(true)
 
     const formData = new FormData(e.currentTarget)
+    const setsVal = formData.get("sets") as string
+    const repsVal = formData.get("reps") as string
+    const catFields = getCategoryFields(selectedExercise!.category as ExerciseCategory[])
+
+    // Client-side validation for required fields
+    if (!setsVal) {
+      toast.error("Please enter at least the number of sets")
+      return
+    }
+    if (isNaN(Number(setsVal)) || Number(setsVal) < 1) {
+      toast.error("Sets must be at least 1")
+      return
+    }
+
+    setIsSubmitting(true)
+
     const body = {
       exercise_id: selectedExercise.id,
       week_number: weekNumber,
       day_of_week: dayOfWeek,
       order_index: existingCount,
-      sets: formData.get("sets") || null,
-      reps: formData.get("reps") || null,
+      sets: setsVal || null,
+      reps: repsVal || null,
       rest_seconds: formData.get("rest_seconds") || null,
       duration_seconds: formData.get("duration_seconds") || null,
       notes: formData.get("notes") || null,
@@ -106,6 +139,15 @@ export function AddExerciseDialog({
 
       if (!response.ok) {
         const data = await response.json()
+        if (data.details) {
+          const errorMessages = Object.entries(data.details)
+            .filter(([, v]) => Array.isArray(v) && (v as string[]).length > 0)
+            .map(([field, msgs]) => `${FIELD_LABELS[field] ?? field}: ${(msgs as string[])[0]}`)
+          if (errorMessages.length > 0) {
+            toast.error(errorMessages.join(". "))
+            return
+          }
+        }
         throw new Error(data.error || "Failed to add exercise")
       }
 
@@ -188,7 +230,7 @@ export function AddExerciseDialog({
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium truncate">{ex.name}</p>
                         <p className="text-xs text-muted-foreground capitalize">
-                          {CATEGORY_LABELS[ex.category] ?? ex.category}
+                          {(Array.isArray(ex.category) ? ex.category : [ex.category]).map((c) => CATEGORY_LABELS[c] ?? c).join(", ")}
                           {ex.muscle_group && ` · ${ex.muscle_group}`}
                         </p>
                       </div>
@@ -200,86 +242,112 @@ export function AddExerciseDialog({
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => setStep(1)}
-              className="mb-2"
-            >
-              <ArrowLeft className="size-3.5" />
-              Back to selection
-            </Button>
+            {(() => {
+              const catFields = getCategoryFields(selectedExercise!.category as ExerciseCategory[])
+              return (
+                <>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setStep(1)}
+                    className="mb-2"
+                  >
+                    <ArrowLeft className="size-3.5" />
+                    Back to selection
+                  </Button>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="sets">Sets</Label>
-                <Input id="sets" name="sets" type="number" min={1} placeholder="e.g. 3" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="reps">Reps</Label>
-                <Input id="reps" name="reps" placeholder="e.g. 8-12" />
-              </div>
-            </div>
+                  <p className="text-xs text-muted-foreground">Fields marked with * are recommended.</p>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="rest_seconds">Rest (seconds)</Label>
-                <Input id="rest_seconds" name="rest_seconds" type="number" min={0} placeholder="e.g. 60" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="duration_seconds">Duration (seconds)</Label>
-                <Input id="duration_seconds" name="duration_seconds" type="number" min={0} placeholder="e.g. 30" />
-              </div>
-            </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="sets">Sets *</Label>
+                      <Input id="sets" name="sets" type="number" min={1} placeholder="e.g. 3" />
+                    </div>
+                    {catFields.showReps && (
+                      <div className="space-y-2">
+                        <Label htmlFor="reps">Reps *</Label>
+                        <Input id="reps" name="reps" placeholder="e.g. 8-12" />
+                      </div>
+                    )}
+                  </div>
 
-            {/* Intensity fields */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="rpe_target">RPE Target</Label>
-                <Input id="rpe_target" name="rpe_target" type="number" min={1} max={10} step={0.5} placeholder="e.g. 7" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="intensity_pct">Intensity (%1RM)</Label>
-                <Input id="intensity_pct" name="intensity_pct" type="number" min={0} max={100} placeholder="e.g. 75" />
-              </div>
-            </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    {catFields.showRest && (
+                      <div className="space-y-2">
+                        <Label htmlFor="rest_seconds">Rest (seconds)</Label>
+                        <Input id="rest_seconds" name="rest_seconds" type="number" min={0} placeholder="e.g. 60" />
+                      </div>
+                    )}
+                    {catFields.showDuration && (
+                      <div className="space-y-2">
+                        <Label htmlFor="duration_seconds">
+                          Duration (seconds){catFields.showDuration === "prominent" ? " *" : ""}
+                        </Label>
+                        <Input id="duration_seconds" name="duration_seconds" type="number" min={0} placeholder="e.g. 30" />
+                      </div>
+                    )}
+                  </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="tempo">Tempo</Label>
-                <Input id="tempo" name="tempo" placeholder="e.g. 3-1-2-0" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="group_tag">Group Tag</Label>
-                <Input id="group_tag" name="group_tag" placeholder="e.g. A1" />
-              </div>
-            </div>
+                  {/* Intensity fields — only for categories that use them */}
+                  {(catFields.showRpe || catFields.showIntensity) && (
+                    <div className="grid grid-cols-2 gap-4">
+                      {catFields.showRpe && (
+                        <div className="space-y-2">
+                          <Label htmlFor="rpe_target">RPE Target (1-10)</Label>
+                          <Input id="rpe_target" name="rpe_target" type="number" min={1} max={10} step={0.5} placeholder="e.g. 7" />
+                        </div>
+                      )}
+                      {catFields.showIntensity && (
+                        <div className="space-y-2">
+                          <Label htmlFor="intensity_pct">Intensity (%1RM)</Label>
+                          <Input id="intensity_pct" name="intensity_pct" type="number" min={0} max={100} placeholder="e.g. 75" />
+                        </div>
+                      )}
+                    </div>
+                  )}
 
-            <div className="space-y-2">
-              <Label htmlFor="notes">Notes</Label>
-              <textarea
-                id="notes"
-                name="notes"
-                rows={2}
-                placeholder="Any specific instructions..."
-                className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
-              />
-            </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    {catFields.showTempo && (
+                      <div className="space-y-2">
+                        <Label htmlFor="tempo">Tempo</Label>
+                        <Input id="tempo" name="tempo" placeholder="e.g. 3-1-2-0" />
+                      </div>
+                    )}
+                    <div className="space-y-2">
+                      <Label htmlFor="group_tag">Superset Group</Label>
+                      <Input id="group_tag" name="group_tag" placeholder="e.g. A1" />
+                      <p className="text-xs text-muted-foreground">Same letter = done together (A1 + A2 = superset, B1 + B2 + B3 = tri-set). Leave blank for straight sets.</p>
+                    </div>
+                  </div>
 
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => resetAndClose(false)}
-                disabled={isSubmitting}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Adding..." : "Add Exercise"}
-              </Button>
-            </DialogFooter>
+                  <div className="space-y-2">
+                    <Label htmlFor="notes">Notes</Label>
+                    <textarea
+                      id="notes"
+                      name="notes"
+                      rows={2}
+                      placeholder="Any specific instructions..."
+                      className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
+                    />
+                  </div>
+
+                  <DialogFooter>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => resetAndClose(false)}
+                      disabled={isSubmitting}
+                    >
+                      Cancel
+                    </Button>
+                    <Button type="submit" disabled={isSubmitting}>
+                      {isSubmitting ? "Adding..." : "Add Exercise"}
+                    </Button>
+                  </DialogFooter>
+                </>
+              )
+            })()}
           </form>
         )}
       </DialogContent>

@@ -32,13 +32,13 @@ function transformCsvRow(row: Record<string, string>): Record<string, unknown> {
   const result: Record<string, unknown> = { ...row }
 
   // Pipe-delimited array fields
-  const arrayFields = ["primary_muscles", "secondary_muscles", "equipment_required"]
+  const arrayFields = ["category", "primary_muscles", "secondary_muscles", "equipment_required"]
   for (const field of arrayFields) {
     const val = row[field]
     if (val && val.trim()) {
       result[field] = val.split("|").map((s) => s.trim()).filter(Boolean)
     } else {
-      result[field] = []
+      result[field] = field === "category" ? [] : []
     }
   }
 

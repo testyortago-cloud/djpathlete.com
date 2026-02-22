@@ -120,7 +120,7 @@ const exercises = [
   {
     id: EX.back_squat, name: "Barbell Back Squat",
     description: "Compound lower body exercise targeting quads, glutes, and hamstrings",
-    category: "strength", muscle_group: "legs", difficulty: "intermediate",
+    category: ["strength"], muscle_group: "legs", difficulty: "intermediate",
     equipment: "barbell, squat rack",
     instructions: "Place barbell on upper traps. Feet shoulder-width apart. Brace core, sit hips back and down. Drive through full foot to stand.",
     movement_pattern: "squat", force_type: "push", laterality: "bilateral",
@@ -130,7 +130,7 @@ const exercises = [
   {
     id: EX.bench_press, name: "Bench Press",
     description: "Upper body push exercise for chest, shoulders, and triceps",
-    category: "strength", muscle_group: "chest", difficulty: "intermediate",
+    category: ["strength"], muscle_group: "chest", difficulty: "intermediate",
     equipment: "barbell, bench",
     instructions: "Lie on bench, grip barbell slightly wider than shoulders. Lower to mid-chest, press up to lockout.",
     movement_pattern: "push", force_type: "push", laterality: "bilateral",
@@ -140,7 +140,7 @@ const exercises = [
   {
     id: EX.deadlift, name: "Deadlift",
     description: "Full body posterior chain exercise",
-    category: "strength", muscle_group: "back", difficulty: "advanced",
+    category: ["strength"], muscle_group: "back", difficulty: "advanced",
     equipment: "barbell",
     instructions: "Stand with feet hip-width, barbell over mid-foot. Hinge at hips, grip bar. Brace, drive through floor, lock hips at top.",
     movement_pattern: "hinge", force_type: "pull", laterality: "bilateral",
@@ -150,7 +150,7 @@ const exercises = [
   {
     id: EX.pull_up, name: "Pull-Up",
     description: "Bodyweight pulling exercise for back and biceps",
-    category: "strength", muscle_group: "back", difficulty: "intermediate",
+    category: ["strength"], muscle_group: "back", difficulty: "intermediate",
     equipment: "pull-up bar",
     instructions: "Hang from bar with overhand grip. Pull chest to bar by driving elbows down. Lower with control.",
     movement_pattern: "pull", force_type: "pull", laterality: "bilateral",
@@ -160,7 +160,7 @@ const exercises = [
   {
     id: EX.overhead_press, name: "Overhead Press",
     description: "Standing shoulder press for deltoids and triceps",
-    category: "strength", muscle_group: "shoulders", difficulty: "intermediate",
+    category: ["strength"], muscle_group: "shoulders", difficulty: "intermediate",
     equipment: "barbell",
     instructions: "Stand with barbell at shoulders. Brace core, press overhead to lockout. Lower under control.",
     movement_pattern: "push", force_type: "push", laterality: "bilateral",
@@ -170,7 +170,7 @@ const exercises = [
   {
     id: EX.rdl, name: "Romanian Deadlift",
     description: "Hamstring-focused hip hinge movement",
-    category: "strength", muscle_group: "legs", difficulty: "intermediate",
+    category: ["strength"], muscle_group: "legs", difficulty: "intermediate",
     equipment: "barbell",
     instructions: "Hold barbell at hips. Push hips back with soft knees, lower bar along legs until hamstring stretch. Drive hips forward to stand.",
     movement_pattern: "hinge", force_type: "pull", laterality: "bilateral",
@@ -180,7 +180,7 @@ const exercises = [
   {
     id: EX.bulgarian_split, name: "Bulgarian Split Squat",
     description: "Unilateral leg exercise for balance and strength",
-    category: "strength", muscle_group: "legs", difficulty: "intermediate",
+    category: ["strength"], muscle_group: "legs", difficulty: "intermediate",
     equipment: "dumbbells, bench",
     instructions: "Rear foot elevated on bench. Lower until rear knee nearly touches floor. Drive through front foot to stand.",
     movement_pattern: "lunge", force_type: "push", laterality: "unilateral",
@@ -190,7 +190,7 @@ const exercises = [
   {
     id: EX.barbell_row, name: "Barbell Row",
     description: "Horizontal pulling exercise for back thickness",
-    category: "strength", muscle_group: "back", difficulty: "intermediate",
+    category: ["strength"], muscle_group: "back", difficulty: "intermediate",
     equipment: "barbell",
     instructions: "Hinge forward 45 degrees. Pull barbell to lower ribcage, squeeze shoulder blades. Lower with control.",
     movement_pattern: "pull", force_type: "pull", laterality: "bilateral",
@@ -200,7 +200,7 @@ const exercises = [
   {
     id: EX.box_jump, name: "Box Jump",
     description: "Explosive lower body plyometric",
-    category: "plyometric", muscle_group: "legs", difficulty: "intermediate",
+    category: ["plyometric", "strength"], muscle_group: "legs", difficulty: "intermediate",
     equipment: "plyo box",
     instructions: "Stand facing box. Swing arms and jump explosively onto box. Land softly with knees bent. Step down.",
     movement_pattern: "squat", force_type: "push", laterality: "bilateral",
@@ -210,7 +210,7 @@ const exercises = [
   {
     id: EX.med_ball_slam, name: "Medicine Ball Slam",
     description: "Full body power exercise",
-    category: "plyometric", muscle_group: "full body", difficulty: "beginner",
+    category: ["plyometric", "cardio"], muscle_group: "full body", difficulty: "beginner",
     equipment: "medicine ball",
     instructions: "Lift ball overhead, slam it into the ground with full force. Pick up and repeat.",
     movement_pattern: "hinge", force_type: "push", laterality: "bilateral",
@@ -220,7 +220,7 @@ const exercises = [
   {
     id: EX.sprint_intervals, name: "Sprint Intervals",
     description: "High intensity running intervals for conditioning",
-    category: "cardio", muscle_group: "full body", difficulty: "advanced",
+    category: ["cardio", "sport_specific"], muscle_group: "full body", difficulty: "advanced",
     equipment: "none",
     instructions: "Sprint at max effort for 20-30 seconds. Walk/jog recovery for 60-90 seconds. Repeat.",
     movement_pattern: "locomotion", force_type: "dynamic", laterality: "alternating",
@@ -230,7 +230,7 @@ const exercises = [
   {
     id: EX.battle_ropes, name: "Battle Ropes",
     description: "Upper body and core conditioning",
-    category: "cardio", muscle_group: "arms", difficulty: "intermediate",
+    category: ["cardio", "strength"], muscle_group: "arms", difficulty: "intermediate",
     equipment: "battle ropes",
     instructions: "Hold rope ends. Create alternating waves with arms while maintaining athletic stance.",
     movement_pattern: "push", force_type: "dynamic", laterality: "alternating",
@@ -240,7 +240,7 @@ const exercises = [
   {
     id: EX.kb_swing, name: "Kettlebell Swing",
     description: "Hip hinge power exercise",
-    category: "strength", muscle_group: "full body", difficulty: "intermediate",
+    category: ["strength", "cardio"], muscle_group: "full body", difficulty: "intermediate",
     equipment: "kettlebell",
     instructions: "Hinge at hips, swing kettlebell back between legs. Drive hips forward explosively to swing to chest height.",
     movement_pattern: "hinge", force_type: "dynamic", laterality: "bilateral",
@@ -250,7 +250,7 @@ const exercises = [
   {
     id: EX.plank, name: "Plank Hold",
     description: "Isometric core stability exercise",
-    category: "strength", muscle_group: "core", difficulty: "beginner",
+    category: ["strength"], muscle_group: "core", difficulty: "beginner",
     equipment: "none",
     instructions: "Forearms and toes on ground. Body in straight line from head to heels. Hold position, brace core.",
     movement_pattern: "isometric", force_type: "static", laterality: "bilateral",
@@ -260,7 +260,7 @@ const exercises = [
   {
     id: EX.hip_flexor, name: "Hip Flexor Stretch",
     description: "Static stretch for hip flexors",
-    category: "flexibility", muscle_group: "hips", difficulty: "beginner",
+    category: ["flexibility"], muscle_group: "hips", difficulty: "beginner",
     equipment: "none",
     instructions: "Half-kneeling position. Push hips forward gently until stretch is felt in front of rear hip. Hold 30 seconds.",
     movement_pattern: "lunge", force_type: "static", laterality: "unilateral",
@@ -270,7 +270,7 @@ const exercises = [
   {
     id: EX.foam_roll_it, name: "Foam Rolling - IT Band",
     description: "Self-myofascial release for IT band",
-    category: "recovery", muscle_group: "legs", difficulty: "beginner",
+    category: ["recovery"], muscle_group: "legs", difficulty: "beginner",
     equipment: "foam roller",
     instructions: "Side-lying on foam roller at outer thigh. Roll slowly from hip to just above knee. Pause on tender spots.",
     movement_pattern: null, force_type: null, laterality: "unilateral",
@@ -280,7 +280,7 @@ const exercises = [
   {
     id: EX.agility_ladder, name: "Agility Ladder Drill",
     description: "Footwork and coordination drill",
-    category: "sport_specific", muscle_group: "legs", difficulty: "intermediate",
+    category: ["sport_specific"], muscle_group: "legs", difficulty: "intermediate",
     equipment: "agility ladder",
     instructions: "Place ladder on ground. Perform various footwork patterns through the ladder at increasing speed.",
     movement_pattern: "locomotion", force_type: "dynamic", laterality: "alternating",
@@ -290,7 +290,7 @@ const exercises = [
   {
     id: EX.cone_drill, name: "Cone Drill - 5-10-5",
     description: "Change of direction speed drill",
-    category: "sport_specific", muscle_group: "legs", difficulty: "intermediate",
+    category: ["sport_specific"], muscle_group: "legs", difficulty: "intermediate",
     equipment: "cones",
     instructions: "Start in 3-point stance. Sprint 5 yards right, 10 yards left, 5 yards right back to start.",
     movement_pattern: "locomotion", force_type: "dynamic", laterality: "alternating",
@@ -300,7 +300,7 @@ const exercises = [
   {
     id: EX.sled_push, name: "Sled Push",
     description: "Lower body power and conditioning",
-    category: "strength", muscle_group: "legs", difficulty: "advanced",
+    category: ["strength", "cardio"], muscle_group: "legs", difficulty: "advanced",
     equipment: "sled",
     instructions: "Grip sled handles at waist height. Drive through legs, pushing sled forward with powerful steps.",
     movement_pattern: "locomotion", force_type: "push", laterality: "alternating",
@@ -310,7 +310,7 @@ const exercises = [
   {
     id: EX.yoga_flow, name: "Yoga Flow - Recovery",
     description: "Full body recovery yoga sequence",
-    category: "recovery", muscle_group: "full body", difficulty: "beginner",
+    category: ["recovery"], muscle_group: "full body", difficulty: "beginner",
     equipment: "yoga mat",
     instructions: "Flow through downward dog, warrior poses, pigeon, child's pose. Hold each 30-60 seconds.",
     movement_pattern: null, force_type: "static", laterality: "bilateral",
@@ -320,7 +320,7 @@ const exercises = [
   {
     id: EX.lat_pulldown, name: "Lat Pulldown",
     description: "Machine-based vertical pulling for lats",
-    category: "strength", muscle_group: "back", difficulty: "beginner",
+    category: ["strength"], muscle_group: "back", difficulty: "beginner",
     equipment: "cable machine",
     instructions: "Grip wide bar overhand. Pull bar to upper chest, squeeze lats. Return with control.",
     movement_pattern: "pull", force_type: "pull", laterality: "bilateral",
@@ -330,7 +330,7 @@ const exercises = [
   {
     id: EX.db_curl, name: "Dumbbell Bicep Curl",
     description: "Isolation exercise for biceps",
-    category: "strength", muscle_group: "arms", difficulty: "beginner",
+    category: ["strength"], muscle_group: "arms", difficulty: "beginner",
     equipment: "dumbbells",
     instructions: "Stand holding dumbbells at sides. Curl weights to shoulders, squeeze biceps. Lower with control.",
     movement_pattern: "pull", force_type: "pull", laterality: "bilateral",
@@ -340,7 +340,7 @@ const exercises = [
   {
     id: EX.tricep_pushdown, name: "Tricep Pushdown",
     description: "Cable isolation for triceps",
-    category: "strength", muscle_group: "arms", difficulty: "beginner",
+    category: ["strength"], muscle_group: "arms", difficulty: "beginner",
     equipment: "cable machine",
     instructions: "Stand at cable machine, grip rope/bar. Push down until arms straight, squeeze triceps. Return with control.",
     movement_pattern: "push", force_type: "push", laterality: "bilateral",
@@ -350,7 +350,7 @@ const exercises = [
   {
     id: EX.leg_press, name: "Leg Press",
     description: "Machine-based compound leg exercise",
-    category: "strength", muscle_group: "legs", difficulty: "beginner",
+    category: ["strength"], muscle_group: "legs", difficulty: "beginner",
     equipment: "leg press machine",
     instructions: "Sit in leg press, feet shoulder-width on platform. Lower sled until 90-degree knee bend. Press to near-lockout.",
     movement_pattern: "squat", force_type: "push", laterality: "bilateral",
@@ -360,7 +360,7 @@ const exercises = [
   {
     id: EX.leg_curl, name: "Lying Leg Curl",
     description: "Machine isolation for hamstrings",
-    category: "strength", muscle_group: "legs", difficulty: "beginner",
+    category: ["strength"], muscle_group: "legs", difficulty: "beginner",
     equipment: "leg curl machine",
     instructions: "Lie face down on leg curl machine. Curl heels toward glutes. Lower with control.",
     movement_pattern: "pull", force_type: "pull", laterality: "bilateral",
@@ -370,7 +370,7 @@ const exercises = [
   {
     id: EX.face_pull, name: "Face Pull",
     description: "Rear deltoid and upper back corrective exercise",
-    category: "strength", muscle_group: "shoulders", difficulty: "beginner",
+    category: ["strength"], muscle_group: "shoulders", difficulty: "beginner",
     equipment: "cable machine",
     instructions: "Set cable at face height with rope. Pull toward face, externally rotate hands at end. Squeeze rear delts.",
     movement_pattern: "pull", force_type: "pull", laterality: "bilateral",
@@ -380,7 +380,7 @@ const exercises = [
   {
     id: EX.db_lateral_raise, name: "Dumbbell Lateral Raise",
     description: "Isolation exercise for lateral deltoids",
-    category: "strength", muscle_group: "shoulders", difficulty: "beginner",
+    category: ["strength"], muscle_group: "shoulders", difficulty: "beginner",
     equipment: "dumbbells",
     instructions: "Stand holding dumbbells at sides. Raise arms to sides until parallel to floor. Lower slowly.",
     movement_pattern: "push", force_type: "push", laterality: "bilateral",
@@ -390,7 +390,7 @@ const exercises = [
   {
     id: EX.push_up, name: "Push-Up",
     description: "Classic bodyweight pushing exercise",
-    category: "strength", muscle_group: "chest", difficulty: "beginner",
+    category: ["strength"], muscle_group: "chest", difficulty: "beginner",
     equipment: "none",
     instructions: "Hands shoulder-width apart. Lower chest to ground, push back up. Keep body in straight line.",
     movement_pattern: "push", force_type: "push", laterality: "bilateral",
@@ -400,7 +400,7 @@ const exercises = [
   {
     id: EX.hip_thrust, name: "Barbell Hip Thrust",
     description: "Glute-focused hip extension",
-    category: "strength", muscle_group: "glutes", difficulty: "intermediate",
+    category: ["strength"], muscle_group: "glutes", difficulty: "intermediate",
     equipment: "barbell, bench",
     instructions: "Upper back on bench, barbell across hips. Drive hips up until body is straight. Squeeze glutes at top.",
     movement_pattern: "hinge", force_type: "push", laterality: "bilateral",
@@ -410,7 +410,7 @@ const exercises = [
   {
     id: EX.farmers_carry, name: "Farmer's Carry",
     description: "Loaded carry for grip, core, and full body stability",
-    category: "strength", muscle_group: "full body", difficulty: "intermediate",
+    category: ["strength"], muscle_group: "full body", difficulty: "intermediate",
     equipment: "dumbbells or kettlebells",
     instructions: "Hold heavy weights at sides. Walk with tall posture, braced core, for prescribed distance or time.",
     movement_pattern: "carry", force_type: "static", laterality: "bilateral",
@@ -422,7 +422,7 @@ const exercises = [
   {
     id: EX.db_bench_press, name: "Dumbbell Bench Press",
     description: "Dumbbell pressing for chest with greater range of motion than barbell",
-    category: "strength", muscle_group: "chest", difficulty: "intermediate",
+    category: ["strength"], muscle_group: "chest", difficulty: "intermediate",
     equipment: "dumbbells, bench",
     instructions: "Lie on bench holding dumbbells at chest level. Press both dumbbells up until arms are extended. Lower with control to chest depth.",
     movement_pattern: "push", force_type: "push", laterality: "bilateral",
@@ -432,7 +432,7 @@ const exercises = [
   {
     id: EX.db_ohp, name: "Dumbbell Overhead Press",
     description: "Seated or standing dumbbell shoulder press for deltoid development",
-    category: "strength", muscle_group: "shoulders", difficulty: "intermediate",
+    category: ["strength"], muscle_group: "shoulders", difficulty: "intermediate",
     equipment: "dumbbells",
     instructions: "Hold dumbbells at shoulder height with palms forward. Press overhead to full lockout. Lower under control to shoulder level.",
     movement_pattern: "push", force_type: "push", laterality: "bilateral",
@@ -442,7 +442,7 @@ const exercises = [
   {
     id: EX.db_row, name: "Dumbbell Row",
     description: "Single-arm horizontal pull for back thickness and lat development",
-    category: "strength", muscle_group: "back", difficulty: "beginner",
+    category: ["strength"], muscle_group: "back", difficulty: "beginner",
     equipment: "dumbbell, bench",
     instructions: "One hand and knee on bench, opposite foot on floor. Row dumbbell to hip, squeezing shoulder blade back. Lower with control.",
     movement_pattern: "pull", force_type: "pull", laterality: "unilateral",
@@ -452,7 +452,7 @@ const exercises = [
   {
     id: EX.db_lunge, name: "Dumbbell Lunge",
     description: "Unilateral lower body exercise for legs and balance",
-    category: "strength", muscle_group: "legs", difficulty: "beginner",
+    category: ["strength"], muscle_group: "legs", difficulty: "beginner",
     equipment: "dumbbells",
     instructions: "Hold dumbbells at sides. Step forward into a lunge until both knees are at 90 degrees. Push through front foot to return to standing.",
     movement_pattern: "lunge", force_type: "push", laterality: "unilateral",
@@ -462,7 +462,7 @@ const exercises = [
   {
     id: EX.db_rdl, name: "Dumbbell Romanian Deadlift",
     description: "Dumbbell hip hinge for hamstring and glute development",
-    category: "strength", muscle_group: "legs", difficulty: "intermediate",
+    category: ["strength"], muscle_group: "legs", difficulty: "intermediate",
     equipment: "dumbbells",
     instructions: "Hold dumbbells in front of thighs. Push hips back with soft knees, lowering dumbbells along legs until hamstring stretch. Drive hips forward to stand.",
     movement_pattern: "hinge", force_type: "pull", laterality: "bilateral",
@@ -472,7 +472,7 @@ const exercises = [
   {
     id: EX.goblet_squat, name: "Goblet Squat",
     description: "Front-loaded squat ideal for learning squat mechanics",
-    category: "strength", muscle_group: "legs", difficulty: "beginner",
+    category: ["strength"], muscle_group: "legs", difficulty: "beginner",
     equipment: "dumbbell or kettlebell",
     instructions: "Hold dumbbell or kettlebell at chest with both hands. Squat down keeping chest up and elbows inside knees. Drive through feet to stand.",
     movement_pattern: "squat", force_type: "push", laterality: "bilateral",
@@ -484,7 +484,7 @@ const exercises = [
   {
     id: EX.leg_extension, name: "Leg Extension",
     description: "Machine isolation for quadriceps",
-    category: "strength", muscle_group: "legs", difficulty: "beginner",
+    category: ["strength"], muscle_group: "legs", difficulty: "beginner",
     equipment: "leg extension machine",
     instructions: "Sit in machine with pad on shins. Extend legs fully, squeezing quads at top. Lower with control.",
     movement_pattern: "squat", force_type: "push", laterality: "bilateral",
@@ -494,7 +494,7 @@ const exercises = [
   {
     id: EX.pec_fly_machine, name: "Pec Fly Machine",
     description: "Machine chest isolation focusing on pectoral contraction",
-    category: "strength", muscle_group: "chest", difficulty: "beginner",
+    category: ["strength"], muscle_group: "chest", difficulty: "beginner",
     equipment: "pec deck machine",
     instructions: "Sit in machine, grip handles at chest height. Bring handles together in front of chest, squeezing pecs. Return with control.",
     movement_pattern: "push", force_type: "push", laterality: "bilateral",
@@ -504,7 +504,7 @@ const exercises = [
   {
     id: EX.seated_calf_raise, name: "Seated Calf Raise",
     description: "Isolation exercise targeting the soleus muscle of the calves",
-    category: "strength", muscle_group: "legs", difficulty: "beginner",
+    category: ["strength"], muscle_group: "legs", difficulty: "beginner",
     equipment: "bench, dumbbell",
     instructions: "Sit on bench with dumbbell on knees and balls of feet on a raised surface. Raise heels as high as possible, squeezing calves. Lower slowly.",
     movement_pattern: "push", force_type: "push", laterality: "bilateral",
@@ -514,7 +514,7 @@ const exercises = [
   {
     id: EX.cable_lat_raise, name: "Cable Lateral Raise",
     description: "Constant tension lateral deltoid isolation using cable",
-    category: "strength", muscle_group: "shoulders", difficulty: "beginner",
+    category: ["strength"], muscle_group: "shoulders", difficulty: "beginner",
     equipment: "cable machine",
     instructions: "Stand sideways to cable, low pulley. Raise arm out to side until parallel to floor. Lower slowly against cable tension.",
     movement_pattern: "push", force_type: "push", laterality: "unilateral",
@@ -524,7 +524,7 @@ const exercises = [
   {
     id: EX.cable_row, name: "Cable Row",
     description: "Seated cable rowing for mid-back thickness",
-    category: "strength", muscle_group: "back", difficulty: "beginner",
+    category: ["strength"], muscle_group: "back", difficulty: "beginner",
     equipment: "cable machine",
     instructions: "Sit at cable row station, feet on platform. Pull handle to lower ribcage, squeezing shoulder blades together. Return with control.",
     movement_pattern: "pull", force_type: "pull", laterality: "bilateral",
@@ -534,7 +534,7 @@ const exercises = [
   {
     id: EX.cable_crunch, name: "Cable Crunch",
     description: "Weighted abdominal exercise using cable resistance",
-    category: "strength", muscle_group: "core", difficulty: "intermediate",
+    category: ["strength"], muscle_group: "core", difficulty: "intermediate",
     equipment: "cable machine",
     instructions: "Kneel facing cable with rope behind head. Crunch down by contracting abs, bringing elbows toward knees. Return with control.",
     movement_pattern: "isometric", force_type: "pull", laterality: "bilateral",
@@ -544,7 +544,7 @@ const exercises = [
   {
     id: EX.cable_crossover, name: "Cable Crossover",
     description: "Cable fly movement for chest isolation with constant tension",
-    category: "strength", muscle_group: "chest", difficulty: "intermediate",
+    category: ["strength"], muscle_group: "chest", difficulty: "intermediate",
     equipment: "cable machine",
     instructions: "Stand between cable stacks, pulleys set high. Step forward, bring handles together in arc in front of chest. Return with control.",
     movement_pattern: "push", force_type: "push", laterality: "bilateral",
@@ -554,7 +554,7 @@ const exercises = [
   {
     id: EX.lat_pulldown_cg, name: "Lat Pulldown Close Grip",
     description: "Close grip vertical pull emphasizing lower lats and biceps",
-    category: "strength", muscle_group: "back", difficulty: "beginner",
+    category: ["strength"], muscle_group: "back", difficulty: "beginner",
     equipment: "lat pulldown machine",
     instructions: "Grip V-bar or close grip handle. Pull down to upper chest, squeezing lats. Return with control overhead.",
     movement_pattern: "pull", force_type: "pull", laterality: "bilateral",
@@ -564,7 +564,7 @@ const exercises = [
   {
     id: EX.seated_leg_curl, name: "Seated Leg Curl",
     description: "Machine hamstring isolation in seated position",
-    category: "strength", muscle_group: "legs", difficulty: "beginner",
+    category: ["strength"], muscle_group: "legs", difficulty: "beginner",
     equipment: "seated leg curl machine",
     instructions: "Sit in machine with pad behind ankles. Curl heels under the seat by contracting hamstrings. Return with control.",
     movement_pattern: "pull", force_type: "pull", laterality: "bilateral",
@@ -576,7 +576,7 @@ const exercises = [
   {
     id: EX.dips, name: "Dips",
     description: "Bodyweight compound push for chest and triceps",
-    category: "strength", muscle_group: "chest", difficulty: "intermediate",
+    category: ["strength"], muscle_group: "chest", difficulty: "intermediate",
     equipment: "parallel bars or dip station",
     instructions: "Support yourself on parallel bars with straight arms. Lower body by bending elbows until upper arms are parallel to floor. Press back up to lockout.",
     movement_pattern: "push", force_type: "push", laterality: "bilateral",
@@ -586,7 +586,7 @@ const exercises = [
   {
     id: EX.inverted_row, name: "Inverted Row",
     description: "Bodyweight horizontal pulling exercise for back",
-    category: "strength", muscle_group: "back", difficulty: "beginner",
+    category: ["strength"], muscle_group: "back", difficulty: "beginner",
     equipment: "smith machine or low bar",
     instructions: "Hang under a bar with body straight. Pull chest to bar by squeezing shoulder blades together. Lower with control.",
     movement_pattern: "pull", force_type: "pull", laterality: "bilateral",
@@ -596,7 +596,7 @@ const exercises = [
   {
     id: EX.glute_bridge, name: "Glute Bridge",
     description: "Bodyweight glute activation and hip extension exercise",
-    category: "strength", muscle_group: "glutes", difficulty: "beginner",
+    category: ["strength"], muscle_group: "glutes", difficulty: "beginner",
     equipment: "none",
     instructions: "Lie on back with knees bent, feet flat on floor. Drive hips up by squeezing glutes until body forms straight line from knees to shoulders. Lower slowly.",
     movement_pattern: "hinge", force_type: "push", laterality: "bilateral",
@@ -606,7 +606,7 @@ const exercises = [
   {
     id: EX.mountain_climbers, name: "Mountain Climbers",
     description: "Dynamic bodyweight core and cardio exercise",
-    category: "cardio", muscle_group: "core", difficulty: "beginner",
+    category: ["cardio", "strength"], muscle_group: "core", difficulty: "beginner",
     equipment: "none",
     instructions: "Start in push-up position. Drive one knee toward chest, then quickly switch legs in a running motion. Keep hips level and core tight.",
     movement_pattern: "locomotion", force_type: "dynamic", laterality: "alternating",
@@ -616,7 +616,7 @@ const exercises = [
   {
     id: EX.burpees, name: "Burpees",
     description: "Full body metabolic conditioning exercise",
-    category: "cardio", muscle_group: "full body", difficulty: "intermediate",
+    category: ["cardio", "plyometric"], muscle_group: "full body", difficulty: "intermediate",
     equipment: "none",
     instructions: "From standing, squat down and place hands on floor. Jump feet back to push-up position. Perform a push-up. Jump feet forward and explosively jump up with arms overhead.",
     movement_pattern: "locomotion", force_type: "dynamic", laterality: "bilateral",
@@ -626,7 +626,7 @@ const exercises = [
   {
     id: EX.pike_push_up, name: "Pike Push-up",
     description: "Bodyweight shoulder pressing variation with elevated hips",
-    category: "strength", muscle_group: "shoulders", difficulty: "intermediate",
+    category: ["strength"], muscle_group: "shoulders", difficulty: "intermediate",
     equipment: "none",
     instructions: "Start in push-up position, walk feet toward hands so hips are high in an inverted V. Bend elbows to lower head toward floor. Press back up.",
     movement_pattern: "push", force_type: "push", laterality: "bilateral",
@@ -636,7 +636,7 @@ const exercises = [
   {
     id: EX.bw_squat, name: "Bodyweight Squat",
     description: "Fundamental bodyweight lower body movement",
-    category: "strength", muscle_group: "legs", difficulty: "beginner",
+    category: ["strength"], muscle_group: "legs", difficulty: "beginner",
     equipment: "none",
     instructions: "Stand with feet shoulder-width apart. Sit hips back and down, keeping chest up and knees tracking over toes. Stand back up through full foot.",
     movement_pattern: "squat", force_type: "push", laterality: "bilateral",
@@ -646,7 +646,7 @@ const exercises = [
   {
     id: EX.jumping_lunges, name: "Jumping Lunges",
     description: "Explosive plyometric lunge for power and leg endurance",
-    category: "plyometric", muscle_group: "legs", difficulty: "intermediate",
+    category: ["plyometric"], muscle_group: "legs", difficulty: "intermediate",
     equipment: "none",
     instructions: "Start in lunge position. Jump explosively, switching legs mid-air. Land softly in opposite lunge position. Repeat alternating.",
     movement_pattern: "lunge", force_type: "push", laterality: "alternating",
@@ -658,7 +658,7 @@ const exercises = [
   {
     id: EX.db_thruster, name: "Dumbbell Thruster",
     description: "Combined front squat and press for full body metabolic conditioning",
-    category: "strength", muscle_group: "full body", difficulty: "intermediate",
+    category: ["strength", "cardio"], muscle_group: "full body", difficulty: "intermediate",
     equipment: "dumbbells",
     instructions: "Hold dumbbells at shoulders. Squat down to full depth. Drive up explosively and press dumbbells overhead in one fluid motion. Lower to shoulders and repeat.",
     movement_pattern: "squat", force_type: "push", laterality: "bilateral",
@@ -668,7 +668,7 @@ const exercises = [
   {
     id: EX.kb_clean_press, name: "Kettlebell Clean & Press",
     description: "Full body kettlebell movement combining hip drive and overhead pressing",
-    category: "strength", muscle_group: "full body", difficulty: "advanced",
+    category: ["strength", "plyometric"], muscle_group: "full body", difficulty: "advanced",
     equipment: "kettlebell",
     instructions: "Start with kettlebell between feet. Clean to rack position with a powerful hip hinge. Press overhead to lockout. Lower to rack, then back to floor. Repeat.",
     movement_pattern: "hinge", force_type: "push", laterality: "unilateral",
@@ -678,7 +678,7 @@ const exercises = [
   {
     id: EX.devil_press, name: "Devil Press",
     description: "Intense full body dumbbell movement combining burpee and snatch",
-    category: "cardio", muscle_group: "full body", difficulty: "advanced",
+    category: ["cardio", "strength"], muscle_group: "full body", difficulty: "advanced",
     equipment: "dumbbells",
     instructions: "Hold dumbbells, perform a burpee with hands on dumbbells. From the bottom, swing dumbbells between legs and overhead in one powerful motion. Lower and repeat.",
     movement_pattern: "hinge", force_type: "push", laterality: "bilateral",
@@ -688,7 +688,7 @@ const exercises = [
   {
     id: EX.man_maker, name: "Man Maker",
     description: "Complex full body dumbbell exercise combining push-up, row, squat, and press",
-    category: "strength", muscle_group: "full body", difficulty: "advanced",
+    category: ["strength", "cardio"], muscle_group: "full body", difficulty: "advanced",
     equipment: "dumbbells",
     instructions: "Start in push-up position on dumbbells. Perform push-up, row each side, jump feet to hands, clean dumbbells to shoulders, squat and press overhead. Return to start.",
     movement_pattern: "push", force_type: "push", laterality: "bilateral",
@@ -700,7 +700,7 @@ const exercises = [
   {
     id: EX.incline_bench, name: "Incline Bench Press",
     description: "Incline barbell press for upper chest emphasis",
-    category: "strength", muscle_group: "chest", difficulty: "intermediate",
+    category: ["strength"], muscle_group: "chest", difficulty: "intermediate",
     equipment: "barbell, incline bench",
     instructions: "Set bench to 30-45 degree incline. Grip barbell slightly wider than shoulders. Lower to upper chest, press to lockout.",
     movement_pattern: "push", force_type: "push", laterality: "bilateral",
@@ -710,7 +710,7 @@ const exercises = [
   {
     id: EX.front_squat, name: "Front Squat",
     description: "Barbell squat with front rack position emphasizing quads and upright torso",
-    category: "strength", muscle_group: "legs", difficulty: "advanced",
+    category: ["strength"], muscle_group: "legs", difficulty: "advanced",
     equipment: "barbell, squat rack",
     instructions: "Rest barbell on front deltoids with clean grip or cross-arm grip. Squat to full depth keeping elbows high and torso upright. Drive up through feet.",
     movement_pattern: "squat", force_type: "push", laterality: "bilateral",
@@ -720,7 +720,7 @@ const exercises = [
   {
     id: EX.sumo_deadlift, name: "Sumo Deadlift",
     description: "Wide-stance deadlift variation targeting glutes and inner thighs",
-    category: "strength", muscle_group: "legs", difficulty: "intermediate",
+    category: ["strength"], muscle_group: "legs", difficulty: "intermediate",
     equipment: "barbell",
     instructions: "Wide stance with toes pointed out. Grip barbell inside knees. Brace core, drive through floor spreading the floor with feet. Lock hips at top.",
     movement_pattern: "hinge", force_type: "pull", laterality: "bilateral",
@@ -730,7 +730,7 @@ const exercises = [
   {
     id: EX.bb_hip_thrust, name: "Barbell Hip Thrust",
     description: "Barbell-loaded glute bridge for maximal glute development",
-    category: "strength", muscle_group: "glutes", difficulty: "intermediate",
+    category: ["strength"], muscle_group: "glutes", difficulty: "intermediate",
     equipment: "barbell, bench",
     instructions: "Upper back against bench, barbell across hips with pad. Drive hips up until body is straight from knees to shoulders. Squeeze glutes hard at top. Lower with control.",
     movement_pattern: "hinge", force_type: "push", laterality: "bilateral",
@@ -740,7 +740,7 @@ const exercises = [
   {
     id: EX.pendlay_row, name: "Pendlay Row",
     description: "Strict barbell row from the floor for explosive back strength",
-    category: "strength", muscle_group: "back", difficulty: "intermediate",
+    category: ["strength"], muscle_group: "back", difficulty: "intermediate",
     equipment: "barbell",
     instructions: "Hinge forward until torso is parallel to floor. Pull barbell explosively from floor to lower chest. Lower bar back to floor between each rep.",
     movement_pattern: "pull", force_type: "pull", laterality: "bilateral",
@@ -750,7 +750,7 @@ const exercises = [
   {
     id: EX.cg_bench_press, name: "Close Grip Bench Press",
     description: "Narrow grip bench press for triceps emphasis",
-    category: "strength", muscle_group: "arms", difficulty: "intermediate",
+    category: ["strength"], muscle_group: "arms", difficulty: "intermediate",
     equipment: "barbell, bench",
     instructions: "Lie on bench, grip barbell at shoulder width or slightly narrower. Lower to lower chest keeping elbows tucked. Press to lockout emphasizing triceps.",
     movement_pattern: "push", force_type: "push", laterality: "bilateral",
@@ -760,7 +760,7 @@ const exercises = [
   {
     id: EX.barbell_curl, name: "Barbell Curl",
     description: "Classic barbell exercise for bicep mass and strength",
-    category: "strength", muscle_group: "arms", difficulty: "beginner",
+    category: ["strength"], muscle_group: "arms", difficulty: "beginner",
     equipment: "barbell",
     instructions: "Stand holding barbell with underhand grip at hip width. Curl bar to shoulders keeping elbows pinned to sides. Lower with control.",
     movement_pattern: "pull", force_type: "pull", laterality: "bilateral",
@@ -772,7 +772,7 @@ const exercises = [
   {
     id: EX.cat_cow, name: "Cat-Cow Stretch",
     description: "Spinal mobility exercise alternating between flexion and extension",
-    category: "flexibility", muscle_group: "back", difficulty: "beginner",
+    category: ["flexibility"], muscle_group: "back", difficulty: "beginner",
     equipment: "yoga mat",
     instructions: "Start on hands and knees. Inhale and arch back dropping belly toward floor (cow). Exhale and round spine pushing mid-back toward ceiling (cat). Alternate slowly.",
     movement_pattern: "isometric", force_type: "static", laterality: "bilateral",
@@ -782,7 +782,7 @@ const exercises = [
   {
     id: EX.worlds_greatest, name: "World's Greatest Stretch",
     description: "Multi-planar dynamic stretch targeting hips, thoracic spine, and hamstrings",
-    category: "flexibility", muscle_group: "full body", difficulty: "beginner",
+    category: ["flexibility"], muscle_group: "full body", difficulty: "beginner",
     equipment: "yoga mat",
     instructions: "Lunge forward, place opposite hand on floor inside front foot. Rotate torso and reach top arm to ceiling. Hold briefly, switch sides.",
     movement_pattern: "lunge", force_type: "static", laterality: "alternating",
@@ -792,7 +792,7 @@ const exercises = [
   {
     id: EX.ninety_ninety, name: "90/90 Hip Stretch",
     description: "Seated hip mobility exercise targeting internal and external rotation",
-    category: "flexibility", muscle_group: "hips", difficulty: "beginner",
+    category: ["flexibility"], muscle_group: "hips", difficulty: "beginner",
     equipment: "yoga mat",
     instructions: "Sit on floor with front leg bent 90 degrees in front, rear leg bent 90 degrees behind. Keep torso tall and lean gently over front shin. Hold, then switch sides.",
     movement_pattern: "isometric", force_type: "static", laterality: "unilateral",
@@ -808,7 +808,7 @@ const programs = [
     id: PROGRAM_FOUNDATION,
     name: "Foundation Strength Program",
     description: "Build a solid strength base with compound movements and progressive overload. Perfect for athletes looking to establish fundamental movement patterns.",
-    category: "strength", difficulty: "beginner", duration_weeks: 8, sessions_per_week: 3,
+    category: ["strength"], difficulty: "beginner", duration_weeks: 8, sessions_per_week: 3,
     price_cents: 9900, is_active: true, created_by: ADMIN_ID,
     split_type: "full_body", periodization: "linear", is_ai_generated: false,
   },
@@ -824,7 +824,7 @@ const programs = [
     id: PROGRAM_SPORT,
     name: "Athletic Speed & Power",
     description: "Sport-specific training focused on explosive power, agility, and speed development. Ideal for team sport athletes.",
-    category: "sport_specific", difficulty: "intermediate", duration_weeks: 6, sessions_per_week: 4,
+    category: ["sport_specific"], difficulty: "intermediate", duration_weeks: 6, sessions_per_week: 4,
     price_cents: 14900, is_active: true, created_by: ADMIN_ID,
     split_type: "push_pull", periodization: "block", is_ai_generated: false,
   },

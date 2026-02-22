@@ -423,7 +423,7 @@ export function ExerciseRelationships({
                             {ex.name}
                           </span>
                           <span className="text-xs text-muted-foreground capitalize shrink-0">
-                            {ex.category}
+                            {Array.isArray(ex.category) ? ex.category.join(", ") : ex.category}
                           </span>
                         </button>
                       ))}

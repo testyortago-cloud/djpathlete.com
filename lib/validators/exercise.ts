@@ -102,9 +102,7 @@ export const exerciseFormSchema = z.object({
     .max(2000, "Description must be under 2000 characters")
     .nullable()
     .transform((v) => v || null),
-  category: z.enum(EXERCISE_CATEGORIES, {
-    message: "Category is required",
-  }),
+  category: z.array(z.enum(EXERCISE_CATEGORIES)).min(1, "Select at least one category"),
   muscle_group: z
     .string()
     .max(100, "Muscle group must be under 100 characters")

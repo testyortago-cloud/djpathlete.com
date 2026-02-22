@@ -3,7 +3,7 @@
 
 const APP_SHELL_CACHE = "djp-app-shell-v1"
 const STATIC_CACHE = "djp-static-v1"
-const API_CACHE = "djp-api-v1"
+const API_CACHE = "djp-api-v2"
 const PAGES_CACHE = "djp-pages-v1"
 
 const CURRENT_CACHES = [APP_SHELL_CACHE, STATIC_CACHE, API_CACHE, PAGES_CACHE]
@@ -71,9 +71,9 @@ function isStaticAsset(url) {
   )
 }
 
-// Helper: determine if a request is for an API route
+// Helper: determine if a request is for an API route (exclude auth endpoints)
 function isApiRequest(url) {
-  return url.pathname.startsWith("/api/")
+  return url.pathname.startsWith("/api/") && !url.pathname.startsWith("/api/auth/")
 }
 
 // Helper: determine if a request is a navigation (HTML page)

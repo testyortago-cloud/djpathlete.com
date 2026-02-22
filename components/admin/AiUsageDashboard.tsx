@@ -135,9 +135,12 @@ export function AiUsageDashboard() {
 
   return (
     <div>
-      {/* Refresh Button */}
-      <div className="flex justify-end mb-4">
-        <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}>
+      {/* Intro + Refresh */}
+      <div className="flex items-start justify-between gap-4 mb-4">
+        <p className="text-sm text-muted-foreground max-w-xl">
+          Tracks AI-powered program generation, coach suggestions, and exercise recommendations. Costs are estimated from Claude API token pricing.
+        </p>
+        <Button variant="outline" size="sm" onClick={fetchData} disabled={loading} className="shrink-0">
           <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
           Refresh
         </Button>
@@ -154,6 +157,9 @@ export function AiUsageDashboard() {
           </div>
           <p className="text-2xl font-semibold text-primary">
             {stats.total_generations}
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            All AI calls: programs, coach tips, swaps
           </p>
           {stats.generating > 0 && (
             <p className="text-xs text-warning mt-1">
@@ -186,7 +192,7 @@ export function AiUsageDashboard() {
             {formatTokens(stats.avg_tokens_per_generation)}
           </p>
           <p className="text-xs text-muted-foreground mt-1">
-            {formatTokens(stats.total_tokens)} total
+            {formatTokens(stats.total_tokens)} total &middot; measures input + output text
           </p>
         </div>
 
@@ -199,6 +205,9 @@ export function AiUsageDashboard() {
           </div>
           <p className="text-2xl font-semibold text-primary">
             {formatDuration(stats.avg_duration_ms)}
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Time per AI request from start to finish
           </p>
         </div>
 
@@ -213,7 +222,7 @@ export function AiUsageDashboard() {
             {estimateCost(stats.total_tokens)}
           </p>
           <p className="text-xs text-muted-foreground mt-1">
-            ~$0.009 / 1K tokens (blended)
+            ~$0.009 / 1K tokens (blended input + output)
           </p>
         </div>
       </div>
