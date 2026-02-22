@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import {
@@ -28,7 +28,7 @@ import { useFormTour } from "@/hooks/use-form-tour"
 import { FormTour } from "@/components/admin/FormTour"
 import { TourButton } from "@/components/admin/TourButton"
 import { PROGRAM_TOUR_STEPS } from "@/lib/tour-steps"
-import type { Program, User } from "@/types/database"
+import type { Program } from "@/types/database"
 
 interface ProgramFormDialogProps {
   open: boolean
@@ -100,34 +100,6 @@ export function ProgramFormDialog({
     Array.isArray(program?.category) ? program.category : program?.category ? [program.category] : []
   )
 
-  // Client assignment (create mode only)
-  const [clients, setClients] = useState<User[]>([])
-  const [loadingClients, setLoadingClients] = useState(false)
-  const [assignTo, setAssignTo] = useState("")
-
-  const fetchClients = useCallback(async () => {
-    setLoadingClients(true)
-    try {
-      const response = await fetch("/api/admin/users?role=client")
-      if (response.ok) {
-        const data = await response.json()
-        setClients(data.users ?? data ?? [])
-      }
-    } catch {
-      // Silently fail
-    } finally {
-      setLoadingClients(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (open && !isEditing) {
-      fetchClients()
-    }
-    if (!open) {
-      setAssignTo("")
-    }
-  }, [open, isEditing, fetchClients])
 
   // Sync state when switching between create/edit
   useEffect(() => {
@@ -186,10 +158,7 @@ export function ProgramFormDialog({
         : "/api/admin/programs"
       const method = isEditing ? "PATCH" : "POST"
 
-      const payload = {
-        ...result.data,
-        ...(assignTo && !isEditing ? { assign_to: assignTo } : {}),
-      }
+      const payload = result.data
 
       const response = await fetch(url, {
         method,
@@ -256,37 +225,6 @@ export function ProgramFormDialog({
               <p className="text-xs text-destructive">{errors.name[0]}</p>
             )}
           </div>
-
-          {/* Assign to Client (create mode only) */}
-          {!isEditing && (
-            <div className="space-y-2">
-              <Label htmlFor="assign_to">
-                Assign to Client
-                <span className="text-muted-foreground font-normal ml-1">(optional)</span>
-              </Label>
-              <select
-                id="assign_to"
-                value={assignTo}
-                onChange={(e) => setAssignTo(e.target.value)}
-                disabled={isSubmitting || loadingClients}
-                className={selectClass}
-              >
-                <option value="">
-                  {loadingClients ? "Loading clients..." : "No client — assign later"}
-                </option>
-                {clients.map((client) => (
-                  <option key={client.id} value={client.id}>
-                    {client.first_name} {client.last_name} ({client.email})
-                  </option>
-                ))}
-              </select>
-              {assignTo && (
-                <p className="text-xs text-muted-foreground">
-                  The client will be notified by email when the program is created.
-                </p>
-              )}
-            </div>
-          )}
 
           {/* Category */}
           <div className="space-y-2">
