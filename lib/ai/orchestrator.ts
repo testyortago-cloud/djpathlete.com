@@ -343,18 +343,25 @@ ${exerciseLibrary}${feedbackSection}`
     const programDifficulty = mapDifficulty(profile?.experience_level ?? null)
 
     const goalsLabel = request.goals
-      .map((g) => g.replace(/_/g, " "))
-      .join(", ")
+      .map((g) =>
+        g
+          .replace(/_/g, " ")
+          .replace(/\b\w/g, (c) => c.toUpperCase())
+      )
+      .join(" & ")
+
+    const splitLabel = skeleton.split_type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
 
     const program = await createProgram({
-      name: `AI: ${goalsLabel} for ${clientName}`,
-      description: `AI-generated ${request.duration_weeks}-week ${programCategory} program targeting ${goalsLabel}. ${skeleton.notes}`,
+      name: `${clientName}'s ${request.duration_weeks}-Week ${goalsLabel} Program`,
+      description: `A ${request.duration_weeks}-week ${splitLabel.toLowerCase()} program designed for ${goalsLabel.toLowerCase()}, training ${request.sessions_per_week}x per week. ${skeleton.notes}`,
       category: programCategory,
       difficulty: programDifficulty,
       duration_weeks: request.duration_weeks,
       sessions_per_week: request.sessions_per_week,
       split_type: skeleton.split_type,
       periodization: skeleton.periodization,
+      is_public: request.is_public ?? false,
       is_ai_generated: true,
       ai_generation_params: {
         request,

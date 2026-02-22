@@ -1,17 +1,12 @@
 import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import Link from "next/link"
-import { getPrograms } from "@/lib/db/programs"
-import { getAssignments } from "@/lib/db/assignments"
+import { getPublicPrograms, getClientPrograms } from "@/lib/db/programs"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Clock, CalendarDays, ShoppingBag, CheckCircle2, ArrowRight } from "lucide-react"
-import type { Program, ProgramAssignment } from "@/types/database"
+import type { Program } from "@/types/database"
 
 export const metadata = { title: "Browse Programs | DJP Athlete" }
-
-type AssignmentWithProgram = ProgramAssignment & {
-  programs: Program | null
-}
 
 const CATEGORY_LABELS: Record<string, string> = {
   strength: "Strength",
@@ -47,24 +42,21 @@ export default async function ClientProgramsPage() {
 
   const userId = session.user.id
 
-  let allPrograms: Program[] = []
-  let ownedProgramIds = new Set<string>()
+  let ownedPrograms: Program[] = []
+  let availablePrograms: Program[] = []
 
   try {
-    const [programs, assignments] = await Promise.all([
-      getPrograms(),
-      getAssignments(userId),
+    const [myPrograms, publicPrograms] = await Promise.all([
+      getClientPrograms(userId),
+      getPublicPrograms(),
     ])
 
-    allPrograms = programs
-    const typedAssignments = assignments as AssignmentWithProgram[]
-    ownedProgramIds = new Set(typedAssignments.map((a) => a.program_id))
+    ownedPrograms = myPrograms
+    const ownedIds = new Set(myPrograms.map((p) => p.id))
+    availablePrograms = publicPrograms.filter((p) => !ownedIds.has(p.id))
   } catch {
     // Render gracefully with empty data
   }
-
-  const ownedPrograms = allPrograms.filter((p) => ownedProgramIds.has(p.id))
-  const availablePrograms = allPrograms.filter((p) => !ownedProgramIds.has(p.id))
 
   return (
     <div>

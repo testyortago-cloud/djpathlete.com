@@ -133,6 +133,7 @@ export interface Program {
   created_by: string | null
   split_type: SplitType | null
   periodization: Periodization | null
+  is_public: boolean
   is_ai_generated: boolean
   ai_generation_params: Record<string, unknown> | null
   created_at: string
@@ -290,6 +291,18 @@ export interface Achievement {
   celebrated: boolean
   earned_at: string
   created_at: string
+}
+
+export interface NotificationPreferences {
+  id: string
+  user_id: string
+  notify_new_client: boolean
+  notify_payment_received: boolean
+  notify_program_completed: boolean
+  email_notifications: boolean
+  workout_reminders: boolean
+  created_at: string
+  updated_at: string
 }
 
 export interface Database {

@@ -48,6 +48,20 @@ export async function createAssignment(
   return data as ProgramAssignment
 }
 
+export async function getAssignmentCountsByProgram(): Promise<Record<string, number>> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("program_assignments")
+    .select("program_id")
+    .eq("status", "active")
+  if (error) throw error
+  const counts: Record<string, number> = {}
+  for (const row of data ?? []) {
+    counts[row.program_id] = (counts[row.program_id] ?? 0) + 1
+  }
+  return counts
+}
+
 export async function updateAssignment(
   id: string,
   updates: Partial<Omit<ProgramAssignment, "id" | "created_at">>

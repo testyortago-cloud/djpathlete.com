@@ -1,8 +1,9 @@
 import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Mail, Lock, Bell, Trash2, Scale } from "lucide-react"
+import { Mail, Lock, Trash2, Scale } from "lucide-react"
 import { WeightUnitToggle } from "@/components/client/WeightUnitToggle"
+import { NotificationToggles } from "@/components/client/NotificationToggles"
 
 export const metadata = { title: "Settings | DJP Athlete" }
 
@@ -85,56 +86,7 @@ export default async function ClientSettingsPage() {
         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">
           Notifications
         </h2>
-
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center justify-center size-9 rounded-full bg-success/10">
-                <Bell className="size-4 text-success" strokeWidth={1.5} />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-foreground">
-                  Email Notifications
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Receive updates about your programs and progress
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              disabled
-              className="relative inline-flex h-6 w-11 shrink-0 cursor-not-allowed items-center rounded-full border-2 border-transparent bg-primary opacity-50 transition-colors"
-              aria-label="Toggle email notifications"
-            >
-              <span className="pointer-events-none inline-block size-5 translate-x-5 rounded-full bg-white shadow-lg ring-0 transition-transform" />
-            </button>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center justify-center size-9 rounded-full bg-success/10">
-                <Bell className="size-4 text-success" strokeWidth={1.5} />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-foreground">
-                  Workout Reminders
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Get reminded about upcoming training sessions
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              disabled
-              className="relative inline-flex h-6 w-11 shrink-0 cursor-not-allowed items-center rounded-full border-2 border-transparent bg-muted opacity-50 transition-colors"
-              aria-label="Toggle workout reminders"
-            >
-              <span className="pointer-events-none inline-block size-5 translate-x-0 rounded-full bg-white shadow-lg ring-0 transition-transform" />
-            </button>
-          </div>
-        </div>
+        <NotificationToggles />
       </div>
 
       {/* Danger Zone */}

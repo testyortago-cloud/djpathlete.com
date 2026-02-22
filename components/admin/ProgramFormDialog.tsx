@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import {
@@ -14,6 +14,8 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Globe, Lock } from "lucide-react"
+import { cn } from "@/lib/utils"
 import {
   programFormSchema,
   PROGRAM_CATEGORIES,
@@ -26,7 +28,7 @@ import { useFormTour } from "@/hooks/use-form-tour"
 import { FormTour } from "@/components/admin/FormTour"
 import { TourButton } from "@/components/admin/TourButton"
 import { PROGRAM_TOUR_STEPS } from "@/lib/tour-steps"
-import type { Program } from "@/types/database"
+import type { Program, User } from "@/types/database"
 
 interface ProgramFormDialogProps {
   open: boolean
@@ -92,7 +94,42 @@ export function ProgramFormDialog({
   const isEditing = !!program
   const dialogRef = useRef<HTMLDivElement>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isPublic, setIsPublic] = useState(program?.is_public ?? false)
   const [errors, setErrors] = useState<Partial<Record<keyof ProgramFormData, string[]>>>({})
+
+  // Client assignment (create mode only)
+  const [clients, setClients] = useState<User[]>([])
+  const [loadingClients, setLoadingClients] = useState(false)
+  const [assignTo, setAssignTo] = useState("")
+
+  const fetchClients = useCallback(async () => {
+    setLoadingClients(true)
+    try {
+      const response = await fetch("/api/admin/users?role=client")
+      if (response.ok) {
+        const data = await response.json()
+        setClients(data.users ?? data ?? [])
+      }
+    } catch {
+      // Silently fail
+    } finally {
+      setLoadingClients(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (open && !isEditing) {
+      fetchClients()
+    }
+    if (!open) {
+      setAssignTo("")
+    }
+  }, [open, isEditing, fetchClients])
+
+  // Sync isPublic when switching between create/edit
+  useEffect(() => {
+    setIsPublic(program?.is_public ?? false)
+  }, [program])
   const tour = useFormTour({ steps: PROGRAM_TOUR_STEPS, scrollContainerRef: dialogRef })
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -115,6 +152,7 @@ export function ProgramFormDialog({
       price_cents: priceCents,
       split_type: (formData.get("split_type") as string) || null,
       periodization: (formData.get("periodization") as string) || null,
+      is_public: isPublic,
     }
 
     console.log("[ProgramForm] Submitting data:", data)
@@ -142,10 +180,15 @@ export function ProgramFormDialog({
         : "/api/admin/programs"
       const method = isEditing ? "PATCH" : "POST"
 
+      const payload = {
+        ...result.data,
+        ...(assignTo && !isEditing ? { assign_to: assignTo } : {}),
+      }
+
       const response = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(result.data),
+        body: JSON.stringify(payload),
       })
 
       if (!response.ok) {
@@ -207,6 +250,37 @@ export function ProgramFormDialog({
               <p className="text-xs text-destructive">{errors.name[0]}</p>
             )}
           </div>
+
+          {/* Assign to Client (create mode only) */}
+          {!isEditing && (
+            <div className="space-y-2">
+              <Label htmlFor="assign_to">
+                Assign to Client
+                <span className="text-muted-foreground font-normal ml-1">(optional)</span>
+              </Label>
+              <select
+                id="assign_to"
+                value={assignTo}
+                onChange={(e) => setAssignTo(e.target.value)}
+                disabled={isSubmitting || loadingClients}
+                className={selectClass}
+              >
+                <option value="">
+                  {loadingClients ? "Loading clients..." : "No client — assign later"}
+                </option>
+                {clients.map((client) => (
+                  <option key={client.id} value={client.id}>
+                    {client.first_name} {client.last_name} ({client.email})
+                  </option>
+                ))}
+              </select>
+              {assignTo && (
+                <p className="text-xs text-muted-foreground">
+                  The client will be notified by email when the program is created.
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Category & Difficulty */}
           <div className="grid sm:grid-cols-2 gap-4">
@@ -340,6 +414,47 @@ export function ProgramFormDialog({
             {errors.price_cents && (
               <p className="text-xs text-destructive">{errors.price_cents[0]}</p>
             )}
+          </div>
+
+          {/* Visibility */}
+          <div className="space-y-2">
+            <Label>Visibility</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                disabled={isSubmitting}
+                onClick={() => setIsPublic(false)}
+                className={cn(
+                  "flex items-start gap-2.5 rounded-lg border-2 px-3 py-2.5 text-left transition-colors",
+                  !isPublic
+                    ? "border-primary bg-primary/5"
+                    : "border-border hover:border-muted-foreground/30"
+                )}
+              >
+                <Lock className={cn("size-4 shrink-0 mt-0.5", !isPublic ? "text-primary" : "text-muted-foreground")} />
+                <div>
+                  <p className={cn("text-sm font-medium", !isPublic ? "text-primary" : "text-foreground")}>Private</p>
+                  <p className="text-[11px] text-muted-foreground leading-snug">Assigned clients only</p>
+                </div>
+              </button>
+              <button
+                type="button"
+                disabled={isSubmitting}
+                onClick={() => setIsPublic(true)}
+                className={cn(
+                  "flex items-start gap-2.5 rounded-lg border-2 px-3 py-2.5 text-left transition-colors",
+                  isPublic
+                    ? "border-primary bg-primary/5"
+                    : "border-border hover:border-muted-foreground/30"
+                )}
+              >
+                <Globe className={cn("size-4 shrink-0 mt-0.5", isPublic ? "text-primary" : "text-muted-foreground")} />
+                <div>
+                  <p className={cn("text-sm font-medium", isPublic ? "text-primary" : "text-foreground")}>Public</p>
+                  <p className="text-[11px] text-muted-foreground leading-snug">Visible in program store</p>
+                </div>
+              </button>
+            </div>
           </div>
 
           {/* Description */}

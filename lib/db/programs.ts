@@ -68,6 +68,31 @@ export async function getActiveProgramById(id: string) {
   return data as Program
 }
 
+export async function getPublicPrograms() {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("programs")
+    .select("*")
+    .eq("is_active", true)
+    .eq("is_public", true)
+    .order("created_at", { ascending: false })
+  if (error) throw error
+  return data as Program[]
+}
+
+export async function getClientPrograms(userId: string) {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("program_assignments")
+    .select("program_id, programs(*)")
+    .eq("user_id", userId)
+    .eq("status", "active")
+  if (error) throw error
+  return (data ?? [])
+    .map((row) => (row as unknown as { programs: Program }).programs)
+    .filter(Boolean)
+}
+
 export async function deleteProgram(id: string) {
   const supabase = getClient()
   const { error } = await supabase

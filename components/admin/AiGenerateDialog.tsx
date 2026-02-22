@@ -13,6 +13,8 @@ import {
   Zap,
   Clock,
   Brain,
+  Globe,
+  Lock,
   ChevronDown,
   ChevronUp,
   Dumbbell,
@@ -34,6 +36,7 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Textarea } from "@/components/ui/textarea"
+import { cn } from "@/lib/utils"
 import {
   SPLIT_TYPES,
   PERIODIZATION_TYPES,
@@ -167,6 +170,7 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
   const [splitType, setSplitType] = useState("")
   const [periodization, setPeriodization] = useState("")
   const [additionalInstructions, setAdditionalInstructions] = useState("")
+  const [isPublic, setIsPublic] = useState(false)
 
   const dialogRef = useRef<HTMLDivElement>(null)
   const tour = useFormTour({ steps: AI_GENERATE_TOUR_STEPS, scrollContainerRef: dialogRef })
@@ -279,6 +283,7 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
     setSplitType("")
     setPeriodization("")
     setAdditionalInstructions("")
+    setIsPublic(false)
     setProfileSummary(null)
     setProfileStatus("idle")
     setSummaryExpanded(false)
@@ -338,6 +343,7 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
         session_minutes: sessionMinutes,
       }
 
+      body.is_public = isPublic
       if (splitType) body.split_type = splitType
       if (periodization) body.periodization = periodization
       if (additionalInstructions.trim()) {
@@ -933,6 +939,45 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
                   </option>
                 ))}
               </select>
+            </div>
+          </div>
+
+          {/* Visibility */}
+          <div className="space-y-2">
+            <Label>Visibility</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setIsPublic(false)}
+                className={cn(
+                  "flex items-start gap-2.5 rounded-lg border-2 px-3 py-2.5 text-left transition-colors",
+                  !isPublic
+                    ? "border-primary bg-primary/5"
+                    : "border-border hover:border-muted-foreground/30"
+                )}
+              >
+                <Lock className={cn("size-4 shrink-0 mt-0.5", !isPublic ? "text-primary" : "text-muted-foreground")} />
+                <div>
+                  <p className={cn("text-sm font-medium", !isPublic ? "text-primary" : "text-foreground")}>Private</p>
+                  <p className="text-[11px] text-muted-foreground leading-snug">Assigned client only</p>
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsPublic(true)}
+                className={cn(
+                  "flex items-start gap-2.5 rounded-lg border-2 px-3 py-2.5 text-left transition-colors",
+                  isPublic
+                    ? "border-primary bg-primary/5"
+                    : "border-border hover:border-muted-foreground/30"
+                )}
+              >
+                <Globe className={cn("size-4 shrink-0 mt-0.5", isPublic ? "text-primary" : "text-muted-foreground")} />
+                <div>
+                  <p className={cn("text-sm font-medium", isPublic ? "text-primary" : "text-foreground")}>Public</p>
+                  <p className="text-[11px] text-muted-foreground leading-snug">Visible in program store</p>
+                </div>
+              </button>
             </div>
           </div>
 

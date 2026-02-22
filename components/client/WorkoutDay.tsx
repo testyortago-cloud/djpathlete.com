@@ -365,10 +365,49 @@ function ExerciseCard({
   }
 
   function handleUseRecommended() {
-    const weight = aiSuggestedWeight ?? rec.recommended_kg
-    if (weight != null) {
-      handleApplyWeight(weight)
+    const baseWeight = aiSuggestedWeight ?? rec.recommended_kg
+    if (baseWeight == null) return
+
+    // Check in-session RPE from filled sets to adjust the recommendation
+    const filledSets = setRows.filter((r) => parseInt(r.reps, 10) > 0)
+    const lastFilledRpe = filledSets.length > 0 ? filledSets[filledSets.length - 1].rpe : null
+
+    if (lastFilledRpe != null && lastFilledRpe >= 10) {
+      // RPE 10 — reduce weight for remaining sets
+      const lastFilledWeight = filledSets[filledSets.length - 1].weight
+      const currentWeight = lastFilledWeight ? parseFloat(lastFilledWeight) : null
+      const lowerPatterns = ["squat", "hinge", "lunge", "carry"]
+      const isLowerCompound = exercise.movement_pattern
+        ? lowerPatterns.includes(exercise.movement_pattern) && exercise.is_compound
+        : false
+      const increment = isLowerCompound ? (unit === "lbs" ? 10 : 5) : (unit === "lbs" ? 5 : 2.5)
+      const reduced = currentWeight != null ? Math.max(0, currentWeight - increment) : baseWeight
+      const display = String(reduced)
+      // Only apply to sets that haven't been filled yet
+      setSetRows((prev) =>
+        prev.map((row) => {
+          const hasReps = parseInt(row.reps, 10) > 0
+          return hasReps ? row : { ...row, weight: display }
+        })
+      )
+      return
     }
+
+    if (lastFilledRpe != null && lastFilledRpe >= 9) {
+      // RPE 9 — keep the same weight they used, don't increase
+      const lastFilledWeight = filledSets[filledSets.length - 1].weight
+      if (lastFilledWeight) {
+        setSetRows((prev) =>
+          prev.map((row) => {
+            const hasReps = parseInt(row.reps, 10) > 0
+            return hasReps ? row : { ...row, weight: lastFilledWeight }
+          })
+        )
+        return
+      }
+    }
+
+    handleApplyWeight(baseWeight)
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -641,49 +680,52 @@ function ExerciseCard({
             >
               <form onSubmit={handleSubmit} className="pt-4 space-y-4">
                 {/* Recommendation card — only for weight-based exercises */}
-                {fields.showWeight && (rec.reasoning || aiSuggestedWeight != null) && (
-                  <div className={cn(
-                    "rounded-lg p-3 space-y-2",
-                    aiSuggestedWeight != null
-                      ? "bg-accent/10 border border-accent/20"
-                      : "bg-primary/5 border border-primary/10"
-                  )}>
-                    <div className="flex items-start justify-between gap-2">
+                {fields.showWeight && (rec.reasoning || aiSuggestedWeight != null) && (() => {
+                  // Compute adjusted recommendation based on in-session RPE
+                  const baseWeight = aiSuggestedWeight ?? rec.recommended_kg
+                  const filledSets = setRows.filter((r) => parseInt(r.reps, 10) > 0)
+                  const lastFilledRpe = filledSets.length > 0 ? filledSets[filledSets.length - 1].rpe : null
+                  const lastFilledWeight = filledSets.length > 0 ? filledSets[filledSets.length - 1].weight : null
+
+                  let adjustedWeight = baseWeight
+                  let adjustedReasoning = aiSuggestedWeight != null
+                    ? `Recommended: ${formatWeightCompact(aiSuggestedWeight)} for this exercise.`
+                    : rec.reasoning
+
+                  if (lastFilledRpe != null && lastFilledRpe >= 10 && lastFilledWeight) {
+                    const currentKg = toKg(parseFloat(lastFilledWeight))
+                    const lowerPatterns = ["squat", "hinge", "lunge", "carry"]
+                    const isLowerCompound = exercise.movement_pattern
+                      ? lowerPatterns.includes(exercise.movement_pattern) && exercise.is_compound
+                      : false
+                    const inc = isLowerCompound ? (unit === "lbs" ? 10 : 5) : (unit === "lbs" ? 5 : 2.5)
+                    const reducedDisplay = Math.max(0, parseFloat(lastFilledWeight) - inc)
+                    adjustedWeight = toKg(reducedDisplay)
+                    adjustedReasoning = `RPE 10 on set ${filledSets.length} — reduce by ${inc}${unitLabel()} for remaining sets`
+                  } else if (lastFilledRpe != null && lastFilledRpe >= 9 && lastFilledWeight) {
+                    adjustedWeight = toKg(parseFloat(lastFilledWeight))
+                    adjustedReasoning = `RPE ${lastFilledRpe} on set ${filledSets.length} — maintain weight for remaining sets`
+                  }
+
+                  return (
+                    <div className="rounded-lg p-3 space-y-2 bg-primary/5 border border-primary/10">
                       <p className="text-xs text-primary leading-relaxed">
-                        {aiSuggestedWeight != null
-                          ? `Coach DJP recommends ${formatWeightCompact(aiSuggestedWeight)} for this exercise.`
-                          : rec.reasoning}
+                        {adjustedReasoning}
                       </p>
-                      {aiSuggestedWeight != null ? (
-                        <Badge
+                      {adjustedWeight != null && (
+                        <Button
+                          type="button"
+                          size="sm"
                           variant="outline"
-                          className="shrink-0 text-[10px] border-accent/30 text-accent"
+                          className="text-xs gap-1 h-7"
+                          onClick={handleUseRecommended}
                         >
-                          <Brain className="size-3 mr-0.5" />
-                          AI
-                        </Badge>
-                      ) : rec.confidence !== "none" ? (
-                        <Badge
-                          variant="outline"
-                          className="shrink-0 text-[10px] capitalize"
-                        >
-                          {rec.confidence}
-                        </Badge>
-                      ) : null}
+                          Use Recommended ({formatWeightCompact(adjustedWeight)})
+                        </Button>
+                      )}
                     </div>
-                    {(aiSuggestedWeight ?? rec.recommended_kg) != null && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="text-xs gap-1 h-7"
-                        onClick={handleUseRecommended}
-                      >
-                        Use Recommended ({formatWeightCompact(aiSuggestedWeight ?? rec.recommended_kg)})
-                      </Button>
-                    )}
-                  </div>
-                )}
+                  )
+                })()}
 
                 {/* Set-by-set table — only for categories with weight or reps */}
                 {(fields.showWeight || fields.showReps) && (

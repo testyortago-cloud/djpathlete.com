@@ -11,6 +11,7 @@ export const aiGenerationRequestSchema = z.object({
   periodization: z.enum(PERIODIZATION_TYPES).optional(),
   additional_instructions: z.string().max(2000).optional(),
   equipment_override: z.array(z.string()).optional(),
+  is_public: z.boolean().optional(),
 })
 
 export type AiGenerationRequest = z.infer<typeof aiGenerationRequestSchema>

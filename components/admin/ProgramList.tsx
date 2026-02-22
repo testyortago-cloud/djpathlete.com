@@ -4,7 +4,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import Link from "next/link"
-import { Search, ChevronLeft, ChevronRight, Plus, Pencil, Trash2, ClipboardList, LayoutGrid, Sparkles } from "lucide-react"
+import { Search, ChevronLeft, ChevronRight, Plus, Pencil, Trash2, ClipboardList, LayoutGrid, Sparkles, Globe, Lock, Users } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import {
@@ -23,6 +23,7 @@ import type { Program } from "@/types/database"
 
 interface ProgramListProps {
   programs: Program[]
+  athleteCounts?: Record<string, number>
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -55,7 +56,7 @@ function formatPrice(cents: number | null): string {
   return `$${(cents / 100).toFixed(2)}`
 }
 
-export function ProgramList({ programs }: ProgramListProps) {
+export function ProgramList({ programs, athleteCounts = {} }: ProgramListProps) {
   const router = useRouter()
   const [search, setSearch] = useState("")
   const [categoryFilter, setCategoryFilter] = useState<string>("all")
@@ -214,6 +215,7 @@ export function ProgramList({ programs }: ProgramListProps) {
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Duration</th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Sessions/Wk</th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden lg:table-cell">Price</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Athletes</th>
                 <th className="text-right px-4 py-3 font-medium text-muted-foreground">Actions</th>
               </tr>
             </thead>
@@ -221,14 +223,25 @@ export function ProgramList({ programs }: ProgramListProps) {
               {paginated.map((program) => (
                 <tr key={program.id} className="border-b border-border last:border-b-0 hover:bg-surface/30 transition-colors">
                   <td className="px-4 py-3 font-medium text-foreground">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <Link href={`/admin/programs/${program.id}`} className="hover:underline">
                         {program.name}
                       </Link>
                       {program.is_ai_generated && (
-                        <span className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-accent/15 text-accent-foreground" title="AI Generated">
+                        <span className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-accent/20 text-accent shrink-0" title="AI Generated">
                           <Sparkles className="size-2.5" />
                           AI
+                        </span>
+                      )}
+                      {program.is_public ? (
+                        <span className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-success/10 text-success shrink-0" title="Public — visible in store">
+                          <Globe className="size-2.5" />
+                          Public
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground shrink-0" title="Private — assigned clients only">
+                          <Lock className="size-2.5" />
+                          Private
                         </span>
                       )}
                     </div>
@@ -251,6 +264,17 @@ export function ProgramList({ programs }: ProgramListProps) {
                   </td>
                   <td className="px-4 py-3 text-muted-foreground hidden lg:table-cell">
                     {formatPrice(program.price_cents)}
+                  </td>
+                  <td className="px-4 py-3 hidden md:table-cell">
+                    {(() => {
+                      const count = athleteCounts[program.id] ?? 0
+                      return (
+                        <span className={`inline-flex items-center gap-1 text-sm ${count > 0 ? "text-foreground font-medium" : "text-muted-foreground"}`}>
+                          <Users className="size-3.5" />
+                          {count}
+                        </span>
+                      )
+                    })()}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
@@ -286,7 +310,7 @@ export function ProgramList({ programs }: ProgramListProps) {
               ))}
               {paginated.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">
+                  <td colSpan={8} className="px-4 py-12 text-center text-muted-foreground">
                     No programs found matching your filters.
                   </td>
                 </tr>
