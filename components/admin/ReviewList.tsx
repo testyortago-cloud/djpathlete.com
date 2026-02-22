@@ -11,9 +11,11 @@ import {
   Eye,
   EyeOff,
   Trash2,
+  Plus,
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import {
   Dialog,
   DialogContent,
@@ -23,8 +25,9 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { EmptyState } from "@/components/ui/empty-state"
+import { ImportGoogleReviewDialog } from "@/components/admin/ImportGoogleReviewDialog"
 
-interface ReviewWithUser {
+export interface ReviewWithSource {
   id: string
   user_id: string
   rating: number
@@ -32,6 +35,8 @@ interface ReviewWithUser {
   is_published: boolean
   created_at: string
   updated_at: string
+  source: "app" | "google"
+  google_maps_uri?: string
   users: {
     first_name: string
     last_name: string
@@ -40,12 +45,12 @@ interface ReviewWithUser {
 }
 
 interface ReviewListProps {
-  reviews: ReviewWithUser[]
+  reviews: ReviewWithSource[]
 }
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50]
 
-type FilterTab = "all" | "published" | "unpublished"
+type FilterTab = "all" | "published" | "unpublished" | "google"
 
 function StarRating({ rating }: { rating: number }) {
   return (
@@ -81,13 +86,15 @@ export function ReviewList({ reviews }: ReviewListProps) {
 
   // Action states
   const [togglingId, setTogglingId] = useState<string | null>(null)
-  const [deleteTarget, setDeleteTarget] = useState<ReviewWithUser | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<ReviewWithSource | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
 
   const filtered = reviews.filter((review) => {
     // Filter tab
     if (filterTab === "published" && !review.is_published) return false
     if (filterTab === "unpublished" && review.is_published) return false
+    if (filterTab === "google" && review.source !== "google") return false
 
     // Search
     if (search) {
@@ -105,7 +112,7 @@ export function ReviewList({ reviews }: ReviewListProps) {
   const totalPages = Math.ceil(filtered.length / perPage)
   const paginated = filtered.slice((page - 1) * perPage, page * perPage)
 
-  async function handleTogglePublish(review: ReviewWithUser) {
+  async function handleTogglePublish(review: ReviewWithSource) {
     setTogglingId(review.id)
     try {
       const response = await fetch(`/api/admin/reviews/${review.id}`, {
@@ -134,7 +141,15 @@ export function ReviewList({ reviews }: ReviewListProps) {
     setIsDeleting(true)
 
     try {
-      const response = await fetch(`/api/admin/reviews/${deleteTarget.id}`, {
+      const isGoogle = deleteTarget.source === "google"
+      const apiId = isGoogle
+        ? deleteTarget.id.replace("google_", "")
+        : deleteTarget.id
+      const url = isGoogle
+        ? `/api/admin/google-reviews/${apiId}`
+        : `/api/admin/reviews/${apiId}`
+
+      const response = await fetch(url, {
         method: "DELETE",
       })
 
@@ -152,11 +167,23 @@ export function ReviewList({ reviews }: ReviewListProps) {
 
   if (reviews.length === 0) {
     return (
-      <EmptyState
-        icon={Star}
-        heading="No reviews yet"
-        description="Client reviews and testimonials will appear here once athletes submit their feedback."
-      />
+      <div>
+        <div className="flex justify-end mb-4">
+          <Button size="sm" onClick={() => setImportOpen(true)}>
+            <Plus className="size-4 mr-1.5" />
+            Import Google Reviews
+          </Button>
+        </div>
+        <EmptyState
+          icon={Star}
+          heading="No reviews yet"
+          description="Client reviews and testimonials will appear here once athletes submit their feedback."
+        />
+        <ImportGoogleReviewDialog
+          open={importOpen}
+          onOpenChange={setImportOpen}
+        />
+      </div>
     )
   }
 
@@ -172,12 +199,18 @@ export function ReviewList({ reviews }: ReviewListProps) {
       label: "Unpublished",
       count: reviews.filter((r) => !r.is_published).length,
     },
+    {
+      key: "google",
+      label: "Google",
+      count: reviews.filter((r) => r.source === "google").length,
+    },
   ]
 
   return (
     <div>
-      {/* Filter Tabs */}
-      <div className="flex items-center gap-1 mb-4">
+      {/* Filter Tabs + Import Button */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-1">
         {tabs.map((tab) => (
           <button
             key={tab.key}
@@ -203,6 +236,11 @@ export function ReviewList({ reviews }: ReviewListProps) {
             </span>
           </button>
         ))}
+        </div>
+        <Button size="sm" onClick={() => setImportOpen(true)}>
+          <Plus className="size-4 mr-1.5" />
+          Import Google Reviews
+        </Button>
       </div>
 
       <div className="bg-white rounded-xl border border-border shadow-sm">
@@ -237,6 +275,9 @@ export function ReviewList({ reviews }: ReviewListProps) {
                   Comment
                 </th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">
+                  Source
+                </th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">
                   Status
                 </th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden sm:table-cell">
@@ -267,6 +308,17 @@ export function ReviewList({ reviews }: ReviewListProps) {
                     </span>
                   </td>
                   <td className="px-4 py-3">
+                    {review.source === "google" ? (
+                      <Badge variant="outline" className="text-xs">
+                        Google
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary" className="text-xs">
+                        In-App
+                      </Badge>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
                     {review.is_published ? (
                       <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-success/10 text-success">
                         Published
@@ -282,23 +334,25 @@ export function ReviewList({ reviews }: ReviewListProps) {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        onClick={() => handleTogglePublish(review)}
-                        disabled={togglingId === review.id}
-                        title={
-                          review.is_published
-                            ? "Unpublish review"
-                            : "Publish review"
-                        }
-                      >
-                        {review.is_published ? (
-                          <EyeOff className="size-3.5" />
-                        ) : (
-                          <Eye className="size-3.5" />
-                        )}
-                      </Button>
+                      {review.source === "app" && (
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          onClick={() => handleTogglePublish(review)}
+                          disabled={togglingId === review.id}
+                          title={
+                            review.is_published
+                              ? "Unpublish review"
+                              : "Publish review"
+                          }
+                        >
+                          {review.is_published ? (
+                            <EyeOff className="size-3.5" />
+                          ) : (
+                            <Eye className="size-3.5" />
+                          )}
+                        </Button>
+                      )}
                       <Button
                         variant="ghost"
                         size="icon-xs"
@@ -315,7 +369,7 @@ export function ReviewList({ reviews }: ReviewListProps) {
               {paginated.length === 0 && (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={7}
                     className="px-4 py-12 text-center text-muted-foreground"
                   >
                     No reviews found matching your filters.
@@ -408,6 +462,11 @@ export function ReviewList({ reviews }: ReviewListProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ImportGoogleReviewDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+      />
     </div>
   )
 }

@@ -1,11 +1,25 @@
 import { Star, Eye, BarChart3 } from "lucide-react"
 import { getReviews } from "@/lib/db/reviews"
+import { fetchGoogleReviews } from "@/lib/google-reviews"
 import { ReviewList } from "@/components/admin/ReviewList"
+import type { ReviewWithSource } from "@/components/admin/ReviewList"
 
 export const metadata = { title: "Reviews" }
 
 export default async function ReviewsPage() {
-  const reviews = await getReviews()
+  const [appReviews, googleReviews] = await Promise.all([
+    getReviews(),
+    fetchGoogleReviews(),
+  ])
+
+  const appWithSource: ReviewWithSource[] = appReviews.map((r) => ({
+    ...r,
+    source: "app" as const,
+  }))
+
+  const reviews: ReviewWithSource[] = [...appWithSource, ...googleReviews].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  )
 
   const totalReviews = reviews.length
   const publishedCount = reviews.filter((r) => r.is_published).length
