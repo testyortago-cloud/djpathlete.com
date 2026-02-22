@@ -44,9 +44,7 @@ export const programFormSchema = z.object({
     .max(2000, "Description must be under 2000 characters")
     .nullable()
     .transform((v) => v || null),
-  category: z.enum(PROGRAM_CATEGORIES, {
-    message: "Category is required",
-  }),
+  category: z.array(z.enum(PROGRAM_CATEGORIES)).min(1, "Select at least one category"),
   difficulty: z.enum(PROGRAM_DIFFICULTIES, {
     message: "Difficulty is required",
   }),

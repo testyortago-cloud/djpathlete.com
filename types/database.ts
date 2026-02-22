@@ -124,7 +124,7 @@ export interface Program {
   id: string
   name: string
   description: string | null
-  category: ProgramCategory
+  category: ProgramCategory[]
   difficulty: ProgramDifficulty
   duration_weeks: number
   sessions_per_week: number

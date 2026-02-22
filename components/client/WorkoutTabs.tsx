@@ -17,7 +17,7 @@ import type { WorkoutDayProps } from "@/components/client/WorkoutDay"
 
 interface ProgramWorkout {
   programName: string
-  category: string
+  category: string | string[]
   assignmentId: string
   currentWeek: number
   totalWeeks: number
@@ -77,8 +77,12 @@ function ProgramCard({
           <h3 className="font-semibold text-foreground text-sm">
             {program.programName}
           </h3>
-          <span className="inline-block mt-1 rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[10px] font-medium capitalize">
-            {program.category.replace("_", " ")}
+          <span className="inline-flex gap-1 mt-1 flex-wrap">
+            {(Array.isArray(program.category) ? program.category : [program.category]).map((cat) => (
+              <span key={cat} className="inline-block rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[10px] font-medium capitalize">
+                {cat.replace("_", " ")}
+              </span>
+            ))}
           </span>
         </div>
         <div className="shrink-0 size-10 rounded-lg bg-primary/5 flex items-center justify-center">
@@ -196,9 +200,11 @@ function ProgramDetail({
         <h2 className="text-base font-semibold text-foreground">
           {program.programName}
         </h2>
-        <span className="rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[10px] font-medium capitalize">
-          {program.category.replace("_", " ")}
-        </span>
+        {(Array.isArray(program.category) ? program.category : [program.category]).map((cat) => (
+          <span key={cat} className="rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[10px] font-medium capitalize">
+            {cat.replace("_", " ")}
+          </span>
+        ))}
       </div>
 
       {/* Week selector */}

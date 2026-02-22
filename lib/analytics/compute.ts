@@ -306,7 +306,7 @@ export function computeProgramMetrics(
       return {
         name: prog?.name ?? "Unknown",
         count,
-        category: prog?.category ?? "unknown",
+        category: Array.isArray(prog?.category) ? prog.category.join(" / ") : (prog?.category ?? "unknown"),
         difficulty: prog?.difficulty ?? "unknown",
       }
     })
@@ -324,7 +324,10 @@ export function computeProgramMetrics(
   // By category
   const catCounts = new Map<string, number>()
   for (const p of programs) {
-    catCounts.set(p.category, (catCounts.get(p.category) ?? 0) + 1)
+    const cats = Array.isArray(p.category) ? p.category : [p.category]
+    for (const cat of cats) {
+      catCounts.set(cat, (catCounts.get(cat) ?? 0) + 1)
+    }
   }
   const programsByCategory = Array.from(catCounts.entries())
     .map(([label, count]) => ({ label: capitalize(label), count }))

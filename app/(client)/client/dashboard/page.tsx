@@ -163,9 +163,11 @@ export default async function ClientDashboardPage() {
                     {program.name}
                   </h3>
                   <div className="flex flex-wrap gap-1.5 mt-2">
-                    <span className="rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[10px] sm:text-xs font-medium capitalize whitespace-nowrap">
-                      {program.category.replace("_", " ")}
-                    </span>
+                    {(Array.isArray(program.category) ? program.category : [program.category]).map((cat) => (
+                      <span key={cat} className="rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[10px] sm:text-xs font-medium capitalize whitespace-nowrap">
+                        {cat.replace("_", " ")}
+                      </span>
+                    ))}
                     <span className="rounded-full bg-accent/10 text-accent px-2 py-0.5 text-[10px] sm:text-xs font-medium capitalize whitespace-nowrap">
                       {program.difficulty}
                     </span>

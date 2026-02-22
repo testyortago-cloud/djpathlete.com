@@ -96,6 +96,9 @@ export function ProgramFormDialog({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isPublic, setIsPublic] = useState(program?.is_public ?? false)
   const [errors, setErrors] = useState<Partial<Record<keyof ProgramFormData, string[]>>>({})
+  const [selectedCategories, setSelectedCategories] = useState<string[]>(
+    Array.isArray(program?.category) ? program.category : program?.category ? [program.category] : []
+  )
 
   // Client assignment (create mode only)
   const [clients, setClients] = useState<User[]>([])
@@ -126,9 +129,12 @@ export function ProgramFormDialog({
     }
   }, [open, isEditing, fetchClients])
 
-  // Sync isPublic when switching between create/edit
+  // Sync state when switching between create/edit
   useEffect(() => {
     setIsPublic(program?.is_public ?? false)
+    setSelectedCategories(
+      Array.isArray(program?.category) ? program.category : program?.category ? [program.category] : []
+    )
   }, [program])
   const tour = useFormTour({ steps: PROGRAM_TOUR_STEPS, scrollContainerRef: dialogRef })
 
@@ -145,7 +151,7 @@ export function ProgramFormDialog({
     const data = {
       name: formData.get("name") as string,
       description: (formData.get("description") as string) || null,
-      category: formData.get("category") as string,
+      category: selectedCategories,
       difficulty: formData.get("difficulty") as string,
       duration_weeks: formData.get("duration_weeks") as string,
       sessions_per_week: formData.get("sessions_per_week") as string,
@@ -282,27 +288,41 @@ export function ProgramFormDialog({
             </div>
           )}
 
-          {/* Category & Difficulty */}
-          <div className="grid sm:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="category">Category *</Label>
-              <select
-                id="category"
-                name="category"
-                defaultValue={program?.category ?? ""}
-                required
-                disabled={isSubmitting}
-                className={selectClass}
-              >
-                <option value="" disabled>Select category</option>
-                {PROGRAM_CATEGORIES.map((cat) => (
-                  <option key={cat} value={cat}>{CATEGORY_LABELS[cat]}</option>
-                ))}
-              </select>
-              {errors.category && (
-                <p className="text-xs text-destructive">{errors.category[0]}</p>
-              )}
+          {/* Category */}
+          <div className="space-y-2">
+            <Label>Category *</Label>
+            <div className="flex flex-wrap gap-2">
+              {PROGRAM_CATEGORIES.map((cat) => {
+                const selected = selectedCategories.includes(cat)
+                return (
+                  <button
+                    key={cat}
+                    type="button"
+                    disabled={isSubmitting}
+                    onClick={() => {
+                      setSelectedCategories((prev) =>
+                        selected ? prev.filter((c) => c !== cat) : [...prev, cat]
+                      )
+                    }}
+                    className={cn(
+                      "inline-flex items-center rounded-full px-3 py-1.5 text-xs font-medium border transition-colors",
+                      selected
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-white text-muted-foreground border-border hover:border-primary/40"
+                    )}
+                  >
+                    {CATEGORY_LABELS[cat]}
+                  </button>
+                )
+              })}
             </div>
+            {errors.category && (
+              <p className="text-xs text-destructive">{errors.category[0]}</p>
+            )}
+          </div>
+
+          {/* Difficulty & Split Type */}
+          <div className="grid sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="difficulty">Difficulty *</Label>
               <select
@@ -322,10 +342,6 @@ export function ProgramFormDialog({
                 <p className="text-xs text-destructive">{errors.difficulty[0]}</p>
               )}
             </div>
-          </div>
-
-          {/* Split Type & Periodization */}
-          <div className="grid sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="split_type">Split Type</Label>
               <select
@@ -341,21 +357,23 @@ export function ProgramFormDialog({
                 ))}
               </select>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="periodization">Periodization</Label>
-              <select
-                id="periodization"
-                name="periodization"
-                defaultValue={program?.periodization ?? ""}
-                disabled={isSubmitting}
-                className={selectClass}
-              >
-                <option value="">None</option>
-                {PERIODIZATION_TYPES.map((p) => (
-                  <option key={p} value={p}>{PERIODIZATION_LABELS[p]}</option>
-                ))}
-              </select>
-            </div>
+          </div>
+
+          {/* Periodization */}
+          <div className="space-y-2">
+            <Label htmlFor="periodization">Periodization</Label>
+            <select
+              id="periodization"
+              name="periodization"
+              defaultValue={program?.periodization ?? ""}
+              disabled={isSubmitting}
+              className={selectClass}
+            >
+              <option value="">None</option>
+              {PERIODIZATION_TYPES.map((p) => (
+                <option key={p} value={p}>{PERIODIZATION_LABELS[p]}</option>
+              ))}
+            </select>
           </div>
 
           {/* Duration & Sessions */}

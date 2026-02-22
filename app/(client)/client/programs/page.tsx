@@ -75,9 +75,11 @@ export default async function ClientProgramsPage() {
                 className="bg-white rounded-xl border border-border p-4 sm:p-5 flex flex-col"
               >
                 <div className="flex flex-wrap items-center gap-1.5 mb-2">
-                  <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] sm:text-xs font-medium bg-primary/10 text-primary">
-                    {CATEGORY_LABELS[program.category] ?? program.category}
-                  </span>
+                  {(Array.isArray(program.category) ? program.category : [program.category]).map((cat) => (
+                    <span key={cat} className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] sm:text-xs font-medium bg-primary/10 text-primary">
+                      {CATEGORY_LABELS[cat] ?? cat}
+                    </span>
+                  ))}
                   <span
                     className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] sm:text-xs font-medium ${DIFFICULTY_COLORS[program.difficulty] ?? "bg-muted text-muted-foreground"}`}
                   >
@@ -139,9 +141,11 @@ export default async function ClientProgramsPage() {
                 className="group bg-white rounded-xl border border-border p-4 sm:p-5 hover:shadow-md transition-shadow flex flex-col"
               >
                 <div className="flex flex-wrap items-center gap-1.5 mb-2">
-                  <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] sm:text-xs font-medium bg-primary/10 text-primary">
-                    {CATEGORY_LABELS[program.category] ?? program.category}
-                  </span>
+                  {(Array.isArray(program.category) ? program.category : [program.category]).map((cat) => (
+                    <span key={cat} className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] sm:text-xs font-medium bg-primary/10 text-primary">
+                      {CATEGORY_LABELS[cat] ?? cat}
+                    </span>
+                  ))}
                   <span
                     className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] sm:text-xs font-medium ${DIFFICULTY_COLORS[program.difficulty] ?? "bg-muted text-muted-foreground"}`}
                   >

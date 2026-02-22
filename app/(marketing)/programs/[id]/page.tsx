@@ -47,12 +47,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       title: program.name,
       description:
         program.description ??
-        `${program.name} — a ${program.difficulty} ${program.category} program by DJP Athlete.`,
+        `${program.name} — a ${program.difficulty} ${(Array.isArray(program.category) ? program.category : [program.category]).join(" / ")} program by DJP Athlete.`,
       openGraph: {
         title: `${program.name} | DJP Athlete`,
         description:
           program.description ??
-          `${program.name} — a ${program.difficulty} ${program.category} program.`,
+          `${program.name} — a ${program.difficulty} ${(Array.isArray(program.category) ? program.category : [program.category]).join(" / ")} program.`,
         type: "website",
       },
     }
@@ -111,9 +111,11 @@ export default async function ProgramDetailPage({ params }: Props) {
 
           {/* Badges */}
           <div className="flex items-center gap-2 mb-4">
-            <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-primary/10 text-primary">
-              {CATEGORY_LABELS[program.category] ?? program.category}
-            </span>
+            {(Array.isArray(program.category) ? program.category : [program.category]).map((cat) => (
+              <span key={cat} className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-primary/10 text-primary">
+                {CATEGORY_LABELS[cat] ?? cat}
+              </span>
+            ))}
             <span
               className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${DIFFICULTY_COLORS[program.difficulty] ?? "bg-muted text-muted-foreground"}`}
             >

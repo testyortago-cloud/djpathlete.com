@@ -72,9 +72,11 @@ export function ProgramHeader({ program, clients }: ProgramHeaderProps) {
               <h1 className="text-xl font-heading font-semibold text-foreground">
                 {program.name}
               </h1>
-              <Badge variant="outline" className="capitalize">
-                {CATEGORY_LABELS[program.category] ?? program.category}
-              </Badge>
+              {(Array.isArray(program.category) ? program.category : [program.category]).map((cat) => (
+                <Badge key={cat} variant="outline" className="capitalize">
+                  {CATEGORY_LABELS[cat] ?? cat}
+                </Badge>
+              ))}
               <span
                 className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize border ${DIFFICULTY_COLORS[program.difficulty] ?? "bg-muted text-muted-foreground"}`}
               >

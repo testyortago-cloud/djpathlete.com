@@ -76,7 +76,8 @@ export function ProgramList({ programs, athleteCounts = {} }: ProgramListProps) 
       !search ||
       prog.name.toLowerCase().includes(search.toLowerCase()) ||
       (prog.description?.toLowerCase().includes(search.toLowerCase()) ?? false)
-    const matchesCategory = categoryFilter === "all" || prog.category === categoryFilter
+    const cats: string[] = Array.isArray(prog.category) ? prog.category : [prog.category]
+    const matchesCategory = categoryFilter === "all" || cats.includes(categoryFilter)
     const matchesDifficulty = difficultyFilter === "all" || prog.difficulty === difficultyFilter
     return matchesSearch && matchesCategory && matchesDifficulty
   })
@@ -247,8 +248,12 @@ export function ProgramList({ programs, athleteCounts = {} }: ProgramListProps) 
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-primary/10 text-primary capitalize">
-                      {CATEGORY_LABELS[program.category] ?? program.category}
+                    <span className="inline-flex items-center gap-1 flex-wrap">
+                      {(Array.isArray(program.category) ? program.category : [program.category]).map((cat) => (
+                        <span key={cat} className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-primary/10 text-primary capitalize">
+                          {CATEGORY_LABELS[cat] ?? cat}
+                        </span>
+                      ))}
                     </span>
                   </td>
                   <td className="px-4 py-3">

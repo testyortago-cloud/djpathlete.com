@@ -76,9 +76,11 @@ export default async function ClientProgramDetailPage({ params }: Props) {
 
       {/* Badges */}
       <div className="flex items-center gap-2 mb-3">
-        <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-primary/10 text-primary">
-          {CATEGORY_LABELS[program.category] ?? program.category}
-        </span>
+        {(Array.isArray(program.category) ? program.category : [program.category]).map((cat) => (
+          <span key={cat} className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-primary/10 text-primary">
+            {CATEGORY_LABELS[cat] ?? cat}
+          </span>
+        ))}
         <span
           className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${DIFFICULTY_COLORS[program.difficulty] ?? "bg-muted text-muted-foreground"}`}
         >

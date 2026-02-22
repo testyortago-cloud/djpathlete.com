@@ -355,7 +355,7 @@ ${exerciseLibrary}${feedbackSection}`
     const program = await createProgram({
       name: `${clientName}'s ${request.duration_weeks}-Week ${goalsLabel} Program`,
       description: `A ${request.duration_weeks}-week ${splitLabel.toLowerCase()} program designed for ${goalsLabel.toLowerCase()}, training ${request.sessions_per_week}x per week. ${skeleton.notes}`,
-      category: programCategory,
+      category: [programCategory],
       difficulty: programDifficulty,
       duration_weeks: request.duration_weeks,
       sessions_per_week: request.sessions_per_week,
