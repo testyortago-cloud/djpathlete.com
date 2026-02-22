@@ -22,10 +22,7 @@ export default auth((req) => {
     if (!isLoggedIn) {
       return NextResponse.redirect(new URL("/login", req.url))
     }
-    // Pass pathname to layout so it can gate on questionnaire completion
-    const response = NextResponse.next()
-    response.headers.set("x-next-pathname", pathname)
-    return response
+    return NextResponse.next()
   }
 
   return NextResponse.next()

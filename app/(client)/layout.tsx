@@ -1,7 +1,7 @@
-import { headers } from "next/headers"
 import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import { ClientLayout } from "@/components/client/ClientLayout"
+import { QuestionnaireGate } from "@/components/client/QuestionnaireGate"
 import { WeightUnitProvider } from "@/hooks/use-weight-unit"
 import { getProfileByUserId } from "@/lib/db/client-profiles"
 import type { WeightUnit } from "@/types/database"
@@ -29,18 +29,11 @@ export default async function ClientRootLayout({
     // Default to lbs if profile fetch fails
   }
 
-  // Force clients to complete assessment before accessing other pages
-  if (!hasCompletedQuestionnaire) {
-    const headersList = await headers()
-    const pathname = headersList.get("x-next-pathname") ?? headersList.get("x-invoke-path") ?? ""
-    if (!pathname.startsWith("/client/questionnaire")) {
-      redirect("/client/questionnaire")
-    }
-  }
-
   return (
     <WeightUnitProvider initialUnit={weightUnit}>
-      <ClientLayout>{children}</ClientLayout>
+      <QuestionnaireGate hasCompleted={hasCompletedQuestionnaire}>
+        <ClientLayout>{children}</ClientLayout>
+      </QuestionnaireGate>
     </WeightUnitProvider>
   )
 }
