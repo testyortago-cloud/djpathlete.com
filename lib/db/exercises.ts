@@ -1,5 +1,16 @@
 import { createServiceRoleClient } from "@/lib/supabase"
 import type { Exercise, ExerciseRelationshipType, MovementPattern, ExerciseDifficulty } from "@/types/database"
+import { embedExercise } from "@/lib/ai/embeddings"
+import { updateExerciseEmbedding } from "@/lib/db/exercise-embeddings"
+
+/** Embed an exercise and store in pgvector. Fire-and-forget — never blocks the caller. */
+function autoEmbed(exercise: Exercise): void {
+  embedExercise(exercise)
+    .then((embedding) => updateExerciseEmbedding(exercise.id, embedding))
+    .catch((err) =>
+      console.warn(`[autoEmbed] Failed for "${exercise.name}":`, err instanceof Error ? err.message : err)
+    )
+}
 
 /** Service-role client bypasses RLS — these functions are only called from server-side admin routes. */
 function getClient() {
@@ -38,7 +49,9 @@ export async function createExercise(
     .select()
     .single()
   if (error) throw error
-  return data as Exercise
+  const created = data as Exercise
+  autoEmbed(created)
+  return created
 }
 
 export async function updateExercise(
@@ -53,7 +66,9 @@ export async function updateExercise(
     .select()
     .single()
   if (error) throw error
-  return data as Exercise
+  const updated = data as Exercise
+  autoEmbed(updated)
+  return updated
 }
 
 export async function deleteExercise(id: string) {
@@ -74,7 +89,9 @@ export async function createExercisesBulk(
     .insert(exercises)
     .select()
   if (error) throw error
-  return data as Exercise[]
+  const created = data as Exercise[]
+  for (const ex of created) autoEmbed(ex)
+  return created
 }
 
 export async function bulkUpdateExercises(
