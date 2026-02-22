@@ -1,10 +1,9 @@
 import type { Metadata } from "next"
-import { notFound } from "next/navigation"
+import { notFound, redirect } from "next/navigation"
 import Link from "next/link"
 import { Clock, CalendarDays, BarChart3, ArrowLeft } from "lucide-react"
 import { auth } from "@/lib/auth"
 import { getActiveProgramById } from "@/lib/db/programs"
-import { getAssignmentByUserAndProgram } from "@/lib/db/assignments"
 import { JsonLd } from "@/components/shared/JsonLd"
 import { BuyButton } from "./BuyButton"
 
@@ -65,21 +64,17 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function ProgramDetailPage({ params }: Props) {
   const { id } = await params
 
+  // Logged-in users should use the client program page
+  const session = await auth()
+  if (session?.user) {
+    redirect(`/client/programs/${id}`)
+  }
+
   let program
   try {
     program = await getActiveProgramById(id)
   } catch {
     notFound()
-  }
-
-  const session = await auth()
-  let owned = false
-  if (session?.user?.id) {
-    const assignment = await getAssignmentByUserAndProgram(
-      session.user.id,
-      program.id
-    )
-    owned = !!assignment
   }
 
   const productSchema = {
@@ -171,17 +166,10 @@ export default async function ProgramDetailPage({ params }: Props) {
               </p>
             )}
 
-            {owned ? (
-              <Link
-                href="/client/workouts"
-                className="inline-flex items-center rounded-full bg-success px-6 py-3 text-sm font-medium text-white hover:bg-success/90 transition-colors"
-              >
-                Go to Program
-              </Link>
-            ) : program.price_cents ? (
+            {program.price_cents ? (
               <BuyButton
                 programId={program.id}
-                isLoggedIn={!!session?.user}
+                isLoggedIn={false}
               />
             ) : (
               <Link

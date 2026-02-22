@@ -1,3 +1,4 @@
+import { headers } from "next/headers"
 import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import { ClientLayout } from "@/components/client/ClientLayout"
@@ -17,13 +18,24 @@ export default async function ClientRootLayout({
   }
 
   let weightUnit: WeightUnit = "lbs"
+  let hasCompletedQuestionnaire = false
   try {
     const profile = await getProfileByUserId(session.user.id)
     if (profile?.weight_unit) {
       weightUnit = profile.weight_unit
     }
+    hasCompletedQuestionnaire = !!(profile?.goals && profile.goals.trim().length > 0)
   } catch {
-    // Default to kg if profile fetch fails
+    // Default to lbs if profile fetch fails
+  }
+
+  // Force clients to complete assessment before accessing other pages
+  if (!hasCompletedQuestionnaire) {
+    const headersList = await headers()
+    const pathname = headersList.get("x-next-pathname") ?? headersList.get("x-invoke-path") ?? ""
+    if (!pathname.startsWith("/client/questionnaire")) {
+      redirect("/client/questionnaire")
+    }
   }
 
   return (

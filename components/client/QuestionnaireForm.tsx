@@ -409,31 +409,30 @@ export function QuestionnaireForm({
       <div className="flex items-center justify-between">
         <Button
           variant="outline"
-          size="sm"
           onClick={handleBack}
           disabled={currentStep === 1}
-          className="gap-1 text-xs sm:text-sm sm:size-auto"
+          className="gap-1.5 px-4 sm:px-6"
         >
-          <ChevronLeft className="size-3.5 sm:size-4" />
+          <ChevronLeft className="size-4" />
           Back
         </Button>
 
         {currentStep < TOTAL_STEPS ? (
-          <Button size="sm" onClick={handleNext} className="gap-1 text-xs sm:text-sm sm:size-auto">
+          <Button onClick={handleNext} className="gap-1.5 px-4 sm:px-6">
             Next
-            <ChevronRight className="size-3.5 sm:size-4" />
+            <ChevronRight className="size-4" />
           </Button>
         ) : (
-          <Button size="sm" onClick={handleSubmit} disabled={isSubmitting} className="gap-1 text-xs sm:text-sm sm:size-auto">
+          <Button onClick={handleSubmit} disabled={isSubmitting} className="gap-1.5 px-4 sm:px-6">
             {isSubmitting ? (
               <>
-                <Loader2 className="size-3.5 animate-spin" />
+                <Loader2 className="size-4 animate-spin" />
                 Saving...
               </>
             ) : (
               <>
-                <Check className="size-3.5 sm:size-4" />
-                Submit
+                <Check className="size-4" />
+                Submit Assessment
               </>
             )}
           </Button>

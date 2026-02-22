@@ -22,20 +22,15 @@ export default auth((req) => {
     if (!isLoggedIn) {
       return NextResponse.redirect(new URL("/login", req.url))
     }
-    return NextResponse.next()
-  }
-
-  // API admin routes — require admin role
-  if (pathname.startsWith("/api/admin")) {
-    if (!isLoggedIn || userRole !== "admin") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-    return NextResponse.next()
+    // Pass pathname to layout so it can gate on questionnaire completion
+    const response = NextResponse.next()
+    response.headers.set("x-next-pathname", pathname)
+    return response
   }
 
   return NextResponse.next()
 })
 
 export const config = {
-  matcher: ["/admin/:path*", "/client/:path*", "/api/admin/:path*"],
+  matcher: ["/admin/:path*", "/client/:path*"],
 }
