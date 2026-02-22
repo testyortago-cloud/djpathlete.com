@@ -127,7 +127,7 @@ export async function POST(request: Request) {
     })
 
     // Stream response via SSE (same pattern as admin AI chat)
-    const stream = streamChat({
+    const result = streamChat({
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: userMessage }],
       maxTokens: 1024,
@@ -138,13 +138,12 @@ export async function POST(request: Request) {
     const readable = new ReadableStream({
       async start(controller) {
         try {
-          stream.on("text", (text) => {
+          for await (const text of result.textStream) {
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify({ type: "delta", text })}\n\n`)
             )
-          })
+          }
 
-          await stream.finalMessage()
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "done" })}\n\n`))
           controller.close()
         } catch (err) {

@@ -115,6 +115,7 @@ export interface Exercise {
   equipment_required: string[]
   is_bodyweight: boolean
   is_compound: boolean
+  embedding?: number[] | null
   created_at: string
   updated_at: string
 }

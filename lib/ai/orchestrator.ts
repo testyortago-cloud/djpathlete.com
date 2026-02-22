@@ -1,6 +1,7 @@
 import type { AiGenerationRequest } from "@/lib/validators/ai-generation"
 import type {
   AgentCallResult,
+  ExerciseSlot,
   ProfileAnalysis,
   ProgramSkeleton,
   ExerciseAssignment,
@@ -9,6 +10,8 @@ import type {
 } from "@/lib/ai/types"
 import type { ProgramCategory, ProgramDifficulty } from "@/types/database"
 import { callAgent, MODEL_HAIKU } from "@/lib/ai/anthropic"
+import { scoreAndFilterExercises } from "@/lib/ai/exercise-filter"
+import { estimateTokens } from "@/lib/ai/token-utils"
 import {
   profileAnalysisSchema,
   programSkeletonSchema,
@@ -177,7 +180,7 @@ ${profile?.additional_notes ? `- Additional notes: ${profile.additional_notes}` 
       PROFILE_ANALYZER_PROMPT,
       agent1UserMessage,
       profileAnalysisSchema,
-      { model: MODEL_HAIKU }
+      { model: MODEL_HAIKU, cacheSystemPrompt: true }
     )
     tokenUsage.agent1 = agent1Result.tokens_used
 
@@ -211,18 +214,17 @@ ${request.additional_instructions ? `- Additional instructions: ${request.additi
       PROGRAM_ARCHITECT_PROMPT,
       agent2UserMessage,
       programSkeletonSchema,
-      { maxTokens: 16384 }
+      { maxTokens: 16384, cacheSystemPrompt: true }
     )
     tokenUsage.agent2 = agent2Result.tokens_used
 
     const skeleton = agent2Result.content
     console.log(`[orchestrator] Agent 2 done in ${Date.now() - agent2Start}ms (${agent2Result.tokens_used} tokens)`)
 
-    // Step 5: Fetch and compress exercise library
+    // Step 5: Fetch, compress, and pre-filter exercise library
     console.log("[orchestrator] Step 5: Fetching exercise library...")
     const allExercises = await getExercisesForAI()
     const compressed = compressExercises(allExercises)
-    const exerciseLibrary = formatExerciseLibrary(compressed)
 
     // Build equipment context
     const availableEquipment =
@@ -235,7 +237,15 @@ ${request.additional_instructions ? `- Additional instructions: ${request.additi
       client_difficulty: profile?.experience_level ?? "beginner",
     })
 
-    console.log(`[orchestrator] Exercise library: ${compressed.length} exercises loaded`)
+    // Pre-filter exercises to reduce Agent 3 context
+    const filtered = scoreAndFilterExercises(compressed, skeleton, availableEquipment, analysis)
+    const exerciseLibrary = formatExerciseLibrary(filtered)
+    console.log(`[orchestrator] Exercise library: ${compressed.length} total → ${filtered.length} after pre-filtering`)
+
+    // Token budget check before Agent 3
+    const agent3SystemTokens = estimateTokens(EXERCISE_SELECTOR_PROMPT)
+    const agent3UserTokens = estimateTokens(exerciseLibrary) + estimateTokens(constraintsContext) + estimateTokens(JSON.stringify(skeleton))
+    console.log(`[orchestrator] Agent 3 token budget: ~${agent3SystemTokens + agent3UserTokens} estimated input tokens (system: ~${agent3SystemTokens}, user: ~${agent3UserTokens})`)
 
     // Step 6: Agent 3 — Exercise Selector (with code-based validation retry loop)
     let assignment: ExerciseAssignment | null = null
@@ -259,7 +269,7 @@ ${JSON.stringify(skeleton)}
 Constraints:
 ${constraintsContext}
 
-Exercise Library (${compressed.length} exercises):
+Exercise Library (${filtered.length} exercises, pre-filtered for relevance):
 ${exerciseLibrary}${feedbackSection}`
 
       try {
@@ -267,7 +277,7 @@ ${exerciseLibrary}${feedbackSection}`
           EXERCISE_SELECTOR_PROMPT,
           agent3UserMessage,
           exerciseAssignmentSchema,
-          { maxTokens: 16384 }
+          { maxTokens: 16384, cacheSystemPrompt: true }
         )
         tokenUsage.agent3 += agent3Result.tokens_used
         assignment = agent3Result.content
@@ -390,7 +400,7 @@ ${exerciseLibrary}${feedbackSection}`
         rpe_target: number | null
         tempo: string | null
         group_tag: string | null
-        technique: string
+        technique: ExerciseSlot["technique"]
       }
     >()
 
@@ -404,7 +414,7 @@ ${exerciseLibrary}${feedbackSection}`
             rpe_target: slot.rpe_target,
             tempo: slot.tempo,
             group_tag: slot.group_tag,
-            technique: (slot as any).technique ?? "straight_set",
+            technique: slot.technique ?? "straight_set",
           })
         }
       }
@@ -435,7 +445,7 @@ ${exerciseLibrary}${feedbackSection}`
         intensity_pct: null,
         tempo: details.tempo,
         group_tag: details.group_tag,
-        technique: (details as any).technique ?? "straight_set",
+        technique: details.technique ?? "straight_set",
       })
     })
 

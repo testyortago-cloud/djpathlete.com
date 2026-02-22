@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { buildAdminContext } from "@/lib/admin-ai-context"
 import { aiChatSchema } from "@/lib/validators/ai-chat"
-import { streamChat, MODEL_SONNET, MODEL_HAIKU } from "@/lib/ai/anthropic"
+import { streamChat, MODEL_SONNET, MODEL_HAIKU, Anthropic } from "@/lib/ai/anthropic"
 import { createGenerationLog } from "@/lib/db/ai-generation-log"
 import {
   AI_CHAT_CONTEXT_TIMEOUT_MS,
@@ -10,7 +10,6 @@ import {
   AI_CHAT_RATE_LIMIT_WINDOW_MS,
   AI_CHAT_API_MESSAGE_LIMIT,
 } from "@/lib/admin-ai-config"
-import Anthropic from "@anthropic-ai/sdk"
 
 export const maxDuration = 30
 
@@ -128,7 +127,7 @@ Current date: ${new Date().toLocaleDateString()}`,
     }
 
     // ── Stream response via SSE ──────────────────────────────────────────
-    const stream = streamChat({
+    const result = streamChat({
       system: systemBlocks,
       messages: recentMessages.map((m) => ({
         role: m.role,
@@ -143,20 +142,20 @@ Current date: ${new Date().toLocaleDateString()}`,
     const readable = new ReadableStream({
       async start(controller) {
         try {
-          stream.on("text", (text) => {
+          for await (const text of result.textStream) {
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify({ type: "delta", text })}\n\n`)
             )
-          })
+          }
 
-          const finalMessage = await stream.finalMessage()
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "done" })}\n\n`))
           controller.close()
 
           // Log usage (fire-and-forget)
+          const usage = await result.usage
           const tokensUsed =
-            (finalMessage.usage?.input_tokens ?? 0) +
-            (finalMessage.usage?.output_tokens ?? 0)
+            (usage?.inputTokens ?? 0) +
+            (usage?.outputTokens ?? 0)
           createGenerationLog({
             program_id: null,
             client_id: null,
