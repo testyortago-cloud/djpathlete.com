@@ -106,6 +106,46 @@ export const programSkeletonSchema = z.object({
   notes: z.string(),
 })
 
+// ─── Per-Session Agent Schema ────────────────────────────────────────────────
+
+const sessionSlotWithExerciseSchema = z.object({
+  slot_id: z.string(),
+  role: z.enum([
+    "warm_up",
+    "primary_compound",
+    "secondary_compound",
+    "accessory",
+    "isolation",
+    "cool_down",
+  ]),
+  movement_pattern: z.enum(MOVEMENT_PATTERNS),
+  target_muscles: z.array(z.string()).min(1),
+  sets: z.number(),
+  reps: z.string(),
+  rest_seconds: z.number(),
+  rpe_target: z.number().nullable(),
+  tempo: z.string().nullable(),
+  group_tag: z.string().nullable(),
+  technique: z.enum([
+    "straight_set",
+    "superset",
+    "dropset",
+    "giant_set",
+    "circuit",
+    "rest_pause",
+    "amrap",
+  ]).default("straight_set"),
+  exercise_id: z.string(),
+  exercise_name: z.string(),
+  notes: z.string().nullable(),
+})
+
+export const sessionPlanSchema = z.object({
+  label: z.string(),
+  focus: z.string(),
+  slots: z.array(sessionSlotWithExerciseSchema).min(1),
+})
+
 // ─── Agent 3: Exercise Assignment Schema ─────────────────────────────────────
 
 const assignedExerciseSchema = z.object({

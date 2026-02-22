@@ -100,6 +100,43 @@ export interface ValidationResult {
   summary: string
 }
 
+// ─── Per-Session Agent Output ────────────────────────────────────────────────
+
+export interface SessionSlotWithExercise {
+  slot_id: string
+  role: ExerciseSlot["role"]
+  movement_pattern: ExerciseSlot["movement_pattern"]
+  target_muscles: string[]
+  sets: number
+  reps: string
+  rest_seconds: number
+  rpe_target: number | null
+  tempo: string | null
+  group_tag: string | null
+  technique: ExerciseSlot["technique"]
+  exercise_id: string
+  exercise_name: string
+  notes: string | null
+}
+
+export interface SessionPlan {
+  label: string
+  focus: string
+  slots: SessionSlotWithExercise[]
+}
+
+// ─── Program Plan (code-generated context for per-session agents) ────────────
+
+export interface SessionContext {
+  week_number: number
+  day_of_week: number
+  phase: string
+  intensity_modifier: string
+  label: string
+  focus: string
+  slot_prefix: string
+}
+
 // ─── Cross-Agent Types ───────────────────────────────────────────────────────
 
 export interface AgentCallResult<T> {
