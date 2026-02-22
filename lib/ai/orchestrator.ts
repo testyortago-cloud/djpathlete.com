@@ -10,7 +10,7 @@ import type {
 } from "@/lib/ai/types"
 import type { ProgramCategory, ProgramDifficulty } from "@/types/database"
 import { callAgent, MODEL_HAIKU } from "@/lib/ai/anthropic"
-import { scoreAndFilterExercises } from "@/lib/ai/exercise-filter"
+import { scoreAndFilterExercises, semanticFilterExercises } from "@/lib/ai/exercise-filter"
 import { estimateTokens } from "@/lib/ai/token-utils"
 import {
   profileAnalysisSchema,
@@ -238,9 +238,16 @@ ${request.additional_instructions ? `- Additional instructions: ${request.additi
     })
 
     // Pre-filter exercises to reduce Agent 3 context
-    const filtered = scoreAndFilterExercises(compressed, skeleton, availableEquipment, analysis)
+    // Try semantic search first (pgvector), fall back to heuristic scoring
+    let filtered: typeof compressed
+    try {
+      filtered = await semanticFilterExercises(compressed, skeleton, availableEquipment, analysis)
+      console.log(`[orchestrator] Exercise library: ${compressed.length} total → ${filtered.length} after semantic filtering`)
+    } catch {
+      filtered = scoreAndFilterExercises(compressed, skeleton, availableEquipment, analysis)
+      console.log(`[orchestrator] Exercise library: ${compressed.length} total → ${filtered.length} after heuristic filtering (semantic unavailable)`)
+    }
     const exerciseLibrary = formatExerciseLibrary(filtered)
-    console.log(`[orchestrator] Exercise library: ${compressed.length} total → ${filtered.length} after pre-filtering`)
 
     // Token budget check before Agent 3
     const agent3SystemTokens = estimateTokens(EXERCISE_SELECTOR_PROMPT)

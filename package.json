@@ -18,6 +18,7 @@
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.46",
     "@anthropic-ai/sdk": "^0.77.0",
+    "@huggingface/transformers": "^3.8.1",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.97.0",
     "ai": "^6.0.97",

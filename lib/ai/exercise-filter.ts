@@ -1,5 +1,7 @@
 import type { CompressedExercise } from "@/lib/ai/exercise-context"
 import type { ExerciseSlot, ProgramSkeleton, ProfileAnalysis } from "@/lib/ai/types"
+import { slotToText, embedText } from "@/lib/ai/embeddings"
+import { searchExercisesByEmbedding } from "@/lib/db/exercise-embeddings"
 
 // ─── Related movement patterns ──────────────────────────────────────────────
 
@@ -154,6 +156,59 @@ export function scoreAndFilterExercises(
   // Safety: if result is too small, return all
   if (filtered.length < MIN_EXERCISES) {
     return exercises
+  }
+
+  return filtered
+}
+
+// ─── Semantic filter using pgvector embeddings ───────────────────────────────
+
+export async function semanticFilterExercises(
+  exercises: CompressedExercise[],
+  skeleton: ProgramSkeleton,
+  equipment: string[],
+  analysis: ProfileAnalysis
+): Promise<CompressedExercise[]> {
+  // Collect unique slot groups
+  const slotGroups = new Map<string, ExerciseSlot>()
+  for (const week of skeleton.weeks) {
+    for (const day of week.days) {
+      for (const slot of day.slots) {
+        const key = slotGroupKey(slot)
+        if (!slotGroups.has(key)) {
+          slotGroups.set(key, slot)
+        }
+      }
+    }
+  }
+
+  // Embed each unique slot group and query pgvector
+  const matchedIds = new Set<string>()
+
+  for (const slot of slotGroups.values()) {
+    try {
+      const queryText = slotToText(slot)
+      const queryEmbedding = await embedText(queryText)
+      const matches = await searchExercisesByEmbedding(queryEmbedding, 15, 0.2)
+      for (const match of matches) {
+        matchedIds.add(match.id)
+      }
+    } catch (err) {
+      console.warn(`[semanticFilter] Embedding search failed for slot ${slot.slot_id}:`, err instanceof Error ? err.message : err)
+    }
+  }
+
+  if (matchedIds.size < MIN_EXERCISES) {
+    console.log(`[semanticFilter] Only ${matchedIds.size} matches — falling back to heuristic filter`)
+    return scoreAndFilterExercises(exercises, skeleton, equipment, analysis)
+  }
+
+  // Filter exercises to only those matched by semantic search
+  const filtered = exercises.filter((ex) => matchedIds.has(ex.id))
+
+  // Cap at MAX_EXERCISES
+  if (filtered.length > MAX_EXERCISES) {
+    return filtered.slice(0, MAX_EXERCISES)
   }
 
   return filtered
