@@ -14,6 +14,17 @@ import type { ClientMetrics } from "@/types/analytics"
 import { StatCard } from "./StatCard"
 import { HorizontalBar } from "./HorizontalBar"
 
+// Recharts needs plain hex — CSS vars use oklch which Recharts can't resolve
+const CHART = {
+  teal: "#0E3F50",       // primary brand — total clients line
+  tealLight: "#0E3F50",  // fill under total line
+  emerald: "#10b981",    // new signups area — fresh green
+  emeraldLight: "#10b981",
+  grid: "#e5e7eb",
+  tick: "#6b7280",
+  border: "#e5e7eb",
+} as const
+
 interface ClientsTabProps {
   data: ClientMetrics
 }
@@ -65,35 +76,50 @@ export function ClientsTab({ data }: ClientsTabProps) {
           {chartData.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
               <AreaChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <defs>
+                  <linearGradient id="totalGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={CHART.tealLight} stopOpacity={0.15} />
+                    <stop offset="100%" stopColor={CHART.tealLight} stopOpacity={0.02} />
+                  </linearGradient>
+                  <linearGradient id="newGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={CHART.emeraldLight} stopOpacity={0.25} />
+                    <stop offset="100%" stopColor={CHART.emeraldLight} stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} vertical={false} />
                 <XAxis
                   dataKey="name"
-                  tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
+                  tick={{ fontSize: 12, fill: CHART.tick }}
+                  axisLine={false}
+                  tickLine={false}
                 />
                 <YAxis
-                  tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
+                  tick={{ fontSize: 12, fill: CHART.tick }}
+                  axisLine={false}
+                  tickLine={false}
                 />
                 <Tooltip
                   contentStyle={{
                     borderRadius: "8px",
-                    border: "1px solid hsl(var(--border))",
+                    border: `1px solid ${CHART.border}`,
                     fontSize: "12px",
+                    boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
                   }}
                 />
                 <Area
                   type="monotone"
                   dataKey="total"
-                  stroke="hsl(var(--primary))"
-                  fill="hsl(var(--primary))"
-                  fillOpacity={0.1}
+                  stroke={CHART.teal}
+                  strokeWidth={2}
+                  fill="url(#totalGrad)"
                   name="Total Clients"
                 />
                 <Area
                   type="monotone"
                   dataKey="new"
-                  stroke="hsl(var(--success))"
-                  fill="hsl(var(--success))"
-                  fillOpacity={0.2}
+                  stroke={CHART.emerald}
+                  strokeWidth={2}
+                  fill="url(#newGrad)"
                   name="New Signups"
                 />
               </AreaChart>

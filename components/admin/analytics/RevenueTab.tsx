@@ -13,6 +13,15 @@ import {
 import type { RevenueMetrics } from "@/types/analytics"
 import { StatCard } from "./StatCard"
 
+// Recharts needs plain hex — CSS vars use oklch which Recharts can't resolve
+const CHART = {
+  green: "#22c55e",      // revenue bars — a confident green
+  greenLight: "#bbf7d0", // revenue gradient
+  grid: "#e5e7eb",       // subtle grid lines
+  tick: "#6b7280",       // axis labels
+  border: "#e5e7eb",     // tooltip border
+} as const
+
 const STATUS_COLORS: Record<string, string> = {
   succeeded: "bg-success/10 text-success",
   pending: "bg-warning/10 text-warning",
@@ -81,24 +90,36 @@ export function RevenueTab({ data }: RevenueTabProps) {
           {chartData.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <defs>
+                  <linearGradient id="revenueGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={CHART.green} stopOpacity={0.9} />
+                    <stop offset="100%" stopColor={CHART.green} stopOpacity={0.6} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} vertical={false} />
                 <XAxis
                   dataKey="name"
-                  tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
+                  tick={{ fontSize: 12, fill: CHART.tick }}
+                  axisLine={false}
+                  tickLine={false}
                 />
                 <YAxis
-                  tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
+                  tick={{ fontSize: 12, fill: CHART.tick }}
                   tickFormatter={(v) => `$${v}`}
+                  axisLine={false}
+                  tickLine={false}
                 />
                 <Tooltip
                   formatter={(value) => [`$${Number(value).toFixed(2)}`, "Revenue"]}
                   contentStyle={{
                     borderRadius: "8px",
-                    border: "1px solid hsl(var(--border))",
+                    border: `1px solid ${CHART.border}`,
                     fontSize: "12px",
+                    boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
                   }}
+                  cursor={{ fill: CHART.green, opacity: 0.06 }}
                 />
-                <Bar dataKey="revenue" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="revenue" fill="url(#revenueGrad)" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : (

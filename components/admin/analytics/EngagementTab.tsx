@@ -23,6 +23,15 @@ import type { EngagementMetrics } from "@/types/analytics"
 import { StatCard } from "./StatCard"
 import { HorizontalBar } from "./HorizontalBar"
 
+// Recharts needs plain hex — CSS vars use oklch which Recharts can't resolve
+const CHART = {
+  indigo: "#6366f1",     // workout activity — vibrant purple-blue
+  indigoLight: "#6366f1",
+  grid: "#e5e7eb",
+  tick: "#6b7280",
+  border: "#e5e7eb",
+} as const
+
 const ACHIEVEMENT_ICONS: Record<string, React.ReactNode> = {
   pr: <Trophy className="size-4 text-warning" />,
   streak: <Flame className="size-4 text-destructive" />,
@@ -89,27 +98,38 @@ export function EngagementTab({ data }: EngagementTabProps) {
           {chartData.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
               <AreaChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <defs>
+                  <linearGradient id="workoutGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={CHART.indigoLight} stopOpacity={0.2} />
+                    <stop offset="100%" stopColor={CHART.indigoLight} stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} vertical={false} />
                 <XAxis
                   dataKey="name"
-                  tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
+                  tick={{ fontSize: 12, fill: CHART.tick }}
+                  axisLine={false}
+                  tickLine={false}
                 />
                 <YAxis
-                  tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
+                  tick={{ fontSize: 12, fill: CHART.tick }}
+                  axisLine={false}
+                  tickLine={false}
                 />
                 <Tooltip
                   contentStyle={{
                     borderRadius: "8px",
-                    border: "1px solid hsl(var(--border))",
+                    border: `1px solid ${CHART.border}`,
                     fontSize: "12px",
+                    boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
                   }}
                 />
                 <Area
                   type="monotone"
                   dataKey="workouts"
-                  stroke="hsl(var(--primary))"
-                  fill="hsl(var(--primary))"
-                  fillOpacity={0.15}
+                  stroke={CHART.indigo}
+                  strokeWidth={2}
+                  fill="url(#workoutGrad)"
                   name="Workouts"
                 />
               </AreaChart>
