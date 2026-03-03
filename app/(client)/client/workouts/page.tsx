@@ -230,7 +230,14 @@ export default async function ClientWorkoutsPage() {
     // Collect unique (week, day) combos with counts
     const dayMap = new Map<
       string,
-      { weekNumber: number; dayOfWeek: number; exerciseCount: number; completedCount: number }
+      {
+        weekNumber: number
+        dayOfWeek: number
+        exerciseCount: number
+        completedCount: number
+        exerciseNames: string[]
+        muscleGroups: string[]
+      }
     >()
 
     for (const ex of exercises) {
@@ -241,10 +248,16 @@ export default async function ClientWorkoutsPage() {
           dayOfWeek: ex.day_of_week,
           exerciseCount: 0,
           completedCount: 0,
+          exerciseNames: [],
+          muscleGroups: [],
         })
       }
       const entry = dayMap.get(key)!
       entry.exerciseCount++
+      if (ex.exercises?.name) entry.exerciseNames.push(ex.exercises.name)
+      if (ex.exercises?.muscle_group && !entry.muscleGroups.includes(ex.exercises.muscle_group)) {
+        entry.muscleGroups.push(ex.exercises.muscle_group)
+      }
       if (ex.exercise_id && wasLoggedToday(ex.exercise_id)) {
         entry.completedCount++
       }
@@ -272,6 +285,8 @@ export default async function ClientWorkoutsPage() {
           programName: program.name,
           dayOfWeek: entry.dayOfWeek,
           weekNumber: w,
+          exerciseNames: entry.exerciseNames,
+          muscleGroups: entry.muscleGroups,
         })
       }
     }

@@ -52,7 +52,7 @@ export function WorkoutViewToggle({
       {view === "list" ? (
         <WorkoutTabs {...tabsProps} />
       ) : (
-        <WorkoutCalendar workoutDays={calendarDays} />
+        <WorkoutCalendar workoutDays={calendarDays} onSwitchToList={() => setView("list")} />
       )}
     </>
   )

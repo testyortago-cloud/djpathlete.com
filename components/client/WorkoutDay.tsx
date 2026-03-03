@@ -391,6 +391,8 @@ function ExerciseCard({
     const filledSets = setRows.filter((r) => parseInt(r.reps, 10) > 0)
     const lastFilledRpe = filledSets.length > 0 ? filledSets[filledSets.length - 1].rpe : null
 
+    let weightToApply: string
+
     if (lastFilledRpe != null && lastFilledRpe >= 10) {
       // RPE 10 — reduce weight for remaining sets
       const lastFilledWeight = filledSets[filledSets.length - 1].weight
@@ -401,32 +403,23 @@ function ExerciseCard({
         : false
       const increment = isLowerCompound ? (unit === "lbs" ? 10 : 5) : (unit === "lbs" ? 5 : 2.5)
       const reduced = currentWeight != null ? Math.max(0, currentWeight - increment) : baseWeight
-      const display = String(reduced)
-      // Only apply to sets that haven't been filled yet
-      setSetRows((prev) =>
-        prev.map((row) => {
-          const hasReps = parseInt(row.reps, 10) > 0
-          return hasReps ? row : { ...row, weight: display }
-        })
-      )
-      return
-    }
-
-    if (lastFilledRpe != null && lastFilledRpe >= 9) {
+      weightToApply = String(reduced)
+    } else if (lastFilledRpe != null && lastFilledRpe >= 9) {
       // RPE 9 — keep the same weight they used, don't increase
       const lastFilledWeight = filledSets[filledSets.length - 1].weight
-      if (lastFilledWeight) {
-        setSetRows((prev) =>
-          prev.map((row) => {
-            const hasReps = parseInt(row.reps, 10) > 0
-            return hasReps ? row : { ...row, weight: lastFilledWeight }
-          })
-        )
-        return
-      }
+      weightToApply = lastFilledWeight || String(displayWeight(baseWeight) ?? "")
+    } else {
+      // Default — apply the recommended weight
+      weightToApply = String(displayWeight(baseWeight) ?? "")
     }
 
-    handleApplyWeight(baseWeight)
+    // Apply to all sets that haven't been completed (no reps logged)
+    setSetRows((prev) =>
+      prev.map((row) => {
+        const hasReps = parseInt(row.reps, 10) > 0
+        return hasReps ? row : { ...row, weight: weightToApply }
+      })
+    )
   }
 
   async function handleSubmit(e: React.FormEvent) {
