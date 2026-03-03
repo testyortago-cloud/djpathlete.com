@@ -636,6 +636,24 @@ export function AiProgramChatDialog({
     }
   }
 
+  function handleStop() {
+    // Stop listening and reset streaming state
+    setCurrentJobId(null)
+    setIsStreaming(false)
+    setIsGenerating(false)
+    prevChunkCountRef.current = 0
+
+    // Finalize any in-progress assistant message
+    const assistantId = jobAssistantIdRef.current
+    setItems((prev) =>
+      prev.map((item) =>
+        item.kind === "message" && item.data.id === assistantId && item.data.status === "streaming"
+          ? { ...item, data: { ...item.data, status: "done" as const } }
+          : item
+      )
+    )
+  }
+
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
@@ -749,7 +767,7 @@ export function AiProgramChatDialog({
                 size="icon"
                 variant="outline"
                 className="size-10 shrink-0 rounded-xl"
-                onClick={() => abortRef.current?.abort()}
+                onClick={handleStop}
               >
                 <Square className="size-3.5" />
               </Button>
