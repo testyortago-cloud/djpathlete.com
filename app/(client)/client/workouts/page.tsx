@@ -23,14 +23,14 @@ type ProgramExerciseWithExercise = ProgramExercise & {
   exercises: Exercise | null
 }
 
-const dayLabels: Record<number, string> = {
-  1: "Monday",
-  2: "Tuesday",
-  3: "Wednesday",
-  4: "Thursday",
-  5: "Friday",
-  6: "Saturday",
-  7: "Sunday",
+/** Build sequential "Day N" labels from the sorted day-of-week values */
+function buildDayLabels(days: number[]): Record<number, string> {
+  const sorted = [...days].sort((a, b) => a - b)
+  const labels: Record<number, string> = {}
+  sorted.forEach((dow, i) => {
+    labels[dow] = `Day ${i + 1}`
+  })
+  return labels
 }
 
 function getTodayDow(): number {
@@ -179,11 +179,12 @@ export default async function ClientWorkoutsPage() {
         const dayMap = weekMap.get(sourceWeek)
         if (dayMap) {
           const isCurrentWeek = w === currentWeek
-          weeks[w] = [...dayMap.keys()]
-            .sort((a, b) => a - b)
+          const sortedDays = [...dayMap.keys()].sort((a, b) => a - b)
+          const labels = buildDayLabels(sortedDays)
+          weeks[w] = sortedDays
             .map((day) => ({
               day,
-              dayLabel: dayLabels[day] ?? `Day ${day}`,
+              dayLabel: labels[day] ?? `Day ${day}`,
               assignmentId: assignment.id,
               exercises: buildExerciseData(dayMap.get(day)!, isCurrentWeek),
             }))

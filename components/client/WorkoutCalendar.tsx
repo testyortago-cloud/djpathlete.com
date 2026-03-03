@@ -18,15 +18,7 @@ interface WorkoutCalendarProps {
   workoutDays: WorkoutCalendarDay[]
 }
 
-const DAY_LABELS: Record<number, string> = {
-  1: "Monday",
-  2: "Tuesday",
-  3: "Wednesday",
-  4: "Thursday",
-  5: "Friday",
-  6: "Saturday",
-  7: "Sunday",
-}
+// No longer needed — we show "Day N" labels now
 
 function isSameDay(a: Date, b: Date) {
   return (
@@ -81,41 +73,46 @@ export function WorkoutCalendar({ workoutDays }: WorkoutCalendarProps) {
   }, [selectedDate, daysByDate])
 
   return (
-    <div>
-      <div className="bg-white rounded-xl border border-border p-2 sm:p-4 w-fit mx-auto">
-        <Calendar
-          mode="single"
-          selected={selectedDate}
-          onSelect={setSelectedDate}
-          modifiers={{
-            scheduled: scheduledDates,
-            completed: completedDates,
-            partial: partialDates,
-          }}
-          modifiersClassNames={{
-            scheduled: "bg-primary/10 font-semibold text-primary",
-            completed: "bg-green-100 font-semibold text-green-700",
-            partial: "bg-amber-100 font-semibold text-amber-700",
-          }}
-        />
-      </div>
-
-      {/* Legend */}
-      <div className="flex items-center justify-center gap-4 mt-3 text-[10px] text-muted-foreground">
-        <span className="inline-flex items-center gap-1">
-          <span className="size-2 rounded-full bg-primary/30" /> Scheduled
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <span className="size-2 rounded-full bg-amber-400" /> In Progress
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <span className="size-2 rounded-full bg-green-500" /> Complete
-        </span>
+    <div className="space-y-4">
+      {/* Calendar card */}
+      <div className="bg-white rounded-xl border border-border overflow-hidden">
+        <div className="px-4 py-3 border-b border-border">
+          <h3 className="text-sm font-semibold text-foreground">Training Schedule</h3>
+        </div>
+        <div className="p-3 sm:p-4 flex justify-center">
+          <Calendar
+            mode="single"
+            selected={selectedDate}
+            onSelect={setSelectedDate}
+            modifiers={{
+              scheduled: scheduledDates,
+              completed: completedDates,
+              partial: partialDates,
+            }}
+            modifiersClassNames={{
+              scheduled: "bg-primary/10 font-semibold text-primary",
+              completed: "bg-success/10 font-semibold text-success",
+              partial: "bg-amber-50 font-semibold text-amber-600",
+            }}
+          />
+        </div>
+        {/* Legend */}
+        <div className="flex items-center justify-center gap-5 px-4 py-3 border-t border-border bg-muted/30">
+          <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <span className="size-2.5 rounded-full bg-primary/20 ring-1 ring-primary/30" /> Scheduled
+          </span>
+          <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <span className="size-2.5 rounded-full bg-amber-200 ring-1 ring-amber-300" /> In Progress
+          </span>
+          <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <span className="size-2.5 rounded-full bg-success/30 ring-1 ring-success/40" /> Complete
+          </span>
+        </div>
       </div>
 
       {/* Selected day detail */}
       {selectedDayData ? (
-        <div className="mt-4 space-y-2">
+        <div className="space-y-2">
           {selectedDayData.map((day) => {
             const allDone =
               day.completedCount >= day.exerciseCount && day.exerciseCount > 0
@@ -135,9 +132,9 @@ export function WorkoutCalendar({ workoutDays }: WorkoutCalendarProps) {
                     className={cn(
                       "inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full",
                       allDone
-                        ? "bg-green-100 text-green-700"
+                        ? "bg-success/10 text-success"
                         : day.completedCount > 0
-                          ? "bg-amber-100 text-amber-700"
+                          ? "bg-amber-50 text-amber-600"
                           : "bg-muted text-muted-foreground"
                     )}
                   >
@@ -146,17 +143,18 @@ export function WorkoutCalendar({ workoutDays }: WorkoutCalendarProps) {
                   </span>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Week {day.weekNumber} &middot;{" "}
-                  {DAY_LABELS[day.dayOfWeek] ?? `Day ${day.dayOfWeek}`}
+                  Week {day.weekNumber}
                 </p>
               </div>
             )
           })}
         </div>
       ) : (
-        <p className="mt-4 text-center text-xs text-muted-foreground">
-          Select a day to view workout details.
-        </p>
+        <div className="bg-white rounded-xl border border-border p-6 text-center">
+          <p className="text-xs text-muted-foreground">
+            Tap a highlighted day to view details.
+          </p>
+        </div>
       )}
     </div>
   )

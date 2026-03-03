@@ -33,14 +33,12 @@ interface WorkoutTabsProps {
   todayDow: number
 }
 
-const SHORT_DAYS: Record<number, string> = {
-  1: "Mon",
-  2: "Tue",
-  3: "Wed",
-  4: "Thu",
-  5: "Fri",
-  6: "Sat",
-  7: "Sun",
+/** Build a sequential "Day N" map from sorted day-of-week values */
+function buildDayIndexMap(days: number[]): Map<number, number> {
+  const map = new Map<number, number>()
+  const sorted = [...days].sort((a, b) => a - b)
+  sorted.forEach((dow, i) => map.set(dow, i + 1))
+  return map
 }
 
 // ─── Program Selector Card ────────────────────────────────────────────────
@@ -336,9 +334,12 @@ function ProgramDetail({
       )}
 
       {/* Day selector pills */}
-      {allDays.length > 0 && (
+      {allDays.length > 0 && (() => {
+        const dayIndexMap = buildDayIndexMap(allDays)
+        return (
         <div className="flex gap-1.5 overflow-x-auto pb-1 mb-4 -mx-1 px-1 scrollbar-none">
           {allDays.map((day) => {
+            const dayIndex = dayIndexMap.get(day) ?? 1
             const isToday = day === todayDow && isCurrentWeek
             const isSelected = day === selectedDay
             const isComplete = isDayComplete(day)
@@ -358,7 +359,7 @@ function ProgramDetail({
               >
                 <span
                   className={cn(
-                    "text-[10px]",
+                    "text-[10px] uppercase",
                     isSelected
                       ? "text-primary-foreground/70"
                       : isComplete
@@ -366,9 +367,9 @@ function ProgramDetail({
                         : "text-muted-foreground/60"
                   )}
                 >
-                  {SHORT_DAYS[day] ?? `D${day}`}
+                  Day
                 </span>
-                <span className="text-sm font-semibold">{day}</span>
+                <span className="text-sm font-semibold">{dayIndex}</span>
                 {isToday && (
                   <span
                     className={cn(
@@ -381,7 +382,8 @@ function ProgramDetail({
             )
           })}
         </div>
-      )}
+        )
+      })()}
 
       {/* Session progress bar */}
       {totalCount > 0 && (
