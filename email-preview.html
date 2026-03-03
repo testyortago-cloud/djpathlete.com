@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>DJP Athlete — Email Template Preview</title>
+<style>
+  body { margin:0; padding:40px 20px; background:#1a1a1a; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; }
+  .preview-header { text-align:center; margin-bottom:48px; }
+  .preview-header h1 { color:#fff; font-size:28px; font-weight:300; letter-spacing:4px; text-transform:uppercase; margin:0 0 8px; }
+  .preview-header p { color:#888; font-size:14px; margin:0; }
+  .template-section { max-width:700px; margin:0 auto 64px; }
+  .template-label { color:#C49B7A; font-size:11px; font-weight:600; letter-spacing:3px; text-transform:uppercase; margin:0 0 16px; padding-left:4px; }
+  .template-frame { border:1px solid #333; border-radius:4px; overflow:hidden; background:#fff; }
+  .template-frame iframe { width:100%; border:none; }
+  .divider { max-width:700px; margin:0 auto 64px; border:none; border-top:1px solid #333; }
+</style>
+</head>
+<body>
+
+<div class="preview-header">
+  <h1>Email Template Preview</h1>
+  <p>DJP Athlete — All email templates rendered with sample data</p>
+</div>
+
+<!-- 1. Password Reset -->
+<div class="template-section">
+  <p class="template-label">1 &mdash; Password Reset</p>
+  <div class="template-frame">
+    <iframe id="frame1" srcdoc="" onload="resizeFrame(this)"></iframe>
+  </div>
+</div>
+
+<!-- 2. Email Verification -->
+<div class="template-section">
+  <p class="template-label">2 &mdash; Email Verification</p>
+  <div class="template-frame">
+    <iframe id="frame2" srcdoc="" onload="resizeFrame(this)"></iframe>
+  </div>
+</div>
+
+<!-- 3. Welcome -->
+<div class="template-section">
+  <p class="template-label">3 &mdash; Welcome Email</p>
+  <div class="template-frame">
+    <iframe id="frame3" srcdoc="" onload="resizeFrame(this)"></iframe>
+  </div>
+</div>
+
+<!-- 4. Account Created -->
+<div class="template-section">
+  <p class="template-label">4 &mdash; Account Created (by Coach)</p>
+  <div class="template-frame">
+    <iframe id="frame4" srcdoc="" onload="resizeFrame(this)"></iframe>
+  </div>
+</div>
+
+<!-- 5. Program Ready -->
+<div class="template-section">
+  <p class="template-label">5 &mdash; Program Ready</p>
+  <div class="template-frame">
+    <iframe id="frame5" srcdoc="" onload="resizeFrame(this)"></iframe>
+  </div>
+</div>
+
+<!-- 6. Program Available for Purchase -->
+<div class="template-section">
+  <p class="template-label">6 &mdash; Program Available for Purchase</p>
+  <div class="template-frame">
+    <iframe id="frame6" srcdoc="" onload="resizeFrame(this)"></iframe>
+  </div>
+</div>
+
+<!-- 7. Coach Purchase Notification -->
+<div class="template-section">
+  <p class="template-label">7 &mdash; Coach Purchase Notification</p>
+  <div class="template-frame">
+    <iframe id="frame7" srcdoc="" onload="resizeFrame(this)"></iframe>
+  </div>
+</div>
+
+<!-- 8. Coach Program Completed -->
+<div class="template-section">
+  <p class="template-label">8 &mdash; Coach Program Completed Notification</p>
+  <div class="template-frame">
+    <iframe id="frame8" srcdoc="" onload="resizeFrame(this)"></iframe>
+  </div>
+</div>
+
+<!-- 9. Form Review Request -->
+<div class="template-section">
+  <p class="template-label">9 &mdash; Form Review Request (to Coach)</p>
+  <div class="template-frame">
+    <iframe id="frame9" srcdoc="" onload="resizeFrame(this)"></iframe>
+  </div>
+</div>
+
+<!-- 10. Form Review Feedback -->
+<div class="template-section">
+  <p class="template-label">10 &mdash; Form Review Feedback (to Client)</p>
+  <div class="template-frame">
+    <iframe id="frame10" srcdoc="" onload="resizeFrame(this)"></iframe>
+  </div>
+</div>
+
+<!-- 11. Reassessment Reminder -->
+<div class="template-section">
+  <p class="template-label">11 &mdash; Reassessment Reminder</p>
+  <div class="template-frame">
+    <iframe id="frame11" srcdoc="" onload="resizeFrame(this)"></iframe>
+  </div>
+</div>
+
+<!-- 12. Blog Newsletter -->
+<div class="template-section">
+  <p class="template-label">12 &mdash; Blog Newsletter</p>
+  <div class="template-frame">
+    <iframe id="frame12" srcdoc="" onload="resizeFrame(this)"></iframe>
+  </div>
+</div>
+
+<script>
+function resizeFrame(f) {
+  try { f.style.height = f.contentDocument.documentElement.scrollHeight + 'px'; } catch(e) {}
+}
+
+// Shared layout
+const BASE = 'https://djpathlete.com';
+const YEAR = new Date().getFullYear();
+
+function layout(content) {
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/></head>
+<body style="margin:0;padding:0;background-color:#edece8;-webkit-font-smoothing:antialiased;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#edece8;">
+<tr><td align="center" style="padding:48px 16px;">
+
+<!-- Pre-header brand line -->
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;">
+<tr><td align="center" style="padding-bottom:32px;">
+<table role="presentation" cellpadding="0" cellspacing="0" border="0">
+<tr>
+<td style="width:40px;border-bottom:2px solid #C49B7A;"></td>
+<td style="padding:0 16px;"><p style="margin:0;font-family:Georgia,'Times New Roman',serif;font-size:11px;color:#8a8680;letter-spacing:3px;text-transform:uppercase;">DJP Athlete</p></td>
+<td style="width:40px;border-bottom:2px solid #C49B7A;"></td>
+</tr></table>
+</td></tr></table>
+
+<!-- Email container -->
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:2px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.04),0 20px 60px rgba(14,63,80,0.06);">
+
+<!-- HEADER -->
+<tr><td style="background-color:#0E3F50;padding:0;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+<tr><td style="height:3px;background:linear-gradient(90deg,#C49B7A 0%,#d4b08e 50%,#C49B7A 100%);"></td></tr>
+</table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+<tr><td align="center" style="padding:44px 48px 40px;">
+<h1 style="margin:0;font-family:Georgia,'Times New Roman',serif;font-size:28px;font-weight:400;color:#ffffff;letter-spacing:8px;text-transform:uppercase;">DJP ATHLETE</h1>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:14px;">
+<tr>
+<td style="width:24px;border-bottom:1px solid rgba(196,155,122,0.4);"></td>
+<td style="padding:0 12px;"><p style="margin:0;font-family:Georgia,'Times New Roman',serif;font-size:10px;color:#C49B7A;letter-spacing:4px;text-transform:uppercase;">Elite Performance</p></td>
+<td style="width:24px;border-bottom:1px solid rgba(196,155,122,0.4);"></td>
+</tr></table>
+</td></tr></table>
+</td></tr>
+
+<!-- BODY -->
+<tr><td style="padding:0;">${content}</td></tr>
+
+<!-- FOOTER -->
+<tr><td style="padding:0;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+<tr><td style="padding:0 48px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="border-top:1px solid #eae7e2;"></td></tr></table></td></tr>
+</table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+<tr><td style="padding:32px 48px 40px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+<tr><td align="center" style="padding-bottom:24px;">
+<a href="#" style="font-family:Georgia,'Times New Roman',serif;font-size:12px;color:#0E3F50;text-decoration:none;letter-spacing:1px;text-transform:uppercase;padding:0 14px;">Programs</a>
+<span style="color:#d4cfc8;font-size:10px;">&bull;</span>
+<a href="#" style="font-family:Georgia,'Times New Roman',serif;font-size:12px;color:#0E3F50;text-decoration:none;letter-spacing:1px;text-transform:uppercase;padding:0 14px;">Coaching</a>
+<span style="color:#d4cfc8;font-size:10px;">&bull;</span>
+<a href="#" style="font-family:Georgia,'Times New Roman',serif;font-size:12px;color:#0E3F50;text-decoration:none;letter-spacing:1px;text-transform:uppercase;padding:0 14px;">Blog</a>
+<span style="color:#d4cfc8;font-size:10px;">&bull;</span>
+<a href="#" style="font-family:Georgia,'Times New Roman',serif;font-size:12px;color:#0E3F50;text-decoration:none;letter-spacing:1px;text-transform:uppercase;padding:0 14px;">Contact</a>
+</td></tr></table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+<tr><td align="center">
+<p style="margin:0 0 6px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:11px;color:#a09b94;letter-spacing:0.5px;">&copy; ${YEAR} DJP Athlete. All rights reserved.</p>
+<p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:11px;color:#b5b0a8;">
+<a href="#" style="color:#a09b94;text-decoration:underline;">Privacy Policy</a> &middot; <a href="#" style="color:#a09b94;text-decoration:underline;">Terms of Service</a></p>
+</td></tr></table>
+</td></tr></table>
+</td></tr>
+
+</table>
+</td></tr></table>
+</body></html>`;
+}
+
+function sectionLabel(t) {
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:24px;"><tr><td style="border-bottom:2px solid #C49B7A;padding-bottom:8px;"><p style="margin:0;font-family:Georgia,'Times New Roman',serif;font-size:10px;font-weight:400;color:#C49B7A;letter-spacing:3px;text-transform:uppercase;">${t}</p></td></tr></table>`;
+}
+
+function ctaBtn(label, variant) {
+  if (variant === 'secondary') return `<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" style="border:2px solid #0E3F50;border-radius:2px;"><a href="#" style="display:inline-block;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;font-weight:600;color:#0E3F50;text-decoration:none;padding:12px 32px;letter-spacing:1.5px;text-transform:uppercase;">${label}</a></td></tr></table>`;
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" style="background-color:#0E3F50;border-radius:2px;"><a href="#" style="display:inline-block;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;font-weight:600;color:#ffffff;text-decoration:none;padding:14px 40px;letter-spacing:1.5px;text-transform:uppercase;">${label}</a></td></tr></table>`;
+}
+
+function infoCard(rows) {
+  let h = rows.map((r,i) => `<tr><td style="padding:${i?'16px':'0'} 0 ${i===rows.length-1?'0':'16px'};${i?'border-top:1px solid #eae7e2;':''}"><p style="margin:0 0 4px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:10px;font-weight:600;color:#a09b94;text-transform:uppercase;letter-spacing:2px;">${r[0]}</p><p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:16px;font-weight:600;color:${r[2]||'#0E3F50'};">${r[1]}</p></td></tr>`).join('');
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#faf9f7;border-radius:2px;border-left:3px solid #C49B7A;"><tr><td style="padding:24px 28px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${h}</table></td></tr></table>`;
+}
+
+function heroBanner(label, headline) {
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="background-color:#0E3F50;padding:36px 48px;text-align:center;"><p style="margin:0 0 10px;font-family:Georgia,'Times New Roman',serif;font-size:10px;color:#C49B7A;letter-spacing:4px;text-transform:uppercase;">${label}</p><h2 style="margin:0;font-family:Georgia,'Times New Roman',serif;font-size:24px;font-weight:400;color:#ffffff;line-height:1.3;">${headline}</h2></td></tr></table>`;
+}
+
+function fallback(url) {
+  return `<p style="margin:28px 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:11px;color:#b5b0a8;line-height:1.6;">Button not working? Copy and paste this link:<br/><a href="#" style="color:#0E3F50;word-break:break-all;font-size:11px;">${url}</a></p>`;
+}
+
+// === 1. Password Reset ===
+document.getElementById('frame1').srcdoc = layout(`
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:48px 48px 52px;">
+${sectionLabel('Password Reset')}
+<p style="margin:0 0 8px;font-family:Georgia,'Times New Roman',serif;font-size:22px;font-weight:400;color:#0E3F50;">Hi Marcus,</p>
+<p style="margin:0 0 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:15px;color:#5c5750;line-height:1.8;">We received a request to reset the password for your DJP Athlete account. Click the button below to set a new password.</p>
+${ctaBtn('Reset My Password')}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:36px;background-color:#faf9f7;border-radius:2px;border-left:3px solid #C49B7A;"><tr><td style="padding:20px 24px;">
+<p style="margin:0 0 4px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:10px;font-weight:600;color:#a09b94;text-transform:uppercase;letter-spacing:2px;">Security Notice</p>
+<p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:14px;color:#5c5750;line-height:1.7;">This link expires in <strong style="color:#0E3F50;">1 hour</strong>. If you didn&rsquo;t request this reset, you can safely ignore this email &mdash; your password will remain unchanged.</p>
+</td></tr></table>
+${fallback(BASE+'/reset-password?token=abc123')}
+</td></tr></table>
+`);
+
+// === 2. Email Verification ===
+document.getElementById('frame2').srcdoc = layout(`
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:48px 48px 52px;">
+${sectionLabel('Email Verification')}
+<p style="margin:0 0 8px;font-family:Georgia,'Times New Roman',serif;font-size:22px;font-weight:400;color:#0E3F50;">Hi Marcus,</p>
+<p style="margin:0 0 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:15px;color:#5c5750;line-height:1.8;">Thanks for signing up. Please verify your email address to activate your account.</p>
+${ctaBtn('Verify Email')}
+<p style="margin:32px 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;color:#a09b94;line-height:1.7;">This link expires in <strong style="color:#5c5750;">24 hours</strong>. If you didn&rsquo;t create this account, you can safely ignore this email.</p>
+${fallback(BASE+'/verify-email?token=abc123')}
+</td></tr></table>
+`);
+
+// === 3. Welcome ===
+document.getElementById('frame3').srcdoc = layout(`
+${heroBanner('Welcome to the Team','You&rsquo;re in, Marcus.')}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:48px 48px 20px;">
+<p style="margin:0 0 8px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:16px;color:#333;line-height:1.8;">Your email is verified and your account is fully activated. Welcome to DJP Athlete &mdash; the platform built for athletes who are serious about performance.</p>
+<p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:15px;color:#5c5750;line-height:1.8;">Whether you&rsquo;re training in-person, coaching online, or coming back from injury &mdash; we&rsquo;ve got you covered.</p>
+</td></tr></table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:12px 48px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="border-top:1px solid #eae7e2;"></td></tr></table></td></tr></table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:32px 48px 8px;">${sectionLabel('What&rsquo;s Waiting For You')}</td></tr></table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+<tr><td style="padding:0 48px 14px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#faf9f7;border-radius:2px;border-left:3px solid #0E3F50;"><tr><td style="padding:22px 28px;"><p style="margin:0 0 4px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:15px;font-weight:600;color:#0E3F50;">Personalized Programs</p><p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:14px;color:#78736c;line-height:1.6;">Training programs designed around your sport, position, and goals.</p></td></tr></table></td></tr>
+<tr><td style="padding:0 48px 14px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#faf9f7;border-radius:2px;border-left:3px solid #C49B7A;"><tr><td style="padding:22px 28px;"><p style="margin:0 0 4px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:15px;font-weight:600;color:#0E3F50;">Expert Coaching</p><p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:14px;color:#78736c;line-height:1.6;">Guidance from experienced coaches &mdash; in-person or online, wherever you train.</p></td></tr></table></td></tr>
+<tr><td style="padding:0 48px 14px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#faf9f7;border-radius:2px;border-left:3px solid #0E3F50;"><tr><td style="padding:22px 28px;"><p style="margin:0 0 4px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:15px;font-weight:600;color:#0E3F50;">Performance Tracking</p><p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:14px;color:#78736c;line-height:1.6;">Data-driven assessments and benchmarks to track your progress.</p></td></tr></table></td></tr>
+</table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:32px 48px 12px;text-align:center;">
+<p style="margin:0 0 24px;font-family:Georgia,'Times New Roman',serif;font-size:16px;color:#333;">Ready to get started?</p>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center"><tr><td align="center" style="background-color:#0E3F50;border-radius:2px;"><a href="#" style="display:inline-block;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;font-weight:600;color:#ffffff;text-decoration:none;padding:14px 48px;letter-spacing:1.5px;text-transform:uppercase;">Go to My Dashboard</a></td></tr></table>
+</td></tr></table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:20px 48px 44px;text-align:center;">
+<p style="margin:0 0 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;color:#a09b94;">Or explore what we offer:</p>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center"><tr>
+<td style="padding:0 6px;"><a href="#" style="display:inline-block;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:12px;font-weight:600;color:#0E3F50;text-decoration:none;padding:10px 24px;border:2px solid #0E3F50;border-radius:2px;letter-spacing:1px;text-transform:uppercase;">Programs</a></td>
+<td style="padding:0 6px;"><a href="#" style="display:inline-block;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:12px;font-weight:600;color:#0E3F50;text-decoration:none;padding:10px 24px;border:2px solid #0E3F50;border-radius:2px;letter-spacing:1px;text-transform:uppercase;">Coaching</a></td>
+</tr></table>
+</td></tr></table>
+`);
+
+// === 4. Account Created ===
+document.getElementById('frame4').srcdoc = layout(`
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:48px 48px 52px;">
+${sectionLabel('Account Created')}
+<p style="margin:0 0 8px;font-family:Georgia,'Times New Roman',serif;font-size:22px;font-weight:400;color:#0E3F50;">Hi Sarah,</p>
+<p style="margin:0 0 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:15px;color:#5c5750;line-height:1.8;">Your coach has created a DJP Athlete account for you. Use the temporary password below to log in and get started.</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#0E3F50;border-radius:2px;margin-bottom:32px;"><tr><td style="padding:24px 28px;">
+<p style="margin:0 0 6px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:10px;font-weight:600;color:#C49B7A;text-transform:uppercase;letter-spacing:2px;">Temporary Password</p>
+<p style="margin:0;font-family:'Courier New',Courier,monospace;font-size:22px;font-weight:700;color:#ffffff;letter-spacing:3px;">Kx9mP2vL</p>
+</td></tr></table>
+${ctaBtn('Log In to Your Account')}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:36px;background-color:#faf9f7;border-radius:2px;border-left:3px solid #C49B7A;"><tr><td style="padding:20px 24px;">
+<p style="margin:0 0 4px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:10px;font-weight:600;color:#a09b94;text-transform:uppercase;letter-spacing:2px;">Important</p>
+<p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:14px;color:#5c5750;line-height:1.7;">Please change your password after your first login for security.</p>
+</td></tr></table>
+${fallback(BASE+'/login')}
+</td></tr></table>
+`);
+
+// === 5. Program Ready ===
+document.getElementById('frame5').srcdoc = layout(`
+${heroBanner('Program Ready','Your new training program is ready.')}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:48px 48px 52px;">
+<p style="margin:0 0 8px;font-family:Georgia,'Times New Roman',serif;font-size:22px;font-weight:400;color:#0E3F50;">Hi Marcus,</p>
+<p style="margin:0 0 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:15px;color:#5c5750;line-height:1.8;">Great news &mdash; your coach has created a personalized training program for you.</p>
+${infoCard([['Program','Off-Season Strength Phase 2']])}
+<p style="margin:28px 0 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:15px;color:#5c5750;line-height:1.8;">Log in to your account to view the full program details and start training.</p>
+${ctaBtn('View My Programs')}
+${fallback(BASE+'/client/programs')}
+</td></tr></table>
+`);
+
+// === 6. Program Available for Purchase ===
+document.getElementById('frame6').srcdoc = layout(`
+${heroBanner('New Program Available','A new program is ready for you.')}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:48px 48px 52px;">
+<p style="margin:0 0 8px;font-family:Georgia,'Times New Roman',serif;font-size:22px;font-weight:400;color:#0E3F50;">Hi Marcus,</p>
+<p style="margin:0 0 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:15px;color:#5c5750;line-height:1.8;">Your coach has created a personalized training program just for you. Purchase it to get started.</p>
+${infoCard([['Program','Pre-Season Speed & Agility']])}
+<div style="height:32px;"></div>
+${ctaBtn('View & Purchase')}
+${fallback(BASE+'/client/programs/abc-123')}
+</td></tr></table>
+`);
+
+// === 7. Coach Purchase Notification ===
+document.getElementById('frame7').srcdoc = layout(`
+${heroBanner('New Purchase','Marcus Johnson just bought a program')}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:44px 48px 24px;">
+<p style="margin:0 0 28px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:16px;color:#333;line-height:1.8;">Hi Darren, a client just purchased a program. Here are the details:</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#faf9f7;border-radius:2px;border:1px solid #eae7e2;"><tr><td style="padding:28px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+<tr><td style="padding:0 0 16px;"><p style="margin:0 0 4px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:10px;font-weight:600;color:#a09b94;text-transform:uppercase;letter-spacing:2px;">Client</p><p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:16px;font-weight:600;color:#0E3F50;">Marcus Johnson</p><p style="margin:2px 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:14px;color:#78736c;">marcus@example.com</p></td></tr>
+<tr><td style="padding:16px 0;border-top:1px solid #eae7e2;"><p style="margin:0 0 4px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:10px;font-weight:600;color:#a09b94;text-transform:uppercase;letter-spacing:2px;">Program</p><p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:16px;font-weight:600;color:#0E3F50;">Off-Season Strength Phase 2</p></td></tr>
+<tr><td style="padding:16px 0 0;border-top:1px solid #eae7e2;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+<td width="50%"><p style="margin:0 0 4px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:10px;font-weight:600;color:#a09b94;text-transform:uppercase;letter-spacing:2px;">Amount</p><p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:16px;font-weight:600;color:#166534;">$149.00</p></td>
+<td width="50%"><p style="margin:0 0 6px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:10px;font-weight:600;color:#a09b94;text-transform:uppercase;letter-spacing:2px;">Assessment</p><p style="margin:0;"><span style="display:inline-block;background-color:#dcfce7;color:#166534;font-size:11px;font-weight:600;padding:4px 14px;border-radius:2px;letter-spacing:0.5px;">Assessment Complete</span></p></td>
+</tr></table></td></tr>
+</table></td></tr></table>
+<p style="margin:28px 0 28px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:15px;color:#5c5750;line-height:1.8;">Their assessment is complete — you can review their profile and generate a personalized AI program.</p>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+<td style="padding-right:12px;">${ctaBtn('View Client')}</td>
+<td>${ctaBtn('Generate Program','secondary')}</td>
+</tr></table>
+</td></tr></table>
+`);
+
+// === 8. Coach Program Completed ===
+document.getElementById('frame8').srcdoc = layout(`
+${heroBanner('Program Completed','Marcus Johnson finished their program.')}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:44px 48px 24px;">
+<p style="margin:0 0 28px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:16px;color:#333;line-height:1.8;">Hi Darren, great news &mdash; one of your athletes just completed their training program.</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#faf9f7;border-radius:2px;border:1px solid #eae7e2;"><tr><td style="padding:28px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+<tr><td style="padding:0 0 16px;"><p style="margin:0 0 4px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:10px;font-weight:600;color:#a09b94;text-transform:uppercase;letter-spacing:2px;">Client</p><p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:16px;font-weight:600;color:#0E3F50;">Marcus Johnson</p></td></tr>
+<tr><td style="padding:16px 0;border-top:1px solid #eae7e2;"><p style="margin:0 0 4px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:10px;font-weight:600;color:#a09b94;text-transform:uppercase;letter-spacing:2px;">Program</p><p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:16px;font-weight:600;color:#0E3F50;">Off-Season Strength Phase 2</p></td></tr>
+<tr><td style="padding:16px 0 0;border-top:1px solid #eae7e2;"><p style="margin:0 0 6px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:10px;font-weight:600;color:#a09b94;text-transform:uppercase;letter-spacing:2px;">Status</p><p style="margin:0;"><span style="display:inline-block;background-color:#dcfce7;color:#166534;font-size:11px;font-weight:600;padding:4px 14px;border-radius:2px;letter-spacing:0.5px;">Completed</span></p></td></tr>
+</table></td></tr></table>
+<p style="margin:28px 0 28px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:15px;color:#5c5750;line-height:1.8;">Now might be a good time to check in, review their progress, or assign a new program.</p>
+${ctaBtn('View Client Profile')}
+</td></tr></table>
+`);
+
+// === 9. Form Review Request ===
+document.getElementById('frame9').srcdoc = layout(`
+${heroBanner('Form Review Request','New video submitted for review')}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:44px 48px 48px;">
+<p style="margin:0 0 28px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:16px;color:#333;line-height:1.8;">Hi Darren, Marcus Johnson just submitted a video for form review.</p>
+${infoCard([['Client','Marcus Johnson'],['Review','Barbell Back Squat — Form Check']])}
+<div style="height:28px;"></div>
+${ctaBtn('Review Video')}
+</td></tr></table>
+`);
+
+// === 10. Form Review Feedback ===
+document.getElementById('frame10').srcdoc = layout(`
+${heroBanner('Form Review Feedback','Your coach left feedback.')}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:44px 48px 48px;">
+<p style="margin:0 0 28px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:16px;color:#333;line-height:1.8;">Hi Marcus, your coach has reviewed your form video and left feedback.</p>
+${infoCard([['Review','Barbell Back Squat — Form Check']])}
+<div style="height:28px;"></div>
+${ctaBtn('View Feedback')}
+${fallback(BASE+'/client/form-reviews/abc-123')}
+</td></tr></table>
+`);
+
+// === 11. Reassessment Reminder ===
+document.getElementById('frame11').srcdoc = layout(`
+${heroBanner('Program Complete','Time for your reassessment.')}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:48px 48px 52px;">
+<p style="margin:0 0 8px;font-family:Georgia,'Times New Roman',serif;font-size:22px;font-weight:400;color:#0E3F50;">Congratulations, Marcus.</p>
+<p style="margin:0 0 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:15px;color:#5c5750;line-height:1.8;">You&rsquo;ve completed your training program. Take a reassessment so your coach can build your next phase based on your progress.</p>
+${infoCard([['Completed Program','Off-Season Strength Phase 2']])}
+<p style="margin:28px 0 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:15px;color:#5c5750;line-height:1.8;">The reassessment takes just a few minutes and helps ensure your next program is tailored to where you are now.</p>
+${ctaBtn('Start Reassessment')}
+${fallback(BASE+'/client/reassessment')}
+</td></tr></table>
+`);
+
+// === 12. Blog Newsletter ===
+document.getElementById('frame12').srcdoc = layout(`
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="background-color:#0E3F50;padding:32px 48px;text-align:center;">
+<p style="margin:0 0 6px;font-family:Georgia,'Times New Roman',serif;font-size:10px;color:#C49B7A;letter-spacing:4px;text-transform:uppercase;">New on the Blog</p>
+<p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:12px;color:rgba(255,255,255,0.5);letter-spacing:1px;">Sports Performance</p>
+</td></tr></table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:44px 48px 48px;">
+<h2 style="margin:0 0 20px;font-family:Georgia,'Times New Roman',serif;font-size:24px;font-weight:400;color:#0E3F50;line-height:1.4;">The Science of Periodization: Why Your Training Needs Phases</h2>
+<p style="margin:0 0 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:15px;color:#5c5750;line-height:1.8;">Periodization is the systematic planning of athletic training. It involves progressive cycling of various aspects of a training program during a specific period. Learn why the world&rsquo;s best athletes don&rsquo;t train the same way year-round.</p>
+${ctaBtn('Read the Full Post')}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:36px;"><tr><td style="border-top:1px solid #eae7e2;padding-top:24px;">
+<p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:12px;color:#b5b0a8;line-height:1.6;">You're receiving this because you subscribed to the DJP Athlete newsletter. <a href="#" style="color:#0E3F50;text-decoration:underline;">Unsubscribe</a></p>
+</td></tr></table>
+</td></tr></table>
+`);
+
+// Resize all frames after content loads
+setTimeout(() => {
+  document.querySelectorAll('iframe').forEach(f => resizeFrame(f));
+}, 500);
+</script>
+
+</body>
+</html>
