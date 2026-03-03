@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk"
 import type { ZodSchema } from "zod"
 import type { AgentCallResult } from "./types.js"
 import pRetry from "p-retry"
+import { jsonrepair } from "jsonrepair"
 
 export { Anthropic }
 
@@ -86,18 +87,22 @@ function callAgentWithModel<T>(
         throw new Error("No text content in Anthropic response")
       }
 
-      // Parse JSON from response (with repair for common model mistakes)
+      // Parse JSON from response (with repair for model mistakes)
       const jsonStr = textBlock.text.trim()
       const jsonMatch = jsonStr.match(/\{[\s\S]*\}/)
       if (!jsonMatch) {
         throw new Error("No JSON object found in response")
       }
 
-      let rawJson = jsonMatch[0]
-      // Fix trailing commas before ] or } (most common model JSON error)
-      rawJson = rawJson.replace(/,\s*([\]}])/g, "$1")
-
-      const parsed = JSON.parse(rawJson)
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(jsonMatch[0])
+      } catch {
+        // Model produced malformed JSON — attempt repair (handles missing
+        // commas, trailing commas, unquoted keys, truncated output, etc.)
+        const repaired = jsonrepair(jsonMatch[0])
+        parsed = JSON.parse(repaired)
+      }
       const validated = schema.parse(parsed)
 
       const tokens_used = (response.usage?.input_tokens ?? 0) + (response.usage?.output_tokens ?? 0)
