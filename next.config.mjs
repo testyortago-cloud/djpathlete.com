@@ -11,6 +11,7 @@ const nextConfig = {
     remotePatterns: [
       { hostname: "images.pexels.com" },
       { hostname: "images.unsplash.com" },
+      { hostname: "epzuvzkokzqtzomeyoha.supabase.co" },
     ],
   },
   async headers() {
