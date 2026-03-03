@@ -7,6 +7,9 @@ import { FadeIn } from "@/components/shared/FadeIn"
 import { getPublishedBlogPosts } from "@/lib/db/blog-posts"
 import type { BlogCategory } from "@/types/database"
 
+// Revalidate every 60 seconds so new/updated posts appear without redeploying
+export const revalidate = 60
+
 export const metadata: Metadata = {
   title: "Blog",
   description:

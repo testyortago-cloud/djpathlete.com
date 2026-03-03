@@ -8,6 +8,9 @@ import { FadeIn } from "@/components/shared/FadeIn"
 import { getPublishedBlogPostBySlug } from "@/lib/db/blog-posts"
 import type { BlogCategory } from "@/types/database"
 
+// Revalidate every 60 seconds so edits appear without redeploying
+export const revalidate = 60
+
 interface Props {
   params: Promise<{ slug: string }>
 }
