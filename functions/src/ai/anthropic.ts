@@ -25,12 +25,19 @@ export function getClient(): Anthropic {
 // ─── Transient error detection ───────────────────────────────────────────────
 
 function isTransientError(error: unknown): boolean {
+  // Check via instanceof (may fail across module boundaries in Cloud Functions)
   if (error instanceof Anthropic.APIError) {
-    return error.status === 429 || error.status >= 500
+    return error.status === 429 || error.status === 529 || error.status >= 500
   }
+  // Duck-type check: Anthropic SDK errors have a numeric `status` property
+  const statusCode = (error as { status?: number }).status
+  if (typeof statusCode === "number") {
+    return statusCode === 429 || statusCode === 529 || statusCode >= 500
+  }
+  // Fallback: check error message string for known transient codes/keywords
   if (error instanceof Error) {
-    const msg = error.message
-    if (msg.includes("429") || msg.includes("529") || msg.includes("500") || msg.includes("502") || msg.includes("503")) {
+    const msg = error.message.toLowerCase()
+    if (msg.includes("429") || msg.includes("529") || msg.includes("overloaded") || msg.includes("500") || msg.includes("502") || msg.includes("503")) {
       return true
     }
   }
@@ -39,21 +46,20 @@ function isTransientError(error: unknown): boolean {
 
 // ─── callAgent: structured output via raw Anthropic SDK ─────────────────────
 
-export async function callAgent<T>(
+function callAgentWithModel<T>(
+  modelId: string,
   systemPrompt: string,
   userMessage: string,
   schema: ZodSchema<T>,
   options?: {
     maxTokens?: number
-    model?: string
     cacheSystemPrompt?: boolean
   }
 ): Promise<AgentCallResult<T>> {
   const maxTokens = options?.maxTokens ?? DEFAULT_MAX_TOKENS
-  const modelId = options?.model ?? MODEL_SONNET
   const client = getClient()
 
-  const result = await pRetry(
+  return pRetry(
     async () => {
       const systemContent: Anthropic.Messages.TextBlockParam[] = [{
         type: "text" as const,
@@ -98,17 +104,45 @@ export async function callAgent<T>(
       }
     },
     {
-      retries: 2,
-      shouldRetry: (error) => isTransientError(error),
-      onFailedAttempt: (context) => {
+      retries: 4,
+      minTimeout: 5_000,
+      maxTimeout: 30_000,
+      shouldRetry: (ctx) => {
+        const retryable = isTransientError(ctx.error)
+        console.log(`[callAgent] shouldRetry check: ${retryable} (model: ${modelId}, error: ${ctx.error?.constructor?.name}, status: ${(ctx.error as { status?: number }).status})`)
+        return retryable
+      },
+      onFailedAttempt: (ctx) => {
         console.warn(
-          `[callAgent] Attempt ${context.attemptNumber} failed (${context.retriesLeft} retries left): ${context.error.message}`
+          `[callAgent] Attempt ${ctx.attemptNumber} failed (${ctx.retriesLeft} retries left, model: ${modelId}): ${ctx.error.message}`
         )
       },
     }
   )
+}
 
-  return result
+export async function callAgent<T>(
+  systemPrompt: string,
+  userMessage: string,
+  schema: ZodSchema<T>,
+  options?: {
+    maxTokens?: number
+    model?: string
+    cacheSystemPrompt?: boolean
+  }
+): Promise<AgentCallResult<T>> {
+  const modelId = options?.model ?? MODEL_SONNET
+
+  try {
+    return await callAgentWithModel(modelId, systemPrompt, userMessage, schema, options)
+  } catch (error) {
+    // If primary model exhausted all retries on a transient error, fall back to Haiku
+    if (modelId !== MODEL_HAIKU && isTransientError(error)) {
+      console.warn(`[callAgent] ${modelId} exhausted all retries — falling back to ${MODEL_HAIKU}`)
+      return callAgentWithModel(MODEL_HAIKU, systemPrompt, userMessage, schema, options)
+    }
+    throw error
+  }
 }
 
 // ─── streamRaw: raw Anthropic streaming for Firebase Functions ──────────────

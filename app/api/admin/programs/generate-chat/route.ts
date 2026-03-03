@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
       status: "pending",
       input: {
         messages: parsed.data.messages,
-        session_id: parsed.data.session_id,
+        session_id: parsed.data.session_id ?? null,
         userId,
       },
       result: null,

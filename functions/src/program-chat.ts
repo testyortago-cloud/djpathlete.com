@@ -1,11 +1,69 @@
 import { getFirestore, FieldValue } from "firebase-admin/firestore"
-import { getClient, MODEL_SONNET, Anthropic } from "./ai/anthropic.js"
+import { getClient, MODEL_SONNET, MODEL_HAIKU, Anthropic } from "./ai/anthropic.js"
 import { getProgramChatSystemPrompt } from "./ai/program-chat-prompt.js"
 import { listClients, lookupClientProfile, getExercisesForAI } from "./ai/program-chat-tools.js"
 import { generateProgramSync } from "./ai/orchestrator.js"
 import type { AiGenerationRequest } from "./ai/orchestrator.js"
 import { retrieveSimilarContext, formatRagContext, buildRagAugmentedPrompt, embedConversationMessage } from "./ai/rag.js"
 import { getSupabase } from "./lib/supabase.js"
+import pRetry from "p-retry"
+
+// ─── Transient error detection ────────────────────────────────────────────────
+
+function isTransientError(error: unknown): boolean {
+  const statusCode = (error as { status?: number }).status
+  if (typeof statusCode === "number") {
+    return statusCode === 429 || statusCode === 529 || statusCode >= 500
+  }
+  if (error instanceof Error) {
+    const msg = error.message.toLowerCase()
+    if (msg.includes("429") || msg.includes("529") || msg.includes("overloaded") || msg.includes("500") || msg.includes("502") || msg.includes("503")) {
+      return true
+    }
+  }
+  return false
+}
+
+// ─── Retry-wrapped messages.create with Haiku fallback ────────────────────────
+
+async function createWithRetry(
+  client: Anthropic,
+  params: Omit<Anthropic.Messages.MessageCreateParamsNonStreaming, "model">,
+  primaryModel: string = MODEL_SONNET
+): Promise<Anthropic.Messages.Message> {
+  try {
+    return await pRetry(
+      () => client.messages.create({ ...params, model: primaryModel }),
+      {
+        retries: 3,
+        minTimeout: 3_000,
+        maxTimeout: 15_000,
+        shouldRetry: (err) => isTransientError(err),
+        onFailedAttempt: (ctx) => {
+          console.warn(`[program-chat] Attempt ${ctx.attemptNumber} failed (${ctx.retriesLeft} left, model: ${primaryModel}): ${ctx.error.message}`)
+        },
+      }
+    )
+  } catch (error) {
+    // If primary model exhausted retries on transient error, fall back to Haiku
+    if (primaryModel !== MODEL_HAIKU && isTransientError(error)) {
+      console.warn(`[program-chat] ${primaryModel} exhausted retries — falling back to ${MODEL_HAIKU}`)
+      return await pRetry(
+        () => client.messages.create({ ...params, model: MODEL_HAIKU }),
+        {
+          retries: 2,
+          minTimeout: 2_000,
+          maxTimeout: 10_000,
+          shouldRetry: (err) => isTransientError(err),
+          onFailedAttempt: (ctx) => {
+            console.warn(`[program-chat] Haiku attempt ${ctx.attemptNumber} failed (${ctx.retriesLeft} left): ${ctx.error.message}`)
+          },
+        }
+      )
+    }
+    throw error
+  }
+}
 
 // Tool definitions for Anthropic API
 const TOOL_DEFINITIONS: Anthropic.Messages.Tool[] = [
@@ -100,16 +158,31 @@ export async function handleProgramChat(jobId: string): Promise<void> {
     let tokensInput = 0
     let tokensOutput = 0
 
-    // Build messages array for multi-turn tool use
-    const apiMessages: Anthropic.Messages.MessageParam[] = recentMessages.map((m) => ({
-      role: m.role as "user" | "assistant",
-      content: m.content,
-    }))
+    // Load previous API state (includes tool_use/tool_result blocks) or start fresh
+    let apiMessages: Anthropic.Messages.MessageParam[]
+    const stateRef = db.collection("ai_chat_state").doc(sessionId)
+    const stateSnap = await stateRef.get()
+
+    if (stateSnap.exists) {
+      // Resume from stored state — append only the latest user message
+      apiMessages = stateSnap.data()!.apiMessages as Anthropic.Messages.MessageParam[]
+      const latestUserMsg = recentMessages.filter((m) => m.role === "user").pop()
+      if (latestUserMsg) {
+        apiMessages.push({ role: "user", content: latestUserMsg.content })
+      }
+      console.log(`[program-chat] Resumed session ${sessionId} with ${apiMessages.length} messages`)
+    } else {
+      // First turn — build from text messages
+      apiMessages = recentMessages.map((m) => ({
+        role: m.role as "user" | "assistant",
+        content: m.content,
+      }))
+      console.log(`[program-chat] New session ${sessionId} with ${apiMessages.length} messages`)
+    }
 
     // Tool use loop
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-      const response = await client.messages.create({
-        model: MODEL_SONNET,
+      const response = await createWithRetry(client, {
         max_tokens: 4096,
         system: systemPrompt,
         messages: apiMessages,
@@ -168,7 +241,13 @@ export async function handleProgramChat(jobId: string): Promise<void> {
               break
             }
             case "generate_program": {
-              const args = toolUse.input as AiGenerationRequest
+              const rawArgs = toolUse.input as Record<string, unknown>
+              // Sanitize client_id: model may pass "null", "", or an invalid value
+              let clientId: string | null = typeof rawArgs.client_id === "string" ? rawArgs.client_id.trim() : null
+              if (!clientId || clientId === "null" || clientId === "undefined" || clientId.length < 10) {
+                clientId = null
+              }
+              const args: AiGenerationRequest = { ...rawArgs, client_id: clientId } as AiGenerationRequest
               try {
                 const genResult = await generateProgramSync(args, userId)
                 toolResult = {
@@ -302,6 +381,17 @@ export async function handleProgramChat(jobId: string): Promise<void> {
         total_steps: 0,
       })
     } catch { /* non-fatal */ }
+
+    // Persist full API messages (including tool_use/tool_result blocks) for next turn
+    try {
+      await stateRef.set({
+        apiMessages,
+        userId,
+        updatedAt: FieldValue.serverTimestamp(),
+      })
+    } catch (e) {
+      console.warn("[program-chat] Failed to save chat state:", e)
+    }
 
     // Done
     await chunksRef.doc(String(chunkIndex++).padStart(6, "0")).set({

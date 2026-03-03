@@ -840,10 +840,10 @@ function Step3Audience({
           <Globe className={cn("size-5 shrink-0 mt-0.5", audience === "public" ? "text-primary" : "text-muted-foreground")} />
           <div>
             <p className={cn("text-sm font-medium", audience === "public" ? "text-primary" : "text-foreground")}>
-              Sell to All Clients
+              Sell to Everyone
             </p>
             <p className="text-xs text-muted-foreground leading-snug">
-              Listed in the program store — clients can browse and purchase it
+              Available in the store for any client to purchase
             </p>
           </div>
         </button>
@@ -866,10 +866,10 @@ function Step3Audience({
             <UserCheck className={cn("size-5 shrink-0 mt-0.5", audience === "targeted" ? "text-primary" : "text-muted-foreground")} />
             <div>
               <p className={cn("text-sm font-medium", audience === "targeted" ? "text-primary" : "text-foreground")}>
-                Sell to One Client
+                Sell to Specific Client
               </p>
               <p className="text-xs text-muted-foreground leading-snug">
-                Only one client can see and purchase it from their store
+                Only visible to one client in their store
               </p>
             </div>
           </button>
@@ -913,10 +913,10 @@ function Step3Audience({
           <Lock className={cn("size-5 shrink-0 mt-0.5", audience === "private" ? "text-primary" : "text-muted-foreground")} />
           <div>
             <p className={cn("text-sm font-medium", audience === "private" ? "text-primary" : "text-foreground")}>
-              Assign Directly (Free)
+              Free / Direct Assign
             </p>
             <p className="text-xs text-muted-foreground leading-snug">
-              Not listed in the store — you assign it to clients for free after saving
+              Not in the store — you manually assign it to clients at no cost
             </p>
           </div>
         </button>

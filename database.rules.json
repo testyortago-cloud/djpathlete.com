@@ -1,0 +1,12 @@
+{
+  "rules": {
+    "ai_jobs": {
+      "$jobId": {
+        ".read": true,
+        ".write": false
+      }
+    },
+    ".read": false,
+    ".write": false
+  }
+}

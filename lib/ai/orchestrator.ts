@@ -475,8 +475,8 @@ ${exerciseLibrary}${feedbackSection}`
     },
     is_active: true,
     created_by: requestedBy,
-    price_cents: null,
-    target_user_id: null,
+    price_cents: request.price_cents ?? null,
+    target_user_id: request.target_user_id ?? null,
   })
 
   console.log(`[orchestrator:step3] Program created: ${program.id}`)
@@ -934,8 +934,8 @@ ${exerciseLibrary}${feedbackSection}`
       ai_generation_params: { request, analysis_summary: { split: analysis.recommended_split, periodization: analysis.recommended_periodization, training_age: analysis.training_age_category, constraints_count: analysis.exercise_constraints.length }, validation: { pass: validation.pass, warnings: validation.issues.filter((i) => i.type === "warning").length, errors: validation.issues.filter((i) => i.type === "error").length }, token_usage: tokenUsage },
       is_active: true,
       created_by: requestedBy,
-      price_cents: null,
-      target_user_id: null,
+      price_cents: request.price_cents ?? null,
+      target_user_id: request.target_user_id ?? null,
     })
 
     // Insert exercises

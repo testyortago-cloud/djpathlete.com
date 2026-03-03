@@ -44,6 +44,8 @@ export interface AiGenerationRequest {
   additional_instructions?: string
   equipment_override?: string[]
   is_public?: boolean
+  price_cents?: number
+  target_user_id?: string | null
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -131,38 +133,85 @@ async function saveConversationBatch(messages: Array<Record<string, unknown>>) {
 export async function generateProgramSync(
   request: AiGenerationRequest,
   requestedBy: string,
-  assessmentContext?: AssessmentContext
+  assessmentContext?: AssessmentContext,
+  existingLogId?: string,
+  firebaseJobId?: string
 ): Promise<OrchestrationResult> {
   console.log("[orchestrator:sync] Starting generateProgramSync", {
     client_id: request.client_id ?? "none",
     goals: request.goals,
     duration_weeks: request.duration_weeks,
     sessions_per_week: request.sessions_per_week,
+    existingLogId: existingLogId ?? "none",
+    firebaseJobId: firebaseJobId ?? "none",
   })
+
+  // Helper to push step progress to RTDB for real-time client updates
+  async function updateJobProgress(step: string, currentStep: number) {
+    if (!firebaseJobId) return
+    try {
+      const { getDatabase } = await import("firebase-admin/database")
+      const rtdb = getDatabase()
+      await rtdb.ref(`ai_jobs/${firebaseJobId}`).update({
+        progress: { status: step, current_step: currentStep, total_steps: 3 },
+        updatedAt: Date.now(),
+      })
+    } catch (e) {
+      console.warn("[orchestrator:sync] Failed to update RTDB progress:", e)
+    }
+  }
+
   const startTime = Date.now()
   const tokenUsage = { agent1: 0, agent2: 0, agent3: 0, agent4: 0, total: 0 }
   let retries = 0
 
-  const log = await createGenerationLog({
-    program_id: null,
-    client_id: request.client_id ?? null,
-    requested_by: requestedBy,
-    status: "generating",
-    input_params: request,
-    output_summary: null,
-    error_message: null,
-    model_used: "haiku+sonnet-mixed",
-    tokens_used: null,
-    duration_ms: null,
-    completed_at: null,
-    current_step: 0,
-    total_steps: 3,
-    ...(assessmentContext ? {
-      generation_trigger: assessmentContext.generationTrigger,
-      assessment_result_id: assessmentContext.assessmentResultId,
-    } : {}),
-  })
-  console.log("[orchestrator:sync] Generation log created:", log.id)
+  // Use existing log created by the API route, or create a new one (e.g. assessment trigger)
+  let log: { id: string }
+  if (existingLogId) {
+    await updateGenerationLog(existingLogId, {
+      status: "generating",
+      current_step: 0,
+      ...(assessmentContext ? {
+        generation_trigger: assessmentContext.generationTrigger,
+        assessment_result_id: assessmentContext.assessmentResultId,
+      } : {}),
+    })
+    log = { id: existingLogId }
+    console.log("[orchestrator:sync] Using existing generation log:", log.id)
+  } else {
+    // Try with client_id first; if FK fails, retry with null
+    const logParams = {
+      program_id: null,
+      client_id: request.client_id ?? null,
+      requested_by: requestedBy,
+      status: "generating",
+      input_params: request,
+      output_summary: null,
+      error_message: null,
+      model_used: "haiku+sonnet-mixed",
+      tokens_used: null,
+      duration_ms: null,
+      completed_at: null,
+      current_step: 0,
+      total_steps: 3,
+      ...(assessmentContext ? {
+        generation_trigger: assessmentContext.generationTrigger,
+        assessment_result_id: assessmentContext.assessmentResultId,
+      } : {}),
+    }
+    try {
+      log = await createGenerationLog(logParams)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : ""
+      if (msg.includes("foreign key") || msg.includes("invalid input syntax")) {
+        console.warn("[orchestrator:sync] client_id FK failed, retrying with null:", msg)
+        log = await createGenerationLog({ ...logParams, client_id: null })
+      } else {
+        throw e
+      }
+    }
+    console.log("[orchestrator:sync] Generation log created:", log.id)
+  }
 
   try {
     // Fetch client profile
@@ -222,6 +271,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     const augmentedAgent1Prompt = ragContext ? buildRagAugmentedPrompt(PROFILE_ANALYZER_PROMPT, ragContext) : PROFILE_ANALYZER_PROMPT
 
     // Agent 1 + exercise fetch in parallel
+    await updateJobProgress("step_1", 1)
     console.log("[orchestrator:sync] Running Agent 1 + exercise fetch...")
     const [agent1Result, allExercises] = await Promise.all([
       callAgent<ProfileAnalysis>(augmentedAgent1Prompt, agent1UserMessage, profileAnalysisSchema, { model: MODEL_HAIKU, cacheSystemPrompt: true }),
@@ -248,6 +298,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     if (request.periodization) analysis.recommended_periodization = request.periodization as typeof analysis.recommended_periodization
 
     // Agent 2
+    await updateJobProgress("step_2", 2)
     const agent2UserMessage = `Profile Analysis:\n${JSON.stringify(analysis)}\n\nTraining Parameters:\n- Duration: ${request.duration_weeks} weeks\n- Sessions per week: ${request.sessions_per_week}\n- Session length: ${request.session_minutes ?? 60} minutes\n- Split type: ${analysis.recommended_split}\n- Periodization: ${analysis.recommended_periodization}\n- Goals: ${request.goals.join(", ")}\n${request.additional_instructions ? `- Additional instructions: ${request.additional_instructions}` : ""}`
 
     console.log("[orchestrator:sync] Running Agent 2 (program architect)...")
@@ -278,6 +329,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     const exerciseLibrary = formatExerciseLibrary(filtered)
 
     // Agent 3 with validation retry loop
+    await updateJobProgress("step_3", 3)
     console.log("[orchestrator:sync] Running Agent 3 with", filtered.length, "exercises...")
     let assignment: ExerciseAssignment | null = null
     let validation: ValidationResult | null = null
@@ -330,8 +382,8 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
       ai_generation_params: { request, analysis_summary: { split: analysis.recommended_split, periodization: analysis.recommended_periodization, training_age: analysis.training_age_category, constraints_count: analysis.exercise_constraints.length }, validation: { pass: validation.pass, warnings: validation.issues.filter((i) => i.type === "warning").length, errors: validation.issues.filter((i) => i.type === "error").length }, token_usage: tokenUsage },
       is_active: true,
       created_by: requestedBy,
-      price_cents: null,
-      target_user_id: null,
+      price_cents: request.price_cents ?? null,
+      target_user_id: request.target_user_id ?? null,
     })
 
     // Insert exercises

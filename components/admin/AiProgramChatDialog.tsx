@@ -325,6 +325,7 @@ export function AiProgramChatDialog({
   const [input, setInput] = useState("")
   const [isStreaming, setIsStreaming] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
+  const sessionIdRef = useRef(`program-chat-${Date.now()}-${Math.random().toString(36).slice(2)}`)
 
   // Assign dialog
   const [assignProgramId, setAssignProgramId] = useState<string | null>(null)
@@ -555,6 +556,7 @@ export function AiProgramChatDialog({
       setIsStreaming(false)
       setIsGenerating(false)
       setAssignProgramId(null)
+      sessionIdRef.current = `program-chat-${Date.now()}-${Math.random().toString(36).slice(2)}`
     }
     onOpenChange(newOpen)
   }
@@ -603,7 +605,7 @@ export function AiProgramChatDialog({
       const res = await fetch("/api/admin/programs/generate-chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages }),
+        body: JSON.stringify({ messages, session_id: sessionIdRef.current }),
       })
 
       if (!res.ok) {

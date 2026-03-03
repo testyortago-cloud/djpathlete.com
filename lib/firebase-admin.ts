@@ -1,6 +1,7 @@
 import { initializeApp, getApps, cert, type App } from "firebase-admin/app"
 import { getStorage } from "firebase-admin/storage"
 import { getFirestore } from "firebase-admin/firestore"
+import { getDatabase } from "firebase-admin/database"
 
 let app: App
 
@@ -15,6 +16,7 @@ function getAdminApp() {
       app = initializeApp({
         credential: cert(serviceAccount),
         storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+        databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL,
       })
     }
   }
@@ -27,6 +29,10 @@ export function getAdminStorage() {
 
 export function getAdminFirestore() {
   return getFirestore(getAdminApp())
+}
+
+export function getAdminRtdb() {
+  return getDatabase(getAdminApp())
 }
 
 /**

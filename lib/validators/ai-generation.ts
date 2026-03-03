@@ -13,6 +13,8 @@ export const aiGenerationRequestSchema = z.object({
   additional_instructions: z.string().max(2000).optional(),
   equipment_override: z.array(z.string()).optional(),
   is_public: z.boolean().optional(),
+  price_cents: z.coerce.number().int().min(0).optional(),
+  target_user_id: z.string().uuid().nullish(),
 })
 
 export type AiGenerationRequest = z.infer<typeof aiGenerationRequestSchema>

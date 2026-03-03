@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import Link from "next/link"
 import { motion, AnimatePresence } from "framer-motion"
+import { rtdb } from "@/lib/firebase"
+import { ref, onValue, off } from "firebase/database"
 import {
   Sparkles,
   Loader2,
@@ -25,6 +27,7 @@ import {
   ClipboardList,
   Info,
   UserPlus,
+  UserCheck,
 } from "lucide-react"
 import {
   Dialog,
@@ -94,13 +97,13 @@ const PERIODIZATION_LABELS: Record<string, string> = {
 }
 
 const TIER_LABELS: Record<string, string> = {
-  generalize: "Generalize",
+  generalize: "Standard",
   premium: "Premium",
 }
 
 const TIER_DESCRIPTIONS: Record<string, string> = {
-  generalize: "Workout logging only, no coach interaction",
-  premium: "Includes AI coaching feedback from DJP",
+  generalize: "Client can log workouts and track progress",
+  premium: "Everything in Standard, plus personalized AI coaching feedback",
 }
 
 const PROGRESS_MESSAGES = [
@@ -202,7 +205,9 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
   const [periodization, setPeriodization] = useState("")
   const [additionalInstructions, setAdditionalInstructions] = useState("")
   const [selectedTier, setSelectedTier] = useState<string>("generalize")
-  const [isPublic, setIsPublic] = useState(false)
+  const [audience, setAudience] = useState<"private" | "public" | "targeted">("private")
+  const [targetUserId, setTargetUserId] = useState<string | null>(null)
+  const [priceDollars, setPriceDollars] = useState("")
 
   // Profile state
   const [profileSummary, setProfileSummary] = useState<ProfileSummary | null>(null)
@@ -215,7 +220,7 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
   const [result, setResult] = useState<GenerationResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [showAssign, setShowAssign] = useState(false)
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const unsubRef = useRef<(() => void) | null>(null)
 
   // Tour
   const stepRef = useRef(step)
@@ -306,7 +311,7 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
   }, [clientId])
 
   useEffect(() => {
-    return () => stopPolling()
+    return () => stopListening()
   }, [])
 
   // ─── Navigation ───────────────────────────────────────────────────────────
@@ -350,7 +355,7 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
   // ─── Form helpers ─────────────────────────────────────────────────────────
 
   function resetForm() {
-    stopPolling()
+    stopListening()
     setStep(0)
     setDirection(1)
     setClientId("")
@@ -362,7 +367,9 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
     setPeriodization("")
     setAdditionalInstructions("")
     setSelectedTier("generalize")
-    setIsPublic(false)
+    setAudience("private")
+    setTargetUserId(null)
+    setPriceDollars("")
     setProfileSummary(null)
     setProfileStatus("idle")
     setSummaryExpanded(false)
@@ -385,51 +392,25 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
     )
   }
 
-  function stopPolling() {
-    if (pollingRef.current) {
-      clearInterval(pollingRef.current)
-      pollingRef.current = null
+  const jobRefRef = useRef<ReturnType<typeof ref> | null>(null)
+
+  function stopListening() {
+    if (jobRefRef.current) {
+      off(jobRefRef.current)
+      jobRefRef.current = null
+    }
+    if (unsubRef.current) {
+      unsubRef.current()
+      unsubRef.current = null
     }
   }
 
-  function mapStepToStage(status: string, currentStep: number): number {
-    if (status === "pending") return 0
-    if (status === "step_1") return currentStep >= 1 ? 1 : 0
-    if (status === "step_2") return 2
-    if (status === "step_3") return 3
-    if (status === "completed") return 3
+  function mapProgressToStage(progress?: { status: string; current_step: number }): number {
+    if (!progress) return 0
+    if (progress.status === "step_1") return 1
+    if (progress.status === "step_2") return 2
+    if (progress.status === "step_3") return 3
     return 0
-  }
-
-  async function pollStatus(logId: string) {
-    try {
-      const res = await fetch(`/api/admin/programs/generate/status?logId=${logId}`)
-      if (!res.ok) return
-
-      const data = await res.json()
-      setProgressStage(mapStepToStage(data.status, data.current_step))
-
-      if (data.status === "completed") {
-        stopPolling()
-        setResult({
-          program_id: data.program_id,
-          validation: data.validation ?? { pass: true, issues: [], summary: "Program generated successfully." },
-          token_usage: data.token_usage ?? { agent1: 0, agent2: 0, agent3: 0, agent4: 0, total: 0 },
-          duration_ms: data.duration_ms ?? 0,
-          retries: 0,
-        })
-        setIsGenerating(false)
-        toast.success("Program generated successfully!")
-        router.refresh()
-      } else if (data.status === "failed") {
-        stopPolling()
-        setError(data.error_message || "Program generation failed")
-        setIsGenerating(false)
-        toast.error("Program generation failed")
-      }
-    } catch {
-      // Silently retry
-    }
   }
 
   // ─── Submit ───────────────────────────────────────────────────────────────
@@ -451,8 +432,15 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
         session_minutes: sessionMinutes,
       }
 
-      body.is_public = isPublic
+      body.is_public = audience === "public"
       body.tier = selectedTier
+      if (audience === "targeted" && targetUserId) {
+        body.target_user_id = targetUserId
+      }
+      if (audience !== "private" && priceDollars) {
+        const cents = Math.round(parseFloat(priceDollars) * 100)
+        if (cents > 0) body.price_cents = cents
+      }
       if (splitType) body.split_type = splitType
       if (periodization) body.periodization = periodization
       if (additionalInstructions.trim()) {
@@ -474,21 +462,56 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
         throw new Error(data.error || "Failed to generate program")
       }
 
-      if (response.status === 201) {
-        setResult(data as GenerationResult)
-        setIsGenerating(false)
-        toast.success("Program generated successfully!")
-        router.refresh()
-      } else if (response.status === 202 && data.log_id) {
-        const logId = data.log_id as string
-        pollingRef.current = setInterval(() => pollStatus(logId), 3000)
+      if (response.status === 202 && data.jobId) {
+        // Listen to RTDB job node for real-time progress
+        const jobRef = ref(rtdb, `ai_jobs/${data.jobId}`)
+        jobRefRef.current = jobRef
+
+        onValue(
+          jobRef,
+          (snapshot) => {
+            const jobData = snapshot.val()
+            if (!jobData) return
+
+            // Update step progress from orchestrator
+            if (jobData.progress) {
+              setProgressStage(mapProgressToStage(jobData.progress))
+            }
+
+            if (jobData.status === "completed" && jobData.result) {
+              stopListening()
+              setResult({
+                program_id: jobData.result.program_id,
+                validation: jobData.result.validation ?? { pass: true, issues: [], summary: "Program generated successfully." },
+                token_usage: jobData.result.token_usage ?? { agent1: 0, agent2: 0, agent3: 0, agent4: 0, total: 0 },
+                duration_ms: jobData.result.duration_ms ?? 0,
+                retries: jobData.result.retries ?? 0,
+              })
+              setIsGenerating(false)
+              toast.success("Program generated successfully!")
+              router.refresh()
+            } else if (jobData.status === "failed") {
+              stopListening()
+              setError(jobData.error || "Program generation failed")
+              setIsGenerating(false)
+              toast.error("Program generation failed")
+            }
+          },
+          (err) => {
+            console.error("[AiGenerateDialog] RTDB listener error:", err)
+            stopListening()
+            setError("Lost connection to generation updates")
+            setIsGenerating(false)
+            toast.error("Connection lost")
+          }
+        )
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : "An unexpected error occurred"
       setError(message)
       setIsGenerating(false)
       toast.error("Program generation failed")
-      stopPolling()
+      stopListening()
     }
   }
 
@@ -751,8 +774,15 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
                   setPeriodization={setPeriodization}
                   selectedTier={selectedTier}
                   setSelectedTier={setSelectedTier}
-                  isPublic={isPublic}
-                  setIsPublic={setIsPublic}
+                  audience={audience}
+                  setAudience={setAudience}
+                  targetUserId={targetUserId}
+                  setTargetUserId={setTargetUserId}
+                  selectedClientId={clientId}
+                  clients={clients}
+                  loadingClients={loadingClients}
+                  priceDollars={priceDollars}
+                  setPriceDollars={setPriceDollars}
                   additionalInstructions={additionalInstructions}
                   setAdditionalInstructions={setAdditionalInstructions}
                   error={error}
@@ -1185,8 +1215,15 @@ function Step3Settings({
   setPeriodization,
   selectedTier,
   setSelectedTier,
-  isPublic,
-  setIsPublic,
+  audience,
+  setAudience,
+  targetUserId,
+  setTargetUserId,
+  selectedClientId,
+  clients,
+  loadingClients,
+  priceDollars,
+  setPriceDollars,
   additionalInstructions,
   setAdditionalInstructions,
   error,
@@ -1197,8 +1234,15 @@ function Step3Settings({
   setPeriodization: (v: string) => void
   selectedTier: string
   setSelectedTier: (v: string) => void
-  isPublic: boolean
-  setIsPublic: (v: boolean) => void
+  audience: "private" | "public" | "targeted"
+  setAudience: (v: "private" | "public" | "targeted") => void
+  targetUserId: string | null
+  setTargetUserId: (v: string | null) => void
+  selectedClientId: string
+  clients: User[]
+  loadingClients: boolean
+  priceDollars: string
+  setPriceDollars: (v: string) => void
   additionalInstructions: string
   setAdditionalInstructions: (v: string) => void
   error: string | null
@@ -1266,44 +1310,118 @@ function Step3Settings({
         </p>
       </div>
 
-      {/* Visibility */}
+      {/* Audience */}
       <div className="space-y-2">
-        <Label>Visibility</Label>
-        <div className="grid grid-cols-2 gap-2">
+        <Label>Audience</Label>
+        <div className="grid gap-2">
+          {/* Sell to All Clients */}
           <button
             type="button"
-            onClick={() => setIsPublic(false)}
+            onClick={() => { setAudience("public"); setTargetUserId(null) }}
             className={cn(
-              "flex items-start gap-2.5 rounded-lg border-2 px-3 py-2.5 text-left transition-colors",
-              !isPublic
+              "flex items-start gap-3 rounded-lg border-2 px-3 py-2.5 text-left transition-colors",
+              audience === "public"
                 ? "border-primary bg-primary/5"
                 : "border-border hover:border-muted-foreground/30"
             )}
           >
-            <Lock className={cn("size-4 shrink-0 mt-0.5", !isPublic ? "text-primary" : "text-muted-foreground")} />
+            <Globe className={cn("size-4 shrink-0 mt-0.5", audience === "public" ? "text-primary" : "text-muted-foreground")} />
             <div>
-              <p className={cn("text-sm font-medium", !isPublic ? "text-primary" : "text-foreground")}>Private</p>
-              <p className="text-[11px] text-muted-foreground leading-snug">Assigned client only</p>
+              <p className={cn("text-sm font-medium", audience === "public" ? "text-primary" : "text-foreground")}>Sell to Everyone</p>
+              <p className="text-[11px] text-muted-foreground leading-snug">Available in the store for any client to purchase</p>
             </div>
           </button>
-          <button
-            type="button"
-            onClick={() => setIsPublic(true)}
+
+          {/* Sell to One Client */}
+          <div
             className={cn(
-              "flex items-start gap-2.5 rounded-lg border-2 px-3 py-2.5 text-left transition-colors",
-              isPublic
+              "rounded-lg border-2 transition-colors",
+              audience === "targeted"
                 ? "border-primary bg-primary/5"
                 : "border-border hover:border-muted-foreground/30"
             )}
           >
-            <Globe className={cn("size-4 shrink-0 mt-0.5", isPublic ? "text-primary" : "text-muted-foreground")} />
+            <button
+              type="button"
+              onClick={() => { setAudience("targeted"); if (selectedClientId && !targetUserId) setTargetUserId(selectedClientId) }}
+              className="flex items-start gap-3 px-3 py-2.5 text-left w-full"
+            >
+              <UserCheck className={cn("size-4 shrink-0 mt-0.5", audience === "targeted" ? "text-primary" : "text-muted-foreground")} />
+              <div>
+                <p className={cn("text-sm font-medium", audience === "targeted" ? "text-primary" : "text-foreground")}>Sell to Specific Client</p>
+                <p className="text-[11px] text-muted-foreground leading-snug">Only visible to one client in their store</p>
+              </div>
+            </button>
+            {audience === "targeted" && (
+              <div className="px-3 pb-2.5 pl-[40px] space-y-1.5">
+                <Label htmlFor="ai-target-user" className="text-xs">Select Client *</Label>
+                <select
+                  id="ai-target-user"
+                  value={targetUserId ?? ""}
+                  onChange={(e) => setTargetUserId(e.target.value || null)}
+                  disabled={loadingClients}
+                  className={selectClass}
+                >
+                  <option value="" disabled>
+                    {loadingClients ? "Loading clients..." : "Choose a client"}
+                  </option>
+                  {clients.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.first_name} {c.last_name} — {c.email}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+
+          {/* Assign Directly (Free) */}
+          <button
+            type="button"
+            onClick={() => { setAudience("private"); setTargetUserId(null) }}
+            className={cn(
+              "flex items-start gap-3 rounded-lg border-2 px-3 py-2.5 text-left transition-colors",
+              audience === "private"
+                ? "border-primary bg-primary/5"
+                : "border-border hover:border-muted-foreground/30"
+            )}
+          >
+            <Lock className={cn("size-4 shrink-0 mt-0.5", audience === "private" ? "text-primary" : "text-muted-foreground")} />
             <div>
-              <p className={cn("text-sm font-medium", isPublic ? "text-primary" : "text-foreground")}>Public</p>
-              <p className="text-[11px] text-muted-foreground leading-snug">Visible in program store</p>
+              <p className={cn("text-sm font-medium", audience === "private" ? "text-primary" : "text-foreground")}>Free / Direct Assign</p>
+              <p className="text-[11px] text-muted-foreground leading-snug">Not in the store — you manually assign it to clients at no cost</p>
             </div>
           </button>
         </div>
       </div>
+
+      {/* Price (shown when selling) */}
+      {audience !== "private" && (
+        <div className="space-y-2">
+          <Label htmlFor="ai-price">
+            Price
+            <span className="text-muted-foreground font-normal ml-1">(leave empty for free)</span>
+          </Label>
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
+            <Input
+              id="ai-price"
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="0.00"
+              value={priceDollars}
+              onChange={(e) => setPriceDollars(e.target.value)}
+              className="pl-7"
+            />
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            {priceDollars && parseFloat(priceDollars) > 0
+              ? `Client pays $${parseFloat(priceDollars).toFixed(2)} USD via Stripe checkout.`
+              : "No payment required — client gets access for free."}
+          </p>
+        </div>
+      )}
 
       {/* Additional Instructions */}
       <div className="space-y-2">
