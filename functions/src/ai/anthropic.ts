@@ -86,14 +86,18 @@ function callAgentWithModel<T>(
         throw new Error("No text content in Anthropic response")
       }
 
-      // Parse JSON from response
+      // Parse JSON from response (with repair for common model mistakes)
       const jsonStr = textBlock.text.trim()
       const jsonMatch = jsonStr.match(/\{[\s\S]*\}/)
       if (!jsonMatch) {
         throw new Error("No JSON object found in response")
       }
 
-      const parsed = JSON.parse(jsonMatch[0])
+      let rawJson = jsonMatch[0]
+      // Fix trailing commas before ] or } (most common model JSON error)
+      rawJson = rawJson.replace(/,\s*([\]}])/g, "$1")
+
+      const parsed = JSON.parse(rawJson)
       const validated = schema.parse(parsed)
 
       const tokens_used = (response.usage?.input_tokens ?? 0) + (response.usage?.output_tokens ?? 0)
@@ -108,13 +112,19 @@ function callAgentWithModel<T>(
       minTimeout: 5_000,
       maxTimeout: 30_000,
       shouldRetry: (ctx) => {
-        const retryable = isTransientError(ctx.error)
-        console.log(`[callAgent] shouldRetry check: ${retryable} (model: ${modelId}, error: ${ctx.error?.constructor?.name}, status: ${(ctx.error as { status?: number }).status})`)
-        return retryable
+        const err = ctx.error
+        // Retry on transient API errors (429, 529, 5xx)
+        if (isTransientError(err)) return true
+        // Retry on JSON parse errors (model produced malformed JSON)
+        if (err instanceof SyntaxError) return true
+        // Retry on Zod validation errors (model output didn't match schema)
+        if (err?.constructor?.name === "ZodError") return true
+        console.log(`[callAgent] NOT retrying: ${err?.constructor?.name} (model: ${modelId})`)
+        return false
       },
       onFailedAttempt: (ctx) => {
         console.warn(
-          `[callAgent] Attempt ${ctx.attemptNumber} failed (${ctx.retriesLeft} retries left, model: ${modelId}): ${ctx.error.message}`
+          `[callAgent] Attempt ${ctx.attemptNumber} failed (${ctx.retriesLeft} retries left, model: ${modelId}): ${ctx.error.message?.slice(0, 200)}`
         )
       },
     }
