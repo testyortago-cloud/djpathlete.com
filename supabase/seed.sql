@@ -1,8 +1,8 @@
--- Seed: Admin user (password: Admin123!)
+-- Seed: Admin user
 insert into public.users (id, email, password_hash, first_name, last_name, role) values
   ('00000000-0000-0000-0000-000000000001', 'admin@darrenjpaul.com', '$2b$12$WESyL.XRso7rzSEHahgeFuPbXqLl6GsqBKa2RCBiwBkL9Dqi/8kUO', 'Darren', 'Paul', 'admin');
 
--- Seed: Test clients (password: Admin123!)
+-- Seed: Test clients
 insert into public.users (id, email, password_hash, first_name, last_name, role) values
   ('00000000-0000-0000-0000-000000000002', 'marcus@test.com', '$2b$12$WESyL.XRso7rzSEHahgeFuPbXqLl6GsqBKa2RCBiwBkL9Dqi/8kUO', 'Marcus', 'Thompson', 'client'),
   ('00000000-0000-0000-0000-000000000003', 'sarah@test.com', '$2b$12$WESyL.XRso7rzSEHahgeFuPbXqLl6GsqBKa2RCBiwBkL9Dqi/8kUO', 'Sarah', 'Kim', 'client'),
