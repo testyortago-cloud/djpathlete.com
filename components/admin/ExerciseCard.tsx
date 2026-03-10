@@ -20,6 +20,8 @@ interface ExerciseCardProps {
   onEdit: () => void
   onRemove: () => void
   onDuplicate?: () => void
+  /** If true, render as a static (non-sortable) card for the drag overlay */
+  isOverlay?: boolean
 }
 
 const CATEGORY_BORDER_COLORS: Record<string, string> = {
@@ -39,6 +41,7 @@ export function ExerciseCard({
   onEdit,
   onRemove,
   onDuplicate,
+  isOverlay,
 }: ExerciseCardProps) {
   const {
     attributes,
@@ -47,7 +50,11 @@ export function ExerciseCard({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: programExercise.id })
+  } = useSortable({
+    id: programExercise.id,
+    data: { dayOfWeek: programExercise.day_of_week },
+    disabled: isOverlay,
+  })
 
   const style = {
     transform: CSS.Transform.toString(transform),

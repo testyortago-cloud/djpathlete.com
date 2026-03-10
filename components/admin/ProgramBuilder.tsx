@@ -10,7 +10,9 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
+  DragOverlay,
   type DragEndEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core"
 import { arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable"
 import {
@@ -28,6 +30,7 @@ import { WeekSelector } from "@/components/admin/WeekSelector"
 import { DayColumn } from "@/components/admin/DayColumn"
 import { AddExerciseDialog } from "@/components/admin/AddExerciseDialog"
 import { EditExerciseDialog } from "@/components/admin/EditExerciseDialog"
+import { ExerciseCard } from "@/components/admin/ExerciseCard"
 import type { Exercise, ProgramExercise } from "@/types/database"
 
 type ProgramExerciseWithExercise = ProgramExercise & { exercises: Exercise }
@@ -59,6 +62,9 @@ export function ProgramBuilder({
   const [duplicateOpen, setDuplicateOpen] = useState(false)
   const [isDuplicating, setIsDuplicating] = useState(false)
 
+  // Active drag item (for overlay)
+  const [activeExercise, setActiveExercise] = useState<ProgramExerciseWithExercise | null>(null)
+
   // Duplicate exercise dialog
   const [duplicateExTarget, setDuplicateExTarget] = useState<ProgramExerciseWithExercise | null>(null)
   const [isDuplicatingEx, setIsDuplicatingEx] = useState(false)
@@ -85,35 +91,114 @@ export function ProgramBuilder({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    const exercise = weekExercises.find((pe) => pe.id === event.active.id)
+    setActiveExercise(exercise ?? null)
+  }, [weekExercises])
+
+  /** Determine which day a droppable/sortable ID belongs to */
+  function getDayFromId(id: string | number): number | null {
+    const idStr = String(id)
+    // Droppable container IDs: "day-1" through "day-7"
+    if (idStr.startsWith("day-")) return Number(idStr.split("-")[1])
+    // Exercise IDs: find the exercise and return its day
+    const exercise = weekExercises.find((pe) => pe.id === idStr)
+    return exercise ? exercise.day_of_week : null
+  }
+
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
+    setActiveExercise(null)
     const { active, over } = event
     if (!over || active.id === over.id) return
 
-    // Find which day this exercise belongs to
     const draggedExercise = weekExercises.find((pe) => pe.id === active.id)
     if (!draggedExercise) return
 
-    const dayExercises = getExercisesForDay(draggedExercise.day_of_week)
-    const oldIndex = dayExercises.findIndex((pe) => pe.id === active.id)
-    const newIndex = dayExercises.findIndex((pe) => pe.id === over.id)
+    const sourceDay = draggedExercise.day_of_week
+    const targetDay = getDayFromId(over.id)
+    if (!targetDay) return
 
-    if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return
+    if (sourceDay === targetDay) {
+      // Same-day reorder
+      const dayExercises = getExercisesForDay(sourceDay)
+      const oldIndex = dayExercises.findIndex((pe) => pe.id === active.id)
+      const newIndex = dayExercises.findIndex((pe) => pe.id === over.id)
 
-    // Compute new order and persist all changes
-    const reordered = arrayMove(dayExercises, oldIndex, newIndex)
-    try {
-      await Promise.all(
-        reordered.map((pe, i) =>
-          fetch(`/api/admin/programs/${programId}/exercises/${pe.id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ order_index: i }),
-          })
+      if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return
+
+      const reordered = arrayMove(dayExercises, oldIndex, newIndex)
+      try {
+        await Promise.all(
+          reordered.map((pe, i) =>
+            fetch(`/api/admin/programs/${programId}/exercises/${pe.id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ order_index: i }),
+            })
+          )
         )
-      )
-      router.refresh()
-    } catch {
-      toast.error("Failed to reorder exercises")
+        router.refresh()
+      } catch {
+        toast.error("Failed to reorder exercises")
+      }
+    } else {
+      // Cross-day move
+      const targetDayExercises = getExercisesForDay(targetDay)
+      const overExercise = targetDayExercises.find((pe) => pe.id === over.id)
+      // Insert at the position of the exercise being hovered, or at the end
+      const insertIndex = overExercise
+        ? targetDayExercises.indexOf(overExercise)
+        : targetDayExercises.length
+
+      try {
+        // 1. Move the dragged exercise to the target day at the insert position
+        await fetch(`/api/admin/programs/${programId}/exercises/${draggedExercise.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            day_of_week: targetDay,
+            order_index: insertIndex,
+          }),
+        })
+
+        // 2. Re-index remaining exercises in target day (shift items at/after insertIndex up by 1)
+        const reindexTarget = targetDayExercises
+          .filter((pe) => pe.id !== draggedExercise.id)
+          .map((pe, _i) => {
+            const currentIdx = targetDayExercises.indexOf(pe)
+            const newIdx = currentIdx >= insertIndex ? currentIdx + 1 : currentIdx
+            return { id: pe.id, order_index: newIdx }
+          })
+
+        // 3. Re-index source day (close the gap)
+        const sourceDayExercises = getExercisesForDay(sourceDay).filter(
+          (pe) => pe.id !== draggedExercise.id
+        )
+
+        const updates = [
+          ...reindexTarget.map((u) =>
+            fetch(`/api/admin/programs/${programId}/exercises/${u.id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ order_index: u.order_index }),
+            })
+          ),
+          ...sourceDayExercises.map((pe, i) =>
+            fetch(`/api/admin/programs/${programId}/exercises/${pe.id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ order_index: i }),
+            })
+          ),
+        ]
+
+        await Promise.all(updates)
+        router.refresh()
+        const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        toast.success(`Moved to ${DAY_NAMES[targetDay - 1]}`)
+      } catch {
+        toast.error("Failed to move exercise")
+      }
     }
   }, [weekExercises, programId, router])
 
@@ -300,7 +385,12 @@ export function ProgramBuilder({
       />
 
       {/* Day grid */}
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+      >
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {[1, 2, 3, 4, 5, 6, 7].map((day) => (
             <DayColumn
@@ -314,6 +404,16 @@ export function ProgramBuilder({
             />
           ))}
         </div>
+        <DragOverlay>
+          {activeExercise ? (
+            <ExerciseCard
+              programExercise={activeExercise}
+              onEdit={() => {}}
+              onRemove={() => {}}
+              isOverlay
+            />
+          ) : null}
+        </DragOverlay>
       </DndContext>
 
       {/* Add Exercise Dialog */}

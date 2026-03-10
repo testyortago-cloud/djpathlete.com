@@ -89,10 +89,10 @@ export function DayColumn({
   const slots = buildSlots(exercises)
   const exerciseIds = exercises.map((pe) => pe.id)
 
-  const { setNodeRef } = useDroppable({ id: `day-${dayOfWeek}` })
+  const { setNodeRef, isOver } = useDroppable({ id: `day-${dayOfWeek}` })
 
   return (
-    <div className="rounded-xl border border-border bg-surface/30">
+    <div className={`rounded-xl border bg-surface/30 transition-colors ${isOver ? "border-primary border-2 bg-primary/5" : "border-border"}`}>
       <div className="flex items-center justify-between border-b border-border px-3 py-2">
         <h3 className="text-sm font-medium text-foreground">{dayName}</h3>
         <span className="text-xs text-muted-foreground">
