@@ -1,8 +1,18 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core"
+import { arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable"
 import {
   Dialog,
   DialogContent,
@@ -70,55 +80,42 @@ export function ProgramBuilder({
     setAddDialogOpen(true)
   }
 
-  async function handleMoveUp(pe: ProgramExerciseWithExercise) {
-    const dayExercises = getExercisesForDay(pe.day_of_week)
-    const index = dayExercises.findIndex((e) => e.id === pe.id)
-    if (index <= 0) return
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  )
 
-    const above = dayExercises[index - 1]
+  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+
+    // Find which day this exercise belongs to
+    const draggedExercise = weekExercises.find((pe) => pe.id === active.id)
+    if (!draggedExercise) return
+
+    const dayExercises = getExercisesForDay(draggedExercise.day_of_week)
+    const oldIndex = dayExercises.findIndex((pe) => pe.id === active.id)
+    const newIndex = dayExercises.findIndex((pe) => pe.id === over.id)
+
+    if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return
+
+    // Compute new order and persist all changes
+    const reordered = arrayMove(dayExercises, oldIndex, newIndex)
     try {
-      await Promise.all([
-        fetch(`/api/admin/programs/${programId}/exercises/${pe.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ order_index: above.order_index }),
-        }),
-        fetch(`/api/admin/programs/${programId}/exercises/${above.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ order_index: pe.order_index }),
-        }),
-      ])
+      await Promise.all(
+        reordered.map((pe, i) =>
+          fetch(`/api/admin/programs/${programId}/exercises/${pe.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ order_index: i }),
+          })
+        )
+      )
       router.refresh()
     } catch {
-      toast.error("Failed to reorder exercise")
+      toast.error("Failed to reorder exercises")
     }
-  }
-
-  async function handleMoveDown(pe: ProgramExerciseWithExercise) {
-    const dayExercises = getExercisesForDay(pe.day_of_week)
-    const index = dayExercises.findIndex((e) => e.id === pe.id)
-    if (index >= dayExercises.length - 1) return
-
-    const below = dayExercises[index + 1]
-    try {
-      await Promise.all([
-        fetch(`/api/admin/programs/${programId}/exercises/${pe.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ order_index: below.order_index }),
-        }),
-        fetch(`/api/admin/programs/${programId}/exercises/${below.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ order_index: pe.order_index }),
-        }),
-      ])
-      router.refresh()
-    } catch {
-      toast.error("Failed to reorder exercise")
-    }
-  }
+  }, [weekExercises, programId, router])
 
   async function handleDuplicateInPlace(pe: ProgramExerciseWithExercise) {
     if (isDuplicatingInPlace) return
@@ -303,21 +300,21 @@ export function ProgramBuilder({
       />
 
       {/* Day grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {[1, 2, 3, 4, 5, 6, 7].map((day) => (
-          <DayColumn
-            key={day}
-            dayOfWeek={day}
-            exercises={getExercisesForDay(day)}
-            onAddExercise={handleAddExercise}
-            onEditExercise={setEditTarget}
-            onRemoveExercise={setDeleteTarget}
-            onMoveUp={handleMoveUp}
-            onMoveDown={handleMoveDown}
-            onDuplicateExercise={handleDuplicateInPlace}
-          />
-        ))}
-      </div>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {[1, 2, 3, 4, 5, 6, 7].map((day) => (
+            <DayColumn
+              key={day}
+              dayOfWeek={day}
+              exercises={getExercisesForDay(day)}
+              onAddExercise={handleAddExercise}
+              onEditExercise={setEditTarget}
+              onRemoveExercise={setDeleteTarget}
+              onDuplicateExercise={handleDuplicateInPlace}
+            />
+          ))}
+        </div>
+      </DndContext>
 
       {/* Add Exercise Dialog */}
       <AddExerciseDialog

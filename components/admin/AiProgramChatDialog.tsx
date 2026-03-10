@@ -602,15 +602,21 @@ export function AiProgramChatDialog({
         { role: "user" as const, content: text },
       ]
 
-      const res = await fetch("/api/admin/programs/generate-chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages, session_id: sessionIdRef.current }),
-      })
+      let res: Response | null = null
+      for (let attempt = 0; attempt < 3; attempt++) {
+        res = await fetch("/api/admin/programs/generate-chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages, session_id: sessionIdRef.current }),
+        })
+        if (res.status !== 429) break
+        // Wait before retrying on rate limit
+        await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)))
+      }
 
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({ error: "Request failed" }))
-        throw new Error(data.error || `HTTP ${res.status}`)
+      if (!res || !res.ok) {
+        const data = await res?.json().catch(() => ({ error: "Request failed" })) ?? { error: "Request failed" }
+        throw new Error(data.error || `HTTP ${res?.status}`)
       }
 
       const data = await res.json()
@@ -689,7 +695,7 @@ export function AiProgramChatDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-2xl h-[80vh] flex flex-col p-0 gap-0">
+      <DialogContent className="sm:max-w-2xl h-[80vh] max-h-[80vh] flex flex-col p-0 gap-0 overflow-hidden">
         {/* Header */}
         <DialogHeader className="px-4 py-3 border-b border-border shrink-0">
           <DialogTitle className="flex items-center gap-2 text-base font-heading font-semibold text-foreground">
@@ -699,7 +705,7 @@ export function AiProgramChatDialog({
         </DialogHeader>
 
         {/* Messages area */}
-        <div className="flex-1 overflow-y-auto py-3 space-y-1">
+        <div className="flex-1 min-h-0 overflow-y-auto py-3 space-y-1">
           <AnimatePresence initial={false}>
             {items.map((item) => {
               if (item.kind === "message") {

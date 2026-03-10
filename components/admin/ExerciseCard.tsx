@@ -36,14 +36,24 @@ const CATEGORY_BORDER_COLORS: Record<string, string> = {
 
 export function ExerciseCard({
   programExercise,
-  isFirst,
-  isLast,
-  onMoveUp,
-  onMoveDown,
   onEdit,
   onRemove,
   onDuplicate,
 }: ExerciseCardProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: programExercise.id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+
   const exercise = programExercise.exercises
   const categories = Array.isArray(exercise.category) ? exercise.category : [exercise.category]
   const borderColor = CATEGORY_BORDER_COLORS[categories[0]] ?? "border-l-muted-foreground"
@@ -61,8 +71,21 @@ export function ExerciseCard({
   if (programExercise.tempo) details.push(`Tempo ${programExercise.tempo}`)
 
   return (
-    <div className={`group relative rounded-lg border border-border bg-white ${borderColor} border-l-4 p-3 transition-shadow hover:shadow-sm`}>
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`group relative rounded-lg border border-border bg-white ${borderColor} border-l-4 p-3 transition-shadow hover:shadow-sm ${isDragging ? "opacity-50 shadow-lg z-50" : ""}`}
+    >
       <div className="flex gap-3">
+        {/* Drag handle */}
+        <button
+          {...attributes}
+          {...listeners}
+          className="shrink-0 flex items-center cursor-grab active:cursor-grabbing touch-none text-muted-foreground hover:text-foreground -ml-1"
+          title="Drag to reorder"
+        >
+          <GripVertical className="size-4" />
+        </button>
         {thumbnailUrl && (
           <div className="shrink-0 overflow-hidden rounded-md">
             <Image
@@ -104,24 +127,6 @@ export function ExerciseCard({
 
       {/* Hover actions */}
       <div className="absolute right-1 top-1 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 rounded-md p-0.5">
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          onClick={onMoveUp}
-          disabled={isFirst}
-          title="Move up"
-        >
-          <ChevronUp className="size-3.5" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          onClick={onMoveDown}
-          disabled={isLast}
-          title="Move down"
-        >
-          <ChevronDown className="size-3.5" />
-        </Button>
         <Button
           variant="ghost"
           size="icon-xs"

@@ -1,6 +1,11 @@
 "use client"
 
 import { Plus } from "lucide-react"
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable"
+import { useDroppable } from "@dnd-kit/core"
 import { Button } from "@/components/ui/button"
 import { ExerciseCard } from "@/components/admin/ExerciseCard"
 import type { Exercise, ProgramExercise, TrainingTechnique } from "@/types/database"
@@ -69,8 +74,6 @@ interface DayColumnProps {
   onAddExercise: (day: number) => void
   onEditExercise: (pe: ProgramExerciseWithExercise) => void
   onRemoveExercise: (pe: ProgramExerciseWithExercise) => void
-  onMoveUp: (pe: ProgramExerciseWithExercise) => void
-  onMoveDown: (pe: ProgramExerciseWithExercise) => void
   onDuplicateExercise?: (pe: ProgramExerciseWithExercise) => void
 }
 
@@ -80,12 +83,13 @@ export function DayColumn({
   onAddExercise,
   onEditExercise,
   onRemoveExercise,
-  onMoveUp,
-  onMoveDown,
   onDuplicateExercise,
 }: DayColumnProps) {
   const dayName = DAY_NAMES[dayOfWeek - 1]
   const slots = buildSlots(exercises)
+  const exerciseIds = exercises.map((pe) => pe.id)
+
+  const { setNodeRef } = useDroppable({ id: `day-${dayOfWeek}` })
 
   return (
     <div className="rounded-xl border border-border bg-surface/30">
@@ -95,60 +99,54 @@ export function DayColumn({
           {exercises.length} exercise{exercises.length !== 1 ? "s" : ""}
         </span>
       </div>
-      <div className="p-2 space-y-2 min-h-[100px]">
+      <div ref={setNodeRef} className="p-2 space-y-2 min-h-[100px]">
         {exercises.length === 0 ? (
           <p className="text-xs text-muted-foreground text-center py-6">No exercises</p>
         ) : (
-          slots.map((slot) => {
-            if (slot.type === "single") {
-              return (
-                <ExerciseCard
-                  key={slot.exercise.id}
-                  programExercise={slot.exercise}
-                  isFirst={slot.index === 0}
-                  isLast={slot.index === exercises.length - 1}
-                  onMoveUp={() => onMoveUp(slot.exercise)}
-                  onMoveDown={() => onMoveDown(slot.exercise)}
-                  onEdit={() => onEditExercise(slot.exercise)}
-                  onRemove={() => onRemoveExercise(slot.exercise)}
-                  onDuplicate={onDuplicateExercise ? () => onDuplicateExercise(slot.exercise) : undefined}
-                />
-              )
-            }
-
-            // Grouped exercises (superset / giant set / circuit)
-            return (
-              <div
-                key={`group-${slot.letter}`}
-                className="rounded-lg border-2 border-dashed border-primary/30 bg-primary/[0.02] p-1.5 space-y-1.5"
-              >
-                <div className="flex items-center gap-1.5 px-1.5">
-                  <span className="inline-flex items-center justify-center size-5 rounded bg-primary/10 text-[10px] font-bold text-primary">
-                    {slot.letter}
-                  </span>
-                  <span className="text-[11px] font-medium text-primary">
-                    {slot.label}
-                  </span>
-                  <span className="text-[10px] text-muted-foreground">
-                    ({slot.exercises.length} exercises)
-                  </span>
-                </div>
-                {slot.exercises.map(({ exercise: pe, index }) => (
+          <SortableContext items={exerciseIds} strategy={verticalListSortingStrategy}>
+            {slots.map((slot) => {
+              if (slot.type === "single") {
+                return (
                   <ExerciseCard
-                    key={pe.id}
-                    programExercise={pe}
-                    isFirst={index === 0}
-                    isLast={index === exercises.length - 1}
-                    onMoveUp={() => onMoveUp(pe)}
-                    onMoveDown={() => onMoveDown(pe)}
-                    onEdit={() => onEditExercise(pe)}
-                    onRemove={() => onRemoveExercise(pe)}
-                    onDuplicate={onDuplicateExercise ? () => onDuplicateExercise(pe) : undefined}
+                    key={slot.exercise.id}
+                    programExercise={slot.exercise}
+                    onEdit={() => onEditExercise(slot.exercise)}
+                    onRemove={() => onRemoveExercise(slot.exercise)}
+                    onDuplicate={onDuplicateExercise ? () => onDuplicateExercise(slot.exercise) : undefined}
                   />
-                ))}
-              </div>
-            )
-          })
+                )
+              }
+
+              // Grouped exercises (superset / giant set / circuit)
+              return (
+                <div
+                  key={`group-${slot.letter}`}
+                  className="rounded-lg border-2 border-dashed border-primary/30 bg-primary/[0.02] p-1.5 space-y-1.5"
+                >
+                  <div className="flex items-center gap-1.5 px-1.5">
+                    <span className="inline-flex items-center justify-center size-5 rounded bg-primary/10 text-[10px] font-bold text-primary">
+                      {slot.letter}
+                    </span>
+                    <span className="text-[11px] font-medium text-primary">
+                      {slot.label}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">
+                      ({slot.exercises.length} exercises)
+                    </span>
+                  </div>
+                  {slot.exercises.map(({ exercise: pe }) => (
+                    <ExerciseCard
+                      key={pe.id}
+                      programExercise={pe}
+                      onEdit={() => onEditExercise(pe)}
+                      onRemove={() => onRemoveExercise(pe)}
+                      onDuplicate={onDuplicateExercise ? () => onDuplicateExercise(pe) : undefined}
+                    />
+                  ))}
+                </div>
+              )
+            })}
+          </SortableContext>
         )}
       </div>
       <div className="border-t border-border p-2">

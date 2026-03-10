@@ -19,8 +19,8 @@ const requestSchema = z.object({
 // ─── Rate limit ──────────────────────────────────────────────────────────────
 
 const rateLimitMap = new Map<string, number[]>()
-const RATE_LIMIT_MAX = 5
-const RATE_LIMIT_WINDOW_MS = 300_000
+const RATE_LIMIT_MAX = 20
+const RATE_LIMIT_WINDOW_MS = 120_000
 
 function checkRateLimit(userId: string): boolean {
   const now = Date.now()

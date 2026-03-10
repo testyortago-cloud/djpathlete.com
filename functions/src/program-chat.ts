@@ -227,65 +227,100 @@ export async function handleProgramChat(jobId: string): Promise<void> {
 
       const toolResults: Anthropic.Messages.ToolResultBlockParam[] = []
 
+      // Build a cache of previous tool results from apiMessages to avoid re-calling
+      const previousToolResults = new Map<string, string>()
+      for (const msg of apiMessages) {
+        if (msg.role === "user" && Array.isArray(msg.content)) {
+          for (const block of msg.content) {
+            if (typeof block === "object" && "type" in block && block.type === "tool_result") {
+              const toolResult = block as Anthropic.Messages.ToolResultBlockParam
+              if (typeof toolResult.content === "string") {
+                // Find the matching tool_use to get the tool name + args
+                for (const prevMsg of apiMessages) {
+                  if (prevMsg.role === "assistant" && Array.isArray(prevMsg.content)) {
+                    for (const aBlock of prevMsg.content) {
+                      if (typeof aBlock === "object" && "type" in aBlock && aBlock.type === "tool_use" && (aBlock as Anthropic.Messages.ToolUseBlock).id === toolResult.tool_use_id) {
+                        const tu = aBlock as Anthropic.Messages.ToolUseBlock
+                        const cacheKey = `${tu.name}:${JSON.stringify(tu.input)}`
+                        previousToolResults.set(cacheKey, toolResult.content)
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
       for (const toolUse of toolUseBlocks) {
         let toolResult: Record<string, unknown>
 
-        try {
-          switch (toolUse.name) {
-            case "list_clients":
-              toolResult = await listClients()
-              break
-            case "lookup_client_profile": {
-              const args = toolUse.input as { client_id: string; client_name: string }
-              toolResult = await lookupClientProfile(args.client_id, args.client_name)
-              break
-            }
-            case "generate_program": {
-              const rawArgs = toolUse.input as Record<string, unknown>
-              // Sanitize client_id: model may pass "null", "", or an invalid value
-              let clientId: string | null = typeof rawArgs.client_id === "string" ? rawArgs.client_id.trim() : null
-              if (!clientId || clientId === "null" || clientId === "undefined" || clientId.length < 10) {
-                clientId = null
+        // Check cache for duplicate tool calls (skip re-executing list_clients / lookup_client_profile)
+        const cacheKey = `${toolUse.name}:${JSON.stringify(toolUse.input)}`
+        const cached = previousToolResults.get(cacheKey)
+
+        if (cached && toolUse.name !== "generate_program") {
+          console.log(`[program-chat] Returning cached result for ${toolUse.name}`)
+          toolResult = JSON.parse(cached) as Record<string, unknown>
+        } else {
+          try {
+            switch (toolUse.name) {
+              case "list_clients":
+                toolResult = await listClients()
+                break
+              case "lookup_client_profile": {
+                const args = toolUse.input as { client_id: string; client_name: string }
+                toolResult = await lookupClientProfile(args.client_id, args.client_name)
+                break
               }
-              const args: AiGenerationRequest = { ...rawArgs, client_id: clientId } as AiGenerationRequest
-              try {
-                const genResult = await generateProgramSync(args, userId)
-                toolResult = {
-                  success: true,
-                  program_id: genResult.program_id,
-                  validation_pass: genResult.validation.pass,
-                  duration_ms: genResult.duration_ms,
-                  summary: `Program created successfully (${genResult.duration_ms}ms).`,
+              case "generate_program": {
+                const rawArgs = toolUse.input as Record<string, unknown>
+                // Sanitize client_id: model may pass "null", "", or an invalid value
+                let clientId: string | null = typeof rawArgs.client_id === "string" ? rawArgs.client_id.trim() : null
+                if (!clientId || clientId === "null" || clientId === "undefined" || clientId.length < 10) {
+                  clientId = null
                 }
+                const args: AiGenerationRequest = { ...rawArgs, client_id: clientId } as AiGenerationRequest
+                try {
+                  const genResult = await generateProgramSync(args, userId)
+                  toolResult = {
+                    success: true,
+                    program_id: genResult.program_id,
+                    validation_pass: genResult.validation.pass,
+                    duration_ms: genResult.duration_ms,
+                    summary: `Program created successfully (${genResult.duration_ms}ms).`,
+                  }
 
-                await chunksRef.doc(String(chunkIndex++).padStart(6, "0")).set({
-                  index: chunkIndex - 1,
-                  type: "program_created",
-                  data: {
-                    programId: genResult.program_id,
-                    validationPass: genResult.validation.pass,
-                    durationMs: genResult.duration_ms,
-                  },
-                  createdAt: FieldValue.serverTimestamp(),
-                })
-              } catch (genError) {
-                const errMsg = genError instanceof Error ? genError.message : "Generation failed"
-                toolResult = { success: false, summary: errMsg }
+                  await chunksRef.doc(String(chunkIndex++).padStart(6, "0")).set({
+                    index: chunkIndex - 1,
+                    type: "program_created",
+                    data: {
+                      programId: genResult.program_id,
+                      validationPass: genResult.validation.pass,
+                      durationMs: genResult.duration_ms,
+                    },
+                    createdAt: FieldValue.serverTimestamp(),
+                  })
+                } catch (genError) {
+                  const errMsg = genError instanceof Error ? genError.message : "Generation failed"
+                  toolResult = { success: false, summary: errMsg }
 
-                await chunksRef.doc(String(chunkIndex++).padStart(6, "0")).set({
-                  index: chunkIndex - 1,
-                  type: "tool_result",
-                  data: { tool: toolUse.name, summary: errMsg, error: true },
-                  createdAt: FieldValue.serverTimestamp(),
-                })
+                  await chunksRef.doc(String(chunkIndex++).padStart(6, "0")).set({
+                    index: chunkIndex - 1,
+                    type: "tool_result",
+                    data: { tool: toolUse.name, summary: errMsg, error: true },
+                    createdAt: FieldValue.serverTimestamp(),
+                  })
+                }
+                break
               }
-              break
+              default:
+                toolResult = { error: `Unknown tool: ${toolUse.name}` }
             }
-            default:
-              toolResult = { error: `Unknown tool: ${toolUse.name}` }
+          } catch (toolError) {
+            toolResult = { error: toolError instanceof Error ? toolError.message : "Tool execution failed" }
           }
-        } catch (toolError) {
-          toolResult = { error: toolError instanceof Error ? toolError.message : "Tool execution failed" }
         }
 
         toolCalls.push({ tool: toolUse.name, result: toolResult })
