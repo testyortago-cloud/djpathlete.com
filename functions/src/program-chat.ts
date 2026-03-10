@@ -217,8 +217,10 @@ export async function handleProgramChat(jobId: string): Promise<void> {
         }
       }
 
-      // If no tool use, we're done
+      // If no tool use, we're done — but MUST push the assistant response
+      // to apiMessages so state is preserved for the next turn
       if (toolUseBlocks.length === 0 || response.stop_reason === "end_turn") {
+        apiMessages.push({ role: "assistant", content: assistantContent })
         break
       }
 

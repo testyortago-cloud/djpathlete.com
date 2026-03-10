@@ -55,6 +55,57 @@ type ChatItem =
   | { kind: "message"; data: ChatMessage }
   | { kind: "event"; data: ToolEvent }
 
+// ─── LocalStorage persistence ────────────────────────────────────────────────
+
+const PROGRAM_CHAT_STORAGE_KEY = "djp-program-chat-state"
+
+interface StoredChatState {
+  sessionId: string
+  items: ChatItem[]
+  savedAt: string
+}
+
+function loadChatState(): StoredChatState | null {
+  try {
+    const raw = localStorage.getItem(PROGRAM_CHAT_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as StoredChatState
+    // Expire after 2 hours
+    if (Date.now() - new Date(parsed.savedAt).getTime() > 2 * 60 * 60 * 1000) {
+      localStorage.removeItem(PROGRAM_CHAT_STORAGE_KEY)
+      return null
+    }
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+function saveChatState(sessionId: string, items: ChatItem[]) {
+  try {
+    // Only save messages that are "done" (skip streaming/in-progress)
+    const safeItems = items.filter(
+      (item) => item.kind === "event" || (item.kind === "message" && item.data.status !== "streaming")
+    )
+    const state: StoredChatState = {
+      sessionId,
+      items: safeItems,
+      savedAt: new Date().toISOString(),
+    }
+    localStorage.setItem(PROGRAM_CHAT_STORAGE_KEY, JSON.stringify(state))
+  } catch {
+    // localStorage full or unavailable — silently skip
+  }
+}
+
+function clearChatState() {
+  try {
+    localStorage.removeItem(PROGRAM_CHAT_STORAGE_KEY)
+  } catch {
+    // ignore
+  }
+}
+
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const TOOL_LABELS: Record<string, { loading: string; done: string }> = {
@@ -79,6 +130,33 @@ const WELCOME_MESSAGE: ChatItem = {
     status: "done",
   },
 }
+
+const PROMPT_TEMPLATES = [
+  {
+    label: "Client Program",
+    icon: "user",
+    prompt:
+      "Create a training program for [client name]. Look up their profile and build something tailored to their goals and equipment.",
+  },
+  {
+    label: "Strength Focus",
+    icon: "dumbbell",
+    prompt:
+      "Build a 12-week strength-focused program, 4 sessions per week, 60 minutes each. Focus on progressive overload with compound movements.",
+  },
+  {
+    label: "Weight Loss",
+    icon: "flame",
+    prompt:
+      "Create an 8-week weight loss program, 5 sessions per week, 45 minutes. Mix of resistance training and metabolic conditioning.",
+  },
+  {
+    label: "Beginner Friendly",
+    icon: "sparkles",
+    prompt:
+      "Design a 6-week beginner program, 3 sessions per week, 45 minutes. Full body sessions with simple exercises and clear progression.",
+  },
+] as const
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
@@ -321,11 +399,16 @@ export function AiProgramChatDialog({
   onOpenChange,
 }: AiProgramChatDialogProps) {
   const router = useRouter()
-  const [items, setItems] = useState<ChatItem[]>([WELCOME_MESSAGE])
+  const [items, setItems] = useState<ChatItem[]>(() => {
+    const stored = loadChatState()
+    return stored ? stored.items : [WELCOME_MESSAGE]
+  })
   const [input, setInput] = useState("")
   const [isStreaming, setIsStreaming] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
-  const sessionIdRef = useRef(`program-chat-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+  const sessionIdRef = useRef(
+    loadChatState()?.sessionId ?? `program-chat-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  )
 
   // Assign dialog
   const [assignProgramId, setAssignProgramId] = useState<string | null>(null)
@@ -518,6 +601,13 @@ export function AiProgramChatDialog({
     }
   }, [currentJobId, aiJob.status, aiJob.error, nextId])
 
+  // Persist chat state to localStorage when not streaming
+  useEffect(() => {
+    if (!isStreaming && items.length > 1) {
+      saveChatState(sessionIdRef.current, items)
+    }
+  }, [items, isStreaming])
+
   // Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -547,18 +637,30 @@ export function AiProgramChatDialog({
     if (open && clients.length === 0) fetchClients()
   }, [open, clients.length, fetchClients])
 
-  // Reset on close
+  // Reset on close — keep localStorage so it can be restored on reopen
   function handleOpenChange(newOpen: boolean) {
     if (!newOpen) {
       abortRef.current?.abort()
-      setItems([WELCOME_MESSAGE])
-      setInput("")
       setIsStreaming(false)
       setIsGenerating(false)
       setAssignProgramId(null)
-      sessionIdRef.current = `program-chat-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      // Don't reset items/session — they're saved in localStorage for continuity
     }
     onOpenChange(newOpen)
+  }
+
+  // Start a fresh conversation (wipes localStorage)
+  function handleNewChat() {
+    if (isStreaming) return
+    abortRef.current?.abort()
+    setItems([WELCOME_MESSAGE])
+    setInput("")
+    setIsStreaming(false)
+    setIsGenerating(false)
+    setCurrentJobId(null)
+    prevChunkCountRef.current = 0
+    sessionIdRef.current = `program-chat-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    clearChatState()
   }
 
   // Get conversation messages (only role+content, no events)
@@ -698,10 +800,23 @@ export function AiProgramChatDialog({
       <DialogContent className="sm:max-w-2xl h-[80vh] max-h-[80vh] flex flex-col p-0 gap-0 overflow-hidden">
         {/* Header */}
         <DialogHeader className="px-4 py-3 border-b border-border shrink-0">
-          <DialogTitle className="flex items-center gap-2 text-base font-heading font-semibold text-foreground">
-            <MessageSquare className="size-4 text-accent" />
-            AI Program Builder
-          </DialogTitle>
+          <div className="flex items-center justify-between">
+            <DialogTitle className="flex items-center gap-2 text-base font-heading font-semibold text-foreground">
+              <MessageSquare className="size-4 text-accent" />
+              AI Program Builder
+            </DialogTitle>
+            {items.length > 1 && !isStreaming && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleNewChat}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                <Sparkles className="size-3 mr-1" />
+                New Chat
+              </Button>
+            )}
+          </div>
         </DialogHeader>
 
         {/* Messages area */}
@@ -736,6 +851,34 @@ export function AiProgramChatDialog({
               return <ToolStatusCard key={evt.id} event={evt} />
             })}
           </AnimatePresence>
+
+          {/* Prompt templates — show only on fresh chat */}
+          {items.length === 1 && !isStreaming && (
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2, delay: 0.1 }}
+              className="grid grid-cols-2 gap-2 px-4 pt-2"
+            >
+              {PROMPT_TEMPLATES.map((tpl) => (
+                <button
+                  key={tpl.label}
+                  onClick={() => {
+                    setInput(tpl.prompt)
+                    inputRef.current?.focus()
+                  }}
+                  className="text-left rounded-xl border border-border bg-surface/30 hover:bg-surface/60 p-3 transition-colors group"
+                >
+                  <span className="text-xs font-medium text-foreground group-hover:text-primary transition-colors">
+                    {tpl.label}
+                  </span>
+                  <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">
+                    {tpl.prompt.slice(0, 80)}...
+                  </p>
+                </button>
+              ))}
+            </motion.div>
+          )}
 
           {isStreaming &&
             !items.some(
