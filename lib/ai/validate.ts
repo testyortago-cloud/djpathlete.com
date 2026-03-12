@@ -329,14 +329,23 @@ export function validateProgram(
     }
   }
 
-  // ── WARNING: Push/pull imbalance ──
+  // ── ERROR: Push/pull imbalance (upgraded from warning — balance is enforced) ──
   for (const week of weekPush.keys()) {
     const pushCount = weekPush.get(week) ?? 0
     const pullCount = weekPull.get(week) ?? 0
     const total = pushCount + pullCount
     if (total >= 4) {
       const ratio = Math.min(pushCount, pullCount) / Math.max(pushCount, pullCount)
-      if (ratio < 0.5) {
+      if (ratio < 0.4) {
+        // Severe imbalance (>2.5:1) — error
+        const dominant = pushCount > pullCount ? "push" : "pull"
+        issues.push({
+          type: "error",
+          category: "muscle_imbalance",
+          message: `Week ${week} has a severe ${dominant}-dominant imbalance (${pushCount} push vs ${pullCount} pull exercises). Ratio must be at least 2:1.`,
+        })
+      } else if (ratio < 0.5) {
+        // Moderate imbalance (2:1 to 2.5:1) — warning
         const dominant = pushCount > pullCount ? "push" : "pull"
         issues.push({
           type: "warning",

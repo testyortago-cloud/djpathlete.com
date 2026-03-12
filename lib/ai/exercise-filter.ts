@@ -42,13 +42,79 @@ function difficultyDistance(a: string, b: string): number {
   return Math.abs(idxA - idxB)
 }
 
+// ─── Difficulty Score Target ────────────────────────────────────────────────
+
+export interface DifficultyTarget {
+  target: number
+  min: number
+  max: number
+}
+
+/**
+ * Compute a difficulty score target for a specific week based on the program's
+ * periodization and the client's maxDifficultyScore from assessment.
+ */
+export function getDifficultyTargetForWeek(
+  weekNumber: number,
+  totalWeeks: number,
+  maxDifficultyScore: number,
+  periodization: string,
+  weekPhase: string,
+  intensityModifier: string
+): DifficultyTarget {
+  const progress = totalWeeks <= 1 ? 1 : (weekNumber - 1) / (totalWeeks - 1)
+
+  const isDeload =
+    intensityModifier.toLowerCase().includes("deload") ||
+    intensityModifier.toLowerCase().includes("low") ||
+    weekPhase.toLowerCase().includes("deload")
+
+  let targetPercent: number
+  if (isDeload) {
+    targetPercent = 0.6
+  } else if (periodization === "linear") {
+    targetPercent = 0.7 + progress * 0.3
+  } else if (periodization === "undulating") {
+    const wave = Math.sin(weekNumber * Math.PI / 2) * 0.1
+    targetPercent = 0.75 + progress * 0.2 + wave
+  } else if (periodization === "block") {
+    const phaseLower = weekPhase.toLowerCase()
+    if (phaseLower.includes("anatomical") || phaseLower.includes("adaptation")) {
+      targetPercent = 0.65
+    } else if (phaseLower.includes("hypertrophy")) {
+      targetPercent = 0.8
+    } else if (phaseLower.includes("strength")) {
+      targetPercent = 0.9
+    } else if (phaseLower.includes("peak") || phaseLower.includes("power")) {
+      targetPercent = 0.95
+    } else {
+      targetPercent = 0.75 + progress * 0.2
+    }
+  } else {
+    targetPercent = 0.8
+  }
+
+  targetPercent = Math.max(0.5, Math.min(1.0, targetPercent))
+
+  const target = Math.round(maxDifficultyScore * targetPercent * 10) / 10
+  const range = maxDifficultyScore * 0.15
+
+  return {
+    target: Math.min(target, maxDifficultyScore),
+    min: Math.max(1, Math.round((target - range) * 10) / 10),
+    max: Math.min(maxDifficultyScore, Math.round((target + range) * 10) / 10),
+  }
+}
+
 // ─── Score a single exercise against a slot ──────────────────────────────────
 
 export function scoreExerciseForSlot(
   exercise: CompressedExercise,
   slot: ExerciseSlot,
   equipment: string[],
-  difficulty: string
+  difficulty: string,
+  weekPhase?: string,
+  difficultyTarget?: DifficultyTarget
 ): number {
   let score = 0
 
@@ -100,7 +166,106 @@ export function scoreExerciseForSlot(
     }
   }
 
+  // ── Phase-aware training intent (8pts max) ──
+  if (weekPhase) {
+    const phaseLower = weekPhase.toLowerCase()
+
+    if (phaseLower.includes("hypertrophy") || phaseLower.includes("anatomical")) {
+      if (intent.includes("build")) score += 8
+      else if (intent.includes("shape")) score += 4
+    } else if (phaseLower.includes("strength") || phaseLower.includes("peaking")) {
+      if (intent.includes("express")) score += 8
+      else if (intent.includes("shape")) score += 4
+    } else if (phaseLower.includes("deload") || phaseLower.includes("recovery")) {
+      if (intent.includes("shape")) score += 8
+      else if (intent.includes("build")) score += 4
+    }
+  }
+
+  // ── Laterality bonus (5pts) ──
+  if (isIsolationSlot) {
+    if (exercise.laterality === "unilateral" || exercise.laterality === "alternating") {
+      score += 5 // Unilateral work in accessory/isolation addresses imbalances
+    }
+  } else if (slot.role === "primary_compound") {
+    if (exercise.laterality === "bilateral") {
+      score += 3 // Primary compounds should be bilateral for max loading
+    }
+  }
+
+  // ── Difficulty score proximity bonus (7pts max) ──
+  if (difficultyTarget && exercise.difficulty_score != null) {
+    const distance = Math.abs(exercise.difficulty_score - difficultyTarget.target)
+    if (distance <= 0.5) score += 7
+    else if (distance <= 1.0) score += 5
+    else if (distance <= 2.0) score += 3
+    else if (
+      exercise.difficulty_score >= difficultyTarget.min &&
+      exercise.difficulty_score <= difficultyTarget.max
+    ) {
+      score += 1
+    }
+  }
+
   return score
+}
+
+// ─── Muscle Coverage Gap Analysis ───────────────────────────────────────────
+
+export interface MuscleGap {
+  muscle: string
+  priority: string
+  coverage: "none" | "secondary_only" | "covered"
+}
+
+/**
+ * Analyze muscle coverage for a day's exercises and identify gaps.
+ */
+export function analyzeMuscleGaps(
+  assignedExercises: CompressedExercise[],
+  volumeTargets: { muscle_group: string; priority: "high" | "medium" | "low" }[]
+): MuscleGap[] {
+  const primaryCovered = new Set<string>()
+  const secondaryCovered = new Set<string>()
+
+  for (const ex of assignedExercises) {
+    for (const m of ex.primary_muscles) primaryCovered.add(m.toLowerCase())
+    for (const m of ex.secondary_muscles) secondaryCovered.add(m.toLowerCase())
+  }
+
+  return volumeTargets.map((vt) => {
+    const muscle = vt.muscle_group.toLowerCase()
+    let coverage: "none" | "secondary_only" | "covered"
+    if (primaryCovered.has(muscle)) coverage = "covered"
+    else if (secondaryCovered.has(muscle)) coverage = "secondary_only"
+    else coverage = "none"
+    return { muscle, priority: vt.priority, coverage }
+  })
+}
+
+/**
+ * Score bonus for exercises that fill muscle coverage gaps.
+ * Use when selecting accessory/isolation exercises.
+ */
+export function muscleGapBonus(
+  exercise: CompressedExercise,
+  gaps: MuscleGap[]
+): number {
+  let bonus = 0
+  const priorityWeight = { high: 3, medium: 2, low: 1 } as const
+
+  for (const gap of gaps) {
+    if (gap.coverage === "covered") continue
+    const weight = priorityWeight[gap.priority as keyof typeof priorityWeight] ?? 1
+
+    if (exercise.primary_muscles.some((m) => m.toLowerCase() === gap.muscle)) {
+      bonus += gap.coverage === "none" ? 6 * weight : 3 * weight
+    } else if (exercise.secondary_muscles.some((m) => m.toLowerCase() === gap.muscle)) {
+      bonus += gap.coverage === "none" ? 2 * weight : 1 * weight
+    }
+  }
+
+  return Math.min(bonus, 15) // Cap to not overwhelm other scoring factors
 }
 
 // ─── Group key for deduplicating slot requirements ───────────────────────────
@@ -113,7 +278,7 @@ function slotGroupKey(slot: ExerciseSlot): string {
 // ─── Score and filter the full library ────────────────────────────────────────
 
 const MIN_EXERCISES = 15
-const MAX_EXERCISES = 40
+const MAX_EXERCISES = 60 // Increased from 40 to support exercise variation across weeks
 
 export function scoreAndFilterExercises(
   exercises: CompressedExercise[],
@@ -142,14 +307,23 @@ export function scoreAndFilterExercises(
     }
   }
 
-  // Score each exercise against all groups, keep the max score
+  // Collect unique phases for phase-aware scoring
+  const phases = new Set<string>()
+  for (const week of skeleton.weeks) {
+    phases.add(week.phase)
+  }
+
+  // Score each exercise against all groups AND all phases, keep the max score
   const exerciseMaxScores = new Map<string, number>()
 
   for (const exercise of exercises) {
     let maxScore = 0
     for (const slot of slotGroups.values()) {
-      const score = scoreExerciseForSlot(exercise, slot, equipment, difficulty)
-      if (score > maxScore) maxScore = score
+      // Score with each phase context to find exercises good for ANY phase
+      for (const phase of phases) {
+        const score = scoreExerciseForSlot(exercise, slot, equipment, difficulty, phase)
+        if (score > maxScore) maxScore = score
+      }
     }
     exerciseMaxScores.set(exercise.id, maxScore)
   }

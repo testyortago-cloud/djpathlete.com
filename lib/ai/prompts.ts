@@ -308,7 +308,25 @@ Rules:
      * Strength phase: fewer slots total, more compound focus, heavier loads (3-6 reps), longer rest (120-180s), straight sets. Remove most isolation slots, keep only 1-2 targeted accessories.
      * Power/peaking phase: minimal slots, explosive movement patterns, very low volume, longest rest.
    - WARM-UP and COOL-DOWN slots: can stay consistent across all weeks.
-   - This variation is what separates a real coach's program from a template. A 4-week program where every week is identical except the reps is a spreadsheet, not a program.`
+   - This variation is what separates a real coach's program from a template. A 4-week program where every week is identical except the reps is a spreadsheet, not a program.
+19. MOVEMENT PATTERN DISTRIBUTION — ensure balanced pattern allocation per week:
+   - For full_body splits: each session should have at minimum 1 push + 1 pull + 1 lower-body pattern (squat or hinge). Aim for 1:1 push:pull ratio per session.
+   - For upper_lower splits: upper days should have equal push and pull slots (±1). Lower days should have at least 1 squat + 1 hinge pattern.
+   - For push_pull_legs splits: push days get push + some shoulder/rotation. Pull days get pull + some hinge. Leg days get squat + hinge + lunge. Ensure total weekly push volume ≈ pull volume.
+   - For push_pull splits: balance is inherent in the split, but verify total weekly volume is comparable.
+   - For body_part / movement_pattern splits: ensure all 4 fundamental patterns (push, pull, squat, hinge) appear at least twice per week, with lunge/carry/rotation appearing at least once.
+   - NEVER have >60% of a session's working slots be the same movement pattern. Variety within sessions prevents overuse and maintains structural balance.
+20. ASSESSMENT-DRIVEN SLOT ALLOCATION — when assessment context is provided with pattern-level ability scores:
+   - Patterns where the client scores "beginner": allocate MORE slots with SIMPLER movement patterns (prefer isometric/controlled before dynamic), use lower RPE (5-7), and keep these slots as accessory role (not primary compound). The goal is SKILL BUILDING, not loading.
+   - Patterns where the client scores "intermediate": standard allocation, these are working patterns.
+   - Patterns where the client scores "advanced": can use as primary compound roles with higher RPE (7-9). These are the client's strengths — leverage them for progressive overload.
+   - Example: if squat=beginner, push=advanced → avoid making squat the primary compound, use push as the primary compound and keep squat as a secondary or accessory slot with technique-focused parameters (slower tempo, moderate load, RPE 6-7).
+21. ACCESSORY SLOT PURPOSE — every accessory and isolation slot should serve ONE of these purposes (add as a comment in the slot's target_muscles or as part of the focus):
+   - "joint_health": face pulls, external rotations, band pull-aparts, terminal knee extensions
+   - "weak_point": targets a muscle group that the volume_targets identify as "high" priority
+   - "imbalance": unilateral work to address bilateral deficits
+   - "metabolic": lighter pump work for hypertrophy stimulus
+   This ensures no "filler" exercises — every slot has an architectural reason to exist.`
 
 // ─── Agent 3: Exercise Selector ──────────────────────────────────────────────
 
@@ -384,7 +402,33 @@ Rules:
    - Tempo instructions when the slot specifies tempo (e.g., "3 second eccentric, pause at bottom")
    - Form cues for exercises where technique matters most (e.g., "drive through heels", "chest up", "squeeze at the top")
    - Modification notes for exercises near injury areas (e.g., "use neutral grip if shoulder feels tight", "reduce ROM if lower back rounds")
-   - Technique-specific notes (e.g., for dropsets: "drop weight 20-30% immediately, no rest, push to near-failure")`
+   - Technique-specific notes (e.g., for dropsets: "drop weight 20-30% immediately, no rest, push to near-failure")
+14. TRAINING INTENT matching by program phase — align exercise characteristics with the current training phase:
+   - Hypertrophy / Anatomical Adaptation phases: prefer exercises with training_intent "build" — machines, cables, dumbbells, exercises with good mind-muscle connection and controlled ROM.
+   - Strength / Peaking phases: prefer exercises with training_intent "express" — barbell compounds, competition-style lifts, movements that allow maximal loading.
+   - Deload / Recovery phases: prefer exercises with training_intent "shape" — lighter isolation work, bodyweight movements, mobility-focused exercises.
+   - This does NOT override other rules — it's a PREFERENCE that breaks ties between equally suitable exercises.
+15. LATERALITY BALANCE — ensure adequate unilateral work:
+   - Include at least 1-2 unilateral (or alternating) exercises per session for intermediate+ clients.
+   - Primary compounds should generally be bilateral (for max loading). Accessories and isolation slots are where unilateral work belongs.
+   - If the client's assessment shows pattern-level imbalances (e.g., left/right differences), increase unilateral exercise selection in the weaker patterns.
+   - For beginners: bilateral exercises are preferred everywhere (stability is still developing).
+16. DIFFICULTY SCORE PROGRESSION — when a maxDifficultyScore context is provided:
+   - Early weeks (first 30% of program): select exercises at 65-80% of maxDifficultyScore
+   - Middle weeks (30-70% of program): select exercises at 75-90% of maxDifficultyScore
+   - Final weeks (70-100% of program): select exercises at 85-100% of maxDifficultyScore
+   - Deload weeks: drop to 50-65% of maxDifficultyScore
+   - This creates a natural difficulty arc that builds the client's capacity over time.
+   - Compound anchors (primary/secondary compound) should be at the LOWER end of these ranges (they're already demanding due to load). Accessories can be at the HIGHER end.
+17. SECONDARY MUSCLE COVERAGE — after selecting primary and secondary compound exercises for a day, review which muscles are well-covered and which have gaps:
+   - If a high-priority muscle group (from volume_targets) is only hit as a secondary muscle by the compounds, prioritize it in accessory/isolation slot selection.
+   - If a muscle group has NO coverage at all from the compounds, it MUST be covered by an accessory or isolation slot.
+   - Example: if the day has Bench Press (primary: chest, triceps; secondary: shoulders) and Barbell Row (primary: lats, upper_back; secondary: biceps, rear_delts), then biceps and shoulders are only secondary-covered. Accessory slots should target biceps or shoulders directly.
+18. SUPERSET PAIRING INTELLIGENCE — when a slot has technique "superset" and shares a group_tag with another slot:
+   - Prefer antagonist muscle pairs: push + pull (bench press + cable row), quad + hamstring (leg extension + leg curl), biceps + triceps
+   - Avoid pairing exercises that compete for the same stabilizers (e.g., don't pair overhead press with lateral raise — both fatigue the medial deltoid)
+   - Avoid pairing two exercises that both require the same equipment setup (e.g., two barbell exercises requiring different weights)
+   - Pre-exhaust pairing (isolation → compound for same muscle) is valid for advanced hypertrophy but should be noted in substitution_notes`
 
 // ─── Agent 4: Validation Agent ───────────────────────────────────────────────
 

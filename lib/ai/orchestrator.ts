@@ -10,7 +10,10 @@ import type {
 } from "@/lib/ai/types"
 import type { AiGenerationLog, ProgramCategory, ProgramDifficulty } from "@/types/database"
 import { callAgent, MODEL_HAIKU, MODEL_SONNET } from "@/lib/ai/anthropic"
-import { scoreAndFilterExercises, semanticFilterExercises } from "@/lib/ai/exercise-filter"
+import { scoreAndFilterExercises, semanticFilterExercises, getDifficultyTargetForWeek } from "@/lib/ai/exercise-filter"
+import { analyzePushPullBalance, applyBalanceCorrections, formatBalanceReport } from "@/lib/ai/balance"
+import { buildVariationConstraints, formatVariationRulesForPrompt, validateVariationCompliance } from "@/lib/ai/variation"
+import { buildExerciseGraph, formatGraphContextForPrompt } from "@/lib/ai/exercise-graph"
 import { estimateTokens } from "@/lib/ai/token-utils"
 import {
   profileAnalysisSchema,
@@ -284,8 +287,20 @@ ${request.additional_instructions ? `- Additional instructions: ${request.additi
     { maxTokens: 16384, cacheSystemPrompt: true }
   )
 
-  const skeleton = agent2Result.content
+  let skeleton = agent2Result.content
   console.log(`[orchestrator:step2] Agent 2 done in ${Date.now() - stepStart}ms (${agent2Result.tokens_used} tokens)`)
+
+  // Apply push/pull balance corrections to skeleton
+  const balanceReport = analyzePushPullBalance(skeleton, skeleton.split_type)
+  if (!balanceReport.isBalanced && balanceReport.corrections.length > 0) {
+    console.log(`[orchestrator:step2] Balance corrections: ${balanceReport.corrections.length}`)
+    console.log(`[orchestrator:step2] ${formatBalanceReport(balanceReport)}`)
+    skeleton = applyBalanceCorrections(skeleton, balanceReport.corrections)
+  }
+
+  // Build variation constraints for Agent 3
+  const variationConstraints = buildVariationConstraints(skeleton)
+  console.log(`[orchestrator:step2] Variation: ${variationConstraints.groups.length} groups, ${variationConstraints.rules.length} rules`)
 
   // Save skeleton to log
   const prevTokens = log.tokens_used ?? 0
@@ -295,6 +310,8 @@ ${request.additional_instructions ? `- Additional instructions: ${request.additi
       step2: {
         skeleton,
         agent2_tokens: agent2Result.tokens_used,
+        balance_report: balanceReport.summary,
+        variation_constraints: variationConstraints,
       },
     },
     tokens_used: prevTokens + agent2Result.tokens_used,
@@ -330,6 +347,8 @@ export async function runStep3(logId: string): Promise<void> {
   const step2Data = outputSummary?.step2 as {
     skeleton: ProgramSkeleton
     agent2_tokens: number
+    balance_report?: string
+    variation_constraints?: ReturnType<typeof buildVariationConstraints>
   }
 
   if (!step1Data || !step2Data) {
@@ -338,6 +357,10 @@ export async function runStep3(logId: string): Promise<void> {
 
   const { analysis, compressed, client_name: clientName, experience_level: clientDifficulty, available_equipment: availableEquipment } = step1Data
   const { skeleton } = step2Data
+
+  // Build variation constraints (may have been saved in step2, rebuild if missing)
+  const variationConstraints = step2Data.variation_constraints ?? buildVariationConstraints(skeleton)
+  const variationRulesText = formatVariationRulesForPrompt(variationConstraints)
 
   const constraintsContext = JSON.stringify({
     exercise_constraints: analysis.exercise_constraints,
@@ -355,6 +378,11 @@ export async function runStep3(logId: string): Promise<void> {
     console.log(`[orchestrator:step3] ${compressed.length} → ${filtered.length} exercises (heuristic)`)
   }
   const exerciseLibrary = formatExerciseLibrary(filtered)
+
+  // Build exercise relationship graph for intelligent selection
+  const exerciseGraph = buildExerciseGraph(filtered)
+  const graphContext = formatGraphContextForPrompt(exerciseGraph, filtered.map((e) => e.id), filtered)
+  console.log(`[orchestrator:step3] Exercise graph: ${exerciseGraph.progressionChains.length} chains, ${exerciseGraph.antagonistPairs.size} antagonist pairs`)
 
   const agent3SystemTokens = estimateTokens(EXERCISE_SELECTOR_PROMPT)
   const agent3UserTokens = estimateTokens(exerciseLibrary) + estimateTokens(constraintsContext) + estimateTokens(JSON.stringify(skeleton))
@@ -383,7 +411,11 @@ Constraints:
 ${constraintsContext}
 
 Exercise Library (${filtered.length} exercises, pre-filtered for relevance):
-${exerciseLibrary}${feedbackSection}`
+${exerciseLibrary}
+
+${variationRulesText}
+
+${graphContext}${feedbackSection}`
 
     try {
       const agent3Result: AgentCallResult<ExerciseAssignment> = await callAgent<ExerciseAssignment>(
@@ -406,6 +438,18 @@ ${exerciseLibrary}${feedbackSection}`
         clientDifficulty,
         step3AssessmentCtx?.maxDifficultyScore
       )
+
+      // Variation compliance validation
+      const variationIssues = validateVariationCompliance(variationConstraints, assignment.assignments)
+      if (variationIssues.length > 0) {
+        validation.issues.push(...variationIssues)
+        const variationErrors = variationIssues.filter((i) => i.type === "error")
+        if (variationErrors.length > 0) {
+          validation.pass = false
+        }
+        console.log(`[orchestrator:step3] Variation issues: ${variationErrors.length} errors, ${variationIssues.length - variationErrors.length} warnings`)
+      }
+
       console.log(`[orchestrator:step3] Validation: pass=${validation.pass}, issues=${validation.issues.length}`)
 
       if (validation.pass) break
@@ -804,8 +848,21 @@ ${request.additional_instructions ? `- Additional instructions: ${request.additi
       { maxTokens: 16384, cacheSystemPrompt: true }
     )
     tokenUsage.agent2 = agent2Result.tokens_used
-    const skeleton = agent2Result.content
+    let skeleton = agent2Result.content
     console.log("[orchestrator:sync] Agent 2 complete. Tokens:", agent2Result.tokens_used, "Weeks:", skeleton.weeks.length)
+
+    // Apply push/pull balance corrections to skeleton
+    const balanceReport = analyzePushPullBalance(skeleton, skeleton.split_type)
+    if (!balanceReport.isBalanced && balanceReport.corrections.length > 0) {
+      console.log(`[orchestrator:sync] Balance corrections: ${balanceReport.corrections.length}`)
+      console.log(`[orchestrator:sync] ${formatBalanceReport(balanceReport)}`)
+      skeleton = applyBalanceCorrections(skeleton, balanceReport.corrections)
+    }
+
+    // Build variation constraints for Agent 3
+    const variationConstraints = buildVariationConstraints(skeleton)
+    const variationRulesText = formatVariationRulesForPrompt(variationConstraints)
+    console.log(`[orchestrator:sync] Variation: ${variationConstraints.groups.length} groups, ${variationConstraints.rules.length} rules`)
 
     // Save agent 2 conversation (fire-and-forget)
     saveConversationBatch([
@@ -852,6 +909,11 @@ ${request.additional_instructions ? `- Additional instructions: ${request.additi
     }
     const exerciseLibrary = formatExerciseLibrary(filtered)
 
+    // Build exercise relationship graph for intelligent selection
+    const exerciseGraph = buildExerciseGraph(filtered)
+    const graphContext = formatGraphContextForPrompt(exerciseGraph, filtered.map((e) => e.id), filtered)
+    console.log(`[orchestrator:sync] Exercise graph: ${exerciseGraph.progressionChains.length} chains, ${exerciseGraph.antagonistPairs.size} antagonist pairs`)
+
     // Agent 3 with validation retry loop
     console.log("[orchestrator:sync] Running Agent 3 (exercise selection) with", filtered.length, "filtered exercises...")
     let assignment: ExerciseAssignment | null = null
@@ -871,7 +933,11 @@ Constraints:
 ${constraintsContext}
 
 Exercise Library (${filtered.length} exercises, pre-filtered for relevance):
-${exerciseLibrary}${feedbackSection}`
+${exerciseLibrary}
+
+${variationRulesText}
+
+${graphContext}${feedbackSection}`
 
       try {
         console.log(`[orchestrator:sync] Agent 3 attempt ${attempt + 1}/${MAX_RETRIES + 1}...`)
@@ -886,6 +952,18 @@ ${exerciseLibrary}${feedbackSection}`
         console.log("[orchestrator:sync] Agent 3 returned", assignment.assignments.length, "assignments. Validating...")
 
         validation = validateProgram(skeleton, assignment, analysis, compressed, availableEquipment, profile?.experience_level ?? "beginner", assessmentContext?.maxDifficultyScore)
+
+        // Variation compliance validation
+        const variationIssues = validateVariationCompliance(variationConstraints, assignment.assignments)
+        if (variationIssues.length > 0) {
+          validation.issues.push(...variationIssues)
+          const variationErrors = variationIssues.filter((i) => i.type === "error")
+          if (variationErrors.length > 0) {
+            validation.pass = false
+          }
+          console.log(`[orchestrator:sync] Variation issues: ${variationErrors.length} errors, ${variationIssues.length - variationErrors.length} warnings`)
+        }
+
         const errors = validation.issues.filter(i => i.type === "error")
         const warnings = validation.issues.filter(i => i.type === "warning")
         console.log("[orchestrator:sync] Validation result:", { pass: validation.pass, errors: errors.length, warnings: warnings.length })
