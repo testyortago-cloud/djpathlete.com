@@ -168,18 +168,25 @@ export function analyzePushPullBalance(
     if (!isBalanced && !deload) {
       const dominant = counts.push > counts.pull ? "push" : "pull"
       const deficient = dominant === "push" ? "pull" : "push"
+      const dominantCount = dominant === "push" ? counts.push : counts.pull
+      const deficientCount = dominant === "push" ? counts.pull : counts.push
+
+      // Calculate how many swaps needed to bring ratio within threshold
+      // Target: equal push and pull (ratio 1.0), so swap half the difference
+      const swapsNeeded = Math.ceil((dominantCount - deficientCount) / 2)
 
       // Find swappable slots — lowest priority first
       const swappable = weekSlots
         .filter((s) => s.pattern === dominant)
         .sort((a, b) => (SWAP_PRIORITY[a.role] ?? 5) - (SWAP_PRIORITY[b.role] ?? 5))
 
-      // Only swap isolation/accessory slots, never compounds
-      const candidate = swappable.find(
-        (s) => s.role === "isolation" || s.role === "accessory"
-      )
+      // First try isolation/accessory slots, then secondary_compound if still needed
+      const swappableRoles = ["isolation", "accessory", "secondary_compound"]
+      const candidates = swappable.filter((s) => swappableRoles.includes(s.role))
 
-      if (candidate) {
+      // Swap up to swapsNeeded candidates
+      const toSwap = candidates.slice(0, swapsNeeded)
+      for (const candidate of toSwap) {
         corrections.push({
           type: "swap_pattern",
           weekNumber: week.week_number,

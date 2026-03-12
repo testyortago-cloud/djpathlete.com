@@ -41,6 +41,7 @@ import { getUserById } from "@/lib/db/users"
 import { createAssignment } from "@/lib/db/assignments"
 import { saveConversationBatch } from "@/lib/db/ai-conversations"
 import { retrieveSimilarContext, formatRagContext, buildRagAugmentedPrompt, embedConversationMessage } from "@/lib/ai/rag"
+import { buildFeedbackContext } from "@/lib/ai/program-feedback"
 
 const MAX_RETRIES = 2
 
@@ -197,10 +198,22 @@ ${profile?.exercise_dislikes ? `- Exercise dislikes: ${profile.exercise_dislikes
 ${profile?.training_background ? `- Training background: ${profile.training_background}` : ''}
 ${profile?.additional_notes ? `- Additional notes: ${profile.additional_notes}` : ''}${assessmentPromptSection}`
 
+  // Program feedback: retrieve patterns from past coach reviews
+  const feedbackContext = await buildFeedbackContext(
+    request.split_type ?? null,
+    profile?.experience_level ?? null,
+    request.goals,
+  ).catch(() => ({ patterns: [], promptText: "", feedbackCount: 0 }))
+  console.log(`[orchestrator:step1] Program feedback: ${feedbackContext.feedbackCount} past reviews`)
+
+  const finalAgent1Prompt = feedbackContext.promptText
+    ? `${PROFILE_ANALYZER_PROMPT}\n\n${feedbackContext.promptText}`
+    : PROFILE_ANALYZER_PROMPT
+
   // Run Agent 1 and exercise library fetch concurrently (no rate limit issue)
   const [agent1Result, allExercises] = await Promise.all([
     callAgent<ProfileAnalysis>(
-      PROFILE_ANALYZER_PROMPT,
+      finalAgent1Prompt,
       agent1UserMessage,
       profileAnalysisSchema,
       { model: MODEL_HAIKU, cacheSystemPrompt: true }
@@ -234,6 +247,7 @@ ${profile?.additional_notes ? `- Additional notes: ${profile.additional_notes}` 
         experience_level: profile?.experience_level ?? "beginner",
         available_equipment: request.equipment_override ?? profile?.available_equipment ?? [],
         agent1_tokens: agent1Result.tokens_used,
+        feedback_patterns: feedbackContext.promptText || undefined,
       },
     },
     tokens_used: agent1Result.tokens_used,
@@ -280,8 +294,14 @@ Training Parameters:
 - Goals: ${request.goals.join(", ")}
 ${request.additional_instructions ? `- Additional instructions: ${request.additional_instructions}` : ""}`
 
+  // Inject feedback patterns into Agent 2 prompt (structure/balance feedback is most impactful here)
+  const feedbackPatterns = (step1Data as Record<string, unknown>).feedback_patterns as string | undefined
+  const agent2Prompt = feedbackPatterns
+    ? `${PROGRAM_ARCHITECT_PROMPT}\n\n${feedbackPatterns}`
+    : PROGRAM_ARCHITECT_PROMPT
+
   const agent2Result = await callAgent<ProgramSkeleton>(
-    PROGRAM_ARCHITECT_PROMPT,
+    agent2Prompt,
     agent2UserMessage,
     programSkeletonSchema,
     { maxTokens: 16384, cacheSystemPrompt: true }
@@ -290,12 +310,17 @@ ${request.additional_instructions ? `- Additional instructions: ${request.additi
   let skeleton = agent2Result.content
   console.log(`[orchestrator:step2] Agent 2 done in ${Date.now() - stepStart}ms (${agent2Result.tokens_used} tokens)`)
 
-  // Apply push/pull balance corrections to skeleton
-  const balanceReport = analyzePushPullBalance(skeleton, skeleton.split_type)
-  if (!balanceReport.isBalanced && balanceReport.corrections.length > 0) {
-    console.log(`[orchestrator:step2] Balance corrections: ${balanceReport.corrections.length}`)
+  // Apply push/pull balance corrections to skeleton (loop until balanced or no more corrections)
+  const MAX_BALANCE_PASSES = 3
+  let balanceReport = analyzePushPullBalance(skeleton, skeleton.split_type)
+  for (let pass = 0; pass < MAX_BALANCE_PASSES && !balanceReport.isBalanced && balanceReport.corrections.length > 0; pass++) {
+    console.log(`[orchestrator:step2] Balance pass ${pass + 1}: ${balanceReport.corrections.length} corrections`)
     console.log(`[orchestrator:step2] ${formatBalanceReport(balanceReport)}`)
     skeleton = applyBalanceCorrections(skeleton, balanceReport.corrections)
+    balanceReport = analyzePushPullBalance(skeleton, skeleton.split_type)
+  }
+  if (!balanceReport.isBalanced) {
+    console.warn(`[orchestrator:step2] WARNING: Program still imbalanced after ${MAX_BALANCE_PASSES} passes — ${balanceReport.summary}`)
   }
 
   // Build variation constraints for Agent 3
@@ -772,11 +797,23 @@ ${profile?.additional_notes ? `- Additional notes: ${profile.additional_notes}` 
       ? buildRagAugmentedPrompt(PROFILE_ANALYZER_PROMPT, ragContext)
       : PROFILE_ANALYZER_PROMPT
 
+    // Program feedback: retrieve patterns from past coach reviews
+    const feedbackContext = await buildFeedbackContext(
+      request.split_type ?? null,
+      profile?.experience_level ?? null,
+      request.goals,
+    ).catch(() => ({ patterns: [], promptText: "", feedbackCount: 0 }))
+    console.log(`[orchestrator:sync] Program feedback: ${feedbackContext.feedbackCount} past reviews`)
+
+    const finalAgent1Prompt = feedbackContext.promptText
+      ? `${augmentedAgent1Prompt}\n\n${feedbackContext.promptText}`
+      : augmentedAgent1Prompt
+
     // Agent 1 + exercise fetch in parallel
     console.log("[orchestrator:sync] Running Agent 1 (profile analysis) + exercise fetch...")
     const [agent1Result, allExercises] = await Promise.all([
       callAgent<ProfileAnalysis>(
-        augmentedAgent1Prompt,
+        finalAgent1Prompt,
         agent1UserMessage,
         profileAnalysisSchema,
         { model: MODEL_HAIKU, cacheSystemPrompt: true }
@@ -840,9 +877,14 @@ Training Parameters:
 - Goals: ${request.goals.join(", ")}
 ${request.additional_instructions ? `- Additional instructions: ${request.additional_instructions}` : ""}`
 
+    // Inject feedback patterns into Agent 2 prompt (structure/balance feedback is most impactful here)
+    const agent2Prompt = feedbackContext.promptText
+      ? `${PROGRAM_ARCHITECT_PROMPT}\n\n${feedbackContext.promptText}`
+      : PROGRAM_ARCHITECT_PROMPT
+
     console.log("[orchestrator:sync] Running Agent 2 (program architect)...")
     const agent2Result = await callAgent<ProgramSkeleton>(
-      PROGRAM_ARCHITECT_PROMPT,
+      agent2Prompt,
       agent2UserMessage,
       programSkeletonSchema,
       { maxTokens: 16384, cacheSystemPrompt: true }

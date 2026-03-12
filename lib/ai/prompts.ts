@@ -309,13 +309,15 @@ Rules:
      * Power/peaking phase: minimal slots, explosive movement patterns, very low volume, longest rest.
    - WARM-UP and COOL-DOWN slots: can stay consistent across all weeks.
    - This variation is what separates a real coach's program from a template. A 4-week program where every week is identical except the reps is a spreadsheet, not a program.
-19. MOVEMENT PATTERN DISTRIBUTION — ensure balanced pattern allocation per week:
+19. MOVEMENT PATTERN DISTRIBUTION — THIS IS A HARD CONSTRAINT, NOT A SUGGESTION:
+   - CRITICAL: Every week MUST contain BOTH "push" AND "pull" movement_pattern slots. A week with push slots but zero pull slots is INVALID and will be rejected by the validator. The push:pull ratio per week must be between 0.7 and 1.3 (roughly equal). Count ALL working slots (primary_compound, secondary_compound, accessory, isolation) — warm_up and cool_down are excluded from this count.
    - For full_body splits: each session should have at minimum 1 push + 1 pull + 1 lower-body pattern (squat or hinge). Aim for 1:1 push:pull ratio per session.
    - For upper_lower splits: upper days should have equal push and pull slots (±1). Lower days should have at least 1 squat + 1 hinge pattern.
    - For push_pull_legs splits: push days get push + some shoulder/rotation. Pull days get pull + some hinge. Leg days get squat + hinge + lunge. Ensure total weekly push volume ≈ pull volume.
    - For push_pull splits: balance is inherent in the split, but verify total weekly volume is comparable.
    - For body_part / movement_pattern splits: ensure all 4 fundamental patterns (push, pull, squat, hinge) appear at least twice per week, with lunge/carry/rotation appearing at least once.
    - NEVER have >60% of a session's working slots be the same movement pattern. Variety within sessions prevents overuse and maintains structural balance.
+   - SELF-CHECK before outputting: count the number of push and pull slots per week. If any week has 0 pull slots or 0 push slots, you MUST fix it before responding. Exercises like rows, pull-ups, face pulls, bicep curls, and lat pulldowns are "pull" pattern. Exercises like bench press, overhead press, tricep extensions, and push-ups are "push" pattern.
 20. ASSESSMENT-DRIVEN SLOT ALLOCATION — when assessment context is provided with pattern-level ability scores:
    - Patterns where the client scores "beginner": allocate MORE slots with SIMPLER movement patterns (prefer isometric/controlled before dynamic), use lower RPE (5-7), and keep these slots as accessory role (not primary compound). The goal is SKILL BUILDING, not loading.
    - Patterns where the client scores "intermediate": standard allocation, these are working patterns.

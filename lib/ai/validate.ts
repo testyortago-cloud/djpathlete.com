@@ -315,13 +315,15 @@ export function validateProgram(
     }
   }
 
-  // ── WARNING: Missing fundamental movement patterns per week ──
+  // ── Missing fundamental movement patterns per week ──
+  // Push and pull are errors (must be present); squat and hinge are warnings
   const fundamentalPatterns = ["push", "pull", "squat", "hinge"]
   for (const [week, patterns] of weekMovements) {
     for (const fp of fundamentalPatterns) {
       if (!patterns.has(fp)) {
+        const isPushPull = fp === "push" || fp === "pull"
         issues.push({
-          type: "warning",
+          type: isPushPull ? "error" : "warning",
           category: "missing_movement_pattern",
           message: `Week ${week} is missing the "${fp}" movement pattern`,
         })

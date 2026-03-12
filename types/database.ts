@@ -415,6 +415,42 @@ export interface AiOutcomeTracking {
   created_at: string
 }
 
+export type ProgramIssueCategory =
+  | "push_pull_imbalance"
+  | "missing_movement_pattern"
+  | "wrong_difficulty"
+  | "bad_exercise_choice"
+  | "too_many_exercises"
+  | "periodization_issue"
+  | "equipment_mismatch"
+  | "other"
+
+export interface ProgramFeedbackIssue {
+  category: ProgramIssueCategory
+  description: string
+  severity: "low" | "medium" | "high"
+}
+
+export interface AiProgramFeedback {
+  id: string
+  program_id: string
+  generation_log_id: string | null
+  reviewer_id: string
+  overall_rating: number
+  balance_quality: number | null
+  exercise_selection_quality: number | null
+  periodization_quality: number | null
+  difficulty_appropriateness: number | null
+  split_type: string | null
+  difficulty: string | null
+  specific_issues: ProgramFeedbackIssue[]
+  corrections_made: Record<string, unknown>
+  notes: string | null
+  embedding: number[] | null
+  created_at: string
+  updated_at: string
+}
+
 export interface NotificationPreferences {
   id: string
   user_id: string
