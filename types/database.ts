@@ -486,6 +486,41 @@ export interface FormReviewMessage {
   created_at: string
 }
 
+// Performance assessment types
+export type PerformanceAssessmentStatus = "draft" | "in_progress" | "completed"
+
+export interface PerformanceAssessment {
+  id: string
+  client_user_id: string
+  created_by: string
+  title: string
+  notes: string | null
+  status: PerformanceAssessmentStatus
+  created_at: string
+  updated_at: string
+}
+
+export interface PerformanceAssessmentExercise {
+  id: string
+  assessment_id: string
+  exercise_id: string | null
+  custom_name: string | null
+  youtube_url: string | null
+  video_path: string | null
+  admin_notes: string | null
+  order_index: number
+  created_at: string
+  updated_at: string
+}
+
+export interface PerformanceAssessmentMessage {
+  id: string
+  assessment_exercise_id: string
+  user_id: string
+  message: string
+  created_at: string
+}
+
 export interface BlogPost {
   id: string
   title: string
@@ -629,6 +664,21 @@ export interface Database {
         Row: FormReviewMessage
         Insert: Omit<FormReviewMessage, "id" | "created_at">
         Update: Partial<Omit<FormReviewMessage, "id" | "created_at">>
+      }
+      performance_assessments: {
+        Row: PerformanceAssessment
+        Insert: Omit<PerformanceAssessment, "id" | "created_at" | "updated_at">
+        Update: Partial<Omit<PerformanceAssessment, "id" | "created_at">>
+      }
+      performance_assessment_exercises: {
+        Row: PerformanceAssessmentExercise
+        Insert: Omit<PerformanceAssessmentExercise, "id" | "created_at" | "updated_at">
+        Update: Partial<Omit<PerformanceAssessmentExercise, "id" | "created_at">>
+      }
+      performance_assessment_messages: {
+        Row: PerformanceAssessmentMessage
+        Insert: Omit<PerformanceAssessmentMessage, "id" | "created_at">
+        Update: Partial<Omit<PerformanceAssessmentMessage, "id" | "created_at">>
       }
       newsletters: {
         Row: Newsletter

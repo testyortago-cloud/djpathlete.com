@@ -18,6 +18,7 @@ import {
   Lightbulb,
   Star,
   Video,
+  ClipboardCheck,
   Settings,
   LogOut,
 } from "lucide-react"
@@ -50,6 +51,7 @@ const navSections: NavSection[] = [
       { label: "Programs", href: "/admin/programs", icon: ClipboardList },
       { label: "Exercises", href: "/admin/exercises", icon: Dumbbell },
       { label: "Form Reviews", href: "/admin/form-reviews", icon: Video },
+      { label: "Assessments", href: "/admin/performance-assessments", icon: ClipboardCheck },
     ],
   },
   {

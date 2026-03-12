@@ -1052,6 +1052,133 @@ export async function sendFormReviewFeedbackEmail({
   }
 }
 
+/**
+ * Notify a client that a performance assessment has been shared with them.
+ */
+export async function sendPerformanceAssessmentSharedEmail({
+  clientEmail,
+  clientFirstName,
+  clientUserId,
+  assessmentTitle,
+  assessmentId,
+}: {
+  clientEmail: string
+  clientFirstName: string
+  clientUserId?: string
+  assessmentTitle: string
+  assessmentId: string
+}) {
+  if (clientUserId) {
+    const prefs = await getPreferences(clientUserId)
+    if (!prefs.email_notifications) return
+  }
+
+  const baseUrl = getBaseUrl()
+  const assessmentUrl = `${baseUrl}/client/performance-assessments/${assessmentId}`
+
+  const html = emailLayout(`
+    ${heroBanner("Performance Assessment", "Your coach has shared an assessment with you")}
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td style="padding:44px 48px 48px;">
+          <p style="margin:0 0 28px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:16px; color:#333; line-height:1.8;">
+            Hi ${clientFirstName}, your coach has created a performance assessment for you. Upload your videos for each exercise and get feedback.
+          </p>
+
+          ${infoCard([{ label: "Assessment", value: assessmentTitle }])}
+
+          <div style="height:28px;"></div>
+
+          ${ctaButton(assessmentUrl, "View Assessment")}
+
+          ${fallbackLink(assessmentUrl)}
+        </td>
+      </tr>
+    </table>
+  `)
+
+  const { error } = await resend.emails.send({
+    from: FROM_EMAIL,
+    to: clientEmail,
+    subject: `Performance Assessment: ${assessmentTitle}`,
+    html,
+  })
+
+  if (error) {
+    console.error("Failed to send performance assessment shared email:", error)
+  }
+}
+
+/**
+ * Notify the other party of a new message on a performance assessment exercise.
+ */
+export async function sendPerformanceAssessmentReplyEmail({
+  recipientEmail,
+  recipientFirstName,
+  recipientUserId,
+  senderName,
+  exerciseName,
+  assessmentTitle,
+  assessmentId,
+  isRecipientAdmin,
+}: {
+  recipientEmail: string
+  recipientFirstName: string
+  recipientUserId?: string
+  senderName: string
+  exerciseName: string
+  assessmentTitle: string
+  assessmentId: string
+  isRecipientAdmin: boolean
+}) {
+  if (recipientUserId) {
+    const prefs = await getPreferences(recipientUserId)
+    if (isRecipientAdmin ? !prefs.notify_new_client : !prefs.email_notifications) return
+  }
+
+  const baseUrl = getBaseUrl()
+  const assessmentUrl = isRecipientAdmin
+    ? `${baseUrl}/admin/performance-assessments/${assessmentId}`
+    : `${baseUrl}/client/performance-assessments/${assessmentId}`
+
+  const html = emailLayout(`
+    ${heroBanner("New Message", `${senderName} left feedback on an exercise`)}
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td style="padding:44px 48px 48px;">
+          <p style="margin:0 0 28px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:16px; color:#333; line-height:1.8;">
+            Hi ${recipientFirstName}, ${senderName} left a message on the exercise "${exerciseName}" in the assessment "${assessmentTitle}".
+          </p>
+
+          ${infoCard([
+            { label: "Assessment", value: assessmentTitle },
+            { label: "Exercise", value: exerciseName },
+          ])}
+
+          <div style="height:28px;"></div>
+
+          ${ctaButton(assessmentUrl, "View Assessment")}
+
+          ${fallbackLink(assessmentUrl)}
+        </td>
+      </tr>
+    </table>
+  `)
+
+  const { error } = await resend.emails.send({
+    from: FROM_EMAIL,
+    to: recipientEmail,
+    subject: `New message on ${exerciseName} — ${assessmentTitle}`,
+    html,
+  })
+
+  if (error) {
+    console.error("Failed to send performance assessment reply email:", error)
+  }
+}
+
 export async function sendReassessmentReminderEmail({
   to,
   firstName,
