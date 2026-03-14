@@ -34,3 +34,51 @@ export async function getActiveSubscribers(): Promise<{ email: string }[]> {
   if (error) throw error
   return data ?? []
 }
+
+export interface Subscriber {
+  id: string
+  email: string
+  source: string
+  subscribed_at: string
+  unsubscribed_at: string | null
+}
+
+export async function getAllSubscribers(): Promise<Subscriber[]> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("newsletter_subscribers")
+    .select("id, email, source, subscribed_at, unsubscribed_at")
+    .order("subscribed_at", { ascending: false })
+  if (error) throw error
+  return (data ?? []) as Subscriber[]
+}
+
+export async function importSubscribers(
+  emails: string[],
+  source = "csv_import"
+): Promise<{ added: number; skipped: number }> {
+  const supabase = getClient()
+  let added = 0
+  let skipped = 0
+
+  // Batch upsert — onConflict re-activates unsubscribed emails
+  const rows = emails.map((email) => ({
+    email: email.toLowerCase().trim(),
+    source,
+    unsubscribed_at: null,
+  }))
+
+  // Upsert in batches of 100
+  for (let i = 0; i < rows.length; i += 100) {
+    const batch = rows.slice(i, i + 100)
+    const { data, error } = await supabase
+      .from("newsletter_subscribers")
+      .upsert(batch, { onConflict: "email", count: "exact" })
+      .select("id")
+    if (error) throw error
+    added += data?.length ?? 0
+  }
+
+  skipped = emails.length - added
+  return { added, skipped }
+}
