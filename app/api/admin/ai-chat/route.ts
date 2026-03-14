@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
       input: {
         messages,
         model,
-        session_id,
+        ...(session_id ? { session_id } : {}),
         userId,
       },
       result: null,

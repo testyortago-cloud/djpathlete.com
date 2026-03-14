@@ -1,11 +1,29 @@
 import { getFirestore, FieldValue } from "firebase-admin/firestore"
-import { streamRaw, MODEL_SONNET, MODEL_HAIKU } from "./ai/anthropic.js"
-import { buildAdminContext } from "./ai/admin-context.js"
+import { streamWithTools, MODEL_SONNET, MODEL_HAIKU } from "./ai/anthropic.js"
+import { ADMIN_TOOLS, TOOL_LABELS, executeAdminTool } from "./ai/admin-tools.js"
 import { retrieveSimilarContext, formatRagContext, embedConversationMessage } from "./ai/rag.js"
 import { getSupabase } from "./lib/supabase.js"
 
 const AI_CHAT_API_MESSAGE_LIMIT = 10
-const AI_CHAT_CONTEXT_TIMEOUT_MS = 10_000
+
+// ─── System Prompt ──────────────────────────────────────────────────────────
+
+const SYSTEM_PROMPT = `You are the AI assistant for DJP Athlete, a fitness coaching platform run by Darren Paul, a strength & conditioning coach with 20+ years of experience.
+
+You help Darren manage his business by looking up real-time data using the tools available to you.
+
+Guidelines:
+- ALWAYS use tools to look up current data before answering — do NOT guess or use outdated information
+- Be concise, direct, and data-driven
+- Use exact numbers and client names from tool results
+- Proactively suggest actions to improve client retention and revenue
+- When multiple tools are needed, call them all to get a complete picture
+- Identify patterns and trends in the data
+- When suggesting actions, be specific about which clients or programs you mean
+
+Current date: ${new Date().toLocaleDateString()}`
+
+// ─── Handler ────────────────────────────────────────────────────────────────
 
 export async function handleAdminChat(jobId: string): Promise<void> {
   const db = getFirestore()
@@ -33,44 +51,7 @@ export async function handleAdminChat(jobId: string): Promise<void> {
   const sessionId = input.session_id ?? `admin-chat-${userId}-${Date.now()}`
 
   try {
-    // Build platform context with timeout
-    let platformContext: string
-    try {
-      platformContext = await Promise.race([
-        buildAdminContext(),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("Context build timed out")), AI_CHAT_CONTEXT_TIMEOUT_MS)
-        ),
-      ])
-    } catch {
-      platformContext = "[Platform data temporarily unavailable. Answer based on general knowledge.]"
-    }
-
-    // System prompt blocks
-    const systemBlocks = [
-      {
-        type: "text" as const,
-        text: `You are the AI assistant for DJP Athlete, a fitness coaching platform run by Darren Paul. You help the admin (Darren) manage his business by analyzing client data, revenue, and training progress.
-
-You have access to real-time platform data shown below. Use this data to:
-- Answer questions about clients, revenue, programs, and progress
-- Proactively suggest actions to improve client retention and revenue
-- Identify clients who need attention (inactive, stalled progress, etc.)
-- Spot trends and opportunities
-- Provide specific, actionable recommendations
-
-Be concise, direct, and data-driven. Use exact numbers from the data. When suggesting actions, be specific about which clients or programs you're referring to.
-
-Current date: ${new Date().toLocaleDateString()}`,
-      },
-      {
-        type: "text" as const,
-        text: platformContext,
-        cache_control: { type: "ephemeral" as const },
-      },
-    ]
-
-    // Trim history
+    // Trim history to recent messages
     const recentMessages = input.messages.slice(-AI_CHAT_API_MESSAGE_LIMIT)
 
     // Choose model
@@ -86,9 +67,17 @@ Current date: ${new Date().toLocaleDateString()}`,
       model = isSimpleQuery ? MODEL_HAIKU : MODEL_SONNET
     }
 
-    // RAG
+    // System prompt blocks
+    const systemBlocks: Array<{ type: "text"; text: string; cache_control?: { type: "ephemeral" } }> = [
+      {
+        type: "text" as const,
+        text: SYSTEM_PROMPT,
+        cache_control: { type: "ephemeral" as const },
+      },
+    ]
+
+    // RAG context from past conversations
     const lastUserMsgForRag = recentMessages.filter((m) => m.role === "user").pop()
-    const ragBlocks: Array<{ type: "text"; text: string }> = []
     if (lastUserMsgForRag) {
       const ragResults = await retrieveSimilarContext(
         lastUserMsgForRag.content,
@@ -97,23 +86,25 @@ Current date: ${new Date().toLocaleDateString()}`,
       )
       const ragContext = formatRagContext(ragResults)
       if (ragContext) {
-        ragBlocks.push({ type: "text", text: ragContext })
+        systemBlocks.push({ type: "text", text: ragContext })
       }
     }
 
-    // Stream response, writing chunks to Firestore
-    const allSystemBlocks = [...systemBlocks, ...ragBlocks]
+    // Stream with tools
     let accumulatedText = ""
-
-    const stream = streamRaw({
-      system: allSystemBlocks,
-      messages: recentMessages,
-      maxTokens: 1024,
-      model,
-    })
-
     let tokensInput = 0
     let tokensOutput = 0
+
+    const stream = streamWithTools({
+      system: systemBlocks,
+      messages: recentMessages,
+      tools: ADMIN_TOOLS,
+      executeTool: executeAdminTool,
+      toolLabels: TOOL_LABELS,
+      maxTokens: 4096,
+      model,
+      maxToolRounds: 5,
+    })
 
     for await (const event of stream) {
       if (event.type === "text") {
@@ -122,6 +113,20 @@ Current date: ${new Date().toLocaleDateString()}`,
           index: chunkIndex - 1,
           type: "delta",
           data: { text: event.text },
+          createdAt: FieldValue.serverTimestamp(),
+        })
+      } else if (event.type === "tool_start") {
+        await chunksRef.doc(String(chunkIndex++).padStart(6, "0")).set({
+          index: chunkIndex - 1,
+          type: "tool_start",
+          data: { name: event.name, label: event.label ?? event.name },
+          createdAt: FieldValue.serverTimestamp(),
+        })
+      } else if (event.type === "tool_result") {
+        await chunksRef.doc(String(chunkIndex++).padStart(6, "0")).set({
+          index: chunkIndex - 1,
+          type: "tool_result",
+          data: { name: event.name },
           createdAt: FieldValue.serverTimestamp(),
         })
       } else if (event.type === "usage") {
@@ -154,7 +159,7 @@ Current date: ${new Date().toLocaleDateString()}`,
         session_id: sessionId,
         role: "assistant",
         content: accumulatedText,
-        metadata: { model },
+        metadata: { model, tools_used: true },
         tokens_input: tokensInput,
         tokens_output: tokensOutput,
         model_used: model,
@@ -187,7 +192,7 @@ Current date: ${new Date().toLocaleDateString()}`,
         client_id: null,
         requested_by: userId,
         status: "completed",
-        input_params: { feature: "admin_chat" },
+        input_params: { feature: "admin_chat", tools_used: true },
         output_summary: null,
         error_message: null,
         model_used: model,

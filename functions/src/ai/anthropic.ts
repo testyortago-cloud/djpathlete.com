@@ -246,3 +246,117 @@ export async function* streamRaw(opts: {
     output_tokens: outputTokens,
   }
 }
+
+// ─── streamWithTools: streaming with tool-use loop ──────────────────────────
+
+export type ToolStreamEvent =
+  | { type: "text"; text: string }
+  | { type: "tool_start"; name: string; label?: string }
+  | { type: "tool_result"; name: string }
+  | { type: "usage"; input_tokens: number; output_tokens: number }
+
+export async function* streamWithTools(opts: {
+  system: Array<{ type: "text"; text: string; cache_control?: { type: "ephemeral" } }>
+  messages: Array<{ role: "user" | "assistant"; content: string }>
+  tools: Anthropic.Tool[]
+  executeTool: (name: string, input: Record<string, unknown>) => Promise<string>
+  toolLabels?: Record<string, string>
+  maxTokens?: number
+  model?: string
+  maxToolRounds?: number
+}): AsyncGenerator<ToolStreamEvent> {
+  const client = getClient()
+  const modelId = opts.model ?? MODEL_SONNET
+  const maxTokens = opts.maxTokens ?? 4096
+  const maxRounds = opts.maxToolRounds ?? 5
+
+  const systemContent: Anthropic.Messages.TextBlockParam[] = opts.system.map((block) => ({
+    type: "text" as const,
+    text: block.text,
+    ...(block.cache_control ? { cache_control: block.cache_control } : {}),
+  }))
+
+  // Convert simple messages to Anthropic format
+  let apiMessages: Anthropic.MessageParam[] = opts.messages.map((m) => ({
+    role: m.role,
+    content: m.content,
+  }))
+
+  let totalInputTokens = 0
+  let totalOutputTokens = 0
+
+  for (let round = 0; round < maxRounds; round++) {
+    // Stream the response
+    const stream = client.messages.stream({
+      model: modelId,
+      max_tokens: maxTokens,
+      system: systemContent,
+      messages: apiMessages,
+      tools: opts.tools,
+    })
+
+    // Yield text deltas as they arrive and track tool_use block starts
+    for await (const event of stream) {
+      if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+        yield { type: "text", text: event.delta.text }
+      } else if (event.type === "content_block_start" && event.content_block.type === "tool_use") {
+        yield {
+          type: "tool_start",
+          name: event.content_block.name,
+          label: opts.toolLabels?.[event.content_block.name],
+        }
+      }
+    }
+
+    // Get the complete message to process tool calls
+    const finalMessage = await stream.finalMessage()
+    totalInputTokens += finalMessage.usage.input_tokens
+    totalOutputTokens += finalMessage.usage.output_tokens
+
+    // If no tool calls, we're done
+    if (finalMessage.stop_reason !== "tool_use") break
+
+    // Extract and execute tool calls
+    const toolUseBlocks = finalMessage.content.filter(
+      (b): b is Anthropic.ToolUseBlock => b.type === "tool_use"
+    )
+
+    if (toolUseBlocks.length === 0) break
+
+    // Execute tools in parallel
+    const toolResults = await Promise.all(
+      toolUseBlocks.map(async (block) => {
+        const result = await opts.executeTool(
+          block.name,
+          block.input as Record<string, unknown>
+        )
+        return { toolUseId: block.id, name: block.name, result }
+      })
+    )
+
+    // Yield tool_result events
+    for (const tr of toolResults) {
+      yield { type: "tool_result", name: tr.name }
+    }
+
+    // Build tool result messages for the next round
+    const toolResultContent: Anthropic.ToolResultBlockParam[] = toolResults.map((tr) => ({
+      type: "tool_result" as const,
+      tool_use_id: tr.toolUseId,
+      content: tr.result,
+    }))
+
+    // Continue conversation with tool results
+    apiMessages = [
+      ...apiMessages,
+      { role: "assistant" as const, content: finalMessage.content },
+      { role: "user" as const, content: toolResultContent },
+    ]
+  }
+
+  yield {
+    type: "usage",
+    input_tokens: totalInputTokens,
+    output_tokens: totalOutputTokens,
+  }
+}

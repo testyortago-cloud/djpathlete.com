@@ -20,6 +20,11 @@ export interface AiJobChunk {
   data: Record<string, unknown>
 }
 
+export interface ToolActivity {
+  name: string
+  label: string
+}
+
 export interface AiJobResult {
   status: AiJobStatus
   text: string
@@ -29,6 +34,7 @@ export interface AiJobResult {
   messageId: string | null
   error: string | null
   result: Record<string, unknown> | null
+  activeTools: ToolActivity[]
 }
 
 // ─── Hook ───────────────────────────────────────────────────────────────────
@@ -42,6 +48,7 @@ export function useAiJob(jobId: string | null): AiJobResult & { reset: () => voi
   const [messageId, setMessageId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<Record<string, unknown> | null>(null)
+  const [activeTools, setActiveTools] = useState<ToolActivity[]>([])
 
   // Track processed chunk indices to avoid duplicates
   const processedIndices = useRef(new Set<number>())
@@ -55,6 +62,7 @@ export function useAiJob(jobId: string | null): AiJobResult & { reset: () => voi
     setMessageId(null)
     setError(null)
     setResult(null)
+    setActiveTools([])
     processedIndices.current.clear()
   }, [])
 
@@ -115,6 +123,20 @@ export function useAiJob(jobId: string | null): AiJobResult & { reset: () => voi
                 durationMs: chunk.data.durationMs as number,
               })
               break
+            case "tool_start":
+              setActiveTools((prev) => [
+                ...prev,
+                {
+                  name: chunk.data.name as string,
+                  label: (chunk.data.label as string) ?? (chunk.data.name as string),
+                },
+              ])
+              break
+            case "tool_result":
+              setActiveTools((prev) =>
+                prev.filter((t) => t.name !== (chunk.data.name as string))
+              )
+              break
             case "message_id":
               setMessageId(chunk.data.id as string)
               break
@@ -138,5 +160,5 @@ export function useAiJob(jobId: string | null): AiJobResult & { reset: () => voi
     }
   }, [jobId, reset])
 
-  return { status, text, chunks, analysis, programCreated, messageId, error, result, reset }
+  return { status, text, chunks, analysis, programCreated, messageId, error, result, activeTools, reset }
 }

@@ -16,6 +16,7 @@ import {
   Zap,
   Brain,
   Wand2,
+  Search,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -225,6 +226,33 @@ function TypingIndicator() {
         </div>
       </div>
     </div>
+  )
+}
+
+function ToolActivityIndicator({ tools }: { tools: { name: string; label: string }[] }) {
+  if (tools.length === 0) return null
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="flex gap-3 w-full"
+    >
+      <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/10">
+        <Search className="size-3.5 text-primary animate-pulse" />
+      </div>
+      <div className="flex flex-col gap-1 pt-0.5">
+        {tools.map((tool) => (
+          <div key={tool.name} className="flex items-center gap-2">
+            <motion.div
+              className="size-1.5 rounded-full bg-primary"
+              animate={{ opacity: [0.4, 1, 0.4] }}
+              transition={{ duration: 1, repeat: Infinity }}
+            />
+            <span className="text-xs text-muted-foreground">{tool.label}...</span>
+          </div>
+        ))}
+      </div>
+    </motion.div>
   )
 }
 
@@ -599,8 +627,9 @@ export function AdminAiChat() {
   // ── Derived state ───────────────────────────────────────────────────────
   const isNewChat = !activeId || messages.length <= 1
   const lastMessage = messages[messages.length - 1]
-  const showTyping = isStreaming && lastMessage?.role === "assistant" && !lastMessage.content
+  const showTyping = isStreaming && lastMessage?.role === "assistant" && !lastMessage.content && aiJob.activeTools.length === 0
   const showStop = isStreaming && lastMessage?.role === "assistant" && !!lastMessage.content
+  const showToolActivity = isStreaming && aiJob.activeTools.length > 0
 
   // Group conversations by date
   const grouped = conversations.reduce<Record<string, Conversation[]>>((acc, c) => {
@@ -843,6 +872,10 @@ export function AdminAiChat() {
                 )
               })}
             </AnimatePresence>
+
+            {showToolActivity && (
+              <ToolActivityIndicator tools={aiJob.activeTools} />
+            )}
 
             {showTyping && (
               <motion.div
