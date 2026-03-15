@@ -83,6 +83,15 @@ export async function updatePerformanceAssessment(
   return data as PerformanceAssessment
 }
 
+export async function deletePerformanceAssessment(id: string) {
+  const supabase = getClient()
+  const { error } = await supabase
+    .from("performance_assessments")
+    .delete()
+    .eq("id", id)
+  if (error) throw error
+}
+
 // ---------------------------------------------------------------------------
 // Assessment Exercises
 // ---------------------------------------------------------------------------

@@ -6,6 +6,7 @@ import {
   getAssessmentExercises,
   updatePerformanceAssessment,
   addAssessmentExercise,
+  deletePerformanceAssessment,
 } from "@/lib/db/performance-assessments"
 import { createNotification } from "@/lib/db/notifications"
 import { getUserById } from "@/lib/db/users"
@@ -153,6 +154,28 @@ export async function POST(
     console.error("Admin add assessment exercise POST error:", error)
     return NextResponse.json(
       { error: "Failed to add exercise" },
+      { status: 500 }
+    )
+  }
+}
+
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await auth()
+    if (!session?.user?.id || session.user.role !== "admin") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const { id } = await params
+    await deletePerformanceAssessment(id)
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error("Admin performance assessment DELETE error:", error)
+    return NextResponse.json(
+      { error: "Failed to delete assessment" },
       { status: 500 }
     )
   }

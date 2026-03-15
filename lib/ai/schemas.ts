@@ -50,7 +50,7 @@ export const profileAnalysisSchema = z.object({
   exercise_constraints: z.array(exerciseConstraintSchema),
   session_structure: sessionStructureSchema,
   training_age_category: z.enum(["novice", "intermediate", "advanced", "elite"]),
-  notes: z.string(),
+  notes: z.string().optional().default(""),
 })
 
 // ─── Agent 2: Program Skeleton Schema ────────────────────────────────────────
@@ -103,7 +103,7 @@ export const programSkeletonSchema = z.object({
   split_type: z.enum(SPLIT_TYPES),
   periodization: z.enum(PERIODIZATION_TYPES),
   total_sessions: z.number(),
-  notes: z.string(),
+  notes: z.string().optional().default(""),
 })
 
 // ─── Agent 3: Exercise Assignment Schema ─────────────────────────────────────

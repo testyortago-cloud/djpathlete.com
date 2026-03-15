@@ -17,6 +17,8 @@ import { TestimonialCarousel } from "@/components/public/TestimonialCarousel"
 import { NewsletterForm } from "@/components/public/NewsletterForm"
 import { getFeaturedTestimonials } from "@/lib/db/testimonials"
 
+export const revalidate = 3600 // revalidate every hour
+
 export const metadata: Metadata = {
   title: "DJP Athlete | Elite Performance Coaching",
   description:

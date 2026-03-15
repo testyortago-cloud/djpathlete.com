@@ -17,6 +17,7 @@ import {
   ChevronUp,
   Youtube,
   Video,
+  Trash2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
@@ -87,6 +88,7 @@ export function PerformanceAssessmentDetail({
   const router = useRouter()
   const [status, setStatus] = useState(assessment.status as PerformanceAssessmentStatus)
   const [updating, setUpdating] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [expandedExercises, setExpandedExercises] = useState<Set<string>>(
     new Set(exercises.map((e) => e.id))
   )
@@ -117,6 +119,23 @@ export function PerformanceAssessmentDetail({
       toast.error("Failed to update status")
     } finally {
       setUpdating(false)
+    }
+  }
+
+  async function handleDelete() {
+    if (!confirm("Are you sure you want to delete this assessment? This cannot be undone.")) return
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/admin/performance-assessments/${assessment.id}`, {
+        method: "DELETE",
+      })
+      if (!res.ok) throw new Error("Failed to delete")
+      toast.success("Assessment deleted")
+      router.push("/admin/performance-assessments")
+    } catch {
+      toast.error("Failed to delete assessment")
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -190,6 +209,20 @@ export function PerformanceAssessmentDetail({
               Mark Complete
             </Button>
           )}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleDelete}
+            disabled={deleting}
+            className="text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/30"
+          >
+            {deleting ? (
+              <Loader2 className="size-4 mr-1.5 animate-spin" />
+            ) : (
+              <Trash2 className="size-4 mr-1.5" />
+            )}
+            Delete
+          </Button>
         </div>
       </div>
 
