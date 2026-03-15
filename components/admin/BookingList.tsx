@@ -106,7 +106,7 @@ export function BookingList({ bookings }: BookingListProps) {
   }
 
   return (
-    <div className="bg-white rounded-xl border border-border">
+    <div className="bg-white rounded-xl border border-border overflow-visible">
       {/* Toolbar */}
       <div className="p-4 border-b border-border flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
@@ -137,7 +137,7 @@ export function BookingList({ bookings }: BookingListProps) {
 
       {/* Table */}
       {paginated.length > 0 ? (
-        <div className="overflow-x-auto">
+        <div>
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border text-left">

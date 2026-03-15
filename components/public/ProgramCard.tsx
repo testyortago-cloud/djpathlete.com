@@ -40,7 +40,7 @@ export function ProgramCard({ program }: ProgramCardProps) {
       href={`/programs/${program.id}`}
       className="group bg-white rounded-2xl border border-border p-6 hover:shadow-md transition-shadow flex flex-col"
     >
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex flex-wrap items-center gap-2 mb-3">
         {(Array.isArray(program.category) ? program.category : [program.category]).map((cat) => (
           <span key={cat} className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-primary/10 text-primary">
             {CATEGORY_LABELS[cat] ?? cat}

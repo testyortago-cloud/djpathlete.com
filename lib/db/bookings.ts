@@ -67,10 +67,9 @@ export async function updateBookingStatus(id: string, status: BookingStatus, not
 
 export async function getBookingStats() {
   const supabase = getClient()
-  const now = new Date().toISOString()
 
   const [scheduled, completed, cancelled, noShow] = await Promise.all([
-    supabase.from("bookings").select("id", { count: "exact", head: true }).eq("status", "scheduled").gte("booking_date", now),
+    supabase.from("bookings").select("id", { count: "exact", head: true }).eq("status", "scheduled"),
     supabase.from("bookings").select("id", { count: "exact", head: true }).eq("status", "completed"),
     supabase.from("bookings").select("id", { count: "exact", head: true }).eq("status", "cancelled"),
     supabase.from("bookings").select("id", { count: "exact", head: true }).eq("status", "no_show"),

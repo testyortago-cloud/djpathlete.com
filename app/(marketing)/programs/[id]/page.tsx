@@ -28,9 +28,9 @@ const DIFFICULTY_LABELS: Record<string, string> = {
 
 const DIFFICULTY_COLORS: Record<string, string> = {
   beginner: "bg-success/10 text-success",
-  intermediate: "bg-warning/10 text-warning",
-  advanced: "bg-destructive/10 text-destructive",
-  elite: "bg-primary/10 text-primary",
+  intermediate: "bg-accent/10 text-accent",
+  advanced: "bg-warning/10 text-warning",
+  elite: "bg-destructive/10 text-destructive",
 }
 
 function formatPrice(cents: number | null): string {
@@ -109,7 +109,7 @@ export default async function ProgramDetailPage({ params }: Props) {
           </Link>
 
           {/* Badges */}
-          <div className="flex items-center gap-2 mb-4">
+          <div className="flex flex-wrap items-center gap-2 mb-4">
             {(Array.isArray(program.category) ? program.category : [program.category]).map((cat) => (
               <span key={cat} className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-primary/10 text-primary">
                 {CATEGORY_LABELS[cat] ?? cat}
@@ -150,10 +150,10 @@ export default async function ProgramDetailPage({ params }: Props) {
               </p>
               <p className="text-xs text-muted-foreground">Sessions/Week</p>
             </div>
-            <div className="rounded-xl border border-border bg-white p-4 text-center">
+            <div className="rounded-xl border border-border bg-white p-4 text-center overflow-hidden">
               <BarChart3 className="size-5 text-accent mx-auto mb-2" />
-              <p className="text-xl font-semibold text-primary capitalize">
-                {program.difficulty}
+              <p className="text-base sm:text-xl font-semibold text-primary capitalize truncate">
+                {DIFFICULTY_LABELS[program.difficulty] ?? program.difficulty}
               </p>
               <p className="text-xs text-muted-foreground">Level</p>
             </div>
