@@ -1,10 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { Send } from "lucide-react"
+import { Send, ChevronUp } from "lucide-react"
 import { toast } from "sonner"
 
 interface Message {
@@ -28,6 +28,8 @@ interface AssessmentExerciseThreadProps {
   apiBasePath: string // "/api/client/performance-assessments" or "/api/admin/performance-assessments"
 }
 
+const INITIAL_VISIBLE = 5
+
 export function AssessmentExerciseThread({
   messages: initialMessages,
   currentUserId,
@@ -38,6 +40,17 @@ export function AssessmentExerciseThread({
   const [messages, setMessages] = useState(initialMessages)
   const [newMessage, setNewMessage] = useState("")
   const [sending, setSending] = useState(false)
+  const [showAll, setShowAll] = useState(messages.length <= INITIAL_VISIBLE)
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  const hiddenCount = showAll ? 0 : Math.max(messages.length - INITIAL_VISIBLE, 0)
+  const visibleMessages = showAll ? messages : messages.slice(-INITIAL_VISIBLE)
+
+  // Auto-scroll to bottom on new messages
+  useEffect(() => {
+    const el = scrollRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [messages.length, showAll])
 
   async function handleSend() {
     if (!newMessage.trim() || sending) return
@@ -70,12 +83,26 @@ export function AssessmentExerciseThread({
 
   function formatTime(dateStr: string) {
     const d = new Date(dateStr)
-    return d.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
+    return d.toLocaleTimeString("en-US", {
       hour: "numeric",
       minute: "2-digit",
     })
+  }
+
+  function formatDateLabel(dateStr: string) {
+    const d = new Date(dateStr)
+    const now = new Date()
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const msgDate = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+    const diffDays = Math.round((today.getTime() - msgDate.getTime()) / 86400000)
+
+    if (diffDays === 0) return "Today"
+    if (diffDays === 1) return "Yesterday"
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+  }
+
+  function getDateKey(dateStr: string) {
+    return new Date(dateStr).toDateString()
   }
 
   return (
@@ -85,47 +112,75 @@ export function AssessmentExerciseThread({
       </h4>
 
       {/* Messages */}
-      <div className="space-y-3 max-h-[300px] overflow-y-auto">
+      <div ref={scrollRef} className="space-y-3 max-h-[400px] overflow-y-auto">
         {messages.length === 0 && (
           <p className="text-sm text-muted-foreground text-center py-4">
             No messages yet.
           </p>
         )}
-        {messages.map((msg) => {
+
+        {/* Show earlier button */}
+        {hiddenCount > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowAll(true)}
+            className="flex items-center gap-1 mx-auto text-xs font-medium text-primary hover:text-primary/80 transition-colors py-2"
+          >
+            <ChevronUp className="size-3.5" />
+            Show {hiddenCount} earlier message{hiddenCount !== 1 ? "s" : ""}
+          </button>
+        )}
+
+        {visibleMessages.map((msg, i) => {
           const isOwn = msg.user_id === currentUserId
           const name = msg.users
             ? `${msg.users.first_name} ${msg.users.last_name}`
             : "Unknown"
           const isCoach = msg.users?.role === "admin"
 
+          // Show date separator when the date changes
+          const prevMsg = i > 0 ? visibleMessages[i - 1] : null
+          const showDateSep =
+            !prevMsg || getDateKey(msg.created_at) !== getDateKey(prevMsg.created_at)
+
           return (
-            <div
-              key={msg.id}
-              className={cn("flex flex-col gap-1", isOwn ? "items-end" : "items-start")}
-            >
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs font-medium text-muted-foreground">
-                  {name}
-                </span>
-                {isCoach && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground font-medium">
-                    Coach
+            <div key={msg.id}>
+              {showDateSep && (
+                <div className="flex items-center gap-3 py-2">
+                  <div className="flex-1 h-px bg-border" />
+                  <span className="text-[10px] font-medium text-muted-foreground">
+                    {formatDateLabel(msg.created_at)}
                   </span>
-                )}
-              </div>
+                  <div className="flex-1 h-px bg-border" />
+                </div>
+              )}
               <div
-                className={cn(
-                  "max-w-[80%] rounded-xl px-3 py-2 text-sm leading-relaxed",
-                  isOwn
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-white border border-border text-foreground"
-                )}
+                className={cn("flex flex-col gap-1", isOwn ? "items-end" : "items-start")}
               >
-                {msg.message}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-medium text-muted-foreground">
+                    {name}
+                  </span>
+                  {isCoach && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground font-medium">
+                      Coach
+                    </span>
+                  )}
+                </div>
+                <div
+                  className={cn(
+                    "max-w-[80%] rounded-xl px-3 py-2 text-sm leading-relaxed",
+                    isOwn
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-white border border-border text-foreground"
+                  )}
+                >
+                  {msg.message}
+                </div>
+                <span className="text-[10px] text-muted-foreground">
+                  {formatTime(msg.created_at)}
+                </span>
               </div>
-              <span className="text-[10px] text-muted-foreground">
-                {formatTime(msg.created_at)}
-              </span>
             </div>
           )
         })}
