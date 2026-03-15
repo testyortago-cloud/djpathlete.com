@@ -147,13 +147,14 @@ export async function generateProgramSync(
   })
 
   // Helper to push step progress to RTDB for real-time client updates
-  async function updateJobProgress(step: string, currentStep: number) {
+  const TOTAL_STEPS = 7
+  async function updateJobProgress(step: string, currentStep: number, detail?: string) {
     if (!firebaseJobId) return
     try {
       const { getDatabase } = await import("firebase-admin/database")
       const rtdb = getDatabase()
       await rtdb.ref(`ai_jobs/${firebaseJobId}`).update({
-        progress: { status: step, current_step: currentStep, total_steps: 3 },
+        progress: { status: step, current_step: currentStep, total_steps: TOTAL_STEPS, detail: detail ?? null },
         updatedAt: Date.now(),
       })
     } catch (e) {
@@ -271,7 +272,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     const augmentedAgent1Prompt = ragContext ? buildRagAugmentedPrompt(PROFILE_ANALYZER_PROMPT, ragContext) : PROFILE_ANALYZER_PROMPT
 
     // Agent 1 + exercise fetch in parallel
-    await updateJobProgress("step_1", 1)
+    await updateJobProgress("analyzing_profile", 1, "Analyzing client profile & fetching exercises")
     console.log("[orchestrator:sync] Running Agent 1 + exercise fetch...")
     const [agent1Result, allExercises] = await Promise.all([
       callAgent<ProfileAnalysis>(augmentedAgent1Prompt, agent1UserMessage, profileAnalysisSchema, { model: MODEL_HAIKU, cacheSystemPrompt: true }),
@@ -297,8 +298,10 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     if (request.split_type) analysis.recommended_split = request.split_type as typeof analysis.recommended_split
     if (request.periodization) analysis.recommended_periodization = request.periodization as typeof analysis.recommended_periodization
 
+    await updateJobProgress("profile_complete", 2, `Profile analyzed — ${compressed.length} exercises available`)
+
     // Agent 2
-    await updateJobProgress("step_2", 2)
+    await updateJobProgress("designing_structure", 3, "Designing program structure & weekly layout")
     const agent2UserMessage = `Profile Analysis:\n${JSON.stringify(analysis)}\n\nTraining Parameters:\n- Duration: ${request.duration_weeks} weeks\n- Sessions per week: ${request.sessions_per_week}\n- Session length: ${request.session_minutes ?? 60} minutes\n- Split type: ${analysis.recommended_split}\n- Periodization: ${analysis.recommended_periodization}\n- Goals: ${request.goals.join(", ")}\n${request.additional_instructions ? `- Additional instructions: ${request.additional_instructions}` : ""}`
 
     console.log("[orchestrator:sync] Running Agent 2 (program architect)...")
@@ -319,6 +322,9 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
       if (assistantMsg) embedConversationMessage(assistantMsg.id).catch(() => {})
     }).catch(() => {})
 
+    const totalSlots = skeleton.weeks.reduce((sum, w) => sum + w.days.reduce((ds, d) => ds + d.slots.length, 0), 0)
+    await updateJobProgress("structure_complete", 4, `${skeleton.weeks.length} weeks × ${skeleton.weeks[0]?.days.length ?? 0} days — ${totalSlots} exercise slots`)
+
     // Pre-filter exercises
     const availableEquipment = request.equipment_override ?? profile?.available_equipment ?? []
     const constraintsContext = JSON.stringify({
@@ -333,7 +339,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     const exerciseLibrary = formatExerciseLibrary(filtered)
 
     // Agent 3 with validation retry loop
-    await updateJobProgress("step_3", 3)
+    await updateJobProgress("selecting_exercises", 5, `Matching exercises from ${filtered.length} candidates to ${totalSlots} slots`)
     console.log("[orchestrator:sync] Running Agent 3 with", filtered.length, "exercises...")
     let assignment: ExerciseAssignment | null = null
     let validation: ValidationResult | null = null
@@ -378,6 +384,8 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
 
     if (!assignment || !validation) throw new Error("Failed to generate exercise assignments")
 
+    await updateJobProgress("validated", 6, `${assignment.assignments.length} exercises assigned — ${validation.pass ? "all checks passed" : `${validation.issues.filter(i => i.type === "warning").length} warnings`}`)
+
     // Create program
     const programCategory = deriveProgramCategory(request.goals)
     const programDifficulty = mapDifficulty(profile?.experience_level ?? null)
@@ -415,6 +423,8 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
         })
       }
     }
+
+    await updateJobProgress("saving_program", 7, `Saving program with ${assignment.assignments.length} exercises`)
 
     await Promise.all(assignment.assignments.map((assigned) => {
       const location = slotLookup.get(assigned.slot_id)

@@ -107,11 +107,14 @@ const TIER_DESCRIPTIONS: Record<string, string> = {
   premium: "Everything in Standard, plus personalized AI coaching feedback",
 }
 
-const PROGRESS_MESSAGES = [
-  { stage: 0, message: "Analyzing training parameters...", icon: Brain },
-  { stage: 1, message: "Designing program structure...", icon: Sparkles },
-  { stage: 2, message: "Selecting exercises...", icon: Zap },
-  { stage: 3, message: "Validating program...", icon: CheckCircle2 },
+const GENERATION_STEPS = [
+  { key: "analyzing_profile", label: "Analyzing client profile", icon: Brain },
+  { key: "profile_complete", label: "Profile analysis complete", icon: CheckCircle2 },
+  { key: "designing_structure", label: "Designing program structure", icon: Sparkles },
+  { key: "structure_complete", label: "Program structure ready", icon: CheckCircle2 },
+  { key: "selecting_exercises", label: "Selecting exercises", icon: Zap },
+  { key: "validated", label: "Exercises validated", icon: Target },
+  { key: "saving_program", label: "Saving program", icon: Dumbbell },
 ]
 
 const selectClass =
@@ -217,7 +220,10 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
 
   // Generation state
   const [isGenerating, setIsGenerating] = useState(false)
-  const [progressStage, setProgressStage] = useState(0)
+  const [progressStep, setProgressStep] = useState(0)
+  const [progressDetail, setProgressDetail] = useState<string | null>(null)
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [result, setResult] = useState<GenerationResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [showAssign, setShowAssign] = useState(false)
@@ -308,7 +314,10 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
   }, [clientId])
 
   useEffect(() => {
-    return () => stopListening()
+    return () => {
+      stopListening()
+      if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
+    }
   }, [])
 
   // ─── Navigation ───────────────────────────────────────────────────────────
@@ -374,7 +383,10 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
     setError(null)
     setShowAssign(false)
     setIsGenerating(false)
-    setProgressStage(0)
+    setProgressStep(0)
+    setProgressDetail(null)
+    setElapsedSeconds(0)
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
     tour.close()
   }
 
@@ -402,12 +414,10 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
     }
   }
 
-  function mapProgressToStage(progress?: { status: string; current_step: number }): number {
-    if (!progress) return 0
-    if (progress.status === "step_1") return 1
-    if (progress.status === "step_2") return 2
-    if (progress.status === "step_3") return 3
-    return 0
+  function mapProgressToStep(progress?: { status: string; current_step: number; total_steps: number; detail?: string }): { step: number; detail: string | null } {
+    if (!progress) return { step: 0, detail: null }
+    const idx = GENERATION_STEPS.findIndex((s) => s.key === progress.status)
+    return { step: idx >= 0 ? idx + 1 : progress.current_step, detail: progress.detail ?? null }
   }
 
   // ─── Submit ───────────────────────────────────────────────────────────────
@@ -418,7 +428,7 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
     setIsGenerating(true)
     setError(null)
     setResult(null)
-    setProgressStage(0)
+    setProgressStep(0)
 
     try {
       const body: Record<string, unknown> = {
@@ -460,9 +470,17 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
       }
 
       if (response.status === 202 && data.jobId) {
+        // Start elapsed timer
+        setElapsedSeconds(0)
+        timerRef.current = setInterval(() => setElapsedSeconds((s) => s + 1), 1000)
+
         // Listen to RTDB job node for real-time progress
         const jobRef = ref(rtdb, `ai_jobs/${data.jobId}`)
         jobRefRef.current = jobRef
+
+        const stopTimer = () => {
+          if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
+        }
 
         onValue(
           jobRef,
@@ -472,11 +490,14 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
 
             // Update step progress from orchestrator
             if (jobData.progress) {
-              setProgressStage(mapProgressToStage(jobData.progress))
+              const { step, detail } = mapProgressToStep(jobData.progress)
+              setProgressStep(step)
+              setProgressDetail(detail)
             }
 
             if (jobData.status === "completed" && jobData.result) {
               stopListening()
+              stopTimer()
               setResult({
                 program_id: jobData.result.program_id,
                 validation: jobData.result.validation ?? { pass: true, issues: [], summary: "Program generated successfully." },
@@ -489,6 +510,7 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
               router.refresh()
             } else if (jobData.status === "failed") {
               stopListening()
+              stopTimer()
               setError(jobData.error || "Program generation failed")
               setIsGenerating(false)
               toast.error("Program generation failed")
@@ -497,6 +519,7 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
           (err) => {
             console.error("[AiGenerateDialog] RTDB listener error:", err)
             stopListening()
+            stopTimer()
             setError("Lost connection to generation updates")
             setIsGenerating(false)
             toast.error("Connection lost")
@@ -627,44 +650,98 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
 
   // Loading / generating view
   if (isGenerating) {
-    const currentProgress = PROGRESS_MESSAGES[progressStage]
-    const ProgressIcon = currentProgress?.icon ?? Loader2
+    const progressPercent = Math.round((progressStep / GENERATION_STEPS.length) * 100)
+    const minutes = Math.floor(elapsedSeconds / 60)
+    const seconds = elapsedSeconds % 60
+    const timeDisplay = minutes > 0 ? `${minutes}m ${seconds.toString().padStart(2, "0")}s` : `${seconds}s`
 
     return (
       <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent className="sm:max-w-md">
-          <div className="flex flex-col items-center justify-center py-12 space-y-6">
-            <div className="relative">
-              <div className="size-16 rounded-full bg-primary/10 flex items-center justify-center">
-                <ProgressIcon className="size-8 text-primary animate-pulse" />
+          <div className="flex flex-col py-6 space-y-5">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="size-9 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Sparkles className="size-4 text-primary animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="font-heading font-semibold text-sm text-foreground">
+                    Generating Program
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Step {progressStep} of {GENERATION_STEPS.length}
+                  </p>
+                </div>
               </div>
-              <Loader2 className="size-20 text-primary/30 animate-spin absolute -top-2 -left-2" />
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums">
+                <Clock className="size-3" />
+                {timeDisplay}
+              </div>
             </div>
 
-            <div className="text-center space-y-2">
-              <h3 className="font-heading font-semibold text-foreground">
-                Generating Program
-              </h3>
-              <p className="text-sm text-muted-foreground">
-                {currentProgress?.message ?? "Processing..."}
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              {PROGRESS_MESSAGES.map((msg, idx) => (
-                <div
-                  key={idx}
-                  className={`size-2 rounded-full transition-colors ${
-                    idx <= progressStage ? "bg-primary" : "bg-muted"
-                  }`}
+            {/* Progress bar */}
+            <div className="space-y-1.5">
+              <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+                <motion.div
+                  className="h-full rounded-full bg-primary"
+                  initial={{ width: 0 }}
+                  animate={{ width: `${progressPercent}%` }}
+                  transition={{ duration: 0.5, ease: "easeOut" }}
                 />
-              ))}
+              </div>
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-muted-foreground">{progressPercent}%</p>
+                {progressDetail && (
+                  <p className="text-xs text-muted-foreground truncate max-w-[70%] text-right">
+                    {progressDetail}
+                  </p>
+                )}
+              </div>
             </div>
 
-            <p className="text-xs text-muted-foreground flex items-center gap-1">
-              <Clock className="size-3" />
-              This typically takes 30-90 seconds
-            </p>
+            {/* Step checklist */}
+            <div className="space-y-1">
+              {GENERATION_STEPS.map((s, idx) => {
+                const stepNum = idx + 1
+                const isComplete = progressStep > stepNum
+                const isActive = progressStep === stepNum
+                const isPending = progressStep < stepNum
+                const StepIcon = s.icon
+
+                return (
+                  <div
+                    key={s.key}
+                    className={cn(
+                      "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors",
+                      isActive && "bg-primary/5",
+                      isPending && "opacity-40"
+                    )}
+                  >
+                    {isComplete ? (
+                      <CheckCircle2 className="size-4 text-primary shrink-0" />
+                    ) : isActive ? (
+                      <Loader2 className="size-4 text-primary animate-spin shrink-0" />
+                    ) : (
+                      <div className="size-4 rounded-full border border-muted-foreground/30 shrink-0" />
+                    )}
+                    <span
+                      className={cn(
+                        "text-sm",
+                        isComplete && "text-muted-foreground",
+                        isActive && "text-foreground font-medium",
+                        isPending && "text-muted-foreground"
+                      )}
+                    >
+                      {s.label}
+                    </span>
+                    {isActive && (
+                      <StepIcon className="size-3.5 text-primary/60 ml-auto shrink-0" />
+                    )}
+                  </div>
+                )
+              })}
+            </div>
           </div>
         </DialogContent>
       </Dialog>
