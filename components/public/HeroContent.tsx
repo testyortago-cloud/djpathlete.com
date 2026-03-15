@@ -36,7 +36,7 @@ export function HeroContent() {
             >
               Elite Performance
               <br />
-              is Not Trained.
+              Is Not Trained.
               <br />
               <span className="text-accent">It Is Engineered.</span>
             </motion.h1>

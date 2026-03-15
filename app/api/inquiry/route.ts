@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { inquiryFormSchema, SERVICE_LABELS } from "@/lib/validators/inquiry"
 import { createServiceRoleClient } from "@/lib/supabase"
 import { ghlCreateContact, ghlTriggerWorkflow } from "@/lib/ghl"
+import { sendInquiryEmail } from "@/lib/email"
 
 export async function POST(request: Request) {
   try {
@@ -54,6 +55,15 @@ export async function POST(request: Request) {
       if (insertError) {
         console.error("Failed to create inquiry notifications:", insertError)
       }
+    }
+
+    // Send email notification to sales (non-blocking)
+    try {
+      await sendInquiryEmail({
+        name, email, phone, serviceLabel, sport, experience, goals, injuries, how_heard,
+      })
+    } catch {
+      console.error("Failed to send inquiry email — continuing")
     }
 
     // Sync to GoHighLevel (non-blocking)

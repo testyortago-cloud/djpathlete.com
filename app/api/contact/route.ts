@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { contactFormSchema } from "@/lib/validators/contact"
 import { createServiceRoleClient } from "@/lib/supabase"
 import { ghlCreateContact, ghlTriggerWorkflow } from "@/lib/ghl"
+import { sendContactFormEmail } from "@/lib/email"
 
 export async function POST(request: Request) {
   try {
@@ -48,6 +49,13 @@ export async function POST(request: Request) {
       if (insertError) {
         console.error("Failed to create contact notifications:", insertError)
       }
+    }
+
+    // Send email notification to admin (non-blocking)
+    try {
+      await sendContactFormEmail({ name, email, subject, message })
+    } catch {
+      console.error("Failed to send contact form email — continuing")
     }
 
     // Sync to GoHighLevel (non-blocking)

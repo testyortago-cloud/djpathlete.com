@@ -1,6 +1,6 @@
 import type { Metadata } from "next"
 import { Dumbbell } from "lucide-react"
-import { getPrograms } from "@/lib/db/programs"
+import { getPublicPrograms } from "@/lib/db/programs"
 import { ProgramCard } from "@/components/public/ProgramCard"
 import { EmptyState } from "@/components/ui/empty-state"
 import { JsonLd } from "@/components/shared/JsonLd"
@@ -34,7 +34,7 @@ const storeSchema = {
 }
 
 export default async function ProgramsPage() {
-  const programs = await getPrograms()
+  const programs = await getPublicPrograms()
 
   return (
     <>

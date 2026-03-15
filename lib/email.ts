@@ -1441,3 +1441,175 @@ export async function sendStandaloneNewsletter(data: StandaloneNewsletterData) {
     "Standalone Newsletter"
   )
 }
+
+// ─── Contact & Inquiry notification emails ───
+
+const INFO_EMAIL = "info@darrenjpaul.com"
+const SALES_EMAIL = "sales@darrenjpaul.com"
+
+export async function sendContactFormEmail({
+  name,
+  email,
+  subject,
+  message,
+}: {
+  name: string
+  email: string
+  subject: string
+  message: string
+}) {
+  const html = emailLayout(`
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td style="padding:48px 48px 52px;">
+
+          ${sectionLabel("New Contact Form Submission")}
+
+          <p style="margin:0 0 8px; font-family:'Lexend Exa', Georgia, 'Times New Roman', serif; font-size:22px; font-weight:400; color:#0E3F50;">
+            New Message
+          </p>
+
+          <p style="margin:0 0 28px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:15px; color:#5c5750; line-height:1.8;">
+            You have received a new contact form submission from the website.
+          </p>
+
+          ${infoCard([
+            { label: "Name", value: name },
+            { label: "Email", value: email },
+            { label: "Subject", value: subject },
+          ])}
+
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:28px; background-color:#faf9f7; border-radius:2px; border-left:3px solid #C49B7A;">
+            <tr>
+              <td style="padding:24px 28px;">
+                <p style="margin:0 0 8px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:10px; font-weight:600; color:#a09b94; text-transform:uppercase; letter-spacing:2px;">
+                  Message
+                </p>
+                <p style="margin:0; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:15px; color:#5c5750; line-height:1.8; white-space:pre-wrap;">
+                  ${message}
+                </p>
+              </td>
+            </tr>
+          </table>
+
+          <p style="margin:32px 0 0; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:13px; color:#a09b94;">
+            Reply directly to <a href="mailto:${email}" style="color:#0E3F50; text-decoration:underline;">${email}</a>
+          </p>
+
+        </td>
+      </tr>
+    </table>
+  `)
+
+  const { error } = await resend.emails.send({
+    from: FROM_EMAIL,
+    to: INFO_EMAIL,
+    replyTo: email,
+    subject: `[Contact] ${subject}`,
+    html,
+  })
+
+  if (error) {
+    console.error("Failed to send contact form email:", error)
+    throw new Error("Failed to send contact form email")
+  }
+}
+
+export async function sendInquiryEmail({
+  name,
+  email,
+  phone,
+  serviceLabel,
+  sport,
+  experience,
+  goals,
+  injuries,
+  how_heard,
+}: {
+  name: string
+  email: string
+  phone?: string | null
+  serviceLabel: string
+  sport?: string | null
+  experience?: string | null
+  goals: string
+  injuries?: string | null
+  how_heard?: string | null
+}) {
+  const infoRows: { label: string; value: string }[] = [
+    { label: "Name", value: name },
+    { label: "Email", value: email },
+    { label: "Service", value: serviceLabel },
+  ]
+  if (phone) infoRows.push({ label: "Phone", value: phone })
+  if (sport) infoRows.push({ label: "Sport", value: sport })
+  if (experience) infoRows.push({ label: "Experience", value: experience })
+  if (how_heard) infoRows.push({ label: "How They Heard About Us", value: how_heard })
+
+  const html = emailLayout(`
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td style="padding:48px 48px 52px;">
+
+          ${sectionLabel(`New ${serviceLabel} Application`)}
+
+          <p style="margin:0 0 8px; font-family:'Lexend Exa', Georgia, 'Times New Roman', serif; font-size:22px; font-weight:400; color:#0E3F50;">
+            New Inquiry
+          </p>
+
+          <p style="margin:0 0 28px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:15px; color:#5c5750; line-height:1.8;">
+            A potential client has submitted an application for <strong style="color:#0E3F50;">${serviceLabel}</strong>.
+          </p>
+
+          ${infoCard(infoRows)}
+
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:28px; background-color:#faf9f7; border-radius:2px; border-left:3px solid #C49B7A;">
+            <tr>
+              <td style="padding:24px 28px;">
+                <p style="margin:0 0 8px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:10px; font-weight:600; color:#a09b94; text-transform:uppercase; letter-spacing:2px;">
+                  Goals
+                </p>
+                <p style="margin:0; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:15px; color:#5c5750; line-height:1.8; white-space:pre-wrap;">
+                  ${goals}
+                </p>
+              </td>
+            </tr>
+          </table>
+
+          ${injuries ? `
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:16px; background-color:#faf9f7; border-radius:2px; border-left:3px solid #C49B7A;">
+            <tr>
+              <td style="padding:24px 28px;">
+                <p style="margin:0 0 8px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:10px; font-weight:600; color:#a09b94; text-transform:uppercase; letter-spacing:2px;">
+                  Injuries / Limitations
+                </p>
+                <p style="margin:0; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:15px; color:#5c5750; line-height:1.8; white-space:pre-wrap;">
+                  ${injuries}
+                </p>
+              </td>
+            </tr>
+          </table>
+          ` : ""}
+
+          <p style="margin:32px 0 0; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:13px; color:#a09b94;">
+            Reply directly to <a href="mailto:${email}" style="color:#0E3F50; text-decoration:underline;">${email}</a>
+          </p>
+
+        </td>
+      </tr>
+    </table>
+  `)
+
+  const { error } = await resend.emails.send({
+    from: FROM_EMAIL,
+    to: SALES_EMAIL,
+    replyTo: email,
+    subject: `[Inquiry] New ${serviceLabel} Application — ${name}`,
+    html,
+  })
+
+  if (error) {
+    console.error("Failed to send inquiry email:", error)
+    throw new Error("Failed to send inquiry email")
+  }
+}
