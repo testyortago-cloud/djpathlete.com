@@ -1,10 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import Link from "next/link"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { Plus, Clock, MessageSquare, CheckCircle2, FileEdit } from "lucide-react"
+import { Plus, Clock, MessageSquare, CheckCircle2, FileEdit, X } from "lucide-react"
 import type { PerformanceAssessmentStatus } from "@/types/database"
 
 interface Assessment {
@@ -41,11 +41,54 @@ export function PerformanceAssessmentList({
   counts,
 }: PerformanceAssessmentListProps) {
   const [filter, setFilter] = useState<PerformanceAssessmentStatus | "all">("all")
+  const [clientFilter, setClientFilter] = useState<string>("all")
+  const [dateFrom, setDateFrom] = useState("")
+  const [dateTo, setDateTo] = useState("")
 
-  const filtered =
-    filter === "all"
+  const clients = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const a of assessments) {
+      if (a.users) {
+        const name = `${a.users.first_name} ${a.users.last_name}`
+        if (!map.has(name)) map.set(name, name)
+      }
+    }
+    return Array.from(map.keys()).sort()
+  }, [assessments])
+
+  const hasFilters = clientFilter !== "all" || dateFrom || dateTo
+
+  const filtered = useMemo(() => {
+    let result = filter === "all"
       ? assessments
       : assessments.filter((a) => a.status === filter)
+
+    if (clientFilter !== "all") {
+      result = result.filter((a) => {
+        if (!a.users) return false
+        return `${a.users.first_name} ${a.users.last_name}` === clientFilter
+      })
+    }
+
+    if (dateFrom) {
+      const from = new Date(dateFrom)
+      result = result.filter((a) => new Date(a.created_at) >= from)
+    }
+
+    if (dateTo) {
+      const to = new Date(dateTo)
+      to.setHours(23, 59, 59, 999)
+      result = result.filter((a) => new Date(a.created_at) <= to)
+    }
+
+    return result
+  }, [assessments, filter, clientFilter, dateFrom, dateTo])
+
+  function clearFilters() {
+    setClientFilter("all")
+    setDateFrom("")
+    setDateTo("")
+  }
 
   return (
     <div className="space-y-4">
@@ -79,6 +122,53 @@ export function PerformanceAssessmentList({
             New Assessment
           </Button>
         </Link>
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground">Client</label>
+          <select
+            value={clientFilter}
+            onChange={(e) => setClientFilter(e.target.value)}
+            className="block h-9 rounded-lg border border-border bg-white px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+          >
+            <option value="all">All Clients</option>
+            {clients.map((name) => (
+              <option key={name} value={name}>{name}</option>
+            ))}
+          </select>
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground">From</label>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="block h-9 rounded-lg border border-border bg-white px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground">To</label>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="block h-9 rounded-lg border border-border bg-white px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+          />
+        </div>
+        {hasFilters && (
+          <button
+            onClick={clearFilters}
+            className="inline-flex items-center gap-1 h-9 px-3 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <X className="size-3.5" />
+            Clear
+          </button>
+        )}
+        <span className="text-xs text-muted-foreground ml-auto">
+          {filtered.length} result{filtered.length !== 1 ? "s" : ""}
+        </span>
       </div>
 
       {/* List */}
