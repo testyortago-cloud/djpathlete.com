@@ -98,7 +98,7 @@ export async function POST(request: Request) {
             getProgramById(programId),
           ])
 
-          const coachEmail = process.env.COACH_EMAIL ?? "sales@darrenjpaul.co"
+          const coachEmail = process.env.COACH_EMAIL ?? "sales@darrenjpaul.com"
           const coachFirstName = process.env.COACH_FIRST_NAME ?? "Coach"
 
           await sendCoachPurchaseNotification({

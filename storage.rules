@@ -10,6 +10,14 @@ service firebase.storage {
                    && request.resource.contentType.matches('video/.*');
     }
 
+    // Performance assessment videos — open upload scoped to assessments path
+    // Auth is enforced at the Next.js API layer (NextAuth session check)
+    match /performance-assessments/{assessmentId}/{exerciseId}/{fileName} {
+      allow read: if true;
+      allow write: if request.resource.size < 200 * 1024 * 1024  // 200MB max
+                   && request.resource.contentType.matches('video/.*');
+    }
+
     // Deny everything else by default
     match /{allPaths=**} {
       allow read, write: if false;

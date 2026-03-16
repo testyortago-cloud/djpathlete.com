@@ -7,6 +7,9 @@ const resend = new Resend(process.env.RESEND_API_KEY)
 const FROM_EMAIL =
   process.env.RESEND_FROM_EMAIL ?? "DJP Athlete <noreply@darrenjpaul.com>"
 
+/** CC all admin/business emails to Darren's main account */
+const ADMIN_CC = "darren@darrenjpaul.com"
+
 function getBaseUrl() {
   return (
     process.env.NEXTAUTH_URL ??
@@ -827,6 +830,7 @@ export async function sendCoachPurchaseNotification({
   const { error } = await resend.emails.send({
     from: FROM_EMAIL,
     to: coachEmail,
+    cc: coachEmail !== ADMIN_CC ? ADMIN_CC : undefined,
     subject: `New purchase: ${clientName} bought ${programName}`,
     html,
   })
@@ -919,6 +923,7 @@ export async function sendCoachProgramCompletedNotification({
   const { error } = await resend.emails.send({
     from: FROM_EMAIL,
     to: coachEmail,
+    cc: coachEmail !== ADMIN_CC ? ADMIN_CC : undefined,
     subject: `Program completed: ${clientName} finished ${programName}`,
     html,
   })
@@ -982,6 +987,7 @@ export async function sendFormReviewRequestEmail({
   const { error } = await resend.emails.send({
     from: FROM_EMAIL,
     to: coachEmail,
+    cc: coachEmail !== ADMIN_CC ? ADMIN_CC : undefined,
     subject: `Form review request: ${clientName} — ${reviewTitle}`,
     html,
   })
@@ -1504,6 +1510,7 @@ export async function sendContactFormEmail({
   const { error } = await resend.emails.send({
     from: FROM_EMAIL,
     to: INFO_EMAIL,
+    cc: ADMIN_CC,
     replyTo: email,
     subject: `[Contact] ${subject}`,
     html,
@@ -1603,6 +1610,7 @@ export async function sendInquiryEmail({
   const { error } = await resend.emails.send({
     from: FROM_EMAIL,
     to: SALES_EMAIL,
+    cc: ADMIN_CC,
     replyTo: email,
     subject: `[Inquiry] New ${serviceLabel} Application — ${name}`,
     html,
