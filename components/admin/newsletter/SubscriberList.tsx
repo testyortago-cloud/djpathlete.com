@@ -13,6 +13,7 @@ import {
   ToggleLeft,
   ToggleRight,
   X,
+  RefreshCw,
 } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
@@ -48,6 +49,7 @@ export function SubscriberList({ subscribers }: SubscriberListProps) {
   const [invalidLines, setInvalidLines] = useState<string[]>([])
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
+  const [syncing, setSyncing] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const filtered = subscribers.filter((s) => {
@@ -218,6 +220,33 @@ export function SubscriberList({ subscribers }: SubscriberListProps) {
     URL.revokeObjectURL(url)
   }
 
+  async function handleSyncGHL() {
+    setSyncing(true)
+    try {
+      const res = await fetch("/api/admin/newsletter/subscribers/sync-ghl", {
+        method: "POST",
+      })
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data.error ?? "Sync failed")
+      }
+
+      if (data.total === 0) {
+        toast.info("No contacts found in GoHighLevel")
+      } else {
+        toast.success(
+          `Synced from GHL: ${data.added} new, ${data.skipped} already existed (${data.total} total)`
+        )
+      }
+      router.refresh()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "GHL sync failed")
+    } finally {
+      setSyncing(false)
+    }
+  }
+
   return (
     <div>
       {/* Toolbar */}
@@ -266,6 +295,17 @@ export function SubscriberList({ subscribers }: SubscriberListProps) {
           >
             <Download className="size-4" />
             <span className="hidden sm:inline">Export</span>
+          </button>
+          <button
+            onClick={handleSyncGHL}
+            disabled={syncing}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-surface transition-colors disabled:opacity-50"
+            title="Sync subscribers from GoHighLevel"
+          >
+            <RefreshCw className={cn("size-4", syncing && "animate-spin")} />
+            <span className="hidden sm:inline">
+              {syncing ? "Syncing..." : "Sync GHL"}
+            </span>
           </button>
           <input
             ref={fileInputRef}

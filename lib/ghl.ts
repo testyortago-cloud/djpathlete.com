@@ -179,6 +179,44 @@ async function deleteContactById(contactId: string): Promise<boolean> {
   return true
 }
 
+/**
+ * Fetches all contacts from GHL, paginating through results.
+ * Optionally filters by a tag (e.g. "newsletter").
+ */
+async function fetchAllContacts(tag?: string): Promise<GHLContact[]> {
+  const contacts: GHLContact[] = []
+  let nextPageUrl: string | null =
+    `/contacts/?locationId=${GHL_LOCATION_ID}&limit=100` +
+    (tag ? `&query=${encodeURIComponent(tag)}` : "")
+
+  while (nextPageUrl) {
+    const response = await ghlFetch(nextPageUrl, { method: "GET" })
+    const json = (await response.json()) as {
+      contacts?: GHLContact[]
+      meta?: { nextPageUrl?: string; total?: number }
+    }
+
+    if (json.contacts) {
+      contacts.push(...json.contacts)
+    }
+
+    // GHL returns a full URL for nextPageUrl — extract the path
+    const rawNext = json.meta?.nextPageUrl
+    if (rawNext) {
+      try {
+        const url = new URL(rawNext)
+        nextPageUrl = url.pathname + url.search
+      } catch {
+        nextPageUrl = null
+      }
+    } else {
+      nextPageUrl = null
+    }
+  }
+
+  return contacts
+}
+
 // ---------------------------------------------------------------------------
 // Public API (never throw — graceful degradation)
 // ---------------------------------------------------------------------------
@@ -244,6 +282,34 @@ export async function ghlTriggerWebhook(
  * Deletes a GHL contact by looking up their email address first.
  * Returns true on success, false on any failure or if contact not found.
  */
+/**
+ * Fetches all contacts from GHL and returns their email addresses.
+ * Returns an empty array on any failure.
+ */
+export async function ghlGetAllContacts(): Promise<
+  { email: string; firstName?: string; lastName?: string; tags?: string[] }[]
+> {
+  if (!isGHLConfigured()) {
+    console.warn("[GHL] Not configured — skipping getAllContacts")
+    return []
+  }
+
+  try {
+    const contacts = await fetchAllContacts()
+    return contacts
+      .filter((c) => c.email)
+      .map((c) => ({
+        email: c.email,
+        firstName: c.firstName,
+        lastName: c.lastName,
+        tags: c.tags,
+      }))
+  } catch (error) {
+    console.error("[GHL] Failed to fetch all contacts:", error)
+    return []
+  }
+}
+
 export async function ghlDeleteContact(email: string): Promise<boolean> {
   if (!isGHLConfigured()) {
     console.warn("[GHL] Not configured — skipping deleteContact")
