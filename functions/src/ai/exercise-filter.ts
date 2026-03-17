@@ -12,6 +12,10 @@ const RELATED_PATTERNS: Record<string, string[]> = {
   locomotion: ["carry"],
 }
 
+// ─── Core movement patterns that MUST be represented in the filtered set ────
+
+const CORE_PATTERNS = ["push", "pull", "squat", "hinge", "lunge"] as const
+
 function jaccard(a: string[], b: string[]): number {
   if (a.length === 0 && b.length === 0) return 0
   const setA = new Set(a.map((s) => s.toLowerCase()))
@@ -65,8 +69,95 @@ function slotGroupKey(slot: ExerciseSlot): string {
   return `${slot.movement_pattern}|${muscles}`
 }
 
+// ─── Dynamic caps based on library size ─────────────────────────────────────
+
 const MIN_EXERCISES = 30
-const MAX_EXERCISES = 60
+const MIN_PER_PATTERN = 8 // Guarantee at least 8 exercises per core movement pattern
+
+function getMaxExercises(librarySize: number): number {
+  // Scale: 15% of library, clamped between 80 and 200
+  return Math.max(80, Math.min(200, Math.round(librarySize * 0.15)))
+}
+
+// ─── Pattern-balanced guarantee ─────────────────────────────────────────────
+// After initial filtering, check that every movement pattern required by the
+// skeleton has at least MIN_PER_PATTERN exercises. If not, pull in the best
+// candidates from the full library for the underrepresented patterns.
+
+function ensurePatternBalance(
+  filtered: CompressedExercise[],
+  allExercises: CompressedExercise[],
+  skeleton: ProgramSkeleton,
+  equipment: string[],
+  difficulty: string
+): CompressedExercise[] {
+  // Determine which patterns the skeleton actually needs
+  const requiredPatterns = new Set<string>()
+  for (const week of skeleton.weeks) {
+    for (const day of week.days) {
+      for (const slot of day.slots) {
+        requiredPatterns.add(slot.movement_pattern)
+      }
+    }
+  }
+
+  // Also always include core patterns
+  for (const pattern of CORE_PATTERNS) {
+    requiredPatterns.add(pattern)
+  }
+
+  // Count exercises per pattern in filtered set
+  const patternCounts = new Map<string, number>()
+  const filteredIds = new Set(filtered.map((e) => e.id))
+  for (const ex of filtered) {
+    if (ex.movement_pattern) {
+      patternCounts.set(ex.movement_pattern, (patternCounts.get(ex.movement_pattern) ?? 0) + 1)
+    }
+  }
+
+  // Find underrepresented patterns
+  const additions: CompressedExercise[] = []
+  for (const pattern of requiredPatterns) {
+    const count = patternCounts.get(pattern) ?? 0
+    if (count >= MIN_PER_PATTERN) continue
+
+    const needed = MIN_PER_PATTERN - count
+    // Find best candidates from the full library that aren't already in the filtered set
+    const candidates = allExercises
+      .filter((ex) => ex.movement_pattern === pattern && !filteredIds.has(ex.id))
+
+    // Score candidates against a synthetic slot for this pattern
+    const equipmentSet = new Set(equipment.map((e) => e.toLowerCase()))
+    const scored = candidates.map((ex) => {
+      let score = 0
+      // Equipment match
+      if (ex.is_bodyweight) score += 20
+      else if (ex.equipment_required.length === 0 || ex.equipment_required.every((eq) => equipmentSet.has(eq.toLowerCase()))) score += 20
+      // Difficulty match
+      const dist = difficultyDistance(ex.difficulty, difficulty)
+      if (dist === 0) score += 10
+      else if (dist === 1) score += 5
+      return { exercise: ex, score }
+    }).sort((a, b) => b.score - a.score)
+
+    const toAdd = scored.slice(0, needed).map((s) => s.exercise)
+    for (const ex of toAdd) {
+      additions.push(ex)
+      filteredIds.add(ex.id)
+    }
+
+    if (toAdd.length > 0) {
+      console.log(`[patternBalance] Added ${toAdd.length} ${pattern} exercises (had ${count}, now ${count + toAdd.length})`)
+    }
+  }
+
+  if (additions.length > 0) {
+    return [...filtered, ...additions]
+  }
+  return filtered
+}
+
+// ─── Heuristic filter (fallback) ────────────────────────────────────────────
 
 export function scoreAndFilterExercises(
   exercises: CompressedExercise[], skeleton: ProgramSkeleton,
@@ -75,6 +166,8 @@ export function scoreAndFilterExercises(
   const difficulty = analysis.training_age_category === "novice" ? "beginner"
     : analysis.training_age_category === "elite" ? "advanced"
     : analysis.training_age_category
+
+  const maxExercises = getMaxExercises(exercises.length)
 
   const slotGroups = new Map<string, ExerciseSlot>()
   for (const week of skeleton.weeks) {
@@ -100,17 +193,30 @@ export function scoreAndFilterExercises(
     return (exerciseMaxScores.get(b.id) ?? 0) - (exerciseMaxScores.get(a.id) ?? 0)
   })
 
-  const cutoff = Math.min(MAX_EXERCISES, sorted.length)
-  const filtered = sorted.slice(0, cutoff)
-  if (filtered.length < MIN_EXERCISES) return exercises
+  const cutoff = Math.min(maxExercises, sorted.length)
+  let filtered = sorted.slice(0, cutoff)
+  if (filtered.length < MIN_EXERCISES) filtered = exercises
+
+  // Ensure pattern balance
+  filtered = ensurePatternBalance(filtered, exercises, skeleton, equipment, difficulty)
+
+  console.log(`[scoreAndFilter] ${exercises.length} → ${filtered.length} exercises (max: ${maxExercises})`)
   return filtered
 }
+
+// ─── Semantic filter (primary) ──────────────────────────────────────────────
 
 export async function semanticFilterExercises(
   exercises: CompressedExercise[], skeleton: ProgramSkeleton,
   equipment: string[], analysis: ProfileAnalysis
 ): Promise<CompressedExercise[]> {
   const supabase = getSupabase()
+  const maxExercises = getMaxExercises(exercises.length)
+
+  const difficulty = analysis.training_age_category === "novice" ? "beginner"
+    : analysis.training_age_category === "elite" ? "advanced"
+    : analysis.training_age_category
+
   const slotGroups = new Map<string, ExerciseSlot>()
   for (const week of skeleton.weeks) {
     for (const day of week.days) {
@@ -121,6 +227,9 @@ export async function semanticFilterExercises(
     }
   }
 
+  // Scale match_count per slot based on library size — more exercises = wider net
+  const matchCountPerSlot = Math.max(30, Math.min(60, Math.round(exercises.length * 0.05)))
+
   const matchedIds = new Set<string>()
   for (const slot of slotGroups.values()) {
     try {
@@ -128,8 +237,8 @@ export async function semanticFilterExercises(
       const queryEmbedding = await embedText(queryText)
       const { data } = await supabase.rpc("match_exercises", {
         query_embedding: JSON.stringify(queryEmbedding),
-        match_threshold: 0.2,
-        match_count: 25,
+        match_threshold: 0.15,
+        match_count: matchCountPerSlot,
       })
       for (const match of data ?? []) matchedIds.add(match.id)
     } catch (err) {
@@ -137,12 +246,19 @@ export async function semanticFilterExercises(
     }
   }
 
+  console.log(`[semanticFilter] ${matchedIds.size} unique matches from ${slotGroups.size} slot groups (${matchCountPerSlot}/slot)`)
+
   if (matchedIds.size < MIN_EXERCISES) {
     console.log(`[semanticFilter] Only ${matchedIds.size} matches — falling back to heuristic filter`)
     return scoreAndFilterExercises(exercises, skeleton, equipment, analysis)
   }
 
-  const filtered = exercises.filter((ex) => matchedIds.has(ex.id))
-  if (filtered.length > MAX_EXERCISES) return filtered.slice(0, MAX_EXERCISES)
+  let filtered = exercises.filter((ex) => matchedIds.has(ex.id))
+  if (filtered.length > maxExercises) filtered = filtered.slice(0, maxExercises)
+
+  // Ensure pattern balance — pull in missing patterns from full library
+  filtered = ensurePatternBalance(filtered, exercises, skeleton, equipment, difficulty)
+
+  console.log(`[semanticFilter] Final: ${filtered.length} exercises (max: ${maxExercises})`)
   return filtered
 }

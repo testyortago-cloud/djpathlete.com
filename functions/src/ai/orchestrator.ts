@@ -415,7 +415,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
           // Merge with original filtered set, dedup, cap at 150
           const mergedIds = new Set(filtered.map((e) => e.id))
           const additional = expanded.filter((e) => !mergedIds.has(e.id))
-          const mergedExercises = [...filtered, ...additional].slice(0, 150)
+          const mergedExercises = [...filtered, ...additional].slice(0, 200)
           retryLibrary = formatExerciseLibrary(mergedExercises)
           retryFilteredCount = mergedExercises.length
           console.log(`[orchestrator:sync] Smart expansion: ${filtered.length} → ${mergedExercises.length} exercises for retry (capped at 150)`)
