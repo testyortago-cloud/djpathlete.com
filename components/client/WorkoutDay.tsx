@@ -380,11 +380,14 @@ function ExerciseCard({
     e.preventDefault()
     if (submitting) return
 
-    // Build set_details array — convert display values back to kg
+    // Fallback reps from the prescribed value (lower end of range e.g. "8" from "8-12")
+    const fallbackReps = parseInt(prescribedReps, 10) || 0
+
+    // Build set_details array — use prescribed reps as default when empty
     const setDetails = setRows.map((row, i) => ({
       set_number: i + 1,
       weight_kg: row.weight ? toKg(parseFloat(row.weight)) : null,
-      reps: parseInt(row.reps, 10) || 0,
+      reps: parseInt(row.reps, 10) || fallbackReps,
       rpe: row.rpe,
     }))
 
@@ -393,7 +396,7 @@ function ExerciseCard({
     const totalReps = setDetails.map((s) => s.reps)
     const avgReps = totalReps.length > 0
       ? Math.round(totalReps.reduce((a, b) => a + b, 0) / totalReps.length)
-      : 0
+      : fallbackReps
     const lastSetRpe = setDetails[setDetails.length - 1]?.rpe ?? null
 
     setSubmitting(true)
@@ -879,7 +882,7 @@ function ExerciseCard({
                   <Button
                     type="submit"
                     size="sm"
-                    disabled={submitting || !hasValidSets}
+                    disabled={submitting}
                     className="gap-1"
                   >
                     {submitting ? (
@@ -917,6 +920,11 @@ function ExerciseCard({
                     Cancel
                   </Button>
                 </div>
+                {!hasValidSets && prescribedReps && (
+                  <p className="text-[10px] text-muted-foreground/70 -mt-1">
+                    Saving without details will log {numSets} x {prescribedReps} as prescribed
+                  </p>
+                )}
               </form>
             </motion.div>
           )}
