@@ -334,7 +334,7 @@ export function BlogGenerateDialog({
 
             {/* Prompt */}
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">
+              <label className="block text-sm font-semibold text-foreground mb-1.5">
                 What should the post be about?
               </label>
               <textarea
@@ -345,7 +345,7 @@ export function BlogGenerateDialog({
                 }}
                 placeholder="e.g., Recovery strategies for youth athletes after competition season"
                 rows={3}
-                className="w-full px-3 py-2 rounded-lg border border-border bg-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                className="w-full px-3 py-2.5 rounded-lg border border-border bg-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary placeholder:text-muted-foreground/60"
               />
               <p className="text-xs text-muted-foreground mt-1">
                 {prompt.length}/2000
@@ -377,7 +377,7 @@ export function BlogGenerateDialog({
               </button>
 
               {refsOpen && (
-                <div className="mt-2 space-y-3 border border-border rounded-lg p-3 bg-surface/50">
+                <div className="mt-2 space-y-3 border border-border rounded-lg p-3 bg-surface/50 overflow-hidden">
                   <p className="text-xs text-muted-foreground">
                     Add links, notes, or documents for the AI to reference. If
                     left empty, the AI will auto-research from PubMed and
@@ -419,10 +419,10 @@ export function BlogGenerateDialog({
                         {urls.map((url, idx) => (
                           <div
                             key={idx}
-                            className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-white border border-border text-xs group"
+                            className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-white border border-border text-xs group min-w-0 overflow-hidden"
                           >
                             <Link className="size-3 text-muted-foreground shrink-0" />
-                            <span className="truncate flex-1 text-muted-foreground">
+                            <span className="truncate flex-1 min-w-0 text-muted-foreground">
                               {url}
                             </span>
                             <button
@@ -517,10 +517,10 @@ export function BlogGenerateDialog({
                         {refFiles.map((file, idx) => (
                           <div
                             key={idx}
-                            className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-white border border-border text-xs group"
+                            className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-white border border-border text-xs group min-w-0 overflow-hidden"
                           >
                             <FileText className="size-3 text-muted-foreground shrink-0" />
-                            <span className="truncate flex-1">
+                            <span className="truncate flex-1 min-w-0">
                               {file.name}
                             </span>
                             <span className="text-muted-foreground text-[10px] shrink-0">
@@ -548,20 +548,21 @@ export function BlogGenerateDialog({
 
             {/* Tone */}
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1.5">
+              <label className="block text-sm font-semibold text-foreground mb-2">
                 Tone
               </label>
-              <div className="flex gap-1 bg-surface rounded-lg p-1">
-                {tones.map((t) => (
+              <div className="grid grid-cols-3 gap-0 rounded-lg border border-border overflow-hidden">
+                {tones.map((t, idx) => (
                   <button
                     key={t.value}
                     type="button"
                     onClick={() => setTone(t.value)}
                     className={cn(
-                      "flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
+                      "px-3 py-2.5 text-sm font-medium transition-all",
+                      idx < tones.length - 1 && "border-r border-border",
                       tone === t.value
-                        ? "bg-white text-primary shadow-sm"
-                        : "text-muted-foreground hover:text-foreground"
+                        ? "bg-primary/10 text-primary"
+                        : "bg-white text-muted-foreground hover:bg-surface hover:text-foreground"
                     )}
                   >
                     {t.label}
@@ -572,24 +573,28 @@ export function BlogGenerateDialog({
 
             {/* Length */}
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1.5">
+              <label className="block text-sm font-semibold text-foreground mb-2">
                 Length
               </label>
-              <div className="flex gap-1 bg-surface rounded-lg p-1">
-                {lengths.map((l) => (
+              <div className="grid grid-cols-3 gap-0 rounded-lg border border-border overflow-hidden">
+                {lengths.map((l, idx) => (
                   <button
                     key={l.value}
                     type="button"
                     onClick={() => setLength(l.value)}
                     className={cn(
-                      "flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
+                      "px-3 py-2.5 text-sm font-medium transition-all",
+                      idx < lengths.length - 1 && "border-r border-border",
                       length === l.value
-                        ? "bg-white text-primary shadow-sm"
-                        : "text-muted-foreground hover:text-foreground"
+                        ? "bg-primary/10 text-primary"
+                        : "bg-white text-muted-foreground hover:bg-surface hover:text-foreground"
                     )}
                   >
                     {l.label}
-                    <span className="block text-[10px] text-muted-foreground font-normal">
+                    <span className={cn(
+                      "block text-[11px] font-normal mt-0.5",
+                      length === l.value ? "text-primary/70" : "text-muted-foreground"
+                    )}>
                       {l.desc}
                     </span>
                   </button>
@@ -602,7 +607,7 @@ export function BlogGenerateDialog({
               type="button"
               onClick={handleGenerate}
               disabled={prompt.length < 10 || submitting}
-              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
+              className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-all disabled:opacity-40 disabled:cursor-not-allowed mt-1"
             >
               {submitting ? (
                 <Loader2 className="size-4 animate-spin" />
