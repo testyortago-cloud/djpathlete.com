@@ -109,13 +109,14 @@ async function updateAssignmentTotalWeeks(assignmentId: string, newTotal: number
 
 // ─── Week Architect Prompt ──────────────────────────────────────────────────
 
-const WEEK_ARCHITECT_PROMPT = `You are a performance system architect designing the NEXT WEEK of an ongoing training program. You have access to the full program history and the client's actual training logs.
+const WEEK_ARCHITECT_PROMPT = `You are a performance system architect designing the NEXT WEEK of an ongoing training program. You have access to the full program history (week-by-week progression summary + detailed recent weeks) and the client's actual training logs.
 
 Your job is to design ONE week that:
 1. Follows the program's established split, periodization, and structure
 2. Progresses appropriately based on the client's actual performance data
 3. Maintains exercise continuity for compound lifts while rotating accessories
 4. Respects the admin coach's specific instructions (if provided)
+5. Builds on the program's progression arc — review the full week-by-week summary to understand themes, muscle emphasis shifts, and training phases across the entire program history
 
 Given the program context, client progress data, and coach instructions, output a JSON object with this structure — it MUST contain exactly ONE week in the "weeks" array:
 
@@ -163,14 +164,73 @@ Rules:
    - If it's time for a deload (typically every 3-4 weeks of hard training), reduce volume by 40-50%.
 3. Keep PRIMARY and SECONDARY COMPOUND slots consistent with previous weeks (same movement pattern and target muscles) for progressive overload tracking.
 4. ROTATE ACCESSORY and ISOLATION slots — use different movement patterns or target muscles than the immediately preceding 2 weeks.
-5. Respect the coach's instructions — they override default progression logic.
+5. Respect the coach's instructions — they override default progression logic. The coach may specify:
+   - A THEME or FOCUS AREA (e.g., "lower leg focus", "glute emphasis", "no equipment this week")
+   - A SHIFT in emphasis while maintaining a theme (e.g., "keep lower leg theme but add glutes")
+   - Equipment constraints for this specific week (e.g., "bodyweight only", "bands only")
+   When a theme is specified, bias slot target_muscles and movement_patterns toward that theme while still maintaining a balanced program.
 6. Session time budget: keep the same number of exercises per day as previous weeks unless the coach says otherwise.
 7. Use the same slot_id format: "w{week_number}d{day_of_week}s{slot_index}".
-8. Output ONLY the JSON object, no additional text.`
+8. Review the FULL PROGRAM PROGRESSION summary — understand the arc of the entire program (what muscles were emphasized each week, how themes evolved) before designing this week.
+9. Output ONLY the JSON object, no additional text.`
 
 // ─── Single-week skeleton schema (reuses programSkeletonSchema) ─────────────
 
 const weekSkeletonSchema = programSkeletonSchema
+
+// ─── Week Focus Summary Builder ─────────────────────────────────────────────
+
+/**
+ * Builds a compact summary of each week's focus: primary muscles hit,
+ * movement patterns used, and exercise count. This gives the AI full
+ * progression context without sending every exercise detail for every week.
+ */
+function buildWeekFocusSummary(
+  exercises: Record<string, unknown>[]
+): { week: number; days: number; exercises: number; primary_muscles: string[]; movement_patterns: string[]; exercise_names: string[] }[] {
+  const weekMap = new Map<number, {
+    days: Set<number>
+    muscles: Map<string, number>
+    patterns: Map<string, number>
+    names: string[]
+  }>()
+
+  for (const pe of exercises) {
+    const week = pe.week_number as number
+    if (!weekMap.has(week)) {
+      weekMap.set(week, { days: new Set(), muscles: new Map(), patterns: new Map(), names: [] })
+    }
+    const w = weekMap.get(week)!
+    w.days.add(pe.day_of_week as number)
+
+    const ex = pe.exercises as { name?: string; movement_pattern?: string; primary_muscles?: string[] } | undefined
+    if (ex?.name) w.names.push(ex.name)
+    if (ex?.movement_pattern) {
+      w.patterns.set(ex.movement_pattern, (w.patterns.get(ex.movement_pattern) ?? 0) + 1)
+    }
+    if (ex?.primary_muscles) {
+      for (const m of ex.primary_muscles) {
+        w.muscles.set(m, (w.muscles.get(m) ?? 0) + 1)
+      }
+    }
+  }
+
+  return Array.from(weekMap.entries())
+    .sort(([a], [b]) => a - b)
+    .map(([week, data]) => ({
+      week,
+      days: data.days.size,
+      exercises: data.names.length,
+      primary_muscles: Array.from(data.muscles.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 6)
+        .map(([m]) => m),
+      movement_patterns: Array.from(data.patterns.entries())
+        .sort((a, b) => b[1] - a[1])
+        .map(([p]) => p),
+      exercise_names: data.names,
+    }))
+}
 
 // ─── Pipeline ───────────────────────────────────────────────────────────────
 
@@ -234,10 +294,16 @@ export async function generateWeekSync(
   const programExerciseIds = [...new Set(existingExercises.map((pe: { exercise_id: string }) => pe.exercise_id))]
   const recentProgress = await getRecentProgress(request.client_id, programExerciseIds)
 
-  // Build compact program structure summary (last 2 weeks only to save tokens)
-  const lastTwoWeeks = existingExercises.filter(
-    (pe: { week_number: number }) => pe.week_number >= Math.max(1, (program.duration_weeks ?? 1) - 1)
+  // Build compact summary of ALL weeks (focus/theme only) for full progression context
+  const weekFocusSummary = buildWeekFocusSummary(existingExercises)
+
+  // Detailed exercises from last 3 weeks for structure matching
+  const recentWeeksDetailed = existingExercises.filter(
+    (pe: { week_number: number }) => pe.week_number >= Math.max(1, (program.duration_weeks ?? 1) - 2)
   )
+
+  // Keep lastTwoWeeks alias for exercise rotation logic below
+  const lastTwoWeeks = recentWeeksDetailed
 
   const programSummary = {
     name: program.name,
@@ -249,8 +315,8 @@ export async function generateWeekSync(
     category: program.category,
   }
 
-  // Format existing weeks as compact structure
-  const weekStructure = lastTwoWeeks.map((pe: Record<string, unknown>) => ({
+  // Format recent weeks as detailed structure
+  const weekStructure = recentWeeksDetailed.map((pe: Record<string, unknown>) => ({
     week: pe.week_number,
     day: pe.day_of_week,
     order: pe.order_index,
@@ -301,7 +367,10 @@ export async function generateWeekSync(
   const architectMessage = `## Program Overview
 ${JSON.stringify(programSummary)}
 
-## Recent Program Structure (last 2 weeks)
+## Full Program Progression (week-by-week summary)
+${weekFocusSummary.length > 0 ? JSON.stringify(weekFocusSummary) : "No previous weeks — this is Week 1."}
+
+## Detailed Recent Weeks (last ${Math.min(3, program.duration_weeks ?? 1)} weeks — exercises, sets, reps)
 ${JSON.stringify(weekStructure)}
 
 ## Client Profile
@@ -316,7 +385,9 @@ ${newWeekNumber}
 ## Coach Instructions
 ${request.admin_instructions || "No specific instructions — use standard progression logic based on the client's performance data."}
 
-Design Week ${newWeekNumber} for this program. The week MUST have week_number=${newWeekNumber}. Match the existing program's split (${program.split_type}), periodization (${program.periodization}), and training days.`
+Design Week ${newWeekNumber} for this program. The week MUST have week_number=${newWeekNumber}. Match the existing program's split (${program.split_type}), periodization (${program.periodization}), and training days.
+
+IMPORTANT: Review the full program progression summary above. If the coach's instructions reference themes, focus areas, or progressions from previous weeks, ensure this week builds on that trajectory logically. The coach may ask to maintain a theme while shifting emphasis (e.g., "keep lower leg focus but add glute work") — honor this by blending continuity with the new direction.`
 
   const architectResult = await callAgent<z.infer<typeof weekSkeletonSchema>>(
     WEEK_ARCHITECT_PROMPT,
