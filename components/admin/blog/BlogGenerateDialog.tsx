@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { Sparkles, Loader2, AlertCircle, ChevronDown, X, Plus, Link, FileText } from "lucide-react"
+import { Sparkles, Loader2, AlertCircle, ChevronDown, X, Plus, Link, FileText, Upload } from "lucide-react"
 import { toast } from "sonner"
 import {
   Dialog,
@@ -133,24 +133,103 @@ export function BlogGenerateDialog({
     setUrlInput("")
   }
 
+  const [extracting, setExtracting] = useState(false)
+  const [dragging, setDragging] = useState(false)
+  const dragCounter = useRef(0)
+
+  async function processFiles(files: File[]) {
+    for (const file of files) {
+      if (refFiles.length >= 5) {
+        toast.error("Maximum 5 files allowed")
+        break
+      }
+
+      const allowed = /\.(pdf|doc|docx|txt|md|csv)$/i.test(file.name)
+      if (!allowed) {
+        toast.error(`${file.name} — unsupported file type`)
+        continue
+      }
+
+      const isDocument = /\.(pdf|doc|docx)$/i.test(file.name)
+
+      if (isDocument) {
+        if (file.size > 15 * 1024 * 1024) {
+          toast.error(`${file.name} exceeds 15MB limit`)
+          continue
+        }
+        setExtracting(true)
+        try {
+          const formData = new FormData()
+          formData.append("file", file)
+          const res = await fetch("/api/upload/extract-text", {
+            method: "POST",
+            body: formData,
+          })
+          if (!res.ok) {
+            const data = await res.json()
+            throw new Error(data.error ?? "Extraction failed")
+          }
+          const { name, content, truncated } = await res.json()
+          setRefFiles((prev) => [...prev, { name, content }])
+          if (truncated) {
+            toast.info(`${file.name} was truncated to 50,000 characters`)
+          }
+        } catch (err) {
+          toast.error(err instanceof Error ? err.message : "Failed to extract text")
+        } finally {
+          setExtracting(false)
+        }
+      } else {
+        if (file.size > 5 * 1024 * 1024) {
+          toast.error(`${file.name} exceeds 5MB limit`)
+          continue
+        }
+        const content = await file.text()
+        setRefFiles((prev) => [...prev, { name: file.name, content }])
+      }
+    }
+  }
+
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const fileList = e.target.files
     if (!fileList) return
-
-    for (const file of Array.from(fileList)) {
-      if (refFiles.length >= 3) {
-        toast.error("Maximum 3 files allowed")
-        break
-      }
-      if (file.size > 50 * 1024) {
-        toast.error(`${file.name} exceeds 50KB limit`)
-        continue
-      }
-      const content = await file.text()
-      setRefFiles((prev) => [...prev, { name: file.name, content }])
-    }
-
+    await processFiles(Array.from(fileList))
     e.target.value = ""
+  }
+
+  function handleDragEnter(e: React.DragEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounter.current++
+    if (e.dataTransfer.types.includes("Files")) {
+      setDragging(true)
+    }
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounter.current--
+    if (dragCounter.current === 0) {
+      setDragging(false)
+    }
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+  }
+
+  async function handleDrop(e: React.DragEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounter.current = 0
+    setDragging(false)
+    if (refFiles.length >= 5 || extracting) return
+    const files = Array.from(e.dataTransfer.files)
+    if (files.length > 0) {
+      await processFiles(files)
+    }
   }
 
   const hasReferences = urls.length > 0 || notes.trim().length > 0 || refFiles.length > 0
@@ -390,20 +469,49 @@ export function BlogGenerateDialog({
                     <input
                       ref={fileInputRef}
                       type="file"
-                      accept=".txt,.md,.csv"
+                      accept=".txt,.md,.csv,.pdf,.doc,.docx"
                       multiple
                       onChange={handleFileUpload}
                       className="hidden"
                     />
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={refFiles.length >= 3}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-dashed border-border text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors disabled:opacity-40"
+                    <div
+                      onDragEnter={handleDragEnter}
+                      onDragLeave={handleDragLeave}
+                      onDragOver={handleDragOver}
+                      onDrop={handleDrop}
+                      onClick={() => {
+                        if (refFiles.length < 5 && !extracting) fileInputRef.current?.click()
+                      }}
+                      className={cn(
+                        "flex flex-col items-center justify-center gap-1.5 px-4 py-4 rounded-lg border-2 border-dashed cursor-pointer transition-colors",
+                        dragging
+                          ? "border-primary bg-primary/5 text-primary"
+                          : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/30",
+                        (refFiles.length >= 5 || extracting) && "opacity-40 cursor-not-allowed"
+                      )}
                     >
-                      <Plus className="size-3" />
-                      Upload .txt, .md, or .csv
-                    </button>
+                      {extracting ? (
+                        <>
+                          <Loader2 className="size-5 animate-spin" />
+                          <span className="text-xs">Extracting text...</span>
+                        </>
+                      ) : dragging ? (
+                        <>
+                          <Upload className="size-5" />
+                          <span className="text-xs font-medium">Drop files here</span>
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="size-5" />
+                          <span className="text-xs">
+                            Drag & drop or <span className="text-primary font-medium underline underline-offset-2">browse</span>
+                          </span>
+                          <span className="text-[10px] text-muted-foreground">
+                            PDF, DOC, TXT, MD, or CSV
+                          </span>
+                        </>
+                      )}
+                    </div>
                     {refFiles.length > 0 && (
                       <div className="mt-1.5 space-y-1">
                         {refFiles.map((file, idx) => (
