@@ -190,7 +190,7 @@ export default async function ClientDashboardPage() {
           heading="No programs yet"
           description="You don't have any active programs. Browse available programs to get started on your training journey."
           ctaLabel="Browse Programs"
-          ctaHref="/programs"
+          ctaHref="/client/programs"
         />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

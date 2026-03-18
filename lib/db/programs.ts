@@ -107,9 +107,18 @@ export async function getTargetedPrograms(userId: string) {
 
 export async function deleteProgram(id: string) {
   const supabase = getClient()
+
+  // Clear assessment references to this program before deletion
+  const { error: assessmentError } = await supabase
+    .from("assessment_results")
+    .update({ triggered_program_id: null })
+    .eq("triggered_program_id", id)
+  if (assessmentError) throw assessmentError
+
+  // Hard delete — CASCADE removes program_exercises and program_assignments
   const { error } = await supabase
     .from("programs")
-    .update({ is_active: false })
+    .delete()
     .eq("id", id)
   if (error) throw error
 }

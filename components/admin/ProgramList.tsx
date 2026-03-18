@@ -423,7 +423,7 @@ export function ProgramList({ programs, athleteCounts = {} }: ProgramListProps) 
           <DialogHeader>
             <DialogTitle>Delete Program</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete &ldquo;{deleteTarget?.name}&rdquo;? This action can be undone by an administrator.
+              Are you sure you want to delete &ldquo;{deleteTarget?.name}&rdquo;? This will permanently remove the program, all its exercises, and all client assignments. This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

@@ -89,7 +89,7 @@ export default async function ClientPaymentsPage() {
           heading="No purchases yet"
           description="Your payment history will appear here once you purchase a program. Browse our programs to get started!"
           ctaLabel="Browse Programs"
-          ctaHref="/programs"
+          ctaHref="/client/programs"
         />
       ) : (
         <div className="bg-white rounded-xl border border-border overflow-hidden">
