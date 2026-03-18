@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/ui/empty-state"
 import { Clock, CalendarDays, ShoppingBag, CheckCircle2, ArrowRight, Star, History } from "lucide-react"
 import type { Program, ProgramAssignment } from "@/types/database"
 
+export const dynamic = "force-dynamic"
 export const metadata = { title: "Browse Programs | DJP Athlete" }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -53,11 +54,27 @@ export default async function ClientProgramsPage() {
   let availablePrograms: Program[] = []
 
   try {
-    const [assignments, publicPrograms, targetedPrograms] = await Promise.all([
+    // Fetch independently so a single failure doesn't wipe all data
+    const [assignmentsResult, publicResult, targetedResult] = await Promise.allSettled([
       getAssignments(userId),
       getPublicPrograms(),
       getTargetedPrograms(userId),
     ])
+
+    const assignments = assignmentsResult.status === "fulfilled" ? assignmentsResult.value : []
+    const publicPrograms = publicResult.status === "fulfilled" ? publicResult.value : []
+    const targetedPrograms = targetedResult.status === "fulfilled" ? targetedResult.value : []
+
+    // Log any failures for debugging
+    if (assignmentsResult.status === "rejected") console.error("[browse] getAssignments failed:", assignmentsResult.reason)
+    if (publicResult.status === "rejected") console.error("[browse] getPublicPrograms failed:", publicResult.reason)
+    if (targetedResult.status === "rejected") console.error("[browse] getTargetedPrograms failed:", targetedResult.reason)
+
+    // Debug: log what each query returned
+    console.log("[browse] userId:", userId)
+    console.log("[browse] assignments:", (assignments as Array<Record<string, unknown>>).length, (assignments as Array<Record<string, unknown>>).map((a) => ({ program_id: a.program_id, status: a.status, payment_status: a.payment_status })))
+    console.log("[browse] publicPrograms:", publicPrograms.length)
+    console.log("[browse] targetedPrograms:", targetedPrograms.length, targetedPrograms.map((p) => ({ id: p.id, name: p.name })))
 
     const typedAssignments = assignments as AssignmentWithProgram[]
     currentPrograms = typedAssignments.filter((a) => a.status === "active" && a.payment_status !== "pending")
@@ -72,15 +89,15 @@ export default async function ClientProgramsPage() {
 
     // Merge public + targeted + pending-payment programs, deduplicate, exclude owned
     const mergedMap = new Map<string, Program>()
-    for (const p of publicPrograms) mergedMap.set(p.id, p)
-    for (const p of targetedPrograms) mergedMap.set(p.id, p)
+    for (const p of publicPrograms) mergedMap.set(p.id, p as Program)
+    for (const p of targetedPrograms) mergedMap.set(p.id, p as Program)
     // Include programs from pending-payment assignments so they appear in "Available for Purchase"
     for (const a of typedAssignments) {
       if (a.payment_status === "pending" && a.programs) mergedMap.set(a.program_id, a.programs)
     }
     availablePrograms = Array.from(mergedMap.values()).filter((p) => !assignedIds.has(p.id))
-  } catch {
-    // Render gracefully with empty data
+  } catch (err) {
+    console.error("[browse] Unexpected error loading programs:", err)
   }
 
   return (
