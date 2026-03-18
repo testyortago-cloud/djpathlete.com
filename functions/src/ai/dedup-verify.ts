@@ -33,9 +33,11 @@ export interface PriorWeekContext {
 
 // ─── Constants ──────────────────────────────────────────────────────────────────
 
-const MAX_REPETITION_SCORE = 0.5
-const ANCHOR_ROLES = new Set(["primary_compound", "secondary_compound", "warm_up", "cool_down"])
-const VARIETY_ROLES = new Set(["accessory", "isolation"])
+const MAX_REPETITION_SCORE = 0.05
+/** Only warm-up/cool-down repeat every week — compounds must rotate too */
+const ANCHOR_ROLES = new Set(["warm_up", "cool_down"])
+/** ALL working exercise roles must vary across weeks */
+const VARIETY_ROLES = new Set(["primary_compound", "secondary_compound", "accessory", "isolation"])
 
 // ─── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -108,7 +110,7 @@ export function buildPriorContextFromExistingExercises(
     lines.push("")
 
     if (anchor_exercises.size > 0) {
-      lines.push("COMPOUND ANCHORS (MUST reuse these exact exercises for matching compound slots):")
+      lines.push("WARM-UP/COOL-DOWN ANCHORS (may reuse these):")
       for (const [id, name] of anchor_exercises) {
         lines.push(`  - ${name} (${id})`)
       }
@@ -116,11 +118,10 @@ export function buildPriorContextFromExistingExercises(
     }
 
     if (used_accessory_exercises.size > 0) {
-      lines.push("ACCESSORY/ISOLATION EXERCISES ALREADY USED (MUST choose DIFFERENT exercises for these slot types):")
+      lines.push("EXERCISES ALREADY USED — MUST choose DIFFERENT exercises for ALL working slots (compounds, accessories, isolations):")
       for (const [groupKey, exerciseIds] of used_accessory_exercises) {
         lines.push(`  ${groupKey}:`)
         for (const id of exerciseIds) {
-          // Find name from exercises
           const match = existingExercises.find((e) => e.exercise_id === id)
           lines.push(`    - AVOID: ${match?.exercise_name ?? id} (${id})`)
         }
@@ -131,12 +132,15 @@ export function buildPriorContextFromExistingExercises(
     lines.push(`Total unique exercises used so far: ${exercise_week_map.size}`)
     lines.push("")
     lines.push("RULES FOR USING THIS CONTEXT:")
-    lines.push("- For compound anchor slots: MUST reuse the same exercises listed above.")
-    lines.push("- For accessory and isolation slots: MUST select exercises NOT in the AVOID list above.")
-    lines.push("- CRITICAL: Alternative exercises MUST still match the slot's movement_pattern, target_muscles, and role.")
+    lines.push("- EVERY working exercise (compounds, accessories, isolations) MUST be different each week. Target < 3% repetition.")
+    lines.push("- For compound slots: pick a DIFFERENT exercise that trains the same movement pattern and muscles.")
+    lines.push("  Example: Week 1 Barbell Back Squat → Week 2 Front Squat → Week 3 Goblet Squat (all squat pattern, all quads/glutes)")
+    lines.push("  Example: Week 1 Barbell Bench Press → Week 2 Dumbbell Bench Press → Week 3 Incline Barbell Press")
+    lines.push("- For accessory/isolation slots: pick a DIFFERENT exercise. Vary by equipment, angle, or stance.")
+    lines.push("- CRITICAL: Alternatives MUST still match the slot's movement_pattern, target_muscles, and role.")
     lines.push("  Do NOT pick a random exercise just to avoid repetition — the alternative must serve the same training purpose.")
-    lines.push("  Example: if avoiding Dumbbell Lateral Raise for an isolation/push/[shoulders] slot, pick Cable Lateral Raise or Machine Lateral Raise — NOT a bicep curl.")
-    lines.push("- If the exercise library has NO suitable alternatives for a slot type, you MAY reuse an exercise but MUST explain why in substitution_notes.")
+    lines.push("- Only warm-up and cool-down exercises may repeat across weeks.")
+    lines.push("- If the exercise library has NO suitable alternatives, you MAY reuse but MUST explain why in substitution_notes.")
     lines.push("")
   }
 
@@ -204,7 +208,7 @@ export function buildPriorWeekContext(
     lines.push("")
 
     if (anchor_exercises.size > 0) {
-      lines.push("COMPOUND ANCHORS (MUST reuse these exact exercises for matching compound slots):")
+      lines.push("WARM-UP/COOL-DOWN ANCHORS (may reuse these):")
       for (const [id, name] of anchor_exercises) {
         lines.push(`  - ${name} (${id})`)
       }
@@ -212,7 +216,7 @@ export function buildPriorWeekContext(
     }
 
     if (used_accessory_exercises.size > 0) {
-      lines.push("ACCESSORY/ISOLATION EXERCISES ALREADY USED (MUST choose DIFFERENT exercises for these slot types):")
+      lines.push("EXERCISES ALREADY USED — MUST choose DIFFERENT exercises for ALL working slots (compounds, accessories, isolations):")
       for (const [groupKey, exerciseIds] of used_accessory_exercises) {
         const [role, pattern, muscles] = groupKey.split("|")
         const exerciseNames: string[] = []
@@ -236,12 +240,15 @@ export function buildPriorWeekContext(
     lines.push(`Total unique exercises used so far: ${exercise_week_map.size}`)
     lines.push("")
     lines.push("RULES FOR USING THIS CONTEXT:")
-    lines.push("- For compound anchor slots: MUST reuse the same exercises listed above.")
-    lines.push("- For accessory and isolation slots: MUST select exercises NOT in the AVOID list above.")
-    lines.push("- CRITICAL: Alternative exercises MUST still match the slot's movement_pattern, target_muscles, and role.")
+    lines.push("- EVERY working exercise (compounds, accessories, isolations) MUST be different each week. Target < 3% repetition.")
+    lines.push("- For compound slots: pick a DIFFERENT exercise that trains the same movement pattern and muscles.")
+    lines.push("  Example: Week 1 Barbell Back Squat → Week 2 Front Squat → Week 3 Goblet Squat (all squat pattern, all quads/glutes)")
+    lines.push("  Example: Week 1 Barbell Bench Press → Week 2 Dumbbell Bench Press → Week 3 Incline Barbell Press")
+    lines.push("- For accessory/isolation slots: pick a DIFFERENT exercise. Vary by equipment, angle, or stance.")
+    lines.push("- CRITICAL: Alternatives MUST still match the slot's movement_pattern, target_muscles, and role.")
     lines.push("  Do NOT pick a random exercise just to avoid repetition — the alternative must serve the same training purpose.")
-    lines.push("  Example: if avoiding Dumbbell Lateral Raise for an isolation/push/[shoulders] slot, pick Cable Lateral Raise or Machine Lateral Raise — NOT a bicep curl.")
-    lines.push("- If the exercise library has NO suitable alternatives for a slot type, you MAY reuse an exercise but MUST explain why in substitution_notes.")
+    lines.push("- Only warm-up and cool-down exercises may repeat across weeks.")
+    lines.push("- If the exercise library has NO suitable alternatives, you MAY reuse but MUST explain why in substitution_notes.")
     lines.push("")
   }
 

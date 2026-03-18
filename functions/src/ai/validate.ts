@@ -195,19 +195,19 @@ export function validateProgram(
     }
   }
 
-  // Exercise diversity — accessories and isolation must rotate across weeks
+  // Exercise diversity — ALL working exercises must rotate across weeks (< 3% repetition target)
   if (skeleton.weeks.length >= 2) {
     // Group assignments by a "slot signature" = day_of_week + order_index + role
-    // For compound slots: same exercise expected (progressive overload)
-    // For accessory/isolation: different exercises expected across week groups
+    // ALL working roles (compounds, accessories, isolations) must rotate
+    // Only warm_up and cool_down are exempt
     const slotSignatureExercises = new Map<string, Map<number, string>>()
 
     for (const assigned of assignment.assignments) {
       const slot = slotMap.get(assigned.slot_id)
       if (!slot) continue
 
-      // Only check accessory and isolation roles for rotation
-      if (slot.role !== "accessory" && slot.role !== "isolation") continue
+      // Check ALL working roles for rotation — only warm_up and cool_down are exempt
+      if (slot.role === "warm_up" || slot.role === "cool_down") continue
 
       // Build a signature from day + order position (comparable across weeks)
       const sig = `d${slot.day}_${slot.role}_${slot.movement}`

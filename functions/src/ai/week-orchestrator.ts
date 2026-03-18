@@ -170,8 +170,8 @@ Rules:
    - If the client hit their targets comfortably (RPE < prescribed), increase load or volume slightly.
    - If the client struggled (RPE higher than prescribed, missed reps), maintain or slightly reduce.
    - If it's time for a deload (typically every 3-4 weeks of hard training), reduce volume by 40-50%.
-3. Keep PRIMARY and SECONDARY COMPOUND slots consistent with previous weeks (same movement pattern and target muscles) for progressive overload tracking.
-4. ROTATE ACCESSORY and ISOLATION slots — use different movement patterns or target muscles than the immediately preceding 2 weeks.
+3. ROTATE ALL WORKING EXERCISES every week — compounds, accessories, and isolations MUST all use DIFFERENT exercises than prior weeks. For compound slots, pick a different exercise that trains the SAME movement pattern and muscles (e.g., Week 1 Back Squat → Week 2 Front Squat). Target < 3% repetition score.
+4. ACCESSORY and ISOLATION slots — additionally vary the movement patterns or target muscles every 2-3 weeks for even more variety.
 5. Respect the coach's instructions — they override default progression logic. The coach may specify:
    - A THEME or FOCUS AREA (e.g., "lower leg focus", "glute emphasis", "no equipment this week")
    - A SHIFT in emphasis while maintaining a theme (e.g., "keep lower leg theme but add glutes")
@@ -508,7 +508,7 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
       ? `\n\nCOACH INSTRUCTIONS FOR THIS WEEK (READ CAREFULLY — these override default selection logic):\n${request.admin_instructions}\n\nWhen selecting exercises, prioritize choices that align with the coach's instructions above. For example:\n- If the coach says "glute focus" → pick glute-dominant exercises for accessory/isolation slots (hip thrusts, glute bridges, cable kickbacks)\n- If the coach says "bodyweight only" → only select exercises where is_bodyweight=true or equipment_required is empty\n- If the coach says "deload" → pick lighter/simpler variations of the usual exercises\n- If the coach references a specific exercise or muscle group → prioritize it in your selections`
       : ""
 
-    const selectorMessage = `Program Skeleton (Week ${newWeekNumber}):\n${JSON.stringify(skeleton)}\n\nConstraints:\n${constraintsContext}\n\nExercise Library (${filtered.length} exercises):\n${exerciseLibrary}\n\n${priorContext.prompt_text}${coachInstructionsSection}\n\nIMPORTANT: For PRIMARY_COMPOUND and SECONDARY_COMPOUND slots, REUSE the compound anchor exercises listed above for progressive overload continuity. For ACCESSORY and ISOLATION slots, select DIFFERENT exercises than those in the AVOID list above — but alternatives MUST still match the slot's movement_pattern and target_muscles.${feedbackSection}`
+    const selectorMessage = `Program Skeleton (Week ${newWeekNumber}):\n${JSON.stringify(skeleton)}\n\nConstraints:\n${constraintsContext}\n\nExercise Library (${filtered.length} exercises):\n${exerciseLibrary}\n\n${priorContext.prompt_text}${coachInstructionsSection}\n\nIMPORTANT: EVERY working exercise (compounds, accessories, isolations) MUST be DIFFERENT from prior weeks. Use the AVOID list above — do NOT reuse any exercise_id from that list. For compound slots, pick a DIFFERENT exercise that trains the SAME movement pattern and muscles. WARM-UP and COOL-DOWN slots may stay consistent.${feedbackSection}`
 
     try {
       console.log(`[week-orchestrator] Exercise selector attempt ${attempt + 1}/${MAX_RETRIES + 1}...`)

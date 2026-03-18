@@ -295,7 +295,7 @@ Rules:
    - If a normal session has 6 working exercises, deload has 3-4
    - Keep the main compound lifts, drop most accessories and all isolation
 18. EXERCISE SLOT VARIATION ACROSS WEEKS — this is CRITICAL for program quality. Do NOT copy-paste the same day structure for every week:
-   - PRIMARY COMPOUND and SECONDARY COMPOUND slots: keep the SAME role, movement_pattern, and target_muscles across all weeks. These anchors allow progressive overload on consistent lifts (e.g., every week 1 push day has a "primary_compound / push / [chest, triceps, shoulders]" slot).
+   - PRIMARY COMPOUND and SECONDARY COMPOUND slots: keep the SAME role, movement_pattern, and target_muscles across all weeks, but the Exercise Selector will assign DIFFERENT exercises each week that match the same pattern. The slot structure stays consistent (e.g., every week's push day has a "primary_compound / push / [chest, triceps, shoulders]" slot) but the specific exercise rotates.
    - ACCESSORY and ISOLATION slots: VARY the movement_pattern and/or target_muscles every 2-3 weeks to force exercise rotation:
      * For programs 1-4 weeks: split into TWO rotation blocks. Weeks 1-2 use accessory set A, weeks 3-4 use accessory set B with different movement patterns or target muscles for those slots.
        Example for a 4-week upper push day:
@@ -359,22 +359,23 @@ Rules:
 4. Equipment constraints: only assign exercises whose equipment_required is available to the client. Be resourceful — if a cable machine isn't available, a resistance band variation of the same movement may exist in the library.
 5. Injury constraints: do not assign exercises that would aggravate known injuries. But think like a coach — find alternatives that train the same muscle group through a pain-free range of motion. A shoulder injury doesn't mean "no chest work" — it might mean "floor press instead of bench press" or "neutral grip instead of pronated."
 6. No duplicate exercises on the same day — each exercise_id should appear at most once per day.
-7. EXERCISE CONTINUITY vs ROTATION across weeks — this is a PRIMARY concern, NOT optional. Programs that repeat the same exercises every week WILL BE REJECTED by validation:
-   - PRIMARY COMPOUND and SECONDARY COMPOUND slots: assign the SAME exercise to matching slots across ALL weeks. If w1d1s2 and w2d1s2 are both "primary_compound / squat / [quadriceps, glutes]", they MUST get the same exercise (e.g., both get Barbell Back Squat). This is essential for progressive overload — the client tracks and progresses these lifts week over week.
-   - ACCESSORY and ISOLATION slots: you MUST assign DIFFERENT exercise_id values across week groups. This is validated programmatically — if the same exercise_id appears in an accessory or isolation slot for 3+ consecutive weeks, the program FAILS validation and must be regenerated. Concretely:
-     * Split the program into 2-week rotation blocks
-     * Block 1 (weeks 1-2): one set of accessories (e.g., Dumbbell Lateral Raise id=abc, Tricep Pushdown id=def)
-     * Block 2 (weeks 3-4): DIFFERENT accessories for the same muscle targets (e.g., Cable Lateral Raise id=ghi, Overhead Tricep Extension id=jkl)
+7. EXERCISE ROTATION across weeks — this is a PRIMARY concern, NOT optional. Programs that repeat the same exercises every week WILL BE REJECTED by validation (target < 3% repetition score):
+   - ALL WORKING EXERCISES (compounds, accessories, isolations) MUST be DIFFERENT each week. This means primary_compound, secondary_compound, accessory, and isolation slots ALL rotate every week. If w1d1s2 is "primary_compound / squat" with Barbell Back Squat, then w2d1s2 MUST use a DIFFERENT squat exercise (e.g., Front Squat, Goblet Squat, Safety Bar Squat).
+   - For COMPOUND rotation: pick a DIFFERENT exercise that trains the SAME movement pattern and target muscles. This is critical — the alternative must still be a compound lift for the same pattern.
+     * Example: Week 1 Barbell Back Squat → Week 2 Front Squat → Week 3 Goblet Squat → Week 4 Leg Press
+     * Example: Week 1 Flat Barbell Bench Press → Week 2 Incline Dumbbell Press → Week 3 Close-Grip Bench Press → Week 4 Floor Press
+     * Vary by: equipment (barbell → dumbbell → machine), angle (flat → incline → decline), stance (bilateral → unilateral), or grip (overhand → neutral → close)
+   - For ACCESSORY and ISOLATION rotation: you MUST assign DIFFERENT exercise_id values each week. This is validated programmatically — if the same exercise_id appears in any working slot for 2+ consecutive weeks, the program FAILS validation.
      * When selecting the rotation, vary by: equipment (dumbbell → cable → machine), angle (flat → incline → decline), stance (bilateral → unilateral), or grip (overhand → neutral → underhand)
-     * NEVER assign the same exercise_id to an accessory/isolation slot across all weeks
-   - DIVERSITY METRIC: Your program must use at least 25% unique exercises relative to total slots. A 4-week program with 8 exercises per day = ~32 slots per week = ~128 total slots should use at least 32 unique exercises. More is better.
-   - WARM-UP and COOL-DOWN: can stay consistent across all weeks.
+     * NEVER assign the same exercise_id to any working slot across consecutive weeks
+   - DIVERSITY METRIC: Your program must achieve < 3% repetition score. A 4-week program should use as many unique exercises as possible across weeks. More variety is better.
+   - WARM-UP and COOL-DOWN: can stay consistent across all weeks (these are the ONLY slots exempt from rotation).
    - For BLOCK periodization (different phases across weeks):
      * Hypertrophy phases: prefer exercises suited for higher reps — machines, cables, dumbbells, isolation work, exercises with good mind-muscle connection
      * Strength phases: prefer exercises suited for heavy loading — barbell compounds, competition lifts, movements with stable base. Reduce isolation work, increase compound assistance.
-     * Deload weeks: keep ONLY the main compound lifts from regular weeks. Use lighter/simpler variations for any remaining slots. Do not introduce new exercises during deload.
+     * Deload weeks: use lighter/simpler variations for all slots. Do not introduce new complex exercises during deload.
    - Within the same week: exercises CAN repeat across different days with different VARIATIONS (e.g., Back Squat Monday, Front Squat Thursday). But NEVER assign the exact same exercise_id on two days in the same week.
-   - This rule is NON-NEGOTIABLE. A program where every week has identical exercises is a template, not a coached program. The compound anchors provide consistency for tracking progress, while accessory rotation provides variety, addresses muscles from multiple angles, and prevents overuse patterns.
+   - This rule is NON-NEGOTIABLE. A program where any working exercises repeat across weeks is a template, not a coached program. Exercise rotation across ALL slots provides variety, addresses muscles from multiple angles, prevents overuse patterns, and keeps the program engaging.
 8. Warm-up slot selection — think TARGETED MOVEMENT PREP, not just "easy exercises":
    - Choose warm-up exercises that ACTIVATE the muscles used in the session's main lifts
    - A push day warm-up should include band pull-aparts and shoulder activation, not just "bodyweight squats"
@@ -389,11 +390,11 @@ Rules:
    - Modification notes for exercises near injury areas (e.g., "use neutral grip if shoulder feels tight", "reduce ROM if lower back rounds")
    - Technique-specific notes (e.g., for dropsets: "drop weight 20-30% immediately, no rest, push to near-failure")
 14. WEEK-BY-WEEK GENERATION MODE — you may receive a SINGLE week's skeleton at a time, along with a "PREVIOUSLY ASSIGNED EXERCISES" section and "COACH INSTRUCTIONS" section. When these sections are present:
-   - COMPOUND ANCHORS: you MUST reuse the exact same exercises listed under "COMPOUND ANCHORS" for matching compound slots (primary_compound, secondary_compound).
-   - ACCESSORY/ISOLATION AVOID LIST: you MUST choose DIFFERENT exercises for accessory and isolation slots than those listed under "AVOID". This is NON-NEGOTIABLE.
+   - EVERY WORKING EXERCISE (compounds, accessories, isolations) MUST be DIFFERENT from prior weeks. You will receive an "AVOID" list — you MUST NOT reuse ANY exercise_id from that list. This is NON-NEGOTIABLE and applies to ALL working slots including primary_compound and secondary_compound.
+   - For COMPOUND slots: pick a DIFFERENT exercise that trains the SAME movement pattern and muscles. Example: if Week 1 used Barbell Back Squat for a squat/quad slot, Week 2 should use Front Squat or Goblet Squat — still a squat compound, but a different exercise.
    - CRITICAL: Alternative exercises MUST still match the slot's movement_pattern, target_muscles, and role. Do NOT pick a random exercise just to avoid repetition — the alternative must serve the SAME training purpose. Vary by equipment (dumbbell→cable→machine), angle (flat→incline→decline), or laterality (bilateral→unilateral).
    - COACH INSTRUCTIONS: When coach instructions are provided, they are the HIGHEST PRIORITY signal for exercise selection. Read them carefully and select exercises that align with the coach's intent (focus areas, themes, equipment constraints, specific requests).
-   - WARM-UP and COOL-DOWN slots: keep consistent with prior weeks.
+   - WARM-UP and COOL-DOWN slots: keep consistent with prior weeks (these are the ONLY exempt slots).
    - If the exercise library has very few options for a slot type and all suitable alternatives have been used, you MAY reuse an exercise but MUST explain why in substitution_notes.`
 
 // ─── Agent 4: Validation Agent ───────────────────────────────────────────────
