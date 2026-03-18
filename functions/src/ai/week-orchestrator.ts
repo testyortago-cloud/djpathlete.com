@@ -12,8 +12,11 @@ import { EXERCISE_SELECTOR_PROMPT } from "./prompts.js"
 import { validateProgram } from "./validate.js"
 import { formatExerciseLibrary } from "./exercise-context.js"
 import { getExercisesForAI } from "./program-chat-tools.js"
+import { buildPriorContextFromExistingExercises, verifyWeekAgainstExisting } from "./dedup-verify.js"
 import { getSupabase } from "../lib/supabase.js"
 import { z } from "zod"
+
+const MAX_RETRIES = 2
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -421,7 +424,7 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
     return { new_week_number: newWeekNumber, exercises_added: 0, token_usage: tokenUsage, duration_ms: Date.now() - startTime }
   }
 
-  // ── Step 3: Agent 2 — Exercise Selector ────────────────────────────────
+  // ── Step 3: Agent 2 — Exercise Selector with Dedup Verification ────────
 
   await updateJobProgress("selecting_exercises", 4, `Selecting exercises for ${totalSlots} slots`)
 
@@ -447,40 +450,102 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
   }
   const exerciseLibrary = formatExerciseLibrary(filtered)
 
-  // Include context about which exercises were used in recent weeks to help with rotation
-  const recentExerciseIds = [...new Set(lastTwoWeeks.map((pe: { exercise_id: string }) => pe.exercise_id))]
-  const recentExerciseNames = lastTwoWeeks
-    .reduce((acc: { id: string; name: string }[], pe: Record<string, unknown>) => {
-      const id = pe.exercise_id as string
-      if (!acc.find((e) => e.id === id)) {
-        acc.push({ id, name: ((pe.exercises as { name?: string })?.name ?? "Unknown") })
-      }
-      return acc
-    }, [])
+  // Build dedup context from ALL existing program exercises (not just last 2 weeks)
+  const priorExercisesForDedup = existingExercises.map((pe: Record<string, unknown>) => {
+    const ex = pe.exercises as { name?: string; movement_pattern?: string; primary_muscles?: string[] } | undefined
+    // Infer role from order_index: 0 = warm_up, 1-2 = compounds, rest = accessory/isolation
+    const orderIdx = pe.order_index as number
+    let inferredRole = "accessory"
+    if (orderIdx === 0) inferredRole = "warm_up"
+    else if (orderIdx <= 2) inferredRole = "primary_compound"
+    // Build slot group for dedup matching
+    const slotGroup = `${inferredRole}|${ex?.movement_pattern ?? "unknown"}|${(ex?.primary_muscles ?? []).sort().join(",")}`
+    return {
+      exercise_id: pe.exercise_id as string,
+      exercise_name: ex?.name ?? "Unknown",
+      week_number: pe.week_number as number,
+      role: inferredRole,
+      slot_group: slotGroup,
+    }
+  })
+
+  const priorContext = buildPriorContextFromExistingExercises(priorExercisesForDedup)
+  console.log(`[week-orchestrator] Dedup context: ${priorContext.anchor_exercises.size} anchors, ${priorContext.used_accessory_exercises.size} accessory groups, ${priorContext.exercise_week_map.size} total unique exercises`)
 
   const constraintsContext = JSON.stringify({
     available_equipment: availableEquipment,
     client_difficulty: profile?.experience_level ?? "intermediate",
-    recent_exercises_to_rotate: recentExerciseNames,
   })
 
-  const selectorMessage = `Program Skeleton:\n${JSON.stringify(skeleton)}\n\nConstraints:\n${constraintsContext}\n\nExercise Library (${filtered.length} exercises):\n${exerciseLibrary}\n\nIMPORTANT: For PRIMARY_COMPOUND and SECONDARY_COMPOUND slots, try to reuse exercises from recent weeks for progressive overload continuity. For ACCESSORY and ISOLATION slots, select DIFFERENT exercises than those listed in recent_exercises_to_rotate.`
+  // Exercise Selector with dedup retry loop
+  let assignment: ExerciseAssignment | null = null
 
-  const selectorResult = await callAgent<ExerciseAssignment>(
-    EXERCISE_SELECTOR_PROMPT,
-    selectorMessage,
-    exerciseAssignmentSchema,
-    { maxTokens: 8192, cacheSystemPrompt: true }
-  )
-  tokenUsage.selector = selectorResult.tokens_used
-  const assignment = selectorResult.content
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    let feedbackSection = ""
+    if (attempt > 0 && assignment) {
+      // Verify the previous attempt's dedup compliance
+      const dedupResult = verifyWeekAgainstExisting(
+        assignment.assignments,
+        skeleton.weeks[0],
+        priorContext
+      )
+      if (!dedupResult.pass) {
+        const repetitionIssues = dedupResult.issues
+          .filter((i) => i.severity === "error")
+          .map((i) => `- ${i.message}`)
+          .join("\n")
+        feedbackSection = `\n\nEXERCISE REPETITION DETECTED — you MUST choose DIFFERENT exercises:\n${repetitionIssues}\n\nSelect alternative exercises from the library that serve the same purpose but are NOT the same as those listed above.`
+      }
+    }
 
-  // Strip hallucinated exercise IDs
-  const validCount = assignment.assignments.length
-  assignment.assignments = assignment.assignments.filter((a) => exerciseIdSet.has(a.exercise_id))
-  const strippedCount = validCount - assignment.assignments.length
-  if (strippedCount > 0) {
-    console.warn(`[week-orchestrator] Stripped ${strippedCount} hallucinated exercise IDs`)
+    const selectorMessage = `Program Skeleton (Week ${newWeekNumber}):\n${JSON.stringify(skeleton)}\n\nConstraints:\n${constraintsContext}\n\nExercise Library (${filtered.length} exercises):\n${exerciseLibrary}\n\n${priorContext.prompt_text}\n\nIMPORTANT: For PRIMARY_COMPOUND and SECONDARY_COMPOUND slots, REUSE the compound anchor exercises listed above for progressive overload continuity. For ACCESSORY and ISOLATION slots, select DIFFERENT exercises than those in the AVOID list above.${feedbackSection}`
+
+    try {
+      console.log(`[week-orchestrator] Exercise selector attempt ${attempt + 1}/${MAX_RETRIES + 1}...`)
+      const selectorResult = await callAgent<ExerciseAssignment>(
+        EXERCISE_SELECTOR_PROMPT,
+        selectorMessage,
+        exerciseAssignmentSchema,
+        { maxTokens: 8192, cacheSystemPrompt: true }
+      )
+      tokenUsage.selector += selectorResult.tokens_used
+      assignment = selectorResult.content
+
+      // Strip hallucinated exercise IDs
+      const validCount = assignment.assignments.length
+      assignment.assignments = assignment.assignments.filter((a) => exerciseIdSet.has(a.exercise_id))
+      const strippedCount = validCount - assignment.assignments.length
+      if (strippedCount > 0) {
+        console.warn(`[week-orchestrator] Stripped ${strippedCount} hallucinated exercise IDs`)
+      }
+
+      // Verify dedup compliance
+      const dedupResult = verifyWeekAgainstExisting(
+        assignment.assignments,
+        skeleton.weeks[0],
+        priorContext
+      )
+      console.log(`[week-orchestrator] Dedup verification: ${dedupResult.summary}`)
+
+      if (dedupResult.pass) break
+
+      // If dedup fails but no retries left, accept the result with a warning
+      if (attempt === MAX_RETRIES) {
+        console.warn(`[week-orchestrator] Dedup still failing after ${MAX_RETRIES + 1} attempts — accepting with repetition warnings`)
+        break
+      }
+
+      console.log(`[week-orchestrator] Dedup failed, retrying...`)
+    } catch (agentError) {
+      console.error(`[week-orchestrator] Selector attempt ${attempt + 1} error:`, agentError instanceof Error ? agentError.message : agentError)
+      if (attempt === MAX_RETRIES) {
+        throw new Error(`Exercise selection failed after ${MAX_RETRIES + 1} attempts: ${agentError instanceof Error ? agentError.message : "Unknown error"}`)
+      }
+    }
+  }
+
+  if (!assignment) {
+    throw new Error("Failed to generate exercise assignments")
   }
 
   // ── Step 4: Save to database ───────────────────────────────────────────
