@@ -816,6 +816,7 @@ export function AiProgramChatDialog({
           if (!o) setAssignProgramId(null)
         }}
         programId={assignProgramId}
+        priceCents={null}
         clients={clients}
         assignedUserIds={[]}
       />

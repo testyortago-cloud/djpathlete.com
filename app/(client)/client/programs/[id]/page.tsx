@@ -77,7 +77,7 @@ export default async function ClientProgramDetailPage({ params }: Props) {
   }
 
   const assignment = await getAssignmentByUserAndProgram(session.user.id, program.id)
-  const owned = !!assignment
+  const owned = !!assignment && assignment.payment_status !== "pending"
   const isTargeted = program.target_user_id === session.user.id
 
   return (

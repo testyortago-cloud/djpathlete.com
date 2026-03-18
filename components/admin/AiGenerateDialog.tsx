@@ -587,6 +587,7 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
           }
         }}
         programId={result.program_id}
+        priceCents={priceDollars ? Math.round(parseFloat(priceDollars) * 100) : null}
         clients={clients as User[]}
         assignedUserIds={[]}
       />

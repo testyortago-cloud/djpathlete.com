@@ -371,6 +371,7 @@ export function ProgramFormDialog({
           if (!o) handleDialogClose(false)
         }}
         programId={savedProgramId}
+        priceCents={priceDollars ? Math.round(parseFloat(priceDollars) * 100) : null}
         clients={clients as User[]}
         assignedUserIds={[]}
       />

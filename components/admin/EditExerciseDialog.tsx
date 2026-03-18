@@ -234,7 +234,7 @@ export function EditExerciseDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) tour.close(); onOpenChange(o) }}>
-      <DialogContent ref={dialogRef} className="sm:max-w-md">
+      <DialogContent ref={dialogRef} className="sm:max-w-md max-h-[85vh] flex flex-col overflow-hidden">
         <DialogHeader>
           <div className="flex items-center gap-2">
             <DialogTitle>Edit Exercise Parameters</DialogTitle>
@@ -248,7 +248,7 @@ export function EditExerciseDialog({
         {(() => {
           const catFields = getCategoryFields(programExercise.exercises.category as ExerciseCategory[])
           return (
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form id="edit-exercise-form" onSubmit={handleSubmit} className="space-y-4 overflow-y-auto min-h-0 pr-1">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="edit-sets">Sets *</Label>
@@ -406,22 +406,23 @@ export function EditExerciseDialog({
                 />
               </div>
 
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => onOpenChange(false)}
-                  disabled={isSubmitting}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting ? "Saving..." : "Save Changes"}
-                </Button>
-              </DialogFooter>
             </form>
           )
         })()}
+
+        <DialogFooter className="shrink-0 border-t border-border pt-4">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={isSubmitting}
+          >
+            Cancel
+          </Button>
+          <Button type="submit" form="edit-exercise-form" disabled={isSubmitting}>
+            {isSubmitting ? "Saving..." : "Save Changes"}
+          </Button>
+        </DialogFooter>
         <FormTour {...tour} />
       </DialogContent>
     </Dialog>

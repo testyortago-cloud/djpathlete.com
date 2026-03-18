@@ -22,7 +22,8 @@ export async function POST(
     }
 
     const programData = await getProgramById(id)
-    const { user_ids, start_date, notes } = result.data
+    const { user_ids, start_date, notes, complimentary } = result.data
+    const isPaid = (programData.price_cents ?? 0) > 0
 
     let assigned = 0
     let skipped = 0
@@ -46,6 +47,7 @@ export async function POST(
           status: "active",
           current_week: 1,
           total_weeks: programData.duration_weeks ?? null,
+          payment_status: isPaid && !complimentary ? "pending" : "not_required",
         })
 
         assigned++

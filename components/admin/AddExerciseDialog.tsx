@@ -390,7 +390,8 @@ export function AddExerciseDialog({
             </div>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-4 overflow-y-auto min-h-0">
+          <>
+          <form id="add-exercise-form" onSubmit={handleSubmit} className="space-y-4 overflow-y-auto min-h-0 pr-1">
             {(() => {
               const catFields = getCategoryFields(selectedExercise!.category as ExerciseCategory[])
               return (
@@ -517,23 +518,25 @@ export function AddExerciseDialog({
                     />
                   </div>
 
-                  <DialogFooter>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => resetAndClose(false)}
-                      disabled={isSubmitting}
-                    >
-                      Cancel
-                    </Button>
-                    <Button type="submit" disabled={isSubmitting}>
-                      {isSubmitting ? "Adding..." : "Add Exercise"}
-                    </Button>
-                  </DialogFooter>
                 </>
               )
             })()}
           </form>
+
+          <DialogFooter className="shrink-0 border-t border-border pt-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => resetAndClose(false)}
+              disabled={isSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" form="add-exercise-form" disabled={isSubmitting}>
+              {isSubmitting ? "Adding..." : "Add Exercise"}
+            </Button>
+          </DialogFooter>
+          </>
         )}
         <FormTour {...tour} />
       </DialogContent>

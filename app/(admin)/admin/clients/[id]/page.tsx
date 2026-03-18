@@ -48,6 +48,7 @@ import {
   parseProfileSummary,
   hasQuestionnaireData,
 } from "@/lib/profile-utils"
+import { UnassignButton } from "@/components/admin/UnassignButton"
 import { ClientDetailHeader } from "./ClientDetailHeader"
 import type {
   Program,
@@ -243,6 +244,9 @@ function ProgramsSection({
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">
                   End Date
                 </th>
+                <th className="text-right px-4 py-3 font-medium text-muted-foreground">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -271,6 +275,14 @@ function ProgramsSection({
                     {assignment.end_date
                       ? formatDate(assignment.end_date)
                       : "Ongoing"}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    {assignment.status === "active" && (
+                      <UnassignButton
+                        assignmentId={assignment.id}
+                        programName={assignment.programs?.name ?? "this program"}
+                      />
+                    )}
                   </td>
                 </tr>
               ))}

@@ -12,6 +12,7 @@ interface ProgramHeaderProps {
   program: Program
   clients: User[]
   assignedUserIds: string[]
+  assignmentMap: Record<string, string>
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -70,7 +71,7 @@ function formatPrice(cents: number | null): string {
   return `$${(cents / 100).toFixed(2)}`
 }
 
-export function ProgramHeader({ program, clients, assignedUserIds }: ProgramHeaderProps) {
+export function ProgramHeader({ program, clients, assignedUserIds, assignmentMap }: ProgramHeaderProps) {
   const [editOpen, setEditOpen] = useState(false)
   const [assignOpen, setAssignOpen] = useState(false)
 
@@ -150,8 +151,10 @@ export function ProgramHeader({ program, clients, assignedUserIds }: ProgramHead
         open={assignOpen}
         onOpenChange={setAssignOpen}
         programId={program.id}
+        priceCents={program.price_cents}
         clients={clients}
         assignedUserIds={assignedUserIds}
+        assignmentMap={assignmentMap}
       />
     </>
   )

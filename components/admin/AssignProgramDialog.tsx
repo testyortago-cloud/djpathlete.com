@@ -3,7 +3,7 @@
 import { useState, useRef, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { Search, Check, UserCheck } from "lucide-react"
+import { Search, Check, UserCheck, UserMinus, DollarSign, Gift } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -22,26 +22,33 @@ interface AssignProgramDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   programId: string
+  priceCents: number | null
   clients: User[]
   assignedUserIds: string[]
+  assignmentMap?: Record<string, string>
 }
 
 export function AssignProgramDialog({
   open,
   onOpenChange,
   programId,
+  priceCents,
   clients,
   assignedUserIds,
+  assignmentMap = {},
 }: AssignProgramDialogProps) {
   const router = useRouter()
   const dialogRef = useRef<HTMLDivElement>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [unassigningId, setUnassigningId] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [search, setSearch] = useState("")
   const [startDate, setStartDate] = useState(
     () => new Date().toISOString().split("T")[0]
   )
   const [notes, setNotes] = useState("")
+  const [complimentary, setComplimentary] = useState(false)
+  const isPaid = (priceCents ?? 0) > 0
 
   const assignedSet = useMemo(() => new Set(assignedUserIds), [assignedUserIds])
 
@@ -70,6 +77,7 @@ export function AssignProgramDialog({
       setSelectedIds(new Set())
       setSearch("")
       setNotes("")
+      setComplimentary(false)
       setStartDate(new Date().toISOString().split("T")[0])
     }
     onOpenChange(o)
@@ -88,6 +96,7 @@ export function AssignProgramDialog({
           user_ids: Array.from(selectedIds),
           start_date: startDate,
           notes: notes || null,
+          complimentary,
         }),
       })
 
@@ -117,6 +126,27 @@ export function AssignProgramDialog({
       toast.error(err instanceof Error ? err.message : "Failed to assign program")
     } finally {
       setIsSubmitting(false)
+    }
+  }
+
+  async function handleUnassign(userId: string) {
+    const assignmentId = assignmentMap[userId]
+    if (!assignmentId) return
+    setUnassigningId(userId)
+    try {
+      const res = await fetch(`/api/admin/assignments/${assignmentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "cancelled" }),
+      })
+      if (!res.ok) throw new Error("Failed to unassign")
+      toast.success("Client unassigned from program")
+      handleClose(false)
+      router.refresh()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to unassign")
+    } finally {
+      setUnassigningId(null)
     }
   }
 
@@ -156,34 +186,63 @@ export function AssignProgramDialog({
                 const isAssigned = assignedSet.has(client.id)
                 const isSelected = selectedIds.has(client.id)
 
+                if (isAssigned) {
+                  return (
+                    <div
+                      key={client.id}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 text-left bg-muted/30"
+                    >
+                      <div className="flex items-center justify-center size-5 rounded border shrink-0 border-muted-foreground/30 bg-muted">
+                        <Check className="size-3" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium truncate opacity-50">
+                          {client.first_name} {client.last_name}
+                        </p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {client.email}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <Badge variant="outline" className="gap-1 text-[11px]">
+                          <UserCheck className="size-3" />
+                          Assigned
+                        </Badge>
+                        {assignmentMap[client.id] && (
+                          <button
+                            type="button"
+                            disabled={unassigningId === client.id}
+                            onClick={() => handleUnassign(client.id)}
+                            className="inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[11px] font-medium text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
+                          >
+                            <UserMinus className="size-3" />
+                            {unassigningId === client.id ? "..." : "Unassign"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                }
+
                 return (
                   <button
                     key={client.id}
                     type="button"
-                    disabled={isAssigned || isSubmitting}
+                    disabled={isSubmitting}
                     onClick={() => toggleClient(client.id)}
                     className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors ${
-                      isAssigned
-                        ? "opacity-50 cursor-not-allowed bg-muted/30"
-                        : isSelected
-                          ? "bg-primary/5"
-                          : "hover:bg-surface/50"
+                      isSelected ? "bg-primary/5" : "hover:bg-surface/50"
                     }`}
                   >
-                    {/* Checkbox */}
                     <div
                       className={`flex items-center justify-center size-5 rounded border shrink-0 transition-colors ${
-                        isAssigned
-                          ? "border-muted-foreground/30 bg-muted"
-                          : isSelected
-                            ? "bg-primary border-primary text-white"
-                            : "border-border bg-white"
+                        isSelected
+                          ? "bg-primary border-primary text-white"
+                          : "border-border bg-white"
                       }`}
                     >
-                      {(isSelected || isAssigned) && <Check className="size-3" />}
+                      {isSelected && <Check className="size-3" />}
                     </div>
-
-                    {/* Client info */}
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium truncate">
                         {client.first_name} {client.last_name}
@@ -192,14 +251,6 @@ export function AssignProgramDialog({
                         {client.email}
                       </p>
                     </div>
-
-                    {/* Already assigned badge */}
-                    {isAssigned && (
-                      <Badge variant="outline" className="shrink-0 gap-1 text-[11px]">
-                        <UserCheck className="size-3" />
-                        Assigned
-                      </Badge>
-                    )}
                   </button>
                 )
               })
@@ -239,6 +290,35 @@ export function AssignProgramDialog({
               className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 resize-none"
             />
           </div>
+
+          {/* Payment info for paid programs */}
+          {isPaid && (
+            <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-3">
+              <div className="flex items-center gap-2 text-sm">
+                <DollarSign className="size-4 text-muted-foreground" />
+                <span className="text-muted-foreground">
+                  This program costs{" "}
+                  <strong className="text-foreground">
+                    ${((priceCents ?? 0) / 100).toFixed(2)}
+                  </strong>
+                  . Clients will need to purchase before accessing workouts.
+                </span>
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={complimentary}
+                  onChange={(e) => setComplimentary(e.target.checked)}
+                  disabled={isSubmitting}
+                  className="size-4 rounded border-border accent-primary"
+                />
+                <Gift className="size-4 text-muted-foreground" />
+                <span className="text-sm font-medium">
+                  Complimentary — grant free access
+                </span>
+              </label>
+            </div>
+          )}
 
           <DialogFooter>
             <Button

@@ -25,11 +25,14 @@ export async function getAssignmentByUserAndProgram(
   programId: string
 ) {
   const supabase = getClient()
+  // Order so active assignments come first; use limit(1) to handle duplicates
   const { data, error } = await supabase
     .from("program_assignments")
     .select("*")
     .eq("user_id", userId)
     .eq("program_id", programId)
+    .order("status", { ascending: true }) // "active" < "cancelled"/"completed"
+    .limit(1)
     .maybeSingle()
   if (error) throw error
   return data as ProgramAssignment | null
@@ -60,6 +63,20 @@ export async function getActiveUserIdsForProgram(programId: string): Promise<str
   return (data ?? []).map((r) => r.user_id)
 }
 
+/** Get active assignments for a program with assignment IDs and user IDs. */
+export async function getActiveAssignmentsForProgram(
+  programId: string
+): Promise<{ id: string; user_id: string }[]> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("program_assignments")
+    .select("id, user_id")
+    .eq("program_id", programId)
+    .eq("status", "active")
+  if (error) throw error
+  return data ?? []
+}
+
 /** Get the first active assignment for a program (for AI week generation). */
 export async function getFirstActiveAssignmentForProgram(programId: string) {
   const supabase = getClient()
@@ -75,7 +92,7 @@ export async function getFirstActiveAssignmentForProgram(programId: string) {
   return data
 }
 
-/** Get the user's active assignment (most recent). */
+/** Get the user's active assignment (most recent, payment settled). */
 export async function getActiveAssignment(userId: string) {
   const supabase = getClient()
   const { data, error } = await supabase
@@ -83,6 +100,7 @@ export async function getActiveAssignment(userId: string) {
     .select("*")
     .eq("user_id", userId)
     .eq("status", "active")
+    .neq("payment_status", "pending")
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle()

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import type Stripe from "stripe"
 import { verifyWebhookSignature } from "@/lib/stripe"
 import { createPayment, getPaymentByStripeId, updatePayment } from "@/lib/db/payments"
-import { createAssignment } from "@/lib/db/assignments"
+import { createAssignment, getAssignmentByUserAndProgram, updateAssignment } from "@/lib/db/assignments"
 import { getUserById } from "@/lib/db/users"
 import { getProfileByUserId } from "@/lib/db/client-profiles"
 import { getProgramById } from "@/lib/db/programs"
@@ -55,21 +55,30 @@ export async function POST(request: Request) {
           metadata: { programId },
         })
 
-        // Fetch program to get duration_weeks for week tracking
-        const { getProgramById } = await import("@/lib/db/programs")
-        const purchasedProgram = await getProgramById(programId)
+        // Check for existing pending assignment (admin-assigned, awaiting payment)
+        const existingAssignment = await getAssignmentByUserAndProgram(userId, programId)
 
-        await createAssignment({
-          program_id: programId,
-          user_id: userId,
-          assigned_by: null,
-          start_date: new Date().toISOString().split("T")[0],
-          end_date: null,
-          status: "active",
-          notes: null,
-          current_week: 1,
-          total_weeks: purchasedProgram.duration_weeks ?? null,
-        })
+        if (existingAssignment && existingAssignment.payment_status === "pending") {
+          // Mark the pending assignment as paid
+          await updateAssignment(existingAssignment.id, { payment_status: "paid" })
+        } else if (!existingAssignment || existingAssignment.status !== "active") {
+          // Create new assignment for direct purchase
+          const { getProgramById } = await import("@/lib/db/programs")
+          const purchasedProgram = await getProgramById(programId)
+
+          await createAssignment({
+            program_id: programId,
+            user_id: userId,
+            assigned_by: null,
+            start_date: new Date().toISOString().split("T")[0],
+            end_date: null,
+            status: "active",
+            notes: null,
+            current_week: 1,
+            total_weeks: purchasedProgram.duration_weeks ?? null,
+            payment_status: "paid",
+          })
+        }
 
         // Sync purchase to GoHighLevel (non-blocking)
         try {

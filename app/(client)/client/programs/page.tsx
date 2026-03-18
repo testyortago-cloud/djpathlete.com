@@ -60,11 +60,15 @@ export default async function ClientProgramsPage() {
     ])
 
     const typedAssignments = assignments as AssignmentWithProgram[]
-    currentPrograms = typedAssignments.filter((a) => a.status === "active")
+    currentPrograms = typedAssignments.filter((a) => a.status === "active" && a.payment_status !== "pending")
     previousPrograms = typedAssignments.filter((a) => a.status === "completed")
 
-    // Build set of all assigned program IDs (active + completed) to exclude from available
-    const assignedIds = new Set(typedAssignments.map((a) => a.program_id))
+    // Build set of all assigned program IDs (active + completed, excluding pending payment) to exclude from available
+    const assignedIds = new Set(
+      typedAssignments
+        .filter((a) => a.payment_status !== "pending")
+        .map((a) => a.program_id)
+    )
 
     // Merge public + targeted, deduplicate, exclude assigned
     const mergedMap = new Map<string, Program>()

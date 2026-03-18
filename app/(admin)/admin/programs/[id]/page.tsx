@@ -5,7 +5,7 @@ import { getProgramById } from "@/lib/db/programs"
 import { getProgramExercises } from "@/lib/db/program-exercises"
 import { getExercises } from "@/lib/db/exercises"
 import { getClients } from "@/lib/db/users"
-import { getActiveUserIdsForProgram, getFirstActiveAssignmentForProgram } from "@/lib/db/assignments"
+import { getActiveAssignmentsForProgram, getFirstActiveAssignmentForProgram } from "@/lib/db/assignments"
 import { Badge } from "@/components/ui/badge"
 import { ProgramHeader } from "@/components/admin/ProgramHeader"
 import { ProgramBuilder } from "@/components/admin/ProgramBuilder"
@@ -35,13 +35,16 @@ export default async function ProgramBuilderPage({
     notFound()
   }
 
-  const [programExercises, exercises, clients, assignedUserIds, activeAssignment] = await Promise.all([
+  const [programExercises, exercises, clients, activeAssignments, activeAssignment] = await Promise.all([
     getProgramExercises(id),
     getExercises(),
     getClients(),
-    getActiveUserIdsForProgram(id),
+    getActiveAssignmentsForProgram(id),
     getFirstActiveAssignmentForProgram(id),
   ])
+
+  const assignedUserIds = activeAssignments.map((a) => a.user_id)
+  const assignmentMap = Object.fromEntries(activeAssignments.map((a) => [a.user_id, a.id]))
 
   const assignmentInfo = activeAssignment
     ? { assignmentId: activeAssignment.id, clientId: activeAssignment.user_id }
@@ -57,7 +60,7 @@ export default async function ProgramBuilderPage({
         Back to Programs
       </Link>
 
-      <ProgramHeader program={program} clients={clients} assignedUserIds={assignedUserIds} />
+      <ProgramHeader program={program} clients={clients} assignedUserIds={assignedUserIds} assignmentMap={assignmentMap} />
 
       {program.is_ai_generated && program.ai_generation_params && (
         <AiGenerationSummary params={program.ai_generation_params} />
