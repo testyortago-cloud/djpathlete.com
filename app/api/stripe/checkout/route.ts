@@ -35,8 +35,14 @@ export async function POST(request: Request) {
       )
     }
 
-    // Targeted programs can only be purchased by the targeted client
-    if (program.target_user_id && program.target_user_id !== session.user.id) {
+    // Check if user has an existing assignment
+    const existing = await getAssignmentByUserAndProgram(
+      session.user.id,
+      programId
+    )
+
+    // Targeted programs can only be purchased by the targeted client or someone with an assignment
+    if (program.target_user_id && program.target_user_id !== session.user.id && !existing) {
       return NextResponse.json(
         { error: "This program is not available for purchase." },
         { status: 403 }
@@ -50,12 +56,8 @@ export async function POST(request: Request) {
       )
     }
 
-    // Check if user already owns this program
-    const existing = await getAssignmentByUserAndProgram(
-      session.user.id,
-      programId
-    )
-    if (existing) {
+    // Block if user already owns (paid or not_required) — but allow if payment is still pending
+    if (existing && existing.payment_status !== "pending") {
       return NextResponse.json(
         { error: "You already own this program." },
         { status: 409 }
