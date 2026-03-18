@@ -566,7 +566,6 @@ async function seed() {
       created_by: ADMIN_ID,
       split_type: c.program_split,
       periodization: c.program_periodization,
-      target_user_id: cid,
     })
     if (progErr) throw new Error(`Program ${n}: ${progErr.message}`)
 

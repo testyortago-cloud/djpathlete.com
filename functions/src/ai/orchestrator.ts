@@ -45,7 +45,6 @@ export interface AiGenerationRequest {
   equipment_override?: string[]
   is_public?: boolean
   price_cents?: number
-  target_user_id?: string | null
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -497,7 +496,6 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
       is_active: true,
       created_by: requestedBy,
       price_cents: request.price_cents ?? null,
-      target_user_id: request.target_user_id ?? null,
     })
 
     // Insert exercises

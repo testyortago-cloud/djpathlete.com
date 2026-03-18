@@ -16,9 +16,7 @@ import { Label } from "@/components/ui/label"
 import {
   Globe,
   Lock,
-  UserCheck,
   CheckCircle2,
-  UserPlus,
   ChevronRight,
   ChevronLeft,
 } from "lucide-react"
@@ -32,12 +30,11 @@ import {
   PERIODIZATION_TYPES,
   type ProgramFormData,
 } from "@/lib/validators/program"
-import { AssignProgramDialog } from "@/components/admin/AssignProgramDialog"
 import { useFormTour } from "@/hooks/use-form-tour"
 import { FormTour } from "@/components/admin/FormTour"
 import { TourButton } from "@/components/admin/TourButton"
 import { getProgramTourSteps } from "@/lib/tour-steps"
-import type { Program, User } from "@/types/database"
+import type { Program } from "@/types/database"
 
 interface ProgramFormDialogProps {
   open: boolean
@@ -113,7 +110,7 @@ const STEPS = [
   { label: "Audience", number: 3 },
 ] as const
 
-type AudienceMode = "public" | "targeted" | "private"
+type AudienceMode = "public" | "private"
 
 const stepVariants = {
   enter: (dir: number) => ({ x: dir > 0 ? 40 : -40, opacity: 0 }),
@@ -156,30 +153,12 @@ export function ProgramFormDialog({
 
   // Audience state
   const [audience, setAudience] = useState<AudienceMode>(() => {
-    if (program?.target_user_id) return "targeted"
     if (program?.is_public) return "public"
     return "private"
   })
-  const [targetUserId, setTargetUserId] = useState<string | null>(program?.target_user_id ?? null)
-
-  // Clients
-  const [clients, setClients] = useState<{ id: string; first_name: string; last_name: string; email: string }[]>([])
-  const [loadingClients, setLoadingClients] = useState(false)
 
   // Post-save state
   const [savedProgramId, setSavedProgramId] = useState<string | null>(null)
-  const [showAssign, setShowAssign] = useState(false)
-
-  // Fetch clients when dialog opens
-  useEffect(() => {
-    if (!open) return
-    setLoadingClients(true)
-    fetch("/api/admin/users?role=client")
-      .then((res) => res.json())
-      .then((data) => setClients(Array.isArray(data?.users) ? data.users : []))
-      .catch(() => setClients([]))
-      .finally(() => setLoadingClients(false))
-  }, [open])
 
   // Sync state when switching between create/edit
   useEffect(() => {
@@ -195,8 +174,7 @@ export function ProgramFormDialog({
     setDurationWeeks(program?.duration_weeks?.toString() ?? "")
     setSessionsPerWeek(program?.sessions_per_week?.toString() ?? "")
     setPriceDollars(program?.price_cents != null ? (program.price_cents / 100).toFixed(2) : "")
-    setAudience(program?.target_user_id ? "targeted" : program?.is_public ? "public" : "private")
-    setTargetUserId(program?.target_user_id ?? null)
+    setAudience(program?.is_public ? "public" : "private")
     setStep(0)
     setDirection(1)
   }, [program])
@@ -217,10 +195,7 @@ export function ProgramFormDialog({
       if (!sessions || sessions < 1) { toast.error("Sessions per week must be at least 1"); return false }
     }
     if (s === 2) {
-      if (audience === "targeted" && !targetUserId) {
-        toast.error("Please select a client for targeted programs")
-        return false
-      }
+      // No additional validation needed — just public or private
     }
     return true
   }
@@ -287,7 +262,6 @@ export function ProgramFormDialog({
       split_type: splitType || null,
       periodization: periodization || null,
       is_public: audience === "public",
-      target_user_id: audience === "targeted" ? targetUserId : null,
     }
 
     const result = programFormSchema.safeParse(data)
@@ -349,7 +323,6 @@ export function ProgramFormDialog({
   function handleDialogClose(o: boolean) {
     if (!o) {
       setSavedProgramId(null)
-      setShowAssign(false)
       setStep(0)
       setDirection(1)
       tour.close()
@@ -359,23 +332,6 @@ export function ProgramFormDialog({
 
   function handleDone() {
     handleDialogClose(false)
-  }
-
-  // ─── Assign step (shown after successful save) ──────────────────────────
-
-  if (savedProgramId && showAssign) {
-    return (
-      <AssignProgramDialog
-        open={open}
-        onOpenChange={(o) => {
-          if (!o) handleDialogClose(false)
-        }}
-        programId={savedProgramId}
-        priceCents={priceDollars ? Math.round(parseFloat(priceDollars) * 100) : null}
-        clients={clients as User[]}
-        assignedUserIds={[]}
-      />
-    )
   }
 
   // ─── Success view ───────────────────────────────────────────────────────
@@ -393,18 +349,14 @@ export function ProgramFormDialog({
                 {isEditing ? "Program Updated" : "Program Created"}
               </h3>
               <p className="text-sm text-muted-foreground">
-                Would you like to assign clients to this program?
+                {audience === "private"
+                  ? "Head to the program detail page to assign clients."
+                  : "The program is now live in the store."}
               </p>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={handleDone}>
-              Done
-            </Button>
-            <Button onClick={() => setShowAssign(true)}>
-              <UserPlus className="size-4" />
-              Assign to Clients
-            </Button>
+            <Button onClick={handleDone}>Done</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -506,10 +458,6 @@ export function ProgramFormDialog({
                 <Step3Audience
                   audience={audience}
                   setAudience={setAudience}
-                  targetUserId={targetUserId}
-                  setTargetUserId={setTargetUserId}
-                  clients={clients}
-                  loadingClients={loadingClients}
                   disabled={isSubmitting}
                 />
               )}
@@ -811,18 +759,10 @@ function Step2Schedule({
 function Step3Audience({
   audience,
   setAudience,
-  targetUserId,
-  setTargetUserId,
-  clients,
-  loadingClients,
   disabled,
 }: {
   audience: AudienceMode
   setAudience: (v: AudienceMode) => void
-  targetUserId: string | null
-  setTargetUserId: (v: string | null) => void
-  clients: { id: string; first_name: string; last_name: string; email: string }[]
-  loadingClients: boolean
   disabled: boolean
 }) {
   return (
@@ -832,11 +772,11 @@ function Step3Audience({
       </p>
 
       <div id="audience-options" className="grid gap-2">
-        {/* Sell to All Clients */}
+        {/* Public */}
         <button
           type="button"
           disabled={disabled}
-          onClick={() => { setAudience("public"); setTargetUserId(null) }}
+          onClick={() => setAudience("public")}
           className={cn(
             "flex items-start gap-3 rounded-lg border-2 px-4 py-3 text-left transition-colors",
             audience === "public"
@@ -847,7 +787,7 @@ function Step3Audience({
           <Globe className={cn("size-5 shrink-0 mt-0.5", audience === "public" ? "text-primary" : "text-muted-foreground")} />
           <div>
             <p className={cn("text-sm font-medium", audience === "public" ? "text-primary" : "text-foreground")}>
-              Sell to Everyone
+              Public
             </p>
             <p className="text-xs text-muted-foreground leading-snug">
               Available in the store for any client to purchase
@@ -855,61 +795,11 @@ function Step3Audience({
           </div>
         </button>
 
-        {/* Sell to One Client */}
-        <div
-          className={cn(
-            "rounded-lg border-2 transition-colors",
-            audience === "targeted"
-              ? "border-primary bg-primary/5"
-              : "border-border hover:border-muted-foreground/30"
-          )}
-        >
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={() => setAudience("targeted")}
-            className="flex items-start gap-3 px-4 py-3 text-left w-full"
-          >
-            <UserCheck className={cn("size-5 shrink-0 mt-0.5", audience === "targeted" ? "text-primary" : "text-muted-foreground")} />
-            <div>
-              <p className={cn("text-sm font-medium", audience === "targeted" ? "text-primary" : "text-foreground")}>
-                Sell to Specific Client
-              </p>
-              <p className="text-xs text-muted-foreground leading-snug">
-                Only visible to one client in their store
-              </p>
-            </div>
-          </button>
-
-          {/* Client selector — inside the card, aligned with the text */}
-          {audience === "targeted" && (
-            <div className="px-4 pb-3 pl-[48px] space-y-1.5">
-              <Label htmlFor="target_user_id" className="text-xs">Select Client *</Label>
-              <select
-                id="target_user_id"
-                value={targetUserId ?? ""}
-                onChange={(e) => setTargetUserId(e.target.value || null)}
-                disabled={disabled || loadingClients}
-                className={selectClass}
-              >
-                <option value="" disabled>
-                  {loadingClients ? "Loading clients..." : "Choose a client"}
-                </option>
-                {clients.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.first_name} {c.last_name} — {c.email}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-        </div>
-
-        {/* Assign Directly (Free) */}
+        {/* Private */}
         <button
           type="button"
           disabled={disabled}
-          onClick={() => { setAudience("private"); setTargetUserId(null) }}
+          onClick={() => setAudience("private")}
           className={cn(
             "flex items-start gap-3 rounded-lg border-2 px-4 py-3 text-left transition-colors",
             audience === "private"
@@ -920,10 +810,10 @@ function Step3Audience({
           <Lock className={cn("size-5 shrink-0 mt-0.5", audience === "private" ? "text-primary" : "text-muted-foreground")} />
           <div>
             <p className={cn("text-sm font-medium", audience === "private" ? "text-primary" : "text-foreground")}>
-              Free / Direct Assign
+              Private
             </p>
             <p className="text-xs text-muted-foreground leading-snug">
-              Not in the store — you manually assign it to clients at no cost
+              Only visible to assigned clients — assign them from the program detail page
             </p>
           </div>
         </button>

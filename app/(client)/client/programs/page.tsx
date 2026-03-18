@@ -1,11 +1,11 @@
 import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import Link from "next/link"
-import { getPublicPrograms, getTargetedPrograms } from "@/lib/db/programs"
+import { getPublicPrograms } from "@/lib/db/programs"
 import { getAssignments } from "@/lib/db/assignments"
 import { PageHeader } from "@/components/shared/PageHeader"
 import { EmptyState } from "@/components/ui/empty-state"
-import { Clock, CalendarDays, ShoppingBag, CheckCircle2, ArrowRight, Star, History } from "lucide-react"
+import { Clock, CalendarDays, ShoppingBag, CheckCircle2, ArrowRight, History } from "lucide-react"
 import type { Program, ProgramAssignment } from "@/types/database"
 
 export const dynamic = "force-dynamic"
@@ -55,26 +55,16 @@ export default async function ClientProgramsPage() {
 
   try {
     // Fetch independently so a single failure doesn't wipe all data
-    const [assignmentsResult, publicResult, targetedResult] = await Promise.allSettled([
+    const [assignmentsResult, publicResult] = await Promise.allSettled([
       getAssignments(userId),
       getPublicPrograms(),
-      getTargetedPrograms(userId),
     ])
 
     const assignments = assignmentsResult.status === "fulfilled" ? assignmentsResult.value : []
     const publicPrograms = publicResult.status === "fulfilled" ? publicResult.value : []
-    const targetedPrograms = targetedResult.status === "fulfilled" ? targetedResult.value : []
 
-    // Log any failures for debugging
     if (assignmentsResult.status === "rejected") console.error("[browse] getAssignments failed:", assignmentsResult.reason)
     if (publicResult.status === "rejected") console.error("[browse] getPublicPrograms failed:", publicResult.reason)
-    if (targetedResult.status === "rejected") console.error("[browse] getTargetedPrograms failed:", targetedResult.reason)
-
-    // Debug: log what each query returned
-    console.log("[browse] userId:", userId)
-    console.log("[browse] assignments:", (assignments as Array<Record<string, unknown>>).length, (assignments as Array<Record<string, unknown>>).map((a) => ({ program_id: a.program_id, status: a.status, payment_status: a.payment_status })))
-    console.log("[browse] publicPrograms:", publicPrograms.length)
-    console.log("[browse] targetedPrograms:", targetedPrograms.length, targetedPrograms.map((p) => ({ id: p.id, name: p.name })))
 
     const typedAssignments = assignments as AssignmentWithProgram[]
     currentPrograms = typedAssignments.filter((a) => a.status === "active" && a.payment_status !== "pending")
@@ -87,11 +77,10 @@ export default async function ClientProgramsPage() {
         .map((a) => a.program_id)
     )
 
-    // Merge public + targeted + pending-payment programs, deduplicate, exclude owned
+    // Merge public + pending-payment assigned programs, deduplicate, exclude already owned
     const mergedMap = new Map<string, Program>()
     for (const p of publicPrograms) mergedMap.set(p.id, p as Program)
-    for (const p of targetedPrograms) mergedMap.set(p.id, p as Program)
-    // Include programs from pending-payment assignments so they appear in "Available for Purchase"
+    // Include programs from pending-payment assignments (private programs awaiting purchase)
     for (const a of typedAssignments) {
       if (a.payment_status === "pending" && a.programs) mergedMap.set(a.program_id, a.programs)
     }
@@ -299,12 +288,6 @@ export default async function ClientProgramsPage() {
                   >
                     {DIFFICULTY_LABELS[program.difficulty] ?? program.difficulty}
                   </span>
-                  {program.target_user_id && (
-                    <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] sm:text-xs font-medium bg-accent/15 text-accent ml-auto">
-                      <Star className="size-3" />
-                      Created for you
-                    </span>
-                  )}
                 </div>
 
                 <h3 className="font-semibold text-foreground text-sm sm:text-base leading-snug mb-1 group-hover:text-primary transition-colors">

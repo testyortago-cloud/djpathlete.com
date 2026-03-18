@@ -27,7 +27,6 @@ import {
   ClipboardList,
   Info,
   UserPlus,
-  UserCheck,
 } from "lucide-react"
 import {
   Dialog,
@@ -209,8 +208,7 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
   const [periodization, setPeriodization] = useState("")
   const [additionalInstructions, setAdditionalInstructions] = useState("")
   const [selectedTier, setSelectedTier] = useState<string>("generalize")
-  const [audience, setAudience] = useState<"private" | "public" | "targeted">("private")
-  const [targetUserId, setTargetUserId] = useState<string | null>(null)
+  const [audience, setAudience] = useState<"private" | "public">("private")
   const [priceDollars, setPriceDollars] = useState("")
 
   // Profile state
@@ -376,7 +374,6 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
     setAdditionalInstructions("")
     setSelectedTier("generalize")
     setAudience("private")
-    setTargetUserId(null)
     setPriceDollars("")
     setProfileSummary(null)
     setProfileStatus("idle")
@@ -472,10 +469,7 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
 
       body.is_public = audience === "public"
       body.tier = selectedTier
-      if (audience === "targeted" && targetUserId) {
-        body.target_user_id = targetUserId
-      }
-      if (audience !== "private" && priceDollars) {
+      if (priceDollars) {
         const cents = Math.round(parseFloat(priceDollars) * 100)
         if (cents > 0) body.price_cents = cents
       }
@@ -905,11 +899,6 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
                   setSelectedTier={setSelectedTier}
                   audience={audience}
                   setAudience={setAudience}
-                  targetUserId={targetUserId}
-                  setTargetUserId={setTargetUserId}
-                  selectedClientId={clientId}
-                  clients={clients}
-                  loadingClients={loadingClients}
                   priceDollars={priceDollars}
                   setPriceDollars={setPriceDollars}
                   additionalInstructions={additionalInstructions}
@@ -1346,11 +1335,6 @@ function Step3Settings({
   setSelectedTier,
   audience,
   setAudience,
-  targetUserId,
-  setTargetUserId,
-  selectedClientId,
-  clients,
-  loadingClients,
   priceDollars,
   setPriceDollars,
   additionalInstructions,
@@ -1363,13 +1347,8 @@ function Step3Settings({
   setPeriodization: (v: string) => void
   selectedTier: string
   setSelectedTier: (v: string) => void
-  audience: "private" | "public" | "targeted"
-  setAudience: (v: "private" | "public" | "targeted") => void
-  targetUserId: string | null
-  setTargetUserId: (v: string | null) => void
-  selectedClientId: string
-  clients: User[]
-  loadingClients: boolean
+  audience: "private" | "public"
+  setAudience: (v: "private" | "public") => void
   priceDollars: string
   setPriceDollars: (v: string) => void
   additionalInstructions: string
@@ -1443,10 +1422,10 @@ function Step3Settings({
       <div className="space-y-2">
         <Label>Audience</Label>
         <div className="grid gap-2">
-          {/* Sell to All Clients */}
+          {/* Public */}
           <button
             type="button"
-            onClick={() => { setAudience("public"); setTargetUserId(null) }}
+            onClick={() => setAudience("public")}
             className={cn(
               "flex items-start gap-3 rounded-lg border-2 px-3 py-2.5 text-left transition-colors",
               audience === "public"
@@ -1456,58 +1435,15 @@ function Step3Settings({
           >
             <Globe className={cn("size-4 shrink-0 mt-0.5", audience === "public" ? "text-primary" : "text-muted-foreground")} />
             <div>
-              <p className={cn("text-sm font-medium", audience === "public" ? "text-primary" : "text-foreground")}>Sell to Everyone</p>
+              <p className={cn("text-sm font-medium", audience === "public" ? "text-primary" : "text-foreground")}>Public</p>
               <p className="text-[11px] text-muted-foreground leading-snug">Available in the store for any client to purchase</p>
             </div>
           </button>
 
-          {/* Sell to One Client */}
-          <div
-            className={cn(
-              "rounded-lg border-2 transition-colors",
-              audience === "targeted"
-                ? "border-primary bg-primary/5"
-                : "border-border hover:border-muted-foreground/30"
-            )}
-          >
-            <button
-              type="button"
-              onClick={() => { setAudience("targeted"); if (selectedClientId && !targetUserId) setTargetUserId(selectedClientId) }}
-              className="flex items-start gap-3 px-3 py-2.5 text-left w-full"
-            >
-              <UserCheck className={cn("size-4 shrink-0 mt-0.5", audience === "targeted" ? "text-primary" : "text-muted-foreground")} />
-              <div>
-                <p className={cn("text-sm font-medium", audience === "targeted" ? "text-primary" : "text-foreground")}>Sell to Specific Client</p>
-                <p className="text-[11px] text-muted-foreground leading-snug">Only visible to one client in their store</p>
-              </div>
-            </button>
-            {audience === "targeted" && (
-              <div className="px-3 pb-2.5 pl-[40px] space-y-1.5">
-                <Label htmlFor="ai-target-user" className="text-xs">Select Client *</Label>
-                <select
-                  id="ai-target-user"
-                  value={targetUserId ?? ""}
-                  onChange={(e) => setTargetUserId(e.target.value || null)}
-                  disabled={loadingClients}
-                  className={selectClass}
-                >
-                  <option value="" disabled>
-                    {loadingClients ? "Loading clients..." : "Choose a client"}
-                  </option>
-                  {clients.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.first_name} {c.last_name} — {c.email}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-          </div>
-
-          {/* Assign Directly (Free) */}
+          {/* Private */}
           <button
             type="button"
-            onClick={() => { setAudience("private"); setTargetUserId(null) }}
+            onClick={() => setAudience("private")}
             className={cn(
               "flex items-start gap-3 rounded-lg border-2 px-3 py-2.5 text-left transition-colors",
               audience === "private"
@@ -1517,15 +1453,15 @@ function Step3Settings({
           >
             <Lock className={cn("size-4 shrink-0 mt-0.5", audience === "private" ? "text-primary" : "text-muted-foreground")} />
             <div>
-              <p className={cn("text-sm font-medium", audience === "private" ? "text-primary" : "text-foreground")}>Free / Direct Assign</p>
-              <p className="text-[11px] text-muted-foreground leading-snug">Not in the store — you manually assign it to clients at no cost</p>
+              <p className={cn("text-sm font-medium", audience === "private" ? "text-primary" : "text-foreground")}>Private</p>
+              <p className="text-[11px] text-muted-foreground leading-snug">Only visible to assigned clients — assign them from the program detail page</p>
             </div>
           </button>
         </div>
       </div>
 
-      {/* Price (shown when selling) */}
-      {audience !== "private" && (
+      {/* Price */}
+      {audience === "public" && (
         <div className="space-y-2">
           <Label htmlFor="ai-price">
             Price

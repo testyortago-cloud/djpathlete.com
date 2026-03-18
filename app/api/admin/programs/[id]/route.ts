@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { programFormSchema } from "@/lib/validators/program"
-import { updateProgram, deleteProgram, getProgramById } from "@/lib/db/programs"
+import { updateProgram, deleteProgram } from "@/lib/db/programs"
 
 export async function PATCH(
   request: Request,
@@ -18,14 +18,7 @@ export async function PATCH(
       )
     }
 
-    const data = result.data
-
-    // Targeted programs must be private
-    if (data.target_user_id) {
-      data.is_public = false
-    }
-
-    const program = await updateProgram(id, data)
+    const program = await updateProgram(id, result.data)
 
     return NextResponse.json(program)
   } catch {

@@ -41,8 +41,8 @@ export async function POST(request: Request) {
       programId
     )
 
-    // Targeted programs can only be purchased by the targeted client or someone with an assignment
-    if (program.target_user_id && program.target_user_id !== session.user.id && !existing) {
+    // Private programs can only be purchased by assigned clients
+    if (!program.is_public && !existing) {
       return NextResponse.json(
         { error: "This program is not available for purchase." },
         { status: 403 }

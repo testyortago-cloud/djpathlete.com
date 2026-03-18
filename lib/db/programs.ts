@@ -93,17 +93,6 @@ export async function getClientPrograms(userId: string) {
     .filter(Boolean)
 }
 
-export async function getTargetedPrograms(userId: string) {
-  const supabase = getClient()
-  const { data, error } = await supabase
-    .from("programs")
-    .select("*")
-    .eq("is_active", true)
-    .eq("target_user_id", userId)
-    .order("created_at", { ascending: false })
-  if (error) throw error
-  return data as Program[]
-}
 
 export async function deleteProgram(id: string) {
   const supabase = getClient()

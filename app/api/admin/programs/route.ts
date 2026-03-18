@@ -20,11 +20,6 @@ export async function POST(request: Request) {
 
     const data = result.data
 
-    // Targeted programs must be private
-    if (data.target_user_id) {
-      data.is_public = false
-    }
-
     const program = await createProgram({
       ...data,
       is_active: true,

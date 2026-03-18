@@ -545,7 +545,6 @@ ${graphContext}${feedbackSection}`
     is_active: true,
     created_by: requestedBy,
     price_cents: request.price_cents ?? null,
-    target_user_id: request.target_user_id ?? null,
   })
 
   console.log(`[orchestrator:step3] Program created: ${program.id}`)
@@ -1057,7 +1056,6 @@ ${graphContext}${feedbackSection}`
       is_active: true,
       created_by: requestedBy,
       price_cents: request.price_cents ?? null,
-      target_user_id: request.target_user_id ?? null,
     })
 
     // Insert exercises
