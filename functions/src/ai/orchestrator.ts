@@ -18,6 +18,13 @@ import { PROFILE_ANALYZER_PROMPT, PROGRAM_ARCHITECT_PROMPT, EXERCISE_SELECTOR_PR
 import { validateProgram } from "./validate.js"
 import { filterByDifficultyScore, formatExerciseLibrary } from "./exercise-context.js"
 import { getExercisesForAI } from "./program-chat-tools.js"
+import {
+  buildPriorWeekContext,
+  verifyWeekDiversity,
+  analyzeFullProgramRepetition,
+  extractWeekSkeleton,
+  type WeekAssignment,
+} from "./dedup-verify.js"
 import { retrieveSimilarContext, formatRagContext, buildRagAugmentedPrompt, embedConversationMessage } from "./rag.js"
 import { getSupabase } from "../lib/supabase.js"
 
@@ -369,110 +376,168 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
       return { program_id: "", validation: { pass: false, issues: [], summary: "Cancelled" }, token_usage: tokenUsage, duration_ms: Date.now() - startTime, retries: 0 }
     }
 
-    // Agent 3 with validation retry loop
-    await updateJobProgress("selecting_exercises", 5, `Matching exercises from ${filtered.length} candidates to ${totalSlots} slots`)
-    console.log("[orchestrator:sync] Running Agent 3 with", filtered.length, "exercises...")
-    let assignment: ExerciseAssignment | null = null
-    let validation: ValidationResult | null = null
+    // ─── Week-by-Week Agent 3 with Dedup Verification ──────────────────────
+    await updateJobProgress("selecting_exercises", 5, `Selecting exercises week-by-week for ${totalSlots} slots across ${skeleton.weeks.length} weeks`)
+    console.log("[orchestrator:sync] Running Agent 3 (exercise selection) week-by-week with", filtered.length, "filtered exercises...")
+    const completedWeeksSync: WeekAssignment[] = []
+    const clientDifficultySync = profile?.experience_level ?? "beginner"
 
-    // Build an exercise ID set for quick lookup to strip invalid IDs from retries
+    // Build an exercise ID set for quick lookup to strip hallucinated IDs
     const exerciseIdSet = new Set(compressed.map((e) => e.id))
 
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-      let feedbackSection = ""
-      let retryLibrary = exerciseLibrary
-      let retryFilteredCount = filtered.length
+    for (const week of skeleton.weeks) {
+      const weekNum = week.week_number
+      const weekSkeleton = extractWeekSkeleton(skeleton.weeks, weekNum)
+      if (!weekSkeleton) continue
 
-      if (attempt > 0 && validation !== null && assignment !== null) {
-        const errorIssues = validation.issues.filter((i) => i.type === "error")
-        const warningIssues = validation.issues.filter((i) => i.type === "warning")
-        const allIssues = [...errorIssues, ...warningIssues]
+      const priorContext = buildPriorWeekContext(completedWeeksSync, skeleton.weeks)
+      const weekSkeletonPayload = {
+        weeks: [weekSkeleton],
+        split_type: skeleton.split_type,
+        periodization: skeleton.periodization,
+        total_sessions: weekSkeleton.days.length,
+        notes: skeleton.notes,
+      }
 
-        // Identify which slots had errors so we can tell Agent 3 to only fix those
-        const errorSlotIds = new Set(errorIssues.map((i) => i.slot_ref).filter(Boolean))
-        const validAssignments = assignment.assignments.filter(
-          (a) => !errorSlotIds.has(a.slot_id) && exerciseIdSet.has(a.exercise_id)
-        )
+      const weekTotalSlots = weekSkeleton.days.reduce((sum, d) => sum + d.slots.length, 0)
+      console.log(`[orchestrator:sync] Week ${weekNum}/${skeleton.weeks.length} (${weekTotalSlots} slots, ${completedWeeksSync.length} prior weeks)`)
 
-        feedbackSection = `\n\nPREVIOUS ATTEMPT FAILED VALIDATION (${errorIssues.length} errors, ${warningIssues.length} warnings). Issues to fix:\n${JSON.stringify(allIssues)}`
+      // Check cancellation between weeks
+      if (await checkCancelled()) {
+        console.log("[orchestrator:sync] Job cancelled by user during week-by-week generation")
+        await updateGenerationLog(log.id, { status: "cancelled", duration_ms: Date.now() - startTime })
+        return { program_id: "", validation: { pass: false, issues: [], summary: "Cancelled" }, token_usage: tokenUsage, duration_ms: Date.now() - startTime, retries: 0 }
+      }
 
-        if (validAssignments.length > 0) {
-          feedbackSection += `\n\nKEEP THESE VALID ASSIGNMENTS (do NOT change them):\n${JSON.stringify(validAssignments)}`
-          feedbackSection += `\n\nOnly replace the assignments for slots that had errors. Keep all valid assignments exactly as shown above.`
-        } else {
-          feedbackSection += `\n\nPlease fix ALL errors and try again. Only use exercise IDs from the provided library.`
+      let weekAssignment: ExerciseAssignment | null = null
+      let weekValidation: ValidationResult | null = null
+
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        let feedbackSection = ""
+        if (attempt > 0 && weekValidation !== null) {
+          const errorIssues = weekValidation.issues.filter((i) => i.type === "error")
+          feedbackSection = `\n\nPREVIOUS ATTEMPT FAILED VALIDATION. Issues to fix:\n${JSON.stringify(errorIssues)}\n\nPlease fix ALL errors and try again.`
         }
 
-        // On retry, add targeted exercises instead of dumping all 899
-        // Check both errors and warnings for variety/pattern issues
-        const needsMoreExercises = allIssues.some((i) =>
-          i.category === "missing_exercise" || i.category === "equipment_violation" || i.category === "insufficient_variety" || i.category === "missing_movement_pattern" || i.category === "muscle_imbalance"
-        )
-        if (needsMoreExercises && filtered.length < compressed.length) {
-          // Smart expansion: score all exercises and take the top 150 instead of all
-          const expanded = scoreAndFilterExercises(compressed, skeleton, availableEquipment, analysis)
-          // Merge with original filtered set, dedup, cap at 150
-          const mergedIds = new Set(filtered.map((e) => e.id))
-          const additional = expanded.filter((e) => !mergedIds.has(e.id))
-          const mergedExercises = [...filtered, ...additional].slice(0, 200)
-          retryLibrary = formatExerciseLibrary(mergedExercises)
-          retryFilteredCount = mergedExercises.length
-          console.log(`[orchestrator:sync] Smart expansion: ${filtered.length} → ${mergedExercises.length} exercises for retry (capped at 150)`)
+        let dedupFeedback = ""
+        if (attempt > 0 && weekAssignment) {
+          const dedupResult = verifyWeekDiversity(
+            { week_number: weekNum, assignments: weekAssignment.assignments },
+            completedWeeksSync,
+            skeleton.weeks
+          )
+          if (!dedupResult.pass) {
+            const repetitionIssues = dedupResult.issues
+              .filter((i) => i.severity === "error")
+              .map((i) => `- ${i.message}`)
+              .join("\n")
+            dedupFeedback = `\n\nEXERCISE REPETITION DETECTED — you MUST choose DIFFERENT exercises:\n${repetitionIssues}\n\nSelect alternative exercises from the library that STILL MATCH the slot's movement_pattern, target_muscles, and role — but use a different exercise_id. Do NOT pick random exercises just to avoid repetition. Vary by equipment (dumbbell→cable→machine), angle, or stance while keeping the same training purpose.`
+          }
+        }
+
+        const agent3UserMessage = `Program Skeleton (Week ${weekNum} of ${skeleton.weeks.length}):\n${JSON.stringify(weekSkeletonPayload)}\n\nConstraints:\n${constraintsContext}\n\nExercise Library (${filtered.length} exercises, pre-filtered for relevance):\n${exerciseLibrary}\n\n${priorContext.prompt_text}${feedbackSection}${dedupFeedback}`
+
+        try {
+          console.log(`[orchestrator:sync] Week ${weekNum} attempt ${attempt + 1}/${MAX_RETRIES + 1}...`)
+          const agent3Result: AgentCallResult<ExerciseAssignment> = await callAgent<ExerciseAssignment>(
+            EXERCISE_SELECTOR_PROMPT,
+            agent3UserMessage,
+            exerciseAssignmentSchema,
+            { maxTokens: 8192, cacheSystemPrompt: true }
+          )
+          tokenUsage.agent3 += agent3Result.tokens_used
+          weekAssignment = agent3Result.content
+
+          // Strip hallucinated exercise IDs
+          const validCount = weekAssignment.assignments.length
+          weekAssignment.assignments = weekAssignment.assignments.filter((a) => exerciseIdSet.has(a.exercise_id))
+          const strippedCount = validCount - weekAssignment.assignments.length
+          if (strippedCount > 0) {
+            console.warn(`[orchestrator:sync] Week ${weekNum}: Stripped ${strippedCount} hallucinated exercise IDs`)
+          }
+
+          console.log(`[orchestrator:sync] Week ${weekNum} Agent 3: ${weekAssignment.assignments.length} assignments`)
+
+          // Code-based validation (single-week)
+          weekValidation = validateProgram(
+            weekSkeletonPayload as ProgramSkeleton,
+            weekAssignment,
+            analysis,
+            compressed,
+            availableEquipment,
+            clientDifficultySync,
+            assessmentContext?.maxDifficultyScore
+          )
+
+          // Dedup verification against prior weeks
+          const dedupResult = verifyWeekDiversity(
+            { week_number: weekNum, assignments: weekAssignment.assignments },
+            completedWeeksSync,
+            skeleton.weeks
+          )
+          console.log(`[orchestrator:sync] Week ${weekNum} dedup: ${dedupResult.summary}`)
+
+          if (!dedupResult.pass) {
+            for (const issue of dedupResult.issues.filter((i) => i.severity === "error")) {
+              weekValidation.issues.push({
+                type: "error",
+                category: "exercise_repetition",
+                message: issue.message,
+                slot_ref: issue.slot_id,
+              })
+            }
+            weekValidation.pass = false
+          }
+
+          const errors = weekValidation.issues.filter(i => i.type === "error")
+          if (errors.length > 0) {
+            console.log(`[orchestrator:sync] Week ${weekNum} errors:`, errors.map(e => e.message))
+          }
+
+          if (weekValidation.pass || !weekValidation.issues.some((i) => i.type === "error")) break
+          console.log(`[orchestrator:sync] Week ${weekNum} retrying...`)
+          retries++
+        } catch (agentError) {
+          console.error(`[orchestrator:sync] Week ${weekNum} attempt ${attempt + 1} error:`, agentError instanceof Error ? agentError.message : agentError)
+          if (attempt === MAX_RETRIES) {
+            throw new Error(`Exercise selection failed for week ${weekNum} after ${MAX_RETRIES + 1} attempts: ${agentError instanceof Error ? agentError.message : "Unknown error"}`)
+          }
+          retries++
         }
       }
 
-      const agent3UserMessage = `Program Skeleton:\n${JSON.stringify(skeleton)}\n\nConstraints:\n${constraintsContext}\n\nExercise Library (${retryFilteredCount} exercises):\n${retryLibrary}${feedbackSection}`
+      if (!weekAssignment) throw new Error(`Failed to generate exercises for week ${weekNum}`)
 
-      try {
-        const agent3Result: AgentCallResult<ExerciseAssignment> = await callAgent<ExerciseAssignment>(EXERCISE_SELECTOR_PROMPT, agent3UserMessage, exerciseAssignmentSchema, { maxTokens: 16384, cacheSystemPrompt: true })
-        tokenUsage.agent3 += agent3Result.tokens_used
-        assignment = agent3Result.content
+      completedWeeksSync.push({ week_number: weekNum, assignments: weekAssignment.assignments })
+      console.log(`[orchestrator:sync] Week ${weekNum} complete`)
 
-        // Strip any hallucinated exercise IDs before validation
-        const validCount = assignment.assignments.length
-        assignment.assignments = assignment.assignments.filter((a) => exerciseIdSet.has(a.exercise_id))
-        const strippedCount = validCount - assignment.assignments.length
-        if (strippedCount > 0) {
-          console.warn(`[orchestrator:sync] Stripped ${strippedCount} hallucinated exercise IDs`)
-        }
-
-        validation = validateProgram(skeleton, assignment, analysis, compressed, availableEquipment, profile?.experience_level ?? "beginner", assessmentContext?.maxDifficultyScore)
-        console.log(`[orchestrator:sync] Validation: pass=${validation.pass}, errors=${validation.issues.filter(i => i.type === "error").length}, warnings=${validation.issues.filter(i => i.type === "warning").length}`)
-
-        if (validation.pass || !validation.issues.some((i) => i.type === "error")) break
-        retries++
-      } catch (agentError) {
-        if (attempt === MAX_RETRIES) throw new Error(`Exercise selection failed after ${MAX_RETRIES + 1} attempts: ${agentError instanceof Error ? agentError.message : "Unknown error"}`)
-        retries++
-      }
+      await updateJobProgress("selecting_exercises", 5, `Week ${weekNum}/${skeleton.weeks.length} done — ${completedWeeksSync.reduce((s, w) => s + w.assignments.length, 0)} exercises so far`)
     }
 
-    if (!assignment || !validation) throw new Error("Failed to generate exercise assignments")
+    // Merge all week assignments
+    const allAssignmentsSync = completedWeeksSync.flatMap((w) => w.assignments)
+    const assignment: ExerciseAssignment = { assignments: allAssignmentsSync, substitution_notes: [] }
 
-    // Graceful degradation: if validation still has errors after all retries,
-    // strip invalid assignments and downgrade remaining errors to warnings so the program still saves
-    if (!validation.pass && validation.issues.some((i) => i.type === "error")) {
-      console.warn(`[orchestrator:sync] Validation still failing after ${MAX_RETRIES + 1} attempts — applying graceful degradation`)
+    // Full-program dedup report
+    const syncRepetitionReport = analyzeFullProgramRepetition(completedWeeksSync, skeleton.weeks)
+    console.log(`[orchestrator:sync] Full program repetition: ${syncRepetitionReport.summary}`)
 
-      // Remove assignments with missing exercises (hallucinated IDs already stripped above)
-      const errorSlotIds = new Set(
-        validation.issues
-          .filter((i) => i.type === "error" && (i.category === "missing_exercise" || i.category === "equipment_violation" || i.category === "injury_conflict"))
-          .map((i) => i.slot_ref)
-          .filter(Boolean)
-      )
-      assignment.assignments = assignment.assignments.filter((a) => !errorSlotIds.has(a.slot_id))
+    // Full-program validation
+    const validation = validateProgram(skeleton, assignment, analysis, compressed, availableEquipment, clientDifficultySync, assessmentContext?.maxDifficultyScore)
 
-      // Downgrade remaining errors to warnings
-      validation.issues = validation.issues.map((i) =>
-        i.type === "error" ? { ...i, type: "warning" as const, message: `[auto-downgraded] ${i.message}` } : i
-      )
-      validation.pass = true
-      validation.summary = `Program saved with ${validation.issues.filter(i => i.type === "warning").length} warning(s) after graceful degradation.`
-      console.log(`[orchestrator:sync] Graceful degradation: ${assignment.assignments.length} valid assignments, ${errorSlotIds.size} slots removed`)
+    if (!syncRepetitionReport.pass) {
+      validation.issues.push({ type: "warning", category: "exercise_repetition", message: syncRepetitionReport.summary })
     }
 
-    await updateJobProgress("validated", 6, `${assignment.assignments.length} exercises assigned — ${validation.pass ? "all checks passed" : `${validation.issues.filter(i => i.type === "warning").length} warnings`}`)
+    const finalErrors = validation.issues.filter(i => i.type === "error")
+    const finalWarnings = validation.issues.filter(i => i.type === "warning")
+    console.log("[orchestrator:sync] Final validation:", { pass: validation.pass, errors: finalErrors.length, warnings: finalWarnings.length })
+    if (finalErrors.length > 0) {
+      console.log("[orchestrator:sync] Validation ERRORS:")
+      finalErrors.forEach((e, i) => console.log(`  ${i + 1}. ${e.message}`))
+    }
+
+    await updateJobProgress("validated", 6, `${assignment.assignments.length} exercises assigned — ${validation.pass ? "all checks passed" : `${finalWarnings.length} warnings`}`)
 
     // Create program
     const programCategory = deriveProgramCategory(request.goals)

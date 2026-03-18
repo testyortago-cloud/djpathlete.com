@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect } from "vitest"
-import { deriveProgramCategory } from "@/lib/ai/orchestrator"
+import { deriveProgramCategory } from "@/lib/ai/utils"
 import { hasQuestionnaireData } from "@/lib/profile-utils"
 import { filterByDifficultyScore } from "@/lib/ai/exercise-context"
 import type { CompressedExercise } from "@/lib/ai/exercise-context"
