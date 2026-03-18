@@ -430,7 +430,13 @@ Rules:
    - Prefer antagonist muscle pairs: push + pull (bench press + cable row), quad + hamstring (leg extension + leg curl), biceps + triceps
    - Avoid pairing exercises that compete for the same stabilizers (e.g., don't pair overhead press with lateral raise — both fatigue the medial deltoid)
    - Avoid pairing two exercises that both require the same equipment setup (e.g., two barbell exercises requiring different weights)
-   - Pre-exhaust pairing (isolation → compound for same muscle) is valid for advanced hypertrophy but should be noted in substitution_notes`
+   - Pre-exhaust pairing (isolation → compound for same muscle) is valid for advanced hypertrophy but should be noted in substitution_notes
+19. WEEK-BY-WEEK GENERATION MODE — you may receive a SINGLE week's skeleton at a time, along with a "PREVIOUSLY ASSIGNED EXERCISES" section. When this section is present:
+   - COMPOUND ANCHORS: you MUST reuse the exact same exercises listed under "COMPOUND ANCHORS" for matching compound slots (primary_compound, secondary_compound). These are the progressive overload anchors — the client tracks these lifts across weeks.
+   - ACCESSORY/ISOLATION AVOID LIST: you MUST choose DIFFERENT exercises for accessory and isolation slots than those listed under "AVOID". This is NON-NEGOTIABLE. If the prior weeks used Dumbbell Lateral Raise for an isolation/push/shoulders slot, you must pick a different exercise (e.g., Cable Lateral Raise, Machine Lateral Raise, or a different shoulder isolation entirely).
+   - When choosing alternatives, prefer: (a) different equipment for the same movement (dumbbell → cable → machine), (b) different angles (flat → incline → decline), (c) different laterality (bilateral → unilateral), (d) different but related exercises targeting the same muscle group.
+   - WARM-UP and COOL-DOWN slots: keep consistent with prior weeks (reuse the same exercises).
+   - If the exercise library has very few options for a slot type and all have been used in prior weeks, you may reuse an exercise but MUST note it in substitution_notes with the reason (e.g., "Limited exercise library — reused X because no alternatives available for this slot type").`
 
 // ─── Agent 4: Validation Agent ───────────────────────────────────────────────
 

@@ -13,6 +13,13 @@ import { callAgent, MODEL_HAIKU, MODEL_SONNET } from "@/lib/ai/anthropic"
 import { scoreAndFilterExercises, semanticFilterExercises, getDifficultyTargetForWeek } from "@/lib/ai/exercise-filter"
 import { analyzePushPullBalance, applyBalanceCorrections, formatBalanceReport } from "@/lib/ai/balance"
 import { buildVariationConstraints, formatVariationRulesForPrompt, validateVariationCompliance } from "@/lib/ai/variation"
+import {
+  buildPriorWeekContext,
+  verifyWeekDiversity,
+  analyzeFullProgramRepetition,
+  extractWeekSkeleton,
+  type WeekAssignment,
+} from "@/lib/ai/dedup-verify"
 import { buildExerciseGraph, formatGraphContextForPrompt } from "@/lib/ai/exercise-graph"
 import { estimateTokens } from "@/lib/ai/token-utils"
 import {
@@ -345,7 +352,7 @@ ${request.additional_instructions ? `- Additional instructions: ${request.additi
   console.log(`[orchestrator:step2] Complete in ${Date.now() - stepStart}ms`)
 }
 
-// ─── Step 3: Exercise Selection + Validation + DB + Email ───────────────────
+// ─── Step 3: Week-by-Week Exercise Selection + Verification + DB ────────────
 
 export async function runStep3(logId: string): Promise<void> {
   console.log(`[orchestrator:step3] Starting for logId=${logId}`)
@@ -409,28 +416,67 @@ export async function runStep3(logId: string): Promise<void> {
   const graphContext = formatGraphContextForPrompt(exerciseGraph, filtered.map((e) => e.id), filtered)
   console.log(`[orchestrator:step3] Exercise graph: ${exerciseGraph.progressionChains.length} chains, ${exerciseGraph.antagonistPairs.size} antagonist pairs`)
 
-  const agent3SystemTokens = estimateTokens(EXERCISE_SELECTOR_PROMPT)
-  const agent3UserTokens = estimateTokens(exerciseLibrary) + estimateTokens(constraintsContext) + estimateTokens(JSON.stringify(skeleton))
-  console.log(`[orchestrator:step3] Agent 3 token budget: ~${agent3SystemTokens + agent3UserTokens} input tokens`)
-
-  // Agent 3 — Exercise Selector with validation retry loop
-  let assignment: ExerciseAssignment | null = null
-  let validation: ValidationResult | null = null
-  let retries = 0
+  // ─── Week-by-Week Generation with Dedup Verification ─────────────────────
+  const completedWeeks: WeekAssignment[] = []
   let agent3TotalTokens = 0
+  let totalRetries = 0
 
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    console.log(`[orchestrator:step3] Agent 3 attempt ${attempt + 1}/${MAX_RETRIES + 1}...`)
-    const agent3Start = Date.now()
-
-    let feedbackSection = ""
-    if (attempt > 0 && validation !== null) {
-      const errorIssues = validation.issues.filter((i) => i.type === "error")
-      feedbackSection = `\n\nPREVIOUS ATTEMPT FAILED VALIDATION. Issues to fix:\n${JSON.stringify(errorIssues)}\n\nPlease fix ALL errors and try again.`
+  for (const week of skeleton.weeks) {
+    const weekNum = week.week_number
+    const weekSkeleton = extractWeekSkeleton(skeleton.weeks, weekNum)
+    if (!weekSkeleton) {
+      console.warn(`[orchestrator:step3] Week ${weekNum} not found in skeleton — skipping`)
+      continue
     }
 
-    const agent3UserMessage = `Program Skeleton:
-${JSON.stringify(skeleton)}
+    // Build prior week context for dedup guidance
+    const priorContext = buildPriorWeekContext(completedWeeks, skeleton.weeks)
+
+    // Single-week skeleton wrapped for Agent 3 (it expects the full structure format)
+    const weekSkeletonPayload = {
+      weeks: [weekSkeleton],
+      split_type: skeleton.split_type,
+      periodization: skeleton.periodization,
+      total_sessions: weekSkeleton.days.length,
+      notes: skeleton.notes,
+    }
+
+    const totalSlots = weekSkeleton.days.reduce((sum, d) => sum + d.slots.length, 0)
+    console.log(`[orchestrator:step3] Generating week ${weekNum}/${skeleton.weeks.length} (${totalSlots} slots, ${completedWeeks.length} prior weeks)`)
+
+    let weekAssignment: ExerciseAssignment | null = null
+    let weekValidation: ValidationResult | null = null
+
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      console.log(`[orchestrator:step3] Week ${weekNum} attempt ${attempt + 1}/${MAX_RETRIES + 1}...`)
+      const agent3Start = Date.now()
+
+      // Build feedback from prior attempt failures
+      let feedbackSection = ""
+      if (attempt > 0 && weekValidation !== null) {
+        const errorIssues = weekValidation.issues.filter((i) => i.type === "error")
+        feedbackSection = `\n\nPREVIOUS ATTEMPT FAILED VALIDATION. Issues to fix:\n${JSON.stringify(errorIssues)}\n\nPlease fix ALL errors and try again.`
+      }
+
+      // Build dedup feedback from prior diversity check failure
+      let dedupFeedback = ""
+      if (attempt > 0 && weekAssignment) {
+        const dedupResult = verifyWeekDiversity(
+          { week_number: weekNum, assignments: weekAssignment.assignments },
+          completedWeeks,
+          skeleton.weeks
+        )
+        if (!dedupResult.pass) {
+          const repetitionIssues = dedupResult.issues
+            .filter((i) => i.severity === "error")
+            .map((i) => `- ${i.message}`)
+            .join("\n")
+          dedupFeedback = `\n\nEXERCISE REPETITION DETECTED — you MUST choose DIFFERENT exercises:\n${repetitionIssues}\n\nSelect alternative exercises from the library that serve the same purpose but are NOT the same as those listed above.`
+        }
+      }
+
+      const agent3UserMessage = `Program Skeleton (Week ${weekNum} of ${skeleton.weeks.length}):
+${JSON.stringify(weekSkeletonPayload)}
 
 Constraints:
 ${constraintsContext}
@@ -440,63 +486,138 @@ ${exerciseLibrary}
 
 ${variationRulesText}
 
-${graphContext}${feedbackSection}`
+${graphContext}
 
-    try {
-      const agent3Result: AgentCallResult<ExerciseAssignment> = await callAgent<ExerciseAssignment>(
-        EXERCISE_SELECTOR_PROMPT,
-        agent3UserMessage,
-        exerciseAssignmentSchema,
-        { maxTokens: 16384, cacheSystemPrompt: true }
-      )
-      agent3TotalTokens += agent3Result.tokens_used
-      assignment = agent3Result.content
-      console.log(`[orchestrator:step3] Agent 3 done in ${Date.now() - agent3Start}ms (${agent3Result.tokens_used} tokens, ${assignment.assignments.length} exercises)`)
+${priorContext.prompt_text}${feedbackSection}${dedupFeedback}`
 
-      // Code-based validation
-      validation = validateProgram(
-        skeleton,
-        assignment,
-        analysis,
-        compressed,
-        availableEquipment,
-        clientDifficulty,
-        step3AssessmentCtx?.maxDifficultyScore
-      )
-
-      // Variation compliance validation
-      const variationIssues = validateVariationCompliance(variationConstraints, assignment.assignments)
-      if (variationIssues.length > 0) {
-        validation.issues.push(...variationIssues)
-        const variationErrors = variationIssues.filter((i) => i.type === "error")
-        if (variationErrors.length > 0) {
-          validation.pass = false
-        }
-        console.log(`[orchestrator:step3] Variation issues: ${variationErrors.length} errors, ${variationIssues.length - variationErrors.length} warnings`)
-      }
-
-      console.log(`[orchestrator:step3] Validation: pass=${validation.pass}, issues=${validation.issues.length}`)
-
-      if (validation.pass) break
-
-      const hasErrors = validation.issues.some((i) => i.type === "error")
-      if (!hasErrors) break
-
-      console.log(`[orchestrator:step3] Validation errors, retrying...`)
-      retries++
-    } catch (agentError) {
-      if (attempt === MAX_RETRIES) {
-        throw new Error(
-          `Exercise selection failed after ${MAX_RETRIES + 1} attempts: ${agentError instanceof Error ? agentError.message : "Unknown error"}`
+      try {
+        const agent3Result: AgentCallResult<ExerciseAssignment> = await callAgent<ExerciseAssignment>(
+          EXERCISE_SELECTOR_PROMPT,
+          agent3UserMessage,
+          exerciseAssignmentSchema,
+          { maxTokens: 8192, cacheSystemPrompt: true }
         )
+        agent3TotalTokens += agent3Result.tokens_used
+        weekAssignment = agent3Result.content
+        console.log(`[orchestrator:step3] Week ${weekNum} Agent 3 done in ${Date.now() - agent3Start}ms (${agent3Result.tokens_used} tokens, ${weekAssignment.assignments.length} exercises)`)
+
+        // Code-based validation (single-week skeleton)
+        weekValidation = validateProgram(
+          weekSkeletonPayload as ProgramSkeleton,
+          weekAssignment,
+          analysis,
+          compressed,
+          availableEquipment,
+          clientDifficulty,
+          step3AssessmentCtx?.maxDifficultyScore
+        )
+
+        // Variation compliance validation (for this week's slots only)
+        const weekVariationConstraints = buildVariationConstraints(weekSkeletonPayload as ProgramSkeleton)
+        const variationIssues = validateVariationCompliance(weekVariationConstraints, weekAssignment.assignments)
+        if (variationIssues.length > 0) {
+          weekValidation.issues.push(...variationIssues)
+          const variationErrors = variationIssues.filter((i) => i.type === "error")
+          if (variationErrors.length > 0) {
+            weekValidation.pass = false
+          }
+        }
+
+        // Dedup verification against prior weeks
+        const dedupResult = verifyWeekDiversity(
+          { week_number: weekNum, assignments: weekAssignment.assignments },
+          completedWeeks,
+          skeleton.weeks
+        )
+        console.log(`[orchestrator:step3] Week ${weekNum} dedup: ${dedupResult.summary}`)
+
+        if (!dedupResult.pass) {
+          // Merge dedup errors into validation
+          for (const issue of dedupResult.issues.filter((i) => i.severity === "error")) {
+            weekValidation.issues.push({
+              type: "error",
+              category: "exercise_repetition",
+              message: issue.message,
+              slot_ref: issue.slot_id,
+            })
+          }
+          weekValidation.pass = false
+        }
+
+        console.log(`[orchestrator:step3] Week ${weekNum} validation: pass=${weekValidation.pass}, issues=${weekValidation.issues.length}`)
+
+        if (weekValidation.pass) break
+
+        const hasErrors = weekValidation.issues.some((i) => i.type === "error")
+        if (!hasErrors) break
+
+        console.log(`[orchestrator:step3] Week ${weekNum} has errors, retrying...`)
+        totalRetries++
+      } catch (agentError) {
+        if (attempt === MAX_RETRIES) {
+          throw new Error(
+            `Exercise selection failed for week ${weekNum} after ${MAX_RETRIES + 1} attempts: ${agentError instanceof Error ? agentError.message : "Unknown error"}`
+          )
+        }
+        totalRetries++
       }
-      retries++
     }
+
+    if (!weekAssignment) {
+      throw new Error(`Failed to generate exercise assignments for week ${weekNum}`)
+    }
+
+    // Week passed — add to completed weeks
+    completedWeeks.push({
+      week_number: weekNum,
+      assignments: weekAssignment.assignments,
+    })
+    console.log(`[orchestrator:step3] Week ${weekNum} complete ✓ (${weekAssignment.assignments.length} exercises)`)
   }
 
-  if (!assignment || !validation) {
-    throw new Error("Failed to generate exercise assignments")
+  // ─── Merge all week assignments into final assignment ────────────────────
+  const allAssignments = completedWeeks.flatMap((w) => w.assignments)
+  const assignment: ExerciseAssignment = {
+    assignments: allAssignments,
+    substitution_notes: [],
   }
+
+  // ─── Full-program dedup report ───────────────────────────────────────────
+  const programRepetitionReport = analyzeFullProgramRepetition(completedWeeks, skeleton.weeks)
+  console.log(`[orchestrator:step3] Full program repetition: ${programRepetitionReport.summary}`)
+
+  // ─── Final full-program validation ───────────────────────────────────────
+  const validation = validateProgram(
+    skeleton,
+    assignment,
+    analysis,
+    compressed,
+    availableEquipment,
+    clientDifficulty,
+    step3AssessmentCtx?.maxDifficultyScore
+  )
+
+  // Full-program variation compliance
+  const variationIssues = validateVariationCompliance(variationConstraints, assignment.assignments)
+  if (variationIssues.length > 0) {
+    validation.issues.push(...variationIssues)
+    const variationErrors = variationIssues.filter((i) => i.type === "error")
+    if (variationErrors.length > 0) {
+      validation.pass = false
+    }
+    console.log(`[orchestrator:step3] Full variation issues: ${variationErrors.length} errors, ${variationIssues.length - variationErrors.length} warnings`)
+  }
+
+  // Add repetition report as warnings if needed
+  if (!programRepetitionReport.pass) {
+    validation.issues.push({
+      type: "warning",
+      category: "exercise_repetition",
+      message: programRepetitionReport.summary,
+    })
+  }
+
+  const retries = totalRetries
 
   // Create program in database
   const programCategory = deriveProgramCategory(request.goals)
@@ -957,20 +1078,56 @@ ${request.additional_instructions ? `- Additional instructions: ${request.additi
     const graphContext = formatGraphContextForPrompt(exerciseGraph, filtered.map((e) => e.id), filtered)
     console.log(`[orchestrator:sync] Exercise graph: ${exerciseGraph.progressionChains.length} chains, ${exerciseGraph.antagonistPairs.size} antagonist pairs`)
 
-    // Agent 3 with validation retry loop
-    console.log("[orchestrator:sync] Running Agent 3 (exercise selection) with", filtered.length, "filtered exercises...")
-    let assignment: ExerciseAssignment | null = null
-    let validation: ValidationResult | null = null
+    // ─── Week-by-Week Agent 3 with Dedup Verification ──────────────────────
+    console.log("[orchestrator:sync] Running Agent 3 (exercise selection) week-by-week with", filtered.length, "filtered exercises...")
+    const completedWeeksSync: WeekAssignment[] = []
+    const clientDifficultySync = profile?.experience_level ?? "beginner"
 
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-      let feedbackSection = ""
-      if (attempt > 0 && validation !== null) {
-        const errorIssues = validation.issues.filter((i) => i.type === "error")
-        feedbackSection = `\n\nPREVIOUS ATTEMPT FAILED VALIDATION. Issues to fix:\n${JSON.stringify(errorIssues)}\n\nPlease fix ALL errors and try again.`
+    for (const week of skeleton.weeks) {
+      const weekNum = week.week_number
+      const weekSkeleton = extractWeekSkeleton(skeleton.weeks, weekNum)
+      if (!weekSkeleton) continue
+
+      const priorContext = buildPriorWeekContext(completedWeeksSync, skeleton.weeks)
+      const weekSkeletonPayload = {
+        weeks: [weekSkeleton],
+        split_type: skeleton.split_type,
+        periodization: skeleton.periodization,
+        total_sessions: weekSkeleton.days.length,
+        notes: skeleton.notes,
       }
 
-      const agent3UserMessage = `Program Skeleton:
-${JSON.stringify(skeleton)}
+      const totalSlots = weekSkeleton.days.reduce((sum, d) => sum + d.slots.length, 0)
+      console.log(`[orchestrator:sync] Week ${weekNum}/${skeleton.weeks.length} (${totalSlots} slots)`)
+
+      let weekAssignment: ExerciseAssignment | null = null
+      let weekValidation: ValidationResult | null = null
+
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        let feedbackSection = ""
+        if (attempt > 0 && weekValidation !== null) {
+          const errorIssues = weekValidation.issues.filter((i) => i.type === "error")
+          feedbackSection = `\n\nPREVIOUS ATTEMPT FAILED VALIDATION. Issues to fix:\n${JSON.stringify(errorIssues)}\n\nPlease fix ALL errors and try again.`
+        }
+
+        let dedupFeedback = ""
+        if (attempt > 0 && weekAssignment) {
+          const dedupResult = verifyWeekDiversity(
+            { week_number: weekNum, assignments: weekAssignment.assignments },
+            completedWeeksSync,
+            skeleton.weeks
+          )
+          if (!dedupResult.pass) {
+            const repetitionIssues = dedupResult.issues
+              .filter((i) => i.severity === "error")
+              .map((i) => `- ${i.message}`)
+              .join("\n")
+            dedupFeedback = `\n\nEXERCISE REPETITION DETECTED — you MUST choose DIFFERENT exercises:\n${repetitionIssues}\n\nSelect alternative exercises from the library that serve the same purpose but are NOT the same as those listed above.`
+          }
+        }
+
+        const agent3UserMessage = `Program Skeleton (Week ${weekNum} of ${skeleton.weeks.length}):
+${JSON.stringify(weekSkeletonPayload)}
 
 Constraints:
 ${constraintsContext}
@@ -980,58 +1137,108 @@ ${exerciseLibrary}
 
 ${variationRulesText}
 
-${graphContext}${feedbackSection}`
+${graphContext}
 
-      try {
-        console.log(`[orchestrator:sync] Agent 3 attempt ${attempt + 1}/${MAX_RETRIES + 1}...`)
-        const agent3Result: AgentCallResult<ExerciseAssignment> = await callAgent<ExerciseAssignment>(
-          EXERCISE_SELECTOR_PROMPT,
-          agent3UserMessage,
-          exerciseAssignmentSchema,
-          { maxTokens: 16384, cacheSystemPrompt: true }
-        )
-        tokenUsage.agent3 += agent3Result.tokens_used
-        assignment = agent3Result.content
-        console.log("[orchestrator:sync] Agent 3 returned", assignment.assignments.length, "assignments. Validating...")
+${priorContext.prompt_text}${feedbackSection}${dedupFeedback}`
 
-        validation = validateProgram(skeleton, assignment, analysis, compressed, availableEquipment, profile?.experience_level ?? "beginner", assessmentContext?.maxDifficultyScore)
+        try {
+          console.log(`[orchestrator:sync] Week ${weekNum} attempt ${attempt + 1}/${MAX_RETRIES + 1}...`)
+          const agent3Result: AgentCallResult<ExerciseAssignment> = await callAgent<ExerciseAssignment>(
+            EXERCISE_SELECTOR_PROMPT,
+            agent3UserMessage,
+            exerciseAssignmentSchema,
+            { maxTokens: 8192, cacheSystemPrompt: true }
+          )
+          tokenUsage.agent3 += agent3Result.tokens_used
+          weekAssignment = agent3Result.content
+          console.log(`[orchestrator:sync] Week ${weekNum} Agent 3: ${weekAssignment.assignments.length} assignments`)
 
-        // Variation compliance validation
-        const variationIssues = validateVariationCompliance(variationConstraints, assignment.assignments)
-        if (variationIssues.length > 0) {
-          validation.issues.push(...variationIssues)
-          const variationErrors = variationIssues.filter((i) => i.type === "error")
-          if (variationErrors.length > 0) {
-            validation.pass = false
+          // Code-based validation (single-week)
+          weekValidation = validateProgram(
+            weekSkeletonPayload as ProgramSkeleton,
+            weekAssignment,
+            analysis,
+            compressed,
+            availableEquipment,
+            clientDifficultySync,
+            assessmentContext?.maxDifficultyScore
+          )
+
+          // Dedup verification against prior weeks
+          const dedupResult = verifyWeekDiversity(
+            { week_number: weekNum, assignments: weekAssignment.assignments },
+            completedWeeksSync,
+            skeleton.weeks
+          )
+          console.log(`[orchestrator:sync] Week ${weekNum} dedup: ${dedupResult.summary}`)
+
+          if (!dedupResult.pass) {
+            for (const issue of dedupResult.issues.filter((i) => i.severity === "error")) {
+              weekValidation.issues.push({
+                type: "error",
+                category: "exercise_repetition",
+                message: issue.message,
+                slot_ref: issue.slot_id,
+              })
+            }
+            weekValidation.pass = false
           }
-          console.log(`[orchestrator:sync] Variation issues: ${variationErrors.length} errors, ${variationIssues.length - variationErrors.length} warnings`)
-        }
 
-        const errors = validation.issues.filter(i => i.type === "error")
-        const warnings = validation.issues.filter(i => i.type === "warning")
-        console.log("[orchestrator:sync] Validation result:", { pass: validation.pass, errors: errors.length, warnings: warnings.length })
-        if (errors.length > 0) {
-          console.log("[orchestrator:sync] Validation ERRORS:")
-          errors.forEach((e, i) => console.log(`  ${i + 1}. ${e.message}`))
-        }
-        if (warnings.length > 0) {
-          console.log("[orchestrator:sync] Validation WARNINGS:")
-          warnings.forEach((w, i) => console.log(`  ${i + 1}. ${w.message}`))
-        }
+          const errors = weekValidation.issues.filter(i => i.type === "error")
+          if (errors.length > 0) {
+            console.log(`[orchestrator:sync] Week ${weekNum} errors:`, errors.map(e => e.message))
+          }
 
-        if (validation.pass || !validation.issues.some((i) => i.type === "error")) break
-        console.log("[orchestrator:sync] Retrying...")
-        retries++
-      } catch (agentError) {
-        console.error(`[orchestrator:sync] Agent 3 attempt ${attempt + 1} error:`, agentError instanceof Error ? agentError.message : agentError)
-        if (attempt === MAX_RETRIES) {
-          throw new Error(`Exercise selection failed after ${MAX_RETRIES + 1} attempts: ${agentError instanceof Error ? agentError.message : "Unknown error"}`)
+          if (weekValidation.pass || !weekValidation.issues.some((i) => i.type === "error")) break
+          console.log(`[orchestrator:sync] Week ${weekNum} retrying...`)
+          retries++
+        } catch (agentError) {
+          console.error(`[orchestrator:sync] Week ${weekNum} attempt ${attempt + 1} error:`, agentError instanceof Error ? agentError.message : agentError)
+          if (attempt === MAX_RETRIES) {
+            throw new Error(`Exercise selection failed for week ${weekNum} after ${MAX_RETRIES + 1} attempts: ${agentError instanceof Error ? agentError.message : "Unknown error"}`)
+          }
+          retries++
         }
-        retries++
+      }
+
+      if (!weekAssignment) throw new Error(`Failed to generate exercises for week ${weekNum}`)
+
+      completedWeeksSync.push({ week_number: weekNum, assignments: weekAssignment.assignments })
+      console.log(`[orchestrator:sync] Week ${weekNum} complete ✓`)
+    }
+
+    // Merge all week assignments
+    const allAssignmentsSync = completedWeeksSync.flatMap((w) => w.assignments)
+    const assignment: ExerciseAssignment = { assignments: allAssignmentsSync, substitution_notes: [] }
+
+    // Full-program dedup report
+    const syncRepetitionReport = analyzeFullProgramRepetition(completedWeeksSync, skeleton.weeks)
+    console.log(`[orchestrator:sync] Full program repetition: ${syncRepetitionReport.summary}`)
+
+    // Full-program validation
+    const validation = validateProgram(skeleton, assignment, analysis, compressed, availableEquipment, clientDifficultySync, assessmentContext?.maxDifficultyScore)
+
+    // Full-program variation compliance
+    const variationIssues = validateVariationCompliance(variationConstraints, assignment.assignments)
+    if (variationIssues.length > 0) {
+      validation.issues.push(...variationIssues)
+      const variationErrors = variationIssues.filter((i) => i.type === "error")
+      if (variationErrors.length > 0) {
+        validation.pass = false
       }
     }
 
-    if (!assignment || !validation) throw new Error("Failed to generate exercise assignments")
+    if (!syncRepetitionReport.pass) {
+      validation.issues.push({ type: "warning", category: "exercise_repetition", message: syncRepetitionReport.summary })
+    }
+
+    const errors = validation.issues.filter(i => i.type === "error")
+    const warnings = validation.issues.filter(i => i.type === "warning")
+    console.log("[orchestrator:sync] Final validation:", { pass: validation.pass, errors: errors.length, warnings: warnings.length })
+    if (errors.length > 0) {
+      console.log("[orchestrator:sync] Validation ERRORS:")
+      errors.forEach((e, i) => console.log(`  ${i + 1}. ${e.message}`))
+    }
 
     // Create program
     console.log("[orchestrator:sync] Creating program in database...")

@@ -358,6 +358,53 @@ export function validateProgram(
     }
   }
 
+  // ── WARNING: Cross-week exercise repetition for accessory/isolation slots ──
+  const varietyRoles = new Set(["accessory", "isolation"])
+  const weekExercisesByRole = new Map<number, Map<string, string[]>>() // week -> (exercise_id -> [slot_ids])
+
+  for (const assigned of assignment.assignments) {
+    const slot = slotMap.get(assigned.slot_id)
+    if (!slot || !varietyRoles.has(slot.role)) continue
+
+    const weekMap = weekExercisesByRole.get(slot.week) ?? new Map<string, string[]>()
+    const slotIds = weekMap.get(assigned.exercise_id) ?? []
+    slotIds.push(assigned.slot_id)
+    weekMap.set(assigned.exercise_id, slotIds)
+    weekExercisesByRole.set(slot.week, weekMap)
+  }
+
+  // Check how many accessory/isolation exercises repeat across non-adjacent weeks
+  const exerciseWeekUsage = new Map<string, number[]>() // exercise_id -> [week_numbers]
+  for (const [week, exerciseMap] of weekExercisesByRole) {
+    for (const exerciseId of exerciseMap.keys()) {
+      const weeks = exerciseWeekUsage.get(exerciseId) ?? []
+      weeks.push(week)
+      exerciseWeekUsage.set(exerciseId, weeks)
+    }
+  }
+
+  const totalWeeks = skeleton.weeks.length
+  const blockSize = totalWeeks <= 8 ? 2 : 3
+  for (const [exerciseId, weeks] of exerciseWeekUsage) {
+    if (weeks.length <= blockSize) continue // Repeating within a block is fine
+
+    // Find the exercise name from assignments
+    const name = assignment.assignments.find((a) => a.exercise_id === exerciseId)?.exercise_name ?? exerciseId
+
+    // Check if it spans more than one block
+    const minWeek = Math.min(...weeks)
+    const maxWeek = Math.max(...weeks)
+    const spanBlocks = Math.ceil((maxWeek - minWeek + 1) / blockSize)
+
+    if (spanBlocks > 1 && weeks.length > blockSize) {
+      issues.push({
+        type: "warning",
+        category: "exercise_repetition",
+        message: `${name} is used as accessory/isolation in ${weeks.length} weeks (${weeks.join(", ")}), spanning ${spanBlocks} rotation blocks. Consider more variety.`,
+      })
+    }
+  }
+
   const errorCount = issues.filter((i) => i.type === "error").length
   const warningCount = issues.filter((i) => i.type === "warning").length
   const pass = errorCount === 0
