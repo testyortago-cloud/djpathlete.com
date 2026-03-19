@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import {
   Dumbbell,
   Trophy,
@@ -11,6 +11,7 @@ import {
   ChevronUp,
   ChevronRight,
   Star,
+  Loader2,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import type { SetDetail } from "@/types/database"
@@ -24,6 +25,23 @@ import {
 } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 
+interface ProgramOption {
+  assignmentId: string
+  programName: string
+}
+
+interface ProgressEntry {
+  id: string
+  exercise_name: string
+  weight_kg: number | null
+  sets_completed: number | null
+  reps_completed: string | null
+  rpe: number | null
+  is_pr: boolean
+  completed_at: string
+  set_details: SetDetail[] | null
+}
+
 interface ClientProgressViewProps {
   userId: string
   achievements: Array<{
@@ -35,38 +53,29 @@ interface ClientProgressViewProps {
     earned_at: string
     icon: string
   }>
-  recentProgress: Array<{
-    id: string
-    exercise_name: string
-    weight_kg: number | null
-    sets_completed: number | null
-    reps_completed: string | null
-    rpe: number | null
-    is_pr: boolean
-    completed_at: string
-    set_details: SetDetail[] | null
-  }>
+  recentProgress: ProgressEntry[]
   stats: {
     totalWorkouts: number
     totalPRs: number
     currentStreak: number
     uniqueExercises: number
   }
+  programs?: ProgramOption[]
 }
 
-function formatDate(dateString: string): string {
-  return new Date(dateString).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  })
-}
+const KG_TO_LBS = 2.20462
 
 function formatShortDate(dateString: string): string {
   return new Date(dateString).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
   })
+}
+
+function formatWeight(kg: number | null, unit: "kg" | "lbs"): string {
+  if (kg === null) return "-"
+  if (unit === "lbs") return `${Math.round(kg * KG_TO_LBS * 10) / 10} lbs`
+  return `${kg} kg`
 }
 
 const ACHIEVEMENT_ICONS: Record<string, typeof Trophy> = {
@@ -118,10 +127,57 @@ export function ClientProgressView({
   achievements,
   recentProgress,
   stats,
+  programs = [],
 }: ClientProgressViewProps) {
   const [achievementsOpen, setAchievementsOpen] = useState(true)
   const [workoutsOpen, setWorkoutsOpen] = useState(true)
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
+  const [weightUnit, setWeightUnit] = useState<"kg" | "lbs">("kg")
+
+  // Program filter state
+  const [selectedAssignment, setSelectedAssignment] = useState<string>("all")
+  const [filteredProgress, setFilteredProgress] = useState<ProgressEntry[]>(recentProgress)
+  const [isLoading, setIsLoading] = useState(false)
+
+  const fetchProgressForAssignment = useCallback(async (assignmentId: string) => {
+    if (assignmentId === "all") {
+      setFilteredProgress(recentProgress)
+      return
+    }
+
+    setIsLoading(true)
+    try {
+      const res = await fetch(
+        `/api/admin/clients/${userId}/progress?assignment_id=${assignmentId}`
+      )
+      if (!res.ok) throw new Error("Failed to fetch")
+      const { data } = await res.json()
+
+      const mapped: ProgressEntry[] = (data ?? []).map(
+        (p: Record<string, unknown>) => ({
+          id: p.id as string,
+          exercise_name:
+            (p.exercises as { name?: string } | null)?.name ?? "Unknown Exercise",
+          weight_kg: p.weight_kg as number | null,
+          sets_completed: p.sets_completed as number | null,
+          reps_completed: p.reps_completed as string | null,
+          rpe: p.rpe as number | null,
+          is_pr: p.is_pr as boolean,
+          completed_at: p.completed_at as string,
+          set_details: (p.set_details ?? null) as SetDetail[] | null,
+        })
+      )
+      setFilteredProgress(mapped)
+    } catch {
+      setFilteredProgress([])
+    } finally {
+      setIsLoading(false)
+    }
+  }, [userId, recentProgress])
+
+  useEffect(() => {
+    fetchProgressForAssignment(selectedAssignment)
+  }, [selectedAssignment, fetchProgressForAssignment])
 
   function toggleRow(id: string) {
     setExpandedRows((prev) => {
@@ -236,7 +292,7 @@ export function ClientProgressView({
                       <div className="shrink-0 text-right">
                         {achievement.metric_value !== null && (
                           <p className="text-sm font-medium text-foreground">
-                            {achievement.metric_value} kg
+                            {formatWeight(achievement.metric_value, weightUnit)}
                           </p>
                         )}
                         <p className="text-xs text-muted-foreground">
@@ -257,180 +313,226 @@ export function ClientProgressView({
         </div>
       )}
 
-      {/* Recent Workouts Table */}
-      {recentProgress.length > 0 && (
-        <div className="bg-white rounded-xl border border-border">
-          <button
-            type="button"
-            onClick={() => setWorkoutsOpen(!workoutsOpen)}
-            className="flex items-center justify-between w-full p-6 text-left"
-          >
-            <div className="flex items-center gap-2">
-              <Dumbbell className="size-5 text-primary" />
-              <h2 className="text-lg font-semibold text-primary">
-                Recent Workouts
-              </h2>
-              <span className="text-xs text-muted-foreground ml-1">
-                ({recentProgress.length})
-              </span>
+      {/* Workout Logs */}
+      <div className="bg-white rounded-xl border border-border">
+        <button
+          type="button"
+          onClick={() => setWorkoutsOpen(!workoutsOpen)}
+          className="flex items-center justify-between w-full p-6 text-left"
+        >
+          <div className="flex items-center gap-2">
+            <Dumbbell className="size-5 text-primary" />
+            <h2 className="text-lg font-semibold text-primary">
+              Workout Logs
+            </h2>
+            <span className="text-xs text-muted-foreground ml-1">
+              ({filteredProgress.length})
+            </span>
+          </div>
+          {workoutsOpen ? (
+            <ChevronUp className="size-4 text-muted-foreground" />
+          ) : (
+            <ChevronDown className="size-4 text-muted-foreground" />
+          )}
+        </button>
+
+        {workoutsOpen && (
+          <div className="px-6 pb-6 -mt-2">
+            {/* Controls: Program selector + weight unit toggle */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 mb-4">
+              {programs.length > 0 && (
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <label
+                    htmlFor="program-filter"
+                    className="text-xs font-medium text-muted-foreground whitespace-nowrap"
+                  >
+                    Program:
+                  </label>
+                  <select
+                    id="program-filter"
+                    value={selectedAssignment}
+                    onChange={(e) => setSelectedAssignment(e.target.value)}
+                    className="flex h-8 w-full max-w-xs rounded-md border border-input bg-background px-2.5 text-xs shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <option value="all">All Programs</option>
+                    {programs.map((p) => (
+                      <option key={p.assignmentId} value={p.assignmentId}>
+                        {p.programName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div className="flex items-center gap-1 shrink-0">
+                <Button
+                  variant={weightUnit === "kg" ? "default" : "outline"}
+                  size="sm"
+                  className="h-7 px-2.5 text-xs"
+                  onClick={() => setWeightUnit("kg")}
+                >
+                  kg
+                </Button>
+                <Button
+                  variant={weightUnit === "lbs" ? "default" : "outline"}
+                  size="sm"
+                  className="h-7 px-2.5 text-xs"
+                  onClick={() => setWeightUnit("lbs")}
+                >
+                  lbs
+                </Button>
+              </div>
             </div>
-            {workoutsOpen ? (
-              <ChevronUp className="size-4 text-muted-foreground" />
+
+            {isLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="size-5 text-muted-foreground animate-spin" />
+              </div>
+            ) : filteredProgress.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-6">
+                No workout logs found for this program.
+              </p>
             ) : (
-              <ChevronDown className="size-4 text-muted-foreground" />
-            )}
-          </button>
+              <>
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-surface/50">
+                      <TableHead className="text-muted-foreground">
+                        Date
+                      </TableHead>
+                      <TableHead className="text-muted-foreground">
+                        Exercise
+                      </TableHead>
+                      <TableHead className="text-muted-foreground hidden sm:table-cell">
+                        Weight
+                      </TableHead>
+                      <TableHead className="text-muted-foreground hidden sm:table-cell">
+                        Sets x Reps
+                      </TableHead>
+                      <TableHead className="text-muted-foreground hidden md:table-cell">
+                        RPE
+                      </TableHead>
+                      <TableHead className="text-muted-foreground text-right">
+                        PR
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredProgress.map((entry) => {
+                      const hasSetDetails =
+                        entry.set_details && entry.set_details.length > 0
+                      const isExpanded = expandedRows.has(entry.id)
 
-          {workoutsOpen && (
-            <div className="px-6 pb-6 -mt-2">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-surface/50">
-                    <TableHead className="text-muted-foreground">
-                      Date
-                    </TableHead>
-                    <TableHead className="text-muted-foreground">
-                      Exercise
-                    </TableHead>
-                    <TableHead className="text-muted-foreground hidden sm:table-cell">
-                      Weight
-                    </TableHead>
-                    <TableHead className="text-muted-foreground hidden sm:table-cell">
-                      Sets x Reps
-                    </TableHead>
-                    <TableHead className="text-muted-foreground hidden md:table-cell">
-                      RPE
-                    </TableHead>
-                    <TableHead className="text-muted-foreground text-right">
-                      PR
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {recentProgress.slice(0, 20).map((entry) => {
-                    const hasSetDetails =
-                      entry.set_details && entry.set_details.length > 0
-                    const isExpanded = expandedRows.has(entry.id)
-
-                    return (
-                      <>
-                        <TableRow
-                          key={entry.id}
-                          className={`${
-                            entry.is_pr
-                              ? "bg-accent/10 hover:bg-accent/20"
-                              : ""
-                          } ${hasSetDetails ? "cursor-pointer" : ""}`}
-                          onClick={
-                            hasSetDetails
-                              ? () => toggleRow(entry.id)
-                              : undefined
-                          }
-                        >
-                          <TableCell className="text-muted-foreground text-xs">
-                            <span className="flex items-center gap-1">
-                              {hasSetDetails && (
-                                <ChevronRight
-                                  className={`size-3.5 text-muted-foreground transition-transform ${
-                                    isExpanded ? "rotate-90" : ""
-                                  }`}
-                                />
+                      return (
+                        <>
+                          <TableRow
+                            key={entry.id}
+                            className={`${
+                              entry.is_pr
+                                ? "bg-accent/10 hover:bg-accent/20"
+                                : ""
+                            } ${hasSetDetails ? "cursor-pointer" : ""}`}
+                            onClick={
+                              hasSetDetails
+                                ? () => toggleRow(entry.id)
+                                : undefined
+                            }
+                          >
+                            <TableCell className="text-muted-foreground text-xs">
+                              <span className="flex items-center gap-1">
+                                {hasSetDetails && (
+                                  <ChevronRight
+                                    className={`size-3.5 text-muted-foreground transition-transform ${
+                                      isExpanded ? "rotate-90" : ""
+                                    }`}
+                                  />
+                                )}
+                                {formatShortDate(entry.completed_at)}
+                              </span>
+                            </TableCell>
+                            <TableCell className="font-medium text-foreground">
+                              {entry.exercise_name}
+                            </TableCell>
+                            <TableCell className="text-muted-foreground hidden sm:table-cell">
+                              {formatWeight(entry.weight_kg, weightUnit)}
+                            </TableCell>
+                            <TableCell className="text-muted-foreground hidden sm:table-cell">
+                              {entry.sets_completed !== null &&
+                              entry.reps_completed !== null
+                                ? `${entry.sets_completed} x ${entry.reps_completed}`
+                                : entry.sets_completed !== null
+                                  ? `${entry.sets_completed} sets`
+                                  : entry.reps_completed !== null
+                                    ? entry.reps_completed
+                                    : "-"}
+                            </TableCell>
+                            <TableCell className="text-muted-foreground hidden md:table-cell">
+                              {entry.rpe !== null ? entry.rpe : "-"}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {entry.is_pr && (
+                                <Badge className="bg-accent/20 text-accent border-accent/30 text-xs">
+                                  PR
+                                </Badge>
                               )}
-                              {formatShortDate(entry.completed_at)}
-                            </span>
-                          </TableCell>
-                          <TableCell className="font-medium text-foreground">
-                            {entry.exercise_name}
-                          </TableCell>
-                          <TableCell className="text-muted-foreground hidden sm:table-cell">
-                            {entry.weight_kg !== null
-                              ? `${entry.weight_kg} kg`
-                              : "-"}
-                          </TableCell>
-                          <TableCell className="text-muted-foreground hidden sm:table-cell">
-                            {entry.sets_completed !== null &&
-                            entry.reps_completed !== null
-                              ? `${entry.sets_completed} x ${entry.reps_completed}`
-                              : entry.sets_completed !== null
-                                ? `${entry.sets_completed} sets`
-                                : entry.reps_completed !== null
-                                  ? entry.reps_completed
-                                  : "-"}
-                          </TableCell>
-                          <TableCell className="text-muted-foreground hidden md:table-cell">
-                            {entry.rpe !== null ? entry.rpe : "-"}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {entry.is_pr && (
-                              <Badge className="bg-accent/20 text-accent border-accent/30 text-xs">
-                                PR
-                              </Badge>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                        {isExpanded && hasSetDetails && (
-                          <TableRow key={`${entry.id}-details`}>
-                            <TableCell colSpan={6} className="p-0">
-                              <div className="bg-surface/30 px-6 py-3 ml-4 border-l-2 border-primary/20">
-                                <table className="w-full text-xs">
-                                  <thead>
-                                    <tr className="text-muted-foreground">
-                                      <th className="text-left py-1 pr-4 font-medium">
-                                        Set
-                                      </th>
-                                      <th className="text-left py-1 pr-4 font-medium">
-                                        Weight
-                                      </th>
-                                      <th className="text-left py-1 pr-4 font-medium">
-                                        Reps
-                                      </th>
-                                      <th className="text-left py-1 font-medium">
-                                        RPE
-                                      </th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {entry.set_details!.map((set) => (
-                                      <tr
-                                        key={set.set_number}
-                                        className="text-foreground"
-                                      >
-                                        <td className="py-1 pr-4">
-                                          {set.set_number}
-                                        </td>
-                                        <td className="py-1 pr-4">
-                                          {set.weight_kg !== null
-                                            ? `${set.weight_kg} kg`
-                                            : "-"}
-                                        </td>
-                                        <td className="py-1 pr-4">
-                                          {set.reps}
-                                        </td>
-                                        <td className="py-1">
-                                          {set.rpe !== null ? set.rpe : "-"}
-                                        </td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
                             </TableCell>
                           </TableRow>
-                        )}
-                      </>
-                    )
-                  })}
-                </TableBody>
-              </Table>
-              {recentProgress.length > 20 && (
-                <p className="text-xs text-muted-foreground mt-3 text-center">
-                  Showing 20 of {recentProgress.length} entries
-                </p>
-              )}
-            </div>
-          )}
-        </div>
-      )}
+                          {isExpanded && hasSetDetails && (
+                            <TableRow key={`${entry.id}-details`}>
+                              <TableCell colSpan={6} className="p-0">
+                                <div className="bg-surface/30 px-6 py-3 ml-4 border-l-2 border-primary/20">
+                                  <table className="w-full text-xs">
+                                    <thead>
+                                      <tr className="text-muted-foreground">
+                                        <th className="text-left py-1 pr-4 font-medium">
+                                          Set
+                                        </th>
+                                        <th className="text-left py-1 pr-4 font-medium">
+                                          Weight
+                                        </th>
+                                        <th className="text-left py-1 pr-4 font-medium">
+                                          Reps
+                                        </th>
+                                        <th className="text-left py-1 font-medium">
+                                          RPE
+                                        </th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {entry.set_details!.map((set) => (
+                                        <tr
+                                          key={set.set_number}
+                                          className="text-foreground"
+                                        >
+                                          <td className="py-1 pr-4">
+                                            {set.set_number}
+                                          </td>
+                                          <td className="py-1 pr-4">
+                                            {formatWeight(set.weight_kg ?? null, weightUnit)}
+                                          </td>
+                                          <td className="py-1 pr-4">
+                                            {set.reps}
+                                          </td>
+                                          <td className="py-1">
+                                            {set.rpe !== null ? set.rpe : "-"}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

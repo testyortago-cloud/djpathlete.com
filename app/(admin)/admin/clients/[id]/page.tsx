@@ -793,6 +793,12 @@ export default async function ClientDetailPage({
           achievements={formattedAchievements}
           recentProgress={recentProgress}
           stats={progressStats}
+          programs={(assignments as AssignmentWithProgram[])
+            .filter((a) => a.programs)
+            .map((a) => ({
+              assignmentId: a.id,
+              programName: a.programs!.name,
+            }))}
         />
         <PaymentsSection payments={payments} />
       </div>

@@ -140,6 +140,18 @@ export async function getRelatedProgressByPattern(
   return data as (ExerciseProgress & { exercises: { name: string; movement_pattern: string } })[]
 }
 
+export async function getProgressByAssignment(userId: string, assignmentId: string) {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("exercise_progress")
+    .select("*, exercises(*)")
+    .eq("user_id", userId)
+    .eq("assignment_id", assignmentId)
+    .order("completed_at", { ascending: false })
+  if (error) throw error
+  return data
+}
+
 export async function getAllProgress(limit?: number) {
   const supabase = getClient()
   let query = supabase
