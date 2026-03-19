@@ -3,7 +3,7 @@
 import { useState, useRef, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { Search, Check, UserCheck, UserMinus, DollarSign, Gift } from "lucide-react"
+import { Search, Check, UserCheck, UserMinus, DollarSign, Gift, Pencil } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -16,6 +16,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
+import { EditAssignmentDialog } from "@/components/admin/EditAssignmentDialog"
+import type { AssignmentDetail } from "@/components/admin/ProgramHeader"
 import type { User } from "@/types/database"
 
 interface AssignProgramDialogProps {
@@ -26,6 +28,7 @@ interface AssignProgramDialogProps {
   clients: User[]
   assignedUserIds: string[]
   assignmentMap?: Record<string, string>
+  assignmentDetails?: Record<string, AssignmentDetail>
 }
 
 export function AssignProgramDialog({
@@ -36,6 +39,7 @@ export function AssignProgramDialog({
   clients,
   assignedUserIds,
   assignmentMap = {},
+  assignmentDetails = {},
 }: AssignProgramDialogProps) {
   const router = useRouter()
   const dialogRef = useRef<HTMLDivElement>(null)
@@ -48,6 +52,7 @@ export function AssignProgramDialog({
   )
   const [notes, setNotes] = useState("")
   const [complimentary, setComplimentary] = useState(false)
+  const [editingClient, setEditingClient] = useState<{ userId: string; name: string } | null>(null)
   const isPaid = (priceCents ?? 0) > 0
 
   const assignedSet = useMemo(() => new Set(assignedUserIds), [assignedUserIds])
@@ -150,7 +155,10 @@ export function AssignProgramDialog({
 
   const selectedCount = selectedIds.size
 
+  const editDetail = editingClient ? assignmentDetails[editingClient.userId] : null
+
   return (
+    <>
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent ref={dialogRef} className="sm:max-w-lg">
         <DialogHeader>
@@ -206,6 +214,16 @@ export function AssignProgramDialog({
                           <UserCheck className="size-3" />
                           Assigned
                         </Badge>
+                        {assignmentDetails[client.id] && (
+                          <button
+                            type="button"
+                            onClick={() => setEditingClient({ userId: client.id, name: `${client.first_name} ${client.last_name}` })}
+                            className="inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/10 transition-colors"
+                          >
+                            <Pencil className="size-3" />
+                            Edit
+                          </button>
+                        )}
                         {assignmentMap[client.id] && (
                           <button
                             type="button"
@@ -338,5 +356,17 @@ export function AssignProgramDialog({
         </form>
       </DialogContent>
     </Dialog>
+
+    {editingClient && editDetail && (
+      <EditAssignmentDialog
+        open={!!editingClient}
+        onOpenChange={(o) => { if (!o) setEditingClient(null) }}
+        assignmentId={editDetail.id}
+        clientName={editingClient.name}
+        currentStartDate={editDetail.start_date}
+        currentNotes={editDetail.notes}
+      />
+    )}
+    </>
   )
 }

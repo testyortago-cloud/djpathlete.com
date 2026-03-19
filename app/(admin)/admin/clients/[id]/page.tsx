@@ -49,6 +49,7 @@ import {
   hasQuestionnaireData,
 } from "@/lib/profile-utils"
 import { UnassignButton } from "@/components/admin/UnassignButton"
+import { EditAssignmentButton } from "@/components/admin/EditAssignmentButton"
 import { ClientDetailHeader } from "./ClientDetailHeader"
 import type {
   Program,
@@ -215,8 +216,10 @@ function ProfileSection({ profile }: { profile: ClientProfile | null }) {
 
 function ProgramsSection({
   assignments,
+  clientName,
 }: {
   assignments: AssignmentWithProgram[]
+  clientName: string
 }) {
   return (
     <div className="bg-white rounded-xl border border-border p-6">
@@ -278,10 +281,18 @@ function ProgramsSection({
                   </td>
                   <td className="px-4 py-3 text-right">
                     {assignment.status === "active" && (
-                      <UnassignButton
-                        assignmentId={assignment.id}
-                        programName={assignment.programs?.name ?? "this program"}
-                      />
+                      <div className="flex items-center justify-end gap-1">
+                        <EditAssignmentButton
+                          assignmentId={assignment.id}
+                          clientName={clientName}
+                          currentStartDate={assignment.start_date}
+                          currentNotes={assignment.notes}
+                        />
+                        <UnassignButton
+                          assignmentId={assignment.id}
+                          programName={assignment.programs?.name ?? "this program"}
+                        />
+                      </div>
                     )}
                   </td>
                 </tr>
@@ -773,6 +784,7 @@ export default async function ClientDetailPage({
 
         <ProgramsSection
           assignments={assignments as AssignmentWithProgram[]}
+          clientName={`${user.first_name} ${user.last_name}`}
         />
         <ClientProgressView
           userId={id}

@@ -45,6 +45,9 @@ export default async function ProgramBuilderPage({
 
   const assignedUserIds = activeAssignments.map((a) => a.user_id)
   const assignmentMap = Object.fromEntries(activeAssignments.map((a) => [a.user_id, a.id]))
+  const assignmentDetails = Object.fromEntries(
+    activeAssignments.map((a) => [a.user_id, { id: a.id, start_date: a.start_date, notes: a.notes }])
+  )
 
   const assignmentInfo = activeAssignment
     ? { assignmentId: activeAssignment.id, clientId: activeAssignment.user_id }
@@ -60,7 +63,7 @@ export default async function ProgramBuilderPage({
         Back to Programs
       </Link>
 
-      <ProgramHeader program={program} clients={clients} assignedUserIds={assignedUserIds} assignmentMap={assignmentMap} />
+      <ProgramHeader program={program} clients={clients} assignedUserIds={assignedUserIds} assignmentMap={assignmentMap} assignmentDetails={assignmentDetails} />
 
       {program.is_ai_generated && program.ai_generation_params && (
         <AiGenerationSummary params={program.ai_generation_params} />

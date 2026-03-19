@@ -63,14 +63,14 @@ export async function getActiveUserIdsForProgram(programId: string): Promise<str
   return (data ?? []).map((r) => r.user_id)
 }
 
-/** Get active assignments for a program with assignment IDs and user IDs. */
+/** Get active assignments for a program with assignment IDs, user IDs, and editable fields. */
 export async function getActiveAssignmentsForProgram(
   programId: string
-): Promise<{ id: string; user_id: string }[]> {
+): Promise<{ id: string; user_id: string; start_date: string; notes: string | null }[]> {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("program_assignments")
-    .select("id, user_id")
+    .select("id, user_id, start_date, notes")
     .eq("program_id", programId)
     .eq("status", "active")
   if (error) throw error

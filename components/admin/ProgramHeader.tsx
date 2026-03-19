@@ -8,11 +8,18 @@ import { ProgramFormDialog } from "@/components/admin/ProgramFormDialog"
 import { AssignProgramDialog } from "@/components/admin/AssignProgramDialog"
 import type { Program, User } from "@/types/database"
 
+export interface AssignmentDetail {
+  id: string
+  start_date: string
+  notes: string | null
+}
+
 interface ProgramHeaderProps {
   program: Program
   clients: User[]
   assignedUserIds: string[]
   assignmentMap: Record<string, string>
+  assignmentDetails?: Record<string, AssignmentDetail>
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -71,7 +78,7 @@ function formatPrice(cents: number | null): string {
   return `$${(cents / 100).toFixed(2)}`
 }
 
-export function ProgramHeader({ program, clients, assignedUserIds, assignmentMap }: ProgramHeaderProps) {
+export function ProgramHeader({ program, clients, assignedUserIds, assignmentMap, assignmentDetails = {} }: ProgramHeaderProps) {
   const [editOpen, setEditOpen] = useState(false)
   const [assignOpen, setAssignOpen] = useState(false)
 
@@ -155,6 +162,7 @@ export function ProgramHeader({ program, clients, assignedUserIds, assignmentMap
         clients={clients}
         assignedUserIds={assignedUserIds}
         assignmentMap={assignmentMap}
+        assignmentDetails={assignmentDetails}
       />
     </>
   )
