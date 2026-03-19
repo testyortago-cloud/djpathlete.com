@@ -22,6 +22,7 @@ import {
   ArrowLeftRight,
   ListChecks,
   ChevronRight,
+  Play,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -35,6 +36,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 import { useWeightUnit } from "@/hooks/use-weight-unit"
 import { CoachDjpPanel } from "@/components/client/CoachDjpPanel"
@@ -258,6 +264,7 @@ function ExerciseCard({
   const [showCoachDjp, setShowCoachDjp] = useState(false)
   const [showExtra, setShowExtra] = useState(false)
   const [showSwap, setShowSwap] = useState(false)
+  const [showVideo, setShowVideo] = useState(false)
   const [swappedExercise, setSwappedExercise] = useState<Exercise | null>(null)
 
   // Use swapped exercise for display, but keep original programExercise for sets/reps
@@ -547,17 +554,30 @@ function ExerciseCard({
                   )}
                 </div>
               </div>
-              <Button
-                size="sm"
-                variant={loggedToday ? "ghost" : "outline"}
-                className={cn("gap-1 shrink-0", loggedToday && "text-success hover:text-success")}
-                onClick={() => setExpanded(!expanded)}
-              >
-                {loggedToday ? "Update" : "Log"}
-                <ChevronDown
-                  className={`size-3 transition-transform ${expanded ? "rotate-180" : ""}`}
-                />
-              </Button>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {hasVideo && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1 text-primary/70 hover:text-primary"
+                    onClick={() => setShowVideo(true)}
+                  >
+                    <Play className="size-3" />
+                    Watch
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant={loggedToday ? "ghost" : "outline"}
+                  className={cn("gap-1", loggedToday && "text-success hover:text-success")}
+                  onClick={() => setExpanded(!expanded)}
+                >
+                  {loggedToday ? "Update" : "Log"}
+                  <ChevronDown
+                    className={`size-3 transition-transform ${expanded ? "rotate-180" : ""}`}
+                  />
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -618,22 +638,6 @@ function ExerciseCard({
                     </button>
                   )}
                 </div>
-                {/* Inline video */}
-                {hasVideo && displayExercise.video_url && (() => {
-                  const videoId = extractYouTubeId(displayExercise.video_url)
-                  if (!videoId) return null
-                  return (
-                    <div className="relative w-full overflow-hidden rounded-lg bg-black aspect-video">
-                      <iframe
-                        src={`https://www.youtube-nocookie.com/embed/${videoId}?rel=0&modestbranding=1&playsinline=1`}
-                        title={`${displayExercise.name} demonstration`}
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                        allowFullScreen
-                        className="absolute inset-0 size-full border-0"
-                      />
-                    </div>
-                  )
-                })()}
                 {/* Instructions / coaching cues */}
                 {displayExercise.instructions && (
                   <details className="group rounded-md border border-border/50 bg-muted/30">
@@ -997,6 +1001,30 @@ function ExerciseCard({
         equipment={displayExercise.equipment}
         onSwap={(newExercise) => setSwappedExercise(newExercise)}
       />
+
+      {/* Video dialog */}
+      {hasVideo && displayExercise.video_url && (() => {
+        const videoId = extractYouTubeId(displayExercise.video_url)
+        if (!videoId) return null
+        return (
+          <Dialog open={showVideo} onOpenChange={setShowVideo}>
+            <DialogContent className="max-w-2xl p-0 overflow-hidden gap-0">
+              <DialogTitle className="px-4 py-3 text-sm font-semibold border-b">
+                {displayExercise.name}
+              </DialogTitle>
+              <div className="relative w-full aspect-video bg-black">
+                <iframe
+                  src={`https://www.youtube-nocookie.com/embed/${videoId}?rel=0&modestbranding=1&playsinline=1&autoplay=1`}
+                  title={`${displayExercise.name} demonstration`}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  className="absolute inset-0 size-full border-0"
+                />
+              </div>
+            </DialogContent>
+          </Dialog>
+        )
+      })()}
 
 
       <CelebrationOverlay
