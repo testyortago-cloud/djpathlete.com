@@ -1,10 +1,12 @@
 import { auth } from "@/lib/auth"
 import { redirect, notFound } from "next/navigation"
 import Link from "next/link"
-import { Clock, CalendarDays, BarChart3, ArrowLeft, CheckCircle2 } from "lucide-react"
+import { Clock, CalendarDays, BarChart3, ArrowLeft, CheckCircle2, RefreshCw } from "lucide-react"
 import { getActiveProgramById } from "@/lib/db/programs"
 import { getAssignmentByUserAndProgram } from "@/lib/db/assignments"
+import { getActiveSubscription } from "@/lib/db/subscriptions"
 import { ClientBuyButton } from "./ClientBuyButton"
+import { ManageSubscriptionButton } from "./ManageSubscriptionButton"
 
 interface Props {
   params: Promise<{ id: string }>
@@ -33,9 +35,12 @@ const DIFFICULTY_COLORS: Record<string, string> = {
   elite: "bg-primary/10 text-primary",
 }
 
-function formatPrice(cents: number | null): string {
+function formatPrice(cents: number | null, billingInterval: string | null): string {
   if (cents == null) return "Free"
-  return `$${(cents / 100).toFixed(2)}`
+  const price = `$${(cents / 100).toFixed(2)}`
+  if (billingInterval === "month") return `${price}/mo`
+  if (billingInterval === "week") return `${price}/wk`
+  return price
 }
 
 export async function generateMetadata({ params }: Props) {
@@ -63,6 +68,12 @@ export default async function ClientProgramDetailPage({ params }: Props) {
 
   const assignment = await getAssignmentByUserAndProgram(session.user.id, program.id)
   const owned = !!assignment && assignment.payment_status !== "pending"
+  const isSubscription = program.payment_type === "subscription"
+
+  // Check for active subscription
+  const activeSub = isSubscription && owned
+    ? await getActiveSubscription(session.user.id, program.id)
+    : null
 
   // Block access if program is private and user has no assignment
   if (!program.is_public && !assignment) {
@@ -91,7 +102,13 @@ export default async function ClientProgramDetailPage({ params }: Props) {
         >
           {DIFFICULTY_LABELS[program.difficulty] ?? program.difficulty}
         </span>
-        {owned && (
+        {owned && activeSub && (
+          <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium bg-success/10 text-success">
+            <RefreshCw className="size-3" />
+            Active Subscription
+          </span>
+        )}
+        {owned && !activeSub && (
           <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium bg-success/10 text-success">
             <CheckCircle2 className="size-3" />
             Owned
@@ -139,22 +156,30 @@ export default async function ClientProgramDetailPage({ params }: Props) {
       {/* Price + CTA */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
         {owned ? (
-          <Link
-            href="/client/workouts"
-            className="inline-flex items-center gap-2 rounded-full bg-success px-6 py-3 text-sm font-medium text-white hover:bg-success/90 transition-colors"
-          >
-            <CheckCircle2 className="size-4" />
-            Start Training
-          </Link>
+          <>
+            <Link
+              href="/client/workouts"
+              className="inline-flex items-center gap-2 rounded-full bg-success px-6 py-3 text-sm font-medium text-white hover:bg-success/90 transition-colors"
+            >
+              <CheckCircle2 className="size-4" />
+              Start Training
+            </Link>
+            {activeSub && (
+              <ManageSubscriptionButton />
+            )}
+          </>
         ) : (
           <>
             {program.price_cents && (
               <p className="text-3xl font-heading font-semibold text-primary">
-                {formatPrice(program.price_cents)}
+                {formatPrice(program.price_cents, isSubscription ? program.billing_interval : null)}
               </p>
             )}
             {program.price_cents ? (
-              <ClientBuyButton programId={program.id} />
+              <ClientBuyButton
+                programId={program.id}
+                label={isSubscription ? "Subscribe" : "Buy Now"}
+              />
             ) : (
               <Link
                 href="/contact"

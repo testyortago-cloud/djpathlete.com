@@ -6,9 +6,10 @@ import { toast } from "sonner"
 
 interface ClientBuyButtonProps {
   programId: string
+  label?: string
 }
 
-export function ClientBuyButton({ programId }: ClientBuyButtonProps) {
+export function ClientBuyButton({ programId, label = "Buy Now" }: ClientBuyButtonProps) {
   const [loading, setLoading] = useState(false)
 
   // Reset loading if user navigates back from Stripe (e.g., presses back/escape)
@@ -61,7 +62,7 @@ export function ClientBuyButton({ programId }: ClientBuyButtonProps) {
       ) : (
         <ShoppingBag className="size-4" />
       )}
-      {loading ? "Redirecting to checkout..." : "Buy Now"}
+      {loading ? "Redirecting to checkout..." : label}
     </button>
   )
 }

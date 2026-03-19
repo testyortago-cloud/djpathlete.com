@@ -6,8 +6,11 @@ export type ExerciseDifficulty = "beginner" | "intermediate" | "advanced"
 export type ProgramCategory = "strength" | "conditioning" | "sport_specific" | "recovery" | "nutrition" | "hybrid"
 export type ProgramDifficulty = "beginner" | "intermediate" | "advanced" | "elite"
 export type ProgramTier = "generalize" | "premium"
+export type PaymentType = "free" | "one_time" | "subscription"
+export type BillingInterval = "week" | "month"
+export type SubscriptionStatus = "active" | "past_due" | "canceled" | "unpaid" | "incomplete" | "trialing" | "paused"
 export type AssignmentStatus = "active" | "paused" | "completed" | "cancelled"
-export type AssignmentPaymentStatus = "not_required" | "pending" | "paid"
+export type AssignmentPaymentStatus = "not_required" | "pending" | "paid" | "subscription_active"
 export type BookingStatus = "scheduled" | "completed" | "cancelled" | "no_show"
 export type PaymentStatus = "pending" | "succeeded" | "failed" | "refunded"
 export type NotificationType = "info" | "success" | "warning" | "error"
@@ -67,6 +70,7 @@ export interface User {
   phone: string | null
   email_verified: boolean
   status: UserStatus
+  stripe_customer_id: string | null
   created_at: string
   updated_at: string
 }
@@ -149,6 +153,10 @@ export interface Program {
   duration_weeks: number
   sessions_per_week: number
   price_cents: number | null
+  payment_type: PaymentType
+  billing_interval: BillingInterval | null
+  stripe_product_id: string | null
+  stripe_price_id: string | null
   is_active: boolean
   created_by: string | null
   split_type: SplitType | null
@@ -241,6 +249,23 @@ export interface Payment {
   currency: string
   status: PaymentStatus
   description: string | null
+  metadata: Record<string, unknown>
+  created_at: string
+  updated_at: string
+}
+
+export interface Subscription {
+  id: string
+  user_id: string
+  program_id: string
+  assignment_id: string | null
+  stripe_subscription_id: string
+  stripe_customer_id: string
+  status: SubscriptionStatus
+  current_period_start: string | null
+  current_period_end: string | null
+  cancel_at_period_end: boolean
+  canceled_at: string | null
   metadata: Record<string, unknown>
   created_at: string
   updated_at: string
@@ -615,6 +640,11 @@ export interface Database {
         Row: Payment
         Insert: Omit<Payment, "id" | "created_at" | "updated_at">
         Update: Partial<Omit<Payment, "id" | "created_at">>
+      }
+      subscriptions: {
+        Row: Subscription
+        Insert: Omit<Subscription, "id" | "created_at" | "updated_at">
+        Update: Partial<Omit<Subscription, "id" | "created_at">>
       }
       reviews: {
         Row: Review

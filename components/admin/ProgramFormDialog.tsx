@@ -19,6 +19,9 @@ import {
   CheckCircle2,
   ChevronRight,
   ChevronLeft,
+  Gift,
+  CreditCard,
+  RefreshCw,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
@@ -28,8 +31,10 @@ import {
   PROGRAM_TIERS,
   SPLIT_TYPES,
   PERIODIZATION_TYPES,
+  BILLING_INTERVALS,
   type ProgramFormData,
 } from "@/lib/validators/program"
+import type { PaymentType } from "@/types/database"
 import { useFormTour } from "@/hooks/use-form-tour"
 import { FormTour } from "@/components/admin/FormTour"
 import { TourButton } from "@/components/admin/TourButton"
@@ -95,10 +100,17 @@ const FIELD_LABELS: Record<string, string> = {
   difficulty: "Difficulty",
   duration_weeks: "Duration (weeks)",
   sessions_per_week: "Sessions per week",
+  payment_type: "Payment type",
+  billing_interval: "Billing interval",
   price_cents: "Price",
   split_type: "Split type",
   periodization: "Periodization",
   tier: "Tier",
+}
+
+const BILLING_INTERVAL_LABELS: Record<string, string> = {
+  week: "Weekly",
+  month: "Monthly",
 }
 
 const selectClass =
@@ -150,6 +162,8 @@ export function ProgramFormDialog({
   const [priceDollars, setPriceDollars] = useState(
     program?.price_cents != null ? (program.price_cents / 100).toFixed(2) : ""
   )
+  const [paymentType, setPaymentType] = useState<PaymentType>(program?.payment_type ?? "one_time")
+  const [billingInterval, setBillingInterval] = useState<string>(program?.billing_interval ?? "month")
 
   // Audience state
   const [audience, setAudience] = useState<AudienceMode>(() => {
@@ -174,6 +188,8 @@ export function ProgramFormDialog({
     setDurationWeeks(program?.duration_weeks?.toString() ?? "")
     setSessionsPerWeek(program?.sessions_per_week?.toString() ?? "")
     setPriceDollars(program?.price_cents != null ? (program.price_cents / 100).toFixed(2) : "")
+    setPaymentType(program?.payment_type ?? "one_time")
+    setBillingInterval(program?.billing_interval ?? "month")
     setAudience(program?.is_public ? "public" : "private")
     setStep(0)
     setDirection(1)
@@ -193,6 +209,12 @@ export function ProgramFormDialog({
       const sessions = parseInt(sessionsPerWeek)
       if (!weeks || weeks < 1) { toast.error("Duration must be at least 1 week"); return false }
       if (!sessions || sessions < 1) { toast.error("Sessions per week must be at least 1"); return false }
+      if (paymentType !== "free" && (!priceDollars || parseFloat(priceDollars) <= 0)) {
+        toast.error("Price is required for paid programs"); return false
+      }
+      if (paymentType === "subscription" && !billingInterval) {
+        toast.error("Billing interval is required for subscriptions"); return false
+      }
     }
     if (s === 2) {
       // No additional validation needed — just public or private
@@ -258,7 +280,9 @@ export function ProgramFormDialog({
       tier: selectedTier,
       duration_weeks: durationWeeks,
       sessions_per_week: sessionsPerWeek,
-      price_cents: priceCents,
+      payment_type: paymentType,
+      billing_interval: paymentType === "subscription" ? billingInterval : null,
+      price_cents: paymentType === "free" ? null : priceCents,
       split_type: splitType || null,
       periodization: periodization || null,
       is_public: audience === "public",
@@ -448,6 +472,10 @@ export function ProgramFormDialog({
                   setDurationWeeks={setDurationWeeks}
                   sessionsPerWeek={sessionsPerWeek}
                   setSessionsPerWeek={setSessionsPerWeek}
+                  paymentType={paymentType}
+                  setPaymentType={setPaymentType}
+                  billingInterval={billingInterval}
+                  setBillingInterval={setBillingInterval}
                   priceDollars={priceDollars}
                   setPriceDollars={setPriceDollars}
                   errors={errors}
@@ -679,6 +707,10 @@ function Step2Schedule({
   setDurationWeeks,
   sessionsPerWeek,
   setSessionsPerWeek,
+  paymentType,
+  setPaymentType,
+  billingInterval,
+  setBillingInterval,
   priceDollars,
   setPriceDollars,
   errors,
@@ -688,11 +720,21 @@ function Step2Schedule({
   setDurationWeeks: (v: string) => void
   sessionsPerWeek: string
   setSessionsPerWeek: (v: string) => void
+  paymentType: PaymentType
+  setPaymentType: (v: PaymentType) => void
+  billingInterval: string
+  setBillingInterval: (v: string) => void
   priceDollars: string
   setPriceDollars: (v: string) => void
   errors: Partial<Record<keyof ProgramFormData, string[]>>
   disabled: boolean
 }) {
+  const paymentOptions: { value: PaymentType; label: string; icon: React.ReactNode; desc: string }[] = [
+    { value: "free", label: "Free", icon: <Gift className="size-4" />, desc: "No payment required" },
+    { value: "one_time", label: "One-Time", icon: <CreditCard className="size-4" />, desc: "Single payment" },
+    { value: "subscription", label: "Subscription", icon: <RefreshCw className="size-4" />, desc: "Recurring billing" },
+  ]
+
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
@@ -733,23 +775,99 @@ function Step2Schedule({
         </div>
       </div>
 
-      {/* Price */}
+      {/* Payment Type */}
       <div className="space-y-2">
-        <Label htmlFor="price_dollars">Price ($)</Label>
-        <Input
-          id="price_dollars"
-          type="number"
-          step="0.01"
-          min={0}
-          value={priceDollars}
-          onChange={(e) => setPriceDollars(e.target.value)}
-          placeholder="e.g. 99.99 (leave empty for free)"
-          disabled={disabled}
-        />
-        {errors.price_cents && (
-          <p className="text-xs text-destructive">{errors.price_cents[0]}</p>
+        <Label>Payment Type *</Label>
+        <div id="payment-type-options" className="grid grid-cols-3 gap-2">
+          {paymentOptions.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              disabled={disabled}
+              onClick={() => {
+                setPaymentType(opt.value)
+                if (opt.value === "free") setPriceDollars("")
+              }}
+              className={cn(
+                "flex flex-col items-center gap-1.5 rounded-lg border-2 px-3 py-3 text-center transition-colors",
+                paymentType === opt.value
+                  ? "border-primary bg-primary/5"
+                  : "border-border hover:border-muted-foreground/30"
+              )}
+            >
+              <span className={cn(
+                paymentType === opt.value ? "text-primary" : "text-muted-foreground"
+              )}>
+                {opt.icon}
+              </span>
+              <span className={cn(
+                "text-xs font-medium",
+                paymentType === opt.value ? "text-primary" : "text-foreground"
+              )}>
+                {opt.label}
+              </span>
+              <span className="text-[10px] text-muted-foreground leading-tight">
+                {opt.desc}
+              </span>
+            </button>
+          ))}
+        </div>
+        {errors.payment_type && (
+          <p className="text-xs text-destructive">{errors.payment_type[0]}</p>
         )}
       </div>
+
+      {/* Price — hidden for free */}
+      {paymentType !== "free" && (
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="price_dollars">
+              Price ($) *
+              {paymentType === "subscription" && billingInterval && (
+                <span className="text-muted-foreground font-normal">
+                  {" "}/ {billingInterval === "month" ? "mo" : "wk"}
+                </span>
+              )}
+            </Label>
+            <Input
+              id="price_dollars"
+              type="number"
+              step="0.01"
+              min={0}
+              value={priceDollars}
+              onChange={(e) => setPriceDollars(e.target.value)}
+              placeholder="e.g. 99.99"
+              disabled={disabled}
+            />
+            {errors.price_cents && (
+              <p className="text-xs text-destructive">{errors.price_cents[0]}</p>
+            )}
+          </div>
+
+          {/* Billing Interval — only for subscription */}
+          {paymentType === "subscription" && (
+            <div className="space-y-2">
+              <Label htmlFor="billing_interval">Billing Interval *</Label>
+              <select
+                id="billing_interval"
+                value={billingInterval}
+                onChange={(e) => setBillingInterval(e.target.value)}
+                disabled={disabled}
+                className={selectClass}
+              >
+                {BILLING_INTERVALS.map((interval) => (
+                  <option key={interval} value={interval}>
+                    {BILLING_INTERVAL_LABELS[interval]}
+                  </option>
+                ))}
+              </select>
+              {errors.billing_interval && (
+                <p className="text-xs text-destructive">{errors.billing_interval[0]}</p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

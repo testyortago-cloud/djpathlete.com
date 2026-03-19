@@ -39,6 +39,17 @@ export const PERIODIZATION_TYPES = [
   "none",
 ] as const
 
+export const PAYMENT_TYPES = [
+  "free",
+  "one_time",
+  "subscription",
+] as const
+
+export const BILLING_INTERVALS = [
+  "week",
+  "month",
+] as const
+
 export const programFormSchema = z.object({
   name: z
     .string()
@@ -64,6 +75,8 @@ export const programFormSchema = z.object({
     .number()
     .int("Must be a whole number")
     .positive("Must be at least 1 session"),
+  payment_type: z.enum(PAYMENT_TYPES).default("one_time"),
+  billing_interval: z.enum(BILLING_INTERVALS).nullable().optional().transform((v) => v ?? null),
   price_cents: z.coerce
     .number()
     .int("Must be a whole number")
@@ -74,6 +87,24 @@ export const programFormSchema = z.object({
   split_type: z.enum(SPLIT_TYPES).nullable().optional().transform((v) => v ?? null),
   periodization: z.enum(PERIODIZATION_TYPES).nullable().optional().transform((v) => v ?? null),
   is_public: z.boolean().optional().default(false),
+}).superRefine((data, ctx) => {
+  if (data.payment_type === "subscription" && !data.billing_interval) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Billing interval is required for subscription programs",
+      path: ["billing_interval"],
+    })
+  }
+  if (data.payment_type !== "free" && !data.price_cents) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Price is required for paid programs",
+      path: ["price_cents"],
+    })
+  }
+  if (data.payment_type === "free" && data.price_cents) {
+    data.price_cents = null
+  }
 })
 
 export type ProgramFormData = z.infer<typeof programFormSchema>
