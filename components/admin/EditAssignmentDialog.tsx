@@ -15,6 +15,15 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
+import type { AssignmentPaymentStatus } from "@/types/database"
+
+const PAYMENT_STATUS_LABELS: Record<AssignmentPaymentStatus, string> = {
+  not_required: "Not Required",
+  pending: "Pending",
+  paid: "Paid",
+  subscription_active: "Subscription Active",
+}
+
 interface EditAssignmentDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -22,6 +31,7 @@ interface EditAssignmentDialogProps {
   clientName: string
   currentStartDate: string
   currentNotes: string | null
+  currentPaymentStatus?: AssignmentPaymentStatus
 }
 
 export function EditAssignmentDialog({
@@ -31,16 +41,21 @@ export function EditAssignmentDialog({
   clientName,
   currentStartDate,
   currentNotes,
+  currentPaymentStatus,
 }: EditAssignmentDialogProps) {
   const router = useRouter()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [startDate, setStartDate] = useState(currentStartDate)
   const [notes, setNotes] = useState(currentNotes ?? "")
+  const [paymentStatus, setPaymentStatus] = useState<AssignmentPaymentStatus>(
+    currentPaymentStatus ?? "not_required"
+  )
 
   function handleClose(o: boolean) {
     if (!o) {
       setStartDate(currentStartDate)
       setNotes(currentNotes ?? "")
+      setPaymentStatus(currentPaymentStatus ?? "not_required")
     }
     onOpenChange(o)
   }
@@ -56,6 +71,9 @@ export function EditAssignmentDialog({
         body: JSON.stringify({
           start_date: startDate,
           notes: notes || null,
+          ...(currentPaymentStatus !== undefined && paymentStatus !== currentPaymentStatus
+            ? { payment_status: paymentStatus }
+            : {}),
         }),
       })
 
@@ -74,7 +92,9 @@ export function EditAssignmentDialog({
     }
   }
 
-  const hasChanges = startDate !== currentStartDate || (notes || null) !== currentNotes
+  const hasChanges = startDate !== currentStartDate
+    || (notes || null) !== currentNotes
+    || (currentPaymentStatus !== undefined && paymentStatus !== currentPaymentStatus)
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -115,6 +135,27 @@ export function EditAssignmentDialog({
               className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 resize-none"
             />
           </div>
+
+          {currentPaymentStatus !== undefined && (
+            <div className="space-y-2">
+              <Label htmlFor="edit-payment-status">Payment Status</Label>
+              <select
+                id="edit-payment-status"
+                value={paymentStatus}
+                onChange={(e) => setPaymentStatus(e.target.value as AssignmentPaymentStatus)}
+                disabled={isSubmitting}
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {(Object.entries(PAYMENT_STATUS_LABELS) as [AssignmentPaymentStatus, string][]).map(
+                  ([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  )
+                )}
+              </select>
+            </div>
+          )}
 
           <DialogFooter>
             <Button

@@ -5,11 +5,14 @@ import { Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { EditAssignmentDialog } from "@/components/admin/EditAssignmentDialog"
 
+import type { AssignmentPaymentStatus } from "@/types/database"
+
 interface EditAssignmentButtonProps {
   assignmentId: string
   clientName: string
   currentStartDate: string
   currentNotes: string | null
+  currentPaymentStatus?: AssignmentPaymentStatus
 }
 
 export function EditAssignmentButton({
@@ -17,6 +20,7 @@ export function EditAssignmentButton({
   clientName,
   currentStartDate,
   currentNotes,
+  currentPaymentStatus,
 }: EditAssignmentButtonProps) {
   const [open, setOpen] = useState(false)
 
@@ -39,6 +43,7 @@ export function EditAssignmentButton({
         clientName={clientName}
         currentStartDate={currentStartDate}
         currentNotes={currentNotes}
+        currentPaymentStatus={currentPaymentStatus}
       />
     </>
   )

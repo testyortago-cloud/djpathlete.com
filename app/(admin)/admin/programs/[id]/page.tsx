@@ -46,7 +46,7 @@ export default async function ProgramBuilderPage({
   const assignedUserIds = activeAssignments.map((a) => a.user_id)
   const assignmentMap = Object.fromEntries(activeAssignments.map((a) => [a.user_id, a.id]))
   const assignmentDetails = Object.fromEntries(
-    activeAssignments.map((a) => [a.user_id, { id: a.id, start_date: a.start_date, notes: a.notes }])
+    activeAssignments.map((a) => [a.user_id, { id: a.id, start_date: a.start_date, notes: a.notes, payment_status: a.payment_status as import("@/types/database").AssignmentPaymentStatus }])
   )
 
   const assignmentInfo = activeAssignment

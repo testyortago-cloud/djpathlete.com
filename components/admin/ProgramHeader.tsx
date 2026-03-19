@@ -8,10 +8,13 @@ import { ProgramFormDialog } from "@/components/admin/ProgramFormDialog"
 import { AssignProgramDialog } from "@/components/admin/AssignProgramDialog"
 import type { Program, User } from "@/types/database"
 
+import type { AssignmentPaymentStatus } from "@/types/database"
+
 export interface AssignmentDetail {
   id: string
   start_date: string
   notes: string | null
+  payment_status: AssignmentPaymentStatus
 }
 
 interface ProgramHeaderProps {

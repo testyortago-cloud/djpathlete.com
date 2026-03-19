@@ -10,10 +10,10 @@ export async function PATCH(
   try {
     const { id } = await params
     const body = await request.json()
-    const { status, start_date, notes } = body
+    const { status, start_date, notes, payment_status } = body
 
     // Must provide at least one field to update
-    if (!status && start_date === undefined && notes === undefined) {
+    if (!status && start_date === undefined && notes === undefined && payment_status === undefined) {
       return NextResponse.json(
         { error: "No update fields provided" },
         { status: 400 }
@@ -41,6 +41,13 @@ export async function PATCH(
       )
     }
 
+    if (payment_status && !["not_required", "pending", "paid", "subscription_active"].includes(payment_status)) {
+      return NextResponse.json(
+        { error: "Invalid payment_status" },
+        { status: 400 }
+      )
+    }
+
     // Verify assignment exists
     const existing = await getAssignmentById(id)
     if (!existing) {
@@ -56,6 +63,7 @@ export async function PATCH(
     }
     if (start_date !== undefined) updates.start_date = start_date
     if (notes !== undefined) updates.notes = notes
+    if (payment_status) updates.payment_status = payment_status
 
     const updated = await updateAssignment(id, updates)
 
