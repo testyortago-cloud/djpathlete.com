@@ -152,6 +152,15 @@ export function ProgramBuilder({
   const [isDuplicatingEx, setIsDuplicatingEx] = useState(false)
   const [isDuplicatingInPlace, setIsDuplicatingInPlace] = useState(false)
 
+  // Compute which weeks are blank (no exercises)
+  const blankWeeks = new Set<number>()
+  for (let w = 1; w <= localTotalWeeks; w++) {
+    if (!localExercises.some((pe) => pe.week_number === w)) {
+      blankWeeks.add(w)
+    }
+  }
+  const selectedWeekIsBlank = blankWeeks.has(selectedWeek)
+
   // Group exercises for the selected week by day
   const weekExercises = localExercises.filter(
     (pe) => pe.week_number === selectedWeek
@@ -512,6 +521,7 @@ export function ProgramBuilder({
         isDeletingWeek={isDeletingWeek}
         onGenerateWeek={() => setGenerateWeekOpen(true)}
         canGenerateWeek={!!assignmentInfo}
+        blankWeeks={blankWeeks}
       />
 
       {/* Day grid */}
@@ -730,8 +740,11 @@ export function ProgramBuilder({
           assignmentId={assignmentInfo.assignmentId}
           clientId={assignmentInfo.clientId}
           currentWeekCount={localTotalWeeks}
+          targetWeekNumber={selectedWeekIsBlank ? selectedWeek : undefined}
           onWeekGenerated={(newWeekNumber) => {
-            setLocalTotalWeeks(newWeekNumber)
+            if (!selectedWeekIsBlank) {
+              setLocalTotalWeeks(newWeekNumber)
+            }
             setSelectedWeek(newWeekNumber)
           }}
         />

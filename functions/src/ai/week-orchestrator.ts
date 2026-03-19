@@ -25,6 +25,8 @@ export interface WeekGenerationRequest {
   assignment_id: string
   client_id: string
   admin_instructions?: string
+  /** When set, generate into this specific (blank) week instead of appending a new one */
+  target_week_number?: number
 }
 
 export interface WeekGenerationResult {
@@ -296,7 +298,19 @@ export async function generateWeekSync(
     getExercisesForAI(),
   ])
 
-  const newWeekNumber = (program.duration_weeks ?? 1) + 1
+  // Determine whether we're filling a blank existing week or appending a new one
+  const isFillingBlank = !!request.target_week_number && request.target_week_number <= (program.duration_weeks ?? 1)
+  const newWeekNumber = request.target_week_number ?? (program.duration_weeks ?? 1) + 1
+
+  // If filling a blank week, verify it has no exercises already
+  if (isFillingBlank) {
+    const existingInTarget = existingExercises.filter(
+      (pe: { week_number: number }) => pe.week_number === newWeekNumber
+    )
+    if (existingInTarget.length > 0) {
+      throw new Error(`Week ${newWeekNumber} already has ${existingInTarget.length} exercises. Clear them first or generate into a blank week.`)
+    }
+  }
 
   // Get unique exercise IDs from the program for progress lookup
   const programExerciseIds = [...new Set(existingExercises.map((pe: { exercise_id: string }) => pe.exercise_id))]
@@ -305,9 +319,9 @@ export async function generateWeekSync(
   // Build compact summary of ALL weeks (focus/theme only) for full progression context
   const weekFocusSummary = buildWeekFocusSummary(existingExercises)
 
-  // Detailed exercises from last 3 weeks for structure matching
+  // Detailed exercises from the 3 weeks before the target week for structure matching
   const recentWeeksDetailed = existingExercises.filter(
-    (pe: { week_number: number }) => pe.week_number >= Math.max(1, (program.duration_weeks ?? 1) - 2)
+    (pe: { week_number: number }) => pe.week_number >= Math.max(1, newWeekNumber - 3) && pe.week_number < newWeekNumber
   )
 
   // Keep lastTwoWeeks alias for exercise rotation logic below
@@ -597,9 +611,11 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
 
   await bulkAddExercisesToProgram(exerciseRows)
 
-  // Update program duration and assignment total_weeks
-  await updateProgramDuration(request.program_id, newWeekNumber)
-  await updateAssignmentTotalWeeks(request.assignment_id, newWeekNumber)
+  // Only bump duration_weeks and total_weeks when appending a new week (not filling a blank)
+  if (!isFillingBlank) {
+    await updateProgramDuration(request.program_id, newWeekNumber)
+    await updateAssignmentTotalWeeks(request.assignment_id, newWeekNumber)
+  }
 
   tokenUsage.total = tokenUsage.architect + tokenUsage.selector
   const durationMs = Date.now() - startTime

@@ -25,6 +25,8 @@ interface GenerateWeekDialogProps {
   clientId: string
   currentWeekCount: number
   onWeekGenerated: (newWeekNumber: number) => void
+  /** When set, fill this specific blank week instead of appending a new one */
+  targetWeekNumber?: number
 }
 
 export function GenerateWeekDialog({
@@ -35,6 +37,7 @@ export function GenerateWeekDialog({
   clientId,
   currentWeekCount,
   onWeekGenerated,
+  targetWeekNumber,
 }: GenerateWeekDialogProps) {
   const router = useRouter()
   const [instructions, setInstructions] = useState("")
@@ -47,6 +50,9 @@ export function GenerateWeekDialog({
   const isComplete = status === "completed"
   const isFailed = status === "failed"
 
+  const isFillingBlank = !!targetWeekNumber
+  const weekLabel = targetWeekNumber ?? currentWeekCount + 1
+
   async function handleSubmit() {
     setIsSubmitting(true)
     try {
@@ -57,6 +63,7 @@ export function GenerateWeekDialog({
           assignment_id: assignmentId,
           client_id: clientId,
           admin_instructions: instructions || undefined,
+          target_week_number: targetWeekNumber ?? undefined,
         }),
       })
 
@@ -77,7 +84,7 @@ export function GenerateWeekDialog({
   function handleClose() {
     if (isGenerating) return // Don't close while generating
     if (isComplete && result) {
-      const newWeekNumber = (result as { new_week_number?: number }).new_week_number ?? currentWeekCount + 1
+      const newWeekNumber = (result as { new_week_number?: number }).new_week_number ?? weekLabel
       onWeekGenerated(newWeekNumber)
       router.refresh()
     }
@@ -93,7 +100,7 @@ export function GenerateWeekDialog({
     if (status === "processing") return "Generating week..."
     if (status === "completed") {
       const r = result as { new_week_number?: number; exercises_added?: number } | null
-      return `Week ${r?.new_week_number ?? currentWeekCount + 1} generated with ${r?.exercises_added ?? 0} exercises!`
+      return `Week ${r?.new_week_number ?? weekLabel} generated with ${r?.exercises_added ?? 0} exercises!`
     }
     if (status === "failed") return error ?? "Generation failed"
     return ""
@@ -105,11 +112,12 @@ export function GenerateWeekDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="size-4 text-accent" />
-            AI Generate Week {currentWeekCount + 1}
+            {isFillingBlank ? `AI Fill Week ${weekLabel}` : `AI Generate Week ${weekLabel}`}
           </DialogTitle>
           <DialogDescription>
-            Generate a new week based on the existing program structure and the
-            client&apos;s workout logs. The AI will apply appropriate progression.
+            {isFillingBlank
+              ? `Fill blank Week ${weekLabel} with AI-generated exercises based on the program structure, previous weeks, and the client\u2019s workout logs.`
+              : "Generate a new week based on the existing program structure and the client\u2019s workout logs. The AI will apply appropriate progression."}
           </DialogDescription>
         </DialogHeader>
 
@@ -182,7 +190,7 @@ export function GenerateWeekDialog({
           )}
           {isComplete && (
             <Button onClick={handleClose}>
-              View Week {(result as { new_week_number?: number })?.new_week_number ?? currentWeekCount + 1}
+              View Week {(result as { new_week_number?: number })?.new_week_number ?? weekLabel}
             </Button>
           )}
           {isFailed && (

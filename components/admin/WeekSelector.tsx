@@ -14,6 +14,8 @@ interface WeekSelectorProps {
   isDeletingWeek?: boolean
   onGenerateWeek?: () => void
   canGenerateWeek?: boolean
+  /** Set of week numbers that have no exercises */
+  blankWeeks?: Set<number>
 }
 
 export function WeekSelector({
@@ -27,19 +29,27 @@ export function WeekSelector({
   isDeletingWeek = false,
   onGenerateWeek,
   canGenerateWeek = false,
+  blankWeeks = new Set(),
 }: WeekSelectorProps) {
+  const selectedIsBlank = blankWeeks.has(selectedWeek)
   return (
     <div className="flex items-center gap-2 flex-wrap">
-      {Array.from({ length: totalWeeks }, (_, i) => i + 1).map((week) => (
-        <Button
-          key={week}
-          variant={week === selectedWeek ? "default" : "outline"}
-          size="sm"
-          onClick={() => onSelectWeek(week)}
-        >
-          Week {week}
-        </Button>
-      ))}
+      {Array.from({ length: totalWeeks }, (_, i) => i + 1).map((week) => {
+        const isBlank = blankWeeks.has(week)
+        return (
+          <Button
+            key={week}
+            variant={week === selectedWeek ? "default" : "outline"}
+            size="sm"
+            onClick={() => onSelectWeek(week)}
+            className={isBlank && week !== selectedWeek ? "border-dashed border-muted-foreground/40 text-muted-foreground" : ""}
+            title={isBlank ? `Week ${week} (blank)` : `Week ${week}`}
+          >
+            Week {week}
+            {isBlank && <span className="ml-1 text-[10px] opacity-60">(blank)</span>}
+          </Button>
+        )
+      })}
       <Button
         variant="outline"
         size="sm"
@@ -77,11 +87,14 @@ export function WeekSelector({
           variant="outline"
           size="sm"
           onClick={onGenerateWeek}
-          title="AI generate the next week based on client performance"
+          title={selectedIsBlank
+            ? `AI fill blank Week ${selectedWeek} using prior week logs`
+            : "AI generate the next week based on client performance"
+          }
           className="text-accent border-accent/30 hover:bg-accent/10"
         >
           <Sparkles className="size-3.5" />
-          AI Generate Week
+          {selectedIsBlank ? `AI Fill Week ${selectedWeek}` : "AI Generate Week"}
         </Button>
       )}
     </div>

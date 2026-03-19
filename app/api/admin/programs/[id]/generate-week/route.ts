@@ -9,6 +9,8 @@ const generateWeekSchema = z.object({
   assignment_id: z.string().uuid(),
   client_id: z.string().uuid(),
   admin_instructions: z.string().max(2000).optional(),
+  /** When set, AI fills this specific blank week instead of appending a new one */
+  target_week_number: z.number().int().min(1).optional(),
 })
 
 export async function POST(
@@ -58,6 +60,7 @@ export async function POST(
           assignment_id: result.data.assignment_id,
           client_id: result.data.client_id,
           admin_instructions: result.data.admin_instructions ?? undefined,
+          target_week_number: result.data.target_week_number ?? undefined,
         },
         requestedBy: session.user.id,
       },

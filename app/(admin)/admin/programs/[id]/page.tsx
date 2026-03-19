@@ -78,7 +78,22 @@ export default async function ProgramBuilderPage({
       />
 
       {program.is_ai_generated && (
-        <ProgramFeedbackForm programId={program.id} />
+        <div className="bg-white rounded-xl border-2 border-accent/30 p-5 shadow-sm">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="flex items-center justify-center size-8 rounded-lg bg-accent/10">
+              <Sparkles className="size-4 text-accent" />
+            </div>
+            <div>
+              <h3 className="text-sm font-heading font-semibold text-foreground">
+                Rate AI-Generated Program
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                Your feedback helps improve future AI generations
+              </p>
+            </div>
+          </div>
+          <ProgramFeedbackForm programId={program.id} />
+        </div>
       )}
     </div>
   )
