@@ -4,6 +4,7 @@ import { checkoutSchema } from "@/lib/validators/checkout"
 import { getActiveProgramById } from "@/lib/db/programs"
 import { getAssignmentByUserAndProgram } from "@/lib/db/assignments"
 import { getActiveSubscription } from "@/lib/db/subscriptions"
+import { isAssignmentExpired } from "@/lib/utils"
 import {
   createCheckoutSession,
   createSubscriptionCheckoutSession,
@@ -69,8 +70,8 @@ export async function POST(request: Request) {
       )
     }
 
-    // Block if user already owns (paid or subscription_active) — but allow if payment is still pending
-    if (existing && existing.payment_status !== "pending") {
+    // Block if user already owns (paid or subscription_active) — but allow if payment is still pending or expired
+    if (existing && existing.payment_status !== "pending" && !isAssignmentExpired(existing.expires_at)) {
       return NextResponse.json(
         { error: "You already own this program." },
         { status: 409 }

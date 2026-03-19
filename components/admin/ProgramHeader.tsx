@@ -15,6 +15,7 @@ export interface AssignmentDetail {
   start_date: string
   notes: string | null
   payment_status: AssignmentPaymentStatus
+  expires_at: string | null
 }
 
 interface ProgramHeaderProps {

@@ -6,6 +6,7 @@ import { getAssignments } from "@/lib/db/assignments"
 import { PageHeader } from "@/components/shared/PageHeader"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Clock, CalendarDays, ShoppingBag, CheckCircle2, ArrowRight, History } from "lucide-react"
+import { isAssignmentExpired } from "@/lib/utils"
 import type { Program, ProgramAssignment } from "@/types/database"
 
 export const dynamic = "force-dynamic"
@@ -67,8 +68,8 @@ export default async function ClientProgramsPage() {
     if (publicResult.status === "rejected") console.error("[browse] getPublicPrograms failed:", publicResult.reason)
 
     const typedAssignments = assignments as AssignmentWithProgram[]
-    currentPrograms = typedAssignments.filter((a) => a.status === "active" && a.payment_status !== "pending")
-    previousPrograms = typedAssignments.filter((a) => a.status === "completed")
+    currentPrograms = typedAssignments.filter((a) => a.status === "active" && a.payment_status !== "pending" && !isAssignmentExpired(a.expires_at))
+    previousPrograms = typedAssignments.filter((a) => a.status === "completed" || (a.status === "active" && isAssignmentExpired(a.expires_at)))
 
     // Build set of all assigned program IDs (active + completed, excluding pending payment) to exclude from available
     const assignedIds = new Set(

@@ -48,6 +48,7 @@ export async function POST(
           current_week: 1,
           total_weeks: programData.duration_weeks ?? null,
           payment_status: isPaid && !complimentary ? "pending" : "not_required",
+          expires_at: null,
         })
 
         assigned++

@@ -366,6 +366,7 @@ export function AssignProgramDialog({
         currentStartDate={editDetail.start_date}
         currentNotes={editDetail.notes}
         currentPaymentStatus={editDetail.payment_status}
+        currentExpiresAt={editDetail.expires_at}
       />
     )}
     </>

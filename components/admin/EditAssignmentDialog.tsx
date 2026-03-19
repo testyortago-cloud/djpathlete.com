@@ -32,6 +32,7 @@ interface EditAssignmentDialogProps {
   currentStartDate: string
   currentNotes: string | null
   currentPaymentStatus?: AssignmentPaymentStatus
+  currentExpiresAt?: string | null
 }
 
 export function EditAssignmentDialog({
@@ -42,6 +43,7 @@ export function EditAssignmentDialog({
   currentStartDate,
   currentNotes,
   currentPaymentStatus,
+  currentExpiresAt,
 }: EditAssignmentDialogProps) {
   const router = useRouter()
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -50,12 +52,16 @@ export function EditAssignmentDialog({
   const [paymentStatus, setPaymentStatus] = useState<AssignmentPaymentStatus>(
     currentPaymentStatus ?? "not_required"
   )
+  const [expiresAt, setExpiresAt] = useState(
+    currentExpiresAt ? currentExpiresAt.slice(0, 10) : ""
+  )
 
   function handleClose(o: boolean) {
     if (!o) {
       setStartDate(currentStartDate)
       setNotes(currentNotes ?? "")
       setPaymentStatus(currentPaymentStatus ?? "not_required")
+      setExpiresAt(currentExpiresAt ? currentExpiresAt.slice(0, 10) : "")
     }
     onOpenChange(o)
   }
@@ -73,6 +79,9 @@ export function EditAssignmentDialog({
           notes: notes || null,
           ...(currentPaymentStatus !== undefined && paymentStatus !== currentPaymentStatus
             ? { payment_status: paymentStatus }
+            : {}),
+          ...(expiresAt !== (currentExpiresAt ? currentExpiresAt.slice(0, 10) : "")
+            ? { expires_at: expiresAt ? new Date(expiresAt + "T23:59:59Z").toISOString() : null }
             : {}),
         }),
       })
@@ -95,6 +104,7 @@ export function EditAssignmentDialog({
   const hasChanges = startDate !== currentStartDate
     || (notes || null) !== currentNotes
     || (currentPaymentStatus !== undefined && paymentStatus !== currentPaymentStatus)
+    || expiresAt !== (currentExpiresAt ? currentExpiresAt.slice(0, 10) : "")
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -134,6 +144,34 @@ export function EditAssignmentDialog({
               disabled={isSubmitting}
               className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 resize-none"
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="edit-expires-at">Access Expires</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                id="edit-expires-at"
+                type="date"
+                value={expiresAt}
+                onChange={(e) => setExpiresAt(e.target.value)}
+                disabled={isSubmitting}
+              />
+              {expiresAt && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setExpiresAt("")}
+                  disabled={isSubmitting}
+                  className="shrink-0 text-xs text-muted-foreground"
+                >
+                  Clear
+                </Button>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              When set, the client loses access after this date. Leave empty for no expiry.
+            </p>
           </div>
 
           {currentPaymentStatus !== undefined && (

@@ -13,6 +13,7 @@ interface EditAssignmentButtonProps {
   currentStartDate: string
   currentNotes: string | null
   currentPaymentStatus?: AssignmentPaymentStatus
+  currentExpiresAt?: string | null
 }
 
 export function EditAssignmentButton({
@@ -21,6 +22,7 @@ export function EditAssignmentButton({
   currentStartDate,
   currentNotes,
   currentPaymentStatus,
+  currentExpiresAt,
 }: EditAssignmentButtonProps) {
   const [open, setOpen] = useState(false)
 
@@ -44,6 +46,7 @@ export function EditAssignmentButton({
         currentStartDate={currentStartDate}
         currentNotes={currentNotes}
         currentPaymentStatus={currentPaymentStatus}
+        currentExpiresAt={currentExpiresAt}
       />
     </>
   )

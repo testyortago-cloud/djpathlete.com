@@ -138,6 +138,7 @@ async function handleOneTimeCheckout(session: Stripe.Checkout.Session) {
       current_week: 1,
       total_weeks: purchasedProgram.duration_weeks ?? null,
       payment_status: "paid",
+      expires_at: null,
     })
   }
 
@@ -182,6 +183,7 @@ async function handleSubscriptionCheckout(session: Stripe.Checkout.Session) {
       current_week: 1,
       total_weeks: program.duration_weeks ?? null,
       payment_status: "subscription_active",
+      expires_at: null,
     })
     assignmentId = assignment.id
   }

@@ -10,10 +10,10 @@ export async function PATCH(
   try {
     const { id } = await params
     const body = await request.json()
-    const { status, start_date, notes, payment_status } = body
+    const { status, start_date, notes, payment_status, expires_at } = body
 
     // Must provide at least one field to update
-    if (!status && start_date === undefined && notes === undefined && payment_status === undefined) {
+    if (!status && start_date === undefined && notes === undefined && payment_status === undefined && expires_at === undefined) {
       return NextResponse.json(
         { error: "No update fields provided" },
         { status: 400 }
@@ -48,6 +48,16 @@ export async function PATCH(
       )
     }
 
+    if (expires_at !== undefined && expires_at !== null) {
+      const d = new Date(expires_at)
+      if (isNaN(d.getTime())) {
+        return NextResponse.json(
+          { error: "Invalid expires_at. Must be a valid date string or null" },
+          { status: 400 }
+        )
+      }
+    }
+
     // Verify assignment exists
     const existing = await getAssignmentById(id)
     if (!existing) {
@@ -64,6 +74,7 @@ export async function PATCH(
     if (start_date !== undefined) updates.start_date = start_date
     if (notes !== undefined) updates.notes = notes
     if (payment_status) updates.payment_status = payment_status
+    if (expires_at !== undefined) updates.expires_at = expires_at
 
     const updated = await updateAssignment(id, updates)
 

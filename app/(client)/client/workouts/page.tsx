@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/ui/empty-state"
 import { WorkoutViewToggle } from "@/components/client/WorkoutViewToggle"
 import type { WorkoutCalendarDay } from "@/components/client/WorkoutCalendar"
 import { Dumbbell } from "lucide-react"
+import { isAssignmentExpired } from "@/lib/utils"
 import type { Program, ProgramAssignment, Exercise, ProgramExercise } from "@/types/database"
 
 export const dynamic = "force-dynamic"
@@ -83,7 +84,7 @@ export default async function ClientWorkoutsPage() {
 
   try {
     const assignments = (await getAssignments(userId)) as AssignmentWithProgram[]
-    activeAssignments = assignments.filter((a) => a.status === "active")
+    activeAssignments = assignments.filter((a) => a.status === "active" && a.payment_status !== "pending" && !isAssignmentExpired(a.expires_at))
 
     programExercises = await Promise.all(
       activeAssignments.map(async (assignment) => {

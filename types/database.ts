@@ -201,6 +201,7 @@ export interface ProgramAssignment {
   current_week: number
   total_weeks: number | null
   payment_status: AssignmentPaymentStatus
+  expires_at: string | null
   created_at: string
   updated_at: string
 }

@@ -5,6 +5,7 @@ import { getProgress, getWorkoutStreak } from "@/lib/db/progress"
 import { getProfileByUserId } from "@/lib/db/client-profiles"
 import { getUserById } from "@/lib/db/users"
 import { getAssessmentResultsByUser } from "@/lib/db/assessments"
+import { isAssignmentExpired } from "@/lib/utils"
 import { PageHeader } from "@/components/shared/PageHeader"
 import { EmptyState } from "@/components/ui/empty-state"
 import { EmailVerificationBanner } from "@/components/client/EmailVerificationBanner"
@@ -50,7 +51,7 @@ export default async function ClientDashboardPage() {
     ])
 
     const typedAssignments = assignments as AssignmentWithProgram[]
-    activeAssignments = typedAssignments.filter((a) => a.status === "active" && a.payment_status !== "pending")
+    activeAssignments = typedAssignments.filter((a) => a.status === "active" && a.payment_status !== "pending" && !isAssignmentExpired(a.expires_at))
     totalWorkouts = progress.length
     currentStreak = streak
     hasCompletedQuestionnaire = !!(profile?.goals && profile.goals.trim().length > 0)

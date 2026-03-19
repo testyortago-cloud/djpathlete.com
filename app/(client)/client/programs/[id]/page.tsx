@@ -5,6 +5,7 @@ import { Clock, CalendarDays, BarChart3, ArrowLeft, CheckCircle2, RefreshCw } fr
 import { getActiveProgramById } from "@/lib/db/programs"
 import { getAssignmentByUserAndProgram } from "@/lib/db/assignments"
 import { getActiveSubscription } from "@/lib/db/subscriptions"
+import { isAssignmentExpired } from "@/lib/utils"
 import { ClientBuyButton } from "./ClientBuyButton"
 import { ManageSubscriptionButton } from "./ManageSubscriptionButton"
 
@@ -67,7 +68,8 @@ export default async function ClientProgramDetailPage({ params }: Props) {
   }
 
   const assignment = await getAssignmentByUserAndProgram(session.user.id, program.id)
-  const owned = !!assignment && assignment.payment_status !== "pending"
+  const expired = isAssignmentExpired(assignment?.expires_at)
+  const owned = !!assignment && assignment.payment_status !== "pending" && !expired
   const isSubscription = program.payment_type === "subscription"
 
   // Check for active subscription
@@ -170,6 +172,11 @@ export default async function ClientProgramDetailPage({ params }: Props) {
           </>
         ) : (
           <>
+            {expired && (
+              <p className="text-sm text-warning font-medium mb-1">
+                Your access has expired. {isSubscription ? "Subscribe to continue." : "Re-purchase to continue."}
+              </p>
+            )}
             {program.price_cents && (
               <p className="text-3xl font-heading font-semibold text-primary">
                 {formatPrice(program.price_cents, isSubscription ? program.billing_interval : null)}

@@ -288,6 +288,7 @@ function ProgramsSection({
                           currentStartDate={assignment.start_date}
                           currentNotes={assignment.notes}
                           currentPaymentStatus={assignment.payment_status}
+                          currentExpiresAt={assignment.expires_at}
                         />
                         <UnassignButton
                           assignmentId={assignment.id}
