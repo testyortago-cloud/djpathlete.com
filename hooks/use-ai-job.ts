@@ -16,7 +16,7 @@ export type AiJobStatus = "pending" | "processing" | "streaming" | "completed" |
 
 export interface AiJobChunk {
   index: number
-  type: "delta" | "analysis" | "tool_start" | "tool_result" | "program_created" | "pipeline_step" | "message_id" | "done" | "error"
+  type: "delta" | "analysis" | "tool_start" | "tool_result" | "program_created" | "pipeline_step" | "parameters_proposed" | "message_id" | "done" | "error"
   data: Record<string, unknown>
 }
 

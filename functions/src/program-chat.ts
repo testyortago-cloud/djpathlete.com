@@ -89,6 +89,26 @@ const TOOL_DEFINITIONS: Anthropic.Messages.Tool[] = [
     },
   },
   {
+    name: "propose_parameters",
+    description: "Present proposed program parameters to the admin for confirmation. The UI will show interactive 'Generate' and 'Modify' buttons. ALWAYS use this instead of writing parameters as plain text.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        client_id: { type: "string", description: "The UUID of the client (null for generic programs)" },
+        client_name: { type: "string", description: "The client's name (for display)" },
+        goals: { type: "array", items: { type: "string" }, description: "Training goals" },
+        duration_weeks: { type: "number", description: "Program length in weeks" },
+        sessions_per_week: { type: "number", description: "Training sessions per week" },
+        session_minutes: { type: "number", description: "Session duration in minutes" },
+        split_type: { type: "string", description: "Split type" },
+        periodization: { type: "string", description: "Periodization type" },
+        additional_instructions: { type: "string", description: "Extra instructions or notes" },
+        equipment_override: { type: "array", items: { type: "string" }, description: "Available equipment" },
+      },
+      required: ["goals", "duration_weeks", "sessions_per_week"],
+    },
+  },
+  {
     name: "generate_program",
     description: "Generate a full training program for a client using AI. Call this once you have gathered enough information about the client's needs.",
     input_schema: {
@@ -453,6 +473,21 @@ export async function handleProgramChat(jobId: string): Promise<void> {
               case "lookup_client_profile": {
                 const args = toolUse.input as { client_id: string; client_name: string }
                 toolResult = await lookupClientProfile(args.client_id, args.client_name)
+                break
+              }
+              case "propose_parameters": {
+                const params = toolUse.input as Record<string, unknown>
+                // Emit a parameters_proposed chunk so the frontend can show buttons
+                await chunksRef.doc(String(chunkIndex++).padStart(6, "0")).set({
+                  index: chunkIndex - 1,
+                  type: "parameters_proposed",
+                  data: params,
+                  createdAt: FieldValue.serverTimestamp(),
+                })
+                toolResult = {
+                  success: true,
+                  summary: "Parameters shown to Darren with Generate/Modify buttons. Wait for his response.",
+                }
                 break
               }
               case "generate_program": {

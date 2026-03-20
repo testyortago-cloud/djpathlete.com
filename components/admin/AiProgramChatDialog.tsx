@@ -51,9 +51,25 @@ interface ToolEvent {
   durationMs?: number
 }
 
+interface ProposedParams {
+  id: string
+  client_id?: string | null
+  client_name?: string
+  goals: string[]
+  duration_weeks: number
+  sessions_per_week: number
+  session_minutes?: number
+  split_type?: string
+  periodization?: string
+  additional_instructions?: string
+  equipment_override?: string[]
+  status: "pending" | "confirmed" | "modified"
+}
+
 type ChatItem =
   | { kind: "message"; data: ChatMessage }
   | { kind: "event"; data: ToolEvent }
+  | { kind: "params"; data: ProposedParams }
 
 // ─── LocalStorage persistence ────────────────────────────────────────────────
 
@@ -85,7 +101,7 @@ function saveChatState(sessionId: string, items: ChatItem[]) {
   try {
     // Only save messages that are "done" (skip streaming/in-progress)
     const safeItems = items.filter(
-      (item) => item.kind === "event" || (item.kind === "message" && item.data.status !== "streaming")
+      (item) => item.kind === "event" || item.kind === "params" || (item.kind === "message" && item.data.status !== "streaming")
     )
     const state: StoredChatState = {
       sessionId,
@@ -296,6 +312,117 @@ function ProgramResultCard({
           Assign
         </Button>
       </div>
+    </motion.div>
+  )
+}
+
+const GOAL_LABELS: Record<string, string> = {
+  weight_loss: "Weight Loss",
+  muscle_gain: "Muscle Gain",
+  endurance: "Endurance",
+  flexibility: "Flexibility",
+  sport_specific: "Sport Specific",
+  general_health: "General Health",
+}
+
+const SPLIT_LABELS: Record<string, string> = {
+  full_body: "Full Body",
+  upper_lower: "Upper/Lower",
+  push_pull_legs: "Push/Pull/Legs",
+  push_pull: "Push/Pull",
+  body_part: "Body Part",
+  movement_pattern: "Movement Pattern",
+}
+
+function ParametersCard({
+  params,
+  onGenerate,
+  onModify,
+  disabled,
+}: {
+  params: ProposedParams
+  onGenerate: () => void
+  onModify: () => void
+  disabled: boolean
+}) {
+  const isConfirmed = params.status === "confirmed"
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.97 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.2 }}
+      className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-3 mx-4 my-1"
+    >
+      <div className="flex items-center gap-2">
+        <Sparkles className="size-4 text-primary" />
+        <span className="text-sm font-semibold text-foreground">
+          {params.client_name ? `Program for ${params.client_name}` : "Proposed Program"}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+        <div>
+          <span className="text-muted-foreground">Goals:</span>{" "}
+          <span className="text-foreground font-medium">
+            {params.goals.map((g) => GOAL_LABELS[g] ?? g).join(", ")}
+          </span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Duration:</span>{" "}
+          <span className="text-foreground font-medium">{params.duration_weeks} weeks</span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Sessions:</span>{" "}
+          <span className="text-foreground font-medium">
+            {params.sessions_per_week}x/week{params.session_minutes ? `, ${params.session_minutes}min` : ""}
+          </span>
+        </div>
+        {params.split_type && (
+          <div>
+            <span className="text-muted-foreground">Split:</span>{" "}
+            <span className="text-foreground font-medium">
+              {SPLIT_LABELS[params.split_type] ?? params.split_type}
+            </span>
+          </div>
+        )}
+        {params.periodization && (
+          <div>
+            <span className="text-muted-foreground">Periodization:</span>{" "}
+            <span className="text-foreground font-medium capitalize">{params.periodization}</span>
+          </div>
+        )}
+        {params.equipment_override && params.equipment_override.length > 0 && (
+          <div className="col-span-2">
+            <span className="text-muted-foreground">Equipment:</span>{" "}
+            <span className="text-foreground font-medium">{params.equipment_override.join(", ")}</span>
+          </div>
+        )}
+        {params.additional_instructions && (
+          <div className="col-span-2">
+            <span className="text-muted-foreground">Notes:</span>{" "}
+            <span className="text-foreground font-medium">{params.additional_instructions}</span>
+          </div>
+        )}
+      </div>
+
+      {!isConfirmed && (
+        <div className="flex items-center gap-2 pt-1">
+          <Button size="sm" onClick={onGenerate} disabled={disabled}>
+            <Sparkles className="size-3.5 mr-1" />
+            Generate Program
+          </Button>
+          <Button size="sm" variant="outline" onClick={onModify} disabled={disabled}>
+            Modify
+          </Button>
+        </div>
+      )}
+      {isConfirmed && (
+        <div className="flex items-center gap-1.5 text-xs text-success">
+          <CheckCircle2 className="size-3.5" />
+          <span>Confirmed — generating program...</span>
+        </div>
+      )}
     </motion.div>
   )
 }
@@ -557,6 +684,36 @@ export function AiProgramChatDialog({
           break
         }
 
+        case "parameters_proposed": {
+          // Remove the tool_start card for propose_parameters
+          setItems((prev) => {
+            const filtered = prev.filter(
+              (i) => !(i.kind === "event" && i.data.type === "tool_start" && i.data.tool === "propose_parameters")
+            )
+            return [
+              ...filtered,
+              {
+                kind: "params" as const,
+                data: {
+                  id: nextId("params"),
+                  client_id: (chunk.data.client_id as string) ?? null,
+                  client_name: (chunk.data.client_name as string) ?? undefined,
+                  goals: (chunk.data.goals as string[]) ?? [],
+                  duration_weeks: (chunk.data.duration_weeks as number) ?? 4,
+                  sessions_per_week: (chunk.data.sessions_per_week as number) ?? 3,
+                  session_minutes: (chunk.data.session_minutes as number) ?? undefined,
+                  split_type: (chunk.data.split_type as string) ?? undefined,
+                  periodization: (chunk.data.periodization as string) ?? undefined,
+                  additional_instructions: (chunk.data.additional_instructions as string) ?? undefined,
+                  equipment_override: (chunk.data.equipment_override as string[]) ?? undefined,
+                  status: "pending" as const,
+                },
+              },
+            ]
+          })
+          break
+        }
+
         case "tool_result": {
           setIsGenerating(false)
           setItems((prev) => {
@@ -641,10 +798,37 @@ export function AiProgramChatDialog({
     }
   }, [currentJobId, aiJob.chunks, nextId, router])
 
-  // Handle job failure or cancellation from status
+  // Handle job completion, failure, or cancellation from status
   useEffect(() => {
     if (!currentJobId) return
-    if (aiJob.status === "failed" && aiJob.error) {
+    if (aiJob.status === "completed" && aiJob.result) {
+      // Direct generate endpoint completed (no chunks emitted)
+      // Only handle if we don't already have a program_created event from chunks
+      const alreadyHasProgramCreated = items.some(
+        (i) => i.kind === "event" && i.data.type === "program_created"
+      )
+      if (!alreadyHasProgramCreated && aiJob.result.program_id) {
+        setIsGenerating(false)
+        setIsStreaming(false)
+        setPipelineSteps([])
+        setItems((prev) => [
+          ...prev,
+          {
+            kind: "event" as const,
+            data: {
+              id: nextId("program"),
+              type: "program_created" as const,
+              programId: aiJob.result!.program_id as string,
+              validationPass: (aiJob.result!.validation as Record<string, unknown>)?.pass as boolean ?? true,
+              durationMs: aiJob.result!.duration_ms as number ?? 0,
+            },
+          },
+        ])
+        setCurrentJobId(null)
+        prevChunkCountRef.current = 0
+        router.refresh()
+      }
+    } else if (aiJob.status === "failed" && aiJob.error) {
       setIsGenerating(false)
       setIsStreaming(false)
       setItems((prev) => [
@@ -676,7 +860,7 @@ export function AiProgramChatDialog({
         )
       )
     }
-  }, [currentJobId, aiJob.status, aiJob.error, nextId])
+  }, [currentJobId, aiJob.status, aiJob.error, aiJob.result, nextId, items, router])
 
   // Persist chat state to localStorage when not streaming
   useEffect(() => {
@@ -757,6 +941,16 @@ export function AiProgramChatDialog({
           result.push({ role: item.data.role, content: item.data.content })
           lastRole = item.data.role
         }
+      } else if (item.kind === "params") {
+        // Embed proposed parameters as assistant context
+        const p = item.data
+        const paramsText = `[Proposed parameters: goals=${p.goals.join(",")}, duration=${p.duration_weeks}wk, sessions=${p.sessions_per_week}x/wk${p.session_minutes ? `, ${p.session_minutes}min` : ""}${p.split_type ? `, split=${p.split_type}` : ""}${p.periodization ? `, periodization=${p.periodization}` : ""}, status=${p.status}]`
+        if (lastRole === "assistant" && result.length > 0) {
+          result[result.length - 1].content += "\n" + paramsText
+        } else {
+          result.push({ role: "assistant", content: paramsText })
+          lastRole = "assistant"
+        }
       } else if (
         item.kind === "event" &&
         (item.data.type === "tool_result" || item.data.type === "program_created")
@@ -783,6 +977,81 @@ export function AiProgramChatDialog({
       .filter((i): i is Extract<ChatItem, { kind: "event" }> => i.kind === "event")
       .filter((i) => i.data.type === "tool_result" || i.data.type === "program_created")
       .map((i) => ({ tool: i.data.tool, summary: i.data.summary }))
+  }
+
+  // ─── Generate from proposed params (bypasses chat AI) ────────────────────
+
+  async function handleGenerateFromParams(params: ProposedParams) {
+    if (isStreaming) return
+
+    // Mark params as confirmed
+    setItems((prev) =>
+      prev.map((item) =>
+        item.kind === "params" && item.data.id === params.id
+          ? { ...item, data: { ...item.data, status: "confirmed" as const } }
+          : item
+      )
+    )
+
+    setIsStreaming(true)
+    setIsGenerating(true)
+    jobAssistantIdRef.current = nextId("assistant")
+    prevChunkCountRef.current = 0
+
+    try {
+      // Build generation request matching aiGenerationRequestSchema
+      const genRequest: Record<string, unknown> = {
+        goals: params.goals,
+        duration_weeks: params.duration_weeks,
+        sessions_per_week: params.sessions_per_week,
+      }
+      if (params.client_id) genRequest.client_id = params.client_id
+      if (params.session_minutes) genRequest.session_minutes = params.session_minutes
+      if (params.split_type) genRequest.split_type = params.split_type
+      if (params.periodization) genRequest.periodization = params.periodization
+      if (params.additional_instructions) genRequest.additional_instructions = params.additional_instructions
+      if (params.equipment_override) genRequest.equipment_override = params.equipment_override
+
+      // Call the direct generate endpoint (bypasses chat AI entirely)
+      const res = await fetch("/api/admin/programs/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(genRequest),
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ error: "Request failed" }))
+        throw new Error(data.error || `HTTP ${res.status}`)
+      }
+
+      const data = await res.json()
+      setCurrentJobId(data.jobId)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Something went wrong"
+      setItems((prev) => [
+        ...prev,
+        {
+          kind: "message",
+          data: {
+            id: nextId("error"),
+            role: "assistant",
+            content: message,
+            status: "error",
+          },
+        },
+      ])
+      setIsStreaming(false)
+      setIsGenerating(false)
+    }
+  }
+
+  function handleModifyParams() {
+    setInput("")
+    inputRef.current?.focus()
+    // Set placeholder hint
+    if (inputRef.current) {
+      inputRef.current.placeholder = "Tell me what to change (e.g. 'make it 8 weeks instead')..."
+    }
   }
 
   // ─── Send message ────────────────────────────────────────────────────────
@@ -957,6 +1226,18 @@ export function AiProgramChatDialog({
               if (item.kind === "message") {
                 return (
                   <MessageBubble key={item.data.id} message={item.data} />
+                )
+              }
+
+              if (item.kind === "params") {
+                return (
+                  <ParametersCard
+                    key={item.data.id}
+                    params={item.data}
+                    onGenerate={() => handleGenerateFromParams(item.data)}
+                    onModify={handleModifyParams}
+                    disabled={isStreaming}
+                  />
                 )
               }
 
