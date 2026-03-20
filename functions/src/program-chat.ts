@@ -110,6 +110,103 @@ const TOOL_DEFINITIONS: Anthropic.Messages.Tool[] = [
 
 const MAX_TOOL_ROUNDS = 5
 
+// ─── State compression ──────────────────────────────────────────────────────
+// Firestore has a 1MB document limit. Tool results (client lists, profiles)
+// can be very large. Compress them to summaries before persisting state.
+
+function compressToolResult(toolName: string, raw: string): string {
+  try {
+    const parsed = JSON.parse(raw)
+
+    if (toolName === "list_clients" && Array.isArray(parsed.clients)) {
+      // Keep only id + name — strip emails and other fields
+      const short = parsed.clients.map((c: Record<string, unknown>) => ({
+        id: c.id,
+        name: c.full_name ?? c.name ?? c.email,
+      }))
+      return JSON.stringify({ clients: short, count: short.length })
+    }
+
+    if (toolName === "lookup_client_profile") {
+      // Keep the essential profile fields, drop verbose nested data
+      const keep: Record<string, unknown> = {}
+      for (const key of [
+        "client_id", "client_name", "goals", "experience_level",
+        "training_age_category", "preferred_training_days",
+        "preferred_session_minutes", "available_equipment",
+        "injuries", "limitations", "preferences", "notes",
+      ]) {
+        if (parsed[key] !== undefined) keep[key] = parsed[key]
+      }
+      return JSON.stringify(keep)
+    }
+
+    // generate_program results are already small (just success/program_id)
+    return raw
+  } catch {
+    return raw
+  }
+}
+
+function compressApiMessages(
+  messages: Anthropic.Messages.MessageParam[]
+): Anthropic.Messages.MessageParam[] {
+  return messages.map((msg) => {
+    if (msg.role !== "user" || !Array.isArray(msg.content)) return msg
+
+    const compressed = msg.content.map((block) => {
+      if (
+        typeof block === "object" &&
+        "type" in block &&
+        block.type === "tool_result" &&
+        typeof (block as Anthropic.Messages.ToolResultBlockParam).content === "string"
+      ) {
+        const tr = block as Anthropic.Messages.ToolResultBlockParam
+        // Find the tool name from the tool_use_id — we tag it during execution
+        const content = tr.content as string
+        // Try to detect tool name from the content shape
+        let toolName = "unknown"
+        if (content.includes('"clients"')) toolName = "list_clients"
+        else if (content.includes('"client_id"') || content.includes('"goals"')) toolName = "lookup_client_profile"
+        else if (content.includes('"program_id"')) toolName = "generate_program"
+
+        return { ...tr, content: compressToolResult(toolName, content) }
+      }
+      return block
+    })
+    return { ...msg, content: compressed }
+  })
+}
+
+// ─── Context summary fallback ───────────────────────────────────────────────
+// When Firestore state is missing (save failed or expired), build a summary
+// from the text messages so the AI retains context about what happened.
+
+function buildConversationSummary(
+  textMessages: Array<{ role: "user" | "assistant"; content: string }>
+): string {
+  if (textMessages.length <= 2) return "" // just welcome + first user msg — no prior context
+
+  const parts: string[] = []
+  parts.push("## Previous Conversation Summary")
+  parts.push("The following is a summary of what was discussed so far in this conversation:")
+  parts.push("")
+
+  for (const msg of textMessages.slice(0, -1)) { // exclude the latest user message (already in messages array)
+    const prefix = msg.role === "user" ? "**Darren:**" : "**You (AI):**"
+    // Truncate very long messages
+    const content = msg.content.length > 500
+      ? msg.content.slice(0, 500) + "... [truncated]"
+      : msg.content
+    parts.push(`${prefix} ${content}`)
+  }
+
+  parts.push("")
+  parts.push("Continue the conversation naturally. Do NOT re-call tools you already used (e.g. if you already looked up a client, don't call list_clients or lookup_client_profile again). Use the information from the summary above.")
+
+  return parts.join("\n")
+}
+
 export async function handleProgramChat(jobId: string): Promise<void> {
   const db = getFirestore()
   const jobRef = db.collection("ai_jobs").doc(jobId)
@@ -178,6 +275,18 @@ export async function handleProgramChat(jobId: string): Promise<void> {
         apiMessages.push({ role: "user", content: latestUserMsg.content })
       }
       console.log(`[program-chat] Resumed session ${sessionId} with ${apiMessages.length} messages`)
+    } else if (recentMessages.length > 2) {
+      // State is missing but we have prior conversation — inject summary so AI keeps context
+      const conversationSummary = buildConversationSummary(recentMessages)
+      if (conversationSummary) {
+        systemPrompt += `\n\n${conversationSummary}`
+      }
+      // Only send the latest user message — the summary covers prior context
+      const latestUserMsg = recentMessages.filter((m) => m.role === "user").pop()
+      apiMessages = latestUserMsg
+        ? [{ role: "user", content: latestUserMsg.content }]
+        : []
+      console.log(`[program-chat] State missing for session ${sessionId} — injected conversation summary (${recentMessages.length} messages)`)
     } else {
       // First turn — build from text messages
       apiMessages = recentMessages.map((m) => ({
@@ -456,15 +565,25 @@ export async function handleProgramChat(jobId: string): Promise<void> {
       })
     } catch { /* non-fatal */ }
 
-    // Persist full API messages (including tool_use/tool_result blocks) for next turn
+    // Persist compressed API messages for next turn (avoids Firestore 1MB limit)
     try {
+      const compressed = compressApiMessages(apiMessages)
+      const statePayload = JSON.stringify({ apiMessages: compressed, userId })
+      const payloadSizeKB = Math.round(statePayload.length / 1024)
+      console.log(`[program-chat] Saving chat state: ${payloadSizeKB}KB, ${compressed.length} messages`)
+
+      if (payloadSizeKB > 900) {
+        console.warn(`[program-chat] Chat state is ${payloadSizeKB}KB — near Firestore 1MB limit, may fail`)
+      }
+
       await stateRef.set({
-        apiMessages,
+        apiMessages: compressed,
         userId,
         updatedAt: FieldValue.serverTimestamp(),
       })
     } catch (e) {
-      console.warn("[program-chat] Failed to save chat state:", e)
+      console.error(`[program-chat] FAILED to save chat state for session ${sessionId}:`, e instanceof Error ? e.message : e)
+      // State will be missing next turn — the summary fallback will kick in
     }
 
     // Done
