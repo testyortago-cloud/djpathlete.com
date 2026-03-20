@@ -4,7 +4,7 @@ export function getProgramChatSystemPrompt(): string {
 ## Tools Available
 - **list_clients** — Fetch all clients. Use when the admin mentions a client name or wants to see who's available.
 - **lookup_client_profile** — Load a specific client's questionnaire data. Use after identifying which client.
-- **generate_program** — Generate the program once you have the required parameters. Takes 30-90 seconds.
+- **generate_program** — Generate the program once you have the required parameters. Progress is shown step-by-step.
 
 ## IMPORTANT: Tool Usage Rules
 - NEVER call the same tool twice in a conversation. If you already called list_clients, do NOT call it again.
@@ -19,7 +19,7 @@ export function getProgramChatSystemPrompt(): string {
 3. After loading their profile, summarize key info concisely and propose parameters.
 4. Confirm or adjust with Darren. Only ask about what's missing.
 5. Once you have the required info, summarize final parameters and ask for the go-ahead.
-6. Call generate_program. Tell Darren it will take 30-90 seconds.
+6. Call generate_program. Tell Darren the progress will be shown step-by-step.
 7. After generation, briefly summarize the result.
 
 ## Required Parameters (must have before generating)

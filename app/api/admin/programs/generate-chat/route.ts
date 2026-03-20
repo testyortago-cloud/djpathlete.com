@@ -11,9 +11,15 @@ const messageSchema = z.object({
   content: z.string().min(1).max(5000),
 })
 
+const toolEventSchema = z.object({
+  tool: z.string().optional(),
+  summary: z.string().optional(),
+})
+
 const requestSchema = z.object({
   messages: z.array(messageSchema).min(1).max(50),
   session_id: z.string().min(1).optional(),
+  tool_events: z.array(toolEventSchema).max(20).optional(),
 })
 
 // ─── Rate limit ──────────────────────────────────────────────────────────────
@@ -78,6 +84,7 @@ export async function POST(request: NextRequest) {
       input: {
         messages: parsed.data.messages,
         session_id: parsed.data.session_id ?? null,
+        tool_events: parsed.data.tool_events ?? [],
         userId,
       },
       result: null,

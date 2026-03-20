@@ -3,7 +3,7 @@ import { getClient, MODEL_SONNET, MODEL_HAIKU, Anthropic } from "./ai/anthropic.
 import { getProgramChatSystemPrompt } from "./ai/program-chat-prompt.js"
 import { listClients, lookupClientProfile, getExercisesForAI } from "./ai/program-chat-tools.js"
 import { generateProgramSync } from "./ai/orchestrator.js"
-import type { AiGenerationRequest } from "./ai/orchestrator.js"
+import type { AiGenerationRequest, PipelineProgressCallback } from "./ai/orchestrator.js"
 import { retrieveSimilarContext, formatRagContext, buildRagAugmentedPrompt, embedConversationMessage } from "./ai/rag.js"
 import { getSupabase } from "./lib/supabase.js"
 import pRetry from "p-retry"
@@ -183,9 +183,10 @@ function compressApiMessages(
 // from the text messages so the AI retains context about what happened.
 
 function buildConversationSummary(
-  textMessages: Array<{ role: "user" | "assistant"; content: string }>
+  textMessages: Array<{ role: "user" | "assistant"; content: string }>,
+  toolEvents?: Array<{ tool?: string; summary?: string }>
 ): string {
-  if (textMessages.length <= 2) return "" // just welcome + first user msg — no prior context
+  if (textMessages.length <= 2 && (!toolEvents || toolEvents.length === 0)) return ""
 
   const parts: string[] = []
   parts.push("## Previous Conversation Summary")
@@ -201,8 +202,19 @@ function buildConversationSummary(
     parts.push(`${prefix} ${content}`)
   }
 
+  // Include tool call history so the AI knows what tools were already used
+  if (toolEvents && toolEvents.length > 0) {
+    parts.push("")
+    parts.push("## Tools Already Called (DO NOT re-call these)")
+    for (const evt of toolEvents) {
+      if (evt.tool) {
+        parts.push(`- **${evt.tool}**: ${evt.summary ?? "completed"}`)
+      }
+    }
+  }
+
   parts.push("")
-  parts.push("Continue the conversation naturally. Do NOT re-call tools you already used (e.g. if you already looked up a client, don't call list_clients or lookup_client_profile again). Use the information from the summary above.")
+  parts.push("CRITICAL: Continue the conversation naturally. Do NOT re-call tools you already used — the results are summarized above. Use the information from this summary to continue.")
 
   return parts.join("\n")
 }
@@ -231,6 +243,7 @@ export async function handleProgramChat(jobId: string): Promise<void> {
   const input = job.input as {
     messages: Array<{ role: "user" | "assistant"; content: string }>
     session_id?: string
+    tool_events?: Array<{ tool?: string; summary?: string }>
     userId: string
   }
 
@@ -275,9 +288,9 @@ export async function handleProgramChat(jobId: string): Promise<void> {
         apiMessages.push({ role: "user", content: latestUserMsg.content })
       }
       console.log(`[program-chat] Resumed session ${sessionId} with ${apiMessages.length} messages`)
-    } else if (recentMessages.length > 2) {
+    } else if (recentMessages.length > 2 || (input.tool_events && input.tool_events.length > 0)) {
       // State is missing but we have prior conversation — inject summary so AI keeps context
-      const conversationSummary = buildConversationSummary(recentMessages)
+      const conversationSummary = buildConversationSummary(recentMessages, input.tool_events)
       if (conversationSummary) {
         systemPrompt += `\n\n${conversationSummary}`
       }
@@ -430,8 +443,19 @@ export async function handleProgramChat(jobId: string): Promise<void> {
                   clientId = null
                 }
                 const args: AiGenerationRequest = { ...rawArgs, client_id: clientId } as AiGenerationRequest
+
+                // Progress callback to emit pipeline step chunks for real-time UI
+                const onProgress: PipelineProgressCallback = async (step, current, total, detail) => {
+                  await chunksRef.doc(String(chunkIndex++).padStart(6, "0")).set({
+                    index: chunkIndex - 1,
+                    type: "pipeline_step",
+                    data: { step, current, total, detail: detail ?? null },
+                    createdAt: FieldValue.serverTimestamp(),
+                  })
+                }
+
                 try {
-                  const genResult = await generateProgramSync(args, userId, undefined, undefined, jobId)
+                  const genResult = await generateProgramSync(args, userId, undefined, undefined, jobId, onProgress)
                   toolResult = {
                     success: true,
                     program_id: genResult.program_id,

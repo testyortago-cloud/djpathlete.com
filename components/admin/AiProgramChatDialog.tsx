@@ -186,13 +186,31 @@ function ToolStatusCard({ event }: { event: ToolEvent }) {
   )
 }
 
-function GeneratingIndicator() {
+interface PipelineStep {
+  step: string
+  current: number
+  total: number
+  detail?: string
+}
+
+const PIPELINE_LABELS = [
+  "Analyzing client profile",
+  "Designing program structure",
+  "Selecting exercises",
+  "Validating program",
+  "Saving program",
+]
+
+function PipelineProgress({ steps }: { steps: PipelineStep[] }) {
+  const latestStep = steps.length > 0 ? steps[steps.length - 1] : null
+  const currentNum = latestStep?.current ?? 0
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.15 }}
-      className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-2 mx-4 my-1"
+      className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-3 mx-4 my-1"
     >
       <div className="flex items-center gap-2">
         <Loader2 className="size-4 animate-spin text-primary" />
@@ -200,17 +218,40 @@ function GeneratingIndicator() {
           Building your program...
         </span>
       </div>
-      <p className="text-xs text-muted-foreground">
-        This typically takes 30-90 seconds. The AI is analyzing the profile,
-        designing the structure, and selecting exercises.
-      </p>
-      <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-        <motion.div
-          className="h-full bg-primary rounded-full"
-          initial={{ width: "0%" }}
-          animate={{ width: "90%" }}
-          transition={{ duration: 60, ease: "easeOut" }}
-        />
+      <div className="space-y-1.5">
+        {PIPELINE_LABELS.map((label, idx) => {
+          const stepNum = idx + 1
+          const isComplete = stepNum < currentNum
+          const isActive = stepNum === currentNum
+          const isPending = stepNum > currentNum
+          const activeStep = steps.find((s) => s.current === stepNum)
+
+          return (
+            <div
+              key={label}
+              className={cn(
+                "flex items-center gap-2 text-xs transition-colors",
+                isComplete && "text-success",
+                isActive && "text-primary font-medium",
+                isPending && "text-muted-foreground/40"
+              )}
+            >
+              {isComplete ? (
+                <CheckCircle2 className="size-3.5 shrink-0" />
+              ) : isActive ? (
+                <Loader2 className="size-3.5 animate-spin shrink-0" />
+              ) : (
+                <div className="size-3.5 rounded-full border border-current shrink-0 opacity-50" />
+              )}
+              <span>{label}</span>
+              {isActive && activeStep?.detail && (
+                <span className="text-muted-foreground ml-1">
+                  — {activeStep.detail}
+                </span>
+              )}
+            </div>
+          )
+        })}
       </div>
     </motion.div>
   )
@@ -415,6 +456,7 @@ export function AiProgramChatDialog({
   const [clients, setClients] = useState<UserType[]>([])
 
   const [currentJobId, setCurrentJobId] = useState<string | null>(null)
+  const [pipelineSteps, setPipelineSteps] = useState<PipelineStep[]>([])
 
   const abortRef = useRef<AbortController | null>(null)
   const idCounter = useRef(0)
@@ -496,6 +538,25 @@ export function AiProgramChatDialog({
           break
         }
 
+        case "pipeline_step": {
+          const pStep: PipelineStep = {
+            step: chunk.data.step as string,
+            current: chunk.data.current as number,
+            total: chunk.data.total as number,
+            detail: (chunk.data.detail as string) ?? undefined,
+          }
+          setPipelineSteps((prev) => {
+            const existing = prev.findIndex((s) => s.current === pStep.current)
+            if (existing >= 0) {
+              const updated = [...prev]
+              updated[existing] = pStep
+              return updated
+            }
+            return [...prev, pStep]
+          })
+          break
+        }
+
         case "tool_result": {
           setIsGenerating(false)
           setItems((prev) => {
@@ -520,6 +581,7 @@ export function AiProgramChatDialog({
 
         case "program_created": {
           setIsGenerating(false)
+          setPipelineSteps([])
           setItems((prev) => {
             const lastToolIdx = prev.findLastIndex(
               (i) => i.kind === "event" && i.data.tool === "generate_program"
@@ -545,6 +607,7 @@ export function AiProgramChatDialog({
 
         case "error": {
           setIsGenerating(false)
+          setPipelineSteps([])
           setItems((prev) => [
             ...prev,
             {
@@ -671,6 +734,7 @@ export function AiProgramChatDialog({
     setInput("")
     setIsStreaming(false)
     setIsGenerating(false)
+    setPipelineSteps([])
     setCurrentJobId(null)
     prevChunkCountRef.current = 0
     sessionIdRef.current = `program-chat-${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -683,6 +747,14 @@ export function AiProgramChatDialog({
       .filter((i): i is Extract<ChatItem, { kind: "message" }> => i.kind === "message")
       .filter((i) => i.data.status === "done" && i.data.content.trim() !== "")
       .map((i) => ({ role: i.data.role, content: i.data.content }))
+  }
+
+  // Get tool events history so backend can maintain context if state is lost
+  function getToolEvents() {
+    return items
+      .filter((i): i is Extract<ChatItem, { kind: "event" }> => i.kind === "event")
+      .filter((i) => i.data.type === "tool_result" || i.data.type === "program_created")
+      .map((i) => ({ tool: i.data.tool, summary: i.data.summary }))
   }
 
   // ─── Send message ────────────────────────────────────────────────────────
@@ -723,7 +795,7 @@ export function AiProgramChatDialog({
         res = await fetch("/api/admin/programs/generate-chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages, session_id: sessionIdRef.current }),
+          body: JSON.stringify({ messages, session_id: sessionIdRef.current, tool_events: getToolEvents() }),
         })
         if (res.status !== 429) break
         // Wait before retrying on rate limit
@@ -765,6 +837,7 @@ export function AiProgramChatDialog({
     setCurrentJobId(null)
     setIsStreaming(false)
     setIsGenerating(false)
+    setPipelineSteps([])
     prevChunkCountRef.current = 0
 
     // Finalize any in-progress assistant message
@@ -865,7 +938,7 @@ export function AiProgramChatDialog({
                 evt.type === "tool_start" &&
                 evt.tool === "generate_program"
               ) {
-                return <GeneratingIndicator key={evt.id} />
+                return <PipelineProgress key={evt.id} steps={pipelineSteps} />
               }
               if (evt.type === "program_created") {
                 return (

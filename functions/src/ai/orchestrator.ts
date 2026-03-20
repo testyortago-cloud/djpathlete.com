@@ -146,12 +146,15 @@ async function saveConversationBatch(messages: Array<Record<string, unknown>>) {
 
 // ─── Full Synchronous Pipeline ──────────────────────────────────────────────
 
+export type PipelineProgressCallback = (step: string, current: number, total: number, detail?: string) => Promise<void>
+
 export async function generateProgramSync(
   request: AiGenerationRequest,
   requestedBy: string,
   assessmentContext?: AssessmentContext,
   existingLogId?: string,
-  firebaseJobId?: string
+  firebaseJobId?: string,
+  onProgress?: PipelineProgressCallback
 ): Promise<OrchestrationResult> {
   console.log("[orchestrator:sync] Starting generateProgramSync", {
     client_id: request.client_id ?? "none",
@@ -302,6 +305,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
 
     // Agent 1 + exercise fetch in parallel
     await updateJobProgress("analyzing_profile", 1, "Analyzing client profile & fetching exercises")
+    await onProgress?.("Analyzing client profile", 1, 5)
     console.log("[orchestrator:sync] Running Agent 1 + exercise fetch...")
     const [agent1Result, allExercises] = await Promise.all([
       callAgent<ProfileAnalysis>(augmentedAgent1Prompt, agent1UserMessage, profileAnalysisSchema, { model: MODEL_HAIKU, cacheSystemPrompt: true }),
@@ -338,6 +342,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
 
     // Agent 2
     await updateJobProgress("designing_structure", 3, "Designing program structure & weekly layout")
+    await onProgress?.("Designing program structure", 2, 5)
     const agent2UserMessage = `Profile Analysis:\n${JSON.stringify(analysis)}\n\nTraining Parameters:\n- Duration: ${request.duration_weeks} weeks\n- Sessions per week: ${request.sessions_per_week}\n- Session length: ${request.session_minutes ?? 60} minutes\n- Split type: ${analysis.recommended_split}\n- Periodization: ${analysis.recommended_periodization}\n- Goals: ${request.goals.join(", ")}\n${request.additional_instructions ? `- Additional instructions: ${request.additional_instructions}` : ""}`
 
     console.log("[orchestrator:sync] Running Agent 2 (program architect)...")
@@ -383,6 +388,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
 
     // ─── Week-by-Week Agent 3 with Dedup Verification ──────────────────────
     await updateJobProgress("selecting_exercises", 5, `Selecting exercises week-by-week for ${totalSlots} slots across ${skeleton.weeks.length} weeks`)
+    await onProgress?.("Selecting exercises", 3, 5, `0/${skeleton.weeks.length} weeks`)
     console.log("[orchestrator:sync] Running Agent 3 (exercise selection) week-by-week with", filtered.length, "filtered exercises...")
     const completedWeeksSync: WeekAssignment[] = []
     const clientDifficultySync = profile?.experience_level ?? "beginner"
@@ -517,6 +523,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
       console.log(`[orchestrator:sync] Week ${weekNum} complete`)
 
       await updateJobProgress("selecting_exercises", 5, `Week ${weekNum}/${skeleton.weeks.length} done — ${completedWeeksSync.reduce((s, w) => s + w.assignments.length, 0)} exercises so far`)
+      await onProgress?.("Selecting exercises", 3, 5, `Week ${weekNum}/${skeleton.weeks.length} done`)
     }
 
     // Merge all week assignments
@@ -543,6 +550,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     }
 
     await updateJobProgress("validated", 6, `${assignment.assignments.length} exercises assigned — ${validation.pass ? "all checks passed" : `${finalWarnings.length} warnings`}`)
+    await onProgress?.("Validating program", 4, 5, `${assignment.assignments.length} exercises — ${validation.pass ? "all checks passed" : `${finalWarnings.length} warnings`}`)
 
     // Create program
     const programCategory = deriveProgramCategory(request.goals)
@@ -582,6 +590,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     }
 
     await updateJobProgress("saving_program", 7, `Saving program with ${assignment.assignments.length} exercises`)
+    await onProgress?.("Saving program", 5, 5)
 
     const exerciseRows = assignment.assignments
       .map((assigned) => {
