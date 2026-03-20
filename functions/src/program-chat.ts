@@ -315,6 +315,31 @@ export async function handleProgramChat(jobId: string): Promise<void> {
       return snap.data()?.status === "cancelled"
     }
 
+    // Track tools already called — prevents Claude from re-calling them
+    const calledTools = new Set<string>()
+
+    // From loaded state: scan for tool_use blocks
+    for (const msg of apiMessages) {
+      if (msg.role === "assistant" && Array.isArray(msg.content)) {
+        for (const block of msg.content) {
+          if (typeof block === "object" && "type" in block && block.type === "tool_use") {
+            calledTools.add((block as Anthropic.Messages.ToolUseBlock).name)
+          }
+        }
+      }
+    }
+
+    // From frontend tool events (fallback when state is missing)
+    if (input.tool_events) {
+      for (const evt of input.tool_events) {
+        if (evt.tool) calledTools.add(evt.tool)
+      }
+    }
+
+    if (calledTools.size > 0) {
+      console.log(`[program-chat] Tools already called: ${[...calledTools].join(", ")}`)
+    }
+
     // Tool use loop
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
       // Check for cancellation between rounds
@@ -329,11 +354,17 @@ export async function handleProgramChat(jobId: string): Promise<void> {
         return
       }
 
+      // Remove already-called tools so Claude cannot re-call them
+      // (generate_program is always allowed since it's the terminal action)
+      const availableTools = TOOL_DEFINITIONS.filter(
+        (t) => t.name === "generate_program" || !calledTools.has(t.name)
+      )
+
       const response = await createWithRetry(client, {
         max_tokens: 4096,
         system: systemPrompt,
         messages: apiMessages,
-        tools: TOOL_DEFINITIONS,
+        tools: availableTools,
       })
 
       tokensInput += response.usage?.input_tokens ?? 0
@@ -496,6 +527,7 @@ export async function handleProgramChat(jobId: string): Promise<void> {
         }
 
         toolCalls.push({ tool: toolUse.name, result: toolResult })
+        calledTools.add(toolUse.name)
 
         // Emit tool result chunk (for non-generate tools)
         if (toolUse.name !== "generate_program") {
