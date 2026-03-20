@@ -195,9 +195,10 @@ function buildConversationSummary(
 
   for (const msg of textMessages.slice(0, -1)) { // exclude the latest user message (already in messages array)
     const prefix = msg.role === "user" ? "**Darren:**" : "**You (AI):**"
-    // Truncate very long messages
-    const content = msg.content.length > 500
-      ? msg.content.slice(0, 500) + "... [truncated]"
+    // Keep assistant messages longer since they contain proposed parameters
+    const maxLen = msg.role === "assistant" ? 1500 : 500
+    const content = msg.content.length > maxLen
+      ? msg.content.slice(0, maxLen) + "... [truncated]"
       : msg.content
     parts.push(`${prefix} ${content}`)
   }
@@ -214,7 +215,7 @@ function buildConversationSummary(
   }
 
   parts.push("")
-  parts.push("CRITICAL: Continue the conversation naturally. Do NOT re-call tools you already used — the results are summarized above. Use the information from this summary to continue.")
+  parts.push("CRITICAL: Continue the conversation naturally. Do NOT re-call tools you already used — the results are summarized above. Do NOT repeat or re-summarize information you already shared. If you already proposed program parameters and the user confirmed (e.g. 'sounds good', 'yes', 'go ahead'), call generate_program IMMEDIATELY with those parameters — do NOT re-display them.")
 
   return parts.join("\n")
 }

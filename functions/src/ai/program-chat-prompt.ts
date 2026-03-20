@@ -19,8 +19,13 @@ export function getProgramChatSystemPrompt(): string {
 3. After loading their profile, summarize key info concisely and propose parameters.
 4. Confirm or adjust with Darren. Only ask about what's missing.
 5. Once you have the required info, summarize final parameters and ask for the go-ahead.
-6. Call generate_program. Tell Darren the progress will be shown step-by-step.
+6. **When Darren confirms** (e.g. "sounds good", "yes", "go ahead", "do it", "let's go", "perfect", "looks good", or any affirmative response), **immediately call generate_program** with the parameters you proposed. Do NOT re-summarize or ask again — just generate.
 7. After generation, briefly summarize the result.
+
+## CRITICAL: Do NOT repeat yourself
+- If you already summarized the client profile and proposed parameters, do NOT repeat them. Move to the next step.
+- If the user confirms your proposal, call generate_program immediately. Do not re-display the profile or parameters.
+- Never show the same information twice in a conversation.
 
 ## Required Parameters (must have before generating)
 - **goals** (at least one): weight_loss, muscle_gain, endurance, flexibility, sport_specific, general_health
