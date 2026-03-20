@@ -10,6 +10,44 @@ export const MODEL_SONNET = "claude-sonnet-4-20250514"
 export const MODEL_HAIKU = "claude-haiku-4-5-20251001"
 const DEFAULT_MAX_TOKENS = 8192
 
+// ─── Enum normalization for model output ────────────────────────────────────
+// The model may return enum values with spaces, dashes, or mixed case.
+// Normalize known enum fields before Zod validation.
+
+const ENUM_FIELD_NAMES = new Set([
+  "split_type", "periodization",
+  "recommended_split", "recommended_periodization",
+  "role", "movement_pattern", "technique", "type", "priority",
+  "training_age_category", "difficulty",
+])
+
+function normalizeEnumValue(raw: unknown): string {
+  if (typeof raw !== "string") return String(raw ?? "")
+  return raw
+    .trim()
+    .toLowerCase()
+    .replace(/[\s/\-]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_|_$/g, "")
+}
+
+function normalizeEnumFields(data: unknown, depth = 0): unknown {
+  if (depth > 15 || data === null || data === undefined) return data
+  if (Array.isArray(data)) return data.map((item) => normalizeEnumFields(item, depth + 1))
+  if (typeof data === "object") {
+    const result: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
+      if (ENUM_FIELD_NAMES.has(key) && typeof value === "string") {
+        result[key] = normalizeEnumValue(value)
+      } else {
+        result[key] = normalizeEnumFields(value, depth + 1)
+      }
+    }
+    return result
+  }
+  return data
+}
+
 // ─── Singleton client ───────────────────────────────────────────────────────
 
 let _client: Anthropic | null = null
@@ -30,9 +68,19 @@ function toToolInputSchema(schema: ZodSchema): { type: "object"; [key: string]: 
     const raw = toJSONSchema(schema, { unrepresentable: "any" }) as Record<string, unknown>
     // Strip $schema metadata — Anthropic expects a plain JSON Schema object
     const { $schema: _, "~standard": _s, ...rest } = raw
-    if (rest.type === "object") return rest as { type: "object"; [key: string]: unknown }
+    if (rest.type === "object") {
+      const result = rest as { type: "object"; [key: string]: unknown }
+      // Log the top-level properties for debugging schema generation issues
+      const props = result.properties as Record<string, unknown> | undefined
+      if (props) {
+        console.log(`[toToolInputSchema] Generated schema with properties: ${Object.keys(props).join(", ")}`)
+      }
+      return result
+    }
+    console.warn(`[toToolInputSchema] Schema type is "${rest.type}", expected "object". Falling back to text mode.`)
     return null
-  } catch {
+  } catch (err) {
+    console.error(`[toToolInputSchema] Failed to convert schema to JSON Schema:`, err instanceof Error ? err.message : err)
     return null
   }
 }
@@ -102,6 +150,11 @@ function callAgentWithModel<T>(
           messages: [{ role: "user", content: userMessage }],
         })
 
+        // Check for truncation — if max_tokens was hit, the output is incomplete
+        if (response.stop_reason === "max_tokens") {
+          throw new Error(`Response truncated (hit ${maxTokens} max_tokens). Output is incomplete — increase maxTokens or reduce input size.`)
+        }
+
         const toolBlock = response.content.find((b) => b.type === "tool_use")
         if (!toolBlock || toolBlock.type !== "tool_use") {
           throw new Error("No tool_use block in Anthropic response")
@@ -144,7 +197,9 @@ function callAgentWithModel<T>(
         tokens_used = (response.usage?.input_tokens ?? 0) + (response.usage?.output_tokens ?? 0)
       }
 
-      const validated = schema.parse(parsed)
+      // Normalize enum fields before Zod validation (model may use spaces/dashes/mixed case)
+      const normalized = normalizeEnumFields(parsed)
+      const validated = schema.parse(normalized)
       return { content: validated as T, tokens_used }
     },
     {

@@ -43,8 +43,8 @@ const sessionStructureSchema = z.object({
 })
 
 export const profileAnalysisSchema = z.object({
-  recommended_split: z.preprocess(normalizeEnum, z.enum(SPLIT_TYPES)),
-  recommended_periodization: z.preprocess(normalizeEnum, z.enum(PERIODIZATION_TYPES)),
+  recommended_split: z.enum(SPLIT_TYPES),
+  recommended_periodization: z.enum(PERIODIZATION_TYPES),
   volume_targets: z.array(volumeTargetSchema).min(1),
   exercise_constraints: z.array(exerciseConstraintSchema),
   session_structure: sessionStructureSchema,
@@ -88,22 +88,11 @@ const programWeekSchema = z.object({
   days: z.array(programDaySchema).min(1),
 })
 
-// Normalise free-form AI text → snake_case enum value
-// e.g. "Push Pull Legs" → "push_pull_legs", "Upper/Lower" → "upper_lower"
-function normalizeEnum(raw: unknown): string {
-  if (typeof raw !== "string") return String(raw ?? "")
-  return raw
-    .trim()
-    .toLowerCase()
-    .replace(/[\s/\-]+/g, "_") // spaces, slashes, hyphens → underscores
-    .replace(/_+/g, "_")       // collapse multiple underscores
-    .replace(/^_|_$/g, "")     // trim leading/trailing underscores
-}
 
 export const programSkeletonSchema = z.object({
   weeks: z.array(programWeekSchema).min(1),
-  split_type: z.preprocess(normalizeEnum, z.enum(SPLIT_TYPES)),
-  periodization: z.preprocess(normalizeEnum, z.enum(PERIODIZATION_TYPES)),
+  split_type: z.enum(SPLIT_TYPES),
+  periodization: z.enum(PERIODIZATION_TYPES),
   total_sessions: z.number().optional().default(0),
   notes: z.string().optional().default(""),
 })
