@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
-import { validateEmailVerificationToken, markVerificationTokenUsed } from "@/lib/db/email-verification-tokens"
+import { validateEmailVerificationToken, markVerificationTokenUsed, lookupTokenUser } from "@/lib/db/email-verification-tokens"
 import { updateUser } from "@/lib/db/users"
 import { sendWelcomeEmail } from "@/lib/email"
 
@@ -25,8 +25,11 @@ export async function POST(request: Request) {
     const tokenData = await validateEmailVerificationToken(token)
 
     if (!tokenData) {
+      // Try to look up the user from the token so frontend can offer resend
+      const tokenUser = await lookupTokenUser(token)
+      const userId = tokenUser?.user_id ?? null
       return NextResponse.json(
-        { error: "Invalid or expired verification link. Please request a new one." },
+        { error: "Invalid or expired verification link. Please request a new one.", userId },
         { status: 400 }
       )
     }

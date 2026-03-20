@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import Link from "next/link"
-import { CheckCircle2, Mail } from "lucide-react"
+import { CheckCircle2, Mail, RefreshCw } from "lucide-react"
 
 export function VerifyEmailContent() {
   const searchParams = useSearchParams()
@@ -13,6 +13,8 @@ export function VerifyEmailContent() {
     token ? "loading" : "invalid"
   )
   const [errorMessage, setErrorMessage] = useState<string>("")
+  const [userId, setUserId] = useState<string | null>(null)
+  const [resendStatus, setResendStatus] = useState<"idle" | "sending" | "sent" | "error">("idle")
 
   useEffect(() => {
     if (!token) return
@@ -25,8 +27,10 @@ export function VerifyEmailContent() {
           body: JSON.stringify({ token }),
         })
 
+        const data = await response.json()
+
         if (!response.ok) {
-          const data = await response.json()
+          if (data.userId) setUserId(data.userId)
           throw new Error(data.error || "Verification failed")
         }
 
@@ -41,6 +45,25 @@ export function VerifyEmailContent() {
 
     verifyEmail()
   }, [token])
+
+  async function handleResend() {
+    if (!userId) return
+    setResendStatus("sending")
+    try {
+      const response = await fetch("/api/auth/resend-verification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }),
+      })
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || "Failed to resend")
+      }
+      setResendStatus("sent")
+    } catch {
+      setResendStatus("error")
+    }
+  }
 
   if (status === "loading") {
     return (
@@ -92,12 +115,44 @@ export function VerifyEmailContent() {
         <p className="text-sm text-muted-foreground mb-6">
           The verification link may have expired or already been used.
         </p>
-        <Link
-          href="/client/dashboard"
-          className="text-sm font-medium text-primary hover:underline"
-        >
-          Request new link
-        </Link>
+        {userId ? (
+          <div className="space-y-3">
+            {resendStatus === "sent" ? (
+              <div className="rounded-lg border border-success/20 bg-success/5 px-4 py-3 text-sm text-success">
+                A new verification link has been sent to your email!
+              </div>
+            ) : (
+              <button
+                onClick={handleResend}
+                disabled={resendStatus === "sending"}
+                className="inline-flex items-center justify-center gap-2 rounded-full bg-primary px-6 py-3 text-sm font-medium text-primary-foreground transition-all hover:bg-primary/90 hover:shadow-lg active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none"
+              >
+                <RefreshCw className={`size-4 ${resendStatus === "sending" ? "animate-spin" : ""}`} />
+                {resendStatus === "sending" ? "Sending..." : "Resend Verification Email"}
+              </button>
+            )}
+            {resendStatus === "error" && (
+              <p className="text-sm text-destructive">
+                Failed to resend. Please try again or go to your dashboard.
+              </p>
+            )}
+            <div>
+              <Link
+                href="/client/dashboard"
+                className="text-sm font-medium text-muted-foreground hover:text-primary hover:underline"
+              >
+                Go to Dashboard
+              </Link>
+            </div>
+          </div>
+        ) : (
+          <Link
+            href="/client/dashboard"
+            className="text-sm font-medium text-primary hover:underline"
+          >
+            Go to Dashboard
+          </Link>
+        )}
       </div>
     )
   }

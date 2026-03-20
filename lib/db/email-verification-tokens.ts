@@ -45,6 +45,19 @@ export async function validateEmailVerificationToken(token: string) {
   return data
 }
 
+export async function lookupTokenUser(token: string) {
+  const supabase = getClient()
+
+  const { data, error } = await supabase
+    .from("email_verification_tokens")
+    .select("user_id, users(id, email, first_name, email_verified)")
+    .eq("token", token)
+    .single()
+
+  if (error || !data) return null
+  return data
+}
+
 export async function markVerificationTokenUsed(token: string) {
   const supabase = getClient()
 
