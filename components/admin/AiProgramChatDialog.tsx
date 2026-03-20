@@ -741,15 +741,43 @@ export function AiProgramChatDialog({
     clearChatState()
   }
 
-  // Get conversation messages (only role+content, no events)
+  // Get conversation messages WITH tool context interleaved.
+  // Tool events are embedded as assistant messages so the backend always
+  // has full context for its summary fallback, even if ai_chat_state is lost.
   function getConversationMessages() {
-    return items
-      .filter((i): i is Extract<ChatItem, { kind: "message" }> => i.kind === "message")
-      .filter((i) => i.data.status === "done" && i.data.content.trim() !== "")
-      .map((i) => ({ role: i.data.role, content: i.data.content }))
+    const result: Array<{ role: "user" | "assistant"; content: string }> = []
+    let lastRole: "user" | "assistant" | null = null
+
+    for (const item of items) {
+      if (item.kind === "message" && item.data.status === "done" && item.data.content.trim()) {
+        // Merge consecutive same-role messages to keep alternating pattern
+        if (item.data.role === lastRole && result.length > 0) {
+          result[result.length - 1].content += "\n\n" + item.data.content
+        } else {
+          result.push({ role: item.data.role, content: item.data.content })
+          lastRole = item.data.role
+        }
+      } else if (
+        item.kind === "event" &&
+        (item.data.type === "tool_result" || item.data.type === "program_created")
+      ) {
+        // Embed tool results as part of the assistant context
+        const toolName = item.data.tool ?? "tool"
+        const summary = item.data.summary ?? "completed"
+        const toolText = `[Used ${toolName}: ${summary}]`
+
+        if (lastRole === "assistant" && result.length > 0) {
+          result[result.length - 1].content += "\n" + toolText
+        } else {
+          result.push({ role: "assistant", content: toolText })
+          lastRole = "assistant"
+        }
+      }
+    }
+    return result
   }
 
-  // Get tool events history so backend can maintain context if state is lost
+  // Get tool events history so backend can build calledTools set
   function getToolEvents() {
     return items
       .filter((i): i is Extract<ChatItem, { kind: "event" }> => i.kind === "event")
