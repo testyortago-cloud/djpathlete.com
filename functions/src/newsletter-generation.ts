@@ -86,7 +86,7 @@ Current date: ${new Date().toISOString().slice(0, 10)}`
       NEWSLETTER_GENERATION_PROMPT,
       userMessage,
       newsletterResultSchema,
-      { model: MODEL_SONNET, maxTokens: 4096 }
+      { model: MODEL_SONNET }
     )
 
     // Log generation (non-fatal)

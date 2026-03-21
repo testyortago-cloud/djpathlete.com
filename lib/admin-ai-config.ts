@@ -1,7 +1,7 @@
 /** Shared configuration for the admin AI chatbot. */
 
 /** Max tokens for Anthropic response */
-export const AI_CHAT_MAX_TOKENS = 1024
+export const AI_CHAT_MAX_TOKENS = 32000
 
 /** Max messages per conversation accepted by the validator */
 export const AI_CHAT_MAX_MESSAGES = 50

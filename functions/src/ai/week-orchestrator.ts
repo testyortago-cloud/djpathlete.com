@@ -5,7 +5,7 @@ import type {
   ExerciseAssignment,
   ValidationResult,
 } from "./types.js"
-import { callAgent, MODEL_SONNET } from "./anthropic.js"
+import { callAgent, MODEL_OPUS, MODEL_SONNET } from "./anthropic.js"
 import { scoreAndFilterExercises, semanticFilterExercises } from "./exercise-filter.js"
 import { programSkeletonSchema, exerciseAssignmentSchema } from "./schemas.js"
 import { EXERCISE_SELECTOR_PROMPT } from "./prompts.js"
@@ -415,7 +415,7 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
     WEEK_ARCHITECT_PROMPT,
     architectMessage,
     weekSkeletonSchema,
-    { maxTokens: 8192, cacheSystemPrompt: true }
+    { model: MODEL_OPUS, cacheSystemPrompt: true }
   )
   tokenUsage.architect = architectResult.tokens_used
   const skeleton = architectResult.content
@@ -530,7 +530,7 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
         EXERCISE_SELECTOR_PROMPT,
         selectorMessage,
         exerciseAssignmentSchema,
-        { maxTokens: 8192, cacheSystemPrompt: true }
+        { cacheSystemPrompt: true }
       )
       tokenUsage.selector += selectorResult.tokens_used
       assignment = selectorResult.content

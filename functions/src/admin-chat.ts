@@ -101,7 +101,7 @@ export async function handleAdminChat(jobId: string): Promise<void> {
       tools: ADMIN_TOOLS,
       executeTool: executeAdminTool,
       toolLabels: TOOL_LABELS,
-      maxTokens: 4096,
+      maxTokens: 32000,
       model,
       maxToolRounds: 5,
     })

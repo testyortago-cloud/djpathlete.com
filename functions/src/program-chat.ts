@@ -1,5 +1,5 @@
 import { getFirestore, FieldValue } from "firebase-admin/firestore"
-import { getClient, MODEL_SONNET, MODEL_HAIKU, Anthropic } from "./ai/anthropic.js"
+import { getClient, MODEL_OPUS, MODEL_SONNET, MODEL_HAIKU, Anthropic } from "./ai/anthropic.js"
 import { getProgramChatSystemPrompt } from "./ai/program-chat-prompt.js"
 import { listClients, lookupClientProfile, getExercisesForAI } from "./ai/program-chat-tools.js"
 import { generateProgramSync } from "./ai/orchestrator.js"
@@ -29,7 +29,7 @@ function isTransientError(error: unknown): boolean {
 async function createWithRetry(
   client: Anthropic,
   params: Omit<Anthropic.Messages.MessageCreateParamsNonStreaming, "model">,
-  primaryModel: string = MODEL_SONNET
+  primaryModel: string = MODEL_OPUS
 ): Promise<Anthropic.Messages.Message> {
   try {
     return await pRetry(
@@ -382,7 +382,7 @@ export async function handleProgramChat(jobId: string): Promise<void> {
       )
 
       const response = await createWithRetry(client, {
-        max_tokens: 4096,
+        max_tokens: 32000,
         system: systemPrompt,
         messages: apiMessages,
         tools: availableTools,

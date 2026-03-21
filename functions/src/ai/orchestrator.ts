@@ -10,7 +10,7 @@ import type {
   ProgramCategory,
   ProgramDifficulty,
 } from "./types.js"
-import { callAgent, MODEL_HAIKU, MODEL_SONNET } from "./anthropic.js"
+import { callAgent, MODEL_HAIKU, MODEL_OPUS, MODEL_SONNET } from "./anthropic.js"
 import { scoreAndFilterExercises, semanticFilterExercises } from "./exercise-filter.js"
 import { estimateTokens } from "./token-utils.js"
 import { profileAnalysisSchema, programSkeletonSchema, exerciseAssignmentSchema } from "./schemas.js"
@@ -346,7 +346,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     const agent2UserMessage = `Profile Analysis:\n${JSON.stringify(analysis)}\n\nTraining Parameters:\n- Duration: ${request.duration_weeks} weeks\n- Sessions per week: ${request.sessions_per_week}\n- Session length: ${request.session_minutes ?? 60} minutes\n- Split type: ${analysis.recommended_split}\n- Periodization: ${analysis.recommended_periodization}\n- Goals: ${request.goals.join(", ")}\n${request.additional_instructions ? `- Additional instructions: ${request.additional_instructions}` : ""}`
 
     console.log("[orchestrator:sync] Running Agent 2 (program architect)...")
-    const agent2Result = await callAgent<ProgramSkeleton>(PROGRAM_ARCHITECT_PROMPT, agent2UserMessage, programSkeletonSchema, { maxTokens: 16384, cacheSystemPrompt: true })
+    const agent2Result = await callAgent<ProgramSkeleton>(PROGRAM_ARCHITECT_PROMPT, agent2UserMessage, programSkeletonSchema, { model: MODEL_OPUS, cacheSystemPrompt: true })
     tokenUsage.agent2 = agent2Result.tokens_used
     const skeleton = agent2Result.content
     // Backfill total_sessions if the AI omitted it or returned 0
@@ -357,7 +357,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
 
     saveConversationBatch([
       { user_id: requestedBy, feature: "program_generation", session_id: genSessionId, role: "user", content: agent2UserMessage, metadata: { step: 2, log_id: log.id }, tokens_input: null, tokens_output: null, model_used: null },
-      { user_id: requestedBy, feature: "program_generation", session_id: genSessionId, role: "assistant", content: JSON.stringify(agent2Result.content), metadata: { step: 2, log_id: log.id }, tokens_input: null, tokens_output: agent2Result.tokens_used, model_used: MODEL_SONNET },
+      { user_id: requestedBy, feature: "program_generation", session_id: genSessionId, role: "assistant", content: JSON.stringify(agent2Result.content), metadata: { step: 2, log_id: log.id }, tokens_input: null, tokens_output: agent2Result.tokens_used, model_used: MODEL_OPUS },
     ]).then((saved) => {
       const assistantMsg = saved.find((m: Record<string, unknown>) => m.role === "assistant")
       if (assistantMsg) embedConversationMessage(assistantMsg.id).catch(() => {})
@@ -454,7 +454,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
             EXERCISE_SELECTOR_PROMPT,
             agent3UserMessage,
             exerciseAssignmentSchema,
-            { maxTokens: 8192, cacheSystemPrompt: true }
+            { cacheSystemPrompt: true }
           )
           tokenUsage.agent3 += agent3Result.tokens_used
           weekAssignment = agent3Result.content

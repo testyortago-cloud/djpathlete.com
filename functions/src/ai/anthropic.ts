@@ -6,9 +6,10 @@ import { jsonrepair } from "jsonrepair"
 
 export { Anthropic }
 
+export const MODEL_OPUS = "claude-opus-4-6-20250618"
 export const MODEL_SONNET = "claude-sonnet-4-20250514"
 export const MODEL_HAIKU = "claude-haiku-4-5-20251001"
-const DEFAULT_MAX_TOKENS = 8192
+const DEFAULT_MAX_TOKENS = 32000
 
 // ─── Enum normalization for model output ────────────────────────────────────
 // The model may return enum values with spaces, dashes, or mixed case.
@@ -260,7 +261,7 @@ export async function* streamRaw(opts: {
 }): AsyncGenerator<{ type: "text"; text: string } | { type: "usage"; input_tokens: number; output_tokens: number }> {
   const client = getClient()
   const modelId = opts.model ?? MODEL_SONNET
-  const maxTokens = opts.maxTokens ?? 1024
+  const maxTokens = opts.maxTokens ?? 16384
 
   const systemContent: Anthropic.Messages.TextBlockParam[] =
     typeof opts.system === "string"
@@ -322,7 +323,7 @@ export async function* streamWithTools(opts: {
 }): AsyncGenerator<ToolStreamEvent> {
   const client = getClient()
   const modelId = opts.model ?? MODEL_SONNET
-  const maxTokens = opts.maxTokens ?? 4096
+  const maxTokens = opts.maxTokens ?? 16384
   const maxRounds = opts.maxToolRounds ?? 5
 
   const systemContent: Anthropic.Messages.TextBlockParam[] = opts.system.map((block) => ({

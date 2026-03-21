@@ -277,7 +277,7 @@ export async function handleAiCoach(jobId: string): Promise<void> {
     const stream = streamRaw({
       system: augmentedPrompt,
       messages: [{ role: "user", content: userMessage }],
-      maxTokens: 512,
+      maxTokens: 32000,
     })
 
     for await (const event of stream) {
@@ -300,7 +300,7 @@ export async function handleAiCoach(jobId: string): Promise<void> {
         ANALYSIS_PROMPT,
         analysisInput,
         coachAnalysisSchema,
-        { model: MODEL_HAIKU, maxTokens: 512, cacheSystemPrompt: true }
+        { model: MODEL_HAIKU, cacheSystemPrompt: true }
       )
       analysisData = analysisResult.content as unknown as Record<string, unknown>
 

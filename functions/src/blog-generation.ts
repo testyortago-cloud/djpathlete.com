@@ -314,7 +314,7 @@ Current date: ${new Date().toISOString().slice(0, 10)}${userRefBlock}${researchB
       BLOG_GENERATION_PROMPT,
       userMessage,
       blogResultSchema,
-      { model: MODEL_SONNET, maxTokens: 8192 }
+      { model: MODEL_SONNET }
     )
 
     // Step 3: Validate all URLs in the generated content — remove any 404s

@@ -92,7 +92,7 @@ Category: ${category.join(", ")}${difficulty ? `\nDifficulty: ${difficulty}` : "
       SYSTEM_PROMPT,
       userMessage,
       aiMetadataSchema,
-      { model: MODEL_HAIKU, maxTokens: 1024 }
+      { model: MODEL_HAIKU }
     )
 
     // Log usage (fire-and-forget)
