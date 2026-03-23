@@ -27,6 +27,8 @@ export interface WeekGenerationRequest {
   admin_instructions?: string
   /** When set, generate into this specific (blank) week instead of appending a new one */
   target_week_number?: number
+  /** When set, generate exercises for this single day only (1=Monday … 7=Sunday) */
+  target_day_of_week?: number
 }
 
 export interface WeekGenerationResult {
@@ -184,6 +186,67 @@ Rules:
 8. Review the FULL PROGRAM PROGRESSION summary — understand the arc of the entire program (what muscles were emphasized each week, how themes evolved) before designing this week.
 9. Output ONLY the JSON object, no additional text.`
 
+// ─── Day Architect Prompt (single-day variant) ──────────────────────────────
+
+const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+const DAY_ARCHITECT_PROMPT = `You are a performance system architect designing a SINGLE TRAINING DAY within a week of an ongoing training program. You have access to the full program history (week-by-week progression summary + detailed recent weeks) and the client's actual training logs.
+
+Your job is to design ONE day that:
+1. Follows the program's established split, periodization, and structure
+2. Progresses appropriately based on the client's actual performance data
+3. Maintains exercise continuity for compound lifts while rotating accessories
+4. Respects the admin coach's specific instructions (if provided)
+5. Fits logically within the existing week — consider what other days already have
+
+Given the program context, client progress data, and coach instructions, output a JSON object with this structure — it MUST contain exactly ONE week with exactly ONE day in the "days" array:
+
+{
+  "weeks": [
+    {
+      "week_number": number,
+      "phase": string (e.g., "Hypertrophy", "Strength", "Deload"),
+      "intensity_modifier": string (e.g., "moderate", "high", "low/deload"),
+      "days": [
+        {
+          "day_of_week": number (the specific day requested),
+          "label": string,
+          "focus": string,
+          "slots": [
+            {
+              "slot_id": string (unique, format "w{week}d{day}s{slot}"),
+              "role": "warm_up" | "primary_compound" | "secondary_compound" | "accessory" | "isolation" | "cool_down",
+              "movement_pattern": "push" | "pull" | "squat" | "hinge" | "lunge" | "carry" | "rotation" | "isometric" | "locomotion",
+              "target_muscles": [string],
+              "sets": number,
+              "reps": string,
+              "rest_seconds": number,
+              "rpe_target": number | null,
+              "tempo": string | null,
+              "group_tag": string | null,
+              "technique": "straight_set" | "superset" | "dropset" | "giant_set" | "circuit" | "rest_pause" | "amrap"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "split_type": string (must match the program's existing split),
+  "periodization": string (must match the program's existing periodization),
+  "total_sessions": 1,
+  "notes": string (rationale for this day's design)
+}
+
+Rules:
+1. Output EXACTLY ONE day in the "days" array — the specific day_of_week requested.
+2. MATCH the program's existing structure for this day: look at what this day_of_week typically contains in prior weeks (muscle groups, exercise count, session focus).
+3. COMPLEMENT other days already programmed in this week — avoid duplicating the same muscle groups or movement patterns.
+4. PROGRESS appropriately based on the client's logged performance.
+5. ROTATE ALL WORKING EXERCISES — use DIFFERENT exercises than prior weeks for the same slot roles.
+6. Respect the coach's instructions — they override default progression logic.
+7. Use the slot_id format: "w{week_number}d{day_of_week}s{slot_index}".
+8. Output ONLY the JSON object, no additional text.`
+
 // ─── Single-week skeleton schema (reuses programSkeletonSchema) ─────────────
 
 const weekSkeletonSchema = programSkeletonSchema
@@ -301,16 +364,28 @@ export async function generateWeekSync(
   const clientName = request.client_id ? await getClientName(request.client_id) : "Unassigned"
 
   // Determine whether we're filling a blank existing week or appending a new one
+  const isSingleDay = !!request.target_day_of_week
   const isFillingBlank = !!request.target_week_number && request.target_week_number <= (program.duration_weeks ?? 1)
   const newWeekNumber = request.target_week_number ?? (program.duration_weeks ?? 1) + 1
 
-  // If filling a blank week, verify it has no exercises already
-  if (isFillingBlank) {
+  // If filling a blank week, verify it has no exercises already (skip check for single-day mode)
+  if (isFillingBlank && !isSingleDay) {
     const existingInTarget = existingExercises.filter(
       (pe: { week_number: number }) => pe.week_number === newWeekNumber
     )
     if (existingInTarget.length > 0) {
       throw new Error(`Week ${newWeekNumber} already has ${existingInTarget.length} exercises. Clear them first or generate into a blank week.`)
+    }
+  }
+
+  // If single-day mode, verify the target day is empty within the target week
+  if (isSingleDay) {
+    const existingInDay = existingExercises.filter(
+      (pe: { week_number: number; day_of_week: number }) =>
+        pe.week_number === newWeekNumber && pe.day_of_week === request.target_day_of_week
+    )
+    if (existingInDay.length > 0) {
+      throw new Error(`${DAY_NAMES[(request.target_day_of_week!) - 1]} in Week ${newWeekNumber} already has ${existingInDay.length} exercises. Clear them first.`)
     }
   }
 
@@ -386,9 +461,27 @@ export async function generateWeekSync(
     return { new_week_number: newWeekNumber, exercises_added: 0, token_usage: tokenUsage, duration_ms: Date.now() - startTime }
   }
 
-  // ── Step 2: Agent 1 — Week Architect ───────────────────────────────────
+  // ── Step 2: Agent 1 — Week/Day Architect ─────────────────────────────
 
-  await updateJobProgress("designing_week", 3, `Designing Week ${newWeekNumber}`)
+  const targetDayName = isSingleDay ? DAY_NAMES[request.target_day_of_week! - 1] : null
+  await updateJobProgress("designing_week", 3, isSingleDay
+    ? `Designing ${targetDayName} for Week ${newWeekNumber}`
+    : `Designing Week ${newWeekNumber}`)
+
+  // Build context about other days already in this week (for single-day mode)
+  const sameWeekOtherDays = isSingleDay
+    ? existingExercises
+        .filter((pe: { week_number: number; day_of_week: number }) =>
+          pe.week_number === newWeekNumber && pe.day_of_week !== request.target_day_of_week
+        )
+        .map((pe: Record<string, unknown>) => ({
+          day: pe.day_of_week,
+          day_name: DAY_NAMES[(pe.day_of_week as number) - 1],
+          exercise: (pe.exercises as { name?: string })?.name ?? "Unknown",
+          movement_pattern: (pe.exercises as { movement_pattern?: string })?.movement_pattern,
+          primary_muscles: (pe.exercises as { primary_muscles?: string[] })?.primary_muscles,
+        }))
+    : []
 
   const architectMessage = `## Program Overview
 ${JSON.stringify(programSummary)}
@@ -398,6 +491,10 @@ ${weekFocusSummary.length > 0 ? JSON.stringify(weekFocusSummary) : "No previous 
 
 ## Detailed Recent Weeks (last ${Math.min(3, program.duration_weeks ?? 1)} weeks — exercises, sets, reps)
 ${JSON.stringify(weekStructure)}
+${isSingleDay && sameWeekOtherDays.length > 0 ? `
+## Other Days Already Programmed in Week ${newWeekNumber}
+${JSON.stringify(sameWeekOtherDays)}
+IMPORTANT: The day you are designing must COMPLEMENT these existing days. Do NOT duplicate the same primary muscle groups or movement patterns.` : ""}
 
 ## Client Profile
 ${profileContext}
@@ -405,18 +502,20 @@ ${profileContext}
 ## Client's Recent Performance Logs
 ${progressSummary.length > 0 ? JSON.stringify(progressSummary) : "No logs yet — client has not started training."}
 
-## New Week Number
-${newWeekNumber}
+## ${isSingleDay ? "Target Day" : "New Week Number"}
+${isSingleDay ? `${targetDayName} (day_of_week=${request.target_day_of_week}) in Week ${newWeekNumber}` : newWeekNumber}
 
 ## Coach Instructions
 ${request.admin_instructions || "No specific instructions — use standard progression logic based on the client's performance data."}
 
-Design Week ${newWeekNumber} for this program. The week MUST have week_number=${newWeekNumber}. Match the existing program's split (${program.split_type}), periodization (${program.periodization}), and training days.
+${isSingleDay
+    ? `Design ${targetDayName} for Week ${newWeekNumber}. The output MUST have week_number=${newWeekNumber} and exactly ONE day with day_of_week=${request.target_day_of_week}. Match the existing program's split (${program.split_type}) and periodization (${program.periodization}). Look at what ${targetDayName} typically contains in prior weeks to determine the appropriate focus, exercise count, and session structure.`
+    : `Design Week ${newWeekNumber} for this program. The week MUST have week_number=${newWeekNumber}. Match the existing program's split (${program.split_type}), periodization (${program.periodization}), and training days.`}
 
-IMPORTANT: Review the full program progression summary above. If the coach's instructions reference themes, focus areas, or progressions from previous weeks, ensure this week builds on that trajectory logically. The coach may ask to maintain a theme while shifting emphasis (e.g., "keep lower leg focus but add glute work") — honor this by blending continuity with the new direction.`
+IMPORTANT: Review the full program progression summary above. If the coach's instructions reference themes, focus areas, or progressions from previous weeks, ensure this ${isSingleDay ? "day" : "week"} builds on that trajectory logically. The coach may ask to maintain a theme while shifting emphasis (e.g., "keep lower leg focus but add glute work") — honor this by blending continuity with the new direction.`
 
   const architectResult = await callAgent<z.infer<typeof weekSkeletonSchema>>(
-    WEEK_ARCHITECT_PROMPT,
+    isSingleDay ? DAY_ARCHITECT_PROMPT : WEEK_ARCHITECT_PROMPT,
     architectMessage,
     weekSkeletonSchema,
     { model: MODEL_OPUS, cacheSystemPrompt: true }
@@ -427,6 +526,18 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
   // Ensure the week number is correct
   if (skeleton.weeks.length > 0) {
     skeleton.weeks[0].week_number = newWeekNumber
+
+    // In single-day mode, filter to only the target day
+    if (isSingleDay) {
+      skeleton.weeks[0].days = skeleton.weeks[0].days.filter(
+        (d) => d.day_of_week === request.target_day_of_week
+      )
+      // If AI didn't produce the right day, force it
+      if (skeleton.weeks[0].days.length === 0) {
+        throw new Error(`AI did not produce exercises for ${targetDayName}. Try again.`)
+      }
+    }
+
     // Fix slot IDs to match the correct week number
     for (const day of skeleton.weeks[0].days) {
       day.slots = day.slots.map((slot, idx) => ({
@@ -578,7 +689,9 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
 
   // ── Step 4: Save to database ───────────────────────────────────────────
 
-  await updateJobProgress("saving_week", 5, `Saving ${assignment.assignments.length} exercises for Week ${newWeekNumber}`)
+  await updateJobProgress("saving_week", 5, isSingleDay
+    ? `Saving ${assignment.assignments.length} exercises for ${targetDayName}`
+    : `Saving ${assignment.assignments.length} exercises for Week ${newWeekNumber}`)
 
   // Build slot lookup
   const slotLookup = new Map<string, { week_number: number; day_of_week: number; order_index: number }>()
@@ -615,8 +728,8 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
 
   await bulkAddExercisesToProgram(exerciseRows)
 
-  // Only bump duration_weeks and total_weeks when appending a new week (not filling a blank)
-  if (!isFillingBlank) {
+  // Only bump duration_weeks and total_weeks when appending a new week (not filling a blank or single day)
+  if (!isFillingBlank && !isSingleDay) {
     await updateProgramDuration(request.program_id, newWeekNumber)
     if (request.assignment_id) {
       await updateAssignmentTotalWeeks(request.assignment_id, newWeekNumber)

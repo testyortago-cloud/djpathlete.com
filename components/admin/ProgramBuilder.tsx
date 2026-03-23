@@ -32,6 +32,7 @@ import { AddExerciseDialog } from "@/components/admin/AddExerciseDialog"
 import { EditExerciseDialog } from "@/components/admin/EditExerciseDialog"
 import { ExerciseCard } from "@/components/admin/ExerciseCard"
 import { GenerateWeekDialog } from "@/components/admin/GenerateWeekDialog"
+import { GenerateDayDialog } from "@/components/admin/GenerateDayDialog"
 import type { Exercise, ProgramExercise } from "@/types/database"
 
 type ProgramExerciseWithExercise = ProgramExercise & { exercises: Exercise }
@@ -82,6 +83,10 @@ export function ProgramBuilder({
 
   // AI Generate week dialog
   const [generateWeekOpen, setGenerateWeekOpen] = useState(false)
+
+  // AI Generate day dialog
+  const [generateDayOpen, setGenerateDayOpen] = useState(false)
+  const [generateDayTarget, setGenerateDayTarget] = useState(1)
 
   // Add blank week
   const [isAddingWeek, setIsAddingWeek] = useState(false)
@@ -175,6 +180,11 @@ export function ProgramBuilder({
   function handleAddExercise(day: number) {
     setAddDialogDay(day)
     setAddDialogOpen(true)
+  }
+
+  function handleGenerateDay(day: number) {
+    setGenerateDayTarget(day)
+    setGenerateDayOpen(true)
   }
 
   const sensors = useSensors(
@@ -541,6 +551,7 @@ export function ProgramBuilder({
               onEditExercise={setEditTarget}
               onRemoveExercise={setDeleteTarget}
               onDuplicateExercise={handleDuplicateInPlace}
+              onGenerateDay={handleGenerateDay}
             />
           ))}
         </div>
@@ -745,6 +756,20 @@ export function ProgramBuilder({
             setLocalTotalWeeks(newWeekNumber)
           }
           setSelectedWeek(newWeekNumber)
+        }}
+      />
+
+      {/* AI Generate Day Dialog */}
+      <GenerateDayDialog
+        open={generateDayOpen}
+        onOpenChange={setGenerateDayOpen}
+        programId={programId}
+        assignmentId={assignmentInfo?.assignmentId}
+        clientId={assignmentInfo?.clientId}
+        weekNumber={selectedWeek}
+        dayOfWeek={generateDayTarget}
+        onDayGenerated={() => {
+          router.refresh()
         }}
       />
     </div>

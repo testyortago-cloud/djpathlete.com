@@ -1,0 +1,213 @@
+"use client"
+
+import { useState } from "react"
+import { useRouter } from "next/navigation"
+import { toast } from "sonner"
+import { Sparkles, Loader2, CheckCircle2, XCircle } from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
+import { useAiJob } from "@/hooks/use-ai-job"
+
+const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+interface GenerateDayDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  programId: string
+  assignmentId?: string
+  clientId?: string
+  weekNumber: number
+  dayOfWeek: number
+  onDayGenerated: () => void
+}
+
+export function GenerateDayDialog({
+  open,
+  onOpenChange,
+  programId,
+  assignmentId,
+  clientId,
+  weekNumber,
+  dayOfWeek,
+  onDayGenerated,
+}: GenerateDayDialogProps) {
+  const router = useRouter()
+  const [instructions, setInstructions] = useState("")
+  const [jobId, setJobId] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const { status, result, error, reset } = useAiJob(jobId)
+
+  const isGenerating = jobId !== null && (status === "pending" || status === "processing")
+  const isComplete = status === "completed"
+  const isFailed = status === "failed"
+
+  const dayName = DAY_NAMES[dayOfWeek - 1]
+
+  async function handleSubmit() {
+    setIsSubmitting(true)
+    try {
+      const response = await fetch(`/api/admin/programs/${programId}/generate-week`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...(assignmentId && { assignment_id: assignmentId }),
+          ...(clientId && { client_id: clientId }),
+          admin_instructions: instructions || undefined,
+          target_week_number: weekNumber,
+          target_day_of_week: dayOfWeek,
+        }),
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || "Failed to start day generation")
+      }
+
+      const data = await response.json()
+      setJobId(data.jobId)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to generate day")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  function handleClose() {
+    if (isGenerating) return
+    if (isComplete) {
+      onDayGenerated()
+      router.refresh()
+    }
+    setJobId(null)
+    setInstructions("")
+    reset()
+    onOpenChange(false)
+  }
+
+  function getProgressMessage(): string {
+    if (status === "pending") return "Queued..."
+    if (status === "processing") return `Generating ${dayName}...`
+    if (status === "completed") {
+      const r = result as { exercises_added?: number } | null
+      return `${dayName} generated with ${r?.exercises_added ?? 0} exercises!`
+    }
+    if (status === "failed") return error ?? "Generation failed"
+    return ""
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Sparkles className="size-4 text-accent" />
+            AI Generate {dayName}
+          </DialogTitle>
+          <DialogDescription>
+            Fill {dayName} in Week {weekNumber} with AI-generated exercises based on the program
+            structure{clientId ? ", previous weeks, and the client\u2019s workout logs" : " and previous weeks"}.
+          </DialogDescription>
+        </DialogHeader>
+
+        {!isGenerating && !isComplete && !isFailed && (
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="day-instructions">Coach Instructions (optional)</Label>
+              <Textarea
+                id="day-instructions"
+                placeholder={`e.g., Upper body push focus, include bench press variations...`}
+                value={instructions}
+                onChange={(e) => setInstructions(e.target.value)}
+                rows={3}
+                maxLength={2000}
+                disabled={isSubmitting}
+              />
+              <p className="text-xs text-muted-foreground">
+                Leave blank for automatic programming based on the week&apos;s structure.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {(isGenerating || isComplete || isFailed) && (
+          <div className="flex flex-col items-center gap-3 py-4">
+            {isGenerating && (
+              <Loader2 className="size-8 text-accent animate-spin" />
+            )}
+            {isComplete && (
+              <CheckCircle2 className="size-8 text-success" />
+            )}
+            {isFailed && (
+              <XCircle className="size-8 text-destructive" />
+            )}
+            <p className="text-sm text-center text-muted-foreground">
+              {getProgressMessage()}
+            </p>
+          </div>
+        )}
+
+        <DialogFooter>
+          {!isGenerating && !isComplete && (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleClose}
+                disabled={isSubmitting}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSubmit}
+                disabled={isSubmitting}
+                className="gap-1.5"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="size-3.5 animate-spin" />
+                    Starting...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="size-3.5" />
+                    Generate
+                  </>
+                )}
+              </Button>
+            </>
+          )}
+          {isComplete && (
+            <Button onClick={handleClose}>
+              Done
+            </Button>
+          )}
+          {isFailed && (
+            <>
+              <Button variant="outline" onClick={handleClose}>
+                Close
+              </Button>
+              <Button
+                onClick={() => {
+                  setJobId(null)
+                  reset()
+                }}
+              >
+                Try Again
+              </Button>
+            </>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}

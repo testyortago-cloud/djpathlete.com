@@ -1,6 +1,6 @@
 "use client"
 
-import { Plus } from "lucide-react"
+import { Plus, Sparkles } from "lucide-react"
 import {
   SortableContext,
   verticalListSortingStrategy,
@@ -75,6 +75,7 @@ interface DayColumnProps {
   onEditExercise: (pe: ProgramExerciseWithExercise) => void
   onRemoveExercise: (pe: ProgramExerciseWithExercise) => void
   onDuplicateExercise?: (pe: ProgramExerciseWithExercise) => void
+  onGenerateDay?: (day: number) => void
 }
 
 export function DayColumn({
@@ -84,6 +85,7 @@ export function DayColumn({
   onEditExercise,
   onRemoveExercise,
   onDuplicateExercise,
+  onGenerateDay,
 }: DayColumnProps) {
   const dayName = DAY_NAMES[dayOfWeek - 1]
   const slots = buildSlots(exercises)
@@ -95,13 +97,39 @@ export function DayColumn({
     <div className={`rounded-xl border bg-surface/30 transition-colors ${isOver ? "border-primary border-2 bg-primary/5" : "border-border"}`}>
       <div className="flex items-center justify-between border-b border-border px-3 py-2">
         <h3 className="text-sm font-medium text-foreground">{dayName}</h3>
-        <span className="text-xs text-muted-foreground">
-          {exercises.length} exercise{exercises.length !== 1 ? "s" : ""}
-        </span>
+        <div className="flex items-center gap-1.5">
+          {onGenerateDay && exercises.length === 0 && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-6 text-accent hover:text-accent"
+              onClick={() => onGenerateDay(dayOfWeek)}
+              title={`AI Generate ${dayName}`}
+            >
+              <Sparkles className="size-3.5" />
+            </Button>
+          )}
+          <span className="text-xs text-muted-foreground">
+            {exercises.length} exercise{exercises.length !== 1 ? "s" : ""}
+          </span>
+        </div>
       </div>
       <div ref={setNodeRef} className="p-2 space-y-2 min-h-[100px]">
         {exercises.length === 0 ? (
-          <p className="text-xs text-muted-foreground text-center py-6">No exercises</p>
+          <div className="flex flex-col items-center gap-2 py-6">
+            <p className="text-xs text-muted-foreground">No exercises</p>
+            {onGenerateDay && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 text-xs"
+                onClick={() => onGenerateDay(dayOfWeek)}
+              >
+                <Sparkles className="size-3" />
+                AI Generate
+              </Button>
+            )}
+          </div>
         ) : (
           <SortableContext items={exerciseIds} strategy={verticalListSortingStrategy}>
             {slots.map((slot) => {
