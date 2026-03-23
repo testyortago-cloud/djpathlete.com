@@ -520,7 +520,7 @@ export function ProgramBuilder({
         onDeleteWeek={() => setDeleteWeekOpen(true)}
         isDeletingWeek={isDeletingWeek}
         onGenerateWeek={() => setGenerateWeekOpen(true)}
-        canGenerateWeek={!!assignmentInfo}
+        canGenerateWeek={true}
         blankWeeks={blankWeeks}
       />
 
@@ -732,23 +732,21 @@ export function ProgramBuilder({
       </Dialog>
 
       {/* AI Generate Week Dialog */}
-      {assignmentInfo && (
-        <GenerateWeekDialog
-          open={generateWeekOpen}
-          onOpenChange={setGenerateWeekOpen}
-          programId={programId}
-          assignmentId={assignmentInfo.assignmentId}
-          clientId={assignmentInfo.clientId}
-          currentWeekCount={localTotalWeeks}
-          targetWeekNumber={selectedWeekIsBlank ? selectedWeek : undefined}
-          onWeekGenerated={(newWeekNumber) => {
-            if (!selectedWeekIsBlank) {
-              setLocalTotalWeeks(newWeekNumber)
-            }
-            setSelectedWeek(newWeekNumber)
-          }}
-        />
-      )}
+      <GenerateWeekDialog
+        open={generateWeekOpen}
+        onOpenChange={setGenerateWeekOpen}
+        programId={programId}
+        assignmentId={assignmentInfo?.assignmentId}
+        clientId={assignmentInfo?.clientId}
+        currentWeekCount={localTotalWeeks}
+        targetWeekNumber={selectedWeekIsBlank ? selectedWeek : undefined}
+        onWeekGenerated={(newWeekNumber) => {
+          if (!selectedWeekIsBlank) {
+            setLocalTotalWeeks(newWeekNumber)
+          }
+          setSelectedWeek(newWeekNumber)
+        }}
+      />
     </div>
   )
 }

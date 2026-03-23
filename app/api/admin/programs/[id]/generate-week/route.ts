@@ -6,8 +6,8 @@ import { FieldValue } from "firebase-admin/firestore"
 import { getActiveUserIdsForProgram } from "@/lib/db/assignments"
 
 const generateWeekSchema = z.object({
-  assignment_id: z.string().uuid(),
-  client_id: z.string().uuid(),
+  assignment_id: z.string().uuid().optional(),
+  client_id: z.string().uuid().optional(),
   admin_instructions: z.string().max(2000).optional(),
   /** When set, AI fills this specific blank week instead of appending a new one */
   target_week_number: z.number().int().min(1).optional(),
@@ -38,13 +38,15 @@ export async function POST(
       )
     }
 
-    // Verify the client is actually assigned to this program
-    const activeUserIds = await getActiveUserIdsForProgram(programId)
-    if (!activeUserIds.includes(result.data.client_id)) {
-      return NextResponse.json(
-        { error: "Client does not have an active assignment for this program." },
-        { status: 400 }
-      )
+    // Verify the client is actually assigned to this program (only when client_id provided)
+    if (result.data.client_id) {
+      const activeUserIds = await getActiveUserIdsForProgram(programId)
+      if (!activeUserIds.includes(result.data.client_id)) {
+        return NextResponse.json(
+          { error: "Client does not have an active assignment for this program." },
+          { status: 400 }
+        )
+      }
     }
 
     // Create Firestore job doc — Firebase Function picks it up via onDocumentCreated
@@ -57,8 +59,8 @@ export async function POST(
       input: {
         request: {
           program_id: programId,
-          assignment_id: result.data.assignment_id,
-          client_id: result.data.client_id,
+          assignment_id: result.data.assignment_id ?? null,
+          client_id: result.data.client_id ?? null,
           admin_instructions: result.data.admin_instructions ?? null,
           target_week_number: result.data.target_week_number ?? null,
         },

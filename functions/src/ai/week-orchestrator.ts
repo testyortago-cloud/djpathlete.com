@@ -22,8 +22,8 @@ const MAX_RETRIES = 2
 
 export interface WeekGenerationRequest {
   program_id: string
-  assignment_id: string
-  client_id: string
+  assignment_id?: string
+  client_id?: string
   admin_instructions?: string
   /** When set, generate into this specific (blank) week instead of appending a new one */
   target_week_number?: number
@@ -290,13 +290,15 @@ export async function generateWeekSync(
 
   await updateJobProgress("fetching_context", 1, "Loading program data & client logs")
 
-  const [program, existingExercises, profile, clientName, allExercises] = await Promise.all([
+  const [program, existingExercises, allExercises] = await Promise.all([
     getProgramById(request.program_id),
     getProgramExercises(request.program_id),
-    getClientProfile(request.client_id),
-    getClientName(request.client_id),
     getExercisesForAI(),
   ])
+
+  // Client data is optional — programs without assignments can still use AI generation
+  const profile = request.client_id ? await getClientProfile(request.client_id) : null
+  const clientName = request.client_id ? await getClientName(request.client_id) : "Unassigned"
 
   // Determine whether we're filling a blank existing week or appending a new one
   const isFillingBlank = !!request.target_week_number && request.target_week_number <= (program.duration_weeks ?? 1)
@@ -314,7 +316,9 @@ export async function generateWeekSync(
 
   // Get unique exercise IDs from the program for progress lookup
   const programExerciseIds = [...new Set(existingExercises.map((pe: { exercise_id: string }) => pe.exercise_id))]
-  const recentProgress = await getRecentProgress(request.client_id, programExerciseIds)
+  const recentProgress = request.client_id
+    ? await getRecentProgress(request.client_id, programExerciseIds)
+    : []
 
   // Build compact summary of ALL weeks (focus/theme only) for full progression context
   const weekFocusSummary = buildWeekFocusSummary(existingExercises)
@@ -614,7 +618,9 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
   // Only bump duration_weeks and total_weeks when appending a new week (not filling a blank)
   if (!isFillingBlank) {
     await updateProgramDuration(request.program_id, newWeekNumber)
-    await updateAssignmentTotalWeeks(request.assignment_id, newWeekNumber)
+    if (request.assignment_id) {
+      await updateAssignmentTotalWeeks(request.assignment_id, newWeekNumber)
+    }
   }
 
   tokenUsage.total = tokenUsage.architect + tokenUsage.selector

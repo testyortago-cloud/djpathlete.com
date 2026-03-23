@@ -21,8 +21,8 @@ interface GenerateWeekDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   programId: string
-  assignmentId: string
-  clientId: string
+  assignmentId?: string
+  clientId?: string
   currentWeekCount: number
   onWeekGenerated: (newWeekNumber: number) => void
   /** When set, fill this specific blank week instead of appending a new one */
@@ -60,8 +60,8 @@ export function GenerateWeekDialog({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          assignment_id: assignmentId,
-          client_id: clientId,
+          ...(assignmentId && { assignment_id: assignmentId }),
+          ...(clientId && { client_id: clientId }),
           admin_instructions: instructions || undefined,
           target_week_number: targetWeekNumber ?? undefined,
         }),
@@ -116,8 +116,8 @@ export function GenerateWeekDialog({
           </DialogTitle>
           <DialogDescription>
             {isFillingBlank
-              ? `Fill blank Week ${weekLabel} with AI-generated exercises based on the program structure, previous weeks, and the client\u2019s workout logs.`
-              : "Generate a new week based on the existing program structure and the client\u2019s workout logs. The AI will apply appropriate progression."}
+              ? `Fill blank Week ${weekLabel} with AI-generated exercises based on the program structure${clientId ? ", previous weeks, and the client\u2019s workout logs" : " and previous weeks"}.`
+              : `Generate a new week based on the existing program structure${clientId ? " and the client\u2019s workout logs" : ""}. The AI will apply appropriate progression.`}
           </DialogDescription>
         </DialogHeader>
 
