@@ -137,8 +137,8 @@ function callAgentWithModel<T>(
       let tokens_used: number
 
       if (toolSchema) {
-        // ── Primary path: structured output via tool_use ──
-        const response = await client.messages.create({
+        // ── Primary path: structured output via tool_use (streaming to avoid 10min timeout) ──
+        const stream = client.messages.stream({
           model: modelId,
           max_tokens: maxTokens,
           system: systemContent,
@@ -150,6 +150,8 @@ function callAgentWithModel<T>(
           tool_choice: { type: "tool" as const, name: "structured_output" },
           messages: [{ role: "user", content: userMessage }],
         })
+
+        const response = await stream.finalMessage()
 
         // Check for truncation — if max_tokens was hit, the output is incomplete
         if (response.stop_reason === "max_tokens") {
@@ -164,10 +166,10 @@ function callAgentWithModel<T>(
         parsed = toolBlock.input
         tokens_used = (response.usage?.input_tokens ?? 0) + (response.usage?.output_tokens ?? 0)
       } else {
-        // ── Fallback: text-based JSON parsing ──
+        // ── Fallback: text-based JSON parsing (streaming to avoid 10min timeout) ──
         console.warn(`[callAgent] Falling back to text JSON parsing (model: ${modelId})`)
 
-        const response = await client.messages.create({
+        const stream = client.messages.stream({
           model: modelId,
           max_tokens: maxTokens,
           system: systemContent,
@@ -176,6 +178,8 @@ function callAgentWithModel<T>(
             content: userMessage + "\n\nYou MUST respond with valid JSON matching this schema. Output ONLY the JSON object.",
           }],
         })
+
+        const response = await stream.finalMessage()
 
         const textBlock = response.content.find((b) => b.type === "text")
         if (!textBlock || textBlock.type !== "text") {
