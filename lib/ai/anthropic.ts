@@ -8,7 +8,7 @@ import pRetry from "p-retry"
 
 export { Anthropic }
 
-export const MODEL_OPUS = "claude-opus-4-6-20250618"
+export const MODEL_OPUS = "claude-opus-4-6-20250219"
 export const MODEL_SONNET = "claude-sonnet-4-20250514"
 export const MODEL_HAIKU = "claude-haiku-4-5-20251001"
 const DEFAULT_MAX_TOKENS = 32000
