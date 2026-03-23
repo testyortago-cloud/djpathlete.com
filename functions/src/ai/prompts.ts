@@ -105,12 +105,13 @@ Rules:
    - "shorter_rest": keep standard exercise selection but reduce all rest periods by 30-40%.
    - "fewer_heavier": minimize exercise count, focus on compounds only, higher intensity.
    - "extend_session": ignore time pressure, program normally.
-13. preferred_techniques handling — these are preferences, NOT restrictions:
-   - If the client selects preferred_techniques (e.g., ["superset", "dropset"]), PRIORITIZE those techniques in the session design.
-   - If the client does NOT select a technique, you may STILL recommend it if it is clearly beneficial for their goals, experience level, and session constraints (e.g., supersets for time-constrained sessions, dropsets for intermediate+ hypertrophy clients).
+13. preferred_techniques handling — respect client level above all:
+   - BEGINNERS (novice or "learning" movement_confidence): IGNORE all technique preferences except straight sets. Even if a beginner selects "superset" as a preference, output straight_set only. Beginners need to learn movements with full rest and focus. Note in session_structure notes: "Straight sets only — movement quality and learning is the priority at this training level."
+   - If the client selects preferred_techniques (e.g., ["superset", "dropset"]) AND is intermediate+, PRIORITIZE those techniques in the session design.
+   - If the client does NOT select a technique AND is intermediate+, you may recommend it if clearly beneficial — but be conservative. Do NOT auto-add supersets just because a session is short. Instead, reduce exercise count to fit.
    - If the client explicitly lists dislikes in exercise_dislikes or additional_notes mentioning specific techniques, AVOID those techniques entirely.
-   - An empty preferred_techniques array means "no strong preference" — use your expert judgment to select the best techniques for the client's profile.
-   - When recommending a technique the client did not select, note it in the session_structure notes so the coach can review (e.g., "Added dropsets on isolation work — highly effective for hypertrophy at this training level").
+   - An empty preferred_techniques array for intermediate+ means "no strong preference" — default to straight sets with occasional dropsets on final isolation sets for hypertrophy goals.
+   - When recommending a technique the client did not select, note it in the session_structure notes so the coach can review.
 14. Lifestyle & recovery signals — these are PRIMARY inputs to volume and intensity decisions:
    - sleep_hours:
      * "8_plus": full recovery capacity — program normally
@@ -267,23 +268,25 @@ Rules:
    - "rest_pause": perform set to near-failure, rest 10-15s, continue (note in exercise notes)
    - "amrap": as many reps as possible in a given time or to failure
    Rules for technique assignment:
-   - Never use dropsets, rest-pause, or amrap for beginners (safety first)
-   - Use supersets when session_minutes <= 45 or client prefers them
-   - For hypertrophy goals with intermediate+ clients: use dropsets on final set of isolation exercises — include this even if client did not explicitly select dropsets, as it is evidence-based best practice
-   - For time-constrained sessions: prefer supersets/circuits to save time — include this even if client did not explicitly select these techniques
-   - Dropsets and rest-pause only on isolation or machine exercises (safe to push to failure)
+   - BEGINNERS (novice training_age_category or "learning" movement_confidence): use STRAIGHT SETS for ALL exercises. No supersets, no dropsets, no rest-pause, no amrap, no giant sets, no circuits. Beginners need to focus on learning movement patterns with full rest between sets. The only exception is if the client explicitly requests supersets via preferred_techniques.
+   - INTERMEDIATE clients: straight sets should still be the DEFAULT. Supersets are appropriate ONLY when: (a) the client explicitly prefers them via preferred_techniques or time_efficiency_preference, OR (b) session_minutes <= 45 AND the superset pairs antagonist muscles. Limit to 1-2 superset pairs per session maximum. Dropsets may be used on 1 final isolation exercise per session for hypertrophy goals.
+   - ADVANCED/ELITE clients: full technique menu available. Supersets, dropsets, rest-pause, and giant sets can be used strategically based on goals. Even here, do not superset every exercise — at least 50% of working exercises should be straight sets.
+   - Dropsets and rest-pause ONLY on isolation or machine exercises (safe to push to failure)
    - When using supersets, pair antagonist muscles (chest+back, biceps+triceps, quads+hamstrings)
-   - Client preferred_techniques should be PRIORITIZED but are not the only techniques allowed. Use expert judgment to include additional beneficial techniques when appropriate for the client's goals and level.
-   - When including a technique the client did not select, add a brief justification in the program notes (e.g., "Supersets added for time efficiency" or "Dropset on final isolation set for maximum hypertrophy stimulus")
+   - NEVER superset two exercises that compete for the same stabilizers or both require high neural demand
+   - Client preferred_techniques should be PRIORITIZED. If a client has NOT selected supersets and is beginner/intermediate, do NOT add them "for time efficiency" — instead, reduce exercise count to fit the time budget.
+   - When including a technique the client did not select, add a brief justification in the program notes (e.g., "Dropset on final isolation set for maximum hypertrophy stimulus")
 14. If preferred_training_days contains specific day numbers, use those exact day_of_week values in your output. Ensure adequate rest between sessions hitting the same muscle groups (at least 48 hours).
 15. For short sessions (<=30 min):
    - Max 4 exercises total (3 working + 1 warm-up, NO cool-down)
-   - All compounds, superset paired to maximize time
+   - All compounds, focus on the highest-priority movements
+   - For BEGINNERS: use straight sets with shorter rest (45-60s) — do NOT superset. Fewer exercises done well is the priority.
+   - For INTERMEDIATE+: antagonist supersets are acceptable to fit more work into limited time, but only if client has shown comfort with supersets.
    - Warm-up: integrated into first working set (light ramp-up sets)
-   - Rest periods: 45-60s
    For sessions 31-45 min:
    - Max 6 exercises total (4-5 working + 1 warm-up, NO cool-down)
-   - Antagonist supersets for accessories
+   - For BEGINNERS: straight sets throughout, reduce rest to 45-60s between sets. Cut exercise count rather than rushing through supersets.
+   - For INTERMEDIATE+: antagonist supersets for accessories are appropriate if it helps fit the session time.
    - Warm-up: 3 min targeted activation
    - Rest periods: 60-75s compounds, 30-45s accessories
 16. TIME MATH VERIFICATION — before outputting, mentally verify each day's session fits:
@@ -346,16 +349,17 @@ Rules:
    a. movement_pattern must match or be closely related
    b. target_muscles must overlap with the exercise's primary_muscles
    c. role compatibility (warm_up slots get easier/lighter exercises, primary_compound slots get heavy compound movements)
-   d. Difficulty must be appropriate for the client's level AND movement_confidence — this is CRITICAL:
-      - Beginners: stick to basic, stable, bilateral movements (machines, dumbbells, bodyweight). No advanced barbell lifts unless they have prior coaching.
-      - Intermediate: can handle free weights, moderate complexity, some unilateral work.
+   d. Difficulty must be appropriate for the client's level AND movement_confidence — this is the MOST IMPORTANT selection criterion. When in doubt, choose EASIER over harder:
+      - Beginners: ONLY use exercises marked as "beginner" difficulty. Stick to machines, guided movements, dumbbells, and bodyweight basics. NO barbell back squats, NO barbell deadlifts, NO Olympic lifts, NO advanced unilateral work. Think: leg press instead of barbell squat, dumbbell bench press instead of barbell bench, lat pulldown instead of pull-ups, goblet squat instead of front squat.
+      - Intermediate: can handle free weights including basic barbell movements (bench, squat, RDL), moderate complexity, some unilateral work. Exercises marked "beginner" or "intermediate" are appropriate.
       - Advanced: full exercise menu available, including Olympic lift variations, advanced unilateral, plyometrics.
       - Elite: everything available, sport-specific and highly specialized exercises appropriate.
-      - movement_confidence overrides experience_level for exercise complexity when they conflict:
+      - movement_confidence overrides experience_level for exercise complexity when they conflict — ALWAYS use the LOWER of the two:
         * "learning": machines and guided movements only, even if experience_level is "intermediate"
         * "comfortable": dumbbells and basic barbell, even if experience_level is "advanced"
         * "proficient": full free-weight menu
         * "expert": everything including Olympic lifts and complex movements
+      - If the exercise library has been pre-filtered by difficulty, STILL prefer the simplest options for beginners. Don't pick the most complex exercise available just because it matches the pattern.
 4. Equipment constraints: only assign exercises whose equipment_required is available to the client. Be resourceful — if a cable machine isn't available, a resistance band variation of the same movement may exist in the library.
 5. Injury constraints: do not assign exercises that would aggravate known injuries. But think like a coach — find alternatives that train the same muscle group through a pain-free range of motion. A shoulder injury doesn't mean "no chest work" — it might mean "floor press instead of bench press" or "neutral grip instead of pronated."
 6. No duplicate exercises on the same day — each exercise_id should appear at most once per day.

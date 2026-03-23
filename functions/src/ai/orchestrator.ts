@@ -16,7 +16,7 @@ import { estimateTokens } from "./token-utils.js"
 import { profileAnalysisSchema, programSkeletonSchema, exerciseAssignmentSchema } from "./schemas.js"
 import { PROFILE_ANALYZER_PROMPT, PROGRAM_ARCHITECT_PROMPT, EXERCISE_SELECTOR_PROMPT } from "./prompts.js"
 import { validateProgram } from "./validate.js"
-import { filterByDifficultyScore, formatExerciseLibrary } from "./exercise-context.js"
+import { filterByDifficultyScore, filterByDifficultyLevel, formatExerciseLibrary } from "./exercise-context.js"
 import { getExercisesForAI } from "./program-chat-tools.js"
 import {
   buildPriorWeekContext,
@@ -326,7 +326,12 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
 
     const analysis = agent1Result.content
     const allCompressed = allExercises // already compressed from getExercisesForAI
-    const compressed = assessmentContext ? filterByDifficultyScore(allCompressed, assessmentContext.maxDifficultyScore) : allCompressed
+    // Always filter by text difficulty level (beginner/intermediate/advanced) to prevent
+    // advanced exercises from reaching beginners. Assessment-based filtering is additional.
+    const clientDifficultyLevel = profile?.experience_level ?? "beginner"
+    let compressed = filterByDifficultyLevel(allCompressed, clientDifficultyLevel)
+    if (assessmentContext) compressed = filterByDifficultyScore(compressed, assessmentContext.maxDifficultyScore)
+    console.log(`[orchestrator:sync] Exercise filtering: ${allCompressed.length} total → ${compressed.length} after difficulty filter (level: ${clientDifficultyLevel})`)
 
     if (request.split_type) analysis.recommended_split = request.split_type as typeof analysis.recommended_split
     if (request.periodization) analysis.recommended_periodization = request.periodization as typeof analysis.recommended_periodization

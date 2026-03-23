@@ -40,19 +40,27 @@ export function scoreExerciseForSlot(
   equipment: string[], difficulty: string
 ): number {
   let score = 0
-  if (exercise.movement_pattern === slot.movement_pattern) score += 40
-  else if (exercise.movement_pattern && RELATED_PATTERNS[slot.movement_pattern]?.includes(exercise.movement_pattern)) score += 20
+  if (exercise.movement_pattern === slot.movement_pattern) score += 35
+  else if (exercise.movement_pattern && RELATED_PATTERNS[slot.movement_pattern]?.includes(exercise.movement_pattern)) score += 15
 
   const allExerciseMuscles = [...exercise.primary_muscles, ...exercise.secondary_muscles]
-  score += Math.round(jaccard(allExerciseMuscles, slot.target_muscles) * 30)
+  score += Math.round(jaccard(allExerciseMuscles, slot.target_muscles) * 25)
 
   const equipmentSet = new Set(equipment.map((e) => e.toLowerCase()))
-  if (exercise.is_bodyweight) score += 20
-  else if (exercise.equipment_required.length === 0 || exercise.equipment_required.every((eq) => equipmentSet.has(eq.toLowerCase()))) score += 20
+  if (exercise.is_bodyweight) score += 15
+  else if (exercise.equipment_required.length === 0 || exercise.equipment_required.every((eq) => equipmentSet.has(eq.toLowerCase()))) score += 15
 
+  // Difficulty matching — heavily weighted to prevent advanced exercises for beginners
   const dist = difficultyDistance(exercise.difficulty, difficulty)
-  if (dist === 0) score += 10
-  else if (dist === 1) score += 5
+  if (dist === 0) score += 20 // exact match
+  else if (dist === 1) {
+    // One level off: penalize exercises ABOVE client level more than below
+    const exerciseDiffIdx = DIFFICULTY_ORDER.indexOf(exercise.difficulty as (typeof DIFFICULTY_ORDER)[number])
+    const clientDiffIdx = DIFFICULTY_ORDER.indexOf(difficulty as (typeof DIFFICULTY_ORDER)[number])
+    if (exerciseDiffIdx > clientDiffIdx) score += 2 // exercise is harder than client — near-zero score
+    else score += 10 // exercise is easier than client — acceptable
+  }
+  // dist >= 2: 0 points (e.g., advanced exercise for beginner)
 
   // Role bonus (5pts) — training_intent matching slot role
   const isCompoundSlot = slot.role === "primary_compound" || slot.role === "secondary_compound"
