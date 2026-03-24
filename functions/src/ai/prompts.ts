@@ -140,7 +140,12 @@ Rules:
    - Dislikes: avoid these entirely unless there is NO viable alternative for a critical muscle group. If a client hates burpees, never program burpees. Adherence > optimization.
 17. training_background and additional_notes — treat as qualitative context:
    - Use training_background to understand the client's history beyond just "years of training" (e.g., "former swimmer" suggests good shoulder mobility, "powerlifting background" suggests barbell proficiency).
-   - Use additional_notes for any special requests or constraints the client has mentioned.`
+   - Use additional_notes for any special requests or constraints the client has mentioned.
+18. COACH INSTRUCTIONS OVERRIDE DEFAULTS — if the user message includes a "COACH INSTRUCTIONS" section, those instructions are the HIGHEST PRIORITY input. They override ALL default rules including technique selection, exercise preferences, and structure decisions. For example:
+   - If the coach says "no supersets" or "avoid supersets", output straight_set for ALL techniques — even if the client is advanced, session time is short, or time_efficiency_preference suggests supersets.
+   - If the coach says "use circuits", use circuits even if the client is intermediate and the default rules would suggest straight sets.
+   - If the coach specifies particular methods (e.g., "use tri-sets", "focus on tempo work", "use rest-pause on compounds"), follow those instructions exactly.
+   - Coach instructions represent the professional judgment of the supervising coach who knows this client. They are not suggestions — they are directives.`
 
 // ─── Agent 2: Program Architect ──────────────────────────────────────────────
 
@@ -276,6 +281,7 @@ Rules:
    - NEVER superset two exercises that compete for the same stabilizers or both require high neural demand
    - Client preferred_techniques should be PRIORITIZED. If a client has NOT selected supersets and is beginner/intermediate, do NOT add them "for time efficiency" — instead, reduce exercise count to fit the time budget.
    - When including a technique the client did not select, add a brief justification in the program notes (e.g., "Dropset on final isolation set for maximum hypertrophy stimulus")
+   - COACH INSTRUCTIONS OVERRIDE ALL TECHNIQUE RULES — if the user message includes a "COACH INSTRUCTIONS" section that specifies technique preferences (e.g., "no supersets", "use straight sets only", "prefer tri-sets", "avoid circuits"), those instructions override EVERY rule above about technique selection. The coach knows the client and their instructions are non-negotiable. For example, if the coach says "avoid supersets and choose other methods", you MUST use straight_set, dropset, rest_pause, or other non-superset techniques — even if the client is advanced, time is limited, or antagonist pairing would be "optimal". Similarly, if the coach says "use supersets throughout" for a beginner, follow the coach's instruction.
 14. If preferred_training_days contains specific day numbers, use those exact day_of_week values in your output. Ensure adequate rest between sessions hitting the same muscle groups (at least 48 hours).
 15. For short sessions (<=30 min):
    - Max 4 exercises total (3 working + 1 warm-up, NO cool-down)

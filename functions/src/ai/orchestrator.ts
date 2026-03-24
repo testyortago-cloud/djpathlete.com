@@ -295,7 +295,11 @@ Maximum Exercise Difficulty: ${assessmentContext.maxDifficultyScore}/10
 IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.maxDifficultyScore}.`
       : ""
 
-    const agent1UserMessage = `Client Profile:\n${profileContext}\n\nTraining Request:\n- Goals: ${request.goals.join(", ")}\n- Duration: ${request.duration_weeks} weeks\n- Sessions per week: ${request.sessions_per_week}\n- Session length: ${request.session_minutes ?? 60} minutes\n${request.split_type ? `- Requested split type: ${request.split_type}` : ""}\n${request.periodization ? `- Requested periodization: ${request.periodization}` : ""}\n${request.equipment_override ? `- Equipment override: ${request.equipment_override.join(", ")}` : ""}\n${request.additional_instructions ? `- Additional instructions: ${request.additional_instructions}` : ""}${assessmentSection}`
+    const coachInstructionsSection = request.additional_instructions
+      ? `\n\n## COACH INSTRUCTIONS (HIGHEST PRIORITY — these override default rules)\n${request.additional_instructions}\n\nYou MUST follow these instructions. If they conflict with default technique, exercise, or structure rules, the coach's instructions WIN. For example, if the coach says "no supersets", use straight sets even if the default rules would suggest supersets for time efficiency.`
+      : ""
+
+    const agent1UserMessage = `Client Profile:\n${profileContext}\n\nTraining Request:\n- Goals: ${request.goals.join(", ")}\n- Duration: ${request.duration_weeks} weeks\n- Sessions per week: ${request.sessions_per_week}\n- Session length: ${request.session_minutes ?? 60} minutes\n${request.split_type ? `- Requested split type: ${request.split_type}` : ""}\n${request.periodization ? `- Requested periodization: ${request.periodization}` : ""}\n${request.equipment_override ? `- Equipment override: ${request.equipment_override.join(", ")}` : ""}${coachInstructionsSection}${assessmentSection}`
 
     // RAG
     const ragQuery = `${request.goals.join(", ")} ${request.duration_weeks}wk ${request.sessions_per_week}x/wk ${profile?.experience_level ?? "beginner"}`
@@ -348,7 +352,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     // Agent 2
     await updateJobProgress("designing_structure", 3, "Designing program structure & weekly layout")
     await onProgress?.("Designing program structure", 2, 5)
-    const agent2UserMessage = `Profile Analysis:\n${JSON.stringify(analysis)}\n\nTraining Parameters:\n- Duration: ${request.duration_weeks} weeks\n- Sessions per week: ${request.sessions_per_week}\n- Session length: ${request.session_minutes ?? 60} minutes\n- Split type: ${analysis.recommended_split}\n- Periodization: ${analysis.recommended_periodization}\n- Goals: ${request.goals.join(", ")}\n${request.additional_instructions ? `- Additional instructions: ${request.additional_instructions}` : ""}`
+    const agent2UserMessage = `Profile Analysis:\n${JSON.stringify(analysis)}\n\nTraining Parameters:\n- Duration: ${request.duration_weeks} weeks\n- Sessions per week: ${request.sessions_per_week}\n- Session length: ${request.session_minutes ?? 60} minutes\n- Split type: ${analysis.recommended_split}\n- Periodization: ${analysis.recommended_periodization}\n- Goals: ${request.goals.join(", ")}${coachInstructionsSection}`
 
     console.log("[orchestrator:sync] Running Agent 2 (program architect)...")
     const agent2Result = await callAgent<ProgramSkeleton>(PROGRAM_ARCHITECT_PROMPT, agent2UserMessage, programSkeletonSchema, { model: MODEL_OPUS, cacheSystemPrompt: true })
@@ -451,7 +455,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
           }
         }
 
-        const agent3UserMessage = `Program Skeleton (Week ${weekNum} of ${skeleton.weeks.length}):\n${JSON.stringify(weekSkeletonPayload)}\n\nConstraints:\n${constraintsContext}\n\nExercise Library (${filtered.length} exercises, pre-filtered for relevance):\n${exerciseLibrary}\n\n${priorContext.prompt_text}${feedbackSection}${dedupFeedback}`
+        const agent3UserMessage = `Program Skeleton (Week ${weekNum} of ${skeleton.weeks.length}):\n${JSON.stringify(weekSkeletonPayload)}\n\nConstraints:\n${constraintsContext}\n\nExercise Library (${filtered.length} exercises, pre-filtered for relevance):\n${exerciseLibrary}\n\n${priorContext.prompt_text}${coachInstructionsSection}${feedbackSection}${dedupFeedback}`
 
         try {
           console.log(`[orchestrator:sync] Week ${weekNum} attempt ${attempt + 1}/${MAX_RETRIES + 1}...`)
