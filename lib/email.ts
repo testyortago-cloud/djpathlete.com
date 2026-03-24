@@ -1448,10 +1448,70 @@ export async function sendStandaloneNewsletter(data: StandaloneNewsletterData) {
   )
 }
 
-// ─── Contact & Inquiry notification emails ───
+// ─── Admin notification emails ───
 
 const INFO_EMAIL = "info@darrenjpaul.com"
 const SALES_EMAIL = "sales@darrenjpaul.com"
+
+export async function sendNewRegistrationEmail({
+  firstName,
+  lastName,
+  email,
+}: {
+  firstName: string
+  lastName: string
+  email: string
+}) {
+  const baseUrl = getBaseUrl()
+
+  const html = emailLayout(`
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td style="padding:48px 48px 52px;">
+
+          ${sectionLabel("New Client Registration")}
+
+          <p style="margin:0 0 8px; font-family:'Lexend Exa', Georgia, 'Times New Roman', serif; font-size:22px; font-weight:400; color:#0E3F50;">
+            New Account Created
+          </p>
+
+          <p style="margin:0 0 28px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:15px; color:#5c5750; line-height:1.8;">
+            A new client has registered on the website.
+          </p>
+
+          ${infoCard([
+            { label: "Name", value: `${firstName} ${lastName}` },
+            { label: "Email", value: email },
+          ])}
+
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:32px;">
+            <tr>
+              <td align="center">
+                <a href="${baseUrl}/admin/clients" style="display:inline-block; padding:14px 32px; background-color:#0E3F50; color:#ffffff; font-family:'Lexend Exa', Georgia, 'Times New Roman', serif; font-size:12px; font-weight:600; letter-spacing:2px; text-transform:uppercase; text-decoration:none; border-radius:2px;">
+                  View Clients
+                </a>
+              </td>
+            </tr>
+          </table>
+
+        </td>
+      </tr>
+    </table>
+  `)
+
+  const { error } = await resend.emails.send({
+    from: FROM_EMAIL,
+    to: INFO_EMAIL,
+    cc: ADMIN_CC,
+    subject: `[Registration] New Client — ${firstName} ${lastName}`,
+    html,
+  })
+
+  if (error) {
+    console.error("Failed to send new registration email:", error)
+    throw new Error("Failed to send new registration email")
+  }
+}
 
 export async function sendContactFormEmail({
   name,

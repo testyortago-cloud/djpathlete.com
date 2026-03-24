@@ -3,7 +3,7 @@ import { hash } from "bcryptjs"
 import { registerSchema } from "@/lib/validators/register"
 import { createServiceRoleClient } from "@/lib/supabase"
 import { createEmailVerificationToken } from "@/lib/db/email-verification-tokens"
-import { sendVerificationEmail } from "@/lib/email"
+import { sendVerificationEmail, sendNewRegistrationEmail } from "@/lib/email"
 import { ghlCreateContact, ghlTriggerWorkflow } from "@/lib/ghl"
 import type { User } from "@/types/database"
 
@@ -113,6 +113,35 @@ export async function POST(request: Request) {
       }
     } catch {
       // GHL sync failure should not affect registration
+    }
+
+    // Notify admins (non-blocking)
+    try {
+      const { data: admins } = await supabase
+        .from("users")
+        .select("id")
+        .eq("role", "admin")
+
+      if (admins && admins.length > 0) {
+        await supabase.from("notifications").insert(
+          admins.map((admin) => ({
+            user_id: admin.id,
+            type: "info" as const,
+            title: "New Client Registration",
+            message: `${firstName} ${lastName} (${email}) has created an account.`,
+            is_read: false,
+            link: null,
+          }))
+        )
+      }
+
+      await sendNewRegistrationEmail({
+        firstName,
+        lastName,
+        email,
+      })
+    } catch {
+      // Notification failure should not affect registration
     }
 
     // Return user without password_hash
