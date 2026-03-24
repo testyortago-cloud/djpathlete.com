@@ -176,10 +176,11 @@ Rules:
    - If it's time for a deload (typically every 3-4 weeks of hard training), reduce volume by 40-50%.
 3. ROTATE ALL WORKING EXERCISES every week — compounds, accessories, and isolations MUST all use DIFFERENT exercises than prior weeks. For compound slots, pick a different exercise that trains the SAME movement pattern and muscles (e.g., Week 1 Back Squat → Week 2 Front Squat). Target < 3% repetition score.
 4. ACCESSORY and ISOLATION slots — additionally vary the movement patterns or target muscles every 2-3 weeks for even more variety.
-5. Respect the coach's instructions — they override default progression logic. The coach may specify:
+5. COACH INSTRUCTIONS ARE HIGHEST PRIORITY — they override ALL default rules including technique selection, exercise structure, and progression logic. The coach may specify:
    - A THEME or FOCUS AREA (e.g., "lower leg focus", "glute emphasis", "no equipment this week")
    - A SHIFT in emphasis while maintaining a theme (e.g., "keep lower leg theme but add glutes")
    - Equipment constraints for this specific week (e.g., "bodyweight only", "bands only")
+   - TECHNIQUE PREFERENCES (e.g., "no supersets", "use straight sets only", "use tri-sets", "avoid circuits"). If the coach specifies technique preferences, follow them EXACTLY — even if they conflict with what would normally be recommended for this client's level or time constraints. For example, if the coach says "avoid supersets", ALL techniques must be straight_set, dropset, rest_pause, or other non-superset methods.
    When a theme is specified, bias slot target_muscles and movement_patterns toward that theme while still maintaining a balanced program.
 6. Session time budget: keep the same number of exercises per day as previous weeks unless the coach says otherwise.
 7. Use the same slot_id format: "w{week_number}d{day_of_week}s{slot_index}".
@@ -243,7 +244,7 @@ Rules:
 3. COMPLEMENT other days already programmed in this week — avoid duplicating the same muscle groups or movement patterns.
 4. PROGRESS appropriately based on the client's logged performance.
 5. ROTATE ALL WORKING EXERCISES — use DIFFERENT exercises than prior weeks for the same slot roles.
-6. Respect the coach's instructions — they override default progression logic.
+6. COACH INSTRUCTIONS ARE HIGHEST PRIORITY — they override ALL default rules including technique selection, exercise structure, and progression logic. If the coach specifies technique preferences (e.g., "no supersets", "use straight sets only"), follow them EXACTLY regardless of the client's level or time constraints.
 7. Use the slot_id format: "w{week_number}d{day_of_week}s{slot_index}".
 8. Output ONLY the JSON object, no additional text.`
 
@@ -505,8 +506,9 @@ ${progressSummary.length > 0 ? JSON.stringify(progressSummary) : "No logs yet �
 ## ${isSingleDay ? "Target Day" : "New Week Number"}
 ${isSingleDay ? `${targetDayName} (day_of_week=${request.target_day_of_week}) in Week ${newWeekNumber}` : newWeekNumber}
 
-## Coach Instructions
+## Coach Instructions (HIGHEST PRIORITY — these override ALL default rules)
 ${request.admin_instructions || "No specific instructions — use standard progression logic based on the client's performance data."}
+${request.admin_instructions ? "\nYou MUST follow these instructions. If they conflict with default technique, structure, or progression rules, the coach's instructions WIN." : ""}
 
 ${isSingleDay
     ? `Design ${targetDayName} for Week ${newWeekNumber}. The output MUST have week_number=${newWeekNumber} and exactly ONE day with day_of_week=${request.target_day_of_week}. Match the existing program's split (${program.split_type}) and periodization (${program.periodization}). Look at what ${targetDayName} typically contains in prior weeks to determine the appropriate focus, exercise count, and session structure.`
@@ -634,7 +636,7 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
 
     // Build coach instructions section for the exercise selector
     const coachInstructionsSection = request.admin_instructions
-      ? `\n\nCOACH INSTRUCTIONS FOR THIS WEEK (READ CAREFULLY — these override default selection logic):\n${request.admin_instructions}\n\nWhen selecting exercises, prioritize choices that align with the coach's instructions above. For example:\n- If the coach says "glute focus" → pick glute-dominant exercises for accessory/isolation slots (hip thrusts, glute bridges, cable kickbacks)\n- If the coach says "bodyweight only" → only select exercises where is_bodyweight=true or equipment_required is empty\n- If the coach says "deload" → pick lighter/simpler variations of the usual exercises\n- If the coach references a specific exercise or muscle group → prioritize it in your selections`
+      ? `\n\n## COACH INSTRUCTIONS (HIGHEST PRIORITY — these override ALL default rules)\n${request.admin_instructions}\n\nYou MUST follow these instructions exactly. They override default exercise selection, technique, and structure rules. Examples:\n- If the coach says "no supersets" or "avoid supersets" → select exercises compatible with straight sets, dropsets, rest-pause, or other non-superset methods only\n- If the coach says "glute focus" → pick glute-dominant exercises for accessory/isolation slots\n- If the coach says "bodyweight only" → only select exercises where is_bodyweight=true or equipment_required is empty\n- If the coach says "deload" → pick lighter/simpler variations of the usual exercises\n- If the coach references a specific technique, exercise, or muscle group → prioritize it in your selections`
       : ""
 
     const selectorMessage = `Program Skeleton (Week ${newWeekNumber}):\n${JSON.stringify(skeleton)}\n\nConstraints:\n${constraintsContext}\n\nExercise Library (${filtered.length} exercises):\n${exerciseLibrary}\n\n${priorContext.prompt_text}${coachInstructionsSection}\n\nIMPORTANT: EVERY working exercise (compounds, accessories, isolations) MUST be DIFFERENT from prior weeks. Use the AVOID list above — do NOT reuse any exercise_id from that list. For compound slots, pick a DIFFERENT exercise that trains the SAME movement pattern and muscles. WARM-UP and COOL-DOWN slots may stay consistent.${feedbackSection}`
