@@ -14,6 +14,7 @@ import {
   Loader2,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import { useAdminWeightUnit } from "@/hooks/use-admin-weight-unit"
 import type { SetDetail } from "@/types/database"
 import {
   Table,
@@ -23,7 +24,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Button } from "@/components/ui/button"
+
 
 interface ProgramOption {
   assignmentId: string
@@ -63,19 +64,11 @@ interface ClientProgressViewProps {
   programs?: ProgramOption[]
 }
 
-const KG_TO_LBS = 2.20462
-
 function formatShortDate(dateString: string): string {
   return new Date(dateString).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
   })
-}
-
-function formatWeight(kg: number | null, unit: "kg" | "lbs"): string {
-  if (kg === null) return "-"
-  if (unit === "lbs") return `${Math.round(kg * KG_TO_LBS * 10) / 10} lbs`
-  return `${kg} kg`
 }
 
 const ACHIEVEMENT_ICONS: Record<string, typeof Trophy> = {
@@ -129,10 +122,10 @@ export function ClientProgressView({
   stats,
   programs = [],
 }: ClientProgressViewProps) {
+  const { formatWeight } = useAdminWeightUnit()
   const [achievementsOpen, setAchievementsOpen] = useState(true)
   const [workoutsOpen, setWorkoutsOpen] = useState(true)
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
-  const [weightUnit, setWeightUnit] = useState<"kg" | "lbs">("kg")
 
   // Program filter state
   const [selectedAssignment, setSelectedAssignment] = useState<string>("all")
@@ -292,7 +285,7 @@ export function ClientProgressView({
                       <div className="shrink-0 text-right">
                         {achievement.metric_value !== null && (
                           <p className="text-sm font-medium text-foreground">
-                            {formatWeight(achievement.metric_value, weightUnit)}
+                            {formatWeight(achievement.metric_value)}
                           </p>
                         )}
                         <p className="text-xs text-muted-foreground">
@@ -338,50 +331,30 @@ export function ClientProgressView({
 
         {workoutsOpen && (
           <div className="px-6 pb-6 -mt-2">
-            {/* Controls: Program selector + weight unit toggle */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 mb-4">
-              {programs.length > 0 && (
-                <div className="flex items-center gap-2 flex-1 min-w-0">
-                  <label
-                    htmlFor="program-filter"
-                    className="text-xs font-medium text-muted-foreground whitespace-nowrap"
-                  >
-                    Program:
-                  </label>
-                  <select
-                    id="program-filter"
-                    value={selectedAssignment}
-                    onChange={(e) => setSelectedAssignment(e.target.value)}
-                    className="flex h-8 w-full max-w-xs rounded-md border border-input bg-background px-2.5 text-xs shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <option value="all">All Programs</option>
-                    {programs.map((p) => (
-                      <option key={p.assignmentId} value={p.assignmentId}>
-                        {p.programName}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-              <div className="flex items-center gap-1 shrink-0">
-                <Button
-                  variant={weightUnit === "kg" ? "default" : "outline"}
-                  size="sm"
-                  className="h-7 px-2.5 text-xs"
-                  onClick={() => setWeightUnit("kg")}
+            {/* Program selector */}
+            {programs.length > 0 && (
+              <div className="flex items-center gap-2 mb-4">
+                <label
+                  htmlFor="program-filter"
+                  className="text-xs font-medium text-muted-foreground whitespace-nowrap"
                 >
-                  kg
-                </Button>
-                <Button
-                  variant={weightUnit === "lbs" ? "default" : "outline"}
-                  size="sm"
-                  className="h-7 px-2.5 text-xs"
-                  onClick={() => setWeightUnit("lbs")}
+                  Program:
+                </label>
+                <select
+                  id="program-filter"
+                  value={selectedAssignment}
+                  onChange={(e) => setSelectedAssignment(e.target.value)}
+                  className="flex h-8 w-full max-w-xs rounded-md border border-input bg-background px-2.5 text-xs shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  lbs
-                </Button>
+                  <option value="all">All Programs</option>
+                  {programs.map((p) => (
+                    <option key={p.assignmentId} value={p.assignmentId}>
+                      {p.programName}
+                    </option>
+                  ))}
+                </select>
               </div>
-            </div>
+            )}
 
             {isLoading ? (
               <div className="flex items-center justify-center py-8">
@@ -453,7 +426,7 @@ export function ClientProgressView({
                               {entry.exercise_name}
                             </TableCell>
                             <TableCell className="text-muted-foreground hidden sm:table-cell">
-                              {formatWeight(entry.weight_kg, weightUnit)}
+                              {formatWeight(entry.weight_kg)}
                             </TableCell>
                             <TableCell className="text-muted-foreground hidden sm:table-cell">
                               {entry.sets_completed !== null &&
@@ -507,7 +480,7 @@ export function ClientProgressView({
                                             {set.set_number}
                                           </td>
                                           <td className="py-1 pr-4">
-                                            {formatWeight(set.weight_kg ?? null, weightUnit)}
+                                            {formatWeight(set.weight_kg ?? null)}
                                           </td>
                                           <td className="py-1 pr-4">
                                             {set.reps}

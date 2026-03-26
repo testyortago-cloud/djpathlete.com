@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import { useAdminWeightUnit } from "@/hooks/use-admin-weight-unit"
 import {
   Dialog,
   DialogContent,
@@ -82,6 +83,7 @@ export function EditExerciseDialog({
   dayExercises = [],
 }: EditExerciseDialogProps) {
   const router = useRouter()
+  const { unit, displayWeight, toKg, unitLabel } = useAdminWeightUnit()
   const dialogRef = useRef<HTMLDivElement>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [technique, setTechnique] = useState<TrainingTechniqueOption>("straight_set")
@@ -144,7 +146,9 @@ export function EditExerciseDialog({
       notes: formData.get("notes") || null,
       rpe_target: formData.get("rpe_target") || null,
       intensity_pct: formData.get("intensity_pct") || null,
-      suggested_weight_kg: formData.get("suggested_weight_kg") || null,
+      suggested_weight_kg: formData.get("suggested_weight_kg")
+        ? toKg(Number(formData.get("suggested_weight_kg")))
+        : null,
       tempo: formData.get("tempo") || null,
       group_tag: groupTag,
     }
@@ -312,15 +316,16 @@ export function EditExerciseDialog({
                 <div className="grid grid-cols-2 gap-4">
                   {catFields.showWeight && (
                     <div className="space-y-2">
-                      <Label htmlFor="edit-weight">Suggested Weight (kg)</Label>
+                      <Label htmlFor="edit-weight">Suggested Weight ({unitLabel()})</Label>
                       <Input
                         id="edit-weight"
                         name="suggested_weight_kg"
                         type="number"
                         min={0}
                         step={0.5}
-                        defaultValue={programExercise.suggested_weight_kg ?? ""}
-                        placeholder="e.g. 60"
+                        defaultValue={programExercise.suggested_weight_kg != null ? displayWeight(programExercise.suggested_weight_kg) ?? "" : ""}
+                        placeholder={unit === "lbs" ? "e.g. 135" : "e.g. 60"}
+                        key={unit}
                       />
                     </div>
                   )}

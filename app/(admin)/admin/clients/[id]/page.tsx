@@ -28,6 +28,7 @@ import { getAssignments } from "@/lib/db/assignments"
 import { getPayments } from "@/lib/db/payments"
 import { getProgress, getWorkoutStreak } from "@/lib/db/progress"
 import { getAchievements } from "@/lib/db/achievements"
+import { AdminWeightDisplay } from "@/components/admin/AdminWeightDisplay"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { EmptyState } from "@/components/ui/empty-state"
 import { ClientProgressView } from "@/components/admin/ClientProgressView"
@@ -170,11 +171,17 @@ function ProfileSection({ profile }: { profile: ClientProfile | null }) {
           label="Height"
           value={profile.height_cm ? `${profile.height_cm} cm` : null}
         />
-        <InfoRow
-          icon={Weight}
-          label="Weight"
-          value={profile.weight_kg ? `${profile.weight_kg} kg` : null}
-        />
+        {profile.weight_kg && (
+          <div className="flex items-start gap-3 py-2">
+            <Weight className="size-4 text-muted-foreground mt-0.5 shrink-0" />
+            <div>
+              <p className="text-xs text-muted-foreground">Weight</p>
+              <p className="text-sm text-foreground">
+                <AdminWeightDisplay weightKg={profile.weight_kg} />
+              </p>
+            </div>
+          </div>
+        )}
         <InfoRow icon={Target} label="Goals" value={profile.goals} />
         <InfoRow
           icon={AlertTriangle}

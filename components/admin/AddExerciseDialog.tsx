@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import { useAdminWeightUnit } from "@/hooks/use-admin-weight-unit"
 import { Search, ArrowLeft, Repeat2 } from "lucide-react"
 import Image from "next/image"
 import {
@@ -157,6 +158,7 @@ export function AddExerciseDialog({
   dayExercises = [],
 }: AddExerciseDialogProps) {
   const router = useRouter()
+  const { unit, toKg, unitLabel } = useAdminWeightUnit()
   const [step, setStep] = useState<1 | 2>(1)
   const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null)
   const [search, setSearch] = useState("")
@@ -246,7 +248,9 @@ export function AddExerciseDialog({
       notes: formData.get("notes") || null,
       rpe_target: formData.get("rpe_target") || null,
       intensity_pct: formData.get("intensity_pct") || null,
-      suggested_weight_kg: formData.get("suggested_weight_kg") || null,
+      suggested_weight_kg: formData.get("suggested_weight_kg")
+        ? toKg(Number(formData.get("suggested_weight_kg")))
+        : null,
       tempo: formData.get("tempo") || null,
       group_tag: groupTag,
     }
@@ -448,8 +452,8 @@ export function AddExerciseDialog({
                     <div className="grid grid-cols-2 gap-4">
                       {catFields.showWeight && (
                         <div className="space-y-2">
-                          <Label htmlFor="suggested_weight_kg">Suggested Weight (kg)</Label>
-                          <Input id="suggested_weight_kg" name="suggested_weight_kg" type="number" min={0} step={0.5} placeholder="e.g. 60" />
+                          <Label htmlFor="suggested_weight_kg">Suggested Weight ({unitLabel()})</Label>
+                          <Input id="suggested_weight_kg" name="suggested_weight_kg" type="number" min={0} step={0.5} placeholder={unit === "lbs" ? "e.g. 135" : "e.g. 60"} />
                         </div>
                       )}
                       {catFields.showIntensity && (
