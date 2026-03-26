@@ -5,9 +5,6 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { motion, AnimatePresence } from "framer-motion"
 import {
-  Dumbbell,
-  Clock,
-  Weight,
   CheckCircle2,
   ChevronDown,
   Loader2,
@@ -116,41 +113,6 @@ const RPE_LABELS: Record<number, string> = {
   10: "Max Effort",
 }
 
-const MUSCLE_GROUP_COLORS: Record<string, string> = {
-  chest: "bg-red-100 text-red-700",
-  pectorals: "bg-red-100 text-red-700",
-  back: "bg-blue-100 text-blue-700",
-  lats: "bg-blue-100 text-blue-700",
-  traps: "bg-blue-100 text-blue-700",
-  legs: "bg-green-100 text-green-700",
-  quadriceps: "bg-green-100 text-green-700",
-  quads: "bg-green-100 text-green-700",
-  hamstrings: "bg-green-100 text-green-700",
-  calves: "bg-green-100 text-green-700",
-  shoulders: "bg-violet-100 text-violet-700",
-  deltoids: "bg-violet-100 text-violet-700",
-  delts: "bg-violet-100 text-violet-700",
-  biceps: "bg-orange-100 text-orange-700",
-  triceps: "bg-orange-100 text-orange-700",
-  arms: "bg-orange-100 text-orange-700",
-  forearms: "bg-orange-100 text-orange-700",
-  core: "bg-yellow-100 text-yellow-700",
-  abs: "bg-yellow-100 text-yellow-700",
-  abdominals: "bg-yellow-100 text-yellow-700",
-  glutes: "bg-pink-100 text-pink-700",
-  "hip flexors": "bg-pink-100 text-pink-700",
-  "full body": "bg-primary/10 text-primary",
-}
-
-function getMuscleGroupColor(group: string | null): string {
-  if (!group) return "bg-muted text-muted-foreground"
-  const key = group.toLowerCase().trim()
-  return MUSCLE_GROUP_COLORS[key] ?? "bg-muted text-muted-foreground"
-}
-
-function formatTempo(tempo: string): string {
-  return tempo.split("").join("-")
-}
 
 function getGroupLabel(technique: TrainingTechnique): string {
   switch (technique) {
@@ -494,12 +456,17 @@ function ExerciseCard({
           loggedToday && "bg-success/5 border-l-[3px] border-l-success"
         )}
       >
-        {/* Collapsed row */}
-        <div className="flex items-start gap-3">
+        {/* Collapsed row — tap anywhere to expand */}
+        <button
+          type="button"
+          className="w-full flex items-center gap-3 text-left"
+          onClick={() => setExpanded(!expanded)}
+          aria-expanded={expanded}
+        >
           {/* Numbered circle */}
           <div
             className={cn(
-              "size-7 shrink-0 rounded-full flex items-center justify-center text-xs font-semibold transition-colors mt-0.5",
+              "size-7 shrink-0 rounded-full flex items-center justify-center text-xs font-semibold transition-colors",
               loggedToday
                 ? "bg-success text-white"
                 : "bg-primary/10 text-primary"
@@ -513,74 +480,53 @@ function ExerciseCard({
           </div>
 
           <div className="flex-1 min-w-0">
-            {/* Name row with action buttons */}
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex-1 min-w-0">
-                <p
-                  className={cn(
-                    "font-medium text-sm",
-                    loggedToday ? "text-muted-foreground" : "text-foreground"
-                  )}
+            <p
+              className={cn(
+                "font-medium text-sm",
+                loggedToday ? "text-muted-foreground" : "text-foreground"
+              )}
+            >
+              {displayExercise.name}
+              {swappedExercise && (
+                <span className="ml-1.5 text-[10px] font-normal text-accent">
+                  (swapped)
+                </span>
+              )}
+            </p>
+            {/* Compact summary line */}
+            <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
+              {pe.sets && pe.reps && (
+                <span>{pe.sets} x {pe.reps}</span>
+              )}
+              {pe.duration_seconds && (
+                <span>{formatRestTime(pe.duration_seconds)}</span>
+              )}
+              {fields.showWeight && (rec.recommended_kg ?? pe.suggested_weight_kg) != null && (
+                <Badge
+                  variant="outline"
+                  className="gap-1 text-[10px] border-primary/20 text-primary"
                 >
-                  {displayExercise.name}
-                  {swappedExercise && (
-                    <span className="ml-1.5 text-[10px] font-normal text-accent">
-                      (swapped)
-                    </span>
+                  {rec.recommended_kg != null ? (
+                    <>
+                      <TrendIcon trend={rec.trend} />
+                      {formatWeightCompact(rec.recommended_kg)}
+                    </>
+                  ) : (
+                    formatWeightCompact(pe.suggested_weight_kg!)
                   )}
-                </p>
-                {/* Compact summary line */}
-                <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
-                  {pe.sets && pe.reps && (
-                    <span>{pe.sets} x {pe.reps}</span>
-                  )}
-                  {pe.duration_seconds && (
-                    <span>{formatRestTime(pe.duration_seconds)}</span>
-                  )}
-                  {fields.showWeight && (rec.recommended_kg ?? pe.suggested_weight_kg) != null && (
-                    <Badge
-                      variant="outline"
-                      className="gap-1 text-[10px] border-primary/20 text-primary"
-                    >
-                      {rec.recommended_kg != null ? (
-                        <>
-                          <TrendIcon trend={rec.trend} />
-                          {formatWeightCompact(rec.recommended_kg)}
-                        </>
-                      ) : (
-                        formatWeightCompact(pe.suggested_weight_kg!)
-                      )}
-                    </Badge>
-                  )}
-                </div>
-              </div>
-              <div className="flex items-center gap-1.5 shrink-0">
-                {hasVideo && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="gap-1 text-primary/70 hover:text-primary"
-                    onClick={() => setShowVideo(true)}
-                  >
-                    <Play className="size-3" />
-                    Watch
-                  </Button>
-                )}
-                <Button
-                  size="sm"
-                  variant={loggedToday ? "ghost" : "outline"}
-                  className={cn("gap-1", loggedToday && "text-success hover:text-success")}
-                  onClick={() => setExpanded(!expanded)}
-                >
-                  {loggedToday ? "Update" : "Log"}
-                  <ChevronDown
-                    className={`size-3 transition-transform ${expanded ? "rotate-180" : ""}`}
-                  />
-                </Button>
-              </div>
+                </Badge>
+              )}
             </div>
           </div>
-        </div>
+
+          {/* Chevron arrow */}
+          <ChevronDown
+            className={cn(
+              "size-4 shrink-0 text-muted-foreground transition-transform",
+              expanded && "rotate-180"
+            )}
+          />
+        </button>
 
         {/* Expanded log form */}
         <AnimatePresence>
@@ -592,39 +538,21 @@ function ExerciseCard({
               transition={{ duration: 0.2 }}
               className="overflow-hidden"
             >
-              {/* Exercise details — revealed on expand */}
+              {/* Exercise details — consolidated into single dropdown + action row */}
               <div className="pt-3 pb-1 ml-10 space-y-2">
-                <div className="flex items-center gap-2 flex-wrap">
-                  {displayExercise.muscle_group && (
-                    <span
-                      className={cn(
-                        "rounded-full px-1.5 py-0.5 text-[10px] font-medium capitalize leading-none",
-                        getMuscleGroupColor(displayExercise.muscle_group)
-                      )}
+                {/* Quick action row: Watch video + Swap */}
+                <div className="flex items-center gap-2">
+                  {hasVideo && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="gap-1 text-primary/70 hover:text-primary h-7 text-xs"
+                      onClick={() => setShowVideo(true)}
                     >
-                      {displayExercise.muscle_group}
-                    </span>
-                  )}
-                  {displayExercise.equipment && (
-                    <span className="text-xs text-muted-foreground">
-                      <span className="font-medium text-foreground/50">Equipment:</span> {displayExercise.equipment}
-                    </span>
-                  )}
-                  {pe.tempo && (
-                    <span className="text-xs text-muted-foreground">
-                      <span className="font-medium text-foreground/50">Tempo:</span>{" "}
-                      <span className="font-mono">{formatTempo(pe.tempo)}</span>
-                    </span>
-                  )}
-                  {pe.rpe_target && (
-                    <span className="text-xs text-muted-foreground">
-                      <span className="font-medium text-foreground/50">RPE:</span> {pe.rpe_target}
-                    </span>
-                  )}
-                  {pe.rest_seconds && (
-                    <span className="text-xs text-muted-foreground">
-                      <span className="font-medium text-foreground/50">Rest:</span> {formatRestTime(pe.rest_seconds)}
-                    </span>
+                      <Play className="size-3" />
+                      Watch
+                    </Button>
                   )}
                   {!loggedToday && (
                     <button
@@ -638,32 +566,59 @@ function ExerciseCard({
                     </button>
                   )}
                 </div>
-                {/* Instructions / coaching cues */}
-                {displayExercise.instructions && (
+
+                {/* Single consolidated Instructions dropdown */}
+                {(displayExercise.instructions || (!hideNotes && pe.notes) || pe.tempo || pe.rpe_target || pe.rest_seconds) && (
                   <details className="group rounded-md border border-border/50 bg-muted/30">
                     <summary className="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-xs font-medium text-foreground/70 select-none list-none [&::-webkit-details-marker]:hidden">
                       <ChevronRight className="size-3 shrink-0 transition-transform group-open:rotate-90" />
                       <ListChecks className="size-3.5 shrink-0 text-primary/60" strokeWidth={2} />
                       Instructions
                     </summary>
-                    <div className="px-2.5 pb-2 pt-0.5">
-                      <p className="text-xs leading-relaxed text-foreground/70 whitespace-pre-line">
-                        {displayExercise.instructions}
-                      </p>
+                    <div className="px-2.5 pb-2.5 pt-1 space-y-2">
+                      {/* Tempo / RPE / Rest — compact inline pills */}
+                      {(pe.tempo || pe.rpe_target || pe.rest_seconds) && (
+                        <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
+                          {pe.tempo && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-primary/5 px-2 py-0.5">
+                              <span className="font-medium text-foreground/50">Tempo</span>
+                              <span className="font-mono">{pe.tempo}</span>
+                            </span>
+                          )}
+                          {pe.rpe_target && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-primary/5 px-2 py-0.5">
+                              <span className="font-medium text-foreground/50">RPE</span>
+                              {pe.rpe_target}
+                            </span>
+                          )}
+                          {pe.rest_seconds && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-primary/5 px-2 py-0.5">
+                              <span className="font-medium text-foreground/50">Rest</span>
+                              {formatRestTime(pe.rest_seconds)}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      {/* Exercise instructions */}
+                      {displayExercise.instructions && (
+                        <p className="text-xs leading-relaxed text-foreground/70 whitespace-pre-line">
+                          {displayExercise.instructions}
+                        </p>
+                      )}
+                      {/* Coach notes */}
+                      {!hideNotes && pe.notes && (
+                        <div className="flex items-start gap-2 rounded-md bg-amber-50 px-2 py-1.5">
+                          <Lightbulb
+                            className="size-3.5 shrink-0 text-amber-500 mt-0.5"
+                            strokeWidth={2}
+                          />
+                          <p className="text-xs italic text-foreground/70 leading-relaxed whitespace-pre-line">
+                            {pe.notes}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </details>
-                )}
-                {/* Coach notes */}
-                {!hideNotes && pe.notes && (
-                  <div className="flex items-start gap-2 rounded-md bg-amber-50 px-2.5 py-1.5">
-                    <Lightbulb
-                      className="size-3.5 shrink-0 text-amber-500 mt-0.5"
-                      strokeWidth={2}
-                    />
-                    <p className="text-xs italic text-foreground/70 leading-relaxed whitespace-pre-line">
-                      {pe.notes}
-                    </p>
-                  </div>
                 )}
               </div>
 

@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { ArrowLeftRight, Loader2, Dumbbell, Sparkles, Search } from "lucide-react"
+import { ArrowLeftRight, Loader2, Dumbbell, Sparkles, Search, Play } from "lucide-react"
+import { extractYouTubeId } from "@/lib/youtube"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   Dialog,
@@ -41,37 +42,6 @@ const EQUIPMENT_FILTERS = [
   { label: "Machine", value: "machine" },
 ] as const
 
-const MUSCLE_GROUP_COLORS: Record<string, string> = {
-  chest: "bg-red-100 text-red-700",
-  pectorals: "bg-red-100 text-red-700",
-  back: "bg-blue-100 text-blue-700",
-  lats: "bg-blue-100 text-blue-700",
-  traps: "bg-blue-100 text-blue-700",
-  legs: "bg-green-100 text-green-700",
-  quadriceps: "bg-green-100 text-green-700",
-  quads: "bg-green-100 text-green-700",
-  hamstrings: "bg-green-100 text-green-700",
-  calves: "bg-green-100 text-green-700",
-  shoulders: "bg-violet-100 text-violet-700",
-  deltoids: "bg-violet-100 text-violet-700",
-  delts: "bg-violet-100 text-violet-700",
-  biceps: "bg-orange-100 text-orange-700",
-  triceps: "bg-orange-100 text-orange-700",
-  arms: "bg-orange-100 text-orange-700",
-  forearms: "bg-orange-100 text-orange-700",
-  core: "bg-yellow-100 text-yellow-700",
-  abs: "bg-yellow-100 text-yellow-700",
-  abdominals: "bg-yellow-100 text-yellow-700",
-  glutes: "bg-pink-100 text-pink-700",
-  "hip flexors": "bg-pink-100 text-pink-700",
-  "full body": "bg-primary/10 text-primary",
-}
-
-function getMuscleGroupColor(group: string | null): string {
-  if (!group) return "bg-muted text-muted-foreground"
-  const key = group.toLowerCase().trim()
-  return MUSCLE_GROUP_COLORS[key] ?? "bg-muted text-muted-foreground"
-}
 
 // ─── Exercise Row ───────────────────────────────────────────────────────────
 
@@ -86,6 +56,9 @@ function ExerciseRow({
   onSelect: () => void
   index: number
 }) {
+  const videoId = exercise.video_url ? extractYouTubeId(exercise.video_url) : null
+  const thumbnailUrl = exercise.thumbnail_url ?? (videoId ? `https://img.youtube.com/vi/${videoId}/mqdefault.jpg` : null)
+
   return (
     <motion.button
       initial={{ opacity: 0, y: 6 }}
@@ -94,24 +67,29 @@ function ExerciseRow({
       className="w-full text-left px-4 py-3 hover:bg-muted/50 transition-colors flex items-center gap-3"
       onClick={onSelect}
     >
-      <div className="size-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-        <Dumbbell className="size-4 text-primary" />
-      </div>
+      {/* Video thumbnail or fallback icon */}
+      {thumbnailUrl ? (
+        <div className="size-10 rounded-lg overflow-hidden bg-muted shrink-0 relative">
+          <img
+            src={thumbnailUrl}
+            alt=""
+            className="size-full object-cover"
+            loading="lazy"
+          />
+          <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+            <Play className="size-3.5 text-white fill-white" />
+          </div>
+        </div>
+      ) : (
+        <div className="size-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+          <Dumbbell className="size-4 text-primary" />
+        </div>
+      )}
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-foreground truncate">
           {exercise.name}
         </p>
         <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-          {exercise.muscle_group && (
-            <span
-              className={cn(
-                "rounded-full px-1.5 py-0.5 text-[10px] font-medium capitalize leading-none",
-                getMuscleGroupColor(exercise.muscle_group)
-              )}
-            >
-              {exercise.muscle_group}
-            </span>
-          )}
           {exercise.equipment && (
             <span className="text-[10px] text-muted-foreground">
               {exercise.equipment}
@@ -276,11 +254,6 @@ export function ExerciseSwapSheet({
               </DialogTitle>
               <DialogDescription className="text-xs">
                 {exerciseName}
-                {muscleGroup && (
-                  <span className="ml-1 text-muted-foreground/60">
-                    &middot; {muscleGroup}
-                  </span>
-                )}
               </DialogDescription>
             </div>
           </div>
