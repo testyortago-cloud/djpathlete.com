@@ -405,6 +405,78 @@ export function ProgramBuilder({
     }
   }
 
+  async function handleDuplicateGroupInPlace(groupExercises: ProgramExerciseWithExercise[]) {
+    if (isDuplicatingInPlace || groupExercises.length === 0) return
+    setIsDuplicatingInPlace(true)
+
+    // Find the last exercise in the group to insert after it
+    const lastInGroup = groupExercises[groupExercises.length - 1]
+    const dayExercises = getExercisesForDay(lastInGroup.day_of_week)
+    const lastIndex = dayExercises.findIndex((e) => e.id === lastInGroup.id)
+    const insertAt = lastInGroup.order_index + 1
+
+    // Pick a new group_tag letter that isn't already used on this day
+    const usedTags = new Set(dayExercises.map((e) => e.group_tag?.charAt(0).toUpperCase()).filter(Boolean))
+    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    const newTag = alphabet.split("").find((l) => !usedTags.has(l)) ?? "Z"
+
+    try {
+      // Shift exercises after the group down
+      const exercisesAfter = dayExercises.slice(lastIndex + 1)
+      if (exercisesAfter.length > 0) {
+        await Promise.all(
+          exercisesAfter.map((ex) =>
+            fetch(`/api/admin/programs/${programId}/exercises/${ex.id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ order_index: ex.order_index + groupExercises.length }),
+            })
+          )
+        )
+      }
+
+      // Create duplicates for each exercise in the group
+      for (let i = 0; i < groupExercises.length; i++) {
+        const pe = groupExercises[i]
+        const response = await fetch(
+          `/api/admin/programs/${programId}/exercises`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              exercise_id: pe.exercise_id,
+              week_number: pe.week_number,
+              day_of_week: pe.day_of_week,
+              order_index: insertAt + i,
+              sets: pe.sets,
+              reps: pe.reps,
+              rest_seconds: pe.rest_seconds,
+              duration_seconds: pe.duration_seconds,
+              notes: pe.notes,
+              rpe_target: pe.rpe_target,
+              intensity_pct: pe.intensity_pct,
+              tempo: pe.tempo,
+              group_tag: newTag,
+              technique: pe.technique,
+            }),
+          }
+        )
+
+        if (!response.ok) {
+          const data = await response.json()
+          throw new Error(data.error || "Failed to duplicate group")
+        }
+      }
+
+      toast.success(`Duplicated group "${newTag}" (${groupExercises.length} exercises)`)
+      router.refresh()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to duplicate group")
+    } finally {
+      setIsDuplicatingInPlace(false)
+    }
+  }
+
   async function handleDelete() {
     if (!deleteTarget) return
     setIsDeleting(true)
@@ -551,6 +623,7 @@ export function ProgramBuilder({
               onEditExercise={setEditTarget}
               onRemoveExercise={setDeleteTarget}
               onDuplicateExercise={handleDuplicateInPlace}
+              onDuplicateGroup={handleDuplicateGroupInPlace}
               onGenerateDay={handleGenerateDay}
             />
           ))}

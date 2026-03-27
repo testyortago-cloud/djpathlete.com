@@ -1,6 +1,6 @@
 "use client"
 
-import { Plus, Sparkles } from "lucide-react"
+import { Plus, Sparkles, Copy } from "lucide-react"
 import {
   SortableContext,
   verticalListSortingStrategy,
@@ -75,6 +75,7 @@ interface DayColumnProps {
   onEditExercise: (pe: ProgramExerciseWithExercise) => void
   onRemoveExercise: (pe: ProgramExerciseWithExercise) => void
   onDuplicateExercise?: (pe: ProgramExerciseWithExercise) => void
+  onDuplicateGroup?: (exercises: ProgramExerciseWithExercise[]) => void
   onGenerateDay?: (day: number) => void
 }
 
@@ -85,6 +86,7 @@ export function DayColumn({
   onEditExercise,
   onRemoveExercise,
   onDuplicateExercise,
+  onDuplicateGroup,
   onGenerateDay,
 }: DayColumnProps) {
   const dayName = DAY_NAMES[dayOfWeek - 1]
@@ -161,6 +163,17 @@ export function DayColumn({
                     <span className="text-[10px] text-muted-foreground">
                       ({slot.exercises.length} exercises)
                     </span>
+                    {onDuplicateGroup && (
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        className="ml-auto size-5 text-muted-foreground hover:text-primary"
+                        onClick={() => onDuplicateGroup(slot.exercises.map((e) => e.exercise))}
+                        title={`Duplicate ${slot.label}`}
+                      >
+                        <Copy className="size-3" />
+                      </Button>
+                    )}
                   </div>
                   {slot.exercises.map(({ exercise: pe }) => (
                     <ExerciseCard
