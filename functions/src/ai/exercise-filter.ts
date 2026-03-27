@@ -35,9 +35,15 @@ function difficultyDistance(a: string, b: string): number {
   return Math.abs(idxA - idxB)
 }
 
+export interface ClientContext {
+  sport?: string | null
+  injuredJoints?: string[]
+}
+
 export function scoreExerciseForSlot(
   exercise: CompressedExercise, slot: ExerciseSlot,
-  equipment: string[], difficulty: string
+  equipment: string[], difficulty: string,
+  clientContext?: ClientContext
 ): number {
   let score = 0
   if (exercise.movement_pattern === slot.movement_pattern) score += 35
@@ -69,7 +75,54 @@ export function scoreExerciseForSlot(
   if (isCompoundSlot && (intent.includes("shape") || intent.includes("express"))) score += 5
   if (isIsolationSlot && intent.includes("build")) score += 5
 
+  // Sport transfer bonus (+10) — exercise tagged for client's sport
+  if (clientContext?.sport && exercise.sport_tags?.length > 0) {
+    const sportNorm = clientContext.sport.toLowerCase().replace(/\s+/g, "_")
+    if (exercise.sport_tags.some((t) => t.toLowerCase() === sportNorm)) score += 10
+  }
+
+  // Joint injury penalty — deprioritize exercises that load injured joints
+  if (clientContext?.injuredJoints?.length && exercise.joints_loaded?.length > 0) {
+    for (const jl of exercise.joints_loaded) {
+      if (clientContext.injuredJoints.includes(jl.joint)) {
+        if (jl.load === "high") score -= 20
+        else if (jl.load === "moderate") score -= 10
+        else score -= 3
+      }
+    }
+  }
+
   return score
+}
+
+// ─── Injury-aware joint filter ────────────────────────────────────────────
+
+export function filterByInjuredJoints(
+  exercises: CompressedExercise[],
+  injuredJoints: string[]
+): CompressedExercise[] {
+  if (injuredJoints.length === 0) return exercises
+  return exercises.filter((ex) => {
+    if (!ex.joints_loaded || ex.joints_loaded.length === 0) return true
+    // Exclude exercises with HIGH load on any injured joint
+    return !ex.joints_loaded.some(
+      (jl) => injuredJoints.includes(jl.joint) && jl.load === "high"
+    )
+  })
+}
+
+// ─── Plane-of-motion balance analysis ─────────────────────────────────────
+
+export function analyzePlaneBalance(exercises: CompressedExercise[]): {
+  sagittal: number; frontal: number; transverse: number
+} {
+  const counts = { sagittal: 0, frontal: 0, transverse: 0 }
+  for (const ex of exercises) {
+    for (const plane of ex.plane_of_motion ?? []) {
+      if (plane in counts) counts[plane as keyof typeof counts]++
+    }
+  }
+  return counts
 }
 
 function slotGroupKey(slot: ExerciseSlot): string {

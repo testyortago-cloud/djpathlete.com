@@ -188,6 +188,9 @@ export interface CompressedExercise {
   equipment_required: string[]
   is_bodyweight: boolean
   training_intent: ("build" | "shape" | "express")[]
+  sport_tags: string[]
+  plane_of_motion: string[]
+  joints_loaded: { joint: string; load: string }[]
 }
 
 // ─── AI Job types (Firestore) ────────────────────────────────────────────────

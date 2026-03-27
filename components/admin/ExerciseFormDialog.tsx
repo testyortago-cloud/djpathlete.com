@@ -32,6 +32,10 @@ import {
   LATERALITY_OPTIONS,
   MUSCLE_OPTIONS,
   EQUIPMENT_OPTIONS,
+  PLANES_OF_MOTION,
+  JOINT_NAMES,
+  JOINT_LOAD_LEVELS,
+  SPORT_TAG_OPTIONS,
   type ExerciseFormData,
 } from "@/lib/validators/exercise"
 import { extractYouTubeId, getYouTubeEmbedUrl } from "@/lib/youtube"
@@ -40,7 +44,7 @@ import { useFormTour } from "@/hooks/use-form-tour"
 import { FormTour } from "@/components/admin/FormTour"
 import { TourButton } from "@/components/admin/TourButton"
 import { getExerciseTourSteps } from "@/lib/tour-steps"
-import type { Exercise } from "@/types/database"
+import type { Exercise, JointLoading } from "@/types/database"
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -110,6 +114,53 @@ const LATERALITY_LABELS: Record<string, string> = {
   bilateral: "Bilateral",
   unilateral: "Unilateral",
   alternating: "Alternating",
+}
+
+const PLANE_LABELS: Record<string, string> = {
+  sagittal: "Sagittal",
+  frontal: "Frontal",
+  transverse: "Transverse",
+}
+
+const JOINT_LABELS: Record<string, string> = {
+  ankle: "Ankle",
+  knee: "Knee",
+  hip: "Hip",
+  lumbar_spine: "Lumbar Spine",
+  thoracic_spine: "Thoracic Spine",
+  shoulder: "Shoulder",
+  elbow: "Elbow",
+  wrist: "Wrist",
+}
+
+const JOINT_LOAD_LABELS: Record<string, string> = {
+  low: "Low",
+  moderate: "Moderate",
+  high: "High",
+}
+
+const SPORT_TAG_LABELS: Record<string, string> = {
+  tennis: "Tennis",
+  golf: "Golf",
+  baseball: "Baseball",
+  softball: "Softball",
+  soccer: "Soccer",
+  basketball: "Basketball",
+  football: "Football",
+  lacrosse: "Lacrosse",
+  hockey: "Hockey",
+  swimming: "Swimming",
+  track_field: "Track & Field",
+  volleyball: "Volleyball",
+  rugby: "Rugby",
+  cricket: "Cricket",
+  pickleball: "Pickleball",
+  running: "Running",
+  cycling: "Cycling",
+  martial_arts: "Martial Arts",
+  wrestling: "Wrestling",
+  rowing: "Rowing",
+  general_athletics: "General Athletics",
 }
 
 const MUSCLE_LABELS: Record<string, string> = {
@@ -214,6 +265,10 @@ export function ExerciseFormDialog({
   const [difficultyMax, setDifficultyMax] = useState(exercise?.difficulty_max ?? "")
   const [difficultyScore, setDifficultyScore] = useState<number>(exercise?.difficulty_score ?? 5)
   const [progressionOrder, setProgressionOrder] = useState(exercise?.progression_order?.toString() ?? "")
+  const [sportTags, setSportTags] = useState<string[]>(exercise?.sport_tags ?? [])
+  const [planeOfMotion, setPlaneOfMotion] = useState<string[]>(exercise?.plane_of_motion ?? [])
+  const [jointsLoaded, setJointsLoaded] = useState<JointLoading[]>(exercise?.joints_loaded ?? [])
+  const [aliases, setAliases] = useState<string[]>(exercise?.aliases ?? [])
   const [isAutoFilling, setIsAutoFilling] = useState(false)
   const [autoFillApplied, setAutoFillApplied] = useState(false)
 
@@ -239,6 +294,10 @@ export function ExerciseFormDialog({
     setDifficultyMax(initialExercise?.difficulty_max ?? "")
     setDifficultyScore(initialExercise?.difficulty_score ?? 5)
     setProgressionOrder(initialExercise?.progression_order?.toString() ?? "")
+    setSportTags(initialExercise?.sport_tags ?? [])
+    setPlaneOfMotion(initialExercise?.plane_of_motion ?? [])
+    setJointsLoaded(initialExercise?.joints_loaded ?? [])
+    setAliases(initialExercise?.aliases ?? [])
     setStep(0)
     setDirection(1)
     setAutoFillApplied(false)
@@ -350,6 +409,10 @@ export function ExerciseFormDialog({
       if (p.is_bodyweight !== undefined && (force || !autoFillApplied)) setIsBodyweight(p.is_bodyweight)
       if (p.training_intent?.length > 0 && (force || !autoFillApplied)) setTrainingIntent(p.training_intent)
       if (p.difficulty_score && (force || difficultyScore === 5)) setDifficultyScore(p.difficulty_score)
+      if (p.sport_tags?.length > 0 && (force || sportTags.length === 0)) setSportTags(p.sport_tags)
+      if (p.plane_of_motion?.length > 0 && (force || planeOfMotion.length === 0)) setPlaneOfMotion(p.plane_of_motion)
+      if (p.joints_loaded?.length > 0 && (force || jointsLoaded.length === 0)) setJointsLoaded(p.joints_loaded)
+      if (p.aliases?.length > 0 && (force || aliases.length === 0)) setAliases(p.aliases)
 
       setAutoFillApplied(true)
       toast.success("AI metadata applied — review and adjust as needed")
@@ -382,6 +445,10 @@ export function ExerciseFormDialog({
       equipment_required: equipmentRequired,
       is_bodyweight: isBodyweight,
       training_intent: trainingIntent,
+      sport_tags: sportTags,
+      plane_of_motion: planeOfMotion,
+      joints_loaded: jointsLoaded,
+      aliases,
       difficulty_max: difficultyMax || null,
       difficulty_score: difficultyScore,
       progression_order: progressionOrder ? parseInt(progressionOrder) : null,
@@ -556,6 +623,14 @@ export function ExerciseFormDialog({
                   setDifficultyScore={setDifficultyScore}
                   progressionOrder={progressionOrder}
                   setProgressionOrder={setProgressionOrder}
+                  sportTags={sportTags}
+                  toggleSportTag={(tag) => toggleItem(sportTags, tag, setSportTags)}
+                  planeOfMotion={planeOfMotion}
+                  togglePlane={(plane) => toggleItem(planeOfMotion, plane, setPlaneOfMotion)}
+                  jointsLoaded={jointsLoaded}
+                  setJointsLoaded={setJointsLoaded}
+                  aliases={aliases}
+                  setAliases={setAliases}
                   isAutoFilling={isAutoFilling}
                   autoFillApplied={autoFillApplied}
                   onAutoFill={handleAutoFill}
@@ -797,6 +872,10 @@ function StepAiMetadata({
   equipmentRequired, toggleEquipment,
   isBodyweight, setIsBodyweight,
   trainingIntent, toggleTrainingIntent,
+  sportTags, toggleSportTag,
+  planeOfMotion, togglePlane,
+  jointsLoaded, setJointsLoaded,
+  aliases, setAliases,
   difficultyMax, setDifficultyMax,
   difficultyScore, setDifficultyScore,
   progressionOrder, setProgressionOrder,
@@ -811,6 +890,10 @@ function StepAiMetadata({
   equipmentRequired: string[]; toggleEquipment: (eq: string) => void
   isBodyweight: boolean; setIsBodyweight: (v: boolean) => void
   trainingIntent: string[]; toggleTrainingIntent: (intent: string) => void
+  sportTags: string[]; toggleSportTag: (tag: string) => void
+  planeOfMotion: string[]; togglePlane: (plane: string) => void
+  jointsLoaded: JointLoading[]; setJointsLoaded: (v: JointLoading[]) => void
+  aliases: string[]; setAliases: (v: string[]) => void
   difficultyMax: string; setDifficultyMax: (v: string) => void
   difficultyScore: number; setDifficultyScore: (v: number) => void
   progressionOrder: string; setProgressionOrder: (v: string) => void
@@ -1008,6 +1091,147 @@ function StepAiMetadata({
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Sport Tags */}
+      <div className="space-y-2">
+        <Label>Sport Tags</Label>
+        <p className="text-xs text-muted-foreground">Sports this exercise has high biomechanical transfer to</p>
+        <div className="flex flex-wrap gap-1.5">
+          {SPORT_TAG_OPTIONS.map((tag) => (
+            <button
+              key={tag}
+              type="button"
+              onClick={() => toggleSportTag(tag)}
+              disabled={disabled}
+              className={cn(
+                "px-2 py-1 text-xs rounded-full border transition-colors",
+                sportTags.includes(tag)
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-background border-border text-muted-foreground hover:border-primary/50"
+              )}
+            >
+              {SPORT_TAG_LABELS[tag]}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Plane of Motion */}
+      <div className="space-y-2">
+        <Label>Plane of Motion</Label>
+        <p className="text-xs text-muted-foreground">Movement planes used (sagittal = forward/back, frontal = side to side, transverse = rotation)</p>
+        <div className="flex flex-wrap gap-1.5">
+          {PLANES_OF_MOTION.map((plane) => (
+            <button
+              key={plane}
+              type="button"
+              onClick={() => togglePlane(plane)}
+              disabled={disabled}
+              className={cn(
+                "px-2.5 py-1 text-xs rounded-full border transition-colors",
+                planeOfMotion.includes(plane)
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-background border-border text-muted-foreground hover:border-primary/50"
+              )}
+            >
+              {PLANE_LABELS[plane]}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Joints Loaded */}
+      <div className="space-y-2">
+        <Label>Joints Loaded</Label>
+        <p className="text-xs text-muted-foreground">Which joints this exercise stresses and how heavily (used for injury-aware programming)</p>
+        <div className="space-y-2">
+          {jointsLoaded.map((jl, idx) => (
+            <div key={idx} className="flex items-center gap-2">
+              <select
+                value={jl.joint}
+                onChange={(e) => {
+                  const updated = [...jointsLoaded]
+                  updated[idx] = { ...jl, joint: e.target.value as JointLoading["joint"] }
+                  setJointsLoaded(updated)
+                }}
+                disabled={disabled}
+                className={cn(selectClass, "flex-1")}
+              >
+                {JOINT_NAMES.map((j) => (
+                  <option key={j} value={j}>{JOINT_LABELS[j]}</option>
+                ))}
+              </select>
+              <select
+                value={jl.load}
+                onChange={(e) => {
+                  const updated = [...jointsLoaded]
+                  updated[idx] = { ...jl, load: e.target.value as JointLoading["load"] }
+                  setJointsLoaded(updated)
+                }}
+                disabled={disabled}
+                className={cn(selectClass, "w-28")}
+              >
+                {JOINT_LOAD_LEVELS.map((l) => (
+                  <option key={l} value={l}>{JOINT_LOAD_LABELS[l]}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => setJointsLoaded(jointsLoaded.filter((_, i) => i !== idx))}
+                disabled={disabled}
+                className="text-xs text-muted-foreground hover:text-destructive transition-colors px-1"
+              >
+                &times;
+              </button>
+            </div>
+          ))}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setJointsLoaded([...jointsLoaded, { joint: "knee", load: "moderate" }])}
+            disabled={disabled}
+            className="text-xs"
+          >
+            + Add Joint
+          </Button>
+        </div>
+      </div>
+
+      {/* Aliases */}
+      <div className="space-y-2">
+        <Label>Aliases</Label>
+        <p className="text-xs text-muted-foreground">Alternative names for this exercise (e.g. RDL, Flat Bench)</p>
+        <div className="flex flex-wrap gap-1.5 min-h-[28px]">
+          {aliases.map((alias, idx) => (
+            <span key={idx} className="flex items-center gap-1 px-2 py-1 text-xs rounded-full bg-muted border border-border">
+              {alias}
+              <button
+                type="button"
+                onClick={() => setAliases(aliases.filter((_, i) => i !== idx))}
+                disabled={disabled}
+                className="text-muted-foreground hover:text-destructive transition-colors"
+              >
+                &times;
+              </button>
+            </span>
+          ))}
+        </div>
+        <Input
+          placeholder="Type an alias and press Enter"
+          disabled={disabled}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault()
+              const val = (e.target as HTMLInputElement).value.trim()
+              if (val && !aliases.includes(val)) {
+                setAliases([...aliases, val]);
+                (e.target as HTMLInputElement).value = ""
+              }
+            }
+          }}
+        />
       </div>
 
       {/* Difficulty Max */}

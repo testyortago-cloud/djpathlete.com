@@ -1,4 +1,4 @@
-import type { Exercise, MovementPattern, ForceType, Laterality } from "@/types/database"
+import type { Exercise, MovementPattern, ForceType, Laterality, JointLoading } from "@/types/database"
 
 /**
  * Compressed exercise representation for AI context.
@@ -21,6 +21,9 @@ export interface CompressedExercise {
   is_bodyweight: boolean
   training_intent: string[]
   difficulty_max: string | null
+  sport_tags: string[]
+  plane_of_motion: string[]
+  joints_loaded: JointLoading[]
 }
 
 /**
@@ -44,6 +47,9 @@ export function compressExercises(exercises: Exercise[]): CompressedExercise[] {
     is_bodyweight: ex.is_bodyweight,
     training_intent: (ex as Exercise & { training_intent?: string[] }).training_intent || ["build"],
     difficulty_max: (ex as Exercise & { difficulty_max?: string | null }).difficulty_max || null,
+    sport_tags: ex.sport_tags ?? [],
+    plane_of_motion: ex.plane_of_motion ?? [],
+    joints_loaded: ex.joints_loaded ?? [],
   }))
 }
 

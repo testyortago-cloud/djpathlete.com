@@ -45,6 +45,8 @@ export function exerciseToText(
     `Training intent: ${(exercise as CompressedExercise).training_intent?.join(", ") || "build"}`,
     exercise.is_bodyweight ? "bodyweight" : "",
     exercise.equipment_required.join(", "),
+    (exercise as CompressedExercise).sport_tags?.length ? `sports: ${(exercise as CompressedExercise).sport_tags.join(", ")}` : "",
+    (exercise as CompressedExercise).plane_of_motion?.length ? `planes: ${(exercise as CompressedExercise).plane_of_motion.join(", ")}` : "",
   ]
   return parts.filter(Boolean).join(" | ")
 }

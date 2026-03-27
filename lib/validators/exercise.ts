@@ -105,6 +105,53 @@ export const EQUIPMENT_OPTIONS = [
   "short_barbell",
 ] as const
 
+export const PLANES_OF_MOTION = [
+  "sagittal",
+  "frontal",
+  "transverse",
+] as const
+
+export const JOINT_NAMES = [
+  "ankle",
+  "knee",
+  "hip",
+  "lumbar_spine",
+  "thoracic_spine",
+  "shoulder",
+  "elbow",
+  "wrist",
+] as const
+
+export const JOINT_LOAD_LEVELS = [
+  "low",
+  "moderate",
+  "high",
+] as const
+
+export const SPORT_TAG_OPTIONS = [
+  "tennis",
+  "golf",
+  "baseball",
+  "softball",
+  "soccer",
+  "basketball",
+  "football",
+  "lacrosse",
+  "hockey",
+  "swimming",
+  "track_field",
+  "volleyball",
+  "rugby",
+  "cricket",
+  "pickleball",
+  "running",
+  "cycling",
+  "martial_arts",
+  "wrestling",
+  "rowing",
+  "general_athletics",
+] as const
+
 export const exerciseFormSchema = z.object({
   name: z
     .string()
@@ -149,6 +196,13 @@ export const exerciseFormSchema = z.object({
   equipment_required: z.array(z.string()).optional().default([]),
   is_bodyweight: z.boolean().optional().default(false),
   training_intent: z.array(z.enum(TRAINING_INTENTS)).min(1, "Select at least one training intent").default(["build"]),
+  sport_tags: z.array(z.string()).optional().default([]),
+  plane_of_motion: z.array(z.enum(PLANES_OF_MOTION)).optional().default([]),
+  joints_loaded: z.array(z.object({
+    joint: z.enum(JOINT_NAMES),
+    load: z.enum(JOINT_LOAD_LEVELS),
+  })).optional().default([]),
+  aliases: z.array(z.string().max(100)).optional().default([]),
   difficulty_max: z.enum(EXERCISE_DIFFICULTIES).nullable().optional().transform((v) => v ?? null),
   difficulty_score: z.coerce.number().int().min(1).max(10).nullable().optional().transform((v) => v ?? null),
   prerequisite_exercises: z.array(z.string().uuid()).optional().default([]),

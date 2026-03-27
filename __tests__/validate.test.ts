@@ -247,6 +247,9 @@ function makeExercise(overrides: Partial<CompressedExercise> = {}): CompressedEx
     laterality: "bilateral",
     primary_muscles: ["chest"],
     secondary_muscles: [],
+    sport_tags: [],
+    plane_of_motion: [],
+    joints_loaded: [],
     ...overrides,
   }
 }

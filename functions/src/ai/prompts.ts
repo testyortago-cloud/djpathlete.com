@@ -423,16 +423,19 @@ Rules:
    - "build" intent exercises (strength/capacity building): prefer for strength-focused compound slots and targeted accessory/isolation work
    - When the athlete's sport demands power and speed, weight selections toward "express" intent exercises more heavily
 10. For isolation and accessory roles, prefer exercises that address the athlete's specific needs — sport-specific demands, identified weak links, injury prevention areas, movement deficiencies — rather than generic choices.
-11. If no perfect match exists in the library, choose the closest available exercise and note it in substitution_notes. Explain WHY you chose the substitute and how it still serves the slot's purpose.
-12. Output ONLY the JSON object, no additional text or explanation.
-13. Use exercise notes to add coaching cues that a veteran performance coach would give:
+11. SPORT-SPECIFIC SELECTION: when the client's sport is known, STRONGLY prefer exercises whose sport_tags include that sport. Sport-tagged exercises have verified high biomechanical transfer to that sport's demands. For warm-up and accessory slots, sport-tagged exercises are especially valuable. For compound slots, sport tags should inform the choice when multiple options match equally.
+12. INJURY-JOINT AWARENESS: when injury_details are provided, cross-reference the injury area with joints_loaded on candidate exercises. An exercise with "high" load on an injured joint is EXCLUDED unless explicitly overridden by coach instructions. An exercise with "moderate" load on an injured joint should include a modification note (e.g., "reduce range of motion", "use lighter load"). If the injury area maps to a joint (e.g., "knee pain" maps to knee), systematically avoid high-knee-load exercises.
+13. PLANE OF MOTION BALANCE: across each training day, at least one exercise should be frontal or transverse plane (not all sagittal). For rotational sport athletes (tennis, golf, baseball, cricket), at least 2 exercises per session should include transverse plane work. Use the plane_of_motion field on exercises to ensure balanced programming.
+14. If no perfect match exists in the library, choose the closest available exercise and note it in substitution_notes. Explain WHY you chose the substitute and how it still serves the slot's purpose.
+15. Output ONLY the JSON object, no additional text or explanation.
+16. Use exercise notes to add coaching cues that a veteran performance coach would give:
    - Tempo instructions when the slot specifies tempo (e.g., "3 second eccentric, control the deceleration")
    - Movement quality cues for exercises where technique matters most (e.g., "drive through the whole foot", "brace before each rep", "land soft and absorb")
    - Power/velocity cues for explosive work (e.g., "maximum intent on every rep — if it slows down, end the set", "throw through the target", "stick the landing")
    - Sport-specific context when relevant (e.g., "think about your first step out of a split step", "mimic the deceleration pattern from your sport")
    - Modification notes for exercises near injury areas (e.g., "use neutral grip if shoulder feels tight", "reduce depth if lower back rounds")
    - Technique-specific notes (e.g., for circuits: "maintain movement quality — slow down if form breaks")
-14. WEEK-BY-WEEK GENERATION MODE — you may receive a SINGLE week's skeleton at a time, along with a "PREVIOUSLY ASSIGNED EXERCISES" section and "COACH INSTRUCTIONS" section. When these sections are present:
+17. WEEK-BY-WEEK GENERATION MODE — you may receive a SINGLE week's skeleton at a time, along with a "PREVIOUSLY ASSIGNED EXERCISES" section and "COACH INSTRUCTIONS" section. When these sections are present:
    - EVERY WORKING EXERCISE (compounds, accessories, isolations) MUST be DIFFERENT from prior weeks. You will receive an "AVOID" list — you MUST NOT reuse ANY exercise_id from that list. This is NON-NEGOTIABLE and applies to ALL working slots including primary_compound and secondary_compound.
    - For COMPOUND slots: pick a DIFFERENT exercise that trains the SAME movement pattern and muscles. Example: if Week 1 used Barbell Back Squat for a squat/quad slot, Week 2 should use Front Squat or Goblet Squat — still a squat compound, but a different exercise.
    - CRITICAL: Alternative exercises MUST still match the slot's movement_pattern, target_muscles, and role. Do NOT pick a random exercise just to avoid repetition — the alternative must serve the SAME training purpose. Vary by equipment (dumbbell→cable→kettlebell), stance (bilateral→unilateral→split), or plane of motion.
@@ -470,6 +473,8 @@ Validation checks to perform:
 8. Rest periods: Verify rest_seconds are appropriate for the role (power/explosive >= 120s, compounds >= 90s, isolations >= 30s). Flag as "warning".
 9. Progressive overload: For programs using linear/undulating periodization, verify that intensity progresses appropriately across weeks. Flag as "warning".
 10. Difficulty score violation: If a max_difficulty_score constraint is provided, check that NO assigned exercise has a difficulty_score exceeding this limit. Flag as "error" — this is a hard safety constraint from the athlete's assessment results.
+11. Plane of motion balance: Flag a "warning" if more than 80% of working exercises in any single session are sagittal-plane only (plane_of_motion field). For rotational sport athletes (tennis, golf, baseball, cricket), flag a "warning" if any session has zero transverse-plane exercises.
+12. Joint loading safety: Flag an "error" if any assigned exercise has "high" joint loading (joints_loaded field) on a joint that corresponds to the athlete's injured area. Flag a "warning" for "moderate" loading on injured joints without modification notes.
 
 Rules:
 - "pass" should be true ONLY if there are zero issues with type "error". Warnings are acceptable.

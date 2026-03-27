@@ -109,10 +109,12 @@ export function ExerciseList({ exercises }: ExerciseListProps) {
   const [isBulkActing, setIsBulkActing] = useState(false)
 
   const filtered = exercises.filter((ex) => {
+    const searchLower = search.toLowerCase()
     const matchesSearch =
       !search ||
-      ex.name.toLowerCase().includes(search.toLowerCase()) ||
-      (ex.muscle_group?.toLowerCase().includes(search.toLowerCase()) ?? false)
+      ex.name.toLowerCase().includes(searchLower) ||
+      (ex.muscle_group?.toLowerCase().includes(searchLower) ?? false) ||
+      (ex.aliases ?? []).some((a) => a.toLowerCase().includes(searchLower))
     const cats: string[] = Array.isArray(ex.category) ? ex.category : [ex.category]
     const matchesCategory = categoryFilter === "all" || cats.includes(categoryFilter)
     const matchesDifficulty = difficultyFilter === "all" || ex.difficulty === difficultyFilter

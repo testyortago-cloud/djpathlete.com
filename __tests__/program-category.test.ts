@@ -171,6 +171,9 @@ function makeExercise(overrides: Partial<CompressedExercise> = {}): CompressedEx
     is_bodyweight: false,
     training_intent: ["build"],
     difficulty_max: null,
+    sport_tags: [],
+    plane_of_motion: [],
+    joints_loaded: [],
     ...overrides,
   }
 }

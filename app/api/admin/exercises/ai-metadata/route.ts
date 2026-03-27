@@ -9,6 +9,10 @@ import {
   LATERALITY_OPTIONS,
   MUSCLE_OPTIONS,
   EQUIPMENT_OPTIONS,
+  PLANES_OF_MOTION,
+  JOINT_NAMES,
+  JOINT_LOAD_LEVELS,
+  SPORT_TAG_OPTIONS,
 } from "@/lib/validators/exercise"
 
 export const maxDuration = 15
@@ -35,6 +39,13 @@ const aiMetadataSchema = z.object({
   is_bodyweight: z.boolean(),
   training_intent: z.array(z.enum(["build", "shape", "express"])),
   difficulty_score: z.number(),
+  sport_tags: z.array(z.string()),
+  plane_of_motion: z.array(z.enum(PLANES_OF_MOTION)),
+  joints_loaded: z.array(z.object({
+    joint: z.enum(JOINT_NAMES),
+    load: z.enum(JOINT_LOAD_LEVELS),
+  })),
+  aliases: z.array(z.string()),
 })
 
 // ─── System prompt ──────────────────────────────────────────────────────────
@@ -53,6 +64,13 @@ Available values for each field:
   - shape = movement control, neural challenge, dynamic, or compound
   - express = speed, power, sport-specific components
 - difficulty_score: 1-10 scale (1-2 foundational, 3-4 beginner, 5-6 intermediate, 7-8 advanced, 9-10 elite)
+- sport_tags: array of sports this exercise has high biomechanical transfer to. Options: ${SPORT_TAG_OPTIONS.join(", ")}. Include 0-5 sports.
+- plane_of_motion: ${PLANES_OF_MOTION.join(", ")} (array — exercises can operate in multiple planes)
+- joints_loaded: array of objects with "joint" and "load" fields:
+  - joint options: ${JOINT_NAMES.join(", ")}
+  - load options: ${JOINT_LOAD_LEVELS.join(", ")}
+  - Only include joints that are meaningfully loaded (skip negligible involvement)
+- aliases: common alternative names for this exercise (e.g. "RDL" for Romanian Deadlift). Include 0-4 aliases.
 
 Rules:
 - primary_muscles: select 1-3 muscles that are the PRIMARY movers
@@ -61,7 +79,15 @@ Rules:
 - If the exercise name implies the movement pattern (e.g. "squat" → squat, "bench press" → push), use that
 - For cardio exercises like running/cycling, use "locomotion" as movement_pattern and "dynamic" as force_type
 - For stretches/mobility, use null for movement_pattern and "static" for force_type
-- For isometric holds (planks, wall sits), use "isometric" as movement_pattern and "static" as force_type`
+- For isometric holds (planks, wall sits), use "isometric" as movement_pattern and "static" as force_type
+- sport_tags: tag based on genuine biomechanical transfer, not loose connections:
+  - Rotational exercises → tennis, golf, baseball, cricket
+  - Single-leg/lateral movements → soccer, basketball, lacrosse, tennis
+  - Overhead movements → volleyball, swimming, tennis
+  - Power/explosive → track_field, football, rugby
+- plane_of_motion: sagittal = forward/backward, frontal = side to side, transverse = rotational. Many exercises are multi-plane.
+- joints_loaded: "high" = primary load-bearing under significant force, "moderate" = meaningful but not primary, "low" = stabilization role
+- aliases: include common abbreviations and alternative names (e.g. "DB" for dumbbell variations, "BB" for barbell)`
 
 // ─── Route handler ──────────────────────────────────────────────────────────
 

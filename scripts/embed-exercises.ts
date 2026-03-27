@@ -41,6 +41,8 @@ interface ExerciseRow {
   equipment_required: string[]
   is_bodyweight: boolean
   training_intent: string[]
+  sport_tags: string[]
+  plane_of_motion: string[]
 }
 
 function exerciseToText(ex: ExerciseRow): string {
@@ -55,6 +57,8 @@ function exerciseToText(ex: ExerciseRow): string {
     `Training intent: ${(ex.training_intent ?? ["build"]).join(", ")}`,
     ex.is_bodyweight ? "bodyweight" : "",
     ex.equipment_required.join(", "),
+    ex.sport_tags?.length ? `sports: ${ex.sport_tags.join(", ")}` : "",
+    ex.plane_of_motion?.length ? `planes: ${ex.plane_of_motion.join(", ")}` : "",
   ]
   return parts.filter(Boolean).join(" | ")
 }
@@ -70,7 +74,7 @@ async function main() {
   // Fetch all active exercises
   const { data: exercises, error } = await supabase
     .from("exercises")
-    .select("id, name, category, difficulty, muscle_group, movement_pattern, primary_muscles, secondary_muscles, equipment_required, is_bodyweight, training_intent")
+    .select("id, name, category, difficulty, muscle_group, movement_pattern, primary_muscles, secondary_muscles, equipment_required, is_bodyweight, training_intent, sport_tags, plane_of_motion")
     .eq("is_active", true)
     .order("name")
 

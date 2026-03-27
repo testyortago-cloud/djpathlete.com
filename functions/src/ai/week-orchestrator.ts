@@ -6,7 +6,7 @@ import type {
   ValidationResult,
 } from "./types.js"
 import { callAgent, MODEL_OPUS, MODEL_SONNET } from "./anthropic.js"
-import { scoreAndFilterExercises, semanticFilterExercises } from "./exercise-filter.js"
+import { scoreAndFilterExercises, semanticFilterExercises, filterByInjuredJoints } from "./exercise-filter.js"
 import { programSkeletonSchema, exerciseAssignmentSchema } from "./schemas.js"
 import { EXERCISE_SELECTOR_PROMPT } from "./prompts.js"
 import { validateProgram } from "./validate.js"
@@ -578,11 +578,35 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
     notes: "",
   }
 
+  // Apply injury-aware joint filtering
+  let exercisesForSelection = allExercises
+  const injuredJoints: string[] = []
+  const jointKeywords: Record<string, string> = {
+    knee: "knee", ankle: "ankle", hip: "hip", shoulder: "shoulder",
+    elbow: "elbow", wrist: "wrist", lower_back: "lumbar_spine",
+    "lower back": "lumbar_spine", lumbar: "lumbar_spine",
+    back: "thoracic_spine", thoracic: "thoracic_spine", spine: "lumbar_spine",
+  }
+  if (profile?.injury_details?.length) {
+    for (const injury of profile.injury_details) {
+      const area = (injury as { area?: string }).area?.toLowerCase() ?? ""
+      for (const [keyword, joint] of Object.entries(jointKeywords)) {
+        if (area.includes(keyword) && !injuredJoints.includes(joint)) {
+          injuredJoints.push(joint)
+        }
+      }
+    }
+  }
+  if (injuredJoints.length > 0) {
+    exercisesForSelection = filterByInjuredJoints(exercisesForSelection, injuredJoints)
+    console.log(`[week-orchestrator] Joint injury filter: removed high-load exercises on: ${injuredJoints.join(", ")}`)
+  }
+
   let filtered: CompressedExercise[]
   try {
-    filtered = await semanticFilterExercises(allExercises, skeleton, availableEquipment, mockAnalysis)
+    filtered = await semanticFilterExercises(exercisesForSelection, skeleton, availableEquipment, mockAnalysis)
   } catch {
-    filtered = scoreAndFilterExercises(allExercises, skeleton, availableEquipment, mockAnalysis)
+    filtered = scoreAndFilterExercises(exercisesForSelection, skeleton, availableEquipment, mockAnalysis)
   }
   const exerciseLibrary = formatExerciseLibrary(filtered)
 

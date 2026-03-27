@@ -30,6 +30,9 @@ export type ForceType = "push" | "pull" | "static" | "dynamic"
 export type Laterality = "bilateral" | "unilateral" | "alternating"
 export type SplitType = "full_body" | "upper_lower" | "push_pull_legs" | "push_pull" | "body_part" | "movement_pattern" | "custom"
 export type Periodization = "linear" | "undulating" | "block" | "reverse_linear" | "none"
+export type PlaneOfMotion = "sagittal" | "frontal" | "transverse"
+export type JointName = "ankle" | "knee" | "hip" | "lumbar_spine" | "thoracic_spine" | "shoulder" | "elbow" | "wrist"
+export type JointLoadLevel = "low" | "moderate" | "high"
 export type ExerciseRelationshipType = "progression" | "regression" | "alternative" | "variation"
 export type AiGenerationStatus = "pending" | "generating" | "completed" | "failed" | "step_1" | "step_2" | "step_3"
 export type AiFeature = "program_generation" | "program_chat" | "admin_chat" | "ai_coach"
@@ -50,6 +53,11 @@ export interface SetDetail {
   weight_kg: number | null
   reps: number
   rpe: number | null
+}
+
+export interface JointLoading {
+  joint: JointName
+  load: JointLoadLevel
 }
 
 export interface InjuryDetail {
@@ -135,6 +143,10 @@ export interface Exercise {
   equipment_required: string[]
   is_bodyweight: boolean
   training_intent: TrainingIntent[]
+  sport_tags: string[]
+  plane_of_motion: PlaneOfMotion[]
+  joints_loaded: JointLoading[]
+  aliases: string[]
   difficulty_score: number | null
   prerequisite_exercises: string[]
   progression_order: number | null

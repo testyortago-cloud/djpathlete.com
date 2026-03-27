@@ -11,7 +11,7 @@ import type {
   ProgramDifficulty,
 } from "./types.js"
 import { callAgent, MODEL_HAIKU, MODEL_OPUS, MODEL_SONNET } from "./anthropic.js"
-import { scoreAndFilterExercises, semanticFilterExercises } from "./exercise-filter.js"
+import { scoreAndFilterExercises, semanticFilterExercises, filterByInjuredJoints } from "./exercise-filter.js"
 import { estimateTokens } from "./token-utils.js"
 import { profileAnalysisSchema, programSkeletonSchema, exerciseAssignmentSchema } from "./schemas.js"
 import { PROFILE_ANALYZER_PROMPT, PROGRAM_ARCHITECT_PROMPT, EXERCISE_SELECTOR_PROMPT } from "./prompts.js"
@@ -335,7 +335,33 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     const clientDifficultyLevel = profile?.experience_level ?? "beginner"
     let compressed = filterByDifficultyLevel(allCompressed, clientDifficultyLevel)
     if (assessmentContext) compressed = filterByDifficultyScore(compressed, assessmentContext.maxDifficultyScore)
-    console.log(`[orchestrator:sync] Exercise filtering: ${allCompressed.length} total → ${compressed.length} after difficulty filter (level: ${clientDifficultyLevel})`)
+
+    // Extract injured joints from client profile for joint-loading filter
+    const injuredJoints: string[] = []
+    const jointKeywords: Record<string, string> = {
+      knee: "knee", ankle: "ankle", hip: "hip", shoulder: "shoulder",
+      elbow: "elbow", wrist: "wrist", lower_back: "lumbar_spine",
+      "lower back": "lumbar_spine", lumbar: "lumbar_spine",
+      back: "thoracic_spine", thoracic: "thoracic_spine",
+      spine: "lumbar_spine",
+    }
+    if (profile?.injury_details?.length) {
+      for (const injury of profile.injury_details) {
+        const area = injury.area?.toLowerCase() ?? ""
+        for (const [keyword, joint] of Object.entries(jointKeywords)) {
+          if (area.includes(keyword) && !injuredJoints.includes(joint)) {
+            injuredJoints.push(joint)
+          }
+        }
+      }
+    }
+    if (injuredJoints.length > 0) {
+      const beforeCount = compressed.length
+      compressed = filterByInjuredJoints(compressed, injuredJoints)
+      console.log(`[orchestrator:sync] Joint injury filter: ${beforeCount} → ${compressed.length} (excluded high-load on: ${injuredJoints.join(", ")})`)
+    }
+
+    console.log(`[orchestrator:sync] Exercise filtering: ${allCompressed.length} total → ${compressed.length} after all filters (level: ${clientDifficultyLevel})`)
 
     if (request.split_type) analysis.recommended_split = request.split_type as typeof analysis.recommended_split
     if (request.periodization) analysis.recommended_periodization = request.periodization as typeof analysis.recommended_periodization
