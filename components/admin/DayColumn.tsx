@@ -1,6 +1,6 @@
 "use client"
 
-import { Plus, Sparkles, Copy } from "lucide-react"
+import { Plus, Sparkles, Copy, Trash2 } from "lucide-react"
 import {
   SortableContext,
   verticalListSortingStrategy,
@@ -77,6 +77,7 @@ interface DayColumnProps {
   onDuplicateExercise?: (pe: ProgramExerciseWithExercise) => void
   onDuplicateGroup?: (exercises: ProgramExerciseWithExercise[]) => void
   onGenerateDay?: (day: number) => void
+  onClearDay?: (day: number) => void
 }
 
 export function DayColumn({
@@ -88,6 +89,7 @@ export function DayColumn({
   onDuplicateExercise,
   onDuplicateGroup,
   onGenerateDay,
+  onClearDay,
 }: DayColumnProps) {
   const dayName = DAY_NAMES[dayOfWeek - 1]
   const slots = buildSlots(exercises)
@@ -109,6 +111,17 @@ export function DayColumn({
               title={`AI Generate ${dayName}`}
             >
               <Sparkles className="size-3.5" />
+            </Button>
+          )}
+          {onClearDay && exercises.length > 0 && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-6 text-muted-foreground hover:text-destructive"
+              onClick={() => onClearDay(dayOfWeek)}
+              title={`Clear ${dayName}`}
+            >
+              <Trash2 className="size-3.5" />
             </Button>
           )}
           <span className="text-xs text-muted-foreground">

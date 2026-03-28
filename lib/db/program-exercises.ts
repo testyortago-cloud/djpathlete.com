@@ -141,6 +141,21 @@ export async function deleteWeekExercises(
   }
 }
 
+export async function deleteDayExercises(
+  programId: string,
+  weekNumber: number,
+  dayOfWeek: number
+) {
+  const supabase = getClient()
+  const { error } = await supabase
+    .from("program_exercises")
+    .delete()
+    .eq("program_id", programId)
+    .eq("week_number", weekNumber)
+    .eq("day_of_week", dayOfWeek)
+  if (error) throw error
+}
+
 export async function duplicateProgramExercises(
   sourceProgramId: string,
   targetProgramId: string

@@ -95,6 +95,10 @@ export function ProgramBuilder({
   const [deleteWeekOpen, setDeleteWeekOpen] = useState(false)
   const [isDeletingWeek, setIsDeletingWeek] = useState(false)
 
+  // Clear day
+  const [clearDayTarget, setClearDayTarget] = useState<number | null>(null)
+  const [isClearingDay, setIsClearingDay] = useState(false)
+
   async function handleAddWeek() {
     if (isAddingWeek) return
     setIsAddingWeek(true)
@@ -146,6 +150,31 @@ export function ProgramBuilder({
       toast.error(err instanceof Error ? err.message : "Failed to delete week")
     } finally {
       setIsDeletingWeek(false)
+    }
+  }
+
+  const DAY_NAMES_TOP = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+  async function handleClearDay() {
+    if (!clearDayTarget || isClearingDay) return
+    setIsClearingDay(true)
+    try {
+      const response = await fetch(`/api/admin/programs/${programId}/clear-day`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ weekNumber: selectedWeek, dayOfWeek: clearDayTarget }),
+      })
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || "Failed to clear day")
+      }
+      toast.success(`${DAY_NAMES_TOP[clearDayTarget - 1]} cleared`)
+      setClearDayTarget(null)
+      router.refresh()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to clear day")
+    } finally {
+      setIsClearingDay(false)
     }
   }
 
@@ -625,6 +654,7 @@ export function ProgramBuilder({
               onDuplicateExercise={handleDuplicateInPlace}
               onDuplicateGroup={handleDuplicateGroupInPlace}
               onGenerateDay={handleGenerateDay}
+              onClearDay={setClearDayTarget}
             />
           ))}
         </div>
@@ -713,6 +743,34 @@ export function ProgramBuilder({
               disabled={isDeletingWeek}
             >
               {isDeletingWeek ? "Removing..." : "Remove Week"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Clear Day Confirmation Dialog */}
+      <Dialog open={!!clearDayTarget} onOpenChange={(open) => !open && setClearDayTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Clear {clearDayTarget ? DAY_NAMES_TOP[clearDayTarget - 1] : ""}</DialogTitle>
+            <DialogDescription>
+              This will remove all {clearDayTarget ? getExercisesForDay(clearDayTarget).length : 0} exercises from {clearDayTarget ? DAY_NAMES_TOP[clearDayTarget - 1] : ""} in Week {selectedWeek}.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setClearDayTarget(null)}
+              disabled={isClearingDay}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleClearDay}
+              disabled={isClearingDay}
+            >
+              {isClearingDay ? "Clearing..." : "Clear Day"}
             </Button>
           </DialogFooter>
         </DialogContent>
