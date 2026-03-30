@@ -29,6 +29,8 @@ export interface WeekGenerationRequest {
   target_week_number?: number
   /** When set, generate exercises for this single day only (1=Monday … 7=Sunday) */
   target_day_of_week?: number
+  /** When set, restrict exercise selection to only these exercise IDs (from Exercise Pool) */
+  pool_exercise_ids?: string[]
 }
 
 export interface WeekGenerationResult {
@@ -354,11 +356,22 @@ export async function generateWeekSync(
 
   await updateJobProgress("fetching_context", 1, "Loading program data & client logs")
 
-  const [program, existingExercises, allExercises] = await Promise.all([
+  const [program, existingExercises, fullLibrary] = await Promise.all([
     getProgramById(request.program_id),
     getProgramExercises(request.program_id),
     getExercisesForAI(),
   ])
+
+  // If pool exercise IDs are provided, restrict the exercise library to only those
+  const poolIds = request.pool_exercise_ids
+  const allExercises = poolIds && poolIds.length > 0
+    ? (() => {
+        const poolSet = new Set(poolIds)
+        const filtered = fullLibrary.filter((e) => poolSet.has(e.id))
+        console.log(`[week-orchestrator] Exercise Pool active — using ${filtered.length}/${fullLibrary.length} exercises`)
+        return filtered
+      })()
+    : fullLibrary
 
   // Client data is optional — programs without assignments can still use AI generation
   const profile = request.client_id ? await getClientProfile(request.client_id) : null
@@ -663,7 +676,11 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
       ? `\n\n## COACH INSTRUCTIONS (HIGHEST PRIORITY — these override ALL default rules)\n${request.admin_instructions}\n\nYou MUST follow these instructions exactly. They override default exercise selection, technique, and structure rules. Examples:\n- If the coach says "no supersets" or "avoid supersets" → select exercises compatible with straight sets, dropsets, rest-pause, or other non-superset methods only\n- If the coach says "glute focus" → pick glute-dominant exercises for accessory/isolation slots\n- If the coach says "bodyweight only" → only select exercises where is_bodyweight=true or equipment_required is empty\n- If the coach says "deload" → pick lighter/simpler variations of the usual exercises\n- If the coach references a specific technique, exercise, or muscle group → prioritize it in your selections`
       : ""
 
-    const selectorMessage = `Program Skeleton (Week ${newWeekNumber}):\n${JSON.stringify(skeleton)}\n\nConstraints:\n${constraintsContext}\n\nExercise Library (${filtered.length} exercises):\n${exerciseLibrary}\n\n${priorContext.prompt_text}${coachInstructionsSection}\n\nIMPORTANT: EVERY working exercise (compounds, accessories, isolations) MUST be DIFFERENT from prior weeks. Use the AVOID list above — do NOT reuse any exercise_id from that list. For compound slots, pick a DIFFERENT exercise that trains the SAME movement pattern and muscles. WARM-UP and COOL-DOWN slots may stay consistent.${feedbackSection}`
+    const poolNote = poolIds && poolIds.length > 0
+      ? `\n\nNOTE: The exercise library has been pre-filtered to a coach-curated Exercise Pool of ${filtered.length} exercises. You MUST select from these exercises ONLY. If a slot cannot be perfectly matched, pick the closest available exercise from the pool. Do NOT reference exercises outside this list.`
+      : ""
+
+    const selectorMessage = `Program Skeleton (Week ${newWeekNumber}):\n${JSON.stringify(skeleton)}\n\nConstraints:\n${constraintsContext}\n\nExercise Library (${filtered.length} exercises):\n${exerciseLibrary}\n\n${priorContext.prompt_text}${coachInstructionsSection}${poolNote}\n\nIMPORTANT: EVERY working exercise (compounds, accessories, isolations) MUST be DIFFERENT from prior weeks. Use the AVOID list above — do NOT reuse any exercise_id from that list. For compound slots, pick a DIFFERENT exercise that trains the SAME movement pattern and muscles. WARM-UP and COOL-DOWN slots may stay consistent.${feedbackSection}`
 
     try {
       console.log(`[week-orchestrator] Exercise selector attempt ${attempt + 1}/${MAX_RETRIES + 1}...`)

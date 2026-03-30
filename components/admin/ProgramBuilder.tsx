@@ -26,11 +26,14 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Layers } from "lucide-react"
 import { WeekSelector } from "@/components/admin/WeekSelector"
 import { DayColumn } from "@/components/admin/DayColumn"
 import { AddExerciseDialog } from "@/components/admin/AddExerciseDialog"
 import { EditExerciseDialog } from "@/components/admin/EditExerciseDialog"
 import { ExerciseCard } from "@/components/admin/ExerciseCard"
+import { ExercisePool } from "@/components/admin/ExercisePool"
+import { ExercisePoolCard } from "@/components/admin/ExercisePoolCard"
 import { GenerateWeekDialog } from "@/components/admin/GenerateWeekDialog"
 import { GenerateDayDialog } from "@/components/admin/GenerateDayDialog"
 import type { Exercise, ProgramExercise } from "@/types/database"
@@ -178,6 +181,11 @@ export function ProgramBuilder({
     }
   }
 
+  // Exercise Pool state
+  const [poolOpen, setPoolOpen] = useState(false)
+  const [poolExercises, setPoolExercises] = useState<Exercise[]>([])
+  const [activePoolExercise, setActivePoolExercise] = useState<Exercise | null>(null)
+
   // Active drag item (for overlay)
   const [activeExercise, setActiveExercise] = useState<ProgramExerciseWithExercise | null>(null)
 
@@ -222,9 +230,18 @@ export function ProgramBuilder({
   )
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
-    const exercise = weekExercises.find((pe) => pe.id === event.active.id)
-    setActiveExercise(exercise ?? null)
-  }, [weekExercises])
+    const idStr = String(event.active.id)
+    if (idStr.startsWith("pool-")) {
+      const exerciseId = idStr.replace("pool-", "")
+      const exercise = poolExercises.find((e) => e.id === exerciseId)
+      setActivePoolExercise(exercise ?? null)
+      setActiveExercise(null)
+    } else {
+      const exercise = weekExercises.find((pe) => pe.id === event.active.id)
+      setActiveExercise(exercise ?? null)
+      setActivePoolExercise(null)
+    }
+  }, [weekExercises, poolExercises])
 
   /** Determine which day a droppable/sortable ID belongs to */
   function getDayFromId(id: string | number): number | null {
@@ -238,8 +255,55 @@ export function ProgramBuilder({
 
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
     setActiveExercise(null)
+    setActivePoolExercise(null)
     const { active, over } = event
-    if (!over || active.id === over.id) return
+    if (!over) return
+
+    const activeIdStr = String(active.id)
+
+    // Handle pool exercise dropped onto a day
+    if (activeIdStr.startsWith("pool-")) {
+      const targetDay = getDayFromId(over.id)
+      if (!targetDay) return
+
+      const exerciseId = activeIdStr.replace("pool-", "")
+      const exercise = poolExercises.find((e) => e.id === exerciseId)
+      if (!exercise) return
+
+      const targetDayExercises = getExercisesForDay(targetDay)
+      const orderIndex = targetDayExercises.length
+
+      try {
+        const response = await fetch(`/api/admin/programs/${programId}/exercises`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            exercise_id: exerciseId,
+            week_number: selectedWeek,
+            day_of_week: targetDay,
+            order_index: orderIndex,
+            sets: 3,
+            reps: "8-12",
+            technique: "straight_set",
+          }),
+        })
+        if (!response.ok) {
+          const data = await response.json()
+          throw new Error(data.error || "Failed to add exercise")
+        }
+
+        const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        toast.success(`Added "${exercise.name}" to ${DAY_NAMES[targetDay - 1]}`)
+        // Remove from pool after successful drop
+        setPoolExercises((prev) => prev.filter((e) => e.id !== exerciseId))
+        router.refresh()
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Failed to add exercise from pool")
+      }
+      return
+    }
+
+    if (active.id === over.id) return
 
     const draggedExercise = weekExercises.find((pe) => pe.id === active.id)
     if (!draggedExercise) return
@@ -372,7 +436,7 @@ export function ProgramBuilder({
         toast.error("Failed to move exercise")
       }
     }
-  }, [weekExercises, localExercises, selectedWeek, programId, router])
+  }, [weekExercises, localExercises, selectedWeek, programId, router, poolExercises])
 
   async function handleDuplicateInPlace(pe: ProgramExerciseWithExercise) {
     if (isDuplicatingInPlace) return
@@ -620,49 +684,85 @@ export function ProgramBuilder({
 
   return (
     <div className="space-y-4">
-      {/* Week selector */}
-      <WeekSelector
-        totalWeeks={localTotalWeeks}
-        selectedWeek={selectedWeek}
-        onSelectWeek={setSelectedWeek}
-        onDuplicateWeek={() => setDuplicateOpen(true)}
-        onAddWeek={handleAddWeek}
-        isAddingWeek={isAddingWeek}
-        onDeleteWeek={() => setDeleteWeekOpen(true)}
-        isDeletingWeek={isDeletingWeek}
-        onGenerateWeek={() => setGenerateWeekOpen(true)}
-        canGenerateWeek={true}
-        blankWeeks={blankWeeks}
-      />
+      {/* Week selector + Pool toggle */}
+      <div className="flex items-start gap-3">
+        <div className="flex-1 min-w-0">
+          <WeekSelector
+            totalWeeks={localTotalWeeks}
+            selectedWeek={selectedWeek}
+            onSelectWeek={setSelectedWeek}
+            onDuplicateWeek={() => setDuplicateOpen(true)}
+            onAddWeek={handleAddWeek}
+            isAddingWeek={isAddingWeek}
+            onDeleteWeek={() => setDeleteWeekOpen(true)}
+            isDeletingWeek={isDeletingWeek}
+            onGenerateWeek={() => setGenerateWeekOpen(true)}
+            canGenerateWeek={true}
+            blankWeeks={blankWeeks}
+          />
+        </div>
+        <Button
+          variant={poolOpen ? "default" : "outline"}
+          size="sm"
+          className="gap-1.5 shrink-0"
+          onClick={() => setPoolOpen(!poolOpen)}
+        >
+          <Layers className="size-3.5" />
+          Exercise Pool
+          {poolExercises.length > 0 && (
+            <span className={`ml-0.5 text-[10px] font-bold rounded-full px-1.5 py-0.5 ${poolOpen ? "bg-white/25 text-white" : "bg-primary/10 text-primary"}`}>
+              {poolExercises.length}
+            </span>
+          )}
+        </Button>
+      </div>
 
-      {/* Day grid */}
+      {/* Day grid + Pool panel */}
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {[1, 2, 3, 4, 5, 6, 7].map((day) => (
-            <DayColumn
-              key={day}
-              dayOfWeek={day}
-              exercises={getExercisesForDay(day)}
-              onAddExercise={handleAddExercise}
-              onEditExercise={setEditTarget}
-              onRemoveExercise={setDeleteTarget}
-              onDuplicateExercise={handleDuplicateInPlace}
-              onDuplicateGroup={handleDuplicateGroupInPlace}
-              onGenerateDay={handleGenerateDay}
-              onClearDay={setClearDayTarget}
+        <div className="flex gap-4">
+          <div className="flex-1 min-w-0">
+            <div className={`grid grid-cols-1 md:grid-cols-2 ${poolOpen ? "lg:grid-cols-2 xl:grid-cols-3" : "lg:grid-cols-3 xl:grid-cols-4"} gap-4`}>
+              {[1, 2, 3, 4, 5, 6, 7].map((day) => (
+                <DayColumn
+                  key={day}
+                  dayOfWeek={day}
+                  exercises={getExercisesForDay(day)}
+                  onAddExercise={handleAddExercise}
+                  onEditExercise={setEditTarget}
+                  onRemoveExercise={setDeleteTarget}
+                  onDuplicateExercise={handleDuplicateInPlace}
+                  onDuplicateGroup={handleDuplicateGroupInPlace}
+                  onGenerateDay={handleGenerateDay}
+                  onClearDay={setClearDayTarget}
+                />
+              ))}
+            </div>
+          </div>
+          {poolOpen && (
+            <ExercisePool
+              allExercises={exercises}
+              poolExercises={poolExercises}
+              onPoolChange={setPoolExercises}
+              onClose={() => setPoolOpen(false)}
             />
-          ))}
+          )}
         </div>
         <DragOverlay>
           {activeExercise ? (
             <ExerciseCard
               programExercise={activeExercise}
               onEdit={() => {}}
+              onRemove={() => {}}
+              isOverlay
+            />
+          ) : activePoolExercise ? (
+            <ExercisePoolCard
+              exercise={activePoolExercise}
               onRemove={() => {}}
               isOverlay
             />
@@ -882,6 +982,7 @@ export function ProgramBuilder({
         clientId={assignmentInfo?.clientId}
         currentWeekCount={localTotalWeeks}
         targetWeekNumber={selectedWeekIsBlank ? selectedWeek : undefined}
+        poolExerciseIds={poolExercises.map((e) => e.id)}
         onWeekGenerated={(newWeekNumber) => {
           if (!selectedWeekIsBlank) {
             setLocalTotalWeeks(newWeekNumber)
@@ -899,6 +1000,7 @@ export function ProgramBuilder({
         clientId={assignmentInfo?.clientId}
         weekNumber={selectedWeek}
         dayOfWeek={generateDayTarget}
+        poolExerciseIds={poolExercises.map((e) => e.id)}
         onDayGenerated={() => {
           router.refresh()
         }}

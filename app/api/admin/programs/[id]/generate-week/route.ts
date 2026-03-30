@@ -13,6 +13,8 @@ const generateWeekSchema = z.object({
   target_week_number: z.number().int().min(1).optional(),
   /** When set, AI generates exercises for this single day only (1=Monday … 7=Sunday) */
   target_day_of_week: z.number().int().min(1).max(7).optional(),
+  /** When set, AI restricts exercise selection to these exercise IDs only */
+  pool_exercise_ids: z.array(z.string().uuid()).max(100).optional(),
 })
 
 export async function POST(
@@ -66,6 +68,7 @@ export async function POST(
           admin_instructions: result.data.admin_instructions ?? null,
           target_week_number: result.data.target_week_number ?? null,
           target_day_of_week: result.data.target_day_of_week ?? null,
+          pool_exercise_ids: result.data.pool_exercise_ids ?? null,
         },
         requestedBy: session.user.id,
       },

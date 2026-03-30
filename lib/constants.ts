@@ -22,7 +22,7 @@ export const NAV_ITEMS: NavGroup[] = [
   { label: "Resources", href: "/resources" },
   { label: "Education", href: "/education" },
   { label: "Blog", href: "/blog" },
-  { label: "Shop", href: "/shop" },
+  { label: "Coming Soon", href: "/coming-soon" },
 ]
 
 export const SOCIAL_LINKS = {
@@ -40,7 +40,7 @@ export const FOOTER_SECTIONS = [
       { label: "Online Coaching", href: "/online" },
       { label: "Assessment", href: "/assessment" },
       { label: "Education", href: "/education" },
-      { label: "Shop", href: "/shop" },
+      { label: "Coming Soon", href: "/coming-soon" },
     ],
   },
   {

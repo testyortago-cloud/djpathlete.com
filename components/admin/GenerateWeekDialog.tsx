@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { Sparkles, Loader2, CheckCircle2, XCircle } from "lucide-react"
+import { Sparkles, Loader2, CheckCircle2, XCircle, Layers } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -27,6 +27,7 @@ interface GenerateWeekDialogProps {
   onWeekGenerated: (newWeekNumber: number) => void
   /** When set, fill this specific blank week instead of appending a new one */
   targetWeekNumber?: number
+  poolExerciseIds?: string[]
 }
 
 export function GenerateWeekDialog({
@@ -38,11 +39,13 @@ export function GenerateWeekDialog({
   currentWeekCount,
   onWeekGenerated,
   targetWeekNumber,
+  poolExerciseIds = [],
 }: GenerateWeekDialogProps) {
   const router = useRouter()
   const [instructions, setInstructions] = useState("")
   const [jobId, setJobId] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [usePool, setUsePool] = useState(true)
 
   const { status, result, error, reset } = useAiJob(jobId)
 
@@ -52,6 +55,7 @@ export function GenerateWeekDialog({
 
   const isFillingBlank = !!targetWeekNumber
   const weekLabel = targetWeekNumber ?? currentWeekCount + 1
+  const hasPool = poolExerciseIds.length > 0
 
   async function handleSubmit() {
     setIsSubmitting(true)
@@ -64,6 +68,7 @@ export function GenerateWeekDialog({
           ...(clientId && { client_id: clientId }),
           admin_instructions: instructions || undefined,
           target_week_number: targetWeekNumber ?? undefined,
+          ...(hasPool && usePool && { pool_exercise_ids: poolExerciseIds }),
         }),
       })
 
@@ -82,13 +87,12 @@ export function GenerateWeekDialog({
   }
 
   function handleClose() {
-    if (isGenerating) return // Don't close while generating
+    if (isGenerating) return
     if (isComplete && result) {
       const newWeekNumber = (result as { new_week_number?: number }).new_week_number ?? weekLabel
       onWeekGenerated(newWeekNumber)
       router.refresh()
     }
-    // Reset state
     setJobId(null)
     setInstructions("")
     reset()
@@ -123,6 +127,40 @@ export function GenerateWeekDialog({
 
         {!isGenerating && !isComplete && !isFailed && (
           <div className="space-y-4">
+            {hasPool && (
+              <button
+                type="button"
+                className={`w-full flex items-center gap-2.5 rounded-lg border-2 px-3 py-2.5 text-left transition-colors ${
+                  usePool
+                    ? "border-primary bg-primary/5"
+                    : "border-border hover:border-muted-foreground/30"
+                }`}
+                onClick={() => setUsePool(!usePool)}
+              >
+                <div className={`flex items-center justify-center size-5 rounded border-2 transition-colors ${
+                  usePool ? "border-primary bg-primary" : "border-muted-foreground/30"
+                }`}>
+                  {usePool && (
+                    <svg className="size-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <Layers className="size-3.5 text-primary" />
+                    <span className="text-sm font-medium">Use Exercise Pool</span>
+                    <span className="text-[10px] font-medium bg-primary/10 text-primary rounded-full px-1.5 py-0.5">
+                      {poolExerciseIds.length}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    AI will select from your curated exercises only
+                  </p>
+                </div>
+              </button>
+            )}
+
             <div className="space-y-2">
               <Label htmlFor="instructions">Coach Instructions (optional)</Label>
               <Textarea
