@@ -16,7 +16,15 @@ const CANONICAL_EQUIPMENT = [
   "leg_curl_machine", "lat_pulldown_machine", "rowing_machine", "treadmill",
   "bike", "box", "plyo_box", "medicine_ball", "stability_ball", "foam_roller",
   "trx", "landmine", "sled", "battle_ropes", "agility_ladder", "cones", "yoga_mat",
+  "gliders", "wall", "weight_plate", "short_barbell",
 ] as const
+
+/**
+ * If the client selected this many or more equipment items, treat as "full gym"
+ * and skip equipment-availability checks (still enforce avoided-equipment).
+ * This threshold matches the EQUIPMENT_OPTIONS length from the questionnaire.
+ */
+const FULL_GYM_THRESHOLD = 25
 
 const EQUIPMENT_ALIASES: Record<string, string> = {
   dumbbells: "dumbbell", barbells: "barbell", kettlebells: "kettlebell",
@@ -101,6 +109,7 @@ export function validateProgram(
     analysis.exercise_constraints.filter((c) => c.type === "avoid_muscle").map((c) => c.value.toLowerCase())
   )
   const equipmentSet = new Set(availableEquipment.map(normalizeEquipment))
+  const isFullGym = availableEquipment.length >= FULL_GYM_THRESHOLD
 
   // Excessive exercises per day
   for (const week of skeleton.weeks) {
@@ -131,8 +140,8 @@ export function validateProgram(
 
     const dayKey = `w${slot.week}d${slot.day}`
 
-    // Equipment violations
-    if (exercise.equipment_required.length > 0 && !exercise.is_bodyweight) {
+    // Equipment violations (skip availability check for full gym)
+    if (!isFullGym && exercise.equipment_required.length > 0 && !exercise.is_bodyweight) {
       for (const eq of exercise.equipment_required) {
         if (!equipmentSet.has(normalizeEquipment(eq))) {
           issues.push({ type: "error", category: "equipment_violation", message: `${exercise.name} requires "${eq}" which is not available`, slot_ref: assigned.slot_id })

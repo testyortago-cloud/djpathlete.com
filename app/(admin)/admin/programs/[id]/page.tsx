@@ -107,7 +107,7 @@ function AiGenerationSummary({
   params: Record<string, unknown>
 }) {
   const validation = params.validation as
-    | { pass?: boolean; warnings?: number; errors?: number }
+    | { pass?: boolean; warnings?: number; errors?: number; issues?: { type: string; category: string; message: string; slot_ref?: string }[] }
     | undefined
   const tokenUsage = params.token_usage as
     | { total?: number; agent1?: number; agent2?: number; agent3?: number; agent4?: number }
@@ -121,6 +121,9 @@ function AiGenerationSummary({
   const isPassing = validation.pass !== false
   const warningCount = validation.warnings ?? 0
   const errorCount = validation.errors ?? 0
+  const issues = validation.issues ?? []
+  const errors = issues.filter((i) => i.type === "error")
+  const warnings = issues.filter((i) => i.type === "warning")
 
   return (
     <div className="bg-white rounded-xl border border-border p-4 shadow-sm">
@@ -177,6 +180,40 @@ function AiGenerationSummary({
             </Badge>
           )}
       </div>
+
+      {issues.length > 0 && (
+        <details className="mt-3">
+          <summary className="text-xs font-medium text-muted-foreground cursor-pointer hover:text-foreground select-none">
+            View {issues.length} validation issue{issues.length !== 1 ? "s" : ""}
+          </summary>
+          <div className="mt-2 space-y-1.5 max-h-64 overflow-y-auto">
+            {errors.map((issue, idx) => (
+              <div
+                key={`err-${idx}`}
+                className="flex items-start gap-1.5 text-xs"
+              >
+                <XCircle className="size-3 text-destructive shrink-0 mt-0.5" />
+                <span>
+                  <span className="font-medium text-destructive">{issue.category}</span>
+                  <span className="text-muted-foreground"> — {issue.message}</span>
+                </span>
+              </div>
+            ))}
+            {warnings.map((issue, idx) => (
+              <div
+                key={`warn-${idx}`}
+                className="flex items-start gap-1.5 text-xs"
+              >
+                <AlertTriangle className="size-3 text-warning shrink-0 mt-0.5" />
+                <span>
+                  <span className="font-medium text-warning">{issue.category}</span>
+                  <span className="text-muted-foreground"> — {issue.message}</span>
+                </span>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
     </div>
   )
 }

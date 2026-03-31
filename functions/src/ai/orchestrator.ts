@@ -605,7 +605,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
       periodization: skeleton.periodization,
       is_public: request.is_public ?? false,
       is_ai_generated: true,
-      ai_generation_params: { request, analysis_summary: { split: analysis.recommended_split, periodization: analysis.recommended_periodization, training_age: analysis.training_age_category, constraints_count: analysis.exercise_constraints.length }, validation: { pass: validation.pass, warnings: validation.issues.filter((i) => i.type === "warning").length, errors: validation.issues.filter((i) => i.type === "error").length }, token_usage: tokenUsage },
+      ai_generation_params: { request, analysis_summary: { split: analysis.recommended_split, periodization: analysis.recommended_periodization, training_age: analysis.training_age_category, constraints_count: analysis.exercise_constraints.length }, validation: { pass: validation.pass, warnings: validation.issues.filter((i) => i.type === "warning").length, errors: validation.issues.filter((i) => i.type === "error").length, issues: validation.issues }, token_usage: tokenUsage },
       is_active: true,
       created_by: requestedBy,
       price_cents: request.price_cents ?? null,

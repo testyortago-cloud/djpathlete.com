@@ -25,7 +25,14 @@ const CANONICAL_EQUIPMENT = [
   "leg_curl_machine", "lat_pulldown_machine", "rowing_machine", "treadmill",
   "bike", "box", "plyo_box", "medicine_ball", "stability_ball", "foam_roller",
   "trx", "landmine", "sled", "battle_ropes", "agility_ladder", "cones", "yoga_mat",
+  "gliders", "wall", "weight_plate", "short_barbell",
 ] as const
+
+/**
+ * If the client selected this many or more equipment items, treat as "full gym"
+ * and skip equipment-availability checks (still enforce avoided-equipment).
+ */
+const FULL_GYM_THRESHOLD = 25
 
 const EQUIPMENT_ALIASES: Record<string, string> = {
   // Plural -> singular
@@ -160,6 +167,7 @@ export function validateProgram(
       .map((c) => c.value.toLowerCase())
   )
   const equipmentSet = new Set(availableEquipment.map(normalizeEquipment))
+  const isFullGym = availableEquipment.length >= FULL_GYM_THRESHOLD
 
   // ── ERROR: Excessive exercises per day (unrealistic session) ──
   for (const week of skeleton.weeks) {
@@ -205,8 +213,8 @@ export function validateProgram(
 
     const dayKey = `w${slot.week}d${slot.day}`
 
-    // ── ERROR: Equipment violations ──
-    if (exercise.equipment_required.length > 0 && !exercise.is_bodyweight) {
+    // ── ERROR: Equipment violations (skip availability check for full gym) ──
+    if (!isFullGym && exercise.equipment_required.length > 0 && !exercise.is_bodyweight) {
       for (const eq of exercise.equipment_required) {
         if (!equipmentSet.has(normalizeEquipment(eq))) {
           issues.push({
