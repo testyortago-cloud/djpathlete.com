@@ -27,6 +27,17 @@ import {
 } from "./dedup-verify.js"
 import { retrieveSimilarContext, formatRagContext, buildRagAugmentedPrompt, embedConversationMessage } from "./rag.js"
 import { getSupabase } from "../lib/supabase.js"
+import {
+  getClientProfile,
+  getClientName,
+  bulkAddExercisesToProgram as sharedBulkAdd,
+  extractInjuredJoints,
+  buildCoachInstructionsSection,
+  createJobProgressUpdater,
+  createCancellationChecker,
+  buildSlotLookups,
+  buildExerciseRows,
+} from "./shared-helpers.js"
 
 const MAX_RETRIES = 2
 
@@ -77,13 +88,11 @@ function mapDifficulty(experienceLevel: string | null): ProgramDifficulty {
   }
 }
 
-// ─── Supabase helpers ───────────────────────────────────────────────────────
+// ─── Supabase helpers (orchestrator-specific) ──────────────────────────────
 
-async function getProfileByUserId(userId: string) {
-  const supabase = getSupabase()
-  const { data } = await supabase.from("client_profiles").select("*").eq("user_id", userId).single()
-  return data
-}
+// Re-export shared helpers under local names for backward compat
+const getProfileByUserId = getClientProfile
+const bulkAddExercisesToProgram = sharedBulkAdd
 
 async function getUserById(userId: string) {
   const supabase = getSupabase()
@@ -97,22 +106,6 @@ async function createProgram(params: Record<string, unknown>) {
   const { data, error } = await supabase.from("programs").insert(params).select().single()
   if (error) throw new Error(`Failed to create program: ${error.message}`)
   return data
-}
-
-async function bulkAddExercisesToProgram(rows: Record<string, unknown>[], retries = 3) {
-  // Insert in batches of 25 to avoid overwhelming Supabase
-  const BATCH_SIZE = 25
-  for (let i = 0; i < rows.length; i += BATCH_SIZE) {
-    const batch = rows.slice(i, i + BATCH_SIZE)
-    for (let attempt = 1; attempt <= retries; attempt++) {
-      const supabase = getSupabase()
-      const { error } = await supabase.from("program_exercises").insert(batch)
-      if (!error) break
-      if (attempt === retries) throw new Error(`Failed to add exercises (batch ${Math.floor(i / BATCH_SIZE) + 1}): ${error.message}`)
-      console.warn(`[orchestrator:sync] bulkAddExercises batch ${Math.floor(i / BATCH_SIZE) + 1} attempt ${attempt} failed: ${error.message}, retrying...`)
-      await new Promise((r) => setTimeout(r, 1000 * attempt))
-    }
-  }
 }
 
 async function createAssignment(params: Record<string, unknown>) {
@@ -165,34 +158,8 @@ export async function generateProgramSync(
     firebaseJobId: firebaseJobId ?? "none",
   })
 
-  // Helper to push step progress to RTDB for real-time client updates
-  const TOTAL_STEPS = 7
-  async function updateJobProgress(step: string, currentStep: number, detail?: string) {
-    if (!firebaseJobId) return
-    try {
-      const { getDatabase } = await import("firebase-admin/database")
-      const rtdb = getDatabase()
-      await rtdb.ref(`ai_jobs/${firebaseJobId}`).update({
-        progress: { status: step, current_step: currentStep, total_steps: TOTAL_STEPS, detail: detail ?? null },
-        updatedAt: Date.now(),
-      })
-    } catch (e) {
-      console.warn("[orchestrator:sync] Failed to update RTDB progress:", e)
-    }
-  }
-
-  // Check if the job has been cancelled by the user
-  async function checkCancelled(): Promise<boolean> {
-    if (!firebaseJobId) return false
-    try {
-      const { getFirestore } = await import("firebase-admin/firestore")
-      const db = getFirestore()
-      const snap = await db.collection("ai_jobs").doc(firebaseJobId).get()
-      return snap.exists && snap.data()?.status === "cancelled"
-    } catch {
-      return false
-    }
-  }
+  const updateJobProgress = createJobProgressUpdater(firebaseJobId, 7)
+  const checkCancelled = createCancellationChecker(firebaseJobId)
 
   const startTime = Date.now()
   const tokenUsage = { agent1: 0, agent2: 0, agent3: 0, agent4: 0, total: 0 }
@@ -295,9 +262,7 @@ Maximum Exercise Difficulty: ${assessmentContext.maxDifficultyScore}/10
 IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.maxDifficultyScore}.`
       : ""
 
-    const coachInstructionsSection = request.additional_instructions
-      ? `\n\n## COACH INSTRUCTIONS (HIGHEST PRIORITY — these override default rules)\n${request.additional_instructions}\n\nYou MUST follow these instructions. If they conflict with default technique, exercise, or structure rules, the coach's instructions WIN. For example, if the coach says "no supersets", use straight sets even if the default rules would suggest supersets for time efficiency.`
-      : ""
+    const coachInstructionsSection = buildCoachInstructionsSection(request.additional_instructions)
 
     const agent1UserMessage = `Client Profile:\n${profileContext}\n\nTraining Request:\n- Goals: ${request.goals.join(", ")}\n- Duration: ${request.duration_weeks} weeks\n- Sessions per week: ${request.sessions_per_week}\n- Session length: ${request.session_minutes ?? 60} minutes\n${request.split_type ? `- Requested split type: ${request.split_type}` : ""}\n${request.periodization ? `- Requested periodization: ${request.periodization}` : ""}\n${request.equipment_override ? `- Equipment override: ${request.equipment_override.join(", ")}` : ""}${coachInstructionsSection}${assessmentSection}`
 
@@ -337,24 +302,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     if (assessmentContext) compressed = filterByDifficultyScore(compressed, assessmentContext.maxDifficultyScore)
 
     // Extract injured joints from client profile for joint-loading filter
-    const injuredJoints: string[] = []
-    const jointKeywords: Record<string, string> = {
-      knee: "knee", ankle: "ankle", hip: "hip", shoulder: "shoulder",
-      elbow: "elbow", wrist: "wrist", lower_back: "lumbar_spine",
-      "lower back": "lumbar_spine", lumbar: "lumbar_spine",
-      back: "thoracic_spine", thoracic: "thoracic_spine",
-      spine: "lumbar_spine",
-    }
-    if (profile?.injury_details?.length) {
-      for (const injury of profile.injury_details) {
-        const area = injury.area?.toLowerCase() ?? ""
-        for (const [keyword, joint] of Object.entries(jointKeywords)) {
-          if (area.includes(keyword) && !injuredJoints.includes(joint)) {
-            injuredJoints.push(joint)
-          }
-        }
-      }
-    }
+    const injuredJoints = extractInjuredJoints(profile?.injury_details)
     if (injuredJoints.length > 0) {
       const beforeCount = compressed.length
       compressed = filterByInjuredJoints(compressed, injuredJoints)
@@ -612,36 +560,12 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     })
 
     // Insert exercises
-    const slotLookup = new Map<string, { week_number: number; day_of_week: number; order_index: number }>()
-    const slotDetailsLookup = new Map<string, { sets: number; reps: string; rest_seconds: number; rpe_target: number | null; tempo: string | null; group_tag: string | null; technique: ExerciseSlot["technique"] }>()
-
-    for (const week of skeleton.weeks) {
-      for (const day of week.days) {
-        day.slots.forEach((slot, idx) => {
-          slotLookup.set(slot.slot_id, { week_number: week.week_number, day_of_week: day.day_of_week, order_index: idx })
-          slotDetailsLookup.set(slot.slot_id, { sets: slot.sets, reps: slot.reps, rest_seconds: slot.rest_seconds, rpe_target: slot.rpe_target, tempo: slot.tempo, group_tag: slot.group_tag, technique: slot.technique ?? "straight_set" })
-        })
-      }
-    }
+    const { slotLookup, slotDetailsLookup } = buildSlotLookups(skeleton.weeks)
 
     await updateJobProgress("saving_program", 7, `Saving program with ${assignment.assignments.length} exercises`)
     await onProgress?.("Saving program", 5, 5)
 
-    const exerciseRows = assignment.assignments
-      .map((assigned) => {
-        const location = slotLookup.get(assigned.slot_id)
-        const details = slotDetailsLookup.get(assigned.slot_id)
-        if (!location || !details) return null
-        return {
-          program_id: program.id, exercise_id: assigned.exercise_id,
-          day_of_week: location.day_of_week, week_number: location.week_number,
-          order_index: location.order_index, sets: details.sets, reps: details.reps,
-          duration_seconds: null, rest_seconds: details.rest_seconds, notes: assigned.notes,
-          rpe_target: details.rpe_target, intensity_pct: null, tempo: details.tempo,
-          group_tag: details.group_tag, technique: details.technique ?? "straight_set",
-        }
-      })
-      .filter((r) => r !== null) as Record<string, unknown>[]
+    const exerciseRows = buildExerciseRows(assignment.assignments, slotLookup, slotDetailsLookup, program.id)
 
     await bulkAddExercisesToProgram(exerciseRows)
 

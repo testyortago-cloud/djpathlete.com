@@ -34,8 +34,7 @@ import { EditExerciseDialog } from "@/components/admin/EditExerciseDialog"
 import { ExerciseCard } from "@/components/admin/ExerciseCard"
 import { ExercisePool } from "@/components/admin/ExercisePool"
 import { ExercisePoolCard } from "@/components/admin/ExercisePoolCard"
-import { GenerateWeekDialog } from "@/components/admin/GenerateWeekDialog"
-import { GenerateDayDialog } from "@/components/admin/GenerateDayDialog"
+import { GenerationDialog } from "@/components/admin/GenerationDialog"
 import type { Exercise, ProgramExercise } from "@/types/database"
 
 type ProgramExerciseWithExercise = ProgramExercise & { exercises: Exercise }
@@ -1069,7 +1068,8 @@ export function ProgramBuilder({
       </Dialog>
 
       {/* AI Generate Week Dialog */}
-      <GenerateWeekDialog
+      <GenerationDialog
+        mode="week"
         open={generateWeekOpen}
         onOpenChange={setGenerateWeekOpen}
         programId={programId}
@@ -1078,7 +1078,7 @@ export function ProgramBuilder({
         currentWeekCount={localTotalWeeks}
         targetWeekNumber={selectedWeekIsBlank ? selectedWeek : undefined}
         poolExerciseIds={poolExercises.map((e) => e.id)}
-        onWeekGenerated={(newWeekNumber) => {
+        onGenerated={(newWeekNumber) => {
           if (!selectedWeekIsBlank) {
             setLocalTotalWeeks(newWeekNumber)
           }
@@ -1087,7 +1087,8 @@ export function ProgramBuilder({
       />
 
       {/* AI Generate Day Dialog */}
-      <GenerateDayDialog
+      <GenerationDialog
+        mode="day"
         open={generateDayOpen}
         onOpenChange={setGenerateDayOpen}
         programId={programId}
@@ -1096,7 +1097,7 @@ export function ProgramBuilder({
         weekNumber={selectedWeek}
         dayOfWeek={generateDayTarget}
         poolExerciseIds={poolExercises.map((e) => e.id)}
-        onDayGenerated={() => {
+        onGenerated={() => {
           router.refresh()
         }}
       />

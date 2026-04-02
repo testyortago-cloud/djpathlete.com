@@ -14,6 +14,20 @@ import { formatExerciseLibrary } from "./exercise-context.js"
 import { getExercisesForAI } from "./program-chat-tools.js"
 import { buildPriorContextFromExistingExercises, verifyWeekAgainstExisting } from "./dedup-verify.js"
 import { getSupabase } from "../lib/supabase.js"
+import {
+  getProgramById,
+  getClientProfile,
+  getClientName,
+  bulkAddExercisesToProgram,
+  extractInjuredJoints,
+  buildCoachInstructionsSection,
+  buildPoolNote,
+  applyPoolFilter,
+  createJobProgressUpdater,
+  createCancellationChecker,
+  buildSlotLookups,
+  buildExerciseRows,
+} from "./shared-helpers.js"
 import { z } from "zod"
 
 const MAX_RETRIES = 2
@@ -40,14 +54,7 @@ export interface WeekGenerationResult {
   duration_ms: number
 }
 
-// ─── Supabase helpers ───────────────────────────────────────────────────────
-
-async function getProgramById(id: string) {
-  const supabase = getSupabase()
-  const { data, error } = await supabase.from("programs").select("*").eq("id", id).single()
-  if (error) throw new Error(`Program not found: ${error.message}`)
-  return data
-}
+// ─── Local Supabase helpers (not shared — specific to week orchestrator) ────
 
 async function getProgramExercises(programId: string) {
   const supabase = getSupabase()
@@ -62,18 +69,6 @@ async function getProgramExercises(programId: string) {
   return data ?? []
 }
 
-async function getClientProfile(userId: string) {
-  const supabase = getSupabase()
-  const { data } = await supabase.from("client_profiles").select("*").eq("user_id", userId).single()
-  return data
-}
-
-async function getClientName(userId: string): Promise<string> {
-  const supabase = getSupabase()
-  const { data } = await supabase.from("users").select("first_name, last_name").eq("id", userId).single()
-  return data ? `${data.first_name} ${data.last_name}`.trim() : "Client"
-}
-
 async function getRecentProgress(userId: string, exerciseIds: string[], limit = 50) {
   if (exerciseIds.length === 0) return []
   const supabase = getSupabase()
@@ -86,21 +81,6 @@ async function getRecentProgress(userId: string, exerciseIds: string[], limit = 
     .limit(limit)
   if (error) return []
   return data ?? []
-}
-
-async function bulkAddExercisesToProgram(rows: Record<string, unknown>[], retries = 3) {
-  const BATCH_SIZE = 25
-  for (let i = 0; i < rows.length; i += BATCH_SIZE) {
-    const batch = rows.slice(i, i + BATCH_SIZE)
-    for (let attempt = 1; attempt <= retries; attempt++) {
-      const supabase = getSupabase()
-      const { error } = await supabase.from("program_exercises").insert(batch)
-      if (!error) break
-      if (attempt === retries) throw new Error(`Failed to add exercises (batch ${Math.floor(i / BATCH_SIZE) + 1}): ${error.message}`)
-      console.warn(`[week-orchestrator] bulkAddExercises batch ${Math.floor(i / BATCH_SIZE) + 1} attempt ${attempt} failed: ${error.message}, retrying...`)
-      await new Promise((r) => setTimeout(r, 1000 * attempt))
-    }
-  }
 }
 
 async function updateProgramDuration(programId: string, newDuration: number) {
@@ -121,32 +101,11 @@ async function updateAssignmentTotalWeeks(assignmentId: string, newTotal: number
   if (error) console.warn(`[week-orchestrator] Failed to update assignment total_weeks: ${error.message}`)
 }
 
-// ─── Week Architect Prompt ──────────────────────────────────────────────────
+// ─── Architect Prompt (unified for week + day modes) ───────────────────────
 
-const WEEK_ARCHITECT_PROMPT = `You are a performance system architect designing the NEXT WEEK of an ongoing training program. You have access to the full program history (week-by-week progression summary + detailed recent weeks) and the client's actual training logs.
+const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
-Your job is to design ONE week that:
-1. Follows the program's established split, periodization, and structure
-2. Progresses appropriately based on the client's actual performance data
-3. Maintains exercise continuity for compound lifts while rotating accessories
-4. Respects the admin coach's specific instructions (if provided)
-5. Builds on the program's progression arc — review the full week-by-week summary to understand themes, muscle emphasis shifts, and training phases across the entire program history
-
-Given the program context, client progress data, and coach instructions, output a JSON object with this structure — it MUST contain exactly ONE week in the "weeks" array:
-
-{
-  "weeks": [
-    {
-      "week_number": number (the next week number),
-      "phase": string (e.g., "Hypertrophy", "Strength", "Deload"),
-      "intensity_modifier": string (e.g., "moderate", "high", "low/deload"),
-      "days": [
-        {
-          "day_of_week": number (1=Monday, 7=Sunday),
-          "label": string,
-          "focus": string,
-          "slots": [
-            {
+const SLOT_SCHEMA = `{
               "slot_id": string (unique, format "w{week}d{day}s{slot}"),
               "role": "warm_up" | "primary_compound" | "secondary_compound" | "accessory" | "isolation" | "cool_down",
               "movement_pattern": "push" | "pull" | "squat" | "hinge" | "lunge" | "carry" | "rotation" | "isometric" | "locomotion",
@@ -158,19 +117,42 @@ Given the program context, client progress data, and coach instructions, output 
               "tempo": string | null,
               "group_tag": string | null,
               "technique": "straight_set" | "superset" | "dropset" | "giant_set" | "circuit" | "rest_pause" | "amrap"
-            }
-          ]
-        }
-      ]
-    }
-  ],
-  "split_type": string (must match the program's existing split),
-  "periodization": string (must match the program's existing periodization),
-  "total_sessions": number (number of days in THIS week only),
-  "notes": string (rationale for this week's design)
-}
+            }`
 
-Rules:
+function buildArchitectPrompt(mode: "week" | "day"): string {
+  const isDay = mode === "day"
+  const entity = isDay ? "a SINGLE TRAINING DAY within a week of" : "the NEXT WEEK of"
+  const entityShort = isDay ? "ONE day" : "ONE week"
+  const daysConstraint = isDay ? "exactly ONE day in the" : ""
+
+  const goals = isDay
+    ? `1. Follows the program's established split, periodization, and structure
+2. Progresses appropriately based on the client's actual performance data
+3. Maintains exercise continuity for compound lifts while rotating accessories
+4. Respects the admin coach's specific instructions (if provided)
+5. Fits logically within the existing week — consider what other days already have`
+    : `1. Follows the program's established split, periodization, and structure
+2. Progresses appropriately based on the client's actual performance data
+3. Maintains exercise continuity for compound lifts while rotating accessories
+4. Respects the admin coach's specific instructions (if provided)
+5. Builds on the program's progression arc — review the full week-by-week summary to understand themes, muscle emphasis shifts, and training phases across the entire program history`
+
+  const totalSessions = isDay ? `"total_sessions": 1,` : `"total_sessions": number (number of days in THIS week only),`
+  const notesDesc = isDay ? "rationale for this day's design" : "rationale for this week's design"
+  const dayOfWeekDesc = isDay ? "(the specific day requested)" : "(1=Monday, 7=Sunday)"
+  const weekNumberDesc = isDay ? "number" : "number (the next week number)"
+
+  const rules = isDay
+    ? `Rules:
+1. Output EXACTLY ONE day in the "days" array — the specific day_of_week requested.
+2. MATCH the program's existing structure for this day: look at what this day_of_week typically contains in prior weeks (muscle groups, exercise count, session focus).
+3. COMPLEMENT other days already programmed in this week — avoid duplicating the same muscle groups or movement patterns.
+4. PROGRESS appropriately based on the client's logged performance.
+5. ROTATE ALL WORKING EXERCISES — use DIFFERENT exercises than prior weeks for the same slot roles.
+6. COACH INSTRUCTIONS ARE HIGHEST PRIORITY — they override ALL default rules including technique selection, exercise structure, and progression logic. If the coach specifies technique preferences (e.g., "no supersets", "use straight sets only"), follow them EXACTLY regardless of the client's level or time constraints.
+7. Use the slot_id format: "w{week_number}d{day_of_week}s{slot_index}".
+8. Output ONLY the JSON object, no additional text.`
+    : `Rules:
 1. MATCH the existing program structure: same split type, same number of training days per week, same day_of_week values.
 2. PROGRESS appropriately based on the client's logged performance:
    - If the client hit their targets comfortably (RPE < prescribed), increase load or volume slightly.
@@ -189,46 +171,26 @@ Rules:
 8. Review the FULL PROGRAM PROGRESSION summary — understand the arc of the entire program (what muscles were emphasized each week, how themes evolved) before designing this week.
 9. Output ONLY the JSON object, no additional text.`
 
-// ─── Day Architect Prompt (single-day variant) ──────────────────────────────
+  return `You are a performance system architect designing ${entity} an ongoing training program. You have access to the full program history (week-by-week progression summary + detailed recent weeks) and the client's actual training logs.
 
-const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+Your job is to design ${entityShort} that:
+${goals}
 
-const DAY_ARCHITECT_PROMPT = `You are a performance system architect designing a SINGLE TRAINING DAY within a week of an ongoing training program. You have access to the full program history (week-by-week progression summary + detailed recent weeks) and the client's actual training logs.
-
-Your job is to design ONE day that:
-1. Follows the program's established split, periodization, and structure
-2. Progresses appropriately based on the client's actual performance data
-3. Maintains exercise continuity for compound lifts while rotating accessories
-4. Respects the admin coach's specific instructions (if provided)
-5. Fits logically within the existing week — consider what other days already have
-
-Given the program context, client progress data, and coach instructions, output a JSON object with this structure — it MUST contain exactly ONE week with exactly ONE day in the "days" array:
+Given the program context, client progress data, and coach instructions, output a JSON object with this structure — it MUST contain exactly ONE week${daysConstraint ? ` with ${daysConstraint}` : " in the"} "days" array:
 
 {
   "weeks": [
     {
-      "week_number": number,
+      "week_number": ${weekNumberDesc},
       "phase": string (e.g., "Hypertrophy", "Strength", "Deload"),
       "intensity_modifier": string (e.g., "moderate", "high", "low/deload"),
       "days": [
         {
-          "day_of_week": number (the specific day requested),
+          "day_of_week": number ${dayOfWeekDesc},
           "label": string,
           "focus": string,
           "slots": [
-            {
-              "slot_id": string (unique, format "w{week}d{day}s{slot}"),
-              "role": "warm_up" | "primary_compound" | "secondary_compound" | "accessory" | "isolation" | "cool_down",
-              "movement_pattern": "push" | "pull" | "squat" | "hinge" | "lunge" | "carry" | "rotation" | "isometric" | "locomotion",
-              "target_muscles": [string],
-              "sets": number,
-              "reps": string,
-              "rest_seconds": number,
-              "rpe_target": number | null,
-              "tempo": string | null,
-              "group_tag": string | null,
-              "technique": "straight_set" | "superset" | "dropset" | "giant_set" | "circuit" | "rest_pause" | "amrap"
-            }
+            ${SLOT_SCHEMA}
           ]
         }
       ]
@@ -236,19 +198,12 @@ Given the program context, client progress data, and coach instructions, output 
   ],
   "split_type": string (must match the program's existing split),
   "periodization": string (must match the program's existing periodization),
-  "total_sessions": 1,
-  "notes": string (rationale for this day's design)
+  ${totalSessions}
+  "notes": string (${notesDesc})
 }
 
-Rules:
-1. Output EXACTLY ONE day in the "days" array — the specific day_of_week requested.
-2. MATCH the program's existing structure for this day: look at what this day_of_week typically contains in prior weeks (muscle groups, exercise count, session focus).
-3. COMPLEMENT other days already programmed in this week — avoid duplicating the same muscle groups or movement patterns.
-4. PROGRESS appropriately based on the client's logged performance.
-5. ROTATE ALL WORKING EXERCISES — use DIFFERENT exercises than prior weeks for the same slot roles.
-6. COACH INSTRUCTIONS ARE HIGHEST PRIORITY — they override ALL default rules including technique selection, exercise structure, and progression logic. If the coach specifies technique preferences (e.g., "no supersets", "use straight sets only"), follow them EXACTLY regardless of the client's level or time constraints.
-7. Use the slot_id format: "w{week_number}d{day_of_week}s{slot_index}".
-8. Output ONLY the JSON object, no additional text.`
+${rules}`
+}
 
 // ─── Single-week skeleton schema (reuses programSkeletonSchema) ─────────────
 
@@ -324,33 +279,8 @@ export async function generateWeekSync(
   const startTime = Date.now()
   const tokenUsage = { architect: 0, selector: 0, total: 0 }
 
-  // Helper for RTDB progress
-  async function updateJobProgress(step: string, currentStep: number, detail?: string) {
-    if (!firebaseJobId) return
-    try {
-      const { getDatabase } = await import("firebase-admin/database")
-      const rtdb = getDatabase()
-      await rtdb.ref(`ai_jobs/${firebaseJobId}`).update({
-        progress: { status: step, current_step: currentStep, total_steps: 5, detail: detail ?? null },
-        updatedAt: Date.now(),
-      })
-    } catch (e) {
-      console.warn("[week-orchestrator] Failed to update RTDB progress:", e)
-    }
-  }
-
-  // Check cancellation
-  async function checkCancelled(): Promise<boolean> {
-    if (!firebaseJobId) return false
-    try {
-      const { getFirestore } = await import("firebase-admin/firestore")
-      const db = getFirestore()
-      const snap = await db.collection("ai_jobs").doc(firebaseJobId).get()
-      return snap.exists && snap.data()?.status === "cancelled"
-    } catch {
-      return false
-    }
-  }
+  const updateJobProgress = createJobProgressUpdater(firebaseJobId, 5)
+  const checkCancelled = createCancellationChecker(firebaseJobId)
 
   // ── Step 1: Fetch program context ──────────────────────────────────────
 
@@ -364,14 +294,7 @@ export async function generateWeekSync(
 
   // If pool exercise IDs are provided, restrict the exercise library to only those
   const poolIds = request.pool_exercise_ids
-  const allExercises = poolIds && poolIds.length > 0
-    ? (() => {
-        const poolSet = new Set(poolIds)
-        const filtered = fullLibrary.filter((e) => poolSet.has(e.id))
-        console.log(`[week-orchestrator] Exercise Pool active — using ${filtered.length}/${fullLibrary.length} exercises`)
-        return filtered
-      })()
-    : fullLibrary
+  const allExercises = applyPoolFilter(fullLibrary, poolIds, "week-orchestrator")
 
   // Client data is optional — programs without assignments can still use AI generation
   const profile = request.client_id ? await getClientProfile(request.client_id) : null
@@ -530,7 +453,7 @@ ${isSingleDay
 IMPORTANT: Review the full program progression summary above. If the coach's instructions reference themes, focus areas, or progressions from previous weeks, ensure this ${isSingleDay ? "day" : "week"} builds on that trajectory logically. The coach may ask to maintain a theme while shifting emphasis (e.g., "keep lower leg focus but add glute work") — honor this by blending continuity with the new direction.`
 
   const architectResult = await callAgent<z.infer<typeof weekSkeletonSchema>>(
-    isSingleDay ? DAY_ARCHITECT_PROMPT : WEEK_ARCHITECT_PROMPT,
+    buildArchitectPrompt(isSingleDay ? "day" : "week"),
     architectMessage,
     weekSkeletonSchema,
     { model: MODEL_OPUS, cacheSystemPrompt: true }
@@ -593,23 +516,7 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
 
   // Apply injury-aware joint filtering
   let exercisesForSelection = allExercises
-  const injuredJoints: string[] = []
-  const jointKeywords: Record<string, string> = {
-    knee: "knee", ankle: "ankle", hip: "hip", shoulder: "shoulder",
-    elbow: "elbow", wrist: "wrist", lower_back: "lumbar_spine",
-    "lower back": "lumbar_spine", lumbar: "lumbar_spine",
-    back: "thoracic_spine", thoracic: "thoracic_spine", spine: "lumbar_spine",
-  }
-  if (profile?.injury_details?.length) {
-    for (const injury of profile.injury_details) {
-      const area = (injury as { area?: string }).area?.toLowerCase() ?? ""
-      for (const [keyword, joint] of Object.entries(jointKeywords)) {
-        if (area.includes(keyword) && !injuredJoints.includes(joint)) {
-          injuredJoints.push(joint)
-        }
-      }
-    }
-  }
+  const injuredJoints = extractInjuredJoints(profile?.injury_details as Array<{ area?: string }> | undefined)
   if (injuredJoints.length > 0) {
     exercisesForSelection = filterByInjuredJoints(exercisesForSelection, injuredJoints)
     console.log(`[week-orchestrator] Joint injury filter: removed high-load exercises on: ${injuredJoints.join(", ")}`)
@@ -671,14 +578,8 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
       }
     }
 
-    // Build coach instructions section for the exercise selector
-    const coachInstructionsSection = request.admin_instructions
-      ? `\n\n## COACH INSTRUCTIONS (HIGHEST PRIORITY — these override ALL default rules)\n${request.admin_instructions}\n\nYou MUST follow these instructions exactly. They override default exercise selection, technique, and structure rules. Examples:\n- If the coach says "no supersets" or "avoid supersets" → select exercises compatible with straight sets, dropsets, rest-pause, or other non-superset methods only\n- If the coach says "glute focus" → pick glute-dominant exercises for accessory/isolation slots\n- If the coach says "bodyweight only" → only select exercises where is_bodyweight=true or equipment_required is empty\n- If the coach says "deload" → pick lighter/simpler variations of the usual exercises\n- If the coach references a specific technique, exercise, or muscle group → prioritize it in your selections`
-      : ""
-
-    const poolNote = poolIds && poolIds.length > 0
-      ? `\n\nNOTE: The exercise library has been pre-filtered to a coach-curated Exercise Pool of ${filtered.length} exercises. You MUST select from these exercises ONLY. If a slot cannot be perfectly matched, pick the closest available exercise from the pool. Do NOT reference exercises outside this list.`
-      : ""
+    const coachInstructionsSection = buildCoachInstructionsSection(request.admin_instructions)
+    const poolNote = buildPoolNote(poolIds, filtered.length)
 
     const selectorMessage = `Program Skeleton (Week ${newWeekNumber}):\n${JSON.stringify(skeleton)}\n\nConstraints:\n${constraintsContext}\n\nExercise Library (${filtered.length} exercises):\n${exerciseLibrary}\n\n${priorContext.prompt_text}${coachInstructionsSection}${poolNote}\n\nIMPORTANT: EVERY working exercise (compounds, accessories, isolations) MUST be DIFFERENT from prior weeks. Use the AVOID list above — do NOT reuse any exercise_id from that list. For compound slots, pick a DIFFERENT exercise that trains the SAME movement pattern and muscles. WARM-UP and COOL-DOWN slots may stay consistent.${feedbackSection}`
 
@@ -736,38 +637,8 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
     ? `Saving ${assignment.assignments.length} exercises for ${targetDayName}`
     : `Saving ${assignment.assignments.length} exercises for Week ${newWeekNumber}`)
 
-  // Build slot lookup
-  const slotLookup = new Map<string, { week_number: number; day_of_week: number; order_index: number }>()
-  const slotDetailsLookup = new Map<string, { sets: number; reps: string; rest_seconds: number; rpe_target: number | null; tempo: string | null; group_tag: string | null; technique: ExerciseSlot["technique"] }>()
-
-  for (const week of skeleton.weeks) {
-    for (const day of week.days) {
-      day.slots.forEach((slot, idx) => {
-        slotLookup.set(slot.slot_id, { week_number: week.week_number, day_of_week: day.day_of_week, order_index: idx })
-        slotDetailsLookup.set(slot.slot_id, {
-          sets: slot.sets, reps: slot.reps, rest_seconds: slot.rest_seconds,
-          rpe_target: slot.rpe_target, tempo: slot.tempo,
-          group_tag: slot.group_tag, technique: slot.technique ?? "straight_set",
-        })
-      })
-    }
-  }
-
-  const exerciseRows = assignment.assignments
-    .map((assigned) => {
-      const location = slotLookup.get(assigned.slot_id)
-      const details = slotDetailsLookup.get(assigned.slot_id)
-      if (!location || !details) return null
-      return {
-        program_id: request.program_id, exercise_id: assigned.exercise_id,
-        day_of_week: location.day_of_week, week_number: location.week_number,
-        order_index: location.order_index, sets: details.sets, reps: details.reps,
-        duration_seconds: null, rest_seconds: details.rest_seconds, notes: assigned.notes,
-        rpe_target: details.rpe_target, intensity_pct: null, tempo: details.tempo,
-        group_tag: details.group_tag, technique: details.technique ?? "straight_set",
-      }
-    })
-    .filter((r) => r !== null) as Record<string, unknown>[]
+  const { slotLookup, slotDetailsLookup } = buildSlotLookups(skeleton.weeks)
+  const exerciseRows = buildExerciseRows(assignment.assignments, slotLookup, slotDetailsLookup, request.program_id)
 
   await bulkAddExercisesToProgram(exerciseRows)
 
