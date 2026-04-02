@@ -61,7 +61,12 @@ export async function POST(
     }
 
     return NextResponse.json(
-      { new_week_number: newDuration },
+      {
+        new_week_number: newDuration,
+        access_type: accessType,
+        price_cents: priceCents,
+        assignments_updated: activeAssignments.length,
+      },
       { status: 200 }
     )
   } catch {

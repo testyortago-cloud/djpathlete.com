@@ -134,8 +134,12 @@ export function ProgramBuilder({
       const newWeek = data.new_week_number as number
       setLocalTotalWeeks(newWeek)
       setSelectedWeek(newWeek)
-      const priceMsg = addWeekAccessType === "paid" ? ` ($${addWeekPrice} charge)` : " (free)"
-      toast.success(`Week ${newWeek} added${priceMsg}`)
+      const clientCount = data.assignments_updated ?? 0
+      if (addWeekAccessType === "paid") {
+        toast.success(`Week ${newWeek} added — $${addWeekPrice} charge set for ${clientCount} client${clientCount !== 1 ? "s" : ""}`)
+      } else {
+        toast.success(`Week ${newWeek} added (free)`)
+      }
       setAddWeekDialogOpen(false)
       router.refresh()
     } catch (err) {
