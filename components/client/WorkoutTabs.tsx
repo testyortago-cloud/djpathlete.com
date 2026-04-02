@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
 import {
@@ -9,6 +10,7 @@ import {
   ChevronRight,
   Dumbbell,
   Calendar,
+  Lock,
 } from "lucide-react"
 import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
@@ -26,6 +28,7 @@ interface ProgramWorkout {
   currentWeek: number
   totalWeeks: number
   weeks: Record<number, WorkoutDayProps[]>
+  lockedWeeks?: Record<number, { priceCents: number }>
 }
 
 interface WorkoutTabsProps {
@@ -194,6 +197,37 @@ function ProgramDetail({
   showBack: boolean
   todayDow: number
 }) {
+  const router = useRouter()
+  const [isPurchasing, setIsPurchasing] = useState(false)
+  const lockedWeeks = program.lockedWeeks ?? {}
+
+  async function handlePurchaseWeek(weekNumber: number) {
+    setIsPurchasing(true)
+    try {
+      const res = await fetch("/api/stripe/week-checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          assignmentId: program.assignmentId,
+          weekNumber,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || "Failed to start checkout")
+      }
+      const { url } = await res.json()
+      if (url) {
+        window.location.href = url
+      }
+    } catch (err) {
+      const { toast } = await import("sonner")
+      toast.error(err instanceof Error ? err.message : "Failed to start checkout")
+    } finally {
+      setIsPurchasing(false)
+    }
+  }
+
   const weekKeys = Object.keys(program.weeks ?? {}).map(Number).sort((a, b) => a - b)
   // currentWeek=0 means program hasn't started yet — default to week 1
   const effectiveCurrentWeek = program.currentWeek || 1
@@ -313,14 +347,22 @@ function ProgramDetail({
           <div className="text-center">
             <p className="text-sm font-semibold text-foreground">
               Week {selectedWeek}
+              {lockedWeeks[selectedWeek] && (
+                <Lock className="inline size-3 ml-1 text-warning" />
+              )}
               <span className="text-muted-foreground font-normal">
                 {" "}
                 / {program.totalWeeks}
               </span>
             </p>
-            {isCurrentWeek && (
+            {isCurrentWeek && !lockedWeeks[selectedWeek] && (
               <p className="text-[10px] text-primary font-medium">
                 Current week
+              </p>
+            )}
+            {lockedWeeks[selectedWeek] && (
+              <p className="text-[10px] text-warning font-medium">
+                Payment required
               </p>
             )}
           </div>
@@ -414,7 +456,46 @@ function ProgramDetail({
       {/* Workout content for selected day */}
       <div className="space-y-6">
         <AnimatePresence mode="wait">
-          {dayData && dayData.exercises.length > 0 ? (
+          {lockedWeeks[selectedWeek] ? (
+            <motion.div
+              key={`locked-${selectedWeek}`}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
+            >
+              <div className="bg-white rounded-xl border-2 border-warning/30 p-8 text-center space-y-4">
+                <div className="flex justify-center">
+                  <div className="size-14 rounded-full bg-warning/10 flex items-center justify-center">
+                    <Lock className="size-7 text-warning" />
+                  </div>
+                </div>
+                <div>
+                  <h3 className="text-base font-semibold text-foreground mb-1">
+                    Week {selectedWeek} is Locked
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    Purchase access to unlock this week&apos;s workouts.
+                  </p>
+                </div>
+                {lockedWeeks[selectedWeek].priceCents > 0 && (
+                  <p className="text-2xl font-bold text-foreground">
+                    ${(lockedWeeks[selectedWeek].priceCents / 100).toFixed(2)}
+                  </p>
+                )}
+                <Button
+                  onClick={() => handlePurchaseWeek(selectedWeek)}
+                  disabled={isPurchasing}
+                  className="min-w-[160px]"
+                >
+                  {isPurchasing ? "Processing..." : "Unlock Week"}
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  Or contact your coach to arrange payment.
+                </p>
+              </div>
+            </motion.div>
+          ) : dayData && dayData.exercises.length > 0 ? (
             <motion.div
               key={`${selectedWeek}-${selectedDay}`}
               initial={{ opacity: 0, x: 20 }}
@@ -459,8 +540,8 @@ function ProgramDetail({
         </AnimatePresence>
       </div>
 
-      {/* Complete Week button — only shown on the current week when all exercises are logged */}
-      {isCurrentWeek && (
+      {/* Complete Week button — only shown on the current week when all exercises are logged and week is not locked */}
+      {isCurrentWeek && !lockedWeeks[selectedWeek] && (
         <CompleteWeekButton
           assignmentId={program.assignmentId}
           currentWeek={effectiveCurrentWeek}

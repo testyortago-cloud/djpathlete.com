@@ -3,6 +3,7 @@ import type Stripe from "stripe"
 import { verifyWebhookSignature } from "@/lib/stripe"
 import { createPayment, getPaymentByStripeId, updatePayment } from "@/lib/db/payments"
 import { createAssignment, getAssignmentByUserAndProgram, updateAssignment } from "@/lib/db/assignments"
+import { updateWeekAccess, createWeekAccessBulk } from "@/lib/db/week-access"
 import {
   createSubscription,
   getSubscriptionByStripeId,
@@ -39,6 +40,12 @@ export async function POST(request: Request) {
     switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session
+
+        // Per-week payment
+        if (session.metadata?.type === "week_access") {
+          await handleWeekAccessCheckout(session)
+          break
+        }
 
         if (session.mode === "subscription") {
           await handleSubscriptionCheckout(session)
@@ -126,8 +133,9 @@ async function handleOneTimeCheckout(session: Stripe.Checkout.Session) {
   } else if (!existingAssignment || existingAssignment.status !== "active") {
     // Create new assignment for direct purchase
     const purchasedProgram = await getProgramById(programId)
+    const totalWeeks = purchasedProgram.duration_weeks ?? 1
 
-    await createAssignment({
+    const assignment = await createAssignment({
       program_id: programId,
       user_id: userId,
       assigned_by: null,
@@ -136,14 +144,64 @@ async function handleOneTimeCheckout(session: Stripe.Checkout.Session) {
       status: "active",
       notes: null,
       current_week: 1,
-      total_weeks: purchasedProgram.duration_weeks ?? null,
+      total_weeks: totalWeeks,
       payment_status: "paid",
       expires_at: null,
     })
+
+    // Auto-create week access records for all weeks (included/free)
+    await createWeekAccessBulk(
+      Array.from({ length: totalWeeks }, (_, i) => ({
+        assignment_id: assignment.id,
+        week_number: i + 1,
+        access_type: "included" as const,
+        price_cents: null,
+        payment_status: "not_required" as const,
+        stripe_session_id: null,
+        stripe_payment_id: null,
+      }))
+    )
   }
 
   // Sync + notify (non-blocking)
   await syncAndNotify(session, programId, userId, "purchased")
+}
+
+// ─── Per-week payment ───────────────────────────────────────────────────────
+
+async function handleWeekAccessCheckout(session: Stripe.Checkout.Session) {
+  const weekAccessId = session.metadata?.weekAccessId
+  const userId = session.metadata?.userId
+  const stripePaymentId = session.payment_intent as string
+
+  if (!weekAccessId || !userId || !stripePaymentId) return
+
+  // Idempotency
+  const existingPayment = await getPaymentByStripeId(stripePaymentId)
+  if (existingPayment) return
+
+  // Mark week as paid
+  await updateWeekAccess(weekAccessId, {
+    payment_status: "paid",
+    stripe_payment_id: stripePaymentId,
+    stripe_session_id: session.id,
+  })
+
+  // Record payment
+  await createPayment({
+    user_id: userId,
+    stripe_payment_id: stripePaymentId,
+    stripe_customer_id: (session.customer as string) ?? null,
+    amount_cents: session.amount_total ?? 0,
+    currency: session.currency ?? "usd",
+    status: "succeeded",
+    description: `Week ${session.metadata?.weekNumber} access`,
+    metadata: {
+      weekAccessId,
+      assignmentId: session.metadata?.assignmentId,
+      weekNumber: session.metadata?.weekNumber,
+    },
+  })
 }
 
 // ─── Subscription checkout ───────────────────────────────────────────────────
@@ -172,6 +230,7 @@ async function handleSubscriptionCheckout(session: Stripe.Checkout.Session) {
     })
     assignmentId = existingAssignment.id
   } else {
+    const totalWeeks = program.duration_weeks ?? 1
     const assignment = await createAssignment({
       program_id: programId,
       user_id: userId,
@@ -181,11 +240,24 @@ async function handleSubscriptionCheckout(session: Stripe.Checkout.Session) {
       status: "active",
       notes: null,
       current_week: 1,
-      total_weeks: program.duration_weeks ?? null,
+      total_weeks: totalWeeks,
       payment_status: "subscription_active",
       expires_at: null,
     })
     assignmentId = assignment.id
+
+    // Auto-create week access records for all weeks
+    await createWeekAccessBulk(
+      Array.from({ length: totalWeeks }, (_, i) => ({
+        assignment_id: assignmentId,
+        week_number: i + 1,
+        access_type: "included" as const,
+        price_cents: null,
+        payment_status: "not_required" as const,
+        stripe_session_id: null,
+        stripe_payment_id: null,
+      }))
+    )
   }
 
   // Create subscription record

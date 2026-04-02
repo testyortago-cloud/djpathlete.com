@@ -186,6 +186,50 @@ export async function createSubscriptionCheckoutSession(
   return session
 }
 
+// ─── Per-week checkout ──────────────────────────────────────────────────────
+
+export async function createWeekCheckoutSession(opts: {
+  programName: string
+  weekNumber: number
+  priceCents: number
+  userId: string
+  assignmentId: string
+  weekAccessId: string
+  returnUrl?: string
+}) {
+  const baseUrl = getBaseUrl()
+  const successUrl = `${baseUrl}${opts.returnUrl ?? "/client/workouts"}?week_paid=${opts.weekNumber}`
+  const cancelUrl = `${baseUrl}/client/workouts`
+
+  const session = await stripe.checkout.sessions.create({
+    mode: "payment",
+    line_items: [
+      {
+        price_data: {
+          currency: "usd",
+          product_data: {
+            name: `${opts.programName} — Week ${opts.weekNumber}`,
+            description: `Week ${opts.weekNumber} access`,
+          },
+          unit_amount: opts.priceCents,
+        },
+        quantity: 1,
+      },
+    ],
+    metadata: {
+      type: "week_access",
+      weekAccessId: opts.weekAccessId,
+      assignmentId: opts.assignmentId,
+      weekNumber: String(opts.weekNumber),
+      userId: opts.userId,
+    },
+    success_url: successUrl,
+    cancel_url: cancelUrl,
+  })
+
+  return session
+}
+
 // ─── New: Billing portal ─────────────────────────────────────────────────────
 
 export async function createBillingPortalSession(

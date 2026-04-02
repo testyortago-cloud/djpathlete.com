@@ -4,6 +4,7 @@ import { getAssignments } from "@/lib/db/assignments"
 import { getProgramExercises } from "@/lib/db/program-exercises"
 import { getLatestProgressByExercises } from "@/lib/db/progress"
 import { getProfileByUserId } from "@/lib/db/client-profiles"
+import { getWeekAccessByAssignments } from "@/lib/db/week-access"
 import { getWeightRecommendation } from "@/lib/weight-recommendation"
 import type { ClientContext } from "@/lib/weight-recommendation"
 import { PageHeader } from "@/components/shared/PageHeader"
@@ -12,7 +13,7 @@ import { WorkoutViewToggle } from "@/components/client/WorkoutViewToggle"
 import type { WorkoutCalendarDay } from "@/components/client/WorkoutCalendar"
 import { Dumbbell } from "lucide-react"
 import { isAssignmentExpired } from "@/lib/utils"
-import type { Program, ProgramAssignment, Exercise, ProgramExercise } from "@/types/database"
+import type { Program, ProgramAssignment, Exercise, ProgramExercise, ProgramWeekAccess } from "@/types/database"
 
 export const dynamic = "force-dynamic"
 export const metadata = { title: "My Workouts | DJP Athlete" }
@@ -97,6 +98,23 @@ export default async function ClientWorkoutsPage() {
     )
   } catch {
     // DB tables may not exist yet — render gracefully with empty data
+  }
+
+  // Fetch week access data for all active assignments
+  let weekAccessByAssignment: Record<string, ProgramWeekAccess[]> = {}
+  try {
+    const assignmentIds = activeAssignments.map((a) => a.id)
+    if (assignmentIds.length > 0) {
+      const allWeekAccess = await getWeekAccessByAssignments(assignmentIds)
+      for (const wa of allWeekAccess) {
+        if (!weekAccessByAssignment[wa.assignment_id]) {
+          weekAccessByAssignment[wa.assignment_id] = []
+        }
+        weekAccessByAssignment[wa.assignment_id].push(wa)
+      }
+    }
+  } catch {
+    // Table may not exist yet
   }
 
   // Collect all unique exercise IDs across all programs
@@ -193,6 +211,15 @@ export default async function ClientWorkoutsPage() {
         }
       }
 
+      // Build week access map: weekNumber → { locked, priceCents }
+      const assignmentAccess = weekAccessByAssignment[assignment.id] ?? []
+      const lockedWeeks: Record<number, { priceCents: number }> = {}
+      for (const wa of assignmentAccess) {
+        if (wa.payment_status === "pending" && wa.access_type === "paid") {
+          lockedWeeks[wa.week_number] = { priceCents: wa.price_cents ?? 0 }
+        }
+      }
+
       return {
         programName: program.name,
         category: program.category,
@@ -203,6 +230,7 @@ export default async function ClientWorkoutsPage() {
         currentWeek,
         totalWeeks,
         weeks,
+        lockedWeeks,
       }
     })
 

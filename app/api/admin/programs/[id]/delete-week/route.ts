@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { getProgramById, updateProgram } from "@/lib/db/programs"
-import { getFirstActiveAssignmentForProgram, updateAssignment } from "@/lib/db/assignments"
+import { getActiveAssignmentsForProgram, updateAssignment } from "@/lib/db/assignments"
 import { deleteWeekExercises } from "@/lib/db/program-exercises"
+import { deleteWeekAccessForWeek, shiftWeekAccessDown } from "@/lib/db/week-access"
 
 export async function POST(
   request: Request,
@@ -44,11 +45,15 @@ export async function POST(
     const newDuration = currentWeeks - 1
     await updateProgram(id, { duration_weeks: newDuration })
 
-    // Update active assignment if one exists
-    const activeAssignment = await getFirstActiveAssignmentForProgram(id)
-    if (activeAssignment) {
-      await updateAssignment(activeAssignment.id, { total_weeks: newDuration })
-    }
+    // Update all active assignments + clean up week access records
+    const activeAssignments = await getActiveAssignmentsForProgram(id)
+    await Promise.all(
+      activeAssignments.map(async (a) => {
+        await updateAssignment(a.id, { total_weeks: newDuration })
+        await deleteWeekAccessForWeek(a.id, weekNumber)
+        await shiftWeekAccessDown(a.id, weekNumber)
+      })
+    )
 
     return NextResponse.json(
       { new_total_weeks: newDuration },

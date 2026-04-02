@@ -11,6 +11,8 @@ export type BillingInterval = "week" | "month"
 export type SubscriptionStatus = "active" | "past_due" | "canceled" | "unpaid" | "incomplete" | "trialing" | "paused"
 export type AssignmentStatus = "active" | "paused" | "completed" | "cancelled"
 export type AssignmentPaymentStatus = "not_required" | "pending" | "paid" | "subscription_active"
+export type WeekAccessType = "included" | "paid"
+export type WeekPaymentStatus = "not_required" | "pending" | "paid"
 export type BookingStatus = "scheduled" | "completed" | "cancelled" | "no_show"
 export type PaymentStatus = "pending" | "succeeded" | "failed" | "refunded"
 export type NotificationType = "info" | "success" | "warning" | "error"
@@ -214,6 +216,19 @@ export interface ProgramAssignment {
   total_weeks: number | null
   payment_status: AssignmentPaymentStatus
   expires_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ProgramWeekAccess {
+  id: string
+  assignment_id: string
+  week_number: number
+  access_type: WeekAccessType
+  price_cents: number | null
+  payment_status: WeekPaymentStatus
+  stripe_session_id: string | null
+  stripe_payment_id: string | null
   created_at: string
   updated_at: string
 }

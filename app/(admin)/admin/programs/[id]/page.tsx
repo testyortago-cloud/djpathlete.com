@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { ProgramHeader } from "@/components/admin/ProgramHeader"
 import { ProgramBuilder } from "@/components/admin/ProgramBuilder"
 import { ProgramFeedbackForm } from "@/components/admin/ProgramFeedbackForm"
+import { WeekAccessPanel } from "@/components/admin/WeekAccessPanel"
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   try {
@@ -76,6 +77,16 @@ export default async function ProgramBuilderPage({
         exercises={exercises}
         assignmentInfo={assignmentInfo}
       />
+
+      {activeAssignments.length > 0 && (
+        <WeekAccessPanel
+          programId={program.id}
+          totalWeeks={program.duration_weeks}
+          clientNames={Object.fromEntries(
+            clients.map((c) => [c.id, `${c.first_name} ${c.last_name}`.trim()])
+          )}
+        />
+      )}
 
       {program.is_ai_generated && (
         <div className="bg-white rounded-xl border-2 border-accent/30 p-5 shadow-sm">

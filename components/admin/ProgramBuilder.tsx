@@ -26,7 +26,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Layers } from "lucide-react"
+import { Layers, DollarSign } from "lucide-react"
 import { WeekSelector } from "@/components/admin/WeekSelector"
 import { DayColumn } from "@/components/admin/DayColumn"
 import { AddExerciseDialog } from "@/components/admin/AddExerciseDialog"
@@ -93,6 +93,9 @@ export function ProgramBuilder({
 
   // Add blank week
   const [isAddingWeek, setIsAddingWeek] = useState(false)
+  const [addWeekDialogOpen, setAddWeekDialogOpen] = useState(false)
+  const [addWeekAccessType, setAddWeekAccessType] = useState<"included" | "paid">("included")
+  const [addWeekPrice, setAddWeekPrice] = useState("")
 
   // Delete week
   const [deleteWeekOpen, setDeleteWeekOpen] = useState(false)
@@ -102,12 +105,26 @@ export function ProgramBuilder({
   const [clearDayTarget, setClearDayTarget] = useState<number | null>(null)
   const [isClearingDay, setIsClearingDay] = useState(false)
 
+  function openAddWeekDialog() {
+    setAddWeekAccessType("included")
+    setAddWeekPrice("")
+    setAddWeekDialogOpen(true)
+  }
+
   async function handleAddWeek() {
     if (isAddingWeek) return
     setIsAddingWeek(true)
     try {
+      const body: Record<string, unknown> = {}
+      if (addWeekAccessType === "paid" && addWeekPrice) {
+        body.access_type = "paid"
+        body.price_cents = Math.round(parseFloat(addWeekPrice) * 100)
+      }
+
       const response = await fetch(`/api/admin/programs/${programId}/add-week`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
       })
       if (!response.ok) {
         const data = await response.json()
@@ -117,7 +134,9 @@ export function ProgramBuilder({
       const newWeek = data.new_week_number as number
       setLocalTotalWeeks(newWeek)
       setSelectedWeek(newWeek)
-      toast.success(`Week ${newWeek} added`)
+      const priceMsg = addWeekAccessType === "paid" ? ` ($${addWeekPrice} charge)` : " (free)"
+      toast.success(`Week ${newWeek} added${priceMsg}`)
+      setAddWeekDialogOpen(false)
       router.refresh()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to add week")
@@ -692,7 +711,7 @@ export function ProgramBuilder({
             selectedWeek={selectedWeek}
             onSelectWeek={setSelectedWeek}
             onDuplicateWeek={() => setDuplicateOpen(true)}
-            onAddWeek={handleAddWeek}
+            onAddWeek={openAddWeekDialog}
             isAddingWeek={isAddingWeek}
             onDeleteWeek={() => setDeleteWeekOpen(true)}
             isDeletingWeek={isDeletingWeek}
@@ -843,6 +862,78 @@ export function ProgramBuilder({
               disabled={isDeletingWeek}
             >
               {isDeletingWeek ? "Removing..." : "Remove Week"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Week Dialog — paid/free toggle */}
+      <Dialog open={addWeekDialogOpen} onOpenChange={setAddWeekDialogOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Add New Week</DialogTitle>
+            <DialogDescription>
+              Choose how assigned clients access this new week.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="flex gap-2">
+              <Button
+                variant={addWeekAccessType === "included" ? "default" : "outline"}
+                className="flex-1"
+                onClick={() => setAddWeekAccessType("included")}
+              >
+                Include Free
+              </Button>
+              <Button
+                variant={addWeekAccessType === "paid" ? "default" : "outline"}
+                className="flex-1"
+                onClick={() => setAddWeekAccessType("paid")}
+              >
+                <DollarSign className="size-3.5 mr-1" />
+                Charge
+              </Button>
+            </div>
+            {addWeekAccessType === "paid" && (
+              <div className="space-y-2">
+                <Label htmlFor="weekPrice">Price (USD) *</Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+                  <Input
+                    id="weekPrice"
+                    type="number"
+                    min="0.50"
+                    step="0.01"
+                    placeholder="25.00"
+                    value={addWeekPrice}
+                    onChange={(e) => setAddWeekPrice(e.target.value)}
+                    className="pl-7"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Clients will need to pay before accessing this week.
+                </p>
+              </div>
+            )}
+            {addWeekAccessType === "included" && (
+              <p className="text-xs text-muted-foreground">
+                All assigned clients will have immediate access to this week.
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setAddWeekDialogOpen(false)}
+              disabled={isAddingWeek}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAddWeek}
+              disabled={isAddingWeek || (addWeekAccessType === "paid" && !addWeekPrice)}
+            >
+              {isAddingWeek ? "Adding..." : "Add Week"}
             </Button>
           </DialogFooter>
         </DialogContent>

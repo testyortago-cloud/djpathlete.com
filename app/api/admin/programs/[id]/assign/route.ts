@@ -4,6 +4,7 @@ import { createAssignment, getAssignmentByUserAndProgram } from "@/lib/db/assign
 import { getProgramById } from "@/lib/db/programs"
 import { getUserById } from "@/lib/db/users"
 import { sendProgramReadyEmail } from "@/lib/email"
+import { createWeekAccessBulk } from "@/lib/db/week-access"
 
 export async function POST(
   request: Request,
@@ -24,6 +25,7 @@ export async function POST(
     const programData = await getProgramById(id)
     const { user_ids, start_date, notes, complimentary } = result.data
     const isPaid = (programData.price_cents ?? 0) > 0
+    const totalWeeks = programData.duration_weeks ?? 1
 
     let assigned = 0
     let skipped = 0
@@ -37,7 +39,7 @@ export async function POST(
           continue
         }
 
-        await createAssignment({
+        const assignment = await createAssignment({
           program_id: id,
           user_id: userId,
           start_date,
@@ -46,10 +48,22 @@ export async function POST(
           end_date: null,
           status: "active",
           current_week: 1,
-          total_weeks: programData.duration_weeks ?? null,
+          total_weeks: totalWeeks,
           payment_status: isPaid && !complimentary ? "pending" : "not_required",
           expires_at: null,
         })
+
+        // Auto-create week access records for all existing weeks (included/free)
+        const weekAccessRecords = Array.from({ length: totalWeeks }, (_, i) => ({
+          assignment_id: assignment.id,
+          week_number: i + 1,
+          access_type: "included" as const,
+          price_cents: null,
+          payment_status: "not_required" as const,
+          stripe_session_id: null,
+          stripe_payment_id: null,
+        }))
+        await createWeekAccessBulk(weekAccessRecords)
 
         assigned++
 
