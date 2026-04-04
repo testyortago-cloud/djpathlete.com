@@ -45,6 +45,8 @@ export interface WeekGenerationRequest {
   target_day_of_week?: number
   /** When set, restrict exercise selection to only these exercise IDs (from Exercise Pool) */
   pool_exercise_ids?: string[]
+  /** When set, ignore the client profile and rely on coach instructions */
+  ignore_profile?: boolean
 }
 
 export interface WeekGenerationResult {
@@ -297,7 +299,8 @@ export async function generateWeekSync(
   const allExercises = applyPoolFilter(fullLibrary, poolIds, "week-orchestrator")
 
   // Client data is optional — programs without assignments can still use AI generation
-  const profile = request.client_id ? await getClientProfile(request.client_id) : null
+  // Skip profile fetch when coach has opted to ignore it
+  const profile = (request.client_id && !request.ignore_profile) ? await getClientProfile(request.client_id) : null
   const clientName = request.client_id ? await getClientName(request.client_id) : "Unassigned"
 
   // Determine whether we're filling a blank existing week or appending a new one
@@ -390,7 +393,9 @@ export async function generateWeekSync(
         preferred_techniques: profile.preferred_techniques,
         sleep_hours: profile.sleep_hours, stress_level: profile.stress_level,
       })
-    : "No profile available"
+    : request.ignore_profile
+      ? "Coach-directed mode — client profile intentionally ignored. Rely on coach instructions and program context."
+      : "No profile available"
 
   await updateJobProgress("context_loaded", 2, `${existingExercises.length} exercises, ${recentProgress.length} logs loaded`)
 
@@ -500,7 +505,7 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
 
   await updateJobProgress("selecting_exercises", 4, `Selecting exercises for ${totalSlots} slots`)
 
-  const availableEquipment = profile?.available_equipment ?? []
+  const availableEquipment = profile?.available_equipment ?? [] as string[]
   const exerciseIdSet = new Set(allExercises.map((e) => e.id))
 
   // Build a mock ProfileAnalysis for filtering
@@ -510,7 +515,7 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
     volume_targets: [],
     exercise_constraints: [],
     session_structure: { warm_up_minutes: 5, main_work_minutes: 45, cool_down_minutes: 5, total_exercises: 6, compound_count: 3, isolation_count: 3 },
-    training_age_category: (profile?.experience_level ?? "intermediate") as "novice" | "intermediate" | "advanced" | "elite",
+    training_age_category: (profile?.experience_level ?? (request.ignore_profile ? "advanced" : "intermediate")) as "novice" | "intermediate" | "advanced" | "elite",
     notes: "",
   }
 
@@ -522,11 +527,12 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
     console.log(`[week-orchestrator] Joint injury filter: removed high-load exercises on: ${injuredJoints.join(", ")}`)
   }
 
+  const poolActive = !!poolIds && poolIds.length > 0
   let filtered: CompressedExercise[]
   try {
-    filtered = await semanticFilterExercises(exercisesForSelection, skeleton, availableEquipment, mockAnalysis)
+    filtered = await semanticFilterExercises(exercisesForSelection, skeleton, availableEquipment, mockAnalysis, { poolActive })
   } catch {
-    filtered = scoreAndFilterExercises(exercisesForSelection, skeleton, availableEquipment, mockAnalysis)
+    filtered = scoreAndFilterExercises(exercisesForSelection, skeleton, availableEquipment, mockAnalysis, { poolActive })
   }
   const exerciseLibrary = formatExerciseLibrary(filtered)
 
@@ -554,7 +560,7 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
 
   const constraintsContext = JSON.stringify({
     available_equipment: availableEquipment,
-    client_difficulty: profile?.experience_level ?? "intermediate",
+    client_difficulty: profile?.experience_level ?? (request.ignore_profile ? "advanced" : "intermediate"),
   })
 
   // Exercise Selector with dedup retry loop

@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
 import { useAiJob } from "@/hooks/use-ai-job"
 
 const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
@@ -44,6 +45,7 @@ export function GenerateDayDialog({
 }: GenerateDayDialogProps) {
   const router = useRouter()
   const [instructions, setInstructions] = useState("")
+  const [ignoreProfile, setIgnoreProfile] = useState(false)
   const [jobId, setJobId] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [usePool, setUsePool] = useState(true)
@@ -70,6 +72,7 @@ export function GenerateDayDialog({
           target_week_number: weekNumber,
           target_day_of_week: dayOfWeek,
           ...(hasPool && usePool && { pool_exercise_ids: poolExerciseIds }),
+          ...(ignoreProfile && { ignore_profile: true }),
         }),
       })
 
@@ -95,6 +98,7 @@ export function GenerateDayDialog({
     }
     setJobId(null)
     setInstructions("")
+    setIgnoreProfile(false)
     reset()
     onOpenChange(false)
   }
@@ -160,20 +164,47 @@ export function GenerateDayDialog({
               </button>
             )}
 
+            {clientId && (
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <div className="space-y-0.5">
+                  <Label htmlFor="day-ignore-profile" className="text-sm font-medium cursor-pointer">
+                    Coach-directed mode
+                  </Label>
+                  <p className="text-[11px] text-muted-foreground">
+                    Ignore client profile, rely on your instructions
+                  </p>
+                </div>
+                <Switch
+                  id="day-ignore-profile"
+                  checked={ignoreProfile}
+                  onCheckedChange={setIgnoreProfile}
+                  disabled={isSubmitting}
+                />
+              </div>
+            )}
+
             <div className="space-y-2">
-              <Label htmlFor="day-instructions">Coach Instructions (optional)</Label>
+              <Label htmlFor="day-instructions">
+                {ignoreProfile && clientId ? "Coach Instructions (recommended)" : "Coach Instructions (optional)"}
+              </Label>
               <Textarea
                 id="day-instructions"
-                placeholder={`e.g., Upper body push focus, include bench press variations...`}
+                placeholder={
+                  ignoreProfile && clientId
+                    ? "Describe what you want — focus areas, intensity, techniques..."
+                    : `e.g., Upper body push focus, include bench press variations...`
+                }
                 value={instructions}
                 onChange={(e) => setInstructions(e.target.value)}
                 rows={3}
                 maxLength={2000}
                 disabled={isSubmitting}
               />
-              <p className="text-xs text-muted-foreground">
-                Leave blank for automatic programming based on the week&apos;s structure.
-              </p>
+              {!ignoreProfile && (
+                <p className="text-xs text-muted-foreground">
+                  Leave blank for automatic programming based on the week&apos;s structure.
+                </p>
+              )}
             </div>
           </div>
         )}

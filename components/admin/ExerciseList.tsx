@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { Search, ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Dumbbell, Upload, Download } from "lucide-react"
+import { Search, ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Dumbbell, Upload, Download, Brain, Loader2 } from "lucide-react"
 import { EXERCISE_RELATIONSHIPS_TEMPLATE_CSV } from "@/lib/csv-templates"
 import { generateExerciseTemplate } from "@/lib/excel-templates"
 import { Input } from "@/components/ui/input"
@@ -67,6 +67,8 @@ export function ExerciseList({ exercises }: ExerciseListProps) {
   const [isDeleting, setIsDeleting] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
   const [templateMenuOpen, setTemplateMenuOpen] = useState(false)
+  const [isEmbedding, setIsEmbedding] = useState(false)
+  const [embeddingStats, setEmbeddingStats] = useState<{ total: number; embedded: number } | null>(null)
   const templateMenuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -80,6 +82,33 @@ export function ExerciseList({ exercises }: ExerciseListProps) {
       return () => document.removeEventListener("mousedown", handleClickOutside)
     }
   }, [templateMenuOpen])
+
+  // Fetch embedding stats on mount
+  useEffect(() => {
+    fetch("/api/admin/exercises/embed")
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => { if (data) setEmbeddingStats(data) })
+      .catch(() => {})
+  }, [])
+
+  async function handleEmbed(mode: "all" | "missing") {
+    setIsEmbedding(true)
+    try {
+      const res = await fetch("/api/admin/exercises/embed", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Failed to embed")
+      toast.success(data.message)
+      setEmbeddingStats({ total: data.total, embedded: data.total - data.failed })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Embedding failed")
+    } finally {
+      setIsEmbedding(false)
+    }
+  }
 
   async function downloadTemplate(type: "exercises" | "relationships") {
     setTemplateMenuOpen(false)
@@ -282,10 +311,36 @@ export function ExerciseList({ exercises }: ExerciseListProps) {
     <div>
       {/* Header with Add + Import buttons */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-        <p className="text-sm text-muted-foreground">
-          {exercises.length} exercise{exercises.length !== 1 ? "s" : ""} in library
-        </p>
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <span>{exercises.length} exercise{exercises.length !== 1 ? "s" : ""} in library</span>
+          {embeddingStats && embeddingStats.embedded < embeddingStats.total && (
+            <span className="text-warning text-xs">
+              ({embeddingStats.total - embeddingStats.embedded} missing embeddings)
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handleEmbed(embeddingStats && embeddingStats.embedded < embeddingStats.total ? "missing" : "all")}
+            disabled={isEmbedding}
+            title={embeddingStats && embeddingStats.embedded < embeddingStats.total
+              ? `Embed ${embeddingStats.total - embeddingStats.embedded} missing exercises`
+              : "Re-embed all exercises for AI search"}
+          >
+            {isEmbedding ? <Loader2 className="size-4 animate-spin" /> : <Brain className="size-4" />}
+            <span className="hidden sm:inline">
+              {isEmbedding
+                ? "Embedding..."
+                : embeddingStats && embeddingStats.embedded < embeddingStats.total
+                  ? `Embed Missing (${embeddingStats.total - embeddingStats.embedded})`
+                  : "Re-embed All"}
+            </span>
+            <span className="sm:hidden">
+              {isEmbedding ? "..." : "Embed"}
+            </span>
+          </Button>
           <div className="relative" ref={templateMenuRef}>
             <Button variant="outline" size="sm" onClick={() => setTemplateMenuOpen(!templateMenuOpen)}>
               <Download className="size-4" />

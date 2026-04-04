@@ -145,13 +145,24 @@ function getMaxExercises(librarySize: number): number {
 // skeleton has at least MIN_PER_PATTERN exercises. If not, pull in the best
 // candidates from the full library for the underrepresented patterns.
 
+interface PatternBalanceOptions {
+  /** When true, only pull from allExercises (already pool-filtered) — never inject outside pool */
+  poolActive?: boolean
+}
+
 function ensurePatternBalance(
   filtered: CompressedExercise[],
   allExercises: CompressedExercise[],
   skeleton: ProgramSkeleton,
   equipment: string[],
-  difficulty: string
+  difficulty: string,
+  options?: PatternBalanceOptions
 ): CompressedExercise[] {
+  const isPool = options?.poolActive ?? false
+  // When a pool is active, use a softer minimum — the coach curated this set intentionally.
+  // Require at least 2 per pattern (enough for variety) instead of the normal 8.
+  const minPerPattern = isPool ? Math.min(2, Math.ceil(allExercises.length / 10)) : MIN_PER_PATTERN
+
   // Determine which patterns the skeleton actually needs
   const requiredPatterns = new Set<string>()
   for (const week of skeleton.weeks) {
@@ -162,9 +173,12 @@ function ensurePatternBalance(
     }
   }
 
-  // Also always include core patterns
-  for (const pattern of CORE_PATTERNS) {
-    requiredPatterns.add(pattern)
+  // When pool is active, only require patterns the skeleton needs — don't force all CORE_PATTERNS
+  // since the coach may have intentionally excluded certain movement types
+  if (!isPool) {
+    for (const pattern of CORE_PATTERNS) {
+      requiredPatterns.add(pattern)
+    }
   }
 
   // Count exercises per pattern in filtered set
@@ -180,10 +194,10 @@ function ensurePatternBalance(
   const additions: CompressedExercise[] = []
   for (const pattern of requiredPatterns) {
     const count = patternCounts.get(pattern) ?? 0
-    if (count >= MIN_PER_PATTERN) continue
+    if (count >= minPerPattern) continue
 
-    const needed = MIN_PER_PATTERN - count
-    // Find best candidates from the full library that aren't already in the filtered set
+    const needed = minPerPattern - count
+    // Find best candidates from allExercises (already pool-scoped when pool is active)
     const candidates = allExercises
       .filter((ex) => ex.movement_pattern === pattern && !filteredIds.has(ex.id))
 
@@ -208,7 +222,7 @@ function ensurePatternBalance(
     }
 
     if (toAdd.length > 0) {
-      console.log(`[patternBalance] Added ${toAdd.length} ${pattern} exercises (had ${count}, now ${count + toAdd.length})`)
+      console.log(`[patternBalance] Added ${toAdd.length} ${pattern} exercises (had ${count}, now ${count + toAdd.length})${isPool ? " [pool-scoped]" : ""}`)
     }
   }
 
@@ -222,13 +236,16 @@ function ensurePatternBalance(
 
 export function scoreAndFilterExercises(
   exercises: CompressedExercise[], skeleton: ProgramSkeleton,
-  equipment: string[], analysis: ProfileAnalysis
+  equipment: string[], analysis: ProfileAnalysis,
+  options?: { poolActive?: boolean }
 ): CompressedExercise[] {
   const difficulty = analysis.training_age_category === "novice" ? "beginner"
     : analysis.training_age_category === "elite" ? "advanced"
     : analysis.training_age_category
 
-  const maxExercises = getMaxExercises(exercises.length)
+  const isPool = options?.poolActive ?? false
+  // When pool is active, keep ALL pool exercises — don't cap. The coach selected them.
+  const maxExercises = isPool ? exercises.length : getMaxExercises(exercises.length)
 
   const slotGroups = new Map<string, ExerciseSlot>()
   for (const week of skeleton.weeks) {
@@ -256,12 +273,13 @@ export function scoreAndFilterExercises(
 
   const cutoff = Math.min(maxExercises, sorted.length)
   let filtered = sorted.slice(0, cutoff)
-  if (filtered.length < MIN_EXERCISES) filtered = exercises
+  // When pool is active, never fall back to unfiltered — use whatever the pool has
+  if (!isPool && filtered.length < MIN_EXERCISES) filtered = exercises
 
   // Ensure pattern balance
-  filtered = ensurePatternBalance(filtered, exercises, skeleton, equipment, difficulty)
+  filtered = ensurePatternBalance(filtered, exercises, skeleton, equipment, difficulty, { poolActive: isPool })
 
-  console.log(`[scoreAndFilter] ${exercises.length} → ${filtered.length} exercises (max: ${maxExercises})`)
+  console.log(`[scoreAndFilter] ${exercises.length} → ${filtered.length} exercises (max: ${maxExercises})${isPool ? " [pool]" : ""}`)
   return filtered
 }
 
@@ -269,10 +287,12 @@ export function scoreAndFilterExercises(
 
 export async function semanticFilterExercises(
   exercises: CompressedExercise[], skeleton: ProgramSkeleton,
-  equipment: string[], analysis: ProfileAnalysis
+  equipment: string[], analysis: ProfileAnalysis,
+  options?: { poolActive?: boolean }
 ): Promise<CompressedExercise[]> {
   const supabase = getSupabase()
-  const maxExercises = getMaxExercises(exercises.length)
+  const isPool = options?.poolActive ?? false
+  const maxExercises = isPool ? exercises.length : getMaxExercises(exercises.length)
 
   const difficulty = analysis.training_age_category === "novice" ? "beginner"
     : analysis.training_age_category === "elite" ? "advanced"
@@ -288,6 +308,9 @@ export async function semanticFilterExercises(
     }
   }
 
+  // When pool is active, use the pool exercise IDs to scope the semantic search
+  const poolIdSet = isPool ? new Set(exercises.map((e) => e.id)) : null
+
   // Scale match_count per slot based on library size — more exercises = wider net
   const matchCountPerSlot = Math.max(30, Math.min(60, Math.round(exercises.length * 0.05)))
 
@@ -299,27 +322,33 @@ export async function semanticFilterExercises(
       const { data } = await supabase.rpc("match_exercises", {
         query_embedding: JSON.stringify(queryEmbedding),
         match_threshold: 0.15,
-        match_count: matchCountPerSlot,
+        match_count: isPool ? Math.max(matchCountPerSlot, exercises.length) : matchCountPerSlot,
       })
-      for (const match of data ?? []) matchedIds.add(match.id)
+      for (const match of data ?? []) {
+        // When pool is active, only accept matches that are in the pool
+        if (poolIdSet && !poolIdSet.has(match.id)) continue
+        matchedIds.add(match.id)
+      }
     } catch (err) {
       console.warn(`[semanticFilter] Embedding search failed for slot ${slot.slot_id}:`, err instanceof Error ? err.message : err)
     }
   }
 
-  console.log(`[semanticFilter] ${matchedIds.size} unique matches from ${slotGroups.size} slot groups (${matchCountPerSlot}/slot)`)
+  console.log(`[semanticFilter] ${matchedIds.size} unique matches from ${slotGroups.size} slot groups (${matchCountPerSlot}/slot)${isPool ? " [pool]" : ""}`)
 
-  if (matchedIds.size < MIN_EXERCISES) {
+  // When pool is active, don't fall back for "too few" matches — use whatever matched
+  const minRequired = isPool ? 1 : MIN_EXERCISES
+  if (matchedIds.size < minRequired) {
     console.log(`[semanticFilter] Only ${matchedIds.size} matches — falling back to heuristic filter`)
-    return scoreAndFilterExercises(exercises, skeleton, equipment, analysis)
+    return scoreAndFilterExercises(exercises, skeleton, equipment, analysis, { poolActive: isPool })
   }
 
   let filtered = exercises.filter((ex) => matchedIds.has(ex.id))
   if (filtered.length > maxExercises) filtered = filtered.slice(0, maxExercises)
 
-  // Ensure pattern balance — pull in missing patterns from full library
-  filtered = ensurePatternBalance(filtered, exercises, skeleton, equipment, difficulty)
+  // Ensure pattern balance — when pool active, only pulls from pool exercises
+  filtered = ensurePatternBalance(filtered, exercises, skeleton, equipment, difficulty, { poolActive: isPool })
 
-  console.log(`[semanticFilter] Final: ${filtered.length} exercises (max: ${maxExercises})`)
+  console.log(`[semanticFilter] Final: ${filtered.length} exercises (max: ${maxExercises})${isPool ? " [pool]" : ""}`)
   return filtered
 }

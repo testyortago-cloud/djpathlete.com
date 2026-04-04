@@ -12,6 +12,8 @@ export const aiGenerationRequestSchema = z.object({
   tier: z.enum(PROGRAM_TIERS).optional(),
   additional_instructions: z.string().max(2000).optional(),
   equipment_override: z.array(z.string()).optional(),
+  pool_exercise_ids: z.array(z.string().uuid()).max(200).optional(),
+  ignore_profile: z.boolean().optional(),
   is_public: z.boolean().optional(),
   price_cents: z.coerce.number().int().min(0).optional(),
 })

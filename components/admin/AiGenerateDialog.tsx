@@ -42,6 +42,7 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Textarea } from "@/components/ui/textarea"
+import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 import {
   SPLIT_TYPES,
@@ -207,6 +208,7 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
   const [splitType, setSplitType] = useState("")
   const [periodization, setPeriodization] = useState("")
   const [additionalInstructions, setAdditionalInstructions] = useState("")
+  const [ignoreProfile, setIgnoreProfile] = useState(false)
   const [selectedTier, setSelectedTier] = useState<string>("generalize")
   const [audience, setAudience] = useState<"private" | "public">("private")
   const [priceDollars, setPriceDollars] = useState("")
@@ -374,6 +376,7 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
     setSplitType("")
     setPeriodization("")
     setAdditionalInstructions("")
+    setIgnoreProfile(false)
     setSelectedTier("generalize")
     setAudience("private")
     setPriceDollars("")
@@ -496,7 +499,8 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
       if (additionalInstructions.trim()) {
         body.additional_instructions = additionalInstructions.trim()
       }
-      if (profileSummary && profileSummary.availableEquipment.length > 0) {
+      if (ignoreProfile) body.ignore_profile = true
+      if (profileSummary && profileSummary.availableEquipment.length > 0 && !ignoreProfile) {
         body.equipment_override = profileSummary.availableEquipment
       }
 
@@ -964,6 +968,9 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
                   setPriceDollars={setPriceDollars}
                   additionalInstructions={additionalInstructions}
                   setAdditionalInstructions={setAdditionalInstructions}
+                  ignoreProfile={ignoreProfile}
+                  setIgnoreProfile={setIgnoreProfile}
+                  hasClient={!!clientId}
                   error={error}
                 />
               )}
@@ -1400,6 +1407,9 @@ function Step3Settings({
   setPriceDollars,
   additionalInstructions,
   setAdditionalInstructions,
+  ignoreProfile,
+  setIgnoreProfile,
+  hasClient,
   error,
 }: {
   splitType: string
@@ -1414,6 +1424,9 @@ function Step3Settings({
   setPriceDollars: (v: string) => void
   additionalInstructions: string
   setAdditionalInstructions: (v: string) => void
+  ignoreProfile: boolean
+  setIgnoreProfile: (v: boolean) => void
+  hasClient: boolean
   error: string | null
 }) {
   return (
@@ -1549,18 +1562,43 @@ function Step3Settings({
         </div>
       )}
 
+      {/* Ignore Client Profile */}
+      {hasClient && (
+        <div className="flex items-center justify-between rounded-lg border p-3">
+          <div className="space-y-0.5">
+            <Label htmlFor="ai-ignore-profile" className="text-sm font-medium cursor-pointer">
+              Coach-directed mode
+            </Label>
+            <p className="text-[11px] text-muted-foreground">
+              Ignore the client&apos;s profile and rely on your instructions below instead
+            </p>
+          </div>
+          <Switch
+            id="ai-ignore-profile"
+            checked={ignoreProfile}
+            onCheckedChange={setIgnoreProfile}
+          />
+        </div>
+      )}
+
       {/* Additional Instructions */}
       <div className="space-y-2">
         <Label htmlFor="ai-instructions">
-          Additional Instructions
-          <span className="text-muted-foreground font-normal ml-1">(optional)</span>
+          {ignoreProfile && hasClient ? "Coach Instructions" : "Additional Instructions"}
+          <span className="text-muted-foreground font-normal ml-1">
+            {ignoreProfile && hasClient ? "(recommended)" : "(optional)"}
+          </span>
         </Label>
         <Textarea
           id="ai-instructions"
           value={additionalInstructions}
           onChange={(e) => setAdditionalInstructions(e.target.value)}
-          placeholder="e.g. Focus on posterior chain, include sprint work on lower body days..."
-          rows={3}
+          placeholder={
+            ignoreProfile && hasClient
+              ? "Describe the program you want — goals, structure, focus areas, techniques..."
+              : "e.g. Focus on posterior chain, include sprint work on lower body days..."
+          }
+          rows={ignoreProfile && hasClient ? 4 : 3}
           maxLength={2000}
         />
       </div>

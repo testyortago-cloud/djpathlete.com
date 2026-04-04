@@ -33,6 +33,8 @@ import {
   bulkAddExercisesToProgram as sharedBulkAdd,
   extractInjuredJoints,
   buildCoachInstructionsSection,
+  applyPoolFilter,
+  buildPoolNote,
   createJobProgressUpdater,
   createCancellationChecker,
   buildSlotLookups,
@@ -61,6 +63,8 @@ export interface AiGenerationRequest {
   tier?: string
   additional_instructions?: string
   equipment_override?: string[]
+  pool_exercise_ids?: string[]
+  ignore_profile?: boolean
   is_public?: boolean
   price_cents?: number
 }
@@ -214,11 +218,13 @@ export async function generateProgramSync(
   }
 
   try {
-    // Fetch client profile
+    // Fetch client profile (skip if coach toggled "ignore profile")
     let profile: Awaited<ReturnType<typeof getProfileByUserId>> = null
     let clientName = "General Client"
     if (request.client_id) {
-      profile = await getProfileByUserId(request.client_id)
+      if (!request.ignore_profile) {
+        profile = await getProfileByUserId(request.client_id)
+      }
       try {
         const user = await getUserById(request.client_id)
         clientName = `${user.first_name} ${user.last_name}`.trim()
@@ -248,7 +254,9 @@ export async function generateProgramSync(
           exercise_likes: profile.exercise_likes, exercise_dislikes: profile.exercise_dislikes,
           training_background: profile.training_background, additional_notes: profile.additional_notes,
         })
-      : JSON.stringify({ note: "No profile found — use defaults for a general fitness client." })
+      : request.ignore_profile
+        ? JSON.stringify({ note: "Coach has opted to ignore the client profile. Rely entirely on the training request parameters and coach instructions below. Do NOT assume any client-specific constraints — treat this as a coach-directed program." })
+        : JSON.stringify({ note: "No profile found — use defaults for a general fitness client." })
 
     const assessmentSection = assessmentContext
       ? `\n\n## Client Assessment Results
@@ -295,10 +303,17 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
 
     const analysis = agent1Result.content
     const allCompressed = allExercises // already compressed from getExercisesForAI
-    // Always filter by text difficulty level (beginner/intermediate/advanced) to prevent
-    // advanced exercises from reaching beginners. Assessment-based filtering is additional.
-    const clientDifficultyLevel = profile?.experience_level ?? "beginner"
-    let compressed = filterByDifficultyLevel(allCompressed, clientDifficultyLevel)
+
+    // Apply exercise pool filter first — restricts to coach-curated exercises
+    const poolIds = request.pool_exercise_ids
+    const poolActive = !!poolIds && poolIds.length > 0
+    const poolFiltered = applyPoolFilter(allCompressed, poolIds, "orchestrator")
+
+    // Filter by text difficulty level (beginner/intermediate/advanced) to prevent
+    // advanced exercises from reaching beginners. Skip when profile is ignored so
+    // the full exercise library is available for coach-directed programs.
+    const clientDifficultyLevel = profile?.experience_level ?? (request.ignore_profile ? "elite" : "beginner")
+    let compressed = filterByDifficultyLevel(poolFiltered, clientDifficultyLevel)
     if (assessmentContext) compressed = filterByDifficultyScore(compressed, assessmentContext.maxDifficultyScore)
 
     // Extract injured joints from client profile for joint-loading filter
@@ -309,7 +324,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
       console.log(`[orchestrator:sync] Joint injury filter: ${beforeCount} → ${compressed.length} (excluded high-load on: ${injuredJoints.join(", ")})`)
     }
 
-    console.log(`[orchestrator:sync] Exercise filtering: ${allCompressed.length} total → ${compressed.length} after all filters (level: ${clientDifficultyLevel})`)
+    console.log(`[orchestrator:sync] Exercise filtering: ${allCompressed.length} total → ${compressed.length} after all filters (level: ${clientDifficultyLevel})${poolActive ? ` [pool: ${poolIds!.length}]` : ""}`)
 
     if (request.split_type) analysis.recommended_split = request.split_type as typeof analysis.recommended_split
     if (request.periodization) analysis.recommended_periodization = request.periodization as typeof analysis.recommended_periodization
@@ -358,8 +373,9 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     })
 
     let filtered: CompressedExercise[]
-    try { filtered = await semanticFilterExercises(compressed, skeleton, availableEquipment, analysis) }
-    catch { filtered = scoreAndFilterExercises(compressed, skeleton, availableEquipment, analysis) }
+    try { filtered = await semanticFilterExercises(compressed, skeleton, availableEquipment, analysis, { poolActive }) }
+    catch { filtered = scoreAndFilterExercises(compressed, skeleton, availableEquipment, analysis, { poolActive }) }
+    const poolNote = buildPoolNote(poolIds, filtered.length)
     const exerciseLibrary = formatExerciseLibrary(filtered)
 
     // Check cancellation before Agent 3
@@ -429,7 +445,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
           }
         }
 
-        const agent3UserMessage = `Program Skeleton (Week ${weekNum} of ${skeleton.weeks.length}):\n${JSON.stringify(weekSkeletonPayload)}\n\nConstraints:\n${constraintsContext}\n\nExercise Library (${filtered.length} exercises, pre-filtered for relevance):\n${exerciseLibrary}\n\n${priorContext.prompt_text}${coachInstructionsSection}${feedbackSection}${dedupFeedback}`
+        const agent3UserMessage = `Program Skeleton (Week ${weekNum} of ${skeleton.weeks.length}):\n${JSON.stringify(weekSkeletonPayload)}\n\nConstraints:\n${constraintsContext}\n\nExercise Library (${filtered.length} exercises, pre-filtered for relevance):\n${exerciseLibrary}${poolNote}\n\n${priorContext.prompt_text}${coachInstructionsSection}${feedbackSection}${dedupFeedback}`
 
         try {
           console.log(`[orchestrator:sync] Week ${weekNum} attempt ${attempt + 1}/${MAX_RETRIES + 1}...`)
