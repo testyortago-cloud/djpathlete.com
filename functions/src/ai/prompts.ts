@@ -93,6 +93,7 @@ Rules:
 6. Session structure must fit within the requested session_minutes. A real coach accounts for transition time between exercises (~1-2 min) — don't pack in more exercises than physically fit.
 7. Include all relevant muscle groups in volume_targets. Prioritize based on: (a) sport demands, (b) athlete goals, (c) identified weak links/movement deficiencies, (d) injury prevention needs. Every muscle group should be at least "low" priority.
 8. Output ONLY the JSON object, no additional text or explanation.
+   COACH INSTRUCTIONS OVERRIDE SESSION STRUCTURE: If the user message contains a "COACH INSTRUCTIONS" section that specifies exercise counts (e.g., "4 power exercises per session", "2 quad exercises", "3 compounds 2 accessories"), you MUST adjust total_exercises, compound_count, and isolation_count to match EXACTLY. If the coach specifies deload timing (e.g., "deload week 3"), note that in the analysis so the Program Architect respects it. The coach's structural requests are not suggestions — they define the session structure.
 9. Recovery capacity assessment — factor these into your volume/intensity decisions:
    - Training age < 1 year: recovery is fast but movement quality is poor → moderate volume, lower intensity, focus on movement learning
    - Training age 1-3 years: recovery is good, movement quality improving → can push volume
@@ -339,7 +340,14 @@ Rules:
      * Strength phase: fewer slots total, more compound focus, heavier loads (3-6 reps), longer rest (120-180s), straight sets. Reduce isolation, keep sport-specific accessories.
      * Power / sport-specific phase: include explosive slots (plyometrics, throws, jumps), lower overall volume, highest quality per rep, longest rest. Movement velocity and intent are primary.
    - WARM-UP and COOL-DOWN slots: can stay consistent across all weeks.
-   - This variation is what separates a real coach's program from a template. A 4-week program where every week is identical except the reps is a spreadsheet, not a program.`
+   - This variation is what separates a real coach's program from a template. A 4-week program where every week is identical except the reps is a spreadsheet, not a program.
+19. COACH INSTRUCTIONS OVERRIDE SLOT STRUCTURE: If the user message contains a "COACH INSTRUCTIONS" section, you MUST follow it precisely:
+   - **Exercise counts**: If the coach says "4 power exercises per session" or "2 quad exercises and 2 posterior chain", create EXACTLY that many slots with the matching roles/movement_patterns/target_muscles. This overrides the default time-budget caps if needed — the coach has made a deliberate structural decision.
+   - **Deload placement**: If the coach says "deload on week 3" or "every 2nd week is lighter", place deload weeks EXACTLY where specified, regardless of the default deload rules (e.g., every 3-4 weeks). Set intensity_modifier to "low/deload" and reduce slot count for those weeks.
+   - **Phase structure**: If the coach specifies phases (e.g., "2 weeks hypertrophy then 2 weeks strength"), map them directly to weeks with appropriate phase labels, rep ranges, rest periods, and slot roles.
+   - **Session flow**: If the coach specifies order (e.g., "always start with plyometrics", "end with mobility"), arrange slots in that order even if it differs from the default neural demand ordering.
+   - **Technique requirements**: If the coach specifies "all straight sets" or "use supersets for accessories", apply those technique values to the appropriate slots.
+   - When coach instructions conflict with time-budget math, PRIORITIZE the coach's structural intent. If 4 power exercises don't fit in 45 minutes at default rest periods, reduce rest periods or sets rather than dropping exercises the coach explicitly requested.`
 
 // ─── Agent 3: Exercise Selector ──────────────────────────────────────────────
 

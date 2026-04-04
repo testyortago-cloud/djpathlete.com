@@ -151,7 +151,11 @@ function buildArchitectPrompt(mode: "week" | "day"): string {
 3. COMPLEMENT other days already programmed in this week — avoid duplicating the same muscle groups or movement patterns.
 4. PROGRESS appropriately based on the client's logged performance.
 5. ROTATE ALL WORKING EXERCISES — use DIFFERENT exercises than prior weeks for the same slot roles.
-6. COACH INSTRUCTIONS ARE HIGHEST PRIORITY — they override ALL default rules including technique selection, exercise structure, and progression logic. If the coach specifies technique preferences (e.g., "no supersets", "use straight sets only"), follow them EXACTLY regardless of the client's level or time constraints.
+6. COACH INSTRUCTIONS ARE HIGHEST PRIORITY — they override ALL default rules including technique selection, exercise structure, and progression logic:
+   - If the coach specifies technique preferences (e.g., "no supersets", "use straight sets only"), follow them EXACTLY regardless of the client's level or time constraints.
+   - If the coach specifies exercise counts (e.g., "4 power exercises", "2 quad exercises"), create EXACTLY that many slots with matching roles/patterns/muscles.
+   - If the coach says "make this a deload day", set intensity_modifier to "low/deload" and reduce slot count.
+   - If the coach specifies session structure (e.g., "start with plyometrics"), arrange slots accordingly.
 7. Use the slot_id format: "w{week_number}d{day_of_week}s{slot_index}".
 8. Output ONLY the JSON object, no additional text.`
     : `Rules:
@@ -168,6 +172,9 @@ function buildArchitectPrompt(mode: "week" | "day"): string {
    - Equipment constraints for this specific week (e.g., "bodyweight only", "bands only")
    - TECHNIQUE PREFERENCES (e.g., "no supersets", "use straight sets only", "use tri-sets", "avoid circuits"). If the coach specifies technique preferences, follow them EXACTLY — even if they conflict with what would normally be recommended for this client's level or time constraints. For example, if the coach says "avoid supersets", ALL techniques must be straight_set, dropset, rest_pause, or other non-superset methods.
    When a theme is specified, bias slot target_muscles and movement_patterns toward that theme while still maintaining a balanced program.
+   - EXERCISE COUNTS (e.g., "4 power exercises", "2 quad exercises and 1 hamstring"): create EXACTLY that many slots with matching roles/patterns/muscles. This overrides the default time-budget caps.
+   - DELOAD PLACEMENT (e.g., "make this a deload week"): set intensity_modifier to "low/deload", reduce slot count by 30-40%, keep compound movements and drop most accessories.
+   - SESSION STRUCTURE (e.g., "start with plyometrics", "end with core"): arrange slots in the specified order.
 6. Session time budget: keep the same number of exercises per day as previous weeks unless the coach says otherwise.
 7. Use the same slot_id format: "w{week_number}d{day_of_week}s{slot_index}".
 8. Review the FULL PROGRAM PROGRESSION summary — understand the arc of the entire program (what muscles were emphasized each week, how themes evolved) before designing this week.
