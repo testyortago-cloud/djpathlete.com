@@ -165,36 +165,36 @@ export function GenerateDayDialog({
               </button>
             )}
 
-            {clientId && (
-              <div className="flex items-center justify-between rounded-lg border p-3">
-                <div className="space-y-0.5">
-                  <Label htmlFor="day-ignore-profile" className="text-sm font-medium cursor-pointer">
-                    Coach-directed mode
-                  </Label>
-                  <p className="text-[11px] text-muted-foreground">
-                    Ignore client profile, rely on your instructions
-                  </p>
-                </div>
-                <Switch
-                  id="day-ignore-profile"
-                  checked={ignoreProfile}
-                  onCheckedChange={setIgnoreProfile}
-                  disabled={isSubmitting}
-                />
+            <div className="flex items-center justify-between rounded-lg border p-3">
+              <div className="space-y-0.5">
+                <Label htmlFor="day-ignore-profile" className="text-sm font-medium cursor-pointer">
+                  Ignore athlete profile
+                </Label>
+                <p className="text-[11px] text-muted-foreground">
+                  {clientId
+                    ? "Skip the client\u2019s profile and create from your instructions"
+                    : "Generate based on your instructions only"}
+                </p>
               </div>
-            )}
+              <Switch
+                id="day-ignore-profile"
+                checked={ignoreProfile}
+                onCheckedChange={setIgnoreProfile}
+                disabled={isSubmitting}
+              />
+            </div>
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label htmlFor="day-instructions">
-                  {ignoreProfile && clientId ? "Coach Instructions (recommended)" : "Coach Instructions (optional)"}
+                  {ignoreProfile ? "Coach Instructions (recommended)" : "Coach Instructions (optional)"}
                 </Label>
                 <TemplateSelector onSelect={(prompt) => setInstructions((prev) => prev ? `${prev}\n\n${prompt}` : prompt)} />
               </div>
               <Textarea
                 id="day-instructions"
                 placeholder={
-                  ignoreProfile && clientId
+                  ignoreProfile
                     ? "Describe what you want — focus areas, intensity, techniques..."
                     : `e.g., Upper body push focus, include bench press variations...`
                 }

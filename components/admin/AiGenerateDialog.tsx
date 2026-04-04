@@ -939,6 +939,23 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
                   profileSummary={profileSummary}
                   summaryExpanded={summaryExpanded}
                   setSummaryExpanded={setSummaryExpanded}
+                  ignoreProfile={ignoreProfile}
+                  onIgnoreProfileChange={(v) => {
+                    setIgnoreProfile(v)
+                    if (v) {
+                      // Reset auto-filled values when ignoring profile
+                      setGoals([])
+                      setSessionsPerWeek(3)
+                      setSessionMinutes(60)
+                      setSummaryExpanded(false)
+                    } else if (profileSummary) {
+                      // Re-apply profile values when toggling back
+                      if (profileSummary.goals.length > 0) setGoals(profileSummary.goals)
+                      if (profileSummary.preferredTrainingDays !== null) setSessionsPerWeek(profileSummary.preferredTrainingDays)
+                      if (profileSummary.preferredSessionMinutes !== null) setSessionMinutes(profileSummary.preferredSessionMinutes)
+                      setSummaryExpanded(true)
+                    }
+                  }}
                 />
               )}
               {step === 1 && (
@@ -970,7 +987,6 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
                   additionalInstructions={additionalInstructions}
                   setAdditionalInstructions={setAdditionalInstructions}
                   ignoreProfile={ignoreProfile}
-                  setIgnoreProfile={setIgnoreProfile}
                   hasClient={!!clientId}
                   error={error}
                 />
@@ -1027,6 +1043,8 @@ function Step1Client({
   profileSummary,
   summaryExpanded,
   setSummaryExpanded,
+  ignoreProfile,
+  onIgnoreProfileChange,
 }: {
   clients: User[]
   loadingClients: boolean
@@ -1036,6 +1054,8 @@ function Step1Client({
   profileSummary: ProfileSummary | null
   summaryExpanded: boolean
   setSummaryExpanded: React.Dispatch<React.SetStateAction<boolean>>
+  ignoreProfile: boolean
+  onIgnoreProfileChange: (v: boolean) => void
 }) {
   return (
     <div className="space-y-4">
@@ -1086,8 +1106,27 @@ function Step1Client({
         </div>
       )}
 
+      {/* Ignore profile toggle */}
+      {clientId && profileStatus !== "loading" && (
+        <div className="flex items-center justify-between rounded-lg border p-3">
+          <div className="space-y-0.5">
+            <Label htmlFor="ai-ignore-profile" className="text-sm font-medium cursor-pointer">
+              Ignore athlete profile
+            </Label>
+            <p className="text-[11px] text-muted-foreground">
+              Skip the client&apos;s questionnaire data and create a program from scratch
+            </p>
+          </div>
+          <Switch
+            id="ai-ignore-profile"
+            checked={ignoreProfile}
+            onCheckedChange={onIgnoreProfileChange}
+          />
+        </div>
+      )}
+
       {/* Questionnaire summary panel */}
-      {profileStatus === "found" && profileSummary && (
+      {profileStatus === "found" && profileSummary && !ignoreProfile && (
         <div className="rounded-lg border border-primary/20 bg-primary/5 overflow-hidden">
           <button
             type="button"
@@ -1409,7 +1448,6 @@ function Step3Settings({
   additionalInstructions,
   setAdditionalInstructions,
   ignoreProfile,
-  setIgnoreProfile,
   hasClient,
   error,
 }: {
@@ -1426,7 +1464,6 @@ function Step3Settings({
   additionalInstructions: string
   setAdditionalInstructions: (v: string) => void
   ignoreProfile: boolean
-  setIgnoreProfile: (v: boolean) => void
   hasClient: boolean
   error: string | null
 }) {
@@ -1560,25 +1597,6 @@ function Step3Settings({
               ? `Client pays $${parseFloat(priceDollars).toFixed(2)} USD via Stripe checkout.`
               : "No payment required — client gets access for free."}
           </p>
-        </div>
-      )}
-
-      {/* Ignore Client Profile */}
-      {hasClient && (
-        <div className="flex items-center justify-between rounded-lg border p-3">
-          <div className="space-y-0.5">
-            <Label htmlFor="ai-ignore-profile" className="text-sm font-medium cursor-pointer">
-              Coach-directed mode
-            </Label>
-            <p className="text-[11px] text-muted-foreground">
-              Ignore the client&apos;s profile and rely on your instructions below instead
-            </p>
-          </div>
-          <Switch
-            id="ai-ignore-profile"
-            checked={ignoreProfile}
-            onCheckedChange={setIgnoreProfile}
-          />
         </div>
       )}
 
