@@ -17,6 +17,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { useAiJob } from "@/hooks/use-ai-job"
+import { TemplateSelector } from "@/components/admin/TemplateSelector"
 
 const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
@@ -184,9 +185,12 @@ export function GenerateDayDialog({
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="day-instructions">
-                {ignoreProfile && clientId ? "Coach Instructions (recommended)" : "Coach Instructions (optional)"}
-              </Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="day-instructions">
+                  {ignoreProfile && clientId ? "Coach Instructions (recommended)" : "Coach Instructions (optional)"}
+                </Label>
+                <TemplateSelector onSelect={(prompt) => setInstructions((prev) => prev ? `${prev}\n\n${prompt}` : prompt)} />
+              </div>
               <Textarea
                 id="day-instructions"
                 placeholder={

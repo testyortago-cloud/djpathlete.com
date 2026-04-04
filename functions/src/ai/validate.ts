@@ -194,9 +194,18 @@ export function validateProgram(
     }
   }
 
-  // Missing patterns
+  // Missing patterns — skip check for recovery/deload/testing weeks
   const fundamentalPatterns = ["push", "pull", "squat", "hinge"]
+  const recoveryPhases = new Set<number>()
+  for (const week of skeleton.weeks) {
+    const phase = week.phase.toLowerCase()
+    const intensity = week.intensity_modifier.toLowerCase()
+    if (phase.includes("recovery") || phase.includes("testing") || phase.includes("deload") || intensity.includes("recovery")) {
+      recoveryPhases.add(week.week_number)
+    }
+  }
   for (const [week, patterns] of weekMovements) {
+    if (recoveryPhases.has(week)) continue // Don't enforce pattern coverage on recovery/testing weeks
     for (const fp of fundamentalPatterns) {
       if (!patterns.has(fp)) {
         issues.push({ type: "warning", category: "missing_movement_pattern", message: `Week ${week} is missing the "${fp}" movement pattern` })
@@ -215,8 +224,8 @@ export function validateProgram(
       const slot = slotMap.get(assigned.slot_id)
       if (!slot) continue
 
-      // Check ALL working roles for rotation — only warm_up and cool_down are exempt
-      if (slot.role === "warm_up" || slot.role === "cool_down") continue
+      // Check working roles for rotation — non-working roles are exempt
+      if (slot.role === "warm_up" || slot.role === "cool_down" || slot.role === "activation" || slot.role === "conditioning" || slot.role === "testing") continue
 
       // Build a signature from day + order position (comparable across weeks)
       const sig = `d${slot.day}_${slot.role}_${slot.movement}`

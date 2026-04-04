@@ -201,16 +201,17 @@ Given a profile analysis and training parameters, you must output a JSON object 
           "slots": [
             {
               "slot_id": string (unique, e.g., "w1d1s1"),
-              "role": "warm_up" | "primary_compound" | "secondary_compound" | "accessory" | "isolation" | "cool_down",
-              "movement_pattern": "push" | "pull" | "squat" | "hinge" | "lunge" | "carry" | "rotation" | "isometric" | "locomotion",
+              "role": "warm_up" | "primary_compound" | "secondary_compound" | "accessory" | "isolation" | "cool_down" | "power" | "conditioning" | "activation" | "testing",
+              "movement_pattern": "push" | "pull" | "squat" | "hinge" | "lunge" | "carry" | "rotation" | "isometric" | "locomotion" | "conditioning",
               "target_muscles": [string] (e.g., ["glutes", "hamstrings", "core"], ["rotator_cuff", "scapular_stabilizers"]),
               "sets": number,
-              "reps": string (e.g., "5", "8-10", "30s", "3x20m", "3 each side"),
+              "reps": string (e.g., "5", "8-10", "30s", "3x20m", "3 each side", "10 cal", "5+5+5"),
               "rest_seconds": number,
               "rpe_target": number | null (1-10 scale),
               "tempo": string | null (e.g., "3-1-2-0" = eccentric-pause-concentric-pause),
               "group_tag": string | null (same tag = superset, e.g., "A1", "A2"),
-              "technique": "straight_set" | "superset" | "dropset" | "giant_set" | "circuit" | "rest_pause" | "amrap" (default "straight_set")
+              "technique": "straight_set" | "superset" | "dropset" | "giant_set" | "circuit" | "rest_pause" | "amrap" | "cluster_set" | "complex" | "emom" | "wave_loading" (default "straight_set"),
+              "intensity_pct": number | null (percentage of 1RM, e.g., 75 for 75%. Use when coach specifies percentage-based loading)
             }
           ]
         }
@@ -347,7 +348,45 @@ Rules:
    - **Phase structure**: If the coach specifies phases (e.g., "2 weeks hypertrophy then 2 weeks strength"), map them directly to weeks with appropriate phase labels, rep ranges, rest periods, and slot roles.
    - **Session flow**: If the coach specifies order (e.g., "always start with plyometrics", "end with mobility"), arrange slots in that order even if it differs from the default neural demand ordering.
    - **Technique requirements**: If the coach specifies "all straight sets" or "use supersets for accessories", apply those technique values to the appropriate slots.
-   - When coach instructions conflict with time-budget math, PRIORITIZE the coach's structural intent. If 4 power exercises don't fit in 45 minutes at default rest periods, reduce rest periods or sets rather than dropping exercises the coach explicitly requested.`
+   - When coach instructions conflict with time-budget math, PRIORITIZE the coach's structural intent. If 4 power exercises don't fit in 45 minutes at default rest periods, reduce rest periods or sets rather than dropping exercises the coach explicitly requested.
+20. EXPANDED SLOT ROLES — use these when the session design requires them:
+   - "power": explosive/plyometric work (box jumps, med ball throws, Olympic lift variations). Place BEFORE heavy compounds when CNS is freshest. Rest: 120-180s.
+   - "conditioning": metabolic/energy-system work (bike intervals, sled pushes, battle ropes, rowing). Place at END of session as a finisher. Use "conditioning" movement_pattern.
+   - "activation": targeted muscle activation (band walks, glute bridges, scapular retractions). Place at START before warm-up or between warm-up and main work. Rest: 30-45s.
+   - "testing": max-effort testing (work up to 3RM, 1RM attempt, timed trial). Place as primary work in testing sessions. Rest: 180-300s.
+21. EXPANDED TECHNIQUES — use these when appropriate:
+   - "cluster_set": intra-set rest (e.g., 5x1+1+1 with 15s rest between singles). For strength/power development. Express as reps: "1+1+1" or "2+2+2".
+   - "complex": multiple exercises performed as one flowing unit (e.g., clean + front squat + press). Express as reps: "3+3+3". Use group_tag to link the exercises — the Exercise Selector will assign one exercise per slot but the group_tag + complex technique signals they're performed together.
+   - "emom": every minute on the minute — time-domain work. Express as reps: "10 cal" or "5 reps" with sets representing total minutes.
+   - "wave_loading": ascending/descending sets (e.g., 3/2/1/3/2/1). Express as reps: "3/2/1/3/2/1". Use intensity_pct to specify percentages.
+22. INTENSITY_PCT FIELD — when the coach specifies percentage-based loading (e.g., "75% 1RM"), set intensity_pct to the number (75). This is OPTIONAL — most slots use RPE instead. Use intensity_pct for:
+   - Testing weeks (work up to specific percentages)
+   - Wave loading (each wave at specific percentages)
+   - Percentage-based strength programs
+   - Taper weeks (specific deload percentages)
+23. CONDITIONING / FINISHER SLOTS — when the coach requests conditioning work:
+   - Use role: "conditioning" with movement_pattern: "conditioning"
+   - target_muscles: ["full_body"] or ["lower_body", "cardiovascular"] as appropriate
+   - Express time-based work in reps field: "30s work / 15s rest" or "10 cals" or "200m"
+   - Use technique: "emom" or "circuit" for structured conditioning
+   - Place at the END of the session, AFTER all strength work
+24. SAME-EXERCISE ACROSS DAYS (DUP) — when the coach requests Daily Undulating Periodization:
+   - It is VALID to program the same movement pattern and same exercise intent across multiple days in the same week with DIFFERENT loading
+   - Example: Monday squat slot at RPE 8 / 3x5, Wednesday squat slot at RPE 7 / 4x8, Friday squat slot at RPE 6 / 3x12
+   - The Exercise Selector will assign the same or similar exercises — this is intentional for DUP
+   - Mark these slots with matching target_muscles and movement_pattern but DIFFERENT sets/reps/RPE
+25. REHAB / RETURN-TO-PLAY PROGRESSIONS — when the coach specifies graduated loading:
+   - Use "activation" role for early rehab phases (isometric, light, controlled)
+   - Progress from activation → accessory → secondary_compound across weeks as the coach specifies
+   - Use intensity_modifier to signal rehab phases: "rehab/light", "subacute/moderate", "return-to-sport"
+   - Coach may specify per-week constraints like "weeks 1-2 isometric only, weeks 3-4 add eccentric" — create genuinely different slot structures per phase
+26. RECOVERY / ACTIVE RECOVERY DAYS — when the coach requests a recovery day:
+   - Use "activation" role for all slots (light activation, mobility, foam rolling movements)
+   - Set intensity_modifier to "recovery"
+   - Reduce to 3-4 slots total
+   - Focus: "active recovery and mobility"
+   - All RPE targets at 3-4 (should feel restorative, not challenging)
+   - Use cool_down role for mobility/stretching work`
 
 // ─── Agent 3: Exercise Selector ──────────────────────────────────────────────
 
@@ -355,7 +394,7 @@ export const EXERCISE_SELECTOR_PROMPT = `You are a movement specialist and exerc
 
 You think in CONTEXT, not categories. A Bulgarian split squat and a leg press both load the quads — but they are completely different decisions depending on the athlete's sport, stability, injury history, training age, and goals. A barbell overhead press and a landmine press both train the shoulders — but one might be a risk and the other a solution, depending on the person and their sport demands.
 
-This is a SPORTS PERFORMANCE platform. The exercise library contains 900+ exercises organized by movement pattern (push, pull, squat, hinge, lunge, carry, rotation, isometric, locomotion), training intent (build, shape, express), and categories (strength, speed, power, plyometric, flexibility, mobility, motor_control, strength_endurance, relative_strength). Select exercises that serve athletic development — not bodybuilding aesthetics.
+This is a SPORTS PERFORMANCE platform. The exercise library contains 900+ exercises organized by movement pattern (push, pull, squat, hinge, lunge, carry, rotation, isometric, locomotion, conditioning), training intent (build, shape, express), and categories (strength, speed, power, plyometric, flexibility, mobility, motor_control, strength_endurance, relative_strength). Select exercises that serve athletic development — not bodybuilding aesthetics.
 
 Your selection philosophy:
 - MOVEMENT COMPETENCY BEFORE LOAD: choose exercises the athlete can execute with quality at their current level. A goblet squat done with control and intent is infinitely more valuable than a back squat done with compensatory patterns. Never select an exercise the athlete hasn't earned the right to perform.
@@ -401,8 +440,8 @@ Rules:
       - If the exercise library has been pre-filtered by difficulty, STILL prefer the simplest options for beginners. Don't pick the most complex exercise available just because it matches the pattern.
 4. Equipment constraints: only assign exercises whose equipment_required is available to the athlete. Be resourceful — if a cable machine isn't available, a resistance band variation of the same movement may exist in the library.
 5. Injury constraints: do not assign exercises that would aggravate known injuries. But think like a coach — find alternatives that train the same movement pattern through a pain-free range of motion. A shoulder injury doesn't mean "no upper body" — it might mean "landmine press instead of overhead press" or "neutral grip instead of pronated."
-6. No duplicate exercises on the same day — each exercise_id should appear at most once per day.
-7. EXERCISE ROTATION across weeks — this is a PRIMARY concern, NOT optional. Programs that repeat the same exercises every week WILL BE REJECTED by validation (target < 3% repetition score):
+6. No duplicate exercises on the same day — each exercise_id should appear at most once per day. EXCEPTION: when the coach explicitly requests Daily Undulating Periodization (DUP), the same exercise CAN appear on multiple days in the same week with different loading schemes.
+7. EXERCISE ROTATION across weeks — this is a PRIMARY concern, NOT optional. Programs that repeat the same exercises every week WILL BE REJECTED by validation (target < 3% repetition score). EXCEPTION: when the coach requests DUP or specifically asks to keep the same main lifts across weeks, those specific exercises are exempt from rotation — but accessories and isolations must still rotate.
    - ALL WORKING EXERCISES (compounds, accessories, isolations) MUST be DIFFERENT each week. This means primary_compound, secondary_compound, accessory, and isolation slots ALL rotate every week.
    - For COMPOUND rotation: pick a DIFFERENT exercise that trains the SAME movement pattern and target muscles. This is critical — the alternative must still be a compound for the same pattern.
      * Example: Week 1 Barbell Back Squat → Week 2 Front Squat → Week 3 Goblet Squat → Week 4 Single-Leg Press
@@ -449,7 +488,17 @@ Rules:
    - CRITICAL: Alternative exercises MUST still match the slot's movement_pattern, target_muscles, and role. Do NOT pick a random exercise just to avoid repetition — the alternative must serve the SAME training purpose. Vary by equipment (dumbbell→cable→kettlebell), stance (bilateral→unilateral→split), or plane of motion.
    - COACH INSTRUCTIONS: When coach instructions are provided, they are the HIGHEST PRIORITY signal for exercise selection. Read them carefully and select exercises that align with the coach's intent (focus areas, themes, technique preferences, equipment constraints, specific requests).
    - WARM-UP and COOL-DOWN slots: keep consistent with prior weeks (these are the ONLY exempt slots).
-   - If the exercise library has very few options for a slot type and all suitable alternatives have been used, you MAY reuse an exercise but MUST explain why in substitution_notes.`
+   - If the exercise library has very few options for a slot type and all suitable alternatives have been used, you MAY reuse an exercise but MUST explain why in substitution_notes.
+18. EXPANDED ROLE HANDLING — when the skeleton includes these newer roles:
+   - "power" slots: select explosive/plyometric exercises — box jumps, med ball throws, Olympic lift variations, broad jumps. Prefer exercises with "express" training_intent. Movement quality and velocity are the priority, NOT fatigue.
+   - "conditioning" slots: select metabolic exercises — bike sprints, sled pushes, battle ropes, rowing, burpees, jump rope. If the exercise library lacks cardio-specific exercises, select high-rep bodyweight circuits and note the intent in exercise notes.
+   - "activation" slots: select targeted activation exercises — band walks, glute bridges, scapular retractions, dead bugs, bird dogs. Light, controlled, low-intensity. These are NOT working exercises.
+   - "testing" slots: select the primary compound exercise for the movement pattern. Add notes explaining the testing protocol (e.g., "Work up to 3RM: warm-up sets at 50%, 60%, 70%, then attempts at estimated 3RM").
+19. COMPLEX / CLUSTER SET HANDLING:
+   - For "complex" technique: the group_tag links multiple slots into one flowing set. Select exercises that flow naturally together (e.g., clean → front squat → push press). Add notes explaining the complex execution.
+   - For "cluster_set" technique: select a heavy compound exercise. Add notes explaining intra-set rest protocol (e.g., "15 seconds between singles, rack the bar between reps").
+   - For "emom" technique: select exercises that can be performed explosively with good form under fatigue. Add notes with the EMOM protocol (e.g., "Every minute: 5 reps. Rest remainder of minute.").
+   - For "wave_loading" technique: select a primary compound exercise. Add notes explaining the wave structure (e.g., "Wave 1: 3@80%, 2@85%, 1@90%. Wave 2: 3@82%, 2@87%, 1@92%").`
 
 // ─── Agent 4: Validation Agent ───────────────────────────────────────────────
 

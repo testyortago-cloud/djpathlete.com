@@ -27,7 +27,7 @@ export type OccupationActivityLevel = "sedentary" | "light" | "moderate" | "heav
 export type MovementConfidence = "learning" | "comfortable" | "proficient" | "expert"
 
 // AI program generation types
-export type MovementPattern = "push" | "pull" | "squat" | "hinge" | "lunge" | "carry" | "rotation" | "isometric" | "locomotion"
+export type MovementPattern = "push" | "pull" | "squat" | "hinge" | "lunge" | "carry" | "rotation" | "isometric" | "locomotion" | "conditioning"
 export type ForceType = "push" | "pull" | "static" | "dynamic"
 export type Laterality = "bilateral" | "unilateral" | "alternating"
 export type SplitType = "full_body" | "upper_lower" | "push_pull_legs" | "push_pull" | "body_part" | "movement_pattern" | "custom"

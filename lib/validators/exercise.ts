@@ -34,6 +34,7 @@ export const MOVEMENT_PATTERNS = [
   "rotation",
   "isometric",
   "locomotion",
+  "conditioning",
 ] as const
 
 export const FORCE_TYPES = [

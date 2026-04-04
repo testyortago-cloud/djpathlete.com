@@ -75,6 +75,7 @@ import { FormTour } from "@/components/admin/FormTour"
 import { TourButton } from "@/components/admin/TourButton"
 import { getAiGenerateTourSteps } from "@/lib/tour-steps"
 import { AssignProgramDialog } from "@/components/admin/AssignProgramDialog"
+import { TemplateSelector } from "@/components/admin/TemplateSelector"
 import type { User, ClientProfile } from "@/types/database"
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -1583,12 +1584,15 @@ function Step3Settings({
 
       {/* Additional Instructions */}
       <div className="space-y-2">
-        <Label htmlFor="ai-instructions">
-          {ignoreProfile && hasClient ? "Coach Instructions" : "Additional Instructions"}
-          <span className="text-muted-foreground font-normal ml-1">
-            {ignoreProfile && hasClient ? "(recommended)" : "(optional)"}
-          </span>
-        </Label>
+        <div className="flex items-center justify-between">
+          <Label htmlFor="ai-instructions">
+            {ignoreProfile && hasClient ? "Coach Instructions" : "Additional Instructions"}
+            <span className="text-muted-foreground font-normal ml-1">
+              {ignoreProfile && hasClient ? "(recommended)" : "(optional)"}
+            </span>
+          </Label>
+          <TemplateSelector onSelect={(prompt) => setAdditionalInstructions(additionalInstructions ? `${additionalInstructions}\n\n${prompt}` : prompt)} />
+        </div>
         <Textarea
           id="ai-instructions"
           value={additionalInstructions}

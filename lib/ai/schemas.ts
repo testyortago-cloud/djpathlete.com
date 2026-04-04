@@ -64,6 +64,10 @@ const exerciseSlotSchema = z.object({
     "accessory",
     "isolation",
     "cool_down",
+    "power",
+    "conditioning",
+    "activation",
+    "testing",
   ]),
   movement_pattern: z.enum(MOVEMENT_PATTERNS),
   target_muscles: z.array(z.string()).min(1),
@@ -81,7 +85,12 @@ const exerciseSlotSchema = z.object({
     "circuit",
     "rest_pause",
     "amrap",
+    "cluster_set",
+    "complex",
+    "emom",
+    "wave_loading",
   ]).default("straight_set"),
+  intensity_pct: z.number().nullable().optional().default(null),
 })
 
 const programDaySchema = z.object({

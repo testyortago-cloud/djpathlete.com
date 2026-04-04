@@ -13,7 +13,7 @@ const PERIODIZATION_TYPES = [
 
 const MOVEMENT_PATTERNS = [
   "push", "pull", "squat", "hinge", "lunge",
-  "carry", "rotation", "isometric", "locomotion",
+  "carry", "rotation", "isometric", "locomotion", "conditioning",
 ] as const
 
 // ─── Agent 1: Profile Analysis Schema ────────────────────────────────────────
@@ -59,6 +59,7 @@ const exerciseSlotSchema = z.object({
   role: z.enum([
     "warm_up", "primary_compound", "secondary_compound",
     "accessory", "isolation", "cool_down",
+    "power", "conditioning", "activation", "testing",
   ]),
   movement_pattern: z.enum(MOVEMENT_PATTERNS),
   target_muscles: z.array(z.string()).min(1),
@@ -71,7 +72,9 @@ const exerciseSlotSchema = z.object({
   technique: z.enum([
     "straight_set", "superset", "dropset",
     "giant_set", "circuit", "rest_pause", "amrap",
+    "cluster_set", "complex", "emom", "wave_loading",
   ]).default("straight_set"),
+  intensity_pct: z.number().nullable().optional().default(null),
 })
 
 const programDaySchema = z.object({

@@ -37,7 +37,7 @@ export interface ProfileAnalysis {
 
 export interface ExerciseSlot {
   slot_id: string
-  role: "warm_up" | "primary_compound" | "secondary_compound" | "accessory" | "isolation" | "cool_down"
+  role: "warm_up" | "primary_compound" | "secondary_compound" | "accessory" | "isolation" | "cool_down" | "power" | "conditioning" | "activation" | "testing"
   movement_pattern: MovementPattern
   target_muscles: string[]
   sets: number
@@ -46,7 +46,8 @@ export interface ExerciseSlot {
   rpe_target: number | null
   tempo: string | null
   group_tag: string | null
-  technique: "straight_set" | "superset" | "dropset" | "giant_set" | "circuit" | "rest_pause" | "amrap"
+  technique: "straight_set" | "superset" | "dropset" | "giant_set" | "circuit" | "rest_pause" | "amrap" | "cluster_set" | "complex" | "emom" | "wave_loading"
+  intensity_pct?: number | null
 }
 
 export interface ProgramDay {

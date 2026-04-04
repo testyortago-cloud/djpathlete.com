@@ -17,6 +17,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { useAiJob } from "@/hooks/use-ai-job"
+import { TemplateSelector } from "@/components/admin/TemplateSelector"
 
 interface GenerateWeekDialogProps {
   open: boolean
@@ -185,9 +186,12 @@ export function GenerateWeekDialog({
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="instructions">
-                {ignoreProfile && clientId ? "Coach Instructions (recommended)" : "Coach Instructions (optional)"}
-              </Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="instructions">
+                  {ignoreProfile && clientId ? "Coach Instructions (recommended)" : "Coach Instructions (optional)"}
+                </Label>
+                <TemplateSelector onSelect={(prompt) => setInstructions((prev) => prev ? `${prev}\n\n${prompt}` : prompt)} />
+              </div>
               <Textarea
                 id="instructions"
                 placeholder={

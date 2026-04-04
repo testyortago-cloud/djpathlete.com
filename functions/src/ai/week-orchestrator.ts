@@ -109,16 +109,17 @@ const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Satu
 
 const SLOT_SCHEMA = `{
               "slot_id": string (unique, format "w{week}d{day}s{slot}"),
-              "role": "warm_up" | "primary_compound" | "secondary_compound" | "accessory" | "isolation" | "cool_down",
-              "movement_pattern": "push" | "pull" | "squat" | "hinge" | "lunge" | "carry" | "rotation" | "isometric" | "locomotion",
+              "role": "warm_up" | "primary_compound" | "secondary_compound" | "accessory" | "isolation" | "cool_down" | "power" | "conditioning" | "activation" | "testing",
+              "movement_pattern": "push" | "pull" | "squat" | "hinge" | "lunge" | "carry" | "rotation" | "isometric" | "locomotion" | "conditioning",
               "target_muscles": [string],
               "sets": number,
-              "reps": string,
+              "reps": string (e.g., "8-10", "30s", "10 cal", "3+3+3", "3/2/1/3/2/1"),
               "rest_seconds": number,
               "rpe_target": number | null,
               "tempo": string | null,
               "group_tag": string | null,
-              "technique": "straight_set" | "superset" | "dropset" | "giant_set" | "circuit" | "rest_pause" | "amrap"
+              "technique": "straight_set" | "superset" | "dropset" | "giant_set" | "circuit" | "rest_pause" | "amrap" | "cluster_set" | "complex" | "emom" | "wave_loading",
+              "intensity_pct": number | null (percentage of 1RM, optional)
             }`
 
 function buildArchitectPrompt(mode: "week" | "day"): string {
