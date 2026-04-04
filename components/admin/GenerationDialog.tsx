@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { useAiJob } from "@/hooks/use-ai-job"
+import { TemplateSelector } from "@/components/admin/TemplateSelector"
 
 const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
@@ -216,7 +217,10 @@ export function GenerationDialog(props: GenerationDialogProps) {
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="gen-instructions">Coach Instructions (optional)</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="gen-instructions">Coach Instructions (optional)</Label>
+                <TemplateSelector onSelect={(prompt) => setInstructions((prev) => prev ? `${prev}\n\n${prompt}` : prompt)} />
+              </div>
               <Textarea
                 id="gen-instructions"
                 placeholder={placeholder}

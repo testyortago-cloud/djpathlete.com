@@ -203,9 +203,47 @@ export function ProgramBuilder({
     }
   }
 
-  // Exercise Pool state
-  const [poolOpen, setPoolOpen] = useState(false)
-  const [poolExercises, setPoolExercises] = useState<Exercise[]>([])
+  // Exercise Pool state — persist IDs in sessionStorage so pool survives router.refresh()
+  const poolStorageKey = `exercise-pool-${programId}`
+
+  const [poolExercises, setPoolExercisesRaw] = useState<Exercise[]>(() => {
+    if (typeof window === "undefined") return []
+    try {
+      const stored = sessionStorage.getItem(poolStorageKey)
+      if (!stored) return []
+      const ids: string[] = JSON.parse(stored)
+      const idSet = new Set(ids)
+      return exercises.filter((e) => idSet.has(e.id))
+    } catch {
+      return []
+    }
+  })
+
+  const setPoolExercises = useCallback((update: Exercise[] | ((prev: Exercise[]) => Exercise[])) => {
+    setPoolExercisesRaw((prev) => {
+      const next = typeof update === "function" ? update(prev) : update
+      try {
+        if (next.length > 0) {
+          sessionStorage.setItem(poolStorageKey, JSON.stringify(next.map((e) => e.id)))
+        } else {
+          sessionStorage.removeItem(poolStorageKey)
+        }
+      } catch { /* quota exceeded — ignore */ }
+      return next
+    })
+  }, [poolStorageKey])
+
+  const [poolOpen, setPoolOpen] = useState(() => {
+    if (typeof window === "undefined") return false
+    try {
+      const stored = sessionStorage.getItem(poolStorageKey)
+      if (!stored) return false
+      const ids: string[] = JSON.parse(stored)
+      return ids.length > 0
+    } catch {
+      return false
+    }
+  })
   const [activePoolExercise, setActivePoolExercise] = useState<Exercise | null>(null)
 
   // Active drag item (for overlay)
