@@ -21,6 +21,7 @@ import {
   Redo,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { renderLegalContent } from "@/lib/legal-content"
 
 interface LegalEditorProps {
   content: string
@@ -35,6 +36,9 @@ export function LegalEditor({
   disabled = false,
   minHeight = "400px",
 }: LegalEditorProps) {
+  // Convert markdown to HTML if the content isn't already HTML
+  const initialContent = content.trim().startsWith("<") ? content : renderLegalContent(content)
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -50,7 +54,7 @@ export function LegalEditor({
       }),
     ],
     immediatelyRender: false,
-    content,
+    content: initialContent,
     editable: !disabled,
     onUpdate: ({ editor: e }) => {
       onChange(e.getHTML())
