@@ -237,6 +237,11 @@ const blogResultSchema = z.object({
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
+async function isJobCancelled(jobRef: FirebaseFirestore.DocumentReference): Promise<boolean> {
+  const snap = await jobRef.get()
+  return snap.exists && snap.data()?.status === "cancelled"
+}
+
 export async function handleBlogGeneration(jobId: string): Promise<void> {
   const db = getFirestore()
   const jobRef = db.collection("ai_jobs").doc(jobId)
@@ -302,6 +307,12 @@ export async function handleBlogGeneration(jobId: string): Promise<void> {
       }
     }
 
+    // Check cancellation before expensive AI call
+    if (await isJobCancelled(jobRef)) {
+      console.log(`[blog-generation] Job ${jobId} cancelled before AI call`)
+      return
+    }
+
     // Step 2: Generate the blog post with all reference context
     // User references come first (primary), auto-research follows (supplementary)
     const userMessage = `Write a blog post about: ${input.prompt}
@@ -316,6 +327,12 @@ Current date: ${new Date().toISOString().slice(0, 10)}${userRefBlock}${researchB
       blogResultSchema,
       { model: MODEL_SONNET }
     )
+
+    // Check cancellation after AI call
+    if (await isJobCancelled(jobRef)) {
+      console.log(`[blog-generation] Job ${jobId} cancelled after AI call`)
+      return
+    }
 
     // Step 3: Validate all URLs in the generated content — remove any 404s
     const validatedContent = await validateUrls(result.content.content)

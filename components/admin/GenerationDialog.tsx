@@ -115,14 +115,25 @@ export function GenerationDialog(props: GenerationDialogProps) {
     }
   }
 
-  function handleCancel() {
-    // Allow closing during generation (abandon the job)
-    if (isGenerating) {
-      setJobId(null)
-      reset()
-      onOpenChange(false)
-      return
+  const [isCancelling, setIsCancelling] = useState(false)
+
+  async function handleCancel() {
+    if (!jobId || isCancelling) return
+    setIsCancelling(true)
+    try {
+      await fetch("/api/admin/programs/generate/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId }),
+      })
+    } catch {
+      // Best-effort cancel
     }
+    setJobId(null)
+    setInstructions("")
+    reset()
+    setIsCancelling(false)
+    onOpenChange(false)
   }
 
   function handleClose() {
@@ -257,6 +268,18 @@ export function GenerationDialog(props: GenerationDialogProps) {
         )}
 
         <DialogFooter>
+          {isGenerating && (
+            <Button variant="outline" onClick={handleCancel} disabled={isCancelling}>
+              {isCancelling ? (
+                <>
+                  <Loader2 className="size-3.5 animate-spin" />
+                  Cancelling...
+                </>
+              ) : (
+                "Cancel Generation"
+              )}
+            </Button>
+          )}
           {!isGenerating && !isComplete && (
             <>
               <Button type="button" variant="outline" onClick={handleClose} disabled={isSubmitting}>

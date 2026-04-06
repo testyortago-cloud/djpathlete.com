@@ -54,6 +54,11 @@ const newsletterResultSchema = z.object({
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
+async function isJobCancelled(jobRef: FirebaseFirestore.DocumentReference): Promise<boolean> {
+  const snap = await jobRef.get()
+  return snap.exists && snap.data()?.status === "cancelled"
+}
+
 export async function handleNewsletterGeneration(jobId: string): Promise<void> {
   const db = getFirestore()
   const jobRef = db.collection("ai_jobs").doc(jobId)
@@ -82,12 +87,24 @@ Tone: ${input.tone ?? "professional"}
 Target length: ${input.length ?? "medium"}
 Current date: ${new Date().toISOString().slice(0, 10)}`
 
+    // Check cancellation before expensive AI call
+    if (await isJobCancelled(jobRef)) {
+      console.log(`[newsletter-generation] Job ${jobId} cancelled before AI call`)
+      return
+    }
+
     const result = await callAgent(
       NEWSLETTER_GENERATION_PROMPT,
       userMessage,
       newsletterResultSchema,
       { model: MODEL_SONNET }
     )
+
+    // Check cancellation after AI call
+    if (await isJobCancelled(jobRef)) {
+      console.log(`[newsletter-generation] Job ${jobId} cancelled after AI call`)
+      return
+    }
 
     // Log generation (non-fatal)
     try {

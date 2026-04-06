@@ -124,6 +124,25 @@ export function NewsletterGenerateDialog({
     }
   }
 
+  const [isCancelling, setIsCancelling] = useState(false)
+
+  async function handleCancelJob() {
+    if (!jobId || isCancelling) return
+    setIsCancelling(true)
+    try {
+      await fetch("/api/admin/programs/generate/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId }),
+      })
+    } catch {
+      // Best-effort cancel
+    }
+    resetState()
+    setIsCancelling(false)
+    onOpenChange(false)
+  }
+
   function handleClose(open: boolean) {
     if (jobId && aiJob.status !== "completed" && aiJob.status !== "failed") {
       return
@@ -170,6 +189,15 @@ export function NewsletterGenerateDialog({
             <p className="text-xs text-muted-foreground">
               {elapsed}s elapsed — this usually takes 15-30 seconds
             </p>
+            <button
+              type="button"
+              onClick={handleCancelJob}
+              disabled={isCancelling}
+              className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-surface transition-colors disabled:opacity-50"
+            >
+              {isCancelling ? <Loader2 className="size-3 animate-spin" /> : null}
+              {isCancelling ? "Cancelling..." : "Cancel Generation"}
+            </button>
           </div>
         ) : (
           <>

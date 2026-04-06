@@ -90,6 +90,28 @@ export function GenerateWeekDialog({
     }
   }
 
+  const [isCancelling, setIsCancelling] = useState(false)
+
+  async function handleCancelJob() {
+    if (!jobId || isCancelling) return
+    setIsCancelling(true)
+    try {
+      await fetch("/api/admin/programs/generate/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId }),
+      })
+    } catch {
+      // Best-effort cancel
+    }
+    setJobId(null)
+    setInstructions("")
+    setIgnoreProfile(false)
+    reset()
+    setIsCancelling(false)
+    onOpenChange(false)
+  }
+
   function handleClose() {
     if (isGenerating) return
     if (isComplete && result) {
@@ -232,6 +254,18 @@ export function GenerateWeekDialog({
         )}
 
         <DialogFooter>
+          {isGenerating && (
+            <Button variant="outline" onClick={handleCancelJob} disabled={isCancelling}>
+              {isCancelling ? (
+                <>
+                  <Loader2 className="size-3.5 animate-spin" />
+                  Cancelling...
+                </>
+              ) : (
+                "Cancel Generation"
+              )}
+            </Button>
+          )}
           {!isGenerating && !isComplete && (
             <>
               <Button
