@@ -16,6 +16,7 @@ const GROUP_TECHNIQUE_LABELS: Partial<Record<TrainingTechnique, string>> = {
   superset: "Superset",
   giant_set: "Giant Set",
   circuit: "Circuit",
+  complex: "Complex",
 }
 
 type ProgramExerciseWithExercise = ProgramExercise & { exercises: Exercise }

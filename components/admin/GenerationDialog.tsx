@@ -115,6 +115,16 @@ export function GenerationDialog(props: GenerationDialogProps) {
     }
   }
 
+  function handleCancel() {
+    // Allow closing during generation (abandon the job)
+    if (isGenerating) {
+      setJobId(null)
+      reset()
+      onOpenChange(false)
+      return
+    }
+  }
+
   function handleClose() {
     if (isGenerating) return
     if (isComplete) {
@@ -170,8 +180,8 @@ export function GenerationDialog(props: GenerationDialogProps) {
     : "Done"
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md">
+    <Dialog open={open} onOpenChange={isGenerating ? handleCancel : handleClose}>
+      <DialogContent className="sm:max-w-md" onPointerDownOutside={isGenerating ? (e) => e.preventDefault() : undefined} onEscapeKeyDown={isGenerating ? (e) => { e.preventDefault(); handleCancel() } : undefined}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="size-4 text-accent" />

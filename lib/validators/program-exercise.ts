@@ -9,12 +9,15 @@ export const TRAINING_TECHNIQUE_OPTIONS = [
   "rest_pause",
   "amrap",
   "cluster_set",
+  "complex",
+  "emom",
+  "wave_loading",
 ] as const
 
 export type TrainingTechniqueOption = (typeof TRAINING_TECHNIQUE_OPTIONS)[number]
 
 /** Techniques that require a group_tag to pair exercises together */
-export const GROUPED_TECHNIQUES: TrainingTechniqueOption[] = ["superset", "giant_set", "circuit"]
+export const GROUPED_TECHNIQUES: TrainingTechniqueOption[] = ["superset", "giant_set", "circuit", "complex"]
 
 /**
  * Nullable coerced number — converts null/undefined to undefined BEFORE z.coerce

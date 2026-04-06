@@ -177,6 +177,11 @@ export function buildSlotLookups(weeks: ProgramWeek[]) {
   return { slotLookup, slotDetailsLookup }
 }
 
+const VALID_TECHNIQUES = new Set([
+  "straight_set", "superset", "dropset", "giant_set", "circuit",
+  "rest_pause", "amrap", "cluster_set", "complex", "emom", "wave_loading",
+])
+
 export function buildExerciseRows(
   assignments: Array<{ slot_id: string; exercise_id: string; notes: string | null }>,
   slotLookup: Map<string, SlotLocation>,
@@ -203,7 +208,7 @@ export function buildExerciseRows(
         intensity_pct: null,
         tempo: details.tempo,
         group_tag: details.group_tag,
-        technique: details.technique ?? "straight_set",
+        technique: VALID_TECHNIQUES.has(details.technique ?? "") ? details.technique : "straight_set",
       }
     })
     .filter((r) => r !== null) as Record<string, unknown>[]

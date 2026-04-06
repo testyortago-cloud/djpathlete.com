@@ -57,6 +57,9 @@ const TECHNIQUE_CONFIG: Record<TrainingTechniqueOption, { label: string; descrip
   rest_pause: { label: "Rest-Pause", description: "Set to failure, rest 10-15s, continue" },
   amrap: { label: "AMRAP", description: "As many reps as possible" },
   cluster_set: { label: "Cluster Set", description: "Short intra-set rest between rep clusters" },
+  complex: { label: "Complex", description: "Multiple movements flow together in one set" },
+  emom: { label: "EMOM", description: "Every minute on the minute" },
+  wave_loading: { label: "Wave Loading", description: "Ascending/descending sets (e.g., 3/2/1)" },
 }
 
 /** Find the next available group letter (A, B, C...) for the given day's exercises */
