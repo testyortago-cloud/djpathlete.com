@@ -20,6 +20,7 @@ import {
   Video,
   ClipboardCheck,
   CalendarCheck,
+  Scale,
   Settings,
   LogOut,
 } from "lucide-react"
@@ -78,6 +79,12 @@ const navSections: NavSection[] = [
       { label: "Payments", href: "/admin/payments", icon: CreditCard },
       { label: "Analytics", href: "/admin/analytics", icon: BarChart3 },
       { label: "Reviews", href: "/admin/reviews", icon: Star },
+    ],
+  },
+  {
+    title: "Legal",
+    items: [
+      { label: "Legal Documents", href: "/admin/legal", icon: Scale },
     ],
   },
 ]

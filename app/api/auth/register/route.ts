@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server"
 import { hash } from "bcryptjs"
-import { registerSchema } from "@/lib/validators/register"
+import { registerSchema, calculateAge } from "@/lib/validators/register"
 import { createServiceRoleClient } from "@/lib/supabase"
 import { createEmailVerificationToken } from "@/lib/db/email-verification-tokens"
 import { sendVerificationEmail, sendNewRegistrationEmail } from "@/lib/email"
 import { ghlCreateContact, ghlTriggerWorkflow } from "@/lib/ghl"
+import { getActiveDocument } from "@/lib/db/legal-documents"
+import { createConsent } from "@/lib/db/consents"
 import type { User } from "@/types/database"
 
 export async function POST(request: Request) {
@@ -19,8 +21,10 @@ export async function POST(request: Request) {
       )
     }
 
-    const { firstName, lastName, email, password } = result.data
+    const { firstName, lastName, email, password, dateOfBirth, guardianName, guardianEmail } = result.data
     const supabase = createServiceRoleClient()
+    const age = calculateAge(dateOfBirth)
+    const isMinor = age < 18
 
     // Check if email already exists
     const { data: existingUser } = await supabase
@@ -40,6 +44,7 @@ export async function POST(request: Request) {
     const password_hash = await hash(password, 12)
 
     // Create user
+    const now = new Date().toISOString()
     const { data: user, error: userError } = await supabase
       .from("users")
       .insert({
@@ -51,6 +56,8 @@ export async function POST(request: Request) {
         status: "active" as const,
         avatar_url: null,
         phone: null,
+        terms_accepted_at: now,
+        privacy_accepted_at: now,
       })
       .select()
       .single()
@@ -65,12 +72,12 @@ export async function POST(request: Request) {
 
     const typedUser = user as User
 
-    // Create empty client profile
+    // Create client profile with DOB and guardian info
     const { error: profileError } = await supabase
       .from("client_profiles")
       .insert({
         user_id: typedUser.id,
-        date_of_birth: null,
+        date_of_birth: dateOfBirth,
         gender: null,
         sport: null,
         position: null,
@@ -81,11 +88,61 @@ export async function POST(request: Request) {
         weight_kg: null,
         emergency_contact_name: null,
         emergency_contact_phone: null,
+        is_minor: isMinor,
+        guardian_name: isMinor ? guardianName || null : null,
+        guardian_email: isMinor ? guardianEmail || null : null,
+        parental_consent_at: isMinor ? now : null,
       })
 
     if (profileError) {
       console.error("Failed to create client profile:", profileError)
       // User was created but profile failed — don't block registration
+    }
+
+    // Record legal consents (non-blocking)
+    try {
+      const ipAddress = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || null
+      const userAgent = request.headers.get("user-agent") || null
+
+      const [tosDoc, privacyDoc] = await Promise.all([
+        getActiveDocument("terms_of_service"),
+        getActiveDocument("privacy_policy"),
+      ])
+
+      const consentPromises = [
+        createConsent({
+          user_id: typedUser.id,
+          consent_type: "terms_of_service",
+          legal_document_id: tosDoc?.id || null,
+          ip_address: ipAddress,
+          user_agent: userAgent,
+        }),
+        createConsent({
+          user_id: typedUser.id,
+          consent_type: "privacy_policy",
+          legal_document_id: privacyDoc?.id || null,
+          ip_address: ipAddress,
+          user_agent: userAgent,
+        }),
+      ]
+
+      if (isMinor) {
+        consentPromises.push(
+          createConsent({
+            user_id: typedUser.id,
+            consent_type: "parental_consent",
+            ip_address: ipAddress,
+            user_agent: userAgent,
+            guardian_name: guardianName || null,
+            guardian_email: guardianEmail || null,
+          })
+        )
+      }
+
+      await Promise.all(consentPromises)
+    } catch (consentError) {
+      console.error("Failed to record consents:", consentError)
+      // Don't block registration if consent recording fails
     }
 
     // Send verification email (non-blocking — don't fail registration if this fails)

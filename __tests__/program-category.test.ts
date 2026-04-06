@@ -105,6 +105,10 @@ function makeEmptyProfile(): ClientProfile {
     exercise_dislikes: null,
     training_background: null,
     additional_notes: null,
+    is_minor: false,
+    guardian_name: null,
+    guardian_email: null,
+    parental_consent_at: null,
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
   }

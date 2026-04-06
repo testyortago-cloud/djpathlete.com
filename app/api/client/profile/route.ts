@@ -78,6 +78,10 @@ export async function PATCH(request: Request) {
         training_background: null,
         additional_notes: null,
         weight_unit: "lbs",
+        is_minor: false,
+        guardian_name: null,
+        guardian_email: null,
+        parental_consent_at: null,
       })
       return NextResponse.json(newProfile)
     }

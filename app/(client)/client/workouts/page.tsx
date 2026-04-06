@@ -13,6 +13,7 @@ import { WorkoutViewToggle } from "@/components/client/WorkoutViewToggle"
 import type { WorkoutCalendarDay } from "@/components/client/WorkoutCalendar"
 import { Dumbbell } from "lucide-react"
 import { isAssignmentExpired } from "@/lib/utils"
+import { WaiverGate } from "@/components/client/WaiverGate"
 import type { Program, ProgramAssignment, Exercise, ProgramExercise, ProgramWeekAccess } from "@/types/database"
 
 export const dynamic = "force-dynamic"
@@ -323,24 +324,26 @@ export default async function ClientWorkoutsPage() {
   }
 
   return (
-    <div>
-      <PageHeader
-        title="My Workouts"
-        description="Your daily training plan. Follow your scheduled exercises, log your sets, and track weights for each session."
-      />
+    <WaiverGate userId={userId} assignments={activeAssignments}>
+      <div>
+        <PageHeader
+          title="My Workouts"
+          description="Your daily training plan. Follow your scheduled exercises, log your sets, and track weights for each session."
+        />
 
-      {activeAssignments.length === 0 ? (
-        <EmptyState
-          icon={Dumbbell}
-          heading="No active programs"
-          description="You don't have any active workout programs. Once a program is assigned to you, your exercises will appear here."
-        />
-      ) : (
-        <WorkoutViewToggle
-          tabsProps={{ programs: tabPrograms, todayDow: getTodayDow() }}
-          calendarDays={calendarDays}
-        />
-      )}
-    </div>
+        {activeAssignments.length === 0 ? (
+          <EmptyState
+            icon={Dumbbell}
+            heading="No active programs"
+            description="You don't have any active workout programs. Once a program is assigned to you, your exercises will appear here."
+          />
+        ) : (
+          <WorkoutViewToggle
+            tabsProps={{ programs: tabPrograms, todayDow: getTodayDow() }}
+            calendarDays={calendarDays}
+          />
+        )}
+      </div>
+    </WaiverGate>
   )
 }

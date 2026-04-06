@@ -50,6 +50,10 @@ export type AssessmentQuestionType = "yes_no" | "single_select" | "multi_select"
 export type AssessmentType = "initial" | "reassessment"
 export type AbilityLevel = "beginner" | "intermediate" | "advanced" | "elite"
 
+// Legal compliance types
+export type LegalDocumentType = "terms_of_service" | "privacy_policy" | "liability_waiver"
+export type ConsentType = "terms_of_service" | "privacy_policy" | "liability_waiver" | "parental_consent"
+
 export interface SetDetail {
   set_number: number
   weight_kg: number | null
@@ -81,6 +85,8 @@ export interface User {
   email_verified: boolean
   status: UserStatus
   stripe_customer_id: string | null
+  terms_accepted_at: string | null
+  privacy_accepted_at: string | null
   created_at: string
   updated_at: string
 }
@@ -119,8 +125,37 @@ export interface ClientProfile {
   exercise_dislikes: string | null
   training_background: string | null
   additional_notes: string | null
+  is_minor: boolean
+  guardian_name: string | null
+  guardian_email: string | null
+  parental_consent_at: string | null
   created_at: string
   updated_at: string
+}
+
+export interface LegalDocument {
+  id: string
+  document_type: LegalDocumentType
+  version: number
+  title: string
+  content: string
+  effective_date: string
+  is_active: boolean
+  created_at: string
+}
+
+export interface UserConsent {
+  id: string
+  user_id: string
+  consent_type: ConsentType
+  legal_document_id: string | null
+  program_id: string | null
+  ip_address: string | null
+  user_agent: string | null
+  guardian_name: string | null
+  guardian_email: string | null
+  consented_at: string
+  revoked_at: string | null
 }
 
 export interface Exercise {

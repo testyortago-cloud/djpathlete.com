@@ -110,6 +110,10 @@ export async function POST(request: Request) {
         training_background: profileUpdates.training_background,
         additional_notes: profileUpdates.additional_notes,
         weight_unit: "kg",
+        is_minor: false,
+        guardian_name: null,
+        guardian_email: null,
+        parental_consent_at: null,
       })
       // Sync to GoHighLevel (non-blocking)
       try {
