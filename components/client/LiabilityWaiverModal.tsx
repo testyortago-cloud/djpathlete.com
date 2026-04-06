@@ -14,6 +14,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { ShieldCheck } from "lucide-react"
+import { renderLegalContent } from "@/lib/legal-content"
 
 interface LiabilityWaiverModalProps {
   programId: string
@@ -75,7 +76,7 @@ export function LiabilityWaiverModal({
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground leading-relaxed">
-          <div dangerouslySetInnerHTML={{ __html: markdownToHtml(waiverContent) }} />
+          <div dangerouslySetInnerHTML={{ __html: renderLegalContent(waiverContent) }} />
         </div>
 
         {error && (
@@ -112,16 +113,4 @@ export function LiabilityWaiverModal({
       </DialogContent>
     </Dialog>
   )
-}
-
-function markdownToHtml(markdown: string): string {
-  return markdown
-    .replace(/^### (.+)$/gm, "<h3 class='font-heading text-base font-semibold text-foreground mt-4 mb-2'>$1</h3>")
-    .replace(/^## (.+)$/gm, "<h2 class='font-heading text-lg font-semibold text-foreground mt-6 mb-3'>$1</h2>")
-    .replace(/^# (.+)$/gm, "<h1 class='font-heading text-xl font-bold text-foreground mt-6 mb-3'>$1</h1>")
-    .replace(/\*\*(.+?)\*\*/g, "<strong class='text-foreground'>$1</strong>")
-    .replace(/\*(.+?)\*/g, "<em>$1</em>")
-    .replace(/^- (.+)$/gm, "<li class='ml-4 list-disc'>$1</li>")
-    .replace(/\n{2,}/g, "<br /><br />")
-    .replace(/\n---\n/g, "<hr class='my-4 border-border' />")
 }

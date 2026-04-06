@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import { getActiveDocument } from "@/lib/db/legal-documents"
+import { renderLegalContent } from "@/lib/legal-content"
 
 export const metadata: Metadata = {
   title: "Privacy Policy",
@@ -37,7 +38,7 @@ export default async function PrivacyPolicyPage() {
 
         <div className="prose prose-neutral max-w-none dark:prose-invert prose-headings:font-heading prose-headings:tracking-tight prose-h2:text-xl prose-h2:mt-8 prose-h2:mb-4 prose-p:text-muted-foreground prose-li:text-muted-foreground prose-strong:text-foreground">
           {doc ? (
-            <div dangerouslySetInnerHTML={{ __html: markdownToHtml(doc.content) }} />
+            <div dangerouslySetInnerHTML={{ __html: renderLegalContent(doc.content) }} />
           ) : (
             <p className="text-muted-foreground">
               Our Privacy Policy is being prepared. Please check back soon.
@@ -46,22 +47,5 @@ export default async function PrivacyPolicyPage() {
         </div>
       </div>
     </div>
-  )
-}
-
-function markdownToHtml(markdown: string): string {
-  return (
-    markdown
-      // Strip the leading h1 title (already rendered by the page header)
-      .replace(/^# .+\n*/m, "")
-      .replace(/^### (.+)$/gm, "<h3>$1</h3>")
-      .replace(/^## (.+)$/gm, "<h2>$1</h2>")
-      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-      .replace(/\*(.+?)\*/g, "<em>$1</em>")
-      .replace(/^- (.+)$/gm, "<li>$1</li>")
-      .replace(/(<li>.*<\/li>\n?)+/g, "<ul>$&</ul>")
-      .replace(/\n{2,}/g, "</p><p>")
-      .replace(/^(?!<[hulo])/gm, (match) => (match ? `<p>${match}` : match))
-      .replace(/\n---\n/g, "<hr />")
   )
 }

@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { LegalEditor } from "@/components/admin/LegalEditor"
 import { toast } from "sonner"
 import type { LegalDocument, LegalDocumentType } from "@/types/database"
 
@@ -258,18 +259,12 @@ export function LegalDocumentList({ documents, consentCounts }: LegalDocumentLis
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="newContent">
-                Content{" "}
-                <span className="text-muted-foreground font-normal">(Markdown)</span>
-              </Label>
-              <textarea
-                id="newContent"
-                value={newContent}
-                onChange={(e) => setNewContent(e.target.value)}
+              <Label>Content</Label>
+              <LegalEditor
+                content={newContent}
+                onChange={setNewContent}
                 disabled={isCreating}
-                rows={18}
-                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-mono leading-relaxed focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary resize-y"
-                placeholder="# Document Title&#10;&#10;Write your legal content here using Markdown..."
+                minHeight="350px"
               />
             </div>
           </div>

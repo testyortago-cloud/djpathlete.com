@@ -7,6 +7,7 @@ import { ArrowLeft, Save, Eye, CheckCircle2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { LegalEditor } from "@/components/admin/LegalEditor"
 import { toast } from "sonner"
 import type { LegalDocument } from "@/types/database"
 
@@ -26,7 +27,6 @@ export function LegalDocumentEditor({ document: doc }: LegalDocumentEditorProps)
   const [content, setContent] = useState(doc.content)
   const [effectiveDate, setEffectiveDate] = useState(doc.effective_date)
   const [isSaving, setIsSaving] = useState(false)
-  const [showPreview, setShowPreview] = useState(false)
 
   async function handleSave() {
     setIsSaving(true)
@@ -95,13 +95,6 @@ export function LegalDocumentEditor({ document: doc }: LegalDocumentEditorProps)
               </Button>
             </Link>
           )}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowPreview(!showPreview)}
-          >
-            {showPreview ? "Editor" : "Split View"}
-          </Button>
           <Button size="sm" onClick={handleSave} disabled={isSaving} className="gap-1.5">
             <Save className="h-4 w-4" />
             {isSaving ? "Saving..." : "Save"}
@@ -136,42 +129,16 @@ export function LegalDocumentEditor({ document: doc }: LegalDocumentEditorProps)
         </div>
       </div>
 
-      {/* Editor / Split view */}
-      <div className={`grid gap-4 ${showPreview ? "grid-cols-2" : "grid-cols-1"}`}>
-        <div className="space-y-1.5">
-          <Label className="text-xs font-medium">Content (Markdown)</Label>
-          <textarea
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            disabled={isSaving}
-            rows={28}
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-mono leading-relaxed focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary resize-y"
-          />
-        </div>
-
-        {showPreview && (
-          <div className="space-y-1.5">
-            <Label className="text-xs font-medium">Preview</Label>
-            <div className="rounded-lg border border-border bg-card p-4 h-[calc(28*1.625rem+0.75rem)] overflow-y-auto prose prose-sm prose-neutral max-w-none dark:prose-invert">
-              <div dangerouslySetInnerHTML={{ __html: markdownToHtml(content) }} />
-            </div>
-          </div>
-        )}
+      {/* Rich text editor */}
+      <div className="space-y-1.5">
+        <Label className="text-xs font-medium">Content</Label>
+        <LegalEditor
+          content={content}
+          onChange={setContent}
+          disabled={isSaving}
+          minHeight="500px"
+        />
       </div>
     </div>
   )
-}
-
-function markdownToHtml(markdown: string): string {
-  return markdown
-    .replace(/^### (.+)$/gm, "<h3>$1</h3>")
-    .replace(/^## (.+)$/gm, "<h2>$1</h2>")
-    .replace(/^# (.+)$/gm, "<h1>$1</h1>")
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\*(.+?)\*/g, "<em>$1</em>")
-    .replace(/^- (.+)$/gm, "<li>$1</li>")
-    .replace(/(<li>.*<\/li>\n?)+/g, "<ul>$&</ul>")
-    .replace(/\n{2,}/g, "</p><p>")
-    .replace(/^(?!<[hulo])/gm, (match) => (match ? `<p>${match}` : match))
-    .replace(/\n---\n/g, "<hr />")
 }
