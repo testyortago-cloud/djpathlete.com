@@ -3,6 +3,7 @@
 import Link from "next/link"
 import Image from "next/image"
 import { usePathname } from "next/navigation"
+import { useState } from "react"
 import {
   LayoutDashboard,
   Bot,
@@ -21,6 +22,7 @@ import {
   ClipboardCheck,
   CalendarCheck,
   Scale,
+  ChevronDown,
   Settings,
   LogOut,
 } from "lucide-react"
@@ -92,6 +94,23 @@ const navSections: NavSection[] = [
 export function AdminSidebar() {
   const pathname = usePathname()
 
+  // Sections with a title are collapsible; auto-open if they contain the active route
+  const initialOpen = navSections.reduce(
+    (acc, section) => {
+      if (section.title) {
+        acc[section.title] = section.items.some((item) => pathname.startsWith(item.href))
+      }
+      return acc
+    },
+    {} as Record<string, boolean>
+  )
+
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>(initialOpen)
+
+  function toggleSection(title: string) {
+    setOpenSections((prev) => ({ ...prev, [title]: !prev[title] }))
+  }
+
   return (
     <aside className="hidden lg:flex lg:flex-col w-64 bg-primary text-primary-foreground fixed top-0 left-0 h-screen z-30">
       {/* Logo */}
@@ -114,37 +133,61 @@ export function AdminSidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto sidebar-scroll px-3 py-2 space-y-4">
-        {navSections.map((section) => (
-          <div key={section.title || "top"}>
-            {section.title && (
-              <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-white/30">
-                {section.title}
-              </p>
-            )}
-            <div className="space-y-0.5">
-              {section.items.map((item) => {
-                const isActive = pathname.startsWith(item.href)
-                const Icon = item.icon
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
+      <nav className="flex-1 overflow-y-auto sidebar-scroll px-3 py-2 space-y-1">
+        {navSections.map((section) => {
+          const isOpen = !section.title || openSections[section.title]
+          const hasActiveChild = section.items.some((item) => pathname.startsWith(item.href))
+
+          return (
+            <div key={section.title || "top"}>
+              {section.title ? (
+                <button
+                  onClick={() => toggleSection(section.title)}
+                  className={cn(
+                    "flex w-full items-center justify-between px-3 py-1.5 rounded-lg text-[10px] font-semibold uppercase tracking-[0.15em] transition-colors",
+                    hasActiveChild && !isOpen
+                      ? "text-white/60"
+                      : "text-white/30 hover:text-white/50"
+                  )}
+                >
+                  {section.title}
+                  <ChevronDown
                     className={cn(
-                      "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
-                      isActive
-                        ? "bg-accent text-accent-foreground"
-                        : "text-white/70 hover:text-white hover:bg-white/10"
+                      "size-3.5 transition-transform duration-200",
+                      isOpen ? "rotate-0" : "-rotate-90"
                     )}
-                  >
-                    <Icon className="size-[18px]" strokeWidth={1.5} />
-                    {item.label}
-                  </Link>
-                )
-              })}
+                  />
+                </button>
+              ) : null}
+              <div
+                className={cn(
+                  "space-y-0.5 overflow-hidden transition-all duration-200",
+                  isOpen ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0"
+                )}
+              >
+                {section.items.map((item) => {
+                  const isActive = pathname.startsWith(item.href)
+                  const Icon = item.icon
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className={cn(
+                        "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+                        isActive
+                          ? "bg-accent text-accent-foreground"
+                          : "text-white/70 hover:text-white hover:bg-white/10"
+                      )}
+                    >
+                      <Icon className="size-[18px]" strokeWidth={1.5} />
+                      {item.label}
+                    </Link>
+                  )
+                })}
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </nav>
 
       {/* Bottom section */}

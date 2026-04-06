@@ -19,7 +19,7 @@ export default async function PrivacyPolicyPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="mx-auto max-w-3xl px-4 py-16 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-3xl px-4 pt-28 pb-16 sm:px-6 lg:px-8">
         <div className="mb-8">
           <h1 className="font-heading text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
             Privacy Policy

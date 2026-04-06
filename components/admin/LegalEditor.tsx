@@ -36,8 +36,8 @@ export function LegalEditor({
   disabled = false,
   minHeight = "400px",
 }: LegalEditorProps) {
-  // Convert markdown to HTML if the content isn't already HTML
-  const initialContent = content.trim().startsWith("<") ? content : renderLegalContent(content)
+  // Convert markdown to HTML if the content isn't already HTML (keep title for editor)
+  const initialContent = content.trim().startsWith("<") ? content : renderLegalContent(content, false)
 
   const editor = useEditor({
     extensions: [
