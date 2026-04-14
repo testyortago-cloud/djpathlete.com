@@ -10,6 +10,8 @@ import { FocusGrid, type FocusItem } from "@/components/public/FocusGrid"
 import { NumberedFlow } from "@/components/public/NumberedFlow"
 import { EventsComingSoonPanel } from "@/components/public/EventsComingSoonPanel"
 import { InquiryForm } from "@/components/public/InquiryForm"
+import { getPublishedEvents } from "@/lib/db/events"
+import { EventCard } from "@/components/public/EventCard"
 
 export const metadata: Metadata = {
   title: "Agility Clinics",
@@ -80,7 +82,8 @@ const WHO_ITS_FOR = [
   "Parents looking for better athletic development, not generic hard work",
 ]
 
-export default function ClinicsPage() {
+export default async function ClinicsPage() {
+  const events = await getPublishedEvents({ type: "clinic" })
   return (
     <>
       <JsonLd data={serviceSchema} />
@@ -130,7 +133,15 @@ export default function ClinicsPage() {
             <h2 className="mt-3 font-heading text-3xl font-semibold tracking-tight md:text-5xl">When and where</h2>
           </div>
           <div className="mt-10">
-            <EventsComingSoonPanel type="clinic" />
+            {events.length > 0 ? (
+              <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                {events.map((event) => (
+                  <EventCard key={event.id} event={event} />
+                ))}
+              </div>
+            ) : (
+              <EventsComingSoonPanel type="clinic" />
+            )}
           </div>
         </FadeIn>
       </section>
