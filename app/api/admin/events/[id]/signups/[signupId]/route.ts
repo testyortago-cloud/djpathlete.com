@@ -6,10 +6,7 @@ import { sendEventSignupConfirmedEmail } from "@/lib/email"
 
 type Action = "confirm" | "cancel"
 
-export async function PATCH(
-  request: Request,
-  ctx: { params: Promise<{ id: string; signupId: string }> },
-) {
+export async function PATCH(request: Request, ctx: { params: Promise<{ id: string; signupId: string }> }) {
   try {
     const session = await auth()
     if (!session?.user?.id || session.user.role !== "admin") {
@@ -57,9 +54,7 @@ export async function PATCH(
     if (!result.ok) {
       const status = result.reason === "not_found" ? 404 : 409
       const message =
-        result.reason === "not_cancellable"
-          ? "Signup cannot be cancelled from its current state"
-          : "Signup not found"
+        result.reason === "not_cancellable" ? "Signup cannot be cancelled from its current state" : "Signup not found"
       return NextResponse.json({ error: message, reason: result.reason }, { status })
     }
 

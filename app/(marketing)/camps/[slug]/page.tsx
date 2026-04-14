@@ -15,9 +15,7 @@ export async function generateStaticParams() {
   return events.map((e) => ({ slug: e.slug }))
 }
 
-export async function generateMetadata(
-  { params }: { params: Promise<{ slug: string }> },
-): Promise<Metadata> {
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params
   const event = await getEventBySlug(slug)
   if (!event || event.type !== "camp" || event.status !== "published") return {}
@@ -36,9 +34,7 @@ const CAMP_AUDIENCE = [
   "Parents and teams who value both training quality and measurable feedback",
 ]
 
-export default async function CampDetailPage(
-  { params }: { params: Promise<{ slug: string }> },
-) {
+export default async function CampDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
   const event = await getEventBySlug(slug)
   if (!event || event.type !== "camp" || event.status !== "published") notFound()
@@ -83,7 +79,9 @@ export default async function CampDetailPage(
             <article className="space-y-10">
               <div className="prose prose-lg max-w-none">
                 {event.description.split(/\n\n+/).map((p, i) => (
-                  <p key={i} className="text-lg leading-8 text-muted-foreground">{p}</p>
+                  <p key={i} className="text-lg leading-8 text-muted-foreground">
+                    {p}
+                  </p>
                 ))}
               </div>
 

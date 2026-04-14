@@ -20,7 +20,10 @@ function formatPrice(cents: number | null) {
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", {
-    weekday: "short", month: "short", day: "numeric", year: "numeric",
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
   })
 }
 
@@ -82,10 +85,7 @@ export function EventSignupCard({ event }: EventSignupCardProps) {
                 {spotsLeft} {spotsLeft === 1 ? "spot" : "spots"} left
               </p>
             )}
-            <div
-              className="mt-2 h-1 w-full overflow-hidden rounded-full bg-muted"
-              aria-hidden="true"
-            >
+            <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-muted" aria-hidden="true">
               <div
                 className={`h-full ${isFull ? "bg-accent" : "bg-primary"}`}
                 style={{ width: `${Math.min(100, (event.signup_count / event.capacity) * 100)}%` }}
@@ -114,12 +114,7 @@ export function EventSignupCard({ event }: EventSignupCardProps) {
         </div>
       </div>
 
-      <EventSignupModal
-        event={event}
-        open={open}
-        onOpenChange={setOpen}
-        isWaitlist={isFull}
-      />
+      <EventSignupModal event={event} open={open} onOpenChange={setOpen} isWaitlist={isFull} />
     </>
   )
 }

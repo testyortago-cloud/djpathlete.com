@@ -1757,9 +1757,7 @@ function buildEventContextBlock(event: Event) {
     hour: "numeric",
     minute: "2-digit",
   })
-  const location = event.location_address
-    ? `${event.location_name} — ${event.location_address}`
-    : event.location_name
+  const location = event.location_address ? `${event.location_name} — ${event.location_address}` : event.location_name
   return infoCard([
     { label: "Event", value: event.title },
     { label: "Date", value: start },

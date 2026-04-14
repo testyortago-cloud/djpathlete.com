@@ -87,9 +87,7 @@ export function EventSignupModal({ event, open, onOpenChange, isWaitlist }: Even
     <Dialog open={open} onOpenChange={(next) => (next ? onOpenChange(true) : resetAndClose())}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>
-            {isWaitlist ? "Join the waitlist" : "Register your interest"}
-          </DialogTitle>
+          <DialogTitle>{isWaitlist ? "Join the waitlist" : "Register your interest"}</DialogTitle>
           <DialogDescription>
             {isWaitlist
               ? `${event.title} is currently full. Leave your details and we'll reach out if a spot opens.`
@@ -104,17 +102,27 @@ export function EventSignupModal({ event, open, onOpenChange, isWaitlist }: Even
             <p className="mt-2 text-sm text-muted-foreground">
               Thanks for your interest. Darren reviews every signup personally.
             </p>
-            <Button className="mt-6" onClick={resetAndClose}>Close</Button>
+            <Button className="mt-6" onClick={resetAndClose}>
+              Close
+            </Button>
           </div>
         ) : phase === "at_capacity" ? (
           <div className="py-6 text-center">
             <p className="text-lg font-semibold">Sorry — this event just filled up.</p>
-            <p className="mt-2 text-sm text-muted-foreground">Join the waitlist and we'll contact you if a spot opens.</p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Join the waitlist and we'll contact you if a spot opens.
+            </p>
             <form onSubmit={(e) => submit(e as never, true)} className="mt-6">
-              <Button type="submit" disabled>Join waitlist</Button>
+              <Button type="submit" disabled>
+                Join waitlist
+              </Button>
             </form>
-            <Button variant="outline" className="mt-3" onClick={resetAndClose}>Close</Button>
-            <p className="mt-4 text-xs text-muted-foreground">Tip: reopen the form and resubmit to actually enter the waitlist.</p>
+            <Button variant="outline" className="mt-3" onClick={resetAndClose}>
+              Close
+            </Button>
+            <p className="mt-4 text-xs text-muted-foreground">
+              Tip: reopen the form and resubmit to actually enter the waitlist.
+            </p>
           </div>
         ) : (
           <form onSubmit={(e) => submit(e, false)} className="space-y-4">
@@ -128,9 +136,7 @@ export function EventSignupModal({ event, open, onOpenChange, isWaitlist }: Even
               className="absolute opacity-0 pointer-events-none h-0 w-0"
             />
 
-            {formError && (
-              <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{formError}</div>
-            )}
+            {formError && <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{formError}</div>}
 
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
@@ -177,7 +183,7 @@ export function EventSignupModal({ event, open, onOpenChange, isWaitlist }: Even
                 Cancel
               </Button>
               <Button type="submit" disabled={phase === "submitting"}>
-                {phase === "submitting" ? "Submitting..." : (isWaitlist ? "Join waitlist" : "Submit")}
+                {phase === "submitting" ? "Submitting..." : isWaitlist ? "Join waitlist" : "Submit"}
               </Button>
             </div>
           </form>

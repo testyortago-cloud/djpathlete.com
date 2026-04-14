@@ -18,12 +18,24 @@ const publishedEvent = {
   status: "published",
   capacity: 10,
   signup_count: 3,
-  slug: "x", title: "x", summary: "", description: "", focus_areas: [],
+  slug: "x",
+  title: "x",
+  summary: "",
+  description: "",
+  focus_areas: [],
   start_date: new Date(Date.now() + 86400000).toISOString(),
-  end_date: null, session_schedule: null,
-  location_name: "L", location_address: null, location_map_url: null,
-  age_min: null, age_max: null, price_cents: null, stripe_price_id: null,
-  hero_image_url: null, created_at: "", updated_at: "",
+  end_date: null,
+  session_schedule: null,
+  location_name: "L",
+  location_address: null,
+  location_map_url: null,
+  age_min: null,
+  age_max: null,
+  price_cents: null,
+  stripe_price_id: null,
+  hero_image_url: null,
+  created_at: "",
+  updated_at: "",
 }
 
 function makeRequest(body: Record<string, unknown>, urlSuffix = "") {
@@ -35,8 +47,10 @@ function makeRequest(body: Record<string, unknown>, urlSuffix = "") {
 }
 
 const validBody = {
-  parent_name: "Alex", parent_email: "a@x.com",
-  athlete_name: "Sam", athlete_age: 14,
+  parent_name: "Alex",
+  parent_email: "a@x.com",
+  athlete_name: "Sam",
+  athlete_age: 14,
 }
 
 const ctx = { params: Promise.resolve({ id: "evt-1" }) }
@@ -94,7 +108,11 @@ describe("POST /api/events/[id]/signup", () => {
     const { POST } = await import("@/app/api/events/[id]/signup/route")
     const res = await POST(makeRequest(validBody), ctx)
     expect(res.status).toBe(200)
-    expect(createSignupMock).toHaveBeenCalledWith("evt-1", expect.objectContaining({ parent_email: "a@x.com" }), "interest")
+    expect(createSignupMock).toHaveBeenCalledWith(
+      "evt-1",
+      expect.objectContaining({ parent_email: "a@x.com" }),
+      "interest",
+    )
     expect(sendReceivedMock).toHaveBeenCalled()
     expect(sendAdminMock).toHaveBeenCalled()
   })

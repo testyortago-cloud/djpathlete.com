@@ -11,7 +11,10 @@ test.describe("Public event signup flow", () => {
 
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible()
 
-    await page.getByRole("button", { name: /register your interest/i }).first().click()
+    await page
+      .getByRole("button", { name: /register your interest/i })
+      .first()
+      .click()
 
     await page.fill("input[name='parent_name']", "E2E Parent")
     await page.fill("input[name='parent_email']", `e2e-${Date.now()}@test.example`)

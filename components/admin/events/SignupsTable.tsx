@@ -29,11 +29,7 @@ export function SignupsTable({ initialSignups, eventId }: SignupsTableProps) {
     // Optimistic update
     const previous = signups
     setSignups((prev) =>
-      prev.map((s) =>
-        s.id === signupId
-          ? { ...s, status: action === "confirm" ? "confirmed" : "cancelled" }
-          : s,
-      ),
+      prev.map((s) => (s.id === signupId ? { ...s, status: action === "confirm" ? "confirmed" : "cancelled" } : s)),
     )
 
     try {
@@ -88,9 +84,7 @@ export function SignupsTable({ initialSignups, eventId }: SignupsTableProps) {
             <tr key={s.id} className="border-t border-border align-top">
               <td className="px-4 py-3">
                 <div className="font-medium">{s.athlete_name}</div>
-                {s.notes && (
-                  <div className="mt-1 text-xs text-muted-foreground">{s.notes}</div>
-                )}
+                {s.notes && <div className="mt-1 text-xs text-muted-foreground">{s.notes}</div>}
               </td>
               <td className="px-4 py-3">{s.athlete_age}</td>
               <td className="px-4 py-3">{s.parent_name}</td>

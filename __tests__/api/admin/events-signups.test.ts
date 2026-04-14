@@ -80,7 +80,14 @@ describe("PATCH /api/admin/events/[id]/signups/[signupId]", () => {
     getSignupByIdMock.mockResolvedValueOnce(sigMatching)
     confirmSignupMock.mockResolvedValueOnce({ ok: true })
     getSignupByIdMock.mockResolvedValueOnce({ ...sigMatching, status: "confirmed" })
-    getEventByIdMock.mockResolvedValueOnce({ id: "evt-1", title: "T", type: "clinic", slug: "s", start_date: "", location_name: "L" })
+    getEventByIdMock.mockResolvedValueOnce({
+      id: "evt-1",
+      title: "T",
+      type: "clinic",
+      slug: "s",
+      start_date: "",
+      location_name: "L",
+    })
     const { PATCH } = await import("@/app/api/admin/events/[id]/signups/[signupId]/route")
     const res = await PATCH(makeReq({ action: "confirm" }), ctx)
     expect(res.status).toBe(200)
