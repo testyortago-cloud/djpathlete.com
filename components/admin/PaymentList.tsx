@@ -1,15 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import {
-  Search,
-  ChevronLeft,
-  ChevronRight,
-  CreditCard,
-  DollarSign,
-  TrendingUp,
-  Hash,
-} from "lucide-react"
+import { Search, ChevronLeft, ChevronRight, CreditCard, DollarSign, TrendingUp, Hash } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { EmptyState } from "@/components/ui/empty-state"
 import type { Payment } from "@/types/database"
@@ -50,10 +42,7 @@ export function PaymentList({ payments }: PaymentListProps) {
 
   // Revenue calculations
   const successfulPayments = payments.filter((p) => p.status === "succeeded")
-  const totalRevenue = successfulPayments.reduce(
-    (sum, p) => sum + p.amount_cents,
-    0
-  )
+  const totalRevenue = successfulPayments.reduce((sum, p) => sum + p.amount_cents, 0)
   const now = new Date()
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
   const thisMonthRevenue = successfulPayments
@@ -63,9 +52,7 @@ export function PaymentList({ payments }: PaymentListProps) {
   const filtered = payments.filter((p) => {
     if (!search) return true
     const q = search.toLowerCase()
-    const userName = p.users
-      ? `${p.users.first_name} ${p.users.last_name}`.toLowerCase()
-      : ""
+    const userName = p.users ? `${p.users.first_name} ${p.users.last_name}`.toLowerCase() : ""
     const email = p.users?.email.toLowerCase() ?? ""
     return (
       userName.includes(q) ||
@@ -144,21 +131,13 @@ export function PaymentList({ payments }: PaymentListProps) {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-surface/50">
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                  Date
-                </th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                  Client
-                </th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Date</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Client</th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">
                   Description
                 </th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                  Amount
-                </th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                  Status
-                </th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Amount</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
               </tr>
             </thead>
             <tbody>
@@ -176,22 +155,21 @@ export function PaymentList({ payments }: PaymentListProps) {
                         <p className="font-medium text-foreground">
                           {payment.users.first_name} {payment.users.last_name}
                         </p>
-                        <p className="text-xs text-muted-foreground">
-                          {payment.users.email}
-                        </p>
+                        <p className="text-xs text-muted-foreground">{payment.users.email}</p>
                       </div>
                     ) : (
-                      <span className="text-muted-foreground">
-                        {payment.user_id.slice(0, 8)}...
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">{payment.user_id ? `${payment.user_id.slice(0, 8)}...` : "—"}</span>
+                        {payment.user_id === null && (
+                          <span className="inline-block rounded-full bg-accent/15 px-2 py-0.5 text-xs font-medium text-accent">
+                            External
+                          </span>
+                        )}
+                      </div>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">
-                    {payment.description ?? "—"}
-                  </td>
-                  <td className="px-4 py-3 font-medium text-foreground">
-                    {formatCents(payment.amount_cents)}
-                  </td>
+                  <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">{payment.description ?? "—"}</td>
+                  <td className="px-4 py-3 font-medium text-foreground">{formatCents(payment.amount_cents)}</td>
                   <td className="px-4 py-3">
                     <span
                       className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${STATUS_COLORS[payment.status] ?? "bg-muted text-muted-foreground"}`}
@@ -203,10 +181,7 @@ export function PaymentList({ payments }: PaymentListProps) {
               ))}
               {paginated.length === 0 && (
                 <tr>
-                  <td
-                    colSpan={5}
-                    className="px-4 py-12 text-center text-muted-foreground"
-                  >
+                  <td colSpan={5} className="px-4 py-12 text-center text-muted-foreground">
                     No payments found matching your search.
                   </td>
                 </tr>
@@ -234,9 +209,7 @@ export function PaymentList({ payments }: PaymentListProps) {
               ))}
             </select>
             <span className="ml-2">
-              {filtered.length === 0
-                ? "0"
-                : `${(page - 1) * perPage + 1}-${Math.min(page * perPage, filtered.length)}`}{" "}
+              {filtered.length === 0 ? "0" : `${(page - 1) * perPage + 1}-${Math.min(page * perPage, filtered.length)}`}{" "}
               of {filtered.length}
             </span>
           </div>

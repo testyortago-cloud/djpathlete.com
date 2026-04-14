@@ -5,7 +5,7 @@ import { createPayment, getPaymentByStripeId, updatePayment } from "@/lib/db/pay
 import { createAssignment, getAssignmentByUserAndProgram, updateAssignment } from "@/lib/db/assignments"
 import { updateWeekAccess, createWeekAccessBulk } from "@/lib/db/week-access"
 import { createSubscription, getSubscriptionByStripeId, updateSubscriptionByStripeId } from "@/lib/db/subscriptions"
-import { getUserById } from "@/lib/db/users"
+import { getUserById, getUserByEmail } from "@/lib/db/users"
 import { getProfileByUserId } from "@/lib/db/client-profiles"
 import { getProgramById } from "@/lib/db/programs"
 import { sendCoachPurchaseNotification, sendEventSignupConfirmedEmail } from "@/lib/email"
@@ -98,6 +98,18 @@ export async function POST(request: Request) {
   return NextResponse.json({ received: true })
 }
 
+// ─── Email-based user lookup helper ─────────────────────────────────────────
+
+async function tryResolveUserIdFromEmail(email: string | null | undefined): Promise<string | null> {
+  if (!email) return null
+  try {
+    const user = await getUserByEmail(email)
+    return user?.id ?? null
+  } catch {
+    return null
+  }
+}
+
 // ─── One-time payment (existing logic, extracted) ────────────────────────────
 
 async function handleOneTimeCheckout(session: Stripe.Checkout.Session) {
@@ -105,7 +117,30 @@ async function handleOneTimeCheckout(session: Stripe.Checkout.Session) {
   const userId = session.metadata?.userId
   const stripePaymentId = session.payment_intent as string
 
-  if (!programId || !userId || !stripePaymentId) return
+  if (!stripePaymentId) return
+
+  // External Stripe checkout (Payment Link, dashboard, etc.) — capture as
+  // a record-keeping payment with no internal program/assignment wiring.
+  if (!programId || !userId) {
+    const existing = await getPaymentByStripeId(stripePaymentId)
+    if (existing) return
+    const resolvedUserId = await tryResolveUserIdFromEmail(session.customer_details?.email)
+    await createPayment({
+      user_id: resolvedUserId,
+      stripe_payment_id: stripePaymentId,
+      stripe_customer_id: (session.customer as string) ?? null,
+      amount_cents: session.amount_total ?? 0,
+      currency: session.currency ?? "usd",
+      status: "succeeded",
+      description: "External Stripe checkout",
+      metadata: {
+        source: "external",
+        sessionId: session.id,
+        customerEmail: session.customer_details?.email ?? null,
+      },
+    })
+    return
+  }
 
   // Idempotency: skip if already processed
   const existing = await getPaymentByStripeId(stripePaymentId)
@@ -209,9 +244,57 @@ async function handleSubscriptionCheckout(session: Stripe.Checkout.Session) {
   const userId = session.metadata?.userId
   const stripeSubscriptionId = session.subscription as string
 
-  if (!programId || !userId || !stripeSubscriptionId) return
+  if (!stripeSubscriptionId) return
 
-  // Idempotency
+  // External Stripe subscription (Payment Link, dashboard, etc.) — capture
+  // the subscription + initial payment without internal program wiring.
+  if (!programId || !userId) {
+    const existingSub = await getSubscriptionByStripeId(stripeSubscriptionId)
+    if (existingSub) return
+
+    const resolvedUserId = await tryResolveUserIdFromEmail(session.customer_details?.email)
+    await createSubscription({
+      user_id: resolvedUserId,
+      program_id: null,
+      assignment_id: null,
+      stripe_subscription_id: stripeSubscriptionId,
+      stripe_customer_id: (session.customer as string) ?? "",
+      status: "active",
+      current_period_start: null,
+      current_period_end: null,
+      cancel_at_period_end: false,
+      canceled_at: null,
+      metadata: {
+        source: "external",
+        sessionId: session.id,
+        customerEmail: session.customer_details?.email ?? null,
+      },
+    })
+
+    if (session.payment_intent) {
+      const stripePaymentId = session.payment_intent as string
+      const existingPayment = await getPaymentByStripeId(stripePaymentId)
+      if (!existingPayment) {
+        await createPayment({
+          user_id: resolvedUserId,
+          stripe_payment_id: stripePaymentId,
+          stripe_customer_id: (session.customer as string) ?? null,
+          amount_cents: session.amount_total ?? 0,
+          currency: session.currency ?? "usd",
+          status: "succeeded",
+          description: "External subscription (initial)",
+          metadata: {
+            source: "external",
+            sessionId: session.id,
+            subscriptionId: stripeSubscriptionId,
+          },
+        })
+      }
+    }
+    return
+  }
+
+  // Existing idempotency check (now reached only when programId + userId are present)
   const existingSub = await getSubscriptionByStripeId(stripeSubscriptionId)
   if (existingSub) return
 

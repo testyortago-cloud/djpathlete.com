@@ -7,13 +7,7 @@ import type {
   Achievement,
   ClientProfile,
 } from "@/types/database"
-import type {
-  DateRange,
-  RevenueMetrics,
-  ClientMetrics,
-  ProgramMetrics,
-  EngagementMetrics,
-} from "@/types/analytics"
+import type { DateRange, RevenueMetrics, ClientMetrics, ProgramMetrics, EngagementMetrics } from "@/types/analytics"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -61,13 +55,11 @@ type PaymentWithUser = Payment & {
 export function computeRevenueMetrics(
   payments: PaymentWithUser[],
   range: DateRange,
-  previousRange: DateRange | null
+  previousRange: DateRange | null,
 ): RevenueMetrics {
   const months = getMonthsInRange(range)
 
-  const inRangePayments = payments.filter(
-    (p) => p.status === "succeeded" && inRange(p.created_at, range)
-  )
+  const inRangePayments = payments.filter((p) => p.status === "succeeded" && inRange(p.created_at, range))
 
   const totalRevenue = inRangePayments.reduce((s, p) => s + p.amount_cents, 0)
   const transactionCount = inRangePayments.length
@@ -116,14 +108,13 @@ export function computeRevenueMetrics(
   // Top paying clients
   const clientMap = new Map<string, { name: string; email: string; total: number; count: number }>()
   for (const p of inRangePayments) {
-    const name = p.users
-      ? `${p.users.first_name} ${p.users.last_name}`
-      : "Unknown"
+    const name = p.users ? `${p.users.first_name} ${p.users.last_name}` : "Unknown"
     const email = p.users?.email ?? ""
-    const entry = clientMap.get(p.user_id) ?? { name, email, total: 0, count: 0 }
+    const mapKey = p.user_id ?? "external"
+    const entry = clientMap.get(mapKey) ?? { name, email, total: 0, count: 0 }
     entry.total += p.amount_cents
     entry.count += 1
-    clientMap.set(p.user_id, entry)
+    clientMap.set(mapKey, entry)
   }
   const topPayingClients = Array.from(clientMap.values())
     .sort((a, b) => b.total - a.total)
@@ -149,16 +140,14 @@ export function computeClientMetrics(
   users: User[],
   profiles: ClientProfile[],
   assignments: ProgramAssignment[],
-  range: DateRange
+  range: DateRange,
 ): ClientMetrics {
   const months = getMonthsInRange(range)
   const clients = users.filter((u) => u.role === "client")
   const totalClients = clients.length
 
   // Active clients = clients with at least one active assignment
-  const activeUserIds = new Set(
-    assignments.filter((a) => a.status === "active").map((a) => a.user_id)
-  )
+  const activeUserIds = new Set(assignments.filter((a) => a.status === "active").map((a) => a.user_id))
   const activeClients = activeUserIds.size
 
   // New clients in range
@@ -175,9 +164,7 @@ export function computeClientMetrics(
   }
 
   // Count clients before range for cumulative start
-  let cumulativeBase = clients.filter(
-    (u) => new Date(u.created_at) < range.from
-  ).length
+  let cumulativeBase = clients.filter((u) => new Date(u.created_at) < range.from).length
 
   const clientsByMonth = months.map((m) => {
     const count = monthCounts.get(m.key) ?? 0
@@ -190,10 +177,7 @@ export function computeClientMetrics(
 
   // Profile completion: profiles that have goals filled in
   const profilesWithGoals = profiles.filter((p) => p.goals)
-  const profileCompletionRate =
-    totalClients > 0
-      ? Math.round((profilesWithGoals.length / totalClients) * 100)
-      : 0
+  const profileCompletionRate = totalClients > 0 ? Math.round((profilesWithGoals.length / totalClients) * 100) : 0
 
   // By sport
   const sportCounts = new Map<string, number>()
@@ -266,30 +250,19 @@ export function computeClientMetrics(
 export function computeProgramMetrics(
   programs: Program[],
   assignments: ProgramAssignment[],
-  range: DateRange
+  range: DateRange,
 ): ProgramMetrics {
   const totalPrograms = programs.length
   const aiGeneratedCount = programs.filter((p) => p.is_ai_generated).length
 
-  const assignmentsInRange = assignments.filter((a) =>
-    inRange(a.created_at, range)
-  )
+  const assignmentsInRange = assignments.filter((a) => inRange(a.created_at, range))
 
-  const activeAssignments = assignments.filter(
-    (a) => a.status === "active"
-  ).length
+  const activeAssignments = assignments.filter((a) => a.status === "active").length
 
   // Completion rate: completed / (completed + cancelled) in range
-  const completed = assignmentsInRange.filter(
-    (a) => a.status === "completed"
-  ).length
-  const cancelled = assignmentsInRange.filter(
-    (a) => a.status === "cancelled"
-  ).length
-  const completionRate =
-    completed + cancelled > 0
-      ? Math.round((completed / (completed + cancelled)) * 100)
-      : 0
+  const completed = assignmentsInRange.filter((a) => a.status === "completed").length
+  const cancelled = assignmentsInRange.filter((a) => a.status === "cancelled").length
+  const completionRate = completed + cancelled > 0 ? Math.round((completed / (completed + cancelled)) * 100) : 0
 
   // Program popularity
   const programMap = new Map<string, Program>()
@@ -366,13 +339,11 @@ export function computeEngagementMetrics(
   progress: ProgressWithExercise[],
   achievements: Achievement[],
   users: User[],
-  range: DateRange
+  range: DateRange,
 ): EngagementMetrics {
   const months = getMonthsInRange(range)
 
-  const inRangeProgress = progress.filter((p) =>
-    inRange(p.completed_at, range)
-  )
+  const inRangeProgress = progress.filter((p) => inRange(p.completed_at, range))
 
   const totalWorkoutsLogged = inRangeProgress.length
   const prsInRange = inRangeProgress.filter((p) => p.is_pr).length
@@ -380,18 +351,13 @@ export function computeEngagementMetrics(
   // Active users this week
   const now = new Date()
   const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-  const activeThisWeek = new Set(
-    progress
-      .filter((p) => new Date(p.completed_at) >= weekAgo)
-      .map((p) => p.user_id)
-  )
+  const activeThisWeek = new Set(progress.filter((p) => new Date(p.completed_at) >= weekAgo).map((p) => p.user_id))
   const activeUsersThisWeek = activeThisWeek.size
 
   // Average RPE
   const rpeValues = inRangeProgress.filter((p) => p.rpe != null).map((p) => p.rpe!)
-  const avgRPE = rpeValues.length > 0
-    ? Math.round((rpeValues.reduce((s, v) => s + v, 0) / rpeValues.length) * 10) / 10
-    : null
+  const avgRPE =
+    rpeValues.length > 0 ? Math.round((rpeValues.reduce((s, v) => s + v, 0) / rpeValues.length) * 10) / 10 : null
 
   // Workouts by month
   const monthCounts = new Map<string, number>()
@@ -432,15 +398,10 @@ export function computeEngagementMetrics(
     .slice(0, 10)
 
   // Achievements by type
-  const inRangeAchievements = achievements.filter((a) =>
-    inRange(a.earned_at, range)
-  )
+  const inRangeAchievements = achievements.filter((a) => inRange(a.earned_at, range))
   const typeCounts = new Map<string, number>()
   for (const a of inRangeAchievements) {
-    typeCounts.set(
-      a.achievement_type,
-      (typeCounts.get(a.achievement_type) ?? 0) + 1
-    )
+    typeCounts.set(a.achievement_type, (typeCounts.get(a.achievement_type) ?? 0) + 1)
   }
   const achievementsByType = Array.from(typeCounts.entries())
     .map(([type, count]) => ({ type, count }))
@@ -496,9 +457,7 @@ export function computeEngagementMetrics(
     }
   }
 
-  const streakLeaders = streakResults
-    .sort((a, b) => b.streak - a.streak)
-    .slice(0, 5)
+  const streakLeaders = streakResults.sort((a, b) => b.streak - a.streak).slice(0, 5)
 
   return {
     totalWorkoutsLogged,
@@ -521,7 +480,7 @@ export function computeDateRange(
   months: number,
   customFrom?: string,
   customTo?: string,
-  earliestDate?: Date
+  earliestDate?: Date,
 ): { range: DateRange; previousRange: DateRange | null } {
   const now = new Date()
   const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
