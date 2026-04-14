@@ -29,6 +29,7 @@ export function EventSignupModal({ event, open, onOpenChange, isWaitlist }: Even
   const [phase, setPhase] = useState<Phase>("form")
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({})
   const [formError, setFormError] = useState<string | null>(null)
+  const [forcedWaitlist, setForcedWaitlist] = useState(false)
 
   async function submit(e: React.FormEvent<HTMLFormElement>, waitlist: boolean) {
     e.preventDefault()
@@ -50,7 +51,7 @@ export function EventSignupModal({ event, open, onOpenChange, isWaitlist }: Even
       notes: form.get("notes") ? String(form.get("notes")) : null,
     }
 
-    const query = waitlist || isWaitlist ? "?waitlist=true" : ""
+    const query = waitlist || isWaitlist || forcedWaitlist ? "?waitlist=true" : ""
     try {
       const res = await fetch(`/api/events/${event.id}/signup${query}`, {
         method: "POST",
@@ -80,6 +81,7 @@ export function EventSignupModal({ event, open, onOpenChange, isWaitlist }: Even
     setPhase("form")
     setFieldErrors({})
     setFormError(null)
+    setForcedWaitlist(false)
     onOpenChange(false)
   }
 
@@ -87,9 +89,9 @@ export function EventSignupModal({ event, open, onOpenChange, isWaitlist }: Even
     <Dialog open={open} onOpenChange={(next) => (next ? onOpenChange(true) : resetAndClose())}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{isWaitlist ? "Join the waitlist" : "Register your interest"}</DialogTitle>
+          <DialogTitle>{isWaitlist || forcedWaitlist ? "Join the waitlist" : "Register your interest"}</DialogTitle>
           <DialogDescription>
-            {isWaitlist
+            {isWaitlist || forcedWaitlist
               ? `${event.title} is currently full. Leave your details and we'll reach out if a spot opens.`
               : `${event.title} — tell us about the athlete and we'll follow up within 48 hours.`}
           </DialogDescription>
@@ -112,17 +114,19 @@ export function EventSignupModal({ event, open, onOpenChange, isWaitlist }: Even
             <p className="mt-2 text-sm text-muted-foreground">
               Join the waitlist and we'll contact you if a spot opens.
             </p>
-            <form onSubmit={(e) => submit(e as never, true)} className="mt-6">
-              <Button type="submit" disabled>
-                Join waitlist
+            <div className="mt-6 flex items-center justify-center gap-3">
+              <Button variant="outline" onClick={resetAndClose}>
+                Close
               </Button>
-            </form>
-            <Button variant="outline" className="mt-3" onClick={resetAndClose}>
-              Close
-            </Button>
-            <p className="mt-4 text-xs text-muted-foreground">
-              Tip: reopen the form and resubmit to actually enter the waitlist.
-            </p>
+              <Button
+                onClick={() => {
+                  setForcedWaitlist(true)
+                  setPhase("form")
+                }}
+              >
+                Continue to waitlist
+              </Button>
+            </div>
           </div>
         ) : (
           <form onSubmit={(e) => submit(e, false)} className="space-y-4">
@@ -183,7 +187,7 @@ export function EventSignupModal({ event, open, onOpenChange, isWaitlist }: Even
                 Cancel
               </Button>
               <Button type="submit" disabled={phase === "submitting"}>
-                {phase === "submitting" ? "Submitting..." : isWaitlist ? "Join waitlist" : "Submit"}
+                {phase === "submitting" ? "Submitting..." : (isWaitlist || forcedWaitlist ? "Join waitlist" : "Submit")}
               </Button>
             </div>
           </form>
