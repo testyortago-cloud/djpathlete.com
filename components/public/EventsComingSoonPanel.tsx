@@ -1,4 +1,5 @@
-import { CalendarClock } from "lucide-react"
+import { CalendarClock, ArrowRight } from "lucide-react"
+import Link from "next/link"
 
 interface EventsComingSoonPanelProps {
   type: "clinic" | "camp"
@@ -30,6 +31,13 @@ export function EventsComingSoonPanel({ type }: EventsComingSoonPanelProps) {
           <p className="mt-3 max-w-2xl text-base leading-7 text-muted-foreground md:text-lg">
             {copy.body}
           </p>
+          <Link
+            href="#register-interest"
+            className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-accent hover:text-accent/80"
+          >
+            Register your interest
+            <ArrowRight className="h-4 w-4" />
+          </Link>
         </div>
       </div>
     </div>

@@ -47,4 +47,10 @@ test.describe("Camps landing page", () => {
     const serviceSelect = page.locator("select[name='service']")
     await expect(serviceSelect).toHaveValue("camp")
   })
+
+  test("hero CTA scrolls to the inquiry form", async ({ page }) => {
+    await page.goto("/camps")
+    await page.getByRole("link", { name: /register your interest/i }).first().click()
+    await expect(page).toHaveURL(/#register-interest$/)
+  })
 })
