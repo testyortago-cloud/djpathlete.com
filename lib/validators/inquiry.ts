@@ -4,6 +4,8 @@ export const SERVICE_TYPES = [
   "in_person",
   "online",
   "assessment",
+  "clinic",
+  "camp",
 ] as const
 
 export type ServiceType = (typeof SERVICE_TYPES)[number]
@@ -12,6 +14,8 @@ export const SERVICE_LABELS: Record<ServiceType, string> = {
   in_person: "In-Person Coaching",
   online: "Online Coaching",
   assessment: "Assessment & Return to Performance",
+  clinic: "Agility Clinic",
+  camp: "Performance Camp",
 }
 
 export const inquiryFormSchema = z.object({
