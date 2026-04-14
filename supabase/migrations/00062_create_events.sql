@@ -56,3 +56,70 @@ create table if not exists event_signups (
 create index if not exists idx_event_signups_event_id on event_signups (event_id);
 create index if not exists idx_event_signups_status on event_signups (status);
 create index if not exists idx_event_signups_email on event_signups (parent_email);
+
+-- confirm_event_signup RPC ------------------------------------------------
+-- Atomically flips a pending signup to confirmed and increments the event's
+-- signup_count. Returns jsonb { ok: bool, reason?: text }.
+create or replace function confirm_event_signup(p_signup_id uuid)
+returns jsonb
+language plpgsql
+security definer
+as $$
+declare
+  v_signup event_signups%rowtype;
+  v_capacity int;
+  v_signup_count int;
+begin
+  select * into v_signup from event_signups where id = p_signup_id for update;
+  if v_signup is null then
+    return jsonb_build_object('ok', false, 'reason', 'not_found');
+  end if;
+  if v_signup.status <> 'pending' then
+    return jsonb_build_object('ok', false, 'reason', 'not_pending');
+  end if;
+
+  select capacity, signup_count into v_capacity, v_signup_count
+  from events where id = v_signup.event_id for update;
+
+  if v_signup_count >= v_capacity then
+    return jsonb_build_object('ok', false, 'reason', 'at_capacity');
+  end if;
+
+  update event_signups set status = 'confirmed', updated_at = now() where id = p_signup_id;
+  update events set signup_count = signup_count + 1, updated_at = now() where id = v_signup.event_id;
+
+  return jsonb_build_object('ok', true);
+end;
+$$;
+
+-- cancel_event_signup RPC -------------------------------------------------
+-- Flips a pending or confirmed signup to cancelled. If previously confirmed,
+-- decrements the event's signup_count. Returns jsonb { ok: bool, reason?: text }.
+create or replace function cancel_event_signup(p_signup_id uuid)
+returns jsonb
+language plpgsql
+security definer
+as $$
+declare
+  v_signup event_signups%rowtype;
+  v_was_confirmed boolean;
+begin
+  select * into v_signup from event_signups where id = p_signup_id for update;
+  if v_signup is null then
+    return jsonb_build_object('ok', false, 'reason', 'not_found');
+  end if;
+  if v_signup.status not in ('pending', 'confirmed') then
+    return jsonb_build_object('ok', false, 'reason', 'not_cancellable');
+  end if;
+
+  v_was_confirmed := v_signup.status = 'confirmed';
+
+  update event_signups set status = 'cancelled', updated_at = now() where id = p_signup_id;
+
+  if v_was_confirmed then
+    update events set signup_count = signup_count - 1, updated_at = now() where id = v_signup.event_id;
+  end if;
+
+  return jsonb_build_object('ok', true);
+end;
+$$;
