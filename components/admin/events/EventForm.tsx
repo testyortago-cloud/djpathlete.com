@@ -2,7 +2,6 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { toast } from "sonner"
 import {
   AlertCircle,
   CalendarRange,
@@ -86,7 +85,6 @@ export function EventForm({ event }: EventFormProps) {
   const [submitting, setSubmitting] = useState(false)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({})
   const [formError, setFormError] = useState<string | null>(null)
-  const [syncing, setSyncing] = useState(false)
 
   function handleTitleBlur() {
     if (slugAutoFilled || !slug) {
@@ -395,51 +393,23 @@ export function EventForm({ event }: EventFormProps) {
 
       {/* Pricing (camps only) */}
       {type === "camp" && (
-        <Section icon={DollarSign} title="Pricing" description="Price charged at signup — synced to Stripe.">
-          <div className="grid gap-4 md:grid-cols-2 md:items-end">
-            <div className="space-y-2">
-              <Label>Price (USD)</Label>
-              <Input
-                type="number"
-                step="0.01"
-                min={0}
-                value={priceDollars}
-                onChange={(e) => setPriceDollars(e.target.value === "" ? "" : Number(e.target.value))}
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Button
-                type="button"
-                variant="outline"
-                disabled={syncing || !isEdit}
-                onClick={async () => {
-                  if (!event) return
-                  setSyncing(true)
-                  const id = toast.loading("Syncing to Stripe...")
-                  try {
-                    const res = await fetch(`/api/admin/events/${event.id}/stripe-sync`, { method: "POST" })
-                    const data = await res.json().catch(() => ({}))
-                    if (!res.ok) throw new Error(data.error ?? "Sync failed")
-                    toast.success("Synced with Stripe", { id })
-                    router.refresh()
-                  } catch (err) {
-                    toast.error((err as Error).message, { id })
-                  } finally {
-                    setSyncing(false)
-                  }
-                }}
-                title={!isEdit ? "Save the event first, then sync" : "Create or refresh the Stripe Product + Price"}
-              >
-                {syncing ? "Syncing..." : "Resync with Stripe"}
-              </Button>
-              {event?.stripe_price_id ? (
-                <p className="text-xs text-success">Synced · {event.stripe_price_id.slice(-8)}</p>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  {isEdit ? "Not yet synced with Stripe." : "Save the event first, then sync."}
-                </p>
-              )}
-            </div>
+        <Section
+          icon={DollarSign}
+          title="Pricing"
+          description="Price charged at signup — synced to Stripe automatically when you publish."
+        >
+          <div className="space-y-2 max-w-md">
+            <Label>Price (USD)</Label>
+            <Input
+              type="number"
+              step="0.01"
+              min={0}
+              value={priceDollars}
+              onChange={(e) => setPriceDollars(e.target.value === "" ? "" : Number(e.target.value))}
+            />
+            {event?.stripe_price_id && (
+              <p className="text-xs text-success">Synced with Stripe · {event.stripe_price_id.slice(-8)}</p>
+            )}
           </div>
         </Section>
       )}
