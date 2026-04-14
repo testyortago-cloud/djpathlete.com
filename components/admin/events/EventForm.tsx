@@ -3,6 +3,17 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import {
+  AlertCircle,
+  CalendarRange,
+  DollarSign,
+  Image as ImageIcon,
+  Info,
+  MapPin,
+  Target,
+  Users,
+  X,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -21,6 +32,28 @@ function slugify(s: string) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 120)
+}
+
+interface SectionProps {
+  icon: React.ComponentType<{ className?: string }>
+  title: string
+  description?: string
+  children: React.ReactNode
+}
+
+function Section({ icon: Icon, title, description, children }: SectionProps) {
+  return (
+    <section className="bg-white rounded-xl border border-border p-6">
+      <div className="flex items-start gap-2 mb-5">
+        <Icon className="size-5 text-primary mt-0.5 shrink-0" />
+        <div>
+          <h2 className="text-lg font-semibold text-primary leading-tight">{title}</h2>
+          {description && <p className="text-sm text-muted-foreground mt-0.5">{description}</p>}
+        </div>
+      </div>
+      {children}
+    </section>
+  )
 }
 
 export function EventForm({ event }: EventFormProps) {
@@ -136,170 +169,235 @@ export function EventForm({ event }: EventFormProps) {
       }}
       className="space-y-6"
     >
-      {formError && <div className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{formError}</div>}
+      {formError && (
+        <div className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+          <AlertCircle className="size-4 mt-0.5 shrink-0" />
+          <span>{formError}</span>
+        </div>
+      )}
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <div>
-          <Label>Type</Label>
-          <Select value={type} onValueChange={(v) => setType(v as EventType)} disabled={isEdit}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="clinic">Agility Clinic</SelectItem>
-              <SelectItem value="camp">Performance Camp</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div>
-          <Label>Status</Label>
-          <Select value={status} onValueChange={(v) => setStatus(v as EventStatus)}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="draft">Draft</SelectItem>
-              <SelectItem value="published">Published</SelectItem>
-              <SelectItem value="cancelled">Cancelled</SelectItem>
-              <SelectItem value="completed">Completed</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      <div>
-        <Label>Title</Label>
-        <Input value={title} onChange={(e) => setTitle(e.target.value)} onBlur={handleTitleBlur} required />
-        {fieldErrors.title && <p className="text-sm text-destructive">{fieldErrors.title[0]}</p>}
-      </div>
-
-      <div>
-        <Label>Slug</Label>
-        <Input value={slug} onChange={(e) => handleSlugChange(e.target.value.toLowerCase())} required />
-        {fieldErrors.slug && <p className="text-sm text-destructive">{fieldErrors.slug[0]}</p>}
-      </div>
-
-      <div>
-        <Label>Summary</Label>
-        <Input value={summary} onChange={(e) => setSummary(e.target.value)} required maxLength={300} />
-      </div>
-
-      <div>
-        <Label>Description</Label>
-        <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={6} required />
-      </div>
-
-      <div>
-        <Label>Focus Areas</Label>
-        <div className="flex flex-wrap gap-2">
-          {focusAreas.map((fa) => (
-            <span key={fa} className="rounded-full bg-primary/10 px-3 py-1 text-sm text-primary">
-              {fa}{" "}
-              <button type="button" onClick={() => removeFocusArea(fa)} className="ml-1">
-                ×
-              </button>
-            </span>
-          ))}
-        </div>
-        <div className="mt-2 flex gap-2">
-          <Input
-            value={focusAreasInput}
-            onChange={(e) => setFocusAreasInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault()
-                addFocusArea()
-              }
-            }}
-            placeholder="Add a focus area and press Enter"
-          />
-          <Button type="button" variant="outline" onClick={addFocusArea}>
-            Add
-          </Button>
-        </div>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-3">
-        <div>
-          <Label>Location Name</Label>
-          <Input value={locationName} onChange={(e) => setLocationName(e.target.value)} required />
-        </div>
-        <div>
-          <Label>Address (optional)</Label>
-          <Input value={locationAddress} onChange={(e) => setLocationAddress(e.target.value)} />
-        </div>
-        <div>
-          <Label>Map URL (optional)</Label>
-          <Input value={locationMapUrl} onChange={(e) => setLocationMapUrl(e.target.value)} />
-        </div>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-3">
-        <div>
-          <Label>Capacity</Label>
-          <Input
-            type="number"
-            min={1}
-            value={capacity}
-            onChange={(e) => setCapacity(Number(e.target.value))}
-            required
-          />
-        </div>
-        <div>
-          <Label>Age Min (optional)</Label>
-          <Input
-            type="number"
-            min={6}
-            max={21}
-            value={ageMin}
-            onChange={(e) => setAgeMin(e.target.value === "" ? "" : Number(e.target.value))}
-          />
-        </div>
-        <div>
-          <Label>Age Max (optional)</Label>
-          <Input
-            type="number"
-            min={6}
-            max={21}
-            value={ageMax}
-            onChange={(e) => setAgeMax(e.target.value === "" ? "" : Number(e.target.value))}
-          />
-        </div>
-      </div>
-
-      {type === "clinic" ? (
-        <div>
-          <Label>Start (date + time)</Label>
-          <Input type="datetime-local" value={startDate} onChange={(e) => setStartDate(e.target.value)} required />
-          <p className="mt-1 text-sm text-muted-foreground">End time will be auto-set to start + 2 hours.</p>
-        </div>
-      ) : (
-        <>
+      {/* Basics */}
+      <Section icon={Info} title="Basics" description="The headline info shown on the public event page.">
+        <div className="space-y-5">
           <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <Label>Start date</Label>
-              <Input
-                type="date"
-                value={startDate.slice(0, 10)}
-                onChange={(e) => setStartDate(e.target.value)}
-                required
-              />
+            <div className="space-y-2">
+              <Label>Type</Label>
+              <Select value={type} onValueChange={(v) => setType(v as EventType)} disabled={isEdit}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="clinic">Agility Clinic</SelectItem>
+                  <SelectItem value="camp">Performance Camp</SelectItem>
+                </SelectContent>
+              </Select>
+              {isEdit && <p className="text-xs text-muted-foreground">Type is locked after creation.</p>}
             </div>
-            <div>
-              <Label>End date</Label>
-              <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} required />
+            <div className="space-y-2">
+              <Label>Status</Label>
+              <Select value={status} onValueChange={(v) => setStatus(v as EventStatus)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="draft">Draft</SelectItem>
+                  <SelectItem value="published">Published</SelectItem>
+                  <SelectItem value="cancelled">Cancelled</SelectItem>
+                  <SelectItem value="completed">Completed</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
-          <div>
-            <Label>Session schedule (free-text)</Label>
+
+          <div className="space-y-2">
+            <Label>Title</Label>
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} onBlur={handleTitleBlur} required />
+            {fieldErrors.title && <p className="text-xs text-destructive">{fieldErrors.title[0]}</p>}
+          </div>
+
+          <div className="space-y-2">
+            <Label>Slug</Label>
+            <Input value={slug} onChange={(e) => handleSlugChange(e.target.value.toLowerCase())} required />
+            <p className="text-xs text-muted-foreground">URL-safe identifier — auto-filled from title.</p>
+            {fieldErrors.slug && <p className="text-xs text-destructive">{fieldErrors.slug[0]}</p>}
+          </div>
+
+          <div className="space-y-2">
+            <Label>Summary</Label>
+            <Input value={summary} onChange={(e) => setSummary(e.target.value)} required maxLength={300} />
+            <p className="text-xs text-muted-foreground">One-line teaser (max 300 characters).</p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Description</Label>
+            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={6} required />
+          </div>
+        </div>
+      </Section>
+
+      {/* Focus areas */}
+      <Section icon={Target} title="Focus Areas" description="Skills or themes this event targets.">
+        <div className="space-y-3">
+          {focusAreas.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {focusAreas.map((fa) => (
+                <span
+                  key={fa}
+                  className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 text-sm text-primary"
+                >
+                  {fa}
+                  <button
+                    type="button"
+                    onClick={() => removeFocusArea(fa)}
+                    className="ml-0.5 rounded-full hover:bg-primary/20 p-0.5 transition-colors"
+                    aria-label={`Remove ${fa}`}
+                  >
+                    <X className="size-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-2">
             <Input
-              value={sessionSchedule}
-              onChange={(e) => setSessionSchedule(e.target.value)}
-              placeholder="M–F, 9–11am"
+              value={focusAreasInput}
+              onChange={(e) => setFocusAreasInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault()
+                  addFocusArea()
+                }
+              }}
+              placeholder="e.g. Lateral agility — press Enter to add"
+            />
+            <Button type="button" variant="outline" onClick={addFocusArea}>
+              Add
+            </Button>
+          </div>
+        </div>
+      </Section>
+
+      {/* Location */}
+      <Section icon={MapPin} title="Location" description="Where the event takes place.">
+        <div className="grid gap-4 md:grid-cols-3">
+          <div className="space-y-2">
+            <Label>Venue Name</Label>
+            <Input value={locationName} onChange={(e) => setLocationName(e.target.value)} required />
+          </div>
+          <div className="space-y-2">
+            <Label>
+              Address <span className="text-muted-foreground font-normal">(optional)</span>
+            </Label>
+            <Input value={locationAddress} onChange={(e) => setLocationAddress(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label>
+              Map URL <span className="text-muted-foreground font-normal">(optional)</span>
+            </Label>
+            <Input
+              value={locationMapUrl}
+              onChange={(e) => setLocationMapUrl(e.target.value)}
+              placeholder="https://maps.google.com/..."
             />
           </div>
+        </div>
+      </Section>
+
+      {/* Capacity & Age */}
+      <Section icon={Users} title="Capacity & Eligibility" description="Signup limits and optional age range.">
+        <div className="grid gap-4 md:grid-cols-3">
+          <div className="space-y-2">
+            <Label>Capacity</Label>
+            <Input
+              type="number"
+              min={1}
+              value={capacity}
+              onChange={(e) => setCapacity(Number(e.target.value))}
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>
+              Age Min <span className="text-muted-foreground font-normal">(optional)</span>
+            </Label>
+            <Input
+              type="number"
+              min={6}
+              max={21}
+              value={ageMin}
+              onChange={(e) => setAgeMin(e.target.value === "" ? "" : Number(e.target.value))}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>
+              Age Max <span className="text-muted-foreground font-normal">(optional)</span>
+            </Label>
+            <Input
+              type="number"
+              min={6}
+              max={21}
+              value={ageMax}
+              onChange={(e) => setAgeMax(e.target.value === "" ? "" : Number(e.target.value))}
+            />
+          </div>
+        </div>
+      </Section>
+
+      {/* Schedule */}
+      <Section
+        icon={CalendarRange}
+        title="Schedule"
+        description={
+          type === "clinic"
+            ? "Clinics are single-session — end time auto-sets to start + 2 hours."
+            : "Camps run across a date range with repeating sessions."
+        }
+      >
+        {type === "clinic" ? (
+          <div className="space-y-2 max-w-md">
+            <Label>Start (date + time)</Label>
+            <Input
+              type="datetime-local"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              required
+            />
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Start date</Label>
+                <Input
+                  type="date"
+                  value={startDate.slice(0, 10)}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>End date</Label>
+                <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} required />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Session Schedule</Label>
+              <Input
+                value={sessionSchedule}
+                onChange={(e) => setSessionSchedule(e.target.value)}
+                placeholder="M–F, 9–11am"
+              />
+              <p className="text-xs text-muted-foreground">Free-text description of daily session times.</p>
+            </div>
+          </div>
+        )}
+      </Section>
+
+      {/* Pricing (camps only) */}
+      {type === "camp" && (
+        <Section icon={DollarSign} title="Pricing" description="Price charged at signup — synced to Stripe.">
           <div className="grid gap-4 md:grid-cols-2 md:items-end">
-            <div>
+            <div className="space-y-2">
               <Label>Price (USD)</Label>
               <Input
                 type="number"
@@ -309,7 +407,7 @@ export function EventForm({ event }: EventFormProps) {
                 onChange={(e) => setPriceDollars(e.target.value === "" ? "" : Number(e.target.value))}
               />
             </div>
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-1.5">
               <Button
                 type="button"
                 variant="outline"
@@ -334,32 +432,40 @@ export function EventForm({ event }: EventFormProps) {
               >
                 {syncing ? "Syncing..." : "Resync with Stripe"}
               </Button>
-              {event?.stripe_price_id && (
-                <p className="text-xs text-muted-foreground">Synced · {event.stripe_price_id.slice(-8)}</p>
+              {event?.stripe_price_id ? (
+                <p className="text-xs text-success">Synced · {event.stripe_price_id.slice(-8)}</p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  {isEdit ? "Not yet synced with Stripe." : "Save the event first, then sync."}
+                </p>
               )}
             </div>
           </div>
-        </>
+        </Section>
       )}
 
-      <div>
-        <Label>Hero Image</Label>
+      {/* Hero image */}
+      <Section icon={ImageIcon} title="Hero Image" description="Shown at the top of the public event page.">
         <EventHeroImageUpload value={heroImageUrl} onChange={setHeroImageUrl} eventId={event?.id} />
-      </div>
+      </Section>
 
-      <div className="flex items-center gap-3 border-t border-border pt-6">
+      {/* Actions */}
+      <div className="sticky bottom-0 -mx-4 sm:mx-0 bg-white/95 backdrop-blur-sm border border-border rounded-xl p-4 flex items-center justify-end gap-3 shadow-sm">
+        <Button type="button" variant="ghost" onClick={() => router.push("/admin/events")} disabled={submitting}>
+          Cancel
+        </Button>
         {status === "draft" ? (
           <>
             <Button type="button" variant="outline" onClick={() => void handleSubmit("draft")} disabled={submitting}>
               Save as draft
             </Button>
             <Button type="button" onClick={() => void handleSubmit("published")} disabled={submitting}>
-              Save &amp; publish
+              {submitting ? "Saving..." : "Save & publish"}
             </Button>
           </>
         ) : (
           <Button type="submit" disabled={submitting}>
-            Save
+            {submitting ? "Saving..." : "Save changes"}
           </Button>
         )}
       </div>

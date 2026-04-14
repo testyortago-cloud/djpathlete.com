@@ -1,41 +1,98 @@
 import Link from "next/link"
 import { ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
 import { FadeIn } from "@/components/shared/FadeIn"
 
-const STATS = [
-  { label: "Focus", value: "Overall Performance" },
-  { label: "Block", value: "Off / Pre-Season" },
-  { label: "Added Value", value: "Insight + Reporting", accent: true },
+const WEEKS = [
+  { n: "WK 01", phase: "Base" },
+  { n: "WK 02", phase: "Base" },
+  { n: "WK 03", phase: "Build" },
+  { n: "WK 04", phase: "Build" },
+  { n: "WK 05", phase: "Peak", peak: true },
+  { n: "WK 06", phase: "Test" },
 ]
 
+/**
+ * Training Block Poster hero — editorial athletics-meet-poster.
+ * Uses brand palette only: bg-surface paper, text-primary ink, text-accent.
+ */
 export function CampHero() {
   return (
-    <section className="relative overflow-hidden bg-primary text-primary-foreground">
+    <section className="relative overflow-hidden bg-surface text-primary">
+      {/* Corner accent glow */}
       <div
+        aria-hidden
         className="absolute inset-0 pointer-events-none"
         style={{
           background:
-            "radial-gradient(circle at top left, oklch(0.70 0.08 60 / 0.22), transparent 35%), radial-gradient(circle at bottom right, oklch(1 0 0 / 0.08), transparent 30%)",
+            "radial-gradient(ellipse at 100% 0%, oklch(0.7 0.08 60 / 0.14), transparent 55%)",
         }}
       />
-      <div className="relative mx-auto grid max-w-7xl gap-10 px-4 py-20 md:px-6 md:py-28 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
-        <FadeIn>
-          <div className="inline-flex items-center rounded-full border border-primary-foreground/20 bg-primary-foreground/5 px-4 py-2 text-sm text-primary-foreground/80">
-            Performance Camps · Off-Season + Pre-Season · Ages 12–18
+
+      {/* Top masthead bar */}
+      <div className="relative border-b-2 border-primary">
+        <div className="mx-auto max-w-7xl px-4 md:px-6 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3 font-heading text-xs uppercase tracking-[0.35em] text-primary">
+            <span className="inline-block h-4 w-1 bg-accent" />
+            DJP / Performance Gazette
           </div>
-          <h1 className="mt-5 max-w-4xl font-heading text-5xl font-semibold tracking-tight md:text-7xl">
-            Build more before the season takes over.
+          <div className="hidden sm:flex items-center gap-6 text-[11px] uppercase tracking-[0.3em] text-primary/60">
+            <span>Vol. IV</span>
+            <span>Issue · Off + Pre</span>
+            <span>Ages 12–18</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="relative mx-auto max-w-7xl px-4 md:px-6 pt-16 md:pt-24 pb-8 md:pb-12">
+        <FadeIn>
+          {/* Edition tag + stamp */}
+          <div className="flex items-start justify-between gap-6 flex-wrap">
+            <div>
+              <div className="inline-block border-2 border-primary px-3 py-1 font-heading text-[11px] uppercase tracking-[0.35em] text-primary">
+                Block A · Performance Camp
+              </div>
+            </div>
+            {/* Rubber stamp */}
+            <div className="inline-flex items-center gap-2 rotate-[-6deg] border-2 border-accent rounded-sm px-4 py-2 font-heading font-bold uppercase tracking-[0.2em] text-sm md:text-base text-accent bg-accent/[0.06]">
+              6-Week Programme
+              <span className="w-px h-5 bg-accent/50" />
+              <span className="tabular-nums">2026</span>
+            </div>
+          </div>
+
+          {/* Headline — huge poster typography */}
+          <h1
+            className="mt-10 font-heading font-semibold tracking-tight leading-[0.88] text-primary"
+            style={{ fontSize: "clamp(3rem, 11vw, 10.5rem)" }}
+          >
+            BUILD
+            <br />
+            THE <span className="italic font-normal text-accent">BASE.</span>
           </h1>
-          <p className="mt-6 max-w-3xl text-lg leading-8 text-primary-foreground/80 md:text-xl">
-            Camps built to develop the physical base behind performance: speed, power, movement quality, conditioning,
-            and robustness. In selected settings, athletes also get testing, insight, and reporting.
-          </p>
-          <div className="mt-8 flex flex-wrap gap-4">
-            <Button asChild size="lg" className="rounded-full bg-accent text-primary hover:bg-accent/90">
+
+          {/* Two-column lede */}
+          <div className="mt-10 grid gap-10 md:grid-cols-[1.3fr_1fr] md:gap-16 max-w-5xl">
+            <p className="text-base md:text-lg leading-7 md:leading-8 text-muted-foreground">
+              Off-season and pre-season performance camps for athletes aged 12–18. Speed, power, movement
+              quality, conditioning, and robustness — built before the competitive period takes over.
+            </p>
+            <div className="border-l-2 border-primary/30 pl-6">
+              <p className="font-heading text-lg md:text-xl font-semibold leading-snug text-primary">
+                "The athlete you become in the off-season is the athlete you race with in-season."
+              </p>
+              <p className="mt-2 text-[11px] uppercase tracking-[0.3em] text-accent">— Camp ethos</p>
+            </div>
+          </div>
+
+          <div className="mt-10 flex flex-wrap items-center gap-4">
+            <Button
+              asChild
+              size="lg"
+              className="rounded-none bg-primary text-primary-foreground hover:bg-primary/90 font-heading font-semibold uppercase tracking-[0.15em] shadow-none"
+            >
               <Link href="#register-interest">
-                Register Your Interest
+                Register interest
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Link>
             </Button>
@@ -43,49 +100,39 @@ export function CampHero() {
               asChild
               size="lg"
               variant="outline"
-              className="rounded-full border-primary-foreground/30 bg-primary-foreground/5 text-primary-foreground hover:bg-primary-foreground/10"
+              className="rounded-none bg-transparent border-primary text-primary hover:bg-primary/5 font-heading uppercase tracking-[0.15em]"
             >
-              <Link href="#what-gets-developed">See The Details</Link>
+              <Link href="#what-gets-developed">Read the programme</Link>
             </Button>
           </div>
-          <div className="mt-10 grid gap-4 sm:grid-cols-3">
-            {STATS.map((stat) => (
-              <div
-                key={stat.label}
-                className={`rounded-2xl border p-4 ${
-                  stat.accent ? "border-accent/40 bg-accent/15" : "border-primary-foreground/15 bg-primary-foreground/5"
-                }`}
-              >
-                <div className="text-sm text-primary-foreground/60">{stat.label}</div>
-                <div className="mt-1 text-lg font-semibold">{stat.value}</div>
-              </div>
-            ))}
-          </div>
         </FadeIn>
+      </div>
 
-        <FadeIn delay={0.1}>
-          <Card className="rounded-3xl border-primary-foreground/15 bg-primary-foreground/[0.06] shadow-2xl backdrop-blur">
-            <CardContent className="p-6 md:p-8">
-              <div className="text-xs uppercase tracking-[0.3em] text-primary-foreground/50">The difference</div>
-              <div className="mt-4 font-heading text-2xl font-medium leading-9 md:text-3xl">
-                More than sessions that just leave athletes tired.
+      {/* Week strip — the signature piece */}
+      <div className="relative border-y-2 border-primary bg-background">
+        <div className="mx-auto max-w-7xl grid grid-cols-3 md:grid-cols-6 divide-x-2 divide-primary">
+          {WEEKS.map((w, i) => (
+            <div
+              key={w.n}
+              className={`relative px-4 py-5 md:py-7 ${w.peak ? "bg-accent/12" : ""}`}
+            >
+              <div className="font-heading text-lg md:text-2xl font-bold tabular-nums tracking-tight text-primary">
+                {w.n}
               </div>
-              <div className="mt-5 space-y-4 text-sm leading-7 text-primary-foreground/75 md:text-base">
-                <p>
-                  The aim is to build real physical qualities with more structure, more purpose, and better feedback
-                  around progress.
-                </p>
-                <p>
-                  In some environments that also means using selected technology to give athletes clearer performance
-                  insight.
-                </p>
+              <div className="mt-1 text-[10px] md:text-[11px] uppercase tracking-[0.3em] text-accent">
+                {w.phase}
               </div>
-              <div className="mt-7 rounded-2xl border border-accent/40 bg-accent/15 p-4 text-sm text-primary-foreground">
-                Prepare properly now so the season does not expose what was missed.
+              <div className="mt-4 h-1 bg-primary/15 overflow-hidden">
+                <div
+                  className={w.peak ? "h-full bg-accent" : "h-full bg-primary"}
+                  style={{
+                    width: w.peak ? "100%" : i < 2 ? "60%" : i < 4 ? "80%" : "40%",
+                  }}
+                />
               </div>
-            </CardContent>
-          </Card>
-        </FadeIn>
+            </div>
+          ))}
+        </div>
       </div>
     </section>
   )

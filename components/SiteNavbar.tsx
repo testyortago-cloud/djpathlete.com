@@ -234,9 +234,13 @@ export function SiteNavbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const pathname = usePathname()
 
-  // Pages with dark hero backgrounds where nav text should be white
-  const darkHeroPages = ["/", "/in-person", "/education"]
-  const isDarkHero = darkHeroPages.includes(pathname)
+  // Pages with dark hero backgrounds where nav text should be white.
+  // Exact matches first, then prefix matches for routes with sub-pages (e.g. /clinics/[slug]).
+  const darkHeroExact = ["/", "/in-person", "/education"]
+  const darkHeroPrefixes = ["/clinics", "/online"]
+  const isDarkHero =
+    darkHeroExact.includes(pathname) ||
+    darkHeroPrefixes.some((p) => pathname === p || pathname.startsWith(p + "/"))
 
   useEffect(() => {
     setMobileMenuOpen(false)

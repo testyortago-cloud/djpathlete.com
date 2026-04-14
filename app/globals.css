@@ -126,7 +126,22 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
+@keyframes marquee-x {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
 @layer components {
+  .marquee-track {
+    animation: marquee-x 40s linear infinite;
+  }
+  .marquee-track-slow {
+    animation: marquee-x 60s linear infinite;
+  }
   .sidebar-scroll {
     scrollbar-width: thin;
     scrollbar-color: rgba(196, 155, 122, 0.3) transparent;
