@@ -1,21 +1,17 @@
 import { Resend } from "resend"
 import { getPreferences } from "@/lib/db/notification-preferences"
 import { getActiveSubscribers } from "@/lib/db/newsletter"
+import type { Event, EventSignup } from "@/types/database"
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
-const FROM_EMAIL =
-  process.env.RESEND_FROM_EMAIL ?? "DJP Athlete <noreply@darrenjpaul.com>"
+const FROM_EMAIL = process.env.RESEND_FROM_EMAIL ?? "DJP Athlete <noreply@darrenjpaul.com>"
 
 /** CC all admin/business emails to Darren's main account */
 const ADMIN_CC = "darren@darrenjpaul.com"
 
 function getBaseUrl() {
-  return (
-    process.env.NEXTAUTH_URL ??
-    process.env.NEXT_PUBLIC_APP_URL ??
-    "http://localhost:3000"
-  )
+  return process.env.NEXTAUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
 }
 
 /** Shared email wrapper with branded header + footer */
@@ -216,7 +212,7 @@ function infoCard(rows: { label: string; value: string; valueColor?: string }[])
             ${r.value}
           </p>
         </td>
-      </tr>`
+      </tr>`,
     )
     .join("")
 
@@ -272,11 +268,7 @@ function heroBanner(label: string, headline: string) {
   </table>`
 }
 
-export async function sendPasswordResetEmail(
-  to: string,
-  resetUrl: string,
-  firstName: string
-) {
+export async function sendPasswordResetEmail(to: string, resetUrl: string, firstName: string) {
   const html = emailLayout(`
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
       <tr>
@@ -328,11 +320,7 @@ export async function sendPasswordResetEmail(
   }
 }
 
-export async function sendVerificationEmail(
-  to: string,
-  verifyUrl: string,
-  firstName: string
-) {
+export async function sendVerificationEmail(to: string, verifyUrl: string, firstName: string) {
   const html = emailLayout(`
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
       <tr>
@@ -527,12 +515,7 @@ export async function sendWelcomeEmail(to: string, firstName: string) {
   }
 }
 
-export async function sendAccountCreatedEmail(
-  to: string,
-  tempPassword: string,
-  firstName: string,
-  loginUrl: string
-) {
+export async function sendAccountCreatedEmail(to: string, tempPassword: string, firstName: string, loginUrl: string) {
   const html = emailLayout(`
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
       <tr>
@@ -598,12 +581,7 @@ export async function sendAccountCreatedEmail(
   }
 }
 
-export async function sendProgramReadyEmail(
-  to: string,
-  firstName: string,
-  programName: string,
-  clientUserId?: string
-) {
+export async function sendProgramReadyEmail(to: string, firstName: string, programName: string, clientUserId?: string) {
   // Check client's email notification preference
   if (clientUserId) {
     const prefs = await getPreferences(clientUserId)
@@ -661,7 +639,7 @@ export async function sendProgramAvailableForPurchaseEmail(
   firstName: string,
   programName: string,
   programId: string,
-  clientUserId?: string
+  clientUserId?: string,
 ) {
   // Check client's email notification preference
   if (clientUserId) {
@@ -1258,12 +1236,7 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-async function sendBatched(
-  subscribers: { email: string }[],
-  subject: string,
-  html: string,
-  label: string
-) {
+async function sendBatched(subscribers: { email: string }[], subject: string, html: string, label: string) {
   let sent = 0
   let failed = 0
 
@@ -1277,7 +1250,7 @@ async function sendBatched(
           to: sub.email,
           subject,
           html,
-        }))
+        })),
       )
 
       if (error) {
@@ -1337,7 +1310,9 @@ export async function sendBlogNewsletterToAll(blog: BlogNewsletterData) {
       </tr>
     </table>
 
-    ${blog.coverImageUrl ? `
+    ${
+      blog.coverImageUrl
+        ? `
     <!-- Cover image -->
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
       <tr>
@@ -1346,7 +1321,9 @@ export async function sendBlogNewsletterToAll(blog: BlogNewsletterData) {
         </td>
       </tr>
     </table>
-    ` : ""}
+    `
+        : ""
+    }
 
     <!-- Content -->
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
@@ -1380,12 +1357,7 @@ export async function sendBlogNewsletterToAll(blog: BlogNewsletterData) {
     </table>
   `)
 
-  return sendBatched(
-    subscribers,
-    `New Post: ${blog.title}`,
-    html,
-    "Blog Newsletter"
-  )
+  return sendBatched(subscribers, `New Post: ${blog.title}`, html, "Blog Newsletter")
 }
 
 // ---------------------------------------------------------------------------
@@ -1440,12 +1412,7 @@ export async function sendStandaloneNewsletter(data: StandaloneNewsletterData) {
 
   const html = buildNewsletterHtml(data.htmlContent)
 
-  return sendBatched(
-    subscribers,
-    data.subject,
-    html,
-    "Standalone Newsletter"
-  )
+  return sendBatched(subscribers, data.subject, html, "Standalone Newsletter")
 }
 
 // ─── Admin notification emails ───
@@ -1643,7 +1610,9 @@ export async function sendInquiryEmail({
             </tr>
           </table>
 
-          ${injuries ? `
+          ${
+            injuries
+              ? `
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:16px; background-color:#faf9f7; border-radius:2px; border-left:3px solid #C49B7A;">
             <tr>
               <td style="padding:24px 28px;">
@@ -1656,7 +1625,9 @@ export async function sendInquiryEmail({
               </td>
             </tr>
           </table>
-          ` : ""}
+          `
+              : ""
+          }
 
           <p style="margin:32px 0 0; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:13px; color:#a09b94;">
             Reply directly to <a href="mailto:${email}" style="color:#0E3F50; text-decoration:underline;">${email}</a>
@@ -1684,13 +1655,7 @@ export async function sendInquiryEmail({
 
 const BOOKING_LINK = "https://api.leadconnectorhq.com/widget/booking/p9XdK6uz9EC3JKUhpzdA"
 
-export async function sendContactAutoReply({
-  to,
-  firstName,
-}: {
-  to: string
-  firstName: string
-}) {
+export async function sendContactAutoReply({ to, firstName }: { to: string; firstName: string }) {
   const html = emailLayout(`
     ${heroBanner("Thank You", `We&rsquo;ve received your message, ${firstName}.`)}
 
@@ -1780,4 +1745,148 @@ export async function sendInquiryAutoReply({
     console.error("Failed to send inquiry auto-reply:", error)
     throw new Error("Failed to send inquiry auto-reply")
   }
+}
+
+/** Event context block — reused in all three event email templates */
+function buildEventContextBlock(event: Event) {
+  const start = new Date(event.start_date).toLocaleString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  })
+  const location = event.location_address
+    ? `${event.location_name} — ${event.location_address}`
+    : event.location_name
+  return infoCard([
+    { label: "Event", value: event.title },
+    { label: "Date", value: start },
+    { label: "Location", value: location },
+  ])
+}
+
+export async function sendEventSignupReceivedEmail(signup: EventSignup, event: Event) {
+  const eventUrl = `${getBaseUrl()}/${event.type === "clinic" ? "clinics" : "camps"}/${event.slug}`
+  const html = emailLayout(`
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td style="padding:48px 48px 52px;">
+          ${sectionLabel("Signup received")}
+
+          <p style="margin:0 0 8px; font-family:'Lexend Exa', Georgia, serif; font-size:22px; color:#0E3F50;">
+            Hi ${signup.parent_name},
+          </p>
+
+          <p style="margin:0 0 28px; font-family:'Lexend Deca', sans-serif; font-size:15px; color:#5c5750; line-height:1.8;">
+            Thanks for registering ${signup.athlete_name}'s interest in ${event.title}. Darren reviews every
+            signup and will respond within 48 hours.
+          </p>
+
+          ${buildEventContextBlock(event)}
+
+          <div style="height:32px;"></div>
+
+          ${ctaButton(eventUrl, "View event details")}
+
+          ${fallbackLink(eventUrl)}
+        </td>
+      </tr>
+    </table>
+  `)
+
+  await resend.emails.send({
+    from: FROM_EMAIL,
+    to: signup.parent_email,
+    subject: `We got your interest in ${event.title} — Darren J Paul`,
+    html,
+  })
+}
+
+export async function sendEventSignupConfirmedEmail(signup: EventSignup, event: Event) {
+  const eventUrl = `${getBaseUrl()}/${event.type === "clinic" ? "clinics" : "camps"}/${event.slug}`
+  const html = emailLayout(`
+    ${heroBanner("You're confirmed", event.title)}
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td style="padding:40px 48px 52px;">
+          <p style="margin:0 0 8px; font-family:'Lexend Exa', Georgia, serif; font-size:22px; color:#0E3F50;">
+            Hi ${signup.parent_name},
+          </p>
+
+          <p style="margin:0 0 28px; font-family:'Lexend Deca', sans-serif; font-size:15px; color:#5c5750; line-height:1.8;">
+            ${signup.athlete_name} is confirmed for ${event.title}. Here's what to keep on hand:
+          </p>
+
+          ${buildEventContextBlock(event)}
+
+          <div style="height:28px;"></div>
+
+          <p style="margin:0 0 28px; font-family:'Lexend Deca', sans-serif; font-size:15px; color:#5c5750; line-height:1.8;">
+            Please arrive 10 minutes early. Bring water, appropriate footwear, and any gear your sport requires.
+            If you have questions, reply to this email and Darren will get back to you.
+          </p>
+
+          ${ctaButton(eventUrl, "View event details")}
+
+          ${fallbackLink(eventUrl)}
+        </td>
+      </tr>
+    </table>
+  `)
+
+  await resend.emails.send({
+    from: FROM_EMAIL,
+    to: signup.parent_email,
+    subject: `You're confirmed for ${event.title}`,
+    html,
+  })
+}
+
+export async function sendAdminNewSignupEmail(signup: EventSignup, event: Event) {
+  const adminUrl = `${getBaseUrl()}/admin/events/${event.id}`
+  const html = emailLayout(`
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td style="padding:48px 48px 52px;">
+          ${sectionLabel("New signup")}
+
+          <p style="margin:0 0 24px; font-family:'Lexend Exa', Georgia, serif; font-size:20px; color:#0E3F50;">
+            ${signup.athlete_name} (age ${signup.athlete_age}) for ${event.title}
+          </p>
+
+          ${infoCard([
+            { label: "Parent", value: `${signup.parent_name} · ${signup.parent_email}` },
+            { label: "Phone", value: signup.parent_phone ?? "—" },
+            { label: "Sport", value: signup.sport ?? "—" },
+            { label: "Notes", value: signup.notes ?? "—" },
+          ])}
+
+          <div style="height:24px;"></div>
+
+          ${infoCard([
+            { label: "Event", value: event.title },
+            { label: "Date", value: new Date(event.start_date).toLocaleString() },
+            { label: "Location", value: event.location_name },
+            { label: "Capacity", value: `${event.signup_count} / ${event.capacity} booked` },
+          ])}
+
+          <div style="height:32px;"></div>
+
+          ${ctaButton(adminUrl, "Review in admin")}
+
+          ${fallbackLink(adminUrl)}
+        </td>
+      </tr>
+    </table>
+  `)
+
+  await resend.emails.send({
+    from: FROM_EMAIL,
+    to: ADMIN_CC,
+    subject: `New signup: ${signup.athlete_name} for ${event.title}`,
+    html,
+  })
 }
