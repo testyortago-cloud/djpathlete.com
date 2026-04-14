@@ -34,8 +34,15 @@ const CAMP_AUDIENCE = [
   "Parents and teams who value both training quality and measurable feedback",
 ]
 
-export default async function CampDetailPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function CampDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ slug: string }>
+  searchParams: Promise<{ checkout?: string }>
+}) {
   const { slug } = await params
+  const { checkout } = await searchParams
   const event = await getEventBySlug(slug)
   if (!event || event.type !== "camp" || event.status !== "published") notFound()
 
@@ -72,6 +79,14 @@ export default async function CampDetailPage({ params }: { params: Promise<{ slu
     <>
       <JsonLd data={eventSchema} />
       <EventDetailHero event={event} />
+
+      {checkout === "cancelled" && (
+        <div className="border-b border-accent/30 bg-accent/10">
+          <div className="mx-auto max-w-7xl px-4 py-3 text-sm text-foreground md:px-6">
+            Checkout was cancelled — feel free to try again when you're ready.
+          </div>
+        </div>
+      )}
 
       <div className="mx-auto max-w-7xl px-4 py-12 md:px-6 md:py-16 pb-32 lg:pb-16">
         <div className="grid gap-10 lg:grid-cols-[1fr_360px]">
