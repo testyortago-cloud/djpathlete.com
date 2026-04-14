@@ -10,12 +10,7 @@ import { getProfileByUserId } from "@/lib/db/client-profiles"
 import { getProgramById } from "@/lib/db/programs"
 import { sendCoachPurchaseNotification, sendEventSignupConfirmedEmail } from "@/lib/email"
 import { ghlCreateContact, ghlTriggerWorkflow } from "@/lib/ghl"
-import {
-  confirmSignup,
-  cancelSignup,
-  getSignupById,
-  getEventSignupByPaymentIntent,
-} from "@/lib/db/event-signups"
+import { confirmSignup, cancelSignup, getSignupById, getEventSignupByPaymentIntent } from "@/lib/db/event-signups"
 import { getEventById as getEventByIdForSignup } from "@/lib/db/events"
 import { createServiceRoleClient as createSupabaseServiceClient } from "@/lib/supabase"
 

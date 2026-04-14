@@ -121,21 +121,41 @@ describe("event-signups DAL", () => {
     const e = await createEvent({
       type: "camp",
       slug: `cap-window-${randomUUID()}`,
-      title: "T", summary: "S", description: "D", focus_areas: [],
+      title: "T",
+      summary: "S",
+      description: "D",
+      focus_areas: [],
       start_date: new Date(Date.now() + 86400000).toISOString(),
       end_date: new Date(Date.now() + 7 * 86400000).toISOString(),
-      location_name: "L", capacity: 10, status: "draft", price_dollars: 100,
+      location_name: "L",
+      capacity: 10,
+      status: "draft",
+      price_dollars: 100,
     })
     extraEventIds.push(e.id)
 
     // Recent paid pending — should count
-    await createSignup(e.id, {
-      parent_name: "A", parent_email: "a@x.com", athlete_name: "X", athlete_age: 14,
-    }, "paid")
+    await createSignup(
+      e.id,
+      {
+        parent_name: "A",
+        parent_email: "a@x.com",
+        athlete_name: "X",
+        athlete_age: 14,
+      },
+      "paid",
+    )
     // Recent interest pending — should NOT count
-    await createSignup(e.id, {
-      parent_name: "B", parent_email: "b@x.com", athlete_name: "Y", athlete_age: 14,
-    }, "interest")
+    await createSignup(
+      e.id,
+      {
+        parent_name: "B",
+        parent_email: "b@x.com",
+        athlete_name: "Y",
+        athlete_age: 14,
+      },
+      "interest",
+    )
 
     const count = await countPendingPaidSignups(e.id)
     expect(count).toBe(1)
@@ -146,16 +166,29 @@ describe("event-signups DAL", () => {
     const e = await createEvent({
       type: "camp",
       slug: `lookup-session-${randomUUID()}`,
-      title: "T", summary: "S", description: "D", focus_areas: [],
+      title: "T",
+      summary: "S",
+      description: "D",
+      focus_areas: [],
       start_date: new Date(Date.now() + 86400000).toISOString(),
       end_date: new Date(Date.now() + 7 * 86400000).toISOString(),
-      location_name: "L", capacity: 10, status: "draft", price_dollars: 100,
+      location_name: "L",
+      capacity: 10,
+      status: "draft",
+      price_dollars: 100,
     })
     extraEventIds.push(e.id)
 
-    const sig = await createSignup(e.id, {
-      parent_name: "A", parent_email: "a@x.com", athlete_name: "X", athlete_age: 14,
-    }, "paid")
+    const sig = await createSignup(
+      e.id,
+      {
+        parent_name: "A",
+        parent_email: "a@x.com",
+        athlete_name: "X",
+        athlete_age: 14,
+      },
+      "paid",
+    )
 
     const { createServiceRoleClient } = await import("@/lib/supabase")
     const supabase = createServiceRoleClient()
@@ -171,24 +204,34 @@ describe("event-signups DAL", () => {
     const e = await createEvent({
       type: "camp",
       slug: `lookup-pi-${randomUUID()}`,
-      title: "T", summary: "S", description: "D", focus_areas: [],
+      title: "T",
+      summary: "S",
+      description: "D",
+      focus_areas: [],
       start_date: new Date(Date.now() + 86400000).toISOString(),
       end_date: new Date(Date.now() + 7 * 86400000).toISOString(),
-      location_name: "L", capacity: 10, status: "draft", price_dollars: 100,
+      location_name: "L",
+      capacity: 10,
+      status: "draft",
+      price_dollars: 100,
     })
     extraEventIds.push(e.id)
 
-    const sig = await createSignup(e.id, {
-      parent_name: "A", parent_email: "a@x.com", athlete_name: "X", athlete_age: 14,
-    }, "paid")
+    const sig = await createSignup(
+      e.id,
+      {
+        parent_name: "A",
+        parent_email: "a@x.com",
+        athlete_name: "X",
+        athlete_age: 14,
+      },
+      "paid",
+    )
 
     const { createServiceRoleClient } = await import("@/lib/supabase")
     const supabase = createServiceRoleClient()
     const piId = `pi_test_${randomUUID()}`
-    await supabase
-      .from("event_signups")
-      .update({ stripe_payment_intent_id: piId })
-      .eq("id", sig.id)
+    await supabase.from("event_signups").update({ stripe_payment_intent_id: piId }).eq("id", sig.id)
 
     const fetched = await getEventSignupByPaymentIntent(piId)
     expect(fetched?.id).toBe(sig.id)

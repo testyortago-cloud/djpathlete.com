@@ -330,18 +330,12 @@ export function EventForm({ event }: EventFormProps) {
                     setSyncing(false)
                   }
                 }}
-                title={
-                  !isEdit
-                    ? "Save the event first, then sync"
-                    : "Create or refresh the Stripe Product + Price"
-                }
+                title={!isEdit ? "Save the event first, then sync" : "Create or refresh the Stripe Product + Price"}
               >
                 {syncing ? "Syncing..." : "Resync with Stripe"}
               </Button>
               {event?.stripe_price_id && (
-                <p className="text-xs text-muted-foreground">
-                  Synced · {event.stripe_price_id.slice(-8)}
-                </p>
+                <p className="text-xs text-muted-foreground">Synced · {event.stripe_price_id.slice(-8)}</p>
               )}
             </div>
           </div>

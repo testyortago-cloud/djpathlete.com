@@ -54,8 +54,7 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
 
       // Carry the price_dollars-to-price_cents conversion that updateEvent normally does.
       const priceChanged =
-        price_dollars !== undefined &&
-        Math.round((price_dollars ?? 0) * 100) !== (current.price_cents ?? 0)
+        price_dollars !== undefined && Math.round((price_dollars ?? 0) * 100) !== (current.price_cents ?? 0)
       if (price_dollars !== undefined) {
         merged.price_cents = price_dollars == null ? null : Math.round(price_dollars * 100)
       }
@@ -89,12 +88,7 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
 
       // Auto-sync on publish for camps with a price and no existing sync.
       const transitionToPublished = status === "published" && current.status !== "published"
-      if (
-        transitionToPublished &&
-        current.type === "camp" &&
-        current.price_cents &&
-        !current.stripe_price_id
-      ) {
+      if (transitionToPublished && current.type === "camp" && current.price_cents && !current.stripe_price_id) {
         try {
           const eventForSync = {
             ...current,

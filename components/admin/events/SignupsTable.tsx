@@ -94,7 +94,9 @@ export function SignupsTable({ initialSignups, eventId }: SignupsTableProps) {
               <td className="px-4 py-3 capitalize">{s.signup_type}</td>
               <td className="px-4 py-3">
                 <div className="flex flex-col gap-1">
-                  <span className={`inline-block w-fit rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[s.status] ?? ""}`}>
+                  <span
+                    className={`inline-block w-fit rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[s.status] ?? ""}`}
+                  >
                     {s.status}
                   </span>
                   {s.signup_type === "paid" && (

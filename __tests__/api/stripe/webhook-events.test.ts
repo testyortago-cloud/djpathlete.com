@@ -31,16 +31,23 @@ vi.mock("@/lib/supabase", () => ({
 }))
 // Stub modules the existing webhook imports for program flow
 vi.mock("@/lib/db/payments", () => ({
-  createPayment: vi.fn(), getPaymentByStripeId: vi.fn(), updatePayment: vi.fn(),
+  createPayment: vi.fn(),
+  getPaymentByStripeId: vi.fn(),
+  updatePayment: vi.fn(),
 }))
 vi.mock("@/lib/db/assignments", () => ({
-  createAssignment: vi.fn(), getAssignmentByUserAndProgram: vi.fn(), updateAssignment: vi.fn(),
+  createAssignment: vi.fn(),
+  getAssignmentByUserAndProgram: vi.fn(),
+  updateAssignment: vi.fn(),
 }))
 vi.mock("@/lib/db/week-access", () => ({
-  updateWeekAccess: vi.fn(), createWeekAccessBulk: vi.fn(),
+  updateWeekAccess: vi.fn(),
+  createWeekAccessBulk: vi.fn(),
 }))
 vi.mock("@/lib/db/subscriptions", () => ({
-  createSubscription: vi.fn(), getSubscriptionByStripeId: vi.fn(), updateSubscriptionByStripeId: vi.fn(),
+  createSubscription: vi.fn(),
+  getSubscriptionByStripeId: vi.fn(),
+  updateSubscriptionByStripeId: vi.fn(),
 }))
 vi.mock("@/lib/db/users", () => ({ getUserById: vi.fn() }))
 vi.mock("@/lib/db/client-profiles", () => ({ getProfileByUserId: vi.fn() }))
@@ -110,7 +117,8 @@ describe("Stripe webhook — event_signup branches", () => {
       data: {
         object: {
           metadata: { type: "event_signup", event_signup_id: "sig-1", event_id: "evt-1" },
-          payment_intent: "pi_x", amount_total: 29900,
+          payment_intent: "pi_x",
+          amount_total: 29900,
         },
       },
     })

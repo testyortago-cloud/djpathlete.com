@@ -36,10 +36,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
       return NextResponse.json({ error: "Only camps support paid checkout" }, { status: 400 })
     }
     if (!event.stripe_price_id) {
-      return NextResponse.json(
-        { error: "This camp is not yet available for booking" },
-        { status: 400 },
-      )
+      return NextResponse.json({ error: "This camp is not yet available for booking" }, { status: 400 })
     }
 
     const pendingPaid = await countPendingPaidSignups(id)
@@ -59,10 +56,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
       })
     } catch (err) {
       console.error("[api/events/checkout] Stripe error", err)
-      return NextResponse.json(
-        { error: "Payment provider unavailable, please try again" },
-        { status: 502 },
-      )
+      return NextResponse.json({ error: "Payment provider unavailable, please try again" }, { status: 502 })
     }
 
     const supabase = createServiceRoleClient()

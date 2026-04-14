@@ -33,11 +33,7 @@ export function EventSignupModal({ event, open, onOpenChange, isWaitlist }: Even
   const [formError, setFormError] = useState<string | null>(null)
   const [forcedWaitlist, setForcedWaitlist] = useState(false)
 
-  const isPaidFlow =
-    event.type === "camp" &&
-    !!event.stripe_price_id &&
-    !isWaitlist &&
-    !forcedWaitlist
+  const isPaidFlow = event.type === "camp" && !!event.stripe_price_id && !isWaitlist && !forcedWaitlist
 
   async function submit(e: React.FormEvent<HTMLFormElement>, waitlist: boolean) {
     e.preventDefault()
@@ -60,9 +56,7 @@ export function EventSignupModal({ event, open, onOpenChange, isWaitlist }: Even
     }
 
     const query = waitlist || isWaitlist || forcedWaitlist ? "?waitlist=true" : ""
-    const url = isPaidFlow && !query
-      ? `/api/events/${event.id}/checkout`
-      : `/api/events/${event.id}/signup${query}`
+    const url = isPaidFlow && !query ? `/api/events/${event.id}/checkout` : `/api/events/${event.id}/signup${query}`
 
     try {
       const res = await fetch(url, {

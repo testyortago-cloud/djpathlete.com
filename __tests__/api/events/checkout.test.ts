@@ -29,16 +29,24 @@ const publishedCamp = {
   status: "published",
   capacity: 10,
   signup_count: 3,
-  title: "Summer Camp", summary: "", description: "", focus_areas: [],
+  title: "Summer Camp",
+  summary: "",
+  description: "",
+  focus_areas: [],
   start_date: new Date(Date.now() + 86400000).toISOString(),
   end_date: new Date(Date.now() + 7 * 86400000).toISOString(),
   session_schedule: null,
-  location_name: "L", location_address: null, location_map_url: null,
-  age_min: null, age_max: null,
+  location_name: "L",
+  location_address: null,
+  location_map_url: null,
+  age_min: null,
+  age_max: null,
   price_cents: 29900,
   stripe_product_id: "prod_test_1",
   stripe_price_id: "price_test_1",
-  hero_image_url: null, created_at: "", updated_at: "",
+  hero_image_url: null,
+  created_at: "",
+  updated_at: "",
 }
 
 function makeReq(body: Record<string, unknown>) {
@@ -51,8 +59,10 @@ function makeReq(body: Record<string, unknown>) {
 
 const ctx = { params: Promise.resolve({ id: "evt-1" }) }
 const validBody = {
-  parent_name: "Alex", parent_email: "a@x.com",
-  athlete_name: "Sam", athlete_age: 14,
+  parent_name: "Alex",
+  parent_email: "a@x.com",
+  athlete_name: "Sam",
+  athlete_age: 14,
 }
 
 describe("POST /api/events/[id]/checkout", () => {

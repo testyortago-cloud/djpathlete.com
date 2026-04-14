@@ -19,7 +19,10 @@ interface PageProps {
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", {
-    weekday: "long", month: "long", day: "numeric", year: "numeric",
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
   })
 }
 
@@ -74,8 +77,8 @@ export default async function CampBookingSuccessPage({ params, searchParams }: P
                 )}
                 {signup.status === "pending" && (
                   <div className="mt-6 rounded-xl border border-accent/30 bg-accent/10 p-4 text-sm text-foreground">
-                    We're still processing your payment — this usually finishes within a few seconds.
-                    You'll receive a confirmation email shortly. You can refresh this page to check the latest status.
+                    We're still processing your payment — this usually finishes within a few seconds. You'll receive a
+                    confirmation email shortly. You can refresh this page to check the latest status.
                   </div>
                 )}
                 {(signup.status === "cancelled" || signup.status === "refunded") && (
