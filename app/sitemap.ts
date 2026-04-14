@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next"
 import { getPublishedBlogPosts } from "@/lib/db/blog-posts"
+import { getPublishedEvents } from "@/lib/db/events"
 
 const BASE_URL = "https://djpathlete.com"
 
@@ -82,5 +83,30 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // If DB is unavailable, return static pages only
   }
 
-  return [...staticPages, ...blogPages]
+  // Dynamic event pages (clinics and camps)
+  let eventPages: MetadataRoute.Sitemap = []
+  try {
+    const [clinics, camps] = await Promise.all([
+      getPublishedEvents({ type: "clinic" }),
+      getPublishedEvents({ type: "camp" }),
+    ])
+    eventPages = [
+      ...clinics.map((e) => ({
+        url: `${BASE_URL}/clinics/${e.slug}`,
+        lastModified: new Date(e.updated_at),
+        changeFrequency: "daily" as const,
+        priority: 0.7,
+      })),
+      ...camps.map((e) => ({
+        url: `${BASE_URL}/camps/${e.slug}`,
+        lastModified: new Date(e.updated_at),
+        changeFrequency: "daily" as const,
+        priority: 0.7,
+      })),
+    ]
+  } catch {
+    // If DB is unavailable, return without event pages
+  }
+
+  return [...staticPages, ...blogPages, ...eventPages]
 }
