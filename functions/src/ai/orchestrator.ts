@@ -291,7 +291,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     await onProgress?.("Analyzing client profile", 1, 5)
     console.log("[orchestrator:sync] Running Agent 1 + exercise fetch...")
     const [agent1Result, allExercises, coachUsage, clientUsage] = await Promise.all([
-      callAgent<ProfileAnalysis>(augmentedAgent1Prompt, agent1UserMessage, profileAnalysisSchema, { model: MODEL_HAIKU, cacheSystemPrompt: true }),
+      callAgent<ProfileAnalysis>(augmentedAgent1Prompt, agent1UserMessage, profileAnalysisSchema, { model: MODEL_SONNET, cacheSystemPrompt: true }),
       getExercisesForAI(),
       getCoachRecentUsageFromFn(requestedBy, 60).catch((e) => { console.warn("[orchestrator:sync] coach usage fetch failed:", e instanceof Error ? e.message : e); return new Map<string, number>() }),
       request.client_id ? getClientRecentUsageFromFn(request.client_id, 90).catch((e) => { console.warn("[orchestrator:sync] client usage fetch failed:", e instanceof Error ? e.message : e); return new Map<string, number>() }) : Promise.resolve(new Map<string, number>()),
@@ -303,7 +303,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     const genSessionId = `gen-${log.id}`
     saveConversationBatch([
       { user_id: requestedBy, feature: "program_generation", session_id: genSessionId, role: "user", content: agent1UserMessage, metadata: { step: 1, log_id: log.id, client_id: request.client_id }, tokens_input: null, tokens_output: null, model_used: null },
-      { user_id: requestedBy, feature: "program_generation", session_id: genSessionId, role: "assistant", content: JSON.stringify(agent1Result.content), metadata: { step: 1, log_id: log.id, model: MODEL_HAIKU }, tokens_input: null, tokens_output: agent1Result.tokens_used, model_used: MODEL_HAIKU },
+      { user_id: requestedBy, feature: "program_generation", session_id: genSessionId, role: "assistant", content: JSON.stringify(agent1Result.content), metadata: { step: 1, log_id: log.id, model: MODEL_SONNET }, tokens_input: null, tokens_output: agent1Result.tokens_used, model_used: MODEL_SONNET },
     ]).then((saved) => {
       const assistantMsg = saved.find((m: Record<string, unknown>) => m.role === "assistant")
       if (assistantMsg) embedConversationMessage(assistantMsg.id).catch(() => {})
