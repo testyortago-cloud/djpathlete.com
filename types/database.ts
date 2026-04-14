@@ -342,7 +342,7 @@ export interface Booking {
 
 export interface Payment {
   id: string
-  user_id: string
+  user_id: string | null
   stripe_payment_id: string | null
   stripe_customer_id: string | null
   amount_cents: number
@@ -356,8 +356,8 @@ export interface Payment {
 
 export interface Subscription {
   id: string
-  user_id: string
-  program_id: string
+  user_id: string | null
+  program_id: string | null
   assignment_id: string | null
   stripe_subscription_id: string
   stripe_customer_id: string
