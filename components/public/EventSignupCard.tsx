@@ -36,9 +36,17 @@ export function EventSignupCard({ event }: EventSignupCardProps) {
 
   function cta() {
     if (isCamp && !isFull) {
+      if (!event.stripe_price_id) {
+        return (
+          <Button disabled title="Pricing not yet configured" className="w-full">
+            Book — coming soon
+          </Button>
+        )
+      }
+      const priceLabel = event.price_cents != null ? formatPrice(event.price_cents) : null
       return (
-        <Button disabled title="Paid camp booking opens in Phase 3" className="w-full">
-          Book — coming soon
+        <Button className="w-full" onClick={() => setOpen(true)}>
+          {priceLabel ? `Book camp — ${priceLabel}` : "Book camp"}
         </Button>
       )
     }
