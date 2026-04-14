@@ -29,6 +29,7 @@ const mockEvent = {
   capacity: 12,
   signup_count: 3,
   price_cents: null,
+  stripe_product_id: null,
   stripe_price_id: null,
   status: "published" as const,
   hero_image_url: null,

@@ -14,6 +14,8 @@ export interface EventSignupModalEvent {
   type: "clinic" | "camp"
   capacity: number
   signup_count: number
+  stripe_price_id?: string | null
+  price_cents?: number | null
 }
 
 interface EventSignupModalProps {
@@ -30,6 +32,8 @@ export function EventSignupModal({ event, open, onOpenChange, isWaitlist }: Even
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({})
   const [formError, setFormError] = useState<string | null>(null)
   const [forcedWaitlist, setForcedWaitlist] = useState(false)
+
+  const isPaidFlow = event.type === "camp" && !!event.stripe_price_id && !isWaitlist && !forcedWaitlist
 
   async function submit(e: React.FormEvent<HTMLFormElement>, waitlist: boolean) {
     e.preventDefault()
@@ -52,8 +56,10 @@ export function EventSignupModal({ event, open, onOpenChange, isWaitlist }: Even
     }
 
     const query = waitlist || isWaitlist || forcedWaitlist ? "?waitlist=true" : ""
+    const url = isPaidFlow && !query ? `/api/events/${event.id}/checkout` : `/api/events/${event.id}/signup${query}`
+
     try {
-      const res = await fetch(`/api/events/${event.id}/signup${query}`, {
+      const res = await fetch(url, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
@@ -70,6 +76,13 @@ export function EventSignupModal({ event, open, onOpenChange, isWaitlist }: Even
         setPhase("form")
         return
       }
+
+      // Paid flow: data.sessionUrl points at Stripe — redirect.
+      if (data.sessionUrl) {
+        window.location.href = data.sessionUrl
+        return
+      }
+
       setPhase("success")
     } catch (err) {
       setFormError((err as Error).message)
@@ -93,7 +106,9 @@ export function EventSignupModal({ event, open, onOpenChange, isWaitlist }: Even
           <DialogDescription>
             {isWaitlist || forcedWaitlist
               ? `${event.title} is currently full. Leave your details and we'll reach out if a spot opens.`
-              : `${event.title} — tell us about the athlete and we'll follow up within 48 hours.`}
+              : isPaidFlow
+                ? `${event.title} — fill in your details to proceed to secure payment.`
+                : `${event.title} — tell us about the athlete and we'll follow up within 48 hours.`}
           </DialogDescription>
         </DialogHeader>
 
@@ -187,7 +202,13 @@ export function EventSignupModal({ event, open, onOpenChange, isWaitlist }: Even
                 Cancel
               </Button>
               <Button type="submit" disabled={phase === "submitting"}>
-                {phase === "submitting" ? "Submitting..." : (isWaitlist || forcedWaitlist ? "Join waitlist" : "Submit")}
+                {phase === "submitting"
+                  ? "Submitting..."
+                  : isWaitlist || forcedWaitlist
+                    ? "Join waitlist"
+                    : isPaidFlow
+                      ? "Continue to payment"
+                      : "Submit"}
               </Button>
             </div>
           </form>

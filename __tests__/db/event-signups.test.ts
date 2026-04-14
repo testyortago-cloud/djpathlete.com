@@ -115,4 +115,161 @@ describe("event-signups DAL", () => {
     expect(r2.ok).toBe(false)
     if (!r2.ok) expect(r2.reason).toBe("at_capacity")
   })
+
+  it("countPendingPaidSignups counts only paid+pending within last hour", async () => {
+    const { countPendingPaidSignups } = await import("@/lib/db/event-signups")
+    const e = await createEvent({
+      type: "camp",
+      slug: `cap-window-${randomUUID()}`,
+      title: "T",
+      summary: "S",
+      description: "D",
+      focus_areas: [],
+      start_date: new Date(Date.now() + 86400000).toISOString(),
+      end_date: new Date(Date.now() + 7 * 86400000).toISOString(),
+      location_name: "L",
+      capacity: 10,
+      status: "draft",
+      price_dollars: 100,
+    })
+    extraEventIds.push(e.id)
+
+    // Recent paid pending — should count
+    await createSignup(
+      e.id,
+      {
+        parent_name: "A",
+        parent_email: "a@x.com",
+        athlete_name: "X",
+        athlete_age: 14,
+      },
+      "paid",
+    )
+    // Recent interest pending — should NOT count
+    await createSignup(
+      e.id,
+      {
+        parent_name: "B",
+        parent_email: "b@x.com",
+        athlete_name: "Y",
+        athlete_age: 14,
+      },
+      "interest",
+    )
+
+    const count = await countPendingPaidSignups(e.id)
+    expect(count).toBe(1)
+  })
+
+  it("getEventSignupByStripeSessionId returns the matching signup", async () => {
+    const { getEventSignupByStripeSessionId } = await import("@/lib/db/event-signups")
+    const e = await createEvent({
+      type: "camp",
+      slug: `lookup-session-${randomUUID()}`,
+      title: "T",
+      summary: "S",
+      description: "D",
+      focus_areas: [],
+      start_date: new Date(Date.now() + 86400000).toISOString(),
+      end_date: new Date(Date.now() + 7 * 86400000).toISOString(),
+      location_name: "L",
+      capacity: 10,
+      status: "draft",
+      price_dollars: 100,
+    })
+    extraEventIds.push(e.id)
+
+    const sig = await createSignup(
+      e.id,
+      {
+        parent_name: "A",
+        parent_email: "a@x.com",
+        athlete_name: "X",
+        athlete_age: 14,
+      },
+      "paid",
+    )
+
+    const { createServiceRoleClient } = await import("@/lib/supabase")
+    const supabase = createServiceRoleClient()
+    const sessionId = `cs_test_${randomUUID()}`
+    await supabase.from("event_signups").update({ stripe_session_id: sessionId }).eq("id", sig.id)
+
+    const fetched = await getEventSignupByStripeSessionId(sessionId)
+    expect(fetched?.id).toBe(sig.id)
+  })
+
+  it("getEventSignupByPaymentIntent returns the matching signup", async () => {
+    const { getEventSignupByPaymentIntent } = await import("@/lib/db/event-signups")
+    const e = await createEvent({
+      type: "camp",
+      slug: `lookup-pi-${randomUUID()}`,
+      title: "T",
+      summary: "S",
+      description: "D",
+      focus_areas: [],
+      start_date: new Date(Date.now() + 86400000).toISOString(),
+      end_date: new Date(Date.now() + 7 * 86400000).toISOString(),
+      location_name: "L",
+      capacity: 10,
+      status: "draft",
+      price_dollars: 100,
+    })
+    extraEventIds.push(e.id)
+
+    const sig = await createSignup(
+      e.id,
+      {
+        parent_name: "A",
+        parent_email: "a@x.com",
+        athlete_name: "X",
+        athlete_age: 14,
+      },
+      "paid",
+    )
+
+    const { createServiceRoleClient } = await import("@/lib/supabase")
+    const supabase = createServiceRoleClient()
+    const piId = `pi_test_${randomUUID()}`
+    await supabase.from("event_signups").update({ stripe_payment_intent_id: piId }).eq("id", sig.id)
+
+    const fetched = await getEventSignupByPaymentIntent(piId)
+    expect(fetched?.id).toBe(sig.id)
+  })
+
+  it("getSignupsForEvent sweeps stale paid+pending rows to cancelled", async () => {
+    const { getSignupsForEvent } = await import("@/lib/db/event-signups")
+    const e = await createEvent({
+      type: "camp",
+      slug: `sweep-${randomUUID()}`,
+      title: "T", summary: "S", description: "D", focus_areas: [],
+      start_date: new Date(Date.now() + 86400000).toISOString(),
+      end_date: new Date(Date.now() + 7 * 86400000).toISOString(),
+      location_name: "L", capacity: 10, status: "draft", price_dollars: 100,
+    })
+    extraEventIds.push(e.id)
+
+    // Create a paid pending signup, then manually backdate created_at to >1 hour ago
+    const stale = await createSignup(e.id, {
+      parent_name: "A", parent_email: "a@x.com", athlete_name: "X", athlete_age: 14,
+    }, "paid")
+
+    const { createServiceRoleClient } = await import("@/lib/supabase")
+    const supabase = createServiceRoleClient()
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
+    await supabase.from("event_signups").update({ created_at: twoHoursAgo }).eq("id", stale.id)
+
+    // Calling getSignupsForEvent should sweep the stale row to 'cancelled'
+    const signups = await getSignupsForEvent(e.id)
+    const swept = signups.find((s) => s.id === stale.id)
+    expect(swept?.status).toBe("cancelled")
+
+    // Also verify a fresh paid+pending row is NOT swept
+    const fresh = await createSignup(e.id, {
+      parent_name: "B", parent_email: "b@x.com", athlete_name: "Y", athlete_age: 14,
+    }, "paid")
+    const after = await getSignupsForEvent(e.id)
+    const freshAfter = after.find((s) => s.id === fresh.id)
+    expect(freshAfter?.status).toBe("pending")
+  })
 })

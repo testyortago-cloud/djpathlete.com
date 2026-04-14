@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -52,6 +53,7 @@ export function EventForm({ event }: EventFormProps) {
   const [submitting, setSubmitting] = useState(false)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({})
   const [formError, setFormError] = useState<string | null>(null)
+  const [syncing, setSyncing] = useState(false)
 
   function handleTitleBlur() {
     if (slugAutoFilled || !slug) {
@@ -307,10 +309,34 @@ export function EventForm({ event }: EventFormProps) {
                 onChange={(e) => setPriceDollars(e.target.value === "" ? "" : Number(e.target.value))}
               />
             </div>
-            <div>
-              <Button type="button" disabled title="Available in Phase 3">
-                Sync to Stripe
+            <div className="flex flex-col gap-1">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={syncing || !isEdit}
+                onClick={async () => {
+                  if (!event) return
+                  setSyncing(true)
+                  const id = toast.loading("Syncing to Stripe...")
+                  try {
+                    const res = await fetch(`/api/admin/events/${event.id}/stripe-sync`, { method: "POST" })
+                    const data = await res.json().catch(() => ({}))
+                    if (!res.ok) throw new Error(data.error ?? "Sync failed")
+                    toast.success("Synced with Stripe", { id })
+                    router.refresh()
+                  } catch (err) {
+                    toast.error((err as Error).message, { id })
+                  } finally {
+                    setSyncing(false)
+                  }
+                }}
+                title={!isEdit ? "Save the event first, then sync" : "Create or refresh the Stripe Product + Price"}
+              >
+                {syncing ? "Syncing..." : "Resync with Stripe"}
               </Button>
+              {event?.stripe_price_id && (
+                <p className="text-xs text-muted-foreground">Synced · {event.stripe_price_id.slice(-8)}</p>
+              )}
             </div>
           </div>
         </>
