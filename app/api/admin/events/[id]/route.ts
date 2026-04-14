@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { updateEventSchema } from "@/lib/validators/events"
 import { updateEvent, deleteEvent, getEventById, ALLOWED_STATUS_TRANSITIONS } from "@/lib/db/events"
+import { syncEventToStripe, archiveAndCreateNewPrice, stripe } from "@/lib/stripe"
 
 async function requireAdmin() {
   const session = await auth()
@@ -24,16 +25,23 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
       )
     }
 
-    const { status, ...rest } = result.data as { status?: string; [k: string]: unknown }
+    const { status, price_dollars, ...rest } = result.data as {
+      status?: string
+      price_dollars?: number | null
+      [k: string]: unknown
+    }
 
     try {
       const merged: Record<string, unknown> = { ...rest }
+
+      // Load the current event up-front so we can detect price changes and validate transitions.
+      const current = await getEventById(id)
+      if (!current) {
+        return NextResponse.json({ error: "Event not found" }, { status: 404 })
+      }
+
+      // Validate status transition (read-only, no DB write yet).
       if (status) {
-        // Validate transition first (read-only), then include status in the single update.
-        const current = await getEventById(id)
-        if (!current) {
-          return NextResponse.json({ error: "Event not found" }, { status: 404 })
-        }
         const allowed = ALLOWED_STATUS_TRANSITIONS[current.status]
         if (!allowed.includes(status as "draft" | "published" | "cancelled" | "completed")) {
           return NextResponse.json(
@@ -44,10 +52,77 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
         merged.status = status
       }
 
+      // Carry the price_dollars-to-price_cents conversion that updateEvent normally does.
+      const priceChanged =
+        price_dollars !== undefined &&
+        Math.round((price_dollars ?? 0) * 100) !== (current.price_cents ?? 0)
+      if (price_dollars !== undefined) {
+        merged.price_cents = price_dollars == null ? null : Math.round(price_dollars * 100)
+      }
+
+      // Auto-resync on price change for already-synced camps.
+      if (
+        priceChanged &&
+        current.type === "camp" &&
+        current.stripe_product_id &&
+        current.stripe_price_id &&
+        merged.price_cents != null &&
+        (merged.price_cents as number) > 0
+      ) {
+        try {
+          const newPriceId = await archiveAndCreateNewPrice({
+            productId: current.stripe_product_id,
+            oldPriceId: current.stripe_price_id,
+            priceCents: merged.price_cents as number,
+            paymentType: "one_time",
+            billingInterval: null,
+          })
+          merged.stripe_price_id = newPriceId
+        } catch (err) {
+          console.error("[admin events PATCH] auto-resync failed", err)
+          return NextResponse.json(
+            { error: "Stripe sync failed — try again or use the Resync button" },
+            { status: 502 },
+          )
+        }
+      }
+
+      // Auto-sync on publish for camps with a price and no existing sync.
+      const transitionToPublished = status === "published" && current.status !== "published"
+      if (
+        transitionToPublished &&
+        current.type === "camp" &&
+        current.price_cents &&
+        !current.stripe_price_id
+      ) {
+        try {
+          const eventForSync = {
+            ...current,
+            ...(typeof merged.price_cents === "number" ? { price_cents: merged.price_cents } : {}),
+          }
+          const synced = await syncEventToStripe(eventForSync)
+          merged.stripe_product_id = synced.productId
+          merged.stripe_price_id = synced.priceId
+        } catch (err) {
+          console.error("[admin events PATCH] auto-sync on publish failed", err)
+          return NextResponse.json(
+            { error: "Stripe sync failed — try again or use the Resync button" },
+            { status: 502 },
+          )
+        }
+      }
+
+      // Auto-archive Stripe product when cancelling a synced camp.
+      if (status === "cancelled" && current.type === "camp" && current.stripe_product_id) {
+        try {
+          await stripe.products.update(current.stripe_product_id, { active: false })
+        } catch (err) {
+          console.error("[admin events PATCH] Stripe product archive failed (non-fatal)", err)
+        }
+      }
+
       if (Object.keys(merged).length === 0) {
-        const fetched = await getEventById(id)
-        if (!fetched) return NextResponse.json({ error: "Event not found" }, { status: 404 })
-        return NextResponse.json({ event: fetched })
+        return NextResponse.json({ event: current })
       }
 
       const updated = await updateEvent(id, merged)
