@@ -724,6 +724,7 @@ export interface Event {
   capacity: number
   signup_count: number
   price_cents: number | null
+  stripe_product_id: string | null
   stripe_price_id: string | null
   status: EventStatus
   hero_image_url: string | null
