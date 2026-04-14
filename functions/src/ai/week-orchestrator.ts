@@ -524,6 +524,21 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
     exercise_constraints: [],
     session_structure: { warm_up_minutes: 5, main_work_minutes: 45, cool_down_minutes: 5, total_exercises: 6, compound_count: 3, isolation_count: 3 },
     training_age_category: (profile?.experience_level ?? (request.ignore_profile ? "advanced" : "intermediate")) as "novice" | "intermediate" | "advanced" | "elite",
+    technique_plan: [
+      {
+        week_number: newWeekNumber,
+        allowed_techniques: ["straight_set" as const],
+        default_technique: "straight_set" as const,
+        notes: "",
+      },
+    ],
+    difficulty_ceiling: [
+      {
+        week_number: newWeekNumber,
+        max_tier: "advanced" as const,
+        max_score: 10,
+      },
+    ],
     notes: "",
   }
 
