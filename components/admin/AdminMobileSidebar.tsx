@@ -15,6 +15,7 @@ import {
   CreditCard,
   BarChart3,
   Brain,
+  CalendarDays,
   Lightbulb,
   Star,
   Video,
@@ -41,9 +42,7 @@ interface NavSection {
 const navSections: NavSection[] = [
   {
     title: "",
-    items: [
-      { label: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
-    ],
+    items: [{ label: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard }],
   },
   {
     title: "Coaching",
@@ -74,6 +73,7 @@ const navSections: NavSection[] = [
     title: "Business",
     items: [
       { label: "Bookings", href: "/admin/bookings", icon: CalendarCheck },
+      { label: "Events", href: "/admin/events", icon: CalendarDays },
       { label: "Payments", href: "/admin/payments", icon: CreditCard },
       { label: "Analytics", href: "/admin/analytics", icon: BarChart3 },
       { label: "Reviews", href: "/admin/reviews", icon: Star },
@@ -138,7 +138,7 @@ export function AdminMobileSidebar({ open, onClose }: AdminMobileSidebarProps) {
                         "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
                         isActive
                           ? "bg-accent text-accent-foreground"
-                          : "text-white/70 hover:text-white hover:bg-white/10"
+                          : "text-white/70 hover:text-white hover:bg-white/10",
                       )}
                     >
                       <Icon className="size-[18px]" strokeWidth={1.5} />
@@ -160,7 +160,7 @@ export function AdminMobileSidebar({ open, onClose }: AdminMobileSidebarProps) {
               "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
               pathname.startsWith("/admin/settings")
                 ? "bg-accent text-accent-foreground"
-                : "text-white/70 hover:text-white hover:bg-white/10"
+                : "text-white/70 hover:text-white hover:bg-white/10",
             )}
           >
             <Settings className="size-[18px]" strokeWidth={1.5} />

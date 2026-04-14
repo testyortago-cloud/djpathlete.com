@@ -15,6 +15,7 @@ import {
   CreditCard,
   BarChart3,
   Brain,
+  CalendarDays,
   Sparkles,
   Lightbulb,
   Star,
@@ -45,9 +46,7 @@ interface NavSection {
 const navSections: NavSection[] = [
   {
     title: "",
-    items: [
-      { label: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
-    ],
+    items: [{ label: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard }],
   },
   {
     title: "Coaching",
@@ -80,6 +79,7 @@ const navSections: NavSection[] = [
     title: "Business",
     items: [
       { label: "Bookings", href: "/admin/bookings", icon: CalendarCheck },
+      { label: "Events", href: "/admin/events", icon: CalendarDays },
       { label: "Payments", href: "/admin/payments", icon: CreditCard },
       { label: "Analytics", href: "/admin/analytics", icon: BarChart3 },
       { label: "Reviews", href: "/admin/reviews", icon: Star },
@@ -87,9 +87,7 @@ const navSections: NavSection[] = [
   },
   {
     title: "Legal",
-    items: [
-      { label: "Legal Documents", href: "/admin/legal", icon: Scale },
-    ],
+    items: [{ label: "Legal Documents", href: "/admin/legal", icon: Scale }],
   },
 ]
 
@@ -104,7 +102,7 @@ export function AdminSidebar() {
       }
       return acc
     },
-    {} as Record<string, boolean>
+    {} as Record<string, boolean>,
   )
 
   const [openSections, setOpenSections] = useState<Record<string, boolean>>(initialOpen)
@@ -127,9 +125,7 @@ export function AdminSidebar() {
             style={{ height: 72, width: "auto" }}
             priority
           />
-          <span className="font-heading font-semibold tracking-[0.2em] text-[11px] uppercase text-white">
-            Athlete
-          </span>
+          <span className="font-heading font-semibold tracking-[0.2em] text-[11px] uppercase text-white">Athlete</span>
         </Link>
         <p className="text-[10px] text-white/40 mt-1">Admin Dashboard</p>
       </div>
@@ -147,24 +143,19 @@ export function AdminSidebar() {
                   onClick={() => toggleSection(section.title)}
                   className={cn(
                     "flex w-full items-center justify-between px-3 py-1.5 rounded-lg text-[10px] font-semibold uppercase tracking-[0.15em] transition-colors",
-                    hasActiveChild && !isOpen
-                      ? "text-white/60"
-                      : "text-white/30 hover:text-white/50"
+                    hasActiveChild && !isOpen ? "text-white/60" : "text-white/30 hover:text-white/50",
                   )}
                 >
                   {section.title}
                   <ChevronDown
-                    className={cn(
-                      "size-3.5 transition-transform duration-200",
-                      isOpen ? "rotate-0" : "-rotate-90"
-                    )}
+                    className={cn("size-3.5 transition-transform duration-200", isOpen ? "rotate-0" : "-rotate-90")}
                   />
                 </button>
               ) : null}
               <div
                 className={cn(
                   "space-y-0.5 overflow-hidden transition-all duration-200",
-                  isOpen ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0"
+                  isOpen ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0",
                 )}
               >
                 {section.items.map((item) => {
@@ -178,7 +169,7 @@ export function AdminSidebar() {
                         "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
                         isActive
                           ? "bg-accent text-accent-foreground"
-                          : "text-white/70 hover:text-white hover:bg-white/10"
+                          : "text-white/70 hover:text-white hover:bg-white/10",
                       )}
                     >
                       <Icon className="size-[18px]" strokeWidth={1.5} />
@@ -200,7 +191,7 @@ export function AdminSidebar() {
             "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
             pathname.startsWith("/admin/settings")
               ? "bg-accent text-accent-foreground"
-              : "text-white/70 hover:text-white hover:bg-white/10"
+              : "text-white/70 hover:text-white hover:bg-white/10",
           )}
         >
           <Settings className="size-[18px]" strokeWidth={1.5} />
