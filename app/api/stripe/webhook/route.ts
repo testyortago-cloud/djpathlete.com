@@ -4,42 +4,45 @@ import { verifyWebhookSignature } from "@/lib/stripe"
 import { createPayment, getPaymentByStripeId, updatePayment } from "@/lib/db/payments"
 import { createAssignment, getAssignmentByUserAndProgram, updateAssignment } from "@/lib/db/assignments"
 import { updateWeekAccess, createWeekAccessBulk } from "@/lib/db/week-access"
-import {
-  createSubscription,
-  getSubscriptionByStripeId,
-  updateSubscriptionByStripeId,
-} from "@/lib/db/subscriptions"
+import { createSubscription, getSubscriptionByStripeId, updateSubscriptionByStripeId } from "@/lib/db/subscriptions"
 import { getUserById } from "@/lib/db/users"
 import { getProfileByUserId } from "@/lib/db/client-profiles"
 import { getProgramById } from "@/lib/db/programs"
-import { sendCoachPurchaseNotification } from "@/lib/email"
+import { sendCoachPurchaseNotification, sendEventSignupConfirmedEmail } from "@/lib/email"
 import { ghlCreateContact, ghlTriggerWorkflow } from "@/lib/ghl"
+import {
+  confirmSignup,
+  cancelSignup,
+  getSignupById,
+  getEventSignupByPaymentIntent,
+} from "@/lib/db/event-signups"
+import { getEventById as getEventByIdForSignup } from "@/lib/db/events"
+import { createServiceRoleClient as createSupabaseServiceClient } from "@/lib/supabase"
 
 export async function POST(request: Request) {
   const body = await request.text()
   const signature = request.headers.get("stripe-signature")
 
   if (!signature) {
-    return NextResponse.json(
-      { error: "Missing stripe-signature header" },
-      { status: 400 }
-    )
+    return NextResponse.json({ error: "Missing stripe-signature header" }, { status: 400 })
   }
 
   let event: Stripe.Event
   try {
     event = verifyWebhookSignature(body, signature)
   } catch {
-    return NextResponse.json(
-      { error: "Invalid webhook signature" },
-      { status: 400 }
-    )
+    return NextResponse.json({ error: "Invalid webhook signature" }, { status: 400 })
   }
 
   try {
     switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session
+
+        if (session.metadata?.type === "event_signup") {
+          await handleEventSignupCheckout(session)
+          break
+        }
 
         // Per-week payment
         if (session.metadata?.type === "week_access") {
@@ -79,11 +82,14 @@ export async function POST(request: Request) {
         const charge = event.data.object as Stripe.Charge
         const stripePaymentId = charge.payment_intent as string
 
-        if (!stripePaymentId) break
+        if (stripePaymentId) {
+          const payment = await getPaymentByStripeId(stripePaymentId)
+          if (payment) {
+            await updatePayment(payment.id, { status: "refunded" })
+          }
 
-        const payment = await getPaymentByStripeId(stripePaymentId)
-        if (payment) {
-          await updatePayment(payment.id, { status: "refunded" })
+          // Check if this refund matches an event signup
+          await handleEventSignupRefund(stripePaymentId)
         }
 
         break
@@ -91,10 +97,7 @@ export async function POST(request: Request) {
     }
   } catch (err) {
     console.error("Webhook processing error:", err)
-    return NextResponse.json(
-      { error: "Webhook handler failed" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Webhook handler failed" }, { status: 500 })
   }
 
   return NextResponse.json({ received: true })
@@ -159,7 +162,7 @@ async function handleOneTimeCheckout(session: Stripe.Checkout.Session) {
         payment_status: "not_required" as const,
         stripe_session_id: null,
         stripe_payment_id: null,
-      }))
+      })),
     )
   }
 
@@ -256,7 +259,7 @@ async function handleSubscriptionCheckout(session: Stripe.Checkout.Session) {
         payment_status: "not_required" as const,
         stripe_session_id: null,
         stripe_payment_id: null,
-      }))
+      })),
     )
   }
 
@@ -303,8 +306,7 @@ async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const invoiceAny = invoice as any
   const subscriptionId: string | undefined =
-    invoiceAny.parent?.subscription_details?.subscription
-    ?? invoiceAny.subscription
+    invoiceAny.parent?.subscription_details?.subscription ?? invoiceAny.subscription
   if (!subscriptionId) return
 
   // Skip the first invoice (handled by checkout.session.completed)
@@ -315,8 +317,7 @@ async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
 
   // Record recurring payment for revenue tracking
   const stripePaymentId: string | undefined =
-    invoiceAny.payments?.data?.[0]?.payment_intent?.id
-    ?? invoiceAny.payment_intent
+    invoiceAny.payments?.data?.[0]?.payment_intent?.id ?? invoiceAny.payment_intent
   if (stripePaymentId) {
     const existingPayment = await getPaymentByStripeId(stripePaymentId)
     if (!existingPayment) {
@@ -336,12 +337,8 @@ async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
   // Update subscription period
   await updateSubscriptionByStripeId(subscriptionId, {
     status: "active",
-    current_period_start: invoice.period_start
-      ? new Date(invoice.period_start * 1000).toISOString()
-      : null,
-    current_period_end: invoice.period_end
-      ? new Date(invoice.period_end * 1000).toISOString()
-      : null,
+    current_period_start: invoice.period_start ? new Date(invoice.period_start * 1000).toISOString() : null,
+    current_period_end: invoice.period_end ? new Date(invoice.period_end * 1000).toISOString() : null,
   })
 
   // Ensure assignment is active
@@ -359,8 +356,7 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const invoiceAny = invoice as any
   const subscriptionId: string | undefined =
-    invoiceAny.parent?.subscription_details?.subscription
-    ?? invoiceAny.subscription
+    invoiceAny.parent?.subscription_details?.subscription ?? invoiceAny.subscription
   if (!subscriptionId) return
 
   const sub = await getSubscriptionByStripeId(subscriptionId)
@@ -372,9 +368,7 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
 
   // Don't immediately revoke access — Stripe retries failed payments
   // The assignment stays active during past_due to give grace period
-  console.warn(
-    `[Webhook] Subscription ${subscriptionId} payment failed for user ${sub.user_id}`
-  )
+  console.warn(`[Webhook] Subscription ${subscriptionId} payment failed for user ${sub.user_id}`)
 }
 
 // ─── Subscription updated (status changes, cancellation scheduled) ───────────
@@ -394,15 +388,9 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
   await updateSubscriptionByStripeId(subscription.id, {
     status: newStatus as "active" | "past_due" | "canceled" | "unpaid" | "incomplete" | "trialing" | "paused",
     cancel_at_period_end: subscription.cancel_at_period_end,
-    canceled_at: subscription.canceled_at
-      ? new Date(subscription.canceled_at * 1000).toISOString()
-      : null,
-    current_period_start: periodStart
-      ? new Date(periodStart * 1000).toISOString()
-      : null,
-    current_period_end: periodEnd
-      ? new Date(periodEnd * 1000).toISOString()
-      : null,
+    canceled_at: subscription.canceled_at ? new Date(subscription.canceled_at * 1000).toISOString() : null,
+    current_period_start: periodStart ? new Date(periodStart * 1000).toISOString() : null,
+    current_period_end: periodEnd ? new Date(periodEnd * 1000).toISOString() : null,
   })
 
   // If subscription becomes unpaid or canceled, revoke access
@@ -438,12 +426,7 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
 
 // ─── Shared: GHL sync + coach notification ───────────────────────────────────
 
-async function syncAndNotify(
-  session: Stripe.Checkout.Session,
-  programId: string,
-  userId: string,
-  tag: string
-) {
+async function syncAndNotify(session: Stripe.Checkout.Session, programId: string, userId: string, tag: string) {
   // Sync purchase to GoHighLevel (non-blocking)
   try {
     const customerEmail = session.customer_details?.email
@@ -487,4 +470,66 @@ async function syncAndNotify(
   } catch {
     // Coach notification failure should not affect payment processing
   }
+}
+
+// ─── Event signup checkout ────────────────────────────────────────────────────
+
+async function handleEventSignupCheckout(session: Stripe.Checkout.Session) {
+  const signupId = session.metadata?.event_signup_id
+  if (!signupId) {
+    console.error("[webhook event_signup] missing event_signup_id in metadata")
+    return
+  }
+
+  const result = await confirmSignup(signupId)
+  if (!result.ok) {
+    if (result.reason !== "not_pending") {
+      console.error(`[webhook event_signup] confirmSignup failed: ${result.reason} for signup ${signupId}`)
+    }
+    return
+  }
+
+  const supabase = createSupabaseServiceClient()
+  await supabase
+    .from("event_signups")
+    .update({
+      stripe_payment_intent_id: session.payment_intent,
+      amount_paid_cents: session.amount_total,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", signupId)
+
+  const updated = await getSignupById(signupId)
+  const eventId = session.metadata?.event_id
+  if (updated && eventId) {
+    const ev = await getEventByIdForSignup(eventId)
+    if (ev) {
+      try {
+        await sendEventSignupConfirmedEmail(updated, ev)
+      } catch (err) {
+        console.error(`[webhook event_signup] email failed for signup ${signupId}`, err)
+      }
+    }
+  }
+}
+
+// ─── Event signup refund ──────────────────────────────────────────────────────
+
+async function handleEventSignupRefund(paymentIntentId: string) {
+  const signup = await getEventSignupByPaymentIntent(paymentIntentId)
+  if (!signup) return
+  if (signup.status === "refunded") return
+
+  if (signup.status === "confirmed") {
+    const result = await cancelSignup(signup.id)
+    if (!result.ok) {
+      console.error(`[webhook event refund] cancelSignup failed: ${result.reason}`)
+    }
+  }
+
+  const supabase = createSupabaseServiceClient()
+  await supabase
+    .from("event_signups")
+    .update({ status: "refunded", updated_at: new Date().toISOString() })
+    .eq("id", signup.id)
 }
