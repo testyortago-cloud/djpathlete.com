@@ -59,6 +59,8 @@ export interface ProfileAnalysis {
   exercise_constraints: ExerciseConstraint[]
   session_structure: SessionStructure
   training_age_category: "novice" | "intermediate" | "advanced" | "elite"
+  technique_plan: TechniquePlanWeek[]
+  difficulty_ceiling: DifficultyCeilingWeek[]
   notes: string
 }
 
@@ -217,4 +219,19 @@ export interface AiJobChunk {
   type: "delta" | "analysis" | "tool_start" | "tool_result" | "program_created" | "message_id" | "done" | "error"
   data: Record<string, unknown>
   createdAt: FirebaseFirestore.Timestamp
+}
+
+// ─── Technique plan & difficulty ceiling (added 2026-04-14) ──
+
+export interface TechniquePlanWeek {
+  week_number: number
+  allowed_techniques: string[]
+  default_technique: string
+  notes: string
+}
+
+export interface DifficultyCeilingWeek {
+  week_number: number
+  max_tier: "beginner" | "intermediate" | "advanced"
+  max_score: number
 }
