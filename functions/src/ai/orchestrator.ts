@@ -13,10 +13,12 @@ import type {
 import { callAgent, MODEL_HAIKU, MODEL_OPUS, MODEL_SONNET } from "./anthropic.js"
 import { scoreAndFilterExercises, semanticFilterExercises, filterByInjuredJoints } from "./exercise-filter.js"
 import { estimateTokens } from "./token-utils.js"
-import { profileAnalysisSchema, programSkeletonSchema, exerciseAssignmentSchema } from "./schemas.js"
+import { profileAnalysisSchema, programSkeletonSchema, exerciseAssignmentSchema, validateSkeletonAgainstAnalysis, validateAssignmentAgainstCeiling } from "./schemas.js"
 import { PROFILE_ANALYZER_PROMPT, PROGRAM_ARCHITECT_PROMPT, EXERCISE_SELECTOR_PROMPT } from "./prompts.js"
 import { validateProgram } from "./validate.js"
-import { filterByDifficultyScore, filterByDifficultyLevel, formatExerciseLibrary } from "./exercise-context.js"
+import { filterByDifficultyScore, filterByDifficultyLevel, filterByProgressionPhase, formatExerciseLibrary } from "./exercise-context.js"
+import { getCoachRecentUsageFromFn, getClientRecentUsageFromFn, recordUsageFromFn } from "./usage-history.js"
+import { getCoachPolicyFromFn, formatCoachPolicyAsInstructions } from "./coach-policy.js"
 import { getExercisesForAI } from "./program-chat-tools.js"
 import {
   buildPriorWeekContext,
@@ -270,7 +272,11 @@ Maximum Exercise Difficulty: ${assessmentContext.maxDifficultyScore}/10
 IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.maxDifficultyScore}.`
       : ""
 
-    const coachInstructionsSection = buildCoachInstructionsSection(request.additional_instructions)
+    // Fetch coach AI policy — injected into Agent 1 instructions as studio-wide overrides
+    const coachPolicy = await getCoachPolicyFromFn(requestedBy)
+    const policyInstructions = formatCoachPolicyAsInstructions(coachPolicy)
+    const combinedInstructions = [request.additional_instructions, policyInstructions].filter(Boolean).join("\n\n")
+    const coachInstructionsSection = buildCoachInstructionsSection(combinedInstructions)
 
     const agent1UserMessage = `Client Profile:\n${profileContext}\n\nTraining Request:\n- Goals: ${request.goals.join(", ")}\n- Duration: ${request.duration_weeks} weeks\n- Sessions per week: ${request.sessions_per_week}\n- Session length: ${request.session_minutes ?? 60} minutes\n${request.split_type ? `- Requested split type: ${request.split_type}` : ""}\n${request.periodization ? `- Requested periodization: ${request.periodization}` : ""}\n${request.equipment_override ? `- Equipment override: ${request.equipment_override.join(", ")}` : ""}${coachInstructionsSection}${assessmentSection}`
 
@@ -284,12 +290,14 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     await updateJobProgress("analyzing_profile", 1, "Analyzing client profile & fetching exercises")
     await onProgress?.("Analyzing client profile", 1, 5)
     console.log("[orchestrator:sync] Running Agent 1 + exercise fetch...")
-    const [agent1Result, allExercises] = await Promise.all([
+    const [agent1Result, allExercises, coachUsage, clientUsage] = await Promise.all([
       callAgent<ProfileAnalysis>(augmentedAgent1Prompt, agent1UserMessage, profileAnalysisSchema, { model: MODEL_HAIKU, cacheSystemPrompt: true }),
       getExercisesForAI(),
+      getCoachRecentUsageFromFn(requestedBy, 60).catch((e) => { console.warn("[orchestrator:sync] coach usage fetch failed:", e instanceof Error ? e.message : e); return new Map<string, number>() }),
+      request.client_id ? getClientRecentUsageFromFn(request.client_id, 90).catch((e) => { console.warn("[orchestrator:sync] client usage fetch failed:", e instanceof Error ? e.message : e); return new Map<string, number>() }) : Promise.resolve(new Map<string, number>()),
     ])
     tokenUsage.agent1 = agent1Result.tokens_used
-    console.log("[orchestrator:sync] Agent 1 complete. Tokens:", agent1Result.tokens_used, "Exercises:", allExercises.length)
+    console.log(`[orchestrator:sync] Agent 1 complete. Tokens: ${agent1Result.tokens_used}. Exercises: ${allExercises.length}. Coach policy: ${coachPolicy ? "loaded" : "none"}. Usage — coach: ${coachUsage.size}, client: ${clientUsage.size}.`)
 
     // Save conversation (fire-and-forget)
     const genSessionId = `gen-${log.id}`
@@ -373,10 +381,9 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     })
 
     let filtered: CompressedExercise[]
-    try { filtered = await semanticFilterExercises(compressed, skeleton, availableEquipment, analysis, { poolActive }) }
-    catch { filtered = scoreAndFilterExercises(compressed, skeleton, availableEquipment, analysis, { poolActive }) }
+    try { filtered = await semanticFilterExercises(compressed, skeleton, availableEquipment, analysis, { poolActive, coachUsage, clientUsage }) }
+    catch { filtered = scoreAndFilterExercises(compressed, skeleton, availableEquipment, analysis, { poolActive, coachUsage, clientUsage }) }
     const poolNote = buildPoolNote(poolIds, filtered.length)
-    const exerciseLibrary = formatExerciseLibrary(filtered)
 
     // Check cancellation before Agent 3
     if (await checkCancelled()) {
@@ -412,6 +419,10 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
       const weekTotalSlots = weekSkeleton.days.reduce((sum, d) => sum + d.slots.length, 0)
       console.log(`[orchestrator:sync] Week ${weekNum}/${skeleton.weeks.length} (${weekTotalSlots} slots, ${completedWeeksSync.length} prior weeks)`)
 
+      // Per-week progression filter — tightens library for early weeks
+      const thisWeekLibrary = filterByProgressionPhase(filtered, clientDifficultySync, weekNum)
+      const thisWeekLibraryText = formatExerciseLibrary(thisWeekLibrary)
+
       // Check cancellation between weeks
       if (await checkCancelled()) {
         console.log("[orchestrator:sync] Job cancelled by user during week-by-week generation")
@@ -445,7 +456,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
           }
         }
 
-        const agent3UserMessage = `Program Skeleton (Week ${weekNum} of ${skeleton.weeks.length}):\n${JSON.stringify(weekSkeletonPayload)}\n\nConstraints:\n${constraintsContext}\n\nExercise Library (${filtered.length} exercises, pre-filtered for relevance):\n${exerciseLibrary}${poolNote}\n\n${priorContext.prompt_text}${coachInstructionsSection}${feedbackSection}${dedupFeedback}`
+        const agent3UserMessage = `Program Skeleton (Week ${weekNum} of ${skeleton.weeks.length}):\n${JSON.stringify(weekSkeletonPayload)}\n\nConstraints:\n${constraintsContext}\n\nExercise Library (${thisWeekLibrary.length} exercises, pre-filtered for relevance):\n${thisWeekLibraryText}${poolNote}\n\n${priorContext.prompt_text}${coachInstructionsSection}${feedbackSection}${dedupFeedback}`
 
         try {
           console.log(`[orchestrator:sync] Week ${weekNum} attempt ${attempt + 1}/${MAX_RETRIES + 1}...`)
@@ -497,6 +508,33 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
               })
             }
             weekValidation.pass = false
+          }
+
+          // Technique plan validation (Agent 2 output check)
+          const skelCheck = validateSkeletonAgainstAnalysis(weekSkeletonPayload as unknown as Parameters<typeof validateSkeletonAgainstAnalysis>[0], analysis as unknown as Parameters<typeof validateSkeletonAgainstAnalysis>[1])
+          if (!skelCheck.ok) {
+            for (const v of skelCheck.violations) {
+              weekValidation.issues.push({ type: "error", category: "technique_plan_violation", message: v })
+            }
+            weekValidation.pass = false
+          }
+
+          // Difficulty ceiling validation (Agent 3 output check)
+          if (weekAssignment) {
+            const slotInWeek = new Map<string, number>()
+            for (const day of weekSkeleton.days) for (const slot of day.slots) slotInWeek.set(slot.slot_id, weekNum)
+            const ceilingCheck = validateAssignmentAgainstCeiling(
+              weekAssignment,
+              analysis.difficulty_ceiling,
+              slotInWeek,
+              compressed.map((e) => ({ id: e.id, difficulty: e.difficulty, difficulty_score: e.difficulty_score }))
+            )
+            if (!ceilingCheck.ok) {
+              for (const v of ceilingCheck.violations) {
+                weekValidation.issues.push({ type: "error", category: "difficulty_ceiling_violation", message: v })
+              }
+              weekValidation.pass = false
+            }
           }
 
           const errors = weekValidation.issues.filter(i => i.type === "error")
@@ -607,6 +645,30 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
       completed_at: new Date().toISOString(),
       output_summary: { program_id: program.id, program_name: program.name, exercises_assigned: assignment.assignments.length, validation_pass: validation.pass, warnings: validation.issues.filter((i) => i.type === "warning").length, retries },
     })
+
+    // Record exercise usage for future variety enforcement (fire-and-forget, never blocks)
+    const programId = program.id
+    if (programId) {
+      const slotToDayMap = new Map<string, number>()
+      for (const week of skeleton.weeks) {
+        for (const day of week.days) {
+          for (const slot of day.slots) slotToDayMap.set(slot.slot_id, day.day_of_week)
+        }
+      }
+      const usageRows = completedWeeksSync.flatMap((w) =>
+        w.assignments.map((a) => ({
+          exercise_id: a.exercise_id,
+          week_number: w.week_number,
+          day_number: slotToDayMap.get(a.slot_id) ?? 1,
+        }))
+      )
+      recordUsageFromFn({
+        coach_id: requestedBy,
+        client_id: request.client_id ?? null,
+        program_id: programId,
+        rows: usageRows,
+      }).catch((e) => console.warn("[orchestrator:sync] recordUsage failed (non-blocking):", e instanceof Error ? e.message : e))
+    }
 
     return { program_id: program.id, validation, token_usage: tokenUsage, duration_ms: durationMs, retries }
   } catch (error) {
