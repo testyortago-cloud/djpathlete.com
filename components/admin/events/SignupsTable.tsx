@@ -93,9 +93,27 @@ export function SignupsTable({ initialSignups, eventId }: SignupsTableProps) {
               <td className="px-4 py-3">{s.sport ?? "—"}</td>
               <td className="px-4 py-3 capitalize">{s.signup_type}</td>
               <td className="px-4 py-3">
-                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[s.status] ?? ""}`}>
-                  {s.status}
-                </span>
+                <div className="flex flex-col gap-1">
+                  <span className={`inline-block w-fit rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[s.status] ?? ""}`}>
+                    {s.status}
+                  </span>
+                  {s.signup_type === "paid" && (
+                    <span className="inline-block w-fit rounded-full bg-accent/15 px-2 py-0.5 text-xs font-medium text-accent">
+                      Paid
+                    </span>
+                  )}
+                  {s.stripe_payment_intent_id && (
+                    <a
+                      href={`https://dashboard.stripe.com/payments/${s.stripe_payment_intent_id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-muted-foreground hover:text-primary"
+                      title="Open in Stripe dashboard"
+                    >
+                      {s.stripe_payment_intent_id.slice(-8)}
+                    </a>
+                  )}
+                </div>
               </td>
               <td className="px-4 py-3 text-right">
                 <div className="flex justify-end gap-2">
