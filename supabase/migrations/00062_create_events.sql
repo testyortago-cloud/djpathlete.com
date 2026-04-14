@@ -123,3 +123,8 @@ begin
   return jsonb_build_object('ok', true);
 end;
 $$;
+
+-- Event images storage bucket ---------------------------------------------
+insert into storage.buckets (id, name, public)
+values ('event-images', 'event-images', true)
+on conflict (id) do nothing;
