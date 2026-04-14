@@ -116,7 +116,10 @@ describe("Integration: technique_plan enforcement in skeleton validation", () =>
       })),
       split_type: "full_body", periodization: "linear", total_sessions: 4, notes: "",
     }
-    const result = validateSkeletonAgainstAnalysis(skeleton, analysis)
+    const result = validateSkeletonAgainstAnalysis(
+      skeleton as unknown as Parameters<typeof validateSkeletonAgainstAnalysis>[0],
+      analysis as unknown as Parameters<typeof validateSkeletonAgainstAnalysis>[1]
+    )
     expect(result.ok).toBe(false)
     expect(result.violations.join(" ")).toMatch(/week 3.*superset/i)
   })
@@ -132,7 +135,10 @@ describe("Integration: technique_plan enforcement in skeleton validation", () =>
       })),
       split_type: "full_body", periodization: "linear", total_sessions: 4, notes: "",
     }
-    const result = validateSkeletonAgainstAnalysis(skeleton, analysis)
+    const result = validateSkeletonAgainstAnalysis(
+      skeleton as unknown as Parameters<typeof validateSkeletonAgainstAnalysis>[0],
+      analysis as unknown as Parameters<typeof validateSkeletonAgainstAnalysis>[1]
+    )
     expect(result.ok).toBe(true)
   })
 })
