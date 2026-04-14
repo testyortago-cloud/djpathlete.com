@@ -10,7 +10,7 @@ import { scoreAndFilterExercises, semanticFilterExercises, filterByInjuredJoints
 import { programSkeletonSchema, exerciseAssignmentSchema } from "./schemas.js"
 import { EXERCISE_SELECTOR_PROMPT } from "./prompts.js"
 import { validateProgram } from "./validate.js"
-import { formatExerciseLibrary } from "./exercise-context.js"
+import { formatExerciseLibrary, filterByDifficultyLevel, filterByProgressionPhase } from "./exercise-context.js"
 import { getExercisesForAI } from "./program-chat-tools.js"
 import { buildPriorContextFromExistingExercises, verifyWeekAgainstExisting } from "./dedup-verify.js"
 import { getSupabase } from "../lib/supabase.js"
@@ -516,14 +516,25 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
   const availableEquipment = profile?.available_equipment ?? [] as string[]
   const exerciseIdSet = new Set(allExercises.map((e) => e.id))
 
-  // Build a mock ProfileAnalysis for filtering
+  // Resolve client difficulty for filtering and ceiling construction
+  const clientDifficultyLevel = profile?.experience_level ?? (request.ignore_profile ? "advanced" : "intermediate")
+  const ceilingTier: "beginner" | "intermediate" | "advanced" =
+    clientDifficultyLevel === "beginner" ? "beginner" :
+    clientDifficultyLevel === "intermediate" ? "intermediate" :
+    "advanced"
+  const ceilingScore = newWeekNumber <= 2 ? 4 : 6
+
+  // Build a mock ProfileAnalysis for filtering.
+  // Difficulty_ceiling now reflects the actual client level — mirrors the
+  // main orchestrator's Agent 1 output so beginners don't get advanced
+  // exercises via the weekly-regeneration path.
   const mockAnalysis = {
     recommended_split: program.split_type,
     recommended_periodization: program.periodization,
     volume_targets: [],
     exercise_constraints: [],
     session_structure: { warm_up_minutes: 5, main_work_minutes: 45, cool_down_minutes: 5, total_exercises: 6, compound_count: 3, isolation_count: 3 },
-    training_age_category: (profile?.experience_level ?? (request.ignore_profile ? "advanced" : "intermediate")) as "novice" | "intermediate" | "advanced" | "elite",
+    training_age_category: clientDifficultyLevel as "novice" | "intermediate" | "advanced" | "elite",
     technique_plan: [
       {
         week_number: newWeekNumber,
@@ -535,15 +546,21 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
     difficulty_ceiling: [
       {
         week_number: newWeekNumber,
-        max_tier: "advanced" as const,
-        max_score: 10,
+        max_tier: ceilingTier,
+        max_score: ceilingScore,
       },
     ],
     notes: "",
   }
 
+  // Apply hard-exclusion difficulty filter + earned-progression filter for this week.
+  // Mirrors the main orchestrator — beginners never see intermediate/advanced
+  // exercises in weeks 1-2; low-score intermediates unlock from week 3.
+  let exercisesForSelection = filterByDifficultyLevel(allExercises, clientDifficultyLevel)
+  exercisesForSelection = filterByProgressionPhase(exercisesForSelection, clientDifficultyLevel, newWeekNumber)
+  console.log(`[week-orchestrator] Difficulty filter (${clientDifficultyLevel}, week ${newWeekNumber}): ${allExercises.length} -> ${exercisesForSelection.length}`)
+
   // Apply injury-aware joint filtering
-  let exercisesForSelection = allExercises
   const injuredJoints = extractInjuredJoints(profile?.injury_details as Array<{ area?: string }> | undefined)
   if (injuredJoints.length > 0) {
     exercisesForSelection = filterByInjuredJoints(exercisesForSelection, injuredJoints)
