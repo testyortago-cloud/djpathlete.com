@@ -266,28 +266,34 @@ function makeSkeleton(
   }
 
   return {
-    program_name: "Test Program",
     split_type: "full_body",
     periodization: "linear",
     weeks: Array.from(weekMap.entries()).map(([weekNum, dayMap]) => ({
       week_number: weekNum,
-      focus: "general",
+      phase: "accumulation",
+      intensity_modifier: "moderate",
       days: Array.from(dayMap.entries()).map(([dayNum, slotIds]) => ({
         day_of_week: dayNum,
         label: `Day ${dayNum}`,
         focus: "full_body",
-        slots: slotIds.map((id, idx) => ({
+        slots: slotIds.map((id) => ({
           slot_id: id,
-          role: "main",
-          movement_pattern: "push",
+          role: "primary_compound" as const,
+          movement_pattern: "push" as const,
           target_muscles: ["chest"],
           sets: 3,
-          rep_range: "8-12",
+          reps: "8-12",
           rest_seconds: 90,
-          order: idx + 1,
+          rpe_target: null,
+          tempo: null,
+          group_tag: null,
+          technique: "straight_set" as const,
+          intensity_pct: null,
         })),
       })),
     })),
+    total_sessions: slots.length,
+    notes: "",
   }
 }
 
@@ -548,19 +554,28 @@ describe("validateProgram", () => {
 
   describe("validation summary", () => {
     it("passes with no issues", () => {
-      const exercise = makeExercise({ id: "ex-001", is_bodyweight: true })
-      const skeleton = makeSkeleton([{ slot_id: "w1d1s1", week: 1, day: 1 }])
+      const pushEx = makeExercise({ id: "ex-push", is_bodyweight: true, movement_pattern: "push" })
+      const pullEx = makeExercise({ id: "ex-pull", is_bodyweight: true, movement_pattern: "pull", primary_muscles: ["back"] })
+      // Provide a balanced skeleton with both push and pull patterns so the
+      // validator's per-week movement-balance check passes.
+      const skeleton = makeSkeleton([
+        { slot_id: "w1d1s1", week: 1, day: 1 },
+        { slot_id: "w1d1s2", week: 1, day: 1 },
+      ])
+      // Override second slot to pull pattern so the week has balance
+      skeleton.weeks[0].days[0].slots[1].movement_pattern = "pull"
+      skeleton.weeks[0].days[0].slots[1].target_muscles = ["back"]
       const assignment: ExerciseAssignment = {
         assignments: [
-          { slot_id: "w1d1s1", exercise_id: "ex-001", exercise_name: "Push-Up", notes: null },
+          { slot_id: "w1d1s1", exercise_id: "ex-push", exercise_name: "Push-Up", notes: null },
+          { slot_id: "w1d1s2", exercise_id: "ex-pull", exercise_name: "Pull-Up", notes: null },
         ],
         substitution_notes: [],
       }
       const result = validateProgram(
-        skeleton, assignment, makeAnalysis(), [exercise],
+        skeleton, assignment, makeAnalysis(), [pushEx, pullEx],
         [], "intermediate"
       )
-      // May have movement pattern warnings, but no errors
       const errors = result.issues.filter((i) => i.type === "error")
       expect(errors).toHaveLength(0)
       expect(result.pass).toBe(true)

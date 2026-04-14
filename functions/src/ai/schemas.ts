@@ -16,6 +16,13 @@ const MOVEMENT_PATTERNS = [
   "carry", "rotation", "isometric", "locomotion", "conditioning",
 ] as const
 
+const TECHNIQUES = [
+  "straight_set", "superset", "dropset", "giant_set", "circuit",
+  "rest_pause", "amrap", "cluster_set", "complex", "emom", "wave_loading",
+] as const
+
+const DIFFICULTY_TIERS = ["beginner", "intermediate", "advanced"] as const
+
 // ─── Agent 1: Profile Analysis Schema ────────────────────────────────────────
 
 const volumeTargetSchema = z.object({
@@ -42,6 +49,19 @@ const sessionStructureSchema = z.object({
   isolation_count: z.number(),
 })
 
+const techniquePlanWeekSchema = z.object({
+  week_number: z.number().int().min(1),
+  allowed_techniques: z.array(z.enum(TECHNIQUES)).min(1),
+  default_technique: z.enum(TECHNIQUES),
+  notes: z.string().default(""),
+})
+
+const difficultyCeilingWeekSchema = z.object({
+  week_number: z.number().int().min(1),
+  max_tier: z.enum(DIFFICULTY_TIERS),
+  max_score: z.number().min(0).max(10),
+})
+
 export const profileAnalysisSchema = z.object({
   recommended_split: z.enum(SPLIT_TYPES),
   recommended_periodization: z.enum(PERIODIZATION_TYPES),
@@ -49,6 +69,8 @@ export const profileAnalysisSchema = z.object({
   exercise_constraints: z.array(exerciseConstraintSchema),
   session_structure: sessionStructureSchema,
   training_age_category: z.enum(["novice", "intermediate", "advanced", "elite"]),
+  technique_plan: z.array(techniquePlanWeekSchema).min(1),
+  difficulty_ceiling: z.array(difficultyCeilingWeekSchema).min(1),
   notes: z.string().optional().default(""),
 })
 
@@ -69,11 +91,7 @@ const exerciseSlotSchema = z.object({
   rpe_target: z.number().nullable(),
   tempo: z.string().nullable(),
   group_tag: z.string().nullable(),
-  technique: z.enum([
-    "straight_set", "superset", "dropset",
-    "giant_set", "circuit", "rest_pause", "amrap",
-    "cluster_set", "complex", "emom", "wave_loading",
-  ]).default("straight_set"),
+  technique: z.enum(TECHNIQUES).default("straight_set"),
   intensity_pct: z.number().nullable().optional().default(null),
 })
 
@@ -90,7 +108,6 @@ const programWeekSchema = z.object({
   intensity_modifier: z.string(),
   days: z.array(programDaySchema).min(1),
 })
-
 
 export const programSkeletonSchema = z.object({
   weeks: z.array(programWeekSchema).min(1),
@@ -128,3 +145,95 @@ export const validationResultSchema = z.object({
   issues: z.array(validationIssueSchema),
   summary: z.string(),
 })
+
+// ─── Cross-layer Validators ──────────────────────────────────────────────────
+
+export type TechniquePlanWeek = z.infer<typeof techniquePlanWeekSchema>
+export type DifficultyCeilingWeek = z.infer<typeof difficultyCeilingWeekSchema>
+
+export interface ValidatorResult {
+  ok: boolean
+  violations: string[]
+}
+
+/**
+ * Validate the program skeleton (Agent 2 output) against the technique_plan
+ * produced by Agent 1. Every slot's technique must be in the allowed_techniques
+ * list for that week.
+ */
+export function validateSkeletonAgainstAnalysis(
+  skeleton: z.infer<typeof programSkeletonSchema>,
+  analysis: z.infer<typeof profileAnalysisSchema>
+): ValidatorResult {
+  const planByWeek = new Map<number, TechniquePlanWeek>()
+  for (const wk of analysis.technique_plan) planByWeek.set(wk.week_number, wk)
+
+  const violations: string[] = []
+  for (const week of skeleton.weeks) {
+    const plan = planByWeek.get(week.week_number)
+    if (!plan) {
+      violations.push(`week ${week.week_number}: no technique_plan entry from analysis`)
+      continue
+    }
+    const allowed = new Set<string>(plan.allowed_techniques)
+    for (const day of week.days) {
+      for (const slot of day.slots) {
+        if (!allowed.has(slot.technique)) {
+          violations.push(
+            `week ${week.week_number} slot ${slot.slot_id}: technique "${slot.technique}" not allowed (allowed: ${plan.allowed_techniques.join(", ")})`
+          )
+        }
+      }
+    }
+  }
+  return { ok: violations.length === 0, violations }
+}
+
+/**
+ * Validate exercise assignments (Agent 3 output) against the difficulty_ceiling
+ * produced by Agent 1. For each week, the assigned exercise must not exceed the
+ * ceiling's max_tier; if its tier equals max_tier, its difficulty_score must
+ * not exceed max_score.
+ */
+export function validateAssignmentAgainstCeiling(
+  assignment: z.infer<typeof exerciseAssignmentSchema>,
+  difficultyCeiling: DifficultyCeilingWeek[],
+  slotInWeek: Map<string, number>,
+  exerciseLibrary: Array<{ id: string; difficulty: string; difficulty_score: number | null | undefined }>
+): ValidatorResult {
+  const ceilingByWeek = new Map<number, DifficultyCeilingWeek>()
+  for (const c of difficultyCeiling) ceilingByWeek.set(c.week_number, c)
+
+  const exById = new Map(exerciseLibrary.map((e) => [e.id, e]))
+  const tierIdx = (tier: string) => DIFFICULTY_TIERS.indexOf(tier as typeof DIFFICULTY_TIERS[number])
+
+  const violations: string[] = []
+  for (const a of assignment.assignments) {
+    const weekNum = slotInWeek.get(a.slot_id)
+    if (weekNum === undefined) continue
+    const ceiling = ceilingByWeek.get(weekNum)
+    if (!ceiling) {
+      violations.push(`week ${weekNum} slot ${a.slot_id}: no difficulty_ceiling entry`)
+      continue
+    }
+    const ex = exById.get(a.exercise_id)
+    if (!ex) continue
+
+    const exIdx = tierIdx(ex.difficulty)
+    const maxIdx = tierIdx(ceiling.max_tier)
+    if (exIdx === -1 || maxIdx === -1) continue
+
+    if (exIdx > maxIdx) {
+      violations.push(
+        `week ${weekNum} slot ${a.slot_id}: exercise "${ex.id}" tier "${ex.difficulty}" exceeds ceiling "${ceiling.max_tier}"`
+      )
+      continue
+    }
+    if (exIdx === maxIdx && ex.difficulty_score != null && ex.difficulty_score > ceiling.max_score) {
+      violations.push(
+        `week ${weekNum} slot ${a.slot_id}: exercise "${ex.id}" score ${ex.difficulty_score} exceeds max_score ${ceiling.max_score}`
+      )
+    }
+  }
+  return { ok: violations.length === 0, violations }
+}
