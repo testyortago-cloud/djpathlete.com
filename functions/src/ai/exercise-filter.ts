@@ -1,6 +1,40 @@
 import type { CompressedExercise, ExerciseSlot, ProgramSkeleton, ProfileAnalysis } from "./types.js"
 import { slotToText, embedText } from "./embeddings.js"
 import { getSupabase } from "../lib/supabase.js"
+import type { UsageRecencyMap } from "./usage-history.js"
+
+const COACH_USAGE_PENALTY = 30
+const CLIENT_USAGE_PENALTY = 50
+const DIVERSITY_BOOST = 10
+
+/**
+ * Apply usage-history penalties and a diversity boost to a base score.
+ * - Used by this coach in last 60 days → -30
+ * - Used by this client in last 90 days → -50
+ * - Used by neither → +10 (diversity boost)
+ */
+export function applyUsagePenalty(
+  baseScore: number,
+  exerciseId: string,
+  coachUsage: UsageRecencyMap,
+  clientUsage: UsageRecencyMap
+): number {
+  let score = baseScore
+  const hasUsageData = coachUsage.size > 0 || clientUsage.size > 0
+  if (!hasUsageData) return score
+  const inCoach = coachUsage.has(exerciseId)
+  const inClient = clientUsage.has(exerciseId)
+  if (inCoach) score -= COACH_USAGE_PENALTY
+  if (inClient) score -= CLIENT_USAGE_PENALTY
+  if (!inCoach && !inClient) score += DIVERSITY_BOOST
+  return score
+}
+
+export interface FilterOptions {
+  poolActive?: boolean
+  coachUsage?: UsageRecencyMap
+  clientUsage?: UsageRecencyMap
+}
 
 // ─── Related movement patterns ──────────────────────────────────────────────
 
@@ -237,7 +271,7 @@ function ensurePatternBalance(
 export function scoreAndFilterExercises(
   exercises: CompressedExercise[], skeleton: ProgramSkeleton,
   equipment: string[], analysis: ProfileAnalysis,
-  options?: { poolActive?: boolean }
+  options?: FilterOptions
 ): CompressedExercise[] {
   const difficulty = analysis.training_age_category === "novice" ? "beginner"
     : analysis.training_age_category === "elite" ? "advanced"
@@ -267,6 +301,14 @@ export function scoreAndFilterExercises(
     exerciseMaxScores.set(exercise.id, maxScore)
   }
 
+  const coachUsage = options?.coachUsage ?? new Map<string, number>()
+  const clientUsage = options?.clientUsage ?? new Map<string, number>()
+  if (coachUsage.size > 0 || clientUsage.size > 0) {
+    for (const [id, score] of exerciseMaxScores) {
+      exerciseMaxScores.set(id, applyUsagePenalty(score, id, coachUsage, clientUsage))
+    }
+  }
+
   const sorted = [...exercises].sort((a, b) => {
     return (exerciseMaxScores.get(b.id) ?? 0) - (exerciseMaxScores.get(a.id) ?? 0)
   })
@@ -288,7 +330,7 @@ export function scoreAndFilterExercises(
 export async function semanticFilterExercises(
   exercises: CompressedExercise[], skeleton: ProgramSkeleton,
   equipment: string[], analysis: ProfileAnalysis,
-  options?: { poolActive?: boolean }
+  options?: FilterOptions
 ): Promise<CompressedExercise[]> {
   const supabase = getSupabase()
   const isPool = options?.poolActive ?? false
@@ -340,10 +382,23 @@ export async function semanticFilterExercises(
   const minRequired = isPool ? 1 : MIN_EXERCISES
   if (matchedIds.size < minRequired) {
     console.log(`[semanticFilter] Only ${matchedIds.size} matches — falling back to heuristic filter`)
-    return scoreAndFilterExercises(exercises, skeleton, equipment, analysis, { poolActive: isPool })
+    return scoreAndFilterExercises(exercises, skeleton, equipment, analysis, { poolActive: isPool, coachUsage: options?.coachUsage, clientUsage: options?.clientUsage })
   }
 
   let filtered = exercises.filter((ex) => matchedIds.has(ex.id))
+
+  const coachUsage = options?.coachUsage ?? new Map<string, number>()
+  const clientUsage = options?.clientUsage ?? new Map<string, number>()
+  if (coachUsage.size > 0 || clientUsage.size > 0) {
+    const scored = filtered.map((ex) => ({
+      ex,
+      score: applyUsagePenalty(50, ex.id, coachUsage, clientUsage),
+    }))
+    scored.sort((a, b) => b.score - a.score)
+    filtered = scored.map((s) => s.ex)
+    console.log(`[semanticFilter] Applied usage-aware re-ranking (coach: ${coachUsage.size}, client: ${clientUsage.size})`)
+  }
+
   if (filtered.length > maxExercises) filtered = filtered.slice(0, maxExercises)
 
   // Ensure pattern balance — when pool active, only pulls from pool exercises
