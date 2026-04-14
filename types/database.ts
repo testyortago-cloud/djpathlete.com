@@ -1,6 +1,15 @@
 export type UserRole = "admin" | "client"
 export type UserStatus = "active" | "inactive" | "suspended"
-export type ExerciseCategory = "strength" | "speed" | "power" | "plyometric" | "flexibility" | "mobility" | "motor_control" | "strength_endurance" | "relative_strength"
+export type ExerciseCategory =
+  | "strength"
+  | "speed"
+  | "power"
+  | "plyometric"
+  | "flexibility"
+  | "mobility"
+  | "motor_control"
+  | "strength_endurance"
+  | "relative_strength"
 export type TrainingIntent = "build" | "shape" | "express"
 export type ExerciseDifficulty = "beginner" | "intermediate" | "advanced"
 export type ProgramCategory = "strength" | "conditioning" | "sport_specific" | "recovery" | "nutrition" | "hybrid"
@@ -27,10 +36,27 @@ export type OccupationActivityLevel = "sedentary" | "light" | "moderate" | "heav
 export type MovementConfidence = "learning" | "comfortable" | "proficient" | "expert"
 
 // AI program generation types
-export type MovementPattern = "push" | "pull" | "squat" | "hinge" | "lunge" | "carry" | "rotation" | "isometric" | "locomotion" | "conditioning"
+export type MovementPattern =
+  | "push"
+  | "pull"
+  | "squat"
+  | "hinge"
+  | "lunge"
+  | "carry"
+  | "rotation"
+  | "isometric"
+  | "locomotion"
+  | "conditioning"
 export type ForceType = "push" | "pull" | "static" | "dynamic"
 export type Laterality = "bilateral" | "unilateral" | "alternating"
-export type SplitType = "full_body" | "upper_lower" | "push_pull_legs" | "push_pull" | "body_part" | "movement_pattern" | "custom"
+export type SplitType =
+  | "full_body"
+  | "upper_lower"
+  | "push_pull_legs"
+  | "push_pull"
+  | "body_part"
+  | "movement_pattern"
+  | "custom"
 export type Periodization = "linear" | "undulating" | "block" | "reverse_linear" | "none"
 export type PlaneOfMotion = "sagittal" | "frontal" | "transverse"
 export type JointName = "ankle" | "knee" | "hip" | "lumbar_spine" | "thoracic_spine" | "shoulder" | "elbow" | "wrist"
@@ -92,7 +118,18 @@ export interface User {
 }
 
 export type TimeEfficiencyPreference = "supersets_circuits" | "shorter_rest" | "fewer_heavier" | "extend_session"
-export type TrainingTechnique = "straight_set" | "superset" | "dropset" | "giant_set" | "circuit" | "rest_pause" | "amrap" | "cluster_set" | "complex" | "emom" | "wave_loading"
+export type TrainingTechnique =
+  | "straight_set"
+  | "superset"
+  | "dropset"
+  | "giant_set"
+  | "circuit"
+  | "rest_pause"
+  | "amrap"
+  | "cluster_set"
+  | "complex"
+  | "emom"
+  | "wave_loading"
 
 export interface ClientProfile {
   id: string
@@ -657,6 +694,59 @@ export interface Newsletter {
   sent_count: number
   failed_count: number
   author_id: string
+  created_at: string
+  updated_at: string
+}
+
+// ---------- Events & event signups ----------
+
+export type EventType = "clinic" | "camp"
+export type EventStatus = "draft" | "published" | "cancelled" | "completed"
+export type SignupType = "interest" | "paid"
+export type SignupStatus = "pending" | "confirmed" | "cancelled" | "refunded"
+
+export interface Event {
+  id: string
+  type: EventType
+  slug: string
+  title: string
+  summary: string
+  description: string
+  focus_areas: string[]
+  start_date: string
+  end_date: string | null
+  session_schedule: string | null
+  location_name: string
+  location_address: string | null
+  location_map_url: string | null
+  age_min: number | null
+  age_max: number | null
+  capacity: number
+  signup_count: number
+  price_cents: number | null
+  stripe_price_id: string | null
+  status: EventStatus
+  hero_image_url: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface EventSignup {
+  id: string
+  event_id: string
+  signup_type: SignupType
+  parent_name: string
+  parent_email: string
+  parent_phone: string | null
+  athlete_name: string
+  athlete_age: number
+  sport: string | null
+  notes: string | null
+  status: SignupStatus
+  stripe_session_id: string | null
+  stripe_payment_intent_id: string | null
+  amount_paid_cents: number | null
+  user_id: string | null
   created_at: string
   updated_at: string
 }
