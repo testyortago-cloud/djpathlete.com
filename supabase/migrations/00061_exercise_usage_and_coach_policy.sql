@@ -40,29 +40,20 @@ CREATE TABLE IF NOT EXISTS coach_ai_policy (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Ensure techniques listed are from the known enum
+-- Ensure techniques listed are from the known enum.
+-- Uses the JSONB <@ (contained-by) operator: every element of the left-hand
+-- array must appear in the right-hand allowed set. CHECK constraints cannot
+-- contain subqueries (SQLSTATE 0A000), so we avoid jsonb_array_elements.
 ALTER TABLE coach_ai_policy ADD CONSTRAINT coach_ai_policy_disallowed_valid
   CHECK (
     jsonb_typeof(disallowed_techniques) = 'array'
-    AND NOT EXISTS (
-      SELECT 1 FROM jsonb_array_elements_text(disallowed_techniques) AS t
-      WHERE t NOT IN (
-        'straight_set','superset','dropset','giant_set','circuit',
-        'rest_pause','amrap','cluster_set','complex','emom','wave_loading'
-      )
-    )
+    AND disallowed_techniques <@ '["straight_set","superset","dropset","giant_set","circuit","rest_pause","amrap","cluster_set","complex","emom","wave_loading"]'::jsonb
   );
 
 ALTER TABLE coach_ai_policy ADD CONSTRAINT coach_ai_policy_preferred_valid
   CHECK (
     jsonb_typeof(preferred_techniques) = 'array'
-    AND NOT EXISTS (
-      SELECT 1 FROM jsonb_array_elements_text(preferred_techniques) AS t
-      WHERE t NOT IN (
-        'straight_set','superset','dropset','giant_set','circuit',
-        'rest_pause','amrap','cluster_set','complex','emom','wave_loading'
-      )
-    )
+    AND preferred_techniques <@ '["straight_set","superset","dropset","giant_set","circuit","rest_pause","amrap","cluster_set","complex","emom","wave_loading"]'::jsonb
   );
 
 -- Auto-update updated_at trigger
