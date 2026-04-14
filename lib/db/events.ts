@@ -108,7 +108,7 @@ export async function updateEvent(id: string, input: UpdateEventInput): Promise<
   return data as Event
 }
 
-const ALLOWED_STATUS_TRANSITIONS: Record<EventStatus, EventStatus[]> = {
+export const ALLOWED_STATUS_TRANSITIONS: Record<EventStatus, EventStatus[]> = {
   draft: ["published", "cancelled"],
   published: ["cancelled", "completed"],
   cancelled: [],

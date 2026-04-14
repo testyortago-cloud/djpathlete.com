@@ -37,7 +37,12 @@ export function EventList({ initialEvents }: EventListProps) {
 
   async function handleDuplicate(id: string) {
     const res = await fetch(`/api/admin/events/${id}/duplicate`, { method: "POST" })
-    if (res.ok) router.refresh()
+    if (res.ok) {
+      router.refresh()
+    } else {
+      const data = await res.json().catch(() => ({}))
+      alert(data.error ?? "Duplicate failed")
+    }
   }
 
   async function handleDelete(id: string) {

@@ -71,7 +71,7 @@ declare
   v_signup_count int;
 begin
   select * into v_signup from event_signups where id = p_signup_id for update;
-  if v_signup is null then
+  if not found then
     return jsonb_build_object('ok', false, 'reason', 'not_found');
   end if;
   if v_signup.status <> 'pending' then
@@ -105,7 +105,7 @@ declare
   v_was_confirmed boolean;
 begin
   select * into v_signup from event_signups where id = p_signup_id for update;
-  if v_signup is null then
+  if not found then
     return jsonb_build_object('ok', false, 'reason', 'not_found');
   end if;
   if v_signup.status not in ('pending', 'confirmed') then

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { updateEventSchema } from "@/lib/validators/events"
-import { updateEvent, deleteEvent, setEventStatus, getEventById } from "@/lib/db/events"
+import { updateEvent, deleteEvent, getEventById, ALLOWED_STATUS_TRANSITIONS } from "@/lib/db/events"
 
 async function requireAdmin() {
   const session = await auth()
@@ -27,17 +27,33 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
     const { status, ...rest } = result.data as { status?: string; [k: string]: unknown }
 
     try {
+      const merged: Record<string, unknown> = { ...rest }
       if (status) {
-        await setEventStatus(id, status as "draft" | "published" | "cancelled" | "completed")
+        // Validate transition first (read-only), then include status in the single update.
+        const current = await getEventById(id)
+        if (!current) {
+          return NextResponse.json({ error: "Event not found" }, { status: 404 })
+        }
+        const allowed = ALLOWED_STATUS_TRANSITIONS[current.status]
+        if (!allowed.includes(status as "draft" | "published" | "cancelled" | "completed")) {
+          return NextResponse.json(
+            { error: `Cannot transition event from ${current.status} to ${status}` },
+            { status: 409 },
+          )
+        }
+        merged.status = status
       }
-      const updated = Object.keys(rest).length > 0 ? await updateEvent(id, rest) : await getEventById(id)
-      if (!updated) return NextResponse.json({ error: "Event not found" }, { status: 404 })
+
+      if (Object.keys(merged).length === 0) {
+        const fetched = await getEventById(id)
+        if (!fetched) return NextResponse.json({ error: "Event not found" }, { status: 404 })
+        return NextResponse.json({ event: fetched })
+      }
+
+      const updated = await updateEvent(id, merged)
       return NextResponse.json({ event: updated })
     } catch (err) {
       const msg = (err as Error).message
-      if (msg.toLowerCase().includes("cannot transition")) {
-        return NextResponse.json({ error: msg }, { status: 409 })
-      }
       if (msg.toLowerCase().includes("duplicate") || msg.toLowerCase().includes("unique")) {
         return NextResponse.json(
           { error: "Slug already in use", fieldErrors: { slug: ["That slug is already taken"] } },

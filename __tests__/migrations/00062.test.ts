@@ -83,6 +83,12 @@ describe("Migration 00062: events + event_signups + RPCs", () => {
     expect(evt?.signup_count).toBe(0)
   })
 
+  it("confirm_event_signup returns not_found for unknown signup id", async () => {
+    const unknownId = "00000000-0000-0000-0000-000000000000"
+    const { data } = await supabase.rpc("confirm_event_signup", { p_signup_id: unknownId })
+    expect(data).toEqual({ ok: false, reason: "not_found" })
+  })
+
   it("slug uniqueness is enforced", async () => {
     const slug = `dup-${randomUUID()}`
     const { data: first } = await supabase
