@@ -335,13 +335,20 @@ export async function resolveSessionPaymentIntent(
     const subId = typeof session.subscription === "string" ? session.subscription : session.subscription.id
     try {
       const sub = await stripe.subscriptions.retrieve(subId, {
-        expand: ["latest_invoice.payment_intent"],
+        expand: ["latest_invoice.payments", "latest_invoice.payment_intent"],
       })
       const invoice = sub.latest_invoice
       if (invoice && typeof invoice !== "string") {
+        // Stripe's newer invoice shape nests the PI under invoice.payments.data[0].payment.payment_intent.
+        // Older shape exposes it as invoice.payment_intent. Check both.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const pi = (invoice as any).payment_intent
-        if (pi) return typeof pi === "string" ? pi : pi.id
+        const inv = invoice as any
+        const nested =
+          inv.payments?.data?.[0]?.payment?.payment_intent ??
+          inv.payments?.data?.[0]?.payment_intent
+        if (nested) return typeof nested === "string" ? nested : nested.id
+        const legacy = inv.payment_intent
+        if (legacy) return typeof legacy === "string" ? legacy : legacy.id
       }
     } catch {
       return null
