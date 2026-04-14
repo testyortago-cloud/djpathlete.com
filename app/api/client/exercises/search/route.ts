@@ -31,9 +31,6 @@ export async function GET(request: Request) {
     return NextResponse.json(data ?? [])
   } catch (error) {
     console.error("Exercise search error:", error)
-    return NextResponse.json(
-      { error: "Failed to search exercises" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to search exercises" }, { status: 500 })
   }
 }

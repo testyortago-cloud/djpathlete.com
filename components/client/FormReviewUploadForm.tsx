@@ -100,13 +100,11 @@ export function FormReviewUploadForm({ userId }: FormReviewUploadFormProps) {
         uploadTask.on(
           "state_changed",
           (snapshot) => {
-            const pct = Math.round(
-              (snapshot.bytesTransferred / snapshot.totalBytes) * 100
-            )
+            const pct = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100)
             setProgress(pct)
           },
           (error) => reject(error),
-          () => resolve()
+          () => resolve(),
         )
       })
 
@@ -183,9 +181,7 @@ export function FormReviewUploadForm({ userId }: FormReviewUploadFormProps) {
               <Video className="size-8 text-green-600" />
               <div className="text-left">
                 <p className="text-sm font-medium text-foreground">{file.name}</p>
-                <p className="text-xs text-muted-foreground">
-                  {(file.size / (1024 * 1024)).toFixed(1)} MB
-                </p>
+                <p className="text-xs text-muted-foreground">{(file.size / (1024 * 1024)).toFixed(1)} MB</p>
               </div>
               <button
                 type="button"
@@ -201,9 +197,7 @@ export function FormReviewUploadForm({ userId }: FormReviewUploadFormProps) {
           ) : (
             <div className="space-y-2">
               <Upload className="size-8 text-muted-foreground mx-auto" />
-              <p className="text-sm text-muted-foreground">
-                Drag and drop your video, or click to browse
-              </p>
+              <p className="text-sm text-muted-foreground">Drag and drop your video, or click to browse</p>
               <p className="text-xs text-muted-foreground">
                 MP4, MOV, WebM, or AVI. Max {MAX_SIZE_MB}MB, {MAX_DURATION_SECONDS / 60} minutes.
               </p>
@@ -221,9 +215,7 @@ export function FormReviewUploadForm({ userId }: FormReviewUploadFormProps) {
               style={{ width: `${progress}%` }}
             />
           </div>
-          <p className="text-xs text-muted-foreground text-center">
-            Uploading... {progress}%
-          </p>
+          <p className="text-xs text-muted-foreground text-center">Uploading... {progress}%</p>
         </div>
       )}
 

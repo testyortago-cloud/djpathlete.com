@@ -95,12 +95,9 @@ export function InquiryForm({
         <div className="flex size-16 items-center justify-center rounded-full bg-success/10 mx-auto mb-4">
           <CheckCircle2 className="size-8 text-success" />
         </div>
-        <h3 className="text-xl font-heading font-semibold text-primary mb-2">
-          Application Received
-        </h3>
+        <h3 className="text-xl font-heading font-semibold text-primary mb-2">Application Received</h3>
         <p className="text-muted-foreground max-w-md mx-auto">
-          Thank you for your interest. We review every application personally
-          and will be in touch within 48 hours.
+          Thank you for your interest. We review every application personally and will be in touch within 48 hours.
         </p>
       </div>
     )
@@ -109,9 +106,7 @@ export function InquiryForm({
   return (
     <div>
       <div className="mb-6">
-        <h3 className="text-xl font-heading font-semibold text-primary mb-1">
-          {heading}
-        </h3>
+        <h3 className="text-xl font-heading font-semibold text-primary mb-1">{heading}</h3>
         <p className="text-sm text-muted-foreground">{description}</p>
       </div>
 
@@ -178,9 +173,13 @@ export function InquiryForm({
               defaultValue={defaultService ?? ""}
               className={selectClass}
             >
-              <option value="" disabled>Select a service</option>
+              <option value="" disabled>
+                Select a service
+              </option>
               {SERVICE_TYPES.map((s) => (
-                <option key={s} value={s}>{SERVICE_LABELS[s]}</option>
+                <option key={s} value={s}>
+                  {SERVICE_LABELS[s]}
+                </option>
               ))}
             </select>
             {errors.service && <p className="text-xs text-destructive">{errors.service[0]}</p>}
@@ -215,7 +214,9 @@ export function InquiryForm({
             >
               <option value="">Select experience level</option>
               {EXPERIENCE_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
               ))}
             </select>
           </div>

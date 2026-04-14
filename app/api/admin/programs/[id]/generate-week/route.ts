@@ -19,18 +19,12 @@ const generateWeekSchema = z.object({
   ignore_profile: z.boolean().optional(),
 })
 
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     // Auth check
     const session = await auth()
     if (!session?.user?.id || session.user.role !== "admin") {
-      return NextResponse.json(
-        { error: "Unauthorized. Admin access required." },
-        { status: 403 }
-      )
+      return NextResponse.json({ error: "Unauthorized. Admin access required." }, { status: 403 })
     }
 
     const { id: programId } = await params
@@ -40,7 +34,7 @@ export async function POST(
     if (!result.success) {
       return NextResponse.json(
         { error: "Invalid request data", details: result.error.flatten().fieldErrors },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
@@ -50,7 +44,7 @@ export async function POST(
       if (!activeUserIds.includes(result.data.client_id)) {
         return NextResponse.json(
           { error: "Client does not have an active assignment for this program." },
-          { status: 400 }
+          { status: 400 },
         )
       }
     }
@@ -96,10 +90,7 @@ export async function POST(
       console.warn("[generate-week] Failed to seed RTDB node:", rtdbErr)
     }
 
-    return NextResponse.json(
-      { jobId: jobRef.id, status: "pending" },
-      { status: 202 }
-    )
+    return NextResponse.json({ jobId: jobRef.id, status: "pending" }, { status: 202 })
   } catch (error) {
     console.error("[generate-week] Failed to create AI job:", error)
     const message = error instanceof Error ? error.message : "An unexpected error occurred."

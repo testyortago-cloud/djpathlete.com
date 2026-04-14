@@ -1,13 +1,6 @@
 "use client"
 
-import {
-  createContext,
-  useContext,
-  useState,
-  useCallback,
-  useEffect,
-  type ReactNode,
-} from "react"
+import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react"
 import type { WeightUnit } from "@/types/database"
 import {
   displayWeight as _displayWeight,
@@ -31,11 +24,7 @@ interface AdminWeightUnitContextValue {
 
 const AdminWeightUnitContext = createContext<AdminWeightUnitContextValue | null>(null)
 
-export function AdminWeightUnitProvider({
-  children,
-}: {
-  children: ReactNode
-}) {
+export function AdminWeightUnitProvider({ children }: { children: ReactNode }) {
   const [unit, setUnitState] = useState<WeightUnit>("lbs")
 
   useEffect(() => {
@@ -60,11 +49,7 @@ export function AdminWeightUnitProvider({
     unitLabel: () => _unitLabel(unit),
   }
 
-  return (
-    <AdminWeightUnitContext.Provider value={value}>
-      {children}
-    </AdminWeightUnitContext.Provider>
-  )
+  return <AdminWeightUnitContext.Provider value={value}>{children}</AdminWeightUnitContext.Provider>
 }
 
 export function useAdminWeightUnit(): AdminWeightUnitContextValue {

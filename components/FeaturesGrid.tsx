@@ -1,16 +1,7 @@
 "use client"
 
 import { motion } from "framer-motion"
-import {
-  ClipboardList,
-  BarChart3,
-  Video,
-  Apple,
-  Dumbbell,
-  Heart,
-  Users,
-  MapPin,
-} from "lucide-react"
+import { ClipboardList, BarChart3, Video, Apple, Dumbbell, Heart, Users, MapPin } from "lucide-react"
 
 const features = [
   {
@@ -83,10 +74,7 @@ const cardVariants = {
 
 export function FeaturesGrid() {
   return (
-    <section
-      id="features"
-      className="w-full py-16 lg:py-24 px-4 sm:px-8 bg-surface"
-    >
+    <section id="features" className="w-full py-16 lg:py-24 px-4 sm:px-8 bg-surface">
       <div className="max-w-7xl mx-auto">
         <motion.div
           className="text-center mb-16"
@@ -99,7 +87,8 @@ export function FeaturesGrid() {
             Coaching tools built for every stage of athletic development.
           </h2>
           <p className="text-lg leading-7 text-muted-foreground max-w-2xl mx-auto">
-            Training plans, performance tracking, video analysis, and nutrition coaching — everything athletes need to train smarter and perform better.
+            Training plans, performance tracking, video analysis, and nutrition coaching — everything athletes need to
+            train smarter and perform better.
           </p>
         </motion.div>
 
@@ -122,12 +111,8 @@ export function FeaturesGrid() {
                   <Icon className="size-12 text-primary/60" strokeWidth={1.5} />
                 </div>
                 <div className="p-6">
-                  <h3 className="text-lg font-semibold text-primary mb-2">
-                    {feature.title}
-                  </h3>
-                  <p className="text-[15px] leading-relaxed text-muted-foreground">
-                    {feature.description}
-                  </p>
+                  <h3 className="text-lg font-semibold text-primary mb-2">{feature.title}</h3>
+                  <p className="text-[15px] leading-relaxed text-muted-foreground">{feature.description}</p>
                 </div>
               </motion.div>
             )

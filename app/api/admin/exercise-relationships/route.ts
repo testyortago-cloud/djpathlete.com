@@ -30,20 +30,14 @@ export async function GET(request: Request) {
     const exerciseId = searchParams.get("exerciseId")
 
     if (!exerciseId) {
-      return NextResponse.json(
-        { error: "exerciseId query parameter is required" },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "exerciseId query parameter is required" }, { status: 400 })
     }
 
     const relationships = await getRelationships(exerciseId)
     return NextResponse.json(relationships)
   } catch (error) {
     console.error("Exercise relationships GET error:", error)
-    return NextResponse.json(
-      { error: "Failed to fetch relationships" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to fetch relationships" }, { status: 500 })
   }
 }
 
@@ -61,17 +55,11 @@ export async function POST(request: Request) {
     const parsed = createRelationshipSchema.safeParse(body)
 
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Invalid data", details: parsed.error.flatten().fieldErrors },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Invalid data", details: parsed.error.flatten().fieldErrors }, { status: 400 })
     }
 
     if (parsed.data.exercise_id === parsed.data.related_exercise_id) {
-      return NextResponse.json(
-        { error: "An exercise cannot be related to itself" },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "An exercise cannot be related to itself" }, { status: 400 })
     }
 
     const relationship = await createRelationship({
@@ -85,15 +73,9 @@ export async function POST(request: Request) {
   } catch (error: unknown) {
     const pgError = error as { code?: string }
     if (pgError?.code === "23505") {
-      return NextResponse.json(
-        { error: "This alternative already exists" },
-        { status: 409 }
-      )
+      return NextResponse.json({ error: "This alternative already exists" }, { status: 409 })
     }
     console.error("Exercise relationships POST error:", error)
-    return NextResponse.json(
-      { error: "Failed to create relationship" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to create relationship" }, { status: 500 })
   }
 }

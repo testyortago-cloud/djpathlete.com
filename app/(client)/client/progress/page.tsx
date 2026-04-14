@@ -10,14 +10,7 @@ import { PageHeader } from "@/components/shared/PageHeader"
 import { EmptyState } from "@/components/ui/empty-state"
 import { KeyLiftCard } from "@/components/client/KeyLiftCard"
 import { ExerciseTracker } from "@/components/client/ExerciseTracker"
-import {
-  TrendingUp,
-  CalendarCheck,
-  Flame,
-  Trophy,
-  Dumbbell,
-  ArrowRight,
-} from "lucide-react"
+import { TrendingUp, CalendarCheck, Flame, Trophy, Dumbbell, ArrowRight } from "lucide-react"
 import Link from "next/link"
 import type { ExerciseProgress, Exercise, ProgramExercise } from "@/types/database"
 
@@ -40,32 +33,23 @@ interface KeyLiftData {
 function computeKeyLiftStats(
   exerciseId: string,
   exerciseName: string,
-  allProgress: ProgressWithExercise[]
+  allProgress: ProgressWithExercise[],
 ): KeyLiftData {
   const entries = allProgress
     .filter((p) => p.exercise_id === exerciseId)
-    .sort(
-      (a, b) =>
-        new Date(b.completed_at).getTime() - new Date(a.completed_at).getTime()
-    )
+    .sort((a, b) => new Date(b.completed_at).getTime() - new Date(a.completed_at).getTime())
 
-  const weights = entries
-    .filter((e) => e.weight_kg != null)
-    .map((e) => e.weight_kg!)
+  const weights = entries.filter((e) => e.weight_kg != null).map((e) => e.weight_kg!)
 
   const currentBest = weights.length > 0 ? Math.max(...weights) : null
   const allTimePR = currentBest
 
   let estimated1RM: number | null = null
-  const bestEntry = entries.find(
-    (e) => e.weight_kg != null && e.weight_kg === currentBest
-  )
+  const bestEntry = entries.find((e) => e.weight_kg != null && e.weight_kg === currentBest)
   if (bestEntry?.weight_kg && bestEntry.reps_completed) {
     const repsMatch = bestEntry.reps_completed.match(/(\d+)/)
     if (repsMatch) {
-      estimated1RM = Math.round(
-        estimate1RM(bestEntry.weight_kg, parseInt(repsMatch[1], 10))
-      )
+      estimated1RM = Math.round(estimate1RM(bestEntry.weight_kg, parseInt(repsMatch[1], 10)))
     }
   }
 
@@ -95,10 +79,7 @@ function computeKeyLiftStats(
 
 const DAY_NAMES = ["", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
-function getNextWorkoutDay(
-  workoutDays: number[],
-  todayDow: number
-): { dayName: string; isToday: boolean } {
+function getNextWorkoutDay(workoutDays: number[], todayDow: number): { dayName: string; isToday: boolean } {
   // todayDow: 0=Sun..6=Sat → convert to ISO 1=Mon..7=Sun
   const isoDow = todayDow === 0 ? 7 : todayDow
 
@@ -141,14 +122,13 @@ export default async function ClientProgressPage() {
   let nextWorkout: string | null = null
 
   try {
-    const [allProgress, streak, prAchievements, trackedExercises, assignment] =
-      await Promise.all([
-        getProgress(userId) as Promise<ProgressWithExercise[]>,
-        getWorkoutStreak(userId),
-        getAchievementsByType(userId, "pr"),
-        getTrackedExercisesForUser(userId),
-        getActiveAssignment(userId),
-      ])
+    const [allProgress, streak, prAchievements, trackedExercises, assignment] = await Promise.all([
+      getProgress(userId) as Promise<ProgressWithExercise[]>,
+      getWorkoutStreak(userId),
+      getAchievementsByType(userId, "pr"),
+      getTrackedExercisesForUser(userId),
+      getActiveAssignment(userId),
+    ])
 
     progress = allProgress
     currentStreak = streak
@@ -156,9 +136,7 @@ export default async function ClientProgressPage() {
     // PRs this month
     const now = new Date()
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-    monthlyPrCount = prAchievements.filter(
-      (a) => new Date(a.created_at) >= startOfMonth
-    ).length
+    monthlyPrCount = prAchievements.filter((a) => new Date(a.created_at) >= startOfMonth).length
 
     // Program-based stats
     if (assignment) {
@@ -166,7 +144,9 @@ export default async function ClientProgressPage() {
       const currentWeekNum = assignment.current_week ?? 1
       programWeek = `${currentWeekNum}/${totalWeeks}`
 
-      const programEx = (await getProgramExercises(assignment.program_id)) as (ProgramExercise & { exercises: Exercise | null })[]
+      const programEx = (await getProgramExercises(assignment.program_id)) as (ProgramExercise & {
+        exercises: Exercise | null
+      })[]
 
       // Find workout days for the current week (fall back to closest earlier defined week)
       const definedWeeks = [...new Set(programEx.map((e) => e.week_number))].sort((a, b) => a - b)
@@ -177,11 +157,7 @@ export default async function ClientProgressPage() {
       }
 
       const workoutDaysThisWeek = [
-        ...new Set(
-          programEx
-            .filter((e) => e.week_number === sourceWeek)
-            .map((e) => e.day_of_week)
-        ),
+        ...new Set(programEx.filter((e) => e.week_number === sourceWeek).map((e) => e.day_of_week)),
       ].sort((a, b) => a - b)
 
       const totalPlannedDays = workoutDaysThisWeek.length
@@ -205,7 +181,7 @@ export default async function ClientProgressPage() {
               const d = new Date(p.completed_at)
               const dow = d.getDay()
               return dow === 0 ? 7 : dow
-            })
+            }),
         )
 
         const completedDays = workoutDaysThisWeek.filter((d) => daysLoggedThisWeek.has(d)).length
@@ -219,20 +195,23 @@ export default async function ClientProgressPage() {
 
     if (trackedExercises && trackedExercises.length > 0) {
       keyLifts = trackedExercises.map((te: { exercise_id: string; exercises: Exercise | null }) =>
-        computeKeyLiftStats(
-          te.exercise_id,
-          (te.exercises as Exercise | null)?.name ?? "Unknown Exercise",
-          progress
-        )
+        computeKeyLiftStats(te.exercise_id, (te.exercises as Exercise | null)?.name ?? "Unknown Exercise", progress),
       )
 
-      trackedForComponent = trackedExercises.map((te: { id: string; exercise_id: string; exercises: Exercise | null }) => ({
-        id: te.id,
-        exercise_id: te.exercise_id,
-        exercises: te.exercises
-          ? { id: te.exercises.id, name: te.exercises.name, muscle_group: te.exercises.muscle_group, equipment: te.exercises.equipment }
-          : null,
-      }))
+      trackedForComponent = trackedExercises.map(
+        (te: { id: string; exercise_id: string; exercises: Exercise | null }) => ({
+          id: te.id,
+          exercise_id: te.exercise_id,
+          exercises: te.exercises
+            ? {
+                id: te.exercises.id,
+                name: te.exercises.name,
+                muscle_group: te.exercises.muscle_group,
+                equipment: te.exercises.equipment,
+              }
+            : null,
+        }),
+      )
     }
   } catch {
     // DB tables may not exist yet -- render gracefully with empty data
@@ -240,10 +219,7 @@ export default async function ClientProgressPage() {
 
   return (
     <div>
-      <PageHeader
-        title="Progress"
-        description="Your training journey at a glance."
-      />
+      <PageHeader title="Progress" description="Your training journey at a glance." />
 
       {progress.length === 0 && !programWeek ? (
         <EmptyState
@@ -265,9 +241,7 @@ export default async function ClientProgressPage() {
                 </div>
                 <p className="text-xl sm:text-2xl font-bold text-foreground leading-none">
                   {programWeek.split("/")[0]}
-                  <span className="text-sm font-normal text-muted-foreground">
-                    /{programWeek.split("/")[1]}
-                  </span>
+                  <span className="text-sm font-normal text-muted-foreground">/{programWeek.split("/")[1]}</span>
                 </p>
               </div>
             )}
@@ -298,9 +272,7 @@ export default async function ClientProgressPage() {
               </div>
               <p className="text-xl sm:text-2xl font-bold text-foreground leading-none">
                 {currentStreak}
-                <span className="text-sm font-normal text-muted-foreground">
-                  {" "}day{currentStreak !== 1 ? "s" : ""}
-                </span>
+                <span className="text-sm font-normal text-muted-foreground"> day{currentStreak !== 1 ? "s" : ""}</span>
               </p>
             </div>
 
@@ -311,9 +283,7 @@ export default async function ClientProgressPage() {
                 </div>
                 <span className="text-[10px] sm:text-xs text-muted-foreground">PRs This Month</span>
               </div>
-              <p className="text-xl sm:text-2xl font-bold text-foreground leading-none">
-                {monthlyPrCount}
-              </p>
+              <p className="text-xl sm:text-2xl font-bold text-foreground leading-none">{monthlyPrCount}</p>
             </div>
           </div>
 

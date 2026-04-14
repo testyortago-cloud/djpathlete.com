@@ -2,10 +2,7 @@ import { getSupabase } from "../lib/supabase.js"
 
 export type UsageRecencyMap = Map<string, number>
 
-export async function getCoachRecentUsageFromFn(
-  coachId: string,
-  daysBack: number
-): Promise<UsageRecencyMap> {
+export async function getCoachRecentUsageFromFn(coachId: string, daysBack: number): Promise<UsageRecencyMap> {
   const supabase = getSupabase()
   const cutoff = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000).toISOString()
   const { data, error } = await supabase
@@ -20,10 +17,7 @@ export async function getCoachRecentUsageFromFn(
   return buildRecencyMap(data ?? [])
 }
 
-export async function getClientRecentUsageFromFn(
-  clientId: string | null,
-  daysBack: number
-): Promise<UsageRecencyMap> {
+export async function getClientRecentUsageFromFn(clientId: string | null, daysBack: number): Promise<UsageRecencyMap> {
   if (!clientId) return new Map()
   const supabase = getSupabase()
   const cutoff = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000).toISOString()

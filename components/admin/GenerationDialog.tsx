@@ -72,9 +72,7 @@ export function GenerationDialog(props: GenerationDialogProps) {
   // Derive labels based on mode
   const isWeek = mode === "week"
   const isFillingBlank = isWeek && !!props.targetWeekNumber
-  const weekLabel = isWeek
-    ? (props.targetWeekNumber ?? props.currentWeekCount + 1)
-    : props.weekNumber
+  const weekLabel = isWeek ? (props.targetWeekNumber ?? props.currentWeekCount + 1) : props.weekNumber
   const dayName = !isWeek ? DAY_NAMES[props.dayOfWeek - 1] : null
   const entityLabel = isWeek ? `Week ${weekLabel}` : dayName!
 
@@ -169,13 +167,15 @@ export function GenerationDialog(props: GenerationDialogProps) {
 
   // Dialog text
   const title = isWeek
-    ? (isFillingBlank ? `AI Fill Week ${weekLabel}` : `AI Generate Week ${weekLabel}`)
+    ? isFillingBlank
+      ? `AI Fill Week ${weekLabel}`
+      : `AI Generate Week ${weekLabel}`
     : `AI Generate ${dayName}`
 
   const description = isWeek
-    ? (isFillingBlank
-        ? `Fill blank Week ${weekLabel} with AI-generated exercises based on the program structure${props.clientId ? ", previous weeks, and the client\u2019s workout logs" : " and previous weeks"}.`
-        : `Generate a new week based on the existing program structure${props.clientId ? " and the client\u2019s workout logs" : ""}. The AI will apply appropriate progression.`)
+    ? isFillingBlank
+      ? `Fill blank Week ${weekLabel} with AI-generated exercises based on the program structure${props.clientId ? ", previous weeks, and the client\u2019s workout logs" : " and previous weeks"}.`
+      : `Generate a new week based on the existing program structure${props.clientId ? " and the client\u2019s workout logs" : ""}. The AI will apply appropriate progression.`
     : `Fill ${dayName} in Week ${(props as DayModeProps).weekNumber} with AI-generated exercises based on the program structure${props.clientId ? ", previous weeks, and the client\u2019s workout logs" : " and previous weeks"}.`
 
   const placeholder = isWeek
@@ -192,7 +192,18 @@ export function GenerationDialog(props: GenerationDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={isGenerating ? handleCancel : handleClose}>
-      <DialogContent className="sm:max-w-md" onPointerDownOutside={isGenerating ? (e) => e.preventDefault() : undefined} onEscapeKeyDown={isGenerating ? (e) => { e.preventDefault(); handleCancel() } : undefined}>
+      <DialogContent
+        className="sm:max-w-md"
+        onPointerDownOutside={isGenerating ? (e) => e.preventDefault() : undefined}
+        onEscapeKeyDown={
+          isGenerating
+            ? (e) => {
+                e.preventDefault()
+                handleCancel()
+              }
+            : undefined
+        }
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="size-4 text-accent" />
@@ -207,17 +218,23 @@ export function GenerationDialog(props: GenerationDialogProps) {
               <button
                 type="button"
                 className={`w-full flex items-center gap-2.5 rounded-lg border-2 px-3 py-2.5 text-left transition-colors ${
-                  usePool
-                    ? "border-primary bg-primary/5"
-                    : "border-border hover:border-muted-foreground/30"
+                  usePool ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/30"
                 }`}
                 onClick={() => setUsePool(!usePool)}
               >
-                <div className={`flex items-center justify-center size-5 rounded border-2 transition-colors ${
-                  usePool ? "border-primary bg-primary" : "border-muted-foreground/30"
-                }`}>
+                <div
+                  className={`flex items-center justify-center size-5 rounded border-2 transition-colors ${
+                    usePool ? "border-primary bg-primary" : "border-muted-foreground/30"
+                  }`}
+                >
                   {usePool && (
-                    <svg className="size-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                    <svg
+                      className="size-3 text-white"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={3}
+                    >
                       <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                     </svg>
                   )}
@@ -240,7 +257,9 @@ export function GenerationDialog(props: GenerationDialogProps) {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label htmlFor="gen-instructions">Coach Instructions (optional)</Label>
-                <TemplateSelector onSelect={(prompt) => setInstructions((prev) => prev ? `${prev}\n\n${prompt}` : prompt)} />
+                <TemplateSelector
+                  onSelect={(prompt) => setInstructions((prev) => (prev ? `${prev}\n\n${prompt}` : prompt))}
+                />
               </div>
               <Textarea
                 id="gen-instructions"
@@ -261,9 +280,7 @@ export function GenerationDialog(props: GenerationDialogProps) {
             {isGenerating && <Loader2 className="size-8 text-accent animate-spin" />}
             {isComplete && <CheckCircle2 className="size-8 text-success" />}
             {isFailed && <XCircle className="size-8 text-destructive" />}
-            <p className="text-sm text-center text-muted-foreground">
-              {getProgressMessage()}
-            </p>
+            <p className="text-sm text-center text-muted-foreground">{getProgressMessage()}</p>
           </div>
         )}
 
@@ -300,13 +317,20 @@ export function GenerationDialog(props: GenerationDialogProps) {
               </Button>
             </>
           )}
-          {isComplete && (
-            <Button onClick={handleClose}>{completedButtonLabel}</Button>
-          )}
+          {isComplete && <Button onClick={handleClose}>{completedButtonLabel}</Button>}
           {isFailed && (
             <>
-              <Button variant="outline" onClick={handleClose}>Close</Button>
-              <Button onClick={() => { setJobId(null); reset() }}>Try Again</Button>
+              <Button variant="outline" onClick={handleClose}>
+                Close
+              </Button>
+              <Button
+                onClick={() => {
+                  setJobId(null)
+                  reset()
+                }}
+              >
+                Try Again
+              </Button>
             </>
           )}
         </DialogFooter>

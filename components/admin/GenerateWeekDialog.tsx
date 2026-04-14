@@ -158,17 +158,23 @@ export function GenerateWeekDialog({
               <button
                 type="button"
                 className={`w-full flex items-center gap-2.5 rounded-lg border-2 px-3 py-2.5 text-left transition-colors ${
-                  usePool
-                    ? "border-primary bg-primary/5"
-                    : "border-border hover:border-muted-foreground/30"
+                  usePool ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/30"
                 }`}
                 onClick={() => setUsePool(!usePool)}
               >
-                <div className={`flex items-center justify-center size-5 rounded border-2 transition-colors ${
-                  usePool ? "border-primary bg-primary" : "border-muted-foreground/30"
-                }`}>
+                <div
+                  className={`flex items-center justify-center size-5 rounded border-2 transition-colors ${
+                    usePool ? "border-primary bg-primary" : "border-muted-foreground/30"
+                  }`}
+                >
                   {usePool && (
-                    <svg className="size-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                    <svg
+                      className="size-3 text-white"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={3}
+                    >
                       <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                     </svg>
                   )}
@@ -212,7 +218,9 @@ export function GenerateWeekDialog({
                 <Label htmlFor="instructions">
                   {ignoreProfile ? "Coach Instructions (recommended)" : "Coach Instructions (optional)"}
                 </Label>
-                <TemplateSelector onSelect={(prompt) => setInstructions((prev) => prev ? `${prev}\n\n${prompt}` : prompt)} />
+                <TemplateSelector
+                  onSelect={(prompt) => setInstructions((prev) => (prev ? `${prev}\n\n${prompt}` : prompt))}
+                />
               </div>
               <Textarea
                 id="instructions"
@@ -238,18 +246,10 @@ export function GenerateWeekDialog({
 
         {(isGenerating || isComplete || isFailed) && (
           <div className="flex flex-col items-center gap-3 py-4">
-            {isGenerating && (
-              <Loader2 className="size-8 text-accent animate-spin" />
-            )}
-            {isComplete && (
-              <CheckCircle2 className="size-8 text-success" />
-            )}
-            {isFailed && (
-              <XCircle className="size-8 text-destructive" />
-            )}
-            <p className="text-sm text-center text-muted-foreground">
-              {getProgressMessage()}
-            </p>
+            {isGenerating && <Loader2 className="size-8 text-accent animate-spin" />}
+            {isComplete && <CheckCircle2 className="size-8 text-success" />}
+            {isFailed && <XCircle className="size-8 text-destructive" />}
+            <p className="text-sm text-center text-muted-foreground">{getProgressMessage()}</p>
           </div>
         )}
 
@@ -268,19 +268,10 @@ export function GenerateWeekDialog({
           )}
           {!isGenerating && !isComplete && (
             <>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleClose}
-                disabled={isSubmitting}
-              >
+              <Button type="button" variant="outline" onClick={handleClose} disabled={isSubmitting}>
                 Cancel
               </Button>
-              <Button
-                onClick={handleSubmit}
-                disabled={isSubmitting}
-                className="gap-1.5"
-              >
+              <Button onClick={handleSubmit} disabled={isSubmitting} className="gap-1.5">
                 {isSubmitting ? (
                   <>
                     <Loader2 className="size-3.5 animate-spin" />

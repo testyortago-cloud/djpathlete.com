@@ -46,7 +46,10 @@ export function AiPolicyForm({ initialPolicy }: { initialPolicy: CoachAiPolicy |
           programming_notes: notes.trim(),
         }),
       })
-      if (!res.ok) { toast.error("Failed to save policy"); return }
+      if (!res.ok) {
+        toast.error("Failed to save policy")
+        return
+      }
       toast.success("AI policy updated — applies to your next generation")
     })
   }
@@ -61,10 +64,7 @@ export function AiPolicyForm({ initialPolicy }: { initialPolicy: CoachAiPolicy |
         <div className="grid grid-cols-2 gap-2">
           {TECHNIQUES.map((t) => (
             <label key={t.id} className="flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={disallowed.includes(t.id)}
-                onCheckedChange={() => toggle(setDisallowed, t.id)}
-              />
+              <Checkbox checked={disallowed.includes(t.id)} onCheckedChange={() => toggle(setDisallowed, t.id)} />
               {t.label}
             </label>
           ))}
@@ -95,8 +95,8 @@ export function AiPolicyForm({ initialPolicy }: { initialPolicy: CoachAiPolicy |
           <div>
             <Label className="text-base">Phase-based technique progression</Label>
             <p className="text-sm text-muted-foreground">
-              When ON, the AI introduces variety across weeks (e.g., straight sets early, supersets later).
-              When OFF, it keeps the same technique every week.
+              When ON, the AI introduces variety across weeks (e.g., straight sets early, supersets later). When OFF, it
+              keeps the same technique every week.
             </p>
           </div>
           <Switch checked={progression} onCheckedChange={setProgression} />
@@ -104,7 +104,9 @@ export function AiPolicyForm({ initialPolicy }: { initialPolicy: CoachAiPolicy |
       </section>
 
       <section className="space-y-3">
-        <Label htmlFor="notes" className="text-base">Programming notes (free-form)</Label>
+        <Label htmlFor="notes" className="text-base">
+          Programming notes (free-form)
+        </Label>
         <p className="text-sm text-muted-foreground">
           Anything the AI should always know about how you program. Injected as coach instructions.
         </p>

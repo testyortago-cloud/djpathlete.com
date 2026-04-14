@@ -23,11 +23,13 @@ Client signs up → completes conditional assessment → system determines abili
 **Goal:** Every exercise has proper difficulty tags and level-appropriate alternatives so AI can pull the right exercises for each client.
 
 ### Database Changes
+
 - Add `difficulty_score` (1-10 numeric) to `exercises` table — more granular than the current beginner/intermediate/advanced enum
 - Add `prerequisite_exercises` (uuid[]) — e.g., Bulgarian Split Squat requires mastery of bodyweight lunge
 - Add `progression_order` (integer) within each movement pattern — so AI knows step-ups → lunges → Bulgarian SS → pistol squat
 
 ### Migration
+
 ```sql
 ALTER TABLE exercises
   ADD COLUMN IF NOT EXISTS difficulty_score integer CHECK (difficulty_score >= 1 AND difficulty_score <= 10),
@@ -44,34 +46,39 @@ END WHERE difficulty_score IS NULL;
 ```
 
 ### Admin UI Changes
+
 - Add `difficulty_score` slider (1-10) to exercise form
 - Add `progression_order` field per movement pattern
 - Add prerequisite exercise selector (search + multi-select)
 - Bulk action: "Auto-tag difficulty scores" button — uses exercise metadata to suggest scores
 
 ### Exercise Tagging Guidelines (for Darren to populate)
-| Score | Label | Who it's for | Example |
-|-------|-------|-------------|---------|
-| 1-2 | Foundational | Complete beginners, rehab | Bodyweight squat, wall push-up |
-| 3-4 | Beginner | New to gym, < 6 months | Goblet squat, push-up, lat pulldown |
-| 5-6 | Intermediate | 6 months - 2 years | Back squat, bench press, barbell row |
-| 7-8 | Advanced | 2+ years, strong base | Bulgarian SS, weighted pull-up, front squat |
-| 9-10 | Elite | Competitive athletes | Snatch, muscle-up, pistol squat |
+
+| Score | Label        | Who it's for              | Example                                     |
+| ----- | ------------ | ------------------------- | ------------------------------------------- |
+| 1-2   | Foundational | Complete beginners, rehab | Bodyweight squat, wall push-up              |
+| 3-4   | Beginner     | New to gym, < 6 months    | Goblet squat, push-up, lat pulldown         |
+| 5-6   | Intermediate | 6 months - 2 years        | Back squat, bench press, barbell row        |
+| 7-8   | Advanced     | 2+ years, strong base     | Bulgarian SS, weighted pull-up, front squat |
+| 9-10  | Elite        | Competitive athletes      | Snatch, muscle-up, pistol squat             |
 
 ### Seed Update
+
 - Update all 30 exercises with proper `difficulty_score` and `progression_order`
 - Create exercise relationships: progression chains for each movement pattern
 
 ### Files
-| Action | File | Change |
-|--------|------|--------|
-| Migration | `supabase/migrations/00017_exercise_difficulty_scoring.sql` | Add columns |
-| Type | `types/database.ts` | Add `difficulty_score`, `prerequisite_exercises`, `progression_order` to `Exercise` |
-| Validator | `lib/validators/exercise.ts` | Add new fields to schema |
-| Admin UI | `components/admin/ExerciseFormDialog.tsx` | Add difficulty slider, progression order, prerequisites |
-| Seed | `scripts/seed.ts` | Update exercise data |
+
+| Action    | File                                                        | Change                                                                              |
+| --------- | ----------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Migration | `supabase/migrations/00017_exercise_difficulty_scoring.sql` | Add columns                                                                         |
+| Type      | `types/database.ts`                                         | Add `difficulty_score`, `prerequisite_exercises`, `progression_order` to `Exercise` |
+| Validator | `lib/validators/exercise.ts`                                | Add new fields to schema                                                            |
+| Admin UI  | `components/admin/ExerciseFormDialog.tsx`                   | Add difficulty slider, progression order, prerequisites                             |
+| Seed      | `scripts/seed.ts`                                           | Update exercise data                                                                |
 
 ### Verification
+
 - [ ] Every exercise has a `difficulty_score` 1-10
 - [ ] Movement patterns have logical progression chains (e.g., push: wall push-up → push-up → bench press → incline DB press)
 - [ ] Admin can edit difficulty scores and see progression order
@@ -139,6 +146,7 @@ START
 ```
 
 ### Database Changes
+
 ```sql
 -- Assessment questions (coach-editable from admin)
 CREATE TABLE assessment_questions (
@@ -171,16 +179,18 @@ CREATE TABLE assessment_results (
 ```
 
 ### How the Scoring Works
+
 Each movement screen question has a `level_impact` value. The system walks the branching tree, sums scores per movement pattern, and maps to difficulty ranges:
 
-| Total Score | Level | Max Exercise Difficulty |
-|-------------|-------|------------------------|
-| 0-2 | Beginner | 1-4 |
-| 3-5 | Intermediate | 4-7 |
-| 6-8 | Advanced | 7-9 |
-| 9+ | Elite | 8-10 |
+| Total Score | Level        | Max Exercise Difficulty |
+| ----------- | ------------ | ----------------------- |
+| 0-2         | Beginner     | 1-4                     |
+| 3-5         | Intermediate | 4-7                     |
+| 6-8         | Advanced     | 7-9                     |
+| 9+          | Elite        | 8-10                    |
 
 ### Admin Panel: Question Builder
+
 - CRUD for assessment questions
 - Drag-and-drop ordering
 - Set parent question + parent answer for branching
@@ -188,6 +198,7 @@ Each movement screen question has a `level_impact` value. The system walks the b
 - Default questions seeded (the movement screen above), but coach can customize
 
 ### Client-Side Assessment UI
+
 - Replace current `QuestionnaireForm.tsx` with `AssessmentForm.tsx`
 - Dynamic rendering based on `assessment_questions` table
 - Branching: when user answers a question, check for child questions where `parent_answer` matches
@@ -196,23 +207,25 @@ Each movement screen question has a `level_impact` value. The system walks the b
 - At end: show computed ability profile before submitting
 
 ### Files
-| Action | File | Change |
-|--------|------|--------|
-| Migration | `supabase/migrations/00018_assessment_engine.sql` | Create `assessment_questions` + `assessment_results` tables |
-| Types | `types/database.ts` | Add `AssessmentQuestion`, `AssessmentResult` interfaces |
-| DAL | `lib/db/assessments.ts` | CRUD for questions + results |
-| Validator | `lib/validators/assessment.ts` | Schemas for questions and answers |
-| Scoring | `lib/assessment-scoring.ts` | Pure function: answers → computed levels + max difficulty |
-| API | `app/api/assessment/questions/route.ts` | GET active questions (client-facing) |
-| API | `app/api/assessment/submit/route.ts` | POST answers → compute scores → save result → trigger program generation |
-| API | `app/api/admin/assessments/questions/route.ts` | Admin CRUD for questions |
-| API | `app/api/admin/assessments/results/route.ts` | Admin view of client results |
-| Component | `components/client/AssessmentForm.tsx` | Conditional branching assessment UI |
-| Component | `components/admin/AssessmentQuestionBuilder.tsx` | Admin question management |
-| Page | `app/(client)/client/questionnaire/page.tsx` | Swap to AssessmentForm |
-| Page | `app/(admin)/admin/assessments/page.tsx` | Admin question builder page |
+
+| Action    | File                                              | Change                                                                   |
+| --------- | ------------------------------------------------- | ------------------------------------------------------------------------ |
+| Migration | `supabase/migrations/00018_assessment_engine.sql` | Create `assessment_questions` + `assessment_results` tables              |
+| Types     | `types/database.ts`                               | Add `AssessmentQuestion`, `AssessmentResult` interfaces                  |
+| DAL       | `lib/db/assessments.ts`                           | CRUD for questions + results                                             |
+| Validator | `lib/validators/assessment.ts`                    | Schemas for questions and answers                                        |
+| Scoring   | `lib/assessment-scoring.ts`                       | Pure function: answers → computed levels + max difficulty                |
+| API       | `app/api/assessment/questions/route.ts`           | GET active questions (client-facing)                                     |
+| API       | `app/api/assessment/submit/route.ts`              | POST answers → compute scores → save result → trigger program generation |
+| API       | `app/api/admin/assessments/questions/route.ts`    | Admin CRUD for questions                                                 |
+| API       | `app/api/admin/assessments/results/route.ts`      | Admin view of client results                                             |
+| Component | `components/client/AssessmentForm.tsx`            | Conditional branching assessment UI                                      |
+| Component | `components/admin/AssessmentQuestionBuilder.tsx`  | Admin question management                                                |
+| Page      | `app/(client)/client/questionnaire/page.tsx`      | Swap to AssessmentForm                                                   |
+| Page      | `app/(admin)/admin/assessments/page.tsx`          | Admin question builder page                                              |
 
 ### Verification
+
 - [ ] Coach can create/edit/reorder assessment questions from admin
 - [ ] Client sees branching questions (answering "No" to push-up skips bench press question)
 - [ ] System computes ability levels per movement pattern
@@ -226,6 +239,7 @@ Each movement screen question has a `level_impact` value. The system walks the b
 **Goal:** When a client completes their assessment, AI automatically generates a personalized program using their computed ability levels to select appropriately-tagged exercises.
 
 ### Flow
+
 ```
 Client submits assessment
   → POST /api/assessment/submit
@@ -240,6 +254,7 @@ Client submits assessment
 ```
 
 ### Changes to AI Pipeline
+
 - Modify `lib/ai/orchestrator.ts` — accept `assessment_result` as input
 - Modify `lib/ai/exercise-context.ts` — filter exercises by `difficulty_score <= max_difficulty_score`
 - Modify Agent 1 prompt — include per-pattern ability levels so it can structure the program appropriately (e.g., beginner squat pattern → goblet squats, not back squats)
@@ -247,12 +262,15 @@ Client submits assessment
 - Add `generation_trigger` field to `ai_generation_log`: `'admin_manual' | 'initial_assessment' | 'reassessment'`
 
 ### Auto-Assignment
+
 After AI generates the program:
+
 1. If client has an existing active assignment → set status to `completed`
 2. Create new assignment with start_date = today
 3. Send notification: "Your personalized training program is ready!"
 
 ### Client Experience
+
 ```
 Assessment complete → Loading screen: "Building your personalized program..."
   → Progress animation (reuse AiGenerateDialog progress pattern)
@@ -261,16 +279,18 @@ Assessment complete → Loading screen: "Building your personalized program..."
 ```
 
 ### Files
-| Action | File | Change |
-|--------|------|--------|
-| Modify | `lib/ai/orchestrator.ts` | Accept assessment result, pass to agents |
-| Modify | `lib/ai/exercise-context.ts` | Filter by `difficulty_score` |
-| Modify | `lib/ai/prompts.ts` | Update Agent 1 + Agent 4 prompts with ability levels |
-| Migration | `supabase/migrations/00019_generation_trigger.sql` | Add `generation_trigger` to `ai_generation_log` |
-| API | `app/api/assessment/submit/route.ts` | After saving result, trigger AI generation |
-| Component | `components/client/AssessmentForm.tsx` | Add generation loading state after submit |
+
+| Action    | File                                               | Change                                               |
+| --------- | -------------------------------------------------- | ---------------------------------------------------- |
+| Modify    | `lib/ai/orchestrator.ts`                           | Accept assessment result, pass to agents             |
+| Modify    | `lib/ai/exercise-context.ts`                       | Filter by `difficulty_score`                         |
+| Modify    | `lib/ai/prompts.ts`                                | Update Agent 1 + Agent 4 prompts with ability levels |
+| Migration | `supabase/migrations/00019_generation_trigger.sql` | Add `generation_trigger` to `ai_generation_log`      |
+| API       | `app/api/assessment/submit/route.ts`               | After saving result, trigger AI generation           |
+| Component | `components/client/AssessmentForm.tsx`             | Add generation loading state after submit            |
 
 ### Verification
+
 - [ ] Client completes assessment → AI program auto-generates (no admin intervention)
 - [ ] Generated program only contains exercises at or below client's difficulty level
 - [ ] Beginner client gets beginner exercises (goblet squat, not back squat)
@@ -284,6 +304,7 @@ Assessment complete → Loading screen: "Building your personalized program..."
 **Goal:** Instead of one static program forever, AI generates new weekly programming that progresses over time. Each week is logged so the coach can see the full training history.
 
 ### Concept
+
 - A "program cycle" spans N weeks (e.g., 4 weeks)
 - Each week's programming is a snapshot stored in `program_exercises` with the `week_number` field
 - After a cycle ends, reassessment is triggered (Phase 3E)
@@ -293,6 +314,7 @@ Assessment complete → Loading screen: "Building your personalized program..."
   - **Block:** accumulation → intensification → realization
 
 ### How It Works
+
 The AI orchestrator already generates multi-week programs with `week_number` on each `program_exercise`. The workouts page currently only shows week 1. Changes needed:
 
 1. **Track current week** — Add `current_week` to `program_assignments`
@@ -303,6 +325,7 @@ The AI orchestrator already generates multi-week programs with `week_number` on 
 4. **Week history** — `/client/progress` shows completed weeks with logged data
 
 ### Database Changes
+
 ```sql
 ALTER TABLE program_assignments
   ADD COLUMN IF NOT EXISTS current_week integer NOT NULL DEFAULT 1,
@@ -310,15 +333,17 @@ ALTER TABLE program_assignments
 ```
 
 ### Files
-| Action | File | Change |
-|--------|------|--------|
-| Migration | `supabase/migrations/00020_assignment_week_tracking.sql` | Add `current_week` |
-| Modify | `app/(client)/client/workouts/page.tsx` | Filter exercises by `current_week` |
-| Modify | `lib/db/assignments.ts` | Add `advanceWeek()` function |
-| API | `app/api/client/workouts/complete-week/route.ts` | POST to advance week |
-| Component | `components/client/WorkoutDay.tsx` | Add "Complete Week" button when all exercises logged |
+
+| Action    | File                                                     | Change                                               |
+| --------- | -------------------------------------------------------- | ---------------------------------------------------- |
+| Migration | `supabase/migrations/00020_assignment_week_tracking.sql` | Add `current_week`                                   |
+| Modify    | `app/(client)/client/workouts/page.tsx`                  | Filter exercises by `current_week`                   |
+| Modify    | `lib/db/assignments.ts`                                  | Add `advanceWeek()` function                         |
+| API       | `app/api/client/workouts/complete-week/route.ts`         | POST to advance week                                 |
+| Component | `components/client/WorkoutDay.tsx`                       | Add "Complete Week" button when all exercises logged |
 
 ### Verification
+
 - [ ] Client sees only current week's exercises
 - [ ] Completing all exercises in a week shows "Complete Week" option
 - [ ] Advancing shows next week's (potentially harder) programming
@@ -331,6 +356,7 @@ ALTER TABLE program_assignments
 **Goal:** After completing a program cycle (e.g., 4 weeks), the client is prompted to take a reassessment. The reassessment is shorter than the initial assessment — it focuses on performance feedback and re-tests key movements. AI then generates a new program at the appropriate level.
 
 ### Reassessment Flow
+
 ```
 Client completes week 4 (final week of cycle)
   → Banner appears: "Time for your reassessment!"
@@ -356,7 +382,9 @@ Client completes week 4 (final week of cycle)
 ```
 
 ### Smart Difficulty Adjustment
+
 The system combines three signals:
+
 1. **Client feedback** — "too easy" / "too hard" (subjective)
 2. **RPE data** — average RPE from logged workouts (objective)
 3. **Movement re-screen** — can they now do things they couldn't before? (assessment)
@@ -373,6 +401,7 @@ new_max_difficulty = clamp(old_max_difficulty + adjustment, 1, 10)
 ```
 
 ### Database Changes
+
 ```sql
 -- Reassessment extends assessment_results (assessment_type = 'reassessment')
 -- Add fields for performance feedback
@@ -382,22 +411,25 @@ ALTER TABLE assessment_results
 ```
 
 ### Trigger Logic
+
 - When `current_week > total_weeks` on assignment → set assignment status to `completed`
 - Show reassessment banner on client dashboard
 - Client dashboard checks: any completed assignments without a follow-up reassessment?
 
 ### Files
-| Action | File | Change |
-|--------|------|--------|
-| Migration | `supabase/migrations/00021_reassessment_fields.sql` | Add feedback columns |
-| Scoring | `lib/assessment-scoring.ts` | Add `computeReassessmentAdjustment()` using 3-signal formula |
-| API | `app/api/assessment/reassess/route.ts` | POST reassessment → compute adjustment → trigger new program |
-| Component | `components/client/ReassessmentForm.tsx` | Shorter reassessment form |
-| Component | `components/client/ReassessmentBanner.tsx` | Dashboard banner prompting reassessment |
-| Page | `app/(client)/client/reassessment/page.tsx` | Reassessment page |
-| Modify | `app/(client)/client/dashboard/page.tsx` | Check for pending reassessments |
+
+| Action    | File                                                | Change                                                       |
+| --------- | --------------------------------------------------- | ------------------------------------------------------------ |
+| Migration | `supabase/migrations/00021_reassessment_fields.sql` | Add feedback columns                                         |
+| Scoring   | `lib/assessment-scoring.ts`                         | Add `computeReassessmentAdjustment()` using 3-signal formula |
+| API       | `app/api/assessment/reassess/route.ts`              | POST reassessment → compute adjustment → trigger new program |
+| Component | `components/client/ReassessmentForm.tsx`            | Shorter reassessment form                                    |
+| Component | `components/client/ReassessmentBanner.tsx`          | Dashboard banner prompting reassessment                      |
+| Page      | `app/(client)/client/reassessment/page.tsx`         | Reassessment page                                            |
+| Modify    | `app/(client)/client/dashboard/page.tsx`            | Check for pending reassessments                              |
 
 ### Verification
+
 - [ ] After completing final week, client sees reassessment banner
 - [ ] Reassessment form is shorter (only performance feedback + borderline movement re-tests)
 - [ ] "Too easy" feedback → new program has harder exercises
@@ -413,6 +445,7 @@ ALTER TABLE assessment_results
 **Goal:** Darren (admin) can see the full assessment → program → reassessment lifecycle for every client, override AI decisions, and customize assessment questions.
 
 ### Admin Features
+
 1. **Assessment Question Builder** (from Phase 3B)
    - Add/edit/reorder/deactivate questions
    - Set branching logic visually
@@ -434,13 +467,14 @@ ALTER TABLE assessment_results
    - Identify clients ready to progress
 
 ### Files
-| Action | File | Change |
-|--------|------|--------|
-| Page | `app/(admin)/admin/assessments/page.tsx` | Question builder |
-| Page | `app/(admin)/admin/clients/[id]/assessments/page.tsx` | Client assessment history |
-| Component | `components/admin/AssessmentQuestionBuilder.tsx` | Drag-and-drop question editor |
-| Component | `components/admin/ClientAssessmentTimeline.tsx` | Timeline view |
-| Component | `components/admin/ExerciseProgressionViewer.tsx` | Movement pattern chains |
+
+| Action    | File                                                  | Change                        |
+| --------- | ----------------------------------------------------- | ----------------------------- |
+| Page      | `app/(admin)/admin/assessments/page.tsx`              | Question builder              |
+| Page      | `app/(admin)/admin/clients/[id]/assessments/page.tsx` | Client assessment history     |
+| Component | `components/admin/AssessmentQuestionBuilder.tsx`      | Drag-and-drop question editor |
+| Component | `components/admin/ClientAssessmentTimeline.tsx`       | Timeline view                 |
+| Component | `components/admin/ExerciseProgressionViewer.tsx`      | Movement pattern chains       |
 
 ---
 
@@ -471,16 +505,18 @@ Phase 3A: Exercise Categorization & Tagging
 ```
 
 ### Estimated Scope
-| Phase | Complexity | New Files | Modified Files |
-|-------|-----------|-----------|----------------|
-| 3A | Small | 1 migration | 3 (types, validator, form) + seed |
-| 3B | Large | ~10 | 2 |
-| 3C | Medium | 2 | 4 |
-| 3D | Small | 2 | 3 |
-| 3E | Medium | ~6 | 3 |
-| 3F | Medium | ~5 | 1 |
+
+| Phase | Complexity | New Files   | Modified Files                    |
+| ----- | ---------- | ----------- | --------------------------------- |
+| 3A    | Small      | 1 migration | 3 (types, validator, form) + seed |
+| 3B    | Large      | ~10         | 2                                 |
+| 3C    | Medium     | 2           | 4                                 |
+| 3D    | Small      | 2           | 3                                 |
+| 3E    | Medium     | ~6          | 3                                 |
+| 3F    | Medium     | ~5          | 1                                 |
 
 ### Priority Order
+
 1. **Phase 3A** first — quick win, required by everything else
 2. **Phase 3B** next — the core assessment engine
 3. **Phase 3C** next — connects assessment to AI (this is where magic happens)

@@ -1,10 +1,6 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import {
-  getProfileByUserId,
-  updateProfile,
-  createProfile,
-} from "@/lib/db/client-profiles"
+import { getProfileByUserId, updateProfile, createProfile } from "@/lib/db/client-profiles"
 import { questionnaireSchema } from "@/lib/validators/questionnaire"
 import { ghlCreateContact, ghlTriggerWorkflow } from "@/lib/ghl"
 
@@ -23,10 +19,7 @@ export async function GET() {
     return NextResponse.json({ profile })
   } catch (error) {
     console.error("Questionnaire GET error:", error)
-    return NextResponse.json(
-      { error: "Failed to fetch profile" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to fetch profile" }, { status: 500 })
   }
 }
 
@@ -42,10 +35,7 @@ export async function POST(request: Request) {
     const parsed = questionnaireSchema.safeParse(body)
 
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Invalid data", details: parsed.error.flatten() },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Invalid data", details: parsed.error.flatten() }, { status: 400 })
     }
 
     const data = parsed.data
@@ -155,9 +145,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ profile: updated })
   } catch (error) {
     console.error("Questionnaire POST error:", error)
-    return NextResponse.json(
-      { error: "Failed to save questionnaire" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to save questionnaire" }, { status: 500 })
   }
 }

@@ -19,11 +19,7 @@ export async function getActiveDocument(type: LegalDocumentType) {
 
 export async function getDocumentById(id: string) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("legal_documents")
-    .select("*")
-    .eq("id", id)
-    .single()
+  const { data, error } = await supabase.from("legal_documents").select("*").eq("id", id).single()
   if (error) throw error
   return data as LegalDocument
 }
@@ -82,15 +78,10 @@ export async function createDocument(doc: {
 
 export async function updateDocument(
   id: string,
-  updates: { title?: string; content?: string; effective_date?: string }
+  updates: { title?: string; content?: string; effective_date?: string },
 ) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("legal_documents")
-    .update(updates)
-    .eq("id", id)
-    .select()
-    .single()
+  const { data, error } = await supabase.from("legal_documents").update(updates).eq("id", id).select().single()
   if (error) throw error
   return data as LegalDocument
 }

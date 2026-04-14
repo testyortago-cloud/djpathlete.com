@@ -64,7 +64,9 @@ export async function handleWeekGeneration(jobId: string): Promise<void> {
 
     await updateRtdb(jobId, { status: "completed", result: resultPayload })
 
-    console.log(`[week-generation] Job ${jobId} completed — Week ${result.new_week_number}, ${result.exercises_added} exercises`)
+    console.log(
+      `[week-generation] Job ${jobId} completed — Week ${result.new_week_number}, ${result.exercises_added} exercises`,
+    )
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error"
     console.error(`[week-generation] Job ${jobId} failed:`, errorMessage)

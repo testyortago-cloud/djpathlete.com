@@ -29,32 +29,32 @@ Source: [docs/superpowers/specs/2026-04-14-clinics-and-camps-phase-2b-design.md]
 
 **New files:**
 
-| path | responsibility |
-|---|---|
-| `components/public/EventSignupModal.tsx` | Client modal with form, honeypot, state machine |
-| `components/public/EventCard.tsx` | Server card for landing-page grid |
-| `components/public/EventCardCta.tsx` | Client island inside EventCard that owns modal state |
-| `components/public/EventDetailHero.tsx` | Server hero strip for detail pages |
-| `components/public/EventSignupCard.tsx` | Client sticky right card + mobile sticky CTA bar |
-| `app/(marketing)/clinics/[slug]/page.tsx` | Clinic detail page |
-| `app/(marketing)/camps/[slug]/page.tsx` | Camp detail page |
-| `app/api/events/[id]/signup/route.ts` | Public POST — honeypot + validated insert + emails |
-| `app/api/admin/events/[id]/signups/[signupId]/route.ts` | Admin PATCH — confirm / cancel + confirmed email |
-| `components/admin/events/SignupsTable.tsx` | Interactive signups table with optimistic UI |
-| `__tests__/api/events/signup.test.ts` | Public signup route tests |
-| `__tests__/api/admin/events-signups.test.ts` | Admin confirm/cancel route tests |
-| `__tests__/lib/email-events.test.ts` | Unit tests for the three new email functions |
-| `__tests__/e2e/event-signup.spec.ts` | Playwright smoke for public signup |
+| path                                                    | responsibility                                       |
+| ------------------------------------------------------- | ---------------------------------------------------- |
+| `components/public/EventSignupModal.tsx`                | Client modal with form, honeypot, state machine      |
+| `components/public/EventCard.tsx`                       | Server card for landing-page grid                    |
+| `components/public/EventCardCta.tsx`                    | Client island inside EventCard that owns modal state |
+| `components/public/EventDetailHero.tsx`                 | Server hero strip for detail pages                   |
+| `components/public/EventSignupCard.tsx`                 | Client sticky right card + mobile sticky CTA bar     |
+| `app/(marketing)/clinics/[slug]/page.tsx`               | Clinic detail page                                   |
+| `app/(marketing)/camps/[slug]/page.tsx`                 | Camp detail page                                     |
+| `app/api/events/[id]/signup/route.ts`                   | Public POST — honeypot + validated insert + emails   |
+| `app/api/admin/events/[id]/signups/[signupId]/route.ts` | Admin PATCH — confirm / cancel + confirmed email     |
+| `components/admin/events/SignupsTable.tsx`              | Interactive signups table with optimistic UI         |
+| `__tests__/api/events/signup.test.ts`                   | Public signup route tests                            |
+| `__tests__/api/admin/events-signups.test.ts`            | Admin confirm/cancel route tests                     |
+| `__tests__/lib/email-events.test.ts`                    | Unit tests for the three new email functions         |
+| `__tests__/e2e/event-signup.spec.ts`                    | Playwright smoke for public signup                   |
 
 **Modified files:**
 
-| path | change |
-|---|---|
-| `lib/email.ts` | Add `buildEventContextBlock` helper + 3 new template exports |
-| `app/(marketing)/clinics/page.tsx` | Fetch published clinics, conditionally render EventCard grid vs existing `EventsComingSoonPanel` |
-| `app/(marketing)/camps/page.tsx` | Same pattern for camps |
-| `app/(admin)/admin/events/[id]/page.tsx` | Replace inline signups table with `<SignupsTable>` |
-| `app/sitemap.ts` | Append published event slugs from both types |
+| path                                     | change                                                                                           |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `lib/email.ts`                           | Add `buildEventContextBlock` helper + 3 new template exports                                     |
+| `app/(marketing)/clinics/page.tsx`       | Fetch published clinics, conditionally render EventCard grid vs existing `EventsComingSoonPanel` |
+| `app/(marketing)/camps/page.tsx`         | Same pattern for camps                                                                           |
+| `app/(admin)/admin/events/[id]/page.tsx` | Replace inline signups table with `<SignupsTable>`                                               |
+| `app/sitemap.ts`                         | Append published event slugs from both types                                                     |
 
 **No migration.** Phase 2a's schema is complete for 2b.
 
@@ -65,6 +65,7 @@ Source: [docs/superpowers/specs/2026-04-14-clinics-and-camps-phase-2b-design.md]
 **Why:** Email templates are unit-testable in isolation (mocked Resend) and the API routes in Tasks 2 and 3 depend on them being importable. Building them first lets those routes land with working emails.
 
 **Files:**
+
 - Modify: `lib/email.ts`
 - Test: `__tests__/lib/email-events.test.ts`
 
@@ -197,9 +198,7 @@ function buildEventContextBlock(event: Event) {
     hour: "numeric",
     minute: "2-digit",
   })
-  const location = event.location_address
-    ? `${event.location_name} — ${event.location_address}`
-    : event.location_name
+  const location = event.location_address ? `${event.location_name} — ${event.location_address}` : event.location_name
   return infoCard([
     { label: "Event", value: event.title },
     { label: "Date", value: start },
@@ -355,6 +354,7 @@ git commit -m "feat(email): add three event signup email templates + helper"
 **Why:** Backend for the signup modal. Validates input, enforces honeypot, creates the pending row, fires the two emails. Admin confirm in Task 3 depends only on the existing DAL, so this task can complete independently.
 
 **Files:**
+
 - Create: `app/api/events/[id]/signup/route.ts`
 - Test: `__tests__/api/events/signup.test.ts`
 
@@ -383,12 +383,24 @@ const publishedEvent = {
   status: "published",
   capacity: 10,
   signup_count: 3,
-  slug: "x", title: "x", summary: "", description: "", focus_areas: [],
+  slug: "x",
+  title: "x",
+  summary: "",
+  description: "",
+  focus_areas: [],
   start_date: new Date(Date.now() + 86400000).toISOString(),
-  end_date: null, session_schedule: null,
-  location_name: "L", location_address: null, location_map_url: null,
-  age_min: null, age_max: null, price_cents: null, stripe_price_id: null,
-  hero_image_url: null, created_at: "", updated_at: "",
+  end_date: null,
+  session_schedule: null,
+  location_name: "L",
+  location_address: null,
+  location_map_url: null,
+  age_min: null,
+  age_max: null,
+  price_cents: null,
+  stripe_price_id: null,
+  hero_image_url: null,
+  created_at: "",
+  updated_at: "",
 }
 
 function makeRequest(body: Record<string, unknown>, urlSuffix = "") {
@@ -400,8 +412,10 @@ function makeRequest(body: Record<string, unknown>, urlSuffix = "") {
 }
 
 const validBody = {
-  parent_name: "Alex", parent_email: "a@x.com",
-  athlete_name: "Sam", athlete_age: 14,
+  parent_name: "Alex",
+  parent_email: "a@x.com",
+  athlete_name: "Sam",
+  athlete_age: 14,
 }
 
 const ctx = { params: Promise.resolve({ id: "evt-1" }) }
@@ -459,7 +473,11 @@ describe("POST /api/events/[id]/signup", () => {
     const { POST } = await import("@/app/api/events/[id]/signup/route")
     const res = await POST(makeRequest(validBody), ctx)
     expect(res.status).toBe(200)
-    expect(createSignupMock).toHaveBeenCalledWith("evt-1", expect.objectContaining({ parent_email: "a@x.com" }), "interest")
+    expect(createSignupMock).toHaveBeenCalledWith(
+      "evt-1",
+      expect.objectContaining({ parent_email: "a@x.com" }),
+      "interest",
+    )
     expect(sendReceivedMock).toHaveBeenCalled()
     expect(sendAdminMock).toHaveBeenCalled()
   })
@@ -563,6 +581,7 @@ git commit -m "feat(events): add public signup route with honeypot + non-fatal e
 **Why:** Backend for SignupsTable's inline actions. Wraps the Phase 2a RPCs, maps reasons to HTTP statuses, fires the confirmed email.
 
 **Files:**
+
 - Create: `app/api/admin/events/[id]/signups/[signupId]/route.ts`
 - Test: `__tests__/api/admin/events-signups.test.ts`
 
@@ -653,7 +672,14 @@ describe("PATCH /api/admin/events/[id]/signups/[signupId]", () => {
     getSignupByIdMock.mockResolvedValueOnce(sigMatching)
     confirmSignupMock.mockResolvedValueOnce({ ok: true })
     getSignupByIdMock.mockResolvedValueOnce({ ...sigMatching, status: "confirmed" })
-    getEventByIdMock.mockResolvedValueOnce({ id: "evt-1", title: "T", type: "clinic", slug: "s", start_date: "", location_name: "L" })
+    getEventByIdMock.mockResolvedValueOnce({
+      id: "evt-1",
+      title: "T",
+      type: "clinic",
+      slug: "s",
+      start_date: "",
+      location_name: "L",
+    })
     const { PATCH } = await import("@/app/api/admin/events/[id]/signups/[signupId]/route")
     const res = await PATCH(makeReq({ action: "confirm" }), ctx)
     expect(res.status).toBe(200)
@@ -700,10 +726,7 @@ import { sendEventSignupConfirmedEmail } from "@/lib/email"
 
 type Action = "confirm" | "cancel"
 
-export async function PATCH(
-  request: Request,
-  ctx: { params: Promise<{ id: string; signupId: string }> },
-) {
+export async function PATCH(request: Request, ctx: { params: Promise<{ id: string; signupId: string }> }) {
   try {
     const session = await auth()
     if (!session?.user?.id || session.user.role !== "admin") {
@@ -751,9 +774,7 @@ export async function PATCH(
     if (!result.ok) {
       const status = result.reason === "not_found" ? 404 : 409
       const message =
-        result.reason === "not_cancellable"
-          ? "Signup cannot be cancelled from its current state"
-          : "Signup not found"
+        result.reason === "not_cancellable" ? "Signup cannot be cancelled from its current state" : "Signup not found"
       return NextResponse.json({ error: message, reason: result.reason }, { status })
     }
 
@@ -785,6 +806,7 @@ git commit -m "feat(events): add admin signup confirm/cancel route with confirme
 **Why:** The shared form used from both landing-page cards and detail-page sticky card. Self-contained with its own state machine.
 
 **Files:**
+
 - Create: `components/public/EventSignupModal.tsx`
 
 - [ ] **Step 1: Implement the modal**
@@ -881,9 +903,7 @@ export function EventSignupModal({ event, open, onOpenChange, isWaitlist }: Even
     <Dialog open={open} onOpenChange={(next) => (next ? onOpenChange(true) : resetAndClose())}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>
-            {isWaitlist ? "Join the waitlist" : "Register your interest"}
-          </DialogTitle>
+          <DialogTitle>{isWaitlist ? "Join the waitlist" : "Register your interest"}</DialogTitle>
           <DialogDescription>
             {isWaitlist
               ? `${event.title} is currently full. Leave your details and we'll reach out if a spot opens.`
@@ -898,17 +918,27 @@ export function EventSignupModal({ event, open, onOpenChange, isWaitlist }: Even
             <p className="mt-2 text-sm text-muted-foreground">
               Thanks for your interest. Darren reviews every signup personally.
             </p>
-            <Button className="mt-6" onClick={resetAndClose}>Close</Button>
+            <Button className="mt-6" onClick={resetAndClose}>
+              Close
+            </Button>
           </div>
         ) : phase === "at_capacity" ? (
           <div className="py-6 text-center">
             <p className="text-lg font-semibold">Sorry — this event just filled up.</p>
-            <p className="mt-2 text-sm text-muted-foreground">Join the waitlist and we'll contact you if a spot opens.</p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Join the waitlist and we'll contact you if a spot opens.
+            </p>
             <form onSubmit={(e) => submit(e as never, true)} className="mt-6">
-              <Button type="submit" disabled>Join waitlist</Button>
+              <Button type="submit" disabled>
+                Join waitlist
+              </Button>
             </form>
-            <Button variant="outline" className="mt-3" onClick={resetAndClose}>Close</Button>
-            <p className="mt-4 text-xs text-muted-foreground">Tip: reopen the form and resubmit to actually enter the waitlist.</p>
+            <Button variant="outline" className="mt-3" onClick={resetAndClose}>
+              Close
+            </Button>
+            <p className="mt-4 text-xs text-muted-foreground">
+              Tip: reopen the form and resubmit to actually enter the waitlist.
+            </p>
           </div>
         ) : (
           <form onSubmit={(e) => submit(e, false)} className="space-y-4">
@@ -922,9 +952,7 @@ export function EventSignupModal({ event, open, onOpenChange, isWaitlist }: Even
               className="absolute opacity-0 pointer-events-none h-0 w-0"
             />
 
-            {formError && (
-              <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{formError}</div>
-            )}
+            {formError && <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{formError}</div>}
 
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
@@ -971,7 +999,7 @@ export function EventSignupModal({ event, open, onOpenChange, isWaitlist }: Even
                 Cancel
               </Button>
               <Button type="submit" disabled={phase === "submitting"}>
-                {phase === "submitting" ? "Submitting..." : (isWaitlist ? "Join waitlist" : "Submit")}
+                {phase === "submitting" ? "Submitting..." : isWaitlist ? "Join waitlist" : "Submit"}
               </Button>
             </div>
           </form>
@@ -1001,6 +1029,7 @@ git commit -m "feat(events): add EventSignupModal with honeypot and state machin
 **Why:** The card used on landing pages. EventCardCta is a thin client island that owns modal state so EventCard stays a pure server component.
 
 **Files:**
+
 - Create: `components/public/EventCard.tsx`
 - Create: `components/public/EventCardCta.tsx`
 
@@ -1067,7 +1096,10 @@ function formatPrice(cents: number | null) {
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", {
-    weekday: "short", month: "short", day: "numeric", year: "numeric",
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
   })
 }
 
@@ -1121,10 +1153,7 @@ export function EventCard({ event }: EventCardProps) {
               {spotsLeft} {spotsLeft === 1 ? "spot" : "spots"} left
             </p>
           )}
-          <div
-            className="mt-2 h-1 w-full overflow-hidden rounded-full bg-muted"
-            aria-hidden="true"
-          >
+          <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-muted" aria-hidden="true">
             <div
               className={`h-full ${isFull ? "bg-accent" : "bg-primary"}`}
               style={{ width: `${Math.min(100, (event.signup_count / event.capacity) * 100)}%` }}
@@ -1162,6 +1191,7 @@ git commit -m "feat(events): add EventCard + EventCardCta for landing page grid"
 **Why:** Swap the static `EventsComingSoonPanel` for a live grid when published events exist.
 
 **Files:**
+
 - Modify: `app/(marketing)/clinics/page.tsx`
 - Modify: `app/(marketing)/camps/page.tsx`
 
@@ -1233,6 +1263,7 @@ git commit -m "feat(public): wire live events into /clinics and /camps landing p
 **Why:** Full-width hero strip for detail pages. Server component; same brand treatment as ClinicHero/CampHero but event-specific.
 
 **Files:**
+
 - Create: `components/public/EventDetailHero.tsx`
 
 - [ ] **Step 1: Implement**
@@ -1250,7 +1281,10 @@ interface EventDetailHeroProps {
 
 function formatDateLong(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", {
-    weekday: "long", month: "long", day: "numeric", year: "numeric",
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
   })
 }
 
@@ -1259,10 +1293,7 @@ function formatDuration(event: Event) {
   if (event.end_date) {
     const days = Math.max(
       1,
-      Math.round(
-        (new Date(event.end_date).getTime() - new Date(event.start_date).getTime()) /
-          (1000 * 60 * 60 * 24),
-      ),
+      Math.round((new Date(event.end_date).getTime() - new Date(event.start_date).getTime()) / (1000 * 60 * 60 * 24)),
     )
     return `${days}-day camp`
   }
@@ -1284,14 +1315,14 @@ export function EventDetailHero({ event }: EventDetailHeroProps) {
       />
       <div className="relative mx-auto max-w-7xl px-4 py-12 md:px-6 md:py-16">
         <nav className="flex items-center gap-1 text-sm text-primary-foreground/70">
-          <Link href={parentPath} className="hover:text-primary-foreground">{parentLabel}</Link>
+          <Link href={parentPath} className="hover:text-primary-foreground">
+            {parentLabel}
+          </Link>
           <ChevronRight className="h-4 w-4" />
           <span className="truncate">{event.title}</span>
         </nav>
 
-        <h1 className="mt-4 max-w-4xl font-heading text-4xl font-semibold tracking-tight md:text-6xl">
-          {event.title}
-        </h1>
+        <h1 className="mt-4 max-w-4xl font-heading text-4xl font-semibold tracking-tight md:text-6xl">{event.title}</h1>
 
         <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-primary-foreground/85 md:text-base">
           <span className="inline-flex items-center gap-2">
@@ -1329,6 +1360,7 @@ git commit -m "feat(events): add EventDetailHero for per-event detail pages"
 **Why:** Sticky right-column card on desktop + mobile sticky bottom bar. Owns its own modal state.
 
 **Files:**
+
 - Create: `components/public/EventSignupCard.tsx`
 
 - [ ] **Step 1: Implement**
@@ -1358,7 +1390,10 @@ function formatPrice(cents: number | null) {
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", {
-    weekday: "short", month: "short", day: "numeric", year: "numeric",
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
   })
 }
 
@@ -1420,10 +1455,7 @@ export function EventSignupCard({ event }: EventSignupCardProps) {
                 {spotsLeft} {spotsLeft === 1 ? "spot" : "spots"} left
               </p>
             )}
-            <div
-              className="mt-2 h-1 w-full overflow-hidden rounded-full bg-muted"
-              aria-hidden="true"
-            >
+            <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-muted" aria-hidden="true">
               <div
                 className={`h-full ${isFull ? "bg-accent" : "bg-primary"}`}
                 style={{ width: `${Math.min(100, (event.signup_count / event.capacity) * 100)}%` }}
@@ -1452,12 +1484,7 @@ export function EventSignupCard({ event }: EventSignupCardProps) {
         </div>
       </div>
 
-      <EventSignupModal
-        event={event}
-        open={open}
-        onOpenChange={setOpen}
-        isWaitlist={isFull}
-      />
+      <EventSignupModal event={event} open={open} onOpenChange={setOpen} isWaitlist={isFull} />
     </>
   )
 }
@@ -1482,6 +1509,7 @@ git commit -m "feat(events): add EventSignupCard with sticky desktop + mobile ba
 **Why:** Per-clinic landing page at `/clinics/[slug]` with sticky signup card.
 
 **Files:**
+
 - Create: `app/(marketing)/clinics/[slug]/page.tsx`
 
 - [ ] **Step 1: Implement**
@@ -1506,9 +1534,7 @@ export async function generateStaticParams() {
   return events.map((e) => ({ slug: e.slug }))
 }
 
-export async function generateMetadata(
-  { params }: { params: Promise<{ slug: string }> },
-): Promise<Metadata> {
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params
   const event = await getEventBySlug(slug)
   if (!event || event.type !== "clinic" || event.status !== "published") return {}
@@ -1527,9 +1553,7 @@ const CLINIC_AUDIENCE = [
   "Parents looking for better athletic development, not generic hard work",
 ]
 
-export default async function ClinicDetailPage(
-  { params }: { params: Promise<{ slug: string }> },
-) {
+export default async function ClinicDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
   const event = await getEventBySlug(slug)
   if (!event || event.type !== "clinic" || event.status !== "published") notFound()
@@ -1565,7 +1589,9 @@ export default async function ClinicDetailPage(
             <article className="space-y-10">
               <div className="prose prose-lg max-w-none">
                 {event.description.split(/\n\n+/).map((p, i) => (
-                  <p key={i} className="text-lg leading-8 text-muted-foreground">{p}</p>
+                  <p key={i} className="text-lg leading-8 text-muted-foreground">
+                    {p}
+                  </p>
                 ))}
               </div>
 
@@ -1645,6 +1671,7 @@ git commit -m "feat(public): add /clinics/[slug] detail page with sticky signup 
 **Why:** Mirror of the clinic detail page at `/camps/[slug]`. Same structure, camp-specific copy, price line, disabled CTA.
 
 **Files:**
+
 - Create: `app/(marketing)/camps/[slug]/page.tsx`
 
 - [ ] **Step 1: Implement**
@@ -1669,9 +1696,7 @@ export async function generateStaticParams() {
   return events.map((e) => ({ slug: e.slug }))
 }
 
-export async function generateMetadata(
-  { params }: { params: Promise<{ slug: string }> },
-): Promise<Metadata> {
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params
   const event = await getEventBySlug(slug)
   if (!event || event.type !== "camp" || event.status !== "published") return {}
@@ -1690,9 +1715,7 @@ const CAMP_AUDIENCE = [
   "Parents and teams who value both training quality and measurable feedback",
 ]
 
-export default async function CampDetailPage(
-  { params }: { params: Promise<{ slug: string }> },
-) {
+export default async function CampDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
   const event = await getEventBySlug(slug)
   if (!event || event.type !== "camp" || event.status !== "published") notFound()
@@ -1737,7 +1760,9 @@ export default async function CampDetailPage(
             <article className="space-y-10">
               <div className="prose prose-lg max-w-none">
                 {event.description.split(/\n\n+/).map((p, i) => (
-                  <p key={i} className="text-lg leading-8 text-muted-foreground">{p}</p>
+                  <p key={i} className="text-lg leading-8 text-muted-foreground">
+                    {p}
+                  </p>
                 ))}
               </div>
 
@@ -1824,6 +1849,7 @@ git commit -m "feat(public): add /camps/[slug] detail page with sticky signup ca
 **Why:** Replace the Phase 2a placeholder on `/admin/events/[id]` with an interactive table that confirms/cancels via the route built in Task 3.
 
 **Files:**
+
 - Create: `components/admin/events/SignupsTable.tsx`
 - Modify: `app/(admin)/admin/events/[id]/page.tsx`
 
@@ -1863,11 +1889,7 @@ export function SignupsTable({ initialSignups, eventId }: SignupsTableProps) {
     // Optimistic update
     const previous = signups
     setSignups((prev) =>
-      prev.map((s) =>
-        s.id === signupId
-          ? { ...s, status: action === "confirm" ? "confirmed" : "cancelled" }
-          : s,
-      ),
+      prev.map((s) => (s.id === signupId ? { ...s, status: action === "confirm" ? "confirmed" : "cancelled" } : s)),
     )
 
     try {
@@ -1922,9 +1944,7 @@ export function SignupsTable({ initialSignups, eventId }: SignupsTableProps) {
             <tr key={s.id} className="border-t border-border align-top">
               <td className="px-4 py-3">
                 <div className="font-medium">{s.athlete_name}</div>
-                {s.notes && (
-                  <div className="mt-1 text-xs text-muted-foreground">{s.notes}</div>
-                )}
+                {s.notes && <div className="mt-1 text-xs text-muted-foreground">{s.notes}</div>}
               </td>
               <td className="px-4 py-3">{s.athlete_age}</td>
               <td className="px-4 py-3">{s.parent_name}</td>
@@ -1997,6 +2017,7 @@ git commit -m "feat(admin): add interactive SignupsTable with optimistic confirm
 **Why:** SEO — search engines need to know the new per-event URLs exist.
 
 **Files:**
+
 - Modify: `app/sitemap.ts`
 
 - [ ] **Step 1: Add published-event loops**
@@ -2060,6 +2081,7 @@ git commit -m "feat(seo): add published clinic + camp events to sitemap"
 **Why:** Catches regressions on the highest-value user flow (visitor → modal → submit → success).
 
 **Files:**
+
 - Create: `__tests__/e2e/event-signup.spec.ts`
 
 - [ ] **Step 1: Write the scaffold test**
@@ -2080,7 +2102,10 @@ test.describe("Public event signup flow", () => {
 
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible()
 
-    await page.getByRole("button", { name: /register your interest/i }).first().click()
+    await page
+      .getByRole("button", { name: /register your interest/i })
+      .first()
+      .click()
 
     await page.fill("input[name='parent_name']", "E2E Parent")
     await page.fill("input[name='parent_email']", `e2e-${Date.now()}@test.example`)
@@ -2142,6 +2167,7 @@ Run: `npm run test:run`
 Expected: all Phase 2b tests pass. Pre-existing failures from Phase 1/2a (ai-schemas UUID, coach-ai-policy FK, exercise-usage FK) remain — those are not regressions.
 
 Phase 2b-specific counts should be:
+
 - `__tests__/lib/email-events.test.ts` — 3 pass
 - `__tests__/api/events/signup.test.ts` — 7 pass
 - `__tests__/api/admin/events-signups.test.ts` — 8 pass
@@ -2173,28 +2199,29 @@ Report the commit list.
 
 **Spec coverage:**
 
-| Phase 2b spec requirement | Task |
-|---|---|
-| `EventCard` on landing pages | Tasks 5, 6 |
-| Landing page conditional grid vs. ComingSoon panel | Task 6 |
-| `/clinics/[slug]` + `/camps/[slug]` detail pages with sticky card | Tasks 9, 10 |
-| `generateStaticParams` + `revalidate = 300` | Tasks 9, 10 |
-| `EventSignupModal` with honeypot + state machine | Task 4 |
-| `POST /api/events/[id]/signup` + honeypot + non-fatal emails | Task 2 |
-| `PATCH /api/admin/events/[id]/signups/[signupId]` + RPC wrappers + confirmed email | Task 3 |
-| `SignupsTable` with optimistic UI + replaces Phase 2a placeholder | Task 11 |
-| 3 Resend email templates + helper | Task 1 |
-| Per-event `Event` JsonLd on detail pages | Tasks 9, 10 |
-| Published event slugs in sitemap | Task 12 |
-| Camp book button stays disabled in 2b | Tasks 5, 8 |
-| Waitlist signups write same `interest` row | Tasks 2, 4 |
-| Playwright smoke | Task 13 |
+| Phase 2b spec requirement                                                          | Task        |
+| ---------------------------------------------------------------------------------- | ----------- |
+| `EventCard` on landing pages                                                       | Tasks 5, 6  |
+| Landing page conditional grid vs. ComingSoon panel                                 | Task 6      |
+| `/clinics/[slug]` + `/camps/[slug]` detail pages with sticky card                  | Tasks 9, 10 |
+| `generateStaticParams` + `revalidate = 300`                                        | Tasks 9, 10 |
+| `EventSignupModal` with honeypot + state machine                                   | Task 4      |
+| `POST /api/events/[id]/signup` + honeypot + non-fatal emails                       | Task 2      |
+| `PATCH /api/admin/events/[id]/signups/[signupId]` + RPC wrappers + confirmed email | Task 3      |
+| `SignupsTable` with optimistic UI + replaces Phase 2a placeholder                  | Task 11     |
+| 3 Resend email templates + helper                                                  | Task 1      |
+| Per-event `Event` JsonLd on detail pages                                           | Tasks 9, 10 |
+| Published event slugs in sitemap                                                   | Task 12     |
+| Camp book button stays disabled in 2b                                              | Tasks 5, 8  |
+| Waitlist signups write same `interest` row                                         | Tasks 2, 4  |
+| Playwright smoke                                                                   | Task 13     |
 
 **Placeholder scan:** no TBDs, no "fill in details", no "add appropriate error handling" — every step has concrete code or a concrete command.
 
 **Type consistency:** `EventSignupModalEvent` (the Pick type used by the modal) is consistent across modal + EventCardCta + EventSignupCard (latter two pass the full `Event`, which structurally contains the needed fields). `ConfirmResult`/`CancelResult` discriminated unions from Phase 2a DAL are used in Task 3's switch. Route contexts use `Promise<{...}>` params per Next.js 16 consistently.
 
 **Notes for implementer:**
+
 - The modal's "at_capacity" UI currently has a `<Button disabled>Join waitlist</Button>` that's not wired to re-submit — the plan describes the intended waitlist re-submit flow but leaves the explicit "click this to really join waitlist" action as a known gap. In practice, the EventCardCta and EventSignupCard already open the modal with `isWaitlist={true}` when the event is full, so the happy path is covered. The at_capacity state inside the modal handles a mid-session race and is rare enough that pointing the user to "close and reopen to enter waitlist" is acceptable — enhance in Phase 3 if it bites.
 
 **No migration required.** `event_signups` table + RPCs from Phase 2a are sufficient.

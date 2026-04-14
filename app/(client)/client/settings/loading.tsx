@@ -5,10 +5,7 @@ export default function SettingsLoading() {
 
       {/* Settings sections */}
       {Array.from({ length: 3 }).map((_, i) => (
-        <div
-          key={i}
-          className="bg-white rounded-xl border border-border p-5 mb-4 space-y-4"
-        >
+        <div key={i} className="bg-white rounded-xl border border-border p-5 mb-4 space-y-4">
           <div className="flex items-center gap-2">
             <div className="size-5 bg-muted animate-pulse rounded" />
             <div className="h-5 w-36 bg-muted animate-pulse rounded-md" />

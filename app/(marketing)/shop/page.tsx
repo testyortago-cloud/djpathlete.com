@@ -10,15 +10,13 @@ export const metadata: Metadata = {
     "Shop DJP Athlete performance apparel and training gear. Compression wear, training tops, and branded athletic clothing.",
   openGraph: {
     title: "Shop | DJP Athlete",
-    description:
-      "Shop DJP Athlete performance apparel and training gear.",
+    description: "Shop DJP Athlete performance apparel and training gear.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
     title: "Shop | DJP Athlete",
-    description:
-      "Shop DJP Athlete performance apparel and training gear.",
+    description: "Shop DJP Athlete performance apparel and training gear.",
   },
 }
 
@@ -26,8 +24,7 @@ const shopSchema = {
   "@context": "https://schema.org",
   "@type": "WebPage",
   name: "Shop — DJP Athlete",
-  description:
-    "Shop DJP Athlete performance apparel and training gear.",
+  description: "Shop DJP Athlete performance apparel and training gear.",
   url: "https://djpathlete.com/shop",
   publisher: {
     "@type": "Organization",
@@ -47,9 +44,7 @@ export default function ShopPage() {
           <div>
             <div className="flex items-center gap-3 mb-4">
               <div className="h-px w-12 bg-accent" />
-              <p className="text-sm font-medium text-accent uppercase tracking-widest">
-                Shop
-              </p>
+              <p className="text-sm font-medium text-accent uppercase tracking-widest">Shop</p>
             </div>
             <h1 className="text-3xl sm:text-4xl lg:text-5xl font-heading font-semibold text-primary tracking-tight">
               Performance Gear

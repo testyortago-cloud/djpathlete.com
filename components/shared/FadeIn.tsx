@@ -18,13 +18,7 @@ const offsets = {
   right: { x: -30 },
 }
 
-export function FadeIn({
-  children,
-  delay = 0,
-  duration = 0.6,
-  className,
-  direction = "up",
-}: FadeInProps) {
+export function FadeIn({ children, delay = 0, duration = 0.6, className, direction = "up" }: FadeInProps) {
   return (
     <motion.div
       initial={{ opacity: 0, ...offsets[direction] }}

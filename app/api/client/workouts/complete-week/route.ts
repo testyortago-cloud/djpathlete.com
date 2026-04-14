@@ -3,10 +3,7 @@ import { auth } from "@/lib/auth"
 import { advanceWeek, getAssignmentById } from "@/lib/db/assignments"
 import { getProgramById } from "@/lib/db/programs"
 import { getUserById } from "@/lib/db/users"
-import {
-  sendCoachProgramCompletedNotification,
-  sendReassessmentReminderEmail,
-} from "@/lib/email"
+import { sendCoachProgramCompletedNotification, sendReassessmentReminderEmail } from "@/lib/email"
 import { createNotification } from "@/lib/db/notifications"
 import { z } from "zod"
 
@@ -25,10 +22,7 @@ export async function POST(request: Request) {
     const parsed = completeWeekSchema.safeParse(body)
 
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Invalid data", details: parsed.error.flatten() },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Invalid data", details: parsed.error.flatten() }, { status: 400 })
     }
 
     const { assignmentId } = parsed.data
@@ -40,20 +34,14 @@ export async function POST(request: Request) {
     }
 
     if (assignment.status !== "active") {
-      return NextResponse.json(
-        { error: "Assignment is not active" },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Assignment is not active" }, { status: 400 })
     }
 
     const result = await advanceWeek(assignmentId)
 
     // Notify coach and client when the program is fully completed
     if (result.program_completed) {
-      const [client, program] = await Promise.all([
-        getUserById(session.user.id),
-        getProgramById(assignment.program_id),
-      ])
+      const [client, program] = await Promise.all([getUserById(session.user.id), getProgramById(assignment.program_id)])
 
       const programName = program?.name ?? "Unknown Program"
       const clientName = `${client.first_name} ${client.last_name}`.trim()
@@ -107,9 +95,6 @@ export async function POST(request: Request) {
     })
   } catch (error) {
     console.error("Complete week POST error:", error)
-    return NextResponse.json(
-      { error: "Failed to advance week" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to advance week" }, { status: 500 })
   }
 }

@@ -82,7 +82,13 @@ function formatPrice(cents: number | null): string {
   return `$${(cents / 100).toFixed(2)}`
 }
 
-export function ProgramHeader({ program, clients, assignedUserIds, assignmentMap, assignmentDetails = {} }: ProgramHeaderProps) {
+export function ProgramHeader({
+  program,
+  clients,
+  assignedUserIds,
+  assignmentMap,
+  assignmentDetails = {},
+}: ProgramHeaderProps) {
   const [editOpen, setEditOpen] = useState(false)
   const [assignOpen, setAssignOpen] = useState(false)
 
@@ -92,9 +98,7 @@ export function ProgramHeader({ program, clients, assignedUserIds, assignmentMap
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
           <div className="space-y-2">
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-xl font-heading font-semibold text-foreground">
-                {program.name}
-              </h1>
+              <h1 className="text-xl font-heading font-semibold text-foreground">{program.name}</h1>
               {(Array.isArray(program.category) ? program.category : [program.category]).map((cat) => (
                 <Badge key={cat} variant="outline" className="capitalize">
                   {CATEGORY_LABELS[cat] ?? cat}
@@ -127,13 +131,11 @@ export function ProgramHeader({ program, clients, assignedUserIds, assignmentMap
                 </Badge>
               )}
             </div>
-            {program.description && (
-              <p className="text-sm text-muted-foreground">
-                {program.description}
-              </p>
-            )}
+            {program.description && <p className="text-sm text-muted-foreground">{program.description}</p>}
             <div className="flex items-center gap-4 text-sm text-muted-foreground">
-              <span>{program.duration_weeks} week{program.duration_weeks !== 1 ? "s" : ""}</span>
+              <span>
+                {program.duration_weeks} week{program.duration_weeks !== 1 ? "s" : ""}
+              </span>
               <span>{program.sessions_per_week} sessions/week</span>
               <span>{formatPrice(program.price_cents)}</span>
             </div>
@@ -152,11 +154,7 @@ export function ProgramHeader({ program, clients, assignedUserIds, assignmentMap
         </div>
       </div>
 
-      <ProgramFormDialog
-        open={editOpen}
-        onOpenChange={setEditOpen}
-        program={program}
-      />
+      <ProgramFormDialog open={editOpen} onOpenChange={setEditOpen} program={program} />
 
       <AssignProgramDialog
         open={assignOpen}

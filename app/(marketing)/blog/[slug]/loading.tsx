@@ -25,9 +25,7 @@ export default function BlogPostLoading() {
       <div className="space-y-4">
         {Array.from({ length: 6 }).map((_, i) => (
           <div key={i} className="space-y-2">
-            {i % 3 === 0 && (
-              <div className="h-6 w-48 bg-muted animate-pulse rounded-md mt-4" />
-            )}
+            {i % 3 === 0 && <div className="h-6 w-48 bg-muted animate-pulse rounded-md mt-4" />}
             <div className="h-4 w-full bg-muted animate-pulse rounded-md" />
             <div className="h-4 w-full bg-muted animate-pulse rounded-md" />
             <div className="h-4 w-3/4 bg-muted animate-pulse rounded-md" />

@@ -4,14 +4,7 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
-import {
-  CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
-  Dumbbell,
-  Calendar,
-  Lock,
-} from "lucide-react"
+import { CheckCircle2, ChevronLeft, ChevronRight, Dumbbell, Calendar, Lock } from "lucide-react"
 import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
 import { WorkoutDay } from "@/components/client/WorkoutDay"
@@ -56,26 +49,13 @@ function ProgramCard({
   todayDow: number
 }) {
   const allWeekKeys = Object.keys(program.weeks ?? {}).map(Number)
-  const currentDays =
-    program.weeks?.[program.currentWeek] ??
-    program.weeks?.[allWeekKeys[0]] ??
-    []
-  const totalExercises = currentDays.reduce(
-    (sum, d) => sum + d.exercises.length,
-    0
-  )
-  const loggedToday = currentDays.reduce(
-    (sum, d) => sum + d.exercises.filter((e) => e.loggedToday).length,
-    0
-  )
-  const totalToday = currentDays
-    .filter((d) => d.day === todayDow)
-    .reduce((sum, d) => sum + d.exercises.length, 0)
+  const currentDays = program.weeks?.[program.currentWeek] ?? program.weeks?.[allWeekKeys[0]] ?? []
+  const totalExercises = currentDays.reduce((sum, d) => sum + d.exercises.length, 0)
+  const loggedToday = currentDays.reduce((sum, d) => sum + d.exercises.filter((e) => e.loggedToday).length, 0)
+  const totalToday = currentDays.filter((d) => d.day === todayDow).reduce((sum, d) => sum + d.exercises.length, 0)
 
   const weekProgressPct =
-    program.totalWeeks > 0
-      ? Math.round(((program.currentWeek - 1) / program.totalWeeks) * 100)
-      : 0
+    program.totalWeeks > 0 ? Math.round(((program.currentWeek - 1) / program.totalWeeks) * 100) : 0
 
   return (
     <button
@@ -84,12 +64,13 @@ function ProgramCard({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-foreground text-sm">
-            {program.programName}
-          </h3>
+          <h3 className="font-semibold text-foreground text-sm">{program.programName}</h3>
           <span className="inline-flex gap-1 mt-1 flex-wrap">
             {(Array.isArray(program.category) ? program.category : [program.category]).map((cat) => (
-              <span key={cat} className="inline-block rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[10px] font-medium capitalize">
+              <span
+                key={cat}
+                className="inline-block rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[10px] font-medium capitalize"
+              >
                 {cat.replace("_", " ")}
               </span>
             ))}
@@ -117,10 +98,7 @@ function ProgramCard({
       {/* Week progress bar on card */}
       {program.totalWeeks > 1 && (
         <div className="mt-2.5">
-          <Progress
-            value={weekProgressPct}
-            className="h-1.5"
-          />
+          <Progress value={weekProgressPct} className="h-1.5" />
         </div>
       )}
 
@@ -135,13 +113,7 @@ function ProgramCard({
 
 // ─── Week Progress Indicator ─────────────────────────────────────────────
 
-function WeekProgressIndicator({
-  currentWeek,
-  totalWeeks,
-}: {
-  currentWeek: number
-  totalWeeks: number
-}) {
+function WeekProgressIndicator({ currentWeek, totalWeeks }: { currentWeek: number; totalWeeks: number }) {
   if (totalWeeks <= 1) return null
 
   const completedWeeks = currentWeek - 1
@@ -150,9 +122,7 @@ function WeekProgressIndicator({
   return (
     <div className="mb-4 bg-white rounded-xl border border-border px-4 py-3">
       <div className="flex items-center justify-between text-xs mb-2">
-        <span className="text-muted-foreground">
-          Program Progress
-        </span>
+        <span className="text-muted-foreground">Program Progress</span>
         <span className="font-semibold text-foreground">
           {completedWeeks}/{totalWeeks} weeks
         </span>
@@ -167,19 +137,13 @@ function WeekProgressIndicator({
               key={weekNum}
               className={cn(
                 "flex-1 h-2 rounded-full transition-colors",
-                isCompleted
-                  ? "bg-success"
-                  : isCurrent
-                    ? "bg-primary"
-                    : "bg-muted"
+                isCompleted ? "bg-success" : isCurrent ? "bg-primary" : "bg-muted",
               )}
             />
           )
         })}
       </div>
-      <p className="text-[10px] text-muted-foreground mt-1.5">
-        {progressPct}% complete
-      </p>
+      <p className="text-[10px] text-muted-foreground mt-1.5">{progressPct}% complete</p>
     </div>
   )
 }
@@ -228,17 +192,15 @@ function ProgramDetail({
     }
   }
 
-  const weekKeys = Object.keys(program.weeks ?? {}).map(Number).sort((a, b) => a - b)
+  const weekKeys = Object.keys(program.weeks ?? {})
+    .map(Number)
+    .sort((a, b) => a - b)
   // currentWeek=0 means program hasn't started yet — default to week 1
   const effectiveCurrentWeek = program.currentWeek || 1
-  const safeCurrentWeek = weekKeys.includes(effectiveCurrentWeek)
-    ? effectiveCurrentWeek
-    : weekKeys[0] ?? 1
+  const safeCurrentWeek = weekKeys.includes(effectiveCurrentWeek) ? effectiveCurrentWeek : (weekKeys[0] ?? 1)
 
   const [selectedWeek, setSelectedWeek] = useState(safeCurrentWeek)
-  const [sessionLoggedIds, setSessionLoggedIds] = useState<Set<string>>(
-    new Set()
-  )
+  const [sessionLoggedIds, setSessionLoggedIds] = useState<Set<string>>(new Set())
 
   const days = program.weeks?.[selectedWeek] ?? []
   const allDays = days.map((d) => d.day).sort((a, b) => a - b)
@@ -261,9 +223,7 @@ function ProgramDetail({
   // Reset selected day when week changes and current day isn't in new week
   function handleWeekChange(week: number) {
     setSelectedWeek(week)
-    const newDays = (program.weeks?.[week] ?? [])
-      .map((d) => d.day)
-      .sort((a, b) => a - b)
+    const newDays = (program.weeks?.[week] ?? []).map((d) => d.day).sort((a, b) => a - b)
     if (!newDays.includes(selectedDay)) {
       setSelectedDay(newDays[0] ?? 1)
     }
@@ -272,29 +232,24 @@ function ProgramDetail({
   function isDayComplete(day: number): boolean {
     const dayData = days.find((d) => d.day === day)
     if (!dayData || dayData.exercises.length === 0) return true
-    return dayData.exercises.every(
-      (e) => e.loggedToday || sessionLoggedIds.has(e.exercise.id)
-    )
+    return dayData.exercises.every((e) => e.loggedToday || sessionLoggedIds.has(e.exercise.id))
   }
 
   const dayData = days.find((d) => d.day === selectedDay)
 
   // Progress calculation for selected day
   const dayExercises = dayData?.exercises ?? []
-  const loggedCount = dayExercises.filter(
-    (e) => e.loggedToday || sessionLoggedIds.has(e.exercise.id)
-  ).length
+  const loggedCount = dayExercises.filter((e) => e.loggedToday || sessionLoggedIds.has(e.exercise.id)).length
   const totalCount = dayExercises.length
-  const progressPct =
-    totalCount > 0 ? Math.round((loggedCount / totalCount) * 100) : 0
+  const progressPct = totalCount > 0 ? Math.round((loggedCount / totalCount) * 100) : 0
   const remaining = totalCount - loggedCount
 
   // Check if ALL exercises across ALL days in the current week are logged
-  const allWeekExercisesLogged = days.length > 0 && days.every((d) =>
-    d.exercises.length === 0 || d.exercises.every(
-      (e) => e.loggedToday || sessionLoggedIds.has(e.exercise.id)
+  const allWeekExercisesLogged =
+    days.length > 0 &&
+    days.every(
+      (d) => d.exercises.length === 0 || d.exercises.every((e) => e.loggedToday || sessionLoggedIds.has(e.exercise.id)),
     )
-  )
 
   function handleExerciseLogged(exerciseId: string) {
     setSessionLoggedIds((prev) => new Set(prev).add(exerciseId))
@@ -316,21 +271,19 @@ function ProgramDetail({
       )}
 
       <div className="flex items-center gap-2 mb-4">
-        <h2 className="text-base font-semibold text-foreground">
-          {program.programName}
-        </h2>
+        <h2 className="text-base font-semibold text-foreground">{program.programName}</h2>
         {(Array.isArray(program.category) ? program.category : [program.category]).map((cat) => (
-          <span key={cat} className="rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[10px] font-medium capitalize">
+          <span
+            key={cat}
+            className="rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[10px] font-medium capitalize"
+          >
             {cat.replace("_", " ")}
           </span>
         ))}
       </div>
 
       {/* Week progress indicator */}
-      <WeekProgressIndicator
-        currentWeek={effectiveCurrentWeek}
-        totalWeeks={program.totalWeeks}
-      />
+      <WeekProgressIndicator currentWeek={effectiveCurrentWeek} totalWeeks={program.totalWeeks} />
 
       {/* Week selector */}
       {program.totalWeeks > 1 && (
@@ -347,24 +300,13 @@ function ProgramDetail({
           <div className="text-center">
             <p className="text-sm font-semibold text-foreground">
               Week {selectedWeek}
-              {lockedWeeks[selectedWeek] && (
-                <Lock className="inline size-3 ml-1 text-warning" />
-              )}
-              <span className="text-muted-foreground font-normal">
-                {" "}
-                / {program.totalWeeks}
-              </span>
+              {lockedWeeks[selectedWeek] && <Lock className="inline size-3 ml-1 text-warning" />}
+              <span className="text-muted-foreground font-normal"> / {program.totalWeeks}</span>
             </p>
             {isCurrentWeek && !lockedWeeks[selectedWeek] && (
-              <p className="text-[10px] text-primary font-medium">
-                Current week
-              </p>
+              <p className="text-[10px] text-primary font-medium">Current week</p>
             )}
-            {lockedWeeks[selectedWeek] && (
-              <p className="text-[10px] text-warning font-medium">
-                Payment required
-              </p>
-            )}
+            {lockedWeeks[selectedWeek] && <p className="text-[10px] text-warning font-medium">Payment required</p>}
           </div>
           <Button
             size="icon"
@@ -379,49 +321,50 @@ function ProgramDetail({
       )}
 
       {/* Day selector pills */}
-      {allDays.length > 0 && (() => {
-        const dayIndexMap = buildDayIndexMap(allDays)
-        return (
-        <div className="flex gap-1.5 overflow-x-auto pb-1 mb-4 -mx-1 px-1 scrollbar-none">
-          {allDays.map((day) => {
-            const dayIndex = dayIndexMap.get(day) ?? 1
-            const isToday = day === todayDow && isCurrentWeek
-            const isSelected = day === selectedDay
-            const isComplete = isDayComplete(day)
+      {allDays.length > 0 &&
+        (() => {
+          const dayIndexMap = buildDayIndexMap(allDays)
+          return (
+            <div className="flex gap-1.5 overflow-x-auto pb-1 mb-4 -mx-1 px-1 scrollbar-none">
+              {allDays.map((day) => {
+                const dayIndex = dayIndexMap.get(day) ?? 1
+                const isToday = day === todayDow && isCurrentWeek
+                const isSelected = day === selectedDay
+                const isComplete = isDayComplete(day)
 
-            return (
-              <button
-                key={day}
-                onClick={() => setSelectedDay(day)}
-                className={cn(
-                  "relative flex flex-col items-center min-w-[52px] px-3 py-2 rounded-xl text-xs font-medium transition-all shrink-0",
-                  isSelected
-                    ? "bg-primary text-primary-foreground shadow-sm"
-                    : isComplete
-                      ? "bg-success/10 border border-success/30 text-success hover:border-success/50"
-                      : "bg-white border border-border text-muted-foreground hover:border-primary/30 hover:text-foreground"
-                )}
-              >
-                <span
-                  className={cn(
-                    "text-[10px] uppercase",
-                    isSelected
-                      ? "text-primary-foreground/70"
-                      : isComplete
-                        ? "text-success/70"
-                        : "text-muted-foreground/60"
-                  )}
-                >
-                  Day
-                </span>
-                <span className="text-sm font-semibold">{dayIndex}</span>
-                {/* Today indicator removed for cleaner look */}
-              </button>
-            )
-          })}
-        </div>
-        )
-      })()}
+                return (
+                  <button
+                    key={day}
+                    onClick={() => setSelectedDay(day)}
+                    className={cn(
+                      "relative flex flex-col items-center min-w-[52px] px-3 py-2 rounded-xl text-xs font-medium transition-all shrink-0",
+                      isSelected
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : isComplete
+                          ? "bg-success/10 border border-success/30 text-success hover:border-success/50"
+                          : "bg-white border border-border text-muted-foreground hover:border-primary/30 hover:text-foreground",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "text-[10px] uppercase",
+                        isSelected
+                          ? "text-primary-foreground/70"
+                          : isComplete
+                            ? "text-success/70"
+                            : "text-muted-foreground/60",
+                      )}
+                    >
+                      Day
+                    </span>
+                    <span className="text-sm font-semibold">{dayIndex}</span>
+                    {/* Today indicator removed for cleaner look */}
+                  </button>
+                )
+              })}
+            </div>
+          )
+        })()}
 
       {/* Session progress bar */}
       {totalCount > 0 && (
@@ -433,23 +376,13 @@ function ProgramDetail({
               </span>{" "}
               exercises
             </span>
-            <span className="font-semibold text-foreground">
-              {progressPct}%
-            </span>
+            <span className="font-semibold text-foreground">{progressPct}%</span>
           </div>
           <Progress
             value={progressPct}
-            className={cn(
-              "h-2",
-              progressPct === 100 &&
-                "[&>[data-slot=progress-indicator]]:bg-success"
-            )}
+            className={cn("h-2", progressPct === 100 && "[&>[data-slot=progress-indicator]]:bg-success")}
           />
-          {remaining === 1 && (
-            <p className="text-xs text-success font-medium">
-              Almost there! 1 to go
-            </p>
-          )}
+          {remaining === 1 && <p className="text-xs text-success font-medium">Almost there! 1 to go</p>}
         </div>
       )}
 
@@ -471,12 +404,8 @@ function ProgramDetail({
                   </div>
                 </div>
                 <div>
-                  <h3 className="text-base font-semibold text-foreground mb-1">
-                    Week {selectedWeek} is Locked
-                  </h3>
-                  <p className="text-sm text-muted-foreground">
-                    Purchase access to unlock this week&apos;s workouts.
-                  </p>
+                  <h3 className="text-base font-semibold text-foreground mb-1">Week {selectedWeek} is Locked</h3>
+                  <p className="text-sm text-muted-foreground">Purchase access to unlock this week&apos;s workouts.</p>
                 </div>
                 {lockedWeeks[selectedWeek].priceCents > 0 && (
                   <p className="text-2xl font-bold text-foreground">
@@ -490,9 +419,7 @@ function ProgramDetail({
                 >
                   {isPurchasing ? "Processing..." : "Unlock Week"}
                 </Button>
-                <p className="text-xs text-muted-foreground">
-                  Or contact your coach to arrange payment.
-                </p>
+                <p className="text-xs text-muted-foreground">Or contact your coach to arrange payment.</p>
               </div>
             </motion.div>
           ) : dayData && dayData.exercises.length > 0 ? (
@@ -530,9 +457,7 @@ function ProgramDetail({
             >
               <div className="bg-white rounded-xl border border-border p-8 text-center">
                 <p className="text-sm text-muted-foreground">
-                  {allDays.length === 0
-                    ? "No exercises for this week."
-                    : "Rest day — no exercises scheduled."}
+                  {allDays.length === 0 ? "No exercises for this week." : "Rest day — no exercises scheduled."}
                 </p>
               </div>
             </motion.div>
@@ -568,12 +493,10 @@ export function WorkoutTabs({ programs, todayDow: serverDow }: WorkoutTabsProps)
     setTodayDow(getLocalDow())
   }, [])
   const [selectedProgramId, setSelectedProgramId] = useState<string | null>(
-    programs.length === 1 ? programs[0].assignmentId : null
+    programs.length === 1 ? programs[0].assignmentId : null,
   )
 
-  const selectedProgram = programs.find(
-    (p) => p.assignmentId === selectedProgramId
-  )
+  const selectedProgram = programs.find((p) => p.assignmentId === selectedProgramId)
 
   if (selectedProgram) {
     return (
@@ -588,9 +511,7 @@ export function WorkoutTabs({ programs, todayDow: serverDow }: WorkoutTabsProps)
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-muted-foreground mb-1">
-        Select a workout program to get started.
-      </p>
+      <p className="text-sm text-muted-foreground mb-1">Select a workout program to get started.</p>
       {programs.map((program) => (
         <ProgramCard
           key={program.assignmentId}

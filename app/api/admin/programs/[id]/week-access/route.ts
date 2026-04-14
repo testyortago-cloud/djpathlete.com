@@ -1,18 +1,11 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { getActiveAssignmentsForProgram } from "@/lib/db/assignments"
-import {
-  getWeekAccessByAssignment,
-  createWeekAccess,
-  updateWeekAccess,
-} from "@/lib/db/week-access"
+import { getWeekAccessByAssignment, createWeekAccess, updateWeekAccess } from "@/lib/db/week-access"
 import { weekAccessSchema } from "@/lib/validators/week-access"
 
 /** GET — Fetch all week access records for all active assignments on a program */
-export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
     if (!session?.user?.id || session.user.role !== "admin") {
@@ -26,7 +19,7 @@ export async function GET(
     await Promise.all(
       assignments.map(async (a) => {
         accessByAssignment[a.id] = await getWeekAccessByAssignment(a.id)
-      })
+      }),
     )
 
     return NextResponse.json({ assignments, accessByAssignment })
@@ -52,10 +45,7 @@ export async function PUT(request: Request) {
 
     const parsed = weekAccessSchema.safeParse(updates)
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Invalid data", details: parsed.error.flatten().fieldErrors },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Invalid data", details: parsed.error.flatten().fieldErrors }, { status: 400 })
     }
 
     const updateData: Parameters<typeof updateWeekAccess>[1] = {
@@ -95,7 +85,7 @@ export async function POST(request: Request) {
 
     if (action === "grant_free") {
       // Create or update week access to be free
-      const existing = await import("@/lib/db/week-access").then(m => m.getWeekAccess(assignmentId, weekNumber))
+      const existing = await import("@/lib/db/week-access").then((m) => m.getWeekAccess(assignmentId, weekNumber))
       if (existing) {
         const updated = await updateWeekAccess(existing.id, {
           access_type: "included",
@@ -119,7 +109,7 @@ export async function POST(request: Request) {
 
     if (action === "mark_paid") {
       // Admin manually marks as paid (e.g., received cash/Venmo)
-      const existing = await import("@/lib/db/week-access").then(m => m.getWeekAccess(assignmentId, weekNumber))
+      const existing = await import("@/lib/db/week-access").then((m) => m.getWeekAccess(assignmentId, weekNumber))
       if (existing) {
         const updated = await updateWeekAccess(existing.id, {
           payment_status: "paid",
@@ -135,7 +125,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Price is required" }, { status: 400 })
       }
 
-      const existing = await import("@/lib/db/week-access").then(m => m.getWeekAccess(assignmentId, weekNumber))
+      const existing = await import("@/lib/db/week-access").then((m) => m.getWeekAccess(assignmentId, weekNumber))
       if (existing) {
         const updated = await updateWeekAccess(existing.id, {
           access_type: "paid",

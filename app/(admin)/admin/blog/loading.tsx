@@ -6,10 +6,7 @@ export default function BlogLoading() {
       {/* Stat Cards */}
       <div className="grid grid-cols-3 gap-3 sm:gap-4 mb-6">
         {Array.from({ length: 3 }).map((_, i) => (
-          <div
-            key={i}
-            className="bg-white rounded-xl border border-border p-3 sm:p-4 flex items-center gap-3"
-          >
+          <div key={i} className="bg-white rounded-xl border border-border p-3 sm:p-4 flex items-center gap-3">
             <div className="size-8 sm:size-9 bg-muted animate-pulse rounded-lg" />
             <div className="space-y-1.5">
               <div className="h-3 w-16 bg-muted animate-pulse rounded-md" />
@@ -34,10 +31,7 @@ export default function BlogLoading() {
           <div className="h-4 w-full bg-muted animate-pulse rounded-md" />
         </div>
         {Array.from({ length: 5 }).map((_, i) => (
-          <div
-            key={i}
-            className="flex items-center gap-4 px-4 py-3 border-b border-border last:border-0"
-          >
+          <div key={i} className="flex items-center gap-4 px-4 py-3 border-b border-border last:border-0">
             <div className="h-4 w-48 bg-muted animate-pulse rounded-md flex-1" />
             <div className="h-4 w-20 bg-muted animate-pulse rounded-md hidden sm:block" />
             <div className="h-5 w-16 bg-muted animate-pulse rounded-full hidden md:block" />

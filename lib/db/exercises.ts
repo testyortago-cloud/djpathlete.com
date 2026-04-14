@@ -8,7 +8,7 @@ function autoEmbed(exercise: Exercise): void {
   embedExercise(exercise)
     .then((embedding) => updateExerciseEmbedding(exercise.id, embedding))
     .catch((err) =>
-      console.warn(`[autoEmbed] Failed for "${exercise.name}":`, err instanceof Error ? err.message : err)
+      console.warn(`[autoEmbed] Failed for "${exercise.name}":`, err instanceof Error ? err.message : err),
     )
 }
 
@@ -30,41 +30,23 @@ export async function getExercises() {
 
 export async function getExerciseById(id: string) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("exercises")
-    .select("*")
-    .eq("id", id)
-    .single()
+  const { data, error } = await supabase.from("exercises").select("*").eq("id", id).single()
   if (error) throw error
   return data as Exercise
 }
 
-export async function createExercise(
-  exercise: Omit<Exercise, "id" | "created_at" | "updated_at">
-) {
+export async function createExercise(exercise: Omit<Exercise, "id" | "created_at" | "updated_at">) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("exercises")
-    .insert(exercise)
-    .select()
-    .single()
+  const { data, error } = await supabase.from("exercises").insert(exercise).select().single()
   if (error) throw error
   const created = data as Exercise
   autoEmbed(created)
   return created
 }
 
-export async function updateExercise(
-  id: string,
-  updates: Partial<Omit<Exercise, "id" | "created_at">>
-) {
+export async function updateExercise(id: string, updates: Partial<Omit<Exercise, "id" | "created_at">>) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("exercises")
-    .update(updates)
-    .eq("id", id)
-    .select()
-    .single()
+  const { data, error } = await supabase.from("exercises").update(updates).eq("id", id).select().single()
   if (error) throw error
   const updated = data as Exercise
   autoEmbed(updated)
@@ -73,45 +55,28 @@ export async function updateExercise(
 
 export async function deleteExercise(id: string) {
   const supabase = getClient()
-  const { error } = await supabase
-    .from("exercises")
-    .update({ is_active: false })
-    .eq("id", id)
+  const { error } = await supabase.from("exercises").update({ is_active: false }).eq("id", id)
   if (error) throw error
 }
 
-export async function createExercisesBulk(
-  exercises: Omit<Exercise, "id" | "created_at" | "updated_at">[]
-) {
+export async function createExercisesBulk(exercises: Omit<Exercise, "id" | "created_at" | "updated_at">[]) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("exercises")
-    .insert(exercises)
-    .select()
+  const { data, error } = await supabase.from("exercises").insert(exercises).select()
   if (error) throw error
   const created = data as Exercise[]
   for (const ex of created) autoEmbed(ex)
   return created
 }
 
-export async function bulkUpdateExercises(
-  ids: string[],
-  updates: Partial<Omit<Exercise, "id" | "created_at">>
-) {
+export async function bulkUpdateExercises(ids: string[], updates: Partial<Omit<Exercise, "id" | "created_at">>) {
   const supabase = getClient()
-  const { error } = await supabase
-    .from("exercises")
-    .update(updates)
-    .in("id", ids)
+  const { error } = await supabase.from("exercises").update(updates).in("id", ids)
   if (error) throw error
 }
 
 export async function bulkDeleteExercises(ids: string[]) {
   const supabase = getClient()
-  const { error } = await supabase
-    .from("exercises")
-    .update({ is_active: false })
-    .in("id", ids)
+  const { error } = await supabase.from("exercises").update({ is_active: false }).in("id", ids)
   if (error) throw error
 }
 
@@ -126,10 +91,7 @@ export interface ExerciseAIFilters {
 
 export async function getExercisesForAI(filters?: ExerciseAIFilters) {
   const supabase = getClient()
-  let query = supabase
-    .from("exercises")
-    .select("*")
-    .eq("is_active", true)
+  let query = supabase.from("exercises").select("*").eq("is_active", true)
 
   if (filters?.movement_pattern) {
     query = query.eq("movement_pattern", filters.movement_pattern)
@@ -170,7 +132,7 @@ export async function getAlternativeExercises(
     muscle_group?: string | null
     movement_pattern?: MovementPattern | null
     primary_muscles?: string[]
-  }
+  },
 ): Promise<{ linked: ExerciseWithRelationship[]; similar: ExerciseWithRelationship[] }> {
   const supabase = getClient()
 

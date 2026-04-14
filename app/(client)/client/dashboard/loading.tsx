@@ -36,10 +36,7 @@ export default function DashboardLoading() {
       {/* Program cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {Array.from({ length: 2 }).map((_, i) => (
-          <div
-            key={i}
-            className="bg-white rounded-xl border border-border p-4 sm:p-6 space-y-3"
-          >
+          <div key={i} className="bg-white rounded-xl border border-border p-4 sm:p-6 space-y-3">
             {/* Title */}
             <div className="h-4 sm:h-5 w-40 bg-muted animate-pulse rounded-md" />
             {/* Badges */}

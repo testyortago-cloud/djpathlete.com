@@ -7,21 +7,21 @@
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Framework | Next.js 16 (App Router, Turbopack) |
-| Language | TypeScript (strict) |
-| UI | React 19, Tailwind CSS v4 (CSS config, no tailwind.config.ts), shadcn/ui (new-york) |
-| Animation | Framer Motion |
-| Icons | Lucide |
-| Database | Supabase (PostgreSQL) |
-| Auth | NextAuth v5 (beta), Credentials provider |
-| Payments | Stripe (checkout sessions + webhooks) |
-| AI | Anthropic Claude Sonnet (4-agent pipeline) |
-| CRM | GoHighLevel (optional) |
-| Email | Resend |
-| Validation | Zod |
-| Testing | Vitest + Testing Library + Playwright |
+| Layer      | Technology                                                                          |
+| ---------- | ----------------------------------------------------------------------------------- |
+| Framework  | Next.js 16 (App Router, Turbopack)                                                  |
+| Language   | TypeScript (strict)                                                                 |
+| UI         | React 19, Tailwind CSS v4 (CSS config, no tailwind.config.ts), shadcn/ui (new-york) |
+| Animation  | Framer Motion                                                                       |
+| Icons      | Lucide                                                                              |
+| Database   | Supabase (PostgreSQL)                                                               |
+| Auth       | NextAuth v5 (beta), Credentials provider                                            |
+| Payments   | Stripe (checkout sessions + webhooks)                                               |
+| AI         | Anthropic Claude Sonnet (4-agent pipeline)                                          |
+| CRM        | GoHighLevel (optional)                                                              |
+| Email      | Resend                                                                              |
+| Validation | Zod                                                                                 |
+| Testing    | Vitest + Testing Library + Playwright                                               |
 
 ## Project Structure
 
@@ -57,13 +57,13 @@ scripts/                — Seed scripts, utilities
 
 ## Brand
 
-| Token | Value |
-|-------|-------|
-| Primary | Green Azure `#0E3F50` (oklch 0.30 0.04 220) |
-| Accent | Gray Orange `#C49B7A` (oklch 0.70 0.08 60) |
-| Heading Font | Lexend Exa (600-700) |
-| Body Font | Lexend Deca (300-500) |
-| Mono Font | JetBrains Mono |
+| Token        | Value                                       |
+| ------------ | ------------------------------------------- |
+| Primary      | Green Azure `#0E3F50` (oklch 0.30 0.04 220) |
+| Accent       | Gray Orange `#C49B7A` (oklch 0.70 0.08 60)  |
+| Heading Font | Lexend Exa (600-700)                        |
+| Body Font    | Lexend Deca (300-500)                       |
+| Mono Font    | JetBrains Mono                              |
 
 ---
 
@@ -72,11 +72,13 @@ scripts/                — Seed scripts, utilities
 All 6 steps implemented.
 
 ### 1.1 Project Scaffolding
+
 - Vitest, Playwright, Prettier configs
 - PWA manifest, directory structure, npm scripts
 - `.env.example` with all environment variables
 
 ### 1.2 Database Setup
+
 - 12 Supabase migrations (users, client_profiles, exercises, programs, program_exercises, program_assignments, exercise_progress, payments, reviews, testimonials, notifications + RLS)
 - TypeScript types in `types/database.ts`
 - Supabase clients (browser, server, service-role) in `lib/supabase.ts`
@@ -84,6 +86,7 @@ All 6 steps implemented.
 - Seed data: 1 admin, 3 clients, 20 exercises, 2 programs
 
 ### 1.3 Authentication
+
 - NextAuth v5 with Credentials provider + Supabase adapter
 - Middleware protecting `/admin/*`, `/client/*`, `/api/admin/*`
 - Login + Register forms wired to NextAuth
@@ -91,6 +94,7 @@ All 6 steps implemented.
 - Auth hooks and helpers
 
 ### 1.4 Theme & Rebranding
+
 - Lexend Exa/Deca/JetBrains Mono fonts via CSS variables
 - Green Azure / Gray Orange brand colors in `@theme inline`
 - Replaced ~83 hardcoded hex colors with semantic classes
@@ -98,11 +102,13 @@ All 6 steps implemented.
 - Custom shadcn primitives (empty-state, spinner)
 
 ### 1.5 Admin Dashboard Shell
+
 - Admin layout with Green Azure sidebar, accent active state
 - 8 placeholder admin pages
 - Client list with search, filters, pagination
 
 ### 1.6 Client Portal Shell
+
 - Client layout with bottom tabs (mobile) + sidebar (desktop)
 - Dashboard, workouts, progress, profile, settings pages
 
@@ -111,12 +117,14 @@ All 6 steps implemented.
 ## Phase 2: Feature Expansion — COMPLETE
 
 ### 2.1 Admin Exercise Library
+
 - Exercise CRUD with form dialog
 - YouTube video preview in form
 - CSV import with bulk operations
 - AI metadata fields (movement_pattern, force_type, laterality, muscles, is_bodyweight, is_compound)
 
 ### 2.2 Program Store + Stripe Checkout
+
 - Public `/programs` page with program cards
 - Program detail page with "Buy Now" button
 - Stripe checkout session creation → hosted checkout → webhook
@@ -126,6 +134,7 @@ All 6 steps implemented.
 - Admin payments dashboard with revenue metrics
 
 **Purchase Flow:**
+
 ```
 /programs → /programs/[id] → "Buy Now" → Stripe Checkout
   → Webhook: createPayment() + createAssignment()
@@ -133,11 +142,13 @@ All 6 steps implemented.
 ```
 
 ### 2.3 Program Builder
+
 - Admin program form with split type, periodization, AI generation params
 - Exercise scheduling by day/week with sets, reps, rest, RPE target, intensity %, tempo, group tags
 - Drag-and-drop exercise ordering
 
 ### 2.4 Client Registration & Dashboard
+
 - Registration with email verification (Resend)
 - Forgot/reset password flow
 - Client dashboard with stats overview
@@ -145,12 +156,14 @@ All 6 steps implemented.
 - Welcome email after verification
 
 ### 2.5 Client Questionnaire (Static)
+
 - 8-step linear form: goals, fitness level, training history, injuries, equipment, schedule, preferences, review
 - Saves to `client_profiles` table
 - Admin can view responses on client detail page
 - Pre-fills if client already has a profile
 
 ### 2.6 AI Exercise Assignment Engine
+
 - 4-agent Claude Sonnet pipeline:
   - Agent 1: Profile Analyzer (recommended split, volume targets, constraints)
   - Agent 2: Program Architect (program skeleton with weeks/days/slots)
@@ -162,12 +175,14 @@ All 6 steps implemented.
 - Cost: ~$0.12-0.36 per generation
 
 ### 2.7 PWA Polish
+
 - Service worker (`public/sw.js`): cache-first for static, stale-while-revalidate for API
 - "Add to Home Screen" install prompt banner
 - Pull-to-refresh gesture handler
 - Skeleton loading states for all client pages
 
 ### 2.8 Workout Logging & Recommendations
+
 - Interactive workout logging from `/client/workouts`
 - Progressive overload algorithm (`lib/weight-recommendation.ts`):
   - Epley 1RM estimation
@@ -191,6 +206,7 @@ All 6 steps implemented.
 **End-state vision:** Client signs up → completes conditional assessment → system determines ability level → AI auto-generates a personalized program pulling exercises matched to their level/equipment/goals → program is delivered weekly → after 4 weeks, reassessment triggers → AI adjusts difficulty based on logged performance + feedback → new program generated → cycle repeats.
 
 ### Dependency Graph
+
 ```
 3A: Exercise Tagging
   │
@@ -214,6 +230,7 @@ All 6 steps implemented.
 **Goal:** Every exercise gets a granular difficulty score and progression chain so AI can match exercises to client ability.
 
 **Database Changes:**
+
 ```sql
 ALTER TABLE exercises
   ADD COLUMN IF NOT EXISTS difficulty_score integer CHECK (difficulty_score >= 1 AND difficulty_score <= 10),
@@ -255,6 +272,7 @@ END WHERE difficulty_score IS NULL;
 **Goal:** Replace static form with branching assessment that objectively determines ability per movement pattern — like a solar system selector where early answers determine follow-up questions.
 
 **Assessment Flow:**
+
 ```
 Section 1: Background & Goals (always shown)
   ├─ Training goals (multi-select)
@@ -294,6 +312,7 @@ RESULT → Computed ability profile:
 ```
 
 **Database:**
+
 ```sql
 CREATE TABLE assessment_questions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -355,6 +374,7 @@ CREATE TABLE assessment_results (
 **Goal:** Assessment completion auto-triggers AI program generation using ability levels to filter exercises.
 
 **Flow:**
+
 ```
 Client submits assessment
   → Compute ability levels (max_difficulty_score)
@@ -368,6 +388,7 @@ Client submits assessment
 ```
 
 **Changes to AI pipeline:**
+
 - `lib/ai/orchestrator.ts` — accept `assessment_result` as input
 - `lib/ai/exercise-context.ts` — filter by `difficulty_score`
 - `lib/ai/prompts.ts` — Agent 1 + Agent 4 prompts include ability levels
@@ -390,6 +411,7 @@ Client submits assessment
 **Goal:** Track weekly progression within a program cycle. Client sees only the current week's exercises and advances after completing them.
 
 **Database:**
+
 ```sql
 ALTER TABLE program_assignments
   ADD COLUMN IF NOT EXISTS current_week integer NOT NULL DEFAULT 1,
@@ -397,6 +419,7 @@ ALTER TABLE program_assignments
 ```
 
 **Behavior:**
+
 - Workouts page filters `program_exercises` by `week_number = assignment.current_week`
 - "Complete Week" button appears when all exercises for the week are logged
 - Advancing to next week shows progressively harder programming
@@ -418,6 +441,7 @@ ALTER TABLE program_assignments
 **Goal:** After completing a program cycle (e.g., 4 weeks), prompt a shorter reassessment that adjusts difficulty based on 3 signals: client feedback, RPE data, and movement re-screen.
 
 **Reassessment Form:**
+
 ```
 Section 1: Performance Feedback
   ├─ "How did the program feel?" (too easy / just right / too hard)
@@ -432,6 +456,7 @@ RESULT → Adjusted difficulty
 ```
 
 **3-Signal Difficulty Adjustment:**
+
 ```
 adjustment = 0
 if feedback == "too_easy":  adjustment += 1
@@ -444,6 +469,7 @@ new_max_difficulty = clamp(old + adjustment, 1, 10)
 ```
 
 **Database:**
+
 ```sql
 ALTER TABLE assessment_results
   ADD COLUMN IF NOT EXISTS previous_assessment_id uuid REFERENCES assessment_results(id),
@@ -470,6 +496,7 @@ ALTER TABLE assessment_results
 **Goal:** Admin tools for managing the assessment → program → reassessment lifecycle.
 
 **Features:**
+
 1. **Assessment Question Builder** — CRUD, drag-and-drop ordering, branching logic, flow preview
 2. **Client Assessment History** — timeline of all assessments per client, computed levels, generated programs, manual override
 3. **Program Generation Log** — filter by trigger (manual / initial / reassessment)
@@ -489,23 +516,27 @@ ALTER TABLE assessment_results
 ## Phase 4: Content Pages & Service Expansion — PLANNED
 
 ### 4.1 Dedicated Service Pages
+
 - [ ] `/services/in-person` — comprehensive assessment, strategic blueprint, structured development
 - [ ] `/services/online` — individualized programming, video feedback, load monitoring
 - [ ] `/services/return-to-perform` — clearance vs readiness, performance framework
 - [ ] Application/inquiry form component (shared across services)
 
 ### 4.2 Homepage Content Refresh
+
 - [ ] Hero: "Elite Performance is Not Trained. It is Engineered."
 - [ ] Services section with 3 core offerings
 - [ ] Real athlete testimonials with sport badges (WTA, Pro Pickleball)
 - [ ] Updated about section
 
 ### 4.3 Coaching Philosophy / Five Pillar Framework
+
 - [ ] `/philosophy` page with "The Grey Zone" content
 - [ ] Visual framework diagram
 - [ ] Integration with service pages
 
 ### 4.4 Resources Section
+
 - [ ] `/resources` page structure
 - [ ] Blog/article support
 
@@ -514,28 +545,33 @@ ALTER TABLE assessment_results
 ## Phase 5: Platform Polish & Advanced Features — PLANNED
 
 ### 5.1 Email Integration Expansion
+
 - [ ] Contact form sends actual emails
 - [ ] Payment receipt emails
 - [ ] Program assignment notification emails
 - [ ] Reassessment reminder emails
 
 ### 5.2 Video Analysis Integration
+
 - [ ] File upload infrastructure (Vercel Blob or S3)
 - [ ] Exercise instruction videos (admin uploads)
 - [ ] Client video submission for form checks
 
 ### 5.3 Application/Intake Forms
+
 - [ ] Selective application for in-person coaching
 - [ ] Online coaching inquiry form
 - [ ] RTP assessment inquiry form
 - [ ] Admin view of applications
 
 ### 5.4 Notifications System UI
+
 - [ ] Client notification bell/dropdown
 - [ ] Mark as read
 - [ ] Real-time updates (SSE or polling)
 
 ### 5.5 Advanced Client Dashboard
+
 - [ ] Progress charts (weight over time, volume trends)
 - [ ] Streak tracking
 - [ ] Calendar view of scheduled workouts
@@ -545,24 +581,28 @@ ALTER TABLE assessment_results
 ## Phase 6: Launch Preparation — PLANNED
 
 ### 6.1 Production Setup
+
 - [ ] Stripe live keys
 - [ ] Domain and DNS
 - [ ] Production environment variables
 - [ ] Error monitoring (Sentry)
 
 ### 6.2 SEO & Performance
+
 - [ ] Metadata and JSON-LD on all pages
 - [ ] Image optimization
 - [ ] Sitemap includes all pages
 - [ ] Core Web Vitals optimization
 
 ### 6.3 Content Population
+
 - [ ] All testimonials with real athlete data
 - [ ] Programs created with pricing
 - [ ] Exercise library fully populated with difficulty scores
 - [ ] Final copy on all pages
 
 ### 6.4 End-to-End Testing
+
 - [ ] Register → assessment → AI program → workouts → log → reassessment flow
 - [ ] Purchase flow: browse → buy → checkout → access
 - [ ] Mobile responsive testing
@@ -572,14 +612,14 @@ ALTER TABLE assessment_results
 
 ## Current Status
 
-| Phase | Status | Key Deliverables |
-|-------|--------|-----------------|
-| **Phase 1: Foundation** | COMPLETE | Auth, DB, theme, admin shell, client portal |
+| Phase                          | Status   | Key Deliverables                                                              |
+| ------------------------------ | -------- | ----------------------------------------------------------------------------- |
+| **Phase 1: Foundation**        | COMPLETE | Auth, DB, theme, admin shell, client portal                                   |
 | **Phase 2: Feature Expansion** | COMPLETE | Exercises, programs, Stripe, AI pipeline, questionnaire, PWA, workout logging |
-| **Phase 3: Assessment Engine** | NEXT | Conditional assessment, auto AI programs, weekly progression, reassessments |
-| **Phase 4: Content Pages** | PLANNED | Service pages, homepage refresh, philosophy |
-| **Phase 5: Platform Polish** | PLANNED | Video, notifications, advanced dashboard |
-| **Phase 6: Launch** | PLANNED | Production, SEO, testing |
+| **Phase 3: Assessment Engine** | NEXT     | Conditional assessment, auto AI programs, weekly progression, reassessments   |
+| **Phase 4: Content Pages**     | PLANNED  | Service pages, homepage refresh, philosophy                                   |
+| **Phase 5: Platform Polish**   | PLANNED  | Video, notifications, advanced dashboard                                      |
+| **Phase 6: Launch**            | PLANNED  | Production, SEO, testing                                                      |
 
 ---
 

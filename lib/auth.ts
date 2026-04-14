@@ -20,11 +20,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
         // Use service role client to bypass RLS for auth queries
         const supabase = createServiceRoleClient()
-        const { data: user, error } = await supabase
-          .from("users")
-          .select("*")
-          .eq("email", email)
-          .single()
+        const { data: user, error } = await supabase.from("users").select("*").eq("email", email).single()
 
         if (error || !user) return null
 

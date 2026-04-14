@@ -23,13 +23,7 @@ const volumeTargetSchema = z.object({
 })
 
 const exerciseConstraintSchema = z.object({
-  type: z.enum([
-    "avoid_movement",
-    "avoid_equipment",
-    "avoid_muscle",
-    "limit_load",
-    "require_unilateral",
-  ]),
+  type: z.enum(["avoid_movement", "avoid_equipment", "avoid_muscle", "limit_load", "require_unilateral"]),
   value: z.string(),
   reason: z.string(),
 })
@@ -77,19 +71,21 @@ const exerciseSlotSchema = z.object({
   rpe_target: z.number().nullable(),
   tempo: z.string().nullable(),
   group_tag: z.string().nullable(),
-  technique: z.enum([
-    "straight_set",
-    "superset",
-    "dropset",
-    "giant_set",
-    "circuit",
-    "rest_pause",
-    "amrap",
-    "cluster_set",
-    "complex",
-    "emom",
-    "wave_loading",
-  ]).default("straight_set"),
+  technique: z
+    .enum([
+      "straight_set",
+      "superset",
+      "dropset",
+      "giant_set",
+      "circuit",
+      "rest_pause",
+      "amrap",
+      "cluster_set",
+      "complex",
+      "emom",
+      "wave_loading",
+    ])
+    .default("straight_set"),
   intensity_pct: z.number().nullable().optional().default(null),
 })
 

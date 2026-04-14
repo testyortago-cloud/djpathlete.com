@@ -10,9 +10,7 @@ function getAdminApp() {
     if (getApps().length) {
       app = getApps()[0]
     } else {
-      const serviceAccount = JSON.parse(
-        process.env.FIREBASE_SERVICE_ACCOUNT_KEY ?? "{}"
-      )
+      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY ?? "{}")
       app = initializeApp({
         credential: cert(serviceAccount),
         storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
@@ -39,10 +37,7 @@ export function getAdminRtdb() {
  * Generate a signed URL for a Firebase Storage file.
  * Defaults to 1-hour expiry.
  */
-export async function getSignedVideoUrl(
-  videoPath: string,
-  expiresInMs = 60 * 60 * 1000
-): Promise<string> {
+export async function getSignedVideoUrl(videoPath: string, expiresInMs = 60 * 60 * 1000): Promise<string> {
   const bucket = getAdminStorage().bucket()
   const file = bucket.file(videoPath)
   const [url] = await file.getSignedUrl({

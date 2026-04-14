@@ -3,10 +3,7 @@ import { auth } from "@/lib/auth"
 import { getFormReviewById } from "@/lib/db/form-reviews"
 import { getSignedVideoUrl } from "@/lib/firebase-admin"
 
-export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
     if (!session?.user?.id) {
@@ -34,9 +31,6 @@ export async function GET(
     return NextResponse.json({ ...review, videoUrl })
   } catch (error) {
     console.error("Client form review GET error:", error)
-    return NextResponse.json(
-      { error: "Failed to fetch form review" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to fetch form review" }, { status: 500 })
   }
 }

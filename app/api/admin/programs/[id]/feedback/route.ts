@@ -6,27 +6,18 @@ import { getProgramById } from "@/lib/db/programs"
 import { getGenerationLogById } from "@/lib/db/ai-generation-log"
 import { embedProgramFeedback } from "@/lib/ai/program-feedback"
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
     if (!session?.user?.id || session.user.role !== "admin") {
-      return NextResponse.json(
-        { error: "Unauthorized. Admin access required." },
-        { status: 403 }
-      )
+      return NextResponse.json({ error: "Unauthorized. Admin access required." }, { status: 403 })
     }
 
     const { id: programId } = await params
     const body = await request.json()
     const parsed = programFeedbackSubmitSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Invalid request body.", details: parsed.error.issues },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Invalid request body.", details: parsed.error.issues }, { status: 400 })
     }
 
     // Look up the program to get generation context
@@ -43,7 +34,7 @@ export async function POST(
     if (program.is_ai_generated) {
       // The generation_log_id might be stored on the program or we search by program_id
       // Try to get split_type and difficulty from the program itself
-      splitType = (program as unknown as Record<string, unknown>).split_type as string ?? null
+      splitType = ((program as unknown as Record<string, unknown>).split_type as string) ?? null
       difficulty = program.difficulty ?? null
     }
 
@@ -69,24 +60,15 @@ export async function POST(
     return NextResponse.json({ success: true, feedback })
   } catch (error) {
     console.error("[Program Feedback] Error:", error)
-    return NextResponse.json(
-      { error: "Failed to submit program feedback." },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to submit program feedback." }, { status: 500 })
   }
 }
 
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
     if (!session?.user?.id || session.user.role !== "admin") {
-      return NextResponse.json(
-        { error: "Unauthorized. Admin access required." },
-        { status: 403 }
-      )
+      return NextResponse.json({ error: "Unauthorized. Admin access required." }, { status: 403 })
     }
 
     const { id: programId } = await params
@@ -95,9 +77,6 @@ export async function GET(
     return NextResponse.json({ feedback })
   } catch (error) {
     console.error("[Program Feedback] Error:", error)
-    return NextResponse.json(
-      { error: "Failed to fetch program feedback." },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to fetch program feedback." }, { status: 500 })
   }
 }

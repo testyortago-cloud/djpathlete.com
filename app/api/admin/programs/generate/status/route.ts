@@ -7,20 +7,14 @@ export async function GET(request: Request) {
     // Auth check
     const session = await auth()
     if (!session?.user?.id || session.user.role !== "admin") {
-      return NextResponse.json(
-        { error: "Unauthorized. Admin access required." },
-        { status: 403 }
-      )
+      return NextResponse.json({ error: "Unauthorized. Admin access required." }, { status: 403 })
     }
 
     const { searchParams } = new URL(request.url)
     const logId = searchParams.get("logId")
 
     if (!logId) {
-      return NextResponse.json(
-        { error: "logId query parameter is required" },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "logId query parameter is required" }, { status: 400 })
     }
 
     const log = await getGenerationLogById(logId)
@@ -41,9 +35,6 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error("[status] Failed to fetch generation status:", error)
 
-    return NextResponse.json(
-      { error: "Failed to fetch generation status" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to fetch generation status" }, { status: 500 })
   }
 }

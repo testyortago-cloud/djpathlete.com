@@ -4,7 +4,21 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import Link from "next/link"
-import { Search, ChevronLeft, ChevronRight, Plus, Pencil, Trash2, ClipboardList, LayoutGrid, Sparkles, Globe, Lock, Users, MessageSquare } from "lucide-react"
+import {
+  Search,
+  ChevronLeft,
+  ChevronRight,
+  Plus,
+  Pencil,
+  Trash2,
+  ClipboardList,
+  LayoutGrid,
+  Sparkles,
+  Globe,
+  Lock,
+  Users,
+  MessageSquare,
+} from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import {
@@ -155,19 +169,9 @@ export function ProgramList({ programs, athleteCounts = {} }: ProgramListProps) 
             Chat
           </Button>
         </div>
-        <ProgramFormDialog
-          open={formOpen}
-          onOpenChange={setFormOpen}
-          program={editingProgram}
-        />
-        <AiGenerateDialog
-          open={aiDialogOpen}
-          onOpenChange={setAiDialogOpen}
-        />
-        <AiProgramChatDialog
-          open={chatDialogOpen}
-          onOpenChange={setChatDialogOpen}
-        />
+        <ProgramFormDialog open={formOpen} onOpenChange={setFormOpen} program={editingProgram} />
+        <AiGenerateDialog open={aiDialogOpen} onOpenChange={setAiDialogOpen} />
+        <AiProgramChatDialog open={chatDialogOpen} onOpenChange={setChatDialogOpen} />
       </div>
     )
   }
@@ -205,39 +209,57 @@ export function ProgramList({ programs, athleteCounts = {} }: ProgramListProps) 
             <Input
               placeholder="Search programs..."
               value={search}
-              onChange={(e) => { setSearch(e.target.value); setPage(1) }}
+              onChange={(e) => {
+                setSearch(e.target.value)
+                setPage(1)
+              }}
               className="pl-9 h-9"
             />
           </div>
           <div className="flex gap-2 overflow-x-auto scrollbar-none -mx-1 px-1">
             <select
               value={categoryFilter}
-              onChange={(e) => { setCategoryFilter(e.target.value); setPage(1) }}
+              onChange={(e) => {
+                setCategoryFilter(e.target.value)
+                setPage(1)
+              }}
               className="h-9 rounded-lg border border-border bg-white px-2 sm:px-3 text-xs sm:text-sm text-foreground shrink-0"
             >
               <option value="all">Category</option>
               {PROGRAM_CATEGORIES.map((cat) => (
-                <option key={cat} value={cat}>{CATEGORY_LABELS[cat]}</option>
+                <option key={cat} value={cat}>
+                  {CATEGORY_LABELS[cat]}
+                </option>
               ))}
             </select>
             <select
               value={difficultyFilter}
-              onChange={(e) => { setDifficultyFilter(e.target.value); setPage(1) }}
+              onChange={(e) => {
+                setDifficultyFilter(e.target.value)
+                setPage(1)
+              }}
               className="h-9 rounded-lg border border-border bg-white px-2 sm:px-3 text-xs sm:text-sm text-foreground shrink-0"
             >
               <option value="all">Difficulty</option>
               {PROGRAM_DIFFICULTIES.map((diff) => (
-                <option key={diff} value={diff}>{DIFFICULTY_LABELS[diff]}</option>
+                <option key={diff} value={diff}>
+                  {DIFFICULTY_LABELS[diff]}
+                </option>
               ))}
             </select>
             <select
               value={tierFilter}
-              onChange={(e) => { setTierFilter(e.target.value); setPage(1) }}
+              onChange={(e) => {
+                setTierFilter(e.target.value)
+                setPage(1)
+              }}
               className="h-9 rounded-lg border border-border bg-white px-2 sm:px-3 text-xs sm:text-sm text-foreground shrink-0"
             >
               <option value="all">Tier</option>
               {PROGRAM_TIERS.map((t) => (
-                <option key={t} value={t}>{TIER_LABELS[t]}</option>
+                <option key={t} value={t}>
+                  {TIER_LABELS[t]}
+                </option>
               ))}
             </select>
           </div>
@@ -252,7 +274,9 @@ export function ProgramList({ programs, athleteCounts = {} }: ProgramListProps) 
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Category</th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Difficulty</th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Duration</th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Sessions/Wk</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">
+                  Sessions/Wk
+                </th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden lg:table-cell">Price</th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Athletes</th>
                 <th className="text-right px-4 py-3 font-medium text-muted-foreground">Actions</th>
@@ -260,28 +284,43 @@ export function ProgramList({ programs, athleteCounts = {} }: ProgramListProps) 
             </thead>
             <tbody>
               {paginated.map((program) => (
-                <tr key={program.id} className="border-b border-border last:border-b-0 hover:bg-surface/30 transition-colors">
+                <tr
+                  key={program.id}
+                  className="border-b border-border last:border-b-0 hover:bg-surface/30 transition-colors"
+                >
                   <td className="px-4 py-3 font-medium text-foreground">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <Link href={`/admin/programs/${program.id}`} className="hover:underline">
                         {program.name}
                       </Link>
-                      <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium shrink-0 ${TIER_COLORS[program.tier] ?? "bg-muted text-muted-foreground"}`} title={`${TIER_LABELS[program.tier] ?? program.tier} tier`}>
+                      <span
+                        className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium shrink-0 ${TIER_COLORS[program.tier] ?? "bg-muted text-muted-foreground"}`}
+                        title={`${TIER_LABELS[program.tier] ?? program.tier} tier`}
+                      >
                         {TIER_LABELS[program.tier] ?? program.tier}
                       </span>
                       {program.is_ai_generated && (
-                        <span className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-accent/20 text-accent shrink-0" title="AI Generated">
+                        <span
+                          className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-accent/20 text-accent shrink-0"
+                          title="AI Generated"
+                        >
                           <Sparkles className="size-2.5" />
                           AI
                         </span>
                       )}
                       {program.is_public ? (
-                        <span className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-success/10 text-success shrink-0" title="Public — visible in store">
+                        <span
+                          className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-success/10 text-success shrink-0"
+                          title="Public — visible in store"
+                        >
                           <Globe className="size-2.5" />
                           Public
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground shrink-0" title="Private — assigned clients only">
+                        <span
+                          className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground shrink-0"
+                          title="Private — assigned clients only"
+                        >
                           <Lock className="size-2.5" />
                           Private
                         </span>
@@ -291,23 +330,26 @@ export function ProgramList({ programs, athleteCounts = {} }: ProgramListProps) 
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       {(Array.isArray(program.category) ? program.category : [program.category]).map((cat) => (
-                        <span key={cat} className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-primary/10 text-primary capitalize whitespace-nowrap">
+                        <span
+                          key={cat}
+                          className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-primary/10 text-primary capitalize whitespace-nowrap"
+                        >
                           {CATEGORY_LABELS[cat] ?? cat}
                         </span>
                       ))}
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${DIFFICULTY_COLORS[program.difficulty] ?? "bg-muted text-muted-foreground"}`}>
+                    <span
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${DIFFICULTY_COLORS[program.difficulty] ?? "bg-muted text-muted-foreground"}`}
+                    >
                       {DIFFICULTY_LABELS[program.difficulty] ?? program.difficulty}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">
                     {program.duration_weeks} week{program.duration_weeks !== 1 ? "s" : ""}
                   </td>
-                  <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">
-                    {program.sessions_per_week}x
-                  </td>
+                  <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">{program.sessions_per_week}x</td>
                   <td className="px-4 py-3 text-muted-foreground hidden lg:table-cell">
                     {formatPrice(program.price_cents)}
                   </td>
@@ -315,7 +357,9 @@ export function ProgramList({ programs, athleteCounts = {} }: ProgramListProps) 
                     {(() => {
                       const count = athleteCounts[program.id] ?? 0
                       return (
-                        <span className={`inline-flex items-center gap-1 text-sm ${count > 0 ? "text-foreground font-medium" : "text-muted-foreground"}`}>
+                        <span
+                          className={`inline-flex items-center gap-1 text-sm ${count > 0 ? "text-foreground font-medium" : "text-muted-foreground"}`}
+                        >
                           <Users className="size-3.5" />
                           {count}
                         </span>
@@ -325,20 +369,11 @@ export function ProgramList({ programs, athleteCounts = {} }: ProgramListProps) 
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
                       <Link href={`/admin/programs/${program.id}`}>
-                        <Button
-                          variant="ghost"
-                          size="icon-xs"
-                          title="Build program"
-                        >
+                        <Button variant="ghost" size="icon-xs" title="Build program">
                           <LayoutGrid className="size-3.5" />
                         </Button>
                       </Link>
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        onClick={() => handleEdit(program)}
-                        title="Edit program"
-                      >
+                      <Button variant="ghost" size="icon-xs" onClick={() => handleEdit(program)} title="Edit program">
                         <Pencil className="size-3.5" />
                       </Button>
                       <Button
@@ -371,17 +406,20 @@ export function ProgramList({ programs, athleteCounts = {} }: ProgramListProps) 
             <span className="hidden sm:inline">Rows per page:</span>
             <select
               value={perPage}
-              onChange={(e) => { setPerPage(Number(e.target.value)); setPage(1) }}
+              onChange={(e) => {
+                setPerPage(Number(e.target.value))
+                setPage(1)
+              }}
               className="h-8 rounded border border-border bg-white px-2 text-sm"
             >
               {PAGE_SIZE_OPTIONS.map((size) => (
-                <option key={size} value={size}>{size}</option>
+                <option key={size} value={size}>
+                  {size}
+                </option>
               ))}
             </select>
             <span className="text-xs sm:text-sm">
-              {filtered.length === 0
-                ? "0"
-                : `${(page - 1) * perPage + 1}-${Math.min(page * perPage, filtered.length)}`}{" "}
+              {filtered.length === 0 ? "0" : `${(page - 1) * perPage + 1}-${Math.min(page * perPage, filtered.length)}`}{" "}
               of {filtered.length}
             </span>
           </div>
@@ -405,11 +443,7 @@ export function ProgramList({ programs, athleteCounts = {} }: ProgramListProps) 
       </div>
 
       {/* Create/Edit Dialog */}
-      <ProgramFormDialog
-        open={formOpen}
-        onOpenChange={setFormOpen}
-        program={editingProgram}
-      />
+      <ProgramFormDialog open={formOpen} onOpenChange={setFormOpen} program={editingProgram} />
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
@@ -417,22 +451,15 @@ export function ProgramList({ programs, athleteCounts = {} }: ProgramListProps) 
           <DialogHeader>
             <DialogTitle>Delete Program</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete &ldquo;{deleteTarget?.name}&rdquo;? This will permanently remove the program, all its exercises, and all client assignments. This action cannot be undone.
+              Are you sure you want to delete &ldquo;{deleteTarget?.name}&rdquo;? This will permanently remove the
+              program, all its exercises, and all client assignments. This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setDeleteTarget(null)}
-              disabled={isDeleting}
-            >
+            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={isDeleting}>
               Cancel
             </Button>
-            <Button
-              variant="destructive"
-              onClick={handleDelete}
-              disabled={isDeleting}
-            >
+            <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
               {isDeleting ? "Deleting..." : "Delete"}
             </Button>
           </DialogFooter>
@@ -440,16 +467,10 @@ export function ProgramList({ programs, athleteCounts = {} }: ProgramListProps) 
       </Dialog>
 
       {/* AI Generate Dialog */}
-      <AiGenerateDialog
-        open={aiDialogOpen}
-        onOpenChange={setAiDialogOpen}
-      />
+      <AiGenerateDialog open={aiDialogOpen} onOpenChange={setAiDialogOpen} />
 
       {/* AI Chat Builder Dialog */}
-      <AiProgramChatDialog
-        open={chatDialogOpen}
-        onOpenChange={setChatDialogOpen}
-      />
+      <AiProgramChatDialog open={chatDialogOpen} onOpenChange={setChatDialogOpen} />
     </div>
   )
 }

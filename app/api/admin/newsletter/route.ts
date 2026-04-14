@@ -14,10 +14,7 @@ export async function GET() {
     return NextResponse.json(newsletters)
   } catch (error) {
     console.error("Newsletter GET error:", error)
-    return NextResponse.json(
-      { error: "Failed to fetch newsletters" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to fetch newsletters" }, { status: 500 })
   }
 }
 
@@ -32,10 +29,7 @@ export async function POST(request: Request) {
     const parsed = newsletterFormSchema.safeParse(body)
 
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Invalid data", details: parsed.error.flatten() },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Invalid data", details: parsed.error.flatten() }, { status: 400 })
     }
 
     const newsletter = await createNewsletter({
@@ -47,9 +41,6 @@ export async function POST(request: Request) {
     return NextResponse.json(newsletter, { status: 201 })
   } catch (error) {
     console.error("Newsletter POST error:", error)
-    return NextResponse.json(
-      { error: "Failed to create newsletter" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to create newsletter" }, { status: 500 })
   }
 }

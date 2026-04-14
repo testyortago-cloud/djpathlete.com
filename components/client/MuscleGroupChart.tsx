@@ -66,10 +66,7 @@ export function MuscleGroupChart({ data }: MuscleGroupChartProps) {
                 ))}
               </Pie>
               <Tooltip
-                formatter={(value) => [
-                  `${value} sets (${Math.round((Number(value) / total) * 100)}%)`,
-                  "",
-                ]}
+                formatter={(value) => [`${value} sets (${Math.round((Number(value) / total) * 100)}%)`, ""]}
                 contentStyle={{
                   fontSize: 12,
                   borderRadius: 8,
@@ -83,23 +80,14 @@ export function MuscleGroupChart({ data }: MuscleGroupChartProps) {
         <div className="flex-1 space-y-1.5 overflow-hidden">
           {data.slice(0, 6).map((entry) => (
             <div key={entry.name} className="flex items-center gap-2">
-              <span
-                className="size-2.5 rounded-full shrink-0"
-                style={{ backgroundColor: getColor(entry.name) }}
-              />
-              <span className="text-xs text-foreground capitalize truncate flex-1">
-                {entry.name}
-              </span>
+              <span className="size-2.5 rounded-full shrink-0" style={{ backgroundColor: getColor(entry.name) }} />
+              <span className="text-xs text-foreground capitalize truncate flex-1">{entry.name}</span>
               <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
                 {Math.round((entry.value / total) * 100)}%
               </span>
             </div>
           ))}
-          {data.length > 6 && (
-            <p className="text-[10px] text-muted-foreground pl-4.5">
-              +{data.length - 6} more
-            </p>
-          )}
+          {data.length > 6 && <p className="text-[10px] text-muted-foreground pl-4.5">+{data.length - 6} more</p>}
         </div>
       </div>
     </div>

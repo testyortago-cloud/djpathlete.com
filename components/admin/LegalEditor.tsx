@@ -30,12 +30,7 @@ interface LegalEditorProps {
   minHeight?: string
 }
 
-export function LegalEditor({
-  content,
-  onChange,
-  disabled = false,
-  minHeight = "400px",
-}: LegalEditorProps) {
+export function LegalEditor({ content, onChange, disabled = false, minHeight = "400px" }: LegalEditorProps) {
   // Convert markdown to HTML if the content isn't already HTML (keep title for editor)
   const initialContent = content.trim().startsWith("<") ? content : renderLegalContent(content, false)
 
@@ -72,12 +67,7 @@ export function LegalEditor({
   function insertLink() {
     const url = window.prompt("Enter URL:")
     if (!url) return
-    editor
-      ?.chain()
-      .focus()
-      .extendMarkRange("link")
-      .setLink({ href: url })
-      .run()
+    editor?.chain().focus().extendMarkRange("link").setLink({ href: url }).run()
   }
 
   const tools = [
@@ -182,13 +172,13 @@ export function LegalEditor({
                 "p-1.5 rounded-md transition-colors",
                 tool.active
                   ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted",
               )}
               title={tool.title}
             >
               <tool.icon className="size-4" />
             </button>
-          )
+          ),
         )}
       </div>
 

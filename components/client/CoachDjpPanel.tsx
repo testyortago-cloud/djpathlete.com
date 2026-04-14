@@ -1,25 +1,9 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
-import {
-  Brain,
-  AlertTriangle,
-  TrendingDown,
-  TrendingUp,
-  Activity,
-  Target,
-  Zap,
-  RotateCcw,
-  Check,
-} from "lucide-react"
+import { Brain, AlertTriangle, TrendingDown, TrendingUp, Activity, Target, Zap, RotateCcw, Check } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from "@/components/ui/sheet"
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -178,13 +162,7 @@ function AnalysisLoader({ phase }: { phase: number }) {
 
 // ─── Alert card ─────────────────────────────────────────────────────────────
 
-function AlertCard({
-  type,
-  delay = 0,
-}: {
-  type: "plateau" | "deload"
-  delay?: number
-}) {
+function AlertCard({ type, delay = 0 }: { type: "plateau" | "deload"; delay?: number }) {
   const config = {
     plateau: {
       icon: AlertTriangle,
@@ -226,13 +204,7 @@ function AlertCard({
 
 // ─── Insight card ───────────────────────────────────────────────────────────
 
-function InsightCard({
-  observation,
-  index,
-}: {
-  observation: string
-  index: number
-}) {
+function InsightCard({ observation, index }: { observation: string; index: number }) {
   const Icon = INSIGHT_ICONS[index % INSIGHT_ICONS.length]
 
   return (
@@ -280,16 +252,10 @@ function WeightCta({
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
           {remainingSets > 0 ? "Recommended Weight" : "Weight for Next Session"}
         </p>
-        <p className="text-2xl font-heading font-bold text-primary">
-          {formatWeight(weightKg)}
-        </p>
+        <p className="text-2xl font-heading font-bold text-primary">{formatWeight(weightKg)}</p>
       </div>
       {remainingSets > 0 ? (
-        <Button
-          className="w-full gap-2"
-          onClick={handleClick}
-          disabled={applied}
-        >
+        <Button className="w-full gap-2" onClick={handleClick} disabled={applied}>
           <AnimatePresence mode="wait">
             {applied ? (
               <motion.span
@@ -303,15 +269,14 @@ function WeightCta({
               </motion.span>
             ) : (
               <motion.span key="label" className="flex items-center gap-2">
-                Apply {formatWeightCompact(weightKg)} to {remainingSets === 1 ? "Last Set" : `${remainingSets} Remaining Sets`}
+                Apply {formatWeightCompact(weightKg)} to{" "}
+                {remainingSets === 1 ? "Last Set" : `${remainingSets} Remaining Sets`}
               </motion.span>
             )}
           </AnimatePresence>
         </Button>
       ) : (
-        <p className="text-xs text-muted-foreground">
-          All sets completed — use this weight next session.
-        </p>
+        <p className="text-xs text-muted-foreground">All sets completed — use this weight next session.</p>
       )}
     </motion.div>
   )
@@ -363,7 +328,7 @@ export function CoachDjpPanel({
         suggested_weight_kg: (aiJob.analysis.suggested_weight_kg as number) ?? null,
         deload_recommended: !!aiJob.analysis.deload_recommended,
         key_observations: Array.isArray(aiJob.analysis.key_observations)
-          ? aiJob.analysis.key_observations as string[]
+          ? (aiJob.analysis.key_observations as string[])
           : [],
       })
     }
@@ -490,10 +455,7 @@ export function CoachDjpPanel({
 
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
-      <SheetContent
-        side="bottom"
-        className="rounded-t-2xl max-h-[85dvh] overflow-y-auto px-0"
-      >
+      <SheetContent side="bottom" className="rounded-t-2xl max-h-[85dvh] overflow-y-auto px-0">
         {/* Drag handle */}
         <div className="flex justify-center pt-2 pb-1">
           <div className="h-1 w-10 rounded-full bg-muted-foreground/20" />
@@ -519,12 +481,7 @@ export function CoachDjpPanel({
                 <p className="text-sm font-medium text-destructive">Analysis Failed</p>
                 <p className="text-xs text-destructive/80 mt-1">{error}</p>
               </div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={fetchAnalysis}
-                className="gap-1.5"
-              >
+              <Button size="sm" variant="outline" onClick={fetchAnalysis} className="gap-1.5">
                 <RotateCcw className="size-3" />
                 Try Again
               </Button>
@@ -534,11 +491,7 @@ export function CoachDjpPanel({
           {/* Loading animation */}
           <AnimatePresence mode="wait">
             {!error && isLoading && (
-              <motion.div
-                key="loader"
-                exit={{ opacity: 0, y: -8 }}
-                transition={{ duration: 0.2 }}
-              >
+              <motion.div key="loader" exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
                 <AnalysisLoader phase={loadingPhase} />
               </motion.div>
             )}
@@ -558,9 +511,7 @@ export function CoachDjpPanel({
                 {isComplete && metadata && (
                   <div className="space-y-2">
                     {metadata.plateau_detected && <AlertCard type="plateau" />}
-                    {metadata.deload_recommended && (
-                      <AlertCard type="deload" delay={0.1} />
-                    )}
+                    {metadata.deload_recommended && <AlertCard type="deload" delay={0.1} />}
                   </div>
                 )}
 
@@ -592,7 +543,8 @@ export function CoachDjpPanel({
                 {/* Weight CTA — only after complete with a suggested weight */}
                 {isComplete &&
                   metadata?.suggested_weight_kg != null &&
-                  onApplyWeight && (() => {
+                  onApplyWeight &&
+                  (() => {
                     // Count sets the user has actually completed (actively logged reps)
                     // vs total prescribed sets — pre-filled defaults don't count
                     const completedCount = currentSets

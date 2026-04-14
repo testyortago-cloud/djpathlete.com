@@ -16,10 +16,17 @@ const DEFAULT_MAX_TOKENS = 32000
 // Normalize known enum fields before Zod validation.
 
 const ENUM_FIELD_NAMES = new Set([
-  "split_type", "periodization",
-  "recommended_split", "recommended_periodization",
-  "role", "movement_pattern", "technique", "type", "priority",
-  "training_age_category", "difficulty",
+  "split_type",
+  "periodization",
+  "recommended_split",
+  "recommended_periodization",
+  "role",
+  "movement_pattern",
+  "technique",
+  "type",
+  "priority",
+  "training_age_category",
+  "difficulty",
 ])
 
 function normalizeEnumValue(raw: unknown): string {
@@ -81,7 +88,10 @@ function toToolInputSchema(schema: ZodSchema): { type: "object"; [key: string]: 
     console.warn(`[toToolInputSchema] Schema type is "${rest.type}", expected "object". Falling back to text mode.`)
     return null
   } catch (err) {
-    console.error(`[toToolInputSchema] Failed to convert schema to JSON Schema:`, err instanceof Error ? err.message : err)
+    console.error(
+      `[toToolInputSchema] Failed to convert schema to JSON Schema:`,
+      err instanceof Error ? err.message : err,
+    )
     return null
   }
 }
@@ -101,7 +111,14 @@ function isTransientError(error: unknown): boolean {
   // Fallback: check error message string for known transient codes/keywords
   if (error instanceof Error) {
     const msg = error.message.toLowerCase()
-    if (msg.includes("429") || msg.includes("529") || msg.includes("overloaded") || msg.includes("500") || msg.includes("502") || msg.includes("503")) {
+    if (
+      msg.includes("429") ||
+      msg.includes("529") ||
+      msg.includes("overloaded") ||
+      msg.includes("500") ||
+      msg.includes("502") ||
+      msg.includes("503")
+    ) {
       return true
     }
   }
@@ -118,7 +135,7 @@ function callAgentWithModel<T>(
   options?: {
     maxTokens?: number
     cacheSystemPrompt?: boolean
-  }
+  },
 ): Promise<AgentCallResult<T>> {
   const maxTokens = options?.maxTokens ?? DEFAULT_MAX_TOKENS
   const client = getClient()
@@ -127,11 +144,13 @@ function callAgentWithModel<T>(
 
   return pRetry(
     async () => {
-      const systemContent: Anthropic.Messages.TextBlockParam[] = [{
-        type: "text" as const,
-        text: systemPrompt,
-        ...(options?.cacheSystemPrompt ? { cache_control: { type: "ephemeral" as const } } : {}),
-      }]
+      const systemContent: Anthropic.Messages.TextBlockParam[] = [
+        {
+          type: "text" as const,
+          text: systemPrompt,
+          ...(options?.cacheSystemPrompt ? { cache_control: { type: "ephemeral" as const } } : {}),
+        },
+      ]
 
       let parsed: unknown
       let tokens_used: number
@@ -142,11 +161,13 @@ function callAgentWithModel<T>(
           model: modelId,
           max_tokens: maxTokens,
           system: systemContent,
-          tools: [{
-            name: "structured_output",
-            description: "Output the structured result matching the required schema",
-            input_schema: toolSchema,
-          }],
+          tools: [
+            {
+              name: "structured_output",
+              description: "Output the structured result matching the required schema",
+              input_schema: toolSchema,
+            },
+          ],
           tool_choice: { type: "tool" as const, name: "structured_output" },
           messages: [{ role: "user", content: userMessage }],
         })
@@ -155,7 +176,9 @@ function callAgentWithModel<T>(
 
         // Check for truncation — if max_tokens was hit, the output is incomplete
         if (response.stop_reason === "max_tokens") {
-          throw new Error(`Response truncated (hit ${maxTokens} max_tokens). Output is incomplete — increase maxTokens or reduce input size.`)
+          throw new Error(
+            `Response truncated (hit ${maxTokens} max_tokens). Output is incomplete — increase maxTokens or reduce input size.`,
+          )
         }
 
         const toolBlock = response.content.find((b) => b.type === "tool_use")
@@ -173,10 +196,13 @@ function callAgentWithModel<T>(
           model: modelId,
           max_tokens: maxTokens,
           system: systemContent,
-          messages: [{
-            role: "user",
-            content: userMessage + "\n\nYou MUST respond with valid JSON matching this schema. Output ONLY the JSON object.",
-          }],
+          messages: [
+            {
+              role: "user",
+              content:
+                userMessage + "\n\nYou MUST respond with valid JSON matching this schema. Output ONLY the JSON object.",
+            },
+          ],
         })
 
         const response = await stream.finalMessage()
@@ -224,10 +250,10 @@ function callAgentWithModel<T>(
       },
       onFailedAttempt: (ctx) => {
         console.warn(
-          `[callAgent] Attempt ${ctx.attemptNumber} failed (${ctx.retriesLeft} retries left, model: ${modelId}): ${ctx.error.message?.slice(0, 200)}`
+          `[callAgent] Attempt ${ctx.attemptNumber} failed (${ctx.retriesLeft} retries left, model: ${modelId}): ${ctx.error.message?.slice(0, 200)}`,
         )
       },
-    }
+    },
   )
 }
 
@@ -239,7 +265,7 @@ export async function callAgent<T>(
     maxTokens?: number
     model?: string
     cacheSystemPrompt?: boolean
-  }
+  },
 ): Promise<AgentCallResult<T>> {
   const modelId = options?.model ?? MODEL_SONNET
 
@@ -377,21 +403,16 @@ export async function* streamWithTools(opts: {
     if (finalMessage.stop_reason !== "tool_use") break
 
     // Extract and execute tool calls
-    const toolUseBlocks = finalMessage.content.filter(
-      (b): b is Anthropic.ToolUseBlock => b.type === "tool_use"
-    )
+    const toolUseBlocks = finalMessage.content.filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use")
 
     if (toolUseBlocks.length === 0) break
 
     // Execute tools in parallel
     const toolResults = await Promise.all(
       toolUseBlocks.map(async (block) => {
-        const result = await opts.executeTool(
-          block.name,
-          block.input as Record<string, unknown>
-        )
+        const result = await opts.executeTool(block.name, block.input as Record<string, unknown>)
         return { toolUseId: block.id, name: block.name, result }
-      })
+      }),
     )
 
     // Yield tool_result events

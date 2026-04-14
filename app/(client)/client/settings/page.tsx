@@ -19,11 +19,12 @@ export default async function ClientSettingsPage() {
   const userId = session.user.id
   const dbUser = await getUserById(userId)
   const name = `${dbUser.first_name} ${dbUser.last_name}`.trim()
-  const initials = name
-    .split(" ")
-    .map((n) => n.charAt(0))
-    .join("")
-    .toUpperCase() || "U"
+  const initials =
+    name
+      .split(" ")
+      .map((n) => n.charAt(0))
+      .join("")
+      .toUpperCase() || "U"
   const avatarUrl = dbUser.avatar_url ?? null
 
   return (
@@ -35,25 +36,15 @@ export default async function ClientSettingsPage() {
 
       {/* Account Section */}
       <div className="bg-white rounded-xl border border-border p-6 mb-6">
-        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">
-          Account
-        </h2>
+        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Account</h2>
 
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <AvatarUpload
-                currentUrl={avatarUrl}
-                userId={userId}
-                initials={initials}
-              />
+              <AvatarUpload currentUrl={avatarUrl} userId={userId} initials={initials} />
               <div>
-                <p className="text-sm font-medium text-foreground">
-                  Profile Photo
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  JPEG, PNG, WebP, or GIF. Max 2 MB.
-                </p>
+                <p className="text-sm font-medium text-foreground">Profile Photo</p>
+                <p className="text-xs text-muted-foreground">JPEG, PNG, WebP, or GIF. Max 2 MB.</p>
               </div>
             </div>
           </div>
@@ -71,9 +62,7 @@ export default async function ClientSettingsPage() {
               </div>
               <div>
                 <p className="text-sm font-medium text-foreground">Password</p>
-                <p className="text-xs text-muted-foreground">
-                  A password reset link will be sent to your email.
-                </p>
+                <p className="text-xs text-muted-foreground">A password reset link will be sent to your email.</p>
               </div>
             </div>
             <ChangePasswordButton email={dbUser.email} />
@@ -83,9 +72,7 @@ export default async function ClientSettingsPage() {
 
       {/* Preferences Section */}
       <div className="bg-white rounded-xl border border-border p-6 mb-6">
-        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">
-          Preferences
-        </h2>
+        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Preferences</h2>
 
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -93,12 +80,8 @@ export default async function ClientSettingsPage() {
               <Scale className="size-4 text-primary" strokeWidth={1.5} />
             </div>
             <div>
-              <p className="text-sm font-medium text-foreground">
-                Weight Unit
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Display weights in kilograms or pounds
-              </p>
+              <p className="text-sm font-medium text-foreground">Weight Unit</p>
+              <p className="text-xs text-muted-foreground">Display weights in kilograms or pounds</p>
             </div>
           </div>
           <WeightUnitToggle />
@@ -107,33 +90,22 @@ export default async function ClientSettingsPage() {
 
       {/* Notifications Section */}
       <div className="bg-white rounded-xl border border-border p-6 mb-6">
-        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">
-          Notifications
-        </h2>
+        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Notifications</h2>
         <NotificationToggles />
       </div>
 
       {/* Danger Zone */}
       <div className="bg-white rounded-xl border border-destructive/30 p-6">
-        <h2 className="text-sm font-semibold text-destructive uppercase tracking-wider mb-4">
-          Danger Zone
-        </h2>
+        <h2 className="text-sm font-semibold text-destructive uppercase tracking-wider mb-4">Danger Zone</h2>
 
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="flex items-center justify-center size-9 rounded-full bg-destructive/10">
-              <Trash2
-                className="size-4 text-destructive"
-                strokeWidth={1.5}
-              />
+              <Trash2 className="size-4 text-destructive" strokeWidth={1.5} />
             </div>
             <div>
-              <p className="text-sm font-medium text-foreground">
-                Delete Account
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Permanently delete your account and all associated data
-              </p>
+              <p className="text-sm font-medium text-foreground">Delete Account</p>
+              <p className="text-xs text-muted-foreground">Permanently delete your account and all associated data</p>
             </div>
           </div>
           <Button variant="destructive" size="sm" disabled>

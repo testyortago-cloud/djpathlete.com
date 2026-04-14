@@ -10,12 +10,7 @@ export const FITNESS_GOALS = [
   "general_health",
 ] as const
 
-export const EXPERIENCE_LEVELS = [
-  "beginner",
-  "intermediate",
-  "advanced",
-  "elite",
-] as const
+export const EXPERIENCE_LEVELS = ["beginner", "intermediate", "advanced", "elite"] as const
 
 export const SESSION_DURATIONS = [30, 45, 60, 75, 90] as const
 
@@ -35,14 +30,7 @@ export const TIME_EFFICIENCY_LABELS: Record<string, string> = {
   extend_session: "Extend the session",
 }
 
-export const TRAINING_TECHNIQUES = [
-  "superset",
-  "dropset",
-  "circuit",
-  "giant_set",
-  "rest_pause",
-  "amrap",
-] as const
+export const TRAINING_TECHNIQUES = ["superset", "dropset", "circuit", "giant_set", "rest_pause", "amrap"] as const
 
 export const TECHNIQUE_LABELS: Record<string, string> = {
   superset: "Supersets",
@@ -89,12 +77,7 @@ export const OCCUPATION_LABELS: Record<string, string> = {
   heavy: "Heavy (manual labour)",
 }
 
-export const MOVEMENT_CONFIDENCE_LEVELS = [
-  "learning",
-  "comfortable",
-  "proficient",
-  "expert",
-] as const
+export const MOVEMENT_CONFIDENCE_LEVELS = ["learning", "comfortable", "proficient", "expert"] as const
 
 export const MOVEMENT_CONFIDENCE_LABELS: Record<string, string> = {
   learning: "Learning",
@@ -167,23 +150,13 @@ export const EQUIPMENT_LABELS: Record<string, string> = {
 
 export const EQUIPMENT_PRESETS: Record<string, readonly string[]> = {
   "Full Gym": EQUIPMENT_OPTIONS,
-  "Home Gym": [
-    "dumbbell",
-    "kettlebell",
-    "resistance_band",
-    "pull_up_bar",
-    "bench",
-    "foam_roller",
-    "yoga_mat",
-  ],
+  "Home Gym": ["dumbbell", "kettlebell", "resistance_band", "pull_up_bar", "bench", "foam_roller", "yoga_mat"],
   "Bodyweight Only": [],
 }
 
 // Step 1: Fitness Goals
 export const step1Schema = z.object({
-  goals: z
-    .array(z.enum(FITNESS_GOALS))
-    .min(1, "Please select at least one fitness goal"),
+  goals: z.array(z.enum(FITNESS_GOALS)).min(1, "Please select at least one fitness goal"),
   sport: z.string().max(200).optional().default(""),
 })
 
@@ -198,22 +171,14 @@ export const step3Schema = z.object({
   experience_level: z.enum(EXPERIENCE_LEVELS, {
     message: "Please select your fitness level",
   }),
-  movement_confidence: z
-    .enum(MOVEMENT_CONFIDENCE_LEVELS)
-    .nullable()
-    .optional()
-    .default(null),
+  movement_confidence: z.enum(MOVEMENT_CONFIDENCE_LEVELS).nullable().optional().default(null),
 })
 
 // Step 4: Recovery & Lifestyle
 export const step4Schema = z.object({
   sleep_hours: z.enum(SLEEP_OPTIONS).nullable().optional().default(null),
   stress_level: z.enum(STRESS_LEVELS).nullable().optional().default(null),
-  occupation_activity_level: z
-    .enum(OCCUPATION_LEVELS)
-    .nullable()
-    .optional()
-    .default(null),
+  occupation_activity_level: z.enum(OCCUPATION_LEVELS).nullable().optional().default(null),
 })
 
 // Step 5: Training History
@@ -223,11 +188,7 @@ export const step5Schema = z.object({
     .min(0, "Training years cannot be negative")
     .max(60, "Training years seems too high")
     .nullable(),
-  training_background: z
-    .string()
-    .max(2000, "Training background must be under 2000 characters")
-    .optional()
-    .default(""),
+  training_background: z.string().max(2000, "Training background must be under 2000 characters").optional().default(""),
 })
 
 // Step 6: Injuries & Limitations
@@ -239,11 +200,7 @@ export const injuryDetailSchema = z.object({
 })
 
 export const step6Schema = z.object({
-  injuries_text: z
-    .string()
-    .max(2000, "Injuries text must be under 2000 characters")
-    .optional()
-    .default(""),
+  injuries_text: z.string().max(2000, "Injuries text must be under 2000 characters").optional().default(""),
   injury_details: z.array(injuryDetailSchema).optional().default([]),
 })
 
@@ -254,47 +211,25 @@ export const step7Schema = z.object({
 
 // Step 8: Schedule
 export const step8Schema = z.object({
-  preferred_day_names: z
-    .array(z.number().min(1).max(7))
-    .min(1, "Select at least one training day"),
-  preferred_session_minutes: z
-    .number()
-    .refine((v) => (SESSION_DURATIONS as readonly number[]).includes(v), {
-      message: "Please select a valid session duration",
-    }),
-  time_efficiency_preference: z
-    .enum(TIME_EFFICIENCY_OPTIONS)
-    .nullable()
-    .optional()
-    .default(null),
+  preferred_day_names: z.array(z.number().min(1).max(7)).min(1, "Select at least one training day"),
+  preferred_session_minutes: z.number().refine((v) => (SESSION_DURATIONS as readonly number[]).includes(v), {
+    message: "Please select a valid session duration",
+  }),
+  time_efficiency_preference: z.enum(TIME_EFFICIENCY_OPTIONS).nullable().optional().default(null),
 })
 
 // Step 9: Exercise Preferences
 export const step9Schema = z.object({
   preferred_techniques: z.array(z.enum(TRAINING_TECHNIQUES)).optional().default([]),
-  exercise_likes: z
-    .string()
-    .max(2000, "Must be under 2000 characters")
-    .optional()
-    .default(""),
-  exercise_dislikes: z
-    .string()
-    .max(2000, "Must be under 2000 characters")
-    .optional()
-    .default(""),
-  additional_notes: z
-    .string()
-    .max(2000, "Must be under 2000 characters")
-    .optional()
-    .default(""),
+  exercise_likes: z.string().max(2000, "Must be under 2000 characters").optional().default(""),
+  exercise_dislikes: z.string().max(2000, "Must be under 2000 characters").optional().default(""),
+  additional_notes: z.string().max(2000, "Must be under 2000 characters").optional().default(""),
 })
 
 // Full combined schema for final submission
 export const questionnaireSchema = z.object({
   // Step 1: Goals
-  goals: z
-    .array(z.enum(FITNESS_GOALS))
-    .min(1, "Please select at least one fitness goal"),
+  goals: z.array(z.enum(FITNESS_GOALS)).min(1, "Please select at least one fitness goal"),
   sport: z.string().max(200).optional().default(""),
   // Step 2: About You
   date_of_birth: z.string().optional().default(""),
@@ -303,27 +238,13 @@ export const questionnaireSchema = z.object({
   experience_level: z.enum(EXPERIENCE_LEVELS, {
     message: "Please select your fitness level",
   }),
-  movement_confidence: z
-    .enum(MOVEMENT_CONFIDENCE_LEVELS)
-    .nullable()
-    .optional()
-    .default(null),
+  movement_confidence: z.enum(MOVEMENT_CONFIDENCE_LEVELS).nullable().optional().default(null),
   // Step 4: Recovery & Lifestyle
   sleep_hours: z.enum(SLEEP_OPTIONS).nullable().optional().default(null),
   stress_level: z.enum(STRESS_LEVELS).nullable().optional().default(null),
-  occupation_activity_level: z
-    .enum(OCCUPATION_LEVELS)
-    .nullable()
-    .optional()
-    .default(null),
+  occupation_activity_level: z.enum(OCCUPATION_LEVELS).nullable().optional().default(null),
   // Step 5: Training History
-  training_years: z
-    .number()
-    .min(0)
-    .max(60)
-    .nullable()
-    .optional()
-    .default(null),
+  training_years: z.number().min(0).max(60).nullable().optional().default(null),
   training_background: z.string().max(2000).optional().default(""),
   // Step 6: Injuries
   injuries_text: z.string().max(2000).optional().default(""),
@@ -332,14 +253,8 @@ export const questionnaireSchema = z.object({
   available_equipment: z.array(z.enum(EQUIPMENT_OPTIONS)).default([]),
   // Step 8: Schedule
   preferred_day_names: z.array(z.number().min(1).max(7)).min(1),
-  preferred_session_minutes: z
-    .number()
-    .refine((v) => (SESSION_DURATIONS as readonly number[]).includes(v)),
-  time_efficiency_preference: z
-    .enum(TIME_EFFICIENCY_OPTIONS)
-    .nullable()
-    .optional()
-    .default(null),
+  preferred_session_minutes: z.number().refine((v) => (SESSION_DURATIONS as readonly number[]).includes(v)),
+  time_efficiency_preference: z.enum(TIME_EFFICIENCY_OPTIONS).nullable().optional().default(null),
   // Step 9: Preferences
   preferred_techniques: z.array(z.enum(TRAINING_TECHNIQUES)).optional().default([]),
   exercise_likes: z.string().max(2000).optional().default(""),

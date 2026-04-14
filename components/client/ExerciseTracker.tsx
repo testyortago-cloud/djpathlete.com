@@ -41,9 +41,7 @@ export function ExerciseTracker({ initialTracked }: ExerciseTrackerProps) {
     debounceRef.current = setTimeout(async () => {
       setLoading(true)
       try {
-        const res = await fetch(
-          `/api/client/exercises/search?q=${encodeURIComponent(searchQuery)}`
-        )
+        const res = await fetch(`/api/client/exercises/search?q=${encodeURIComponent(searchQuery)}`)
         if (!res.ok) throw new Error()
         const data = await res.json()
         setResults(data)
@@ -96,10 +94,9 @@ export function ExerciseTracker({ initialTracked }: ExerciseTrackerProps) {
   async function handleRemove(trackedItem: TrackedItem) {
     setRemoving(trackedItem.id)
     try {
-      const res = await fetch(
-        `/api/client/tracked-exercises?id=${encodeURIComponent(trackedItem.id)}`,
-        { method: "DELETE" }
-      )
+      const res = await fetch(`/api/client/tracked-exercises?id=${encodeURIComponent(trackedItem.id)}`, {
+        method: "DELETE",
+      })
       if (!res.ok) throw new Error()
       setTracked((prev) => prev.filter((t) => t.id !== trackedItem.id))
       toast.success(`Stopped tracking ${trackedItem.exercises?.name ?? "exercise"}`)
@@ -120,9 +117,7 @@ export function ExerciseTracker({ initialTracked }: ExerciseTrackerProps) {
           </div>
           <div>
             <h3 className="text-sm font-semibold text-foreground">Tracked Exercises</h3>
-            <p className="text-[10px] sm:text-xs text-muted-foreground">
-              Pick exercises to monitor your progress
-            </p>
+            <p className="text-[10px] sm:text-xs text-muted-foreground">Pick exercises to monitor your progress</p>
           </div>
         </div>
         {!searching && (
@@ -178,9 +173,7 @@ export function ExerciseTracker({ initialTracked }: ExerciseTrackerProps) {
               </div>
             )}
             {!loading && results.length === 0 && searchQuery && (
-              <p className="text-xs text-muted-foreground text-center py-4">
-                No exercises found
-              </p>
+              <p className="text-xs text-muted-foreground text-center py-4">No exercises found</p>
             )}
             {!loading && results.length > 0 && (
               <div className="space-y-0.5">
@@ -194,18 +187,14 @@ export function ExerciseTracker({ initialTracked }: ExerciseTrackerProps) {
                       onClick={() => handleAdd(ex)}
                       className={cn(
                         "w-full text-left rounded-md px-3 py-2 flex items-center gap-3 transition-colors",
-                        isTracked
-                          ? "opacity-50 cursor-default bg-muted/50"
-                          : "hover:bg-muted/50 cursor-pointer"
+                        isTracked ? "opacity-50 cursor-default bg-muted/50" : "hover:bg-muted/50 cursor-pointer",
                       )}
                     >
                       <div className="size-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                         <Dumbbell className="size-3.5 text-primary" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-foreground truncate">
-                          {ex.name}
-                        </p>
+                        <p className="text-xs font-medium text-foreground truncate">{ex.name}</p>
                         <p className="text-[10px] text-muted-foreground capitalize">
                           {[ex.muscle_group, ex.equipment].filter(Boolean).join(" · ")}
                         </p>
@@ -241,17 +230,12 @@ export function ExerciseTracker({ initialTracked }: ExerciseTrackerProps) {
             const ex = item.exercises
             const isRemoving = removing === item.id
             return (
-              <div
-                key={item.id}
-                className="px-4 sm:px-5 py-3 flex items-center gap-3"
-              >
+              <div key={item.id} className="px-4 sm:px-5 py-3 flex items-center gap-3">
                 <div className="size-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                   <Dumbbell className="size-4 text-primary" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground truncate">
-                    {ex?.name ?? "Unknown Exercise"}
-                  </p>
+                  <p className="text-sm font-medium text-foreground truncate">{ex?.name ?? "Unknown Exercise"}</p>
                   {ex?.muscle_group && (
                     <p className="text-[10px] text-muted-foreground capitalize">
                       {[ex.muscle_group, ex.equipment].filter(Boolean).join(" · ")}
@@ -266,11 +250,7 @@ export function ExerciseTracker({ initialTracked }: ExerciseTrackerProps) {
                   disabled={isRemoving}
                   aria-label={`Remove ${ex?.name ?? "exercise"}`}
                 >
-                  {isRemoving ? (
-                    <Loader2 className="size-3.5 animate-spin" />
-                  ) : (
-                    <X className="size-3.5" />
-                  )}
+                  {isRemoving ? <Loader2 className="size-3.5 animate-spin" /> : <X className="size-3.5" />}
                 </Button>
               </div>
             )

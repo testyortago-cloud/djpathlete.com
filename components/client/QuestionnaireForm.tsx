@@ -28,13 +28,7 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Progress } from "@/components/ui/progress"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   FITNESS_GOALS,
   EXPERIENCE_LEVELS,
@@ -123,10 +117,7 @@ function parseGoalsFromProfile(goalsString: string | null): string[] {
 }
 
 /** Backward-compat: parse a field from old pipe-delimited goals string */
-function parseFieldFromProfile(
-  goalsString: string | null,
-  prefix: string
-): string {
+function parseFieldFromProfile(goalsString: string | null, prefix: string): string {
   if (!goalsString) return ""
   const regex = new RegExp(`${prefix}:\\s*(.+?)(?:\\s*\\||$)`)
   const match = goalsString.match(regex)
@@ -180,62 +171,39 @@ function buildInitialData(profile: ClientProfile | null): FormData {
     injuries_text: profile.injuries ?? "",
     injury_details: profile.injury_details ?? [],
     available_equipment: profile.available_equipment ?? [],
-    preferred_day_names:
-      profile.preferred_day_names?.length > 0
-        ? profile.preferred_day_names
-        : [1, 3, 5],
+    preferred_day_names: profile.preferred_day_names?.length > 0 ? profile.preferred_day_names : [1, 3, 5],
     preferred_session_minutes: profile.preferred_session_minutes ?? 60,
     time_efficiency_preference: profile.time_efficiency_preference ?? null,
     preferred_techniques: profile.preferred_techniques ?? [],
-    exercise_likes: isOldFormat
-      ? parseFieldFromProfile(profile.goals, "Likes")
-      : (profile.exercise_likes ?? ""),
+    exercise_likes: isOldFormat ? parseFieldFromProfile(profile.goals, "Likes") : (profile.exercise_likes ?? ""),
     exercise_dislikes: isOldFormat
       ? parseFieldFromProfile(profile.goals, "Dislikes")
       : (profile.exercise_dislikes ?? ""),
-    additional_notes: isOldFormat
-      ? parseFieldFromProfile(profile.goals, "Notes")
-      : (profile.additional_notes ?? ""),
+    additional_notes: isOldFormat ? parseFieldFromProfile(profile.goals, "Notes") : (profile.additional_notes ?? ""),
   }
 }
 
-export function QuestionnaireForm({
-  initialProfile,
-}: {
-  initialProfile: ClientProfile | null
-}) {
+export function QuestionnaireForm({ initialProfile }: { initialProfile: ClientProfile | null }) {
   const [currentStep, setCurrentStep] = useState(1)
-  const [formData, setFormData] = useState<FormData>(() =>
-    buildInitialData(initialProfile)
-  )
+  const [formData, setFormData] = useState<FormData>(() => buildInitialData(initialProfile))
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [direction, setDirection] = useState(1)
 
-  const updateField = useCallback(
-    <K extends keyof FormData>(field: K, value: FormData[K]) => {
-      setFormData((prev) => ({ ...prev, [field]: value }))
-    },
-    []
-  )
+  const updateField = useCallback(<K extends keyof FormData>(field: K, value: FormData[K]) => {
+    setFormData((prev) => ({ ...prev, [field]: value }))
+  }, [])
 
   const validateCurrentStep = (): string | null => {
     switch (currentStep) {
       case 1:
-        if (formData.goals.length === 0)
-          return "Please select at least one fitness goal."
+        if (formData.goals.length === 0) return "Please select at least one fitness goal."
         return null
       case 3:
-        if (!formData.experience_level)
-          return "Please select your fitness level."
+        if (!formData.experience_level) return "Please select your fitness level."
         return null
       case 8:
-        if (formData.preferred_day_names.length === 0)
-          return "Please select at least one training day."
-        if (
-          !(SESSION_DURATIONS as readonly number[]).includes(
-            formData.preferred_session_minutes
-          )
-        )
+        if (formData.preferred_day_names.length === 0) return "Please select at least one training day."
+        if (!(SESSION_DURATIONS as readonly number[]).includes(formData.preferred_session_minutes))
           return "Please select a valid session duration."
         return null
       default:
@@ -281,9 +249,7 @@ export function QuestionnaireForm({
       // Hard navigate so the server layout re-evaluates hasCompletedQuestionnaire
       window.location.href = "/client/dashboard"
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Something went wrong"
-      )
+      toast.error(error instanceof Error ? error.message : "Something went wrong")
     } finally {
       setIsSubmitting(false)
     }
@@ -319,13 +285,9 @@ export function QuestionnaireForm({
               <>
                 {(() => {
                   const StepIcon = STEP_INFO[currentStep - 1].icon
-                  return (
-                    <StepIcon className="size-3.5 sm:size-4 text-primary" />
-                  )
+                  return <StepIcon className="size-3.5 sm:size-4 text-primary" />
                 })()}
-                <span className="text-xs sm:text-sm font-medium text-primary">
-                  {STEP_INFO[currentStep - 1].label}
-                </span>
+                <span className="text-xs sm:text-sm font-medium text-primary">{STEP_INFO[currentStep - 1].label}</span>
               </>
             )}
           </div>
@@ -370,48 +332,23 @@ export function QuestionnaireForm({
             exit="exit"
             transition={{ duration: 0.25, ease: "easeInOut" }}
           >
-            {currentStep === 1 && (
-              <Step1Goals formData={formData} updateField={updateField} />
-            )}
-            {currentStep === 2 && (
-              <Step2AboutYou formData={formData} updateField={updateField} />
-            )}
-            {currentStep === 3 && (
-              <Step3Level formData={formData} updateField={updateField} />
-            )}
-            {currentStep === 4 && (
-              <Step4Recovery formData={formData} updateField={updateField} />
-            )}
-            {currentStep === 5 && (
-              <Step5History formData={formData} updateField={updateField} />
-            )}
-            {currentStep === 6 && (
-              <Step6Injuries formData={formData} updateField={updateField} />
-            )}
-            {currentStep === 7 && (
-              <Step7Equipment formData={formData} updateField={updateField} />
-            )}
-            {currentStep === 8 && (
-              <Step8Schedule formData={formData} updateField={updateField} />
-            )}
-            {currentStep === 9 && (
-              <Step9Preferences formData={formData} updateField={updateField} />
-            )}
-            {currentStep === 10 && (
-              <Step10Review formData={formData} onGoToStep={goToStep} />
-            )}
+            {currentStep === 1 && <Step1Goals formData={formData} updateField={updateField} />}
+            {currentStep === 2 && <Step2AboutYou formData={formData} updateField={updateField} />}
+            {currentStep === 3 && <Step3Level formData={formData} updateField={updateField} />}
+            {currentStep === 4 && <Step4Recovery formData={formData} updateField={updateField} />}
+            {currentStep === 5 && <Step5History formData={formData} updateField={updateField} />}
+            {currentStep === 6 && <Step6Injuries formData={formData} updateField={updateField} />}
+            {currentStep === 7 && <Step7Equipment formData={formData} updateField={updateField} />}
+            {currentStep === 8 && <Step8Schedule formData={formData} updateField={updateField} />}
+            {currentStep === 9 && <Step9Preferences formData={formData} updateField={updateField} />}
+            {currentStep === 10 && <Step10Review formData={formData} onGoToStep={goToStep} />}
           </motion.div>
         </AnimatePresence>
       </div>
 
       {/* Navigation */}
       <div className="flex items-center justify-between">
-        <Button
-          variant="outline"
-          onClick={handleBack}
-          disabled={currentStep === 1}
-          className="gap-1.5 px-4 sm:px-6"
-        >
+        <Button variant="outline" onClick={handleBack} disabled={currentStep === 1} className="gap-1.5 px-4 sm:px-6">
           <ChevronLeft className="size-4" />
           Back
         </Button>
@@ -456,7 +393,7 @@ function Step1Goals({ formData, updateField }: StepProps) {
     if (current.includes(goal)) {
       updateField(
         "goals",
-        current.filter((g) => g !== goal)
+        current.filter((g) => g !== goal),
       )
       if (goal === "sport_specific") {
         updateField("sport", "")
@@ -468,9 +405,7 @@ function Step1Goals({ formData, updateField }: StepProps) {
 
   return (
     <div>
-      <h2 className="text-lg font-semibold text-primary mb-2">
-        What are your fitness goals?
-      </h2>
+      <h2 className="text-lg font-semibold text-primary mb-2">What are your fitness goals?</h2>
       <p className="text-sm text-muted-foreground mb-6">
         Select all that apply. This helps us tailor your training program.
       </p>
@@ -490,16 +425,12 @@ function Step1Goals({ formData, updateField }: StepProps) {
             >
               <div
                 className={`flex items-center justify-center size-5 rounded border transition-colors ${
-                  selected
-                    ? "bg-primary border-primary text-primary-foreground"
-                    : "border-muted-foreground/40"
+                  selected ? "bg-primary border-primary text-primary-foreground" : "border-muted-foreground/40"
                 }`}
               >
                 {selected && <Check className="size-3" />}
               </div>
-              <span className="text-sm font-medium text-foreground">
-                {GOAL_LABELS[goal] ?? goal}
-              </span>
+              <span className="text-sm font-medium text-foreground">{GOAL_LABELS[goal] ?? goal}</span>
             </button>
           )
         })}
@@ -530,21 +461,15 @@ function Step2AboutYou({ formData, updateField }: StepProps) {
 
   return (
     <div>
-      <h2 className="text-lg font-semibold text-primary mb-2">
-        A bit about you
-      </h2>
+      <h2 className="text-lg font-semibold text-primary mb-2">A bit about you</h2>
       <p className="text-sm text-muted-foreground mb-6">
-        This helps us fine-tune recovery expectations and program design. Both
-        fields are optional.
+        This helps us fine-tune recovery expectations and program design. Both fields are optional.
       </p>
       <div className="space-y-8">
         {/* Birth year */}
         <div>
           <Label>Birth year</Label>
-          <Select
-            value={formData.date_of_birth}
-            onValueChange={(v) => updateField("date_of_birth", v)}
-          >
+          <Select value={formData.date_of_birth} onValueChange={(v) => updateField("date_of_birth", v)}>
             <SelectTrigger className="mt-1.5 max-w-[200px]">
               <SelectValue placeholder="Select year" />
             </SelectTrigger>
@@ -556,9 +481,7 @@ function Step2AboutYou({ formData, updateField }: StepProps) {
               ))}
             </SelectContent>
           </Select>
-          <p className="text-xs text-muted-foreground mt-1">
-            Used to estimate age-based recovery adjustments.
-          </p>
+          <p className="text-xs text-muted-foreground mt-1">Used to estimate age-based recovery adjustments.</p>
         </div>
 
         {/* Gender */}
@@ -571,18 +494,14 @@ function Step2AboutYou({ formData, updateField }: StepProps) {
                 <button
                   key={option}
                   type="button"
-                  onClick={() =>
-                    updateField("gender", selected ? null : option)
-                  }
+                  onClick={() => updateField("gender", selected ? null : option)}
                   className={`rounded-lg border py-3 px-2 text-center transition-all ${
                     selected
                       ? "border-primary bg-primary/5 ring-1 ring-primary text-primary font-semibold"
                       : "border-border hover:border-primary/40 text-foreground"
                   }`}
                 >
-                  <span className="text-sm font-medium">
-                    {GENDER_LABELS[option]}
-                  </span>
+                  <span className="text-sm font-medium">{GENDER_LABELS[option]}</span>
                 </button>
               )
             })}
@@ -597,21 +516,15 @@ function Step2AboutYou({ formData, updateField }: StepProps) {
 
 function Step3Level({ formData, updateField }: StepProps) {
   const LEVEL_DESCRIPTIONS: Record<string, string> = {
-    beginner:
-      "New to structured training, less than 6 months of consistent exercise.",
-    intermediate:
-      "Regular training for 6 months to 2 years with good form on basic exercises.",
-    advanced:
-      "2+ years of consistent, structured training with strong exercise proficiency.",
-    elite:
-      "Competitive athlete or 5+ years of dedicated training at a high level.",
+    beginner: "New to structured training, less than 6 months of consistent exercise.",
+    intermediate: "Regular training for 6 months to 2 years with good form on basic exercises.",
+    advanced: "2+ years of consistent, structured training with strong exercise proficiency.",
+    elite: "Competitive athlete or 5+ years of dedicated training at a high level.",
   }
 
   return (
     <div>
-      <h2 className="text-lg font-semibold text-primary mb-2">
-        What is your current fitness level?
-      </h2>
+      <h2 className="text-lg font-semibold text-primary mb-2">What is your current fitness level?</h2>
       <p className="text-sm text-muted-foreground mb-6">
         Be honest — this helps us set the right starting point for your program.
       </p>
@@ -632,22 +545,14 @@ function Step3Level({ formData, updateField }: StepProps) {
               <div className="flex items-center gap-3">
                 <div
                   className={`flex items-center justify-center size-5 rounded-full border-2 transition-colors ${
-                    selected
-                      ? "border-primary bg-primary"
-                      : "border-muted-foreground/40"
+                    selected ? "border-primary bg-primary" : "border-muted-foreground/40"
                   }`}
                 >
-                  {selected && (
-                    <div className="size-2 rounded-full bg-white" />
-                  )}
+                  {selected && <div className="size-2 rounded-full bg-white" />}
                 </div>
-                <span className="text-sm font-medium text-foreground">
-                  {LEVEL_LABELS[level] ?? level}
-                </span>
+                <span className="text-sm font-medium text-foreground">{LEVEL_LABELS[level] ?? level}</span>
               </div>
-              <p className="text-xs text-muted-foreground mt-1.5 ml-8">
-                {LEVEL_DESCRIPTIONS[level]}
-              </p>
+              <p className="text-xs text-muted-foreground mt-1.5 ml-8">{LEVEL_DESCRIPTIONS[level]}</p>
             </button>
           )
         })}
@@ -666,12 +571,7 @@ function Step3Level({ formData, updateField }: StepProps) {
               <button
                 key={level}
                 type="button"
-                onClick={() =>
-                  updateField(
-                    "movement_confidence",
-                    selected ? null : level
-                  )
-                }
+                onClick={() => updateField("movement_confidence", selected ? null : level)}
                 className={`flex flex-col w-full rounded-lg border p-3 text-left transition-all ${
                   selected
                     ? "border-primary bg-primary/5 ring-1 ring-primary"
@@ -681,22 +581,14 @@ function Step3Level({ formData, updateField }: StepProps) {
                 <div className="flex items-center gap-3">
                   <div
                     className={`flex items-center justify-center size-5 rounded-full border-2 transition-colors ${
-                      selected
-                        ? "border-primary bg-primary"
-                        : "border-muted-foreground/40"
+                      selected ? "border-primary bg-primary" : "border-muted-foreground/40"
                     }`}
                   >
-                    {selected && (
-                      <div className="size-2 rounded-full bg-white" />
-                    )}
+                    {selected && <div className="size-2 rounded-full bg-white" />}
                   </div>
-                  <span className="text-sm font-medium text-foreground">
-                    {MOVEMENT_CONFIDENCE_LABELS[level]}
-                  </span>
+                  <span className="text-sm font-medium text-foreground">{MOVEMENT_CONFIDENCE_LABELS[level]}</span>
                 </div>
-                <p className="text-xs text-muted-foreground mt-1 ml-8">
-                  {MOVEMENT_CONFIDENCE_DESCRIPTIONS[level]}
-                </p>
+                <p className="text-xs text-muted-foreground mt-1 ml-8">{MOVEMENT_CONFIDENCE_DESCRIPTIONS[level]}</p>
               </button>
             )
           })}
@@ -711,12 +603,9 @@ function Step3Level({ formData, updateField }: StepProps) {
 function Step4Recovery({ formData, updateField }: StepProps) {
   return (
     <div>
-      <h2 className="text-lg font-semibold text-primary mb-2">
-        Recovery & lifestyle
-      </h2>
+      <h2 className="text-lg font-semibold text-primary mb-2">Recovery & lifestyle</h2>
       <p className="text-sm text-muted-foreground mb-6">
-        These factors directly affect how much training volume your body can
-        handle. All fields are optional.
+        These factors directly affect how much training volume your body can handle. All fields are optional.
       </p>
       <div className="space-y-8">
         {/* Sleep */}
@@ -729,18 +618,14 @@ function Step4Recovery({ formData, updateField }: StepProps) {
                 <button
                   key={option}
                   type="button"
-                  onClick={() =>
-                    updateField("sleep_hours", selected ? null : option)
-                  }
+                  onClick={() => updateField("sleep_hours", selected ? null : option)}
                   className={`rounded-lg border py-3 px-2 text-center transition-all ${
                     selected
                       ? "border-primary bg-primary/5 ring-1 ring-primary text-primary font-semibold"
                       : "border-border hover:border-primary/40 text-foreground"
                   }`}
                 >
-                  <span className="text-sm font-medium">
-                    {SLEEP_LABELS[option]}
-                  </span>
+                  <span className="text-sm font-medium">{SLEEP_LABELS[option]}</span>
                 </button>
               )
             })}
@@ -757,18 +642,14 @@ function Step4Recovery({ formData, updateField }: StepProps) {
                 <button
                   key={option}
                   type="button"
-                  onClick={() =>
-                    updateField("stress_level", selected ? null : option)
-                  }
+                  onClick={() => updateField("stress_level", selected ? null : option)}
                   className={`rounded-lg border py-3 px-2 text-center transition-all ${
                     selected
                       ? "border-primary bg-primary/5 ring-1 ring-primary text-primary font-semibold"
                       : "border-border hover:border-primary/40 text-foreground"
                   }`}
                 >
-                  <span className="text-sm font-medium">
-                    {STRESS_LABELS[option]}
-                  </span>
+                  <span className="text-sm font-medium">{STRESS_LABELS[option]}</span>
                 </button>
               )
             })}
@@ -785,12 +666,7 @@ function Step4Recovery({ formData, updateField }: StepProps) {
                 <button
                   key={option}
                   type="button"
-                  onClick={() =>
-                    updateField(
-                      "occupation_activity_level",
-                      selected ? null : option
-                    )
-                  }
+                  onClick={() => updateField("occupation_activity_level", selected ? null : option)}
                   className={`flex items-center gap-3 rounded-lg border p-3 text-left transition-all ${
                     selected
                       ? "border-primary bg-primary/5 ring-1 ring-primary"
@@ -799,18 +675,12 @@ function Step4Recovery({ formData, updateField }: StepProps) {
                 >
                   <div
                     className={`flex items-center justify-center size-5 rounded-full border-2 transition-colors ${
-                      selected
-                        ? "border-primary bg-primary"
-                        : "border-muted-foreground/40"
+                      selected ? "border-primary bg-primary" : "border-muted-foreground/40"
                     }`}
                   >
-                    {selected && (
-                      <div className="size-2 rounded-full bg-white" />
-                    )}
+                    {selected && <div className="size-2 rounded-full bg-white" />}
                   </div>
-                  <span className="text-sm font-medium text-foreground">
-                    {OCCUPATION_LABELS[option]}
-                  </span>
+                  <span className="text-sm font-medium text-foreground">{OCCUPATION_LABELS[option]}</span>
                 </button>
               )
             })}
@@ -826,9 +696,7 @@ function Step4Recovery({ formData, updateField }: StepProps) {
 function Step5History({ formData, updateField }: StepProps) {
   return (
     <div>
-      <h2 className="text-lg font-semibold text-primary mb-2">
-        Tell us about your training history
-      </h2>
+      <h2 className="text-lg font-semibold text-primary mb-2">Tell us about your training history</h2>
       <p className="text-sm text-muted-foreground mb-6">
         Understanding your background helps us build on your strengths.
       </p>
@@ -842,19 +710,12 @@ function Step5History({ formData, updateField }: StepProps) {
             max={60}
             placeholder="e.g. 3"
             value={formData.training_years ?? ""}
-            onChange={(e) =>
-              updateField(
-                "training_years",
-                e.target.value ? Number(e.target.value) : null
-              )
-            }
+            onChange={(e) => updateField("training_years", e.target.value ? Number(e.target.value) : null)}
             className="mt-1.5 max-w-[200px]"
           />
         </div>
         <div>
-          <Label htmlFor="training-background">
-            Training background (optional)
-          </Label>
+          <Label htmlFor="training-background">Training background (optional)</Label>
           <Textarea
             id="training-background"
             placeholder="Tell us about your training background — sports played, programs followed, certifications, etc."
@@ -863,9 +724,7 @@ function Step5History({ formData, updateField }: StepProps) {
             className="mt-1.5"
             rows={5}
           />
-          <p className="text-xs text-muted-foreground mt-1">
-            {formData.training_background.length}/2000 characters
-          </p>
+          <p className="text-xs text-muted-foreground mt-1">{formData.training_background.length}/2000 characters</p>
         </div>
       </div>
     </div>
@@ -876,44 +735,30 @@ function Step5History({ formData, updateField }: StepProps) {
 
 function Step6Injuries({ formData, updateField }: StepProps) {
   const addInjury = () => {
-    updateField("injury_details", [
-      ...formData.injury_details,
-      { area: "", side: "", severity: "", notes: "" },
-    ])
+    updateField("injury_details", [...formData.injury_details, { area: "", side: "", severity: "", notes: "" }])
   }
 
   const removeInjury = (index: number) => {
     updateField(
       "injury_details",
-      formData.injury_details.filter((_, i) => i !== index)
+      formData.injury_details.filter((_, i) => i !== index),
     )
   }
 
-  const updateInjury = (
-    index: number,
-    field: keyof InjuryDetail,
-    value: string
-  ) => {
-    const updated = formData.injury_details.map((injury, i) =>
-      i === index ? { ...injury, [field]: value } : injury
-    )
+  const updateInjury = (index: number, field: keyof InjuryDetail, value: string) => {
+    const updated = formData.injury_details.map((injury, i) => (i === index ? { ...injury, [field]: value } : injury))
     updateField("injury_details", updated)
   }
 
   return (
     <div>
-      <h2 className="text-lg font-semibold text-primary mb-2">
-        Injuries & limitations
-      </h2>
+      <h2 className="text-lg font-semibold text-primary mb-2">Injuries & limitations</h2>
       <p className="text-sm text-muted-foreground mb-6">
-        Let us know about any current or past injuries so we can program safely
-        around them.
+        Let us know about any current or past injuries so we can program safely around them.
       </p>
       <div className="space-y-6">
         <div>
-          <Label htmlFor="injuries-text">
-            General notes about injuries or limitations (optional)
-          </Label>
+          <Label htmlFor="injuries-text">General notes about injuries or limitations (optional)</Label>
           <Textarea
             id="injuries-text"
             placeholder="e.g. I have a recurring lower back issue that flares up with heavy deadlifts..."
@@ -935,16 +780,12 @@ function Step6Injuries({ formData, updateField }: StepProps) {
 
           {formData.injury_details.length === 0 ? (
             <p className="text-sm text-muted-foreground py-4 text-center border border-dashed border-border rounded-lg">
-              No specific injuries added. Click &quot;Add injury&quot; if you
-              have any to report.
+              No specific injuries added. Click &quot;Add injury&quot; if you have any to report.
             </p>
           ) : (
             <div className="space-y-4">
               {formData.injury_details.map((injury, index) => (
-                <div
-                  key={index}
-                  className="border border-border rounded-lg p-4 space-y-3 relative"
-                >
+                <div key={index} className="border border-border rounded-lg p-4 space-y-3 relative">
                   <button
                     type="button"
                     onClick={() => removeInjury(index)}
@@ -954,29 +795,19 @@ function Step6Injuries({ formData, updateField }: StepProps) {
                   </button>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
-                      <Label htmlFor={`injury-area-${index}`}>
-                        Body area
-                      </Label>
+                      <Label htmlFor={`injury-area-${index}`}>Body area</Label>
                       <Input
                         id={`injury-area-${index}`}
                         placeholder="e.g. Knee"
                         value={injury.area}
-                        onChange={(e) =>
-                          updateInjury(index, "area", e.target.value)
-                        }
+                        onChange={(e) => updateInjury(index, "area", e.target.value)}
                         className="mt-1"
                       />
                     </div>
                     <div>
                       <Label htmlFor={`injury-side-${index}`}>Side</Label>
-                      <Select
-                        value={injury.side ?? ""}
-                        onValueChange={(v) => updateInjury(index, "side", v)}
-                      >
-                        <SelectTrigger
-                          id={`injury-side-${index}`}
-                          className="mt-1 w-full"
-                        >
+                      <Select value={injury.side ?? ""} onValueChange={(v) => updateInjury(index, "side", v)}>
+                        <SelectTrigger id={`injury-side-${index}`} className="mt-1 w-full">
                           <SelectValue placeholder="Select side" />
                         </SelectTrigger>
                         <SelectContent>
@@ -988,19 +819,9 @@ function Step6Injuries({ formData, updateField }: StepProps) {
                       </Select>
                     </div>
                     <div>
-                      <Label htmlFor={`injury-severity-${index}`}>
-                        Severity
-                      </Label>
-                      <Select
-                        value={injury.severity ?? ""}
-                        onValueChange={(v) =>
-                          updateInjury(index, "severity", v)
-                        }
-                      >
-                        <SelectTrigger
-                          id={`injury-severity-${index}`}
-                          className="mt-1 w-full"
-                        >
+                      <Label htmlFor={`injury-severity-${index}`}>Severity</Label>
+                      <Select value={injury.severity ?? ""} onValueChange={(v) => updateInjury(index, "severity", v)}>
+                        <SelectTrigger id={`injury-severity-${index}`} className="mt-1 w-full">
                           <SelectValue placeholder="Select severity" />
                         </SelectTrigger>
                         <SelectContent>
@@ -1019,9 +840,7 @@ function Step6Injuries({ formData, updateField }: StepProps) {
                       id={`injury-notes-${index}`}
                       placeholder="Additional details..."
                       value={injury.notes ?? ""}
-                      onChange={(e) =>
-                        updateInjury(index, "notes", e.target.value)
-                      }
+                      onChange={(e) => updateInjury(index, "notes", e.target.value)}
                       className="mt-1"
                     />
                   </div>
@@ -1043,7 +862,7 @@ function Step7Equipment({ formData, updateField }: StepProps) {
     if (current.includes(equipment)) {
       updateField(
         "available_equipment",
-        current.filter((e) => e !== equipment)
+        current.filter((e) => e !== equipment),
       )
     } else {
       updateField("available_equipment", [...current, equipment])
@@ -1057,17 +876,13 @@ function Step7Equipment({ formData, updateField }: StepProps) {
   const activePreset = Object.entries(EQUIPMENT_PRESETS).find(
     ([, items]) =>
       items.length === formData.available_equipment.length &&
-      items.every((item) => formData.available_equipment.includes(item))
+      items.every((item) => formData.available_equipment.includes(item)),
   )?.[0]
 
   return (
     <div>
-      <h2 className="text-lg font-semibold text-primary mb-2">
-        What equipment do you have access to?
-      </h2>
-      <p className="text-sm text-muted-foreground mb-4">
-        Pick a preset or select individual items below.
-      </p>
+      <h2 className="text-lg font-semibold text-primary mb-2">What equipment do you have access to?</h2>
+      <p className="text-sm text-muted-foreground mb-4">Pick a preset or select individual items below.</p>
 
       <div className="flex flex-wrap items-center gap-2 mb-4">
         {Object.entries(EQUIPMENT_PRESETS).map(([name, items]) => {
@@ -1084,9 +899,7 @@ function Step7Equipment({ formData, updateField }: StepProps) {
             </Button>
           )
         })}
-        <span className="text-xs text-muted-foreground ml-auto">
-          {formData.available_equipment.length} selected
-        </span>
+        <span className="text-xs text-muted-foreground ml-auto">{formData.available_equipment.length} selected</span>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -1096,18 +909,11 @@ function Step7Equipment({ formData, updateField }: StepProps) {
             <label
               key={eq}
               className={`flex items-center gap-2.5 rounded-lg border px-3 py-2.5 cursor-pointer transition-all ${
-                selected
-                  ? "border-primary bg-primary/5"
-                  : "border-border hover:border-primary/40"
+                selected ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"
               }`}
             >
-              <Checkbox
-                checked={selected}
-                onCheckedChange={() => toggleEquipment(eq)}
-              />
-              <span className="text-sm text-foreground">
-                {EQUIPMENT_LABELS[eq] ?? eq}
-              </span>
+              <Checkbox checked={selected} onCheckedChange={() => toggleEquipment(eq)} />
+              <span className="text-sm text-foreground">{EQUIPMENT_LABELS[eq] ?? eq}</span>
             </label>
           )
         })}
@@ -1124,25 +930,21 @@ function Step8Schedule({ formData, updateField }: StepProps) {
     if (current.includes(day)) {
       updateField(
         "preferred_day_names",
-        current.filter((d) => d !== day)
+        current.filter((d) => d !== day),
       )
     } else {
       updateField(
         "preferred_day_names",
-        [...current, day].sort((a, b) => a - b)
+        [...current, day].sort((a, b) => a - b),
       )
     }
   }
 
-  const selectedDayLabels = formData.preferred_day_names
-    .map((d) => DAY_NAMES[d - 1])
-    .join(", ")
+  const selectedDayLabels = formData.preferred_day_names.map((d) => DAY_NAMES[d - 1]).join(", ")
 
   return (
     <div>
-      <h2 className="text-lg font-semibold text-primary mb-2">
-        Your training schedule
-      </h2>
+      <h2 className="text-lg font-semibold text-primary mb-2">Your training schedule</h2>
       <p className="text-sm text-muted-foreground mb-6">
         Pick the days you can train and how long each session should be.
       </p>
@@ -1183,9 +985,7 @@ function Step8Schedule({ formData, updateField }: StepProps) {
                 <button
                   key={duration}
                   type="button"
-                  onClick={() =>
-                    updateField("preferred_session_minutes", duration)
-                  }
+                  onClick={() => updateField("preferred_session_minutes", duration)}
                   className={`rounded-lg border py-2.5 sm:py-3 text-center transition-all ${
                     selected
                       ? "border-primary bg-primary/5 ring-1 ring-primary text-primary font-semibold"
@@ -1193,9 +993,7 @@ function Step8Schedule({ formData, updateField }: StepProps) {
                   }`}
                 >
                   <span className="text-sm sm:text-lg font-medium">{duration}</span>
-                  <span className="block text-[10px] sm:text-xs text-muted-foreground">
-                    min
-                  </span>
+                  <span className="block text-[10px] sm:text-xs text-muted-foreground">min</span>
                 </button>
               )
             })}
@@ -1213,12 +1011,7 @@ function Step8Schedule({ formData, updateField }: StepProps) {
                   <button
                     key={opt}
                     type="button"
-                    onClick={() =>
-                      updateField(
-                        "time_efficiency_preference",
-                        selected ? null : opt
-                      )
-                    }
+                    onClick={() => updateField("time_efficiency_preference", selected ? null : opt)}
                     className={`flex items-center gap-3 rounded-lg border p-3 text-left transition-all ${
                       selected
                         ? "border-primary bg-primary/5 ring-1 ring-primary"
@@ -1227,18 +1020,12 @@ function Step8Schedule({ formData, updateField }: StepProps) {
                   >
                     <div
                       className={`flex items-center justify-center size-5 rounded-full border-2 transition-colors ${
-                        selected
-                          ? "border-primary bg-primary"
-                          : "border-muted-foreground/40"
+                        selected ? "border-primary bg-primary" : "border-muted-foreground/40"
                       }`}
                     >
-                      {selected && (
-                        <div className="size-2 rounded-full bg-white" />
-                      )}
+                      {selected && <div className="size-2 rounded-full bg-white" />}
                     </div>
-                    <span className="text-sm font-medium text-foreground">
-                      {TIME_EFFICIENCY_LABELS[opt]}
-                    </span>
+                    <span className="text-sm font-medium text-foreground">{TIME_EFFICIENCY_LABELS[opt]}</span>
                   </button>
                 )
               })}
@@ -1249,16 +1036,10 @@ function Step8Schedule({ formData, updateField }: StepProps) {
         {/* Summary */}
         <div className="bg-surface/50 rounded-lg p-4 border border-border">
           <p className="text-sm text-muted-foreground">
-            <strong className="text-foreground">Summary:</strong> You plan to
-            train{" "}
-            <strong className="text-primary">
-              {selectedDayLabels || "no days selected"}
-            </strong>{" "}
-            ({formData.preferred_day_names.length} days/week) for{" "}
-            <strong className="text-primary">
-              {formData.preferred_session_minutes} minutes
-            </strong>{" "}
-            per session.
+            <strong className="text-foreground">Summary:</strong> You plan to train{" "}
+            <strong className="text-primary">{selectedDayLabels || "no days selected"}</strong> (
+            {formData.preferred_day_names.length} days/week) for{" "}
+            <strong className="text-primary">{formData.preferred_session_minutes} minutes</strong> per session.
           </p>
         </div>
       </div>
@@ -1274,7 +1055,7 @@ function Step9Preferences({ formData, updateField }: StepProps) {
     if (current.includes(technique)) {
       updateField(
         "preferred_techniques",
-        current.filter((t) => t !== technique)
+        current.filter((t) => t !== technique),
       )
     } else {
       updateField("preferred_techniques", [...current, technique])
@@ -1283,12 +1064,9 @@ function Step9Preferences({ formData, updateField }: StepProps) {
 
   return (
     <div>
-      <h2 className="text-lg font-semibold text-primary mb-2">
-        Exercise preferences
-      </h2>
+      <h2 className="text-lg font-semibold text-primary mb-2">Exercise preferences</h2>
       <p className="text-sm text-muted-foreground mb-6">
-        Share what you enjoy and what you would rather avoid. This helps us keep
-        you motivated.
+        Share what you enjoy and what you would rather avoid. This helps us keep you motivated.
       </p>
       <div className="space-y-6">
         {/* Training techniques */}
@@ -1304,23 +1082,13 @@ function Step9Preferences({ formData, updateField }: StepProps) {
                 <label
                   key={tech}
                   className={`flex items-start gap-2.5 rounded-lg border px-3 py-2.5 cursor-pointer transition-all ${
-                    selected
-                      ? "border-primary bg-primary/5"
-                      : "border-border hover:border-primary/40"
+                    selected ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"
                   }`}
                 >
-                  <Checkbox
-                    checked={selected}
-                    onCheckedChange={() => toggleTechnique(tech)}
-                    className="mt-0.5"
-                  />
+                  <Checkbox checked={selected} onCheckedChange={() => toggleTechnique(tech)} className="mt-0.5" />
                   <div>
-                    <span className="text-sm font-medium text-foreground">
-                      {TECHNIQUE_LABELS[tech]}
-                    </span>
-                    <p className="text-xs text-muted-foreground">
-                      {TECHNIQUE_DESCRIPTIONS[tech]}
-                    </p>
+                    <span className="text-sm font-medium text-foreground">{TECHNIQUE_LABELS[tech]}</span>
+                    <p className="text-xs text-muted-foreground">{TECHNIQUE_DESCRIPTIONS[tech]}</p>
                   </div>
                 </label>
               )
@@ -1329,9 +1097,7 @@ function Step9Preferences({ formData, updateField }: StepProps) {
         </div>
 
         <div>
-          <Label htmlFor="exercise-likes">
-            Exercises or activities you enjoy (optional)
-          </Label>
+          <Label htmlFor="exercise-likes">Exercises or activities you enjoy (optional)</Label>
           <Textarea
             id="exercise-likes"
             placeholder="e.g. I love heavy squats, pull-ups, and swimming..."
@@ -1342,9 +1108,7 @@ function Step9Preferences({ formData, updateField }: StepProps) {
           />
         </div>
         <div>
-          <Label htmlFor="exercise-dislikes">
-            Exercises or activities you dislike (optional)
-          </Label>
+          <Label htmlFor="exercise-dislikes">Exercises or activities you dislike (optional)</Label>
           <Textarea
             id="exercise-dislikes"
             placeholder="e.g. I'm not a fan of long-distance running or burpees..."
@@ -1355,9 +1119,7 @@ function Step9Preferences({ formData, updateField }: StepProps) {
           />
         </div>
         <div>
-          <Label htmlFor="additional-notes">
-            Any additional notes or preferences (optional)
-          </Label>
+          <Label htmlFor="additional-notes">Any additional notes or preferences (optional)</Label>
           <Textarea
             id="additional-notes"
             placeholder="e.g. I prefer morning workouts, I have a time constraint on Wednesdays, etc."
@@ -1374,21 +1136,12 @@ function Step9Preferences({ formData, updateField }: StepProps) {
 
 /* ─── Step 10: Review ────────────────────────────────────────────── */
 
-function Step10Review({
-  formData,
-  onGoToStep,
-}: {
-  formData: FormData
-  onGoToStep: (step: number) => void
-}) {
+function Step10Review({ formData, onGoToStep }: { formData: FormData; onGoToStep: (step: number) => void }) {
   return (
     <div>
-      <h2 className="text-lg font-semibold text-primary mb-2">
-        Review your answers
-      </h2>
+      <h2 className="text-lg font-semibold text-primary mb-2">Review your answers</h2>
       <p className="text-sm text-muted-foreground mb-6">
-        Make sure everything looks good before submitting. Click any section
-        header to make changes.
+        Make sure everything looks good before submitting. Click any section header to make changes.
       </p>
       <div className="space-y-4">
         {/* Goals */}
@@ -1404,8 +1157,7 @@ function Step10Review({
               </div>
               {formData.sport && (
                 <p className="text-sm text-foreground">
-                  <span className="text-muted-foreground">Sport:</span>{" "}
-                  {formData.sport}
+                  <span className="text-muted-foreground">Sport:</span> {formData.sport}
                 </p>
               )}
             </div>
@@ -1419,8 +1171,7 @@ function Step10Review({
           <div className="space-y-1">
             {formData.date_of_birth && (
               <p className="text-sm text-foreground">
-                <span className="text-muted-foreground">Birth year:</span>{" "}
-                {formData.date_of_birth}
+                <span className="text-muted-foreground">Birth year:</span> {formData.date_of_birth}
               </p>
             )}
             {formData.gender && (
@@ -1440,15 +1191,12 @@ function Step10Review({
           <div className="space-y-1">
             <p className="text-sm text-foreground">
               {formData.experience_level
-                ? LEVEL_LABELS[formData.experience_level] ??
-                  formData.experience_level
+                ? (LEVEL_LABELS[formData.experience_level] ?? formData.experience_level)
                 : "Not selected"}
             </p>
             {formData.movement_confidence && (
               <p className="text-sm text-foreground">
-                <span className="text-muted-foreground">
-                  Movement confidence:
-                </span>{" "}
+                <span className="text-muted-foreground">Movement confidence:</span>{" "}
                 {MOVEMENT_CONFIDENCE_LABELS[formData.movement_confidence]}
               </p>
             )}
@@ -1456,22 +1204,16 @@ function Step10Review({
         </ReviewCard>
 
         {/* Recovery & Lifestyle */}
-        <ReviewCard
-          title="Recovery & Lifestyle"
-          stepNumber={4}
-          onEdit={onGoToStep}
-        >
+        <ReviewCard title="Recovery & Lifestyle" stepNumber={4} onEdit={onGoToStep}>
           <div className="space-y-1">
             {formData.sleep_hours && (
               <p className="text-sm text-foreground">
-                <span className="text-muted-foreground">Sleep:</span>{" "}
-                {SLEEP_LABELS[formData.sleep_hours]}
+                <span className="text-muted-foreground">Sleep:</span> {SLEEP_LABELS[formData.sleep_hours]}
               </p>
             )}
             {formData.stress_level && (
               <p className="text-sm text-foreground">
-                <span className="text-muted-foreground">Stress:</span>{" "}
-                {STRESS_LABELS[formData.stress_level]}
+                <span className="text-muted-foreground">Stress:</span> {STRESS_LABELS[formData.stress_level]}
               </p>
             )}
             {formData.occupation_activity_level && (
@@ -1480,95 +1222,55 @@ function Step10Review({
                 {OCCUPATION_LABELS[formData.occupation_activity_level]}
               </p>
             )}
-            {!formData.sleep_hours &&
-              !formData.stress_level &&
-              !formData.occupation_activity_level && (
-                <p className="text-sm text-muted-foreground">Not provided</p>
-              )}
+            {!formData.sleep_hours && !formData.stress_level && !formData.occupation_activity_level && (
+              <p className="text-sm text-muted-foreground">Not provided</p>
+            )}
           </div>
         </ReviewCard>
 
         {/* Training History */}
-        <ReviewCard
-          title="Training History"
-          stepNumber={5}
-          onEdit={onGoToStep}
-        >
+        <ReviewCard title="Training History" stepNumber={5} onEdit={onGoToStep}>
           <div className="space-y-1">
             {formData.training_years !== null && (
               <p className="text-sm text-foreground">
-                <span className="text-muted-foreground">Years:</span>{" "}
-                {formData.training_years}
+                <span className="text-muted-foreground">Years:</span> {formData.training_years}
               </p>
             )}
             {formData.training_background && (
               <p className="text-sm text-foreground">
-                <span className="text-muted-foreground">Background:</span>{" "}
-                {formData.training_background}
+                <span className="text-muted-foreground">Background:</span> {formData.training_background}
               </p>
             )}
             {!formData.training_years && !formData.training_background && (
-              <p className="text-sm text-muted-foreground">
-                No training history provided
-              </p>
+              <p className="text-sm text-muted-foreground">No training history provided</p>
             )}
           </div>
         </ReviewCard>
 
         {/* Injuries */}
-        <ReviewCard
-          title="Injuries & Limitations"
-          stepNumber={6}
-          onEdit={onGoToStep}
-        >
+        <ReviewCard title="Injuries & Limitations" stepNumber={6} onEdit={onGoToStep}>
           <div className="space-y-2">
-            {formData.injuries_text && (
-              <p className="text-sm text-foreground">{formData.injuries_text}</p>
-            )}
+            {formData.injuries_text && <p className="text-sm text-foreground">{formData.injuries_text}</p>}
             {formData.injury_details.length > 0 && (
               <div className="space-y-1.5">
                 {formData.injury_details.map((injury, i) => (
-                  <div
-                    key={i}
-                    className="text-sm text-foreground bg-surface/50 rounded px-3 py-1.5"
-                  >
+                  <div key={i} className="text-sm text-foreground bg-surface/50 rounded px-3 py-1.5">
                     <span className="font-medium">{injury.area}</span>
-                    {injury.side && (
-                      <span className="text-muted-foreground">
-                        {" "}
-                        ({injury.side})
-                      </span>
-                    )}
-                    {injury.severity && (
-                      <span className="text-muted-foreground">
-                        {" "}
-                        — {injury.severity}
-                      </span>
-                    )}
-                    {injury.notes && (
-                      <span className="text-muted-foreground">
-                        : {injury.notes}
-                      </span>
-                    )}
+                    {injury.side && <span className="text-muted-foreground"> ({injury.side})</span>}
+                    {injury.severity && <span className="text-muted-foreground"> — {injury.severity}</span>}
+                    {injury.notes && <span className="text-muted-foreground">: {injury.notes}</span>}
                   </div>
                 ))}
               </div>
             )}
-            {!formData.injuries_text &&
-              formData.injury_details.length === 0 && (
-                <p className="text-sm text-muted-foreground">
-                  No injuries reported
-                </p>
-              )}
+            {!formData.injuries_text && formData.injury_details.length === 0 && (
+              <p className="text-sm text-muted-foreground">No injuries reported</p>
+            )}
           </div>
         </ReviewCard>
 
         {/* Equipment */}
-        <ReviewCard
-          title="Available Equipment"
-          stepNumber={7}
-          onEdit={onGoToStep}
-        >
+        <ReviewCard title="Available Equipment" stepNumber={7} onEdit={onGoToStep}>
           {formData.available_equipment.length > 0 ? (
             <div className="flex flex-wrap gap-1.5">
               {formData.available_equipment.map((eq) => (
@@ -1578,9 +1280,7 @@ function Step10Review({
               ))}
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">
-              No equipment selected
-            </p>
+            <p className="text-sm text-muted-foreground">No equipment selected</p>
           )}
         </ReviewCard>
 
@@ -1589,14 +1289,12 @@ function Step10Review({
           <div className="space-y-1">
             <p className="text-sm text-foreground">
               <span className="text-muted-foreground">Days:</span>{" "}
-              {formData.preferred_day_names
-                .map((d) => DAY_NAMES[d - 1])
-                .join(", ") || "None selected"}{" "}
-              ({formData.preferred_day_names.length} days/week)
+              {formData.preferred_day_names.map((d) => DAY_NAMES[d - 1]).join(", ") || "None selected"} (
+              {formData.preferred_day_names.length} days/week)
             </p>
             <p className="text-sm text-foreground">
-              <span className="text-muted-foreground">Duration:</span>{" "}
-              {formData.preferred_session_minutes} minutes per session
+              <span className="text-muted-foreground">Duration:</span> {formData.preferred_session_minutes} minutes per
+              session
             </p>
             {formData.time_efficiency_preference && (
               <p className="text-sm text-foreground">
@@ -1608,11 +1306,7 @@ function Step10Review({
         </ReviewCard>
 
         {/* Preferences */}
-        <ReviewCard
-          title="Exercise Preferences"
-          stepNumber={9}
-          onEdit={onGoToStep}
-        >
+        <ReviewCard title="Exercise Preferences" stepNumber={9} onEdit={onGoToStep}>
           <div className="space-y-1">
             {formData.preferred_techniques.length > 0 && (
               <div className="flex flex-wrap gap-1.5 mb-1">
@@ -1625,29 +1319,24 @@ function Step10Review({
             )}
             {formData.exercise_likes && (
               <p className="text-sm text-foreground">
-                <span className="text-muted-foreground">Likes:</span>{" "}
-                {formData.exercise_likes}
+                <span className="text-muted-foreground">Likes:</span> {formData.exercise_likes}
               </p>
             )}
             {formData.exercise_dislikes && (
               <p className="text-sm text-foreground">
-                <span className="text-muted-foreground">Dislikes:</span>{" "}
-                {formData.exercise_dislikes}
+                <span className="text-muted-foreground">Dislikes:</span> {formData.exercise_dislikes}
               </p>
             )}
             {formData.additional_notes && (
               <p className="text-sm text-foreground">
-                <span className="text-muted-foreground">Notes:</span>{" "}
-                {formData.additional_notes}
+                <span className="text-muted-foreground">Notes:</span> {formData.additional_notes}
               </p>
             )}
             {!formData.exercise_likes &&
               !formData.exercise_dislikes &&
               !formData.additional_notes &&
               formData.preferred_techniques.length === 0 && (
-                <p className="text-sm text-muted-foreground">
-                  No preferences provided
-                </p>
+                <p className="text-sm text-muted-foreground">No preferences provided</p>
               )}
           </div>
         </ReviewCard>

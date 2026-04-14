@@ -97,9 +97,7 @@ export function WorkoutHeatmap({ data, weeks = 12 }: WorkoutHeatmapProps) {
               style={{
                 position: "relative",
                 left: m.colIndex * 14,
-                marginRight: i < monthLabels.length - 1
-                  ? (monthLabels[i + 1].colIndex - m.colIndex) * 14 - 24
-                  : 0,
+                marginRight: i < monthLabels.length - 1 ? (monthLabels[i + 1].colIndex - m.colIndex) * 14 - 24 : 0,
               }}
             >
               {m.label}
@@ -111,10 +109,7 @@ export function WorkoutHeatmap({ data, weeks = 12 }: WorkoutHeatmapProps) {
           {/* Day labels */}
           <div className="flex flex-col gap-[3px] mr-1.5 shrink-0">
             {DAY_LABELS.map((label, i) => (
-              <span
-                key={i}
-                className="text-[9px] text-muted-foreground h-[11px] leading-[11px] w-5 text-right"
-              >
+              <span key={i} className="text-[9px] text-muted-foreground h-[11px] leading-[11px] w-5 text-right">
                 {label}
               </span>
             ))}
@@ -127,10 +122,7 @@ export function WorkoutHeatmap({ data, weeks = 12 }: WorkoutHeatmapProps) {
                 {week.map((day) => (
                   <div
                     key={day.date}
-                    className={cn(
-                      "size-[11px] rounded-[2px] transition-colors",
-                      getIntensity(day.count)
-                    )}
+                    className={cn("size-[11px] rounded-[2px] transition-colors", getIntensity(day.count))}
                     title={`${day.date}: ${day.count} exercise${day.count !== 1 ? "s" : ""}`}
                   />
                 ))}

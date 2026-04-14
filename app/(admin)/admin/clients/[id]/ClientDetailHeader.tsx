@@ -54,17 +54,17 @@ export function ClientDetailHeader({ client }: ClientDetailHeaderProps) {
   return (
     <>
       <div className="flex items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setEditOpen(true)}
-        >
+        <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
           <Pencil className="size-3.5" />
           Edit
         </Button>
         <AlertDialog>
           <AlertDialogTrigger asChild>
-            <Button variant="outline" size="sm" className="text-destructive border-destructive/30 hover:bg-destructive hover:text-destructive-foreground hover:border-destructive">
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-destructive border-destructive/30 hover:bg-destructive hover:text-destructive-foreground hover:border-destructive"
+            >
               <Trash2 className="size-3.5" />
               Delete
             </Button>
@@ -75,8 +75,8 @@ export function ClientDetailHeader({ client }: ClientDetailHeaderProps) {
                 Delete {client.first_name} {client.last_name}?
               </AlertDialogTitle>
               <AlertDialogDescription>
-                This will permanently remove their account, profile, programs, and
-                progress. This action cannot be undone.
+                This will permanently remove their account, profile, programs, and progress. This action cannot be
+                undone.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -99,11 +99,7 @@ export function ClientDetailHeader({ client }: ClientDetailHeaderProps) {
           </AlertDialogContent>
         </AlertDialog>
       </div>
-      <EditClientDialog
-        open={editOpen}
-        onOpenChange={setEditOpen}
-        client={client}
-      />
+      <EditClientDialog open={editOpen} onOpenChange={setEditOpen} client={client} />
     </>
   )
 }

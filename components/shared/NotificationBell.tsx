@@ -5,17 +5,10 @@ import { Bell, CheckCheck, Info, CheckCircle2, AlertTriangle, XCircle } from "lu
 import { cn } from "@/lib/utils"
 import { timeAgo } from "@/lib/time-utils"
 import { useNotifications } from "@/hooks/use-notifications"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import type { NotificationType } from "@/types/database"
 
-const typeConfig: Record<
-  NotificationType,
-  { icon: typeof Info; className: string }
-> = {
+const typeConfig: Record<NotificationType, { icon: typeof Info; className: string }> = {
   info: { icon: Info, className: "text-blue-500" },
   success: { icon: CheckCircle2, className: "text-green-500" },
   warning: { icon: AlertTriangle, className: "text-amber-500" },
@@ -24,8 +17,7 @@ const typeConfig: Record<
 
 export function NotificationBell() {
   const router = useRouter()
-  const { notifications, unreadCount, loading, markAsRead, markAllAsRead } =
-    useNotifications()
+  const { notifications, unreadCount, loading, markAsRead, markAllAsRead } = useNotifications()
 
   function handleClick(id: string, link: string | null, isRead: boolean) {
     if (!isRead) markAsRead(id)
@@ -47,9 +39,7 @@ export function NotificationBell() {
       <PopoverContent align="end" className="w-80 sm:w-96 p-0">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-          <h3 className="text-sm font-semibold text-foreground">
-            Notifications
-          </h3>
+          <h3 className="text-sm font-semibold text-foreground">Notifications</h3>
           {unreadCount > 0 && (
             <button
               onClick={() => markAllAsRead()}
@@ -64,13 +54,9 @@ export function NotificationBell() {
         {/* List */}
         <div className="max-h-80 overflow-y-auto">
           {loading ? (
-            <div className="px-4 py-8 text-center text-xs text-muted-foreground">
-              Loading...
-            </div>
+            <div className="px-4 py-8 text-center text-xs text-muted-foreground">Loading...</div>
           ) : notifications.length === 0 ? (
-            <div className="px-4 py-8 text-center text-xs text-muted-foreground">
-              No notifications yet.
-            </div>
+            <div className="px-4 py-8 text-center text-xs text-muted-foreground">No notifications yet.</div>
           ) : (
             notifications.map((n) => {
               const config = typeConfig[n.type as NotificationType] ?? typeConfig.info
@@ -81,34 +67,24 @@ export function NotificationBell() {
                   onClick={() => handleClick(n.id, n.link, n.is_read)}
                   className={cn(
                     "flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-surface",
-                    !n.is_read && "bg-primary/[0.03]"
+                    !n.is_read && "bg-primary/[0.03]",
                   )}
                 >
-                  <TypeIcon
-                    className={cn("size-4 mt-0.5 shrink-0", config.className)}
-                  />
+                  <TypeIcon className={cn("size-4 mt-0.5 shrink-0", config.className)} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <p
                         className={cn(
                           "text-sm truncate",
-                          n.is_read
-                            ? "text-muted-foreground"
-                            : "font-semibold text-foreground"
+                          n.is_read ? "text-muted-foreground" : "font-semibold text-foreground",
                         )}
                       >
                         {n.title}
                       </p>
-                      {!n.is_read && (
-                        <span className="size-1.5 rounded-full bg-primary shrink-0" />
-                      )}
+                      {!n.is_read && <span className="size-1.5 rounded-full bg-primary shrink-0" />}
                     </div>
-                    <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
-                      {n.message}
-                    </p>
-                    <p className="text-[10px] text-muted-foreground/60 mt-1">
-                      {timeAgo(n.created_at)}
-                    </p>
+                    <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{n.message}</p>
+                    <p className="text-[10px] text-muted-foreground/60 mt-1">{timeAgo(n.created_at)}</p>
                   </div>
                 </button>
               )

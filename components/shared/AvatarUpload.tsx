@@ -21,13 +21,7 @@ interface AvatarUploadProps {
 const MAX_SIZE = 2 * 1024 * 1024 // 2 MB
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"]
 
-export function AvatarUpload({
-  currentUrl,
-  userId,
-  initials,
-  onUploaded,
-  disabled,
-}: AvatarUploadProps) {
+export function AvatarUpload({ currentUrl, userId, initials, onUploaded, disabled }: AvatarUploadProps) {
   const [preview, setPreview] = useState<string | null>(currentUrl ?? null)
   const [isUploading, setIsUploading] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -68,7 +62,7 @@ export function AvatarUpload({
         setIsUploading(false)
       }
     },
-    [userId, onUploaded]
+    [userId, onUploaded],
   )
 
   async function handleRemove(e: React.MouseEvent) {
@@ -103,9 +97,7 @@ export function AvatarUpload({
       >
         <Avatar className="size-16">
           {preview && <AvatarImage src={preview} alt="Avatar" />}
-          <AvatarFallback className="bg-primary/10 text-primary text-lg font-medium">
-            {initials}
-          </AvatarFallback>
+          <AvatarFallback className="bg-primary/10 text-primary text-lg font-medium">{initials}</AvatarFallback>
         </Avatar>
 
         {/* Overlay */}
@@ -129,9 +121,7 @@ export function AvatarUpload({
         )}
       </div>
 
-      <p className="text-[10px] text-muted-foreground">
-        Click to upload photo
-      </p>
+      <p className="text-[10px] text-muted-foreground">Click to upload photo</p>
 
       <input
         ref={inputRef}

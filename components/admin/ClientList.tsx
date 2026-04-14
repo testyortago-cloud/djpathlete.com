@@ -51,14 +51,20 @@ export function ClientList({ users }: { users: User[] }) {
           <Input
             placeholder="Search clients..."
             value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(1) }}
+            onChange={(e) => {
+              setSearch(e.target.value)
+              setPage(1)
+            }}
             className="pl-9 h-9"
           />
         </div>
         <div className="flex gap-2">
           <select
             value={roleFilter}
-            onChange={(e) => { setRoleFilter(e.target.value); setPage(1) }}
+            onChange={(e) => {
+              setRoleFilter(e.target.value)
+              setPage(1)
+            }}
             className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-foreground"
           >
             <option value="all">All Roles</option>
@@ -67,7 +73,10 @@ export function ClientList({ users }: { users: User[] }) {
           </select>
           <select
             value={statusFilter}
-            onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }}
+            onChange={(e) => {
+              setStatusFilter(e.target.value)
+              setPage(1)
+            }}
             className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-foreground"
           >
             <option value="all">All Status</option>
@@ -92,7 +101,10 @@ export function ClientList({ users }: { users: User[] }) {
           </thead>
           <tbody>
             {paginated.map((client) => (
-              <tr key={client.id} className="border-b border-border last:border-b-0 hover:bg-surface/30 transition-colors">
+              <tr
+                key={client.id}
+                className="border-b border-border last:border-b-0 hover:bg-surface/30 transition-colors"
+              >
                 <td className="px-4 py-3">
                   <Link href={`/admin/clients/${client.id}`} className="font-medium text-primary hover:underline">
                     {client.first_name} {client.last_name}
@@ -105,13 +117,13 @@ export function ClientList({ users }: { users: User[] }) {
                   </span>
                 </td>
                 <td className="px-4 py-3">
-                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${getStatusClasses(client.status)}`}>
+                  <span
+                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${getStatusClasses(client.status)}`}
+                  >
                     {client.status}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-muted-foreground">
-                  {new Date(client.created_at).toLocaleDateString()}
-                </td>
+                <td className="px-4 py-3 text-muted-foreground">{new Date(client.created_at).toLocaleDateString()}</td>
               </tr>
             ))}
             {paginated.length === 0 && (
@@ -131,15 +143,21 @@ export function ClientList({ users }: { users: User[] }) {
           <span>Rows per page:</span>
           <select
             value={perPage}
-            onChange={(e) => { setPerPage(Number(e.target.value)); setPage(1) }}
+            onChange={(e) => {
+              setPerPage(Number(e.target.value))
+              setPage(1)
+            }}
             className="h-8 rounded border border-border bg-white px-2 text-sm"
           >
             {PAGE_SIZE_OPTIONS.map((size) => (
-              <option key={size} value={size}>{size}</option>
+              <option key={size} value={size}>
+                {size}
+              </option>
             ))}
           </select>
           <span className="ml-2">
-            {filtered.length === 0 ? "0" : `${(page - 1) * perPage + 1}-${Math.min(page * perPage, filtered.length)}`} of {filtered.length}
+            {filtered.length === 0 ? "0" : `${(page - 1) * perPage + 1}-${Math.min(page * perPage, filtered.length)}`}{" "}
+            of {filtered.length}
           </span>
         </div>
         <div className="flex items-center gap-1">

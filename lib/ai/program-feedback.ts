@@ -31,17 +31,11 @@ export async function embedProgramFeedback(feedbackId: string): Promise<void> {
   // Or better: import a direct getter. For simplicity, we'll use the supabase client directly here to avoid circular deps
   const { createServiceRoleClient } = await import("@/lib/supabase")
   const supabase = createServiceRoleClient()
-  const { data, error } = await supabase
-    .from("ai_program_feedback")
-    .select("*")
-    .eq("id", feedbackId)
-    .single()
+  const { data, error } = await supabase.from("ai_program_feedback").select("*").eq("id", feedbackId).single()
   if (error || !data) return
 
   const feedback = data as AiProgramFeedback
-  const issueCategories = feedback.specific_issues
-    .map((i) => i.category)
-    .join(", ")
+  const issueCategories = feedback.specific_issues.map((i) => i.category).join(", ")
 
   const textToEmbed = [
     `Program feedback | split: ${feedback.split_type ?? "unknown"}`,
@@ -67,7 +61,7 @@ export async function buildFeedbackContext(
   splitType: string | null,
   difficulty: string | null,
   goals: string[],
-  opts?: { timeoutMs?: number; maxTokens?: number }
+  opts?: { timeoutMs?: number; maxTokens?: number },
 ): Promise<FeedbackContext> {
   const timeoutMs = opts?.timeoutMs ?? 2000
   const maxTokens = opts?.maxTokens ?? 800
@@ -78,7 +72,7 @@ export async function buildFeedbackContext(
     return await Promise.race([
       doFeedbackRetrieval(splitType, difficulty, goals, maxTokens),
       new Promise<FeedbackContext>((_, reject) =>
-        setTimeout(() => reject(new Error("Feedback retrieval timed out")), timeoutMs)
+        setTimeout(() => reject(new Error("Feedback retrieval timed out")), timeoutMs),
       ),
     ])
   } catch {
@@ -90,7 +84,7 @@ async function doFeedbackRetrieval(
   splitType: string | null,
   difficulty: string | null,
   goals: string[],
-  maxTokens: number
+  maxTokens: number,
 ): Promise<FeedbackContext> {
   // Two retrieval strategies in parallel: vector search + recent feedback
   const queryText = [
@@ -104,14 +98,16 @@ async function doFeedbackRetrieval(
 
   const [vectorResults, recentResults] = await Promise.all([
     // Vector search for semantically similar feedback
-    embedText(queryText).then((embedding) =>
-      searchSimilarProgramFeedback(embedding, {
-        splitType: splitType ?? undefined,
-        difficulty: difficulty ?? undefined,
-        threshold: 0.3,
-        limit: 10,
-      })
-    ).catch(() => [] as ProgramFeedbackSearchResult[]),
+    embedText(queryText)
+      .then((embedding) =>
+        searchSimilarProgramFeedback(embedding, {
+          splitType: splitType ?? undefined,
+          difficulty: difficulty ?? undefined,
+          threshold: 0.3,
+          limit: 10,
+        }),
+      )
+      .catch(() => [] as ProgramFeedbackSearchResult[]),
     // Recent feedback with same split/difficulty
     getRecentProgramFeedback({
       splitType: splitType ?? undefined,
@@ -171,12 +167,9 @@ function aggregateIssuePatterns(
     specific_issues: ProgramFeedbackIssue[]
     overall_rating: number
     notes: string | null
-  }>
+  }>,
 ): IssuePattern[] {
-  const categoryMap = new Map<
-    string,
-    { count: number; severities: string[]; descriptions: string[] }
-  >()
+  const categoryMap = new Map<string, { count: number; severities: string[]; descriptions: string[] }>()
 
   for (const fb of feedbacks) {
     for (const issue of fb.specific_issues) {
@@ -221,10 +214,7 @@ function aggregateIssuePatterns(
 
 // ─── Format for prompt injection ─────────────────────────────────────────────
 
-function formatFeedbackForPrompt(
-  patterns: IssuePattern[],
-  maxTokens: number
-): string {
+function formatFeedbackForPrompt(patterns: IssuePattern[], maxTokens: number): string {
   if (patterns.length === 0) return ""
 
   const header = `## Past Program Feedback Patterns

@@ -1,6 +1,16 @@
 import ExcelJS from "exceljs"
 
-const CATEGORIES = ["strength", "speed", "power", "plyometric", "flexibility", "mobility", "motor_control", "strength_endurance", "relative_strength"]
+const CATEGORIES = [
+  "strength",
+  "speed",
+  "power",
+  "plyometric",
+  "flexibility",
+  "mobility",
+  "motor_control",
+  "strength_endurance",
+  "relative_strength",
+]
 const DIFFICULTIES = ["beginner", "intermediate", "advanced"]
 const BOOL_OPTIONS = ["TRUE", "FALSE"]
 const TRAINING_INTENT_OPTIONS = ["Build", "Shape", "Express", "Build/Shape", "Shape/Express", "Build/Shape/Express"]
@@ -53,7 +63,13 @@ const EXERCISE_COLUMNS: ColumnDef[] = [
   { header: "Equipment", key: "equipment", width: 25, hint: "e.g. Barbell / Squat Rack" },
   { header: "Instructions", key: "instructions", width: 55, hint: "Step-by-step coaching cues" },
   { header: "Bodyweight?", key: "is_bodyweight", width: 14, hint: "Select from dropdown", dropdown: BOOL_OPTIONS },
-  { header: "Training Intent", key: "training_intent", width: 20, hint: "Select from dropdown", dropdown: TRAINING_INTENT_OPTIONS },
+  {
+    header: "Training Intent",
+    key: "training_intent",
+    width: 20,
+    hint: "Select from dropdown",
+    dropdown: TRAINING_INTENT_OPTIONS,
+  },
   { header: "Video URL", key: "video_url", width: 35, hint: "YouTube link (optional)" },
 ]
 
@@ -65,7 +81,8 @@ const EXAMPLE_ROWS = [
     difficulty: "intermediate",
     muscle_group: "Quadriceps / Glutes",
     equipment: "Barbell / Squat Rack",
-    instructions: "1. Set bar on upper traps. 2. Unrack and step back. 3. Brace core, squat to parallel. 4. Drive through heels to stand.",
+    instructions:
+      "1. Set bar on upper traps. 2. Unrack and step back. 3. Brace core, squat to parallel. 4. Drive through heels to stand.",
     is_bodyweight: "FALSE",
     training_intent: "Build/Shape",
     video_url: "",
@@ -77,7 +94,8 @@ const EXAMPLE_ROWS = [
     difficulty: "intermediate",
     muscle_group: "Hamstrings / Glutes",
     equipment: "Barbell",
-    instructions: "1. Hold barbell at hip height. 2. Push hips back, lowering bar along shins. 3. Feel stretch in hamstrings. 4. Drive hips forward to stand.",
+    instructions:
+      "1. Hold barbell at hip height. 2. Push hips back, lowering bar along shins. 3. Feel stretch in hamstrings. 4. Drive hips forward to stand.",
     is_bodyweight: "FALSE",
     training_intent: "Build",
     video_url: "",
@@ -99,21 +117,38 @@ const EXAMPLE_ROWS = [
 const RELATIONSHIP_COLUMNS: ColumnDef[] = [
   { header: "Exercise Name *", key: "exercise_name", width: 30, hint: "e.g. Barbell Back Squat" },
   { header: "Related Exercise *", key: "related_exercise_name", width: 30, hint: "e.g. Goblet Squat" },
-  { header: "Relationship Type *", key: "relationship_type", width: 20, hint: "Select from dropdown", dropdown: ["progression", "regression", "alternative", "variation"] },
+  {
+    header: "Relationship Type *",
+    key: "relationship_type",
+    width: 20,
+    hint: "Select from dropdown",
+    dropdown: ["progression", "regression", "alternative", "variation"],
+  },
   { header: "Notes", key: "notes", width: 50, hint: "Why are these exercises related?" },
 ]
 
 const RELATIONSHIP_EXAMPLES = [
-  { exercise_name: "Barbell Back Squat", related_exercise_name: "Goblet Squat", relationship_type: "regression", notes: "Simpler squat pattern for beginners learning mechanics" },
-  { exercise_name: "Barbell Back Squat", related_exercise_name: "Front Squat", relationship_type: "variation", notes: "Shifts emphasis to quads and upper back" },
-  { exercise_name: "Pull-Up", related_exercise_name: "Lat Pulldown", relationship_type: "regression", notes: "Machine alternative when pull-ups are too difficult" },
+  {
+    exercise_name: "Barbell Back Squat",
+    related_exercise_name: "Goblet Squat",
+    relationship_type: "regression",
+    notes: "Simpler squat pattern for beginners learning mechanics",
+  },
+  {
+    exercise_name: "Barbell Back Squat",
+    related_exercise_name: "Front Squat",
+    relationship_type: "variation",
+    notes: "Shifts emphasis to quads and upper back",
+  },
+  {
+    exercise_name: "Pull-Up",
+    related_exercise_name: "Lat Pulldown",
+    relationship_type: "regression",
+    notes: "Machine alternative when pull-ups are too difficult",
+  },
 ]
 
-function applySheetFormatting(
-  sheet: ExcelJS.Worksheet,
-  columns: ColumnDef[],
-  examples: Record<string, string>[],
-) {
+function applySheetFormatting(sheet: ExcelJS.Worksheet, columns: ColumnDef[], examples: Record<string, string>[]) {
   // Set columns
   sheet.columns = columns.map((col) => ({
     header: col.header,
@@ -212,23 +247,84 @@ export async function generateExerciseTemplate(): Promise<Blob> {
 
   const instructionRows = [
     { field: "Exercise Name", required: "Yes", description: "The name of the exercise", values: "Free text" },
-    { field: "Description", required: "Yes", description: "Short description of the exercise purpose", values: "Free text" },
+    {
+      field: "Description",
+      required: "Yes",
+      description: "Short description of the exercise purpose",
+      values: "Free text",
+    },
     { field: "Category", required: "Yes", description: "Exercise type classification", values: CATEGORIES.join(", ") },
     { field: "Difficulty", required: "Yes", description: "Skill level required", values: DIFFICULTIES.join(", ") },
-    { field: "Muscle Group", required: "No", description: "Target muscles (free text for your reference)", values: "e.g. Quadriceps / Glutes" },
-    { field: "Equipment", required: "No", description: "Equipment needed to perform the exercise", values: "Free text, e.g. Barbell / Squat Rack" },
+    {
+      field: "Muscle Group",
+      required: "No",
+      description: "Target muscles (free text for your reference)",
+      values: "e.g. Quadriceps / Glutes",
+    },
+    {
+      field: "Equipment",
+      required: "No",
+      description: "Equipment needed to perform the exercise",
+      values: "Free text, e.g. Barbell / Squat Rack",
+    },
     { field: "Instructions", required: "No", description: "Step-by-step coaching cues", values: "Numbered steps" },
     { field: "Bodyweight?", required: "No", description: "Is this a bodyweight exercise?", values: "TRUE or FALSE" },
-    { field: "Training Intent", required: "No", description: "Training intent classification for the exercise", values: TRAINING_INTENT_OPTIONS.join(", ") },
-    { field: "Video URL", required: "No", description: "YouTube video link for exercise demo", values: "Full YouTube URL" },
+    {
+      field: "Training Intent",
+      required: "No",
+      description: "Training intent classification for the exercise",
+      values: TRAINING_INTENT_OPTIONS.join(", "),
+    },
+    {
+      field: "Video URL",
+      required: "No",
+      description: "YouTube video link for exercise demo",
+      values: "Full YouTube URL",
+    },
     { field: "", required: "", description: "", values: "" },
-    { field: "AI METADATA", required: "", description: "The following fields are generated by AI — you do NOT need to fill these in", values: "" },
-    { field: "movement_pattern", required: "Auto", description: "Movement classification for programming", values: "push, pull, squat, hinge, lunge, carry, rotation, isometric, locomotion" },
-    { field: "primary_muscles", required: "Auto", description: "Primary muscles targeted", values: "chest, upper_back, lats, shoulders, biceps, triceps, forearms, core, obliques, lower_back, glutes, quadriceps, hamstrings, calves, hip_flexors, adductors, abductors, traps, neck" },
-    { field: "secondary_muscles", required: "Auto", description: "Secondary muscles involved", values: "Same as primary_muscles" },
-    { field: "force_type", required: "Auto", description: "Type of force produced", values: "push, pull, static, dynamic" },
-    { field: "laterality", required: "Auto", description: "Bilateral or unilateral movement", values: "bilateral, unilateral, alternating" },
-    { field: "equipment_required", required: "Auto", description: "Specific equipment tags for filtering", values: "barbell, dumbbell, kettlebell, cable_machine, bench, squat_rack, pull_up_bar, resistance_band, etc." },
+    {
+      field: "AI METADATA",
+      required: "",
+      description: "The following fields are generated by AI — you do NOT need to fill these in",
+      values: "",
+    },
+    {
+      field: "movement_pattern",
+      required: "Auto",
+      description: "Movement classification for programming",
+      values: "push, pull, squat, hinge, lunge, carry, rotation, isometric, locomotion",
+    },
+    {
+      field: "primary_muscles",
+      required: "Auto",
+      description: "Primary muscles targeted",
+      values:
+        "chest, upper_back, lats, shoulders, biceps, triceps, forearms, core, obliques, lower_back, glutes, quadriceps, hamstrings, calves, hip_flexors, adductors, abductors, traps, neck",
+    },
+    {
+      field: "secondary_muscles",
+      required: "Auto",
+      description: "Secondary muscles involved",
+      values: "Same as primary_muscles",
+    },
+    {
+      field: "force_type",
+      required: "Auto",
+      description: "Type of force produced",
+      values: "push, pull, static, dynamic",
+    },
+    {
+      field: "laterality",
+      required: "Auto",
+      description: "Bilateral or unilateral movement",
+      values: "bilateral, unilateral, alternating",
+    },
+    {
+      field: "equipment_required",
+      required: "Auto",
+      description: "Specific equipment tags for filtering",
+      values: "barbell, dumbbell, kettlebell, cable_machine, bench, squat_rack, pull_up_bar, resistance_band, etc.",
+    },
   ]
 
   instructionRows.forEach((data, i) => {

@@ -6,14 +6,7 @@ import { Calendar } from "@/components/ui/calendar"
 import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import {
-  CheckCircle2,
-  Dumbbell,
-  ChevronLeft,
-  ChevronRight,
-  ChevronUp,
-  CalendarDays,
-} from "lucide-react"
+import { CheckCircle2, Dumbbell, ChevronLeft, ChevronRight, ChevronUp, CalendarDays } from "lucide-react"
 
 export interface WorkoutCalendarDay {
   date: Date
@@ -32,11 +25,7 @@ interface WorkoutCalendarProps {
 }
 
 function isSameDay(a: Date, b: Date) {
-  return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
-  )
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
 }
 
 // ---------- Internal: Week Strip ----------
@@ -113,30 +102,19 @@ function CalendarWeekStrip({
                       ? "text-amber-600"
                       : status === "scheduled"
                         ? "text-primary"
-                        : "text-muted-foreground"
+                        : "text-muted-foreground",
               )}
             >
-              <span
-                className={cn(
-                  "text-[10px] uppercase",
-                  isSelected ? "text-primary-foreground/70" : "opacity-60"
-                )}
-              >
+              <span className={cn("text-[10px] uppercase", isSelected ? "text-primary-foreground/70" : "opacity-60")}>
                 {dayNames[i]}
               </span>
               <span className="font-semibold text-sm">{day.getDate()}</span>
-              {isToday && !isSelected && (
-                <span className="size-1 rounded-full bg-primary" />
-              )}
+              {isToday && !isSelected && <span className="size-1 rounded-full bg-primary" />}
               {status && !isSelected && !isToday && (
                 <span
                   className={cn(
                     "size-1.5 rounded-full",
-                    status === "completed"
-                      ? "bg-success"
-                      : status === "partial"
-                        ? "bg-amber-400"
-                        : "bg-primary/40"
+                    status === "completed" ? "bg-success" : status === "partial" ? "bg-amber-400" : "bg-primary/40",
                   )}
                 />
               )}
@@ -306,9 +284,7 @@ export function WorkoutCalendar({ workoutDays, onSwitchToList }: WorkoutCalendar
                 day: "numeric",
               })}
             </p>
-            {isSameDay(selectedDate, today) && (
-              <p className="text-[10px] text-primary font-medium">Today</p>
-            )}
+            {isSameDay(selectedDate, today) && <p className="text-[10px] text-primary font-medium">Today</p>}
           </div>
           {selectedDayData && (
             <span className="text-xs text-muted-foreground">
@@ -322,12 +298,8 @@ export function WorkoutCalendar({ workoutDays, onSwitchToList }: WorkoutCalendar
       {selectedDayData ? (
         <div className="space-y-3">
           {selectedDayData.map((day) => {
-            const allDone =
-              day.completedCount >= day.exerciseCount && day.exerciseCount > 0
-            const progressPct =
-              day.exerciseCount > 0
-                ? Math.round((day.completedCount / day.exerciseCount) * 100)
-                : 0
+            const allDone = day.completedCount >= day.exerciseCount && day.exerciseCount > 0
+            const progressPct = day.exerciseCount > 0 ? Math.round((day.completedCount / day.exerciseCount) * 100) : 0
             const previewNames = day.exerciseNames.slice(0, 3)
             const remaining = day.exerciseNames.length - 3
 
@@ -345,7 +317,7 @@ export function WorkoutCalendar({ workoutDays, onSwitchToList }: WorkoutCalendar
                     <div
                       className={cn(
                         "size-8 rounded-lg flex items-center justify-center",
-                        allDone ? "bg-success/10" : "bg-primary/5"
+                        allDone ? "bg-success/10" : "bg-primary/5",
                       )}
                     >
                       {allDone ? (
@@ -355,9 +327,7 @@ export function WorkoutCalendar({ workoutDays, onSwitchToList }: WorkoutCalendar
                       )}
                     </div>
                     <div>
-                      <p className="text-sm font-semibold text-foreground">
-                        {day.programName}
-                      </p>
+                      <p className="text-sm font-semibold text-foreground">{day.programName}</p>
                       <p className="text-[10px] text-muted-foreground">
                         Week {day.weekNumber} &middot; Day {day.dayOfWeek}
                       </p>
@@ -370,7 +340,7 @@ export function WorkoutCalendar({ workoutDays, onSwitchToList }: WorkoutCalendar
                         ? "bg-success/10 text-success"
                         : day.completedCount > 0
                           ? "bg-amber-50 text-amber-600"
-                          : "bg-muted text-muted-foreground"
+                          : "bg-muted text-muted-foreground",
                     )}
                   >
                     {allDone && <CheckCircle2 className="size-3" />}
@@ -383,11 +353,7 @@ export function WorkoutCalendar({ workoutDays, onSwitchToList }: WorkoutCalendar
                   <div className="mb-3">
                     <Progress
                       value={progressPct}
-                      className={cn(
-                        "h-1.5",
-                        progressPct === 100 &&
-                          "[&>[data-slot=progress-indicator]]:bg-success"
-                      )}
+                      className={cn("h-1.5", progressPct === 100 && "[&>[data-slot=progress-indicator]]:bg-success")}
                     />
                   </div>
                 )}
@@ -396,19 +362,12 @@ export function WorkoutCalendar({ workoutDays, onSwitchToList }: WorkoutCalendar
                 {previewNames.length > 0 && (
                   <div className="space-y-1 mb-3">
                     {previewNames.map((name, i) => (
-                      <div
-                        key={i}
-                        className="flex items-center gap-2 text-xs text-muted-foreground"
-                      >
+                      <div key={i} className="flex items-center gap-2 text-xs text-muted-foreground">
                         <span className="size-1 rounded-full bg-border shrink-0" />
                         <span className="truncate">{name}</span>
                       </div>
                     ))}
-                    {remaining > 0 && (
-                      <p className="text-[10px] text-muted-foreground/60 pl-3">
-                        +{remaining} more
-                      </p>
-                    )}
+                    {remaining > 0 && <p className="text-[10px] text-muted-foreground/60 pl-3">+{remaining} more</p>}
                   </div>
                 )}
 
@@ -445,9 +404,7 @@ export function WorkoutCalendar({ workoutDays, onSwitchToList }: WorkoutCalendar
       ) : (
         <div className="bg-white rounded-xl border border-border p-5 text-center">
           <CalendarDays className="size-5 text-muted-foreground/40 mx-auto mb-1.5" />
-          <p className="text-xs text-muted-foreground">
-            Tap a highlighted day to view your workout.
-          </p>
+          <p className="text-xs text-muted-foreground">Tap a highlighted day to view your workout.</p>
         </div>
       )}
     </div>

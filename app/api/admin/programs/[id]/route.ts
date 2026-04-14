@@ -1,16 +1,9 @@
 import { NextResponse } from "next/server"
 import { programFormSchema } from "@/lib/validators/program"
 import { updateProgram, deleteProgram, getProgramById } from "@/lib/db/programs"
-import {
-  createStripeProductAndPrice,
-  updateStripeProduct,
-  archiveAndCreateNewPrice,
-} from "@/lib/stripe"
+import { createStripeProductAndPrice, updateStripeProduct, archiveAndCreateNewPrice } from "@/lib/stripe"
 
-export async function PATCH(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
     const body = await request.json()
@@ -19,7 +12,7 @@ export async function PATCH(
     if (!result.success) {
       return NextResponse.json(
         { error: "Invalid form data", details: result.error.flatten().fieldErrors },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
@@ -78,25 +71,16 @@ export async function PATCH(
 
     return NextResponse.json(program)
   } catch {
-    return NextResponse.json(
-      { error: "Failed to update program. Please try again." },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to update program. Please try again." }, { status: 500 })
   }
 }
 
-export async function DELETE(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
     await deleteProgram(id)
     return NextResponse.json({ success: true })
   } catch {
-    return NextResponse.json(
-      { error: "Failed to delete program. Please try again." },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to delete program. Please try again." }, { status: 500 })
   }
 }

@@ -22,11 +22,7 @@ interface LiabilityWaiverModalProps {
   waiverContent: string
 }
 
-export function LiabilityWaiverModal({
-  programId,
-  programName,
-  waiverContent,
-}: LiabilityWaiverModalProps) {
+export function LiabilityWaiverModal({ programId, programName, waiverContent }: LiabilityWaiverModalProps) {
   const router = useRouter()
   const [accepted, setAccepted] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -93,20 +89,13 @@ export function LiabilityWaiverModal({
             disabled={isSubmitting}
             className="mt-0.5"
           />
-          <Label
-            htmlFor="waiverAccept"
-            className="text-sm text-muted-foreground leading-relaxed cursor-pointer"
-          >
+          <Label htmlFor="waiverAccept" className="text-sm text-muted-foreground leading-relaxed cursor-pointer">
             I have read, understood, and agree to the above Liability Waiver & Disclaimer
           </Label>
         </div>
 
         <DialogFooter>
-          <Button
-            onClick={handleAccept}
-            disabled={!accepted || isSubmitting}
-            className="w-full sm:w-auto"
-          >
+          <Button onClick={handleAccept} disabled={!accepted || isSubmitting} className="w-full sm:w-auto">
             {isSubmitting ? "Accepting..." : "Accept and Continue"}
           </Button>
         </DialogFooter>

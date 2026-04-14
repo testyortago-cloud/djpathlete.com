@@ -31,34 +31,34 @@ Source: [docs/superpowers/specs/2026-04-14-clinics-and-camps-phase-3-design.md](
 
 **New files:**
 
-| path | responsibility |
-|---|---|
-| `supabase/migrations/00063_events_stripe_product_id.sql` | Add `events.stripe_product_id` column + index |
-| `app/api/events/[id]/checkout/route.ts` | Public POST — guest-friendly Stripe Session creation |
-| `app/api/admin/events/[id]/stripe-sync/route.ts` | Admin POST — manual Resync helper |
-| `app/(marketing)/camps/[slug]/success/page.tsx` | Server-rendered post-checkout confirmation |
-| `__tests__/api/events/checkout.test.ts` | Public checkout route tests |
-| `__tests__/api/admin/events-stripe-sync.test.ts` | Admin sync route tests |
-| `__tests__/api/stripe/webhook-events.test.ts` | Webhook event_signup branch tests |
-| `__tests__/e2e/camps-paid.spec.ts` | Playwright scaffold for the booking flow |
+| path                                                     | responsibility                                       |
+| -------------------------------------------------------- | ---------------------------------------------------- |
+| `supabase/migrations/00063_events_stripe_product_id.sql` | Add `events.stripe_product_id` column + index        |
+| `app/api/events/[id]/checkout/route.ts`                  | Public POST — guest-friendly Stripe Session creation |
+| `app/api/admin/events/[id]/stripe-sync/route.ts`         | Admin POST — manual Resync helper                    |
+| `app/(marketing)/camps/[slug]/success/page.tsx`          | Server-rendered post-checkout confirmation           |
+| `__tests__/api/events/checkout.test.ts`                  | Public checkout route tests                          |
+| `__tests__/api/admin/events-stripe-sync.test.ts`         | Admin sync route tests                               |
+| `__tests__/api/stripe/webhook-events.test.ts`            | Webhook event_signup branch tests                    |
+| `__tests__/e2e/camps-paid.spec.ts`                       | Playwright scaffold for the booking flow             |
 
 **Modified files:**
 
-| path | change |
-|---|---|
-| `types/database.ts` | Add `stripe_product_id: string \| null` to `Event` |
-| `lib/db/events.ts` | `createEvent` and `updateEvent` thread the new column |
-| `lib/db/event-signups.ts` | Add `countPendingPaidSignups`, `getEventSignupByStripeSessionId`, `getEventSignupByPaymentIntent`; embed on-read sweep inside `getSignupsForEvent` |
-| `__tests__/db/event-signups.test.ts` | Extend with tests for the three new functions + sweep |
-| `lib/stripe.ts` | Add `syncEventToStripe` + `createEventCheckoutSession` helpers |
-| `app/api/admin/events/[id]/route.ts` | PATCH triggers auto-sync on publish + auto-resync on price change |
-| `app/api/stripe/webhook/route.ts` | Two new branches: `event_signup` checkout completion + `charge.refunded` for events |
-| `components/admin/events/EventForm.tsx` | Re-enable "Resync with Stripe" button + wire to admin sync route |
-| `components/admin/events/SignupsTable.tsx` | "Paid" indicator + Stripe dashboard link for paid signups |
-| `components/public/EventCardCta.tsx` | Camp button: enabled "Book camp — $X" when `stripe_price_id` is set |
-| `components/public/EventSignupCard.tsx` | Same camp button logic |
-| `components/public/EventSignupModal.tsx` | Paid-flow branch: different submit URL + button label + full-page redirect |
-| `app/(marketing)/camps/[slug]/page.tsx` | Show `?checkout=cancelled` info banner above the hero |
+| path                                       | change                                                                                                                                             |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `types/database.ts`                        | Add `stripe_product_id: string \| null` to `Event`                                                                                                 |
+| `lib/db/events.ts`                         | `createEvent` and `updateEvent` thread the new column                                                                                              |
+| `lib/db/event-signups.ts`                  | Add `countPendingPaidSignups`, `getEventSignupByStripeSessionId`, `getEventSignupByPaymentIntent`; embed on-read sweep inside `getSignupsForEvent` |
+| `__tests__/db/event-signups.test.ts`       | Extend with tests for the three new functions + sweep                                                                                              |
+| `lib/stripe.ts`                            | Add `syncEventToStripe` + `createEventCheckoutSession` helpers                                                                                     |
+| `app/api/admin/events/[id]/route.ts`       | PATCH triggers auto-sync on publish + auto-resync on price change                                                                                  |
+| `app/api/stripe/webhook/route.ts`          | Two new branches: `event_signup` checkout completion + `charge.refunded` for events                                                                |
+| `components/admin/events/EventForm.tsx`    | Re-enable "Resync with Stripe" button + wire to admin sync route                                                                                   |
+| `components/admin/events/SignupsTable.tsx` | "Paid" indicator + Stripe dashboard link for paid signups                                                                                          |
+| `components/public/EventCardCta.tsx`       | Camp button: enabled "Book camp — $X" when `stripe_price_id` is set                                                                                |
+| `components/public/EventSignupCard.tsx`    | Same camp button logic                                                                                                                             |
+| `components/public/EventSignupModal.tsx`   | Paid-flow branch: different submit URL + button label + full-page redirect                                                                         |
+| `app/(marketing)/camps/[slug]/page.tsx`    | Show `?checkout=cancelled` info banner above the hero                                                                                              |
 
 ---
 
@@ -67,6 +67,7 @@ Source: [docs/superpowers/specs/2026-04-14-clinics-and-camps-phase-3-design.md](
 **Why:** `lib/stripe.ts`'s `archiveAndCreateNewPrice(opts)` takes `productId` as input — we need to track the camp's Stripe Product separately from its Price so price changes can rotate the Price without orphaning the Product.
 
 **Files:**
+
 - Create: `supabase/migrations/00063_events_stripe_product_id.sql`
 
 - [ ] **Step 1: Write the migration**
@@ -129,6 +130,7 @@ No commit. Hand off to Task 3 once the column is live.
 **Why:** TypeScript needs to know the column exists so DAL writes and reads don't trip the type checker.
 
 **Files:**
+
 - Modify: `types/database.ts`
 
 - [ ] **Step 1: Edit the Event interface**
@@ -136,7 +138,7 @@ No commit. Hand off to Task 3 once the column is live.
 In `types/database.ts`, find the `export interface Event { ... }` block. Add this field directly above the existing `stripe_price_id` field for grouping:
 
 ```typescript
-  stripe_product_id: string | null
+stripe_product_id: string | null
 ```
 
 The two fields (product + price) will sit next to each other, both nullable.
@@ -160,6 +162,7 @@ git commit -m "feat(events): add stripe_product_id to Event type"
 **Why:** The checkout route needs to count pending paid signups within a time window for capacity reservation. The webhook needs to look up signups by Stripe session id (success page) and by payment intent id (refund handler). The admin signups view needs stale paid-pending rows to age out.
 
 **Files:**
+
 - Modify: `lib/db/event-signups.ts`
 - Modify: `__tests__/db/event-signups.test.ts`
 
@@ -168,84 +171,127 @@ git commit -m "feat(events): add stripe_product_id to Event type"
 Append to `__tests__/db/event-signups.test.ts` (inside the existing `describe("event-signups DAL", ...)` block):
 
 ```typescript
-  it("countPendingPaidSignups counts only paid+pending within last hour", async () => {
-    const { countPendingPaidSignups } = await import("@/lib/db/event-signups")
-    const e = await createEvent({
-      type: "camp",
-      slug: `cap-window-${randomUUID()}`,
-      title: "T", summary: "S", description: "D", focus_areas: [],
-      start_date: new Date(Date.now() + 86400000).toISOString(),
-      end_date: new Date(Date.now() + 7 * 86400000).toISOString(),
-      location_name: "L", capacity: 10, status: "draft", price_dollars: 100,
-    })
-    extraEventIds.push(e.id)
-
-    // Recent paid pending — should count
-    await createSignup(e.id, {
-      parent_name: "A", parent_email: "a@x.com", athlete_name: "X", athlete_age: 14,
-    }, "paid")
-    // Recent interest pending — should NOT count
-    await createSignup(e.id, {
-      parent_name: "B", parent_email: "b@x.com", athlete_name: "Y", athlete_age: 14,
-    }, "interest")
-
-    const count = await countPendingPaidSignups(e.id)
-    expect(count).toBe(1)
+it("countPendingPaidSignups counts only paid+pending within last hour", async () => {
+  const { countPendingPaidSignups } = await import("@/lib/db/event-signups")
+  const e = await createEvent({
+    type: "camp",
+    slug: `cap-window-${randomUUID()}`,
+    title: "T",
+    summary: "S",
+    description: "D",
+    focus_areas: [],
+    start_date: new Date(Date.now() + 86400000).toISOString(),
+    end_date: new Date(Date.now() + 7 * 86400000).toISOString(),
+    location_name: "L",
+    capacity: 10,
+    status: "draft",
+    price_dollars: 100,
   })
+  extraEventIds.push(e.id)
 
-  it("getEventSignupByStripeSessionId returns the matching signup", async () => {
-    const { getEventSignupByStripeSessionId, createSignup } = await import("@/lib/db/event-signups")
-    const e = await createEvent({
-      type: "camp",
-      slug: `lookup-session-${randomUUID()}`,
-      title: "T", summary: "S", description: "D", focus_areas: [],
-      start_date: new Date(Date.now() + 86400000).toISOString(),
-      end_date: new Date(Date.now() + 7 * 86400000).toISOString(),
-      location_name: "L", capacity: 10, status: "draft", price_dollars: 100,
-    })
-    extraEventIds.push(e.id)
+  // Recent paid pending — should count
+  await createSignup(
+    e.id,
+    {
+      parent_name: "A",
+      parent_email: "a@x.com",
+      athlete_name: "X",
+      athlete_age: 14,
+    },
+    "paid",
+  )
+  // Recent interest pending — should NOT count
+  await createSignup(
+    e.id,
+    {
+      parent_name: "B",
+      parent_email: "b@x.com",
+      athlete_name: "Y",
+      athlete_age: 14,
+    },
+    "interest",
+  )
 
-    const sig = await createSignup(e.id, {
-      parent_name: "A", parent_email: "a@x.com", athlete_name: "X", athlete_age: 14,
-    }, "paid")
+  const count = await countPendingPaidSignups(e.id)
+  expect(count).toBe(1)
+})
 
-    // Manually attach a session id (the route does this in production)
-    const { createServiceRoleClient } = await import("@/lib/supabase")
-    const supabase = createServiceRoleClient()
-    const sessionId = `cs_test_${randomUUID()}`
-    await supabase.from("event_signups").update({ stripe_session_id: sessionId }).eq("id", sig.id)
-
-    const fetched = await getEventSignupByStripeSessionId(sessionId)
-    expect(fetched?.id).toBe(sig.id)
+it("getEventSignupByStripeSessionId returns the matching signup", async () => {
+  const { getEventSignupByStripeSessionId, createSignup } = await import("@/lib/db/event-signups")
+  const e = await createEvent({
+    type: "camp",
+    slug: `lookup-session-${randomUUID()}`,
+    title: "T",
+    summary: "S",
+    description: "D",
+    focus_areas: [],
+    start_date: new Date(Date.now() + 86400000).toISOString(),
+    end_date: new Date(Date.now() + 7 * 86400000).toISOString(),
+    location_name: "L",
+    capacity: 10,
+    status: "draft",
+    price_dollars: 100,
   })
+  extraEventIds.push(e.id)
 
-  it("getEventSignupByPaymentIntent returns the matching signup", async () => {
-    const { getEventSignupByPaymentIntent, createSignup } = await import("@/lib/db/event-signups")
-    const e = await createEvent({
-      type: "camp",
-      slug: `lookup-pi-${randomUUID()}`,
-      title: "T", summary: "S", description: "D", focus_areas: [],
-      start_date: new Date(Date.now() + 86400000).toISOString(),
-      end_date: new Date(Date.now() + 7 * 86400000).toISOString(),
-      location_name: "L", capacity: 10, status: "draft", price_dollars: 100,
-    })
-    extraEventIds.push(e.id)
+  const sig = await createSignup(
+    e.id,
+    {
+      parent_name: "A",
+      parent_email: "a@x.com",
+      athlete_name: "X",
+      athlete_age: 14,
+    },
+    "paid",
+  )
 
-    const sig = await createSignup(e.id, {
-      parent_name: "A", parent_email: "a@x.com", athlete_name: "X", athlete_age: 14,
-    }, "paid")
+  // Manually attach a session id (the route does this in production)
+  const { createServiceRoleClient } = await import("@/lib/supabase")
+  const supabase = createServiceRoleClient()
+  const sessionId = `cs_test_${randomUUID()}`
+  await supabase.from("event_signups").update({ stripe_session_id: sessionId }).eq("id", sig.id)
 
-    const { createServiceRoleClient } = await import("@/lib/supabase")
-    const supabase = createServiceRoleClient()
-    const piId = `pi_test_${randomUUID()}`
-    await supabase
-      .from("event_signups")
-      .update({ stripe_payment_intent_id: piId })
-      .eq("id", sig.id)
+  const fetched = await getEventSignupByStripeSessionId(sessionId)
+  expect(fetched?.id).toBe(sig.id)
+})
 
-    const fetched = await getEventSignupByPaymentIntent(piId)
-    expect(fetched?.id).toBe(sig.id)
+it("getEventSignupByPaymentIntent returns the matching signup", async () => {
+  const { getEventSignupByPaymentIntent, createSignup } = await import("@/lib/db/event-signups")
+  const e = await createEvent({
+    type: "camp",
+    slug: `lookup-pi-${randomUUID()}`,
+    title: "T",
+    summary: "S",
+    description: "D",
+    focus_areas: [],
+    start_date: new Date(Date.now() + 86400000).toISOString(),
+    end_date: new Date(Date.now() + 7 * 86400000).toISOString(),
+    location_name: "L",
+    capacity: 10,
+    status: "draft",
+    price_dollars: 100,
   })
+  extraEventIds.push(e.id)
+
+  const sig = await createSignup(
+    e.id,
+    {
+      parent_name: "A",
+      parent_email: "a@x.com",
+      athlete_name: "X",
+      athlete_age: 14,
+    },
+    "paid",
+  )
+
+  const { createServiceRoleClient } = await import("@/lib/supabase")
+  const supabase = createServiceRoleClient()
+  const piId = `pi_test_${randomUUID()}`
+  await supabase.from("event_signups").update({ stripe_payment_intent_id: piId }).eq("id", sig.id)
+
+  const fetched = await getEventSignupByPaymentIntent(piId)
+  expect(fetched?.id).toBe(sig.id)
+})
 ```
 
 - [ ] **Step 2: Run tests — fail with "is not a function" or undefined imports**
@@ -338,6 +384,7 @@ git commit -m "feat(events): add Stripe-id lookups + paid capacity counter + on-
 **Why:** Two routes (PATCH admin events for auto-sync, manual Resync) and the public checkout route need shared Stripe helpers. Centralize in `lib/stripe.ts` so the call sites are thin.
 
 **Files:**
+
 - Modify: `lib/stripe.ts`
 
 - [ ] **Step 1: Append two new helpers**
@@ -456,6 +503,7 @@ git commit -m "feat(stripe): add syncEventToStripe + createEventCheckoutSession 
 **Why:** Backend for the paid camp flow. Receives form data from the modal, validates, enforces capacity reservation, creates a pending paid signup, mints a Stripe Checkout Session, returns the session URL for the modal to redirect to.
 
 **Files:**
+
 - Create: `app/api/events/[id]/checkout/route.ts`
 - Test: `__tests__/api/events/checkout.test.ts`
 
@@ -495,16 +543,24 @@ const publishedCamp = {
   status: "published",
   capacity: 10,
   signup_count: 3,
-  title: "Summer Camp", summary: "", description: "", focus_areas: [],
+  title: "Summer Camp",
+  summary: "",
+  description: "",
+  focus_areas: [],
   start_date: new Date(Date.now() + 86400000).toISOString(),
   end_date: new Date(Date.now() + 7 * 86400000).toISOString(),
   session_schedule: null,
-  location_name: "L", location_address: null, location_map_url: null,
-  age_min: null, age_max: null,
+  location_name: "L",
+  location_address: null,
+  location_map_url: null,
+  age_min: null,
+  age_max: null,
   price_cents: 29900,
   stripe_price_id: "price_test_1",
   stripe_product_id: "prod_test_1",
-  hero_image_url: null, created_at: "", updated_at: "",
+  hero_image_url: null,
+  created_at: "",
+  updated_at: "",
 }
 
 function makeReq(body: Record<string, unknown>) {
@@ -517,8 +573,10 @@ function makeReq(body: Record<string, unknown>) {
 
 const ctx = { params: Promise.resolve({ id: "evt-1" }) }
 const validBody = {
-  parent_name: "Alex", parent_email: "a@x.com",
-  athlete_name: "Sam", athlete_age: 14,
+  parent_name: "Alex",
+  parent_email: "a@x.com",
+  athlete_name: "Sam",
+  athlete_age: 14,
 }
 
 describe("POST /api/events/[id]/checkout", () => {
@@ -651,10 +709,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
       return NextResponse.json({ error: "Only camps support paid checkout" }, { status: 400 })
     }
     if (!event.stripe_price_id) {
-      return NextResponse.json(
-        { error: "This camp is not yet available for booking" },
-        { status: 400 },
-      )
+      return NextResponse.json({ error: "This camp is not yet available for booking" }, { status: 400 })
     }
 
     const pendingPaid = await countPendingPaidSignups(id)
@@ -674,10 +729,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
       })
     } catch (err) {
       console.error("[api/events/checkout] Stripe error", err)
-      return NextResponse.json(
-        { error: "Payment provider unavailable, please try again" },
-        { status: 502 },
-      )
+      return NextResponse.json({ error: "Payment provider unavailable, please try again" }, { status: 502 })
     }
 
     const supabase = createServiceRoleClient()
@@ -718,6 +770,7 @@ git commit -m "feat(events): add public Stripe checkout route for paid camps"
 **Why:** Backend for the manual "Resync with Stripe" button on the admin form. Idempotent: creates Product + Price when missing, refreshes the Price when product exists but price is stale.
 
 **Files:**
+
 - Create: `app/api/admin/events/[id]/stripe-sync/route.ts`
 - Test: `__tests__/api/admin/events-stripe-sync.test.ts`
 
@@ -883,6 +936,7 @@ git commit -m "feat(events): add admin Stripe sync route for camp pricing"
 **Why:** Stripe asynchronously confirms payments and refunds. The webhook handler routes events by `metadata.type`; we add the `"event_signup"` branch and a refund branch that checks for matching event signups.
 
 **Files:**
+
 - Modify: `app/api/stripe/webhook/route.ts`
 - Test: `__tests__/api/stripe/webhook-events.test.ts`
 
@@ -926,16 +980,23 @@ vi.mock("@/lib/supabase", () => ({
 }))
 // Stub other DB modules the webhook imports to prevent real DB calls
 vi.mock("@/lib/db/payments", () => ({
-  createPayment: vi.fn(), getPaymentByStripeId: vi.fn(), updatePayment: vi.fn(),
+  createPayment: vi.fn(),
+  getPaymentByStripeId: vi.fn(),
+  updatePayment: vi.fn(),
 }))
 vi.mock("@/lib/db/assignments", () => ({
-  createAssignment: vi.fn(), getAssignmentByUserAndProgram: vi.fn(), updateAssignment: vi.fn(),
+  createAssignment: vi.fn(),
+  getAssignmentByUserAndProgram: vi.fn(),
+  updateAssignment: vi.fn(),
 }))
 vi.mock("@/lib/db/week-access", () => ({
-  updateWeekAccess: vi.fn(), createWeekAccessBulk: vi.fn(),
+  updateWeekAccess: vi.fn(),
+  createWeekAccessBulk: vi.fn(),
 }))
 vi.mock("@/lib/db/subscriptions", () => ({
-  createSubscription: vi.fn(), getSubscriptionByStripeId: vi.fn(), updateSubscriptionByStripeId: vi.fn(),
+  createSubscription: vi.fn(),
+  getSubscriptionByStripeId: vi.fn(),
+  updateSubscriptionByStripeId: vi.fn(),
 }))
 vi.mock("@/lib/db/users", () => ({ getUserById: vi.fn() }))
 vi.mock("@/lib/db/client-profiles", () => ({ getProfileByUserId: vi.fn() }))
@@ -1003,7 +1064,8 @@ describe("Stripe webhook — event_signup branches", () => {
       data: {
         object: {
           metadata: { type: "event_signup", event_signup_id: "sig-1", event_id: "evt-1" },
-          payment_intent: "pi_x", amount_total: 29900,
+          payment_intent: "pi_x",
+          amount_total: 29900,
         },
       },
     })
@@ -1043,12 +1105,7 @@ Expected: FAIL.
 Open `app/api/stripe/webhook/route.ts`. Add these imports near the top with the existing imports:
 
 ```typescript
-import {
-  confirmSignup,
-  cancelSignup,
-  getSignupById,
-  getEventSignupByPaymentIntent,
-} from "@/lib/db/event-signups"
+import { confirmSignup, cancelSignup, getSignupById, getEventSignupByPaymentIntent } from "@/lib/db/event-signups"
 import { getEventById as getEventByIdForSignup } from "@/lib/db/events"
 import { sendEventSignupConfirmedEmail } from "@/lib/email"
 import { createServiceRoleClient as createSupabaseServiceClient } from "@/lib/supabase"
@@ -1190,6 +1247,7 @@ git commit -m "feat(stripe): webhook handlers for event_signup checkout + refund
 **Why:** Frictionless sync — admin doesn't need to click anything. Publishing a priced camp triggers Stripe sync; changing a synced price triggers Stripe Price rotation.
 
 **Files:**
+
 - Modify: `app/api/admin/events/[id]/route.ts`
 
 - [ ] **Step 1: Read the current PATCH handler**
@@ -1207,120 +1265,108 @@ import { syncEventToStripe, archiveAndCreateNewPrice, stripe } from "@/lib/strip
 Replace the inner try block of the PATCH function (the part that does the transition validation and `updateEvent` call) with this expanded version that handles auto-sync:
 
 ```typescript
-    const { status, price_dollars, ...rest } = result.data as {
-      status?: string
-      price_dollars?: number | null
-      [k: string]: unknown
-    }
+const { status, price_dollars, ...rest } = result.data as {
+  status?: string
+  price_dollars?: number | null
+  [k: string]: unknown
+}
 
+try {
+  const merged: Record<string, unknown> = { ...rest }
+
+  // Load the current event up-front so we can detect price changes and validate transitions.
+  const current = await getEventById(id)
+  if (!current) {
+    return NextResponse.json({ error: "Event not found" }, { status: 404 })
+  }
+
+  // Validate status transition (read-only, no DB write yet).
+  if (status) {
+    const allowed = ALLOWED_STATUS_TRANSITIONS[current.status]
+    if (!allowed.includes(status as "draft" | "published" | "cancelled" | "completed")) {
+      return NextResponse.json(
+        { error: `Cannot transition event from ${current.status} to ${status}` },
+        { status: 409 },
+      )
+    }
+    merged.status = status
+  }
+
+  // Carry the price_dollars-to-price_cents conversion that updateEvent normally does.
+  const priceChanged =
+    price_dollars !== undefined && Math.round((price_dollars ?? 0) * 100) !== (current.price_cents ?? 0)
+  if (price_dollars !== undefined) {
+    merged.price_cents = price_dollars == null ? null : Math.round(price_dollars * 100)
+  }
+
+  // Auto-resync on price change for already-synced camps.
+  if (
+    priceChanged &&
+    current.type === "camp" &&
+    current.stripe_product_id &&
+    current.stripe_price_id &&
+    merged.price_cents != null &&
+    (merged.price_cents as number) > 0
+  ) {
     try {
-      const merged: Record<string, unknown> = { ...rest }
-
-      // Load the current event up-front so we can detect price changes and validate transitions.
-      const current = await getEventById(id)
-      if (!current) {
-        return NextResponse.json({ error: "Event not found" }, { status: 404 })
-      }
-
-      // Validate status transition (read-only, no DB write yet).
-      if (status) {
-        const allowed = ALLOWED_STATUS_TRANSITIONS[current.status]
-        if (!allowed.includes(status as "draft" | "published" | "cancelled" | "completed")) {
-          return NextResponse.json(
-            { error: `Cannot transition event from ${current.status} to ${status}` },
-            { status: 409 },
-          )
-        }
-        merged.status = status
-      }
-
-      // Carry the price_dollars-to-price_cents conversion that updateEvent normally does.
-      const priceChanged =
-        price_dollars !== undefined &&
-        Math.round((price_dollars ?? 0) * 100) !== (current.price_cents ?? 0)
-      if (price_dollars !== undefined) {
-        merged.price_cents = price_dollars == null ? null : Math.round(price_dollars * 100)
-      }
-
-      // Auto-resync on price change for already-synced camps.
-      if (
-        priceChanged &&
-        current.type === "camp" &&
-        current.stripe_product_id &&
-        current.stripe_price_id &&
-        merged.price_cents != null &&
-        (merged.price_cents as number) > 0
-      ) {
-        try {
-          const newPriceId = await archiveAndCreateNewPrice({
-            productId: current.stripe_product_id,
-            oldPriceId: current.stripe_price_id,
-            priceCents: merged.price_cents as number,
-            paymentType: "one_time",
-            billingInterval: null,
-          })
-          merged.stripe_price_id = newPriceId
-        } catch (err) {
-          console.error("[admin events PATCH] auto-resync failed", err)
-          return NextResponse.json(
-            { error: "Stripe sync failed — try again or use the Resync button" },
-            { status: 502 },
-          )
-        }
-      }
-
-      // Auto-sync on publish for camps with a price and no existing sync.
-      const transitionToPublished = status === "published" && current.status !== "published"
-      if (
-        transitionToPublished &&
-        current.type === "camp" &&
-        current.price_cents &&
-        !current.stripe_price_id
-      ) {
-        try {
-          // Use the merged price_cents if it's being set in the same request, else current's value.
-          const eventForSync = {
-            ...current,
-            ...(typeof merged.price_cents === "number" ? { price_cents: merged.price_cents } : {}),
-          }
-          const synced = await syncEventToStripe(eventForSync)
-          merged.stripe_product_id = synced.productId
-          merged.stripe_price_id = synced.priceId
-        } catch (err) {
-          console.error("[admin events PATCH] auto-sync on publish failed", err)
-          return NextResponse.json(
-            { error: "Stripe sync failed — try again or use the Resync button" },
-            { status: 502 },
-          )
-        }
-      }
-
-      // Auto-archive Stripe product when cancelling a synced camp.
-      if (status === "cancelled" && current.type === "camp" && current.stripe_product_id) {
-        try {
-          await stripe.products.update(current.stripe_product_id, { active: false })
-        } catch (err) {
-          // Non-fatal — log and continue cancellation.
-          console.error("[admin events PATCH] Stripe product archive failed (non-fatal)", err)
-        }
-      }
-
-      if (Object.keys(merged).length === 0) {
-        return NextResponse.json({ event: current })
-      }
-
-      const updated = await updateEvent(id, merged)
-      return NextResponse.json({ event: updated })
+      const newPriceId = await archiveAndCreateNewPrice({
+        productId: current.stripe_product_id,
+        oldPriceId: current.stripe_price_id,
+        priceCents: merged.price_cents as number,
+        paymentType: "one_time",
+        billingInterval: null,
+      })
+      merged.stripe_price_id = newPriceId
     } catch (err) {
-      const msg = (err as Error).message
-      if (msg.toLowerCase().includes("duplicate") || msg.toLowerCase().includes("unique")) {
-        return NextResponse.json(
-          { error: "Slug already in use", fieldErrors: { slug: ["That slug is already taken"] } },
-          { status: 409 },
-        )
-      }
-      throw err
+      console.error("[admin events PATCH] auto-resync failed", err)
+      return NextResponse.json({ error: "Stripe sync failed — try again or use the Resync button" }, { status: 502 })
     }
+  }
+
+  // Auto-sync on publish for camps with a price and no existing sync.
+  const transitionToPublished = status === "published" && current.status !== "published"
+  if (transitionToPublished && current.type === "camp" && current.price_cents && !current.stripe_price_id) {
+    try {
+      // Use the merged price_cents if it's being set in the same request, else current's value.
+      const eventForSync = {
+        ...current,
+        ...(typeof merged.price_cents === "number" ? { price_cents: merged.price_cents } : {}),
+      }
+      const synced = await syncEventToStripe(eventForSync)
+      merged.stripe_product_id = synced.productId
+      merged.stripe_price_id = synced.priceId
+    } catch (err) {
+      console.error("[admin events PATCH] auto-sync on publish failed", err)
+      return NextResponse.json({ error: "Stripe sync failed — try again or use the Resync button" }, { status: 502 })
+    }
+  }
+
+  // Auto-archive Stripe product when cancelling a synced camp.
+  if (status === "cancelled" && current.type === "camp" && current.stripe_product_id) {
+    try {
+      await stripe.products.update(current.stripe_product_id, { active: false })
+    } catch (err) {
+      // Non-fatal — log and continue cancellation.
+      console.error("[admin events PATCH] Stripe product archive failed (non-fatal)", err)
+    }
+  }
+
+  if (Object.keys(merged).length === 0) {
+    return NextResponse.json({ event: current })
+  }
+
+  const updated = await updateEvent(id, merged)
+  return NextResponse.json({ event: updated })
+} catch (err) {
+  const msg = (err as Error).message
+  if (msg.toLowerCase().includes("duplicate") || msg.toLowerCase().includes("unique")) {
+    return NextResponse.json(
+      { error: "Slug already in use", fieldErrors: { slug: ["That slug is already taken"] } },
+      { status: 409 },
+    )
+  }
+  throw err
+}
 ```
 
 The key shape: read current event first → validate transition (read-only) → determine if price changed and trigger archive-and-create-new-price → determine if transitioning to published and trigger first-time sync → on cancel-of-synced-camp, archive Stripe product → finally a single `updateEvent` write.
@@ -1353,6 +1399,7 @@ git commit -m "feat(events): auto-sync to Stripe on publish + auto-resync on pri
 **Why:** The button currently exists but is disabled. Wire it up to the new sync route.
 
 **Files:**
+
 - Modify: `components/admin/events/EventForm.tsx`
 
 - [ ] **Step 1: Add toast import and update the camp branch**
@@ -1367,7 +1414,9 @@ Find the camp-only fields section that includes the disabled button:
 
 ```tsx
 <div>
-  <Button type="button" disabled title="Available in Phase 3">Sync to Stripe</Button>
+  <Button type="button" disabled title="Available in Phase 3">
+    Sync to Stripe
+  </Button>
 </div>
 ```
 
@@ -1401,18 +1450,12 @@ Then replace the camp-specific Stripe-sync block JSX with:
         setSyncing(false)
       }
     }}
-    title={
-      !isEdit
-        ? "Save the event first, then sync"
-        : "Create or refresh the Stripe Product + Price"
-    }
+    title={!isEdit ? "Save the event first, then sync" : "Create or refresh the Stripe Product + Price"}
   >
     {syncing ? "Syncing..." : "Resync with Stripe"}
   </Button>
   {event?.stripe_price_id && (
-    <p className="text-xs text-muted-foreground">
-      Synced · {event.stripe_price_id.slice(-8)}
-    </p>
+    <p className="text-xs text-muted-foreground">Synced · {event.stripe_price_id.slice(-8)}</p>
   )}
 </div>
 ```
@@ -1438,6 +1481,7 @@ git commit -m "feat(admin): re-enable Resync with Stripe button on EventForm"
 **Why:** Visual cue for which signups came through Stripe and a quick jump to the Stripe payment for refund / dispute lookup.
 
 **Files:**
+
 - Modify: `components/admin/events/SignupsTable.tsx`
 
 - [ ] **Step 1: Update the Status cell to include the Paid badge and PI link**
@@ -1491,6 +1535,7 @@ git commit -m "feat(admin): add Paid badge + Stripe dashboard link to SignupsTab
 **Why:** The disabled "Book — coming soon" buttons become functional CTAs that open the modal for paid camps with a configured Stripe price.
 
 **Files:**
+
 - Modify: `components/public/EventCardCta.tsx`
 - Modify: `components/public/EventSignupCard.tsx`
 
@@ -1627,6 +1672,7 @@ git commit -m "feat(public): enable Book Camp button when stripe_price_id is set
 **Why:** Same modal serves interest and paid flows. For paid camps, the submit button label becomes "Continue to payment", the POST target swaps to `/checkout`, and on success we redirect to Stripe instead of showing in-modal confirmation.
 
 **Files:**
+
 - Modify: `components/public/EventSignupModal.tsx`
 
 - [ ] **Step 1: Update the modal interface**
@@ -1652,11 +1698,7 @@ The `?` on the new fields keeps backward compatibility with callers that don't p
 Inside `EventSignupModal`, near the top of the function body:
 
 ```typescript
-const isPaidFlow =
-  event.type === "camp" &&
-  !!event.stripe_price_id &&
-  !isWaitlist &&
-  !forcedWaitlist
+const isPaidFlow = event.type === "camp" && !!event.stripe_price_id && !isWaitlist && !forcedWaitlist
 ```
 
 - [ ] **Step 3: Branch the submit URL and result handling**
@@ -1664,41 +1706,39 @@ const isPaidFlow =
 Find the `submit` function. Replace the existing fetch block with:
 
 ```typescript
-    const query = waitlist || isWaitlist || forcedWaitlist ? "?waitlist=true" : ""
-    const url = isPaidFlow && !query
-      ? `/api/events/${event.id}/checkout`
-      : `/api/events/${event.id}/signup${query}`
+const query = waitlist || isWaitlist || forcedWaitlist ? "?waitlist=true" : ""
+const url = isPaidFlow && !query ? `/api/events/${event.id}/checkout` : `/api/events/${event.id}/signup${query}`
 
-    try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-      })
-      const data = await res.json().catch(() => ({}))
+try {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  })
+  const data = await res.json().catch(() => ({}))
 
-      if (res.status === 409 && data.error === "at_capacity") {
-        setPhase("at_capacity")
-        return
-      }
-      if (!res.ok) {
-        if (data.fieldErrors) setFieldErrors(data.fieldErrors)
-        setFormError(data.error ?? "Something went wrong")
-        setPhase("form")
-        return
-      }
+  if (res.status === 409 && data.error === "at_capacity") {
+    setPhase("at_capacity")
+    return
+  }
+  if (!res.ok) {
+    if (data.fieldErrors) setFieldErrors(data.fieldErrors)
+    setFormError(data.error ?? "Something went wrong")
+    setPhase("form")
+    return
+  }
 
-      // Paid flow: data.sessionUrl points at Stripe — redirect.
-      if (data.sessionUrl) {
-        window.location.href = data.sessionUrl
-        return
-      }
+  // Paid flow: data.sessionUrl points at Stripe — redirect.
+  if (data.sessionUrl) {
+    window.location.href = data.sessionUrl
+    return
+  }
 
-      setPhase("success")
-    } catch (err) {
-      setFormError((err as Error).message)
-      setPhase("form")
-    }
+  setPhase("success")
+} catch (err) {
+  setFormError((err as Error).message)
+  setPhase("form")
+}
 ```
 
 The `query &&` guard ensures the waitlist flow always uses `/api/events/[id]/signup?waitlist=true` regardless of `isPaidFlow` — waitlist is always interest-style, not Stripe.
@@ -1760,6 +1800,7 @@ git commit -m "feat(events): add paid-flow branch to EventSignupModal (Stripe re
 **Why:** Visitors who bail at Stripe land back on the camp detail page. Show a small inline banner so they know cancellation registered (and can try again).
 
 **Files:**
+
 - Modify: `app/(marketing)/camps/[slug]/page.tsx`
 
 - [ ] **Step 1: Read async searchParams and render banner**
@@ -1789,13 +1830,15 @@ export default async function CampDetailPage(
 After the `<EventDetailHero event={event} />` line and BEFORE the main grid div, insert:
 
 ```tsx
-{checkout === "cancelled" && (
-  <div className="border-b border-accent/30 bg-accent/10">
-    <div className="mx-auto max-w-7xl px-4 py-3 text-sm text-foreground md:px-6">
-      Checkout was cancelled — feel free to try again when you're ready.
+{
+  checkout === "cancelled" && (
+    <div className="border-b border-accent/30 bg-accent/10">
+      <div className="mx-auto max-w-7xl px-4 py-3 text-sm text-foreground md:px-6">
+        Checkout was cancelled — feel free to try again when you're ready.
+      </div>
     </div>
-  </div>
-)}
+  )
+}
 ```
 
 - [ ] **Step 2: tsc**
@@ -1817,6 +1860,7 @@ git commit -m "feat(public): show cancelled-checkout banner on camp detail page"
 **Why:** Where Stripe redirects buyers after successful payment. Server-rendered, status-aware, no client polling.
 
 **Files:**
+
 - Create: `app/(marketing)/camps/[slug]/success/page.tsx`
 
 - [ ] **Step 1: Implement the page**
@@ -1845,7 +1889,10 @@ interface PageProps {
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", {
-    weekday: "long", month: "long", day: "numeric", year: "numeric",
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
   })
 }
 
@@ -1900,8 +1947,8 @@ export default async function CampBookingSuccessPage({ params, searchParams }: P
                 )}
                 {signup.status === "pending" && (
                   <div className="mt-6 rounded-xl border border-accent/30 bg-accent/10 p-4 text-sm text-foreground">
-                    We're still processing your payment — this usually finishes within a few seconds.
-                    You'll receive a confirmation email shortly. You can refresh this page to check the latest status.
+                    We're still processing your payment — this usually finishes within a few seconds. You'll receive a
+                    confirmation email shortly. You can refresh this page to check the latest status.
                   </div>
                 )}
                 {(signup.status === "cancelled" || signup.status === "refunded") && (
@@ -1951,6 +1998,7 @@ git commit -m "feat(public): add /camps/[slug]/success post-checkout confirmatio
 **Why:** Smoke test scaffolding for the public booking flow. Real Stripe interaction is gated behind env vars; the scaffold asserts the "Book camp — $X" button renders for a known test camp.
 
 **Files:**
+
 - Create: `__tests__/e2e/camps-paid.spec.ts`
 
 - [ ] **Step 1: Write the scaffold test**
@@ -2032,6 +2080,7 @@ Skip if `format:check` was clean.
 Run: `npm run test:run`
 
 Expected new Phase 3 tests (all should pass):
+
 - `__tests__/db/event-signups.test.ts` — 6 total (3 existing + 3 new)
 - `__tests__/api/events/checkout.test.ts` — 8
 - `__tests__/api/admin/events-stripe-sync.test.ts` — 5
@@ -2044,6 +2093,7 @@ Total new: 20 tests. Pre-existing failures from earlier phases (3 ai-schemas, 1 
 Run: `npm run build`
 
 Expected: clean build. Look for these new routes:
+
 - `/camps/[slug]/success` (dynamic)
 - `/api/events/[id]/checkout` (dynamic)
 - `/api/admin/events/[id]/stripe-sync` (dynamic)
@@ -2051,6 +2101,7 @@ Expected: clean build. Look for these new routes:
 - [ ] **Step 4: Manual smoke checklist (NOT a test command — for the human to run after merge)**
 
 Document in your PR description:
+
 1. In Stripe test mode dashboard, confirm the webhook endpoint `/api/stripe/webhook` is registered for events: `checkout.session.completed`, `charge.refunded`.
 2. Create a draft camp in admin with a real price (e.g. $10), publish — verify auto-sync fires (check Stripe dashboard for new Product + Price under the event id metadata).
 3. Visit `/camps/[your-slug]` — verify "Book camp — $10" button renders and is enabled.
@@ -2079,31 +2130,31 @@ Report the commit list.
 
 **Spec coverage:**
 
-| Phase 3 spec requirement | Task |
-|---|---|
-| `events.stripe_product_id` migration + index | Tasks 1, 2 |
-| `Event.stripe_product_id` type | Task 3 |
-| `countPendingPaidSignups` DAL | Task 4 |
-| `getEventSignupByStripeSessionId` DAL | Task 4 |
-| `getEventSignupByPaymentIntent` DAL | Task 4 |
-| On-read sweep in `getSignupsForEvent` | Task 4 |
-| `syncEventToStripe` helper | Task 5 |
-| `createEventCheckoutSession` helper | Task 5 |
-| `POST /api/events/[id]/checkout` | Task 6 |
-| `POST /api/admin/events/[id]/stripe-sync` | Task 7 |
-| Webhook `event_signup` checkout branch | Task 8 |
-| Webhook `charge.refunded` event branch | Task 8 |
-| Auto-sync on publish | Task 9 |
-| Auto-resync on price change | Task 9 |
-| Auto-archive Stripe product on cancel | Task 9 |
-| EventForm Resync button enabled | Task 10 |
-| SignupsTable Paid badge + dashboard link | Task 11 |
-| EventCardCta + EventSignupCard book-camp button | Task 12 |
-| EventSignupModal paid-flow branch (label, URL, redirect) | Task 13 |
-| `?checkout=cancelled` banner on camp detail | Task 14 |
-| `/camps/[slug]/success` page | Task 15 |
-| Playwright scaffold | Task 16 |
-| Final verification + tag | Task 17 |
+| Phase 3 spec requirement                                 | Task       |
+| -------------------------------------------------------- | ---------- |
+| `events.stripe_product_id` migration + index             | Tasks 1, 2 |
+| `Event.stripe_product_id` type                           | Task 3     |
+| `countPendingPaidSignups` DAL                            | Task 4     |
+| `getEventSignupByStripeSessionId` DAL                    | Task 4     |
+| `getEventSignupByPaymentIntent` DAL                      | Task 4     |
+| On-read sweep in `getSignupsForEvent`                    | Task 4     |
+| `syncEventToStripe` helper                               | Task 5     |
+| `createEventCheckoutSession` helper                      | Task 5     |
+| `POST /api/events/[id]/checkout`                         | Task 6     |
+| `POST /api/admin/events/[id]/stripe-sync`                | Task 7     |
+| Webhook `event_signup` checkout branch                   | Task 8     |
+| Webhook `charge.refunded` event branch                   | Task 8     |
+| Auto-sync on publish                                     | Task 9     |
+| Auto-resync on price change                              | Task 9     |
+| Auto-archive Stripe product on cancel                    | Task 9     |
+| EventForm Resync button enabled                          | Task 10    |
+| SignupsTable Paid badge + dashboard link                 | Task 11    |
+| EventCardCta + EventSignupCard book-camp button          | Task 12    |
+| EventSignupModal paid-flow branch (label, URL, redirect) | Task 13    |
+| `?checkout=cancelled` banner on camp detail              | Task 14    |
+| `/camps/[slug]/success` page                             | Task 15    |
+| Playwright scaffold                                      | Task 16    |
+| Final verification + tag                                 | Task 17    |
 
 All Phase 3 spec items covered.
 
@@ -2112,6 +2163,7 @@ All Phase 3 spec items covered.
 **Type consistency:** `EventSignupModalEvent` interface in Task 13 adds `stripe_price_id?: string | null` and `price_cents?: number | null` — used by `EventCardCta` (Task 12) and `EventSignupCard` (Task 12). Both pass the full `Event` type which structurally includes these fields. `syncEventToStripe` returns `{ productId, priceId }` — consumed by Task 7 admin route and Task 9 PATCH route. `ConfirmResult` / `CancelResult` from Phase 2a still used in webhook (Task 8).
 
 **Known limitations / accepted trade-offs:**
+
 - Race condition: two visitors pass capacity guard for last spot, both pay. Loser refunded manually from Stripe dashboard — webhook flips status. Documented in spec section 5.
 - Pending paid rows linger in admin table until next admin visit (on-read sweep). No scheduled cleanup in Phase 3.
 - Cancel-of-synced-camp Stripe product archive is non-fatal (logged, doesn't block).

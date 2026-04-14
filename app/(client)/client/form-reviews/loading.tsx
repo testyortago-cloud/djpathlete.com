@@ -10,10 +10,7 @@ export default function FormReviewsLoading() {
       {/* Cards */}
       <div className="space-y-3">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div
-            key={i}
-            className="bg-white rounded-xl border border-border p-4 flex items-start gap-3"
-          >
+          <div key={i} className="bg-white rounded-xl border border-border p-4 flex items-start gap-3">
             <div className="size-10 bg-muted animate-pulse rounded-full shrink-0" />
             <div className="flex-1 space-y-2">
               <div className="h-4 w-48 bg-muted animate-pulse rounded-md" />

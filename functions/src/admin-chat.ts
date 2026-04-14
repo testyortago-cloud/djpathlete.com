@@ -79,11 +79,11 @@ export async function handleAdminChat(jobId: string): Promise<void> {
     // RAG context from past conversations
     const lastUserMsgForRag = recentMessages.filter((m) => m.role === "user").pop()
     if (lastUserMsgForRag) {
-      const ragResults = await retrieveSimilarContext(
-        lastUserMsgForRag.content,
-        "admin_chat",
-        { excludeSession: sessionId, threshold: 0.5, limit: 3 }
-      )
+      const ragResults = await retrieveSimilarContext(lastUserMsgForRag.content, "admin_chat", {
+        excludeSession: sessionId,
+        threshold: 0.5,
+        limit: 3,
+      })
       const ragContext = formatRagContext(ragResults)
       if (ragContext) {
         systemBlocks.push({ type: "text", text: ragContext })
@@ -165,10 +165,7 @@ export async function handleAdminChat(jobId: string): Promise<void> {
         model_used: model,
       })
 
-      const { data: saved } = await supabase
-        .from("ai_conversation_history")
-        .insert(batch)
-        .select()
+      const { data: saved } = await supabase.from("ai_conversation_history").insert(batch).select()
 
       const assistantMsg = saved?.find((m: Record<string, unknown>) => m.role === "assistant")
       if (assistantMsg) {
@@ -202,7 +199,9 @@ export async function handleAdminChat(jobId: string): Promise<void> {
         current_step: 0,
         total_steps: 0,
       })
-    } catch { /* non-fatal */ }
+    } catch {
+      /* non-fatal */
+    }
 
     // Done chunk
     await chunksRef.doc(String(chunkIndex++).padStart(6, "0")).set({

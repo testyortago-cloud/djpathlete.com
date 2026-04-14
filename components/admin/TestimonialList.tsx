@@ -42,18 +42,11 @@ type FilterTab = "all" | "active" | "featured" | "inactive"
 
 function StarRating({ rating }: { rating: number }) {
   return (
-    <span
-      className="inline-flex gap-0.5"
-      aria-label={`${rating} out of 5 stars`}
-    >
+    <span className="inline-flex gap-0.5" aria-label={`${rating} out of 5 stars`}>
       {Array.from({ length: 5 }, (_, i) => (
         <Star
           key={i}
-          className={`size-3.5 ${
-            i < rating
-              ? "fill-warning text-warning"
-              : "fill-none text-muted-foreground/40"
-          }`}
+          className={`size-3.5 ${i < rating ? "fill-warning text-warning" : "fill-none text-muted-foreground/40"}`}
         />
       ))}
     </span>
@@ -99,8 +92,7 @@ export function TestimonialList({ testimonials }: TestimonialListProps) {
       const name = t.name.toLowerCase()
       const quote = t.quote.toLowerCase()
       const role = t.role?.toLowerCase() ?? ""
-      if (!name.includes(q) && !quote.includes(q) && !role.includes(q))
-        return false
+      if (!name.includes(q) && !quote.includes(q) && !role.includes(q)) return false
     }
 
     return true
@@ -141,9 +133,7 @@ export function TestimonialList({ testimonials }: TestimonialListProps) {
 
     setIsSaving(true)
     try {
-      const url = editingId
-        ? `/api/admin/testimonials/${editingId}`
-        : "/api/admin/testimonials"
+      const url = editingId ? `/api/admin/testimonials/${editingId}` : "/api/admin/testimonials"
       const method = editingId ? "PATCH" : "POST"
 
       const response = await fetch(url, {
@@ -168,10 +158,7 @@ export function TestimonialList({ testimonials }: TestimonialListProps) {
     }
   }
 
-  async function handleToggle(
-    t: Testimonial,
-    field: "is_active" | "is_featured"
-  ) {
+  async function handleToggle(t: Testimonial, field: "is_active" | "is_featured") {
     setTogglingId(t.id)
     try {
       const response = await fetch(`/api/admin/testimonials/${t.id}`, {
@@ -189,7 +176,7 @@ export function TestimonialList({ testimonials }: TestimonialListProps) {
             : "Testimonial activated"
           : t.is_featured
             ? "Removed from featured"
-            : "Added to featured"
+            : "Added to featured",
       )
       router.refresh()
     } catch {
@@ -204,10 +191,7 @@ export function TestimonialList({ testimonials }: TestimonialListProps) {
     setIsDeleting(true)
 
     try {
-      const response = await fetch(
-        `/api/admin/testimonials/${deleteTarget.id}`,
-        { method: "DELETE" }
-      )
+      const response = await fetch(`/api/admin/testimonials/${deleteTarget.id}`, { method: "DELETE" })
 
       if (!response.ok) throw new Error("Failed to delete")
 
@@ -264,13 +248,9 @@ export function TestimonialList({ testimonials }: TestimonialListProps) {
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>
-              {editingId ? "Edit Testimonial" : "Add Testimonial"}
-            </DialogTitle>
+            <DialogTitle>{editingId ? "Edit Testimonial" : "Add Testimonial"}</DialogTitle>
             <DialogDescription>
-              {editingId
-                ? "Update the testimonial details below."
-                : "Add a new athlete testimonial."}
+              {editingId ? "Update the testimonial details below." : "Add a new athlete testimonial."}
             </DialogDescription>
           </DialogHeader>
 
@@ -281,9 +261,7 @@ export function TestimonialList({ testimonials }: TestimonialListProps) {
                 <Input
                   id="t-name"
                   value={formData.name}
-                  onChange={(e) =>
-                    setFormData({ ...formData, name: e.target.value })
-                  }
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   placeholder="Stephen Ireland"
                 />
               </div>
@@ -292,9 +270,7 @@ export function TestimonialList({ testimonials }: TestimonialListProps) {
                 <Input
                   id="t-sport"
                   value={formData.sport}
-                  onChange={(e) =>
-                    setFormData({ ...formData, sport: e.target.value })
-                  }
+                  onChange={(e) => setFormData({ ...formData, sport: e.target.value })}
                   placeholder="Football"
                 />
               </div>
@@ -305,9 +281,7 @@ export function TestimonialList({ testimonials }: TestimonialListProps) {
               <Input
                 id="t-role"
                 value={formData.role}
-                onChange={(e) =>
-                  setFormData({ ...formData, role: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                 placeholder="Former Professional Football Player"
               />
             </div>
@@ -317,9 +291,7 @@ export function TestimonialList({ testimonials }: TestimonialListProps) {
               <Textarea
                 id="t-quote"
                 value={formData.quote}
-                onChange={(e) =>
-                  setFormData({ ...formData, quote: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, quote: e.target.value })}
                 placeholder="Their testimonial..."
                 rows={4}
               />
@@ -394,19 +366,11 @@ export function TestimonialList({ testimonials }: TestimonialListProps) {
           </div>
 
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setFormOpen(false)}
-              disabled={isSaving}
-            >
+            <Button variant="outline" onClick={() => setFormOpen(false)} disabled={isSaving}>
               Cancel
             </Button>
             <Button onClick={handleSave} disabled={isSaving}>
-              {isSaving
-                ? "Saving..."
-                : editingId
-                  ? "Update"
-                  : "Add Testimonial"}
+              {isSaving ? "Saving..." : editingId ? "Update" : "Add Testimonial"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -427,17 +391,13 @@ export function TestimonialList({ testimonials }: TestimonialListProps) {
                 setPage(1)
               }}
               className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-colors shrink-0 ${
-                filterTab === tab.key
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-surface"
+                filterTab === tab.key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-surface"
               }`}
             >
               {tab.label}
               <span
                 className={`ml-1 text-[10px] sm:text-xs ${
-                  filterTab === tab.key
-                    ? "text-primary-foreground/70"
-                    : "text-muted-foreground/60"
+                  filterTab === tab.key ? "text-primary-foreground/70" : "text-muted-foreground/60"
                 }`}
               >
                 {tab.count}
@@ -445,11 +405,7 @@ export function TestimonialList({ testimonials }: TestimonialListProps) {
             </button>
           ))}
         </div>
-        <Button
-          size="sm"
-          onClick={openCreateForm}
-          className="shrink-0 self-end sm:self-auto"
-        >
+        <Button size="sm" onClick={openCreateForm} className="shrink-0 self-end sm:self-auto">
           <Plus className="size-4" />
           <span className="hidden sm:inline">Add Testimonial</span>
           <span className="sm:hidden">Add</span>
@@ -478,44 +434,25 @@ export function TestimonialList({ testimonials }: TestimonialListProps) {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-surface/50">
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                  Athlete
-                </th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">
-                  Quote
-                </th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                  Rating
-                </th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                  Status
-                </th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden sm:table-cell">
-                  Order
-                </th>
-                <th className="text-right px-4 py-3 font-medium text-muted-foreground">
-                  Actions
-                </th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Athlete</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Quote</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Rating</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden sm:table-cell">Order</th>
+                <th className="text-right px-4 py-3 font-medium text-muted-foreground">Actions</th>
               </tr>
             </thead>
             <tbody>
               {paginated.map((t) => (
-                <tr
-                  key={t.id}
-                  className="border-b border-border last:border-b-0 hover:bg-surface/30 transition-colors"
-                >
+                <tr key={t.id} className="border-b border-border last:border-b-0 hover:bg-surface/30 transition-colors">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
                       <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                        <span className="text-xs font-semibold">
-                          {t.name.charAt(0)}
-                        </span>
+                        <span className="text-xs font-semibold">{t.name.charAt(0)}</span>
                       </div>
                       <div>
                         <p className="font-medium text-foreground">{t.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {[t.role, t.sport].filter(Boolean).join(" · ")}
-                        </p>
+                        <p className="text-xs text-muted-foreground">{[t.role, t.sport].filter(Boolean).join(" · ")}</p>
                       </div>
                     </div>
                   </td>
@@ -543,17 +480,10 @@ export function TestimonialList({ testimonials }: TestimonialListProps) {
                       )}
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell">
-                    {t.display_order}
-                  </td>
+                  <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell">{t.display_order}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        onClick={() => openEditForm(t)}
-                        title="Edit testimonial"
-                      >
+                      <Button variant="ghost" size="icon-xs" onClick={() => openEditForm(t)} title="Edit testimonial">
                         <Pencil className="size-3.5" />
                       </Button>
                       <Button
@@ -563,28 +493,18 @@ export function TestimonialList({ testimonials }: TestimonialListProps) {
                         disabled={togglingId === t.id}
                         title={t.is_active ? "Deactivate" : "Activate"}
                       >
-                        {t.is_active ? (
-                          <EyeOff className="size-3.5" />
-                        ) : (
-                          <Eye className="size-3.5" />
-                        )}
+                        {t.is_active ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
                       </Button>
                       <Button
                         variant="ghost"
                         size="icon-xs"
                         onClick={() => handleToggle(t, "is_featured")}
                         disabled={togglingId === t.id}
-                        title={
-                          t.is_featured
-                            ? "Remove from featured"
-                            : "Add to featured"
-                        }
+                        title={t.is_featured ? "Remove from featured" : "Add to featured"}
                       >
                         <Heart
                           className={`size-3.5 ${
-                            t.is_featured
-                              ? "fill-warning text-warning"
-                              : "text-muted-foreground"
+                            t.is_featured ? "fill-warning text-warning" : "text-muted-foreground"
                           }`}
                         />
                       </Button>
@@ -603,10 +523,7 @@ export function TestimonialList({ testimonials }: TestimonialListProps) {
               ))}
               {paginated.length === 0 && (
                 <tr>
-                  <td
-                    colSpan={6}
-                    className="px-4 py-12 text-center text-muted-foreground"
-                  >
+                  <td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">
                     No testimonials found matching your filters.
                   </td>
                 </tr>
@@ -634,12 +551,7 @@ export function TestimonialList({ testimonials }: TestimonialListProps) {
               ))}
             </select>
             <span className="sm:ml-2">
-              {filtered.length === 0
-                ? "0"
-                : `${(page - 1) * perPage + 1}-${Math.min(
-                    page * perPage,
-                    filtered.length
-                  )}`}{" "}
+              {filtered.length === 0 ? "0" : `${(page - 1) * perPage + 1}-${Math.min(page * perPage, filtered.length)}`}{" "}
               of {filtered.length}
             </span>
           </div>
@@ -663,31 +575,20 @@ export function TestimonialList({ testimonials }: TestimonialListProps) {
       </div>
 
       {/* Delete Confirmation Dialog */}
-      <Dialog
-        open={!!deleteTarget}
-        onOpenChange={(open) => !open && setDeleteTarget(null)}
-      >
+      <Dialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete Testimonial</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete the testimonial from{" "}
-              &ldquo;{deleteTarget?.name}&rdquo;? This action cannot be undone.
+              Are you sure you want to delete the testimonial from &ldquo;{deleteTarget?.name}&rdquo;? This action
+              cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setDeleteTarget(null)}
-              disabled={isDeleting}
-            >
+            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={isDeleting}>
               Cancel
             </Button>
-            <Button
-              variant="destructive"
-              onClick={handleDelete}
-              disabled={isDeleting}
-            >
+            <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
               {isDeleting ? "Deleting..." : "Delete"}
             </Button>
           </DialogFooter>

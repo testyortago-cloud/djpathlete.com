@@ -60,7 +60,7 @@ export function compressExercises(exercises: Exercise[]): CompressedExercise[] {
  */
 export function filterByDifficultyScore(
   exercises: CompressedExercise[],
-  maxDifficultyScore?: number
+  maxDifficultyScore?: number,
 ): CompressedExercise[] {
   if (maxDifficultyScore === undefined) return exercises
 

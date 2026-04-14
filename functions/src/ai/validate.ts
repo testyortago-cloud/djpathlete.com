@@ -11,12 +11,37 @@ import { stringSimilarity } from "string-similarity-js"
 // ─── Equipment normalization ────────────────────────────────────────────────
 
 const CANONICAL_EQUIPMENT = [
-  "barbell", "dumbbell", "kettlebell", "cable_machine", "smith_machine",
-  "resistance_band", "pull_up_bar", "bench", "squat_rack", "leg_press",
-  "leg_curl_machine", "lat_pulldown_machine", "rowing_machine", "treadmill",
-  "bike", "box", "plyo_box", "medicine_ball", "stability_ball", "foam_roller",
-  "trx", "landmine", "sled", "battle_ropes", "agility_ladder", "cones", "yoga_mat",
-  "gliders", "wall", "weight_plate", "short_barbell",
+  "barbell",
+  "dumbbell",
+  "kettlebell",
+  "cable_machine",
+  "smith_machine",
+  "resistance_band",
+  "pull_up_bar",
+  "bench",
+  "squat_rack",
+  "leg_press",
+  "leg_curl_machine",
+  "lat_pulldown_machine",
+  "rowing_machine",
+  "treadmill",
+  "bike",
+  "box",
+  "plyo_box",
+  "medicine_ball",
+  "stability_ball",
+  "foam_roller",
+  "trx",
+  "landmine",
+  "sled",
+  "battle_ropes",
+  "agility_ladder",
+  "cones",
+  "yoga_mat",
+  "gliders",
+  "wall",
+  "weight_plate",
+  "short_barbell",
 ] as const
 
 /**
@@ -27,21 +52,42 @@ const CANONICAL_EQUIPMENT = [
 const FULL_GYM_THRESHOLD = 25
 
 const EQUIPMENT_ALIASES: Record<string, string> = {
-  dumbbells: "dumbbell", barbells: "barbell", kettlebells: "kettlebell",
-  cables: "cable_machine", bands: "resistance_band", cones_set: "cones",
-  cable: "cable_machine", cable_machine: "cable_machine",
-  db: "dumbbell", bb: "barbell", kb: "kettlebell",
-  pull_up: "pull_up_bar", pullup_bar: "pull_up_bar", pullup: "pull_up_bar",
-  chin_up_bar: "pull_up_bar", chinup_bar: "pull_up_bar",
-  resistance_bands: "resistance_band", band: "resistance_band",
-  battle_rope: "battle_ropes", plyo: "plyo_box",
-  med_ball: "medicine_ball", swiss_ball: "stability_ball",
-  exercise_ball: "stability_ball", smith: "smith_machine",
-  lat_pulldown: "lat_pulldown_machine", leg_curl: "leg_curl_machine",
-  leg_press_machine: "leg_press", rower: "rowing_machine",
-  erg: "rowing_machine", treadmills: "treadmill", bikes: "bike",
-  boxes: "box", mat: "yoga_mat", foam_rollers: "foam_roller",
-  sleds: "sled", agility_ladders: "agility_ladder",
+  dumbbells: "dumbbell",
+  barbells: "barbell",
+  kettlebells: "kettlebell",
+  cables: "cable_machine",
+  bands: "resistance_band",
+  cones_set: "cones",
+  cable: "cable_machine",
+  cable_machine: "cable_machine",
+  db: "dumbbell",
+  bb: "barbell",
+  kb: "kettlebell",
+  pull_up: "pull_up_bar",
+  pullup_bar: "pull_up_bar",
+  pullup: "pull_up_bar",
+  chin_up_bar: "pull_up_bar",
+  chinup_bar: "pull_up_bar",
+  resistance_bands: "resistance_band",
+  band: "resistance_band",
+  battle_rope: "battle_ropes",
+  plyo: "plyo_box",
+  med_ball: "medicine_ball",
+  swiss_ball: "stability_ball",
+  exercise_ball: "stability_ball",
+  smith: "smith_machine",
+  lat_pulldown: "lat_pulldown_machine",
+  leg_curl: "leg_curl_machine",
+  leg_press_machine: "leg_press",
+  rower: "rowing_machine",
+  erg: "rowing_machine",
+  treadmills: "treadmill",
+  bikes: "bike",
+  boxes: "box",
+  mat: "yoga_mat",
+  foam_rollers: "foam_roller",
+  sleds: "sled",
+  agility_ladders: "agility_ladder",
 }
 
 const FUZZY_THRESHOLD = 0.7
@@ -82,7 +128,7 @@ export function validateProgram(
   exercises: CompressedExercise[],
   availableEquipment: string[],
   clientDifficulty: string,
-  maxDifficultyScore?: number
+  maxDifficultyScore?: number,
 ): ValidationResult {
   const issues: ValidationIssue[] = []
   const exerciseMap = new Map(exercises.map((e) => [e.id, e]))
@@ -92,21 +138,24 @@ export function validateProgram(
     for (const day of week.days) {
       for (const slot of day.slots) {
         slotMap.set(slot.slot_id, {
-          week: week.week_number, day: day.day_of_week,
-          role: slot.role, movement: slot.movement_pattern, muscles: slot.target_muscles,
+          week: week.week_number,
+          day: day.day_of_week,
+          role: slot.role,
+          movement: slot.movement_pattern,
+          muscles: slot.target_muscles,
         })
       }
     }
   }
 
   const avoidedMovements = new Set(
-    analysis.exercise_constraints.filter((c) => c.type === "avoid_movement").map((c) => c.value.toLowerCase())
+    analysis.exercise_constraints.filter((c) => c.type === "avoid_movement").map((c) => c.value.toLowerCase()),
   )
   const avoidedEquipment = new Set(
-    analysis.exercise_constraints.filter((c) => c.type === "avoid_equipment").map((c) => c.value.toLowerCase())
+    analysis.exercise_constraints.filter((c) => c.type === "avoid_equipment").map((c) => c.value.toLowerCase()),
   )
   const avoidedMuscles = new Set(
-    analysis.exercise_constraints.filter((c) => c.type === "avoid_muscle").map((c) => c.value.toLowerCase())
+    analysis.exercise_constraints.filter((c) => c.type === "avoid_muscle").map((c) => c.value.toLowerCase()),
   )
   const equipmentSet = new Set(availableEquipment.map(normalizeEquipment))
   const isFullGym = availableEquipment.length >= FULL_GYM_THRESHOLD
@@ -116,9 +165,17 @@ export function validateProgram(
     for (const day of week.days) {
       const slotCount = day.slots.length
       if (slotCount > 12) {
-        issues.push({ type: "error", category: "excessive_exercises", message: `Week ${week.week_number} ${day.label} has ${slotCount} exercises — maximum is 12.` })
+        issues.push({
+          type: "error",
+          category: "excessive_exercises",
+          message: `Week ${week.week_number} ${day.label} has ${slotCount} exercises — maximum is 12.`,
+        })
       } else if (slotCount > 10) {
-        issues.push({ type: "warning", category: "excessive_exercises", message: `Week ${week.week_number} ${day.label} has ${slotCount} exercises — very high.` })
+        issues.push({
+          type: "warning",
+          category: "excessive_exercises",
+          message: `Week ${week.week_number} ${day.label} has ${slotCount} exercises — very high.`,
+        })
       }
     }
   }
@@ -133,7 +190,12 @@ export function validateProgram(
     const slot = slotMap.get(assigned.slot_id)
 
     if (!exercise) {
-      issues.push({ type: "error", category: "missing_exercise", message: `Exercise ID ${assigned.exercise_id} (${assigned.exercise_name}) not found in library`, slot_ref: assigned.slot_id })
+      issues.push({
+        type: "error",
+        category: "missing_exercise",
+        message: `Exercise ID ${assigned.exercise_id} (${assigned.exercise_name}) not found in library`,
+        slot_ref: assigned.slot_id,
+      })
       continue
     }
     if (!slot) continue
@@ -144,30 +206,55 @@ export function validateProgram(
     if (!isFullGym && exercise.equipment_required.length > 0 && !exercise.is_bodyweight) {
       for (const eq of exercise.equipment_required) {
         if (!equipmentSet.has(normalizeEquipment(eq))) {
-          issues.push({ type: "error", category: "equipment_violation", message: `${exercise.name} requires "${eq}" which is not available`, slot_ref: assigned.slot_id })
+          issues.push({
+            type: "error",
+            category: "equipment_violation",
+            message: `${exercise.name} requires "${eq}" which is not available`,
+            slot_ref: assigned.slot_id,
+          })
         }
       }
     }
     for (const eq of exercise.equipment_required) {
       if (avoidedEquipment.has(normalizeEquipment(eq))) {
-        issues.push({ type: "error", category: "equipment_violation", message: `${exercise.name} uses "${eq}" which is avoided`, slot_ref: assigned.slot_id })
+        issues.push({
+          type: "error",
+          category: "equipment_violation",
+          message: `${exercise.name} uses "${eq}" which is avoided`,
+          slot_ref: assigned.slot_id,
+        })
       }
     }
 
     // Movement/injury conflicts
     if (exercise.movement_pattern && avoidedMovements.has(exercise.movement_pattern.toLowerCase())) {
-      issues.push({ type: "error", category: "injury_conflict", message: `${exercise.name} uses avoided movement "${exercise.movement_pattern}"`, slot_ref: assigned.slot_id })
+      issues.push({
+        type: "error",
+        category: "injury_conflict",
+        message: `${exercise.name} uses avoided movement "${exercise.movement_pattern}"`,
+        slot_ref: assigned.slot_id,
+      })
     }
     for (const muscle of exercise.primary_muscles) {
       if (avoidedMuscles.has(muscle.toLowerCase())) {
-        issues.push({ type: "error", category: "injury_conflict", message: `${exercise.name} targets avoided muscle "${muscle}"`, slot_ref: assigned.slot_id })
+        issues.push({
+          type: "error",
+          category: "injury_conflict",
+          message: `${exercise.name} targets avoided muscle "${muscle}"`,
+          slot_ref: assigned.slot_id,
+        })
       }
     }
 
     // Duplicate exercises
     const existing = dayExercises.get(dayKey) ?? []
     if (existing.includes(assigned.exercise_id)) {
-      issues.push({ type: "error", category: "duplicate_exercise", message: `${exercise.name} appears more than once on week ${slot.week} day ${slot.day}`, slot_ref: assigned.slot_id })
+      issues.push({
+        type: "error",
+        category: "duplicate_exercise",
+        message: `${exercise.name} appears more than once on week ${slot.week} day ${slot.day}`,
+        slot_ref: assigned.slot_id,
+      })
     }
     dayExercises.set(dayKey, [...existing, assigned.exercise_id])
 
@@ -185,12 +272,27 @@ export function validateProgram(
     const clientIdx = difficultyOrder.indexOf(clientDifficulty)
     const exerciseIdx = difficultyOrder.indexOf(exercise.difficulty)
     if (clientIdx >= 0 && exerciseIdx >= 0 && exerciseIdx > clientIdx + 1) {
-      issues.push({ type: "warning", category: "difficulty_mismatch", message: `${exercise.name} (${exercise.difficulty}) may be too advanced for a ${clientDifficulty} client`, slot_ref: assigned.slot_id })
+      issues.push({
+        type: "warning",
+        category: "difficulty_mismatch",
+        message: `${exercise.name} (${exercise.difficulty}) may be too advanced for a ${clientDifficulty} client`,
+        slot_ref: assigned.slot_id,
+      })
     }
 
     // Difficulty score violation
-    if (maxDifficultyScore !== undefined && exercise.difficulty_score !== null && exercise.difficulty_score !== undefined && exercise.difficulty_score > maxDifficultyScore) {
-      issues.push({ type: "error", category: "difficulty_score_violation", message: `${exercise.name} has difficulty_score ${exercise.difficulty_score} exceeding max ${maxDifficultyScore}`, slot_ref: assigned.slot_id })
+    if (
+      maxDifficultyScore !== undefined &&
+      exercise.difficulty_score !== null &&
+      exercise.difficulty_score !== undefined &&
+      exercise.difficulty_score > maxDifficultyScore
+    ) {
+      issues.push({
+        type: "error",
+        category: "difficulty_score_violation",
+        message: `${exercise.name} has difficulty_score ${exercise.difficulty_score} exceeding max ${maxDifficultyScore}`,
+        slot_ref: assigned.slot_id,
+      })
     }
   }
 
@@ -200,7 +302,12 @@ export function validateProgram(
   for (const week of skeleton.weeks) {
     const phase = week.phase.toLowerCase()
     const intensity = week.intensity_modifier.toLowerCase()
-    if (phase.includes("recovery") || phase.includes("testing") || phase.includes("deload") || intensity.includes("recovery")) {
+    if (
+      phase.includes("recovery") ||
+      phase.includes("testing") ||
+      phase.includes("deload") ||
+      intensity.includes("recovery")
+    ) {
       recoveryPhases.add(week.week_number)
     }
   }
@@ -208,7 +315,11 @@ export function validateProgram(
     if (recoveryPhases.has(week)) continue // Don't enforce pattern coverage on recovery/testing weeks
     for (const fp of fundamentalPatterns) {
       if (!patterns.has(fp)) {
-        issues.push({ type: "warning", category: "missing_movement_pattern", message: `Week ${week} is missing the "${fp}" movement pattern` })
+        issues.push({
+          type: "warning",
+          category: "missing_movement_pattern",
+          message: `Week ${week} is missing the "${fp}" movement pattern`,
+        })
       }
     }
   }
@@ -225,7 +336,14 @@ export function validateProgram(
       if (!slot) continue
 
       // Check working roles for rotation — non-working roles are exempt
-      if (slot.role === "warm_up" || slot.role === "cool_down" || slot.role === "activation" || slot.role === "conditioning" || slot.role === "testing") continue
+      if (
+        slot.role === "warm_up" ||
+        slot.role === "cool_down" ||
+        slot.role === "activation" ||
+        slot.role === "conditioning" ||
+        slot.role === "testing"
+      )
+        continue
 
       // Build a signature from day + order position (comparable across weeks)
       const sig = `d${slot.day}_${slot.role}_${slot.movement}`
@@ -284,7 +402,11 @@ export function validateProgram(
       const ratio = Math.min(pushCount, pullCount) / Math.max(pushCount, pullCount)
       if (ratio < 0.5) {
         const dominant = pushCount > pullCount ? "push" : "pull"
-        issues.push({ type: "warning", category: "muscle_imbalance", message: `Week ${week} has a ${dominant}-dominant imbalance (${pushCount} push vs ${pullCount} pull)` })
+        issues.push({
+          type: "warning",
+          category: "muscle_imbalance",
+          message: `Week ${week} has a ${dominant}-dominant imbalance (${pushCount} push vs ${pullCount} pull)`,
+        })
       }
     }
   }
@@ -297,7 +419,9 @@ export function validateProgram(
     pass,
     issues,
     summary: pass
-      ? warningCount > 0 ? `Program passed validation with ${warningCount} warning(s).` : "Program passed all validation checks."
+      ? warningCount > 0
+        ? `Program passed validation with ${warningCount} warning(s).`
+        : "Program passed all validation checks."
       : `Program has ${errorCount} error(s) and ${warningCount} warning(s) that need attention.`,
   }
 }

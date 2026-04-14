@@ -15,7 +15,7 @@ const EARNED_PROGRESSION_START_WEEK = 3
  */
 export function filterByDifficultyScore(
   exercises: CompressedExercise[],
-  maxDifficultyScore?: number
+  maxDifficultyScore?: number,
 ): CompressedExercise[] {
   if (maxDifficultyScore === undefined) return exercises
   return exercises.filter((ex) => {
@@ -34,7 +34,7 @@ export function filterByDifficultyScore(
  */
 export function filterByDifficultyLevel(
   exercises: CompressedExercise[],
-  clientDifficulty: string
+  clientDifficulty: string,
 ): CompressedExercise[] {
   const clientIdx = DIFFICULTY_LEVELS.indexOf(clientDifficulty as DifficultyLevel)
   if (clientIdx === -1) return exercises
@@ -64,16 +64,14 @@ export function filterByDifficultyLevel(
 export function filterByProgressionPhase(
   exercises: CompressedExercise[],
   clientDifficulty: string,
-  weekNumber: number
+  weekNumber: number,
 ): CompressedExercise[] {
   const normalized = clientDifficulty === "elite" ? "advanced" : clientDifficulty
   const clientIdx = DIFFICULTY_LEVELS.indexOf(normalized as DifficultyLevel)
   if (clientIdx === -1) return exercises
 
   const progressionUnlocked = weekNumber >= EARNED_PROGRESSION_START_WEEK
-  const progressionMaxIdx = progressionUnlocked
-    ? Math.min(clientIdx + 1, DIFFICULTY_LEVELS.length - 1)
-    : clientIdx
+  const progressionMaxIdx = progressionUnlocked ? Math.min(clientIdx + 1, DIFFICULTY_LEVELS.length - 1) : clientIdx
 
   return exercises.filter((ex) => {
     const exIdx = DIFFICULTY_LEVELS.indexOf(ex.difficulty as DifficultyLevel)

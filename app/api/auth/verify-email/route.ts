@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
-import { validateEmailVerificationToken, markVerificationTokenUsed, lookupTokenUser } from "@/lib/db/email-verification-tokens"
+import {
+  validateEmailVerificationToken,
+  markVerificationTokenUsed,
+  lookupTokenUser,
+} from "@/lib/db/email-verification-tokens"
 import { updateUser } from "@/lib/db/users"
 import { sendWelcomeEmail } from "@/lib/email"
 
@@ -16,7 +20,7 @@ export async function POST(request: Request) {
     if (!result.success) {
       return NextResponse.json(
         { error: "Invalid request", details: result.error.flatten().fieldErrors },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
@@ -30,7 +34,7 @@ export async function POST(request: Request) {
       const userId = tokenUser?.user_id ?? null
       return NextResponse.json(
         { error: "Invalid or expired verification link. Please request a new one.", userId },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
@@ -51,9 +55,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("Email verification error:", error)
-    return NextResponse.json(
-      { error: "An unexpected error occurred. Please try again." },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "An unexpected error occurred. Please try again." }, { status: 500 })
   }
 }

@@ -10,10 +10,7 @@ export async function POST(request: Request) {
     // Auth check
     const session = await auth()
     if (!session?.user?.id || session.user.role !== "admin") {
-      return NextResponse.json(
-        { error: "Unauthorized. Admin access required." },
-        { status: 403 }
-      )
+      return NextResponse.json({ error: "Unauthorized. Admin access required." }, { status: 403 })
     }
 
     // Parse and validate request body
@@ -26,7 +23,7 @@ export async function POST(request: Request) {
           error: "Invalid request data",
           details: result.error.flatten().fieldErrors,
         },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
@@ -86,19 +83,13 @@ export async function POST(request: Request) {
         log_id: log.id,
         status: "pending",
       },
-      { status: 202 }
+      { status: 202 },
     )
   } catch (error) {
     console.error("[generate] Failed to create AI job:", error)
 
-    const message =
-      error instanceof Error
-        ? error.message
-        : "An unexpected error occurred during program generation."
+    const message = error instanceof Error ? error.message : "An unexpected error occurred during program generation."
 
-    return NextResponse.json(
-      { error: message },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

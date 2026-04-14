@@ -212,11 +212,33 @@ describe("normalizeEquipment", () => {
 
   describe("canonical names return themselves", () => {
     const canonicalNames = [
-      "barbell", "dumbbell", "kettlebell", "cable_machine", "smith_machine",
-      "resistance_band", "pull_up_bar", "bench", "squat_rack", "leg_press",
-      "leg_curl_machine", "lat_pulldown_machine", "rowing_machine", "treadmill",
-      "bike", "box", "plyo_box", "medicine_ball", "stability_ball", "foam_roller",
-      "trx", "landmine", "sled", "battle_ropes", "agility_ladder", "cones", "yoga_mat",
+      "barbell",
+      "dumbbell",
+      "kettlebell",
+      "cable_machine",
+      "smith_machine",
+      "resistance_band",
+      "pull_up_bar",
+      "bench",
+      "squat_rack",
+      "leg_press",
+      "leg_curl_machine",
+      "lat_pulldown_machine",
+      "rowing_machine",
+      "treadmill",
+      "bike",
+      "box",
+      "plyo_box",
+      "medicine_ball",
+      "stability_ball",
+      "foam_roller",
+      "trx",
+      "landmine",
+      "sled",
+      "battle_ropes",
+      "agility_ladder",
+      "cones",
+      "yoga_mat",
     ]
 
     for (const name of canonicalNames) {
@@ -254,9 +276,7 @@ function makeExercise(overrides: Partial<CompressedExercise> = {}): CompressedEx
   }
 }
 
-function makeSkeleton(
-  slots: { slot_id: string; week: number; day: number }[]
-): ProgramSkeleton {
+function makeSkeleton(slots: { slot_id: string; week: number; day: number }[]): ProgramSkeleton {
   const weekMap = new Map<number, Map<number, string[]>>()
   for (const s of slots) {
     if (!weekMap.has(s.week)) weekMap.set(s.week, new Map())
@@ -327,18 +347,18 @@ describe("validateProgram", () => {
       })
       const skeleton = makeSkeleton([{ slot_id: "w1d1s1", week: 1, day: 1 }])
       const assignment: ExerciseAssignment = {
-        assignments: [
-          { slot_id: "w1d1s1", exercise_id: "ex-001", exercise_name: "Dumbbell Bench Press", notes: null },
-        ],
+        assignments: [{ slot_id: "w1d1s1", exercise_id: "ex-001", exercise_name: "Dumbbell Bench Press", notes: null }],
         substitution_notes: [],
       }
       const result = validateProgram(
-        skeleton, assignment, makeAnalysis(), [exercise],
-        ["dumbbell", "bench"], "intermediate"
+        skeleton,
+        assignment,
+        makeAnalysis(),
+        [exercise],
+        ["dumbbell", "bench"],
+        "intermediate",
       )
-      const equipmentErrors = result.issues.filter(
-        (i) => i.category === "equipment_violation"
-      )
+      const equipmentErrors = result.issues.filter((i) => i.category === "equipment_violation")
       expect(equipmentErrors).toHaveLength(0)
     })
 
@@ -350,18 +370,11 @@ describe("validateProgram", () => {
       })
       const skeleton = makeSkeleton([{ slot_id: "w1d1s1", week: 1, day: 1 }])
       const assignment: ExerciseAssignment = {
-        assignments: [
-          { slot_id: "w1d1s1", exercise_id: "ex-001", exercise_name: "Barbell Squat", notes: null },
-        ],
+        assignments: [{ slot_id: "w1d1s1", exercise_id: "ex-001", exercise_name: "Barbell Squat", notes: null }],
         substitution_notes: [],
       }
-      const result = validateProgram(
-        skeleton, assignment, makeAnalysis(), [exercise],
-        ["dumbbell"], "intermediate"
-      )
-      const equipmentErrors = result.issues.filter(
-        (i) => i.category === "equipment_violation"
-      )
+      const result = validateProgram(skeleton, assignment, makeAnalysis(), [exercise], ["dumbbell"], "intermediate")
+      const equipmentErrors = result.issues.filter((i) => i.category === "equipment_violation")
       expect(equipmentErrors.length).toBeGreaterThan(0)
       expect(result.pass).toBe(false)
     })
@@ -375,18 +388,11 @@ describe("validateProgram", () => {
       })
       const skeleton = makeSkeleton([{ slot_id: "w1d1s1", week: 1, day: 1 }])
       const assignment: ExerciseAssignment = {
-        assignments: [
-          { slot_id: "w1d1s1", exercise_id: "ex-001", exercise_name: "Push-Up", notes: null },
-        ],
+        assignments: [{ slot_id: "w1d1s1", exercise_id: "ex-001", exercise_name: "Push-Up", notes: null }],
         substitution_notes: [],
       }
-      const result = validateProgram(
-        skeleton, assignment, makeAnalysis(), [exercise],
-        [], "intermediate"
-      )
-      const equipmentErrors = result.issues.filter(
-        (i) => i.category === "equipment_violation"
-      )
+      const result = validateProgram(skeleton, assignment, makeAnalysis(), [exercise], [], "intermediate")
+      const equipmentErrors = result.issues.filter((i) => i.category === "equipment_violation")
       expect(equipmentErrors).toHaveLength(0)
     })
   })
@@ -405,10 +411,7 @@ describe("validateProgram", () => {
         ],
         substitution_notes: [],
       }
-      const result = validateProgram(
-        skeleton, assignment, makeAnalysis(), [exercise],
-        [], "intermediate"
-      )
+      const result = validateProgram(skeleton, assignment, makeAnalysis(), [exercise], [], "intermediate")
       const dupes = result.issues.filter((i) => i.category === "duplicate_exercise")
       expect(dupes).toHaveLength(1)
     })
@@ -426,10 +429,7 @@ describe("validateProgram", () => {
         ],
         substitution_notes: [],
       }
-      const result = validateProgram(
-        skeleton, assignment, makeAnalysis(), [exercise],
-        [], "intermediate"
-      )
+      const result = validateProgram(skeleton, assignment, makeAnalysis(), [exercise], [], "intermediate")
       const dupes = result.issues.filter((i) => i.category === "duplicate_exercise")
       expect(dupes).toHaveLength(0)
     })
@@ -444,20 +444,13 @@ describe("validateProgram", () => {
       })
       const skeleton = makeSkeleton([{ slot_id: "w1d1s1", week: 1, day: 1 }])
       const assignment: ExerciseAssignment = {
-        assignments: [
-          { slot_id: "w1d1s1", exercise_id: "ex-001", exercise_name: "Overhead Press", notes: null },
-        ],
+        assignments: [{ slot_id: "w1d1s1", exercise_id: "ex-001", exercise_name: "Overhead Press", notes: null }],
         substitution_notes: [],
       }
       const analysis = makeAnalysis({
-        exercise_constraints: [
-          { type: "avoid_movement", value: "push", reason: "Shoulder injury" },
-        ],
+        exercise_constraints: [{ type: "avoid_movement", value: "push", reason: "Shoulder injury" }],
       })
-      const result = validateProgram(
-        skeleton, assignment, analysis, [exercise],
-        [], "intermediate"
-      )
+      const result = validateProgram(skeleton, assignment, analysis, [exercise], [], "intermediate")
       const conflicts = result.issues.filter((i) => i.category === "injury_conflict")
       expect(conflicts.length).toBeGreaterThan(0)
     })
@@ -470,20 +463,13 @@ describe("validateProgram", () => {
       })
       const skeleton = makeSkeleton([{ slot_id: "w1d1s1", week: 1, day: 1 }])
       const assignment: ExerciseAssignment = {
-        assignments: [
-          { slot_id: "w1d1s1", exercise_id: "ex-001", exercise_name: "Bench Press", notes: null },
-        ],
+        assignments: [{ slot_id: "w1d1s1", exercise_id: "ex-001", exercise_name: "Bench Press", notes: null }],
         substitution_notes: [],
       }
       const analysis = makeAnalysis({
-        exercise_constraints: [
-          { type: "avoid_muscle", value: "chest", reason: "Pec strain" },
-        ],
+        exercise_constraints: [{ type: "avoid_muscle", value: "chest", reason: "Pec strain" }],
       })
-      const result = validateProgram(
-        skeleton, assignment, analysis, [exercise],
-        [], "intermediate"
-      )
+      const result = validateProgram(skeleton, assignment, analysis, [exercise], [], "intermediate")
       const conflicts = result.issues.filter((i) => i.category === "injury_conflict")
       expect(conflicts.length).toBeGreaterThan(0)
     })
@@ -498,15 +484,10 @@ describe("validateProgram", () => {
       })
       const skeleton = makeSkeleton([{ slot_id: "w1d1s1", week: 1, day: 1 }])
       const assignment: ExerciseAssignment = {
-        assignments: [
-          { slot_id: "w1d1s1", exercise_id: "ex-001", exercise_name: "Snatch", notes: null },
-        ],
+        assignments: [{ slot_id: "w1d1s1", exercise_id: "ex-001", exercise_name: "Snatch", notes: null }],
         substitution_notes: [],
       }
-      const result = validateProgram(
-        skeleton, assignment, makeAnalysis(), [exercise],
-        [], "beginner"
-      )
+      const result = validateProgram(skeleton, assignment, makeAnalysis(), [exercise], [], "beginner")
       const mismatches = result.issues.filter((i) => i.category === "difficulty_mismatch")
       expect(mismatches).toHaveLength(1)
     })
@@ -519,15 +500,10 @@ describe("validateProgram", () => {
       })
       const skeleton = makeSkeleton([{ slot_id: "w1d1s1", week: 1, day: 1 }])
       const assignment: ExerciseAssignment = {
-        assignments: [
-          { slot_id: "w1d1s1", exercise_id: "ex-001", exercise_name: "Goblet Squat", notes: null },
-        ],
+        assignments: [{ slot_id: "w1d1s1", exercise_id: "ex-001", exercise_name: "Goblet Squat", notes: null }],
         substitution_notes: [],
       }
-      const result = validateProgram(
-        skeleton, assignment, makeAnalysis(), [exercise],
-        [], "beginner"
-      )
+      const result = validateProgram(skeleton, assignment, makeAnalysis(), [exercise], [], "beginner")
       const mismatches = result.issues.filter((i) => i.category === "difficulty_mismatch")
       expect(mismatches).toHaveLength(0)
     })
@@ -537,15 +513,10 @@ describe("validateProgram", () => {
     it("flags exercises not found in the library", () => {
       const skeleton = makeSkeleton([{ slot_id: "w1d1s1", week: 1, day: 1 }])
       const assignment: ExerciseAssignment = {
-        assignments: [
-          { slot_id: "w1d1s1", exercise_id: "nonexistent", exercise_name: "Fake Exercise", notes: null },
-        ],
+        assignments: [{ slot_id: "w1d1s1", exercise_id: "nonexistent", exercise_name: "Fake Exercise", notes: null }],
         substitution_notes: [],
       }
-      const result = validateProgram(
-        skeleton, assignment, makeAnalysis(), [],
-        [], "intermediate"
-      )
+      const result = validateProgram(skeleton, assignment, makeAnalysis(), [], [], "intermediate")
       const missing = result.issues.filter((i) => i.category === "missing_exercise")
       expect(missing).toHaveLength(1)
       expect(result.pass).toBe(false)
@@ -555,7 +526,12 @@ describe("validateProgram", () => {
   describe("validation summary", () => {
     it("passes with no issues", () => {
       const pushEx = makeExercise({ id: "ex-push", is_bodyweight: true, movement_pattern: "push" })
-      const pullEx = makeExercise({ id: "ex-pull", is_bodyweight: true, movement_pattern: "pull", primary_muscles: ["back"] })
+      const pullEx = makeExercise({
+        id: "ex-pull",
+        is_bodyweight: true,
+        movement_pattern: "pull",
+        primary_muscles: ["back"],
+      })
       // Provide a balanced skeleton with both push and pull patterns so the
       // validator's per-week movement-balance check passes.
       const skeleton = makeSkeleton([
@@ -572,10 +548,7 @@ describe("validateProgram", () => {
         ],
         substitution_notes: [],
       }
-      const result = validateProgram(
-        skeleton, assignment, makeAnalysis(), [pushEx, pullEx],
-        [], "intermediate"
-      )
+      const result = validateProgram(skeleton, assignment, makeAnalysis(), [pushEx, pullEx], [], "intermediate")
       const errors = result.issues.filter((i) => i.type === "error")
       expect(errors).toHaveLength(0)
       expect(result.pass).toBe(true)

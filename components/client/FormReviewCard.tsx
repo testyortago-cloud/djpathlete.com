@@ -12,10 +12,7 @@ interface FormReviewCardProps {
   createdAt: string
 }
 
-const statusConfig: Record<
-  FormReviewStatus,
-  { label: string; icon: typeof Clock; className: string }
-> = {
+const statusConfig: Record<FormReviewStatus, { label: string; icon: typeof Clock; className: string }> = {
   pending: {
     label: "Pending",
     icon: Clock,
@@ -33,12 +30,7 @@ const statusConfig: Record<
   },
 }
 
-export function FormReviewCard({
-  id,
-  title,
-  status,
-  createdAt,
-}: FormReviewCardProps) {
+export function FormReviewCard({ id, title, status, createdAt }: FormReviewCardProps) {
   const config = statusConfig[status]
   const StatusIcon = config.icon
 
@@ -59,7 +51,7 @@ export function FormReviewCard({
             <span
               className={cn(
                 "inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0",
-                config.className
+                config.className,
               )}
             >
               <StatusIcon className="size-3" />

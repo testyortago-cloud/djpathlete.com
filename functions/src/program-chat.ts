@@ -4,7 +4,12 @@ import { getProgramChatSystemPrompt } from "./ai/program-chat-prompt.js"
 import { listClients, lookupClientProfile, getExercisesForAI } from "./ai/program-chat-tools.js"
 import { generateProgramSync } from "./ai/orchestrator.js"
 import type { AiGenerationRequest, PipelineProgressCallback } from "./ai/orchestrator.js"
-import { retrieveSimilarContext, formatRagContext, buildRagAugmentedPrompt, embedConversationMessage } from "./ai/rag.js"
+import {
+  retrieveSimilarContext,
+  formatRagContext,
+  buildRagAugmentedPrompt,
+  embedConversationMessage,
+} from "./ai/rag.js"
 import { getSupabase } from "./lib/supabase.js"
 import pRetry from "p-retry"
 
@@ -17,7 +22,14 @@ function isTransientError(error: unknown): boolean {
   }
   if (error instanceof Error) {
     const msg = error.message.toLowerCase()
-    if (msg.includes("429") || msg.includes("529") || msg.includes("overloaded") || msg.includes("500") || msg.includes("502") || msg.includes("503")) {
+    if (
+      msg.includes("429") ||
+      msg.includes("529") ||
+      msg.includes("overloaded") ||
+      msg.includes("500") ||
+      msg.includes("502") ||
+      msg.includes("503")
+    ) {
       return true
     }
   }
@@ -29,37 +41,35 @@ function isTransientError(error: unknown): boolean {
 async function createWithRetry(
   client: Anthropic,
   params: Omit<Anthropic.Messages.MessageCreateParamsNonStreaming, "model">,
-  primaryModel: string = MODEL_OPUS
+  primaryModel: string = MODEL_OPUS,
 ): Promise<Anthropic.Messages.Message> {
   try {
-    return await pRetry(
-      () => client.messages.create({ ...params, model: primaryModel }),
-      {
-        retries: 3,
-        minTimeout: 3_000,
-        maxTimeout: 15_000,
-        shouldRetry: (err) => isTransientError(err),
-        onFailedAttempt: (ctx) => {
-          console.warn(`[program-chat] Attempt ${ctx.attemptNumber} failed (${ctx.retriesLeft} left, model: ${primaryModel}): ${ctx.error.message}`)
-        },
-      }
-    )
+    return await pRetry(() => client.messages.create({ ...params, model: primaryModel }), {
+      retries: 3,
+      minTimeout: 3_000,
+      maxTimeout: 15_000,
+      shouldRetry: (err) => isTransientError(err),
+      onFailedAttempt: (ctx) => {
+        console.warn(
+          `[program-chat] Attempt ${ctx.attemptNumber} failed (${ctx.retriesLeft} left, model: ${primaryModel}): ${ctx.error.message}`,
+        )
+      },
+    })
   } catch (error) {
     // If primary model exhausted retries on transient error, fall back to Haiku
     if (primaryModel !== MODEL_HAIKU && isTransientError(error)) {
       console.warn(`[program-chat] ${primaryModel} exhausted retries — falling back to ${MODEL_HAIKU}`)
-      return await pRetry(
-        () => client.messages.create({ ...params, model: MODEL_HAIKU }),
-        {
-          retries: 2,
-          minTimeout: 2_000,
-          maxTimeout: 10_000,
-          shouldRetry: (err) => isTransientError(err),
-          onFailedAttempt: (ctx) => {
-            console.warn(`[program-chat] Haiku attempt ${ctx.attemptNumber} failed (${ctx.retriesLeft} left): ${ctx.error.message}`)
-          },
-        }
-      )
+      return await pRetry(() => client.messages.create({ ...params, model: MODEL_HAIKU }), {
+        retries: 2,
+        minTimeout: 2_000,
+        maxTimeout: 10_000,
+        shouldRetry: (err) => isTransientError(err),
+        onFailedAttempt: (ctx) => {
+          console.warn(
+            `[program-chat] Haiku attempt ${ctx.attemptNumber} failed (${ctx.retriesLeft} left): ${ctx.error.message}`,
+          )
+        },
+      })
     }
     throw error
   }
@@ -69,7 +79,8 @@ async function createWithRetry(
 const TOOL_DEFINITIONS: Anthropic.Messages.Tool[] = [
   {
     name: "list_clients",
-    description: "List all clients on the platform with their IDs and names. Call this when you need to find a client or see who is available.",
+    description:
+      "List all clients on the platform with their IDs and names. Call this when you need to find a client or see who is available.",
     input_schema: {
       type: "object" as const,
       properties: {},
@@ -78,7 +89,8 @@ const TOOL_DEFINITIONS: Anthropic.Messages.Tool[] = [
   },
   {
     name: "lookup_client_profile",
-    description: "Look up a specific client's detailed profile including goals, experience, equipment, injuries, and training preferences. Call this after identifying a client to get their full details before generating a program.",
+    description:
+      "Look up a specific client's detailed profile including goals, experience, equipment, injuries, and training preferences. Call this after identifying a client to get their full details before generating a program.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -90,7 +102,8 @@ const TOOL_DEFINITIONS: Anthropic.Messages.Tool[] = [
   },
   {
     name: "propose_parameters",
-    description: "Present proposed program parameters to the admin for confirmation. The UI will show interactive 'Generate' and 'Modify' buttons. ALWAYS use this instead of writing parameters as plain text.",
+    description:
+      "Present proposed program parameters to the admin for confirmation. The UI will show interactive 'Generate' and 'Modify' buttons. ALWAYS use this instead of writing parameters as plain text.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -110,7 +123,8 @@ const TOOL_DEFINITIONS: Anthropic.Messages.Tool[] = [
   },
   {
     name: "generate_program",
-    description: "Generate a full training program for a client using AI. Call this once you have gathered enough information about the client's needs.",
+    description:
+      "Generate a full training program for a client using AI. Call this once you have gathered enough information about the client's needs.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -151,10 +165,18 @@ function compressToolResult(toolName: string, raw: string): string {
       // Keep the essential profile fields, drop verbose nested data
       const keep: Record<string, unknown> = {}
       for (const key of [
-        "client_id", "client_name", "goals", "experience_level",
-        "training_age_category", "preferred_training_days",
-        "preferred_session_minutes", "available_equipment",
-        "injuries", "limitations", "preferences", "notes",
+        "client_id",
+        "client_name",
+        "goals",
+        "experience_level",
+        "training_age_category",
+        "preferred_training_days",
+        "preferred_session_minutes",
+        "available_equipment",
+        "injuries",
+        "limitations",
+        "preferences",
+        "notes",
       ]) {
         if (parsed[key] !== undefined) keep[key] = parsed[key]
       }
@@ -168,9 +190,7 @@ function compressToolResult(toolName: string, raw: string): string {
   }
 }
 
-function compressApiMessages(
-  messages: Anthropic.Messages.MessageParam[]
-): Anthropic.Messages.MessageParam[] {
+function compressApiMessages(messages: Anthropic.Messages.MessageParam[]): Anthropic.Messages.MessageParam[] {
   return messages.map((msg) => {
     if (msg.role !== "user" || !Array.isArray(msg.content)) return msg
 
@@ -204,7 +224,7 @@ function compressApiMessages(
 
 function buildConversationSummary(
   textMessages: Array<{ role: "user" | "assistant"; content: string }>,
-  toolEvents?: Array<{ tool?: string; summary?: string }>
+  toolEvents?: Array<{ tool?: string; summary?: string }>,
 ): string {
   if (textMessages.length <= 2 && (!toolEvents || toolEvents.length === 0)) return ""
 
@@ -213,13 +233,12 @@ function buildConversationSummary(
   parts.push("The following is a summary of what was discussed so far in this conversation:")
   parts.push("")
 
-  for (const msg of textMessages.slice(0, -1)) { // exclude the latest user message (already in messages array)
+  for (const msg of textMessages.slice(0, -1)) {
+    // exclude the latest user message (already in messages array)
     const prefix = msg.role === "user" ? "**Darren:**" : "**You (AI):**"
     // Keep assistant messages longer since they contain proposed parameters
     const maxLen = msg.role === "assistant" ? 1500 : 500
-    const content = msg.content.length > maxLen
-      ? msg.content.slice(0, maxLen) + "... [truncated]"
-      : msg.content
+    const content = msg.content.length > maxLen ? msg.content.slice(0, maxLen) + "... [truncated]" : msg.content
     parts.push(`${prefix} ${content}`)
   }
 
@@ -235,7 +254,9 @@ function buildConversationSummary(
   }
 
   parts.push("")
-  parts.push("CRITICAL: Continue the conversation naturally. Do NOT re-call tools you already used — the results are summarized above. Do NOT repeat or re-summarize information you already shared. If you already proposed program parameters and the user confirmed (e.g. 'sounds good', 'yes', 'go ahead'), call generate_program IMMEDIATELY with those parameters — do NOT re-display them.")
+  parts.push(
+    "CRITICAL: Continue the conversation naturally. Do NOT re-call tools you already used — the results are summarized above. Do NOT repeat or re-summarize information you already shared. If you already proposed program parameters and the user confirmed (e.g. 'sounds good', 'yes', 'go ahead'), call generate_program IMMEDIATELY with those parameters — do NOT re-display them.",
+  )
 
   return parts.join("\n")
 }
@@ -279,11 +300,11 @@ export async function handleProgramChat(jobId: string): Promise<void> {
     // RAG
     const lastUserMsgForRag = recentMessages.filter((m) => m.role === "user").pop()
     if (lastUserMsgForRag) {
-      const ragResults = await retrieveSimilarContext(
-        lastUserMsgForRag.content,
-        "program_chat",
-        { excludeSession: sessionId, threshold: 0.5, limit: 2 }
-      )
+      const ragResults = await retrieveSimilarContext(lastUserMsgForRag.content, "program_chat", {
+        excludeSession: sessionId,
+        threshold: 0.5,
+        limit: 2,
+      })
       const ragContext = formatRagContext(ragResults)
       if (ragContext) {
         systemPrompt = buildRagAugmentedPrompt(systemPrompt, ragContext)
@@ -317,10 +338,10 @@ export async function handleProgramChat(jobId: string): Promise<void> {
       }
       // Only send the latest user message — the summary covers prior context
       const latestUserMsg = recentMessages.filter((m) => m.role === "user").pop()
-      apiMessages = latestUserMsg
-        ? [{ role: "user", content: latestUserMsg.content }]
-        : []
-      console.log(`[program-chat] State missing for session ${sessionId} — injected conversation summary (${recentMessages.length} messages)`)
+      apiMessages = latestUserMsg ? [{ role: "user", content: latestUserMsg.content }] : []
+      console.log(
+        `[program-chat] State missing for session ${sessionId} — injected conversation summary (${recentMessages.length} messages)`,
+      )
     } else {
       // First turn — build from text messages
       apiMessages = recentMessages.map((m) => ({
@@ -364,7 +385,7 @@ export async function handleProgramChat(jobId: string): Promise<void> {
     // Tool use loop
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
       // Check for cancellation between rounds
-      if (round > 0 && await isCancelled()) {
+      if (round > 0 && (await isCancelled())) {
         console.log(`[program-chat] Job ${jobId} cancelled between tool rounds`)
         await chunksRef.doc(String(chunkIndex++).padStart(6, "0")).set({
           index: chunkIndex - 1,
@@ -377,9 +398,7 @@ export async function handleProgramChat(jobId: string): Promise<void> {
 
       // Remove already-called tools so Claude cannot re-call them
       // (generate_program is always allowed since it's the terminal action)
-      const availableTools = TOOL_DEFINITIONS.filter(
-        (t) => t.name === "generate_program" || !calledTools.has(t.name)
-      )
+      const availableTools = TOOL_DEFINITIONS.filter((t) => t.name === "generate_program" || !calledTools.has(t.name))
 
       const response = await createWithRetry(client, {
         max_tokens: 32000,
@@ -440,7 +459,12 @@ export async function handleProgramChat(jobId: string): Promise<void> {
                 for (const prevMsg of apiMessages) {
                   if (prevMsg.role === "assistant" && Array.isArray(prevMsg.content)) {
                     for (const aBlock of prevMsg.content) {
-                      if (typeof aBlock === "object" && "type" in aBlock && aBlock.type === "tool_use" && (aBlock as Anthropic.Messages.ToolUseBlock).id === toolResult.tool_use_id) {
+                      if (
+                        typeof aBlock === "object" &&
+                        "type" in aBlock &&
+                        aBlock.type === "tool_use" &&
+                        (aBlock as Anthropic.Messages.ToolUseBlock).id === toolResult.tool_use_id
+                      ) {
                         const tu = aBlock as Anthropic.Messages.ToolUseBlock
                         const cacheKey = `${tu.name}:${JSON.stringify(tu.input)}`
                         previousToolResults.set(cacheKey, toolResult.content)
@@ -618,10 +642,7 @@ export async function handleProgramChat(jobId: string): Promise<void> {
         model_used: MODEL_SONNET,
       })
 
-      const { data: saved } = await supabase
-        .from("ai_conversation_history")
-        .insert(batch)
-        .select()
+      const { data: saved } = await supabase.from("ai_conversation_history").insert(batch).select()
 
       const assistantMsg = saved?.find((m: Record<string, unknown>) => m.role === "assistant")
       if (assistantMsg) {
@@ -655,7 +676,9 @@ export async function handleProgramChat(jobId: string): Promise<void> {
         current_step: 0,
         total_steps: 0,
       })
-    } catch { /* non-fatal */ }
+    } catch {
+      /* non-fatal */
+    }
 
     // Persist compressed API messages for next turn (avoids Firestore 1MB limit)
     try {
@@ -674,7 +697,10 @@ export async function handleProgramChat(jobId: string): Promise<void> {
         updatedAt: FieldValue.serverTimestamp(),
       })
     } catch (e) {
-      console.error(`[program-chat] FAILED to save chat state for session ${sessionId}:`, e instanceof Error ? e.message : e)
+      console.error(
+        `[program-chat] FAILED to save chat state for session ${sessionId}:`,
+        e instanceof Error ? e.message : e,
+      )
       // State will be missing next turn — the summary fallback will kick in
     }
 

@@ -56,8 +56,8 @@ export function UnassignButton({ assignmentId, programName }: UnassignButtonProp
         <AlertDialogHeader>
           <AlertDialogTitle>Unassign from program?</AlertDialogTitle>
           <AlertDialogDescription>
-            This will remove the client&apos;s assignment to <strong>{programName}</strong> and
-            delete all associated tracking data. This action cannot be undone.
+            This will remove the client&apos;s assignment to <strong>{programName}</strong> and delete all associated
+            tracking data. This action cannot be undone.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

@@ -58,25 +58,151 @@ const TOTAL_TIMEOUT_MS = 45_000
 
 const STOP_WORDS = new Set([
   // Standard English
-  "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
-  "have", "has", "had", "do", "does", "did", "will", "would", "could",
-  "should", "may", "might", "shall", "can", "need", "must", "ought",
-  "i", "me", "my", "we", "our", "you", "your", "he", "she", "it",
-  "they", "them", "their", "this", "that", "these", "those", "what",
-  "which", "who", "whom", "how", "when", "where", "why",
-  "and", "but", "or", "nor", "not", "so", "if", "then", "than",
-  "too", "very", "just", "also", "more", "most", "some", "any", "all",
-  "each", "every", "both", "few", "many", "much", "own", "other",
-  "no", "only", "same", "such", "into", "over", "after", "before",
-  "between", "through", "during", "above", "below", "to", "from",
-  "up", "down", "in", "out", "on", "off", "with", "without", "at",
-  "by", "for", "of", "about", "as",
+  "a",
+  "an",
+  "the",
+  "is",
+  "are",
+  "was",
+  "were",
+  "be",
+  "been",
+  "being",
+  "have",
+  "has",
+  "had",
+  "do",
+  "does",
+  "did",
+  "will",
+  "would",
+  "could",
+  "should",
+  "may",
+  "might",
+  "shall",
+  "can",
+  "need",
+  "must",
+  "ought",
+  "i",
+  "me",
+  "my",
+  "we",
+  "our",
+  "you",
+  "your",
+  "he",
+  "she",
+  "it",
+  "they",
+  "them",
+  "their",
+  "this",
+  "that",
+  "these",
+  "those",
+  "what",
+  "which",
+  "who",
+  "whom",
+  "how",
+  "when",
+  "where",
+  "why",
+  "and",
+  "but",
+  "or",
+  "nor",
+  "not",
+  "so",
+  "if",
+  "then",
+  "than",
+  "too",
+  "very",
+  "just",
+  "also",
+  "more",
+  "most",
+  "some",
+  "any",
+  "all",
+  "each",
+  "every",
+  "both",
+  "few",
+  "many",
+  "much",
+  "own",
+  "other",
+  "no",
+  "only",
+  "same",
+  "such",
+  "into",
+  "over",
+  "after",
+  "before",
+  "between",
+  "through",
+  "during",
+  "above",
+  "below",
+  "to",
+  "from",
+  "up",
+  "down",
+  "in",
+  "out",
+  "on",
+  "off",
+  "with",
+  "without",
+  "at",
+  "by",
+  "for",
+  "of",
+  "about",
+  "as",
   // Domain-specific filler
-  "write", "blog", "post", "article", "create", "generate", "topic",
-  "please", "discuss", "explain", "cover", "make", "help", "want",
-  "think", "know", "like", "good", "best", "way", "ways", "thing",
-  "things", "get", "got", "use", "using", "used", "new", "important",
-  "really", "look", "looking", "based", "key", "main", "great",
+  "write",
+  "blog",
+  "post",
+  "article",
+  "create",
+  "generate",
+  "topic",
+  "please",
+  "discuss",
+  "explain",
+  "cover",
+  "make",
+  "help",
+  "want",
+  "think",
+  "know",
+  "like",
+  "good",
+  "best",
+  "way",
+  "ways",
+  "thing",
+  "things",
+  "get",
+  "got",
+  "use",
+  "using",
+  "used",
+  "new",
+  "important",
+  "really",
+  "look",
+  "looking",
+  "based",
+  "key",
+  "main",
+  "great",
 ])
 
 // Known compound terms in fitness/sports science — keep as phrases
@@ -120,7 +246,11 @@ const COMPOUND_TERMS = new Map([
 // ─── Keyword Extraction ─────────────────────────────────────────────────────
 
 export function extractKeywords(prompt: string): string[] {
-  const cleaned = prompt.toLowerCase().replace(/[^\w\s-]/g, " ").replace(/\s+/g, " ").trim()
+  const cleaned = prompt
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
 
   // First, extract any compound terms found in the prompt
   const compounds: string[] = []
@@ -133,9 +263,7 @@ export function extractKeywords(prompt: string): string[] {
   }
 
   // Then extract single significant words from what's left
-  const singles = remaining
-    .split(/\s+/)
-    .filter((w) => w.length > 2 && !STOP_WORDS.has(w))
+  const singles = remaining.split(/\s+/).filter((w) => w.length > 2 && !STOP_WORDS.has(w))
 
   // Combine: compounds first, then singles, deduplicated
   const seen = new Set<string>()
@@ -236,9 +364,8 @@ async function fetchPubMedDetails(pmids: string[]): Promise<ResearchPaper[]> {
       .join(", ")
     const authorStr = (article.authors?.length ?? 0) > 3 ? `${authors}, et al.` : authors
 
-    const doi = (article.articleids ?? []).find(
-      (a: { idtype: string; value: string }) => a.idtype === "doi"
-    )?.value ?? null
+    const doi =
+      (article.articleids ?? []).find((a: { idtype: string; value: string }) => a.idtype === "doi")?.value ?? null
 
     papers.push({
       pmid,
@@ -285,7 +412,7 @@ async function searchSemanticScholar(keywords: string[]): Promise<ResearchPaper[
       journal: "",
       year: paper.year?.toString() ?? "",
       abstract: paper.abstract?.slice(0, 200) ?? "",
-      url: doi ? `https://doi.org/${doi}` : paper.url ?? "",
+      url: doi ? `https://doi.org/${doi}` : (paper.url ?? ""),
     }
   })
 }
@@ -375,7 +502,9 @@ export async function fetchResearchPapers(blogPrompt: string): Promise<ResearchR
           return { papers, source: "pubmed", query_used: queryStr, duration_ms: Date.now() - start }
         }
       }
-    } catch { /* already tried */ }
+    } catch {
+      /* already tried */
+    }
 
     return { papers: [], source: "none", query_used: queryStr, duration_ms: Date.now() - start }
   })()

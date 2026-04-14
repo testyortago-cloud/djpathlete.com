@@ -202,10 +202,7 @@ describe("filterByDifficultyScore", () => {
   })
 
   it("excludes exercises above the max difficulty score", () => {
-    const exercises = [
-      makeExercise({ difficulty_score: 8 }),
-      makeExercise({ difficulty_score: 10 }),
-    ]
+    const exercises = [makeExercise({ difficulty_score: 8 }), makeExercise({ difficulty_score: 10 })]
     const result = filterByDifficultyScore(exercises, 5)
     expect(result).toHaveLength(0)
   })

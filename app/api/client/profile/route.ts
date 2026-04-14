@@ -6,19 +6,13 @@ import { z } from "zod"
 const profileSchema = z.object({
   sport: z.string().nullable().optional(),
   position: z.string().nullable().optional(),
-  experience_level: z
-    .enum(["beginner", "intermediate", "advanced", "elite"])
-    .nullable()
-    .optional(),
+  experience_level: z.enum(["beginner", "intermediate", "advanced", "elite"]).nullable().optional(),
   goals: z.string().nullable().optional(),
   injuries: z.string().nullable().optional(),
   height_cm: z.number().nullable().optional(),
   weight_kg: z.number().nullable().optional(),
   date_of_birth: z.string().nullable().optional(),
-  gender: z
-    .enum(["male", "female", "other", "prefer_not_to_say"])
-    .nullable()
-    .optional(),
+  gender: z.enum(["male", "female", "other", "prefer_not_to_say"]).nullable().optional(),
   emergency_contact_name: z.string().nullable().optional(),
   emergency_contact_phone: z.string().nullable().optional(),
   weight_unit: z.enum(["kg", "lbs"]).optional(),
@@ -36,10 +30,7 @@ export async function PATCH(request: Request) {
     const parsed = profileSchema.safeParse(body)
 
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Invalid data", details: parsed.error.flatten() },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Invalid data", details: parsed.error.flatten() }, { status: 400 })
     }
 
     const updates = parsed.data
@@ -90,9 +81,6 @@ export async function PATCH(request: Request) {
     return NextResponse.json(updated)
   } catch (error) {
     console.error("Profile update error:", error)
-    return NextResponse.json(
-      { error: "Failed to update profile" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to update profile" }, { status: 500 })
   }
 }

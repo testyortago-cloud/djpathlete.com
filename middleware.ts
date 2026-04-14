@@ -2,10 +2,7 @@ import { auth } from "@/lib/auth"
 import { NextResponse } from "next/server"
 
 /** Cookie names used by NextAuth v5 (authjs) — dev (HTTP) and prod (HTTPS). */
-const SESSION_COOKIES = [
-  "authjs.session-token",
-  "__Secure-authjs.session-token",
-]
+const SESSION_COOKIES = ["authjs.session-token", "__Secure-authjs.session-token"]
 
 /**
  * Redirect to /login and delete any stale session cookie so the browser

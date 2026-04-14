@@ -1,9 +1,5 @@
 import { createServiceRoleClient } from "@/lib/supabase"
-import type {
-  FormReview,
-  FormReviewMessage,
-  FormReviewStatus,
-} from "@/types/database"
+import type { FormReview, FormReviewMessage, FormReviewStatus } from "@/types/database"
 
 function getClient() {
   return createServiceRoleClient()
@@ -24,9 +20,7 @@ export async function getFormReviewsByClient(userId: string) {
   return data
 }
 
-export async function getAllFormReviews(filters?: {
-  status?: FormReviewStatus
-}) {
+export async function getAllFormReviews(filters?: { status?: FormReviewStatus }) {
   const supabase = getClient()
   let query = supabase
     .from("form_reviews")
@@ -46,39 +40,26 @@ export async function getFormReviewById(id: string) {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("form_reviews")
-    .select(
-      "*, users(first_name, last_name, email, avatar_url)"
-    )
+    .select("*, users(first_name, last_name, email, avatar_url)")
     .eq("id", id)
     .single()
   if (error) throw error
   return data
 }
 
-export async function createFormReview(
-  review: Omit<FormReview, "id" | "created_at" | "updated_at" | "thumbnail_url">
-) {
+export async function createFormReview(review: Omit<FormReview, "id" | "created_at" | "updated_at" | "thumbnail_url">) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("form_reviews")
-    .insert(review)
-    .select()
-    .single()
+  const { data, error } = await supabase.from("form_reviews").insert(review).select().single()
   if (error) throw error
   return data as FormReview
 }
 
 export async function updateFormReview(
   id: string,
-  updates: Partial<Pick<FormReview, "status" | "video_path" | "thumbnail_url">>
+  updates: Partial<Pick<FormReview, "status" | "video_path" | "thumbnail_url">>,
 ) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("form_reviews")
-    .update(updates)
-    .eq("id", id)
-    .select()
-    .single()
+  const { data, error } = await supabase.from("form_reviews").update(updates).eq("id", id).select().single()
   if (error) throw error
   return data as FormReview
 }
@@ -98,9 +79,7 @@ export async function getFormReviewMessages(reviewId: string) {
   return data
 }
 
-export async function createFormReviewMessage(
-  message: Omit<FormReviewMessage, "id" | "created_at">
-) {
+export async function createFormReviewMessage(message: Omit<FormReviewMessage, "id" | "created_at">) {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("form_review_messages")
@@ -117,9 +96,7 @@ export async function createFormReviewMessage(
 
 export async function getFormReviewCounts() {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("form_reviews")
-    .select("status")
+  const { data, error } = await supabase.from("form_reviews").select("status")
   if (error) throw error
 
   const counts = { pending: 0, in_progress: 0, reviewed: 0, total: 0 }

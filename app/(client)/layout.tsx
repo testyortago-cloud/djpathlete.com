@@ -6,11 +6,7 @@ import { WeightUnitProvider } from "@/hooks/use-weight-unit"
 import { getProfileByUserId } from "@/lib/db/client-profiles"
 import type { WeightUnit } from "@/types/database"
 
-export default async function ClientRootLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default async function ClientRootLayout({ children }: { children: React.ReactNode }) {
   const session = await auth()
 
   if (!session?.user) {

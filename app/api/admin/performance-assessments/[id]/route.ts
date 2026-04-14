@@ -18,19 +18,18 @@ const updateSchema = z.object({
   notes: z.string().max(5000).nullable().optional(),
 })
 
-const addExerciseSchema = z.object({
-  exercise_id: z.string().uuid().nullable(),
-  custom_name: z.string().max(200).nullable(),
-  youtube_url: z.string().url().nullable().optional(),
-  admin_notes: z.string().max(2000).nullable().optional(),
-}).refine((d) => d.exercise_id || d.custom_name, {
-  message: "Either exercise_id or custom_name is required",
-})
+const addExerciseSchema = z
+  .object({
+    exercise_id: z.string().uuid().nullable(),
+    custom_name: z.string().max(200).nullable(),
+    youtube_url: z.string().url().nullable().optional(),
+    admin_notes: z.string().max(2000).nullable().optional(),
+  })
+  .refine((d) => d.exercise_id || d.custom_name, {
+    message: "Either exercise_id or custom_name is required",
+  })
 
-export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
     if (!session?.user?.id || session.user.role !== "admin") {
@@ -38,25 +37,16 @@ export async function GET(
     }
 
     const { id } = await params
-    const [assessment, exercises] = await Promise.all([
-      getPerformanceAssessmentById(id),
-      getAssessmentExercises(id),
-    ])
+    const [assessment, exercises] = await Promise.all([getPerformanceAssessmentById(id), getAssessmentExercises(id)])
 
     return NextResponse.json({ assessment, exercises })
   } catch (error) {
     console.error("Admin performance assessment GET error:", error)
-    return NextResponse.json(
-      { error: "Failed to fetch assessment" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to fetch assessment" }, { status: 500 })
   }
 }
 
-export async function PATCH(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
     if (!session?.user?.id || session.user.role !== "admin") {
@@ -67,10 +57,7 @@ export async function PATCH(
     const body = await request.json()
     const parsed = updateSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Invalid data", details: parsed.error.flatten() },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Invalid data", details: parsed.error.flatten() }, { status: 400 })
     }
 
     const updated = await updatePerformanceAssessment(id, parsed.data)
@@ -95,9 +82,7 @@ export async function PATCH(
           clientUserId: client.id,
           assessmentTitle: assessment.title,
           assessmentId: id,
-        }).catch((err) =>
-          console.error("Failed to send assessment shared email:", err)
-        )
+        }).catch((err) => console.error("Failed to send assessment shared email:", err))
       } catch (err) {
         console.error("Failed to notify client of assessment:", err)
       }
@@ -106,17 +91,11 @@ export async function PATCH(
     return NextResponse.json(updated)
   } catch (error) {
     console.error("Admin performance assessment PATCH error:", error)
-    return NextResponse.json(
-      { error: "Failed to update assessment" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to update assessment" }, { status: 500 })
   }
 }
 
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
     if (!session?.user?.id || session.user.role !== "admin") {
@@ -127,17 +106,12 @@ export async function POST(
     const body = await request.json()
     const parsed = addExerciseSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Invalid data", details: parsed.error.flatten() },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Invalid data", details: parsed.error.flatten() }, { status: 400 })
     }
 
     // Get current max order
     const exercises = await getAssessmentExercises(id)
-    const maxOrder = exercises.length > 0
-      ? Math.max(...exercises.map((e) => e.order_index))
-      : -1
+    const maxOrder = exercises.length > 0 ? Math.max(...exercises.map((e) => e.order_index)) : -1
 
     const exercise = await addAssessmentExercise({
       assessment_id: id,
@@ -154,17 +128,11 @@ export async function POST(
     return NextResponse.json(exercise, { status: 201 })
   } catch (error) {
     console.error("Admin add assessment exercise POST error:", error)
-    return NextResponse.json(
-      { error: "Failed to add exercise" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to add exercise" }, { status: 500 })
   }
 }
 
-export async function DELETE(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
     if (!session?.user?.id || session.user.role !== "admin") {
@@ -176,9 +144,6 @@ export async function DELETE(
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("Admin performance assessment DELETE error:", error)
-    return NextResponse.json(
-      { error: "Failed to delete assessment" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to delete assessment" }, { status: 500 })
   }
 }

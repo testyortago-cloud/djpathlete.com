@@ -19,10 +19,7 @@ dotenv.config({ path: resolve(__dirname, "../.env.local") })
 
 // ─── Supabase client ──────────────────────────────────────────────────────────
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
 // ─── Anthropic client ─────────────────────────────────────────────────────────
 
@@ -55,11 +52,7 @@ const MOVEMENT_PATTERNS = [
 
 const FORCE_TYPES = ["push", "pull", "static", "dynamic"] as const
 
-const LATERALITY_OPTIONS = [
-  "bilateral",
-  "unilateral",
-  "alternating",
-] as const
+const LATERALITY_OPTIONS = ["bilateral", "unilateral", "alternating"] as const
 
 const MUSCLE_OPTIONS = [
   "chest",
@@ -240,9 +233,7 @@ function buildUserMessage(exercise: ExerciseRow): string {
 
 // ─── Call Anthropic API ───────────────────────────────────────────────────────
 
-async function callWithRetry(
-  userMessage: string
-): Promise<Anthropic.Message> {
+async function callWithRetry(userMessage: string): Promise<Anthropic.Message> {
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
       return await anthropic.messages.create({
@@ -254,8 +245,7 @@ async function callWithRetry(
         tool_choice: { type: "tool", name: "set_exercise_metadata" },
       })
     } catch (err: unknown) {
-      const isRateLimit =
-        err instanceof Anthropic.APIError && err.status === 429
+      const isRateLimit = err instanceof Anthropic.APIError && err.status === 429
       if (isRateLimit && attempt < MAX_RETRIES) {
         const delay = Math.pow(2, attempt) * 2000 // 4s, 8s, 16s
         await new Promise((resolve) => setTimeout(resolve, delay))
@@ -267,52 +257,45 @@ async function callWithRetry(
   throw new Error("Unreachable")
 }
 
-async function enrichExercise(
-  exercise: ExerciseRow
-): Promise<EnrichResult> {
+async function enrichExercise(exercise: ExerciseRow): Promise<EnrichResult> {
   const userMessage = buildUserMessage(exercise)
 
   try {
     const response = await callWithRetry(userMessage)
 
     // Extract tool use result
-    const toolUse = response.content.find(
-      (b): b is Anthropic.ToolUseBlock => b.type === "tool_use"
-    )
+    const toolUse = response.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use")
 
     if (!toolUse?.input) {
       return {
         exerciseId: exercise.id,
         exerciseName: exercise.name,
         success: false,
-        tokensUsed:
-          (response.usage?.input_tokens ?? 0) +
-          (response.usage?.output_tokens ?? 0),
+        tokensUsed: (response.usage?.input_tokens ?? 0) + (response.usage?.output_tokens ?? 0),
         error: "No tool_use block in response",
       }
     }
 
     const metadata = toolUse.input as AIMetadata
-    const tokensUsed =
-      (response.usage?.input_tokens ?? 0) +
-      (response.usage?.output_tokens ?? 0)
+    const tokensUsed = (response.usage?.input_tokens ?? 0) + (response.usage?.output_tokens ?? 0)
 
     // Validate movement_pattern against allowed values (DB CHECK constraint)
     const validMovementPatterns = new Set(MOVEMENT_PATTERNS)
     const movementPattern =
-      metadata.movement_pattern && validMovementPatterns.has(metadata.movement_pattern as typeof MOVEMENT_PATTERNS[number])
+      metadata.movement_pattern &&
+      validMovementPatterns.has(metadata.movement_pattern as (typeof MOVEMENT_PATTERNS)[number])
         ? metadata.movement_pattern
         : null
 
     const validForceTypes = new Set(FORCE_TYPES)
     const forceType =
-      metadata.force_type && validForceTypes.has(metadata.force_type as typeof FORCE_TYPES[number])
+      metadata.force_type && validForceTypes.has(metadata.force_type as (typeof FORCE_TYPES)[number])
         ? metadata.force_type
         : null
 
     const validLaterality = new Set(LATERALITY_OPTIONS)
     const laterality =
-      metadata.laterality && validLaterality.has(metadata.laterality as typeof LATERALITY_OPTIONS[number])
+      metadata.laterality && validLaterality.has(metadata.laterality as (typeof LATERALITY_OPTIONS)[number])
         ? metadata.laterality
         : null
 
@@ -349,8 +332,7 @@ async function enrichExercise(
       tokensUsed,
     }
   } catch (err) {
-    const message =
-      err instanceof Error ? err.message : "Unknown error"
+    const message = err instanceof Error ? err.message : "Unknown error"
     return {
       exerciseId: exercise.id,
       exerciseName: exercise.name,
@@ -366,7 +348,7 @@ async function enrichExercise(
 async function processWithConcurrency<T, R>(
   items: T[],
   concurrency: number,
-  fn: (item: T) => Promise<R>
+  fn: (item: T) => Promise<R>,
 ): Promise<R[]> {
   const results: R[] = []
   let index = 0
@@ -378,9 +360,7 @@ async function processWithConcurrency<T, R>(
     }
   }
 
-  const workers = Array.from({ length: Math.min(concurrency, items.length) }, () =>
-    worker()
-  )
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, () => worker())
   await Promise.all(workers)
   return results
 }
@@ -411,9 +391,7 @@ async function main() {
 
   let query = supabase
     .from("exercises")
-    .select(
-      "id, name, category, difficulty, description, equipment, instructions, muscle_group, training_intent"
-    )
+    .select("id, name, category, difficulty, description, equipment, instructions, muscle_group, training_intent")
     .eq("is_active", true)
     .order("name", { ascending: true })
 
@@ -433,9 +411,7 @@ async function main() {
   }
 
   console.log(`Found ${exercises.length} exercises to enrich.`)
-  console.log(
-    `Concurrency: ${CONCURRENCY} | Batch delay: ${BATCH_DELAY_MS}ms\n`
-  )
+  console.log(`Concurrency: ${CONCURRENCY} | Batch delay: ${BATCH_DELAY_MS}ms\n`)
 
   // Process in batches for rate limiting
   const BATCH_SIZE = CONCURRENCY
@@ -445,25 +421,16 @@ async function main() {
   for (let i = 0; i < exercises.length; i += BATCH_SIZE) {
     const batch = exercises.slice(i, i + BATCH_SIZE) as ExerciseRow[]
 
-    const batchResults = await processWithConcurrency(
-      batch,
-      CONCURRENCY,
-      enrichExercise
-    )
+    const batchResults = await processWithConcurrency(batch, CONCURRENCY, enrichExercise)
 
     allResults.push(...batchResults)
     processed += batch.length
 
     // Progress logging
-    if (
-      processed % PROGRESS_INTERVAL === 0 ||
-      processed === exercises.length
-    ) {
+    if (processed % PROGRESS_INTERVAL === 0 || processed === exercises.length) {
       const succeeded = allResults.filter((r) => r.success).length
       const failed = allResults.filter((r) => !r.success).length
-      console.log(
-        `  Progress: ${processed}/${exercises.length} (${succeeded} ok, ${failed} failed)`
-      )
+      console.log(`  Progress: ${processed}/${exercises.length} (${succeeded} ok, ${failed} failed)`)
     }
 
     // Rate limiting delay between batches

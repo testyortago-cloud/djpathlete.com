@@ -9,7 +9,7 @@ export function getExerciseTourSteps(goToStep: (step: number) => void): TourStep
       target: "name",
       title: "Exercise Name",
       description:
-        "The display name clients see in their program. Use a clear, recognizable name like \"Barbell Back Squat\" or \"Dumbbell Lateral Raise\".",
+        'The display name clients see in their program. Use a clear, recognizable name like "Barbell Back Squat" or "Dumbbell Lateral Raise".',
       beforeShow: () => goToStep(0),
     },
     {
@@ -30,14 +30,14 @@ export function getExerciseTourSteps(goToStep: (step: number) => void): TourStep
       target: "muscle_group",
       title: "Muscle Group (Display)",
       description:
-        "A short label shown on exercise cards and lists (e.g. \"Chest & Triceps\"). This is just for quick visual reference — the AI uses Primary Muscles below for matching.",
+        'A short label shown on exercise cards and lists (e.g. "Chest & Triceps"). This is just for quick visual reference — the AI uses Primary Muscles below for matching.',
       beforeShow: () => goToStep(0),
     },
     {
       target: "equipment",
       title: "Equipment (Display)",
       description:
-        "Quick label for the equipment needed (e.g. \"Barbell, Squat Rack\"). Shown on exercise cards. For AI-powered equipment matching, use the Equipment Required chips in the AI section.",
+        'Quick label for the equipment needed (e.g. "Barbell, Squat Rack"). Shown on exercise cards. For AI-powered equipment matching, use the Equipment Required chips in the AI section.',
       beforeShow: () => goToStep(0),
     },
     // Step 1: Details
@@ -52,7 +52,7 @@ export function getExerciseTourSteps(goToStep: (step: number) => void): TourStep
       target: "instructions",
       title: "Instructions",
       description:
-        "Step-by-step coaching cues. Clients see these during their workout. Be specific — e.g. \"Brace your core, lower until thighs are parallel, drive through your heels.\"",
+        'Step-by-step coaching cues. Clients see these during their workout. Be specific — e.g. "Brace your core, lower until thighs are parallel, drive through your heels."',
       beforeShow: () => goToStep(1),
     },
     {
@@ -139,7 +139,7 @@ export function getProgramTourSteps(goToStep: (step: number) => void): TourStep[
       target: "name",
       title: "Program Name",
       description:
-        "The name clients see when they view their assigned program. Make it descriptive — e.g. \"12-Week Strength Builder\" or \"Off-Season Rugby Conditioning\".",
+        'The name clients see when they view their assigned program. Make it descriptive — e.g. "12-Week Strength Builder" or "Off-Season Rugby Conditioning".',
       beforeShow: () => goToStep(0),
     },
     {
@@ -211,7 +211,7 @@ export function getProgramTourSteps(goToStep: (step: number) => void): TourStep[
       target: "audience-options",
       title: "Audience",
       description:
-        "\"Sell to All Clients\" = listed in the store for everyone. \"Sell to One Client\" = only one client sees it in their store. \"Assign Directly (Free)\" = not in the store, you assign it manually at no cost.",
+        '"Sell to All Clients" = listed in the store for everyone. "Sell to One Client" = only one client sees it in their store. "Assign Directly (Free)" = not in the store, you assign it manually at no cost.',
       beforeShow: () => goToStep(2),
     },
   ]
@@ -275,7 +275,7 @@ export const ADD_EXERCISE_TOUR_STEPS: TourStep[] = [
     target: "notes",
     title: "Notes",
     description:
-      "Any extra coaching cues or modifications for this specific slot — e.g. \"Use slow eccentric\" or \"Increase weight from last week.\" Clients see this during their workout.",
+      'Any extra coaching cues or modifications for this specific slot — e.g. "Use slow eccentric" or "Increase weight from last week." Clients see this during their workout.',
   },
 ]
 
@@ -334,7 +334,7 @@ export const EDIT_EXERCISE_TOUR_STEPS: TourStep[] = [
     target: "edit-notes",
     title: "Notes",
     description:
-      "Any extra coaching cues or modifications for this specific slot — e.g. \"Use slow eccentric\" or \"Increase weight from last week.\" Clients see this during their workout.",
+      'Any extra coaching cues or modifications for this specific slot — e.g. "Use slow eccentric" or "Increase weight from last week." Clients see this during their workout.',
   },
 ]
 
@@ -357,7 +357,7 @@ export const ASSIGN_PROGRAM_TOUR_STEPS: TourStep[] = [
     target: "assign-notes",
     title: "Notes",
     description:
-      "Internal notes about this assignment — e.g. \"Returning from injury, start light\" or \"Replacing previous program.\" Only visible to you, not the client.",
+      'Internal notes about this assignment — e.g. "Returning from injury, start light" or "Replacing previous program." Only visible to you, not the client.',
   },
 ]
 
@@ -373,8 +373,7 @@ export const ADD_CLIENT_TOUR_STEPS: TourStep[] = [
   {
     target: "lastName",
     title: "Last Name",
-    description:
-      "The client's last name. Combined with first name for their full profile display.",
+    description: "The client's last name. Combined with first name for their full profile display.",
   },
   {
     target: "email",
@@ -385,8 +384,7 @@ export const ADD_CLIENT_TOUR_STEPS: TourStep[] = [
   {
     target: "phone",
     title: "Phone",
-    description:
-      "Optional phone number for contact purposes. Not used for login or notifications currently.",
+    description: "Optional phone number for contact purposes. Not used for login or notifications currently.",
   },
 ]
 
@@ -402,8 +400,7 @@ export const EDIT_CLIENT_TOUR_STEPS: TourStep[] = [
   {
     target: "edit-lastName",
     title: "Last Name",
-    description:
-      "The client's last name. Combined with first name for their full profile display.",
+    description: "The client's last name. Combined with first name for their full profile display.",
   },
   {
     target: "edit-email",
@@ -414,8 +411,7 @@ export const EDIT_CLIENT_TOUR_STEPS: TourStep[] = [
   {
     target: "edit-phone",
     title: "Phone",
-    description:
-      "Optional phone number for contact purposes. Not used for login or notifications currently.",
+    description: "Optional phone number for contact purposes. Not used for login or notifications currently.",
   },
   {
     target: "edit-status",
@@ -500,21 +496,21 @@ export function getAiGenerateTourSteps(goToStep: (step: number) => void): TourSt
       target: "ai-split",
       title: "Split Type",
       description:
-        "How training days are organized. Leave as \"Auto\" to let the AI choose the best split based on sessions/week and goals. Override if you have a specific preference.",
+        'How training days are organized. Leave as "Auto" to let the AI choose the best split based on sessions/week and goals. Override if you have a specific preference.',
       beforeShow: () => goToStep(2),
     },
     {
       target: "ai-periodization",
       title: "Periodization",
       description:
-        "How intensity and volume change over weeks. Linear = gradual increase, Undulating = daily variation, Block = focused phases. Leave as \"Auto\" to let the AI decide.",
+        'How intensity and volume change over weeks. Linear = gradual increase, Undulating = daily variation, Block = focused phases. Leave as "Auto" to let the AI decide.',
       beforeShow: () => goToStep(2),
     },
     {
       target: "ai-instructions",
       title: "Additional Instructions",
       description:
-        "Free-text notes for the AI — e.g. \"Focus on posterior chain\", \"Include sprint work\", or \"Avoid overhead pressing due to shoulder issues.\" This directly influences exercise selection.",
+        'Free-text notes for the AI — e.g. "Focus on posterior chain", "Include sprint work", or "Avoid overhead pressing due to shoulder issues." This directly influences exercise selection.',
       beforeShow: () => goToStep(2),
     },
   ]

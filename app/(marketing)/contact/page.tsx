@@ -26,8 +26,7 @@ const contactPageSchema = {
   "@context": "https://schema.org",
   "@type": "ContactPage",
   name: "Contact DJP Athlete",
-  description:
-    "Contact page for DJP Athlete coaching services. Book a consultation or send us a message.",
+  description: "Contact page for DJP Athlete coaching services. Book a consultation or send us a message.",
   url: "https://djpathlete.com/contact",
   mainEntity: {
     "@type": "Organization",
@@ -66,21 +65,20 @@ export default function ContactPage() {
       {/* Hero */}
       <section className="pt-32 pb-16 lg:pt-40 lg:pb-20 px-4 sm:px-8">
         <FadeIn>
-        <div className="max-w-5xl mx-auto text-center">
-          <div className="flex items-center justify-center gap-3 mb-4">
-            <div className="h-px w-8 bg-accent" />
-            <p className="text-sm font-medium text-accent uppercase tracking-widest">Get In Touch</p>
-            <div className="h-px w-8 bg-accent" />
+          <div className="max-w-5xl mx-auto text-center">
+            <div className="flex items-center justify-center gap-3 mb-4">
+              <div className="h-px w-8 bg-accent" />
+              <p className="text-sm font-medium text-accent uppercase tracking-widest">Get In Touch</p>
+              <div className="h-px w-8 bg-accent" />
+            </div>
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-heading font-semibold text-primary tracking-tight mb-6">
+              Let&apos;s talk about your goals.
+            </h1>
+            <p className="text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
+              Whether you are ready to start training or just have questions, we would love to hear from you. Fill out
+              the form below and we will get back to you within 24 hours.
+            </p>
           </div>
-          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-heading font-semibold text-primary tracking-tight mb-6">
-            Let&apos;s talk about your goals.
-          </h1>
-          <p className="text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-            Whether you are ready to start training or just have questions, we
-            would love to hear from you. Fill out the form below and we will get
-            back to you within 24 hours.
-          </p>
-        </div>
         </FadeIn>
       </section>
 
@@ -97,52 +95,44 @@ export default function ContactPage() {
 
             {/* Sidebar */}
             <FadeIn delay={0.15}>
-            <div className="space-y-6">
-              <div className="bg-surface rounded-2xl border border-border p-6">
-                <h2 className="text-lg font-semibold text-primary mb-4">
-                  Contact Information
-                </h2>
-                <div className="space-y-4">
-                  {contactInfo.map((item) => {
-                    const Icon = item.icon
-                    return (
-                      <div key={item.label} className="flex items-start gap-3">
-                        <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                          <Icon className="size-5 text-primary" />
+              <div className="space-y-6">
+                <div className="bg-surface rounded-2xl border border-border p-6">
+                  <h2 className="text-lg font-semibold text-primary mb-4">Contact Information</h2>
+                  <div className="space-y-4">
+                    {contactInfo.map((item) => {
+                      const Icon = item.icon
+                      return (
+                        <div key={item.label} className="flex items-start gap-3">
+                          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                            <Icon className="size-5 text-primary" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-foreground">{item.label}</p>
+                            {item.href ? (
+                              <a
+                                href={item.href}
+                                className="text-sm text-muted-foreground hover:text-primary transition-colors"
+                              >
+                                {item.value}
+                              </a>
+                            ) : (
+                              <p className="text-sm text-muted-foreground">{item.value}</p>
+                            )}
+                          </div>
                         </div>
-                        <div>
-                          <p className="text-sm font-medium text-foreground">
-                            {item.label}
-                          </p>
-                          {item.href ? (
-                            <a
-                              href={item.href}
-                              className="text-sm text-muted-foreground hover:text-primary transition-colors"
-                            >
-                              {item.value}
-                            </a>
-                          ) : (
-                            <p className="text-sm text-muted-foreground">
-                              {item.value}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })}
+                      )
+                    })}
+                  </div>
+                </div>
+
+                <div className="bg-primary rounded-2xl p-6 text-primary-foreground">
+                  <h3 className="text-lg font-semibold mb-2">Free Consultation</h3>
+                  <p className="text-sm text-primary-foreground/80 leading-relaxed">
+                    Not sure where to start? Book a free 15-minute consultation and we will help you find the right
+                    program for your goals.
+                  </p>
                 </div>
               </div>
-
-              <div className="bg-primary rounded-2xl p-6 text-primary-foreground">
-                <h3 className="text-lg font-semibold mb-2">
-                  Free Consultation
-                </h3>
-                <p className="text-sm text-primary-foreground/80 leading-relaxed">
-                  Not sure where to start? Book a free 15-minute consultation
-                  and we will help you find the right program for your goals.
-                </p>
-              </div>
-            </div>
             </FadeIn>
           </div>
         </div>

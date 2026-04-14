@@ -33,9 +33,7 @@ export function AdminTopBar({ onMenuClick, avatarUrl, initials = "A" }: AdminTop
         >
           <Menu className="size-5" />
         </button>
-        <div className="text-sm text-muted-foreground">
-          Welcome back
-        </div>
+        <div className="text-sm text-muted-foreground">Welcome back</div>
       </div>
 
       <div className="flex items-center gap-3">
@@ -50,7 +48,7 @@ export function AdminTopBar({ onMenuClick, avatarUrl, initials = "A" }: AdminTop
                 "rounded-md px-3 py-1 text-xs font-medium transition-colors",
                 unit === opt.value
                   ? "bg-primary text-primary-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
+                  : "text-muted-foreground hover:text-foreground",
               )}
             >
               {opt.label}
@@ -72,9 +70,7 @@ export function AdminTopBar({ onMenuClick, avatarUrl, initials = "A" }: AdminTop
         {/* User avatar */}
         <Avatar>
           {avatarUrl && <AvatarImage src={avatarUrl} alt="Admin avatar" />}
-          <AvatarFallback className="bg-primary text-primary-foreground text-sm font-medium">
-            {initials}
-          </AvatarFallback>
+          <AvatarFallback className="bg-primary text-primary-foreground text-sm font-medium">{initials}</AvatarFallback>
         </Avatar>
       </div>
     </header>

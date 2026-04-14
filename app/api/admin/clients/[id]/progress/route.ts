@@ -2,10 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { getProgress, getProgressByAssignment } from "@/lib/db/progress"
 
-export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
     if (!session?.user?.id || session.user.role !== "admin") {
@@ -16,9 +13,7 @@ export async function GET(
     const { searchParams } = new URL(request.url)
     const assignmentId = searchParams.get("assignment_id")
 
-    const data = assignmentId
-      ? await getProgressByAssignment(userId, assignmentId)
-      : await getProgress(userId)
+    const data = assignmentId ? await getProgressByAssignment(userId, assignmentId) : await getProgress(userId)
 
     return NextResponse.json({ data })
   } catch (error) {

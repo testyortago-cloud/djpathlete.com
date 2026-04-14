@@ -7,30 +7,19 @@ function getClient() {
 
 // ─── Insert ─────────────────────────────────────────────────────────────────
 
-export async function saveConversationMessage(
-  data: Omit<AiConversationHistory, "id" | "created_at">
-) {
+export async function saveConversationMessage(data: Omit<AiConversationHistory, "id" | "created_at">) {
   const supabase = getClient()
   const { embedding: _embedding, ...rest } = data
-  const { data: result, error } = await supabase
-    .from("ai_conversation_history")
-    .insert(rest)
-    .select()
-    .single()
+  const { data: result, error } = await supabase.from("ai_conversation_history").insert(rest).select().single()
   if (error) throw error
   return result as AiConversationHistory
 }
 
-export async function saveConversationBatch(
-  messages: Omit<AiConversationHistory, "id" | "created_at">[]
-) {
+export async function saveConversationBatch(messages: Omit<AiConversationHistory, "id" | "created_at">[]) {
   if (messages.length === 0) return []
   const supabase = getClient()
   const rows = messages.map(({ embedding: _embedding, ...rest }) => rest)
-  const { data, error } = await supabase
-    .from("ai_conversation_history")
-    .insert(rows)
-    .select()
+  const { data, error } = await supabase.from("ai_conversation_history").insert(rows).select()
   if (error) throw error
   return data as AiConversationHistory[]
 }
@@ -48,45 +37,29 @@ export async function getConversationBySession(sessionId: string) {
   return data as AiConversationHistory[]
 }
 
-export async function getConversationsByUser(
-  userId: string,
-  feature?: AiFeature,
-  limit: number = 50
-) {
+export async function getConversationsByUser(userId: string, feature?: AiFeature, limit: number = 50) {
   const supabase = getClient()
-  let query = supabase
-    .from("ai_conversation_history")
-    .select("*")
-    .eq("user_id", userId)
+  let query = supabase.from("ai_conversation_history").select("*").eq("user_id", userId)
 
   if (feature) {
     query = query.eq("feature", feature)
   }
 
-  const { data, error } = await query
-    .order("created_at", { ascending: false })
-    .limit(limit)
+  const { data, error } = await query.order("created_at", { ascending: false }).limit(limit)
   if (error) throw error
   return data as AiConversationHistory[]
 }
 
 export async function getConversationMessageById(id: string) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("ai_conversation_history")
-    .select("*")
-    .eq("id", id)
-    .single()
+  const { data, error } = await supabase.from("ai_conversation_history").select("*").eq("id", id).single()
   if (error) throw error
   return data as AiConversationHistory
 }
 
 // ─── Embedding ──────────────────────────────────────────────────────────────
 
-export async function updateMessageEmbedding(
-  id: string,
-  embedding: number[]
-): Promise<void> {
+export async function updateMessageEmbedding(id: string, embedding: number[]): Promise<void> {
   const supabase = getClient()
   const { error } = await supabase
     .from("ai_conversation_history")
@@ -114,7 +87,7 @@ export async function searchSimilarConversations(
     excludeSession?: string
     threshold?: number
     limit?: number
-  }
+  },
 ): Promise<ConversationSearchResult[]> {
   const supabase = getClient()
   const { data, error } = await supabase.rpc("match_ai_conversations", {
@@ -132,9 +105,7 @@ export async function searchSimilarConversations(
 
 export async function getConversationStats(feature?: AiFeature) {
   const supabase = getClient()
-  let query = supabase
-    .from("ai_conversation_history")
-    .select("id", { count: "exact", head: true })
+  let query = supabase.from("ai_conversation_history").select("id", { count: "exact", head: true })
 
   if (feature) {
     query = query.eq("feature", feature)

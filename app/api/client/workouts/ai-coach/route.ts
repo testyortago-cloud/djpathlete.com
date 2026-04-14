@@ -6,32 +6,38 @@ import { FieldValue } from "firebase-admin/firestore"
 
 const requestSchema = z.object({
   exercise_id: z.string().min(1),
-  current_session: z.array(z.object({
-    set_number: z.number(),
-    weight_kg: z.number().nullable(),
-    reps: z.number(),
-    rpe: z.number().nullable(),
-  })).optional(),
-  program_context: z.object({
-    programName: z.string(),
-    difficulty: z.string(),
-    category: z.union([z.string(), z.array(z.string())]),
-    periodization: z.string().nullable(),
-    splitType: z.string().nullable(),
-    currentWeek: z.number(),
-    totalWeeks: z.number(),
-    prescription: z.object({
-      sets: z.number().nullable(),
-      reps: z.string().nullable(),
-      rpe_target: z.number().nullable(),
-      intensity_pct: z.number().nullable(),
-      tempo: z.string().nullable(),
-      rest_seconds: z.number().nullable(),
-      notes: z.string().nullable(),
-      technique: z.string(),
-      group_tag: z.string().nullable(),
-    }),
-  }).optional(),
+  current_session: z
+    .array(
+      z.object({
+        set_number: z.number(),
+        weight_kg: z.number().nullable(),
+        reps: z.number(),
+        rpe: z.number().nullable(),
+      }),
+    )
+    .optional(),
+  program_context: z
+    .object({
+      programName: z.string(),
+      difficulty: z.string(),
+      category: z.union([z.string(), z.array(z.string())]),
+      periodization: z.string().nullable(),
+      splitType: z.string().nullable(),
+      currentWeek: z.number(),
+      totalWeeks: z.number(),
+      prescription: z.object({
+        sets: z.number().nullable(),
+        reps: z.string().nullable(),
+        rpe_target: z.number().nullable(),
+        intensity_pct: z.number().nullable(),
+        tempo: z.string().nullable(),
+        rest_seconds: z.number().nullable(),
+        notes: z.string().nullable(),
+        technique: z.string(),
+        group_tag: z.string().nullable(),
+      }),
+    })
+    .optional(),
 })
 
 export async function POST(request: Request) {
@@ -45,10 +51,7 @@ export async function POST(request: Request) {
     const parsed = requestSchema.safeParse(body)
 
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Invalid request", details: parsed.error.flatten() },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Invalid request", details: parsed.error.flatten() }, { status: 400 })
     }
 
     // Create Firestore job doc
@@ -69,15 +72,9 @@ export async function POST(request: Request) {
       updatedAt: FieldValue.serverTimestamp(),
     })
 
-    return NextResponse.json(
-      { jobId: jobRef.id, status: "pending" },
-      { status: 202 }
-    )
+    return NextResponse.json({ jobId: jobRef.id, status: "pending" }, { status: 202 })
   } catch (error) {
     console.error("[Coach DJP] Error:", error)
-    return NextResponse.json(
-      { error: "Failed to create AI coaching job" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to create AI coaching job" }, { status: 500 })
   }
 }

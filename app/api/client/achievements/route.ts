@@ -1,10 +1,6 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import {
-  getAchievements,
-  getAchievementsByType,
-  getUncelebratedAchievements,
-} from "@/lib/db/achievements"
+import { getAchievements, getAchievementsByType, getUncelebratedAchievements } from "@/lib/db/achievements"
 import type { AchievementType } from "@/types/database"
 
 export async function GET(request: Request) {
@@ -28,10 +24,7 @@ export async function GET(request: Request) {
     if (type) {
       const validTypes: AchievementType[] = ["pr", "streak", "milestone", "completion"]
       if (!validTypes.includes(type)) {
-        return NextResponse.json(
-          { error: "Invalid achievement type" },
-          { status: 400 }
-        )
+        return NextResponse.json({ error: "Invalid achievement type" }, { status: 400 })
       }
       const achievements = await getAchievementsByType(session.user.id, type)
       return NextResponse.json(achievements)
@@ -42,9 +35,6 @@ export async function GET(request: Request) {
     return NextResponse.json(achievements)
   } catch (error) {
     console.error("Achievements GET error:", error)
-    return NextResponse.json(
-      { error: "Failed to fetch achievements" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to fetch achievements" }, { status: 500 })
   }
 }

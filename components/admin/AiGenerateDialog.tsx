@@ -44,11 +44,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
-import {
-  SPLIT_TYPES,
-  PERIODIZATION_TYPES,
-  PROGRAM_TIERS,
-} from "@/lib/validators/program"
+import { SPLIT_TYPES, PERIODIZATION_TYPES, PROGRAM_TIERS } from "@/lib/validators/program"
 import {
   FITNESS_GOALS,
   GOAL_LABELS,
@@ -65,11 +61,7 @@ import {
   OCCUPATION_LABELS,
 } from "@/lib/validators/questionnaire"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-import {
-  parseProfileSummary,
-  hasQuestionnaireData,
-  type ProfileSummary,
-} from "@/lib/profile-utils"
+import { parseProfileSummary, hasQuestionnaireData, type ProfileSummary } from "@/lib/profile-utils"
 import { useFormTour } from "@/hooks/use-form-tour"
 import { FormTour } from "@/components/admin/FormTour"
 import { TourButton } from "@/components/admin/TourButton"
@@ -141,7 +133,7 @@ const stepVariants = {
 function formatIssueMessage(message: string): string {
   let formatted = message.replace(
     /\b(?:slot\s+)?w(\d+)d(\d+)s(\d+)\b/gi,
-    (_match, week, day, slot) => `Week ${week}, Day ${day}, Exercise ${slot}`
+    (_match, week, day, slot) => `Week ${week}, Day ${day}, Exercise ${slot}`,
   )
   formatted = formatted.replace(
     /\b(?:requires\s+)(\w+(?:_\w+)+)\b/g,
@@ -149,7 +141,7 @@ function formatIssueMessage(message: string): string {
       `requires ${name
         .split("_")
         .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1))
-        .join(" ")}`
+        .join(" ")}`,
   )
   return formatted
 }
@@ -291,7 +283,7 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
           return
         }
 
-        const data = await response.json() as { profile: ClientProfile }
+        const data = (await response.json()) as { profile: ClientProfile }
         if (cancelled) return
 
         const summary = parseProfileSummary(data.profile)
@@ -315,13 +307,18 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
     }
 
     fetchProfile()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [clientId])
 
   useEffect(() => {
     return () => {
       stopListening()
-      if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
+      if (timerRef.current) {
+        clearInterval(timerRef.current)
+        timerRef.current = null
+      }
     }
   }, [])
 
@@ -329,12 +326,24 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
 
   function validateStep(s: number): boolean {
     if (s === 0) {
-      if (clientId && profileStatus === "loading") { toast.error("Still loading questionnaire..."); return false }
+      if (clientId && profileStatus === "loading") {
+        toast.error("Still loading questionnaire...")
+        return false
+      }
     }
     if (s === 1) {
-      if (goals.length === 0) { toast.error("Please select at least one goal"); return false }
-      if (!durationWeeks || durationWeeks < 1) { toast.error("Duration must be at least 1 week"); return false }
-      if (!sessionsPerWeek || sessionsPerWeek < 1) { toast.error("Sessions per week must be at least 1"); return false }
+      if (goals.length === 0) {
+        toast.error("Please select at least one goal")
+        return false
+      }
+      if (!durationWeeks || durationWeeks < 1) {
+        toast.error("Duration must be at least 1 week")
+        return false
+      }
+      if (!sessionsPerWeek || sessionsPerWeek < 1) {
+        toast.error("Sessions per week must be at least 1")
+        return false
+      }
     }
     return true
   }
@@ -393,7 +402,10 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
     setProgressStep(0)
     setProgressDetail(null)
     setElapsedSeconds(0)
-    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
+    if (timerRef.current) {
+      clearInterval(timerRef.current)
+      timerRef.current = null
+    }
     tour.close()
   }
 
@@ -413,7 +425,10 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
       })
       if (res.ok) {
         stopListening()
-        if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
+        if (timerRef.current) {
+          clearInterval(timerRef.current)
+          timerRef.current = null
+        }
         setIsGenerating(false)
         setError(null)
         toast.info("Program generation cancelled")
@@ -430,9 +445,7 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
   }
 
   function toggleGoal(goal: string) {
-    setGoals((prev) =>
-      prev.includes(goal) ? prev.filter((g) => g !== goal) : [...prev, goal]
-    )
+    setGoals((prev) => (prev.includes(goal) ? prev.filter((g) => g !== goal) : [...prev, goal]))
   }
 
   const jobRefRef = useRef<ReturnType<typeof ref> | null>(null)
@@ -453,18 +466,37 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
   }
 
   /** Firebase RTDB drops empty arrays, so issues/summary may be undefined after round-trip */
-  function safeValidation(v: unknown): { pass: boolean; issues: { type: string; category: string; message: string }[]; summary: string } {
-    const fallback = { pass: true, issues: [] as { type: string; category: string; message: string }[], summary: "Program generated successfully." }
+  function safeValidation(v: unknown): {
+    pass: boolean
+    issues: { type: string; category: string; message: string }[]
+    summary: string
+  } {
+    const fallback = {
+      pass: true,
+      issues: [] as { type: string; category: string; message: string }[],
+      summary: "Program generated successfully.",
+    }
     if (!v || typeof v !== "object") return fallback
     const obj = v as Record<string, unknown>
     return {
       pass: typeof obj.pass === "boolean" ? obj.pass : true,
-      issues: Array.isArray(obj.issues) ? obj.issues.map((i: Record<string, unknown>) => ({ type: String(i.type ?? "warning"), category: String(i.category ?? "unknown"), message: String(i.message ?? "") })) : [],
+      issues: Array.isArray(obj.issues)
+        ? obj.issues.map((i: Record<string, unknown>) => ({
+            type: String(i.type ?? "warning"),
+            category: String(i.category ?? "unknown"),
+            message: String(i.message ?? ""),
+          }))
+        : [],
       summary: typeof obj.summary === "string" ? obj.summary : fallback.summary,
     }
   }
 
-  function mapProgressToStep(progress?: { status: string; current_step: number; total_steps: number; detail?: string }): { step: number; detail: string | null } {
+  function mapProgressToStep(progress?: {
+    status: string
+    current_step: number
+    total_steps: number
+    detail?: string
+  }): { step: number; detail: string | null } {
     if (!progress) return { step: 0, detail: null }
     const idx = GENERATION_STEPS.findIndex((s) => s.key === progress.status)
     return { step: idx >= 0 ? idx + 1 : progress.current_step, detail: progress.detail ?? null }
@@ -473,7 +505,10 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
   // ─── Submit ───────────────────────────────────────────────────────────────
 
   async function handleSubmit() {
-    if (goals.length === 0) { toast.error("Please select at least one goal"); return }
+    if (goals.length === 0) {
+      toast.error("Please select at least one goal")
+      return
+    }
 
     setIsGenerating(true)
     setError(null)
@@ -530,7 +565,10 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
         lastRtdbUpdateRef.current = Date.now()
 
         const stopTimer = () => {
-          if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
+          if (timerRef.current) {
+            clearInterval(timerRef.current)
+            timerRef.current = null
+          }
         }
 
         // Stale check: if no RTDB update for 2 minutes, poll Firestore API
@@ -557,7 +595,9 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
             } else if (jobStatus.status === "failed") {
               stopListening()
               stopTimer()
-              setError(jobStatus.error || "Program generation failed — the server may have timed out. Please try again.")
+              setError(
+                jobStatus.error || "Program generation failed — the server may have timed out. Please try again.",
+              )
               setIsGenerating(false)
               toast.error("Program generation failed")
             } else if (staleSec >= 600) {
@@ -621,7 +661,7 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
             setError("Lost connection to generation updates")
             setIsGenerating(false)
             toast.error("Connection lost")
-          }
+          },
         )
       }
     } catch (err) {
@@ -673,9 +713,7 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
           <div className="space-y-4">
             <div className="flex items-center gap-2 flex-wrap">
               {result.validation.pass ? (
-                <Badge className="bg-success/10 text-success border-success/20">
-                  Validation Passed
-                </Badge>
+                <Badge className="bg-success/10 text-success border-success/20">Validation Passed</Badge>
               ) : (
                 <Badge variant="destructive">Validation Failed</Badge>
               )}
@@ -711,21 +749,15 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
             <div className="grid grid-cols-3 gap-3 text-center">
               <div className="rounded-lg bg-surface/50 border border-border p-3">
                 <div className="text-xs text-muted-foreground">Tokens Used</div>
-                <div className="text-sm font-medium font-heading">
-                  {result.token_usage.total.toLocaleString()}
-                </div>
+                <div className="text-sm font-medium font-heading">{result.token_usage.total.toLocaleString()}</div>
               </div>
               <div className="rounded-lg bg-surface/50 border border-border p-3">
                 <div className="text-xs text-muted-foreground">Duration</div>
-                <div className="text-sm font-medium font-heading">
-                  {Math.round(result.duration_ms / 1000)}s
-                </div>
+                <div className="text-sm font-medium font-heading">{Math.round(result.duration_ms / 1000)}s</div>
               </div>
               <div className="rounded-lg bg-surface/50 border border-border p-3">
                 <div className="text-xs text-muted-foreground">Retries</div>
-                <div className="text-sm font-medium font-heading">
-                  {result.retries}
-                </div>
+                <div className="text-sm font-medium font-heading">{result.retries}</div>
               </div>
             </div>
           </div>
@@ -765,9 +797,7 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
                   <Sparkles className="size-4 text-primary animate-pulse" />
                 </div>
                 <div>
-                  <h3 className="font-heading font-semibold text-sm text-foreground">
-                    Generating Program
-                  </h3>
+                  <h3 className="font-heading font-semibold text-sm text-foreground">Generating Program</h3>
                   <p className="text-xs text-muted-foreground">
                     Step {progressStep} of {GENERATION_STEPS.length}
                   </p>
@@ -792,9 +822,7 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
               <div className="flex items-center justify-between">
                 <p className="text-xs text-muted-foreground">{progressPercent}%</p>
                 {progressDetail && (
-                  <p className="text-xs text-muted-foreground truncate max-w-[70%] text-right">
-                    {progressDetail}
-                  </p>
+                  <p className="text-xs text-muted-foreground truncate max-w-[70%] text-right">{progressDetail}</p>
                 )}
               </div>
             </div>
@@ -814,7 +842,7 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
                     className={cn(
                       "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors",
                       isActive && "bg-primary/5",
-                      isPending && "opacity-40"
+                      isPending && "opacity-40",
                     )}
                   >
                     {isComplete ? (
@@ -829,14 +857,12 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
                         "text-sm",
                         isComplete && "text-muted-foreground",
                         isActive && "text-foreground font-medium",
-                        isPending && "text-muted-foreground"
+                        isPending && "text-muted-foreground",
                       )}
                     >
                       {s.label}
                     </span>
-                    {isActive && (
-                      <StepIcon className="size-3.5 text-primary/60 ml-auto shrink-0" />
-                    )}
+                    {isActive && <StepIcon className="size-3.5 text-primary/60 ml-auto shrink-0" />}
                   </div>
                 )
               })}
@@ -869,10 +895,7 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
         ref={dialogRef}
-        className={cn(
-          "sm:max-w-lg max-h-[90vh] overflow-y-auto overflow-x-hidden",
-          tour.isActive && "pb-48"
-        )}
+        className={cn("sm:max-w-lg max-h-[90vh] overflow-y-auto overflow-x-hidden", tour.isActive && "pb-48")}
       >
         {/* Header */}
         <div className="space-y-3">
@@ -898,17 +921,19 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
                     ? "bg-primary text-primary-foreground"
                     : idx < step
                       ? "bg-primary/10 text-primary cursor-pointer hover:bg-primary/20"
-                      : "bg-muted text-muted-foreground cursor-default"
+                      : "bg-muted text-muted-foreground cursor-default",
                 )}
               >
-                <span className={cn(
-                  "flex items-center justify-center size-4 rounded-full text-[10px] font-bold",
-                  idx === step
-                    ? "bg-primary-foreground/20 text-primary-foreground"
-                    : idx < step
-                      ? "bg-primary/20 text-primary"
-                      : "bg-muted-foreground/20 text-muted-foreground"
-                )}>
+                <span
+                  className={cn(
+                    "flex items-center justify-center size-4 rounded-full text-[10px] font-bold",
+                    idx === step
+                      ? "bg-primary-foreground/20 text-primary-foreground"
+                      : idx < step
+                        ? "bg-primary/20 text-primary"
+                        : "bg-muted-foreground/20 text-muted-foreground",
+                  )}
+                >
                   {idx < step ? "\u2713" : s.number}
                 </span>
                 {s.label}
@@ -951,8 +976,10 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
                     } else if (profileSummary) {
                       // Re-apply profile values when toggling back
                       if (profileSummary.goals.length > 0) setGoals(profileSummary.goals)
-                      if (profileSummary.preferredTrainingDays !== null) setSessionsPerWeek(profileSummary.preferredTrainingDays)
-                      if (profileSummary.preferredSessionMinutes !== null) setSessionMinutes(profileSummary.preferredSessionMinutes)
+                      if (profileSummary.preferredTrainingDays !== null)
+                        setSessionsPerWeek(profileSummary.preferredTrainingDays)
+                      if (profileSummary.preferredSessionMinutes !== null)
+                        setSessionMinutes(profileSummary.preferredSessionMinutes)
                       setSummaryExpanded(true)
                     }
                   }}
@@ -1017,11 +1044,7 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
               <ChevronRight className="size-4" />
             </Button>
           ) : (
-            <Button
-              type="button"
-              onClick={handleSubmit}
-              disabled={goals.length === 0}
-            >
+            <Button type="button" onClick={handleSubmit} disabled={goals.length === 0}>
               <Sparkles className="size-4" />
               Generate Program
             </Button>
@@ -1060,7 +1083,8 @@ function Step1Client({
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Optionally select a client to personalize the program with their questionnaire data, or skip to create a generic program.
+        Optionally select a client to personalize the program with their questionnaire data, or skip to create a generic
+        program.
       </p>
 
       {/* Client select */}
@@ -1073,9 +1097,7 @@ function Step1Client({
           disabled={loadingClients}
           className={selectClass}
         >
-          <option value="">
-            {loadingClients ? "Loading clients..." : "No client (generic program)"}
-          </option>
+          <option value="">{loadingClients ? "Loading clients..." : "No client (generic program)"}</option>
           {clients.map((client) => (
             <option key={client.id} value={client.id}>
               {client.first_name} {client.last_name} ({client.email})
@@ -1088,9 +1110,7 @@ function Step1Client({
       {profileStatus === "loading" && (
         <div className="rounded-lg bg-surface/50 border border-border p-3 flex items-center gap-2">
           <Loader2 className="size-4 text-muted-foreground animate-spin" />
-          <p className="text-sm text-muted-foreground">
-            Loading questionnaire data...
-          </p>
+          <p className="text-sm text-muted-foreground">Loading questionnaire data...</p>
         </div>
       )}
 
@@ -1117,11 +1137,7 @@ function Step1Client({
               Skip the client&apos;s questionnaire data and create a program from scratch
             </p>
           </div>
-          <Switch
-            id="ai-ignore-profile"
-            checked={ignoreProfile}
-            onCheckedChange={onIgnoreProfileChange}
-          />
+          <Switch id="ai-ignore-profile" checked={ignoreProfile} onCheckedChange={onIgnoreProfileChange} />
         </div>
       )}
 
@@ -1147,10 +1163,18 @@ function Step1Client({
             <div className="px-3 pb-3 border-t border-primary/10">
               <Tabs defaultValue="profile" className="pt-2">
                 <TabsList className="w-full">
-                  <TabsTrigger value="profile" className="text-xs">Profile</TabsTrigger>
-                  <TabsTrigger value="training" className="text-xs">Training</TabsTrigger>
-                  <TabsTrigger value="schedule" className="text-xs">Schedule</TabsTrigger>
-                  <TabsTrigger value="preferences" className="text-xs">Preferences</TabsTrigger>
+                  <TabsTrigger value="profile" className="text-xs">
+                    Profile
+                  </TabsTrigger>
+                  <TabsTrigger value="training" className="text-xs">
+                    Training
+                  </TabsTrigger>
+                  <TabsTrigger value="schedule" className="text-xs">
+                    Schedule
+                  </TabsTrigger>
+                  <TabsTrigger value="preferences" className="text-xs">
+                    Preferences
+                  </TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="profile" className="space-y-2 pt-2">
@@ -1159,27 +1183,40 @@ function Step1Client({
                       <SummaryField label="Birth Year" value={profileSummary.dateOfBirth.slice(0, 4)} />
                     )}
                     {profileSummary.gender && (
-                      <SummaryField label="Gender" value={GENDER_LABELS[profileSummary.gender] ?? profileSummary.gender} />
+                      <SummaryField
+                        label="Gender"
+                        value={GENDER_LABELS[profileSummary.gender] ?? profileSummary.gender}
+                      />
                     )}
-                    {profileSummary.sport && (
-                      <SummaryField label="Sport" value={profileSummary.sport} />
-                    )}
-                    {profileSummary.position && (
-                      <SummaryField label="Position" value={profileSummary.position} />
-                    )}
+                    {profileSummary.sport && <SummaryField label="Sport" value={profileSummary.sport} />}
+                    {profileSummary.position && <SummaryField label="Position" value={profileSummary.position} />}
                   </div>
-                  {(profileSummary.sleepHours || profileSummary.stressLevel || profileSummary.occupationActivityLevel) && (
+                  {(profileSummary.sleepHours ||
+                    profileSummary.stressLevel ||
+                    profileSummary.occupationActivityLevel) && (
                     <>
                       <p className="text-xs font-medium text-muted-foreground pt-1">Recovery & Lifestyle</p>
                       <div className="grid grid-cols-2 gap-x-4 gap-y-2">
                         {profileSummary.sleepHours && (
-                          <SummaryField label="Sleep" value={SLEEP_LABELS[profileSummary.sleepHours] ?? profileSummary.sleepHours} />
+                          <SummaryField
+                            label="Sleep"
+                            value={SLEEP_LABELS[profileSummary.sleepHours] ?? profileSummary.sleepHours}
+                          />
                         )}
                         {profileSummary.stressLevel && (
-                          <SummaryField label="Stress" value={STRESS_LABELS[profileSummary.stressLevel] ?? profileSummary.stressLevel} />
+                          <SummaryField
+                            label="Stress"
+                            value={STRESS_LABELS[profileSummary.stressLevel] ?? profileSummary.stressLevel}
+                          />
                         )}
                         {profileSummary.occupationActivityLevel && (
-                          <SummaryField label="Occupation" value={OCCUPATION_LABELS[profileSummary.occupationActivityLevel] ?? profileSummary.occupationActivityLevel} />
+                          <SummaryField
+                            label="Occupation"
+                            value={
+                              OCCUPATION_LABELS[profileSummary.occupationActivityLevel] ??
+                              profileSummary.occupationActivityLevel
+                            }
+                          />
                         )}
                       </div>
                     </>
@@ -1189,13 +1226,25 @@ function Step1Client({
                 <TabsContent value="training" className="space-y-2 pt-2">
                   <div className="grid grid-cols-2 gap-x-4 gap-y-2">
                     {profileSummary.experienceLevel && (
-                      <SummaryField label="Experience" value={LEVEL_LABELS[profileSummary.experienceLevel] ?? profileSummary.experienceLevel} />
+                      <SummaryField
+                        label="Experience"
+                        value={LEVEL_LABELS[profileSummary.experienceLevel] ?? profileSummary.experienceLevel}
+                      />
                     )}
                     {profileSummary.movementConfidence && (
-                      <SummaryField label="Movement Confidence" value={MOVEMENT_CONFIDENCE_LABELS[profileSummary.movementConfidence] ?? profileSummary.movementConfidence} />
+                      <SummaryField
+                        label="Movement Confidence"
+                        value={
+                          MOVEMENT_CONFIDENCE_LABELS[profileSummary.movementConfidence] ??
+                          profileSummary.movementConfidence
+                        }
+                      />
                     )}
                     {profileSummary.trainingYears !== null && (
-                      <SummaryField label="Training Years" value={`${profileSummary.trainingYears} year${profileSummary.trainingYears !== 1 ? "s" : ""}`} />
+                      <SummaryField
+                        label="Training Years"
+                        value={`${profileSummary.trainingYears} year${profileSummary.trainingYears !== 1 ? "s" : ""}`}
+                      />
                     )}
                   </div>
                   {profileSummary.trainingBackground && (
@@ -1263,7 +1312,13 @@ function Step1Client({
                     </div>
                   )}
                   {profileSummary.timeEfficiencyPreference && (
-                    <SummaryField label="Time Efficiency" value={TIME_EFFICIENCY_LABELS[profileSummary.timeEfficiencyPreference] ?? profileSummary.timeEfficiencyPreference} />
+                    <SummaryField
+                      label="Time Efficiency"
+                      value={
+                        TIME_EFFICIENCY_LABELS[profileSummary.timeEfficiencyPreference] ??
+                        profileSummary.timeEfficiencyPreference
+                      }
+                    />
                   )}
                 </TabsContent>
 
@@ -1298,9 +1353,12 @@ function Step1Client({
                       <p className="text-sm">{profileSummary.notes}</p>
                     </div>
                   )}
-                  {!profileSummary.preferredTechniques.length && !profileSummary.likes && !profileSummary.dislikes && !profileSummary.notes && (
-                    <p className="text-xs text-muted-foreground italic">No preferences provided.</p>
-                  )}
+                  {!profileSummary.preferredTechniques.length &&
+                    !profileSummary.likes &&
+                    !profileSummary.dislikes &&
+                    !profileSummary.notes && (
+                      <p className="text-xs text-muted-foreground italic">No preferences provided.</p>
+                    )}
                 </TabsContent>
               </Tabs>
 
@@ -1359,17 +1417,12 @@ function Step2GoalsSchedule({
               key={goalValue}
               className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm cursor-pointer hover:bg-surface/50 transition-colors has-[:checked]:bg-primary/5 has-[:checked]:border-primary/30"
             >
-              <Checkbox
-                checked={goals.includes(goalValue)}
-                onCheckedChange={() => toggleGoal(goalValue)}
-              />
+              <Checkbox checked={goals.includes(goalValue)} onCheckedChange={() => toggleGoal(goalValue)} />
               <span>{GOAL_LABELS[goalValue] ?? goalValue}</span>
             </label>
           ))}
         </div>
-        {goals.length === 0 && (
-          <p className="text-xs text-muted-foreground">Select at least one goal</p>
-        )}
+        {goals.length === 0 && <p className="text-xs text-muted-foreground">Select at least one goal</p>}
       </div>
 
       {/* Duration & Sessions */}
@@ -1492,7 +1545,9 @@ function Step3Settings({
           >
             <option value="">Auto (AI decides)</option>
             {SPLIT_TYPES.map((st) => (
-              <option key={st} value={st}>{SPLIT_TYPE_LABELS[st]}</option>
+              <option key={st} value={st}>
+                {SPLIT_TYPE_LABELS[st]}
+              </option>
             ))}
           </select>
         </div>
@@ -1506,7 +1561,9 @@ function Step3Settings({
           >
             <option value="">Auto (AI decides)</option>
             {PERIODIZATION_TYPES.map((p) => (
-              <option key={p} value={p}>{PERIODIZATION_LABELS[p]}</option>
+              <option key={p} value={p}>
+                {PERIODIZATION_LABELS[p]}
+              </option>
             ))}
           </select>
         </div>
@@ -1522,12 +1579,12 @@ function Step3Settings({
           className={selectClass}
         >
           {PROGRAM_TIERS.map((t) => (
-            <option key={t} value={t}>{TIER_LABELS[t]}</option>
+            <option key={t} value={t}>
+              {TIER_LABELS[t]}
+            </option>
           ))}
         </select>
-        <p className="text-[11px] text-muted-foreground">
-          {TIER_DESCRIPTIONS[selectedTier]}
-        </p>
+        <p className="text-[11px] text-muted-foreground">{TIER_DESCRIPTIONS[selectedTier]}</p>
       </div>
 
       {/* Audience */}
@@ -1540,15 +1597,19 @@ function Step3Settings({
             onClick={() => setAudience("public")}
             className={cn(
               "flex items-start gap-3 rounded-lg border-2 px-3 py-2.5 text-left transition-colors",
-              audience === "public"
-                ? "border-primary bg-primary/5"
-                : "border-border hover:border-muted-foreground/30"
+              audience === "public" ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/30",
             )}
           >
-            <Globe className={cn("size-4 shrink-0 mt-0.5", audience === "public" ? "text-primary" : "text-muted-foreground")} />
+            <Globe
+              className={cn("size-4 shrink-0 mt-0.5", audience === "public" ? "text-primary" : "text-muted-foreground")}
+            />
             <div>
-              <p className={cn("text-sm font-medium", audience === "public" ? "text-primary" : "text-foreground")}>Public</p>
-              <p className="text-[11px] text-muted-foreground leading-snug">Available in the store for any client to purchase</p>
+              <p className={cn("text-sm font-medium", audience === "public" ? "text-primary" : "text-foreground")}>
+                Public
+              </p>
+              <p className="text-[11px] text-muted-foreground leading-snug">
+                Available in the store for any client to purchase
+              </p>
             </div>
           </button>
 
@@ -1558,15 +1619,22 @@ function Step3Settings({
             onClick={() => setAudience("private")}
             className={cn(
               "flex items-start gap-3 rounded-lg border-2 px-3 py-2.5 text-left transition-colors",
-              audience === "private"
-                ? "border-primary bg-primary/5"
-                : "border-border hover:border-muted-foreground/30"
+              audience === "private" ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/30",
             )}
           >
-            <Lock className={cn("size-4 shrink-0 mt-0.5", audience === "private" ? "text-primary" : "text-muted-foreground")} />
+            <Lock
+              className={cn(
+                "size-4 shrink-0 mt-0.5",
+                audience === "private" ? "text-primary" : "text-muted-foreground",
+              )}
+            />
             <div>
-              <p className={cn("text-sm font-medium", audience === "private" ? "text-primary" : "text-foreground")}>Private</p>
-              <p className="text-[11px] text-muted-foreground leading-snug">Only visible to assigned clients — assign them from the program detail page</p>
+              <p className={cn("text-sm font-medium", audience === "private" ? "text-primary" : "text-foreground")}>
+                Private
+              </p>
+              <p className="text-[11px] text-muted-foreground leading-snug">
+                Only visible to assigned clients — assign them from the program detail page
+              </p>
             </div>
           </button>
         </div>
@@ -1609,7 +1677,11 @@ function Step3Settings({
               {ignoreProfile && hasClient ? "(recommended)" : "(optional)"}
             </span>
           </Label>
-          <TemplateSelector onSelect={(prompt) => setAdditionalInstructions(additionalInstructions ? `${additionalInstructions}\n\n${prompt}` : prompt)} />
+          <TemplateSelector
+            onSelect={(prompt) =>
+              setAdditionalInstructions(additionalInstructions ? `${additionalInstructions}\n\n${prompt}` : prompt)
+            }
+          />
         </div>
         <Textarea
           id="ai-instructions"

@@ -10,10 +10,7 @@ export default function ProgramsLoading() {
       {/* Program cards grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div
-            key={i}
-            className="bg-white rounded-xl border border-border p-4 sm:p-5 flex flex-col space-y-3"
-          >
+          <div key={i} className="bg-white rounded-xl border border-border p-4 sm:p-5 flex flex-col space-y-3">
             {/* Badges */}
             <div className="flex flex-wrap gap-1.5">
               <div className="h-5 w-20 bg-muted animate-pulse rounded-full" />

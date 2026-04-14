@@ -6,11 +6,7 @@ const BUCKET = "avatars"
  * Upload an avatar image for a user. Overwrites any existing avatar.
  * Returns the public URL of the uploaded image.
  */
-export async function uploadAvatar(
-  userId: string,
-  file: File | Blob,
-  fileName?: string
-): Promise<string> {
+export async function uploadAvatar(userId: string, file: File | Blob, fileName?: string): Promise<string> {
   const supabase = createServiceRoleClient()
   const ext = fileName?.split(".").pop() ?? "jpg"
   const path = `${userId}.${ext}`
@@ -18,12 +14,10 @@ export async function uploadAvatar(
   // Remove old avatar first (ignore errors if it doesn't exist)
   await supabase.storage.from(BUCKET).remove([path])
 
-  const { error } = await supabase.storage
-    .from(BUCKET)
-    .upload(path, file, {
-      contentType: file.type || "image/jpeg",
-      upsert: true,
-    })
+  const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
+    contentType: file.type || "image/jpeg",
+    upsert: true,
+  })
 
   if (error) throw new Error(`Avatar upload failed: ${error.message}`)
 

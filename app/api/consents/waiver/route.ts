@@ -17,7 +17,7 @@ export async function POST(request: Request) {
     if (!result.success) {
       return NextResponse.json(
         { error: "Invalid request", details: result.error.flatten().fieldErrors },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
@@ -48,9 +48,6 @@ export async function POST(request: Request) {
     return NextResponse.json(consent, { status: 201 })
   } catch (error) {
     console.error("Waiver consent error:", error)
-    return NextResponse.json(
-      { error: "Failed to record waiver consent" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to record waiver consent" }, { status: 500 })
   }
 }

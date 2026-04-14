@@ -14,10 +14,7 @@ export async function POST(request: Request) {
     const result = forgotPasswordSchema.safeParse(body)
 
     if (!result.success) {
-      return NextResponse.json(
-        { error: "Please enter a valid email address." },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Please enter a valid email address." }, { status: 400 })
     }
 
     const { email } = result.data

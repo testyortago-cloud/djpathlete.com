@@ -1,14 +1,6 @@
 "use client"
 
-import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid,
-} from "recharts"
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts"
 
 interface WeeklyVolumeChartProps {
   data: Array<{ week: string; workouts: number; sets: number }>
@@ -72,21 +64,8 @@ export function WeeklyVolumeChart({ data }: WeeklyVolumeChartProps) {
               }}
               cursor={{ fill: "hsl(var(--muted) / 0.5)" }}
             />
-            <Bar
-              yAxisId="workouts"
-              dataKey="workouts"
-              fill="#0E3F50"
-              radius={[4, 4, 0, 0]}
-              maxBarSize={28}
-            />
-            <Bar
-              yAxisId="sets"
-              dataKey="sets"
-              fill="#C49B7A"
-              radius={[4, 4, 0, 0]}
-              maxBarSize={28}
-              opacity={0.7}
-            />
+            <Bar yAxisId="workouts" dataKey="workouts" fill="#0E3F50" radius={[4, 4, 0, 0]} maxBarSize={28} />
+            <Bar yAxisId="sets" dataKey="sets" fill="#C49B7A" radius={[4, 4, 0, 0]} maxBarSize={28} opacity={0.7} />
           </BarChart>
         </ResponsiveContainer>
       </div>

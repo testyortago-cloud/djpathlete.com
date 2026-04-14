@@ -13,10 +13,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const parsed = clientFeedbackSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Invalid request body.", details: parsed.error.issues },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Invalid request body.", details: parsed.error.issues }, { status: 400 })
     }
 
     const feedback = await submitFeedback({
@@ -33,9 +30,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, feedback })
   } catch (error) {
     console.error("[Client AI Feedback] Error:", error)
-    return NextResponse.json(
-      { error: "Failed to submit feedback." },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to submit feedback." }, { status: 500 })
   }
 }

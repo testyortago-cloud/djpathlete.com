@@ -46,39 +46,24 @@ export async function getWeekAccess(assignmentId: string, weekNumber: number) {
 /** Get a week access record by ID */
 export async function getWeekAccessById(id: string) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("program_week_access")
-    .select("*")
-    .eq("id", id)
-    .single()
+  const { data, error } = await supabase.from("program_week_access").select("*").eq("id", id).single()
   if (error) throw error
   return data as ProgramWeekAccess
 }
 
 /** Create a week access record */
-export async function createWeekAccess(
-  record: Omit<ProgramWeekAccess, "id" | "created_at" | "updated_at">
-) {
+export async function createWeekAccess(record: Omit<ProgramWeekAccess, "id" | "created_at" | "updated_at">) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("program_week_access")
-    .insert(record)
-    .select()
-    .single()
+  const { data, error } = await supabase.from("program_week_access").insert(record).select().single()
   if (error) throw error
   return data as ProgramWeekAccess
 }
 
 /** Bulk-create week access records (e.g., on initial assignment) */
-export async function createWeekAccessBulk(
-  records: Omit<ProgramWeekAccess, "id" | "created_at" | "updated_at">[]
-) {
+export async function createWeekAccessBulk(records: Omit<ProgramWeekAccess, "id" | "created_at" | "updated_at">[]) {
   if (records.length === 0) return []
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("program_week_access")
-    .insert(records)
-    .select()
+  const { data, error } = await supabase.from("program_week_access").insert(records).select()
   if (error) throw error
   return (data ?? []) as ProgramWeekAccess[]
 }
@@ -86,15 +71,15 @@ export async function createWeekAccessBulk(
 /** Update a week access record */
 export async function updateWeekAccess(
   id: string,
-  updates: Partial<Pick<ProgramWeekAccess, "access_type" | "price_cents" | "payment_status" | "stripe_session_id" | "stripe_payment_id">>
+  updates: Partial<
+    Pick<
+      ProgramWeekAccess,
+      "access_type" | "price_cents" | "payment_status" | "stripe_session_id" | "stripe_payment_id"
+    >
+  >,
 ) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("program_week_access")
-    .update(updates)
-    .eq("id", id)
-    .select()
-    .single()
+  const { data, error } = await supabase.from("program_week_access").update(updates).eq("id", id).select().single()
   if (error) throw error
   return data as ProgramWeekAccess
 }
@@ -103,7 +88,12 @@ export async function updateWeekAccess(
 export async function updateWeekAccessByAssignmentAndWeek(
   assignmentId: string,
   weekNumber: number,
-  updates: Partial<Pick<ProgramWeekAccess, "access_type" | "price_cents" | "payment_status" | "stripe_session_id" | "stripe_payment_id">>
+  updates: Partial<
+    Pick<
+      ProgramWeekAccess,
+      "access_type" | "price_cents" | "payment_status" | "stripe_session_id" | "stripe_payment_id"
+    >
+  >,
 ) {
   const supabase = getClient()
   const { data, error } = await supabase
@@ -144,8 +134,8 @@ export async function shiftWeekAccessDown(assignmentId: string, afterWeekNumber:
         supabase
           .from("program_week_access")
           .update({ week_number: row.week_number - 1 })
-          .eq("id", row.id)
-      )
+          .eq("id", row.id),
+      ),
     )
   }
 }

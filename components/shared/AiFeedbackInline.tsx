@@ -14,15 +14,7 @@ interface AiFeedbackInlineProps {
   className?: string
 }
 
-function StarRating({
-  value,
-  onChange,
-  label,
-}: {
-  value: number
-  onChange: (v: number) => void
-  label: string
-}) {
+function StarRating({ value, onChange, label }: { value: number; onChange: (v: number) => void; label: string }) {
   const [hover, setHover] = useState(0)
 
   return (
@@ -41,9 +33,7 @@ function StarRating({
             <Star
               className={cn(
                 "h-4 w-4 transition-colors",
-                (hover || value) >= star
-                  ? "fill-amber-400 text-amber-400"
-                  : "text-muted-foreground/40"
+                (hover || value) >= star ? "fill-amber-400 text-amber-400" : "text-muted-foreground/40",
               )}
             />
           </button>
@@ -53,12 +43,7 @@ function StarRating({
   )
 }
 
-export function AiFeedbackInline({
-  messageId,
-  feature,
-  mode,
-  className,
-}: AiFeedbackInlineProps) {
+export function AiFeedbackInline({ messageId, feature, mode, className }: AiFeedbackInlineProps) {
   const [accuracy, setAccuracy] = useState(0)
   const [relevance, setRelevance] = useState(0)
   const [helpfulness, setHelpfulness] = useState(0)
@@ -114,7 +99,7 @@ export function AiFeedbackInline({
         setSubmitting(false)
       }
     },
-    [messageId, feature, submitting]
+    [messageId, feature, submitting],
   )
 
   if (submitted) {
@@ -133,10 +118,7 @@ export function AiFeedbackInline({
         <Button
           variant="ghost"
           size="sm"
-          className={cn(
-            "h-7 w-7 p-0",
-            thumbs === true && "text-success"
-          )}
+          className={cn("h-7 w-7 p-0", thumbs === true && "text-success")}
           onClick={() => submitClientFeedback(true)}
           disabled={submitting}
         >
@@ -145,10 +127,7 @@ export function AiFeedbackInline({
         <Button
           variant="ghost"
           size="sm"
-          className={cn(
-            "h-7 w-7 p-0",
-            thumbs === false && "text-error"
-          )}
+          className={cn("h-7 w-7 p-0", thumbs === false && "text-error")}
           onClick={() => submitClientFeedback(false)}
           disabled={submitting}
         >

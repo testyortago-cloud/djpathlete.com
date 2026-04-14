@@ -68,10 +68,7 @@ export function CustomerReviews() {
   const active = reviews[activeIndex]
 
   return (
-    <section
-      id="testimonials"
-      className="w-full py-16 lg:py-24 px-4 sm:px-8 bg-surface"
-    >
+    <section id="testimonials" className="w-full py-16 lg:py-24 px-4 sm:px-8 bg-surface">
       <div className="max-w-5xl mx-auto">
         {/* Header */}
         <motion.div
@@ -85,7 +82,8 @@ export function CustomerReviews() {
             Trusted by athletes at every level.
           </h2>
           <p className="text-lg leading-7 text-muted-foreground max-w-2xl mx-auto">
-            From youth sports to professional competition, athletes use DJP Athlete to train smarter, recover faster, and perform better — here is what they have to say.
+            From youth sports to professional competition, athletes use DJP Athlete to train smarter, recover faster,
+            and perform better — here is what they have to say.
           </p>
         </motion.div>
 
@@ -117,9 +115,7 @@ export function CustomerReviews() {
                 {/* Avatar placeholder */}
                 <div className="shrink-0">
                   <div className="relative size-28 md:size-36 rounded-2xl overflow-hidden ring-4 ring-primary/10 shadow-md bg-surface flex items-center justify-center">
-                    <span className="text-4xl font-semibold text-primary/60 font-heading">
-                      {active.name.charAt(0)}
-                    </span>
+                    <span className="text-4xl font-semibold text-primary/60 font-heading">{active.name.charAt(0)}</span>
                   </div>
                 </div>
 
@@ -127,16 +123,12 @@ export function CustomerReviews() {
                 <div className="flex-1 text-center md:text-left">
                   <StarRating />
                   <blockquote className="mt-4">
-                    <p className="text-lg md:text-xl text-foreground leading-relaxed">
-                      &ldquo;{active.quote}&rdquo;
-                    </p>
+                    <p className="text-lg md:text-xl text-foreground leading-relaxed">&ldquo;{active.quote}&rdquo;</p>
                   </blockquote>
                   <div className="mt-6 flex items-center gap-3 justify-center md:justify-start">
                     <div className="h-px w-8 bg-primary/50" aria-hidden />
                     <div>
-                      <p className="font-semibold text-primary">
-                        {active.name}
-                      </p>
+                      <p className="font-semibold text-primary">{active.name}</p>
                       <p className="text-sm text-muted-foreground">
                         {active.role} &middot; {active.sport}
                       </p>
@@ -195,9 +187,7 @@ export function CustomerReviews() {
                     ${isActive ? "ring-2 ring-primary/30" : "grayscale opacity-60"}
                   `}
                 >
-                  <span className="text-sm font-semibold text-primary/60">
-                    {review.name.charAt(0)}
-                  </span>
+                  <span className="text-sm font-semibold text-primary/60">{review.name.charAt(0)}</span>
                 </div>
                 <span
                   className={`

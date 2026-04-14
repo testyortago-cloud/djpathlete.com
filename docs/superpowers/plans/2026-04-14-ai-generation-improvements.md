@@ -26,6 +26,7 @@ Tasks can be dispatched in waves:
 ## Task 1: Database migration for exercise usage tracking and coach AI policy
 
 **Files:**
+
 - Create: `supabase/migrations/00061_exercise_usage_and_coach_policy.sql`
 - Create: `__tests__/migrations/00061.test.ts` (schema validation test)
 
@@ -123,9 +124,11 @@ Run: `npx supabase db reset` (if using local Supabase) OR apply via Supabase das
 Expected: Migration applies with no errors. Tables `generated_exercise_usage` and `coach_ai_policy` exist.
 
 Verify:
+
 ```bash
 psql "$DATABASE_URL" -c "SELECT table_name FROM information_schema.tables WHERE table_name IN ('generated_exercise_usage','coach_ai_policy');"
 ```
+
 Expected output: Both table names listed.
 
 - [ ] **Step 3: Write schema-validation test**
@@ -151,19 +154,19 @@ describe("Migration 00061: exercise usage + coach policy", () => {
   it("coach_ai_policy table exists with required columns and defaults", async () => {
     const { data, error } = await supabase
       .from("coach_ai_policy")
-      .select("coach_id,disallowed_techniques,preferred_techniques,technique_progression_enabled,programming_notes,updated_at")
+      .select(
+        "coach_id,disallowed_techniques,preferred_techniques,technique_progression_enabled,programming_notes,updated_at",
+      )
       .limit(0)
     expect(error).toBeNull()
     expect(data).toEqual([])
   })
 
   it("rejects coach_ai_policy rows with invalid technique in disallowed_techniques", async () => {
-    const { error } = await supabase
-      .from("coach_ai_policy")
-      .insert({
-        coach_id: "00000000-0000-0000-0000-000000000001",
-        disallowed_techniques: ["not_a_real_technique"],
-      })
+    const { error } = await supabase.from("coach_ai_policy").insert({
+      coach_id: "00000000-0000-0000-0000-000000000001",
+      disallowed_techniques: ["not_a_real_technique"],
+    })
     expect(error).not.toBeNull()
     expect(error?.message.toLowerCase()).toMatch(/check|constraint/)
   })
@@ -187,6 +190,7 @@ git commit -m "Add migration 00061: exercise usage tracking and coach AI policy 
 ## Task 2: Hard-exclusion difficulty filter with earned progression
 
 **Files:**
+
 - Modify: `functions/src/ai/exercise-context.ts`
 - Create: `functions/src/ai/__tests__/exercise-context.test.ts`
 
@@ -196,33 +200,34 @@ Create `functions/src/ai/__tests__/exercise-context.test.ts`:
 
 ```typescript
 import { describe, it, expect } from "vitest"
-import {
-  filterByDifficultyLevel,
-  filterByProgressionPhase,
-} from "../exercise-context.js"
+import { filterByDifficultyLevel, filterByProgressionPhase } from "../exercise-context.js"
 import type { CompressedExercise } from "../types.js"
 
-const mk = (id: string, difficulty: string, score: number | null = null): CompressedExercise => ({
-  id,
-  name: `ex-${id}`,
-  difficulty,
-  difficulty_score: score,
-  movement_pattern: "push",
-  primary_muscles: ["chest"],
-  secondary_muscles: [],
-  equipment_required: [],
-  is_bodyweight: false,
-  training_intent: ["build"],
-  sport_tags: [],
-  joints_loaded: [],
-  plane_of_motion: ["sagittal"],
-} as unknown as CompressedExercise)
+const mk = (id: string, difficulty: string, score: number | null = null): CompressedExercise =>
+  ({
+    id,
+    name: `ex-${id}`,
+    difficulty,
+    difficulty_score: score,
+    movement_pattern: "push",
+    primary_muscles: ["chest"],
+    secondary_muscles: [],
+    equipment_required: [],
+    is_bodyweight: false,
+    training_intent: ["build"],
+    sport_tags: [],
+    joints_loaded: [],
+    plane_of_motion: ["sagittal"],
+  }) as unknown as CompressedExercise
 
 describe("filterByDifficultyLevel — hard exclusion", () => {
   const exercises = [
-    mk("b1", "beginner"), mk("b2", "beginner"),
-    mk("i1", "intermediate"), mk("i2", "intermediate"),
-    mk("a1", "advanced"), mk("a2", "advanced"),
+    mk("b1", "beginner"),
+    mk("b2", "beginner"),
+    mk("i1", "intermediate"),
+    mk("i2", "intermediate"),
+    mk("a1", "advanced"),
+    mk("a2", "advanced"),
   ]
 
   it("beginner clients get ONLY beginner exercises (no intermediates)", () => {
@@ -254,9 +259,10 @@ describe("filterByDifficultyLevel — hard exclusion", () => {
 
 describe("filterByProgressionPhase — earned progression", () => {
   const exercises = [
-    mk("b1", "beginner", 2), mk("b2", "beginner", 3),
-    mk("i_easy", "intermediate", 4),  // low-score intermediate, eligible in later weeks
-    mk("i_hard", "intermediate", 7),  // high-score intermediate, never eligible for beginner
+    mk("b1", "beginner", 2),
+    mk("b2", "beginner", 3),
+    mk("i_easy", "intermediate", 4), // low-score intermediate, eligible in later weeks
+    mk("i_hard", "intermediate", 7), // high-score intermediate, never eligible for beginner
     mk("a1", "advanced", 8),
   ]
 
@@ -335,7 +341,7 @@ const EARNED_PROGRESSION_START_WEEK = 3
  */
 export function filterByDifficultyScore(
   exercises: CompressedExercise[],
-  maxDifficultyScore?: number
+  maxDifficultyScore?: number,
 ): CompressedExercise[] {
   if (maxDifficultyScore === undefined) return exercises
   return exercises.filter((ex) => {
@@ -354,7 +360,7 @@ export function filterByDifficultyScore(
  */
 export function filterByDifficultyLevel(
   exercises: CompressedExercise[],
-  clientDifficulty: string
+  clientDifficulty: string,
 ): CompressedExercise[] {
   const clientIdx = DIFFICULTY_LEVELS.indexOf(clientDifficulty as DifficultyLevel)
   if (clientIdx === -1) return exercises
@@ -384,16 +390,14 @@ export function filterByDifficultyLevel(
 export function filterByProgressionPhase(
   exercises: CompressedExercise[],
   clientDifficulty: string,
-  weekNumber: number
+  weekNumber: number,
 ): CompressedExercise[] {
   const normalized = clientDifficulty === "elite" ? "advanced" : clientDifficulty
   const clientIdx = DIFFICULTY_LEVELS.indexOf(normalized as DifficultyLevel)
   if (clientIdx === -1) return exercises
 
   const progressionUnlocked = weekNumber >= EARNED_PROGRESSION_START_WEEK
-  const progressionMaxIdx = progressionUnlocked
-    ? Math.min(clientIdx + 1, DIFFICULTY_LEVELS.length - 1)
-    : clientIdx
+  const progressionMaxIdx = progressionUnlocked ? Math.min(clientIdx + 1, DIFFICULTY_LEVELS.length - 1) : clientIdx
 
   return exercises.filter((ex) => {
     const exIdx = DIFFICULTY_LEVELS.indexOf(ex.difficulty as DifficultyLevel)
@@ -445,6 +449,7 @@ progression'. Advanced exercises remain fully excluded for beginners."
 ## Task 3: Schema updates for technique_plan, difficulty_ceiling, progression_phase
 
 **Files:**
+
 - Modify: `functions/src/ai/schemas.ts`
 - Modify: `functions/src/ai/types.ts` (add types)
 - Create: `functions/src/ai/__tests__/schemas.test.ts`
@@ -468,8 +473,12 @@ const validAnalysisBase = {
   volume_targets: [{ muscle_group: "quads", sets_per_week: 10, priority: "high" as const }],
   exercise_constraints: [],
   session_structure: {
-    warm_up_minutes: 5, main_work_minutes: 45, cool_down_minutes: 5,
-    total_exercises: 5, compound_count: 2, isolation_count: 3,
+    warm_up_minutes: 5,
+    main_work_minutes: 45,
+    cool_down_minutes: 5,
+    total_exercises: 5,
+    compound_count: 2,
+    isolation_count: 3,
   },
   training_age_category: "novice" as const,
   notes: "",
@@ -480,7 +489,12 @@ describe("profileAnalysisSchema — technique_plan and difficulty_ceiling", () =
     const input = {
       ...validAnalysisBase,
       technique_plan: [
-        { week_number: 1, allowed_techniques: ["straight_set"], default_technique: "straight_set", notes: "motor learning" },
+        {
+          week_number: 1,
+          allowed_techniques: ["straight_set"],
+          default_technique: "straight_set",
+          notes: "motor learning",
+        },
         { week_number: 2, allowed_techniques: ["straight_set"], default_technique: "straight_set", notes: "" },
       ],
       difficulty_ceiling: [
@@ -496,7 +510,9 @@ describe("profileAnalysisSchema — technique_plan and difficulty_ceiling", () =
   it("rejects technique_plan with unknown technique", () => {
     const input = {
       ...validAnalysisBase,
-      technique_plan: [{ week_number: 1, allowed_techniques: ["fake_technique"], default_technique: "fake_technique", notes: "" }],
+      technique_plan: [
+        { week_number: 1, allowed_techniques: ["fake_technique"], default_technique: "fake_technique", notes: "" },
+      ],
       difficulty_ceiling: [{ week_number: 1, max_tier: "beginner", max_score: 4 }],
     }
     expect(() => profileAnalysisSchema.parse(input)).toThrow()
@@ -505,7 +521,9 @@ describe("profileAnalysisSchema — technique_plan and difficulty_ceiling", () =
   it("rejects difficulty_ceiling with unknown tier", () => {
     const input = {
       ...validAnalysisBase,
-      technique_plan: [{ week_number: 1, allowed_techniques: ["straight_set"], default_technique: "straight_set", notes: "" }],
+      technique_plan: [
+        { week_number: 1, allowed_techniques: ["straight_set"], default_technique: "straight_set", notes: "" },
+      ],
       difficulty_ceiling: [{ week_number: 1, max_tier: "godlike", max_score: 10 }],
     }
     expect(() => profileAnalysisSchema.parse(input)).toThrow()
@@ -517,7 +535,12 @@ describe("validateSkeletonAgainstAnalysis — technique constraint enforcement",
     ...validAnalysisBase,
     technique_plan: [
       { week_number: 1, allowed_techniques: ["straight_set"], default_technique: "straight_set", notes: "" },
-      { week_number: 2, allowed_techniques: ["straight_set", "superset"], default_technique: "straight_set", notes: "" },
+      {
+        week_number: 2,
+        allowed_techniques: ["straight_set", "superset"],
+        default_technique: "straight_set",
+        notes: "",
+      },
     ],
     difficulty_ceiling: [
       { week_number: 1, max_tier: "beginner", max_score: 4 },
@@ -526,20 +549,43 @@ describe("validateSkeletonAgainstAnalysis — technique constraint enforcement",
   })
 
   const baseSlot = {
-    slot_id: "s1", role: "primary_compound" as const, movement_pattern: "squat" as const,
-    target_muscles: ["quads"], sets: 3, reps: "8-10", rest_seconds: 120,
-    rpe_target: null, tempo: null, group_tag: null, intensity_pct: null,
+    slot_id: "s1",
+    role: "primary_compound" as const,
+    movement_pattern: "squat" as const,
+    target_muscles: ["quads"],
+    sets: 3,
+    reps: "8-10",
+    rest_seconds: 120,
+    rpe_target: null,
+    tempo: null,
+    group_tag: null,
+    intensity_pct: null,
   }
 
   it("passes when every slot technique is in that week's allowed_techniques", () => {
     const skeleton = {
       weeks: [
-        { week_number: 1, phase: "A", intensity_modifier: "moderate",
-          days: [{ day_of_week: 1, label: "Mon", focus: "legs",
-            slots: [{ ...baseSlot, technique: "straight_set" as const }] }] },
-        { week_number: 2, phase: "A", intensity_modifier: "moderate",
-          days: [{ day_of_week: 1, label: "Mon", focus: "legs",
-            slots: [{ ...baseSlot, technique: "superset" as const }] }] },
+        {
+          week_number: 1,
+          phase: "A",
+          intensity_modifier: "moderate",
+          days: [
+            {
+              day_of_week: 1,
+              label: "Mon",
+              focus: "legs",
+              slots: [{ ...baseSlot, technique: "straight_set" as const }],
+            },
+          ],
+        },
+        {
+          week_number: 2,
+          phase: "A",
+          intensity_modifier: "moderate",
+          days: [
+            { day_of_week: 1, label: "Mon", focus: "legs", slots: [{ ...baseSlot, technique: "superset" as const }] },
+          ],
+        },
       ],
       split_type: "full_body" as const,
       periodization: "linear" as const,
@@ -554,9 +600,14 @@ describe("validateSkeletonAgainstAnalysis — technique constraint enforcement",
   it("fails when a slot uses a technique NOT in that week's allowed_techniques", () => {
     const skeleton = {
       weeks: [
-        { week_number: 1, phase: "A", intensity_modifier: "moderate",
-          days: [{ day_of_week: 1, label: "Mon", focus: "legs",
-            slots: [{ ...baseSlot, technique: "superset" as const }] }] },
+        {
+          week_number: 1,
+          phase: "A",
+          intensity_modifier: "moderate",
+          days: [
+            { day_of_week: 1, label: "Mon", focus: "legs", slots: [{ ...baseSlot, technique: "superset" as const }] },
+          ],
+        },
       ],
       split_type: "full_body" as const,
       periodization: "linear" as const,
@@ -583,29 +634,45 @@ describe("validateAssignmentAgainstCeiling — difficulty ceiling enforcement", 
     { id: "a-hard", difficulty: "advanced", difficulty_score: 8 },
   ]
 
-  const slotInWeek = new Map([["s1", 1], ["s2", 2], ["s3", 3]])
+  const slotInWeek = new Map([
+    ["s1", 1],
+    ["s2", 2],
+    ["s3", 3],
+  ])
 
   it("passes when all week 1 assignments are beginner exercises", () => {
-    const assignment = { assignments: [{ slot_id: "s1", exercise_id: "b-easy", exercise_name: "b-easy", notes: null }], substitution_notes: [] }
+    const assignment = {
+      assignments: [{ slot_id: "s1", exercise_id: "b-easy", exercise_name: "b-easy", notes: null }],
+      substitution_notes: [],
+    }
     const result = validateAssignmentAgainstCeiling(assignment, ceiling, slotInWeek, exerciseLibrary)
     expect(result.ok).toBe(true)
   })
 
   it("fails when a week 1 slot is assigned an intermediate exercise", () => {
-    const assignment = { assignments: [{ slot_id: "s1", exercise_id: "i-easy", exercise_name: "i-easy", notes: null }], substitution_notes: [] }
+    const assignment = {
+      assignments: [{ slot_id: "s1", exercise_id: "i-easy", exercise_name: "i-easy", notes: null }],
+      substitution_notes: [],
+    }
     const result = validateAssignmentAgainstCeiling(assignment, ceiling, slotInWeek, exerciseLibrary)
     expect(result.ok).toBe(false)
     expect(result.violations[0]).toMatch(/week 1.*ceiling.*beginner/i)
   })
 
   it("passes when week 3 (intermediate ceiling) uses a low-score intermediate", () => {
-    const assignment = { assignments: [{ slot_id: "s3", exercise_id: "i-easy", exercise_name: "i-easy", notes: null }], substitution_notes: [] }
+    const assignment = {
+      assignments: [{ slot_id: "s3", exercise_id: "i-easy", exercise_name: "i-easy", notes: null }],
+      substitution_notes: [],
+    }
     const result = validateAssignmentAgainstCeiling(assignment, ceiling, slotInWeek, exerciseLibrary)
     expect(result.ok).toBe(true)
   })
 
   it("fails when week 3 uses a high-score intermediate exceeding max_score", () => {
-    const assignment = { assignments: [{ slot_id: "s3", exercise_id: "i-hard", exercise_name: "i-hard", notes: null }], substitution_notes: [] }
+    const assignment = {
+      assignments: [{ slot_id: "s3", exercise_id: "i-hard", exercise_name: "i-hard", notes: null }],
+      substitution_notes: [],
+    }
     const result = validateAssignmentAgainstCeiling(assignment, ceiling, slotInWeek, exerciseLibrary)
     expect(result.ok).toBe(false)
     expect(result.violations[0]).toMatch(/score.*7.*exceeds/i)
@@ -628,22 +695,42 @@ import { z } from "zod"
 // ─── Shared constants (duplicated from Next.js validators to avoid cross-project deps) ──
 
 const SPLIT_TYPES = [
-  "full_body", "upper_lower", "push_pull_legs", "push_pull",
-  "body_part", "movement_pattern", "custom",
+  "full_body",
+  "upper_lower",
+  "push_pull_legs",
+  "push_pull",
+  "body_part",
+  "movement_pattern",
+  "custom",
 ] as const
 
-const PERIODIZATION_TYPES = [
-  "linear", "undulating", "block", "reverse_linear", "none",
-] as const
+const PERIODIZATION_TYPES = ["linear", "undulating", "block", "reverse_linear", "none"] as const
 
 const MOVEMENT_PATTERNS = [
-  "push", "pull", "squat", "hinge", "lunge",
-  "carry", "rotation", "isometric", "locomotion", "conditioning",
+  "push",
+  "pull",
+  "squat",
+  "hinge",
+  "lunge",
+  "carry",
+  "rotation",
+  "isometric",
+  "locomotion",
+  "conditioning",
 ] as const
 
 const TECHNIQUES = [
-  "straight_set", "superset", "dropset", "giant_set", "circuit",
-  "rest_pause", "amrap", "cluster_set", "complex", "emom", "wave_loading",
+  "straight_set",
+  "superset",
+  "dropset",
+  "giant_set",
+  "circuit",
+  "rest_pause",
+  "amrap",
+  "cluster_set",
+  "complex",
+  "emom",
+  "wave_loading",
 ] as const
 
 const DIFFICULTY_TIERS = ["beginner", "intermediate", "advanced"] as const
@@ -657,10 +744,7 @@ const volumeTargetSchema = z.object({
 })
 
 const exerciseConstraintSchema = z.object({
-  type: z.enum([
-    "avoid_movement", "avoid_equipment", "avoid_muscle",
-    "limit_load", "require_unilateral",
-  ]),
+  type: z.enum(["avoid_movement", "avoid_equipment", "avoid_muscle", "limit_load", "require_unilateral"]),
   value: z.string(),
   reason: z.string(),
 })
@@ -704,9 +788,16 @@ export const profileAnalysisSchema = z.object({
 const exerciseSlotSchema = z.object({
   slot_id: z.string(),
   role: z.enum([
-    "warm_up", "primary_compound", "secondary_compound",
-    "accessory", "isolation", "cool_down",
-    "power", "conditioning", "activation", "testing",
+    "warm_up",
+    "primary_compound",
+    "secondary_compound",
+    "accessory",
+    "isolation",
+    "cool_down",
+    "power",
+    "conditioning",
+    "activation",
+    "testing",
   ]),
   movement_pattern: z.enum(MOVEMENT_PATTERNS),
   target_muscles: z.array(z.string()).min(1),
@@ -788,7 +879,7 @@ export interface ValidatorResult {
  */
 export function validateSkeletonAgainstAnalysis(
   skeleton: z.infer<typeof programSkeletonSchema>,
-  analysis: z.infer<typeof profileAnalysisSchema>
+  analysis: z.infer<typeof profileAnalysisSchema>,
 ): ValidatorResult {
   const planByWeek = new Map<number, TechniquePlanWeek>()
   for (const wk of analysis.technique_plan) planByWeek.set(wk.week_number, wk)
@@ -805,7 +896,7 @@ export function validateSkeletonAgainstAnalysis(
       for (const slot of day.slots) {
         if (!allowed.has(slot.technique)) {
           violations.push(
-            `week ${week.week_number} slot ${slot.slot_id}: technique "${slot.technique}" not allowed (allowed: ${plan.allowed_techniques.join(", ")})`
+            `week ${week.week_number} slot ${slot.slot_id}: technique "${slot.technique}" not allowed (allowed: ${plan.allowed_techniques.join(", ")})`,
           )
         }
       }
@@ -827,13 +918,13 @@ export function validateAssignmentAgainstCeiling(
   assignment: z.infer<typeof exerciseAssignmentSchema>,
   difficultyCeiling: DifficultyCeilingWeek[],
   slotInWeek: Map<string, number>,
-  exerciseLibrary: Array<{ id: string; difficulty: string; difficulty_score: number | null | undefined }>
+  exerciseLibrary: Array<{ id: string; difficulty: string; difficulty_score: number | null | undefined }>,
 ): ValidatorResult {
   const ceilingByWeek = new Map<number, DifficultyCeilingWeek>()
   for (const c of difficultyCeiling) ceilingByWeek.set(c.week_number, c)
 
   const exById = new Map(exerciseLibrary.map((e) => [e.id, e]))
-  const tierIdx = (tier: string) => DIFFICULTY_TIERS.indexOf(tier as typeof DIFFICULTY_TIERS[number])
+  const tierIdx = (tier: string) => DIFFICULTY_TIERS.indexOf(tier as (typeof DIFFICULTY_TIERS)[number])
 
   const violations: string[] = []
   for (const a of assignment.assignments) {
@@ -853,13 +944,13 @@ export function validateAssignmentAgainstCeiling(
 
     if (exIdx > maxIdx) {
       violations.push(
-        `week ${weekNum} slot ${a.slot_id}: exercise "${ex.id}" tier "${ex.difficulty}" exceeds ceiling "${ceiling.max_tier}"`
+        `week ${weekNum} slot ${a.slot_id}: exercise "${ex.id}" tier "${ex.difficulty}" exceeds ceiling "${ceiling.max_tier}"`,
       )
       continue
     }
     if (exIdx === maxIdx && ex.difficulty_score != null && ex.difficulty_score > ceiling.max_score) {
       violations.push(
-        `week ${weekNum} slot ${a.slot_id}: exercise "${ex.id}" score ${ex.difficulty_score} exceeds max_score ${ceiling.max_score}`
+        `week ${weekNum} slot ${a.slot_id}: exercise "${ex.id}" score ${ex.difficulty_score} exceeds max_score ${ceiling.max_score}`,
       )
     }
   }
@@ -907,11 +998,13 @@ Run: `cd functions && npx tsc --noEmit`
 Expected: No type errors. If there are errors in consumers of `ProfileAnalysis`, it's because the new required fields haven't been provided — this is expected until Task 4 updates the Agent 1 prompt. For now, temporarily mark them optional with `.optional()` in the Zod schema OR accept that the orchestrator will need to be updated in Task 6.
 
 If type errors are blocking, add `.optional()` temporarily:
+
 ```typescript
 // In profileAnalysisSchema:
 technique_plan: z.array(techniquePlanWeekSchema).min(1).optional(),
 difficulty_ceiling: z.array(difficultyCeilingWeekSchema).min(1).optional(),
 ```
+
 And remove `.optional()` in Task 6 once orchestrator wiring is complete.
 
 - [ ] **Step 7: Commit**
@@ -931,6 +1024,7 @@ the orchestrator retry loop."
 ## Task 4: Rewrite Agent 1, 2, 3 prompts for new constraints
 
 **Files:**
+
 - Modify: `functions/src/ai/prompts.ts`
 
 - [ ] **Step 1: Update `PROFILE_ANALYZER_PROMPT` output spec**
@@ -1089,6 +1183,7 @@ the ceiling when library has gaps."
 ## Task 5: Data access layer for exercise usage + coach policy
 
 **Files:**
+
 - Create: `lib/db/exercise-usage.ts` (Next.js side)
 - Create: `lib/db/coach-ai-policy.ts` (Next.js side)
 - Create: `functions/src/ai/usage-history.ts` (Firebase side — fetches from Supabase via service-role)
@@ -1102,11 +1197,7 @@ Create `__tests__/db/exercise-usage.test.ts`:
 
 ```typescript
 import { describe, it, expect, beforeEach } from "vitest"
-import {
-  recordProgramExerciseUsage,
-  getCoachRecentUsage,
-  getClientRecentUsage,
-} from "@/lib/db/exercise-usage"
+import { recordProgramExerciseUsage, getCoachRecentUsage, getClientRecentUsage } from "@/lib/db/exercise-usage"
 import { createServiceRoleClient } from "@/lib/supabase"
 
 const TEST_COACH = "00000000-0000-0000-0000-0000000aaaaa"
@@ -1269,10 +1360,7 @@ export async function recordProgramExerciseUsage(args: RecordUsageArgs): Promise
  * Return a Map<exercise_id, daysSinceLastUse> for exercises this coach has
  * assigned within the last `daysBack` days. Lower number = more recent.
  */
-export async function getCoachRecentUsage(
-  coachId: string,
-  daysBack: number
-): Promise<Map<string, number>> {
+export async function getCoachRecentUsage(coachId: string, daysBack: number): Promise<Map<string, number>> {
   const supabase = getClient()
   const cutoff = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000).toISOString()
   const { data, error } = await supabase
@@ -1286,10 +1374,7 @@ export async function getCoachRecentUsage(
 }
 
 /** Same shape as coach usage, scoped to a single client. */
-export async function getClientRecentUsage(
-  clientId: string,
-  daysBack: number
-): Promise<Map<string, number>> {
+export async function getClientRecentUsage(clientId: string, daysBack: number): Promise<Map<string, number>> {
   const supabase = getClient()
   const cutoff = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000).toISOString()
   const { data, error } = await supabase
@@ -1302,9 +1387,7 @@ export async function getClientRecentUsage(
   return reduceToRecencyMap(data ?? [])
 }
 
-function reduceToRecencyMap(
-  rows: Array<{ exercise_id: string; assigned_at: string }>
-): Map<string, number> {
+function reduceToRecencyMap(rows: Array<{ exercise_id: string; assigned_at: string }>): Map<string, number> {
   const now = Date.now()
   const out = new Map<string, number>()
   for (const r of rows) {
@@ -1337,11 +1420,7 @@ export interface CoachAiPolicy {
 
 export async function getCoachPolicy(coachId: string): Promise<CoachAiPolicy | null> {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("coach_ai_policy")
-    .select("*")
-    .eq("coach_id", coachId)
-    .maybeSingle()
+  const { data, error } = await supabase.from("coach_ai_policy").select("*").eq("coach_id", coachId).maybeSingle()
   if (error) throw error
   return data as CoachAiPolicy | null
 }
@@ -1353,10 +1432,7 @@ export interface UpsertCoachPolicyInput {
   programming_notes: string
 }
 
-export async function upsertCoachPolicy(
-  coachId: string,
-  input: UpsertCoachPolicyInput
-): Promise<CoachAiPolicy> {
+export async function upsertCoachPolicy(coachId: string, input: UpsertCoachPolicyInput): Promise<CoachAiPolicy> {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("coach_ai_policy")
@@ -1378,10 +1454,7 @@ import { getSupabase } from "../lib/supabase.js"
 /** Map<exercise_id, daysSinceLastUse> for recent usage within a window. */
 export type UsageRecencyMap = Map<string, number>
 
-export async function getCoachRecentUsageFromFn(
-  coachId: string,
-  daysBack: number
-): Promise<UsageRecencyMap> {
+export async function getCoachRecentUsageFromFn(coachId: string, daysBack: number): Promise<UsageRecencyMap> {
   const supabase = getSupabase()
   const cutoff = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000).toISOString()
   const { data, error } = await supabase
@@ -1396,10 +1469,7 @@ export async function getCoachRecentUsageFromFn(
   return buildRecencyMap(data ?? [])
 }
 
-export async function getClientRecentUsageFromFn(
-  clientId: string | null,
-  daysBack: number
-): Promise<UsageRecencyMap> {
+export async function getClientRecentUsageFromFn(clientId: string | null, daysBack: number): Promise<UsageRecencyMap> {
   if (!clientId) return new Map()
   const supabase = getSupabase()
   const cutoff = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000).toISOString()
@@ -1463,11 +1533,7 @@ export interface CoachAiPolicyRow {
 
 export async function getCoachPolicyFromFn(coachId: string): Promise<CoachAiPolicyRow | null> {
   const supabase = getSupabase()
-  const { data, error } = await supabase
-    .from("coach_ai_policy")
-    .select("*")
-    .eq("coach_id", coachId)
-    .maybeSingle()
+  const { data, error } = await supabase.from("coach_ai_policy").select("*").eq("coach_id", coachId).maybeSingle()
   if (error) {
     console.warn("[coach-policy] getCoachPolicy failed:", error.message)
     return null
@@ -1483,13 +1549,17 @@ export function formatCoachPolicyAsInstructions(policy: CoachAiPolicyRow | null)
   if (!policy) return ""
   const lines: string[] = ["COACH INSTRUCTIONS (studio-wide AI policy):"]
   if (policy.disallowed_techniques.length > 0) {
-    lines.push(`- DO NOT use these techniques: ${policy.disallowed_techniques.join(", ")}. They must be absent from technique_plan for every week.`)
+    lines.push(
+      `- DO NOT use these techniques: ${policy.disallowed_techniques.join(", ")}. They must be absent from technique_plan for every week.`,
+    )
   }
   if (policy.preferred_techniques.length > 0) {
     lines.push(`- Prefer these techniques when multiple are appropriate: ${policy.preferred_techniques.join(", ")}.`)
   }
   if (!policy.technique_progression_enabled) {
-    lines.push(`- Keep technique_plan static across weeks — use the same default_technique every week. Do not introduce phase-based technique variation.`)
+    lines.push(
+      `- Keep technique_plan static across weeks — use the same default_technique every week. Do not introduce phase-based technique variation.`,
+    )
   }
   if (policy.programming_notes && policy.programming_notes.trim().length > 0) {
     lines.push(`- Additional coach notes: ${policy.programming_notes.trim()}`)
@@ -1525,6 +1595,7 @@ tracking infrastructure."
 ## Task 6: History-aware semantic filter
 
 **Files:**
+
 - Modify: `functions/src/ai/exercise-filter.ts`
 - Create: `functions/src/ai/__tests__/exercise-filter.test.ts`
 
@@ -1555,12 +1626,7 @@ describe("applyUsagePenalty", () => {
   })
 
   it("stacks both penalties when exercise was used by both coach and client", () => {
-    const result = applyUsagePenalty(
-      100,
-      "ex-1",
-      new Map([["ex-1", 20]]),
-      new Map([["ex-1", 30]])
-    )
+    const result = applyUsagePenalty(100, "ex-1", new Map([["ex-1", 20]]), new Map([["ex-1", 30]]))
     expect(result).toBe(20) // -30 -50
   })
 
@@ -1606,7 +1672,7 @@ export function applyUsagePenalty(
   baseScore: number,
   exerciseId: string,
   coachUsage: UsageRecencyMap,
-  clientUsage: UsageRecencyMap
+  clientUsage: UsageRecencyMap,
 ): number {
   let score = baseScore
   const inCoach = coachUsage.has(exerciseId)
@@ -1645,41 +1711,43 @@ export function scoreAndFilterExercises(
 Inside the function, after `exerciseMaxScores` is populated (around line 268) and before the `const sorted = ...` sort, apply the penalty:
 
 ```typescript
-  const coachUsage = options?.coachUsage ?? new Map<string, number>()
-  const clientUsage = options?.clientUsage ?? new Map<string, number>()
-  if (coachUsage.size > 0 || clientUsage.size > 0) {
-    for (const [id, score] of exerciseMaxScores) {
-      exerciseMaxScores.set(id, applyUsagePenalty(score, id, coachUsage, clientUsage))
-    }
+const coachUsage = options?.coachUsage ?? new Map<string, number>()
+const clientUsage = options?.clientUsage ?? new Map<string, number>()
+if (coachUsage.size > 0 || clientUsage.size > 0) {
+  for (const [id, score] of exerciseMaxScores) {
+    exerciseMaxScores.set(id, applyUsagePenalty(score, id, coachUsage, clientUsage))
   }
+}
 ```
 
 Apply the same change to `semanticFilterExercises`: accept `FilterOptions` and, after matched IDs are collected but before `filtered.slice(0, maxExercises)`, sort `filtered` by usage-aware score. Replace the block:
 
 ```typescript
-  let filtered = exercises.filter((ex) => matchedIds.has(ex.id))
-  if (filtered.length > maxExercises) filtered = filtered.slice(0, maxExercises)
+let filtered = exercises.filter((ex) => matchedIds.has(ex.id))
+if (filtered.length > maxExercises) filtered = filtered.slice(0, maxExercises)
 ```
 
 with:
 
 ```typescript
-  let filtered = exercises.filter((ex) => matchedIds.has(ex.id))
+let filtered = exercises.filter((ex) => matchedIds.has(ex.id))
 
-  const coachUsage = options?.coachUsage ?? new Map<string, number>()
-  const clientUsage = options?.clientUsage ?? new Map<string, number>()
-  if (coachUsage.size > 0 || clientUsage.size > 0) {
-    // Re-rank by usage-aware proxy: semantic match gave us the set; now order within
-    const scored = filtered.map((ex) => ({
-      ex,
-      score: applyUsagePenalty(50, ex.id, coachUsage, clientUsage), // 50 is a neutral semantic-match baseline
-    }))
-    scored.sort((a, b) => b.score - a.score)
-    filtered = scored.map((s) => s.ex)
-    console.log(`[semanticFilter] Applied usage-aware re-ranking (coach: ${coachUsage.size}, client: ${clientUsage.size})`)
-  }
+const coachUsage = options?.coachUsage ?? new Map<string, number>()
+const clientUsage = options?.clientUsage ?? new Map<string, number>()
+if (coachUsage.size > 0 || clientUsage.size > 0) {
+  // Re-rank by usage-aware proxy: semantic match gave us the set; now order within
+  const scored = filtered.map((ex) => ({
+    ex,
+    score: applyUsagePenalty(50, ex.id, coachUsage, clientUsage), // 50 is a neutral semantic-match baseline
+  }))
+  scored.sort((a, b) => b.score - a.score)
+  filtered = scored.map((s) => s.ex)
+  console.log(
+    `[semanticFilter] Applied usage-aware re-ranking (coach: ${coachUsage.size}, client: ${clientUsage.size})`,
+  )
+}
 
-  if (filtered.length > maxExercises) filtered = filtered.slice(0, maxExercises)
+if (filtered.length > maxExercises) filtered = filtered.slice(0, maxExercises)
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
@@ -1709,6 +1777,7 @@ optional coachUsage/clientUsage parameters."
 ## Task 7: Orchestrator wiring — fetch policy + history, enforce validation, record usage
 
 **Files:**
+
 - Modify: `functions/src/ai/orchestrator.ts`
 
 - [ ] **Step 1: Add imports at top of orchestrator.ts**
@@ -1727,19 +1796,24 @@ import { validateSkeletonAgainstAnalysis, validateAssignmentAgainstCeiling } fro
 Find the section around line 283–292 where Agent 1 is called in parallel with exercise fetch. Expand the `Promise.all` to also fetch policy and history:
 
 ```typescript
-    // Agent 1 + exercise fetch + coach policy + usage history in parallel
-    await updateJobProgress("analyzing_profile", 1, "Analyzing client profile & fetching exercises")
-    await onProgress?.("Analyzing client profile", 1, 5)
-    console.log("[orchestrator:sync] Running Agent 1 + supporting fetches in parallel...")
-    const [agent1Result, allExercises, coachPolicy, coachUsage, clientUsage] = await Promise.all([
-      callAgent<ProfileAnalysis>(augmentedAgent1Prompt, agent1UserMessage, profileAnalysisSchema, { model: MODEL_HAIKU, cacheSystemPrompt: true }),
-      getExercisesForAI(),
-      getCoachPolicyFromFn(requestedBy),
-      getCoachRecentUsageFromFn(requestedBy, 60),
-      request.client_id ? getClientRecentUsageFromFn(request.client_id, 90) : Promise.resolve(new Map<string, number>()),
-    ])
-    tokenUsage.agent1 = agent1Result.tokens_used
-    console.log(`[orchestrator:sync] Agent 1 complete. Tokens: ${agent1Result.tokens_used}. Coach policy: ${coachPolicy ? "loaded" : "none"}. Coach usage entries: ${coachUsage.size}. Client usage entries: ${clientUsage.size}.`)
+// Agent 1 + exercise fetch + coach policy + usage history in parallel
+await updateJobProgress("analyzing_profile", 1, "Analyzing client profile & fetching exercises")
+await onProgress?.("Analyzing client profile", 1, 5)
+console.log("[orchestrator:sync] Running Agent 1 + supporting fetches in parallel...")
+const [agent1Result, allExercises, coachPolicy, coachUsage, clientUsage] = await Promise.all([
+  callAgent<ProfileAnalysis>(augmentedAgent1Prompt, agent1UserMessage, profileAnalysisSchema, {
+    model: MODEL_HAIKU,
+    cacheSystemPrompt: true,
+  }),
+  getExercisesForAI(),
+  getCoachPolicyFromFn(requestedBy),
+  getCoachRecentUsageFromFn(requestedBy, 60),
+  request.client_id ? getClientRecentUsageFromFn(request.client_id, 90) : Promise.resolve(new Map<string, number>()),
+])
+tokenUsage.agent1 = agent1Result.tokens_used
+console.log(
+  `[orchestrator:sync] Agent 1 complete. Tokens: ${agent1Result.tokens_used}. Coach policy: ${coachPolicy ? "loaded" : "none"}. Coach usage entries: ${coachUsage.size}. Client usage entries: ${clientUsage.size}.`,
+)
 ```
 
 - [ ] **Step 3: Inject coach policy into Agent 1 user message (BEFORE Agent 1 call)**
@@ -1749,38 +1823,41 @@ The `agent1UserMessage` is currently built elsewhere. Find where `coachInstructi
 Find the line (near where `coachInstructionsSection` is defined, likely around line 250–275) and replace:
 
 ```typescript
-    const coachInstructionsSection = buildCoachInstructionsSection(request.additional_instructions)
+const coachInstructionsSection = buildCoachInstructionsSection(request.additional_instructions)
 ```
 
 with:
 
 ```typescript
-    const policyInstructions = formatCoachPolicyAsInstructions(coachPolicy)
-    const coachInstructionsSection = buildCoachInstructionsSection(
-      [request.additional_instructions, policyInstructions].filter(Boolean).join("\n\n")
-    )
+const policyInstructions = formatCoachPolicyAsInstructions(coachPolicy)
+const coachInstructionsSection = buildCoachInstructionsSection(
+  [request.additional_instructions, policyInstructions].filter(Boolean).join("\n\n"),
+)
 ```
 
 Note: `coachPolicy` is not yet in scope at this point — we fetched it in parallel with Agent 1. If the current structure requires the instructions BEFORE Agent 1 is called, restructure to fetch coach policy FIRST (sequential), then do Agent 1 + usage + exercises in parallel. Acceptable restructure:
 
 ```typescript
-    // Fetch policy first (needed for Agent 1 message)
-    const coachPolicy = await getCoachPolicyFromFn(requestedBy)
+// Fetch policy first (needed for Agent 1 message)
+const coachPolicy = await getCoachPolicyFromFn(requestedBy)
 
-    const policyInstructions = formatCoachPolicyAsInstructions(coachPolicy)
-    const coachInstructionsSection = buildCoachInstructionsSection(
-      [request.additional_instructions, policyInstructions].filter(Boolean).join("\n\n")
-    )
+const policyInstructions = formatCoachPolicyAsInstructions(coachPolicy)
+const coachInstructionsSection = buildCoachInstructionsSection(
+  [request.additional_instructions, policyInstructions].filter(Boolean).join("\n\n"),
+)
 
-    // ... existing agent1UserMessage construction ...
+// ... existing agent1UserMessage construction ...
 
-    // Agent 1 + supporting fetches in parallel
-    const [agent1Result, allExercises, coachUsage, clientUsage] = await Promise.all([
-      callAgent<ProfileAnalysis>(augmentedAgent1Prompt, agent1UserMessage, profileAnalysisSchema, { model: MODEL_HAIKU, cacheSystemPrompt: true }),
-      getExercisesForAI(),
-      getCoachRecentUsageFromFn(requestedBy, 60),
-      request.client_id ? getClientRecentUsageFromFn(request.client_id, 90) : Promise.resolve(new Map<string, number>()),
-    ])
+// Agent 1 + supporting fetches in parallel
+const [agent1Result, allExercises, coachUsage, clientUsage] = await Promise.all([
+  callAgent<ProfileAnalysis>(augmentedAgent1Prompt, agent1UserMessage, profileAnalysisSchema, {
+    model: MODEL_HAIKU,
+    cacheSystemPrompt: true,
+  }),
+  getExercisesForAI(),
+  getCoachRecentUsageFromFn(requestedBy, 60),
+  request.client_id ? getClientRecentUsageFromFn(request.client_id, 90) : Promise.resolve(new Map<string, number>()),
+])
 ```
 
 - [ ] **Step 4: Replace `filterByDifficultyLevel` call with `filterByProgressionPhase` per week**
@@ -1788,9 +1865,9 @@ Note: `coachPolicy` is not yet in scope at this point — we fetched it in paral
 Find the block around line 312–317:
 
 ```typescript
-    const clientDifficultyLevel = profile?.experience_level ?? (request.ignore_profile ? "elite" : "beginner")
-    let compressed = filterByDifficultyLevel(poolFiltered, clientDifficultyLevel)
-    if (assessmentContext) compressed = filterByDifficultyScore(compressed, assessmentContext.maxDifficultyScore)
+const clientDifficultyLevel = profile?.experience_level ?? (request.ignore_profile ? "elite" : "beginner")
+let compressed = filterByDifficultyLevel(poolFiltered, clientDifficultyLevel)
+if (assessmentContext) compressed = filterByDifficultyScore(compressed, assessmentContext.maxDifficultyScore)
 ```
 
 Keep this as the BASE filter (it still provides the hard exclusion at the top-level library — the progression-phase filter runs per week inside the Agent 3 loop). The base filter now uses the stricter new `filterByDifficultyLevel`.
@@ -1800,9 +1877,9 @@ THEN, in the Agent 3 week-by-week loop (around line 398, inside `for (const week
 Find where `exerciseLibrary` is passed to the agent3 user message (around line 448) and just before that, scope the library for this week:
 
 ```typescript
-      // Per-week progression filter: may tighten library for early weeks
-      const thisWeekLibrary = filterByProgressionPhase(filtered, clientDifficultySync, weekNum)
-      const thisWeekLibraryText = formatExerciseLibrary(thisWeekLibrary)
+// Per-week progression filter: may tighten library for early weeks
+const thisWeekLibrary = filterByProgressionPhase(filtered, clientDifficultySync, weekNum)
+const thisWeekLibraryText = formatExerciseLibrary(thisWeekLibrary)
 ```
 
 Then replace `${exerciseLibrary}` in the agent3UserMessage template with `${thisWeekLibraryText}` and `filtered.length` with `thisWeekLibrary.length` in the message text.
@@ -1812,15 +1889,29 @@ Then replace `${exerciseLibrary}` in the agent3UserMessage template with `${this
 Find the semantic filter call (around line 375–377):
 
 ```typescript
-    try { filtered = await semanticFilterExercises(compressed, skeleton, availableEquipment, analysis, { poolActive }) }
-    catch { filtered = scoreAndFilterExercises(compressed, skeleton, availableEquipment, analysis, { poolActive }) }
+try {
+  filtered = await semanticFilterExercises(compressed, skeleton, availableEquipment, analysis, { poolActive })
+} catch {
+  filtered = scoreAndFilterExercises(compressed, skeleton, availableEquipment, analysis, { poolActive })
+}
 ```
 
 Replace with:
 
 ```typescript
-    try { filtered = await semanticFilterExercises(compressed, skeleton, availableEquipment, analysis, { poolActive, coachUsage, clientUsage }) }
-    catch { filtered = scoreAndFilterExercises(compressed, skeleton, availableEquipment, analysis, { poolActive, coachUsage, clientUsage }) }
+try {
+  filtered = await semanticFilterExercises(compressed, skeleton, availableEquipment, analysis, {
+    poolActive,
+    coachUsage,
+    clientUsage,
+  })
+} catch {
+  filtered = scoreAndFilterExercises(compressed, skeleton, availableEquipment, analysis, {
+    poolActive,
+    coachUsage,
+    clientUsage,
+  })
+}
 ```
 
 - [ ] **Step 6: Add skeleton + assignment validation to the retry loop**
@@ -1828,30 +1919,30 @@ Replace with:
 Inside the week-by-week loop, find where `weekValidation` is constructed after `validateProgram` (around line 472). Keep the existing call. Right after it, add technique and ceiling validation:
 
 ```typescript
-          // NEW: technique_plan validation (skeleton-level, run once per week)
-          const skelCheck = validateSkeletonAgainstAnalysis(weekSkeletonPayload as ProgramSkeleton, analysis)
-          if (!skelCheck.ok) {
-            for (const v of skelCheck.violations) {
-              weekValidation.issues.push({ type: "error", category: "technique_plan_violation", message: v })
-            }
-            weekValidation.pass = false
-          }
+// NEW: technique_plan validation (skeleton-level, run once per week)
+const skelCheck = validateSkeletonAgainstAnalysis(weekSkeletonPayload as ProgramSkeleton, analysis)
+if (!skelCheck.ok) {
+  for (const v of skelCheck.violations) {
+    weekValidation.issues.push({ type: "error", category: "technique_plan_violation", message: v })
+  }
+  weekValidation.pass = false
+}
 
-          // NEW: difficulty_ceiling validation
-          const slotInWeek = new Map<string, number>()
-          for (const day of weekSkeleton.days) for (const slot of day.slots) slotInWeek.set(slot.slot_id, weekNum)
-          const ceilingCheck = validateAssignmentAgainstCeiling(
-            weekAssignment,
-            analysis.difficulty_ceiling,
-            slotInWeek,
-            compressed.map((e) => ({ id: e.id, difficulty: e.difficulty, difficulty_score: e.difficulty_score }))
-          )
-          if (!ceilingCheck.ok) {
-            for (const v of ceilingCheck.violations) {
-              weekValidation.issues.push({ type: "error", category: "difficulty_ceiling_violation", message: v })
-            }
-            weekValidation.pass = false
-          }
+// NEW: difficulty_ceiling validation
+const slotInWeek = new Map<string, number>()
+for (const day of weekSkeleton.days) for (const slot of day.slots) slotInWeek.set(slot.slot_id, weekNum)
+const ceilingCheck = validateAssignmentAgainstCeiling(
+  weekAssignment,
+  analysis.difficulty_ceiling,
+  slotInWeek,
+  compressed.map((e) => ({ id: e.id, difficulty: e.difficulty, difficulty_score: e.difficulty_score })),
+)
+if (!ceilingCheck.ok) {
+  for (const v of ceilingCheck.violations) {
+    weekValidation.issues.push({ type: "error", category: "difficulty_ceiling_violation", message: v })
+  }
+  weekValidation.pass = false
+}
 ```
 
 - [ ] **Step 7: Record exercise usage after successful generation**
@@ -1859,41 +1950,44 @@ Inside the week-by-week loop, find where `weekValidation` is constructed after `
 Find the section near the end of the orchestrator where the program is created (around line 554–580 — `deriveProgramCategory`, `bulkAddExercisesToProgram`, etc.). After the program has been successfully created and saved (after `bulkAddExercisesToProgram` completes), insert:
 
 ```typescript
-    // Record exercise usage for future variety enforcement
-    if (programId) {
-      const usageRows = completedWeeksSync.flatMap((w) =>
-        w.assignments.map((a) => {
-          // Derive day_number from the slot's day in the skeleton
-          const slotInfo = slotLookups.slotToDay?.get(a.slot_id)
-          return {
-            exercise_id: a.exercise_id,
-            week_number: w.week_number,
-            day_number: slotInfo?.day_of_week ?? 1,
-          }
-        })
-      )
-      recordUsageFromFn({
-        coach_id: requestedBy,
-        client_id: request.client_id ?? null,
-        program_id: programId,
-        rows: usageRows,
-      }).catch((e) => console.warn("[orchestrator:sync] recordUsage failed (non-blocking):", e instanceof Error ? e.message : e))
-    }
+// Record exercise usage for future variety enforcement
+if (programId) {
+  const usageRows = completedWeeksSync.flatMap((w) =>
+    w.assignments.map((a) => {
+      // Derive day_number from the slot's day in the skeleton
+      const slotInfo = slotLookups.slotToDay?.get(a.slot_id)
+      return {
+        exercise_id: a.exercise_id,
+        week_number: w.week_number,
+        day_number: slotInfo?.day_of_week ?? 1,
+      }
+    }),
+  )
+  recordUsageFromFn({
+    coach_id: requestedBy,
+    client_id: request.client_id ?? null,
+    program_id: programId,
+    rows: usageRows,
+  }).catch((e) =>
+    console.warn("[orchestrator:sync] recordUsage failed (non-blocking):", e instanceof Error ? e.message : e),
+  )
+}
 ```
 
 Note: `slotLookups` is produced by `buildSlotLookups(skeleton)` already used in the orchestrator — find where that's called and ensure `slotToDay` is exposed. If not, construct the mapping inline:
 
 ```typescript
-      const slotToDayMap = new Map<string, number>()
-      for (const week of skeleton.weeks) for (const day of week.days) for (const slot of day.slots) slotToDayMap.set(slot.slot_id, day.day_of_week)
+const slotToDayMap = new Map<string, number>()
+for (const week of skeleton.weeks)
+  for (const day of week.days) for (const slot of day.slots) slotToDayMap.set(slot.slot_id, day.day_of_week)
 
-      const usageRows = completedWeeksSync.flatMap((w) =>
-        w.assignments.map((a) => ({
-          exercise_id: a.exercise_id,
-          week_number: w.week_number,
-          day_number: slotToDayMap.get(a.slot_id) ?? 1,
-        }))
-      )
+const usageRows = completedWeeksSync.flatMap((w) =>
+  w.assignments.map((a) => ({
+    exercise_id: a.exercise_id,
+    week_number: w.week_number,
+    day_number: slotToDayMap.get(a.slot_id) ?? 1,
+  })),
+)
 ```
 
 - [ ] **Step 8: Type check and run existing tests**
@@ -1929,6 +2023,7 @@ git commit -m "Wire orchestrator to new policy, history, and schema validators
 ## Task 8: Admin UI for coach AI policy
 
 **Files:**
+
 - Create: `app/(admin)/admin/settings/ai-policy/page.tsx`
 - Create: `app/api/admin/ai-policy/route.ts`
 - Create: `components/admin/ai-policy-form.tsx`
@@ -1945,8 +2040,17 @@ import { getCoachPolicy, upsertCoachPolicy } from "@/lib/db/coach-ai-policy"
 import { z } from "zod"
 
 const TECHNIQUES = [
-  "straight_set","superset","dropset","giant_set","circuit",
-  "rest_pause","amrap","cluster_set","complex","emom","wave_loading",
+  "straight_set",
+  "superset",
+  "dropset",
+  "giant_set",
+  "circuit",
+  "rest_pause",
+  "amrap",
+  "cluster_set",
+  "complex",
+  "emom",
+  "wave_loading",
 ] as const
 
 const policyInputSchema = z.object({
@@ -2164,6 +2268,7 @@ Run: `npm run dev` (ignore the startup; just confirm no immediate TS errors).
 Run: `npm run dev`
 Navigate: `http://localhost:3050/admin/settings/ai-policy` (logged in as admin)
 Verify:
+
 - Page loads
 - Checking "circuit" in disallowed disables it in preferred
 - Saving shows success toast
@@ -2191,6 +2296,7 @@ instructions."
 ## Task 9: End-to-end integration tests
 
 **Files:**
+
 - Create: `functions/src/ai/__tests__/integration.test.ts`
 
 - [ ] **Step 1: Write integration tests**
@@ -2205,13 +2311,22 @@ import { validateSkeletonAgainstAnalysis, profileAnalysisSchema } from "../schem
 import type { CompressedExercise, ProgramSkeleton, ProfileAnalysis } from "../types.js"
 
 // Synthetic exercise library with known properties
-const mkEx = (id: string, difficulty: string, score: number, pattern: string, muscles: string[]): CompressedExercise => ({
-  id, name: id, difficulty, difficulty_score: score,
-  movement_pattern: pattern, primary_muscles: muscles, secondary_muscles: [],
-  equipment_required: [], is_bodyweight: false,
-  training_intent: ["build"], sport_tags: [], joints_loaded: [],
-  plane_of_motion: ["sagittal"],
-} as unknown as CompressedExercise)
+const mkEx = (id: string, difficulty: string, score: number, pattern: string, muscles: string[]): CompressedExercise =>
+  ({
+    id,
+    name: id,
+    difficulty,
+    difficulty_score: score,
+    movement_pattern: pattern,
+    primary_muscles: muscles,
+    secondary_muscles: [],
+    equipment_required: [],
+    is_bodyweight: false,
+    training_intent: ["build"],
+    sport_tags: [],
+    joints_loaded: [],
+    plane_of_motion: ["sagittal"],
+  }) as unknown as CompressedExercise
 
 describe("Integration: full filter pipeline for two beginners", () => {
   const library: CompressedExercise[] = [
@@ -2232,7 +2347,9 @@ describe("Integration: full filter pipeline for two beginners", () => {
     const client1Usage = new Map<string, number>() // fresh client 1
     const client2Usage = new Map<string, number>() // fresh client 2
     const coachUsageAfterClient1 = new Map<string, number>([
-      ["squat-bw", 1], ["squat-goblet", 1], ["push-dbbp", 1],
+      ["squat-bw", 1],
+      ["squat-goblet", 1],
+      ["push-dbbp", 1],
     ])
 
     // Simulate scoring for client 1 (fresh coach history)
@@ -2240,14 +2357,20 @@ describe("Integration: full filter pipeline for two beginners", () => {
       id: ex.id,
       score: applyUsagePenalty(50, ex.id, new Map(), client1Usage),
     }))
-    const top1 = [...scores1].sort((a, b) => b.score - a.score).slice(0, 4).map((s) => s.id)
+    const top1 = [...scores1]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 4)
+      .map((s) => s.id)
 
     // Client 2: coach has now used client 1's top picks — they should be down-ranked
     const scores2 = library.map((ex) => ({
       id: ex.id,
       score: applyUsagePenalty(50, ex.id, coachUsageAfterClient1, client2Usage),
     }))
-    const top2 = [...scores2].sort((a, b) => b.score - a.score).slice(0, 4).map((s) => s.id)
+    const top2 = [...scores2]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 4)
+      .map((s) => s.id)
 
     const overlap = top1.filter((id) => top2.includes(id))
     expect(overlap.length).toBeLessThan(top1.length / 2) // less than 50% overlap
@@ -2258,9 +2381,9 @@ describe("Integration: progression across weeks for a beginner", () => {
   const library: CompressedExercise[] = [
     mkEx("b1", "beginner", 2, "squat", ["quads"]),
     mkEx("b2", "beginner", 3, "squat", ["quads"]),
-    mkEx("i-easy", "intermediate", 4, "squat", ["quads"]),  // eligible week 3+
-    mkEx("i-hard", "intermediate", 7, "squat", ["quads"]),  // never eligible for beginner
-    mkEx("a", "advanced", 8, "squat", ["quads"]),           // never eligible for beginner
+    mkEx("i-easy", "intermediate", 4, "squat", ["quads"]), // eligible week 3+
+    mkEx("i-hard", "intermediate", 7, "squat", ["quads"]), // never eligible for beginner
+    mkEx("a", "advanced", 8, "squat", ["quads"]), // never eligible for beginner
   ]
 
   it("week 1: no intermediate or advanced for a beginner", () => {
@@ -2287,7 +2410,14 @@ describe("Integration: technique_plan enforcement in skeleton validation", () =>
     recommended_periodization: "linear",
     volume_targets: [{ muscle_group: "quads", sets_per_week: 10, priority: "high" }],
     exercise_constraints: [],
-    session_structure: { warm_up_minutes: 5, main_work_minutes: 45, cool_down_minutes: 5, total_exercises: 5, compound_count: 2, isolation_count: 3 },
+    session_structure: {
+      warm_up_minutes: 5,
+      main_work_minutes: 45,
+      cool_down_minutes: 5,
+      total_exercises: 5,
+      compound_count: 2,
+      isolation_count: 3,
+    },
     training_age_category: "novice",
     technique_plan: [
       { week_number: 1, allowed_techniques: ["straight_set"], default_technique: "straight_set", notes: "" },
@@ -2305,21 +2435,44 @@ describe("Integration: technique_plan enforcement in skeleton validation", () =>
   }) as ProfileAnalysis
 
   const baseSlot = {
-    slot_id: "s1", role: "primary_compound" as const, movement_pattern: "squat" as const,
-    target_muscles: ["quads"], sets: 3, reps: "8-10", rest_seconds: 120,
-    rpe_target: null, tempo: null, group_tag: null, intensity_pct: null,
+    slot_id: "s1",
+    role: "primary_compound" as const,
+    movement_pattern: "squat" as const,
+    target_muscles: ["quads"],
+    sets: 3,
+    reps: "8-10",
+    rest_seconds: 120,
+    rpe_target: null,
+    tempo: null,
+    group_tag: null,
+    intensity_pct: null,
   }
 
   it("rejects a novice beginner skeleton that uses supersets anywhere", () => {
     const skeleton: ProgramSkeleton = {
       weeks: [1, 2, 3, 4].map((wk) => ({
-        week_number: wk, phase: "A", intensity_modifier: "moderate",
-        days: [{
-          day_of_week: 1, label: "Mon", focus: "legs",
-          slots: [{ ...baseSlot, slot_id: `s-${wk}`, technique: wk === 3 ? "superset" as const : "straight_set" as const }],
-        }],
+        week_number: wk,
+        phase: "A",
+        intensity_modifier: "moderate",
+        days: [
+          {
+            day_of_week: 1,
+            label: "Mon",
+            focus: "legs",
+            slots: [
+              {
+                ...baseSlot,
+                slot_id: `s-${wk}`,
+                technique: wk === 3 ? ("superset" as const) : ("straight_set" as const),
+              },
+            ],
+          },
+        ],
       })),
-      split_type: "full_body", periodization: "linear", total_sessions: 4, notes: "",
+      split_type: "full_body",
+      periodization: "linear",
+      total_sessions: 4,
+      notes: "",
     }
     const result = validateSkeletonAgainstAnalysis(skeleton, analysis)
     expect(result.ok).toBe(false)
@@ -2329,13 +2482,22 @@ describe("Integration: technique_plan enforcement in skeleton validation", () =>
   it("passes when every week uses only straight_set", () => {
     const skeleton: ProgramSkeleton = {
       weeks: [1, 2, 3, 4].map((wk) => ({
-        week_number: wk, phase: "A", intensity_modifier: "moderate",
-        days: [{
-          day_of_week: 1, label: "Mon", focus: "legs",
-          slots: [{ ...baseSlot, slot_id: `s-${wk}`, technique: "straight_set" as const }],
-        }],
+        week_number: wk,
+        phase: "A",
+        intensity_modifier: "moderate",
+        days: [
+          {
+            day_of_week: 1,
+            label: "Mon",
+            focus: "legs",
+            slots: [{ ...baseSlot, slot_id: `s-${wk}`, technique: "straight_set" as const }],
+          },
+        ],
       })),
-      split_type: "full_body", periodization: "linear", total_sessions: 4, notes: "",
+      split_type: "full_body",
+      periodization: "linear",
+      total_sessions: 4,
+      notes: "",
     }
     const result = validateSkeletonAgainstAnalysis(skeleton, analysis)
     expect(result.ok).toBe(true)

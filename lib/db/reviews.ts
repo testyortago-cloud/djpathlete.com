@@ -20,39 +20,22 @@ export async function getReviews(published?: boolean) {
   return data
 }
 
-export async function createReview(
-  review: Omit<Review, "id" | "created_at" | "updated_at">
-) {
+export async function createReview(review: Omit<Review, "id" | "created_at" | "updated_at">) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("reviews")
-    .insert(review)
-    .select()
-    .single()
+  const { data, error } = await supabase.from("reviews").insert(review).select().single()
   if (error) throw error
   return data as Review
 }
 
-export async function updateReview(
-  id: string,
-  updates: Partial<Omit<Review, "id" | "created_at">>
-) {
+export async function updateReview(id: string, updates: Partial<Omit<Review, "id" | "created_at">>) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("reviews")
-    .update(updates)
-    .eq("id", id)
-    .select()
-    .single()
+  const { data, error } = await supabase.from("reviews").update(updates).eq("id", id).select().single()
   if (error) throw error
   return data as Review
 }
 
 export async function deleteReview(id: string) {
   const supabase = getClient()
-  const { error } = await supabase
-    .from("reviews")
-    .delete()
-    .eq("id", id)
+  const { error } = await supabase.from("reviews").delete().eq("id", id)
   if (error) throw error
 }

@@ -8,11 +8,7 @@ import type { DateRange } from "react-day-picker"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 
 const PRESETS = [
   { label: "1M", value: 1 },
@@ -35,20 +31,14 @@ function formatShortDate(date: Date): string {
   })
 }
 
-export function DateRangePicker({
-  currentMonths,
-  customFrom,
-  customTo,
-}: DateRangePickerProps) {
+export function DateRangePicker({ currentMonths, customFrom, customTo }: DateRangePickerProps) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const isCustom = Boolean(customFrom && customTo)
 
   const [calendarRange, setCalendarRange] = useState<DateRange | undefined>(
-    customFrom && customTo
-      ? { from: new Date(customFrom), to: new Date(customTo) }
-      : undefined
+    customFrom && customTo ? { from: new Date(customFrom), to: new Date(customTo) } : undefined,
   )
   const [open, setOpen] = useState(false)
 
@@ -95,7 +85,7 @@ export function DateRangePicker({
               "px-3 py-1 text-xs font-medium rounded-md transition-colors",
               !isCustom && currentMonths === r.value
                 ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:text-foreground hover:bg-surface"
+                : "text-muted-foreground hover:text-foreground hover:bg-surface",
             )}
           >
             {r.label}
@@ -110,7 +100,7 @@ export function DateRangePicker({
             size="sm"
             className={cn(
               "gap-1.5 text-xs",
-              isCustom && "bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground"
+              isCustom && "bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
             )}
           >
             <CalendarIcon className="size-3.5" />
@@ -137,11 +127,7 @@ export function DateRangePicker({
             >
               Cancel
             </Button>
-            <Button
-              size="sm"
-              onClick={handleApplyCustom}
-              disabled={!calendarRange?.from || !calendarRange?.to}
-            >
+            <Button size="sm" onClick={handleApplyCustom} disabled={!calendarRange?.from || !calendarRange?.to}>
               Apply
             </Button>
           </div>

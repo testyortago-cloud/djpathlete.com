@@ -20,10 +20,7 @@ export async function POST(request: Request) {
 
     if (!parsed.success) {
       console.error("Workout log validation failed:", parsed.error.flatten())
-      return NextResponse.json(
-        { error: "Invalid data", details: parsed.error.flatten() },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Invalid data", details: parsed.error.flatten() }, { status: 400 })
     }
 
     const userId = session.user.id
@@ -97,10 +94,7 @@ export async function POST(request: Request) {
         // Update the logged progress record to mark is_pr = true and pr_type
         try {
           const supabase = createServiceRoleClient()
-          await supabase
-            .from("exercise_progress")
-            .update({ is_pr: true, pr_type: pr.prType })
-            .eq("id", record.id)
+          await supabase.from("exercise_progress").update({ is_pr: true, pr_type: pr.prType }).eq("id", record.id)
         } catch (updateError) {
           console.error("Failed to update PR flag on progress record:", updateError)
         }
@@ -108,10 +102,7 @@ export async function POST(request: Request) {
     }
 
     // 3. Check streak and workout milestones
-    const [streak, allProgress] = await Promise.all([
-      getWorkoutStreak(userId),
-      getProgress(userId),
-    ])
+    const [streak, allProgress] = await Promise.all([getWorkoutStreak(userId), getProgress(userId)])
 
     const streakResult = await checkStreakMilestones(userId, streak)
     const workoutResult = await checkWorkoutMilestones(userId, allProgress.length)
@@ -147,15 +138,9 @@ export async function POST(request: Request) {
     }
 
     // 4. Return the logged record AND any new achievements
-    return NextResponse.json(
-      { progress: record, achievements: newAchievements },
-      { status: 201 }
-    )
+    return NextResponse.json({ progress: record, achievements: newAchievements }, { status: 201 })
   } catch (error) {
     console.error("Workout log POST error:", error)
-    return NextResponse.json(
-      { error: "Failed to log workout" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to log workout" }, { status: 500 })
   }
 }

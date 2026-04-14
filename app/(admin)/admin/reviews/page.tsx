@@ -7,10 +7,7 @@ import type { ReviewWithSource } from "@/components/admin/ReviewList"
 export const metadata = { title: "Reviews" }
 
 export default async function ReviewsPage() {
-  const [appReviews, googleReviews] = await Promise.all([
-    getReviews(),
-    fetchGoogleReviews(),
-  ])
+  const [appReviews, googleReviews] = await Promise.all([getReviews(), fetchGoogleReviews()])
 
   const appWithSource: ReviewWithSource[] = appReviews.map((r) => ({
     ...r,
@@ -18,17 +15,13 @@ export default async function ReviewsPage() {
   }))
 
   const reviews: ReviewWithSource[] = [...appWithSource, ...googleReviews].sort(
-    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
   )
 
   const totalReviews = reviews.length
   const publishedCount = reviews.filter((r) => r.is_published).length
   const averageRating =
-    totalReviews > 0
-      ? (
-          reviews.reduce((sum, r) => sum + r.rating, 0) / totalReviews
-        ).toFixed(1)
-      : "0.0"
+    totalReviews > 0 ? (reviews.reduce((sum, r) => sum + r.rating, 0) / totalReviews).toFixed(1) : "0.0"
 
   return (
     <div>
@@ -43,9 +36,7 @@ export default async function ReviewsPage() {
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Total Reviews</p>
-              <p className="text-2xl font-semibold text-foreground">
-                {totalReviews}
-              </p>
+              <p className="text-2xl font-semibold text-foreground">{totalReviews}</p>
             </div>
           </div>
         </div>
@@ -56,9 +47,7 @@ export default async function ReviewsPage() {
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Published</p>
-              <p className="text-2xl font-semibold text-foreground">
-                {publishedCount}
-              </p>
+              <p className="text-2xl font-semibold text-foreground">{publishedCount}</p>
             </div>
           </div>
         </div>
@@ -71,9 +60,7 @@ export default async function ReviewsPage() {
               <p className="text-sm text-muted-foreground">Average Rating</p>
               <p className="text-2xl font-semibold text-foreground">
                 {averageRating}
-                <span className="text-sm text-muted-foreground font-normal">
-                  /5
-                </span>
+                <span className="text-sm text-muted-foreground font-normal">/5</span>
               </p>
             </div>
           </div>

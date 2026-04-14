@@ -20,10 +20,7 @@ interface PerformanceAssessmentListProps {
   counts: { draft: number; in_progress: number; completed: number; total: number }
 }
 
-const statusConfig: Record<
-  PerformanceAssessmentStatus,
-  { label: string; icon: typeof Clock; className: string }
-> = {
+const statusConfig: Record<PerformanceAssessmentStatus, { label: string; icon: typeof Clock; className: string }> = {
   draft: { label: "Draft", icon: FileEdit, className: "bg-gray-100 text-gray-700" },
   in_progress: { label: "In Progress", icon: MessageSquare, className: "bg-blue-100 text-blue-700" },
   completed: { label: "Completed", icon: CheckCircle2, className: "bg-green-100 text-green-700" },
@@ -36,10 +33,7 @@ const tabs: { label: string; value: PerformanceAssessmentStatus | "all" }[] = [
   { label: "Completed", value: "completed" },
 ]
 
-export function PerformanceAssessmentList({
-  assessments,
-  counts,
-}: PerformanceAssessmentListProps) {
+export function PerformanceAssessmentList({ assessments, counts }: PerformanceAssessmentListProps) {
   const [filter, setFilter] = useState<PerformanceAssessmentStatus | "all">("all")
   const [clientFilter, setClientFilter] = useState<string>("all")
   const [dateFrom, setDateFrom] = useState("")
@@ -59,9 +53,7 @@ export function PerformanceAssessmentList({
   const hasFilters = clientFilter !== "all" || dateFrom || dateTo
 
   const filtered = useMemo(() => {
-    let result = filter === "all"
-      ? assessments
-      : assessments.filter((a) => a.status === filter)
+    let result = filter === "all" ? assessments : assessments.filter((a) => a.status === filter)
 
     if (clientFilter !== "all") {
       result = result.filter((a) => {
@@ -96,19 +88,14 @@ export function PerformanceAssessmentList({
       <div className="flex items-center justify-between">
         <div className="flex gap-1">
           {tabs.map((tab) => {
-            const count =
-              tab.value === "all"
-                ? counts.total
-                : counts[tab.value as PerformanceAssessmentStatus]
+            const count = tab.value === "all" ? counts.total : counts[tab.value as PerformanceAssessmentStatus]
             return (
               <button
                 key={tab.value}
                 onClick={() => setFilter(tab.value)}
                 className={cn(
                   "px-3 py-1.5 text-xs font-medium rounded-lg transition-colors",
-                  filter === tab.value
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:bg-muted"
+                  filter === tab.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted",
                 )}
               >
                 {tab.label} ({count})
@@ -135,7 +122,9 @@ export function PerformanceAssessmentList({
           >
             <option value="all">All Clients</option>
             {clients.map((name) => (
-              <option key={name} value={name}>{name}</option>
+              <option key={name} value={name}>
+                {name}
+              </option>
             ))}
           </select>
         </div>
@@ -173,14 +162,11 @@ export function PerformanceAssessmentList({
 
       {/* List */}
       {filtered.length === 0 ? (
-        <div className="text-center py-12 text-sm text-muted-foreground">
-          No assessments found.
-        </div>
+        <div className="text-center py-12 text-sm text-muted-foreground">No assessments found.</div>
       ) : (
         <div className="space-y-2">
           {filtered.map((assessment) => {
-            const config =
-              statusConfig[assessment.status as PerformanceAssessmentStatus]
+            const config = statusConfig[assessment.status as PerformanceAssessmentStatus]
             const StatusIcon = config.icon
             const clientName = assessment.users
               ? `${assessment.users.first_name} ${assessment.users.last_name}`
@@ -193,9 +179,7 @@ export function PerformanceAssessmentList({
                 className="flex items-center justify-between p-4 bg-white rounded-xl border border-border hover:border-primary/20 transition-colors"
               >
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-foreground truncate">
-                    {assessment.title}
-                  </p>
+                  <p className="text-sm font-medium text-foreground truncate">{assessment.title}</p>
                   <p className="text-xs text-muted-foreground mt-0.5">
                     {clientName} &middot;{" "}
                     {new Date(assessment.created_at).toLocaleDateString("en-US", {
@@ -208,7 +192,7 @@ export function PerformanceAssessmentList({
                 <span
                   className={cn(
                     "inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full shrink-0 ml-3",
-                    config.className
+                    config.className,
                   )}
                 >
                   <StatusIcon className="size-3.5" />

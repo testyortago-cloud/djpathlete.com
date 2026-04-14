@@ -1,12 +1,6 @@
 import { z } from "zod"
 
-export const SERVICE_TYPES = [
-  "in_person",
-  "online",
-  "assessment",
-  "clinic",
-  "camp",
-] as const
+export const SERVICE_TYPES = ["in_person", "online", "assessment", "clinic", "camp"] as const
 
 export type ServiceType = (typeof SERVICE_TYPES)[number]
 
@@ -19,10 +13,7 @@ export const SERVICE_LABELS: Record<ServiceType, string> = {
 }
 
 export const inquiryFormSchema = z.object({
-  name: z
-    .string()
-    .min(2, "Name must be at least 2 characters")
-    .max(100, "Name must be under 100 characters"),
+  name: z.string().min(2, "Name must be at least 2 characters").max(100, "Name must be under 100 characters"),
   email: z.string().email("Please enter a valid email address"),
   phone: z
     .string()

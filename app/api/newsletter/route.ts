@@ -13,10 +13,7 @@ export async function POST(request: Request) {
     const result = newsletterSchema.safeParse(body)
 
     if (!result.success) {
-      return NextResponse.json(
-        { error: "Invalid email address" },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Invalid email address" }, { status: 400 })
     }
 
     // Save to Supabase (primary — this is the source of truth)
@@ -34,9 +31,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("[Newsletter] Subscription failed:", error)
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

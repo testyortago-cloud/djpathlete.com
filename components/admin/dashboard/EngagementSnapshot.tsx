@@ -7,12 +7,7 @@ interface EngagementSnapshotProps {
   avgRPE: number | null
 }
 
-export function EngagementSnapshot({
-  workoutsThisWeek,
-  activeStreaks,
-  prsThisMonth,
-  avgRPE,
-}: EngagementSnapshotProps) {
+export function EngagementSnapshot({ workoutsThisWeek, activeStreaks, prsThisMonth, avgRPE }: EngagementSnapshotProps) {
   const items = [
     {
       icon: <Dumbbell className="size-4 text-primary" />,
@@ -44,24 +39,16 @@ export function EngagementSnapshot({
     <div className="bg-white rounded-xl border border-border shadow-sm h-full">
       <div className="flex items-center gap-2 p-4 border-b border-border">
         <Dumbbell className="size-4 text-primary" />
-        <h2 className="text-sm font-semibold text-primary">
-          Engagement Snapshot
-        </h2>
+        <h2 className="text-sm font-semibold text-primary">Engagement Snapshot</h2>
       </div>
       <div className="grid grid-cols-2 gap-px bg-border">
         {items.map((item) => (
           <div key={item.label} className="bg-white p-3 sm:p-4">
             <div className="flex items-center gap-2 mb-1.5">
-              <div
-                className={`flex size-7 items-center justify-center rounded-md ${item.iconBg}`}
-              >
-                {item.icon}
-              </div>
+              <div className={`flex size-7 items-center justify-center rounded-md ${item.iconBg}`}>{item.icon}</div>
             </div>
             <p className="text-xl sm:text-2xl font-semibold text-primary">{item.value}</p>
-            <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">
-              {item.label}
-            </p>
+            <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">{item.label}</p>
           </div>
         ))}
       </div>

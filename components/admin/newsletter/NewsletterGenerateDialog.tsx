@@ -3,13 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { Sparkles, Loader2, AlertCircle } from "lucide-react"
 import { toast } from "sonner"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { useAiJob } from "@/hooks/use-ai-job"
 import { cn } from "@/lib/utils"
 
@@ -57,7 +51,7 @@ export function NewsletterGenerateDialog({
 
   // Elapsed timer while generating
   useEffect(() => {
-    if (aiJob.status === "processing" || aiJob.status === "pending" && jobId) {
+    if (aiJob.status === "processing" || (aiJob.status === "pending" && jobId)) {
       setElapsed(0)
       timerRef.current = setInterval(() => setElapsed((p) => p + 1), 1000)
     } else {
@@ -172,9 +166,7 @@ export function NewsletterGenerateDialog({
             <AlertCircle className="size-5 text-red-500 shrink-0 mt-0.5" />
             <div>
               <p className="text-sm font-medium text-red-800">Generation failed</p>
-              <p className="text-xs text-red-600 mt-1">
-                {aiJob.error ?? "Something went wrong. Please try again."}
-              </p>
+              <p className="text-xs text-red-600 mt-1">{aiJob.error ?? "Something went wrong. Please try again."}</p>
             </div>
           </div>
         )}
@@ -183,12 +175,8 @@ export function NewsletterGenerateDialog({
         {isGenerating ? (
           <div className="flex flex-col items-center justify-center py-8 gap-3">
             <Loader2 className="size-8 animate-spin text-primary" />
-            <p className="text-sm font-medium text-foreground">
-              Generating your newsletter...
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {elapsed}s elapsed — this usually takes 15-30 seconds
-            </p>
+            <p className="text-sm font-medium text-foreground">Generating your newsletter...</p>
+            <p className="text-xs text-muted-foreground">{elapsed}s elapsed — this usually takes 15-30 seconds</p>
             <button
               type="button"
               onClick={handleCancelJob}
@@ -225,16 +213,12 @@ export function NewsletterGenerateDialog({
                 rows={3}
                 className="w-full px-3 py-2 rounded-lg border border-border bg-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               />
-              <p className="text-xs text-muted-foreground mt-1">
-                {prompt.length}/2000
-              </p>
+              <p className="text-xs text-muted-foreground mt-1">{prompt.length}/2000</p>
             </div>
 
             {/* Tone */}
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1.5">
-                Tone
-              </label>
+              <label className="block text-sm font-medium text-foreground mb-1.5">Tone</label>
               <div className="flex gap-1 bg-surface rounded-lg p-1">
                 {tones.map((t) => (
                   <button
@@ -245,7 +229,7 @@ export function NewsletterGenerateDialog({
                       "flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
                       tone === t.value
                         ? "bg-white text-primary shadow-sm"
-                        : "text-muted-foreground hover:text-foreground"
+                        : "text-muted-foreground hover:text-foreground",
                     )}
                   >
                     {t.label}
@@ -256,9 +240,7 @@ export function NewsletterGenerateDialog({
 
             {/* Length */}
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1.5">
-                Length
-              </label>
+              <label className="block text-sm font-medium text-foreground mb-1.5">Length</label>
               <div className="flex gap-1 bg-surface rounded-lg p-1">
                 {lengths.map((l) => (
                   <button
@@ -269,13 +251,11 @@ export function NewsletterGenerateDialog({
                       "flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
                       length === l.value
                         ? "bg-white text-primary shadow-sm"
-                        : "text-muted-foreground hover:text-foreground"
+                        : "text-muted-foreground hover:text-foreground",
                     )}
                   >
                     {l.label}
-                    <span className="block text-[10px] text-muted-foreground font-normal">
-                      {l.desc}
-                    </span>
+                    <span className="block text-[10px] text-muted-foreground font-normal">{l.desc}</span>
                   </button>
                 ))}
               </div>
@@ -288,11 +268,7 @@ export function NewsletterGenerateDialog({
               disabled={prompt.length < 10 || submitting}
               className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
             >
-              {submitting ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Sparkles className="size-4" />
-              )}
+              {submitting ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
               {hasExistingContent && confirmed ? "Confirm & Generate" : "Generate Newsletter"}
             </button>
           </>

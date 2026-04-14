@@ -4,8 +4,17 @@ import { getCoachPolicy, upsertCoachPolicy } from "@/lib/db/coach-ai-policy"
 import { z } from "zod"
 
 const TECHNIQUES = [
-  "straight_set","superset","dropset","giant_set","circuit",
-  "rest_pause","amrap","cluster_set","complex","emom","wave_loading",
+  "straight_set",
+  "superset",
+  "dropset",
+  "giant_set",
+  "circuit",
+  "rest_pause",
+  "amrap",
+  "cluster_set",
+  "complex",
+  "emom",
+  "wave_loading",
 ] as const
 
 const policyInputSchema = z.object({

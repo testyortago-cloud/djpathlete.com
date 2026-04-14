@@ -3,8 +3,7 @@ import { Clock } from "lucide-react"
 
 export const metadata: Metadata = {
   title: "Coming Soon",
-  description:
-    "Something new is on the way. Stay tuned for exciting updates from DJP Athlete.",
+  description: "Something new is on the way. Stay tuned for exciting updates from DJP Athlete.",
 }
 
 export default function ComingSoonPage() {
@@ -18,9 +17,7 @@ export default function ComingSoonPage() {
         </div>
         <div className="flex items-center justify-center gap-3 mb-4">
           <div className="h-px w-12 bg-accent" />
-          <p className="text-sm font-medium text-accent uppercase tracking-widest">
-            Stay Tuned
-          </p>
+          <p className="text-sm font-medium text-accent uppercase tracking-widest">Stay Tuned</p>
           <div className="h-px w-12 bg-accent" />
         </div>
         <h1 className="text-3xl sm:text-4xl lg:text-5xl font-heading font-semibold text-primary tracking-tight mb-4">

@@ -10,7 +10,15 @@ import { FOOTER_SECTIONS, SOCIAL_LINKS } from "@/lib/constants"
 
 function LinkedinIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z" />
       <rect width="4" height="12" x="2" y="9" />
       <circle cx="4" cy="4" r="2" />
@@ -20,7 +28,15 @@ function LinkedinIcon({ className }: { className?: string }) {
 
 function InstagramIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <rect width="20" height="20" x="2" y="2" rx="5" ry="5" />
       <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
       <line x1="17.5" x2="17.51" y1="6.5" y2="6.5" />
@@ -30,7 +46,15 @@ function InstagramIcon({ className }: { className?: string }) {
 
 function FacebookIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
     </svg>
   )
@@ -101,30 +125,52 @@ export const Footer = ({
                 height={36}
                 className="object-contain"
               />
-              <p className="text-sm leading-5 text-muted-foreground max-w-xs mt-2">
-                {tagline}
-              </p>
+              <p className="text-sm leading-5 text-muted-foreground max-w-xs mt-2">{tagline}</p>
             </div>
 
             {/* Social Links */}
             <div className="flex items-center gap-3 mt-6">
               {socialLinks.linkedin && (
-                <a href={socialLinks.linkedin} className={iconClass} aria-label="LinkedIn" target="_blank" rel="noopener noreferrer">
+                <a
+                  href={socialLinks.linkedin}
+                  className={iconClass}
+                  aria-label="LinkedIn"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
                   <LinkedinIcon className="w-4 h-4" />
                 </a>
               )}
               {socialLinks.instagram && (
-                <a href={socialLinks.instagram} className={iconClass} aria-label="Instagram" target="_blank" rel="noopener noreferrer">
+                <a
+                  href={socialLinks.instagram}
+                  className={iconClass}
+                  aria-label="Instagram"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
                   <InstagramIcon className="w-4 h-4" />
                 </a>
               )}
               {socialLinks.tiktok && (
-                <a href={socialLinks.tiktok} className={iconClass} aria-label="TikTok" target="_blank" rel="noopener noreferrer">
+                <a
+                  href={socialLinks.tiktok}
+                  className={iconClass}
+                  aria-label="TikTok"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
                   <TikTokIcon className="w-4 h-4" />
                 </a>
               )}
               {socialLinks.facebook && (
-                <a href={socialLinks.facebook} className={iconClass} aria-label="Facebook" target="_blank" rel="noopener noreferrer">
+                <a
+                  href={socialLinks.facebook}
+                  className={iconClass}
+                  aria-label="Facebook"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
                   <FacebookIcon className="w-4 h-4" />
                 </a>
               )}
@@ -141,9 +187,7 @@ export const Footer = ({
               transition={{ duration: 0.5, delay: index * 0.1, ease: "easeOut" }}
               className="col-span-1"
             >
-              <h4 className="text-sm font-medium text-primary mb-4 uppercase tracking-wide">
-                {section.title}
-              </h4>
+              <h4 className="text-sm font-medium text-primary mb-4 uppercase tracking-wide">{section.title}</h4>
               <ul className="space-y-3">
                 {section.links.map((link, linkIndex) => (
                   <li key={linkIndex}>
@@ -169,9 +213,7 @@ export const Footer = ({
           className="pt-8 border-t border-border"
         >
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-            <p className="text-sm text-muted-foreground">
-              {copyright}
-            </p>
+            <p className="text-sm text-muted-foreground">{copyright}</p>
           </div>
         </motion.div>
       </div>

@@ -49,6 +49,7 @@ create index if not exists idx_events_stripe_product_id on events (stripe_produc
 ```
 
 **Why:** Phase 2a already has `events.stripe_price_id`. Stripe Price objects are rotated when the price changes (Stripe rule — Prices are immutable), while the Product is stable. Tracking `stripe_product_id` separately lets us:
+
 - Reuse the same Product when archive-and-create-new-price happens (`archiveAndCreateNewPrice` already takes `productId` as input).
 - Mark the Product as inactive on event cancellation.
 - Recover a lost `stripe_price_id` (e.g., after a manual Stripe dashboard edit) by looking up the product and retrieving its active prices.
@@ -162,6 +163,7 @@ Existing file uses `switch (event.type)` + `metadata.type` discriminators (alrea
 **`checkout.session.completed` → new branch when `session.metadata?.type === 'event_signup'`:**
 
 `handleEventSignupCheckout(session)`:
+
 1. `signupId = session.metadata.event_signup_id`. Missing → log + skip.
 2. `const result = await confirmSignup(signupId)`.
 3. If `!result.ok`:
@@ -180,6 +182,7 @@ Existing file uses `switch (event.type)` + `metadata.type` discriminators (alrea
 **`charge.refunded` → new branch checking for event signups:**
 
 `handleEventSignupRefund(charge)`:
+
 1. `paymentIntentId = charge.payment_intent`. Missing → skip.
 2. `const signup = await getEventSignupByPaymentIntent(paymentIntentId)` (new DAL).
 3. Not found → skip (this refund belongs to another flow).
@@ -230,6 +233,7 @@ Re-enable the "Resync with Stripe" button currently disabled in Phase 2a:
 ### `SignupsTable.tsx`
 
 For paid signups, add a small visual indicator:
+
 - A "Paid" badge (small, accent-colored) next to the status badge.
 - When `stripe_payment_intent_id` is set, link to Stripe dashboard:
   ```tsx
@@ -272,11 +276,11 @@ Waitlist (`isFull`) and clinic branches unchanged.
 Current modal POSTs to `/api/events/[id]/signup` and shows in-modal success. Add a paid-flow branch:
 
 ```typescript
-const isPaidFlow =
-  event.type === "camp" && !!event.price_cents && !isWaitlist && !forcedWaitlist
+const isPaidFlow = event.type === "camp" && !!event.price_cents && !isWaitlist && !forcedWaitlist
 ```
 
 When `isPaidFlow`:
+
 - Submit button label: `"Continue to payment"` (instead of "Submit").
 - POST target: `/api/events/[id]/checkout` (instead of `/api/events/[id]/signup`).
 - On `{ sessionUrl }` success → `window.location.href = sessionUrl` (full-page redirect). No in-modal success state.
@@ -368,6 +372,7 @@ Playwright smoke scaffold for `/camps/[slug]` asserting "Book camp — $X" butto
 ## File Inventory
 
 **New files:**
+
 - `supabase/migrations/00063_events_stripe_product_id.sql`
 - `app/api/events/[id]/checkout/route.ts`
 - `app/api/admin/events/[id]/stripe-sync/route.ts`
@@ -377,6 +382,7 @@ Playwright smoke scaffold for `/camps/[slug]` asserting "Book camp — $X" butto
 - `__tests__/api/stripe/webhook-events.test.ts`
 
 **Modified files:**
+
 - `types/database.ts` — `Event.stripe_product_id`
 - `lib/db/events.ts` — `createEvent` / `updateEvent` thread new column
 - `lib/db/event-signups.ts` — 3 new exports + on-read sweep

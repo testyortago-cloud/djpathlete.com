@@ -65,10 +65,7 @@ export function isGHLConfigured(): boolean {
  * Low-level fetch wrapper that prepends the GHL base URL and injects
  * authorization / version headers required by the GHL API v2.
  */
-async function ghlFetch(
-  path: string,
-  options: RequestInit = {}
-): Promise<Response> {
+async function ghlFetch(path: string, options: RequestInit = {}): Promise<Response> {
   const url = `${GHL_BASE_URL}${path}`
 
   const response = await fetch(url, {
@@ -83,9 +80,7 @@ async function ghlFetch(
 
   if (!response.ok) {
     const body = await response.text().catch(() => "unknown")
-    throw new Error(
-      `GHL API error ${response.status} on ${path}: ${body}`
-    )
+    throw new Error(`GHL API error ${response.status} on ${path}: ${body}`)
   }
 
   return response
@@ -98,9 +93,7 @@ async function ghlFetch(
 /**
  * Creates or updates a contact in GHL via the upsert endpoint.
  */
-async function createOrUpdateContact(
-  data: GHLContactData
-): Promise<GHLContact | null> {
+async function createOrUpdateContact(data: GHLContactData): Promise<GHLContact | null> {
   const response = await ghlFetch("/contacts/upsert", {
     method: "POST",
     body: JSON.stringify({
@@ -121,10 +114,7 @@ async function createOrUpdateContact(
 /**
  * Adds a contact to a specific workflow.
  */
-async function addContactToWorkflow(
-  contactId: string,
-  workflowId: string
-): Promise<boolean> {
+async function addContactToWorkflow(contactId: string, workflowId: string): Promise<boolean> {
   await ghlFetch(`/contacts/${contactId}/workflow/${workflowId}`, {
     method: "POST",
   })
@@ -136,10 +126,7 @@ async function addContactToWorkflow(
  * Fires a webhook with an arbitrary JSON payload.
  * Posts directly to the given URL rather than through the GHL API base.
  */
-async function triggerWebhook(
-  webhookUrl: string,
-  data: GHLWebhookData
-): Promise<boolean> {
+async function triggerWebhook(webhookUrl: string, data: GHLWebhookData): Promise<boolean> {
   const response = await fetch(webhookUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -148,9 +135,7 @@ async function triggerWebhook(
 
   if (!response.ok) {
     const body = await response.text().catch(() => "unknown")
-    throw new Error(
-      `Webhook error ${response.status} on ${webhookUrl}: ${body}`
-    )
+    throw new Error(`Webhook error ${response.status} on ${webhookUrl}: ${body}`)
   }
 
   return true
@@ -159,13 +144,10 @@ async function triggerWebhook(
 /**
  * Looks up a contact by email address.
  */
-async function findContactByEmail(
-  email: string
-): Promise<GHLContact | null> {
-  const response = await ghlFetch(
-    `/contacts/lookup?email=${encodeURIComponent(email)}&locationId=${GHL_LOCATION_ID}`,
-    { method: "GET" }
-  )
+async function findContactByEmail(email: string): Promise<GHLContact | null> {
+  const response = await ghlFetch(`/contacts/lookup?email=${encodeURIComponent(email)}&locationId=${GHL_LOCATION_ID}`, {
+    method: "GET",
+  })
 
   const json = (await response.json()) as { contacts?: GHLContact[] }
   return json.contacts?.[0] ?? null
@@ -186,8 +168,7 @@ async function deleteContactById(contactId: string): Promise<boolean> {
 async function fetchAllContacts(tag?: string): Promise<GHLContact[]> {
   const contacts: GHLContact[] = []
   let nextPageUrl: string | null =
-    `/contacts/?locationId=${GHL_LOCATION_ID}&limit=100` +
-    (tag ? `&query=${encodeURIComponent(tag)}` : "")
+    `/contacts/?locationId=${GHL_LOCATION_ID}&limit=100` + (tag ? `&query=${encodeURIComponent(tag)}` : "")
 
   while (nextPageUrl) {
     const response = await ghlFetch(nextPageUrl, { method: "GET" })
@@ -225,9 +206,7 @@ async function fetchAllContacts(tag?: string): Promise<GHLContact[]> {
  * Creates or updates a GHL contact with automatic retry.
  * Returns the contact object on success, or null on any failure.
  */
-export async function ghlCreateContact(
-  data: GHLContactData
-): Promise<GHLContact | null> {
+export async function ghlCreateContact(data: GHLContactData): Promise<GHLContact | null> {
   if (!isGHLConfigured()) {
     console.warn("[GHL] Not configured — skipping createContact")
     return null
@@ -245,10 +224,7 @@ export async function ghlCreateContact(
  * Triggers a GHL workflow for a contact with automatic retry.
  * Returns true on success, false on any failure.
  */
-export async function ghlTriggerWorkflow(
-  contactId: string,
-  workflowId: string
-): Promise<boolean> {
+export async function ghlTriggerWorkflow(contactId: string, workflowId: string): Promise<boolean> {
   if (!isGHLConfigured()) {
     console.warn("[GHL] Not configured — skipping triggerWorkflow")
     return false
@@ -266,10 +242,7 @@ export async function ghlTriggerWorkflow(
  * Sends a webhook payload to the given URL with automatic retry.
  * Returns true on success, false on any failure.
  */
-export async function ghlTriggerWebhook(
-  webhookUrl: string,
-  data: GHLWebhookData
-): Promise<boolean> {
+export async function ghlTriggerWebhook(webhookUrl: string, data: GHLWebhookData): Promise<boolean> {
   try {
     return await withRetry(() => triggerWebhook(webhookUrl, data))
   } catch (error) {

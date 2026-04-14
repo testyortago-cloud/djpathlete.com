@@ -9,23 +9,19 @@ export async function GET(request: NextRequest) {
   try {
     const session = await auth()
     if (!session?.user?.id || session.user.role !== "admin") {
-      return NextResponse.json(
-        { error: "Unauthorized. Admin access required." },
-        { status: 403 }
-      )
+      return NextResponse.json({ error: "Unauthorized. Admin access required." }, { status: 403 })
     }
 
     const { searchParams } = new URL(request.url)
     const feature = searchParams.get("feature") as AiFeature | null
 
-    const [feedback, trends, conversationStats, outcomeStats, weightAccuracy] =
-      await Promise.all([
-        getAggregatedFeedback(feature ?? undefined),
-        getFeedbackTrends(feature ?? undefined),
-        getConversationStats(feature ?? undefined),
-        getAccuracyStats(),
-        getWeightPredictionAccuracy(),
-      ])
+    const [feedback, trends, conversationStats, outcomeStats, weightAccuracy] = await Promise.all([
+      getAggregatedFeedback(feature ?? undefined),
+      getFeedbackTrends(feature ?? undefined),
+      getConversationStats(feature ?? undefined),
+      getAccuracyStats(),
+      getWeightPredictionAccuracy(),
+    ])
 
     return NextResponse.json({
       overview: {
@@ -49,9 +45,6 @@ export async function GET(request: NextRequest) {
     })
   } catch (error) {
     console.error("[AI Insights] Error:", error)
-    return NextResponse.json(
-      { error: "Failed to fetch AI insights." },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to fetch AI insights." }, { status: 500 })
   }
 }

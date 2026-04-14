@@ -35,11 +35,7 @@ for (const file of barrels) {
 }
 
 // --- Step 2: replace the standalone twitter.js icon file ---
-const twitterEsm = path.resolve(
-  __dirname,
-  "..",
-  "node_modules/lucide-react/dist/esm/icons/twitter.js"
-)
+const twitterEsm = path.resolve(__dirname, "..", "node_modules/lucide-react/dist/esm/icons/twitter.js")
 
 if (fs.existsSync(twitterEsm)) {
   const safeContent = [
@@ -55,11 +51,7 @@ if (fs.existsSync(twitterEsm)) {
   console.log("[patch-lucide] Replaced icons/twitter.js with safe re-export")
 }
 
-const twitterCjs = path.resolve(
-  __dirname,
-  "..",
-  "node_modules/lucide-react/dist/cjs/icons/twitter.js"
-)
+const twitterCjs = path.resolve(__dirname, "..", "node_modules/lucide-react/dist/cjs/icons/twitter.js")
 
 if (fs.existsSync(twitterCjs)) {
   const safeContent = [

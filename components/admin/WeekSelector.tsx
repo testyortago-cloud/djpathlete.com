@@ -42,7 +42,9 @@ export function WeekSelector({
             variant={week === selectedWeek ? "default" : "outline"}
             size="sm"
             onClick={() => onSelectWeek(week)}
-            className={isBlank && week !== selectedWeek ? "border-dashed border-muted-foreground/40 text-muted-foreground" : ""}
+            className={
+              isBlank && week !== selectedWeek ? "border-dashed border-muted-foreground/40 text-muted-foreground" : ""
+            }
             title={isBlank ? `Week ${week} (blank)` : `Week ${week}`}
           >
             Week {week}
@@ -50,22 +52,11 @@ export function WeekSelector({
           </Button>
         )
       })}
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={onAddWeek}
-        disabled={isAddingWeek}
-        title="Add a new blank week"
-      >
+      <Button variant="outline" size="sm" onClick={onAddWeek} disabled={isAddingWeek} title="Add a new blank week">
         <Plus className="size-3.5" />
         {isAddingWeek ? "Adding..." : "Add Week"}
       </Button>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={onDuplicateWeek}
-        title="Duplicate this week"
-      >
+      <Button variant="outline" size="sm" onClick={onDuplicateWeek} title="Duplicate this week">
         <Copy className="size-3.5" />
         Duplicate Week
       </Button>
@@ -87,9 +78,10 @@ export function WeekSelector({
           variant="outline"
           size="sm"
           onClick={onGenerateWeek}
-          title={selectedIsBlank
-            ? `AI fill blank Week ${selectedWeek} using prior week logs`
-            : "AI generate the next week based on client performance"
+          title={
+            selectedIsBlank
+              ? `AI fill blank Week ${selectedWeek} using prior week logs`
+              : "AI generate the next week based on client performance"
           }
           className="text-accent border-accent/30 hover:bg-accent/10"
         >

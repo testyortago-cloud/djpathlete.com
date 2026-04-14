@@ -1,13 +1,5 @@
 import type { Metadata } from "next"
-import {
-  ClipboardList,
-  BarChart3,
-  Video,
-  Dumbbell,
-  Heart,
-  ArrowRight,
-  CheckCircle,
-} from "lucide-react"
+import { ClipboardList, BarChart3, Video, Dumbbell, Heart, ArrowRight, CheckCircle } from "lucide-react"
 import Link from "next/link"
 import { JsonLd } from "@/components/shared/JsonLd"
 import { PricingSection } from "@/components/PricingSection"
@@ -87,55 +79,35 @@ const services = [
     title: "Training Plans",
     description:
       "Fully customized programs designed around your sport, schedule, and goals. Periodized for progressive overload and peak performance timing.",
-    features: [
-      "Sport-specific programming",
-      "Weekly plan updates",
-      "Progressive overload tracking",
-    ],
+    features: ["Sport-specific programming", "Weekly plan updates", "Progressive overload tracking"],
   },
   {
     icon: BarChart3,
     title: "Performance Tracking",
     description:
       "Monitor your progress with detailed metrics. Track strength, speed, endurance, and sport-specific benchmarks over time.",
-    features: [
-      "Real-time progress dashboards",
-      "Benchmark comparisons",
-      "Trend analysis and insights",
-    ],
+    features: ["Real-time progress dashboards", "Benchmark comparisons", "Trend analysis and insights"],
   },
   {
     icon: Video,
     title: "Video Analysis",
     description:
       "Upload training footage and receive frame-by-frame coaching feedback. Identify technical improvements and track form over time.",
-    features: [
-      "Frame-by-frame breakdown",
-      "Annotated coach feedback",
-      "Before/after comparisons",
-    ],
+    features: ["Frame-by-frame breakdown", "Annotated coach feedback", "Before/after comparisons"],
   },
   {
     icon: Dumbbell,
     title: "Strength & Conditioning",
     description:
       "Build the raw power and endurance your sport demands. Science-backed S&C programs designed for athletic transfer.",
-    features: [
-      "Olympic lifting coaching",
-      "Plyometric training",
-      "Sport-specific conditioning",
-    ],
+    features: ["Olympic lifting coaching", "Plyometric training", "Sport-specific conditioning"],
   },
   {
     icon: Heart,
     title: "Recovery & Mobility",
     description:
       "Optimize rest and flexibility to prevent injuries and extend your career. Active recovery protocols and mobility routines.",
-    features: [
-      "Active recovery protocols",
-      "Mobility programming",
-      "Sleep and stress management",
-    ],
+    features: ["Active recovery protocols", "Mobility programming", "Sleep and stress management"],
   },
 ]
 
@@ -184,9 +156,8 @@ export default function ServicesPage() {
             <br className="hidden sm:block" /> serious athletes.
           </h1>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-            From personalized training plans to video analysis and recovery
-            programming — everything you need to train smarter, recover faster,
-            and perform at your best.
+            From personalized training plans to video analysis and recovery programming — everything you need to train
+            smarter, recover faster, and perform at your best.
           </p>
         </div>
       </section>
@@ -206,18 +177,11 @@ export default function ServicesPage() {
                   <div className="flex size-12 items-center justify-center rounded-xl bg-primary/10 mb-4">
                     <Icon className="size-6 text-primary" />
                   </div>
-                  <h3 className="text-lg font-semibold text-primary mb-2">
-                    {service.title}
-                  </h3>
-                  <p className="text-sm text-muted-foreground leading-relaxed mb-4">
-                    {service.description}
-                  </p>
+                  <h3 className="text-lg font-semibold text-primary mb-2">{service.title}</h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed mb-4">{service.description}</p>
                   <ul className="space-y-2">
                     {service.features.map((feature) => (
-                      <li
-                        key={feature}
-                        className="flex items-center gap-2 text-sm text-foreground"
-                      >
+                      <li key={feature} className="flex items-center gap-2 text-sm text-foreground">
                         <CheckCircle className="size-4 text-accent shrink-0" />
                         {feature}
                       </li>
@@ -243,23 +207,16 @@ export default function ServicesPage() {
               How It Works
             </h2>
             <p className="text-muted-foreground max-w-2xl mx-auto">
-              Getting started is simple. Here is what to expect when you join
-              DJP Athlete.
+              Getting started is simple. Here is what to expect when you join DJP Athlete.
             </p>
           </div>
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-8">
             {processSteps.map((step) => (
               <div key={step.step} className="relative">
-                <div className="text-4xl font-heading font-bold text-accent/30 mb-3">
-                  {step.step}
-                </div>
-                <h3 className="text-base font-semibold text-primary mb-2">
-                  {step.title}
-                </h3>
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  {step.description}
-                </p>
+                <div className="text-4xl font-heading font-bold text-accent/30 mb-3">{step.step}</div>
+                <h3 className="text-base font-semibold text-primary mb-2">{step.title}</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">{step.description}</p>
               </div>
             ))}
           </div>
@@ -281,8 +238,7 @@ export default function ServicesPage() {
             Ready to elevate your game?
           </h2>
           <p className="text-lg text-muted-foreground mb-8">
-            Book a free consultation and let us build your path to peak
-            performance.
+            Book a free consultation and let us build your path to peak performance.
           </p>
           <Link
             href="/contact"

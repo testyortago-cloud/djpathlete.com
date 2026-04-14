@@ -9,12 +9,7 @@ import { EngagementSnapshot } from "./EngagementSnapshot"
 import { ActivityFeed, type ActivityItem } from "./ActivityFeed"
 import { HorizontalBar } from "@/components/admin/analytics/HorizontalBar"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
-import {
-  Users,
-  Dumbbell,
-  DollarSign,
-  ClipboardCheck,
-} from "lucide-react"
+import { Users, Dumbbell, DollarSign, ClipboardCheck } from "lucide-react"
 
 interface RecentClient {
   id: string
@@ -97,9 +92,7 @@ export function DashboardContent({
           <h1 className="text-2xl font-semibold text-primary">
             {getGreeting()}, {adminFirstName}
           </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Here&apos;s what&apos;s happening with your business.
-          </p>
+          <p className="text-sm text-muted-foreground mt-0.5">Here&apos;s what&apos;s happening with your business.</p>
         </div>
         <QuickActions />
       </div>
@@ -139,11 +132,7 @@ export function DashboardContent({
 
       {/* Row 3: Revenue Chart + Engagement Snapshot */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        <RevenueChart
-          data={revenueByMonth}
-          thisMonth={thisMonthRevenue}
-          lastMonth={lastMonthRevenue}
-        />
+        <RevenueChart data={revenueByMonth} thisMonth={thisMonthRevenue} lastMonth={lastMonthRevenue} />
         <EngagementSnapshot {...engagement} />
       </div>
 
@@ -154,9 +143,7 @@ export function DashboardContent({
         {/* Recent Clients */}
         <div className="bg-white rounded-xl border border-border shadow-sm">
           <div className="flex items-center justify-between p-4 border-b border-border">
-            <h2 className="text-sm font-semibold text-primary">
-              Recent Clients
-            </h2>
+            <h2 className="text-sm font-semibold text-primary">Recent Clients</h2>
             <Link
               href="/admin/clients"
               className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors"
@@ -167,9 +154,7 @@ export function DashboardContent({
           </div>
 
           {recentClients.length === 0 ? (
-            <div className="p-8 text-center text-sm text-muted-foreground">
-              No clients have signed up yet.
-            </div>
+            <div className="p-8 text-center text-sm text-muted-foreground">No clients have signed up yet.</div>
           ) : (
             <div className="divide-y divide-border">
               {recentClients.map((client) => (
@@ -189,23 +174,17 @@ export function DashboardContent({
                     <p className="text-sm font-medium text-foreground truncate">
                       {client.firstName} {client.lastName}
                     </p>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {client.email}
-                    </p>
+                    <p className="text-xs text-muted-foreground truncate">{client.email}</p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <span
                       className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
-                        client.status === "active"
-                          ? "bg-success/10 text-success"
-                          : "bg-muted text-muted-foreground"
+                        client.status === "active" ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"
                       }`}
                     >
                       {client.status}
                     </span>
-                    <p className="text-xs text-muted-foreground">
-                      {formatDate(client.createdAt)}
-                    </p>
+                    <p className="text-xs text-muted-foreground">{formatDate(client.createdAt)}</p>
                   </div>
                 </div>
               ))}
@@ -219,9 +198,7 @@ export function DashboardContent({
         <div className="flex items-center justify-between p-4 border-b border-border">
           <div className="flex items-center gap-2">
             <Dumbbell className="size-4 text-primary" />
-            <h2 className="text-sm font-semibold text-primary">
-              Top Programs
-            </h2>
+            <h2 className="text-sm font-semibold text-primary">Top Programs</h2>
           </div>
           <Link
             href="/admin/analytics?tab=programs"
@@ -233,9 +210,7 @@ export function DashboardContent({
         </div>
         <HorizontalBar
           items={programPopularity}
-          formatValue={(v) =>
-            `${v} ${v === 1 ? "assignment" : "assignments"}`
-          }
+          formatValue={(v) => `${v} ${v === 1 ? "assignment" : "assignments"}`}
           emptyMessage="No program assignments yet."
         />
       </div>

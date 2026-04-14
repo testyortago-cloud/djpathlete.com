@@ -1,12 +1,5 @@
 import type { Metadata } from "next"
-import {
-  Database,
-  Shield,
-  GraduationCap,
-  RotateCcw,
-  Users,
-  ArrowRight,
-} from "lucide-react"
+import { Database, Shield, GraduationCap, RotateCcw, Users, ArrowRight } from "lucide-react"
 import Link from "next/link"
 import { JsonLd } from "@/components/shared/JsonLd"
 import { FadeIn } from "@/components/shared/FadeIn"
@@ -47,36 +40,31 @@ const resources = [
   {
     icon: Database,
     title: "Performance Database",
-    description:
-      "A comprehensive collection of performance metrics, benchmarks, and testing protocols.",
+    description: "A comprehensive collection of performance metrics, benchmarks, and testing protocols.",
     status: "coming-soon" as const,
   },
   {
     icon: Shield,
     title: "Comeback Code",
-    description:
-      "A structured framework for athletes returning from injury to full competitive readiness.",
+    description: "A structured framework for athletes returning from injury to full competitive readiness.",
     status: "coming-soon" as const,
   },
   {
     icon: GraduationCap,
     title: "Workshop Clinic",
-    description:
-      "Hands-on clinical workshops for coaches, practitioners, and performance staff.",
+    description: "Hands-on clinical workshops for coaches, practitioners, and performance staff.",
     status: "coming-soon" as const,
   },
   {
     icon: RotateCcw,
     title: "Rotational Reboot",
-    description:
-      "A specialized program addressing rotational power development for racket and throwing sports.",
+    description: "A specialized program addressing rotational power development for racket and throwing sports.",
     status: "coming-soon" as const,
   },
   {
     icon: Users,
     title: "Youth Athlete Transition",
-    description:
-      "Evidence-based developmental pathways for young athletes progressing through competitive stages.",
+    description: "Evidence-based developmental pathways for young athletes progressing through competitive stages.",
     status: "coming-soon" as const,
   },
 ]
@@ -89,25 +77,21 @@ export default function ResourcesPage() {
       {/* Hero */}
       <section className="pt-32 pb-16 lg:pt-40 lg:pb-24 px-4 sm:px-8">
         <FadeIn>
-        <div className="max-w-5xl mx-auto text-center">
-          <div className="flex items-center justify-center gap-3 mb-4">
-            <div className="h-px w-8 bg-accent" />
-            <p className="text-sm font-medium text-accent uppercase tracking-widest">
-              Resources
+          <div className="max-w-5xl mx-auto text-center">
+            <div className="flex items-center justify-center gap-3 mb-4">
+              <div className="h-px w-8 bg-accent" />
+              <p className="text-sm font-medium text-accent uppercase tracking-widest">Resources</p>
+              <div className="h-px w-8 bg-accent" />
+            </div>
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-heading font-semibold text-primary tracking-tight mb-6">
+              Tools, frameworks, and programs
+              <br className="hidden sm:block" /> built from two decades of high-performance experience.
+            </h1>
+            <p className="text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
+              Each resource has been developed through years of working with elite athletes and coaches. Explore what is
+              available and what is on the way.
             </p>
-            <div className="h-px w-8 bg-accent" />
           </div>
-          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-heading font-semibold text-primary tracking-tight mb-6">
-            Tools, frameworks, and programs
-            <br className="hidden sm:block" /> built from two decades of
-            high-performance experience.
-          </h1>
-          <p className="text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-            Each resource has been developed through years of working with elite
-            athletes and coaches. Explore what is available and what is on the
-            way.
-          </p>
-        </div>
         </FadeIn>
       </section>
 
@@ -118,7 +102,7 @@ export default function ResourcesPage() {
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
             {resources.slice(0, 3).map((resource, i) => (
               <FadeIn key={resource.title} delay={i * 0.1}>
-              <ResourceCard resource={resource} />
+                <ResourceCard resource={resource} />
               </FadeIn>
             ))}
           </div>
@@ -127,7 +111,7 @@ export default function ResourcesPage() {
           <div className="grid md:grid-cols-2 gap-6 max-w-4xl mx-auto">
             {resources.slice(3).map((resource, i) => (
               <FadeIn key={resource.title} delay={i * 0.1}>
-              <ResourceCard resource={resource} />
+                <ResourceCard resource={resource} />
               </FadeIn>
             ))}
           </div>
@@ -137,40 +121,34 @@ export default function ResourcesPage() {
       {/* CTA */}
       <section className="py-16 lg:py-24 px-4 sm:px-8">
         <FadeIn>
-        <div className="max-w-3xl mx-auto text-center">
-          <div className="flex items-center justify-center gap-3 mb-4">
-            <div className="h-px w-8 bg-accent" />
-            <p className="text-sm font-medium text-accent uppercase tracking-widest">
-              Get Started
+          <div className="max-w-3xl mx-auto text-center">
+            <div className="flex items-center justify-center gap-3 mb-4">
+              <div className="h-px w-8 bg-accent" />
+              <p className="text-sm font-medium text-accent uppercase tracking-widest">Get Started</p>
+              <div className="h-px w-8 bg-accent" />
+            </div>
+            <h2 className="text-2xl sm:text-3xl font-heading font-semibold text-primary tracking-tight mb-4">
+              Want early access?
+            </h2>
+            <p className="text-lg text-muted-foreground mb-8">
+              Get in touch to be notified when new resources launch, or to discuss how these frameworks can support your
+              athletes.
             </p>
-            <div className="h-px w-8 bg-accent" />
+            <Link
+              href="/contact"
+              className="group inline-flex items-center gap-2 bg-primary text-primary-foreground px-8 py-4 rounded-full text-sm font-semibold hover:bg-primary/90 transition-all hover:shadow-md"
+            >
+              Get in Touch
+              <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
+            </Link>
           </div>
-          <h2 className="text-2xl sm:text-3xl font-heading font-semibold text-primary tracking-tight mb-4">
-            Want early access?
-          </h2>
-          <p className="text-lg text-muted-foreground mb-8">
-            Get in touch to be notified when new resources launch, or to discuss
-            how these frameworks can support your athletes.
-          </p>
-          <Link
-            href="/contact"
-            className="group inline-flex items-center gap-2 bg-primary text-primary-foreground px-8 py-4 rounded-full text-sm font-semibold hover:bg-primary/90 transition-all hover:shadow-md"
-          >
-            Get in Touch
-            <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
-          </Link>
-        </div>
         </FadeIn>
       </section>
     </>
   )
 }
 
-function ResourceCard({
-  resource,
-}: {
-  resource: (typeof resources)[number]
-}) {
+function ResourceCard({ resource }: { resource: (typeof resources)[number] }) {
   const Icon = resource.icon
 
   return (
@@ -194,12 +172,8 @@ function ResourceCard({
           </Link>
         )}
       </div>
-      <h3 className="text-lg font-heading font-semibold text-primary mb-2">
-        {resource.title}
-      </h3>
-      <p className="text-sm text-muted-foreground leading-relaxed">
-        {resource.description}
-      </p>
+      <h3 className="text-lg font-heading font-semibold text-primary mb-2">{resource.title}</h3>
+      <p className="text-sm text-muted-foreground leading-relaxed">{resource.description}</p>
     </div>
   )
 }

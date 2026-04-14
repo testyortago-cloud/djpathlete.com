@@ -54,7 +54,7 @@ export async function handleProgramGeneration(jobId: string): Promise<void> {
       input.requestedBy,
       input.assessmentContext,
       input.logId,
-      jobId
+      jobId,
     )
 
     const resultPayload = {

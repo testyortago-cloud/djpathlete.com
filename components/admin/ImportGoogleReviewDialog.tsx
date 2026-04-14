@@ -27,10 +27,7 @@ interface ImportGoogleReviewDialogProps {
   onOpenChange: (open: boolean) => void
 }
 
-export function ImportGoogleReviewDialog({
-  open,
-  onOpenChange,
-}: ImportGoogleReviewDialogProps) {
+export function ImportGoogleReviewDialog({ open, onOpenChange }: ImportGoogleReviewDialogProps) {
   const router = useRouter()
   const dialogRef = useRef<HTMLDivElement>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -117,7 +114,13 @@ export function ImportGoogleReviewDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) tour.close(); onOpenChange(o) }}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) tour.close()
+        onOpenChange(o)
+      }}
+    >
       <DialogContent ref={dialogRef} className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <div className="flex items-center gap-2">
@@ -125,8 +128,7 @@ export function ImportGoogleReviewDialog({
             <TourButton onClick={tour.start} />
           </div>
           <DialogDescription>
-            Add Google Business Profile reviews manually. Use the single form or
-            paste a JSON array for bulk import.
+            Add Google Business Profile reviews manually. Use the single form or paste a JSON array for bulk import.
           </DialogDescription>
         </DialogHeader>
 
@@ -158,17 +160,10 @@ export function ImportGoogleReviewDialog({
                 <Label>Rating *</Label>
                 <div id="review-rating" className="flex gap-1">
                   {Array.from({ length: 5 }, (_, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => setRating(i + 1)}
-                      className="p-0.5"
-                    >
+                    <button key={i} type="button" onClick={() => setRating(i + 1)} className="p-0.5">
                       <Star
                         className={`size-6 transition-colors ${
-                          i < rating
-                            ? "fill-warning text-warning"
-                            : "fill-none text-muted-foreground/40"
+                          i < rating ? "fill-warning text-warning" : "fill-none text-muted-foreground/40"
                         }`}
                       />
                     </button>
@@ -189,21 +184,11 @@ export function ImportGoogleReviewDialog({
 
               <div className="space-y-2">
                 <Label htmlFor="review_date">Review Date</Label>
-                <Input
-                  id="review_date"
-                  name="review_date"
-                  type="date"
-                  disabled={isSubmitting}
-                />
+                <Input id="review_date" name="review_date" type="date" disabled={isSubmitting} />
               </div>
 
               <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => onOpenChange(false)}
-                  disabled={isSubmitting}
-                >
+                <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
                   Cancel
                 </Button>
                 <Button type="submit" disabled={isSubmitting}>
@@ -242,19 +227,13 @@ export function ImportGoogleReviewDialog({
                   required
                 />
                 <p className="text-xs text-muted-foreground">
-                  Each review needs: <code>reviewer_name</code>,{" "}
-                  <code>rating</code> (1-5), <code>review_date</code>.{" "}
+                  Each review needs: <code>reviewer_name</code>, <code>rating</code> (1-5), <code>review_date</code>.{" "}
                   <code>comment</code> is optional.
                 </p>
               </div>
 
               <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => onOpenChange(false)}
-                  disabled={isSubmitting}
-                >
+                <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
                   Cancel
                 </Button>
                 <Button type="submit" disabled={isSubmitting}>

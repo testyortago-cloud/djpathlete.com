@@ -13,21 +13,14 @@ interface AccountInfoFormProps {
   initialEmail: string
 }
 
-export function AccountInfoForm({
-  initialFirstName,
-  initialLastName,
-  initialEmail,
-}: AccountInfoFormProps) {
+export function AccountInfoForm({ initialFirstName, initialLastName, initialEmail }: AccountInfoFormProps) {
   const { update } = useSession()
   const [firstName, setFirstName] = useState(initialFirstName)
   const [lastName, setLastName] = useState(initialLastName)
   const [email, setEmail] = useState(initialEmail)
   const [pending, setPending] = useState(false)
 
-  const hasChanges =
-    firstName !== initialFirstName ||
-    lastName !== initialLastName ||
-    email !== initialEmail
+  const hasChanges = firstName !== initialFirstName || lastName !== initialLastName || email !== initialEmail
 
   async function handleSave() {
     if (!hasChanges) return
@@ -64,30 +57,17 @@ export function AccountInfoForm({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="account-first-name">First Name</Label>
-          <Input
-            id="account-first-name"
-            value={firstName}
-            onChange={(e) => setFirstName(e.target.value)}
-          />
+          <Input id="account-first-name" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
         </div>
 
         <div className="space-y-2">
           <Label htmlFor="account-last-name">Last Name</Label>
-          <Input
-            id="account-last-name"
-            value={lastName}
-            onChange={(e) => setLastName(e.target.value)}
-          />
+          <Input id="account-last-name" value={lastName} onChange={(e) => setLastName(e.target.value)} />
         </div>
 
         <div className="space-y-2 sm:col-span-2">
           <Label htmlFor="account-email">Email</Label>
-          <Input
-            id="account-email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
+          <Input id="account-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
         </div>
       </div>
 

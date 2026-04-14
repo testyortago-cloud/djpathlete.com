@@ -15,7 +15,7 @@ export async function POST(request: Request) {
       console.error("[API programs POST] Validation failed:", result.error.flatten().fieldErrors)
       return NextResponse.json(
         { error: "Invalid form data", details: result.error.flatten().fieldErrors },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
@@ -59,9 +59,6 @@ export async function POST(request: Request) {
     return NextResponse.json(program, { status: 201 })
   } catch (err) {
     console.error("[API programs POST] Error:", err)
-    return NextResponse.json(
-      { error: "Failed to create program. Please try again." },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to create program. Please try again." }, { status: 500 })
   }
 }

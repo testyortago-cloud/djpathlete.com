@@ -14,10 +14,7 @@ export async function GET(request: Request) {
     const customName = searchParams.get("custom_name")
 
     if (!exerciseId && !customName) {
-      return NextResponse.json(
-        { error: "exercise_id or custom_name is required" },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "exercise_id or custom_name is required" }, { status: 400 })
     }
 
     const history = await getExerciseResultHistory(session.user.id, {
@@ -28,9 +25,6 @@ export async function GET(request: Request) {
     return NextResponse.json(history)
   } catch (error) {
     console.error("Client assessment results GET error:", error)
-    return NextResponse.json(
-      { error: "Failed to fetch results" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to fetch results" }, { status: 500 })
   }
 }

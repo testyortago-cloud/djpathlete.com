@@ -2,10 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { createServiceRoleClient } from "@/lib/supabase"
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
     if (!session?.user?.id || session.user.role !== "admin") {
@@ -24,27 +21,18 @@ export async function PATCH(
         .eq("id", id)
       if (error) throw error
     } else if (body.action === "resubscribe") {
-      const { error } = await supabase
-        .from("newsletter_subscribers")
-        .update({ unsubscribed_at: null })
-        .eq("id", id)
+      const { error } = await supabase.from("newsletter_subscribers").update({ unsubscribed_at: null }).eq("id", id)
       if (error) throw error
     }
 
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("[Subscriber PATCH] Error:", error)
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
 
-export async function DELETE(
-  _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
     if (!session?.user?.id || session.user.role !== "admin") {
@@ -54,18 +42,12 @@ export async function DELETE(
     const { id } = await params
     const supabase = createServiceRoleClient()
 
-    const { error } = await supabase
-      .from("newsletter_subscribers")
-      .delete()
-      .eq("id", id)
+    const { error } = await supabase.from("newsletter_subscribers").delete().eq("id", id)
     if (error) throw error
 
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("[Subscriber DELETE] Error:", error)
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

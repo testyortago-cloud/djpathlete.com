@@ -15,10 +15,7 @@ export async function POST(request: Request) {
     const result = resetPasswordSchema.safeParse(body)
 
     if (!result.success) {
-      return NextResponse.json(
-        { error: "Invalid data", details: result.error.flatten().fieldErrors },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Invalid data", details: result.error.flatten().fieldErrors }, { status: 400 })
     }
 
     const { token, password } = result.data
@@ -27,7 +24,7 @@ export async function POST(request: Request) {
     if (!tokenData) {
       return NextResponse.json(
         { error: "This reset link is invalid or has expired. Please request a new one." },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
@@ -38,9 +35,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("Reset password error:", error)
-    return NextResponse.json(
-      { error: "Failed to reset password. Please try again." },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to reset password. Please try again." }, { status: 500 })
   }
 }

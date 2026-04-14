@@ -33,10 +33,7 @@ export default function ProgramDetailLoading() {
           <div className="h-5 w-24 bg-muted animate-pulse rounded-md mb-3" />
           <div className="space-y-2">
             {Array.from({ length: 3 }).map((_, e) => (
-              <div
-                key={e}
-                className="bg-white rounded-xl border border-border p-4 flex items-center gap-3"
-              >
+              <div key={e} className="bg-white rounded-xl border border-border p-4 flex items-center gap-3">
                 <div className="size-6 bg-muted animate-pulse rounded" />
                 <div className="flex-1 space-y-1.5">
                   <div className="h-4 w-36 bg-muted animate-pulse rounded-md" />

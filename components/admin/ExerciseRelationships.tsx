@@ -2,15 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { toast } from "sonner"
-import {
-  Search,
-  Plus,
-  Trash2,
-  ChevronDown,
-  Repeat2,
-  Loader2,
-  X,
-} from "lucide-react"
+import { Search, Plus, Trash2, ChevronDown, Repeat2, Loader2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -28,10 +20,7 @@ interface AlternativeWithExercise {
   exercises: Exercise
 }
 
-export function ExerciseRelationships({
-  exerciseId,
-  exerciseName,
-}: ExerciseRelationshipsProps) {
+export function ExerciseRelationships({ exerciseId, exerciseName }: ExerciseRelationshipsProps) {
   const [alternatives, setAlternatives] = useState<AlternativeWithExercise[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isOpen, setIsOpen] = useState(false)
@@ -45,9 +34,7 @@ export function ExerciseRelationships({
 
   const fetchAlternatives = useCallback(async () => {
     try {
-      const response = await fetch(
-        `/api/admin/exercise-relationships?exerciseId=${exerciseId}`
-      )
+      const response = await fetch(`/api/admin/exercise-relationships?exerciseId=${exerciseId}`)
       if (!response.ok) throw new Error("Failed to fetch")
       const data = await response.json()
       // Only show alternatives
@@ -75,9 +62,7 @@ export function ExerciseRelationships({
     const timer = setTimeout(async () => {
       setIsSearching(true)
       try {
-        const response = await fetch(
-          `/api/admin/exercises?search=${encodeURIComponent(searchQuery)}`
-        )
+        const response = await fetch(`/api/admin/exercises?search=${encodeURIComponent(searchQuery)}`)
         if (!response.ok) throw new Error("Search failed")
         const data = await response.json()
         const existingIds = new Set([exerciseId, ...alternatives.map((a) => a.related_exercise_id)])
@@ -175,9 +160,7 @@ export function ExerciseRelationships({
             </Badge>
           )}
         </span>
-        <ChevronDown
-          className={`size-4 transition-transform ${isOpen ? "rotate-180" : ""}`}
-        />
+        <ChevronDown className={`size-4 transition-transform ${isOpen ? "rotate-180" : ""}`} />
       </button>
 
       {isOpen && (
@@ -188,9 +171,7 @@ export function ExerciseRelationships({
             </div>
           ) : (
             <>
-              <p className="text-xs text-muted-foreground">
-                Exercises clients can swap to during their workouts.
-              </p>
+              <p className="text-xs text-muted-foreground">Exercises clients can swap to during their workouts.</p>
 
               {/* Existing alternatives */}
               {alternatives.length > 0 && (
@@ -207,9 +188,7 @@ export function ExerciseRelationships({
                         type="button"
                         variant="ghost"
                         size="icon-xs"
-                        onClick={() =>
-                          handleDelete(alt.id, alt.exercises?.name ?? "alternative")
-                        }
+                        onClick={() => handleDelete(alt.id, alt.exercises?.name ?? "alternative")}
                         disabled={deletingId === alt.id}
                         className="opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0"
                       >
@@ -225,9 +204,7 @@ export function ExerciseRelationships({
               )}
 
               {alternatives.length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-2">
-                  No alternatives yet.
-                </p>
+                <p className="text-sm text-muted-foreground text-center py-2">No alternatives yet.</p>
               )}
 
               {/* Search to add */}
@@ -272,9 +249,7 @@ export function ExerciseRelationships({
                         disabled={isAdding}
                       >
                         <Plus className="size-3.5 text-primary shrink-0" />
-                        <span className="font-medium truncate flex-1">
-                          {ex.name}
-                        </span>
+                        <span className="font-medium truncate flex-1">{ex.name}</span>
                         <span className="text-xs text-muted-foreground capitalize shrink-0">
                           {Array.isArray(ex.category) ? ex.category.join(", ") : ex.category}
                         </span>
@@ -283,13 +258,9 @@ export function ExerciseRelationships({
                   </div>
                 )}
 
-                {searchQuery.length >= 2 &&
-                  !isSearching &&
-                  searchResults.length === 0 && (
-                    <p className="text-xs text-muted-foreground text-center py-2">
-                      No exercises found.
-                    </p>
-                  )}
+                {searchQuery.length >= 2 && !isSearching && searchResults.length === 0 && (
+                  <p className="text-xs text-muted-foreground text-center py-2">No exercises found.</p>
+                )}
               </div>
             </>
           )}

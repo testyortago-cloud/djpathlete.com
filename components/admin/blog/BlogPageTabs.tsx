@@ -27,9 +27,7 @@ export function BlogPageTabs({ posts }: { posts: BlogPost[] }) {
             onClick={() => setActiveTab(tab.id)}
             className={cn(
               "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
-              activeTab === tab.id
-                ? "bg-white text-primary shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
+              activeTab === tab.id ? "bg-white text-primary shadow-sm" : "text-muted-foreground hover:text-foreground",
             )}
           >
             <tab.icon className="size-3.5" />

@@ -64,19 +64,13 @@ export function showAchievementToast(achievement: {
         className="flex items-center gap-3 rounded-xl border border-border bg-white p-4 shadow-lg"
         onClick={() => toast.dismiss(t)}
       >
-        <div
-          className={`flex shrink-0 items-center justify-center size-10 rounded-full ${iconBg}`}
-        >
+        <div className={`flex shrink-0 items-center justify-center size-10 rounded-full ${iconBg}`}>
           <Icon className={`size-5 ${iconColor}`} strokeWidth={1.5} />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-foreground">
-            {achievement.title}
-          </p>
+          <p className="text-sm font-semibold text-foreground">{achievement.title}</p>
           {achievement.description && (
-            <p className="text-xs text-muted-foreground mt-0.5 truncate">
-              {achievement.description}
-            </p>
+            <p className="text-xs text-muted-foreground mt-0.5 truncate">{achievement.description}</p>
           )}
         </div>
       </div>
@@ -84,6 +78,6 @@ export function showAchievementToast(achievement: {
     {
       duration: 5000,
       position: "top-center",
-    }
+    },
   )
 }

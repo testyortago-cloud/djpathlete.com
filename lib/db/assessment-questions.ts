@@ -27,49 +27,31 @@ export async function getAssessmentQuestions(activeOnly = false) {
 
 export async function getAssessmentQuestionById(id: string) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("assessment_questions")
-    .select("*")
-    .eq("id", id)
-    .single()
+  const { data, error } = await supabase.from("assessment_questions").select("*").eq("id", id).single()
   if (error) throw error
   return data as AssessmentQuestion
 }
 
-export async function createAssessmentQuestion(
-  question: Omit<AssessmentQuestion, "id" | "created_at">
-) {
+export async function createAssessmentQuestion(question: Omit<AssessmentQuestion, "id" | "created_at">) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("assessment_questions")
-    .insert(question)
-    .select()
-    .single()
+  const { data, error } = await supabase.from("assessment_questions").insert(question).select().single()
   if (error) throw error
   return data as AssessmentQuestion
 }
 
 export async function updateAssessmentQuestion(
   id: string,
-  updates: Partial<Omit<AssessmentQuestion, "id" | "created_at">>
+  updates: Partial<Omit<AssessmentQuestion, "id" | "created_at">>,
 ) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("assessment_questions")
-    .update(updates)
-    .eq("id", id)
-    .select()
-    .single()
+  const { data, error } = await supabase.from("assessment_questions").update(updates).eq("id", id).select().single()
   if (error) throw error
   return data as AssessmentQuestion
 }
 
 export async function deleteAssessmentQuestion(id: string) {
   const supabase = getClient()
-  const { error } = await supabase
-    .from("assessment_questions")
-    .delete()
-    .eq("id", id)
+  const { error } = await supabase.from("assessment_questions").delete().eq("id", id)
   if (error) throw error
 }
 
@@ -86,15 +68,9 @@ export async function getAssessmentResults(userId: string) {
   return data as AssessmentResult[]
 }
 
-export async function createAssessmentResult(
-  result: Omit<AssessmentResult, "id" | "created_at">
-) {
+export async function createAssessmentResult(result: Omit<AssessmentResult, "id" | "created_at">) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("assessment_results")
-    .insert(result)
-    .select()
-    .single()
+  const { data, error } = await supabase.from("assessment_results").insert(result).select().single()
   if (error) throw error
   return data as AssessmentResult
 }

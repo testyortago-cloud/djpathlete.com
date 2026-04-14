@@ -4,27 +4,14 @@ import { useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { AnimatePresence, motion } from "framer-motion"
 import { toast } from "sonner"
-import {
-  ChevronLeft,
-  ChevronRight,
-  Check,
-  Loader2,
-  Frown,
-  Smile,
-  Meh,
-  RefreshCw,
-} from "lucide-react"
+import { ChevronLeft, ChevronRight, Check, Loader2, Frown, Smile, Meh, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
 import { cn } from "@/lib/utils"
-import type {
-  AssessmentResult,
-  AssessmentQuestion,
-  AbilityLevel,
-} from "@/types/database"
+import type { AssessmentResult, AssessmentQuestion, AbilityLevel } from "@/types/database"
 
 interface ReassessmentFormProps {
   previousResult: AssessmentResult
@@ -46,27 +33,26 @@ const FEELING_OPTIONS: {
     value: "too_easy",
     label: "Too Easy",
     icon: Frown,
-    color: "border-success/40 bg-success/5 text-success hover:bg-success/10 data-[selected=true]:border-success data-[selected=true]:bg-success/15",
+    color:
+      "border-success/40 bg-success/5 text-success hover:bg-success/10 data-[selected=true]:border-success data-[selected=true]:bg-success/15",
   },
   {
     value: "just_right",
     label: "Just Right",
     icon: Smile,
-    color: "border-primary/40 bg-primary/5 text-primary hover:bg-primary/10 data-[selected=true]:border-primary data-[selected=true]:bg-primary/15",
+    color:
+      "border-primary/40 bg-primary/5 text-primary hover:bg-primary/10 data-[selected=true]:border-primary data-[selected=true]:bg-primary/15",
   },
   {
     value: "too_hard",
     label: "Too Hard",
     icon: Meh,
-    color: "border-destructive/40 bg-destructive/5 text-destructive hover:bg-destructive/10 data-[selected=true]:border-destructive data-[selected=true]:bg-destructive/15",
+    color:
+      "border-destructive/40 bg-destructive/5 text-destructive hover:bg-destructive/10 data-[selected=true]:border-destructive data-[selected=true]:bg-destructive/15",
   },
 ]
 
-export function ReassessmentForm({
-  previousResult,
-  programExercises,
-  assessmentQuestions,
-}: ReassessmentFormProps) {
+export function ReassessmentForm({ previousResult, programExercises, assessmentQuestions }: ReassessmentFormProps) {
   const router = useRouter()
   const [currentSection, setCurrentSection] = useState(0)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -79,18 +65,14 @@ export function ReassessmentForm({
   const [newInjuries, setNewInjuries] = useState("")
 
   // Section 2: Movement Re-Screen answers
-  const [movementAnswers, setMovementAnswers] = useState<
-    Record<string, string>
-  >({})
+  const [movementAnswers, setMovementAnswers] = useState<Record<string, string>>({})
 
   // Filter movement screen questions — only show for patterns where client was beginner or intermediate
   const filteredMovementQuestions = assessmentQuestions.filter((q) => {
     if (q.section !== "movement_screen") return false
     if (!q.movement_pattern) return false
 
-    const previousLevel = previousResult.computed_levels[
-      q.movement_pattern
-    ] as AbilityLevel | undefined
+    const previousLevel = previousResult.computed_levels[q.movement_pattern] as AbilityLevel | undefined
     if (!previousLevel) return true // Show if no previous level
     if (previousLevel === "advanced" || previousLevel === "elite") return false
 
@@ -105,9 +87,7 @@ export function ReassessmentForm({
   const hasMovementQuestions = filteredMovementQuestions.length > 0
   const totalSections = hasMovementQuestions ? TOTAL_SECTIONS : 1
 
-  const progressPercent = Math.round(
-    ((currentSection + 1) / totalSections) * 100
-  )
+  const progressPercent = Math.round(((currentSection + 1) / totalSections) * 100)
 
   const canProceed = useCallback(() => {
     if (currentSection === 0) {
@@ -130,17 +110,13 @@ export function ReassessmentForm({
 
   const toggleExerciseTooEasy = (exerciseId: string) => {
     setExercisesTooEasy((prev) =>
-      prev.includes(exerciseId)
-        ? prev.filter((id) => id !== exerciseId)
-        : [...prev, exerciseId]
+      prev.includes(exerciseId) ? prev.filter((id) => id !== exerciseId) : [...prev, exerciseId],
     )
   }
 
   const toggleExerciseTooHard = (exerciseId: string) => {
     setExercisesTooHard((prev) =>
-      prev.includes(exerciseId)
-        ? prev.filter((id) => id !== exerciseId)
-        : [...prev, exerciseId]
+      prev.includes(exerciseId) ? prev.filter((id) => id !== exerciseId) : [...prev, exerciseId],
     )
   }
 
@@ -179,9 +155,7 @@ export function ReassessmentForm({
       await new Promise((resolve) => setTimeout(resolve, 1500))
       router.push("/client/workouts")
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Something went wrong."
-      )
+      toast.error(error instanceof Error ? error.message : "Something went wrong.")
       setIsSubmitting(false)
       setShowLoading(false)
     }
@@ -197,12 +171,9 @@ export function ReassessmentForm({
         <div className="flex items-center justify-center size-16 rounded-2xl bg-primary/10 mb-6">
           <RefreshCw className="size-8 text-primary animate-spin" strokeWidth={1.5} />
         </div>
-        <h2 className="text-xl font-semibold text-primary mb-2 font-heading">
-          Adjusting your program...
-        </h2>
+        <h2 className="text-xl font-semibold text-primary mb-2 font-heading">Adjusting your program...</h2>
         <p className="text-sm text-muted-foreground max-w-sm">
-          We are analyzing your feedback and updating your training plan. This
-          will only take a moment.
+          We are analyzing your feedback and updating your training plan. This will only take a moment.
         </p>
         <div className="w-48 mt-6">
           <Progress value={75} className="h-1.5" />
@@ -233,9 +204,7 @@ export function ReassessmentForm({
             exit={{ opacity: 0, x: -20 }}
             transition={{ duration: 0.25 }}
           >
-            <h2 className="text-lg font-semibold text-primary mb-1 font-heading">
-              Performance Feedback
-            </h2>
+            <h2 className="text-lg font-semibold text-primary mb-1 font-heading">Performance Feedback</h2>
             <p className="text-sm text-muted-foreground mb-6">
               Tell us how your program went so we can adjust your next one.
             </p>
@@ -257,7 +226,7 @@ export function ReassessmentForm({
                       onClick={() => setOverallFeeling(option.value)}
                       className={cn(
                         "flex flex-col items-center gap-2 rounded-xl border-2 p-4 transition-all",
-                        option.color
+                        option.color,
                       )}
                     >
                       <Icon className="size-7" strokeWidth={1.5} />
@@ -271,9 +240,7 @@ export function ReassessmentForm({
             {/* Exercises Too Easy */}
             {programExercises.length > 0 && (
               <div className="mb-6">
-                <Label className="text-sm font-medium text-foreground mb-3 block">
-                  Which exercises felt too easy?
-                </Label>
+                <Label className="text-sm font-medium text-foreground mb-3 block">Which exercises felt too easy?</Label>
                 <div className="space-y-2 max-h-48 overflow-y-auto rounded-lg border border-border p-3">
                   {programExercises.map((exercise) => (
                     <label
@@ -284,9 +251,7 @@ export function ReassessmentForm({
                         checked={exercisesTooEasy.includes(exercise.id)}
                         onCheckedChange={() => toggleExerciseTooEasy(exercise.id)}
                       />
-                      <span className="text-sm text-foreground">
-                        {exercise.name}
-                      </span>
+                      <span className="text-sm text-foreground">{exercise.name}</span>
                     </label>
                   ))}
                 </div>
@@ -296,9 +261,7 @@ export function ReassessmentForm({
             {/* Exercises Too Hard */}
             {programExercises.length > 0 && (
               <div className="mb-6">
-                <Label className="text-sm font-medium text-foreground mb-3 block">
-                  Which exercises felt too hard?
-                </Label>
+                <Label className="text-sm font-medium text-foreground mb-3 block">Which exercises felt too hard?</Label>
                 <div className="space-y-2 max-h-48 overflow-y-auto rounded-lg border border-border p-3">
                   {programExercises.map((exercise) => (
                     <label
@@ -309,9 +272,7 @@ export function ReassessmentForm({
                         checked={exercisesTooHard.includes(exercise.id)}
                         onCheckedChange={() => toggleExerciseTooHard(exercise.id)}
                       />
-                      <span className="text-sm text-foreground">
-                        {exercise.name}
-                      </span>
+                      <span className="text-sm text-foreground">{exercise.name}</span>
                     </label>
                   ))}
                 </div>
@@ -320,9 +281,7 @@ export function ReassessmentForm({
 
             {/* New Injuries */}
             <div className="mb-6">
-              <Label className="text-sm font-medium text-foreground mb-2 block">
-                Any new injuries or limitations?
-              </Label>
+              <Label className="text-sm font-medium text-foreground mb-2 block">Any new injuries or limitations?</Label>
               <Textarea
                 value={newInjuries}
                 onChange={(e) => setNewInjuries(e.target.value)}
@@ -342,12 +301,8 @@ export function ReassessmentForm({
             exit={{ opacity: 0, x: -20 }}
             transition={{ duration: 0.25 }}
           >
-            <h2 className="text-lg font-semibold text-primary mb-1 font-heading">
-              Movement Re-Screen
-            </h2>
-            <p className="text-sm text-muted-foreground mb-6">
-              Let us check your progress on key movements.
-            </p>
+            <h2 className="text-lg font-semibold text-primary mb-1 font-heading">Movement Re-Screen</h2>
+            <p className="text-sm text-muted-foreground mb-6">Let us check your progress on key movements.</p>
 
             <div className="space-y-4">
               {filteredMovementQuestions.map((question) => (
@@ -355,12 +310,10 @@ export function ReassessmentForm({
                   key={question.id}
                   className={cn(
                     "rounded-xl border border-border p-4",
-                    question.parent_question_id && "ml-4 border-l-2 border-l-primary/30"
+                    question.parent_question_id && "ml-4 border-l-2 border-l-primary/30",
                   )}
                 >
-                  <p className="text-sm font-medium text-foreground mb-3">
-                    {question.question_text}
-                  </p>
+                  <p className="text-sm font-medium text-foreground mb-3">{question.question_text}</p>
                   {question.movement_pattern && (
                     <span className="inline-flex items-center rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[10px] font-medium capitalize mb-3">
                       {question.movement_pattern}
@@ -380,7 +333,7 @@ export function ReassessmentForm({
                           "flex-1 rounded-lg border-2 py-2.5 text-sm font-medium transition-all",
                           movementAnswers[question.id] === "yes"
                             ? "border-success bg-success/10 text-success"
-                            : "border-border text-muted-foreground hover:border-success/40 hover:text-success"
+                            : "border-border text-muted-foreground hover:border-success/40 hover:text-success",
                         )}
                       >
                         Yes
@@ -397,7 +350,7 @@ export function ReassessmentForm({
                           "flex-1 rounded-lg border-2 py-2.5 text-sm font-medium transition-all",
                           movementAnswers[question.id] === "no"
                             ? "border-destructive bg-destructive/10 text-destructive"
-                            : "border-border text-muted-foreground hover:border-destructive/40 hover:text-destructive"
+                            : "border-border text-muted-foreground hover:border-destructive/40 hover:text-destructive",
                         )}
                       >
                         No
@@ -410,8 +363,8 @@ export function ReassessmentForm({
               {filteredMovementQuestions.length === 0 && (
                 <div className="text-center py-8">
                   <p className="text-sm text-muted-foreground">
-                    No movement patterns need re-screening. You are already
-                    performing at an advanced level across all patterns.
+                    No movement patterns need re-screening. You are already performing at an advanced level across all
+                    patterns.
                   </p>
                 </div>
               )}
@@ -422,31 +375,18 @@ export function ReassessmentForm({
 
       {/* Navigation */}
       <div className="flex items-center justify-between mt-8 pt-4 border-t border-border">
-        <Button
-          variant="outline"
-          onClick={handleBack}
-          disabled={currentSection === 0}
-          className="gap-1.5"
-        >
+        <Button variant="outline" onClick={handleBack} disabled={currentSection === 0} className="gap-1.5">
           <ChevronLeft className="size-4" />
           Back
         </Button>
 
         {currentSection < totalSections - 1 ? (
-          <Button
-            onClick={handleNext}
-            disabled={!canProceed()}
-            className="gap-1.5"
-          >
+          <Button onClick={handleNext} disabled={!canProceed()} className="gap-1.5">
             Next
             <ChevronRight className="size-4" />
           </Button>
         ) : (
-          <Button
-            onClick={handleSubmit}
-            disabled={isSubmitting || !canProceed()}
-            className="gap-1.5"
-          >
+          <Button onClick={handleSubmit} disabled={isSubmitting || !canProceed()} className="gap-1.5">
             {isSubmitting ? (
               <>
                 <Loader2 className="size-4 animate-spin" />

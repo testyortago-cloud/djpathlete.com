@@ -28,21 +28,14 @@ export function WaitlistForm() {
         <div className="flex size-12 items-center justify-center rounded-full bg-accent/20">
           <CheckCircle className="size-6 text-accent" />
         </div>
-        <p className="text-lg font-medium text-primary-foreground">
-          You&apos;re on the list.
-        </p>
-        <p className="text-sm text-primary-foreground/70">
-          We will be in touch when early access opens.
-        </p>
+        <p className="text-lg font-medium text-primary-foreground">You&apos;re on the list.</p>
+        <p className="text-sm text-primary-foreground/70">We will be in touch when early access opens.</p>
       </div>
     )
   }
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="flex flex-col sm:flex-row items-center gap-3 w-full max-w-md mx-auto"
-    >
+    <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row items-center gap-3 w-full max-w-md mx-auto">
       <Input
         type="email"
         placeholder="you@example.com"

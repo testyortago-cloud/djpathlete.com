@@ -54,9 +54,7 @@ export function ExerciseLinker({
     <div className="space-y-2 rounded-lg border border-primary/20 bg-primary/5 p-3">
       <div className="flex items-center gap-2">
         <Link2 className="size-4 text-primary" />
-        <span className="text-sm font-medium text-foreground">
-          Link Exercises — {config.label}
-        </span>
+        <span className="text-sm font-medium text-foreground">Link Exercises — {config.label}</span>
       </div>
 
       {isEmpty ? (
@@ -73,9 +71,7 @@ export function ExerciseLinker({
           <div className="space-y-1 max-h-[200px] overflow-y-auto">
             {available.map((pe) => {
               const isSelected = selectedIds.includes(pe.id)
-              const existingGroup = pe.group_tag
-                ? pe.group_tag.charAt(0).toUpperCase()
-                : null
+              const existingGroup = pe.group_tag ? pe.group_tag.charAt(0).toUpperCase() : null
 
               return (
                 <button
@@ -90,18 +86,14 @@ export function ExerciseLinker({
                 >
                   <div
                     className={`flex items-center justify-center size-4.5 rounded border transition-colors ${
-                      isSelected
-                        ? "bg-primary border-primary text-white"
-                        : "border-border bg-white"
+                      isSelected ? "bg-primary border-primary text-white" : "border-border bg-white"
                     }`}
                   >
                     {isSelected && <Check className="size-3" />}
                   </div>
 
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium truncate">
-                      {pe.exercises.name}
-                    </p>
+                    <p className="text-sm font-medium truncate">{pe.exercises.name}</p>
                     {pe.sets && (
                       <p className="text-[11px] text-muted-foreground">
                         {pe.sets} sets{pe.reps ? ` × ${pe.reps}` : ""}

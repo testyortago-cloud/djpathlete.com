@@ -16,9 +16,7 @@ export default async function PaymentsPage() {
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
   const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
 
-  const succeeded = (payments as (Payment & { users: unknown })[]).filter(
-    (p) => p.status === "succeeded"
-  )
+  const succeeded = (payments as (Payment & { users: unknown })[]).filter((p) => p.status === "succeeded")
   const totalRevenue = succeeded.reduce((s, p) => s + p.amount_cents, 0)
 
   const thisMonthRevenue = succeeded
@@ -32,8 +30,7 @@ export default async function PaymentsPage() {
     })
     .reduce((s, p) => s + p.amount_cents, 0)
 
-  const avgTransaction =
-    succeeded.length > 0 ? Math.round(totalRevenue / succeeded.length) : 0
+  const avgTransaction = succeeded.length > 0 ? Math.round(totalRevenue / succeeded.length) : 0
 
   const transactionCount = succeeded.length
 
@@ -62,17 +59,17 @@ export default async function PaymentsPage() {
           </div>
           <div className="flex items-baseline gap-1.5">
             <p className="text-xl sm:text-2xl font-semibold text-primary">{formatCents(thisMonthRevenue)}</p>
-            {lastMonthRevenue > 0 && (() => {
-              const pct = Math.round(
-                ((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100
-              )
-              if (pct === 0) return null
-              return (
-                <span className={`text-xs font-medium ${pct > 0 ? "text-success" : "text-destructive"}`}>
-                  {pct > 0 ? "+" : ""}{pct}%
-                </span>
-              )
-            })()}
+            {lastMonthRevenue > 0 &&
+              (() => {
+                const pct = Math.round(((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100)
+                if (pct === 0) return null
+                return (
+                  <span className={`text-xs font-medium ${pct > 0 ? "text-success" : "text-destructive"}`}>
+                    {pct > 0 ? "+" : ""}
+                    {pct}%
+                  </span>
+                )
+              })()}
           </div>
         </div>
 

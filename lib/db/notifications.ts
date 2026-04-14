@@ -19,25 +19,14 @@ export async function getNotifications(userId: string) {
 
 export async function markAsRead(id: string) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("notifications")
-    .update({ is_read: true })
-    .eq("id", id)
-    .select()
-    .single()
+  const { data, error } = await supabase.from("notifications").update({ is_read: true }).eq("id", id).select().single()
   if (error) throw error
   return data as Notification
 }
 
-export async function createNotification(
-  notification: Omit<Notification, "id" | "created_at">
-) {
+export async function createNotification(notification: Omit<Notification, "id" | "created_at">) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("notifications")
-    .insert(notification)
-    .select()
-    .single()
+  const { data, error } = await supabase.from("notifications").insert(notification).select().single()
   if (error) throw error
   return data as Notification
 }

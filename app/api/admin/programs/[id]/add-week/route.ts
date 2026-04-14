@@ -4,17 +4,11 @@ import { getProgramById, updateProgram } from "@/lib/db/programs"
 import { getActiveAssignmentsForProgram, updateAssignment } from "@/lib/db/assignments"
 import { createWeekAccessBulk } from "@/lib/db/week-access"
 
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
     if (!session?.user?.id || session.user.role !== "admin") {
-      return NextResponse.json(
-        { error: "Unauthorized. Admin access required." },
-        { status: 403 }
-      )
+      return NextResponse.json({ error: "Unauthorized. Admin access required." }, { status: 403 })
     }
 
     const { id } = await params
@@ -40,11 +34,7 @@ export async function POST(
     // Update all active assignments and create week access records
     const activeAssignments = await getActiveAssignmentsForProgram(id)
     if (activeAssignments.length > 0) {
-      await Promise.all(
-        activeAssignments.map((a) =>
-          updateAssignment(a.id, { total_weeks: newDuration })
-        )
-      )
+      await Promise.all(activeAssignments.map((a) => updateAssignment(a.id, { total_weeks: newDuration })))
 
       // Create week access records for the new week
       await createWeekAccessBulk(
@@ -53,10 +43,10 @@ export async function POST(
           week_number: newDuration,
           access_type: accessType,
           price_cents: priceCents,
-          payment_status: accessType === "included" ? "not_required" as const : "pending" as const,
+          payment_status: accessType === "included" ? ("not_required" as const) : ("pending" as const),
           stripe_session_id: null,
           stripe_payment_id: null,
-        }))
+        })),
       )
     }
 
@@ -67,12 +57,9 @@ export async function POST(
         price_cents: priceCents,
         assignments_updated: activeAssignments.length,
       },
-      { status: 200 }
+      { status: 200 },
     )
   } catch {
-    return NextResponse.json(
-      { error: "Failed to add week. Please try again." },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to add week. Please try again." }, { status: 500 })
   }
 }

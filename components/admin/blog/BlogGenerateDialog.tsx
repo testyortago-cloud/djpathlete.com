@@ -3,13 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { Sparkles, Loader2, AlertCircle, ChevronDown, X, Plus, Link, FileText, Upload } from "lucide-react"
 import { toast } from "sonner"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { useAiJob } from "@/hooks/use-ai-job"
 import { cn } from "@/lib/utils"
 
@@ -42,12 +36,7 @@ const lengths = [
   { value: "long", label: "Long", desc: "~1500 words" },
 ] as const
 
-export function BlogGenerateDialog({
-  open,
-  onOpenChange,
-  onGenerated,
-  hasExistingContent,
-}: BlogGenerateDialogProps) {
+export function BlogGenerateDialog({ open, onOpenChange, onGenerated, hasExistingContent }: BlogGenerateDialogProps) {
   const [prompt, setPrompt] = useState("")
   const [tone, setTone] = useState<"professional" | "conversational" | "motivational">("professional")
   const [length, setLength] = useState<"short" | "medium" | "long">("medium")
@@ -67,7 +56,7 @@ export function BlogGenerateDialog({
 
   // Elapsed timer while generating
   useEffect(() => {
-    if (aiJob.status === "processing" || aiJob.status === "pending" && jobId) {
+    if (aiJob.status === "processing" || (aiJob.status === "pending" && jobId)) {
       setElapsed(0)
       timerRef.current = setInterval(() => setElapsed((p) => p + 1), 1000)
     } else {
@@ -311,9 +300,7 @@ export function BlogGenerateDialog({
             <Sparkles className="size-5 text-primary" />
             Generate with AI
           </DialogTitle>
-          <DialogDescription>
-            Describe the blog post you want and AI will generate a complete draft.
-          </DialogDescription>
+          <DialogDescription>Describe the blog post you want and AI will generate a complete draft.</DialogDescription>
         </DialogHeader>
 
         {/* Error state */}
@@ -322,9 +309,7 @@ export function BlogGenerateDialog({
             <AlertCircle className="size-5 text-red-500 shrink-0 mt-0.5" />
             <div>
               <p className="text-sm font-medium text-red-800">Generation failed</p>
-              <p className="text-xs text-red-600 mt-1">
-                {aiJob.error ?? "Something went wrong. Please try again."}
-              </p>
+              <p className="text-xs text-red-600 mt-1">{aiJob.error ?? "Something went wrong. Please try again."}</p>
             </div>
           </div>
         )}
@@ -333,12 +318,8 @@ export function BlogGenerateDialog({
         {isGenerating ? (
           <div className="flex flex-col items-center justify-center py-8 gap-3">
             <Loader2 className="size-8 animate-spin text-primary" />
-            <p className="text-sm font-medium text-foreground">
-              Generating your blog post...
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {elapsed}s elapsed — this usually takes 20-40 seconds
-            </p>
+            <p className="text-sm font-medium text-foreground">Generating your blog post...</p>
+            <p className="text-xs text-muted-foreground">{elapsed}s elapsed — this usually takes 20-40 seconds</p>
             <button
               type="button"
               onClick={handleCancelJob}
@@ -375,9 +356,7 @@ export function BlogGenerateDialog({
                 rows={3}
                 className="w-full px-3 py-2.5 rounded-lg border border-border bg-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary placeholder:text-muted-foreground/60"
               />
-              <p className="text-xs text-muted-foreground mt-1">
-                {prompt.length}/2000
-              </p>
+              <p className="text-xs text-muted-foreground mt-1">{prompt.length}/2000</p>
             </div>
 
             {/* References (collapsible) */}
@@ -387,16 +366,9 @@ export function BlogGenerateDialog({
                 onClick={() => setRefsOpen(!refsOpen)}
                 className="flex items-center gap-2 text-sm font-medium text-foreground hover:text-primary transition-colors w-full"
               >
-                <ChevronDown
-                  className={cn(
-                    "size-4 transition-transform",
-                    !refsOpen && "-rotate-90"
-                  )}
-                />
+                <ChevronDown className={cn("size-4 transition-transform", !refsOpen && "-rotate-90")} />
                 Add research &amp; references
-                <span className="text-xs text-muted-foreground font-normal">
-                  (optional)
-                </span>
+                <span className="text-xs text-muted-foreground font-normal">(optional)</span>
                 {hasReferences && (
                   <span className="ml-auto text-xs text-primary font-medium">
                     {urls.length + refFiles.length + (notes.trim() ? 1 : 0)} added
@@ -407,9 +379,8 @@ export function BlogGenerateDialog({
               {refsOpen && (
                 <div className="mt-2 space-y-3 border border-border rounded-lg p-3 bg-surface/50 overflow-hidden">
                   <p className="text-xs text-muted-foreground">
-                    Add links, notes, or documents for the AI to reference. If
-                    left empty, the AI will auto-research from PubMed and
-                    Semantic Scholar.
+                    Add links, notes, or documents for the AI to reference. If left empty, the AI will auto-research
+                    from PubMed and Semantic Scholar.
                   </p>
 
                   {/* URLs */}
@@ -450,16 +421,10 @@ export function BlogGenerateDialog({
                             className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-white border border-border text-xs group min-w-0 overflow-hidden"
                           >
                             <Link className="size-3 text-muted-foreground shrink-0" />
-                            <span className="truncate flex-1 min-w-0 text-muted-foreground">
-                              {url}
-                            </span>
+                            <span className="truncate flex-1 min-w-0 text-muted-foreground">{url}</span>
                             <button
                               type="button"
-                              onClick={() =>
-                                setUrls((prev) =>
-                                  prev.filter((_, i) => i !== idx)
-                                )
-                              }
+                              onClick={() => setUrls((prev) => prev.filter((_, i) => i !== idx))}
                               className="opacity-0 group-hover:opacity-100 transition-opacity"
                             >
                               <X className="size-3.5 text-muted-foreground hover:text-red-500" />
@@ -483,9 +448,7 @@ export function BlogGenerateDialog({
                       rows={3}
                       className="w-full px-2.5 py-1.5 rounded-md border border-border bg-white text-xs resize-none focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                     />
-                    <p className="text-[10px] text-muted-foreground mt-0.5">
-                      {notes.length}/10,000
-                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{notes.length}/10,000</p>
                   </div>
 
                   {/* File upload */}
@@ -515,7 +478,7 @@ export function BlogGenerateDialog({
                         dragging
                           ? "border-primary bg-primary/5 text-primary"
                           : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/30",
-                        (refFiles.length >= 5 || extracting) && "opacity-40 cursor-not-allowed"
+                        (refFiles.length >= 5 || extracting) && "opacity-40 cursor-not-allowed",
                       )}
                     >
                       {extracting ? (
@@ -532,11 +495,10 @@ export function BlogGenerateDialog({
                         <>
                           <Upload className="size-5" />
                           <span className="text-xs">
-                            Drag & drop or <span className="text-primary font-medium underline underline-offset-2">browse</span>
+                            Drag & drop or{" "}
+                            <span className="text-primary font-medium underline underline-offset-2">browse</span>
                           </span>
-                          <span className="text-[10px] text-muted-foreground">
-                            PDF, DOC, TXT, MD, or CSV
-                          </span>
+                          <span className="text-[10px] text-muted-foreground">PDF, DOC, TXT, MD, or CSV</span>
                         </>
                       )}
                     </div>
@@ -548,19 +510,13 @@ export function BlogGenerateDialog({
                             className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-white border border-border text-xs group min-w-0 overflow-hidden"
                           >
                             <FileText className="size-3 text-muted-foreground shrink-0" />
-                            <span className="truncate flex-1 min-w-0">
-                              {file.name}
-                            </span>
+                            <span className="truncate flex-1 min-w-0">{file.name}</span>
                             <span className="text-muted-foreground text-[10px] shrink-0">
                               {(file.content.length / 1024).toFixed(1)}KB
                             </span>
                             <button
                               type="button"
-                              onClick={() =>
-                                setRefFiles((prev) =>
-                                  prev.filter((_, i) => i !== idx)
-                                )
-                              }
+                              onClick={() => setRefFiles((prev) => prev.filter((_, i) => i !== idx))}
                               className="opacity-0 group-hover:opacity-100 transition-opacity"
                             >
                               <X className="size-3.5 text-muted-foreground hover:text-red-500" />
@@ -576,9 +532,7 @@ export function BlogGenerateDialog({
 
             {/* Tone */}
             <div>
-              <label className="block text-sm font-semibold text-foreground mb-2">
-                Tone
-              </label>
+              <label className="block text-sm font-semibold text-foreground mb-2">Tone</label>
               <div className="grid grid-cols-3 gap-0 rounded-lg border border-border overflow-hidden">
                 {tones.map((t, idx) => (
                   <button
@@ -590,7 +544,7 @@ export function BlogGenerateDialog({
                       idx < tones.length - 1 && "border-r border-border",
                       tone === t.value
                         ? "bg-primary/10 text-primary"
-                        : "bg-white text-muted-foreground hover:bg-surface hover:text-foreground"
+                        : "bg-white text-muted-foreground hover:bg-surface hover:text-foreground",
                     )}
                   >
                     {t.label}
@@ -601,9 +555,7 @@ export function BlogGenerateDialog({
 
             {/* Length */}
             <div>
-              <label className="block text-sm font-semibold text-foreground mb-2">
-                Length
-              </label>
+              <label className="block text-sm font-semibold text-foreground mb-2">Length</label>
               <div className="grid grid-cols-3 gap-0 rounded-lg border border-border overflow-hidden">
                 {lengths.map((l, idx) => (
                   <button
@@ -615,14 +567,16 @@ export function BlogGenerateDialog({
                       idx < lengths.length - 1 && "border-r border-border",
                       length === l.value
                         ? "bg-primary/10 text-primary"
-                        : "bg-white text-muted-foreground hover:bg-surface hover:text-foreground"
+                        : "bg-white text-muted-foreground hover:bg-surface hover:text-foreground",
                     )}
                   >
                     {l.label}
-                    <span className={cn(
-                      "block text-[11px] font-normal mt-0.5",
-                      length === l.value ? "text-primary/70" : "text-muted-foreground"
-                    )}>
+                    <span
+                      className={cn(
+                        "block text-[11px] font-normal mt-0.5",
+                        length === l.value ? "text-primary/70" : "text-muted-foreground",
+                      )}
+                    >
                       {l.desc}
                     </span>
                   </button>
@@ -637,11 +591,7 @@ export function BlogGenerateDialog({
               disabled={prompt.length < 10 || submitting}
               className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-all disabled:opacity-40 disabled:cursor-not-allowed mt-1"
             >
-              {submitting ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Sparkles className="size-4" />
-              )}
+              {submitting ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
               {hasExistingContent && confirmed ? "Confirm & Generate" : "Generate Blog Post"}
             </button>
           </>

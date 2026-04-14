@@ -85,21 +85,14 @@ export function NotificationToggles() {
   return (
     <div className="space-y-4">
       {CLIENT_NOTIFICATIONS.map((option) => (
-        <div
-          key={option.key}
-          className="flex items-center justify-between"
-        >
+        <div key={option.key} className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="flex items-center justify-center size-9 rounded-full bg-success/10">
               <Bell className="size-4 text-success" strokeWidth={1.5} />
             </div>
             <div>
-              <p className="text-sm font-medium text-foreground">
-                {option.label}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {option.description}
-              </p>
+              <p className="text-sm font-medium text-foreground">{option.label}</p>
+              <p className="text-xs text-muted-foreground">{option.description}</p>
             </div>
           </div>
           <button

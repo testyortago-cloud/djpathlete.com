@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { z } from "zod"
-import {
-  getFormReviewsByClient,
-  createFormReview,
-} from "@/lib/db/form-reviews"
+import { getFormReviewsByClient, createFormReview } from "@/lib/db/form-reviews"
 import { createNotification } from "@/lib/db/notifications"
 import { getUsers } from "@/lib/db/users"
 import { getUserById } from "@/lib/db/users"
@@ -27,10 +24,7 @@ export async function GET() {
     return NextResponse.json(reviews)
   } catch (error) {
     console.error("Form reviews GET error:", error)
-    return NextResponse.json(
-      { error: "Failed to fetch form reviews" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to fetch form reviews" }, { status: 500 })
   }
 }
 
@@ -44,11 +38,13 @@ export async function POST(request: Request) {
     const body = await request.json()
     const parsed = createSchema.safeParse(body)
     if (!parsed.success) {
-      console.error("Form review validation failed:", JSON.stringify(parsed.error.flatten()), "body:", JSON.stringify(body))
-      return NextResponse.json(
-        { error: "Invalid data", details: parsed.error.flatten() },
-        { status: 400 }
+      console.error(
+        "Form review validation failed:",
+        JSON.stringify(parsed.error.flatten()),
+        "body:",
+        JSON.stringify(body),
       )
+      return NextResponse.json({ error: "Invalid data", details: parsed.error.flatten() }, { status: 400 })
     }
 
     const review = await createFormReview({
@@ -84,9 +80,7 @@ export async function POST(request: Request) {
           clientName,
           reviewTitle: review.title,
           reviewId: review.id,
-        }).catch((err) =>
-          console.error("Failed to send form review email:", err)
-        )
+        }).catch((err) => console.error("Failed to send form review email:", err))
       }
     } catch (err) {
       console.error("Failed to notify admin of form review:", err)
@@ -95,9 +89,6 @@ export async function POST(request: Request) {
     return NextResponse.json(review, { status: 201 })
   } catch (error) {
     console.error("Form reviews POST error:", error)
-    return NextResponse.json(
-      { error: "Failed to create form review" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to create form review" }, { status: 500 })
   }
 }

@@ -25,9 +25,6 @@ export async function GET(request: Request) {
     return NextResponse.json(reviews)
   } catch (error) {
     console.error("Admin form reviews GET error:", error)
-    return NextResponse.json(
-      { error: "Failed to fetch form reviews" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to fetch form reviews" }, { status: 500 })
   }
 }

@@ -1,18 +1,10 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import {
-  getBlogPostById,
-  updateBlogPost,
-  deleteBlogPost,
-  isSlugTaken,
-} from "@/lib/db/blog-posts"
+import { getBlogPostById, updateBlogPost, deleteBlogPost, isSlugTaken } from "@/lib/db/blog-posts"
 import { blogPostFormSchema } from "@/lib/validators/blog-post"
 import { deleteBlogImage } from "@/lib/blog-storage"
 
-export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
     if (!session?.user?.id || session.user.role !== "admin") {
@@ -24,17 +16,11 @@ export async function GET(
     return NextResponse.json(post)
   } catch (error) {
     console.error("Blog GET [id] error:", error)
-    return NextResponse.json(
-      { error: "Blog post not found" },
-      { status: 404 }
-    )
+    return NextResponse.json({ error: "Blog post not found" }, { status: 404 })
   }
 }
 
-export async function PATCH(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
     if (!session?.user?.id || session.user.role !== "admin") {
@@ -46,19 +32,13 @@ export async function PATCH(
     const parsed = blogPostFormSchema.partial().safeParse(body)
 
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Invalid data", details: parsed.error.flatten() },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Invalid data", details: parsed.error.flatten() }, { status: 400 })
     }
 
     if (parsed.data.slug) {
       const taken = await isSlugTaken(parsed.data.slug, id)
       if (taken) {
-        return NextResponse.json(
-          { error: "A post with this slug already exists" },
-          { status: 409 }
-        )
+        return NextResponse.json({ error: "A post with this slug already exists" }, { status: 409 })
       }
     }
 
@@ -66,17 +46,11 @@ export async function PATCH(
     return NextResponse.json(post)
   } catch (error) {
     console.error("Blog PATCH error:", error)
-    return NextResponse.json(
-      { error: "Failed to update blog post" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to update blog post" }, { status: 500 })
   }
 }
 
-export async function DELETE(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
     if (!session?.user?.id || session.user.role !== "admin") {
@@ -103,9 +77,6 @@ export async function DELETE(
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("Blog DELETE error:", error)
-    return NextResponse.json(
-      { error: "Failed to delete blog post" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to delete blog post" }, { status: 500 })
   }
 }

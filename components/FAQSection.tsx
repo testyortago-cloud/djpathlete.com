@@ -52,10 +52,7 @@ const defaultFAQs: FAQItem[] = [
   },
 ]
 
-export const FAQSection = ({
-  title = "Frequently asked questions",
-  faqs = defaultFAQs,
-}: FAQSectionProps) => {
+export const FAQSection = ({ title = "Frequently asked questions", faqs = defaultFAQs }: FAQSectionProps) => {
   const [openIndex, setOpenIndex] = useState<number | null>(null)
 
   const toggleFAQ = (index: number) => {
@@ -105,9 +102,7 @@ export const FAQSection = ({
                         className="overflow-hidden"
                       >
                         <div className="pb-6 pr-4 sm:pr-12">
-                          <p className="text-lg leading-6 text-muted-foreground">
-                            {faq.answer}
-                          </p>
+                          <p className="text-lg leading-6 text-muted-foreground">{faq.answer}</p>
                         </div>
                       </motion.div>
                     )}

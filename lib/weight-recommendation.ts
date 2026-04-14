@@ -1,4 +1,11 @@
-import type { Exercise, ExerciseCategory, ExerciseProgress, ExperienceLevel, Gender, ProgramExercise } from "@/types/database"
+import type {
+  Exercise,
+  ExerciseCategory,
+  ExerciseProgress,
+  ExperienceLevel,
+  Gender,
+  ProgramExercise,
+} from "@/types/database"
 import { getCategoryFields } from "@/lib/exercise-fields"
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -27,7 +34,7 @@ export function estimate1RM(weightKg: number, reps: number): number {
 
 /** Derive working weight from a 1RM and intensity percentage */
 export function weightFromIntensity(oneRepMax: number, intensityPct: number): number {
-  return Math.round((oneRepMax * intensityPct) / 100 * 2) / 2 // round to nearest 0.5
+  return Math.round(((oneRepMax * intensityPct) / 100) * 2) / 2 // round to nearest 0.5
 }
 
 /** Parse reps string like "8" or "8-12" into a single number (uses the lower end) */
@@ -43,9 +50,7 @@ function parseReps(reps: string | null): number | null {
  */
 function getIncrement(exercise: Pick<Exercise, "movement_pattern" | "training_intent">): number {
   const lowerPatterns = ["squat", "hinge", "lunge", "carry"]
-  const isLower = exercise.movement_pattern
-    ? lowerPatterns.includes(exercise.movement_pattern)
-    : false
+  const isLower = exercise.movement_pattern ? lowerPatterns.includes(exercise.movement_pattern) : false
   const isCompoundLike = exercise.training_intent?.includes("shape") || exercise.training_intent?.includes("express")
   return isLower && isCompoundLike ? 5 : 2.5
 }
@@ -64,15 +69,15 @@ export interface ClientContext {
  * Male baseline — female multipliers are ~65% of male.
  */
 const BW_MULTIPLIERS: Record<string, { compound: number; isolation: number }> = {
-  squat:      { compound: 0.40, isolation: 0.20 },
-  hinge:      { compound: 0.45, isolation: 0.20 },
-  push:       { compound: 0.30, isolation: 0.10 },
-  pull:       { compound: 0.25, isolation: 0.10 },
-  lunge:      { compound: 0.25, isolation: 0.15 },
-  carry:      { compound: 0.30, isolation: 0.20 },
-  rotation:   { compound: 0.10, isolation: 0.05 },
-  isometric:  { compound: 0.00, isolation: 0.00 },
-  locomotion: { compound: 0.00, isolation: 0.00 },
+  squat: { compound: 0.4, isolation: 0.2 },
+  hinge: { compound: 0.45, isolation: 0.2 },
+  push: { compound: 0.3, isolation: 0.1 },
+  pull: { compound: 0.25, isolation: 0.1 },
+  lunge: { compound: 0.25, isolation: 0.15 },
+  carry: { compound: 0.3, isolation: 0.2 },
+  rotation: { compound: 0.1, isolation: 0.05 },
+  isometric: { compound: 0.0, isolation: 0.0 },
+  locomotion: { compound: 0.0, isolation: 0.0 },
 }
 
 const EXPERIENCE_MULTIPLIER: Record<ExperienceLevel, number> = {
@@ -94,7 +99,7 @@ function roundTo2_5(kg: number): number {
  */
 function estimateStartingWeight(
   exercise: Pick<Exercise, "is_bodyweight" | "training_intent" | "movement_pattern">,
-  client: ClientContext
+  client: ClientContext,
 ): number | null {
   if (exercise.is_bodyweight) return null
   if (!client.weight_kg || client.weight_kg <= 0) return null
@@ -122,9 +127,7 @@ function estimateStartingWeight(
 
 /** Determine weight trend from recent history (newest first) */
 function computeTrend(history: ExerciseProgress[]): Trend {
-  const weights = history
-    .filter((h) => h.weight_kg != null)
-    .map((h) => h.weight_kg!)
+  const weights = history.filter((h) => h.weight_kg != null).map((h) => h.weight_kg!)
   if (weights.length < 2) return "insufficient_data"
 
   // Compare most recent 3 entries (or whatever is available)
@@ -143,7 +146,7 @@ export function getWeightRecommendation(
   history: ExerciseProgress[],
   exercise: Pick<Exercise, "is_bodyweight" | "training_intent" | "movement_pattern" | "name" | "category">,
   prescription?: Pick<ProgramExercise, "sets" | "reps" | "intensity_pct" | "rpe_target"> | null,
-  client?: ClientContext | null
+  client?: ClientContext | null,
 ): WeightRecommendation {
   // Non-weight categories (cardio, flexibility, plyometric, recovery) — skip weight recommendation
   if (exercise.category && !getCategoryFields(exercise.category as ExerciseCategory | ExerciseCategory[]).showWeight) {
@@ -220,21 +223,16 @@ export function getWeightRecommendation(
   const setDetails = latest.set_details
   const hasSetDetails = setDetails && setDetails.length > 0
 
-  const lastWeight = hasSetDetails
-    ? setDetails[setDetails.length - 1].weight_kg
-    : latest.weight_kg
-  const lastRpe = hasSetDetails
-    ? setDetails[setDetails.length - 1].rpe
-    : latest.rpe
+  const lastWeight = hasSetDetails ? setDetails[setDetails.length - 1].weight_kg : latest.weight_kg
+  const lastRpe = hasSetDetails ? setDetails[setDetails.length - 1].rpe : latest.rpe
 
   // Estimate 1RM: use best set if set_details available
   let estimated1rm: number | null = null
   if (hasSetDetails) {
     const best = Math.max(
-      ...setDetails
-        .filter((s) => (s.weight_kg ?? 0) > 0 && s.reps > 0)
-        .map((s) => estimate1RM(s.weight_kg!, s.reps))
-    , 0)
+      ...setDetails.filter((s) => (s.weight_kg ?? 0) > 0 && s.reps > 0).map((s) => estimate1RM(s.weight_kg!, s.reps)),
+      0,
+    )
     estimated1rm = best > 0 ? Math.round(best) : null
   } else {
     const lastReps = parseReps(latest.reps_completed)

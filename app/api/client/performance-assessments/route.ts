@@ -13,9 +13,6 @@ export async function GET() {
     return NextResponse.json(assessments)
   } catch (error) {
     console.error("Client performance assessments GET error:", error)
-    return NextResponse.json(
-      { error: "Failed to fetch assessments" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to fetch assessments" }, { status: 500 })
   }
 }

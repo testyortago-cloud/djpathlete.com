@@ -1,13 +1,4 @@
-import {
-  Settings,
-  Shield,
-  CreditCard,
-  Bell,
-  AlertTriangle,
-  ExternalLink,
-  Lock,
-  User,
-} from "lucide-react"
+import { Settings, Shield, CreditCard, Bell, AlertTriangle, ExternalLink, Lock, User } from "lucide-react"
 import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import { getUserById } from "@/lib/db/users"
@@ -40,9 +31,7 @@ export default async function SettingsPage() {
       <div className="bg-white rounded-xl border border-border p-6 mb-6">
         <div className="flex items-center gap-2 mb-4">
           <User className="size-5 text-primary" />
-          <h2 className="text-lg font-semibold text-primary">
-            Account Information
-          </h2>
+          <h2 className="text-lg font-semibold text-primary">Account Information</h2>
         </div>
 
         <AccountInfoForm
@@ -69,9 +58,7 @@ export default async function SettingsPage() {
               <Lock className="size-4 text-muted-foreground" />
               <p className="text-sm font-medium">Change Password</p>
             </div>
-            <p className="text-xs text-muted-foreground">
-              A password reset link will be sent to your email.
-            </p>
+            <p className="text-xs text-muted-foreground">A password reset link will be sent to your email.</p>
           </div>
           <ChangePasswordButton email={dbUser.email} />
         </div>
@@ -81,20 +68,13 @@ export default async function SettingsPage() {
       <div className="bg-white rounded-xl border border-border p-6 mb-6">
         <div className="flex items-center gap-2 mb-4">
           <Settings className="size-5 text-primary" />
-          <h2 className="text-lg font-semibold text-primary">
-            Platform Settings
-          </h2>
+          <h2 className="text-lg font-semibold text-primary">Platform Settings</h2>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="business-name">Business Name</Label>
-            <Input
-              id="business-name"
-              value="DJP Athlete"
-              disabled
-              className="opacity-60"
-            />
+            <Input id="business-name" value="DJP Athlete" disabled className="opacity-60" />
           </div>
 
           <div className="space-y-2">
@@ -110,27 +90,18 @@ export default async function SettingsPage() {
 
           <div className="space-y-2">
             <Label htmlFor="currency">Currency</Label>
-            <Input
-              id="currency"
-              value="USD"
-              disabled
-              className="opacity-60"
-            />
+            <Input id="currency" value="USD" disabled className="opacity-60" />
           </div>
         </div>
 
-        <p className="text-xs text-muted-foreground mt-4">
-          Platform settings will be configurable in a future update.
-        </p>
+        <p className="text-xs text-muted-foreground mt-4">Platform settings will be configurable in a future update.</p>
       </div>
 
       {/* 3. Stripe Integration */}
       <div className="bg-white rounded-xl border border-border p-6 mb-6">
         <div className="flex items-center gap-2 mb-4">
           <CreditCard className="size-5 text-primary" />
-          <h2 className="text-lg font-semibold text-primary">
-            Stripe Integration
-          </h2>
+          <h2 className="text-lg font-semibold text-primary">Stripe Integration</h2>
         </div>
 
         <div className="space-y-3">
@@ -144,11 +115,7 @@ export default async function SettingsPage() {
               <span className="text-sm font-medium">STRIPE_SECRET_KEY</span>
             </div>
             <span
-              className={`text-xs font-medium ${
-                stripeSecretConfigured
-                  ? "text-success"
-                  : "text-muted-foreground"
-              }`}
+              className={`text-xs font-medium ${stripeSecretConfigured ? "text-success" : "text-muted-foreground"}`}
             >
               {stripeSecretConfigured ? "Configured" : "Not configured"}
             </span>
@@ -160,21 +127,13 @@ export default async function SettingsPage() {
             <div className="flex items-center gap-3">
               <span
                 className={`inline-block size-2.5 rounded-full ${
-                  stripeWebhookConfigured
-                    ? "bg-success"
-                    : "bg-muted-foreground"
+                  stripeWebhookConfigured ? "bg-success" : "bg-muted-foreground"
                 }`}
               />
-              <span className="text-sm font-medium">
-                STRIPE_WEBHOOK_SECRET
-              </span>
+              <span className="text-sm font-medium">STRIPE_WEBHOOK_SECRET</span>
             </div>
             <span
-              className={`text-xs font-medium ${
-                stripeWebhookConfigured
-                  ? "text-success"
-                  : "text-muted-foreground"
-              }`}
+              className={`text-xs font-medium ${stripeWebhookConfigured ? "text-success" : "text-muted-foreground"}`}
             >
               {stripeWebhookConfigured ? "Configured" : "Not configured"}
             </span>
@@ -183,11 +142,7 @@ export default async function SettingsPage() {
 
         <Separator className="my-4" />
 
-        <a
-          href="https://dashboard.stripe.com"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
+        <a href="https://dashboard.stripe.com" target="_blank" rel="noopener noreferrer">
           <Button variant="outline" size="sm">
             <ExternalLink className="size-3.5" />
             Manage in Stripe Dashboard
@@ -199,9 +154,7 @@ export default async function SettingsPage() {
       <div className="bg-white rounded-xl border border-border p-6 mb-6">
         <div className="flex items-center gap-2 mb-4">
           <Bell className="size-5 text-primary" />
-          <h2 className="text-lg font-semibold text-primary">
-            Notification Preferences
-          </h2>
+          <h2 className="text-lg font-semibold text-primary">Notification Preferences</h2>
         </div>
 
         <SettingsNotificationToggles />
@@ -211,14 +164,11 @@ export default async function SettingsPage() {
       <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-6 mb-6">
         <div className="flex items-center gap-2 mb-4">
           <AlertTriangle className="size-5 text-destructive" />
-          <h2 className="text-lg font-semibold text-destructive">
-            Danger Zone
-          </h2>
+          <h2 className="text-lg font-semibold text-destructive">Danger Zone</h2>
         </div>
 
         <p className="text-sm text-muted-foreground mb-4">
-          Destructive actions that cannot be undone. Proceed with extreme
-          caution.
+          Destructive actions that cannot be undone. Proceed with extreme caution.
         </p>
 
         <div className="flex items-center justify-between rounded-lg border border-destructive/20 bg-white p-4">

@@ -30,12 +30,8 @@ export default async function SubscribersPage() {
             <Users className="size-3.5 sm:size-4 text-primary" />
           </div>
           <div>
-            <p className="text-[10px] sm:text-xs text-muted-foreground">
-              Total
-            </p>
-            <p className="text-lg sm:text-2xl font-semibold text-primary">
-              {subscribers.length}
-            </p>
+            <p className="text-[10px] sm:text-xs text-muted-foreground">Total</p>
+            <p className="text-lg sm:text-2xl font-semibold text-primary">{subscribers.length}</p>
           </div>
         </div>
 
@@ -44,12 +40,8 @@ export default async function SubscribersPage() {
             <Users className="size-3.5 sm:size-4 text-success" />
           </div>
           <div>
-            <p className="text-[10px] sm:text-xs text-muted-foreground">
-              Active
-            </p>
-            <p className="text-lg sm:text-2xl font-semibold text-primary">
-              {active}
-            </p>
+            <p className="text-[10px] sm:text-xs text-muted-foreground">Active</p>
+            <p className="text-lg sm:text-2xl font-semibold text-primary">{active}</p>
           </div>
         </div>
 
@@ -58,12 +50,8 @@ export default async function SubscribersPage() {
             <Users className="size-3.5 sm:size-4 text-warning" />
           </div>
           <div>
-            <p className="text-[10px] sm:text-xs text-muted-foreground">
-              Unsubscribed
-            </p>
-            <p className="text-lg sm:text-2xl font-semibold text-primary">
-              {unsubscribed}
-            </p>
+            <p className="text-[10px] sm:text-xs text-muted-foreground">Unsubscribed</p>
+            <p className="text-lg sm:text-2xl font-semibold text-primary">{unsubscribed}</p>
           </div>
         </div>
       </div>

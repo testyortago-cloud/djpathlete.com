@@ -7,10 +7,7 @@ export async function GET(request: NextRequest) {
     // Auth check
     const session = await auth()
     if (!session?.user?.id || session.user.role !== "admin") {
-      return NextResponse.json(
-        { error: "Unauthorized. Admin access required." },
-        { status: 403 }
-      )
+      return NextResponse.json({ error: "Unauthorized. Admin access required." }, { status: 403 })
     }
 
     const role = request.nextUrl.searchParams.get("role")
@@ -23,9 +20,6 @@ export async function GET(request: NextRequest) {
     const users = await getUsers()
     return NextResponse.json({ users })
   } catch {
-    return NextResponse.json(
-      { error: "Failed to fetch users." },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to fetch users." }, { status: 500 })
   }
 }

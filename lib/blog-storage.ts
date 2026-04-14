@@ -2,10 +2,7 @@ import { createServiceRoleClient } from "@/lib/supabase"
 
 const BUCKET = "blog-images"
 
-export async function uploadBlogImage(
-  file: File | Blob,
-  path: string
-): Promise<string> {
+export async function uploadBlogImage(file: File | Blob, path: string): Promise<string> {
   const supabase = createServiceRoleClient()
 
   await supabase.storage.from(BUCKET).remove([path])

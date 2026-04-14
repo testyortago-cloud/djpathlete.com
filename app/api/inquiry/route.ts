@@ -12,7 +12,7 @@ export async function POST(request: Request) {
     if (!result.success) {
       return NextResponse.json(
         { error: "Invalid form data", details: result.error.flatten().fieldErrors },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
@@ -22,10 +22,7 @@ export async function POST(request: Request) {
     const supabase = createServiceRoleClient()
 
     // Notify all admins
-    const { data: admins } = await supabase
-      .from("users")
-      .select("id")
-      .eq("role", "admin")
+    const { data: admins } = await supabase.from("users").select("id").eq("role", "admin")
 
     if (admins && admins.length > 0) {
       const details = [
@@ -37,7 +34,9 @@ export async function POST(request: Request) {
         `\nGoals:\n${goals}`,
         injuries ? `\nInjuries/Limitations:\n${injuries}` : null,
         how_heard ? `How they heard about us: ${how_heard}` : null,
-      ].filter(Boolean).join("\n")
+      ]
+        .filter(Boolean)
+        .join("\n")
 
       const notifications = admins.map((admin) => ({
         user_id: admin.id,
@@ -48,9 +47,7 @@ export async function POST(request: Request) {
         link: null,
       }))
 
-      const { error: insertError } = await supabase
-        .from("notifications")
-        .insert(notifications)
+      const { error: insertError } = await supabase.from("notifications").insert(notifications)
 
       if (insertError) {
         console.error("Failed to create inquiry notifications:", insertError)
@@ -60,7 +57,15 @@ export async function POST(request: Request) {
     // Send email notification to sales (non-blocking)
     try {
       await sendInquiryEmail({
-        name, email, phone, serviceLabel, sport, experience, goals, injuries, how_heard,
+        name,
+        email,
+        phone,
+        serviceLabel,
+        sport,
+        experience,
+        goals,
+        injuries,
+        how_heard,
       })
     } catch {
       console.error("Failed to send inquiry email — continuing")
@@ -92,9 +97,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true })
   } catch {
-    return NextResponse.json(
-      { error: "Something went wrong. Please try again." },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 })
   }
 }

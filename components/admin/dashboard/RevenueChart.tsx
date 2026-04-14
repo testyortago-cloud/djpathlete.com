@@ -1,14 +1,7 @@
 "use client"
 
 import { DollarSign, TrendingUp, TrendingDown } from "lucide-react"
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts"
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts"
 
 const CHART = {
   green: "#22c55e",
@@ -33,9 +26,7 @@ export function RevenueChart({ data, thisMonth, lastMonth }: RevenueChartProps) 
     revenue: d.revenue / 100,
   }))
 
-  const pct = lastMonth > 0
-    ? Math.round(((thisMonth - lastMonth) / lastMonth) * 100)
-    : 0
+  const pct = lastMonth > 0 ? Math.round(((thisMonth - lastMonth) / lastMonth) * 100) : 0
 
   return (
     <div className="bg-white rounded-xl border border-border shadow-sm">
@@ -54,11 +45,7 @@ export function RevenueChart({ data, thisMonth, lastMonth }: RevenueChartProps) 
                 pct > 0 ? "text-success" : "text-destructive"
               }`}
             >
-              {pct > 0 ? (
-                <TrendingUp className="size-3" />
-              ) : (
-                <TrendingDown className="size-3" />
-              )}
+              {pct > 0 ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}
               {pct > 0 ? "+" : ""}
               {pct}% vs last month
             </span>
@@ -75,12 +62,7 @@ export function RevenueChart({ data, thisMonth, lastMonth }: RevenueChartProps) 
                   <stop offset="100%" stopColor={CHART.green} stopOpacity={0.02} />
                 </linearGradient>
               </defs>
-              <XAxis
-                dataKey="name"
-                tick={{ fontSize: 11, fill: CHART.tick }}
-                axisLine={false}
-                tickLine={false}
-              />
+              <XAxis dataKey="name" tick={{ fontSize: 11, fill: CHART.tick }} axisLine={false} tickLine={false} />
               <YAxis
                 tick={{ fontSize: 11, fill: CHART.tick }}
                 tickFormatter={(v) => `$${v}`}
@@ -97,13 +79,7 @@ export function RevenueChart({ data, thisMonth, lastMonth }: RevenueChartProps) 
                   boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
                 }}
               />
-              <Area
-                type="monotone"
-                dataKey="revenue"
-                stroke={CHART.green}
-                strokeWidth={2}
-                fill="url(#dashRevGrad)"
-              />
+              <Area type="monotone" dataKey="revenue" stroke={CHART.green} strokeWidth={2} fill="url(#dashRevGrad)" />
             </AreaChart>
           </ResponsiveContainer>
         ) : (

@@ -6,15 +6,9 @@ function getClient() {
   return createServiceRoleClient()
 }
 
-export async function createSubscription(
-  subscription: Omit<Subscription, "id" | "created_at" | "updated_at">
-) {
+export async function createSubscription(subscription: Omit<Subscription, "id" | "created_at" | "updated_at">) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("subscriptions")
-    .insert(subscription)
-    .select()
-    .single()
+  const { data, error } = await supabase.from("subscriptions").insert(subscription).select().single()
   if (error) throw error
   return data as Subscription
 }
@@ -56,10 +50,7 @@ export async function getSubscriptionsByUser(userId: string) {
   })[]
 }
 
-export async function updateSubscription(
-  id: string,
-  updates: Partial<Omit<Subscription, "id" | "created_at">>
-) {
+export async function updateSubscription(id: string, updates: Partial<Omit<Subscription, "id" | "created_at">>) {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("subscriptions")
@@ -73,7 +64,7 @@ export async function updateSubscription(
 
 export async function updateSubscriptionByStripeId(
   stripeSubscriptionId: string,
-  updates: Partial<Omit<Subscription, "id" | "created_at">>
+  updates: Partial<Omit<Subscription, "id" | "created_at">>,
 ) {
   const supabase = getClient()
   const { data, error } = await supabase

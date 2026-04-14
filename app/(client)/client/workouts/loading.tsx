@@ -14,10 +14,7 @@ export default function WorkoutsLoading() {
       {/* Exercise cards */}
       <div className="space-y-3">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div
-            key={i}
-            className="bg-white rounded-xl border border-border p-4 space-y-3"
-          >
+          <div key={i} className="bg-white rounded-xl border border-border p-4 space-y-3">
             <div className="flex items-center justify-between">
               <div className="h-5 w-40 bg-muted animate-pulse rounded-md" />
               <div className="size-6 bg-muted animate-pulse rounded" />

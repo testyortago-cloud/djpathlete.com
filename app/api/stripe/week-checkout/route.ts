@@ -10,10 +10,7 @@ export async function POST(request: Request) {
   try {
     const session = await auth()
     if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: "You must be logged in." },
-        { status: 401 }
-      )
+      return NextResponse.json({ error: "You must be logged in." }, { status: 401 })
     }
 
     const body = await request.json()
@@ -22,7 +19,7 @@ export async function POST(request: Request) {
     if (!result.success) {
       return NextResponse.json(
         { error: "Invalid request", details: result.error.flatten().fieldErrors },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
@@ -31,33 +28,21 @@ export async function POST(request: Request) {
     // Verify assignment belongs to this user
     const assignment = await getAssignmentById(assignmentId)
     if (assignment.user_id !== session.user.id) {
-      return NextResponse.json(
-        { error: "Not authorized." },
-        { status: 403 }
-      )
+      return NextResponse.json({ error: "Not authorized." }, { status: 403 })
     }
 
     // Get week access record
     const weekAccess = await getWeekAccess(assignmentId, weekNumber)
     if (!weekAccess) {
-      return NextResponse.json(
-        { error: "Week access record not found." },
-        { status: 404 }
-      )
+      return NextResponse.json({ error: "Week access record not found." }, { status: 404 })
     }
 
     if (weekAccess.payment_status === "paid" || weekAccess.payment_status === "not_required") {
-      return NextResponse.json(
-        { error: "This week is already accessible." },
-        { status: 409 }
-      )
+      return NextResponse.json({ error: "This week is already accessible." }, { status: 409 })
     }
 
     if (!weekAccess.price_cents || weekAccess.price_cents <= 0) {
-      return NextResponse.json(
-        { error: "No price set for this week. Contact your coach." },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "No price set for this week. Contact your coach." }, { status: 400 })
     }
 
     const program = await getProgramById(assignment.program_id)
@@ -74,9 +59,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ url: checkoutSession.url })
   } catch (error) {
     console.error("Week checkout error:", error)
-    return NextResponse.json(
-      { error: "Failed to create checkout session. Please try again." },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to create checkout session. Please try again." }, { status: 500 })
   }
 }

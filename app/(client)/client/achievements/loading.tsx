@@ -26,20 +26,14 @@ export default function AchievementsLoading() {
       {/* Filter tabs placeholder */}
       <div className="flex gap-2 mb-4">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div
-            key={i}
-            className="h-8 w-20 bg-muted animate-pulse rounded-full"
-          />
+          <div key={i} className="h-8 w-20 bg-muted animate-pulse rounded-full" />
         ))}
       </div>
 
       {/* Achievement cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {Array.from({ length: 6 }).map((_, i) => (
-          <div
-            key={i}
-            className="bg-white rounded-xl border border-border p-4 flex items-start gap-3"
-          >
+          <div key={i} className="bg-white rounded-xl border border-border p-4 flex items-start gap-3">
             <div className="size-10 bg-muted animate-pulse rounded-full shrink-0" />
             <div className="flex-1 space-y-2">
               <div className="h-4 w-32 bg-muted animate-pulse rounded-md" />

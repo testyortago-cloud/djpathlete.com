@@ -1,8 +1,5 @@
 import { z } from "zod"
-import {
-  AI_CHAT_MAX_MESSAGES,
-  AI_CHAT_MAX_MESSAGE_LENGTH,
-} from "@/lib/admin-ai-config"
+import { AI_CHAT_MAX_MESSAGES, AI_CHAT_MAX_MESSAGE_LENGTH } from "@/lib/admin-ai-config"
 
 const chatMessageSchema = z.object({
   role: z.enum(["user", "assistant"]),

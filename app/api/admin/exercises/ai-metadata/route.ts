@@ -41,10 +41,12 @@ const aiMetadataSchema = z.object({
   difficulty_score: z.number(),
   sport_tags: z.array(z.string()),
   plane_of_motion: z.array(z.enum(PLANES_OF_MOTION)),
-  joints_loaded: z.array(z.object({
-    joint: z.enum(JOINT_NAMES),
-    load: z.enum(JOINT_LOAD_LEVELS),
-  })),
+  joints_loaded: z.array(
+    z.object({
+      joint: z.enum(JOINT_NAMES),
+      load: z.enum(JOINT_LOAD_LEVELS),
+    }),
+  ),
   aliases: z.array(z.string()),
 })
 
@@ -105,7 +107,7 @@ export async function POST(request: NextRequest) {
     if (!parsed.success) {
       return NextResponse.json(
         { error: "Invalid request", details: parsed.error.flatten().fieldErrors },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
@@ -114,12 +116,7 @@ export async function POST(request: NextRequest) {
     const userMessage = `Exercise: ${name}
 Category: ${category.join(", ")}${difficulty ? `\nDifficulty: ${difficulty}` : ""}${description ? `\nDescription: ${description}` : ""}${equipment ? `\nEquipment: ${equipment}` : ""}`
 
-    const result = await callAgent(
-      SYSTEM_PROMPT,
-      userMessage,
-      aiMetadataSchema,
-      { model: MODEL_HAIKU }
-    )
+    const result = await callAgent(SYSTEM_PROMPT, userMessage, aiMetadataSchema, { model: MODEL_HAIKU })
 
     // Log usage (fire-and-forget)
     createGenerationLog({
@@ -141,9 +138,6 @@ Category: ${category.join(", ")}${difficulty ? `\nDifficulty: ${difficulty}` : "
     return NextResponse.json(result.content)
   } catch (error) {
     console.error("[Exercise AI Metadata] Error:", error)
-    return NextResponse.json(
-      { error: "Failed to generate metadata predictions" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to generate metadata predictions" }, { status: 500 })
   }
 }

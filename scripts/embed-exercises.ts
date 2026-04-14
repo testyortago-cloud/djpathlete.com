@@ -74,7 +74,9 @@ async function main() {
   // Fetch all active exercises
   const { data: exercises, error } = await supabase
     .from("exercises")
-    .select("id, name, category, difficulty, muscle_group, movement_pattern, primary_muscles, secondary_muscles, equipment_required, is_bodyweight, training_intent, sport_tags, plane_of_motion")
+    .select(
+      "id, name, category, difficulty, muscle_group, movement_pattern, primary_muscles, secondary_muscles, equipment_required, is_bodyweight, training_intent, sport_tags, plane_of_motion",
+    )
     .eq("is_active", true)
     .order("name")
 
@@ -92,7 +94,7 @@ async function main() {
     const text = exerciseToText(ex)
 
     try {
-      const result = await extractor(text, { pooling: "mean", normalize: true }) as { data: Float32Array }
+      const result = (await extractor(text, { pooling: "mean", normalize: true })) as { data: Float32Array }
       const embedding = Array.from(result.data)
 
       const { error: updateError } = await supabase

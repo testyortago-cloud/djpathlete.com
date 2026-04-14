@@ -1,14 +1,7 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 import Image from "next/image"
-import {
-  ArrowRight,
-  Dumbbell,
-  Activity,
-  Monitor,
-  Mail,
-  ChevronRight,
-} from "lucide-react"
+import { ArrowRight, Dumbbell, Activity, Monitor, Mail, ChevronRight } from "lucide-react"
 import { JsonLd } from "@/components/shared/JsonLd"
 import { FadeIn } from "@/components/shared/FadeIn"
 import { HeroContent } from "@/components/public/HeroContent"
@@ -177,9 +170,7 @@ export default async function HomePage() {
           <FadeIn className="text-center mb-16">
             <div className="flex items-center justify-center gap-3 mb-4">
               <div className="h-px w-8 bg-accent" />
-              <p className="text-sm font-medium text-accent uppercase tracking-widest">
-                What We Do
-              </p>
+              <p className="text-sm font-medium text-accent uppercase tracking-widest">What We Do</p>
               <div className="h-px w-8 bg-accent" />
             </div>
             <h2 className="text-3xl sm:text-4xl lg:text-5xl font-heading font-semibold text-primary tracking-tight">
@@ -202,15 +193,9 @@ export default async function HomePage() {
                     <div className="flex size-14 items-center justify-center rounded-xl bg-primary/10 mb-6 group-hover:bg-accent/15 transition-colors">
                       <Icon className="size-7 text-primary group-hover:text-accent transition-colors" />
                     </div>
-                    <p className="text-xs font-semibold text-accent uppercase tracking-widest mb-2">
-                      {service.title}
-                    </p>
-                    <h3 className="text-xl font-heading font-semibold text-primary mb-3">
-                      {service.subtitle}
-                    </h3>
-                    <p className="text-sm text-muted-foreground leading-relaxed mb-6">
-                      {service.description}
-                    </p>
+                    <p className="text-xs font-semibold text-accent uppercase tracking-widest mb-2">{service.title}</p>
+                    <h3 className="text-xl font-heading font-semibold text-primary mb-3">{service.subtitle}</h3>
+                    <p className="text-sm text-muted-foreground leading-relaxed mb-6">{service.description}</p>
                     <span className="inline-flex items-center gap-2 text-sm font-medium text-primary group-hover:text-accent transition-colors">
                       Learn more
                       <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
@@ -248,9 +233,7 @@ export default async function HomePage() {
             <FadeIn delay={0.15} className="lg:col-span-3">
               <div className="flex items-center gap-3 mb-4">
                 <div className="h-px w-12 bg-accent" />
-                <p className="text-sm font-medium text-accent uppercase tracking-widest">
-                  About Me
-                </p>
+                <p className="text-sm font-medium text-accent uppercase tracking-widest">About Me</p>
               </div>
               <h2 className="text-3xl sm:text-4xl font-heading font-semibold text-primary tracking-tight mb-8">
                 Darren J Paul
@@ -258,26 +241,20 @@ export default async function HomePage() {
 
               <div className="space-y-5">
                 <p className="text-lg text-foreground font-medium leading-relaxed">
-                  I&apos;m a performance strategist, coach, researcher, and
-                  advisor.
+                  I&apos;m a performance strategist, coach, researcher, and advisor.
                 </p>
                 <p className="text-base text-muted-foreground leading-relaxed">
-                  I&apos;ve spent over two decades working inside
-                  high-performance environments, studying how athletes adapt, how
-                  they break down, and why most systems fail them at critical
-                  moments.
+                  I&apos;ve spent over two decades working inside high-performance environments, studying how athletes
+                  adapt, how they break down, and why most systems fail them at critical moments.
                 </p>
                 <p className="text-base text-muted-foreground leading-relaxed">
-                  I think in systems, not exercises. I look for patterns, not
-                  shortcuts. I question assumptions that are widely accepted but
-                  rarely examined. I use lateral thinking to connect the dots
-                  between performance, injury, behaviour, load, movement, and
-                  context.
+                  I think in systems, not exercises. I look for patterns, not shortcuts. I question assumptions that are
+                  widely accepted but rarely examined. I use lateral thinking to connect the dots between performance,
+                  injury, behaviour, load, movement, and context.
                 </p>
                 <p className="text-base text-muted-foreground leading-relaxed">
-                  I don&apos;t chase fatigue. I don&apos;t chase trends. I
-                  don&apos;t sell certainty where none exists. I build structure.
-                  I manage risk. I help athletes develop capacity they can trust.
+                  I don&apos;t chase fatigue. I don&apos;t chase trends. I don&apos;t sell certainty where none exists.
+                  I build structure. I manage risk. I help athletes develop capacity they can trust.
                 </p>
                 <p className="text-lg text-foreground font-medium leading-relaxed">
                   That&apos;s the work. Everything else is just delivery.
@@ -302,9 +279,7 @@ export default async function HomePage() {
           <FadeIn className="text-center mb-16">
             <div className="flex items-center justify-center gap-3 mb-4">
               <div className="h-px w-8 bg-accent" />
-              <p className="text-sm font-medium text-accent uppercase tracking-widest">
-                Testimonials
-              </p>
+              <p className="text-sm font-medium text-accent uppercase tracking-widest">Testimonials</p>
               <div className="h-px w-8 bg-accent" />
             </div>
             <h2 className="text-3xl sm:text-4xl font-heading font-semibold text-primary tracking-tight">
@@ -325,9 +300,8 @@ export default async function HomePage() {
             Ready to elevate your performance?
           </h2>
           <p className="text-lg text-muted-foreground leading-relaxed mb-10">
-            Whether you&apos;re recovering from injury, training for
-            competition, or seeking a higher standard of coaching — the first
-            step is a conversation.
+            Whether you&apos;re recovering from injury, training for competition, or seeking a higher standard of
+            coaching — the first step is a conversation.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link
@@ -356,13 +330,10 @@ export default async function HomePage() {
             Stay in the loop.
           </h2>
           <p className="text-primary-foreground/70 leading-relaxed mb-8">
-            Get insights on performance, training philosophy, and program
-            updates. No spam. No fluff. Just the work.
+            Get insights on performance, training philosophy, and program updates. No spam. No fluff. Just the work.
           </p>
           <NewsletterForm />
-          <p className="text-xs text-primary-foreground/40 mt-4">
-            We respect your privacy. Unsubscribe at any time.
-          </p>
+          <p className="text-xs text-primary-foreground/40 mt-4">We respect your privacy. Unsubscribe at any time.</p>
         </FadeIn>
       </section>
     </>

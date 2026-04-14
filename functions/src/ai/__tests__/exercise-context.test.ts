@@ -1,31 +1,32 @@
 import { describe, it, expect } from "vitest"
-import {
-  filterByDifficultyLevel,
-  filterByProgressionPhase,
-} from "../exercise-context.js"
+import { filterByDifficultyLevel, filterByProgressionPhase } from "../exercise-context.js"
 import type { CompressedExercise } from "../types.js"
 
-const mk = (id: string, difficulty: string, score: number | null = null): CompressedExercise => ({
-  id,
-  name: `ex-${id}`,
-  difficulty,
-  difficulty_score: score,
-  movement_pattern: "push",
-  primary_muscles: ["chest"],
-  secondary_muscles: [],
-  equipment_required: [],
-  is_bodyweight: false,
-  training_intent: ["build"],
-  sport_tags: [],
-  joints_loaded: [],
-  plane_of_motion: ["sagittal"],
-} as unknown as CompressedExercise)
+const mk = (id: string, difficulty: string, score: number | null = null): CompressedExercise =>
+  ({
+    id,
+    name: `ex-${id}`,
+    difficulty,
+    difficulty_score: score,
+    movement_pattern: "push",
+    primary_muscles: ["chest"],
+    secondary_muscles: [],
+    equipment_required: [],
+    is_bodyweight: false,
+    training_intent: ["build"],
+    sport_tags: [],
+    joints_loaded: [],
+    plane_of_motion: ["sagittal"],
+  }) as unknown as CompressedExercise
 
 describe("filterByDifficultyLevel — hard exclusion", () => {
   const exercises = [
-    mk("b1", "beginner"), mk("b2", "beginner"),
-    mk("i1", "intermediate"), mk("i2", "intermediate"),
-    mk("a1", "advanced"), mk("a2", "advanced"),
+    mk("b1", "beginner"),
+    mk("b2", "beginner"),
+    mk("i1", "intermediate"),
+    mk("i2", "intermediate"),
+    mk("a1", "advanced"),
+    mk("a2", "advanced"),
   ]
 
   it("beginner clients get ONLY beginner exercises (no intermediates)", () => {
@@ -57,7 +58,8 @@ describe("filterByDifficultyLevel — hard exclusion", () => {
 
 describe("filterByProgressionPhase — earned progression", () => {
   const exercises = [
-    mk("b1", "beginner", 2), mk("b2", "beginner", 3),
+    mk("b1", "beginner", 2),
+    mk("b2", "beginner", 3),
     mk("i_easy", "intermediate", 4),
     mk("i_hard", "intermediate", 7),
     mk("a1", "advanced", 8),

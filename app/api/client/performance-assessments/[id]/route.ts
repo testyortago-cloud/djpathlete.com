@@ -1,14 +1,8 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import {
-  getPerformanceAssessmentById,
-  getAssessmentExercises,
-} from "@/lib/db/performance-assessments"
+import { getPerformanceAssessmentById, getAssessmentExercises } from "@/lib/db/performance-assessments"
 
-export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
     if (!session?.user?.id) {
@@ -30,9 +24,6 @@ export async function GET(
     return NextResponse.json({ assessment, exercises })
   } catch (error) {
     console.error("Client performance assessment GET error:", error)
-    return NextResponse.json(
-      { error: "Failed to fetch assessment" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to fetch assessment" }, { status: 500 })
   }
 }

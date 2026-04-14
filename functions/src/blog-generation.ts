@@ -99,7 +99,7 @@ async function validateUrls(html: string): Promise<string> {
       } catch {
         return { ...link, ok: false }
       }
-    })
+    }),
   )
 
   let cleaned = html
@@ -132,7 +132,10 @@ function stripHtml(html: string): string {
   text = text.replace(/<footer[\s\S]*?<\/footer>/gi, "")
   text = text.replace(/<[^>]+>/g, " ")
   text = text.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
-  text = text.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, " ")
+  text = text
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, " ")
   text = text.replace(/\s+/g, " ").trim()
   return text
 }
@@ -164,13 +167,11 @@ async function crawlUrl(url: string): Promise<string> {
 }
 
 async function crawlUrls(urls: string[]): Promise<{ url: string; content: string }[]> {
-  const results = await Promise.allSettled(
-    urls.map(async (url) => ({ url, content: await crawlUrl(url) }))
-  )
+  const results = await Promise.allSettled(urls.map(async (url) => ({ url, content: await crawlUrl(url) })))
   return results
     .filter(
       (r): r is PromiseFulfilledResult<{ url: string; content: string }> =>
-        r.status === "fulfilled" && r.value.content.length > 0
+        r.status === "fulfilled" && r.value.content.length > 0,
     )
     .map((r) => r.value)
 }
@@ -184,7 +185,7 @@ interface UserReferences {
 function formatUserReferences(
   crawled: { url: string; content: string }[],
   notes: string,
-  fileContents: { name: string; content: string }[]
+  fileContents: { name: string; content: string }[],
 ): string {
   if (crawled.length === 0 && !notes && fileContents.length === 0) return ""
 
@@ -192,10 +193,7 @@ function formatUserReferences(
 
   if (crawled.length > 0) {
     sections.push(
-      "### From provided links:\n" +
-        crawled
-          .map((c, i) => `[Source ${i + 1}] ${c.url}\n${c.content}`)
-          .join("\n\n")
+      "### From provided links:\n" + crawled.map((c, i) => `[Source ${i + 1}] ${c.url}\n${c.content}`).join("\n\n"),
     )
   }
 
@@ -204,10 +202,7 @@ function formatUserReferences(
   }
 
   if (fileContents.length > 0) {
-    sections.push(
-      "### From uploaded documents:\n" +
-        fileContents.map((f) => `[${f.name}]\n${f.content}`).join("\n\n")
-    )
+    sections.push("### From uploaded documents:\n" + fileContents.map((f) => `[${f.name}]\n${f.content}`).join("\n\n"))
   }
 
   return `
@@ -282,7 +277,9 @@ export async function handleBlogGeneration(jobId: string): Promise<void> {
           has_notes: refNotes.length > 0,
           files: fileContents.length,
         }
-        console.log(`[blog-generation] User references: ${crawled.length} URLs crawled, notes=${userRefMeta.has_notes}, files=${fileContents.length}`)
+        console.log(
+          `[blog-generation] User references: ${crawled.length} URLs crawled, notes=${userRefMeta.has_notes}, files=${fileContents.length}`,
+        )
       } catch (err) {
         console.warn("[blog-generation] User reference processing failed:", err)
       }
@@ -301,7 +298,9 @@ export async function handleBlogGeneration(jobId: string): Promise<void> {
         const research = await fetchResearchPapers(input.prompt)
         researchBlock = formatResearchForPrompt(research.papers)
         researchMeta = { papers: research.papers.length, source: research.source, duration_ms: research.duration_ms }
-        console.log(`[blog-generation] Found ${research.papers.length} papers via ${research.source} in ${research.duration_ms}ms`)
+        console.log(
+          `[blog-generation] Found ${research.papers.length} papers via ${research.source} in ${research.duration_ms}ms`,
+        )
       } catch (err) {
         console.warn("[blog-generation] Research fetch failed, proceeding without:", err)
       }
@@ -321,12 +320,7 @@ Tone: ${input.tone ?? "professional"}
 Target length: ${input.length ?? "medium"}
 Current date: ${new Date().toISOString().slice(0, 10)}${userRefBlock}${researchBlock}`
 
-    const result = await callAgent(
-      BLOG_GENERATION_PROMPT,
-      userMessage,
-      blogResultSchema,
-      { model: MODEL_SONNET }
-    )
+    const result = await callAgent(BLOG_GENERATION_PROMPT, userMessage, blogResultSchema, { model: MODEL_SONNET })
 
     // Check cancellation after AI call
     if (await isJobCancelled(jobRef)) {
@@ -370,7 +364,9 @@ Current date: ${new Date().toISOString().slice(0, 10)}${userRefBlock}${researchB
         current_step: 0,
         total_steps: 0,
       })
-    } catch { /* non-fatal */ }
+    } catch {
+      /* non-fatal */
+    }
 
     await jobRef.update({
       status: "completed",

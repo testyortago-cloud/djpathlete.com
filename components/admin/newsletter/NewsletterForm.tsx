@@ -24,9 +24,7 @@ export function NewsletterForm({ newsletter, authorId }: NewsletterFormProps) {
   const [editorKey, setEditorKey] = useState(0)
 
   const [subject, setSubject] = useState(newsletter?.subject ?? "")
-  const [previewText, setPreviewText] = useState(
-    newsletter?.preview_text ?? ""
-  )
+  const [previewText, setPreviewText] = useState(newsletter?.preview_text ?? "")
   const [content, setContent] = useState(newsletter?.content ?? "")
 
   const isSent = newsletter?.status === "sent"
@@ -37,7 +35,7 @@ export function NewsletterForm({ newsletter, authorId }: NewsletterFormProps) {
       preview_text: previewText,
       content,
     }),
-    [subject, previewText, content]
+    [subject, previewText, content],
   )
 
   async function handleSave() {
@@ -108,21 +106,15 @@ export function NewsletterForm({ newsletter, authorId }: NewsletterFormProps) {
         const created = await createRes.json()
         newsletterId = created.id
       } else {
-        const updateRes = await fetch(
-          `/api/admin/newsletter/${newsletterId}`,
-          {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(parsed.data),
-          }
-        )
+        const updateRes = await fetch(`/api/admin/newsletter/${newsletterId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(parsed.data),
+        })
         if (!updateRes.ok) throw new Error("Failed to save newsletter")
       }
 
-      const sendRes = await fetch(
-        `/api/admin/newsletter/${newsletterId}/send`,
-        { method: "POST" }
-      )
+      const sendRes = await fetch(`/api/admin/newsletter/${newsletterId}/send`, { method: "POST" })
       if (!sendRes.ok) {
         const data = await sendRes.json()
         throw new Error(data.error ?? "Failed to send")
@@ -139,11 +131,7 @@ export function NewsletterForm({ newsletter, authorId }: NewsletterFormProps) {
     }
   }
 
-  function handleAiGenerated(data: {
-    subject: string
-    preview_text: string
-    content: string
-  }) {
+  function handleAiGenerated(data: { subject: string; preview_text: string; content: string }) {
     setSubject(data.subject)
     setPreviewText(data.preview_text)
     setContent(data.content)
@@ -182,11 +170,7 @@ export function NewsletterForm({ newsletter, authorId }: NewsletterFormProps) {
               disabled={busy}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border text-sm font-medium hover:bg-surface transition-colors disabled:opacity-50"
             >
-              {saving ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Save className="size-4" />
-              )}
+              {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
               Save Draft
             </button>
             <button
@@ -199,11 +183,7 @@ export function NewsletterForm({ newsletter, authorId }: NewsletterFormProps) {
                   : "bg-primary text-primary-foreground hover:bg-primary/90"
               }`}
             >
-              {sending ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Send className="size-4" />
-              )}
+              {sending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
               {confirmSend ? "Confirm Send to All Subscribers" : "Send"}
             </button>
           </div>
@@ -223,9 +203,7 @@ export function NewsletterForm({ newsletter, authorId }: NewsletterFormProps) {
             })}
             {" — "}
             {newsletter.sent_count} delivered
-            {newsletter.failed_count
-              ? `, ${newsletter.failed_count} failed`
-              : ""}
+            {newsletter.failed_count ? `, ${newsletter.failed_count} failed` : ""}
           </p>
         </div>
       )}
@@ -233,9 +211,7 @@ export function NewsletterForm({ newsletter, authorId }: NewsletterFormProps) {
       <div className="space-y-4">
         {/* Subject */}
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1">
-            Subject Line
-          </label>
+          <label className="block text-sm font-medium text-foreground mb-1">Subject Line</label>
           <input
             type="text"
             value={subject}
@@ -248,9 +224,7 @@ export function NewsletterForm({ newsletter, authorId }: NewsletterFormProps) {
 
         {/* Preview Text */}
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1">
-            Preview Text
-          </label>
+          <label className="block text-sm font-medium text-foreground mb-1">Preview Text</label>
           <input
             type="text"
             value={previewText}
@@ -259,29 +233,18 @@ export function NewsletterForm({ newsletter, authorId }: NewsletterFormProps) {
             disabled={isSent}
             className="w-full px-3 py-2 rounded-lg border border-border bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed"
           />
-          <p className="text-xs text-muted-foreground mt-1">
-            {previewText.length}/300
-          </p>
+          <p className="text-xs text-muted-foreground mt-1">{previewText.length}/300</p>
         </div>
 
         {/* Content Editor */}
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1">
-            Content
-          </label>
+          <label className="block text-sm font-medium text-foreground mb-1">Content</label>
           {isSent ? (
             <div className="rounded-xl border border-border bg-white p-6">
-              <div
-                className="prose prose-lg max-w-none"
-                dangerouslySetInnerHTML={{ __html: content }}
-              />
+              <div className="prose prose-lg max-w-none" dangerouslySetInnerHTML={{ __html: content }} />
             </div>
           ) : (
-            <BlogEditor
-              key={editorKey}
-              content={content}
-              onChange={setContent}
-            />
+            <BlogEditor key={editorKey} content={content} onChange={setContent} />
           )}
         </div>
 
@@ -290,9 +253,7 @@ export function NewsletterForm({ newsletter, authorId }: NewsletterFormProps) {
           <div className="rounded-lg border border-border bg-surface/50 p-3 text-xs text-muted-foreground space-y-1">
             <p>
               Status:{" "}
-              <span className="font-medium text-foreground">
-                {newsletter.status === "sent" ? "Sent" : "Draft"}
-              </span>
+              <span className="font-medium text-foreground">{newsletter.status === "sent" ? "Sent" : "Draft"}</span>
             </p>
             {newsletter.sent_at && (
               <p>

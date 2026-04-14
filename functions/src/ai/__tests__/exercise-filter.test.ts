@@ -20,12 +20,7 @@ describe("applyUsagePenalty", () => {
   })
 
   it("stacks both penalties when exercise was used by both coach and client", () => {
-    const result = applyUsagePenalty(
-      100,
-      "ex-1",
-      new Map([["ex-1", 20]]),
-      new Map([["ex-1", 30]])
-    )
+    const result = applyUsagePenalty(100, "ex-1", new Map([["ex-1", 20]]), new Map([["ex-1", 30]]))
     expect(result).toBe(20)
   })
 

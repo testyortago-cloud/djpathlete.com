@@ -12,7 +12,7 @@ export async function POST(request: Request) {
     if (!result.success) {
       return NextResponse.json(
         { error: "Invalid form data", details: result.error.flatten().fieldErrors },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
@@ -21,10 +21,7 @@ export async function POST(request: Request) {
     const supabase = createServiceRoleClient()
 
     // Find all admin users to notify
-    const { data: admins, error: adminsError } = await supabase
-      .from("users")
-      .select("id")
-      .eq("role", "admin")
+    const { data: admins, error: adminsError } = await supabase.from("users").select("id").eq("role", "admin")
 
     if (adminsError) {
       console.error("Failed to fetch admin users:", adminsError)
@@ -42,9 +39,7 @@ export async function POST(request: Request) {
         link: null,
       }))
 
-      const { error: insertError } = await supabase
-        .from("notifications")
-        .insert(notifications)
+      const { error: insertError } = await supabase.from("notifications").insert(notifications)
 
       if (insertError) {
         console.error("Failed to create contact notifications:", insertError)
@@ -83,9 +78,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true })
   } catch {
-    return NextResponse.json(
-      { error: "Something went wrong. Please try again." },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 })
   }
 }

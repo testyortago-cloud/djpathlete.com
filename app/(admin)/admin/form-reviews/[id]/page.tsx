@@ -8,11 +8,7 @@ import Link from "next/link"
 
 export const metadata = { title: "Review Detail | Admin | DJP Athlete" }
 
-export default async function AdminFormReviewDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>
-}) {
+export default async function AdminFormReviewDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await requireAdmin()
   const { id } = await params
 
@@ -46,12 +42,7 @@ export default async function AdminFormReviewDetailPage({
         Back to Form Reviews
       </Link>
 
-      <FormReviewDetail
-        review={review}
-        videoUrl={videoUrl}
-        messages={messages}
-        currentUserId={session.user.id}
-      />
+      <FormReviewDetail review={review} videoUrl={videoUrl} messages={messages} currentUserId={session.user.id} />
     </div>
   )
 }

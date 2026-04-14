@@ -39,15 +39,18 @@ export function ExercisePool({ allExercises, poolExercises, onPoolChange, onClos
   const filtered = useMemo(() => {
     if (!search && categoryFilter === "all") return allExercises.slice(0, 50)
 
-    return allExercises.filter((ex) => {
-      const matchesSearch = !search ||
-        ex.name.toLowerCase().includes(search.toLowerCase()) ||
-        (ex.muscle_group?.toLowerCase().includes(search.toLowerCase()) ?? false) ||
-        ex.primary_muscles.some((m) => m.toLowerCase().includes(search.toLowerCase()))
-      const cats: string[] = Array.isArray(ex.category) ? ex.category : [ex.category]
-      const matchesCategory = categoryFilter === "all" || cats.includes(categoryFilter)
-      return matchesSearch && matchesCategory
-    }).slice(0, 50)
+    return allExercises
+      .filter((ex) => {
+        const matchesSearch =
+          !search ||
+          ex.name.toLowerCase().includes(search.toLowerCase()) ||
+          (ex.muscle_group?.toLowerCase().includes(search.toLowerCase()) ?? false) ||
+          ex.primary_muscles.some((m) => m.toLowerCase().includes(search.toLowerCase()))
+        const cats: string[] = Array.isArray(ex.category) ? ex.category : [ex.category]
+        const matchesCategory = categoryFilter === "all" || cats.includes(categoryFilter)
+        return matchesSearch && matchesCategory
+      })
+      .slice(0, 50)
   }, [allExercises, search, categoryFilter])
 
   function addToPool(exercise: Exercise) {
@@ -77,12 +80,7 @@ export function ExercisePool({ allExercises, poolExercises, onPoolChange, onClos
             </span>
           )}
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-6 text-muted-foreground"
-          onClick={onClose}
-        >
+        <Button variant="ghost" size="icon" className="size-6 text-muted-foreground" onClick={onClose}>
           <X className="size-3.5" />
         </Button>
       </div>
@@ -133,9 +131,7 @@ export function ExercisePool({ allExercises, poolExercises, onPoolChange, onClos
             {/* Browse results */}
             <div className="max-h-48 overflow-y-auto space-y-0.5 rounded-md border border-border">
               {filtered.length === 0 ? (
-                <p className="text-[10px] text-muted-foreground text-center py-4">
-                  No exercises found
-                </p>
+                <p className="text-[10px] text-muted-foreground text-center py-4">No exercises found</p>
               ) : (
                 filtered.map((exercise) => {
                   const inPool = poolIds.has(exercise.id)
@@ -147,9 +143,7 @@ export function ExercisePool({ allExercises, poolExercises, onPoolChange, onClos
                     <button
                       key={exercise.id}
                       className={`w-full flex items-center gap-2 px-2 py-1.5 text-left transition-colors ${
-                        inPool
-                          ? "bg-primary/5 cursor-default"
-                          : "hover:bg-muted/50 cursor-pointer"
+                        inPool ? "bg-primary/5 cursor-default" : "hover:bg-muted/50 cursor-pointer"
                       }`}
                       onClick={() => !inPool && addToPool(exercise)}
                       disabled={inPool}
@@ -167,9 +161,7 @@ export function ExercisePool({ allExercises, poolExercises, onPoolChange, onClos
                         </div>
                       )}
                       <div className="min-w-0 flex-1">
-                        <p className="text-[11px] font-medium text-foreground truncate">
-                          {exercise.name}
-                        </p>
+                        <p className="text-[11px] font-medium text-foreground truncate">{exercise.name}</p>
                         <div className="flex gap-1 mt-0.5">
                           {cats.slice(0, 1).map((c) => (
                             <span key={c} className="text-[8px] font-medium text-muted-foreground capitalize">
@@ -212,11 +204,7 @@ export function ExercisePool({ allExercises, poolExercises, onPoolChange, onClos
               AI generation will use these exercises. Drag to add to days manually.
             </p>
             {poolExercises.map((exercise) => (
-              <ExercisePoolCard
-                key={exercise.id}
-                exercise={exercise}
-                onRemove={() => removeFromPool(exercise.id)}
-              />
+              <ExercisePoolCard key={exercise.id} exercise={exercise} onRemove={() => removeFromPool(exercise.id)} />
             ))}
           </>
         )}

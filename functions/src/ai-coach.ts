@@ -1,7 +1,12 @@
 import { getFirestore, FieldValue } from "firebase-admin/firestore"
 import { z } from "zod"
 import { streamRaw, callAgent, MODEL_HAIKU } from "./ai/anthropic.js"
-import { retrieveSimilarContext, formatRagContext, buildRagAugmentedPrompt, embedConversationMessage } from "./ai/rag.js"
+import {
+  retrieveSimilarContext,
+  formatRagContext,
+  buildRagAugmentedPrompt,
+  embedConversationMessage,
+} from "./ai/rag.js"
 import { getSupabase } from "./lib/supabase.js"
 
 // ─── Prompts ──────────────────────────────────────────────────────────────────
@@ -141,10 +146,26 @@ export async function handleAiCoach(jobId: string): Promise<void> {
 
     // Fetch core data in parallel
     const [historyResult, exerciseResult, profileResult, assessmentResult] = await Promise.all([
-      supabase.from("exercise_progress").select("*").eq("user_id", userId).eq("exercise_id", exerciseId).order("completed_at", { ascending: false }).limit(20),
+      supabase
+        .from("exercise_progress")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("exercise_id", exerciseId)
+        .order("completed_at", { ascending: false })
+        .limit(20),
       supabase.from("exercises").select("*").eq("id", exerciseId).single(),
       supabase.from("client_profiles").select("*").eq("user_id", userId).single(),
-      supabase.from("assessment_results").select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(1).single().then(r => r.data, () => null),
+      supabase
+        .from("assessment_results")
+        .select("*")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single()
+        .then(
+          (r) => r.data,
+          () => null,
+        ),
     ])
 
     const history = historyResult.data ?? []
@@ -156,7 +177,14 @@ export async function handleAiCoach(jobId: string): Promise<void> {
     const isFirstSession = history.length === 0 && !input.current_session
 
     // Cross-exercise data for first sessions
-    let relatedHistory: Array<{ exercise_name: string; date: unknown; weight_kg: unknown; reps: unknown; rpe: unknown; sets: unknown }> = []
+    let relatedHistory: Array<{
+      exercise_name: string
+      date: unknown
+      weight_kg: unknown
+      reps: unknown
+      rpe: unknown
+      sets: unknown
+    }> = []
     if (isFirstSession && exercise.movement_pattern) {
       try {
         const { data: related } = await supabase
@@ -209,7 +237,8 @@ export async function handleAiCoach(jobId: string): Promise<void> {
       ? {
           computed_levels: assessment.computed_levels,
           relevant_level: exercise.movement_pattern
-            ? (assessment.computed_levels as Record<string, unknown>)?.[exercise.movement_pattern] ?? (assessment.computed_levels as Record<string, unknown>)?.overall
+            ? ((assessment.computed_levels as Record<string, unknown>)?.[exercise.movement_pattern] ??
+              (assessment.computed_levels as Record<string, unknown>)?.overall)
             : (assessment.computed_levels as Record<string, unknown>)?.overall,
           overall_feeling: (assessment.feedback as Record<string, unknown> | null)?.overall_feeling ?? null,
           max_difficulty_score: assessment.max_difficulty_score,
@@ -231,8 +260,10 @@ export async function handleAiCoach(jobId: string): Promise<void> {
             intensity_pct: input.program_context.prescription.intensity_pct || undefined,
             tempo: input.program_context.prescription.tempo || undefined,
             rest_seconds: input.program_context.prescription.rest_seconds || undefined,
-            technique: input.program_context.prescription.technique !== "standard"
-              ? input.program_context.prescription.technique : undefined,
+            technique:
+              input.program_context.prescription.technique !== "standard"
+                ? input.program_context.prescription.technique
+                : undefined,
             coach_notes: input.program_context.prescription.notes || undefined,
           },
         }
@@ -268,9 +299,7 @@ export async function handleAiCoach(jobId: string): Promise<void> {
     const exerciseSummary = `${exercise.name} ${exercise.movement_pattern ?? ""} ${exercise.muscle_group ?? ""}`
     const ragResults = await retrieveSimilarContext(exerciseSummary, "ai_coach", { threshold: 0.4, limit: 3 })
     const ragContext = formatRagContext(ragResults)
-    const augmentedPrompt = ragContext
-      ? buildRagAugmentedPrompt(COACHING_PROMPT, ragContext)
-      : COACHING_PROMPT
+    const augmentedPrompt = ragContext ? buildRagAugmentedPrompt(COACHING_PROMPT, ragContext) : COACHING_PROMPT
 
     // Phase 1: Stream coaching text
     let accumulatedText = ""
@@ -296,12 +325,10 @@ export async function handleAiCoach(jobId: string): Promise<void> {
     let analysisData: Record<string, unknown> | null = null
     try {
       const analysisInput = `${userMessage}\n\n---\nCOACHING TEXT ALREADY GIVEN TO CLIENT (your suggested_weight_kg MUST match the weight advice in this text):\n${accumulatedText}`
-      const analysisResult = await callAgent(
-        ANALYSIS_PROMPT,
-        analysisInput,
-        coachAnalysisSchema,
-        { model: MODEL_HAIKU, cacheSystemPrompt: true }
-      )
+      const analysisResult = await callAgent(ANALYSIS_PROMPT, analysisInput, coachAnalysisSchema, {
+        model: MODEL_HAIKU,
+        cacheSystemPrompt: true,
+      })
       analysisData = analysisResult.content as unknown as Record<string, unknown>
 
       await chunksRef.doc(String(chunkIndex++).padStart(6, "0")).set({
@@ -327,7 +354,9 @@ export async function handleAiCoach(jobId: string): Promise<void> {
             outcome_positive: null,
             measured_at: null,
           })
-        } catch { /* non-fatal */ }
+        } catch {
+          /* non-fatal */
+        }
       }
 
       // Track deload recommendation
@@ -346,10 +375,15 @@ export async function handleAiCoach(jobId: string): Promise<void> {
             outcome_positive: null,
             measured_at: null,
           })
-        } catch { /* non-fatal */ }
+        } catch {
+          /* non-fatal */
+        }
       }
     } catch (analysisErr) {
-      console.warn("[ai-coach] Analysis generation failed:", analysisErr instanceof Error ? analysisErr.message : analysisErr)
+      console.warn(
+        "[ai-coach] Analysis generation failed:",
+        analysisErr instanceof Error ? analysisErr.message : analysisErr,
+      )
     }
 
     // Save conversation history

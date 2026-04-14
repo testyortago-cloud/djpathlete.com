@@ -109,10 +109,7 @@ export default async function BlogPostPage({ params }: Props) {
             >
               {post.category}
             </span>
-            <time
-              dateTime={post.published_at ?? post.created_at}
-              className="text-sm text-muted-foreground"
-            >
+            <time dateTime={post.published_at ?? post.created_at} className="text-sm text-muted-foreground">
               {formatDate(post.published_at ?? post.created_at)}
             </time>
           </div>
@@ -123,9 +120,7 @@ export default async function BlogPostPage({ params }: Props) {
           </h1>
 
           {/* Excerpt as lead */}
-          <p className="text-lg text-muted-foreground leading-relaxed">
-            {post.excerpt}
-          </p>
+          <p className="text-lg text-muted-foreground leading-relaxed">{post.excerpt}</p>
         </div>
       </section>
 
@@ -134,13 +129,7 @@ export default async function BlogPostPage({ params }: Props) {
         <section className="px-4 sm:px-8 pb-8">
           <div className="max-w-4xl mx-auto">
             <div className="relative aspect-[16/9] rounded-xl overflow-hidden">
-              <NextImage
-                src={post.cover_image_url}
-                alt={post.title}
-                fill
-                className="object-cover"
-                priority
-              />
+              <NextImage src={post.cover_image_url} alt={post.title} fill className="object-cover" priority />
             </div>
           </div>
         </section>
@@ -178,17 +167,14 @@ export default async function BlogPostPage({ params }: Props) {
           <div className="max-w-3xl mx-auto text-center">
             <div className="flex items-center justify-center gap-3 mb-4">
               <div className="h-px w-8 bg-accent" />
-              <p className="text-sm font-medium text-accent uppercase tracking-widest">
-                Work With Us
-              </p>
+              <p className="text-sm font-medium text-accent uppercase tracking-widest">Work With Us</p>
               <div className="h-px w-8 bg-accent" />
             </div>
             <h2 className="text-2xl sm:text-3xl font-heading font-semibold text-primary tracking-tight mb-4">
               Ready to take your performance seriously?
             </h2>
             <p className="text-lg text-muted-foreground mb-8">
-              If this resonated, imagine what a coaching relationship built
-              around your specific needs could achieve.
+              If this resonated, imagine what a coaching relationship built around your specific needs could achieve.
             </p>
             <Link
               href="/contact"

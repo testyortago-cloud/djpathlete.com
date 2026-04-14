@@ -12,17 +12,9 @@ export const EXERCISE_CATEGORIES = [
   "relative_strength",
 ] as const
 
-export const TRAINING_INTENTS = [
-  "build",
-  "shape",
-  "express",
-] as const
+export const TRAINING_INTENTS = ["build", "shape", "express"] as const
 
-export const EXERCISE_DIFFICULTIES = [
-  "beginner",
-  "intermediate",
-  "advanced",
-] as const
+export const EXERCISE_DIFFICULTIES = ["beginner", "intermediate", "advanced"] as const
 
 export const MOVEMENT_PATTERNS = [
   "push",
@@ -37,18 +29,9 @@ export const MOVEMENT_PATTERNS = [
   "conditioning",
 ] as const
 
-export const FORCE_TYPES = [
-  "push",
-  "pull",
-  "static",
-  "dynamic",
-] as const
+export const FORCE_TYPES = ["push", "pull", "static", "dynamic"] as const
 
-export const LATERALITY_OPTIONS = [
-  "bilateral",
-  "unilateral",
-  "alternating",
-] as const
+export const LATERALITY_OPTIONS = ["bilateral", "unilateral", "alternating"] as const
 
 export const MUSCLE_OPTIONS = [
   "chest",
@@ -106,11 +89,7 @@ export const EQUIPMENT_OPTIONS = [
   "short_barbell",
 ] as const
 
-export const PLANES_OF_MOTION = [
-  "sagittal",
-  "frontal",
-  "transverse",
-] as const
+export const PLANES_OF_MOTION = ["sagittal", "frontal", "transverse"] as const
 
 export const JOINT_NAMES = [
   "ankle",
@@ -123,11 +102,7 @@ export const JOINT_NAMES = [
   "wrist",
 ] as const
 
-export const JOINT_LOAD_LEVELS = [
-  "low",
-  "moderate",
-  "high",
-] as const
+export const JOINT_LOAD_LEVELS = ["low", "moderate", "high"] as const
 
 export const SPORT_TAG_OPTIONS = [
   "tennis",
@@ -154,10 +129,7 @@ export const SPORT_TAG_OPTIONS = [
 ] as const
 
 export const exerciseFormSchema = z.object({
-  name: z
-    .string()
-    .min(2, "Name must be at least 2 characters")
-    .max(100, "Name must be under 100 characters"),
+  name: z.string().min(2, "Name must be at least 2 characters").max(100, "Name must be under 100 characters"),
   description: z
     .string()
     .max(2000, "Description must be under 2000 characters")
@@ -189,25 +161,58 @@ export const exerciseFormSchema = z.object({
     .nullable()
     .transform((v) => v || null),
   // AI metadata fields (all optional)
-  movement_pattern: z.enum(MOVEMENT_PATTERNS).nullable().optional().transform((v) => v ?? null),
+  movement_pattern: z
+    .enum(MOVEMENT_PATTERNS)
+    .nullable()
+    .optional()
+    .transform((v) => v ?? null),
   primary_muscles: z.array(z.string()).optional().default([]),
   secondary_muscles: z.array(z.string()).optional().default([]),
-  force_type: z.enum(FORCE_TYPES).nullable().optional().transform((v) => v ?? null),
-  laterality: z.enum(LATERALITY_OPTIONS).nullable().optional().transform((v) => v ?? null),
+  force_type: z
+    .enum(FORCE_TYPES)
+    .nullable()
+    .optional()
+    .transform((v) => v ?? null),
+  laterality: z
+    .enum(LATERALITY_OPTIONS)
+    .nullable()
+    .optional()
+    .transform((v) => v ?? null),
   equipment_required: z.array(z.string()).optional().default([]),
   is_bodyweight: z.boolean().optional().default(false),
   training_intent: z.array(z.enum(TRAINING_INTENTS)).min(1, "Select at least one training intent").default(["build"]),
   sport_tags: z.array(z.string()).optional().default([]),
   plane_of_motion: z.array(z.enum(PLANES_OF_MOTION)).optional().default([]),
-  joints_loaded: z.array(z.object({
-    joint: z.enum(JOINT_NAMES),
-    load: z.enum(JOINT_LOAD_LEVELS),
-  })).optional().default([]),
+  joints_loaded: z
+    .array(
+      z.object({
+        joint: z.enum(JOINT_NAMES),
+        load: z.enum(JOINT_LOAD_LEVELS),
+      }),
+    )
+    .optional()
+    .default([]),
   aliases: z.array(z.string().max(100)).optional().default([]),
-  difficulty_max: z.enum(EXERCISE_DIFFICULTIES).nullable().optional().transform((v) => v ?? null),
-  difficulty_score: z.coerce.number().int().min(1).max(10).nullable().optional().transform((v) => v ?? null),
+  difficulty_max: z
+    .enum(EXERCISE_DIFFICULTIES)
+    .nullable()
+    .optional()
+    .transform((v) => v ?? null),
+  difficulty_score: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(10)
+    .nullable()
+    .optional()
+    .transform((v) => v ?? null),
   prerequisite_exercises: z.array(z.string().uuid()).optional().default([]),
-  progression_order: z.coerce.number().int().nullable().optional().transform((v) => v ?? null),
+  progression_order: z.coerce
+    .number()
+    .int()
+    .nullable()
+    .optional()
+    .transform((v) => v ?? null),
 })
 
 export type ExerciseFormData = z.infer<typeof exerciseFormSchema>

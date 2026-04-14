@@ -14,12 +14,10 @@ interface ScoringResult {
 function computePatternScore(
   pattern: string,
   answers: Record<string, string>,
-  questions: AssessmentQuestion[]
+  questions: AssessmentQuestion[],
 ): number {
   let score = 0
-  const patternQuestions = questions.filter(
-    (q) => q.movement_pattern === pattern && q.section === "movement_screen"
-  )
+  const patternQuestions = questions.filter((q) => q.movement_pattern === pattern && q.section === "movement_screen")
 
   for (const q of patternQuestions) {
     const answer = answers[q.id]

@@ -6,10 +6,7 @@ import { getUserById } from "@/lib/db/users"
 import { sendProgramReadyEmail } from "@/lib/email"
 import { createWeekAccessBulk } from "@/lib/db/week-access"
 
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
     const body = await request.json()
@@ -18,7 +15,7 @@ export async function POST(
     if (!result.success) {
       return NextResponse.json(
         { error: "Invalid form data", details: result.error.flatten().fieldErrors },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
@@ -82,9 +79,6 @@ export async function POST(
 
     return NextResponse.json({ assigned, skipped, errors }, { status: 201 })
   } catch {
-    return NextResponse.json(
-      { error: "Failed to assign program. Please try again." },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to assign program. Please try again." }, { status: 500 })
   }
 }

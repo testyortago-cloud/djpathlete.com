@@ -24,8 +24,7 @@ const educationSchema = {
   "@context": "https://schema.org",
   "@type": "WebPage",
   name: "Education — DJP Athlete",
-  description:
-    "A new standard for performance. A structured system for operating when certainty disappears.",
+  description: "A new standard for performance. A structured system for operating when certainty disappears.",
   url: "https://djpathlete.com/education",
   publisher: {
     "@type": "Organization",
@@ -45,9 +44,7 @@ export default function EducationPage() {
           {/* Overline */}
           <div className="flex items-center justify-center gap-3 mb-6">
             <div className="h-px w-8 bg-accent" />
-            <p className="text-sm font-medium text-accent uppercase tracking-widest">
-              Coming Soon
-            </p>
+            <p className="text-sm font-medium text-accent uppercase tracking-widest">Coming Soon</p>
             <div className="h-px w-8 bg-accent" />
           </div>
 
@@ -60,8 +57,7 @@ export default function EducationPage() {
           {/* Body copy */}
           <div className="space-y-6 mb-14">
             <p className="text-lg sm:text-xl text-primary-foreground/80 leading-relaxed">
-              Built for the moments that destabilize careers, teams, and
-              identities.
+              Built for the moments that destabilize careers, teams, and identities.
             </p>
             <p className="text-lg sm:text-xl text-primary-foreground font-medium leading-relaxed">
               Not another course.
@@ -70,8 +66,7 @@ export default function EducationPage() {
               A structured system for operating when certainty disappears.
             </p>
             <p className="text-base text-primary-foreground/60 leading-relaxed max-w-xl mx-auto">
-              Designed for high-performance sport environments, teams, and
-              competitive leaders navigating instability.
+              Designed for high-performance sport environments, teams, and competitive leaders navigating instability.
             </p>
           </div>
 

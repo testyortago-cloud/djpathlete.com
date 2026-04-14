@@ -13,9 +13,6 @@ export async function GET() {
     return NextResponse.json({ profiles })
   } catch (error) {
     console.error("Admin questionnaires GET error:", error)
-    return NextResponse.json(
-      { error: "Failed to fetch questionnaires" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to fetch questionnaires" }, { status: 500 })
   }
 }

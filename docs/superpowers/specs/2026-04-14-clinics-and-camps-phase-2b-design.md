@@ -64,9 +64,17 @@ The button is a client island inside the otherwise-server EventCard — lifted i
 `app/(marketing)/clinics/page.tsx` and `.../camps/page.tsx`: only the "Upcoming dates" section changes. Fetch published events via `getPublishedEvents({ type })` in the server component and conditionally render:
 
 ```tsx
-{events.length > 0
-  ? <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">{events.map(e => <EventCard key={e.id} event={e} />)}</div>
-  : <EventsComingSoonPanel type="clinic" />}
+{
+  events.length > 0 ? (
+    <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+      {events.map((e) => (
+        <EventCard key={e.id} event={e} />
+      ))}
+    </div>
+  ) : (
+    <EventsComingSoonPanel type="clinic" />
+  )
+}
 ```
 
 `EventsComingSoonPanel` remains as the zero-state fallback.
@@ -74,6 +82,7 @@ The button is a client island inside the otherwise-server EventCard — lifted i
 ### Detail pages — `/clinics/[slug]` and `/camps/[slug]`
 
 **Routing:**
+
 - `generateStaticParams` → `getPublishedEvents({ type })` returns slugs
 - `revalidate = 300` (5 minutes)
 - `getEventBySlug(slug)` → `notFound()` if null, wrong type, or status !== 'published'
@@ -90,6 +99,7 @@ The button is a client island inside the otherwise-server EventCard — lifted i
 - **Mobile sticky bar:** below `lg`, the right column content doesn't sticky. Instead a `<div className="fixed bottom-0 inset-x-0 lg:hidden ...">` bar renders just the CTA button so it's always tappable.
 
 **Components added:**
+
 - `components/public/EventCard.tsx` + `components/public/EventCardCta.tsx` (client)
 - `components/public/EventDetailHero.tsx` — hero strip used only on detail pages
 - `components/public/EventSignupCard.tsx` — right column + mobile bar (client, owns the modal state)
@@ -135,7 +145,7 @@ Internal state machine: `form → submitting → success | error`.
 7. Fire two emails via `Promise.allSettled`:
    - `sendEventSignupReceivedEmail(signup, event)` → parent
    - `sendAdminNewSignupEmail(signup, event)` → Darren (`ADMIN_CC`)
-   Log any rejection via `console.error` with signup id + function name.
+     Log any rejection via `console.error` with signup id + function name.
 8. Return `200 { ok: true, signupId: signup.id }`.
 
 **Error handling:** 400/404/409 paths as above. Unhandled errors return 500 with a generic message, logged.
@@ -149,6 +159,7 @@ Props: `{ initialSignups: EventSignup[], eventId: string }`. Owns local state; r
 **Columns:** Athlete · Age · Parent · Email · Phone · Sport · Type · Status · Actions.
 
 **Actions per row:**
+
 - Status `pending` → "Confirm" (primary) + "Cancel" (outline)
 - Status `confirmed` → "Cancel" only
 - Status `cancelled` / `refunded` → no buttons

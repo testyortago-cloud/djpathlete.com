@@ -40,21 +40,15 @@ async function _buildAdminContextFresh(): Promise<string> {
   const sections: string[] = []
 
   // ─── Parallel batch 1: Core data ──────────────────────────────────────────
-  const [
-    platformOverview,
-    revenueSection,
-    programsSection,
-    progressSection,
-    recentActivity,
-    aiGenSection,
-  ] = await Promise.all([
-    buildPlatformOverview(supabase, startOfMonth, fourteenDaysAgo).catch(() => null),
-    buildRevenueSection(supabase, startOfMonth, startOfLastMonth, endOfLastMonth).catch(() => null),
-    buildProgramsSection(supabase, startOfMonth).catch(() => null),
-    buildProgressSection(supabase, thirtyDaysAgo, fourteenDaysAgo).catch(() => null),
-    buildRecentActivity(supabase, sevenDaysAgo).catch(() => null),
-    buildAiGenerationSection(supabase).catch(() => null),
-  ])
+  const [platformOverview, revenueSection, programsSection, progressSection, recentActivity, aiGenSection] =
+    await Promise.all([
+      buildPlatformOverview(supabase, startOfMonth, fourteenDaysAgo).catch(() => null),
+      buildRevenueSection(supabase, startOfMonth, startOfLastMonth, endOfLastMonth).catch(() => null),
+      buildProgramsSection(supabase, startOfMonth).catch(() => null),
+      buildProgressSection(supabase, thirtyDaysAgo, fourteenDaysAgo).catch(() => null),
+      buildRecentActivity(supabase, sevenDaysAgo).catch(() => null),
+      buildAiGenerationSection(supabase).catch(() => null),
+    ])
 
   if (platformOverview) sections.push(platformOverview)
   if (revenueSection) sections.push(revenueSection)
@@ -74,7 +68,7 @@ type SupabaseClient = ReturnType<typeof createServiceRoleClient>
 async function buildPlatformOverview(
   supabase: SupabaseClient,
   startOfMonth: Date,
-  fourteenDaysAgo: Date
+  fourteenDaysAgo: Date,
 ): Promise<string> {
   // Fetch all clients (non-admin users)
   const { data: clients } = await supabase
@@ -87,9 +81,7 @@ async function buildPlatformOverview(
   const totalClients = allClients.length
 
   // New this month
-  const newThisMonth = allClients.filter(
-    (c) => new Date(c.created_at) >= startOfMonth
-  ).length
+  const newThisMonth = allClients.filter((c) => new Date(c.created_at) >= startOfMonth).length
 
   // Get latest workout date per client (last 30 days)
   const thirtyDaysAgoLocal = new Date(new Date().getTime() - 30 * 24 * 60 * 60 * 1000)
@@ -118,9 +110,7 @@ async function buildPlatformOverview(
     } else {
       inactiveClients.push({
         name: `${client.first_name} ${client.last_name}`,
-        lastActive: last
-          ? new Date(last).toLocaleDateString()
-          : "Never logged a workout",
+        lastActive: last ? new Date(last).toLocaleDateString() : "Never logged a workout",
       })
     }
   }
@@ -135,7 +125,7 @@ async function buildPlatformOverview(
     lines.push(
       `Inactive Clients (no workout in 14+ days): ${inactiveClients
         .map((c) => `${c.name} (last active: ${c.lastActive})`)
-        .join(", ")}`
+        .join(", ")}`,
     )
   } else {
     lines.push("Inactive Clients: None")
@@ -150,7 +140,7 @@ async function buildRevenueSection(
   supabase: SupabaseClient,
   startOfMonth: Date,
   startOfLastMonth: Date,
-  endOfLastMonth: Date
+  endOfLastMonth: Date,
 ): Promise<string> {
   // Succeeded payments (last 2 months)
   const twoMonthsAgo = new Date(startOfLastMonth)
@@ -164,27 +154,18 @@ async function buildRevenueSection(
 
   const totalRevenue = allPayments.reduce((sum, p) => sum + p.amount_cents, 0)
 
-  const thisMonthPayments = allPayments.filter(
-    (p) => new Date(p.created_at) >= startOfMonth
-  )
-  const thisMonthRevenue = thisMonthPayments.reduce(
-    (sum, p) => sum + p.amount_cents,
-    0
-  )
+  const thisMonthPayments = allPayments.filter((p) => new Date(p.created_at) >= startOfMonth)
+  const thisMonthRevenue = thisMonthPayments.reduce((sum, p) => sum + p.amount_cents, 0)
 
   const lastMonthPayments = allPayments.filter((p) => {
     const d = new Date(p.created_at)
     return d >= startOfLastMonth && d <= endOfLastMonth
   })
-  const lastMonthRevenue = lastMonthPayments.reduce(
-    (sum, p) => sum + p.amount_cents,
-    0
-  )
+  const lastMonthRevenue = lastMonthPayments.reduce((sum, p) => sum + p.amount_cents, 0)
 
   let momChange = "N/A"
   if (lastMonthRevenue > 0) {
-    const pctChange =
-      ((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100
+    const pctChange = ((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100
     momChange = `${pctChange >= 0 ? "+" : ""}${pctChange.toFixed(1)}%`
   } else if (thisMonthRevenue > 0) {
     momChange = "+100% (no revenue last month)"
@@ -212,10 +193,7 @@ async function buildRevenueSection(
   if (revenueByDesc.size > 0) {
     const revenueLines = Array.from(revenueByDesc.entries())
       .sort((a, b) => b[1].total - a[1].total)
-      .map(
-        ([desc, data]) =>
-          `  ${desc}: $${(data.total / 100).toFixed(2)} (${data.count} sales)`
-      )
+      .map(([desc, data]) => `  ${desc}: $${(data.total / 100).toFixed(2)} (${data.count} sales)`)
     lines.push("Revenue by Program:", ...revenueLines)
   }
 
@@ -224,10 +202,7 @@ async function buildRevenueSection(
 
 // ─── PROGRAMS ────────────────────────────────────────────────────────────────
 
-async function buildProgramsSection(
-  supabase: SupabaseClient,
-  startOfMonth: Date
-): Promise<string> {
+async function buildProgramsSection(supabase: SupabaseClient, startOfMonth: Date): Promise<string> {
   // Get all active programs
   const { data: programs } = await supabase
     .from("programs")
@@ -242,10 +217,7 @@ async function buildProgramsSection(
     .select("program_id, status, created_at")
     .limit(2000)
 
-  const assignmentsByProgram = new Map<
-    string,
-    { total: number; active: number; thisMonth: number }
-  >()
+  const assignmentsByProgram = new Map<string, { total: number; active: number; thisMonth: number }>()
   for (const a of assignments ?? []) {
     const entry = assignmentsByProgram.get(a.program_id) ?? {
       total: 0,
@@ -260,18 +232,11 @@ async function buildProgramsSection(
 
   // Get reviews for avg rating per program (reviews don't have program_id directly,
   // so we'll compute a platform-wide average instead)
-  const { data: reviews } = await supabase
-    .from("reviews")
-    .select("rating")
-    .limit(1000)
+  const { data: reviews } = await supabase.from("reviews").select("rating").limit(1000)
 
   const allReviews = reviews ?? []
   const avgRating =
-    allReviews.length > 0
-      ? (
-          allReviews.reduce((sum, r) => sum + r.rating, 0) / allReviews.length
-        ).toFixed(1)
-      : "N/A"
+    allReviews.length > 0 ? (allReviews.reduce((sum, r) => sum + r.rating, 0) / allReviews.length).toFixed(1) : "N/A"
 
   const lines = [
     "=== PROGRAMS ===",
@@ -287,12 +252,8 @@ async function buildProgramsSection(
       active: 0,
       thisMonth: 0,
     }
-    const price = program.price_cents
-      ? `$${(program.price_cents / 100).toFixed(2)}`
-      : "Free"
-    lines.push(
-      `  ${program.name}: ${price}, ${stats.total} total sales, ${stats.active} active assignments`
-    )
+    const price = program.price_cents ? `$${(program.price_cents / 100).toFixed(2)}` : "Free"
+    lines.push(`  ${program.name}: ${price}, ${stats.total} total sales, ${stats.active} active assignments`)
 
     if (stats.thisMonth === 0) {
       noSalesThisMonth.push(program.name)
@@ -300,9 +261,7 @@ async function buildProgramsSection(
   }
 
   if (noSalesThisMonth.length > 0) {
-    lines.push(
-      `Programs with 0 sales this month: ${noSalesThisMonth.join(", ")}`
-    )
+    lines.push(`Programs with 0 sales this month: ${noSalesThisMonth.join(", ")}`)
   }
 
   return lines.join("\n")
@@ -313,7 +272,7 @@ async function buildProgramsSection(
 async function buildProgressSection(
   supabase: SupabaseClient,
   thirtyDaysAgo: Date,
-  fourteenDaysAgo: Date
+  fourteenDaysAgo: Date,
 ): Promise<string> {
   // All workouts in the last 30 days
   const { data: recentProgress } = await supabase
@@ -336,10 +295,7 @@ async function buildProgressSection(
     if (row.is_pr) {
       prsByUser.set(row.user_id, (prsByUser.get(row.user_id) ?? 0) + 1)
     }
-    if (
-      !latestByUser.has(row.user_id) ||
-      row.completed_at > latestByUser.get(row.user_id)!
-    ) {
+    if (!latestByUser.has(row.user_id) || row.completed_at > latestByUser.get(row.user_id)!) {
       latestByUser.set(row.user_id, row.completed_at)
     }
   }
@@ -360,10 +316,7 @@ async function buildProgressSection(
   const topPerformers = Array.from(workoutsByUser.entries())
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
-    .map(
-      ([uid, count]) =>
-        `${nameMap.get(uid) ?? "Unknown"} (${count} workouts, ${prsByUser.get(uid) ?? 0} PRs)`
-    )
+    .map(([uid, count]) => `${nameMap.get(uid) ?? "Unknown"} (${count} workouts, ${prsByUser.get(uid) ?? 0} PRs)`)
 
   // Clients needing attention — no workouts in last 14 days
   // Derived from the already-fetched 30-day progress data
@@ -374,7 +327,7 @@ async function buildProgressSection(
     const last = latestByUser.get(uid)
     if (!last || new Date(last) < fourteenDaysAgo) {
       needsAttention.push(
-        `${nameMap.get(uid) ?? "Unknown"} (last active: ${last ? new Date(last).toLocaleDateString() : "No workouts in 30 days"})`
+        `${nameMap.get(uid) ?? "Unknown"} (last active: ${last ? new Date(last).toLocaleDateString() : "No workouts in 30 days"})`,
       )
     }
   }
@@ -398,17 +351,13 @@ async function buildProgressSection(
   }
 
   if (needsAttention.length > 0) {
-    lines.push(
-      `Clients Needing Attention (no workouts in 14+ days): ${needsAttention.join("; ")}`
-    )
+    lines.push(`Clients Needing Attention (no workouts in 14+ days): ${needsAttention.join("; ")}`)
   } else {
     lines.push("Clients Needing Attention: None - all clients are active!")
   }
 
   if (stalledProgress.length > 0) {
-    lines.push(
-      `Clients with Stalled Progress (workouts but no PRs in 30 days): ${stalledProgress.join(", ")}`
-    )
+    lines.push(`Clients with Stalled Progress (workouts but no PRs in 30 days): ${stalledProgress.join(", ")}`)
   }
 
   return lines.join("\n")
@@ -416,53 +365,49 @@ async function buildProgressSection(
 
 // ─── RECENT ACTIVITY ─────────────────────────────────────────────────────────
 
-async function buildRecentActivity(
-  supabase: SupabaseClient,
-  sevenDaysAgo: Date
-): Promise<string> {
+async function buildRecentActivity(supabase: SupabaseClient, sevenDaysAgo: Date): Promise<string> {
   // Parallel queries for recent activity
-  const [signupsResult, purchasesResult, prsResult, reviewsResult] =
-    await Promise.all([
-      // New signups
-      supabase
-        .from("users")
-        .select("first_name, last_name, created_at")
-        .eq("role", "client")
-        .gte("created_at", sevenDaysAgo.toISOString())
-        .order("created_at", { ascending: false }),
+  const [signupsResult, purchasesResult, prsResult, reviewsResult] = await Promise.all([
+    // New signups
+    supabase
+      .from("users")
+      .select("first_name, last_name, created_at")
+      .eq("role", "client")
+      .gte("created_at", sevenDaysAgo.toISOString())
+      .order("created_at", { ascending: false }),
 
-      // New purchases (payments)
-      supabase
-        .from("payments")
-        .select("amount_cents, description, created_at, users(first_name, last_name)")
-        .eq("status", "succeeded")
-        .gte("created_at", sevenDaysAgo.toISOString())
-        .order("created_at", { ascending: false }),
+    // New purchases (payments)
+    supabase
+      .from("payments")
+      .select("amount_cents, description, created_at, users(first_name, last_name)")
+      .eq("status", "succeeded")
+      .gte("created_at", sevenDaysAgo.toISOString())
+      .order("created_at", { ascending: false }),
 
-      // New PRs
-      supabase
-        .from("exercise_progress")
-        .select("user_id, pr_type, weight_kg, reps_completed, completed_at, exercises(name), users(first_name, last_name)")
-        .eq("is_pr", true)
-        .gte("completed_at", sevenDaysAgo.toISOString())
-        .order("completed_at", { ascending: false }),
+    // New PRs
+    supabase
+      .from("exercise_progress")
+      .select(
+        "user_id, pr_type, weight_kg, reps_completed, completed_at, exercises(name), users(first_name, last_name)",
+      )
+      .eq("is_pr", true)
+      .gte("completed_at", sevenDaysAgo.toISOString())
+      .order("completed_at", { ascending: false }),
 
-      // New reviews
-      supabase
-        .from("reviews")
-        .select("rating, comment, created_at, users(first_name, last_name)")
-        .gte("created_at", sevenDaysAgo.toISOString())
-        .order("created_at", { ascending: false }),
-    ])
+    // New reviews
+    supabase
+      .from("reviews")
+      .select("rating, comment, created_at, users(first_name, last_name)")
+      .gte("created_at", sevenDaysAgo.toISOString())
+      .order("created_at", { ascending: false }),
+  ])
 
   const lines = ["=== RECENT ACTIVITY (last 7 days) ==="]
 
   // Signups
   const signups = signupsResult.data ?? []
   if (signups.length > 0) {
-    lines.push(
-      `New Signups: ${signups.map((s) => `${s.first_name} ${s.last_name}`).join(", ")}`
-    )
+    lines.push(`New Signups: ${signups.map((s) => `${s.first_name} ${s.last_name}`).join(", ")}`)
   } else {
     lines.push("New Signups: None")
   }
@@ -489,11 +434,7 @@ async function buildRecentActivity(
       const name = user ? `${user.first_name} ${user.last_name}` : "Unknown"
       const exName = exercise?.name ?? "Unknown exercise"
       const value =
-        p.pr_type === "weight"
-          ? `${p.weight_kg}kg`
-          : p.pr_type === "reps"
-            ? `${p.reps_completed} reps`
-            : `${p.pr_type}`
+        p.pr_type === "weight" ? `${p.weight_kg}kg` : p.pr_type === "reps" ? `${p.reps_completed} reps` : `${p.pr_type}`
       return `  ${name} - ${exName} - ${p.pr_type ?? "PR"} - ${value}`
     })
     lines.push(`New PRs (${prs.length} total):`, ...prLines)
@@ -507,11 +448,7 @@ async function buildRecentActivity(
     const reviewLines = reviews.map((r) => {
       const user = r.users as unknown as { first_name: string; last_name: string } | null
       const name = user ? `${user.first_name} ${user.last_name}` : "Unknown"
-      const excerpt = r.comment
-        ? r.comment.length > 80
-          ? r.comment.slice(0, 80) + "..."
-          : r.comment
-        : "No comment"
+      const excerpt = r.comment ? (r.comment.length > 80 ? r.comment.slice(0, 80) + "..." : r.comment) : "No comment"
       return `  ${name} - ${r.rating}/5 - "${excerpt}"`
     })
     lines.push("New Reviews:", ...reviewLines)
@@ -524,9 +461,7 @@ async function buildRecentActivity(
 
 // ─── AI GENERATION ───────────────────────────────────────────────────────────
 
-async function buildAiGenerationSection(
-  supabase: SupabaseClient
-): Promise<string> {
+async function buildAiGenerationSection(supabase: SupabaseClient): Promise<string> {
   const { data: logs } = await supabase
     .from("ai_generation_log")
     .select("status, tokens_used, model_used")
@@ -546,10 +481,7 @@ async function buildAiGenerationSection(
 
   // Rough cost estimate: $3/1M input + $15/1M output tokens for Sonnet
   // Simplified: ~$9/1M tokens blended average
-  const avgCost =
-    successful > 0
-      ? ((totalTokens / successful) * 9) / 1_000_000
-      : 0
+  const avgCost = successful > 0 ? ((totalTokens / successful) * 9) / 1_000_000 : 0
 
   return [
     "=== AI GENERATION ===",

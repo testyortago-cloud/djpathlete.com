@@ -42,10 +42,7 @@ export default async function ClientPaymentsPage() {
   }
 
   const succeededPayments = payments.filter((p) => p.status === "succeeded")
-  const totalSpent = succeededPayments.reduce(
-    (sum, p) => sum + p.amount_cents,
-    0
-  )
+  const totalSpent = succeededPayments.reduce((sum, p) => sum + p.amount_cents, 0)
   const purchaseCount = succeededPayments.length
 
   return (
@@ -62,9 +59,7 @@ export default async function ClientPaymentsPage() {
             <DollarSign className="size-4 sm:size-5 text-success" strokeWidth={1.5} />
           </div>
           <div>
-            <p className="text-lg sm:text-2xl font-semibold text-foreground leading-none">
-              {formatCents(totalSpent)}
-            </p>
+            <p className="text-lg sm:text-2xl font-semibold text-foreground leading-none">{formatCents(totalSpent)}</p>
             <p className="text-[10px] sm:text-sm text-muted-foreground leading-tight mt-0.5">Total Spent</p>
           </div>
         </div>
@@ -74,9 +69,7 @@ export default async function ClientPaymentsPage() {
             <Hash className="size-4 sm:size-5 text-primary" strokeWidth={1.5} />
           </div>
           <div>
-            <p className="text-lg sm:text-2xl font-semibold text-foreground leading-none">
-              {purchaseCount}
-            </p>
+            <p className="text-lg sm:text-2xl font-semibold text-foreground leading-none">{purchaseCount}</p>
             <p className="text-[10px] sm:text-sm text-muted-foreground leading-tight mt-0.5">Purchases</p>
           </div>
         </div>
@@ -98,18 +91,10 @@ export default async function ClientPaymentsPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-surface/50">
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                    Date
-                  </th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                    Description
-                  </th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                    Amount
-                  </th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                    Status
-                  </th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Date</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Description</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Amount</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -124,9 +109,7 @@ export default async function ClientPaymentsPage() {
                     <td className="px-4 py-3 font-medium text-foreground">
                       {payment.description ?? "Program Purchase"}
                     </td>
-                    <td className="px-4 py-3 font-medium text-foreground">
-                      {formatCents(payment.amount_cents)}
-                    </td>
+                    <td className="px-4 py-3 font-medium text-foreground">{formatCents(payment.amount_cents)}</td>
                     <td className="px-4 py-3">
                       <span
                         className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${STATUS_STYLES[payment.status] ?? "bg-muted text-muted-foreground"}`}
@@ -145,9 +128,7 @@ export default async function ClientPaymentsPage() {
             {payments.map((payment) => (
               <div key={payment.id} className="px-4 py-3">
                 <div className="flex items-start justify-between gap-3 mb-1">
-                  <p className="font-medium text-foreground text-sm">
-                    {payment.description ?? "Program Purchase"}
-                  </p>
+                  <p className="font-medium text-foreground text-sm">{payment.description ?? "Program Purchase"}</p>
                   <span
                     className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize shrink-0 ${STATUS_STYLES[payment.status] ?? "bg-muted text-muted-foreground"}`}
                   >
@@ -155,12 +136,8 @@ export default async function ClientPaymentsPage() {
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground">
-                    {formatDate(payment.created_at)}
-                  </span>
-                  <span className="text-sm font-medium text-foreground">
-                    {formatCents(payment.amount_cents)}
-                  </span>
+                  <span className="text-xs text-muted-foreground">{formatDate(payment.created_at)}</span>
+                  <span className="text-sm font-medium text-foreground">{formatCents(payment.amount_cents)}</span>
                 </div>
               </div>
             ))}

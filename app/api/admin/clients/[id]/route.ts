@@ -12,17 +12,11 @@ const editClientSchema = z.object({
   status: z.enum(["active", "inactive", "suspended"]).optional(),
 })
 
-export async function PATCH(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
     if (!session?.user?.id || session.user.role !== "admin") {
-      return NextResponse.json(
-        { error: "Unauthorized. Admin access required." },
-        { status: 403 }
-      )
+      return NextResponse.json({ error: "Unauthorized. Admin access required." }, { status: 403 })
     }
 
     const { id } = await params
@@ -32,7 +26,7 @@ export async function PATCH(
     if (!result.success) {
       return NextResponse.json(
         { error: "Invalid form data", details: result.error.flatten().fieldErrors },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
@@ -41,10 +35,7 @@ export async function PATCH(
     // Check for duplicate email (excluding current user)
     const existing = await getUserByEmail(email)
     if (existing && existing.id !== id) {
-      return NextResponse.json(
-        { error: "Another user already has this email address." },
-        { status: 409 }
-      )
+      return NextResponse.json({ error: "Another user already has this email address." }, { status: 409 })
     }
 
     const updates: Record<string, unknown> = {
@@ -63,34 +54,22 @@ export async function PATCH(
     return NextResponse.json(safeUser)
   } catch (error) {
     console.error("Edit client error:", error)
-    return NextResponse.json(
-      { error: "An unexpected error occurred. Please try again." },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "An unexpected error occurred. Please try again." }, { status: 500 })
   }
 }
 
-export async function DELETE(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
     if (!session?.user?.id || session.user.role !== "admin") {
-      return NextResponse.json(
-        { error: "Unauthorized. Admin access required." },
-        { status: 403 }
-      )
+      return NextResponse.json({ error: "Unauthorized. Admin access required." }, { status: 403 })
     }
 
     const { id } = await params
 
     // Prevent self-deletion
     if (id === session.user.id) {
-      return NextResponse.json(
-        { error: "You cannot delete your own account." },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "You cannot delete your own account." }, { status: 400 })
     }
 
     // Fetch user to get email for GHL lookup
@@ -106,9 +85,6 @@ export async function DELETE(
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("Delete client error:", error)
-    return NextResponse.json(
-      { error: "An unexpected error occurred. Please try again." },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "An unexpected error occurred. Please try again." }, { status: 500 })
   }
 }

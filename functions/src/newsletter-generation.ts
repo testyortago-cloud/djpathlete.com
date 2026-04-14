@@ -93,12 +93,9 @@ Current date: ${new Date().toISOString().slice(0, 10)}`
       return
     }
 
-    const result = await callAgent(
-      NEWSLETTER_GENERATION_PROMPT,
-      userMessage,
-      newsletterResultSchema,
-      { model: MODEL_SONNET }
-    )
+    const result = await callAgent(NEWSLETTER_GENERATION_PROMPT, userMessage, newsletterResultSchema, {
+      model: MODEL_SONNET,
+    })
 
     // Check cancellation after AI call
     if (await isJobCancelled(jobRef)) {
@@ -129,7 +126,9 @@ Current date: ${new Date().toISOString().slice(0, 10)}`
         current_step: 0,
         total_steps: 0,
       })
-    } catch { /* non-fatal */ }
+    } catch {
+      /* non-fatal */
+    }
 
     await jobRef.update({
       status: "completed",

@@ -33,67 +33,40 @@ export default async function AnalyticsPage({
   const params = await searchParams
 
   // Parse tab
-  const tab = VALID_TABS.includes(params.tab as (typeof VALID_TABS)[number])
-    ? (params.tab as string)
-    : "revenue"
+  const tab = VALID_TABS.includes(params.tab as (typeof VALID_TABS)[number]) ? (params.tab as string) : "revenue"
 
   // Parse date range
   const rawMonths = Number(params.months)
-  const months = VALID_MONTHS.includes(rawMonths as (typeof VALID_MONTHS)[number])
-    ? rawMonths
-    : 6
+  const months = VALID_MONTHS.includes(rawMonths as (typeof VALID_MONTHS)[number]) ? rawMonths : 6
   const customFrom = params.from
   const customTo = params.to
 
   // Fetch all data in parallel
-  const [users, programs, payments, assignments, progress, achievements, profiles] =
-    await Promise.all([
-      getUsers(),
-      getPrograms(),
-      getPaymentsWithDetails(),
-      getAssignments(),
-      getAllProgress(),
-      getAllAchievements(),
-      getAllProfiles(),
-    ])
+  const [users, programs, payments, assignments, progress, achievements, profiles] = await Promise.all([
+    getUsers(),
+    getPrograms(),
+    getPaymentsWithDetails(),
+    getAssignments(),
+    getAllProgress(),
+    getAllAchievements(),
+    getAllProfiles(),
+  ])
 
   // Determine earliest date for "All" range
   const allDates = [
     ...payments.map((p) => new Date(p.created_at)),
     ...(users as User[]).map((u) => new Date(u.created_at)),
   ]
-  const earliestDate =
-    allDates.length > 0
-      ? new Date(Math.min(...allDates.map((d) => d.getTime())))
-      : undefined
+  const earliestDate = allDates.length > 0 ? new Date(Math.min(...allDates.map((d) => d.getTime()))) : undefined
 
   // Compute date range
-  const { range, previousRange } = computeDateRange(
-    months,
-    customFrom,
-    customTo,
-    earliestDate
-  )
+  const { range, previousRange } = computeDateRange(months, customFrom, customTo, earliestDate)
 
   // Compute metrics for all tabs
   const revenue = computeRevenueMetrics(payments, range, previousRange)
-  const clients = computeClientMetrics(
-    users as User[],
-    profiles,
-    assignments as ProgramAssignment[],
-    range
-  )
-  const programMetrics = computeProgramMetrics(
-    programs as Program[],
-    assignments as ProgramAssignment[],
-    range
-  )
-  const engagement = computeEngagementMetrics(
-    progress,
-    achievements,
-    users as User[],
-    range
-  )
+  const clients = computeClientMetrics(users as User[], profiles, assignments as ProgramAssignment[], range)
+  const programMetrics = computeProgramMetrics(programs as Program[], assignments as ProgramAssignment[], range)
+  const engagement = computeEngagementMetrics(progress, achievements, users as User[], range)
 
   return (
     <AnalyticsDashboard

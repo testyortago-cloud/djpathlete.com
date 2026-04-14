@@ -15,10 +15,7 @@ export async function GET() {
     return NextResponse.json(tracked)
   } catch (error) {
     console.error("Tracked exercises GET error:", error)
-    return NextResponse.json(
-      { error: "Failed to fetch tracked exercises" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to fetch tracked exercises" }, { status: 500 })
   }
 }
 
@@ -37,10 +34,7 @@ export async function POST(request: Request) {
     // Get the user's active assignment
     const assignment = await getActiveAssignment(session.user.id)
     if (!assignment) {
-      return NextResponse.json(
-        { error: "No active program assignment found" },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "No active program assignment found" }, { status: 400 })
     }
 
     const tracked = await createTrackedExercise({
@@ -53,10 +47,7 @@ export async function POST(request: Request) {
     return NextResponse.json(tracked)
   } catch (error) {
     console.error("Tracked exercises POST error:", error)
-    return NextResponse.json(
-      { error: "Failed to track exercise" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to track exercise" }, { status: 500 })
   }
 }
 
@@ -78,9 +69,6 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("Tracked exercises DELETE error:", error)
-    return NextResponse.json(
-      { error: "Failed to remove tracked exercise" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to remove tracked exercise" }, { status: 500 })
   }
 }

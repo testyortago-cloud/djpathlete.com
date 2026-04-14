@@ -1,18 +1,8 @@
 import { z } from "zod"
 
-export const aiFeatureSchema = z.enum([
-  "program_generation",
-  "program_chat",
-  "admin_chat",
-  "ai_coach",
-])
+export const aiFeatureSchema = z.enum(["program_generation", "program_chat", "admin_chat", "ai_coach"])
 
-export const aiMessageRoleSchema = z.enum([
-  "system",
-  "user",
-  "assistant",
-  "tool",
-])
+export const aiMessageRoleSchema = z.enum(["system", "user", "assistant", "tool"])
 
 export const conversationMessageSchema = z.object({
   user_id: z.string().uuid(),

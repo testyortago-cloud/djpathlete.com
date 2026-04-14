@@ -3,11 +3,7 @@
 import { useState, useRef, useEffect } from "react"
 import { FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import {
-  PROMPT_TEMPLATES,
-  PROMPT_TEMPLATE_CATEGORIES,
-  type PromptTemplate,
-} from "@/lib/prompt-templates"
+import { PROMPT_TEMPLATES, PROMPT_TEMPLATE_CATEGORIES, type PromptTemplate } from "@/lib/prompt-templates"
 
 interface TemplateSelectorProps {
   onSelect: (prompt: string) => void
@@ -34,11 +30,13 @@ export function TemplateSelector({ onSelect }: TemplateSelectorProps) {
     setOpen(false)
   }
 
-  const grouped = Object.entries(PROMPT_TEMPLATE_CATEGORIES).map(([key, label]) => ({
-    key,
-    label,
-    templates: PROMPT_TEMPLATES.filter((t) => t.category === key),
-  })).filter((g) => g.templates.length > 0)
+  const grouped = Object.entries(PROMPT_TEMPLATE_CATEGORIES)
+    .map(([key, label]) => ({
+      key,
+      label,
+      templates: PROMPT_TEMPLATES.filter((t) => t.category === key),
+    }))
+    .filter((g) => g.templates.length > 0)
 
   return (
     <div className="relative" ref={ref_}>

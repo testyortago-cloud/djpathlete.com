@@ -18,13 +18,7 @@ import {
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import type { Subscriber } from "@/lib/db/newsletter"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 
 interface SubscriberListProps {
   subscribers: Subscriber[]
@@ -57,10 +51,7 @@ export function SubscriberList({ subscribers }: SubscriberListProps) {
     if (tab === "Unsubscribed" && !s.unsubscribed_at) return false
     if (search) {
       const q = search.toLowerCase()
-      return (
-        s.email.toLowerCase().includes(q) ||
-        s.source.toLowerCase().includes(q)
-      )
+      return s.email.toLowerCase().includes(q) || s.source.toLowerCase().includes(q)
     }
     return true
   })
@@ -135,10 +126,7 @@ export function SubscriberList({ subscribers }: SubscriberListProps) {
 
     for (const line of lines) {
       // Skip header row
-      if (
-        line.toLowerCase().startsWith("email") ||
-        line.toLowerCase().startsWith("name")
-      ) {
+      if (line.toLowerCase().startsWith("email") || line.toLowerCase().startsWith("name")) {
         continue
       }
 
@@ -207,9 +195,7 @@ export function SubscriberList({ subscribers }: SubscriberListProps) {
   function handleExport() {
     const rows = ["email,source,subscribed_at,status"]
     for (const s of subscribers) {
-      rows.push(
-        `"${s.email}","${s.source}","${s.subscribed_at}","${s.unsubscribed_at ? "unsubscribed" : "active"}"`
-      )
+      rows.push(`"${s.email}","${s.source}","${s.subscribed_at}","${s.unsubscribed_at ? "unsubscribed" : "active"}"`)
     }
     const blob = new Blob([rows.join("\n")], { type: "text/csv" })
     const url = URL.createObjectURL(blob)
@@ -235,9 +221,7 @@ export function SubscriberList({ subscribers }: SubscriberListProps) {
       if (data.total === 0) {
         toast.info("No contacts found in GoHighLevel")
       } else {
-        toast.success(
-          `Synced from GHL: ${data.added} new, ${data.skipped} already existed (${data.total} total)`
-        )
+        toast.success(`Synced from GHL: ${data.added} new, ${data.skipped} already existed (${data.total} total)`)
       }
       router.refresh()
     } catch (err) {
@@ -258,9 +242,7 @@ export function SubscriberList({ subscribers }: SubscriberListProps) {
               onClick={() => setTab(t)}
               className={cn(
                 "px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
-                tab === t
-                  ? "bg-white text-primary shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
+                tab === t ? "bg-white text-primary shadow-sm" : "text-muted-foreground hover:text-foreground",
               )}
             >
               {t}
@@ -303,17 +285,9 @@ export function SubscriberList({ subscribers }: SubscriberListProps) {
             title="Sync subscribers from GoHighLevel"
           >
             <RefreshCw className={cn("size-4", syncing && "animate-spin")} />
-            <span className="hidden sm:inline">
-              {syncing ? "Syncing..." : "Sync GHL"}
-            </span>
+            <span className="hidden sm:inline">{syncing ? "Syncing..." : "Sync GHL"}</span>
           </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv"
-            onChange={handleFileSelect}
-            className="hidden"
-          />
+          <input ref={fileInputRef} type="file" accept=".csv" onChange={handleFileSelect} className="hidden" />
           <button
             onClick={() => fileInputRef.current?.click()}
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
@@ -327,11 +301,7 @@ export function SubscriberList({ subscribers }: SubscriberListProps) {
       {/* Table */}
       {filtered.length === 0 ? (
         <div className="text-center py-16 text-muted-foreground">
-          <p className="text-sm">
-            {search
-              ? "No subscribers match your search."
-              : "No subscribers yet."}
-          </p>
+          <p className="text-sm">{search ? "No subscribers match your search." : "No subscribers yet."}</p>
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-border overflow-hidden">
@@ -339,39 +309,24 @@ export function SubscriberList({ subscribers }: SubscriberListProps) {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-surface/50">
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                    Email
-                  </th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">
-                    Status
-                  </th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden lg:table-cell">
-                    Source
-                  </th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Email</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Status</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden lg:table-cell">Source</th>
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden sm:table-cell">
                     Subscribed
                   </th>
-                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">
-                    Actions
-                  </th>
+                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((s) => (
-                  <tr
-                    key={s.id}
-                    className="border-b border-border last:border-0 hover:bg-surface/30 transition-colors"
-                  >
-                    <td className="px-4 py-3 font-medium text-primary">
-                      {s.email}
-                    </td>
+                  <tr key={s.id} className="border-b border-border last:border-0 hover:bg-surface/30 transition-colors">
+                    <td className="px-4 py-3 font-medium text-primary">{s.email}</td>
                     <td className="px-4 py-3 hidden md:table-cell">
                       <span
                         className={cn(
                           "inline-block px-2 py-0.5 rounded-full text-xs font-medium",
-                          s.unsubscribed_at
-                            ? "bg-warning/10 text-warning"
-                            : "bg-success/10 text-success"
+                          s.unsubscribed_at ? "bg-warning/10 text-warning" : "bg-success/10 text-success",
                         )}
                       >
                         {s.unsubscribed_at ? "Unsubscribed" : "Active"}
@@ -393,7 +348,7 @@ export function SubscriberList({ subscribers }: SubscriberListProps) {
                             "p-1.5 rounded-md transition-colors",
                             s.unsubscribed_at
                               ? "text-muted-foreground hover:text-success hover:bg-success/10"
-                              : "text-muted-foreground hover:text-warning hover:bg-warning/10"
+                              : "text-muted-foreground hover:text-warning hover:bg-warning/10",
                           )}
                           title={s.unsubscribed_at ? "Reactivate" : "Unsubscribe"}
                         >
@@ -414,11 +369,7 @@ export function SubscriberList({ subscribers }: SubscriberListProps) {
                               disabled={actionLoadingId === s.id}
                               className="px-2 py-1 rounded-md text-xs font-medium bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-50"
                             >
-                              {actionLoadingId === s.id ? (
-                                <Loader2 className="size-3 animate-spin" />
-                              ) : (
-                                "Delete"
-                              )}
+                              {actionLoadingId === s.id ? <Loader2 className="size-3 animate-spin" /> : "Delete"}
                             </button>
                             <button
                               onClick={() => setConfirmDeleteId(null)}
@@ -459,9 +410,7 @@ export function SubscriberList({ subscribers }: SubscriberListProps) {
               <Upload className="size-5 text-primary" />
               Import Subscribers
             </DialogTitle>
-            <DialogDescription>
-              Review parsed emails before importing.
-            </DialogDescription>
+            <DialogDescription>Review parsed emails before importing.</DialogDescription>
           </DialogHeader>
 
           {importResult ? (
@@ -469,14 +418,10 @@ export function SubscriberList({ subscribers }: SubscriberListProps) {
               <div className="flex items-start gap-3 p-3 rounded-lg bg-success/10 border border-success/20">
                 <CheckCircle2 className="size-5 text-success shrink-0 mt-0.5" />
                 <div className="text-sm">
-                  <p className="font-medium text-foreground">
-                    Import complete
-                  </p>
+                  <p className="font-medium text-foreground">Import complete</p>
                   <p className="text-muted-foreground mt-1">
-                    {importResult.added} added, {importResult.skipped} already
-                    existed
-                    {importResult.invalid > 0 &&
-                      `, ${importResult.invalid} invalid rows skipped`}
+                    {importResult.added} added, {importResult.skipped} already existed
+                    {importResult.invalid > 0 && `, ${importResult.invalid} invalid rows skipped`}
                   </p>
                 </div>
               </div>
@@ -496,13 +441,9 @@ export function SubscriberList({ subscribers }: SubscriberListProps) {
             <div className="space-y-3">
               {/* Parsed summary */}
               <div className="p-3 rounded-lg bg-surface border border-border">
-                <p className="text-sm font-medium text-foreground">
-                  {parsedEmails.length} valid email(s) found
-                </p>
+                <p className="text-sm font-medium text-foreground">{parsedEmails.length} valid email(s) found</p>
                 {invalidLines.length > 0 && (
-                  <p className="text-xs text-warning mt-1">
-                    {invalidLines.length} invalid row(s) will be skipped
-                  </p>
+                  <p className="text-xs text-warning mt-1">{invalidLines.length} invalid row(s) will be skipped</p>
                 )}
               </div>
 
@@ -528,9 +469,7 @@ export function SubscriberList({ subscribers }: SubscriberListProps) {
               {/* Invalid rows */}
               {invalidLines.length > 0 && (
                 <div>
-                  <p className="text-xs font-medium text-warning mb-1">
-                    Invalid rows:
-                  </p>
+                  <p className="text-xs font-medium text-warning mb-1">Invalid rows:</p>
                   <div className="max-h-24 overflow-y-auto rounded-lg border border-warning/20 bg-warning/5">
                     {invalidLines.slice(0, 10).map((line, idx) => (
                       <div
@@ -570,11 +509,7 @@ export function SubscriberList({ subscribers }: SubscriberListProps) {
                   disabled={parsedEmails.length === 0 || importing}
                   className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
                 >
-                  {importing ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <Upload className="size-4" />
-                  )}
+                  {importing ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
                   Import {parsedEmails.length} Email(s)
                 </button>
               </div>

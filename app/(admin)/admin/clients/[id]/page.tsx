@@ -45,10 +45,7 @@ import {
   TIME_EFFICIENCY_LABELS,
   TECHNIQUE_LABELS,
 } from "@/lib/validators/questionnaire"
-import {
-  parseProfileSummary,
-  hasQuestionnaireData,
-} from "@/lib/profile-utils"
+import { parseProfileSummary, hasQuestionnaireData } from "@/lib/profile-utils"
 import { UnassignButton } from "@/components/admin/UnassignButton"
 import { EditAssignmentButton } from "@/components/admin/EditAssignmentButton"
 import { ClientDetailHeader } from "./ClientDetailHeader"
@@ -145,8 +142,7 @@ function ProfileSection({ profile }: { profile: ClientProfile | null }) {
           label="Experience Level"
           value={
             profile.experience_level
-              ? profile.experience_level.charAt(0).toUpperCase() +
-                profile.experience_level.slice(1)
+              ? profile.experience_level.charAt(0).toUpperCase() + profile.experience_level.slice(1)
               : null
           }
         />
@@ -166,11 +162,7 @@ function ProfileSection({ profile }: { profile: ClientProfile | null }) {
               : null
           }
         />
-        <InfoRow
-          icon={Ruler}
-          label="Height"
-          value={profile.height_cm ? `${profile.height_cm} cm` : null}
-        />
+        <InfoRow icon={Ruler} label="Height" value={profile.height_cm ? `${profile.height_cm} cm` : null} />
         {profile.weight_kg && (
           <div className="flex items-start gap-3 py-2">
             <Weight className="size-4 text-muted-foreground mt-0.5 shrink-0" />
@@ -183,20 +175,14 @@ function ProfileSection({ profile }: { profile: ClientProfile | null }) {
           </div>
         )}
         <InfoRow icon={Target} label="Goals" value={profile.goals} />
-        <InfoRow
-          icon={AlertTriangle}
-          label="Injuries"
-          value={profile.injuries}
-        />
+        <InfoRow icon={AlertTriangle} label="Injuries" value={profile.injuries} />
         <InfoRow
           icon={Heart}
           label="Emergency Contact"
           value={
             profile.emergency_contact_name
               ? `${profile.emergency_contact_name}${
-                  profile.emergency_contact_phone
-                    ? ` (${profile.emergency_contact_phone})`
-                    : ""
+                  profile.emergency_contact_phone ? ` (${profile.emergency_contact_phone})` : ""
                 }`
               : null
           }
@@ -213,50 +199,30 @@ function ProfileSection({ profile }: { profile: ClientProfile | null }) {
         !profile.goals &&
         !profile.injuries &&
         !profile.emergency_contact_name && (
-          <p className="text-sm text-muted-foreground">
-            Profile exists but no details have been filled in yet.
-          </p>
+          <p className="text-sm text-muted-foreground">Profile exists but no details have been filled in yet.</p>
         )}
     </div>
   )
 }
 
-function ProgramsSection({
-  assignments,
-  clientName,
-}: {
-  assignments: AssignmentWithProgram[]
-  clientName: string
-}) {
+function ProgramsSection({ assignments, clientName }: { assignments: AssignmentWithProgram[]; clientName: string }) {
   return (
     <div className="bg-white rounded-xl border border-border p-6">
-      <h2 className="text-lg font-semibold text-primary mb-4">
-        Program Assignments
-      </h2>
+      <h2 className="text-lg font-semibold text-primary mb-4">Program Assignments</h2>
       {assignments.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          No programs assigned to this client yet.
-        </p>
+        <p className="text-sm text-muted-foreground">No programs assigned to this client yet.</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-surface/50">
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                  Program
-                </th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                  Status
-                </th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Program</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden sm:table-cell">
                   Start Date
                 </th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">
-                  End Date
-                </th>
-                <th className="text-right px-4 py-3 font-medium text-muted-foreground">
-                  Actions
-                </th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">End Date</th>
+                <th className="text-right px-4 py-3 font-medium text-muted-foreground">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -271,8 +237,7 @@ function ProgramsSection({
                   <td className="px-4 py-3">
                     <span
                       className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${
-                        STATUS_COLORS[assignment.status] ??
-                        "bg-muted text-muted-foreground"
+                        STATUS_COLORS[assignment.status] ?? "bg-muted text-muted-foreground"
                       }`}
                     >
                       {assignment.status}
@@ -282,9 +247,7 @@ function ProgramsSection({
                     {formatDate(assignment.start_date)}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">
-                    {assignment.end_date
-                      ? formatDate(assignment.end_date)
-                      : "Ongoing"}
+                    {assignment.end_date ? formatDate(assignment.end_date) : "Ongoing"}
                   </td>
                   <td className="px-4 py-3 text-right">
                     {assignment.status === "active" && (
@@ -314,20 +277,11 @@ function ProgramsSection({
   )
 }
 
-
-function SectionHeader({
-  icon: Icon,
-  label,
-}: {
-  icon: React.ComponentType<{ className?: string }>
-  label: string
-}) {
+function SectionHeader({ icon: Icon, label }: { icon: React.ComponentType<{ className?: string }>; label: string }) {
   return (
     <div className="flex items-center gap-2 mb-2">
       <Icon className="size-4 text-muted-foreground" />
-      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
-        {label}
-      </p>
+      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">{label}</p>
     </div>
   )
 }
@@ -339,9 +293,7 @@ function QuestionnaireSection({ profile }: { profile: ClientProfile | null }) {
 
   return (
     <div className="bg-white rounded-xl border border-border p-6">
-      <h2 className="text-lg font-semibold text-primary mb-6">
-        Questionnaire Responses
-      </h2>
+      <h2 className="text-lg font-semibold text-primary mb-6">Questionnaire Responses</h2>
       <div className="space-y-6">
         {/* Goals */}
         {summary.goals.length > 0 && (
@@ -388,17 +340,27 @@ function QuestionnaireSection({ profile }: { profile: ClientProfile | null }) {
             <InfoRow
               icon={Target}
               label="Experience Level"
-              value={summary.experienceLevel ? (LEVEL_LABELS[summary.experienceLevel] ?? summary.experienceLevel) : null}
+              value={
+                summary.experienceLevel ? (LEVEL_LABELS[summary.experienceLevel] ?? summary.experienceLevel) : null
+              }
             />
             <InfoRow
               icon={Brain}
               label="Movement Confidence"
-              value={summary.movementConfidence ? (MOVEMENT_CONFIDENCE_LABELS[summary.movementConfidence] ?? summary.movementConfidence) : null}
+              value={
+                summary.movementConfidence
+                  ? (MOVEMENT_CONFIDENCE_LABELS[summary.movementConfidence] ?? summary.movementConfidence)
+                  : null
+              }
             />
             <InfoRow
               icon={Clock}
               label="Training Experience"
-              value={summary.trainingYears !== null ? `${summary.trainingYears} year${summary.trainingYears !== 1 ? "s" : ""}` : null}
+              value={
+                summary.trainingYears !== null
+                  ? `${summary.trainingYears} year${summary.trainingYears !== 1 ? "s" : ""}`
+                  : null
+              }
             />
           </div>
           {summary.trainingBackground && (
@@ -427,7 +389,11 @@ function QuestionnaireSection({ profile }: { profile: ClientProfile | null }) {
               <InfoRow
                 icon={Briefcase}
                 label="Occupation Activity"
-                value={summary.occupationActivityLevel ? (OCCUPATION_LABELS[summary.occupationActivityLevel] ?? summary.occupationActivityLevel) : null}
+                value={
+                  summary.occupationActivityLevel
+                    ? (OCCUPATION_LABELS[summary.occupationActivityLevel] ?? summary.occupationActivityLevel)
+                    : null
+                }
               />
             </div>
           </div>
@@ -437,26 +403,15 @@ function QuestionnaireSection({ profile }: { profile: ClientProfile | null }) {
         {(summary.injuries || summary.injuryDetails.length > 0) && (
           <div>
             <SectionHeader icon={AlertTriangle} label="Injuries & Limitations" />
-            {summary.injuries && (
-              <p className="text-sm text-foreground mb-2">{summary.injuries}</p>
-            )}
+            {summary.injuries && <p className="text-sm text-foreground mb-2">{summary.injuries}</p>}
             {summary.injuryDetails.length > 0 && (
               <div className="space-y-1.5">
                 {summary.injuryDetails.map((injury, i) => (
-                  <div
-                    key={i}
-                    className="text-sm text-foreground bg-surface/50 rounded-lg px-3 py-2"
-                  >
+                  <div key={i} className="text-sm text-foreground bg-surface/50 rounded-lg px-3 py-2">
                     <span className="font-medium">{injury.area}</span>
-                    {injury.side && (
-                      <span className="text-muted-foreground"> ({injury.side})</span>
-                    )}
-                    {injury.severity && (
-                      <span className="text-muted-foreground"> &mdash; {injury.severity}</span>
-                    )}
-                    {injury.notes && (
-                      <span className="text-muted-foreground">: {injury.notes}</span>
-                    )}
+                    {injury.side && <span className="text-muted-foreground"> ({injury.side})</span>}
+                    {injury.severity && <span className="text-muted-foreground"> &mdash; {injury.severity}</span>}
+                    {injury.notes && <span className="text-muted-foreground">: {injury.notes}</span>}
                   </div>
                 ))}
               </div>
@@ -471,7 +426,11 @@ function QuestionnaireSection({ profile }: { profile: ClientProfile | null }) {
             <InfoRow
               icon={Calendar}
               label="Sessions per Week"
-              value={summary.preferredTrainingDays !== null ? `${summary.preferredTrainingDays} day${summary.preferredTrainingDays !== 1 ? "s" : ""}` : null}
+              value={
+                summary.preferredTrainingDays !== null
+                  ? `${summary.preferredTrainingDays} day${summary.preferredTrainingDays !== 1 ? "s" : ""}`
+                  : null
+              }
             />
             <InfoRow
               icon={Clock}
@@ -481,7 +440,11 @@ function QuestionnaireSection({ profile }: { profile: ClientProfile | null }) {
             <InfoRow
               icon={Zap}
               label="Time Efficiency"
-              value={summary.timeEfficiencyPreference ? (TIME_EFFICIENCY_LABELS[summary.timeEfficiencyPreference] ?? summary.timeEfficiencyPreference) : null}
+              value={
+                summary.timeEfficiencyPreference
+                  ? (TIME_EFFICIENCY_LABELS[summary.timeEfficiencyPreference] ?? summary.timeEfficiencyPreference)
+                  : null
+              }
             />
           </div>
           {summary.preferredDayNames.length > 0 && (
@@ -567,30 +530,18 @@ function QuestionnaireSection({ profile }: { profile: ClientProfile | null }) {
 function PaymentsSection({ payments }: { payments: Payment[] }) {
   return (
     <div className="bg-white rounded-xl border border-border p-6">
-      <h2 className="text-lg font-semibold text-primary mb-4">
-        Payment History
-      </h2>
+      <h2 className="text-lg font-semibold text-primary mb-4">Payment History</h2>
       {payments.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          No payment records for this client yet.
-        </p>
+        <p className="text-sm text-muted-foreground">No payment records for this client yet.</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-surface/50">
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                  Date
-                </th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                  Description
-                </th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                  Amount
-                </th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                  Status
-                </th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Date</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Description</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Amount</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
               </tr>
             </thead>
             <tbody>
@@ -599,20 +550,13 @@ function PaymentsSection({ payments }: { payments: Payment[] }) {
                   key={payment.id}
                   className="border-b border-border last:border-b-0 hover:bg-surface/30 transition-colors"
                 >
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {formatDate(payment.created_at)}
-                  </td>
-                  <td className="px-4 py-3 text-foreground">
-                    {payment.description ?? "Payment"}
-                  </td>
-                  <td className="px-4 py-3 font-medium text-foreground">
-                    {formatCurrency(payment.amount_cents)}
-                  </td>
+                  <td className="px-4 py-3 text-muted-foreground">{formatDate(payment.created_at)}</td>
+                  <td className="px-4 py-3 text-foreground">{payment.description ?? "Payment"}</td>
+                  <td className="px-4 py-3 font-medium text-foreground">{formatCurrency(payment.amount_cents)}</td>
                   <td className="px-4 py-3">
                     <span
                       className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${
-                        PAYMENT_STATUS_COLORS[payment.status] ??
-                        "bg-muted text-muted-foreground"
+                        PAYMENT_STATUS_COLORS[payment.status] ?? "bg-muted text-muted-foreground"
                       }`}
                     >
                       {payment.status}
@@ -628,11 +572,7 @@ function PaymentsSection({ payments }: { payments: Payment[] }) {
   )
 }
 
-export default async function ClientDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>
-}) {
+export default async function ClientDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
 
   let user
@@ -642,25 +582,20 @@ export default async function ClientDetailPage({
     notFound()
   }
 
-  const [profile, assignments, payments, progressData, achievements, workoutStreak] =
-    await Promise.all([
-      getProfileByUserId(id),
-      getAssignments(id),
-      getPayments(id),
-      getProgress(id),
-      getAchievements(id),
-      getWorkoutStreak(id),
-    ])
+  const [profile, assignments, payments, progressData, achievements, workoutStreak] = await Promise.all([
+    getProfileByUserId(id),
+    getAssignments(id),
+    getPayments(id),
+    getProgress(id),
+    getAchievements(id),
+    getWorkoutStreak(id),
+  ])
 
   // Build progress stats and shape data for the progress view
   type ProgressWithExercise = ExerciseProgress & { exercises?: Exercise | null }
   const allProgress = (progressData ?? []) as ProgressWithExercise[]
 
-  const totalWorkouts = new Set(
-    allProgress.map((p) =>
-      new Date(p.completed_at).toISOString().slice(0, 10)
-    )
-  ).size
+  const totalWorkouts = new Set(allProgress.map((p) => new Date(p.completed_at).toISOString().slice(0, 10))).size
   const totalPRs = allProgress.filter((p) => p.is_pr).length
   const uniqueExercises = new Set(allProgress.map((p) => p.exercise_id)).size
 
@@ -708,11 +643,10 @@ export default async function ClientDetailPage({
       <div className="bg-white rounded-xl border border-border p-6 mb-6">
         <div className="flex flex-col sm:flex-row sm:items-center gap-4">
           <Avatar className="size-14 shrink-0">
-            {user.avatar_url && (
-              <AvatarImage src={user.avatar_url} alt={`${user.first_name} ${user.last_name}`} />
-            )}
+            {user.avatar_url && <AvatarImage src={user.avatar_url} alt={`${user.first_name} ${user.last_name}`} />}
             <AvatarFallback className="bg-primary/10 text-primary text-lg">
-              {user.first_name.charAt(0)}{user.last_name.charAt(0)}
+              {user.first_name.charAt(0)}
+              {user.last_name.charAt(0)}
             </AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
@@ -777,9 +711,7 @@ export default async function ClientDetailPage({
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold text-primary mb-1">Assessment Results</h2>
-              <p className="text-sm text-muted-foreground">
-                View movement screen results and computed ability levels.
-              </p>
+              <p className="text-sm text-muted-foreground">View movement screen results and computed ability levels.</p>
             </div>
             <Link
               href={`/admin/clients/${id}/assessments`}

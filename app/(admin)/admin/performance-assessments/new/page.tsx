@@ -10,10 +10,7 @@ export const metadata = { title: "New Assessment | Admin | DJP Athlete" }
 export default async function NewPerformanceAssessmentPage() {
   await requireAdmin()
 
-  const [clients, exercises] = await Promise.all([
-    getClients(),
-    getExercises(),
-  ])
+  const [clients, exercises] = await Promise.all([getClients(), getExercises()])
 
   return (
     <div>
@@ -25,9 +22,7 @@ export default async function NewPerformanceAssessmentPage() {
         Back to Assessments
       </Link>
 
-      <h1 className="text-xl sm:text-2xl font-semibold text-primary mb-5">
-        New Performance Assessment
-      </h1>
+      <h1 className="text-xl sm:text-2xl font-semibold text-primary mb-5">New Performance Assessment</h1>
 
       <CreatePerformanceAssessmentForm
         clients={clients.map((c) => ({

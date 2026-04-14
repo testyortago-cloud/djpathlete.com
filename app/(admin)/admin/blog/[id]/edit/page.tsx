@@ -23,9 +23,7 @@ export default async function EditBlogPostPage({ params }: Props) {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-primary mb-6">
-        Edit Blog Post
-      </h1>
+      <h1 className="text-2xl font-semibold text-primary mb-6">Edit Blog Post</h1>
       <BlogPostForm post={post} authorId={session.user!.id!} />
     </div>
   )

@@ -1,9 +1,6 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import {
-  getTrackedExercises,
-  createTrackedExercise,
-} from "@/lib/db/tracked-exercises"
+import { getTrackedExercises, createTrackedExercise } from "@/lib/db/tracked-exercises"
 import { createTrackedExerciseSchema } from "@/lib/validators/tracked-exercise"
 
 export async function GET(request: Request) {
@@ -27,16 +24,10 @@ export async function GET(request: Request) {
     // Without assignmentId, return all tracked exercises (admin view)
     // Use a broad query — getTrackedExercisesForUser is client-scoped,
     // so for admin we fetch by assignment or return empty guidance
-    return NextResponse.json(
-      { error: "assignmentId query parameter is required for listing" },
-      { status: 400 }
-    )
+    return NextResponse.json({ error: "assignmentId query parameter is required for listing" }, { status: 400 })
   } catch (error) {
     console.error("Admin tracked exercises GET error:", error)
-    return NextResponse.json(
-      { error: "Failed to fetch tracked exercises" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to fetch tracked exercises" }, { status: 500 })
   }
 }
 
@@ -54,10 +45,7 @@ export async function POST(request: Request) {
     const parsed = createTrackedExerciseSchema.safeParse(body)
 
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Invalid data", details: parsed.error.flatten() },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Invalid data", details: parsed.error.flatten() }, { status: 400 })
     }
 
     const tracked = await createTrackedExercise({
@@ -71,9 +59,6 @@ export async function POST(request: Request) {
     return NextResponse.json(tracked, { status: 201 })
   } catch (error) {
     console.error("Admin tracked exercises POST error:", error)
-    return NextResponse.json(
-      { error: "Failed to create tracked exercise" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to create tracked exercise" }, { status: 500 })
   }
 }

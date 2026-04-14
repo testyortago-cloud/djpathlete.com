@@ -2,13 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { db } from "@/lib/firebase"
-import {
-  doc,
-  collection,
-  onSnapshot,
-  query,
-  orderBy,
-} from "firebase/firestore"
+import { doc, collection, onSnapshot, query, orderBy } from "firebase/firestore"
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -16,7 +10,17 @@ export type AiJobStatus = "pending" | "processing" | "streaming" | "completed" |
 
 export interface AiJobChunk {
   index: number
-  type: "delta" | "analysis" | "tool_start" | "tool_result" | "program_created" | "pipeline_step" | "parameters_proposed" | "message_id" | "done" | "error"
+  type:
+    | "delta"
+    | "analysis"
+    | "tool_start"
+    | "tool_result"
+    | "program_created"
+    | "pipeline_step"
+    | "parameters_proposed"
+    | "message_id"
+    | "done"
+    | "error"
   data: Record<string, unknown>
 }
 
@@ -86,14 +90,11 @@ export function useAiJob(jobId: string | null): AiJobResult & { reset: () => voi
         console.error("[useAiJob] Job listener error:", err)
         setError("Failed to connect to job updates")
         setStatus("failed")
-      }
+      },
     )
 
     // Listen to the chunks subcollection for streaming deltas
-    const chunksQuery = query(
-      collection(db, "ai_jobs", jobId, "chunks"),
-      orderBy("index", "asc")
-    )
+    const chunksQuery = query(collection(db, "ai_jobs", jobId, "chunks"), orderBy("index", "asc"))
 
     const chunksUnsub = onSnapshot(
       chunksQuery,
@@ -133,9 +134,7 @@ export function useAiJob(jobId: string | null): AiJobResult & { reset: () => voi
               ])
               break
             case "tool_result":
-              setActiveTools((prev) =>
-                prev.filter((t) => t.name !== (chunk.data.name as string))
-              )
+              setActiveTools((prev) => prev.filter((t) => t.name !== (chunk.data.name as string)))
               break
             case "message_id":
               setMessageId(chunk.data.id as string)
@@ -151,7 +150,7 @@ export function useAiJob(jobId: string | null): AiJobResult & { reset: () => voi
       },
       (err) => {
         console.error("[useAiJob] Chunks listener error:", err)
-      }
+      },
     )
 
     return () => {

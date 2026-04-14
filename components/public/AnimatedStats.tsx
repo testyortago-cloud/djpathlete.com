@@ -56,9 +56,7 @@ function Counter({ value, label }: Stat) {
       <p className="text-3xl lg:text-4xl font-heading font-bold text-primary mb-1">
         {isInView ? `${count}${suffix}` : `0${suffix}`}
       </p>
-      <p className="text-sm text-muted-foreground font-medium uppercase tracking-wide">
-        {label}
-      </p>
+      <p className="text-sm text-muted-foreground font-medium uppercase tracking-wide">{label}</p>
     </div>
   )
 }

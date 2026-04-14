@@ -1,12 +1,6 @@
 "use client"
 
-import {
-  createContext,
-  useContext,
-  useState,
-  useCallback,
-  type ReactNode,
-} from "react"
+import { createContext, useContext, useState, useCallback, type ReactNode } from "react"
 import type { WeightUnit } from "@/types/database"
 import {
   displayWeight as _displayWeight,
@@ -66,11 +60,7 @@ export function WeightUnitProvider({
     unitLabel: () => _unitLabel(unit),
   }
 
-  return (
-    <WeightUnitContext.Provider value={value}>
-      {children}
-    </WeightUnitContext.Provider>
-  )
+  return <WeightUnitContext.Provider value={value}>{children}</WeightUnitContext.Provider>
 }
 
 export function useWeightUnit(): WeightUnitContextValue {

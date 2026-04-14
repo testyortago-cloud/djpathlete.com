@@ -135,7 +135,9 @@ export function ProgramBuilder({
       setSelectedWeek(newWeek)
       const clientCount = data.assignments_updated ?? 0
       if (addWeekAccessType === "paid") {
-        toast.success(`Week ${newWeek} added — $${addWeekPrice} charge set for ${clientCount} client${clientCount !== 1 ? "s" : ""}`)
+        toast.success(
+          `Week ${newWeek} added — $${addWeekPrice} charge set for ${clientCount} client${clientCount !== 1 ? "s" : ""}`,
+        )
       } else {
         toast.success(`Week ${newWeek} added (free)`)
       }
@@ -219,19 +221,24 @@ export function ProgramBuilder({
     }
   })
 
-  const setPoolExercises = useCallback((update: Exercise[] | ((prev: Exercise[]) => Exercise[])) => {
-    setPoolExercisesRaw((prev) => {
-      const next = typeof update === "function" ? update(prev) : update
-      try {
-        if (next.length > 0) {
-          sessionStorage.setItem(poolStorageKey, JSON.stringify(next.map((e) => e.id)))
-        } else {
-          sessionStorage.removeItem(poolStorageKey)
+  const setPoolExercises = useCallback(
+    (update: Exercise[] | ((prev: Exercise[]) => Exercise[])) => {
+      setPoolExercisesRaw((prev) => {
+        const next = typeof update === "function" ? update(prev) : update
+        try {
+          if (next.length > 0) {
+            sessionStorage.setItem(poolStorageKey, JSON.stringify(next.map((e) => e.id)))
+          } else {
+            sessionStorage.removeItem(poolStorageKey)
+          }
+        } catch {
+          /* quota exceeded — ignore */
         }
-      } catch { /* quota exceeded — ignore */ }
-      return next
-    })
-  }, [poolStorageKey])
+        return next
+      })
+    },
+    [poolStorageKey],
+  )
 
   const [poolOpen, setPoolOpen] = useState(() => {
     if (typeof window === "undefined") return false
@@ -264,14 +271,10 @@ export function ProgramBuilder({
   const selectedWeekIsBlank = blankWeeks.has(selectedWeek)
 
   // Group exercises for the selected week by day
-  const weekExercises = localExercises.filter(
-    (pe) => pe.week_number === selectedWeek
-  )
+  const weekExercises = localExercises.filter((pe) => pe.week_number === selectedWeek)
 
   function getExercisesForDay(day: number) {
-    return weekExercises
-      .filter((pe) => pe.day_of_week === day)
-      .sort((a, b) => a.order_index - b.order_index)
+    return weekExercises.filter((pe) => pe.day_of_week === day).sort((a, b) => a.order_index - b.order_index)
   }
 
   function handleAddExercise(day: number) {
@@ -286,22 +289,25 @@ export function ProgramBuilder({
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
 
-  const handleDragStart = useCallback((event: DragStartEvent) => {
-    const idStr = String(event.active.id)
-    if (idStr.startsWith("pool-")) {
-      const exerciseId = idStr.replace("pool-", "")
-      const exercise = poolExercises.find((e) => e.id === exerciseId)
-      setActivePoolExercise(exercise ?? null)
-      setActiveExercise(null)
-    } else {
-      const exercise = weekExercises.find((pe) => pe.id === event.active.id)
-      setActiveExercise(exercise ?? null)
-      setActivePoolExercise(null)
-    }
-  }, [weekExercises, poolExercises])
+  const handleDragStart = useCallback(
+    (event: DragStartEvent) => {
+      const idStr = String(event.active.id)
+      if (idStr.startsWith("pool-")) {
+        const exerciseId = idStr.replace("pool-", "")
+        const exercise = poolExercises.find((e) => e.id === exerciseId)
+        setActivePoolExercise(exercise ?? null)
+        setActiveExercise(null)
+      } else {
+        const exercise = weekExercises.find((pe) => pe.id === event.active.id)
+        setActiveExercise(exercise ?? null)
+        setActivePoolExercise(null)
+      }
+    },
+    [weekExercises, poolExercises],
+  )
 
   /** Determine which day a droppable/sortable ID belongs to */
   function getDayFromId(id: string | number): number | null {
@@ -313,190 +319,193 @@ export function ProgramBuilder({
     return exercise ? exercise.day_of_week : null
   }
 
-  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
-    setActiveExercise(null)
-    setActivePoolExercise(null)
-    const { active, over } = event
-    if (!over) return
+  const handleDragEnd = useCallback(
+    async (event: DragEndEvent) => {
+      setActiveExercise(null)
+      setActivePoolExercise(null)
+      const { active, over } = event
+      if (!over) return
 
-    const activeIdStr = String(active.id)
+      const activeIdStr = String(active.id)
 
-    // Handle pool exercise dropped onto a day
-    if (activeIdStr.startsWith("pool-")) {
+      // Handle pool exercise dropped onto a day
+      if (activeIdStr.startsWith("pool-")) {
+        const targetDay = getDayFromId(over.id)
+        if (!targetDay) return
+
+        const exerciseId = activeIdStr.replace("pool-", "")
+        const exercise = poolExercises.find((e) => e.id === exerciseId)
+        if (!exercise) return
+
+        const targetDayExercises = getExercisesForDay(targetDay)
+        const orderIndex = targetDayExercises.length
+
+        try {
+          const response = await fetch(`/api/admin/programs/${programId}/exercises`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              exercise_id: exerciseId,
+              week_number: selectedWeek,
+              day_of_week: targetDay,
+              order_index: orderIndex,
+              sets: 3,
+              reps: "8-12",
+              technique: "straight_set",
+            }),
+          })
+          if (!response.ok) {
+            const data = await response.json()
+            throw new Error(data.error || "Failed to add exercise")
+          }
+
+          const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+          toast.success(`Added "${exercise.name}" to ${DAY_NAMES[targetDay - 1]}`)
+          // Remove from pool after successful drop
+          setPoolExercises((prev) => prev.filter((e) => e.id !== exerciseId))
+          router.refresh()
+        } catch (err) {
+          toast.error(err instanceof Error ? err.message : "Failed to add exercise from pool")
+        }
+        return
+      }
+
+      if (active.id === over.id) return
+
+      const draggedExercise = weekExercises.find((pe) => pe.id === active.id)
+      if (!draggedExercise) return
+
+      const sourceDay = draggedExercise.day_of_week
       const targetDay = getDayFromId(over.id)
       if (!targetDay) return
 
-      const exerciseId = activeIdStr.replace("pool-", "")
-      const exercise = poolExercises.find((e) => e.id === exerciseId)
-      if (!exercise) return
+      // Save snapshot for rollback on error
+      const snapshot = localExercises
 
-      const targetDayExercises = getExercisesForDay(targetDay)
-      const orderIndex = targetDayExercises.length
+      if (sourceDay === targetDay) {
+        // Same-day reorder
+        const dayExercises = getExercisesForDay(sourceDay)
+        const oldIndex = dayExercises.findIndex((pe) => pe.id === active.id)
+        const newIndex = dayExercises.findIndex((pe) => pe.id === over.id)
 
-      try {
-        const response = await fetch(`/api/admin/programs/${programId}/exercises`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            exercise_id: exerciseId,
-            week_number: selectedWeek,
-            day_of_week: targetDay,
-            order_index: orderIndex,
-            sets: 3,
-            reps: "8-12",
-            technique: "straight_set",
+        if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return
+
+        const reordered = arrayMove(dayExercises, oldIndex, newIndex)
+
+        // Optimistic update — apply new order immediately
+        setLocalExercises((prev) =>
+          prev.map((pe) => {
+            const idx = reordered.findIndex((r) => r.id === pe.id)
+            return idx !== -1 ? { ...pe, order_index: idx } : pe
           }),
-        })
-        if (!response.ok) {
-          const data = await response.json()
-          throw new Error(data.error || "Failed to add exercise")
+        )
+
+        try {
+          await Promise.all(
+            reordered.map((pe, i) =>
+              fetch(`/api/admin/programs/${programId}/exercises/${pe.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ order_index: i }),
+              }),
+            ),
+          )
+          router.refresh()
+        } catch {
+          setLocalExercises(snapshot)
+          toast.error("Failed to reorder exercises")
         }
+      } else {
+        // Cross-day move
+        const targetDayExercises = getExercisesForDay(targetDay)
+        const overExercise = targetDayExercises.find((pe) => pe.id === over.id)
+        const insertIndex = overExercise ? targetDayExercises.indexOf(overExercise) : targetDayExercises.length
+
+        // Optimistic update — move exercise to target day instantly
+        setLocalExercises((prev) => {
+          const sourceDayItems = prev
+            .filter(
+              (pe) => pe.week_number === selectedWeek && pe.day_of_week === sourceDay && pe.id !== draggedExercise.id,
+            )
+            .sort((a, b) => a.order_index - b.order_index)
+
+          const targetDayItems = prev
+            .filter(
+              (pe) => pe.week_number === selectedWeek && pe.day_of_week === targetDay && pe.id !== draggedExercise.id,
+            )
+            .sort((a, b) => a.order_index - b.order_index)
+
+          // Insert dragged exercise at the target position
+          const movedExercise = { ...draggedExercise, day_of_week: targetDay, order_index: insertIndex }
+          targetDayItems.splice(insertIndex, 0, movedExercise)
+
+          // Build a map of id -> updated exercise for quick lookup
+          const updates = new Map<string, Partial<ProgramExerciseWithExercise>>()
+
+          // Re-index source day
+          sourceDayItems.forEach((pe, i) => updates.set(pe.id, { order_index: i }))
+          // Re-index target day
+          targetDayItems.forEach((pe, i) => updates.set(pe.id, { day_of_week: targetDay, order_index: i }))
+
+          return prev.map((pe) => {
+            const update = updates.get(pe.id)
+            return update ? { ...pe, ...update } : pe
+          })
+        })
 
         const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-        toast.success(`Added "${exercise.name}" to ${DAY_NAMES[targetDay - 1]}`)
-        // Remove from pool after successful drop
-        setPoolExercises((prev) => prev.filter((e) => e.id !== exerciseId))
-        router.refresh()
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Failed to add exercise from pool")
-      }
-      return
-    }
+        toast.success(`Moved to ${DAY_NAMES[targetDay - 1]}`)
 
-    if (active.id === over.id) return
-
-    const draggedExercise = weekExercises.find((pe) => pe.id === active.id)
-    if (!draggedExercise) return
-
-    const sourceDay = draggedExercise.day_of_week
-    const targetDay = getDayFromId(over.id)
-    if (!targetDay) return
-
-    // Save snapshot for rollback on error
-    const snapshot = localExercises
-
-    if (sourceDay === targetDay) {
-      // Same-day reorder
-      const dayExercises = getExercisesForDay(sourceDay)
-      const oldIndex = dayExercises.findIndex((pe) => pe.id === active.id)
-      const newIndex = dayExercises.findIndex((pe) => pe.id === over.id)
-
-      if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return
-
-      const reordered = arrayMove(dayExercises, oldIndex, newIndex)
-
-      // Optimistic update — apply new order immediately
-      setLocalExercises((prev) =>
-        prev.map((pe) => {
-          const idx = reordered.findIndex((r) => r.id === pe.id)
-          return idx !== -1 ? { ...pe, order_index: idx } : pe
-        })
-      )
-
-      try {
-        await Promise.all(
-          reordered.map((pe, i) =>
-            fetch(`/api/admin/programs/${programId}/exercises/${pe.id}`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ order_index: i }),
-            })
-          )
-        )
-        router.refresh()
-      } catch {
-        setLocalExercises(snapshot)
-        toast.error("Failed to reorder exercises")
-      }
-    } else {
-      // Cross-day move
-      const targetDayExercises = getExercisesForDay(targetDay)
-      const overExercise = targetDayExercises.find((pe) => pe.id === over.id)
-      const insertIndex = overExercise
-        ? targetDayExercises.indexOf(overExercise)
-        : targetDayExercises.length
-
-      // Optimistic update — move exercise to target day instantly
-      setLocalExercises((prev) => {
-        const sourceDayItems = prev
-          .filter((pe) => pe.week_number === selectedWeek && pe.day_of_week === sourceDay && pe.id !== draggedExercise.id)
-          .sort((a, b) => a.order_index - b.order_index)
-
-        const targetDayItems = prev
-          .filter((pe) => pe.week_number === selectedWeek && pe.day_of_week === targetDay && pe.id !== draggedExercise.id)
-          .sort((a, b) => a.order_index - b.order_index)
-
-        // Insert dragged exercise at the target position
-        const movedExercise = { ...draggedExercise, day_of_week: targetDay, order_index: insertIndex }
-        targetDayItems.splice(insertIndex, 0, movedExercise)
-
-        // Build a map of id -> updated exercise for quick lookup
-        const updates = new Map<string, Partial<ProgramExerciseWithExercise>>()
-
-        // Re-index source day
-        sourceDayItems.forEach((pe, i) => updates.set(pe.id, { order_index: i }))
-        // Re-index target day
-        targetDayItems.forEach((pe, i) => updates.set(pe.id, { day_of_week: targetDay, order_index: i }))
-
-        return prev.map((pe) => {
-          const update = updates.get(pe.id)
-          return update ? { ...pe, ...update } : pe
-        })
-      })
-
-      const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-      toast.success(`Moved to ${DAY_NAMES[targetDay - 1]}`)
-
-      try {
-        // 1. Move the dragged exercise to the target day
-        await fetch(`/api/admin/programs/${programId}/exercises/${draggedExercise.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            day_of_week: targetDay,
-            order_index: insertIndex,
-          }),
-        })
-
-        // 2. Re-index remaining exercises in target day
-        const reindexTarget = targetDayExercises
-          .filter((pe) => pe.id !== draggedExercise.id)
-          .map((pe, _i) => {
-            const currentIdx = targetDayExercises.indexOf(pe)
-            const newIdx = currentIdx >= insertIndex ? currentIdx + 1 : currentIdx
-            return { id: pe.id, order_index: newIdx }
+        try {
+          // 1. Move the dragged exercise to the target day
+          await fetch(`/api/admin/programs/${programId}/exercises/${draggedExercise.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              day_of_week: targetDay,
+              order_index: insertIndex,
+            }),
           })
 
-        // 3. Re-index source day (close the gap)
-        const sourceDayExercises = getExercisesForDay(sourceDay).filter(
-          (pe) => pe.id !== draggedExercise.id
-        )
-
-        const updates = [
-          ...reindexTarget.map((u) =>
-            fetch(`/api/admin/programs/${programId}/exercises/${u.id}`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ order_index: u.order_index }),
+          // 2. Re-index remaining exercises in target day
+          const reindexTarget = targetDayExercises
+            .filter((pe) => pe.id !== draggedExercise.id)
+            .map((pe, _i) => {
+              const currentIdx = targetDayExercises.indexOf(pe)
+              const newIdx = currentIdx >= insertIndex ? currentIdx + 1 : currentIdx
+              return { id: pe.id, order_index: newIdx }
             })
-          ),
-          ...sourceDayExercises.map((pe, i) =>
-            fetch(`/api/admin/programs/${programId}/exercises/${pe.id}`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ order_index: i }),
-            })
-          ),
-        ]
 
-        await Promise.all(updates)
-        router.refresh()
-      } catch {
-        setLocalExercises(snapshot)
-        toast.error("Failed to move exercise")
+          // 3. Re-index source day (close the gap)
+          const sourceDayExercises = getExercisesForDay(sourceDay).filter((pe) => pe.id !== draggedExercise.id)
+
+          const updates = [
+            ...reindexTarget.map((u) =>
+              fetch(`/api/admin/programs/${programId}/exercises/${u.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ order_index: u.order_index }),
+              }),
+            ),
+            ...sourceDayExercises.map((pe, i) =>
+              fetch(`/api/admin/programs/${programId}/exercises/${pe.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ order_index: i }),
+              }),
+            ),
+          ]
+
+          await Promise.all(updates)
+          router.refresh()
+        } catch {
+          setLocalExercises(snapshot)
+          toast.error("Failed to move exercise")
+        }
       }
-    }
-  }, [weekExercises, localExercises, selectedWeek, programId, router, poolExercises])
+    },
+    [weekExercises, localExercises, selectedWeek, programId, router, poolExercises],
+  )
 
   async function handleDuplicateInPlace(pe: ProgramExerciseWithExercise) {
     if (isDuplicatingInPlace) return
@@ -515,34 +524,31 @@ export function ProgramBuilder({
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ order_index: ex.order_index + 1 }),
-            })
-          )
+            }),
+          ),
         )
       }
 
-      const response = await fetch(
-        `/api/admin/programs/${programId}/exercises`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            exercise_id: pe.exercise_id,
-            week_number: pe.week_number,
-            day_of_week: pe.day_of_week,
-            order_index: newOrderIndex,
-            sets: pe.sets,
-            reps: pe.reps,
-            rest_seconds: pe.rest_seconds,
-            duration_seconds: pe.duration_seconds,
-            notes: pe.notes,
-            rpe_target: pe.rpe_target,
-            intensity_pct: pe.intensity_pct,
-            tempo: pe.tempo,
-            group_tag: pe.group_tag,
-            technique: pe.technique,
-          }),
-        }
-      )
+      const response = await fetch(`/api/admin/programs/${programId}/exercises`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          exercise_id: pe.exercise_id,
+          week_number: pe.week_number,
+          day_of_week: pe.day_of_week,
+          order_index: newOrderIndex,
+          sets: pe.sets,
+          reps: pe.reps,
+          rest_seconds: pe.rest_seconds,
+          duration_seconds: pe.duration_seconds,
+          notes: pe.notes,
+          rpe_target: pe.rpe_target,
+          intensity_pct: pe.intensity_pct,
+          tempo: pe.tempo,
+          group_tag: pe.group_tag,
+          technique: pe.technique,
+        }),
+      })
 
       if (!response.ok) {
         const data = await response.json()
@@ -583,37 +589,34 @@ export function ProgramBuilder({
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ order_index: ex.order_index + groupExercises.length }),
-            })
-          )
+            }),
+          ),
         )
       }
 
       // Create duplicates for each exercise in the group
       for (let i = 0; i < groupExercises.length; i++) {
         const pe = groupExercises[i]
-        const response = await fetch(
-          `/api/admin/programs/${programId}/exercises`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              exercise_id: pe.exercise_id,
-              week_number: pe.week_number,
-              day_of_week: pe.day_of_week,
-              order_index: insertAt + i,
-              sets: pe.sets,
-              reps: pe.reps,
-              rest_seconds: pe.rest_seconds,
-              duration_seconds: pe.duration_seconds,
-              notes: pe.notes,
-              rpe_target: pe.rpe_target,
-              intensity_pct: pe.intensity_pct,
-              tempo: pe.tempo,
-              group_tag: newTag,
-              technique: pe.technique,
-            }),
-          }
-        )
+        const response = await fetch(`/api/admin/programs/${programId}/exercises`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            exercise_id: pe.exercise_id,
+            week_number: pe.week_number,
+            day_of_week: pe.day_of_week,
+            order_index: insertAt + i,
+            sets: pe.sets,
+            reps: pe.reps,
+            rest_seconds: pe.rest_seconds,
+            duration_seconds: pe.duration_seconds,
+            notes: pe.notes,
+            rpe_target: pe.rpe_target,
+            intensity_pct: pe.intensity_pct,
+            tempo: pe.tempo,
+            group_tag: newTag,
+            technique: pe.technique,
+          }),
+        })
 
         if (!response.ok) {
           const data = await response.json()
@@ -635,10 +638,9 @@ export function ProgramBuilder({
     setIsDeleting(true)
 
     try {
-      const response = await fetch(
-        `/api/admin/programs/${programId}/exercises/${deleteTarget.id}`,
-        { method: "DELETE" }
-      )
+      const response = await fetch(`/api/admin/programs/${programId}/exercises/${deleteTarget.id}`, {
+        method: "DELETE",
+      })
 
       if (!response.ok) throw new Error("Failed to delete")
 
@@ -660,14 +662,11 @@ export function ProgramBuilder({
     const targetWeek = Number(formData.get("targetWeek"))
 
     try {
-      const response = await fetch(
-        `/api/admin/programs/${programId}/duplicate-week`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sourceWeek: selectedWeek, targetWeek }),
-        }
-      )
+      const response = await fetch(`/api/admin/programs/${programId}/duplicate-week`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceWeek: selectedWeek, targetWeek }),
+      })
 
       if (!response.ok) {
         const data = await response.json()
@@ -696,7 +695,7 @@ export function ProgramBuilder({
 
     // Count existing exercises in the target day to set order_index
     const targetDayExercises = programExercises.filter(
-      (pe) => pe.week_number === targetWeek && pe.day_of_week === targetDay
+      (pe) => pe.week_number === targetWeek && pe.day_of_week === targetDay,
     )
 
     const body = {
@@ -717,14 +716,11 @@ export function ProgramBuilder({
     }
 
     try {
-      const response = await fetch(
-        `/api/admin/programs/${programId}/exercises`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        }
-      )
+      const response = await fetch(`/api/admin/programs/${programId}/exercises`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
 
       if (!response.ok) {
         const data = await response.json()
@@ -770,7 +766,9 @@ export function ProgramBuilder({
           <Layers className="size-3.5" />
           Exercise Pool
           {poolExercises.length > 0 && (
-            <span className={`ml-0.5 text-[10px] font-bold rounded-full px-1.5 py-0.5 ${poolOpen ? "bg-white/25 text-white" : "bg-primary/10 text-primary"}`}>
+            <span
+              className={`ml-0.5 text-[10px] font-bold rounded-full px-1.5 py-0.5 ${poolOpen ? "bg-white/25 text-white" : "bg-primary/10 text-primary"}`}
+            >
               {poolExercises.length}
             </span>
           )}
@@ -786,7 +784,9 @@ export function ProgramBuilder({
       >
         <div className="flex gap-4">
           <div className="flex-1 min-w-0">
-            <div className={`grid grid-cols-1 md:grid-cols-2 ${poolOpen ? "lg:grid-cols-2 xl:grid-cols-3" : "lg:grid-cols-3 xl:grid-cols-4"} gap-4`}>
+            <div
+              className={`grid grid-cols-1 md:grid-cols-2 ${poolOpen ? "lg:grid-cols-2 xl:grid-cols-3" : "lg:grid-cols-3 xl:grid-cols-4"} gap-4`}
+            >
               {[1, 2, 3, 4, 5, 6, 7].map((day) => (
                 <DayColumn
                   key={day}
@@ -814,18 +814,9 @@ export function ProgramBuilder({
         </div>
         <DragOverlay>
           {activeExercise ? (
-            <ExerciseCard
-              programExercise={activeExercise}
-              onEdit={() => {}}
-              onRemove={() => {}}
-              isOverlay
-            />
+            <ExerciseCard programExercise={activeExercise} onEdit={() => {}} onRemove={() => {}} isOverlay />
           ) : activePoolExercise ? (
-            <ExercisePoolCard
-              exercise={activePoolExercise}
-              onRemove={() => {}}
-              isOverlay
-            />
+            <ExercisePoolCard exercise={activePoolExercise} onRemove={() => {}} isOverlay />
           ) : null}
         </DragOverlay>
       </DndContext>
@@ -861,18 +852,10 @@ export function ProgramBuilder({
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setDeleteTarget(null)}
-              disabled={isDeleting}
-            >
+            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={isDeleting}>
               Cancel
             </Button>
-            <Button
-              variant="destructive"
-              onClick={handleDelete}
-              disabled={isDeleting}
-            >
+            <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
               {isDeleting ? "Removing..." : "Remove"}
             </Button>
           </DialogFooter>
@@ -890,18 +873,10 @@ export function ProgramBuilder({
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setDeleteWeekOpen(false)}
-              disabled={isDeletingWeek}
-            >
+            <Button variant="outline" onClick={() => setDeleteWeekOpen(false)} disabled={isDeletingWeek}>
               Cancel
             </Button>
-            <Button
-              variant="destructive"
-              onClick={handleDeleteWeek}
-              disabled={isDeletingWeek}
-            >
+            <Button variant="destructive" onClick={handleDeleteWeek} disabled={isDeletingWeek}>
               {isDeletingWeek ? "Removing..." : "Remove Week"}
             </Button>
           </DialogFooter>
@@ -913,9 +888,7 @@ export function ProgramBuilder({
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Add New Week</DialogTitle>
-            <DialogDescription>
-              Choose how assigned clients access this new week.
-            </DialogDescription>
+            <DialogDescription>Choose how assigned clients access this new week.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="flex gap-2">
@@ -951,9 +924,7 @@ export function ProgramBuilder({
                     className="pl-7"
                   />
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Clients will need to pay before accessing this week.
-                </p>
+                <p className="text-xs text-muted-foreground">Clients will need to pay before accessing this week.</p>
               </div>
             )}
             {addWeekAccessType === "included" && (
@@ -963,17 +934,10 @@ export function ProgramBuilder({
             )}
           </div>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setAddWeekDialogOpen(false)}
-              disabled={isAddingWeek}
-            >
+            <Button variant="outline" onClick={() => setAddWeekDialogOpen(false)} disabled={isAddingWeek}>
               Cancel
             </Button>
-            <Button
-              onClick={handleAddWeek}
-              disabled={isAddingWeek || (addWeekAccessType === "paid" && !addWeekPrice)}
-            >
+            <Button onClick={handleAddWeek} disabled={isAddingWeek || (addWeekAccessType === "paid" && !addWeekPrice)}>
               {isAddingWeek ? "Adding..." : "Add Week"}
             </Button>
           </DialogFooter>
@@ -986,22 +950,15 @@ export function ProgramBuilder({
           <DialogHeader>
             <DialogTitle>Clear {clearDayTarget ? DAY_NAMES_TOP[clearDayTarget - 1] : ""}</DialogTitle>
             <DialogDescription>
-              This will remove all {clearDayTarget ? getExercisesForDay(clearDayTarget).length : 0} exercises from {clearDayTarget ? DAY_NAMES_TOP[clearDayTarget - 1] : ""} in Week {selectedWeek}.
+              This will remove all {clearDayTarget ? getExercisesForDay(clearDayTarget).length : 0} exercises from{" "}
+              {clearDayTarget ? DAY_NAMES_TOP[clearDayTarget - 1] : ""} in Week {selectedWeek}.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setClearDayTarget(null)}
-              disabled={isClearingDay}
-            >
+            <Button variant="outline" onClick={() => setClearDayTarget(null)} disabled={isClearingDay}>
               Cancel
             </Button>
-            <Button
-              variant="destructive"
-              onClick={handleClearDay}
-              disabled={isClearingDay}
-            >
+            <Button variant="destructive" onClick={handleClearDay} disabled={isClearingDay}>
               {isClearingDay ? "Clearing..." : "Clear Day"}
             </Button>
           </DialogFooter>
@@ -1014,7 +971,8 @@ export function ProgramBuilder({
           <DialogHeader>
             <DialogTitle>Duplicate Week {selectedWeek}</DialogTitle>
             <DialogDescription>
-              Copy all exercises from Week {selectedWeek} to another week. Existing exercises in the target week will be kept.
+              Copy all exercises from Week {selectedWeek} to another week. Existing exercises in the target week will be
+              kept.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleDuplicateWeek} className="space-y-4">
@@ -1032,12 +990,7 @@ export function ProgramBuilder({
               />
             </div>
             <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setDuplicateOpen(false)}
-                disabled={isDuplicating}
-              >
+              <Button type="button" variant="outline" onClick={() => setDuplicateOpen(false)} disabled={isDuplicating}>
                 Cancel
               </Button>
               <Button type="submit" disabled={isDuplicating}>
@@ -1083,7 +1036,9 @@ export function ProgramBuilder({
                   className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map((name, i) => (
-                    <option key={i + 1} value={i + 1}>{name}</option>
+                    <option key={i + 1} value={i + 1}>
+                      {name}
+                    </option>
                   ))}
                 </select>
               </div>

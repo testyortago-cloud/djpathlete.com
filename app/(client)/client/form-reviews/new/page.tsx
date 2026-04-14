@@ -22,9 +22,7 @@ export default async function NewFormReviewPage() {
         Back to Form Reviews
       </Link>
 
-      <h1 className="text-xl sm:text-2xl font-semibold text-primary mb-5">
-        Request Form Review
-      </h1>
+      <h1 className="text-xl sm:text-2xl font-semibold text-primary mb-5">Request Form Review</h1>
 
       <div className="bg-white rounded-xl border border-border p-4 sm:p-6">
         <FormReviewUploadForm userId={userId} />

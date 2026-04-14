@@ -57,14 +57,11 @@ export function AssessmentExerciseThread({
 
     setSending(true)
     try {
-      const res = await fetch(
-        `${apiBasePath}/${assessmentId}/exercises/${exerciseId}/messages`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: newMessage.trim() }),
-        }
-      )
+      const res = await fetch(`${apiBasePath}/${assessmentId}/exercises/${exerciseId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: newMessage.trim() }),
+      })
 
       if (!res.ok) {
         const data = await res.json()
@@ -107,17 +104,11 @@ export function AssessmentExerciseThread({
 
   return (
     <div className="flex flex-col gap-3">
-      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-        Conversation
-      </h4>
+      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Conversation</h4>
 
       {/* Messages */}
       <div ref={scrollRef} className="space-y-3 max-h-[400px] overflow-y-auto">
-        {messages.length === 0 && (
-          <p className="text-sm text-muted-foreground text-center py-4">
-            No messages yet.
-          </p>
-        )}
+        {messages.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">No messages yet.</p>}
 
         {/* Show earlier button */}
         {hiddenCount > 0 && (
@@ -133,15 +124,12 @@ export function AssessmentExerciseThread({
 
         {visibleMessages.map((msg, i) => {
           const isOwn = msg.user_id === currentUserId
-          const name = msg.users
-            ? `${msg.users.first_name} ${msg.users.last_name}`
-            : "Unknown"
+          const name = msg.users ? `${msg.users.first_name} ${msg.users.last_name}` : "Unknown"
           const isCoach = msg.users?.role === "admin"
 
           // Show date separator when the date changes
           const prevMsg = i > 0 ? visibleMessages[i - 1] : null
-          const showDateSep =
-            !prevMsg || getDateKey(msg.created_at) !== getDateKey(prevMsg.created_at)
+          const showDateSep = !prevMsg || getDateKey(msg.created_at) !== getDateKey(prevMsg.created_at)
 
           return (
             <div key={msg.id}>
@@ -154,13 +142,9 @@ export function AssessmentExerciseThread({
                   <div className="flex-1 h-px bg-border" />
                 </div>
               )}
-              <div
-                className={cn("flex flex-col gap-1", isOwn ? "items-end" : "items-start")}
-              >
+              <div className={cn("flex flex-col gap-1", isOwn ? "items-end" : "items-start")}>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-medium text-muted-foreground">
-                    {name}
-                  </span>
+                  <span className="text-xs font-medium text-muted-foreground">{name}</span>
                   {isCoach && (
                     <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground font-medium">
                       Coach
@@ -170,16 +154,12 @@ export function AssessmentExerciseThread({
                 <div
                   className={cn(
                     "max-w-[80%] rounded-xl px-3 py-2 text-sm leading-relaxed",
-                    isOwn
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-white border border-border text-foreground"
+                    isOwn ? "bg-primary text-primary-foreground" : "bg-white border border-border text-foreground",
                   )}
                 >
                   {msg.message}
                 </div>
-                <span className="text-[10px] text-muted-foreground">
-                  {formatTime(msg.created_at)}
-                </span>
+                <span className="text-[10px] text-muted-foreground">{formatTime(msg.created_at)}</span>
               </div>
             </div>
           )
@@ -200,12 +180,7 @@ export function AssessmentExerciseThread({
             }
           }}
         />
-        <Button
-          size="icon"
-          onClick={handleSend}
-          disabled={!newMessage.trim() || sending}
-          className="shrink-0 size-9"
-        >
+        <Button size="icon" onClick={handleSend} disabled={!newMessage.trim() || sending} className="shrink-0 size-9">
           <Send className="size-3.5" />
         </Button>
       </div>

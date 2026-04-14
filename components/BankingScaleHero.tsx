@@ -69,14 +69,13 @@ export const BankingScaleHero = () => {
 
             <h2 className="text-2xl sm:text-3xl lg:text-[40px] font-semibold leading-tight tracking-tight text-primary mb-4 lg:mb-6">
               Elite coaching and performance training{" "}
-              <span className="opacity-40">
-                that scales from youth sports to professional competition.
-              </span>
+              <span className="opacity-40">that scales from youth sports to professional competition.</span>
             </h2>
 
             <p className="text-lg leading-6 text-primary opacity-60 mt-0 mb-6">
-              Personalized training plans, performance analytics, and expert coaching in one place. Whether you are a youth athlete, college competitor, or professional,
-              DJP Athlete gives you the tools and guidance to reach your full potential.
+              Personalized training plans, performance analytics, and expert coaching in one place. Whether you are a
+              youth athlete, college competitor, or professional, DJP Athlete gives you the tools and guidance to reach
+              your full potential.
             </p>
 
             <a
@@ -99,7 +98,8 @@ export const BankingScaleHero = () => {
             <div
               className="relative w-full aspect-video max-h-[416px] rounded-xl overflow-hidden shadow-lg"
               style={{
-                backgroundImage: "url(https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?w=1200&auto=format&fit=crop&q=80)",
+                backgroundImage:
+                  "url(https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?w=1200&auto=format&fit=crop&q=80)",
                 backgroundSize: "cover",
                 backgroundPosition: "center",
               }}

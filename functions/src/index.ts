@@ -32,7 +32,7 @@ export const programGeneration = onDocumentCreated(
 
     const { handleProgramGeneration } = await import("./program-generation.js")
     await handleProgramGeneration(event.params.jobId)
-  }
+  },
 )
 
 // ─── Program Chat Builder ──────────────────────────────────────────────────────
@@ -53,7 +53,7 @@ export const programChat = onDocumentCreated(
 
     const { handleProgramChat } = await import("./program-chat.js")
     await handleProgramChat(event.params.jobId)
-  }
+  },
 )
 
 // ─── Admin AI Chat ─────────────────────────────────────────────────────────────
@@ -74,7 +74,7 @@ export const adminChat = onDocumentCreated(
 
     const { handleAdminChat } = await import("./admin-chat.js")
     await handleAdminChat(event.params.jobId)
-  }
+  },
 )
 
 // ─── Client AI Coach ───────────────────────────────────────────────────────────
@@ -99,7 +99,7 @@ export const blogGeneration = onDocumentCreated(
 
     const { handleBlogGeneration } = await import("./blog-generation.js")
     await handleBlogGeneration(event.params.jobId)
-  }
+  },
 )
 
 // ─── Newsletter Generation ──────────────────────────────────────────────────
@@ -120,7 +120,7 @@ export const newsletterGeneration = onDocumentCreated(
 
     const { handleNewsletterGeneration } = await import("./newsletter-generation.js")
     await handleNewsletterGeneration(event.params.jobId)
-  }
+  },
 )
 
 // ─── Newsletter Send (Batch) ────────────────────────────────────────────────
@@ -142,7 +142,7 @@ export const newsletterSend = onDocumentCreated(
 
     const { handleNewsletterSend } = await import("./newsletter-send.js")
     await handleNewsletterSend(event.params.jobId)
-  }
+  },
 )
 
 // ─── Week Generation ────────────────────────────────────────────────────────
@@ -163,7 +163,7 @@ export const weekGeneration = onDocumentCreated(
 
     const { handleWeekGeneration } = await import("./week-generation.js")
     await handleWeekGeneration(event.params.jobId)
-  }
+  },
 )
 
 export const aiCoach = onDocumentCreated(
@@ -180,5 +180,5 @@ export const aiCoach = onDocumentCreated(
 
     const { handleAiCoach } = await import("./ai-coach.js")
     await handleAiCoach(event.params.jobId)
-  }
+  },
 )

@@ -1,24 +1,16 @@
 "use client"
 
 import { Users, UserPlus, UserCheck, ClipboardCheck } from "lucide-react"
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts"
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 import type { ClientMetrics } from "@/types/analytics"
 import { StatCard } from "./StatCard"
 import { HorizontalBar } from "./HorizontalBar"
 
 // Recharts needs plain hex — CSS vars use oklch which Recharts can't resolve
 const CHART = {
-  teal: "#0E3F50",       // primary brand — total clients line
-  tealLight: "#0E3F50",  // fill under total line
-  emerald: "#10b981",    // new signups area — fresh green
+  teal: "#0E3F50", // primary brand — total clients line
+  tealLight: "#0E3F50", // fill under total line
+  emerald: "#10b981", // new signups area — fresh green
   emeraldLight: "#10b981",
   grid: "#e5e7eb",
   tick: "#6b7280",
@@ -87,17 +79,8 @@ export function ClientsTab({ data }: ClientsTabProps) {
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} vertical={false} />
-                <XAxis
-                  dataKey="name"
-                  tick={{ fontSize: 12, fill: CHART.tick }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis
-                  tick={{ fontSize: 12, fill: CHART.tick }}
-                  axisLine={false}
-                  tickLine={false}
-                />
+                <XAxis dataKey="name" tick={{ fontSize: 12, fill: CHART.tick }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 12, fill: CHART.tick }} axisLine={false} tickLine={false} />
                 <Tooltip
                   contentStyle={{
                     borderRadius: "8px",
@@ -138,17 +121,12 @@ export function ClientsTab({ data }: ClientsTabProps) {
           <div className="flex items-center gap-2 p-4 border-b border-border">
             <h2 className="text-sm font-semibold text-primary">By Sport</h2>
           </div>
-          <HorizontalBar
-            items={data.clientsBySport}
-            emptyMessage="No sport data available."
-          />
+          <HorizontalBar items={data.clientsBySport} emptyMessage="No sport data available." />
         </div>
 
         <div className="bg-white rounded-xl border border-border shadow-sm">
           <div className="flex items-center gap-2 p-4 border-b border-border">
-            <h2 className="text-sm font-semibold text-primary">
-              By Experience
-            </h2>
+            <h2 className="text-sm font-semibold text-primary">By Experience</h2>
           </div>
           <HorizontalBar
             items={data.clientsByExperience}
@@ -161,11 +139,7 @@ export function ClientsTab({ data }: ClientsTabProps) {
           <div className="flex items-center gap-2 p-4 border-b border-border">
             <h2 className="text-sm font-semibold text-primary">By Goals</h2>
           </div>
-          <HorizontalBar
-            items={data.clientsByGoal}
-            colorClass="bg-success"
-            emptyMessage="No goal data available."
-          />
+          <HorizontalBar items={data.clientsByGoal} colorClass="bg-success" emptyMessage="No goal data available." />
         </div>
       </div>
     </div>

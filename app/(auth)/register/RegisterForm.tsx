@@ -121,7 +121,14 @@ export function RegisterForm() {
         if (data.details) {
           const details = data.details as FieldErrors
           setFieldErrors(details)
-          const step1Fields: (keyof FieldErrors)[] = ["firstName", "lastName", "dateOfBirth", "email", "password", "confirmPassword"]
+          const step1Fields: (keyof FieldErrors)[] = [
+            "firstName",
+            "lastName",
+            "dateOfBirth",
+            "email",
+            "password",
+            "confirmPassword",
+          ]
           if (needsStep2 && step1Fields.some((f) => details[f])) {
             setStep(1)
           }
@@ -168,19 +175,13 @@ export function RegisterForm() {
   const today = new Date().toISOString().split("T")[0]
 
   // ── Header ──
-  const heading = step === 1
-    ? "Create your account"
-    : "Almost there"
-  const subheading = step === 1
-    ? "Start your athletic journey with DJP Athlete"
-    : "We just need a few more details"
+  const heading = step === 1 ? "Create your account" : "Almost there"
+  const subheading = step === 1 ? "Start your athletic journey with DJP Athlete" : "We just need a few more details"
 
   return (
     <>
       <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-primary tracking-tight">
-          {heading}
-        </h1>
+        <h1 className="text-2xl font-semibold text-primary tracking-tight">{heading}</h1>
         <p className="mt-1.5 text-sm text-muted-foreground">{subheading}</p>
         {/* Step indicator — only shown for minors */}
         {needsStep2 && (
@@ -200,7 +201,14 @@ export function RegisterForm() {
       {/* ── Step 1: Account details (always shown on step 1) ── */}
       {step === 1 && (
         <form
-          onSubmit={needsStep2 ? (e) => { e.preventDefault(); handleNext() } : handleAdultSubmit}
+          onSubmit={
+            needsStep2
+              ? (e) => {
+                  e.preventDefault()
+                  handleNext()
+                }
+              : handleAdultSubmit
+          }
           className="space-y-4"
         >
           <div className="grid grid-cols-2 gap-3">
@@ -219,9 +227,7 @@ export function RegisterForm() {
                 onChange={(e) => setFirstName(e.target.value)}
                 className="h-11 rounded-lg border-border focus:border-primary focus:ring-primary"
               />
-              {getFieldError("firstName") && (
-                <p className="text-xs text-destructive">{getFieldError("firstName")}</p>
-              )}
+              {getFieldError("firstName") && <p className="text-xs text-destructive">{getFieldError("firstName")}</p>}
             </div>
             <div className="space-y-2">
               <Label htmlFor="lastName" className="text-sm font-medium text-primary">
@@ -238,9 +244,7 @@ export function RegisterForm() {
                 onChange={(e) => setLastName(e.target.value)}
                 className="h-11 rounded-lg border-border focus:border-primary focus:ring-primary"
               />
-              {getFieldError("lastName") && (
-                <p className="text-xs text-destructive">{getFieldError("lastName")}</p>
-              )}
+              {getFieldError("lastName") && <p className="text-xs text-destructive">{getFieldError("lastName")}</p>}
             </div>
           </div>
 
@@ -266,9 +270,7 @@ export function RegisterForm() {
                 </p>
               </div>
             )}
-            {getFieldError("dateOfBirth") && (
-              <p className="text-xs text-destructive">{getFieldError("dateOfBirth")}</p>
-            )}
+            {getFieldError("dateOfBirth") && <p className="text-xs text-destructive">{getFieldError("dateOfBirth")}</p>}
           </div>
 
           <div className="space-y-2">
@@ -286,9 +288,7 @@ export function RegisterForm() {
               onChange={(e) => setEmail(e.target.value)}
               className="h-11 rounded-lg border-border focus:border-primary focus:ring-primary"
             />
-            {getFieldError("email") && (
-              <p className="text-xs text-destructive">{getFieldError("email")}</p>
-            )}
+            {getFieldError("email") && <p className="text-xs text-destructive">{getFieldError("email")}</p>}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -317,9 +317,7 @@ export function RegisterForm() {
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
-              {getFieldError("password") && (
-                <p className="text-xs text-destructive">{getFieldError("password")}</p>
-              )}
+              {getFieldError("password") && <p className="text-xs text-destructive">{getFieldError("password")}</p>}
             </div>
 
             <div className="space-y-2">
@@ -410,9 +408,7 @@ export function RegisterForm() {
                 <ShieldCheck className="h-4 w-4 text-accent" />
               </div>
               <div>
-                <p className="text-sm font-semibold text-foreground">
-                  Parent or Guardian Approval
-                </p>
+                <p className="text-sm font-semibold text-foreground">Parent or Guardian Approval</p>
                 <p className="text-xs text-muted-foreground">
                   Since you&apos;re under 18, a parent or guardian must approve
                 </p>
@@ -471,11 +467,19 @@ export function RegisterForm() {
               />
               <Label htmlFor="parentalConsent" className="text-xs text-muted-foreground leading-relaxed cursor-pointer">
                 My parent/guardian and I have reviewed and agree to the{" "}
-                <Link href="/terms-of-service" target="_blank" className="font-medium text-accent underline decoration-accent/30 hover:decoration-accent">
+                <Link
+                  href="/terms-of-service"
+                  target="_blank"
+                  className="font-medium text-accent underline decoration-accent/30 hover:decoration-accent"
+                >
                   Terms of Service
                 </Link>{" "}
                 and{" "}
-                <Link href="/privacy-policy" target="_blank" className="font-medium text-accent underline decoration-accent/30 hover:decoration-accent">
+                <Link
+                  href="/privacy-policy"
+                  target="_blank"
+                  className="font-medium text-accent underline decoration-accent/30 hover:decoration-accent"
+                >
                   Privacy Policy
                 </Link>
               </Label>
@@ -490,7 +494,10 @@ export function RegisterForm() {
           <div className="flex gap-3 pt-1">
             <button
               type="button"
-              onClick={() => { setStep(1); setError(null) }}
+              onClick={() => {
+                setStep(1)
+                setError(null)
+              }}
               disabled={isLoading}
               className="flex items-center justify-center gap-1.5 rounded-full border border-border px-4 py-3 text-sm font-medium text-muted-foreground transition-all hover:bg-muted hover:text-foreground active:scale-[0.98] disabled:opacity-50"
             >

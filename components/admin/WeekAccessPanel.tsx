@@ -14,17 +14,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
-import {
-  Lock,
-  Unlock,
-  DollarSign,
-  Gift,
-  CheckCircle2,
-  Clock,
-  ChevronDown,
-  ChevronUp,
-  RefreshCw,
-} from "lucide-react"
+import { Lock, Unlock, DollarSign, Gift, CheckCircle2, Clock, ChevronDown, ChevronUp, RefreshCw } from "lucide-react"
 import type { ProgramWeekAccess } from "@/types/database"
 
 interface AssignmentInfo {
@@ -133,17 +123,15 @@ export function WeekAccessPanel({ programId, totalWeeks, clientNames }: WeekAcce
 
   // Compute modal state helpers
   const modalAccess = selectedWeek?.access
-  const isFree = !modalAccess || (modalAccess.access_type === "included" && modalAccess.payment_status === "not_required")
+  const isFree =
+    !modalAccess || (modalAccess.access_type === "included" && modalAccess.payment_status === "not_required")
   const isPending = modalAccess?.payment_status === "pending"
   const isPaid = modalAccess?.payment_status === "paid"
 
   if (assignments.length === 0 && !loading && expanded) {
     return (
       <div className="bg-white rounded-xl border border-border p-4 shadow-sm">
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="flex items-center justify-between w-full text-left"
-        >
+        <button onClick={() => setExpanded(!expanded)} className="flex items-center justify-between w-full text-left">
           <div className="flex items-center gap-2">
             <Lock className="size-4 text-muted-foreground" />
             <h3 className="text-sm font-heading font-semibold">Week Access Control</h3>
@@ -161,10 +149,7 @@ export function WeekAccessPanel({ programId, totalWeeks, clientNames }: WeekAcce
 
   return (
     <div className="bg-white rounded-xl border border-border p-4 shadow-sm">
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="flex items-center justify-between w-full text-left"
-      >
+      <button onClick={() => setExpanded(!expanded)} className="flex items-center justify-between w-full text-left">
         <div className="flex items-center gap-2">
           <Lock className="size-4 text-muted-foreground" />
           <h3 className="text-sm font-heading font-semibold">Week Access Control</h3>
@@ -183,13 +168,7 @@ export function WeekAccessPanel({ programId, totalWeeks, clientNames }: WeekAcce
             <p className="text-xs text-muted-foreground">
               Click any week to manage access. Lock weeks to require payment before the client can view workouts.
             </p>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={fetchData}
-              disabled={loading}
-              className="shrink-0"
-            >
+            <Button variant="ghost" size="sm" onClick={fetchData} disabled={loading} className="shrink-0">
               <RefreshCw className={`size-3 ${loading ? "animate-spin" : ""}`} />
             </Button>
           </div>
@@ -215,7 +194,8 @@ export function WeekAccessPanel({ programId, totalWeeks, clientNames }: WeekAcce
                     <div className="flex flex-wrap gap-1.5">
                       {Array.from({ length: totalWeeks }, (_, i) => i + 1).map((week) => {
                         const access = getAccessForWeek(assignment.id, week)
-                        const isAccessible = !access || access.payment_status === "not_required" || access.payment_status === "paid"
+                        const isAccessible =
+                          !access || access.payment_status === "not_required" || access.payment_status === "paid"
                         const weekIsPending = access?.payment_status === "pending"
                         const weekIsPaid = access?.payment_status === "paid" && access.access_type === "paid"
 
@@ -250,9 +230,15 @@ export function WeekAccessPanel({ programId, totalWeeks, clientNames }: WeekAcce
                     </div>
 
                     <div className="flex gap-3 mt-2 text-[10px] text-muted-foreground">
-                      <span className="flex items-center gap-0.5"><Unlock className="size-2.5" /> Free</span>
-                      <span className="flex items-center gap-0.5"><Clock className="size-2.5 text-warning" /> Pending</span>
-                      <span className="flex items-center gap-0.5"><CheckCircle2 className="size-2.5 text-success" /> Paid</span>
+                      <span className="flex items-center gap-0.5">
+                        <Unlock className="size-2.5" /> Free
+                      </span>
+                      <span className="flex items-center gap-0.5">
+                        <Clock className="size-2.5 text-warning" /> Pending
+                      </span>
+                      <span className="flex items-center gap-0.5">
+                        <CheckCircle2 className="size-2.5 text-success" /> Paid
+                      </span>
                     </div>
                   </div>
                 )
@@ -271,7 +257,8 @@ export function WeekAccessPanel({ programId, totalWeeks, clientNames }: WeekAcce
             </DialogTitle>
             <DialogDescription>
               {isFree && "This week is currently free. You can lock it and charge the client."}
-              {isPending && `Awaiting payment${modalAccess?.price_cents ? ` ($${(modalAccess.price_cents / 100).toFixed(2)})` : ""}. You can grant free access or mark as paid.`}
+              {isPending &&
+                `Awaiting payment${modalAccess?.price_cents ? ` ($${(modalAccess.price_cents / 100).toFixed(2)})` : ""}. You can grant free access or mark as paid.`}
               {isPaid && "This week has been paid for."}
             </DialogDescription>
           </DialogHeader>
@@ -306,7 +293,9 @@ export function WeekAccessPanel({ programId, totalWeeks, clientNames }: WeekAcce
                   Lock & Charge
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="weekModalPrice" className="text-xs">Price (USD)</Label>
+                  <Label htmlFor="weekModalPrice" className="text-xs">
+                    Price (USD)
+                  </Label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
                     <Input
@@ -346,11 +335,7 @@ export function WeekAccessPanel({ programId, totalWeeks, clientNames }: WeekAcce
                   <Gift className="size-3 mr-1.5" />
                   {actionLoading ? "..." : "Grant Free Access"}
                 </Button>
-                <Button
-                  onClick={() => handleAction("mark_paid")}
-                  disabled={actionLoading}
-                  className="w-full"
-                >
+                <Button onClick={() => handleAction("mark_paid")} disabled={actionLoading} className="w-full">
                   <CheckCircle2 className="size-3 mr-1.5" />
                   {actionLoading ? "..." : "Mark as Paid (Cash/Venmo)"}
                 </Button>

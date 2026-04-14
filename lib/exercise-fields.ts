@@ -106,7 +106,7 @@ export function getCategoryFields(category: ExerciseCategory | ExerciseCategory[
   if (cats.length === 0) return CATEGORY_FIELDS.strength
 
   // Merge: if ANY category enables a field, it's enabled
-  const merged: CategoryFields = { ...CATEGORY_FIELDS[cats[0]] ?? CATEGORY_FIELDS.strength }
+  const merged: CategoryFields = { ...(CATEGORY_FIELDS[cats[0]] ?? CATEGORY_FIELDS.strength) }
   for (let i = 1; i < cats.length; i++) {
     const f = CATEGORY_FIELDS[cats[i]] ?? CATEGORY_FIELDS.strength
     merged.showWeight = merged.showWeight || f.showWeight

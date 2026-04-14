@@ -69,12 +69,7 @@ const traditionalProblems = [
   },
 ]
 
-const collaborators = [
-  "Physiotherapists",
-  "Surgeons",
-  "Strength & Conditioning coaches",
-  "Team performance staff",
-]
+const collaborators = ["Physiotherapists", "Surgeons", "Strength & Conditioning coaches", "Team performance staff"]
 
 const assessmentUses = [
   "Inform a structured return-to-performance program",
@@ -123,16 +118,13 @@ export default function AssessmentPage() {
             </p>
             <div className="max-w-3xl space-y-5">
               <p className="text-lg text-muted-foreground leading-relaxed">
-                Medical clearance does not equal performance readiness. An athlete
-                may be pain-free. Strength may be &ldquo;within range.&rdquo;
-                Tissue healing timelines may be complete. Yet competition exposes a
-                different reality — high-speed chaos, reactive decision-making,
-                accumulated fatigue, and repeated high-force demands. This is where
-                reinjury often occurs.
+                Medical clearance does not equal performance readiness. An athlete may be pain-free. Strength may be
+                &ldquo;within range.&rdquo; Tissue healing timelines may be complete. Yet competition exposes a
+                different reality — high-speed chaos, reactive decision-making, accumulated fatigue, and repeated
+                high-force demands. This is where reinjury often occurs.
               </p>
               <p className="text-lg text-foreground font-medium leading-relaxed">
-                Assessment & Return to Performance Testing exists to close that
-                gap.
+                Assessment & Return to Performance Testing exists to close that gap.
               </p>
             </div>
           </FadeIn>
@@ -145,21 +137,17 @@ export default function AssessmentPage() {
           <FadeIn>
             <div className="flex items-center gap-3 mb-4">
               <div className="h-px w-12 bg-accent" />
-              <p className="text-sm font-medium text-accent uppercase tracking-widest">
-                The Problem
-              </p>
+              <p className="text-sm font-medium text-accent uppercase tracking-widest">The Problem</p>
             </div>
             <h2 className="text-2xl sm:text-3xl font-heading font-semibold text-primary tracking-tight mb-4">
               Clearance Is Not Readiness.
             </h2>
             <div className="max-w-3xl mb-10">
               <p className="text-lg text-muted-foreground leading-relaxed mb-4">
-                Most athletes return to training cleared, but underprepared. They
-                pass clinical milestones. They fail performance demands.
+                Most athletes return to training cleared, but underprepared. They pass clinical milestones. They fail
+                performance demands.
               </p>
-              <p className="text-base text-muted-foreground leading-relaxed">
-                Traditional assessments rely on:
-              </p>
+              <p className="text-base text-muted-foreground leading-relaxed">Traditional assessments rely on:</p>
             </div>
           </FadeIn>
 
@@ -175,9 +163,7 @@ export default function AssessmentPage() {
                     <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-destructive/10">
                       <Icon className="size-5 text-destructive" />
                     </div>
-                    <p className="text-sm font-medium text-foreground">
-                      {problem.text}
-                    </p>
+                    <p className="text-sm font-medium text-foreground">{problem.text}</p>
                   </div>
                 )
               })}
@@ -186,9 +172,8 @@ export default function AssessmentPage() {
 
           <div className="max-w-3xl space-y-4">
             <p className="text-lg text-muted-foreground leading-relaxed">
-              This assessment system is built on our detailed Performance
-              Framework. We do not ask, &ldquo;Are you healed?&rdquo; We
-              answer, &ldquo;Are you prepared to perform?&rdquo;
+              This assessment system is built on our detailed Performance Framework. We do not ask, &ldquo;Are you
+              healed?&rdquo; We answer, &ldquo;Are you prepared to perform?&rdquo;
             </p>
           </div>
         </div>
@@ -199,9 +184,7 @@ export default function AssessmentPage() {
         <div className="max-w-5xl mx-auto">
           <div className="flex items-center gap-3 mb-4">
             <div className="h-px w-12 bg-accent" />
-            <p className="text-sm font-medium text-accent uppercase tracking-widest">
-              The Assessment
-            </p>
+            <p className="text-sm font-medium text-accent uppercase tracking-widest">The Assessment</p>
           </div>
           <h2 className="text-2xl sm:text-3xl font-heading font-semibold text-primary tracking-tight mb-6">
             What This Assessment Is — and Is Not
@@ -213,18 +196,16 @@ export default function AssessmentPage() {
                 <div className="flex items-start gap-3 p-4 rounded-xl bg-surface border border-border">
                   <AlertTriangle className="size-5 text-accent shrink-0 mt-0.5" />
                   <p className="text-base text-foreground leading-relaxed">
-                    This is not rehabilitation. It is not medical treatment,
-                    diagnosis, or injury management.
+                    This is not rehabilitation. It is not medical treatment, diagnosis, or injury management.
                   </p>
                 </div>
                 <p className="text-lg text-muted-foreground leading-relaxed">
-                  It is a performance-based assessment process designed to evaluate
-                  readiness for high-level sport after the conclusion of clinical
-                  care.
+                  It is a performance-based assessment process designed to evaluate readiness for high-level sport after
+                  the conclusion of clinical care.
                 </p>
                 <p className="text-lg text-muted-foreground leading-relaxed">
-                  My role is to assess movement strategy, force characteristics,
-                  load tolerance, and decision-making under physical stress.
+                  My role is to assess movement strategy, force characteristics, load tolerance, and decision-making
+                  under physical stress.
                 </p>
               </div>
             </FadeIn>
@@ -237,18 +218,14 @@ export default function AssessmentPage() {
                 </h3>
                 <ul className="space-y-3">
                   {collaborators.map((role) => (
-                    <li
-                      key={role}
-                      className="flex items-center gap-3 text-base text-foreground"
-                    >
+                    <li key={role} className="flex items-center gap-3 text-base text-foreground">
                       <CheckCircle className="size-4 text-accent shrink-0" />
                       {role}
                     </li>
                   ))}
                 </ul>
                 <p className="mt-6 text-base text-muted-foreground leading-relaxed italic">
-                  The goal is alignment — not replacement of medical
-                  professionals.
+                  The goal is alignment — not replacement of medical professionals.
                 </p>
               </div>
             </FadeIn>
@@ -262,9 +239,7 @@ export default function AssessmentPage() {
           <FadeIn>
             <div className="flex items-center gap-3 mb-4">
               <div className="h-px w-12 bg-accent" />
-              <p className="text-sm font-medium text-accent uppercase tracking-widest">
-                Integration
-              </p>
+              <p className="text-sm font-medium text-accent uppercase tracking-widest">Integration</p>
             </div>
             <h2 className="text-2xl sm:text-3xl font-heading font-semibold text-primary tracking-tight mb-4">
               Assessment Is the Starting Point, Not the End.
@@ -277,10 +252,7 @@ export default function AssessmentPage() {
           <FadeIn delay={0.1}>
             <div className="grid sm:grid-cols-2 gap-4 mb-8 max-w-3xl">
               {assessmentUses.map((use) => (
-                <div
-                  key={use}
-                  className="flex items-start gap-3 p-4 rounded-xl bg-white border border-border"
-                >
+                <div key={use} className="flex items-start gap-3 p-4 rounded-xl bg-white border border-border">
                   <Target className="size-5 text-primary shrink-0 mt-0.5" />
                   <p className="text-sm text-foreground leading-relaxed">{use}</p>
                 </div>
@@ -289,8 +261,7 @@ export default function AssessmentPage() {
           </FadeIn>
 
           <p className="text-lg text-foreground font-medium leading-relaxed max-w-3xl">
-            Assessment without follow-through is incomplete. This system
-            provides both.
+            Assessment without follow-through is incomplete. This system provides both.
           </p>
         </div>
       </section>
@@ -302,17 +273,14 @@ export default function AssessmentPage() {
             <div className="text-center mb-12">
               <div className="flex items-center justify-center gap-3 mb-4">
                 <div className="h-px w-8 bg-accent" />
-                <p className="text-sm font-medium text-accent uppercase tracking-widest">
-                  Our Tools
-                </p>
+                <p className="text-sm font-medium text-accent uppercase tracking-widest">Our Tools</p>
                 <div className="h-px w-8 bg-accent" />
               </div>
               <h2 className="text-2xl sm:text-3xl font-heading font-semibold text-primary tracking-tight mb-4">
                 Assessment Tools & Equipment
               </h2>
               <p className="text-muted-foreground max-w-2xl mx-auto">
-                Industry-grade equipment to measure what matters — force, speed,
-                control, and readiness.
+                Industry-grade equipment to measure what matters — force, speed, control, and readiness.
               </p>
             </div>
           </FadeIn>
@@ -322,15 +290,11 @@ export default function AssessmentPage() {
               const Icon = item.icon
               return (
                 <FadeIn key={item.label} delay={i * 0.08}>
-                  <div
-                    className="aspect-[4/3] rounded-2xl bg-surface border border-border flex flex-col items-center justify-center gap-4"
-                  >
+                  <div className="aspect-[4/3] rounded-2xl bg-surface border border-border flex flex-col items-center justify-center gap-4">
                     <div className="flex size-16 items-center justify-center rounded-2xl bg-primary/10">
                       <Icon className="size-8 text-primary" />
                     </div>
-                    <p className="text-sm font-medium text-muted-foreground">
-                      {item.label}
-                    </p>
+                    <p className="text-sm font-medium text-muted-foreground">{item.label}</p>
                   </div>
                 </FadeIn>
               )
@@ -345,9 +309,7 @@ export default function AssessmentPage() {
           <FadeIn>
             <div className="flex items-center gap-3 mb-4">
               <div className="h-px w-12 bg-accent" />
-              <p className="text-sm font-medium text-accent uppercase tracking-widest">
-                The Outcome
-              </p>
+              <p className="text-sm font-medium text-accent uppercase tracking-widest">The Outcome</p>
             </div>
             <h2 className="text-2xl sm:text-3xl font-heading font-semibold text-primary tracking-tight mb-4">
               The Outcome
@@ -359,19 +321,12 @@ export default function AssessmentPage() {
 
           <FadeIn delay={0.1}>
             <div className="mb-8">
-              <p className="text-base text-muted-foreground mb-5">
-                Athletes and staff receive:
-              </p>
+              <p className="text-base text-muted-foreground mb-5">Athletes and staff receive:</p>
               <div className="grid sm:grid-cols-2 gap-3 max-w-3xl">
                 {outcomes.map((outcome) => (
-                  <div
-                    key={outcome}
-                    className="flex items-start gap-3 p-3"
-                  >
+                  <div key={outcome} className="flex items-start gap-3 p-3">
                     <Shield className="size-5 text-accent shrink-0 mt-0.5" />
-                    <p className="text-base text-foreground leading-relaxed">
-                      {outcome}
-                    </p>
+                    <p className="text-base text-foreground leading-relaxed">{outcome}</p>
                   </div>
                 ))}
               </div>
@@ -380,9 +335,8 @@ export default function AssessmentPage() {
 
           <div className="max-w-3xl p-6 rounded-2xl bg-white border border-border">
             <p className="text-lg text-muted-foreground leading-relaxed">
-              The objective is not to eliminate risk — sport always carries risk.
-              The objective is to reduce avoidable risk through informed
-              performance decision-making.
+              The objective is not to eliminate risk — sport always carries risk. The objective is to reduce avoidable
+              risk through informed performance decision-making.
             </p>
           </div>
         </div>
@@ -396,23 +350,20 @@ export default function AssessmentPage() {
               <div className="lg:sticky lg:top-32">
                 <div className="flex items-center gap-3 mb-4">
                   <div className="h-px w-8 bg-accent" />
-                  <p className="text-sm font-medium text-accent uppercase tracking-widest">
-                    Get Started
-                  </p>
+                  <p className="text-sm font-medium text-accent uppercase tracking-widest">Get Started</p>
                 </div>
                 <h2 className="text-2xl sm:text-3xl font-heading font-semibold text-primary tracking-tight mb-4">
                   Ready for a real assessment?
                 </h2>
                 <p className="text-muted-foreground leading-relaxed mb-6">
-                  Find out where you truly stand — beyond clearance, beyond
-                  guesswork. Book an assessment to begin the process.
+                  Find out where you truly stand — beyond clearance, beyond guesswork. Book an assessment to begin the
+                  process.
                 </p>
                 <div className="bg-primary rounded-2xl p-5 text-primary-foreground">
                   <p className="text-sm font-medium mb-1">For Cleared Athletes</p>
                   <p className="text-xs text-primary-foreground/80 leading-relaxed">
-                    This assessment is for athletes who have completed clinical
-                    rehab and are medically cleared to train. If you are still in
-                    rehab, speak with your medical team first.
+                    This assessment is for athletes who have completed clinical rehab and are medically cleared to
+                    train. If you are still in rehab, speak with your medical team first.
                   </p>
                 </div>
               </div>

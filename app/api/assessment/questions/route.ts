@@ -12,9 +12,6 @@ export async function GET() {
     const questions = await getActiveQuestions()
     return NextResponse.json(questions)
   } catch {
-    return NextResponse.json(
-      { error: "Failed to fetch assessment questions." },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to fetch assessment questions." }, { status: 500 })
   }
 }

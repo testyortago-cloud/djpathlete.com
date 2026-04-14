@@ -38,24 +38,15 @@ export async function getAlternatives(exerciseId: string) {
   return data
 }
 
-export async function createRelationship(
-  data: Omit<ExerciseRelationship, "id" | "created_at">
-) {
+export async function createRelationship(data: Omit<ExerciseRelationship, "id" | "created_at">) {
   const supabase = getClient()
-  const { data: result, error } = await supabase
-    .from("exercise_relationships")
-    .insert(data)
-    .select()
-    .single()
+  const { data: result, error } = await supabase.from("exercise_relationships").insert(data).select().single()
   if (error) throw error
   return result as ExerciseRelationship
 }
 
 export async function deleteRelationship(id: string) {
   const supabase = getClient()
-  const { error } = await supabase
-    .from("exercise_relationships")
-    .delete()
-    .eq("id", id)
+  const { error } = await supabase.from("exercise_relationships").delete().eq("id", id)
   if (error) throw error
 }

@@ -1,16 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import {
-  Sparkles,
-  Clock,
-  Coins,
-  CheckCircle,
-  AlertTriangle,
-  RefreshCw,
-  ChevronDown,
-  ChevronUp,
-} from "lucide-react"
+import { Sparkles, Clock, Coins, CheckCircle, AlertTriangle, RefreshCw, ChevronDown, ChevronUp } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
@@ -70,10 +61,7 @@ const LENGTH_LABELS: Record<string, string> = {
 function GenerationCard({ gen }: { gen: BlogGeneration }) {
   const [expanded, setExpanded] = useState(false)
   const params = gen.input_params
-  const title =
-    typeof gen.output_summary === "string"
-      ? gen.output_summary.replace(/^Generated blog:\s*/i, "")
-      : null
+  const title = typeof gen.output_summary === "string" ? gen.output_summary.replace(/^Generated blog:\s*/i, "") : null
   const isSuccess = gen.status === "completed"
 
   return (
@@ -85,7 +73,7 @@ function GenerationCard({ gen }: { gen: BlogGeneration }) {
         <div
           className={cn(
             "flex size-8 shrink-0 items-center justify-center rounded-lg mt-0.5",
-            isSuccess ? "bg-success/10" : "bg-destructive/10"
+            isSuccess ? "bg-success/10" : "bg-destructive/10",
           )}
         >
           {isSuccess ? (
@@ -100,13 +88,9 @@ function GenerationCard({ gen }: { gen: BlogGeneration }) {
             {title ?? params.prompt?.slice(0, 80) ?? "Blog generation"}
           </p>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-0.5">
-            <span className="text-xs text-muted-foreground">
-              {formatDate(gen.created_at)}
-            </span>
+            <span className="text-xs text-muted-foreground">{formatDate(gen.created_at)}</span>
             {params.tone && (
-              <span className="text-xs text-muted-foreground">
-                {TONE_LABELS[params.tone] ?? params.tone}
-              </span>
+              <span className="text-xs text-muted-foreground">{TONE_LABELS[params.tone] ?? params.tone}</span>
             )}
             {params.length && (
               <span className="text-xs text-muted-foreground">
@@ -140,21 +124,15 @@ function GenerationCard({ gen }: { gen: BlogGeneration }) {
           {/* Prompt */}
           {params.prompt && (
             <div>
-              <p className="text-xs font-medium text-muted-foreground mb-1">
-                Prompt
-              </p>
-              <p className="text-sm text-foreground bg-surface/50 rounded-lg p-3">
-                {params.prompt}
-              </p>
+              <p className="text-xs font-medium text-muted-foreground mb-1">Prompt</p>
+              <p className="text-sm text-foreground bg-surface/50 rounded-lg p-3">{params.prompt}</p>
             </div>
           )}
 
           {/* Generated title */}
           {title && (
             <div>
-              <p className="text-xs font-medium text-muted-foreground mb-1">
-                Generated Title
-              </p>
+              <p className="text-xs font-medium text-muted-foreground mb-1">Generated Title</p>
               <p className="text-sm text-foreground font-medium">{title}</p>
             </div>
           )}
@@ -163,34 +141,21 @@ function GenerationCard({ gen }: { gen: BlogGeneration }) {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div>
               <p className="text-xs text-muted-foreground">Tone</p>
-              <p className="text-sm font-medium">
-                {params.tone
-                  ? TONE_LABELS[params.tone] ?? params.tone
-                  : "—"}
-              </p>
+              <p className="text-sm font-medium">{params.tone ? (TONE_LABELS[params.tone] ?? params.tone) : "—"}</p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Length</p>
               <p className="text-sm font-medium">
-                {params.length
-                  ? LENGTH_LABELS[params.length] ?? params.length
-                  : "—"}
+                {params.length ? (LENGTH_LABELS[params.length] ?? params.length) : "—"}
               </p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Model</p>
-              <p className="text-sm font-medium font-mono">
-                {gen.model_used?.split("-").slice(-1)[0] ?? "—"}
-              </p>
+              <p className="text-sm font-medium font-mono">{gen.model_used?.split("-").slice(-1)[0] ?? "—"}</p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Status</p>
-              <p
-                className={cn(
-                  "text-sm font-medium capitalize",
-                  isSuccess ? "text-success" : "text-destructive"
-                )}
-              >
+              <p className={cn("text-sm font-medium capitalize", isSuccess ? "text-success" : "text-destructive")}>
                 {gen.status}
               </p>
             </div>
@@ -203,9 +168,7 @@ function GenerationCard({ gen }: { gen: BlogGeneration }) {
             params.user_refs_has_notes ||
             params.user_refs_files) && (
             <div>
-              <p className="text-xs font-medium text-muted-foreground mb-1.5">
-                References Used
-              </p>
+              <p className="text-xs font-medium text-muted-foreground mb-1.5">References Used</p>
               <div className="space-y-2">
                 {/* URLs */}
                 {((params.user_refs_url_list?.length ?? 0) > 0 || (params.user_refs_urls ?? 0) > 0) && (
@@ -239,9 +202,7 @@ function GenerationCard({ gen }: { gen: BlogGeneration }) {
                 {/* Notes */}
                 {params.user_refs_has_notes && (
                   <div>
-                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1">
-                      Notes
-                    </p>
+                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1">Notes</p>
                     {params.user_refs_notes_excerpt ? (
                       <p className="text-xs text-muted-foreground bg-surface/50 rounded-md p-2">
                         {params.user_refs_notes_excerpt}
@@ -286,9 +247,7 @@ function GenerationCard({ gen }: { gen: BlogGeneration }) {
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {params.research_papers} paper{params.research_papers !== 1 ? "s" : ""} found
-                      {params.research_source
-                        ? ` via ${params.research_source}`
-                        : ""}
+                      {params.research_source ? ` via ${params.research_source}` : ""}
                     </p>
                   </div>
                 )}
@@ -299,12 +258,8 @@ function GenerationCard({ gen }: { gen: BlogGeneration }) {
           {/* Error */}
           {gen.error_message && (
             <div>
-              <p className="text-xs font-medium text-destructive mb-1">
-                Error
-              </p>
-              <p className="text-sm text-destructive bg-destructive/5 rounded-lg p-3">
-                {gen.error_message}
-              </p>
+              <p className="text-xs font-medium text-destructive mb-1">Error</p>
+              <p className="text-sm text-destructive bg-destructive/5 rounded-lg p-3">{gen.error_message}</p>
             </div>
           )}
         </div>
@@ -338,11 +293,7 @@ export function BlogGenerationHistory() {
   }, [])
 
   if (loading) {
-    return (
-      <div className="text-center py-12 text-muted-foreground text-sm">
-        Loading generation history...
-      </div>
-    )
+    return <div className="text-center py-12 text-muted-foreground text-sm">Loading generation history...</div>
   }
 
   if (error) {
@@ -363,9 +314,7 @@ export function BlogGenerationHistory() {
         <div className="flex size-12 items-center justify-center rounded-full bg-primary/10 mx-auto mb-3">
           <Sparkles className="size-5 text-primary" />
         </div>
-        <p className="text-sm text-muted-foreground">
-          No AI-generated blog posts yet.
-        </p>
+        <p className="text-sm text-muted-foreground">No AI-generated blog posts yet.</p>
         <p className="text-xs text-muted-foreground mt-1">
           Use &quot;Generate with AI&quot; when creating a new post to start tracking.
         </p>
@@ -385,13 +334,7 @@ export function BlogGenerationHistory() {
           {failed > 0 && <span className="text-destructive">, {failed} failed</span>}
           <span className="text-success">)</span>
         </p>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={fetchData}
-          disabled={loading}
-          className="gap-1.5"
-        >
+        <Button variant="outline" size="sm" onClick={fetchData} disabled={loading} className="gap-1.5">
           <RefreshCw className={cn("size-3.5", loading && "animate-spin")} />
           Refresh
         </Button>

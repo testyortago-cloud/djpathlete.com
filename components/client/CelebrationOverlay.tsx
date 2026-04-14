@@ -144,10 +144,7 @@ function fireConfetti(type: string) {
   })
 }
 
-export function CelebrationOverlay({
-  achievements,
-  onComplete,
-}: CelebrationOverlayProps) {
+export function CelebrationOverlay({ achievements, onComplete }: CelebrationOverlayProps) {
   const [currentIndex, setCurrentIndex] = useState(0)
 
   const advance = useCallback(() => {

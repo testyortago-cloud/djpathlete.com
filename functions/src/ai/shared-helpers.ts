@@ -29,8 +29,11 @@ export async function bulkAddExercisesToProgram(rows: Record<string, unknown>[],
       const supabase = getSupabase()
       const { error } = await supabase.from("program_exercises").insert(batch)
       if (!error) break
-      if (attempt === retries) throw new Error(`Failed to add exercises (batch ${Math.floor(i / BATCH_SIZE) + 1}): ${error.message}`)
-      console.warn(`[shared] bulkAddExercises batch ${Math.floor(i / BATCH_SIZE) + 1} attempt ${attempt} failed: ${error.message}, retrying...`)
+      if (attempt === retries)
+        throw new Error(`Failed to add exercises (batch ${Math.floor(i / BATCH_SIZE) + 1}): ${error.message}`)
+      console.warn(
+        `[shared] bulkAddExercises batch ${Math.floor(i / BATCH_SIZE) + 1} attempt ${attempt} failed: ${error.message}, retrying...`,
+      )
       await new Promise((r) => setTimeout(r, 1000 * attempt))
     }
   }
@@ -39,15 +42,21 @@ export async function bulkAddExercisesToProgram(rows: Record<string, unknown>[],
 // ─── Injury Joint Extraction ───────────────────────────────────────────────
 
 const JOINT_KEYWORDS: Record<string, string> = {
-  knee: "knee", ankle: "ankle", hip: "hip", shoulder: "shoulder",
-  elbow: "elbow", wrist: "wrist", lower_back: "lumbar_spine",
-  "lower back": "lumbar_spine", lumbar: "lumbar_spine",
-  back: "thoracic_spine", thoracic: "thoracic_spine", spine: "lumbar_spine",
+  knee: "knee",
+  ankle: "ankle",
+  hip: "hip",
+  shoulder: "shoulder",
+  elbow: "elbow",
+  wrist: "wrist",
+  lower_back: "lumbar_spine",
+  "lower back": "lumbar_spine",
+  lumbar: "lumbar_spine",
+  back: "thoracic_spine",
+  thoracic: "thoracic_spine",
+  spine: "lumbar_spine",
 }
 
-export function extractInjuredJoints(
-  injuryDetails: Array<{ area?: string }> | null | undefined
-): string[] {
+export function extractInjuredJoints(injuryDetails: Array<{ area?: string }> | null | undefined): string[] {
   const injuredJoints: string[] = []
   if (!injuryDetails?.length) return injuredJoints
 
@@ -88,7 +97,7 @@ export function buildPoolNote(poolIds: string[] | undefined, filteredCount: numb
 export function applyPoolFilter<T extends { id: string }>(
   fullLibrary: T[],
   poolIds: string[] | undefined,
-  logPrefix: string
+  logPrefix: string,
 ): T[] {
   if (!poolIds || poolIds.length === 0) return fullLibrary
   const poolSet = new Set(poolIds)
@@ -178,15 +187,24 @@ export function buildSlotLookups(weeks: ProgramWeek[]) {
 }
 
 const VALID_TECHNIQUES = new Set([
-  "straight_set", "superset", "dropset", "giant_set", "circuit",
-  "rest_pause", "amrap", "cluster_set", "complex", "emom", "wave_loading",
+  "straight_set",
+  "superset",
+  "dropset",
+  "giant_set",
+  "circuit",
+  "rest_pause",
+  "amrap",
+  "cluster_set",
+  "complex",
+  "emom",
+  "wave_loading",
 ])
 
 export function buildExerciseRows(
   assignments: Array<{ slot_id: string; exercise_id: string; notes: string | null }>,
   slotLookup: Map<string, SlotLocation>,
   slotDetailsLookup: Map<string, SlotDetails>,
-  programId: string
+  programId: string,
 ): Record<string, unknown>[] {
   return assignments
     .map((assigned) => {

@@ -19,55 +19,31 @@ export async function getProgramExercises(programId: string) {
   return data
 }
 
-export async function addExerciseToProgram(
-  programExercise: Omit<ProgramExercise, "id" | "created_at">
-) {
+export async function addExerciseToProgram(programExercise: Omit<ProgramExercise, "id" | "created_at">) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("program_exercises")
-    .insert(programExercise)
-    .select()
-    .single()
+  const { data, error } = await supabase.from("program_exercises").insert(programExercise).select().single()
   if (error) throw error
   return data as ProgramExercise
 }
 
 export async function removeExerciseFromProgram(id: string) {
   const supabase = getClient()
-  const { error } = await supabase
-    .from("program_exercises")
-    .delete()
-    .eq("id", id)
+  const { error } = await supabase.from("program_exercises").delete().eq("id", id)
   if (error) throw error
 }
 
-export async function updateProgramExercise(
-  id: string,
-  updates: Partial<Omit<ProgramExercise, "id" | "created_at">>
-) {
+export async function updateProgramExercise(id: string, updates: Partial<Omit<ProgramExercise, "id" | "created_at">>) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("program_exercises")
-    .update(updates)
-    .eq("id", id)
-    .select()
-    .single()
+  const { data, error } = await supabase.from("program_exercises").update(updates).eq("id", id).select().single()
   if (error) throw error
   return data as ProgramExercise
 }
 
-export async function reorderExercise(
-  id: string,
-  newOrderIndex: number
-) {
+export async function reorderExercise(id: string, newOrderIndex: number) {
   return updateProgramExercise(id, { order_index: newOrderIndex })
 }
 
-export async function duplicateWeekExercises(
-  programId: string,
-  sourceWeek: number,
-  targetWeek: number
-) {
+export async function duplicateWeekExercises(programId: string, sourceWeek: number, targetWeek: number) {
   const supabase = getClient()
   const { data: existing, error: fetchError } = await supabase
     .from("program_exercises")
@@ -99,18 +75,12 @@ export async function duplicateWeekExercises(
     suggested_weight_kg: ex.suggested_weight_kg,
   }))
 
-  const { data, error } = await supabase
-    .from("program_exercises")
-    .insert(toInsert)
-    .select()
+  const { data, error } = await supabase.from("program_exercises").insert(toInsert).select()
   if (error) throw error
   return data as ProgramExercise[]
 }
 
-export async function deleteWeekExercises(
-  programId: string,
-  weekNumber: number
-) {
+export async function deleteWeekExercises(programId: string, weekNumber: number) {
   const supabase = getClient()
 
   // Delete all exercises in the target week
@@ -135,17 +105,13 @@ export async function deleteWeekExercises(
         supabase
           .from("program_exercises")
           .update({ week_number: ex.week_number - 1 })
-          .eq("id", ex.id)
-      )
+          .eq("id", ex.id),
+      ),
     )
   }
 }
 
-export async function deleteDayExercises(
-  programId: string,
-  weekNumber: number,
-  dayOfWeek: number
-) {
+export async function deleteDayExercises(programId: string, weekNumber: number, dayOfWeek: number) {
   const supabase = getClient()
   const { error } = await supabase
     .from("program_exercises")
@@ -156,10 +122,7 @@ export async function deleteDayExercises(
   if (error) throw error
 }
 
-export async function duplicateProgramExercises(
-  sourceProgramId: string,
-  targetProgramId: string
-) {
+export async function duplicateProgramExercises(sourceProgramId: string, targetProgramId: string) {
   const supabase = getClient()
   const { data: existing, error: fetchError } = await supabase
     .from("program_exercises")
@@ -187,10 +150,7 @@ export async function duplicateProgramExercises(
     suggested_weight_kg: ex.suggested_weight_kg,
   }))
 
-  const { data, error } = await supabase
-    .from("program_exercises")
-    .insert(toInsert)
-    .select()
+  const { data, error } = await supabase.from("program_exercises").insert(toInsert).select()
   if (error) throw error
   return data as ProgramExercise[]
 }

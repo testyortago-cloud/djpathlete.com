@@ -5,30 +5,16 @@ function getClient() {
   return createServiceRoleClient()
 }
 
-export async function createGenerationLog(
-  data: Omit<AiGenerationLog, "id" | "created_at">
-) {
+export async function createGenerationLog(data: Omit<AiGenerationLog, "id" | "created_at">) {
   const supabase = getClient()
-  const { data: result, error } = await supabase
-    .from("ai_generation_log")
-    .insert(data)
-    .select()
-    .single()
+  const { data: result, error } = await supabase.from("ai_generation_log").insert(data).select().single()
   if (error) throw error
   return result as AiGenerationLog
 }
 
-export async function updateGenerationLog(
-  id: string,
-  updates: Partial<Omit<AiGenerationLog, "id" | "created_at">>
-) {
+export async function updateGenerationLog(id: string, updates: Partial<Omit<AiGenerationLog, "id" | "created_at">>) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("ai_generation_log")
-    .update(updates)
-    .eq("id", id)
-    .select()
-    .single()
+  const { data, error } = await supabase.from("ai_generation_log").update(updates).eq("id", id).select().single()
   if (error) throw error
   return data as AiGenerationLog
 }
@@ -41,20 +27,14 @@ export interface GenerationLogFilters {
 
 export async function getGenerationLogById(id: string) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("ai_generation_log")
-    .select("*")
-    .eq("id", id)
-    .single()
+  const { data, error } = await supabase.from("ai_generation_log").select("*").eq("id", id).single()
   if (error) throw error
   return data as AiGenerationLog
 }
 
 export async function getGenerationLogs(filters?: GenerationLogFilters) {
   const supabase = getClient()
-  let query = supabase
-    .from("ai_generation_log")
-    .select("*")
+  let query = supabase.from("ai_generation_log").select("*")
 
   if (filters?.status) {
     query = query.eq("status", filters.status)

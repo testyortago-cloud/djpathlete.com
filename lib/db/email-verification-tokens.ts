@@ -11,11 +11,7 @@ export async function createEmailVerificationToken(userId: string) {
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() // 24 hours
 
   // Invalidate any existing unused tokens for this user
-  await supabase
-    .from("email_verification_tokens")
-    .delete()
-    .eq("user_id", userId)
-    .is("used_at", null)
+  await supabase.from("email_verification_tokens").delete().eq("user_id", userId).is("used_at", null)
 
   const { data, error } = await supabase
     .from("email_verification_tokens")

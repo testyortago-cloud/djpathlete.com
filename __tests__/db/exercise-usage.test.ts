@@ -1,9 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest"
-import {
-  recordProgramExerciseUsage,
-  getCoachRecentUsage,
-  getClientRecentUsage,
-} from "@/lib/db/exercise-usage"
+import { recordProgramExerciseUsage, getCoachRecentUsage, getClientRecentUsage } from "@/lib/db/exercise-usage"
 import { createServiceRoleClient } from "@/lib/supabase"
 
 const TEST_COACH = "00000000-0000-0000-0000-0000000aaaaa"

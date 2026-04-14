@@ -29,10 +29,7 @@ function parseReps(reps: string | null): number | null {
  * Fetch all previous progress entries for a user + exercise combo.
  * Single query — all PR comparison logic runs in JS.
  */
-async function fetchExerciseHistory(
-  userId: string,
-  exerciseId: string
-): Promise<ExerciseProgress[]> {
+async function fetchExerciseHistory(userId: string, exerciseId: string): Promise<ExerciseProgress[]> {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("exercise_progress")
@@ -84,8 +81,9 @@ function getBest1RM(entry: ExerciseProgress): number {
     return Math.max(
       ...entry.set_details
         .filter((s) => (s.weight_kg ?? 0) > 0 && s.reps > 0)
-        .map((s) => estimate1RM(s.weight_kg!, s.reps))
-    , 0)
+        .map((s) => estimate1RM(s.weight_kg!, s.reps)),
+      0,
+    )
   }
   const weight = entry.weight_kg
   const reps = parseReps(entry.reps_completed)
@@ -97,11 +95,7 @@ function getBest1RM(entry: ExerciseProgress): number {
 
 // ─── Individual PR Checks ───────────────────────────────────────────────────
 
-export async function checkWeightPR(
-  userId: string,
-  exerciseId: string,
-  newWeightKg: number
-): Promise<PrCheckResult> {
+export async function checkWeightPR(userId: string, exerciseId: string, newWeightKg: number): Promise<PrCheckResult> {
   const history = await fetchExerciseHistory(userId, exerciseId)
   return checkWeightPRFromHistory(history, newWeightKg)
 }
@@ -110,7 +104,7 @@ export async function checkRepPR(
   userId: string,
   exerciseId: string,
   newWeightKg: number,
-  newReps: number
+  newReps: number,
 ): Promise<PrCheckResult> {
   const history = await fetchExerciseHistory(userId, exerciseId)
   return checkRepPRFromHistory(history, newWeightKg, newReps)
@@ -121,7 +115,7 @@ export async function checkVolumePR(
   exerciseId: string,
   sets: number,
   reps: number,
-  weightKg: number
+  weightKg: number,
 ): Promise<PrCheckResult> {
   const history = await fetchExerciseHistory(userId, exerciseId)
   return checkVolumePRFromHistory(history, sets, reps, weightKg)
@@ -131,7 +125,7 @@ export async function checkEstimated1RMPR(
   userId: string,
   exerciseId: string,
   weightKg: number,
-  reps: number
+  reps: number,
 ): Promise<PrCheckResult> {
   const history = await fetchExerciseHistory(userId, exerciseId)
   return checkEstimated1RMPRFromHistory(history, weightKg, reps)
@@ -139,10 +133,7 @@ export async function checkEstimated1RMPR(
 
 // ─── In-Memory PR Logic (operates on pre-fetched history) ──────────────────
 
-function checkWeightPRFromHistory(
-  history: ExerciseProgress[],
-  newWeightKg: number
-): PrCheckResult {
+function checkWeightPRFromHistory(history: ExerciseProgress[], newWeightKg: number): PrCheckResult {
   if (history.length === 0) {
     return { isPr: false, prType: null, title: "", description: "", metricValue: null }
   }
@@ -162,19 +153,13 @@ function checkWeightPRFromHistory(
   return { isPr: false, prType: null, title: "", description: "", metricValue: null }
 }
 
-function checkRepPRFromHistory(
-  history: ExerciseProgress[],
-  newWeightKg: number,
-  newReps: number
-): PrCheckResult {
+function checkRepPRFromHistory(history: ExerciseProgress[], newWeightKg: number, newReps: number): PrCheckResult {
   if (history.length === 0) {
     return { isPr: false, prType: null, title: "", description: "", metricValue: null }
   }
 
   // Find max reps at this weight or higher across all historical entries
-  const previousMaxReps = Math.max(
-    ...history.map((h) => getMaxRepsAtWeight(h, newWeightKg) ?? 0)
-  )
+  const previousMaxReps = Math.max(...history.map((h) => getMaxRepsAtWeight(h, newWeightKg) ?? 0))
 
   if (previousMaxReps === 0) {
     return { isPr: false, prType: null, title: "", description: "", metricValue: null }
@@ -204,7 +189,7 @@ function checkVolumePRFromHistory(
     return { isPr: false, prType: null, title: "", description: "", metricValue: null }
   }
 
-  const volume = newVolume ?? (_sets * _reps * _weightKg)
+  const volume = newVolume ?? _sets * _reps * _weightKg
 
   const previousMaxVolume = Math.max(...history.map((h) => getTotalVolume(h)))
 
@@ -269,7 +254,7 @@ export async function detectPRs(
     reps_completed: string | null
     sets_completed: number | null
     set_details?: SetDetail[] | null
-  }
+  },
 ): Promise<PrCheckResult[]> {
   const history = await fetchExerciseHistory(userId, exerciseId)
 
@@ -280,12 +265,8 @@ export async function detectPRs(
   const hasSetDetails = setDetails && setDetails.length > 0
 
   // Derive key values from set_details when available, else from flat fields
-  const weightKg = hasSetDetails
-    ? Math.max(...setDetails.map((s) => s.weight_kg ?? 0))
-    : data.weight_kg
-  const reps = hasSetDetails
-    ? Math.max(...setDetails.map((s) => s.reps))
-    : parseReps(data.reps_completed)
+  const weightKg = hasSetDetails ? Math.max(...setDetails.map((s) => s.weight_kg ?? 0)) : data.weight_kg
+  const reps = hasSetDetails ? Math.max(...setDetails.map((s) => s.reps)) : parseReps(data.reps_completed)
   const sets = data.sets_completed
 
   // If no weight data, can't check weight-based PRs
@@ -315,7 +296,9 @@ export async function detectPRs(
   // Check volume PR
   const newVolume = hasSetDetails
     ? setDetails.reduce((sum, s) => sum + (s.weight_kg ?? 0) * s.reps, 0)
-    : (sets && reps ? sets * reps * weightKg : null)
+    : sets && reps
+      ? sets * reps * weightKg
+      : null
   if (newVolume != null && newVolume > 0) {
     const volumeResult = checkVolumePRFromHistory(history, sets ?? 0, reps ?? 0, weightKg, newVolume)
     if (volumeResult.isPr) {
@@ -326,12 +309,17 @@ export async function detectPRs(
 
   // Check estimated 1RM PR (best Epley across all sets)
   const new1RM = hasSetDetails
-    ? Math.round(Math.max(
-        ...setDetails
-          .filter((s) => (s.weight_kg ?? 0) > 0 && s.reps > 0)
-          .map((s) => estimate1RM(s.weight_kg!, s.reps))
-      , 0))
-    : (reps != null && reps > 0 ? Math.round(estimate1RM(weightKg, reps)) : null)
+    ? Math.round(
+        Math.max(
+          ...setDetails
+            .filter((s) => (s.weight_kg ?? 0) > 0 && s.reps > 0)
+            .map((s) => estimate1RM(s.weight_kg!, s.reps)),
+          0,
+        ),
+      )
+    : reps != null && reps > 0
+      ? Math.round(estimate1RM(weightKg, reps))
+      : null
   if (new1RM != null && new1RM > 0) {
     const e1rmResult = checkEstimated1RMPRFromHistory(history, weightKg, reps ?? 0, new1RM)
     if (e1rmResult.isPr) {
@@ -352,10 +340,7 @@ const WORKOUT_MILESTONES = [10, 25, 50, 100, 250, 500, 1000] as const
  * Check if the current streak matches a milestone AND the user hasn't
  * already earned an achievement for that streak length.
  */
-export async function checkStreakMilestones(
-  userId: string,
-  currentStreak: number
-): Promise<PrCheckResult | null> {
+export async function checkStreakMilestones(userId: string, currentStreak: number): Promise<PrCheckResult | null> {
   const milestone = STREAK_MILESTONES.find((m) => m === currentStreak)
   if (!milestone) return null
 
@@ -384,10 +369,7 @@ export async function checkStreakMilestones(
  * Check if the total workout count matches a milestone AND the user hasn't
  * already earned an achievement for that count.
  */
-export async function checkWorkoutMilestones(
-  userId: string,
-  totalWorkouts: number
-): Promise<PrCheckResult | null> {
+export async function checkWorkoutMilestones(userId: string, totalWorkouts: number): Promise<PrCheckResult | null> {
   const milestone = WORKOUT_MILESTONES.find((m) => m === totalWorkouts)
   if (!milestone) return null
 

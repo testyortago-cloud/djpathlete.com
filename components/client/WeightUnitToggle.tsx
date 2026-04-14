@@ -23,17 +23,13 @@ export function WeightUnitToggle() {
           disabled={saving}
           className={cn(
             "relative rounded-md px-4 py-1.5 text-sm font-medium transition-colors",
-            unit === opt.value
-              ? "bg-white text-primary shadow-sm"
-              : "text-muted-foreground hover:text-foreground"
+            unit === opt.value ? "bg-white text-primary shadow-sm" : "text-muted-foreground hover:text-foreground",
           )}
         >
           {opt.label}
         </button>
       ))}
-      {saving && (
-        <Loader2 className="size-3.5 animate-spin text-muted-foreground ml-1" />
-      )}
+      {saving && <Loader2 className="size-3.5 animate-spin text-muted-foreground ml-1" />}
     </div>
   )
 }

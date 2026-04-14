@@ -98,17 +98,12 @@ export function SettingsNotificationToggles() {
   return (
     <div className="space-y-4">
       {NOTIFICATION_OPTIONS.map((option) => (
-        <div
-          key={option.id}
-          className="flex items-center justify-between gap-4 py-2"
-        >
+        <div key={option.id} className="flex items-center justify-between gap-4 py-2">
           <div className="space-y-0.5">
             <Label htmlFor={option.id} className="text-sm font-medium">
               {option.label}
             </Label>
-            <p className="text-xs text-muted-foreground">
-              {option.description}
-            </p>
+            <p className="text-xs text-muted-foreground">{option.description}</p>
           </div>
           <button
             id={option.id}

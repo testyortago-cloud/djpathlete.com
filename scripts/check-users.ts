@@ -7,10 +7,7 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 dotenv.config({ path: resolve(__dirname, "../.env.local") })
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
 async function check() {
   const { data, error } = await supabase
@@ -24,9 +21,7 @@ async function check() {
   }
 
   console.log(`Total users: ${data.length}\n`)
-  data.forEach((u) =>
-    console.log(`  ${u.email} | ${u.first_name} ${u.last_name} | ${u.role} | ${u.id}`)
-  )
+  data.forEach((u) => console.log(`  ${u.email} | ${u.first_name} ${u.last_name} | ${u.role} | ${u.id}`))
 }
 
 check()

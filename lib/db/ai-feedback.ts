@@ -7,9 +7,7 @@ function getClient() {
 
 // ─── Upsert (create or update) ──────────────────────────────────────────────
 
-export async function submitFeedback(
-  data: Omit<AiResponseFeedback, "id" | "created_at" | "updated_at">
-) {
+export async function submitFeedback(data: Omit<AiResponseFeedback, "id" | "created_at" | "updated_at">) {
   const supabase = getClient()
   const { data: result, error } = await supabase
     .from("ai_response_feedback")
@@ -32,22 +30,15 @@ export async function getFeedbackForMessage(messageId: string) {
   return data as AiResponseFeedback[]
 }
 
-export async function getFeedbackByFeature(
-  feature?: AiFeature,
-  limit: number = 50
-) {
+export async function getFeedbackByFeature(feature?: AiFeature, limit: number = 50) {
   const supabase = getClient()
-  let query = supabase
-    .from("ai_response_feedback")
-    .select("*")
+  let query = supabase.from("ai_response_feedback").select("*")
 
   if (feature) {
     query = query.eq("feature", feature)
   }
 
-  const { data, error } = await query
-    .order("created_at", { ascending: false })
-    .limit(limit)
+  const { data, error } = await query.order("created_at", { ascending: false }).limit(limit)
   if (error) throw error
   return data as AiResponseFeedback[]
 }
@@ -63,9 +54,7 @@ export interface FeedbackAggregation {
   thumbs_down_count: number
 }
 
-export async function getAggregatedFeedback(
-  feature?: AiFeature
-): Promise<FeedbackAggregation> {
+export async function getAggregatedFeedback(feature?: AiFeature): Promise<FeedbackAggregation> {
   const supabase = getClient()
   let query = supabase.from("ai_response_feedback").select("*")
 
@@ -92,7 +81,7 @@ export async function getAggregatedFeedback(
   const relevanceRatings = rows.filter((r) => r.relevance_rating != null).map((r) => r.relevance_rating!)
   const helpfulnessRatings = rows.filter((r) => r.helpfulness_rating != null).map((r) => r.helpfulness_rating!)
 
-  const avg = (arr: number[]) => arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : null
+  const avg = (arr: number[]) => (arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : null)
 
   return {
     total_count: rows.length,
@@ -112,18 +101,12 @@ export interface FeedbackTrendPoint {
   count: number
 }
 
-export async function getFeedbackTrends(
-  feature?: AiFeature,
-  weeksBack: number = 12
-): Promise<FeedbackTrendPoint[]> {
+export async function getFeedbackTrends(feature?: AiFeature, weeksBack: number = 12): Promise<FeedbackTrendPoint[]> {
   const supabase = getClient()
   const cutoff = new Date()
   cutoff.setDate(cutoff.getDate() - weeksBack * 7)
 
-  let query = supabase
-    .from("ai_response_feedback")
-    .select("*")
-    .gte("created_at", cutoff.toISOString())
+  let query = supabase.from("ai_response_feedback").select("*").gte("created_at", cutoff.toISOString())
 
   if (feature) {
     query = query.eq("feature", feature)
@@ -144,7 +127,7 @@ export async function getFeedbackTrends(
     weekMap.set(yearWeek, existing)
   }
 
-  const avg = (arr: number[]) => arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : null
+  const avg = (arr: number[]) => (arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : null)
 
   return Array.from(weekMap.entries()).map(([week, items]) => ({
     week,

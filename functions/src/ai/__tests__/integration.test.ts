@@ -4,13 +4,22 @@ import { applyUsagePenalty } from "../exercise-filter.js"
 import { validateSkeletonAgainstAnalysis, profileAnalysisSchema } from "../schemas.js"
 import type { CompressedExercise, ProgramSkeleton, ProfileAnalysis } from "../types.js"
 
-const mkEx = (id: string, difficulty: string, score: number, pattern: string, muscles: string[]): CompressedExercise => ({
-  id, name: id, difficulty, difficulty_score: score,
-  movement_pattern: pattern, primary_muscles: muscles, secondary_muscles: [],
-  equipment_required: [], is_bodyweight: false,
-  training_intent: ["build"], sport_tags: [], joints_loaded: [],
-  plane_of_motion: ["sagittal"],
-} as unknown as CompressedExercise)
+const mkEx = (id: string, difficulty: string, score: number, pattern: string, muscles: string[]): CompressedExercise =>
+  ({
+    id,
+    name: id,
+    difficulty,
+    difficulty_score: score,
+    movement_pattern: pattern,
+    primary_muscles: muscles,
+    secondary_muscles: [],
+    equipment_required: [],
+    is_bodyweight: false,
+    training_intent: ["build"],
+    sport_tags: [],
+    joints_loaded: [],
+    plane_of_motion: ["sagittal"],
+  }) as unknown as CompressedExercise
 
 describe("Integration: full filter pipeline for two beginners", () => {
   const library: CompressedExercise[] = [
@@ -29,20 +38,29 @@ describe("Integration: full filter pipeline for two beginners", () => {
     const client1Usage = new Map<string, number>()
     const client2Usage = new Map<string, number>()
     const coachUsageAfterClient1 = new Map<string, number>([
-      ["squat-bw", 1], ["squat-goblet", 1], ["squat-box", 1], ["push-dbbp", 1],
+      ["squat-bw", 1],
+      ["squat-goblet", 1],
+      ["squat-box", 1],
+      ["push-dbbp", 1],
     ])
 
     const scores1 = library.map((ex) => ({
       id: ex.id,
       score: applyUsagePenalty(50, ex.id, new Map(), client1Usage),
     }))
-    const top1 = [...scores1].sort((a, b) => b.score - a.score).slice(0, 4).map((s) => s.id)
+    const top1 = [...scores1]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 4)
+      .map((s) => s.id)
 
     const scores2 = library.map((ex) => ({
       id: ex.id,
       score: applyUsagePenalty(50, ex.id, coachUsageAfterClient1, client2Usage),
     }))
-    const top2 = [...scores2].sort((a, b) => b.score - a.score).slice(0, 4).map((s) => s.id)
+    const top2 = [...scores2]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 4)
+      .map((s) => s.id)
 
     const overlap = top1.filter((id) => top2.includes(id))
     expect(overlap.length).toBeLessThan(top1.length / 2)
@@ -82,7 +100,14 @@ describe("Integration: technique_plan enforcement in skeleton validation", () =>
     recommended_periodization: "linear",
     volume_targets: [{ muscle_group: "quads", sets_per_week: 10, priority: "high" }],
     exercise_constraints: [],
-    session_structure: { warm_up_minutes: 5, main_work_minutes: 45, cool_down_minutes: 5, total_exercises: 5, compound_count: 2, isolation_count: 3 },
+    session_structure: {
+      warm_up_minutes: 5,
+      main_work_minutes: 45,
+      cool_down_minutes: 5,
+      total_exercises: 5,
+      compound_count: 2,
+      isolation_count: 3,
+    },
     training_age_category: "novice",
     technique_plan: [
       { week_number: 1, allowed_techniques: ["straight_set"], default_technique: "straight_set", notes: "" },
@@ -100,25 +125,48 @@ describe("Integration: technique_plan enforcement in skeleton validation", () =>
   }) as ProfileAnalysis
 
   const baseSlot = {
-    slot_id: "s1", role: "primary_compound" as const, movement_pattern: "squat" as const,
-    target_muscles: ["quads"], sets: 3, reps: "8-10", rest_seconds: 120,
-    rpe_target: null, tempo: null, group_tag: null, intensity_pct: null,
+    slot_id: "s1",
+    role: "primary_compound" as const,
+    movement_pattern: "squat" as const,
+    target_muscles: ["quads"],
+    sets: 3,
+    reps: "8-10",
+    rest_seconds: 120,
+    rpe_target: null,
+    tempo: null,
+    group_tag: null,
+    intensity_pct: null,
   }
 
   it("rejects a novice beginner skeleton that uses supersets anywhere", () => {
     const skeleton: ProgramSkeleton = {
       weeks: [1, 2, 3, 4].map((wk) => ({
-        week_number: wk, phase: "A", intensity_modifier: "moderate",
-        days: [{
-          day_of_week: 1, label: "Mon", focus: "legs",
-          slots: [{ ...baseSlot, slot_id: `s-${wk}`, technique: wk === 3 ? "superset" as const : "straight_set" as const }],
-        }],
+        week_number: wk,
+        phase: "A",
+        intensity_modifier: "moderate",
+        days: [
+          {
+            day_of_week: 1,
+            label: "Mon",
+            focus: "legs",
+            slots: [
+              {
+                ...baseSlot,
+                slot_id: `s-${wk}`,
+                technique: wk === 3 ? ("superset" as const) : ("straight_set" as const),
+              },
+            ],
+          },
+        ],
       })),
-      split_type: "full_body", periodization: "linear", total_sessions: 4, notes: "",
+      split_type: "full_body",
+      periodization: "linear",
+      total_sessions: 4,
+      notes: "",
     }
     const result = validateSkeletonAgainstAnalysis(
       skeleton as unknown as Parameters<typeof validateSkeletonAgainstAnalysis>[0],
-      analysis as unknown as Parameters<typeof validateSkeletonAgainstAnalysis>[1]
+      analysis as unknown as Parameters<typeof validateSkeletonAgainstAnalysis>[1],
     )
     expect(result.ok).toBe(false)
     expect(result.violations.join(" ")).toMatch(/week 3.*superset/i)
@@ -127,17 +175,26 @@ describe("Integration: technique_plan enforcement in skeleton validation", () =>
   it("passes when every week uses only straight_set", () => {
     const skeleton: ProgramSkeleton = {
       weeks: [1, 2, 3, 4].map((wk) => ({
-        week_number: wk, phase: "A", intensity_modifier: "moderate",
-        days: [{
-          day_of_week: 1, label: "Mon", focus: "legs",
-          slots: [{ ...baseSlot, slot_id: `s-${wk}`, technique: "straight_set" as const }],
-        }],
+        week_number: wk,
+        phase: "A",
+        intensity_modifier: "moderate",
+        days: [
+          {
+            day_of_week: 1,
+            label: "Mon",
+            focus: "legs",
+            slots: [{ ...baseSlot, slot_id: `s-${wk}`, technique: "straight_set" as const }],
+          },
+        ],
       })),
-      split_type: "full_body", periodization: "linear", total_sessions: 4, notes: "",
+      split_type: "full_body",
+      periodization: "linear",
+      total_sessions: 4,
+      notes: "",
     }
     const result = validateSkeletonAgainstAnalysis(
       skeleton as unknown as Parameters<typeof validateSkeletonAgainstAnalysis>[0],
-      analysis as unknown as Parameters<typeof validateSkeletonAgainstAnalysis>[1]
+      analysis as unknown as Parameters<typeof validateSkeletonAgainstAnalysis>[1],
     )
     expect(result.ok).toBe(true)
   })

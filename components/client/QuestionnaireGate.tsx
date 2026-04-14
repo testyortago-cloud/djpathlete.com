@@ -3,13 +3,7 @@
 import { usePathname, useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 
-export function QuestionnaireGate({
-  hasCompleted,
-  children,
-}: {
-  hasCompleted: boolean
-  children: React.ReactNode
-}) {
+export function QuestionnaireGate({ hasCompleted, children }: { hasCompleted: boolean; children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
   const [ready, setReady] = useState(false)

@@ -1,14 +1,6 @@
 "use client"
 
-import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid,
-} from "recharts"
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts"
 import { TrendingUp } from "lucide-react"
 import { useWeightUnit } from "@/hooks/use-weight-unit"
 
@@ -83,12 +75,13 @@ function CustomTooltip({
 
   return (
     <div className="rounded-lg border border-border bg-white p-3 shadow-md">
-      <p className="text-xs font-medium text-foreground mb-1">
-        {data.formattedDate}
-      </p>
+      <p className="text-xs font-medium text-foreground mb-1">{data.formattedDate}</p>
       {data.weight != null && (
         <p className="text-xs text-muted-foreground">
-          Weight: <span className="font-medium text-foreground">{data.weight} {unitLabel}</span>
+          Weight:{" "}
+          <span className="font-medium text-foreground">
+            {data.weight} {unitLabel}
+          </span>
         </p>
       )}
       {data.reps != null && (
@@ -98,14 +91,13 @@ function CustomTooltip({
       )}
       {data.estimated_1rm != null && (
         <p className="text-xs text-muted-foreground">
-          Est. 1RM: <span className="font-medium text-foreground">{data.estimated_1rm} {unitLabel}</span>
+          Est. 1RM:{" "}
+          <span className="font-medium text-foreground">
+            {data.estimated_1rm} {unitLabel}
+          </span>
         </p>
       )}
-      {data.is_pr && (
-        <p className="text-xs font-semibold text-amber-600 mt-1">
-          Personal Record!
-        </p>
-      )}
+      {data.is_pr && <p className="text-xs font-semibold text-amber-600 mt-1">Personal Record!</p>}
     </div>
   )
 }
@@ -118,16 +110,7 @@ interface DotProps {
 
 function PRDot({ cx, cy, payload }: DotProps) {
   if (!payload?.is_pr || cx == null || cy == null) return null
-  return (
-    <circle
-      cx={cx}
-      cy={cy}
-      r={5}
-      fill="#C49B7A"
-      stroke="#fff"
-      strokeWidth={2}
-    />
-  )
+  return <circle cx={cx} cy={cy} r={5} fill="#C49B7A" stroke="#fff" strokeWidth={2} />
 }
 
 export function ProgressChart({ data, metric, exerciseName }: ProgressChartProps) {
@@ -139,9 +122,7 @@ export function ProgressChart({ data, metric, exerciseName }: ProgressChartProps
         <div className="flex items-center justify-center size-12 rounded-full bg-primary/10 mb-3">
           <TrendingUp className="size-6 text-primary" strokeWidth={1.5} />
         </div>
-        <p className="text-sm text-muted-foreground">
-          No data yet for {exerciseName}
-        </p>
+        <p className="text-sm text-muted-foreground">No data yet for {exerciseName}</p>
       </div>
     )
   }
@@ -158,10 +139,7 @@ export function ProgressChart({ data, metric, exerciseName }: ProgressChartProps
         weight: w,
         reps: d.reps,
         estimated_1rm: e1rm,
-        volume:
-          w != null && d.reps != null
-            ? Math.round(w * d.reps)
-            : null,
+        volume: w != null && d.reps != null ? Math.round(w * d.reps) : null,
         is_pr: d.is_pr,
       }
     })
@@ -181,12 +159,7 @@ export function ProgressChart({ data, metric, exerciseName }: ProgressChartProps
             tickLine={false}
             axisLine={false}
           />
-          <YAxis
-            tick={{ fontSize: 11, fill: "oklch(0.50 0.01 250)" }}
-            tickLine={false}
-            axisLine={false}
-            width={40}
-          />
+          <YAxis tick={{ fontSize: 11, fill: "oklch(0.50 0.01 250)" }} tickLine={false} axisLine={false} width={40} />
           <Tooltip content={<CustomTooltip unitLabel={unitLabel()} />} />
           <Line
             type="monotone"

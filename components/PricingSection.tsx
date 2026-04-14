@@ -14,8 +14,7 @@ interface Plan {
 const plans: Plan[] = [
   {
     name: "Foundation",
-    description:
-      "Structured training plans and performance tracking for athletes building their base.",
+    description: "Structured training plans and performance tracking for athletes building their base.",
     price: 99,
     features: [
       "Personalized training plan",
@@ -26,8 +25,7 @@ const plans: Plan[] = [
   },
   {
     name: "Performance",
-    description:
-      "Advanced coaching with video analysis, nutrition planning, and ongoing coach support.",
+    description: "Advanced coaching with video analysis, nutrition planning, and ongoing coach support.",
     price: 199,
     highlighted: true,
     features: [
@@ -41,8 +39,7 @@ const plans: Plan[] = [
   },
   {
     name: "Elite",
-    description:
-      "Full-service coaching for competitive athletes demanding peak performance.",
+    description: "Full-service coaching for competitive athletes demanding peak performance.",
     price: 349,
     features: [
       "Everything in Performance, plus…",
@@ -57,10 +54,7 @@ const plans: Plan[] = [
 
 export function PricingSection() {
   return (
-    <section
-      id="pricing"
-      className="py-24 bg-surface"
-    >
+    <section id="pricing" className="py-24 bg-surface">
       <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <motion.div
@@ -89,11 +83,7 @@ export function PricingSection() {
               transition={{ duration: 0.5, delay: index * 0.15 }}
               className={`
                 relative rounded-2xl p-8 flex flex-col border-2 transition-shadow
-                ${
-                  plan.highlighted
-                    ? "border-primary bg-white shadow-lg"
-                    : "border-border bg-white shadow-sm"
-                }
+                ${plan.highlighted ? "border-primary bg-white shadow-lg" : "border-border bg-white shadow-sm"}
               `}
             >
               {plan.highlighted && (
@@ -104,23 +94,15 @@ export function PricingSection() {
 
               {/* Plan name & description */}
               <div className="mb-6">
-                <h3 className="text-2xl font-semibold text-primary mb-2">
-                  {plan.name}
-                </h3>
-                <p className="text-[15px] leading-relaxed text-muted-foreground">
-                  {plan.description}
-                </p>
+                <h3 className="text-2xl font-semibold text-primary mb-2">{plan.name}</h3>
+                <p className="text-[15px] leading-relaxed text-muted-foreground">{plan.description}</p>
               </div>
 
               {/* Price */}
               <div className="mb-8">
                 <div className="flex items-baseline gap-1">
-                  <span className="text-5xl font-semibold text-primary">
-                    ${plan.price}
-                  </span>
-                  <span className="text-lg text-muted-foreground ml-1">
-                    / mo
-                  </span>
+                  <span className="text-5xl font-semibold text-primary">${plan.price}</span>
+                  <span className="text-lg text-muted-foreground ml-1">/ mo</span>
                 </div>
               </div>
 
@@ -142,9 +124,7 @@ export function PricingSection() {
                     <div className="mt-0.5 flex items-center justify-center size-5 rounded-full shrink-0 bg-primary/10">
                       <Check className="size-3 text-primary" strokeWidth={3} />
                     </div>
-                    <span className="text-[15px] leading-snug text-foreground/70">
-                      {feature}
-                    </span>
+                    <span className="text-[15px] leading-snug text-foreground/70">{feature}</span>
                   </li>
                 ))}
               </ul>

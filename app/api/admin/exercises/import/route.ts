@@ -15,10 +15,7 @@ export async function POST(request: Request) {
     const parsed = importSchema.safeParse(body)
 
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Invalid request body" },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Invalid request body" }, { status: 400 })
     }
 
     const validExercises: z.infer<typeof importRowSchema>[] = []
@@ -50,9 +47,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ imported, errors })
   } catch {
-    return NextResponse.json(
-      { error: "Failed to import exercises" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to import exercises" }, { status: 500 })
   }
 }

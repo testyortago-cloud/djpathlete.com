@@ -63,8 +63,7 @@ const athleteTypes = [
   {
     icon: Users,
     title: "Elite Youth Athletes",
-    description:
-      "Developing athletes who need long-term athletic development, not early burnout or shortcut training.",
+    description: "Developing athletes who need long-term athletic development, not early burnout or shortcut training.",
   },
   {
     icon: ShieldCheck,
@@ -75,8 +74,7 @@ const athleteTypes = [
   {
     icon: Briefcase,
     title: "High-Performing Professionals",
-    description:
-      "Individuals who train with the same intent they work. Precision, efficiency, and resilience matter.",
+    description: "Individuals who train with the same intent they work. Precision, efficiency, and resilience matter.",
   },
 ]
 
@@ -126,9 +124,7 @@ export default function InPersonPage() {
         <div className="relative z-10 max-w-5xl mx-auto text-center px-4 sm:px-8 pt-32 pb-16 lg:pt-40 lg:pb-24">
           <div className="flex items-center justify-center gap-3 mb-4">
             <div className="h-px w-8 bg-accent" />
-            <p className="text-sm font-medium text-accent uppercase tracking-widest">
-              In-Person Coaching
-            </p>
+            <p className="text-sm font-medium text-accent uppercase tracking-widest">In-Person Coaching</p>
             <div className="h-px w-8 bg-accent" />
           </div>
           <h1 className="text-3xl sm:text-4xl lg:text-5xl font-heading font-semibold text-white tracking-tight mb-6">
@@ -136,9 +132,8 @@ export default function InPersonPage() {
             <br className="hidden sm:block" /> Delivered Precisely.
           </h1>
           <p className="text-lg text-white/80 max-w-2xl mx-auto leading-relaxed mb-8">
-            Assessment-led, individually designed coaching for athletes who
-            demand more than effort. This is structured performance development
-            — built on science, guided by experience, and measured by results.
+            Assessment-led, individually designed coaching for athletes who demand more than effort. This is structured
+            performance development — built on science, guided by experience, and measured by results.
           </p>
           <a
             href="#apply"
@@ -157,9 +152,7 @@ export default function InPersonPage() {
             <div className="text-center mb-12">
               <div className="flex items-center justify-center gap-3 mb-4">
                 <div className="h-px w-8 bg-accent" />
-                <p className="text-sm font-medium text-accent uppercase tracking-widest">
-                  Who This Is For
-                </p>
+                <p className="text-sm font-medium text-accent uppercase tracking-widest">Who This Is For</p>
                 <div className="h-px w-8 bg-accent" />
               </div>
               <h2 className="text-2xl sm:text-3xl font-heading font-semibold text-primary tracking-tight mb-4">
@@ -173,20 +166,14 @@ export default function InPersonPage() {
               const Icon = type.icon
               return (
                 <FadeIn key={type.title} delay={i * 0.1} direction="up">
-                <div
-                  className="group relative overflow-hidden bg-white rounded-2xl border border-border p-6 hover:shadow-md transition-shadow"
-                >
-                  <div className="absolute top-0 left-0 right-0 h-1 bg-accent scale-x-0 group-hover:scale-x-100 transition-transform duration-300 origin-left" />
-                  <div className="flex size-12 items-center justify-center rounded-xl bg-primary/10 mb-4">
-                    <Icon className="size-6 text-primary" />
+                  <div className="group relative overflow-hidden bg-white rounded-2xl border border-border p-6 hover:shadow-md transition-shadow">
+                    <div className="absolute top-0 left-0 right-0 h-1 bg-accent scale-x-0 group-hover:scale-x-100 transition-transform duration-300 origin-left" />
+                    <div className="flex size-12 items-center justify-center rounded-xl bg-primary/10 mb-4">
+                      <Icon className="size-6 text-primary" />
+                    </div>
+                    <h3 className="text-lg font-semibold text-primary mb-2">{type.title}</h3>
+                    <p className="text-sm text-muted-foreground leading-relaxed">{type.description}</p>
                   </div>
-                  <h3 className="text-lg font-semibold text-primary mb-2">
-                    {type.title}
-                  </h3>
-                  <p className="text-sm text-muted-foreground leading-relaxed">
-                    {type.description}
-                  </p>
-                </div>
                 </FadeIn>
               )
             })}
@@ -194,8 +181,7 @@ export default function InPersonPage() {
 
           <div className="mt-10 text-center">
             <p className="text-sm text-muted-foreground italic max-w-2xl mx-auto leading-relaxed">
-              This is not entry-level training. This is not mass coaching.
-              Capacity is limited to protect quality.
+              This is not entry-level training. This is not mass coaching. Capacity is limited to protect quality.
             </p>
           </div>
         </div>
@@ -208,17 +194,14 @@ export default function InPersonPage() {
             <div className="text-center mb-12">
               <div className="flex items-center justify-center gap-3 mb-4">
                 <div className="h-px w-8 bg-accent" />
-                <p className="text-sm font-medium text-accent uppercase tracking-widest">
-                  The Process
-                </p>
+                <p className="text-sm font-medium text-accent uppercase tracking-widest">The Process</p>
                 <div className="h-px w-8 bg-accent" />
               </div>
               <h2 className="text-2xl sm:text-3xl font-heading font-semibold text-primary tracking-tight mb-4">
                 A Clear, Structured Path to Performance
               </h2>
               <p className="text-muted-foreground max-w-2xl mx-auto">
-                Every engagement follows a proven process designed to eliminate
-                guesswork and maximise outcomes.
+                Every engagement follows a proven process designed to eliminate guesswork and maximise outcomes.
               </p>
             </div>
           </FadeIn>
@@ -228,20 +211,14 @@ export default function InPersonPage() {
               const Icon = step.icon
               return (
                 <FadeIn key={step.step} delay={i * 0.12} direction="up">
-                <div className="relative">
-                  <div className="text-4xl font-heading font-bold text-accent/30 mb-3">
-                    {step.step}
+                  <div className="relative">
+                    <div className="text-4xl font-heading font-bold text-accent/30 mb-3">{step.step}</div>
+                    <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10 mb-3">
+                      <Icon className="size-5 text-primary" />
+                    </div>
+                    <h3 className="text-base font-semibold text-primary mb-2">{step.title}</h3>
+                    <p className="text-sm text-muted-foreground leading-relaxed">{step.description}</p>
                   </div>
-                  <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10 mb-3">
-                    <Icon className="size-5 text-primary" />
-                  </div>
-                  <h3 className="text-base font-semibold text-primary mb-2">
-                    {step.title}
-                  </h3>
-                  <p className="text-sm text-muted-foreground leading-relaxed">
-                    {step.description}
-                  </p>
-                </div>
                 </FadeIn>
               )
             })}
@@ -256,9 +233,7 @@ export default function InPersonPage() {
             <div className="text-center mb-12">
               <div className="flex items-center justify-center gap-3 mb-4">
                 <div className="h-px w-8 bg-accent" />
-                <p className="text-sm font-medium text-accent uppercase tracking-widest">
-                  The Environment
-                </p>
+                <p className="text-sm font-medium text-accent uppercase tracking-widest">The Environment</p>
                 <div className="h-px w-8 bg-accent" />
               </div>
               <h2 className="text-2xl sm:text-3xl font-heading font-semibold text-primary tracking-tight">
@@ -268,38 +243,38 @@ export default function InPersonPage() {
           </FadeIn>
 
           <FadeIn delay={0.1}>
-          <div className="grid md:grid-cols-5 md:grid-rows-[400px_400px] gap-4">
-            {/* Landscape — top left */}
-            <div className="relative md:col-span-3 md:row-span-1 aspect-[4/3] md:aspect-auto rounded-2xl overflow-hidden group">
-              <Image
-                src="/images/gym-training-01.jpg"
-                alt="Yortago Athletic performance training facility"
-                fill
-                className="object-cover transition-transform duration-500 group-hover:scale-105"
-                sizes="(max-width: 768px) 100vw, 60vw"
-              />
+            <div className="grid md:grid-cols-5 md:grid-rows-[400px_400px] gap-4">
+              {/* Landscape — top left */}
+              <div className="relative md:col-span-3 md:row-span-1 aspect-[4/3] md:aspect-auto rounded-2xl overflow-hidden group">
+                <Image
+                  src="/images/gym-training-01.jpg"
+                  alt="Yortago Athletic performance training facility"
+                  fill
+                  className="object-cover transition-transform duration-500 group-hover:scale-105"
+                  sizes="(max-width: 768px) 100vw, 60vw"
+                />
+              </div>
+              {/* Portrait — right, spans both rows */}
+              <div className="relative md:col-span-2 md:row-span-2 aspect-[3/4] md:aspect-auto rounded-2xl overflow-hidden group">
+                <Image
+                  src="/images/gym-training-02.jpg"
+                  alt="Athletic coaching session at Yortago Athletic"
+                  fill
+                  className="object-cover transition-transform duration-500 group-hover:scale-105"
+                  sizes="(max-width: 768px) 100vw, 40vw"
+                />
+              </div>
+              {/* Landscape — bottom left */}
+              <div className="relative md:col-span-3 md:row-span-1 aspect-[4/3] md:aspect-auto rounded-2xl overflow-hidden group">
+                <Image
+                  src="/images/gym-training-03.jpg"
+                  alt="High-performance training environment"
+                  fill
+                  className="object-cover transition-transform duration-500 group-hover:scale-105"
+                  sizes="(max-width: 768px) 100vw, 60vw"
+                />
+              </div>
             </div>
-            {/* Portrait — right, spans both rows */}
-            <div className="relative md:col-span-2 md:row-span-2 aspect-[3/4] md:aspect-auto rounded-2xl overflow-hidden group">
-              <Image
-                src="/images/gym-training-02.jpg"
-                alt="Athletic coaching session at Yortago Athletic"
-                fill
-                className="object-cover transition-transform duration-500 group-hover:scale-105"
-                sizes="(max-width: 768px) 100vw, 40vw"
-              />
-            </div>
-            {/* Landscape — bottom left */}
-            <div className="relative md:col-span-3 md:row-span-1 aspect-[4/3] md:aspect-auto rounded-2xl overflow-hidden group">
-              <Image
-                src="/images/gym-training-03.jpg"
-                alt="High-performance training environment"
-                fill
-                className="object-cover transition-transform duration-500 group-hover:scale-105"
-                sizes="(max-width: 768px) 100vw, 60vw"
-              />
-            </div>
-          </div>
           </FadeIn>
         </div>
       </section>
@@ -311,9 +286,7 @@ export default function InPersonPage() {
             <div className="text-center mb-10">
               <div className="flex items-center justify-center gap-3 mb-4">
                 <div className="h-px w-8 bg-accent" />
-                <p className="text-sm font-medium text-accent uppercase tracking-widest">
-                  The Difference
-                </p>
+                <p className="text-sm font-medium text-accent uppercase tracking-widest">The Difference</p>
                 <div className="h-px w-8 bg-accent" />
               </div>
               <h2 className="text-2xl sm:text-3xl font-heading font-semibold text-primary tracking-tight mb-4">
@@ -324,35 +297,24 @@ export default function InPersonPage() {
           </FadeIn>
 
           <FadeIn delay={0.1}>
-          <div className="space-y-6">
-            <div className="grid sm:grid-cols-3 gap-4">
-              {[
-                "Precision beats volume.",
-                "Capacity beats fatigue.",
-                "Systems beat workouts.",
-              ].map((statement) => (
-                <div
-                  key={statement}
-                  className="bg-white rounded-2xl border border-border p-5 text-center"
-                >
-                  <p className="text-base font-semibold text-primary">
-                    {statement}
-                  </p>
-                </div>
-              ))}
-            </div>
+            <div className="space-y-6">
+              <div className="grid sm:grid-cols-3 gap-4">
+                {["Precision beats volume.", "Capacity beats fatigue.", "Systems beat workouts."].map((statement) => (
+                  <div key={statement} className="bg-white rounded-2xl border border-border p-5 text-center">
+                    <p className="text-base font-semibold text-primary">{statement}</p>
+                  </div>
+                ))}
+              </div>
 
-            <div className="bg-white rounded-2xl border border-border p-6 sm:p-8">
-              <p className="text-lg text-muted-foreground leading-relaxed">
-                With over 20 years of experience, a PhD in athletic performance,
-                and a track record trusted by the world&apos;s best, this is not
-                theoretical coaching. Every decision is informed by evidence,
-                refined by experience, and tested at the highest levels of sport.
-                The difference is not just what we do — it is the depth of
-                understanding behind every choice.
-              </p>
+              <div className="bg-white rounded-2xl border border-border p-6 sm:p-8">
+                <p className="text-lg text-muted-foreground leading-relaxed">
+                  With over 20 years of experience, a PhD in athletic performance, and a track record trusted by the
+                  world&apos;s best, this is not theoretical coaching. Every decision is informed by evidence, refined
+                  by experience, and tested at the highest levels of sport. The difference is not just what we do — it
+                  is the depth of understanding behind every choice.
+                </p>
+              </div>
             </div>
-          </div>
           </FadeIn>
         </div>
       </section>
@@ -365,22 +327,20 @@ export default function InPersonPage() {
               <div className="lg:sticky lg:top-32">
                 <div className="flex items-center gap-3 mb-4">
                   <div className="h-px w-8 bg-accent" />
-                  <p className="text-sm font-medium text-accent uppercase tracking-widest">
-                    Get Started
-                  </p>
+                  <p className="text-sm font-medium text-accent uppercase tracking-widest">Get Started</p>
                 </div>
                 <h2 className="text-2xl sm:text-3xl font-heading font-semibold text-primary tracking-tight mb-4">
                   Ready to Start?
                 </h2>
                 <p className="text-muted-foreground leading-relaxed mb-6">
-                  In-person coaching is limited by design. If you are serious about
-                  performance development, apply to begin the process.
+                  In-person coaching is limited by design. If you are serious about performance development, apply to
+                  begin the process.
                 </p>
                 <div className="bg-primary rounded-2xl p-5 text-primary-foreground">
                   <p className="text-sm font-medium mb-1">Limited Availability</p>
                   <p className="text-xs text-primary-foreground/80 leading-relaxed">
-                    Capacity is capped to protect coaching quality. We review every
-                    application and only accept athletes we can genuinely help.
+                    Capacity is capped to protect coaching quality. We review every application and only accept athletes
+                    we can genuinely help.
                   </p>
                 </div>
               </div>

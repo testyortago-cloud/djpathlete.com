@@ -3,12 +3,7 @@ import { auth } from "@/lib/auth"
 import { uploadBlogImage } from "@/lib/blog-storage"
 
 const MAX_SIZE = 5 * 1024 * 1024 // 5 MB
-const ALLOWED_TYPES = [
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "image/gif",
-]
+const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"]
 
 export async function POST(request: Request) {
   try {
@@ -25,17 +20,11 @@ export async function POST(request: Request) {
     }
 
     if (!ALLOWED_TYPES.includes(file.type)) {
-      return NextResponse.json(
-        { error: "Invalid file type. Allowed: JPEG, PNG, WebP, GIF" },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Invalid file type. Allowed: JPEG, PNG, WebP, GIF" }, { status: 400 })
     }
 
     if (file.size > MAX_SIZE) {
-      return NextResponse.json(
-        { error: "File too large. Maximum 5 MB" },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "File too large. Maximum 5 MB" }, { status: 400 })
     }
 
     const ext = file.name.split(".").pop() ?? "jpg"
@@ -48,9 +37,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ url })
   } catch (error) {
     console.error("Blog image upload error:", error)
-    return NextResponse.json(
-      { error: "Failed to upload image" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to upload image" }, { status: 500 })
   }
 }

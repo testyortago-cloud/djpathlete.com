@@ -28,12 +28,8 @@ export default async function NewsletterPage() {
             <Mail className="size-3.5 sm:size-4 text-primary" />
           </div>
           <div>
-            <p className="text-[10px] sm:text-xs text-muted-foreground">
-              Total
-            </p>
-            <p className="text-lg sm:text-2xl font-semibold text-primary">
-              {total}
-            </p>
+            <p className="text-[10px] sm:text-xs text-muted-foreground">Total</p>
+            <p className="text-lg sm:text-2xl font-semibold text-primary">{total}</p>
           </div>
         </div>
 
@@ -42,12 +38,8 @@ export default async function NewsletterPage() {
             <Send className="size-3.5 sm:size-4 text-success" />
           </div>
           <div>
-            <p className="text-[10px] sm:text-xs text-muted-foreground">
-              Sent
-            </p>
-            <p className="text-lg sm:text-2xl font-semibold text-primary">
-              {sent}
-            </p>
+            <p className="text-[10px] sm:text-xs text-muted-foreground">Sent</p>
+            <p className="text-lg sm:text-2xl font-semibold text-primary">{sent}</p>
           </div>
         </div>
 
@@ -56,12 +48,8 @@ export default async function NewsletterPage() {
             <Clock className="size-3.5 sm:size-4 text-warning" />
           </div>
           <div>
-            <p className="text-[10px] sm:text-xs text-muted-foreground">
-              Drafts
-            </p>
-            <p className="text-lg sm:text-2xl font-semibold text-primary">
-              {drafts}
-            </p>
+            <p className="text-[10px] sm:text-xs text-muted-foreground">Drafts</p>
+            <p className="text-lg sm:text-2xl font-semibold text-primary">{drafts}</p>
           </div>
         </div>
 
@@ -73,12 +61,8 @@ export default async function NewsletterPage() {
             <Users className="size-3.5 sm:size-4 text-accent-foreground" />
           </div>
           <div>
-            <p className="text-[10px] sm:text-xs text-muted-foreground">
-              Subscribers
-            </p>
-            <p className="text-lg sm:text-2xl font-semibold text-primary">
-              {subscribers.length}
-            </p>
+            <p className="text-[10px] sm:text-xs text-muted-foreground">Subscribers</p>
+            <p className="text-lg sm:text-2xl font-semibold text-primary">{subscribers.length}</p>
           </div>
           <span className="ml-auto text-xs text-muted-foreground group-hover:text-primary transition-colors hidden sm:inline">
             View all &rarr;

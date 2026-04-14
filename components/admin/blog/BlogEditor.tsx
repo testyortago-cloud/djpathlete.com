@@ -53,8 +53,7 @@ export function BlogEditor({ content, onChange }: BlogEditorProps) {
     },
     editorProps: {
       attributes: {
-        class:
-          "prose prose-lg max-w-none min-h-[400px] px-6 py-4 focus:outline-none",
+        class: "prose prose-lg max-w-none min-h-[400px] px-6 py-4 focus:outline-none",
       },
     },
   })
@@ -82,12 +81,7 @@ export function BlogEditor({ content, onChange }: BlogEditorProps) {
   function insertLink() {
     const url = window.prompt("Enter URL:")
     if (!url) return
-    editor
-      ?.chain()
-      .focus()
-      .extendMarkRange("link")
-      .setLink({ href: url })
-      .run()
+    editor?.chain().focus().extendMarkRange("link").setLink({ href: url }).run()
   }
 
   const tools = [
@@ -112,15 +106,13 @@ export function BlogEditor({ content, onChange }: BlogEditorProps) {
     { divider: true },
     {
       icon: Heading2,
-      action: () =>
-        editor.chain().focus().toggleHeading({ level: 2 }).run(),
+      action: () => editor.chain().focus().toggleHeading({ level: 2 }).run(),
       active: editor.isActive("heading", { level: 2 }),
       title: "Heading 2",
     },
     {
       icon: Heading3,
-      action: () =>
-        editor.chain().focus().toggleHeading({ level: 3 }).run(),
+      action: () => editor.chain().focus().toggleHeading({ level: 3 }).run(),
       active: editor.isActive("heading", { level: 3 }),
       title: "Heading 3",
     },
@@ -177,10 +169,7 @@ export function BlogEditor({ content, onChange }: BlogEditorProps) {
       <div className="flex flex-wrap items-center gap-0.5 px-2 py-1.5 border-b border-border bg-surface/50">
         {tools.map((tool, i) =>
           "divider" in tool ? (
-            <div
-              key={`d-${i}`}
-              className="w-px h-5 bg-border mx-1"
-            />
+            <div key={`d-${i}`} className="w-px h-5 bg-border mx-1" />
           ) : (
             <button
               key={tool.title}
@@ -190,13 +179,13 @@ export function BlogEditor({ content, onChange }: BlogEditorProps) {
                 "p-1.5 rounded-md transition-colors",
                 tool.active
                   ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:text-foreground hover:bg-surface"
+                  : "text-muted-foreground hover:text-foreground hover:bg-surface",
               )}
               title={tool.title}
             >
               <tool.icon className="size-4" />
             </button>
-          )
+          ),
         )}
       </div>
 

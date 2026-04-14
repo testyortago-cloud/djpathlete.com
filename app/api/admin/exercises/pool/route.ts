@@ -43,9 +43,7 @@ export async function GET(request: Request) {
     }
     if (trainingIntent.length > 0) filters.training_intent = trainingIntent
 
-    const exercises = await getExercisesForAI(
-      Object.keys(filters).length > 0 ? filters : undefined
-    )
+    const exercises = await getExercisesForAI(Object.keys(filters).length > 0 ? filters : undefined)
 
     // Shuffle and limit to give variety across multiple generates
     const shuffled = exercises.sort(() => Math.random() - 0.5).slice(0, limit)
@@ -53,9 +51,6 @@ export async function GET(request: Request) {
     return NextResponse.json(shuffled)
   } catch (err) {
     console.error("[exercises/pool] Error:", err)
-    return NextResponse.json(
-      { error: "Failed to fetch exercise pool" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to fetch exercise pool" }, { status: 500 })
   }
 }

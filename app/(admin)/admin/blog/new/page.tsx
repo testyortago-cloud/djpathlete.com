@@ -8,9 +8,7 @@ export default async function NewBlogPostPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-primary mb-6">
-        New Blog Post
-      </h1>
+      <h1 className="text-2xl font-semibold text-primary mb-6">New Blog Post</h1>
       <BlogPostForm authorId={session.user!.id!} />
     </div>
   )

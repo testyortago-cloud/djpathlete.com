@@ -19,51 +19,28 @@ export async function getPrograms() {
 
 export async function getProgramById(id: string) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("programs")
-    .select("*")
-    .eq("id", id)
-    .single()
+  const { data, error } = await supabase.from("programs").select("*").eq("id", id).single()
   if (error) throw error
   return data as Program
 }
 
-export async function createProgram(
-  program: Omit<Program, "id" | "created_at" | "updated_at">
-) {
+export async function createProgram(program: Omit<Program, "id" | "created_at" | "updated_at">) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("programs")
-    .insert(program)
-    .select()
-    .single()
+  const { data, error } = await supabase.from("programs").insert(program).select().single()
   if (error) throw error
   return data as Program
 }
 
-export async function updateProgram(
-  id: string,
-  updates: Partial<Omit<Program, "id" | "created_at">>
-) {
+export async function updateProgram(id: string, updates: Partial<Omit<Program, "id" | "created_at">>) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("programs")
-    .update(updates)
-    .eq("id", id)
-    .select()
-    .single()
+  const { data, error } = await supabase.from("programs").update(updates).eq("id", id).select().single()
   if (error) throw error
   return data as Program
 }
 
 export async function getActiveProgramById(id: string) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("programs")
-    .select("*")
-    .eq("id", id)
-    .eq("is_active", true)
-    .single()
+  const { data, error } = await supabase.from("programs").select("*").eq("id", id).eq("is_active", true).single()
   if (error) throw error
   return data as Program
 }
@@ -88,11 +65,8 @@ export async function getClientPrograms(userId: string) {
     .eq("user_id", userId)
     .eq("status", "active")
   if (error) throw error
-  return (data ?? [])
-    .map((row) => (row as unknown as { programs: Program }).programs)
-    .filter(Boolean)
+  return (data ?? []).map((row) => (row as unknown as { programs: Program }).programs).filter(Boolean)
 }
-
 
 export async function deleteProgram(id: string) {
   const supabase = getClient()
@@ -105,9 +79,6 @@ export async function deleteProgram(id: string) {
   if (assessmentError) throw assessmentError
 
   // Hard delete — CASCADE removes program_exercises and program_assignments
-  const { error } = await supabase
-    .from("programs")
-    .delete()
-    .eq("id", id)
+  const { error } = await supabase.from("programs").delete().eq("id", id)
   if (error) throw error
 }

@@ -42,7 +42,10 @@ export function ProgramCard({ program }: ProgramCardProps) {
     >
       <div className="flex flex-wrap items-center gap-2 mb-3">
         {(Array.isArray(program.category) ? program.category : [program.category]).map((cat) => (
-          <span key={cat} className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-primary/10 text-primary">
+          <span
+            key={cat}
+            className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-primary/10 text-primary"
+          >
             {CATEGORY_LABELS[cat] ?? cat}
           </span>
         ))}
@@ -58,9 +61,7 @@ export function ProgramCard({ program }: ProgramCardProps) {
       </h3>
 
       {program.description && (
-        <p className="text-sm text-muted-foreground leading-relaxed mb-4 line-clamp-3">
-          {program.description}
-        </p>
+        <p className="text-sm text-muted-foreground leading-relaxed mb-4 line-clamp-3">{program.description}</p>
       )}
 
       <div className="mt-auto pt-4 border-t border-border flex items-center justify-between">
@@ -74,9 +75,7 @@ export function ProgramCard({ program }: ProgramCardProps) {
             {program.sessions_per_week}x/wk
           </span>
         </div>
-        <span className="text-sm font-semibold text-primary">
-          {formatPrice(program.price_cents)}
-        </span>
+        <span className="text-sm font-semibold text-primary">{formatPrice(program.price_cents)}</span>
       </div>
     </Link>
   )

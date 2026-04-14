@@ -6,10 +6,7 @@ export const dynamic = "force-dynamic"
 export const metadata = { title: "Bookings" }
 
 export default async function BookingsPage() {
-  const [bookings, stats] = await Promise.all([
-    getBookings(),
-    getBookingStats(),
-  ])
+  const [bookings, stats] = await Promise.all([getBookings(), getBookingStats()])
 
   return (
     <div>

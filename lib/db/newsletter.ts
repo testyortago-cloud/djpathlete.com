@@ -8,10 +8,7 @@ export async function addSubscriber(email: string, source = "website"): Promise<
   const supabase = getClient()
   const { error } = await supabase
     .from("newsletter_subscribers")
-    .upsert(
-      { email: email.toLowerCase().trim(), source, unsubscribed_at: null },
-      { onConflict: "email" }
-    )
+    .upsert({ email: email.toLowerCase().trim(), source, unsubscribed_at: null }, { onConflict: "email" })
   if (error) throw error
 }
 
@@ -55,7 +52,7 @@ export async function getAllSubscribers(): Promise<Subscriber[]> {
 
 export async function importSubscribers(
   emails: string[],
-  source = "csv_import"
+  source = "csv_import",
 ): Promise<{ added: number; skipped: number }> {
   const supabase = getClient()
   let added = 0

@@ -19,10 +19,7 @@ dotenv.config({ path: resolve(__dirname, "../.env.local") })
 
 // ─── Supabase client ──────────────────────────────────────────────────────────
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
 // ─── Anthropic client ─────────────────────────────────────────────────────────
 
@@ -43,18 +40,32 @@ const MAX_RETRIES = 3
 
 const PLANES_OF_MOTION = ["sagittal", "frontal", "transverse"] as const
 
-const JOINT_NAMES = [
-  "ankle", "knee", "hip", "lumbar_spine", "thoracic_spine",
-  "shoulder", "elbow", "wrist",
-] as const
+const JOINT_NAMES = ["ankle", "knee", "hip", "lumbar_spine", "thoracic_spine", "shoulder", "elbow", "wrist"] as const
 
 const JOINT_LOAD_LEVELS = ["low", "moderate", "high"] as const
 
 const SPORT_TAG_OPTIONS = [
-  "tennis", "golf", "baseball", "softball", "soccer", "basketball",
-  "football", "lacrosse", "hockey", "swimming", "track_field",
-  "volleyball", "rugby", "cricket", "pickleball", "running",
-  "cycling", "martial_arts", "wrestling", "rowing", "general_athletics",
+  "tennis",
+  "golf",
+  "baseball",
+  "softball",
+  "soccer",
+  "basketball",
+  "football",
+  "lacrosse",
+  "hockey",
+  "swimming",
+  "track_field",
+  "volleyball",
+  "rugby",
+  "cricket",
+  "pickleball",
+  "running",
+  "cycling",
+  "martial_arts",
+  "wrestling",
+  "rowing",
+  "general_athletics",
 ] as const
 
 // ─── System prompt ───────────────────────────────────────────────────────────
@@ -208,9 +219,7 @@ async function backfillExercise(exercise: ExerciseRow): Promise<BackfillResult> 
   try {
     const response = await callWithRetry(userMessage)
 
-    const toolUse = response.content.find(
-      (b): b is Anthropic.ToolUseBlock => b.type === "tool_use"
-    )
+    const toolUse = response.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use")
 
     if (!toolUse?.input) {
       return {
@@ -230,21 +239,23 @@ async function backfillExercise(exercise: ExerciseRow): Promise<BackfillResult> 
     const validJoints = new Set(JOINT_NAMES)
     const validLoads = new Set(JOINT_LOAD_LEVELS)
 
-    const cleanPlanes = (metadata.plane_of_motion ?? []).filter(
-      (p) => validPlanes.has(p as typeof PLANES_OF_MOTION[number])
+    const cleanPlanes = (metadata.plane_of_motion ?? []).filter((p) =>
+      validPlanes.has(p as (typeof PLANES_OF_MOTION)[number]),
     )
     const cleanJoints = (metadata.joints_loaded ?? []).filter(
-      (jl) => validJoints.has(jl.joint as typeof JOINT_NAMES[number]) && validLoads.has(jl.load as typeof JOINT_LOAD_LEVELS[number])
+      (jl) =>
+        validJoints.has(jl.joint as (typeof JOINT_NAMES)[number]) &&
+        validLoads.has(jl.load as (typeof JOINT_LOAD_LEVELS)[number]),
     )
-    const cleanSportTags = (metadata.sport_tags ?? []).filter(
-      (s) => typeof s === "string" && s.length > 0
-    )
+    const cleanSportTags = (metadata.sport_tags ?? []).filter((s) => typeof s === "string" && s.length > 0)
     const cleanAliases = (metadata.aliases ?? []).filter(
-      (a) => typeof a === "string" && a.length > 0 && a.length <= 100
+      (a) => typeof a === "string" && a.length > 0 && a.length <= 100,
     )
 
     if (DRY_RUN) {
-      console.log(`  [dry-run] ${exercise.name}: sports=[${cleanSportTags.join(",")}] planes=[${cleanPlanes.join(",")}] joints=${cleanJoints.length} aliases=[${cleanAliases.join(",")}]`)
+      console.log(
+        `  [dry-run] ${exercise.name}: sports=[${cleanSportTags.join(",")}] planes=[${cleanPlanes.join(",")}] joints=${cleanJoints.length} aliases=[${cleanAliases.join(",")}]`,
+      )
     } else {
       const { error: updateError } = await supabase
         .from("exercises")
@@ -284,7 +295,7 @@ async function backfillExercise(exercise: ExerciseRow): Promise<BackfillResult> 
 async function processWithConcurrency<T, R>(
   items: T[],
   concurrency: number,
-  fn: (item: T) => Promise<R>
+  fn: (item: T) => Promise<R>,
 ): Promise<R[]> {
   const results: R[] = []
   let index = 0
@@ -322,7 +333,9 @@ async function main() {
 
   let query = supabase
     .from("exercises")
-    .select("id, name, category, difficulty, description, equipment, instructions, muscle_group, movement_pattern, primary_muscles, secondary_muscles, training_intent, sport_tags")
+    .select(
+      "id, name, category, difficulty, description, equipment, instructions, muscle_group, movement_pattern, primary_muscles, secondary_muscles, training_intent, sport_tags",
+    )
     .eq("is_active", true)
     .order("name", { ascending: true })
 

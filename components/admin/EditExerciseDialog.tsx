@@ -104,10 +104,7 @@ export function EditExerciseDialog({
         const letter = programExercise.group_tag.charAt(0).toUpperCase()
         const peers = dayExercises
           .filter(
-            (pe) =>
-              pe.id !== programExercise.id &&
-              pe.group_tag &&
-              pe.group_tag.charAt(0).toUpperCase() === letter
+            (pe) => pe.id !== programExercise.id && pe.group_tag && pe.group_tag.charAt(0).toUpperCase() === letter,
           )
           .map((pe) => pe.id)
         setLinkedExerciseIds(peers)
@@ -128,9 +125,7 @@ export function EditExerciseDialog({
 
     // Compute group_tag
     let groupTag: string | null = null
-    const oldLetter = programExercise.group_tag
-      ? programExercise.group_tag.charAt(0).toUpperCase()
-      : null
+    const oldLetter = programExercise.group_tag ? programExercise.group_tag.charAt(0).toUpperCase() : null
 
     if (needsGrouping && linkedExerciseIds.length > 0) {
       // Reuse existing letter if this exercise already had one, otherwise pick next available
@@ -157,14 +152,11 @@ export function EditExerciseDialog({
     }
 
     try {
-      const response = await fetch(
-        `/api/admin/programs/${programId}/exercises/${programExercise.id}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        }
-      )
+      const response = await fetch(`/api/admin/programs/${programId}/exercises/${programExercise.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
 
       if (!response.ok) {
         const data = await response.json()
@@ -186,47 +178,36 @@ export function EditExerciseDialog({
         // PATCH each linked exercise with matching group_tag
         await Promise.all(
           linkedExerciseIds.map(async (peId, idx) => {
-            await fetch(
-              `/api/admin/programs/${programId}/exercises/${peId}`,
-              {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  group_tag: `${letter}${idx + 1}`,
-                  technique,
-                }),
-              }
-            )
-          })
+            await fetch(`/api/admin/programs/${programId}/exercises/${peId}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                group_tag: `${letter}${idx + 1}`,
+                technique,
+              }),
+            })
+          }),
         )
       }
 
       // Clear group_tag from exercises that were previously in this group but are now unlinked
       if (oldLetter) {
         const previouslyLinked = dayExercises.filter(
-          (pe) =>
-            pe.id !== programExercise.id &&
-            pe.group_tag &&
-            pe.group_tag.charAt(0).toUpperCase() === oldLetter
+          (pe) => pe.id !== programExercise.id && pe.group_tag && pe.group_tag.charAt(0).toUpperCase() === oldLetter,
         )
-        const unlinked = previouslyLinked.filter(
-          (pe) => !linkedExerciseIds.includes(pe.id)
-        )
+        const unlinked = previouslyLinked.filter((pe) => !linkedExerciseIds.includes(pe.id))
         if (unlinked.length > 0) {
           await Promise.all(
             unlinked.map(async (pe) => {
-              await fetch(
-                `/api/admin/programs/${programId}/exercises/${pe.id}`,
-                {
-                  method: "PATCH",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    group_tag: null,
-                    technique: "straight_set",
-                  }),
-                }
-              )
-            })
+              await fetch(`/api/admin/programs/${programId}/exercises/${pe.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  group_tag: null,
+                  technique: "straight_set",
+                }),
+              })
+            }),
           )
         }
       }
@@ -242,16 +223,20 @@ export function EditExerciseDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) tour.close(); onOpenChange(o) }}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) tour.close()
+        onOpenChange(o)
+      }}
+    >
       <DialogContent ref={dialogRef} className="sm:max-w-md max-h-[85vh] flex flex-col overflow-hidden">
         <DialogHeader>
           <div className="flex items-center gap-2">
             <DialogTitle>Edit Exercise Parameters</DialogTitle>
             <TourButton onClick={tour.start} />
           </div>
-          <DialogDescription>
-            Update parameters for {programExercise.exercises.name}.
-          </DialogDescription>
+          <DialogDescription>Update parameters for {programExercise.exercises.name}.</DialogDescription>
         </DialogHeader>
 
         {(() => {
@@ -326,7 +311,11 @@ export function EditExerciseDialog({
                         type="number"
                         min={0}
                         step={0.5}
-                        defaultValue={programExercise.suggested_weight_kg != null ? displayWeight(programExercise.suggested_weight_kg) ?? "" : ""}
+                        defaultValue={
+                          programExercise.suggested_weight_kg != null
+                            ? (displayWeight(programExercise.suggested_weight_kg) ?? "")
+                            : ""
+                        }
                         placeholder={unit === "lbs" ? "e.g. 135" : "e.g. 60"}
                         key={unit}
                       />
@@ -432,18 +421,12 @@ export function EditExerciseDialog({
                   className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
                 />
               </div>
-
             </form>
           )
         })()}
 
         <DialogFooter className="shrink-0 border-t border-border pt-4">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={isSubmitting}
-          >
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
             Cancel
           </Button>
           <Button type="submit" form="edit-exercise-form" disabled={isSubmitting}>

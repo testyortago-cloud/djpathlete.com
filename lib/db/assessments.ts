@@ -1,9 +1,5 @@
 import { createServiceRoleClient } from "@/lib/supabase"
-import type {
-  AssessmentQuestion,
-  AssessmentResult,
-  AssessmentSection,
-} from "@/types/database"
+import type { AssessmentQuestion, AssessmentResult, AssessmentSection } from "@/types/database"
 
 /** Service-role client bypasses RLS — these functions are only called from server-side routes. */
 function getClient() {
@@ -51,31 +47,17 @@ export async function getAllQuestions() {
 }
 
 /** Create a new assessment question */
-export async function createQuestion(
-  question: Omit<AssessmentQuestion, "id" | "created_at">
-) {
+export async function createQuestion(question: Omit<AssessmentQuestion, "id" | "created_at">) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("assessment_questions")
-    .insert(question)
-    .select()
-    .single()
+  const { data, error } = await supabase.from("assessment_questions").insert(question).select().single()
   if (error) throw error
   return data as AssessmentQuestion
 }
 
 /** Update an assessment question */
-export async function updateQuestion(
-  id: string,
-  updates: Partial<Omit<AssessmentQuestion, "id" | "created_at">>
-) {
+export async function updateQuestion(id: string, updates: Partial<Omit<AssessmentQuestion, "id" | "created_at">>) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("assessment_questions")
-    .update(updates)
-    .eq("id", id)
-    .select()
-    .single()
+  const { data, error } = await supabase.from("assessment_questions").update(updates).eq("id", id).select().single()
   if (error) throw error
   return data as AssessmentQuestion
 }
@@ -83,17 +65,12 @@ export async function updateQuestion(
 /** Soft delete a question (set is_active = false) */
 export async function deleteQuestion(id: string) {
   const supabase = getClient()
-  const { error } = await supabase
-    .from("assessment_questions")
-    .update({ is_active: false })
-    .eq("id", id)
+  const { error } = await supabase.from("assessment_questions").update({ is_active: false }).eq("id", id)
   if (error) throw error
 }
 
 /** Batch reorder questions */
-export async function reorderQuestions(
-  updates: { id: string; order_index: number }[]
-) {
+export async function reorderQuestions(updates: { id: string; order_index: number }[]) {
   const supabase = getClient()
   // Update each question's order_index individually
   for (const update of updates) {
@@ -110,11 +87,7 @@ export async function reorderQuestions(
 /** Get a single assessment result by ID */
 export async function getAssessmentResult(id: string) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("assessment_results")
-    .select("*")
-    .eq("id", id)
-    .single()
+  const { data, error } = await supabase.from("assessment_results").select("*").eq("id", id).single()
   if (error) throw error
   return data as AssessmentResult
 }
@@ -146,15 +119,9 @@ export async function getLatestAssessmentResult(userId: string) {
 }
 
 /** Save a new assessment result */
-export async function createAssessmentResult(
-  result: Omit<AssessmentResult, "id" | "created_at">
-) {
+export async function createAssessmentResult(result: Omit<AssessmentResult, "id" | "created_at">) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("assessment_results")
-    .insert(result)
-    .select()
-    .single()
+  const { data, error } = await supabase.from("assessment_results").insert(result).select().single()
   if (error) throw error
   return data as AssessmentResult
 }
@@ -162,15 +129,10 @@ export async function createAssessmentResult(
 /** Update an assessment result (e.g., link triggered_program_id) */
 export async function updateAssessmentResult(
   id: string,
-  updates: Partial<Omit<AssessmentResult, "id" | "created_at">>
+  updates: Partial<Omit<AssessmentResult, "id" | "created_at">>,
 ) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("assessment_results")
-    .update(updates)
-    .eq("id", id)
-    .select()
-    .single()
+  const { data, error } = await supabase.from("assessment_results").update(updates).eq("id", id).select().single()
   if (error) throw error
   return data as AssessmentResult
 }

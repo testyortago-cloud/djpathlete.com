@@ -34,15 +34,11 @@ export default async function ClientProfilePage() {
         <div className="grid grid-cols-2 gap-3 sm:gap-4">
           <div>
             <p className="text-[10px] sm:text-xs text-muted-foreground mb-0.5">Name</p>
-            <p className="text-xs sm:text-sm font-medium text-foreground truncate">
-              {session.user.name ?? "Not set"}
-            </p>
+            <p className="text-xs sm:text-sm font-medium text-foreground truncate">{session.user.name ?? "Not set"}</p>
           </div>
           <div>
             <p className="text-[10px] sm:text-xs text-muted-foreground mb-0.5">Email</p>
-            <p className="text-xs sm:text-sm font-medium text-foreground truncate">
-              {session.user.email ?? "Not set"}
-            </p>
+            <p className="text-xs sm:text-sm font-medium text-foreground truncate">{session.user.email ?? "Not set"}</p>
           </div>
         </div>
       </div>

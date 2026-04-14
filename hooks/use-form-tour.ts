@@ -50,7 +50,7 @@ export function useFormTour({ steps, scrollContainerRef }: UseFormTourOptions): 
       tRect.left - cRect.left,
       tRect.top - cRect.top + container.scrollTop,
       tRect.width,
-      tRect.height
+      tRect.height,
     )
 
     setContainerRect(cRect)
@@ -58,52 +58,55 @@ export function useFormTour({ steps, scrollContainerRef }: UseFormTourOptions): 
   }, [isActive, currentIndex, steps, scrollContainerRef])
 
   // Scroll target into view and measure after beforeShow
-  const showStep = useCallback((index: number) => {
-    const container = scrollContainerRef.current
-    if (!container) return
+  const showStep = useCallback(
+    (index: number) => {
+      const container = scrollContainerRef.current
+      if (!container) return
 
-    const step = steps[index]
-    if (!step) return
+      const step = steps[index]
+      if (!step) return
 
-    const hadBeforeShow = !!step.beforeShow
+      const hadBeforeShow = !!step.beforeShow
 
-    // Run beforeShow (e.g. expand collapsible, navigate wizard step)
-    step.beforeShow?.()
+      // Run beforeShow (e.g. expand collapsible, navigate wizard step)
+      step.beforeShow?.()
 
-    // If beforeShow was called (e.g. wizard step change), the DOM needs time
-    // for React re-render + AnimatePresence animation (~200-400ms).
-    // Retry a few times before giving up.
-    function findTarget(retriesLeft: number) {
-      requestAnimationFrame(() => {
-        if (!container) return
-        const targetEl = container.querySelector<HTMLElement>(`#${step.target}`)
-        if (!targetEl) {
-          if (retriesLeft > 0) {
-            // Retry after a short delay to allow animations to complete
-            setTimeout(() => findTarget(retriesLeft - 1), 200)
+      // If beforeShow was called (e.g. wizard step change), the DOM needs time
+      // for React re-render + AnimatePresence animation (~200-400ms).
+      // Retry a few times before giving up.
+      function findTarget(retriesLeft: number) {
+        requestAnimationFrame(() => {
+          if (!container) return
+          const targetEl = container.querySelector<HTMLElement>(`#${step.target}`)
+          if (!targetEl) {
+            if (retriesLeft > 0) {
+              // Retry after a short delay to allow animations to complete
+              setTimeout(() => findTarget(retriesLeft - 1), 200)
+              return
+            }
+            // Skip to next if target still doesn't exist
+            if (index < steps.length - 1) {
+              setCurrentIndex(index + 1)
+            } else {
+              setIsActive(false)
+            }
             return
           }
-          // Skip to next if target still doesn't exist
-          if (index < steps.length - 1) {
-            setCurrentIndex(index + 1)
-          } else {
-            setIsActive(false)
-          }
-          return
-        }
 
-        // Scroll target toward the top of the container so the tooltip
-        // (which renders below) has room to display without being clipped.
-        targetEl.scrollIntoView({ behavior: "smooth", block: "start" })
+          // Scroll target toward the top of the container so the tooltip
+          // (which renders below) has room to display without being clipped.
+          targetEl.scrollIntoView({ behavior: "smooth", block: "start" })
 
-        // Measure after scroll settles
-        setTimeout(() => measure(), 300)
-      })
-    }
+          // Measure after scroll settles
+          setTimeout(() => measure(), 300)
+        })
+      }
 
-    // Allow retries when beforeShow was called (wizard transitions, collapsibles)
-    findTarget(hadBeforeShow ? 3 : 0)
-  }, [steps, scrollContainerRef, measure])
+      // Allow retries when beforeShow was called (wizard transitions, collapsibles)
+      findTarget(hadBeforeShow ? 3 : 0)
+    },
+    [steps, scrollContainerRef, measure],
+  )
 
   // Re-measure on scroll and resize
   useEffect(() => {

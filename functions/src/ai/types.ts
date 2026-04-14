@@ -9,12 +9,7 @@ export type SplitType =
   | "movement_pattern"
   | "custom"
 
-export type Periodization =
-  | "linear"
-  | "undulating"
-  | "block"
-  | "reverse_linear"
-  | "none"
+export type Periodization = "linear" | "undulating" | "block" | "reverse_linear" | "none"
 
 export type MovementPattern =
   | "push"
@@ -68,7 +63,17 @@ export interface ProfileAnalysis {
 
 export interface ExerciseSlot {
   slot_id: string
-  role: "warm_up" | "primary_compound" | "secondary_compound" | "accessory" | "isolation" | "cool_down" | "power" | "conditioning" | "activation" | "testing"
+  role:
+    | "warm_up"
+    | "primary_compound"
+    | "secondary_compound"
+    | "accessory"
+    | "isolation"
+    | "cool_down"
+    | "power"
+    | "conditioning"
+    | "activation"
+    | "testing"
   movement_pattern: MovementPattern
   target_muscles: string[]
   sets: number
@@ -77,7 +82,18 @@ export interface ExerciseSlot {
   rpe_target: number | null
   tempo: string | null
   group_tag: string | null
-  technique: "straight_set" | "superset" | "dropset" | "giant_set" | "circuit" | "rest_pause" | "amrap" | "cluster_set" | "complex" | "emom" | "wave_loading"
+  technique:
+    | "straight_set"
+    | "superset"
+    | "dropset"
+    | "giant_set"
+    | "circuit"
+    | "rest_pause"
+    | "amrap"
+    | "cluster_set"
+    | "complex"
+    | "emom"
+    | "wave_loading"
   intensity_pct?: number | null
 }
 
@@ -155,25 +171,11 @@ export interface OrchestrationResult {
 
 // ─── Database-adjacent types ────────────────────────────────────────────────
 
-export type ProgramCategory =
-  | "strength"
-  | "conditioning"
-  | "sport_specific"
-  | "recovery"
-  | "nutrition"
-  | "hybrid"
+export type ProgramCategory = "strength" | "conditioning" | "sport_specific" | "recovery" | "nutrition" | "hybrid"
 
-export type ProgramDifficulty =
-  | "beginner"
-  | "intermediate"
-  | "advanced"
-  | "elite"
+export type ProgramDifficulty = "beginner" | "intermediate" | "advanced" | "elite"
 
-export type AiFeature =
-  | "program_generation"
-  | "program_chat"
-  | "admin_chat"
-  | "ai_coach"
+export type AiFeature = "program_generation" | "program_chat" | "admin_chat" | "ai_coach"
 
 // ─── Compressed exercise for AI context ──────────────────────────────────────
 

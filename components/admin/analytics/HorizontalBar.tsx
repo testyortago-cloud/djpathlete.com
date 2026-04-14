@@ -23,11 +23,7 @@ export function HorizontalBar({
   emptyMessage = "No data yet.",
 }: HorizontalBarProps) {
   if (items.length === 0) {
-    return (
-      <div className="p-8 text-center text-sm text-muted-foreground">
-        {emptyMessage}
-      </div>
-    )
+    return <div className="p-8 text-center text-sm text-muted-foreground">{emptyMessage}</div>
   }
 
   const max = maxValue ?? Math.max(...items.map((i) => i.count), 1)
@@ -40,9 +36,7 @@ export function HorizontalBar({
           <div key={item.label}>
             <div className="flex items-center justify-between mb-1 gap-3">
               <div className="flex items-center gap-2 min-w-0">
-                <p className="text-sm font-medium text-foreground truncate">
-                  {item.label}
-                </p>
+                <p className="text-sm font-medium text-foreground truncate">{item.label}</p>
                 {item.badge && (
                   <span className="shrink-0 inline-flex items-center rounded-full bg-surface px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
                     {item.badge}
@@ -54,9 +48,7 @@ export function HorizontalBar({
                   </span>
                 )}
               </div>
-              <p className="text-sm text-muted-foreground whitespace-nowrap">
-                {formatValue(item.count)}
-              </p>
+              <p className="text-sm text-muted-foreground whitespace-nowrap">{formatValue(item.count)}</p>
             </div>
             <div className="h-2 rounded-full bg-surface overflow-hidden">
               <div

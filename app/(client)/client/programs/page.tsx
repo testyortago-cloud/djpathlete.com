@@ -56,27 +56,25 @@ export default async function ClientProgramsPage() {
 
   try {
     // Fetch independently so a single failure doesn't wipe all data
-    const [assignmentsResult, publicResult] = await Promise.allSettled([
-      getAssignments(userId),
-      getPublicPrograms(),
-    ])
+    const [assignmentsResult, publicResult] = await Promise.allSettled([getAssignments(userId), getPublicPrograms()])
 
     const assignments = assignmentsResult.status === "fulfilled" ? assignmentsResult.value : []
     const publicPrograms = publicResult.status === "fulfilled" ? publicResult.value : []
 
-    if (assignmentsResult.status === "rejected") console.error("[browse] getAssignments failed:", assignmentsResult.reason)
+    if (assignmentsResult.status === "rejected")
+      console.error("[browse] getAssignments failed:", assignmentsResult.reason)
     if (publicResult.status === "rejected") console.error("[browse] getPublicPrograms failed:", publicResult.reason)
 
     const typedAssignments = assignments as AssignmentWithProgram[]
-    currentPrograms = typedAssignments.filter((a) => a.status === "active" && a.payment_status !== "pending" && !isAssignmentExpired(a.expires_at))
-    previousPrograms = typedAssignments.filter((a) => a.status === "completed" || (a.status === "active" && isAssignmentExpired(a.expires_at)))
+    currentPrograms = typedAssignments.filter(
+      (a) => a.status === "active" && a.payment_status !== "pending" && !isAssignmentExpired(a.expires_at),
+    )
+    previousPrograms = typedAssignments.filter(
+      (a) => a.status === "completed" || (a.status === "active" && isAssignmentExpired(a.expires_at)),
+    )
 
     // Build set of all assigned program IDs (active + completed, excluding pending payment) to exclude from available
-    const assignedIds = new Set(
-      typedAssignments
-        .filter((a) => a.payment_status !== "pending")
-        .map((a) => a.program_id)
-    )
+    const assignedIds = new Set(typedAssignments.filter((a) => a.payment_status !== "pending").map((a) => a.program_id))
 
     // Merge public + pending-payment assigned programs, deduplicate, exclude already owned
     const mergedMap = new Map<string, Program>()
@@ -100,9 +98,7 @@ export default async function ClientProgramsPage() {
       {/* Current Programs */}
       {currentPrograms.length > 0 && (
         <section className="mb-8">
-          <h2 className="text-base sm:text-lg font-semibold text-foreground mb-3">
-            Current Programs
-          </h2>
+          <h2 className="text-base sm:text-lg font-semibold text-foreground mb-3">Current Programs</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {currentPrograms.map((assignment) => {
               const program = assignment.programs
@@ -112,24 +108,18 @@ export default async function ClientProgramsPage() {
               const now = new Date()
               const weeksElapsed = Math.max(
                 1,
-                Math.ceil(
-                  (now.getTime() - startDate.getTime()) /
-                    (1000 * 60 * 60 * 24 * 7)
-                )
+                Math.ceil((now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 7)),
               )
-              const progressPercent = Math.min(
-                100,
-                Math.round((weeksElapsed / program.duration_weeks) * 100)
-              )
+              const progressPercent = Math.min(100, Math.round((weeksElapsed / program.duration_weeks) * 100))
 
               return (
-                <div
-                  key={assignment.id}
-                  className="bg-white rounded-xl border border-border p-4 sm:p-5 flex flex-col"
-                >
+                <div key={assignment.id} className="bg-white rounded-xl border border-border p-4 sm:p-5 flex flex-col">
                   <div className="flex flex-wrap items-center gap-1.5 mb-2">
                     {(Array.isArray(program.category) ? program.category : [program.category]).map((cat) => (
-                      <span key={cat} className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] sm:text-xs font-medium bg-primary/10 text-primary">
+                      <span
+                        key={cat}
+                        className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] sm:text-xs font-medium bg-primary/10 text-primary"
+                      >
                         {CATEGORY_LABELS[cat] ?? cat}
                       </span>
                     ))}
@@ -159,8 +149,7 @@ export default async function ClientProgramsPage() {
                     <div className="flex items-center justify-between text-[10px] sm:text-xs text-muted-foreground mb-1">
                       <span>Progress</span>
                       <span>
-                        Week {Math.min(weeksElapsed, program.duration_weeks)} of{" "}
-                        {program.duration_weeks}
+                        Week {Math.min(weeksElapsed, program.duration_weeks)} of {program.duration_weeks}
                       </span>
                     </div>
                     <div className="h-1.5 bg-surface rounded-full overflow-hidden">
@@ -200,9 +189,7 @@ export default async function ClientProgramsPage() {
       {/* Previous Programs */}
       {previousPrograms.length > 0 && (
         <section className="mb-8">
-          <h2 className="text-base sm:text-lg font-semibold text-foreground mb-3">
-            Previous Programs
-          </h2>
+          <h2 className="text-base sm:text-lg font-semibold text-foreground mb-3">Previous Programs</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {previousPrograms.map((assignment) => {
               const program = assignment.programs
@@ -215,7 +202,10 @@ export default async function ClientProgramsPage() {
                 >
                   <div className="flex flex-wrap items-center gap-1.5 mb-2">
                     {(Array.isArray(program.category) ? program.category : [program.category]).map((cat) => (
-                      <span key={cat} className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] sm:text-xs font-medium bg-primary/10 text-primary">
+                      <span
+                        key={cat}
+                        className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] sm:text-xs font-medium bg-primary/10 text-primary"
+                      >
                         {CATEGORY_LABELS[cat] ?? cat}
                       </span>
                     ))}
@@ -252,7 +242,12 @@ export default async function ClientProgramsPage() {
                       </span>
                     </div>
                     <span className="text-xs sm:text-sm text-muted-foreground">
-                      Finished {new Date(assignment.updated_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      Finished{" "}
+                      {new Date(assignment.updated_at).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      })}
                     </span>
                   </div>
                 </div>
@@ -265,9 +260,7 @@ export default async function ClientProgramsPage() {
       {/* Available for Purchase */}
       <section>
         <h2 className="text-base sm:text-lg font-semibold text-foreground mb-3">
-          {currentPrograms.length > 0 || previousPrograms.length > 0
-            ? "Available for Purchase"
-            : "Browse Programs"}
+          {currentPrograms.length > 0 || previousPrograms.length > 0 ? "Available for Purchase" : "Browse Programs"}
         </h2>
 
         {availablePrograms.length > 0 ? (
@@ -280,7 +273,10 @@ export default async function ClientProgramsPage() {
               >
                 <div className="flex flex-wrap items-center gap-1.5 mb-2">
                   {(Array.isArray(program.category) ? program.category : [program.category]).map((cat) => (
-                    <span key={cat} className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] sm:text-xs font-medium bg-primary/10 text-primary">
+                    <span
+                      key={cat}
+                      className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] sm:text-xs font-medium bg-primary/10 text-primary"
+                    >
                       {CATEGORY_LABELS[cat] ?? cat}
                     </span>
                   ))}

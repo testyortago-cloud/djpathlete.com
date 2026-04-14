@@ -7,10 +7,7 @@ function getClient() {
 
 export async function getBookings(status?: BookingStatus) {
   const supabase = getClient()
-  let query = supabase
-    .from("bookings")
-    .select("*")
-    .order("booking_date", { ascending: false })
+  let query = supabase.from("bookings").select("*").order("booking_date", { ascending: false })
 
   if (status) {
     query = query.eq("status", status)
@@ -36,11 +33,7 @@ export async function getUpcomingBookings() {
 
 export async function getBookingById(id: string) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("bookings")
-    .select("*")
-    .eq("id", id)
-    .single()
+  const { data, error } = await supabase.from("bookings").select("*").eq("id", id).single()
 
   if (error) throw error
   return data as Booking
@@ -54,12 +47,7 @@ export async function updateBookingStatus(id: string, status: BookingStatus, not
   }
   if (notes !== undefined) updates.notes = notes
 
-  const { data, error } = await supabase
-    .from("bookings")
-    .update(updates)
-    .eq("id", id)
-    .select()
-    .single()
+  const { data, error } = await supabase.from("bookings").update(updates).eq("id", id).select().single()
 
   if (error) throw error
   return data as Booking

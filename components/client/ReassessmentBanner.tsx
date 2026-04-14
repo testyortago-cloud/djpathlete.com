@@ -24,9 +24,7 @@ export function ReassessmentBanner({ completedAssignmentId }: ReassessmentBanner
           <RefreshCw className="size-5 text-primary" strokeWidth={1.5} />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-foreground text-sm sm:text-base">
-            Your program is complete!
-          </p>
+          <p className="font-semibold text-foreground text-sm sm:text-base">Your program is complete!</p>
           <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
             Take a quick reassessment to get your next personalized program.
           </p>

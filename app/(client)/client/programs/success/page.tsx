@@ -15,9 +15,7 @@ export default async function ClientPurchaseSuccessPage() {
         <CheckCircle2 className="size-10 text-success" strokeWidth={1.5} />
       </div>
 
-      <h1 className="text-2xl font-heading font-semibold text-primary tracking-tight mb-3">
-        Purchase Successful!
-      </h1>
+      <h1 className="text-2xl font-heading font-semibold text-primary tracking-tight mb-3">Purchase Successful!</h1>
 
       <p className="text-base text-muted-foreground leading-relaxed mb-8 max-w-md">
         Your program has been added to your account. You can start training right away.

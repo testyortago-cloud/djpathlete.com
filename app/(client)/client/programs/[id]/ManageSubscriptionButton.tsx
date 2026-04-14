@@ -38,11 +38,7 @@ export function ManageSubscriptionButton() {
       disabled={loading}
       className="inline-flex items-center gap-2 rounded-full border border-border bg-white px-5 py-3 text-sm font-medium text-foreground hover:bg-muted transition-colors disabled:opacity-60"
     >
-      {loading ? (
-        <Loader2 className="size-4 animate-spin" />
-      ) : (
-        <Settings className="size-4" />
-      )}
+      {loading ? <Loader2 className="size-4 animate-spin" /> : <Settings className="size-4" />}
       {loading ? "Opening..." : "Manage Subscription"}
     </button>
   )

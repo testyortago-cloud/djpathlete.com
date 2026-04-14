@@ -4,19 +4,8 @@ import { useState, useCallback, useEffect, useRef, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { motion, AnimatePresence } from "framer-motion"
-import {
-  ChevronRight,
-  ChevronLeft,
-  Sparkles,
-  Loader2,
-  RefreshCw,
-} from "lucide-react"
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog"
+import { ChevronRight, ChevronLeft, Sparkles, Loader2, RefreshCw } from "lucide-react"
+import { Dialog, DialogContent, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Input } from "@/components/ui/input"
@@ -223,11 +212,7 @@ const textareaClass =
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
-export function ExerciseFormDialog({
-  open,
-  onOpenChange,
-  exercise: initialExercise,
-}: ExerciseFormDialogProps) {
+export function ExerciseFormDialog({ open, onOpenChange, exercise: initialExercise }: ExerciseFormDialogProps) {
   const router = useRouter()
   const dialogRef = useRef<HTMLDivElement>(null)
   const [exercise, setExercise] = useState(initialExercise)
@@ -307,7 +292,7 @@ export function ExerciseFormDialog({
   // How many steps are visible
   // Relationships step only shown after creating a new exercise (not when editing)
   const hasExercise = !!(exercise as Exercise | null)?.id
-  const maxStep = (!isEditing && hasExercise) ? 3 : 2
+  const maxStep = !isEditing && hasExercise ? 3 : 2
   const visibleSteps = STEPS.slice(0, maxStep + 1)
   const submitStep = 2 // Submit happens on AI Metadata step
 
@@ -340,9 +325,18 @@ export function ExerciseFormDialog({
 
   function validateStep(s: number): boolean {
     if (s === 0) {
-      if (!name.trim()) { toast.error("Name is required"); return false }
-      if (selectedCategories.length === 0) { toast.error("Select at least one category"); return false }
-      if (!difficulty) { toast.error("Difficulty is required"); return false }
+      if (!name.trim()) {
+        toast.error("Name is required")
+        return false
+      }
+      if (selectedCategories.length === 0) {
+        toast.error("Select at least one category")
+        return false
+      }
+      if (!difficulty) {
+        toast.error("Difficulty is required")
+        return false
+      }
     }
     return true
   }
@@ -376,8 +370,14 @@ export function ExerciseFormDialog({
   // ─── AI Auto-fill ───────────────────────────────────────────────────────
 
   async function handleAutoFill(force = false) {
-    if (!name.trim()) { toast.error("Enter an exercise name first"); return }
-    if (selectedCategories.length === 0) { toast.error("Select at least one category first"); return }
+    if (!name.trim()) {
+      toast.error("Enter an exercise name first")
+      return
+    }
+    if (selectedCategories.length === 0) {
+      toast.error("Select at least one category first")
+      return
+    }
 
     setIsAutoFilling(true)
     try {
@@ -404,8 +404,10 @@ export function ExerciseFormDialog({
       if (p.force_type && (force || !forceType)) setForceType(p.force_type)
       if (p.laterality && (force || !laterality)) setLaterality(p.laterality)
       if (p.primary_muscles?.length > 0 && (force || primaryMuscles.length === 0)) setPrimaryMuscles(p.primary_muscles)
-      if (p.secondary_muscles?.length > 0 && (force || secondaryMuscles.length === 0)) setSecondaryMuscles(p.secondary_muscles)
-      if (p.equipment_required?.length > 0 && (force || equipmentRequired.length === 0)) setEquipmentRequired(p.equipment_required)
+      if (p.secondary_muscles?.length > 0 && (force || secondaryMuscles.length === 0))
+        setSecondaryMuscles(p.secondary_muscles)
+      if (p.equipment_required?.length > 0 && (force || equipmentRequired.length === 0))
+        setEquipmentRequired(p.equipment_required)
       if (p.is_bodyweight !== undefined && (force || !autoFillApplied)) setIsBodyweight(p.is_bodyweight)
       if (p.training_intent?.length > 0 && (force || !autoFillApplied)) setTrainingIntent(p.training_intent)
       if (p.difficulty_score && (force || difficultyScore === 5)) setDifficultyScore(p.difficulty_score)
@@ -466,9 +468,7 @@ export function ExerciseFormDialog({
     setIsSubmitting(true)
 
     try {
-      const url = isEditing
-        ? `/api/admin/exercises/${exercise.id}`
-        : "/api/admin/exercises"
+      const url = isEditing ? `/api/admin/exercises/${exercise.id}` : "/api/admin/exercises"
       const method = isEditing ? "PATCH" : "POST"
 
       const response = await fetch(url, {
@@ -505,12 +505,18 @@ export function ExerciseFormDialog({
   // ─── Render ─────────────────────────────────────────────────────────────
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) handleDialogClose(); else onOpenChange(o) }}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) handleDialogClose()
+        else onOpenChange(o)
+      }}
+    >
       <DialogContent
         ref={dialogRef}
         className={cn(
           "sm:max-w-lg max-h-[85vh] sm:max-h-[90vh] overflow-y-auto p-4 sm:p-6 gap-3 sm:gap-4",
-          tour.isActive && "pb-48"
+          tour.isActive && "pb-48",
         )}
       >
         {/* Header */}
@@ -536,17 +542,19 @@ export function ExerciseFormDialog({
                     ? "bg-primary text-primary-foreground"
                     : idx < step
                       ? "bg-primary/10 text-primary cursor-pointer hover:bg-primary/20"
-                      : "bg-muted text-muted-foreground cursor-default"
+                      : "bg-muted text-muted-foreground cursor-default",
                 )}
               >
-                <span className={cn(
-                  "flex items-center justify-center size-4 rounded-full text-[10px] font-bold",
-                  idx === step
-                    ? "bg-primary-foreground/20 text-primary-foreground"
-                    : idx < step
-                      ? "bg-primary/20 text-primary"
-                      : "bg-muted-foreground/20 text-muted-foreground"
-                )}>
+                <span
+                  className={cn(
+                    "flex items-center justify-center size-4 rounded-full text-[10px] font-bold",
+                    idx === step
+                      ? "bg-primary-foreground/20 text-primary-foreground"
+                      : idx < step
+                        ? "bg-primary/20 text-primary"
+                        : "bg-muted-foreground/20 text-muted-foreground",
+                  )}
+                >
                   {idx < step ? "\u2713" : s.number}
                 </span>
                 <span className="hidden sm:inline">{s.label}</span>
@@ -591,7 +599,10 @@ export function ExerciseFormDialog({
                   instructions={instructions}
                   setInstructions={setInstructions}
                   videoUrl={videoUrl}
-                  setVideoUrl={(url) => { setVideoUrl(url); setIframeLoaded(false) }}
+                  setVideoUrl={(url) => {
+                    setVideoUrl(url)
+                    setIframeLoaded(false)
+                  }}
                   youtubeId={youtubeId}
                   iframeLoaded={iframeLoaded}
                   onIframeLoad={() => setIframeLoaded(true)}
@@ -638,10 +649,7 @@ export function ExerciseFormDialog({
                 />
               )}
               {step === 3 && exercise?.id && (
-                <StepRelationships
-                  exerciseId={exercise.id}
-                  exerciseName={exercise.name}
-                />
+                <StepRelationships exerciseId={exercise.id} exerciseName={exercise.name} />
               )}
             </motion.div>
           </AnimatePresence>
@@ -652,12 +660,24 @@ export function ExerciseFormDialog({
         {/* Footer */}
         <DialogFooter className="flex-row gap-2 sm:gap-2">
           {step > 0 ? (
-            <Button type="button" variant="outline" onClick={handleBack} disabled={isSubmitting} className="flex-1 sm:flex-none">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleBack}
+              disabled={isSubmitting}
+              className="flex-1 sm:flex-none"
+            >
               <ChevronLeft className="size-4" />
               Back
             </Button>
           ) : (
-            <Button type="button" variant="outline" onClick={handleDialogClose} disabled={isSubmitting} className="flex-1 sm:flex-none">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleDialogClose}
+              disabled={isSubmitting}
+              className="flex-1 sm:flex-none"
+            >
               Cancel
             </Button>
           )}
@@ -669,9 +689,7 @@ export function ExerciseFormDialog({
             </Button>
           ) : step === submitStep ? (
             <Button type="button" onClick={handleSubmit} disabled={isSubmitting} className="flex-1 sm:flex-none">
-              {isSubmitting
-                ? isEditing ? "Saving..." : "Creating..."
-                : isEditing ? "Save" : "Create"}
+              {isSubmitting ? (isEditing ? "Saving..." : "Creating...") : isEditing ? "Save" : "Create"}
             </Button>
           ) : (
             <Button type="button" onClick={handleDialogClose} className="flex-1 sm:flex-none">
@@ -687,18 +705,29 @@ export function ExerciseFormDialog({
 // ─── Step 0: Basics ─────────────────────────────────────────────────────────
 
 function StepBasics({
-  name, setName,
-  selectedCategories, toggleCategory,
-  difficulty, setDifficulty,
-  muscleGroup, setMuscleGroup,
-  equipment, setEquipment,
-  errors, disabled,
+  name,
+  setName,
+  selectedCategories,
+  toggleCategory,
+  difficulty,
+  setDifficulty,
+  muscleGroup,
+  setMuscleGroup,
+  equipment,
+  setEquipment,
+  errors,
+  disabled,
 }: {
-  name: string; setName: (v: string) => void
-  selectedCategories: string[]; toggleCategory: (cat: string) => void
-  difficulty: string; setDifficulty: (v: string) => void
-  muscleGroup: string; setMuscleGroup: (v: string) => void
-  equipment: string; setEquipment: (v: string) => void
+  name: string
+  setName: (v: string) => void
+  selectedCategories: string[]
+  toggleCategory: (cat: string) => void
+  difficulty: string
+  setDifficulty: (v: string) => void
+  muscleGroup: string
+  setMuscleGroup: (v: string) => void
+  equipment: string
+  setEquipment: (v: string) => void
   errors: Partial<Record<string, string[]>>
   disabled: boolean
 }) {
@@ -729,7 +758,7 @@ function StepBasics({
                 "px-2.5 py-1 text-xs rounded-full border transition-colors",
                 selectedCategories.includes(cat)
                   ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-background border-border text-muted-foreground hover:border-primary/50"
+                  : "bg-background border-border text-muted-foreground hover:border-primary/50",
               )}
             >
               {CATEGORY_LABELS[cat]}
@@ -748,9 +777,13 @@ function StepBasics({
           disabled={disabled}
           className={selectClass}
         >
-          <option value="" disabled>Select difficulty</option>
+          <option value="" disabled>
+            Select difficulty
+          </option>
           {EXERCISE_DIFFICULTIES.map((diff) => (
-            <option key={diff} value={diff}>{DIFFICULTY_LABELS[diff]}</option>
+            <option key={diff} value={diff}>
+              {DIFFICULTY_LABELS[diff]}
+            </option>
           ))}
         </select>
         {errors.difficulty && <p className="text-xs text-destructive">{errors.difficulty[0]}</p>}
@@ -786,16 +819,27 @@ function StepBasics({
 // ─── Step 1: Details ────────────────────────────────────────────────────────
 
 function StepDetails({
-  description, setDescription,
-  instructions, setInstructions,
-  videoUrl, setVideoUrl,
-  youtubeId, iframeLoaded, onIframeLoad,
-  errors, disabled,
+  description,
+  setDescription,
+  instructions,
+  setInstructions,
+  videoUrl,
+  setVideoUrl,
+  youtubeId,
+  iframeLoaded,
+  onIframeLoad,
+  errors,
+  disabled,
 }: {
-  description: string; setDescription: (v: string) => void
-  instructions: string; setInstructions: (v: string) => void
-  videoUrl: string; setVideoUrl: (v: string) => void
-  youtubeId: string | null; iframeLoaded: boolean; onIframeLoad: () => void
+  description: string
+  setDescription: (v: string) => void
+  instructions: string
+  setInstructions: (v: string) => void
+  videoUrl: string
+  setVideoUrl: (v: string) => void
+  youtubeId: string | null
+  iframeLoaded: boolean
+  onIframeLoad: () => void
   errors: Partial<Record<string, string[]>>
   disabled: boolean
 }) {
@@ -864,40 +908,74 @@ function StepDetails({
 // ─── Step 2: AI Metadata ────────────────────────────────────────────────────
 
 function StepAiMetadata({
-  movementPattern, setMovementPattern,
-  forceType, setForceType,
-  laterality, setLaterality,
-  primaryMuscles, togglePrimary,
-  secondaryMuscles, toggleSecondary,
-  equipmentRequired, toggleEquipment,
-  isBodyweight, setIsBodyweight,
-  trainingIntent, toggleTrainingIntent,
-  sportTags, toggleSportTag,
-  planeOfMotion, togglePlane,
-  jointsLoaded, setJointsLoaded,
-  aliases, setAliases,
-  difficultyMax, setDifficultyMax,
-  difficultyScore, setDifficultyScore,
-  progressionOrder, setProgressionOrder,
-  isAutoFilling, autoFillApplied, onAutoFill,
+  movementPattern,
+  setMovementPattern,
+  forceType,
+  setForceType,
+  laterality,
+  setLaterality,
+  primaryMuscles,
+  togglePrimary,
+  secondaryMuscles,
+  toggleSecondary,
+  equipmentRequired,
+  toggleEquipment,
+  isBodyweight,
+  setIsBodyweight,
+  trainingIntent,
+  toggleTrainingIntent,
+  sportTags,
+  toggleSportTag,
+  planeOfMotion,
+  togglePlane,
+  jointsLoaded,
+  setJointsLoaded,
+  aliases,
+  setAliases,
+  difficultyMax,
+  setDifficultyMax,
+  difficultyScore,
+  setDifficultyScore,
+  progressionOrder,
+  setProgressionOrder,
+  isAutoFilling,
+  autoFillApplied,
+  onAutoFill,
   disabled,
 }: {
-  movementPattern: string; setMovementPattern: (v: string) => void
-  forceType: string; setForceType: (v: string) => void
-  laterality: string; setLaterality: (v: string) => void
-  primaryMuscles: string[]; togglePrimary: (m: string) => void
-  secondaryMuscles: string[]; toggleSecondary: (m: string) => void
-  equipmentRequired: string[]; toggleEquipment: (eq: string) => void
-  isBodyweight: boolean; setIsBodyweight: (v: boolean) => void
-  trainingIntent: string[]; toggleTrainingIntent: (intent: string) => void
-  sportTags: string[]; toggleSportTag: (tag: string) => void
-  planeOfMotion: string[]; togglePlane: (plane: string) => void
-  jointsLoaded: JointLoading[]; setJointsLoaded: (v: JointLoading[]) => void
-  aliases: string[]; setAliases: (v: string[]) => void
-  difficultyMax: string; setDifficultyMax: (v: string) => void
-  difficultyScore: number; setDifficultyScore: (v: number) => void
-  progressionOrder: string; setProgressionOrder: (v: string) => void
-  isAutoFilling: boolean; autoFillApplied: boolean; onAutoFill: (force?: boolean) => void
+  movementPattern: string
+  setMovementPattern: (v: string) => void
+  forceType: string
+  setForceType: (v: string) => void
+  laterality: string
+  setLaterality: (v: string) => void
+  primaryMuscles: string[]
+  togglePrimary: (m: string) => void
+  secondaryMuscles: string[]
+  toggleSecondary: (m: string) => void
+  equipmentRequired: string[]
+  toggleEquipment: (eq: string) => void
+  isBodyweight: boolean
+  setIsBodyweight: (v: boolean) => void
+  trainingIntent: string[]
+  toggleTrainingIntent: (intent: string) => void
+  sportTags: string[]
+  toggleSportTag: (tag: string) => void
+  planeOfMotion: string[]
+  togglePlane: (plane: string) => void
+  jointsLoaded: JointLoading[]
+  setJointsLoaded: (v: JointLoading[]) => void
+  aliases: string[]
+  setAliases: (v: string[]) => void
+  difficultyMax: string
+  setDifficultyMax: (v: string) => void
+  difficultyScore: number
+  setDifficultyScore: (v: number) => void
+  progressionOrder: string
+  setProgressionOrder: (v: string) => void
+  isAutoFilling: boolean
+  autoFillApplied: boolean
+  onAutoFill: (force?: boolean) => void
   disabled: boolean
 }) {
   return (
@@ -909,7 +987,9 @@ function StepAiMetadata({
             <Sparkles className="size-4 text-primary shrink-0" />
             <div className="min-w-0">
               <p className="text-sm font-medium">AI Auto-fill</p>
-              <p className="text-xs text-muted-foreground hidden sm:block">Predict metadata from exercise name and category</p>
+              <p className="text-xs text-muted-foreground hidden sm:block">
+                Predict metadata from exercise name and category
+              </p>
             </div>
           </div>
           <Button
@@ -921,17 +1001,25 @@ function StepAiMetadata({
             className="shrink-0 w-full sm:w-auto"
           >
             {isAutoFilling ? (
-              <><Loader2 className="size-3.5 animate-spin" /> Predicting...</>
+              <>
+                <Loader2 className="size-3.5 animate-spin" /> Predicting...
+              </>
             ) : autoFillApplied ? (
-              <><RefreshCw className="size-3.5" /> Re-fill</>
+              <>
+                <RefreshCw className="size-3.5" /> Re-fill
+              </>
             ) : (
-              <><Sparkles className="size-3.5" /> Auto-fill</>
+              <>
+                <Sparkles className="size-3.5" /> Auto-fill
+              </>
             )}
           </Button>
         </div>
       </div>
 
-      <p className="text-xs text-muted-foreground">These fields help the AI generate better programs and find suitable alternatives.</p>
+      <p className="text-xs text-muted-foreground">
+        These fields help the AI generate better programs and find suitable alternatives.
+      </p>
 
       {/* Movement Pattern & Force Type */}
       <div className="grid sm:grid-cols-2 gap-4">
@@ -946,7 +1034,9 @@ function StepAiMetadata({
           >
             <option value="">None</option>
             {MOVEMENT_PATTERNS.map((mp) => (
-              <option key={mp} value={mp}>{MOVEMENT_PATTERN_LABELS[mp]}</option>
+              <option key={mp} value={mp}>
+                {MOVEMENT_PATTERN_LABELS[mp]}
+              </option>
             ))}
           </select>
         </div>
@@ -961,7 +1051,9 @@ function StepAiMetadata({
           >
             <option value="">None</option>
             {FORCE_TYPES.map((ft) => (
-              <option key={ft} value={ft}>{FORCE_TYPE_LABELS[ft]}</option>
+              <option key={ft} value={ft}>
+                {FORCE_TYPE_LABELS[ft]}
+              </option>
             ))}
           </select>
         </div>
@@ -979,7 +1071,9 @@ function StepAiMetadata({
         >
           <option value="">None</option>
           {LATERALITY_OPTIONS.map((lat) => (
-            <option key={lat} value={lat}>{LATERALITY_LABELS[lat]}</option>
+            <option key={lat} value={lat}>
+              {LATERALITY_LABELS[lat]}
+            </option>
           ))}
         </select>
       </div>
@@ -999,7 +1093,7 @@ function StepAiMetadata({
                 "px-2 py-1 text-xs rounded-full border transition-colors",
                 primaryMuscles.includes(m)
                   ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-background border-border text-muted-foreground hover:border-primary/50"
+                  : "bg-background border-border text-muted-foreground hover:border-primary/50",
               )}
             >
               {MUSCLE_LABELS[m]}
@@ -1023,7 +1117,7 @@ function StepAiMetadata({
                 "px-2 py-1 text-xs rounded-full border transition-colors",
                 secondaryMuscles.includes(m)
                   ? "bg-accent text-accent-foreground border-accent"
-                  : "bg-background border-border text-muted-foreground hover:border-accent/50"
+                  : "bg-background border-border text-muted-foreground hover:border-accent/50",
               )}
             >
               {MUSCLE_LABELS[m]}
@@ -1046,7 +1140,7 @@ function StepAiMetadata({
                 "px-2 py-1 text-xs rounded-full border transition-colors",
                 equipmentRequired.includes(eq)
                   ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-background border-border text-muted-foreground hover:border-primary/50"
+                  : "bg-background border-border text-muted-foreground hover:border-primary/50",
               )}
             >
               {EQUIPMENT_LABELS[eq]}
@@ -1084,7 +1178,7 @@ function StepAiMetadata({
                 "px-2.5 py-1 text-xs rounded-full border transition-colors",
                 trainingIntent.includes(intent)
                   ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-background border-border text-muted-foreground hover:border-primary/50"
+                  : "bg-background border-border text-muted-foreground hover:border-primary/50",
               )}
             >
               {TRAINING_INTENT_LABELS[intent]}
@@ -1108,7 +1202,7 @@ function StepAiMetadata({
                 "px-2 py-1 text-xs rounded-full border transition-colors",
                 sportTags.includes(tag)
                   ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-background border-border text-muted-foreground hover:border-primary/50"
+                  : "bg-background border-border text-muted-foreground hover:border-primary/50",
               )}
             >
               {SPORT_TAG_LABELS[tag]}
@@ -1120,7 +1214,9 @@ function StepAiMetadata({
       {/* Plane of Motion */}
       <div className="space-y-2">
         <Label>Plane of Motion</Label>
-        <p className="text-xs text-muted-foreground">Movement planes used (sagittal = forward/back, frontal = side to side, transverse = rotation)</p>
+        <p className="text-xs text-muted-foreground">
+          Movement planes used (sagittal = forward/back, frontal = side to side, transverse = rotation)
+        </p>
         <div className="flex flex-wrap gap-1.5">
           {PLANES_OF_MOTION.map((plane) => (
             <button
@@ -1132,7 +1228,7 @@ function StepAiMetadata({
                 "px-2.5 py-1 text-xs rounded-full border transition-colors",
                 planeOfMotion.includes(plane)
                   ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-background border-border text-muted-foreground hover:border-primary/50"
+                  : "bg-background border-border text-muted-foreground hover:border-primary/50",
               )}
             >
               {PLANE_LABELS[plane]}
@@ -1144,7 +1240,9 @@ function StepAiMetadata({
       {/* Joints Loaded */}
       <div className="space-y-2">
         <Label>Joints Loaded</Label>
-        <p className="text-xs text-muted-foreground">Which joints this exercise stresses and how heavily (used for injury-aware programming)</p>
+        <p className="text-xs text-muted-foreground">
+          Which joints this exercise stresses and how heavily (used for injury-aware programming)
+        </p>
         <div className="space-y-2">
           {jointsLoaded.map((jl, idx) => (
             <div key={idx} className="flex items-center gap-2">
@@ -1159,7 +1257,9 @@ function StepAiMetadata({
                 className={cn(selectClass, "flex-1")}
               >
                 {JOINT_NAMES.map((j) => (
-                  <option key={j} value={j}>{JOINT_LABELS[j]}</option>
+                  <option key={j} value={j}>
+                    {JOINT_LABELS[j]}
+                  </option>
                 ))}
               </select>
               <select
@@ -1173,7 +1273,9 @@ function StepAiMetadata({
                 className={cn(selectClass, "w-28")}
               >
                 {JOINT_LOAD_LEVELS.map((l) => (
-                  <option key={l} value={l}>{JOINT_LOAD_LABELS[l]}</option>
+                  <option key={l} value={l}>
+                    {JOINT_LOAD_LABELS[l]}
+                  </option>
                 ))}
               </select>
               <button
@@ -1205,7 +1307,10 @@ function StepAiMetadata({
         <p className="text-xs text-muted-foreground">Alternative names for this exercise (e.g. RDL, Flat Bench)</p>
         <div className="flex flex-wrap gap-1.5 min-h-[28px]">
           {aliases.map((alias, idx) => (
-            <span key={idx} className="flex items-center gap-1 px-2 py-1 text-xs rounded-full bg-muted border border-border">
+            <span
+              key={idx}
+              className="flex items-center gap-1 px-2 py-1 text-xs rounded-full bg-muted border border-border"
+            >
               {alias}
               <button
                 type="button"
@@ -1226,8 +1331,8 @@ function StepAiMetadata({
               e.preventDefault()
               const val = (e.target as HTMLInputElement).value.trim()
               if (val && !aliases.includes(val)) {
-                setAliases([...aliases, val]);
-                (e.target as HTMLInputElement).value = ""
+                setAliases([...aliases, val])
+                ;(e.target as HTMLInputElement).value = ""
               }
             }
           }}
@@ -1246,10 +1351,14 @@ function StepAiMetadata({
         >
           <option value="">None (same as difficulty)</option>
           {EXERCISE_DIFFICULTIES.map((diff) => (
-            <option key={diff} value={diff}>{DIFFICULTY_LABELS[diff]}</option>
+            <option key={diff} value={diff}>
+              {DIFFICULTY_LABELS[diff]}
+            </option>
           ))}
         </select>
-        <p className="text-xs text-muted-foreground">Optional upper bound — useful for exercises that span a difficulty range</p>
+        <p className="text-xs text-muted-foreground">
+          Optional upper bound — useful for exercises that span a difficulty range
+        </p>
       </div>
 
       {/* Difficulty Score */}
@@ -1269,7 +1378,8 @@ function StepAiMetadata({
           <span className="text-sm font-medium w-6 text-center">{difficultyScore}</span>
         </div>
         <p className="text-xs text-muted-foreground">
-          1-2: Foundational &middot; 3-4: Beginner &middot; 5-6: Intermediate &middot; 7-8: Advanced &middot; 9-10: Elite
+          1-2: Foundational &middot; 3-4: Beginner &middot; 5-6: Intermediate &middot; 7-8: Advanced &middot; 9-10:
+          Elite
         </p>
       </div>
 
@@ -1285,7 +1395,9 @@ function StepAiMetadata({
           placeholder="e.g. 1, 2, 3 within same movement pattern"
           disabled={disabled}
         />
-        <p className="text-xs text-muted-foreground">Order within the same movement pattern (lower = easier progression)</p>
+        <p className="text-xs text-muted-foreground">
+          Order within the same movement pattern (lower = easier progression)
+        </p>
       </div>
     </div>
   )
@@ -1293,23 +1405,15 @@ function StepAiMetadata({
 
 // ─── Step 3: Relationships ──────────────────────────────────────────────────
 
-function StepRelationships({
-  exerciseId,
-  exerciseName,
-}: {
-  exerciseId: string
-  exerciseName: string
-}) {
+function StepRelationships({ exerciseId, exerciseName }: { exerciseId: string; exerciseName: string }) {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Link alternative exercises that clients can swap to during workouts. You can also define progression and regression relationships.
+        Link alternative exercises that clients can swap to during workouts. You can also define progression and
+        regression relationships.
       </p>
       <div id="exercise-alternatives">
-        <ExerciseRelationships
-          exerciseId={exerciseId}
-          exerciseName={exerciseName}
-        />
+        <ExerciseRelationships exerciseId={exerciseId} exerciseName={exerciseName} />
       </div>
     </div>
   )

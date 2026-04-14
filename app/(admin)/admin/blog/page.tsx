@@ -24,12 +24,8 @@ export default async function BlogPage() {
             <FileText className="size-3.5 sm:size-4 text-primary" />
           </div>
           <div>
-            <p className="text-[10px] sm:text-xs text-muted-foreground">
-              Total Posts
-            </p>
-            <p className="text-lg sm:text-2xl font-semibold text-primary">
-              {total}
-            </p>
+            <p className="text-[10px] sm:text-xs text-muted-foreground">Total Posts</p>
+            <p className="text-lg sm:text-2xl font-semibold text-primary">{total}</p>
           </div>
         </div>
 
@@ -38,12 +34,8 @@ export default async function BlogPage() {
             <Send className="size-3.5 sm:size-4 text-success" />
           </div>
           <div>
-            <p className="text-[10px] sm:text-xs text-muted-foreground">
-              Published
-            </p>
-            <p className="text-lg sm:text-2xl font-semibold text-primary">
-              {published}
-            </p>
+            <p className="text-[10px] sm:text-xs text-muted-foreground">Published</p>
+            <p className="text-lg sm:text-2xl font-semibold text-primary">{published}</p>
           </div>
         </div>
 
@@ -52,12 +44,8 @@ export default async function BlogPage() {
             <Clock className="size-3.5 sm:size-4 text-warning" />
           </div>
           <div>
-            <p className="text-[10px] sm:text-xs text-muted-foreground">
-              Drafts
-            </p>
-            <p className="text-lg sm:text-2xl font-semibold text-primary">
-              {drafts}
-            </p>
+            <p className="text-[10px] sm:text-xs text-muted-foreground">Drafts</p>
+            <p className="text-lg sm:text-2xl font-semibold text-primary">{drafts}</p>
           </div>
         </div>
       </div>

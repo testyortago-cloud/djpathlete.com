@@ -26,18 +26,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-} from "@/components/ui/dialog"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 import { useWeightUnit } from "@/hooks/use-weight-unit"
 import { CoachDjpPanel } from "@/components/client/CoachDjpPanel"
@@ -113,7 +103,6 @@ const RPE_LABELS: Record<number, string> = {
   10: "Max Effort",
 }
 
-
 function getGroupLabel(technique: TrainingTechnique): string {
   switch (technique) {
     case "superset":
@@ -133,9 +122,7 @@ function getGroupLabel(technique: TrainingTechnique): string {
   }
 }
 
-function groupExercisesByTag(
-  exercises: ExerciseWithRecommendation[]
-): ExerciseGroup[] {
+function groupExercisesByTag(exercises: ExerciseWithRecommendation[]): ExerciseGroup[] {
   const groups: ExerciseGroup[] = []
   for (const item of exercises) {
     const tag = item.programExercise.group_tag
@@ -154,10 +141,8 @@ function groupExercisesByTag(
 }
 
 function TrendIcon({ trend }: { trend: WeightRecommendation["trend"] }) {
-  if (trend === "increasing")
-    return <TrendingUp className="size-3 text-success" />
-  if (trend === "decreasing")
-    return <TrendingDown className="size-3 text-error" />
+  if (trend === "increasing") return <TrendingUp className="size-3 text-success" />
+  if (trend === "decreasing") return <TrendingDown className="size-3 text-error" />
   return <Minus className="size-3 text-muted-foreground" />
 }
 
@@ -182,11 +167,7 @@ function shouldNudgeCoach(rows: SetRow[]): boolean {
 }
 
 /** Create initial set rows from prescribed sets count */
-function createInitialSetRows(
-  numSets: number,
-  defaultWeight: string,
-  _defaultReps: string
-): SetRow[] {
+function createInitialSetRows(numSets: number, defaultWeight: string, _defaultReps: string): SetRow[] {
   return Array.from({ length: numSets }, () => ({
     weight: defaultWeight,
     reps: "",
@@ -217,9 +198,7 @@ function ExerciseCard({
   const { unit, displayWeight, formatWeightCompact, toKg, unitLabel } = useWeightUnit()
   const baseFields = getCategoryFields(exercise.category as ExerciseCategory[])
   // Bodyweight exercises don't need weight or RPE — reduce friction
-  const fields = exercise.is_bodyweight
-    ? { ...baseFields, showWeight: false, showRpe: false }
-    : baseFields
+  const fields = exercise.is_bodyweight ? { ...baseFields, showWeight: false, showRpe: false } : baseFields
   const [expanded, setExpanded] = useState(false)
   const [loggedToday, setLoggedToday] = useState(initialLogged)
   const [submitting, setSubmitting] = useState(false)
@@ -232,9 +211,7 @@ function ExerciseCard({
   // Use swapped exercise for display, but keep original programExercise for sets/reps
   const displayExercise = swappedExercise ?? exercise
 
-  const hasVideo = Boolean(
-    displayExercise.video_url && extractYouTubeId(displayExercise.video_url)
-  )
+  const hasVideo = Boolean(displayExercise.video_url && extractYouTubeId(displayExercise.video_url))
   const [celebrations, setCelebrations] = useState<
     Array<{
       achievement_type: string
@@ -252,17 +229,13 @@ function ExerciseCard({
   const numSets = pe.sets ?? 3
 
   // Multi-set state
-  const [setRows, setSetRows] = useState<SetRow[]>(() =>
-    createInitialSetRows(numSets, defaultWeight, prescribedReps)
-  )
+  const [setRows, setSetRows] = useState<SetRow[]>(() => createInitialSetRows(numSets, defaultWeight, prescribedReps))
   const [duration, setDuration] = useState<string>("")
   const [notes, setNotes] = useState<string>("")
   const [aiSuggestedWeight, setAiSuggestedWeight] = useState<number | null>(null)
 
   function updateSetRow(idx: number, field: keyof SetRow, value: string | number | null) {
-    setSetRows((prev) =>
-      prev.map((row, i) => (i === idx ? { ...row, [field]: value } : row))
-    )
+    setSetRows((prev) => prev.map((row, i) => (i === idx ? { ...row, [field]: value } : row)))
   }
 
   function addSet() {
@@ -292,7 +265,7 @@ function ExerciseCard({
         const hasRpe = row.rpe != null
         if (hasWeight || hasReps || hasRpe) return row
         return { ...row, weight: display != null ? String(display) : "" }
-      })
+      }),
     )
   }
 
@@ -304,7 +277,7 @@ function ExerciseCard({
       prev.map((row) => {
         const hasReps = parseInt(row.reps, 10) > 0
         return hasReps ? row : { ...row, weight: display != null ? String(display) : "" }
-      })
+      }),
     )
   }
 
@@ -324,9 +297,10 @@ function ExerciseCard({
       const currentWeight = lastFilledWeight ? parseFloat(lastFilledWeight) : null
       const lowerPatterns = ["squat", "hinge", "lunge", "carry"]
       const isLowerCompound = exercise.movement_pattern
-        ? lowerPatterns.includes(exercise.movement_pattern) && (exercise.training_intent?.includes("shape") || exercise.training_intent?.includes("express"))
+        ? lowerPatterns.includes(exercise.movement_pattern) &&
+          (exercise.training_intent?.includes("shape") || exercise.training_intent?.includes("express"))
         : false
-      const increment = isLowerCompound ? (unit === "lbs" ? 10 : 5) : (unit === "lbs" ? 5 : 2.5)
+      const increment = isLowerCompound ? (unit === "lbs" ? 10 : 5) : unit === "lbs" ? 5 : 2.5
       const reduced = currentWeight != null ? Math.max(0, currentWeight - increment) : baseWeight
       weightToApply = String(reduced)
     } else if (lastFilledRpe != null && lastFilledRpe >= 9) {
@@ -343,7 +317,7 @@ function ExerciseCard({
       prev.map((row) => {
         const hasReps = parseInt(row.reps, 10) > 0
         return hasReps ? row : { ...row, weight: weightToApply }
-      })
+      }),
     )
   }
 
@@ -365,9 +339,8 @@ function ExerciseCard({
     // Compute aggregates for backward-compatible flat fields
     const maxWeight = Math.max(...setDetails.map((s) => s.weight_kg ?? 0), 0)
     const totalReps = setDetails.map((s) => s.reps)
-    const avgReps = totalReps.length > 0
-      ? Math.round(totalReps.reduce((a, b) => a + b, 0) / totalReps.length)
-      : fallbackReps
+    const avgReps =
+      totalReps.length > 0 ? Math.round(totalReps.reduce((a, b) => a + b, 0) / totalReps.length) : fallbackReps
     const lastSetRpe = setDetails[setDetails.length - 1]?.rpe ?? null
 
     setSubmitting(true)
@@ -407,9 +380,7 @@ function ExerciseCard({
 
       router.refresh()
     } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Failed to log workout"
-      )
+      toast.error(err instanceof Error ? err.message : "Failed to log workout")
     } finally {
       setSubmitting(false)
     }
@@ -450,12 +421,7 @@ function ExerciseCard({
 
   return (
     <>
-      <div
-        className={cn(
-          "px-4 py-3 transition-colors",
-          loggedToday && "bg-success/5 border-l-[3px] border-l-success"
-        )}
-      >
+      <div className={cn("px-4 py-3 transition-colors", loggedToday && "bg-success/5 border-l-[3px] border-l-success")}>
         {/* Collapsed row — tap anywhere to expand */}
         <button
           type="button"
@@ -467,45 +433,27 @@ function ExerciseCard({
           <div
             className={cn(
               "size-7 shrink-0 rounded-full flex items-center justify-center text-xs font-semibold transition-colors",
-              loggedToday
-                ? "bg-success text-white"
-                : "bg-primary/10 text-primary"
+              loggedToday ? "bg-success text-white" : "bg-primary/10 text-primary",
             )}
           >
-            {loggedToday ? (
-              <Check className="size-4" strokeWidth={2.5} />
-            ) : (
-              index + 1
-            )}
+            {loggedToday ? <Check className="size-4" strokeWidth={2.5} /> : index + 1}
           </div>
 
           <div className="flex-1 min-w-0">
-            <p
-              className={cn(
-                "font-medium text-sm",
-                loggedToday ? "text-muted-foreground" : "text-foreground"
-              )}
-            >
+            <p className={cn("font-medium text-sm", loggedToday ? "text-muted-foreground" : "text-foreground")}>
               {displayExercise.name}
-              {swappedExercise && (
-                <span className="ml-1.5 text-[10px] font-normal text-accent">
-                  (swapped)
-                </span>
-              )}
+              {swappedExercise && <span className="ml-1.5 text-[10px] font-normal text-accent">(swapped)</span>}
             </p>
             {/* Compact summary line */}
             <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
               {pe.sets && pe.reps && (
-                <span>{pe.sets} x {pe.reps}</span>
+                <span>
+                  {pe.sets} x {pe.reps}
+                </span>
               )}
-              {pe.duration_seconds && (
-                <span>{formatRestTime(pe.duration_seconds)}</span>
-              )}
+              {pe.duration_seconds && <span>{formatRestTime(pe.duration_seconds)}</span>}
               {fields.showWeight && (rec.recommended_kg ?? pe.suggested_weight_kg) != null && (
-                <Badge
-                  variant="outline"
-                  className="gap-1 text-[10px] border-primary/20 text-primary"
-                >
+                <Badge variant="outline" className="gap-1 text-[10px] border-primary/20 text-primary">
                   {rec.recommended_kg != null ? (
                     <>
                       <TrendIcon trend={rec.trend} />
@@ -521,10 +469,7 @@ function ExerciseCard({
 
           {/* Chevron arrow */}
           <ChevronDown
-            className={cn(
-              "size-4 shrink-0 text-muted-foreground transition-transform",
-              expanded && "rotate-180"
-            )}
+            className={cn("size-4 shrink-0 text-muted-foreground transition-transform", expanded && "rotate-180")}
           />
         </button>
 
@@ -568,7 +513,11 @@ function ExerciseCard({
                 </div>
 
                 {/* Single consolidated Instructions dropdown */}
-                {(displayExercise.instructions || (!hideNotes && pe.notes) || pe.tempo || pe.rpe_target || pe.rest_seconds) && (
+                {(displayExercise.instructions ||
+                  (!hideNotes && pe.notes) ||
+                  pe.tempo ||
+                  pe.rpe_target ||
+                  pe.rest_seconds) && (
                   <details className="group rounded-md border border-border/50 bg-muted/30">
                     <summary className="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-xs font-medium text-foreground/70 select-none list-none [&::-webkit-details-marker]:hidden">
                       <ChevronRight className="size-3 shrink-0 transition-transform group-open:rotate-90" />
@@ -608,10 +557,7 @@ function ExerciseCard({
                       {/* Coach notes */}
                       {!hideNotes && pe.notes && (
                         <div className="flex items-start gap-2 rounded-md bg-amber-50 px-2 py-1.5">
-                          <Lightbulb
-                            className="size-3.5 shrink-0 text-amber-500 mt-0.5"
-                            strokeWidth={2}
-                          />
+                          <Lightbulb className="size-3.5 shrink-0 text-amber-500 mt-0.5" strokeWidth={2} />
                           <p className="text-xs italic text-foreground/70 leading-relaxed whitespace-pre-line">
                             {pe.notes}
                           </p>
@@ -624,72 +570,75 @@ function ExerciseCard({
 
               <form onSubmit={handleSubmit} className="pt-2 space-y-4">
                 {/* Recommendation card — only for weight-based exercises */}
-                {fields.showWeight && (rec.reasoning || aiSuggestedWeight != null || pe.suggested_weight_kg != null) && (() => {
-                  // Compute adjusted recommendation based on in-session RPE
-                  const baseWeight = aiSuggestedWeight ?? rec.recommended_kg ?? pe.suggested_weight_kg
-                  const filledSets = setRows.filter((r) => parseInt(r.reps, 10) > 0)
-                  const lastFilledRpe = filledSets.length > 0 ? filledSets[filledSets.length - 1].rpe : null
-                  const lastFilledWeight = filledSets.length > 0 ? filledSets[filledSets.length - 1].weight : null
+                {fields.showWeight &&
+                  (rec.reasoning || aiSuggestedWeight != null || pe.suggested_weight_kg != null) &&
+                  (() => {
+                    // Compute adjusted recommendation based on in-session RPE
+                    const baseWeight = aiSuggestedWeight ?? rec.recommended_kg ?? pe.suggested_weight_kg
+                    const filledSets = setRows.filter((r) => parseInt(r.reps, 10) > 0)
+                    const lastFilledRpe = filledSets.length > 0 ? filledSets[filledSets.length - 1].rpe : null
+                    const lastFilledWeight = filledSets.length > 0 ? filledSets[filledSets.length - 1].weight : null
 
-                  let adjustedWeight = baseWeight
-                  let adjustedReasoning = aiSuggestedWeight != null
-                    ? `Recommended: ${formatWeightCompact(aiSuggestedWeight)} for this exercise.`
-                    : rec.reasoning
-                      ? rec.reasoning
-                      : pe.suggested_weight_kg != null
-                        ? `Prescribed: ${formatWeightCompact(pe.suggested_weight_kg)} for this exercise.`
-                        : null
+                    let adjustedWeight = baseWeight
+                    let adjustedReasoning =
+                      aiSuggestedWeight != null
+                        ? `Recommended: ${formatWeightCompact(aiSuggestedWeight)} for this exercise.`
+                        : rec.reasoning
+                          ? rec.reasoning
+                          : pe.suggested_weight_kg != null
+                            ? `Prescribed: ${formatWeightCompact(pe.suggested_weight_kg)} for this exercise.`
+                            : null
 
-                  if (lastFilledRpe != null && lastFilledRpe >= 10 && lastFilledWeight) {
-                    const currentKg = toKg(parseFloat(lastFilledWeight))
-                    const lowerPatterns = ["squat", "hinge", "lunge", "carry"]
-                    const isLowerCompound = exercise.movement_pattern
-                      ? lowerPatterns.includes(exercise.movement_pattern) && (exercise.training_intent?.includes("shape") || exercise.training_intent?.includes("express"))
-                      : false
-                    const inc = isLowerCompound ? (unit === "lbs" ? 10 : 5) : (unit === "lbs" ? 5 : 2.5)
-                    const reducedDisplay = Math.max(0, parseFloat(lastFilledWeight) - inc)
-                    adjustedWeight = toKg(reducedDisplay)
-                    adjustedReasoning = `RPE 10 on set ${filledSets.length} — reduce by ${inc}${unitLabel()} for remaining sets`
-                  } else if (lastFilledRpe != null && lastFilledRpe >= 9 && lastFilledWeight) {
-                    adjustedWeight = toKg(parseFloat(lastFilledWeight))
-                    adjustedReasoning = `RPE ${lastFilledRpe} on set ${filledSets.length} — maintain weight for remaining sets`
-                  }
+                    if (lastFilledRpe != null && lastFilledRpe >= 10 && lastFilledWeight) {
+                      const currentKg = toKg(parseFloat(lastFilledWeight))
+                      const lowerPatterns = ["squat", "hinge", "lunge", "carry"]
+                      const isLowerCompound = exercise.movement_pattern
+                        ? lowerPatterns.includes(exercise.movement_pattern) &&
+                          (exercise.training_intent?.includes("shape") || exercise.training_intent?.includes("express"))
+                        : false
+                      const inc = isLowerCompound ? (unit === "lbs" ? 10 : 5) : unit === "lbs" ? 5 : 2.5
+                      const reducedDisplay = Math.max(0, parseFloat(lastFilledWeight) - inc)
+                      adjustedWeight = toKg(reducedDisplay)
+                      adjustedReasoning = `RPE 10 on set ${filledSets.length} — reduce by ${inc}${unitLabel()} for remaining sets`
+                    } else if (lastFilledRpe != null && lastFilledRpe >= 9 && lastFilledWeight) {
+                      adjustedWeight = toKg(parseFloat(lastFilledWeight))
+                      adjustedReasoning = `RPE ${lastFilledRpe} on set ${filledSets.length} — maintain weight for remaining sets`
+                    }
 
-                  return (
-                    <div className="rounded-lg p-3 space-y-2 bg-primary/5 border border-primary/10">
-                      <p className="text-xs text-primary leading-relaxed">
-                        {adjustedReasoning}
-                      </p>
-                      {adjustedWeight != null && (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className="text-xs gap-1 h-7"
-                          onClick={handleUseRecommended}
-                        >
-                          Use Recommended ({formatWeightCompact(adjustedWeight)})
-                        </Button>
-                      )}
-                    </div>
-                  )
-                })()}
+                    return (
+                      <div className="rounded-lg p-3 space-y-2 bg-primary/5 border border-primary/10">
+                        <p className="text-xs text-primary leading-relaxed">{adjustedReasoning}</p>
+                        {adjustedWeight != null && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="text-xs gap-1 h-7"
+                            onClick={handleUseRecommended}
+                          >
+                            Use Recommended ({formatWeightCompact(adjustedWeight)})
+                          </Button>
+                        )}
+                      </div>
+                    )
+                  })()}
 
                 {/* Set-by-set table — only for categories with weight or reps */}
                 {(fields.showWeight || fields.showReps) && (
                   <div>
                     <Label className="text-xs font-medium">Sets</Label>
                     <div className="overflow-x-auto">
-                      <table className="w-full mt-1.5 min-w-[320px]" style={{ borderCollapse: "separate", borderSpacing: "0 4px" }}>
+                      <table
+                        className="w-full mt-1.5 min-w-[320px]"
+                        style={{ borderCollapse: "separate", borderSpacing: "0 4px" }}
+                      >
                         <thead>
                           <tr className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
-                            <th style={{ width: 28 }} className="text-left font-medium">#</th>
-                            {fields.showWeight && (
-                              <th className="text-left font-medium">{unitLabel()}</th>
-                            )}
-                            {fields.showReps && (
-                              <th className="text-left font-medium">Reps</th>
-                            )}
+                            <th style={{ width: 28 }} className="text-left font-medium">
+                              #
+                            </th>
+                            {fields.showWeight && <th className="text-left font-medium">{unitLabel()}</th>}
+                            {fields.showReps && <th className="text-left font-medium">Reps</th>}
                             {fields.showRpe && (
                               <th style={{ width: 56 }} className="text-left font-medium">
                                 RPE
@@ -734,21 +683,20 @@ function ExerciseCard({
                                 <td className="pr-1 align-middle">
                                   <Select
                                     value={row.rpe != null ? String(row.rpe) : ""}
-                                    onValueChange={(v) =>
-                                      updateSetRow(idx, "rpe", v ? parseInt(v, 10) : null)
-                                    }
+                                    onValueChange={(v) => updateSetRow(idx, "rpe", v ? parseInt(v, 10) : null)}
                                   >
-                                    <SelectTrigger className="h-8 text-xs px-1.5 [&_svg]:size-3" style={{ width: "100%" }}>
+                                    <SelectTrigger
+                                      className="h-8 text-xs px-1.5 [&_svg]:size-3"
+                                      style={{ width: "100%" }}
+                                    >
                                       <SelectValue placeholder="-" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                      {Array.from({ length: 10 }, (_, i) => i + 1).map(
-                                        (v) => (
-                                          <SelectItem key={v} value={String(v)}>
-                                            {v}
-                                          </SelectItem>
-                                        )
-                                      )}
+                                      {Array.from({ length: 10 }, (_, i) => i + 1).map((v) => (
+                                        <SelectItem key={v} value={String(v)}>
+                                          {v}
+                                        </SelectItem>
+                                      ))}
                                     </SelectContent>
                                   </Select>
                                 </td>
@@ -789,10 +737,7 @@ function ExerciseCard({
                 {/* Duration — shown prominently for cardio/flexibility/recovery */}
                 {fields.showDuration === "prominent" && (
                   <div className="space-y-1.5">
-                    <Label
-                      htmlFor={`duration-${pe.id}`}
-                      className="text-xs"
-                    >
+                    <Label htmlFor={`duration-${pe.id}`} className="text-xs">
                       Duration (seconds)
                     </Label>
                     <Input
@@ -813,8 +758,7 @@ function ExerciseCard({
                   className="text-xs text-muted-foreground hover:text-foreground transition-colors"
                   onClick={() => setShowExtra(!showExtra)}
                 >
-                  {showExtra ? "Hide" : "Show"}{" "}
-                  {fields.showDuration === "prominent" ? "notes" : "duration & notes"}
+                  {showExtra ? "Hide" : "Show"} {fields.showDuration === "prominent" ? "notes" : "duration & notes"}
                 </button>
 
                 <AnimatePresence>
@@ -828,10 +772,7 @@ function ExerciseCard({
                     >
                       {fields.showDuration !== "prominent" && (
                         <div className="space-y-1.5">
-                          <Label
-                            htmlFor={`duration-${pe.id}`}
-                            className="text-xs"
-                          >
+                          <Label htmlFor={`duration-${pe.id}`} className="text-xs">
                             Duration (seconds)
                           </Label>
                           <Input
@@ -865,17 +806,8 @@ function ExerciseCard({
 
                 {/* Action buttons */}
                 <div className="flex flex-wrap items-center gap-2 pt-1">
-                  <Button
-                    type="submit"
-                    size="sm"
-                    disabled={submitting}
-                    className="gap-1"
-                  >
-                    {submitting ? (
-                      <Loader2 className="size-3 animate-spin" />
-                    ) : (
-                      <CheckCircle2 className="size-3" />
-                    )}
+                  <Button type="submit" size="sm" disabled={submitting} className="gap-1">
+                    {submitting ? <Loader2 className="size-3 animate-spin" /> : <CheckCircle2 className="size-3" />}
                     Save Workout
                   </Button>
                   {fields.showWeight && (
@@ -885,7 +817,7 @@ function ExerciseCard({
                       variant={coachNudge ? "default" : "outline"}
                       className={cn(
                         "gap-1 relative",
-                        coachNudge && "animate-pulse bg-accent text-accent-foreground hover:bg-accent/90"
+                        coachNudge && "animate-pulse bg-accent text-accent-foreground hover:bg-accent/90",
                       )}
                       onClick={() => setShowCoachDjp(true)}
                     >
@@ -931,20 +863,24 @@ function ExerciseCard({
           reps: parseInt(row.reps, 10) || 0,
           rpe: row.rpe,
         }))}
-        programContext={programContext ? {
-          ...programContext,
-          prescription: {
-            sets: pe.sets,
-            reps: pe.reps,
-            rpe_target: pe.rpe_target,
-            intensity_pct: pe.intensity_pct,
-            tempo: pe.tempo,
-            rest_seconds: pe.rest_seconds,
-            notes: pe.notes,
-            technique: pe.technique,
-            group_tag: pe.group_tag,
-          },
-        } : undefined}
+        programContext={
+          programContext
+            ? {
+                ...programContext,
+                prescription: {
+                  sets: pe.sets,
+                  reps: pe.reps,
+                  rpe_target: pe.rpe_target,
+                  intensity_pct: pe.intensity_pct,
+                  tempo: pe.tempo,
+                  rest_seconds: pe.rest_seconds,
+                  notes: pe.notes,
+                  technique: pe.technique,
+                  group_tag: pe.group_tag,
+                },
+              }
+            : undefined
+        }
       />
 
       <ExerciseSwapSheet
@@ -958,34 +894,30 @@ function ExerciseCard({
       />
 
       {/* Video dialog */}
-      {hasVideo && displayExercise.video_url && (() => {
-        const videoId = extractYouTubeId(displayExercise.video_url)
-        if (!videoId) return null
-        return (
-          <Dialog open={showVideo} onOpenChange={setShowVideo}>
-            <DialogContent className="max-w-2xl p-0 overflow-hidden gap-0">
-              <DialogTitle className="px-4 py-3 text-sm font-semibold border-b">
-                {displayExercise.name}
-              </DialogTitle>
-              <div className="relative w-full aspect-video bg-black">
-                <iframe
-                  src={`https://www.youtube-nocookie.com/embed/${videoId}?rel=0&modestbranding=1&playsinline=1&autoplay=1`}
-                  title={`${displayExercise.name} demonstration`}
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                  className="absolute inset-0 size-full border-0"
-                />
-              </div>
-            </DialogContent>
-          </Dialog>
-        )
-      })()}
+      {hasVideo &&
+        displayExercise.video_url &&
+        (() => {
+          const videoId = extractYouTubeId(displayExercise.video_url)
+          if (!videoId) return null
+          return (
+            <Dialog open={showVideo} onOpenChange={setShowVideo}>
+              <DialogContent className="max-w-2xl p-0 overflow-hidden gap-0">
+                <DialogTitle className="px-4 py-3 text-sm font-semibold border-b">{displayExercise.name}</DialogTitle>
+                <div className="relative w-full aspect-video bg-black">
+                  <iframe
+                    src={`https://www.youtube-nocookie.com/embed/${videoId}?rel=0&modestbranding=1&playsinline=1&autoplay=1`}
+                    title={`${displayExercise.name} demonstration`}
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                    className="absolute inset-0 size-full border-0"
+                  />
+                </div>
+              </DialogContent>
+            </Dialog>
+          )
+        })()}
 
-
-      <CelebrationOverlay
-        achievements={celebrations}
-        onComplete={() => setCelebrations([])}
-      />
+      <CelebrationOverlay achievements={celebrations} onComplete={() => setCelebrations([])} />
     </>
   )
 }
@@ -1000,23 +932,16 @@ export function WorkoutDay({
   onExerciseLogged,
   programContext,
 }: WorkoutDayProps) {
-  const [sessionLoggedIds, setSessionLoggedIds] = useState<Set<string>>(
-    new Set()
-  )
+  const [sessionLoggedIds, setSessionLoggedIds] = useState<Set<string>>(new Set())
 
   function handleExerciseLogged(exerciseId: string) {
     setSessionLoggedIds((prev) => new Set(prev).add(exerciseId))
     onExerciseLogged?.(exerciseId)
   }
 
-  const loggedCount = exercises.filter(
-    (e) => e.loggedToday || sessionLoggedIds.has(e.exercise.id)
-  ).length
+  const loggedCount = exercises.filter((e) => e.loggedToday || sessionLoggedIds.has(e.exercise.id)).length
   const allComplete = loggedCount === exercises.length && exercises.length > 0
-  const totalSets = exercises.reduce(
-    (sum, e) => sum + (e.programExercise.sets ?? 0),
-    0
-  )
+  const totalSets = exercises.reduce((sum, e) => sum + (e.programExercise.sets ?? 0), 0)
 
   const groups = groupExercisesByTag(exercises)
   let exerciseIndex = 0
@@ -1036,7 +961,7 @@ export function WorkoutDay({
               {sharedNote}
             </>
           ) : (
-            dayLabel ?? `Day ${day}`
+            (dayLabel ?? `Day ${day}`)
           )}
         </h3>
       </div>
@@ -1068,15 +993,9 @@ export function WorkoutDay({
             })
 
             return (
-              <div
-                key={`group-${group.tag}-${startIdx}`}
-                className="border-l-[3px] border-l-accent"
-              >
+              <div key={`group-${group.tag}-${startIdx}`} className="border-l-[3px] border-l-accent">
                 <div className="px-4 py-1.5 bg-accent/5 border-b border-border">
-                  <Badge
-                    variant="outline"
-                    className="text-[10px] border-accent/30 text-accent font-semibold"
-                  >
+                  <Badge variant="outline" className="text-[10px] border-accent/30 text-accent font-semibold">
                     {getGroupLabel(group.technique)}
                   </Badge>
                 </div>
@@ -1131,9 +1050,7 @@ export function WorkoutDay({
             >
               <CheckCircle2 className="size-7 text-success" />
             </motion.div>
-            <h4 className="text-base font-semibold text-foreground">
-              Day Complete!
-            </h4>
+            <h4 className="text-base font-semibold text-foreground">Day Complete!</h4>
             <p className="text-sm text-muted-foreground mt-1">
               {exercises.length} exercises &middot; {totalSets} total sets
             </p>

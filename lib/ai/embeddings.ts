@@ -8,7 +8,7 @@ export const EMBEDDING_DIMS = 384
 
 type FeatureExtractionPipeline = (
   text: string | string[],
-  options?: { pooling?: string; normalize?: boolean }
+  options?: { pooling?: string; normalize?: boolean },
 ) => Promise<{ data: Float32Array; dims: number[] }>
 
 let _pipeline: FeatureExtractionPipeline | null = null
@@ -31,9 +31,7 @@ async function getEmbedder(): Promise<FeatureExtractionPipeline> {
 
 // ─── Exercise text builder ───────────────────────────────────────────────────
 
-export function exerciseToText(
-  exercise: Exercise | CompressedExercise
-): string {
+export function exerciseToText(exercise: Exercise | CompressedExercise): string {
   const parts = [
     exercise.name,
     exercise.category.join(", "),
@@ -45,17 +43,17 @@ export function exerciseToText(
     `Training intent: ${(exercise as CompressedExercise).training_intent?.join(", ") || "build"}`,
     exercise.is_bodyweight ? "bodyweight" : "",
     exercise.equipment_required.join(", "),
-    (exercise as CompressedExercise).sport_tags?.length ? `sports: ${(exercise as CompressedExercise).sport_tags.join(", ")}` : "",
-    (exercise as CompressedExercise).plane_of_motion?.length ? `planes: ${(exercise as CompressedExercise).plane_of_motion.join(", ")}` : "",
+    (exercise as CompressedExercise).sport_tags?.length
+      ? `sports: ${(exercise as CompressedExercise).sport_tags.join(", ")}`
+      : "",
+    (exercise as CompressedExercise).plane_of_motion?.length
+      ? `planes: ${(exercise as CompressedExercise).plane_of_motion.join(", ")}`
+      : "",
   ]
   return parts.filter(Boolean).join(" | ")
 }
 
-export function slotToText(slot: {
-  movement_pattern: string
-  target_muscles: string[]
-  role: string
-}): string {
+export function slotToText(slot: { movement_pattern: string; target_muscles: string[]; role: string }): string {
   return `${slot.role} ${slot.movement_pattern} targeting ${slot.target_muscles.join(", ")}`
 }
 
@@ -79,7 +77,7 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
       batch.map(async (text) => {
         const result = await extractor(text, { pooling: "mean", normalize: true })
         return Array.from(result.data)
-      })
+      }),
     )
     results.push(...batchResults)
   }
@@ -87,8 +85,6 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
   return results
 }
 
-export async function embedExercise(
-  exercise: Exercise | CompressedExercise
-): Promise<number[]> {
+export async function embedExercise(exercise: Exercise | CompressedExercise): Promise<number[]> {
   return embedText(exerciseToText(exercise))
 }

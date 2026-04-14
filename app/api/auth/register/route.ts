@@ -17,7 +17,7 @@ export async function POST(request: Request) {
     if (!result.success) {
       return NextResponse.json(
         { error: "Invalid form data", details: result.error.flatten().fieldErrors },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
@@ -27,17 +27,10 @@ export async function POST(request: Request) {
     const isMinor = age < 18
 
     // Check if email already exists
-    const { data: existingUser } = await supabase
-      .from("users")
-      .select("id")
-      .eq("email", email)
-      .single()
+    const { data: existingUser } = await supabase.from("users").select("id").eq("email", email).single()
 
     if (existingUser) {
-      return NextResponse.json(
-        { error: "An account with this email already exists." },
-        { status: 409 }
-      )
+      return NextResponse.json({ error: "An account with this email already exists." }, { status: 409 })
     }
 
     // Hash password
@@ -64,35 +57,30 @@ export async function POST(request: Request) {
 
     if (userError || !user) {
       console.error("Failed to create user:", userError)
-      return NextResponse.json(
-        { error: "Failed to create account. Please try again." },
-        { status: 500 }
-      )
+      return NextResponse.json({ error: "Failed to create account. Please try again." }, { status: 500 })
     }
 
     const typedUser = user as User
 
     // Create client profile with DOB and guardian info
-    const { error: profileError } = await supabase
-      .from("client_profiles")
-      .insert({
-        user_id: typedUser.id,
-        date_of_birth: dateOfBirth,
-        gender: null,
-        sport: null,
-        position: null,
-        experience_level: null,
-        goals: null,
-        injuries: null,
-        height_cm: null,
-        weight_kg: null,
-        emergency_contact_name: null,
-        emergency_contact_phone: null,
-        is_minor: isMinor,
-        guardian_name: isMinor ? guardianName || null : null,
-        guardian_email: isMinor ? guardianEmail || null : null,
-        parental_consent_at: isMinor ? now : null,
-      })
+    const { error: profileError } = await supabase.from("client_profiles").insert({
+      user_id: typedUser.id,
+      date_of_birth: dateOfBirth,
+      gender: null,
+      sport: null,
+      position: null,
+      experience_level: null,
+      goals: null,
+      injuries: null,
+      height_cm: null,
+      weight_kg: null,
+      emergency_contact_name: null,
+      emergency_contact_phone: null,
+      is_minor: isMinor,
+      guardian_name: isMinor ? guardianName || null : null,
+      guardian_email: isMinor ? guardianEmail || null : null,
+      parental_consent_at: isMinor ? now : null,
+    })
 
     if (profileError) {
       console.error("Failed to create client profile:", profileError)
@@ -135,7 +123,7 @@ export async function POST(request: Request) {
             user_agent: userAgent,
             guardian_name: guardianName || null,
             guardian_email: guardianEmail || null,
-          })
+          }),
         )
       }
 
@@ -174,10 +162,7 @@ export async function POST(request: Request) {
 
     // Notify admins (non-blocking)
     try {
-      const { data: admins } = await supabase
-        .from("users")
-        .select("id")
-        .eq("role", "admin")
+      const { data: admins } = await supabase.from("users").select("id").eq("role", "admin")
 
       if (admins && admins.length > 0) {
         await supabase.from("notifications").insert(
@@ -188,7 +173,7 @@ export async function POST(request: Request) {
             message: `${firstName} ${lastName} (${email}) has created an account.`,
             is_read: false,
             link: null,
-          }))
+          })),
         )
       }
 
@@ -207,9 +192,6 @@ export async function POST(request: Request) {
     return NextResponse.json(safeUser, { status: 201 })
   } catch (error) {
     console.error("Registration error:", error)
-    return NextResponse.json(
-      { error: "An unexpected error occurred. Please try again." },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "An unexpected error occurred. Please try again." }, { status: 500 })
   }
 }

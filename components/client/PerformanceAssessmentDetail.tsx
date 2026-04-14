@@ -77,50 +77,54 @@ export function PerformanceAssessmentClientDetail({
   videoUrlsMap,
   currentUserId,
 }: PerformanceAssessmentClientDetailProps) {
-  const [expandedExercises, setExpandedExercises] = useState<Set<string>>(
-    new Set(exercises.map((e) => e.id))
-  )
+  const [expandedExercises, setExpandedExercises] = useState<Set<string>>(new Set(exercises.map((e) => e.id)))
   const [uploadingExercise, setUploadingExercise] = useState<string | null>(null)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [uploadedVideos, setUploadedVideos] = useState<Record<string, string>>(videoUrlsMap)
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({})
 
   const [resultHistory, setResultHistory] = useState<
-    Record<string, Array<{ result_value: number; result_unit: string | null; assessment_title: string; assessment_date: string }>>
+    Record<
+      string,
+      Array<{ result_value: number; result_unit: string | null; assessment_title: string; assessment_date: string }>
+    >
   >({})
   const [loadingHistory, setLoadingHistory] = useState<Set<string>>(new Set())
 
-  const fetchResultHistory = useCallback(async (exercise: AssessmentExercise) => {
-    if (exercise.result_value == null) return
-    const key = exercise.exercise_id || exercise.custom_name || ""
-    if (resultHistory[key]) return
+  const fetchResultHistory = useCallback(
+    async (exercise: AssessmentExercise) => {
+      if (exercise.result_value == null) return
+      const key = exercise.exercise_id || exercise.custom_name || ""
+      if (resultHistory[key]) return
 
-    setLoadingHistory((prev) => new Set(prev).add(key))
-    try {
-      const params = exercise.exercise_id
-        ? `exercise_id=${exercise.exercise_id}`
-        : `custom_name=${encodeURIComponent(exercise.custom_name || "")}`
-      const res = await fetch(`/api/client/performance-assessments/results?${params}`)
-      if (!res.ok) return
-      const data = await res.json()
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const mapped = data.map((d: any) => ({
-        result_value: d.result_value,
-        result_unit: d.result_unit,
-        assessment_title: d.performance_assessments?.title ?? "",
-        assessment_date: d.performance_assessments?.created_at ?? "",
-      }))
-      setResultHistory((prev) => ({ ...prev, [key]: mapped }))
-    } catch {
-      // silently fail
-    } finally {
-      setLoadingHistory((prev) => {
-        const next = new Set(prev)
-        next.delete(key)
-        return next
-      })
-    }
-  }, [resultHistory])
+      setLoadingHistory((prev) => new Set(prev).add(key))
+      try {
+        const params = exercise.exercise_id
+          ? `exercise_id=${exercise.exercise_id}`
+          : `custom_name=${encodeURIComponent(exercise.custom_name || "")}`
+        const res = await fetch(`/api/client/performance-assessments/results?${params}`)
+        if (!res.ok) return
+        const data = await res.json()
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const mapped = data.map((d: any) => ({
+          result_value: d.result_value,
+          result_unit: d.result_unit,
+          assessment_title: d.performance_assessments?.title ?? "",
+          assessment_date: d.performance_assessments?.created_at ?? "",
+        }))
+        setResultHistory((prev) => ({ ...prev, [key]: mapped }))
+      } catch {
+        // silently fail
+      } finally {
+        setLoadingHistory((prev) => {
+          const next = new Set(prev)
+          next.delete(key)
+          return next
+        })
+      }
+    },
+    [resultHistory],
+  )
 
   // Fetch history for exercises that have results
   useEffect(() => {
@@ -186,25 +190,20 @@ export function PerformanceAssessmentClientDetail({
         uploadTask.on(
           "state_changed",
           (snapshot) => {
-            const pct = Math.round(
-              (snapshot.bytesTransferred / snapshot.totalBytes) * 100
-            )
+            const pct = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100)
             setUploadProgress(pct)
           },
           (error) => reject(error),
-          () => resolve()
+          () => resolve(),
         )
       })
 
       // Save video_path to the exercise record
-      const res = await fetch(
-        `/api/client/performance-assessments/${assessment.id}/exercises/${exerciseId}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ video_path: videoPath }),
-        }
-      )
+      const res = await fetch(`/api/client/performance-assessments/${assessment.id}/exercises/${exerciseId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ video_path: videoPath }),
+      })
 
       if (!res.ok) throw new Error("Failed to save video")
 
@@ -227,9 +226,7 @@ export function PerformanceAssessmentClientDetail({
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-xl sm:text-2xl font-semibold text-primary">
-          {assessment.title}
-        </h1>
+        <h1 className="text-xl sm:text-2xl font-semibold text-primary">{assessment.title}</h1>
         <div className="flex flex-wrap items-center gap-2 mt-1 text-sm text-muted-foreground">
           <span>
             {new Date(assessment.created_at).toLocaleDateString("en-US", {
@@ -244,15 +241,17 @@ export function PerformanceAssessmentClientDetail({
           <span
             className={cn(
               "inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full",
-              assessment.status === "in_progress"
-                ? "bg-blue-100 text-blue-700"
-                : "bg-green-100 text-green-700"
+              assessment.status === "in_progress" ? "bg-blue-100 text-blue-700" : "bg-green-100 text-green-700",
             )}
           >
             {assessment.status === "in_progress" ? (
-              <><MessageSquare className="size-3" /> In Progress</>
+              <>
+                <MessageSquare className="size-3" /> In Progress
+              </>
             ) : (
-              <><CheckCircle2 className="size-3" /> Completed</>
+              <>
+                <CheckCircle2 className="size-3" /> Completed
+              </>
             )}
           </span>
         </div>
@@ -276,10 +275,7 @@ export function PerformanceAssessmentClientDetail({
           const isUploading = uploadingExercise === exercise.id
 
           return (
-            <div
-              key={exercise.id}
-              className="bg-white rounded-xl border border-border overflow-hidden"
-            >
+            <div key={exercise.id} className="bg-white rounded-xl border border-border overflow-hidden">
               {/* Header */}
               <button
                 type="button"
@@ -287,19 +283,14 @@ export function PerformanceAssessmentClientDetail({
                 className="w-full flex items-center justify-between p-4 hover:bg-surface/50 transition-colors"
               >
                 <div className="flex items-center gap-3">
-                  <span className="text-xs font-mono text-muted-foreground w-6">
-                    {index + 1}.
-                  </span>
+                  <span className="text-xs font-mono text-muted-foreground w-6">{index + 1}.</span>
                   <span className="text-sm font-medium text-foreground">{exerciseName}</span>
-                  {exercise.youtube_url && (
-                    <Youtube className="size-4 text-red-500" />
-                  )}
-                  {(exercise.video_path || uploadedVideos[exercise.id]) && (
-                    <Video className="size-4 text-green-600" />
-                  )}
+                  {exercise.youtube_url && <Youtube className="size-4 text-red-500" />}
+                  {(exercise.video_path || uploadedVideos[exercise.id]) && <Video className="size-4 text-green-600" />}
                   {exercise.result_value != null && (
                     <span className="text-xs bg-accent/15 text-accent-foreground px-1.5 py-0.5 rounded-full font-medium">
-                      {exercise.result_value}{exercise.result_unit ? ` ${exercise.result_unit}` : ""}
+                      {exercise.result_value}
+                      {exercise.result_unit ? ` ${exercise.result_unit}` : ""}
                     </span>
                   )}
                   {messages.length > 0 && (
@@ -322,95 +313,93 @@ export function PerformanceAssessmentClientDetail({
                   {exercise.admin_notes && (
                     <div className="bg-surface rounded-lg p-3">
                       <p className="text-xs font-medium text-muted-foreground mb-1">Coach Notes</p>
-                      <p className="text-sm text-foreground whitespace-pre-wrap">
-                        {exercise.admin_notes}
-                      </p>
+                      <p className="text-sm text-foreground whitespace-pre-wrap">{exercise.admin_notes}</p>
                     </div>
                   )}
 
                   {/* Result display */}
-                  {exercise.result_value != null && (() => {
-                    const historyKey = exercise.exercise_id || exercise.custom_name || ""
-                    const history = resultHistory[historyKey]
-                    const isLoading = loadingHistory.has(historyKey)
+                  {exercise.result_value != null &&
+                    (() => {
+                      const historyKey = exercise.exercise_id || exercise.custom_name || ""
+                      const history = resultHistory[historyKey]
+                      const isLoading = loadingHistory.has(historyKey)
 
-                    return (
-                      <div className="bg-surface rounded-lg p-3">
-                        <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
-                          <Ruler className="size-3.5" />
-                          Result
-                        </p>
-                        <p className="text-lg font-semibold text-foreground">
-                          {exercise.result_value}
-                          {exercise.result_unit && (
-                            <span className="text-sm font-normal text-muted-foreground ml-1">
-                              {exercise.result_unit}
-                            </span>
-                          )}
-                        </p>
+                      return (
+                        <div className="bg-surface rounded-lg p-3">
+                          <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
+                            <Ruler className="size-3.5" />
+                            Result
+                          </p>
+                          <p className="text-lg font-semibold text-foreground">
+                            {exercise.result_value}
+                            {exercise.result_unit && (
+                              <span className="text-sm font-normal text-muted-foreground ml-1">
+                                {exercise.result_unit}
+                              </span>
+                            )}
+                          </p>
 
-                        {/* Progress history */}
-                        {isLoading && (
-                          <p className="text-xs text-muted-foreground mt-2">Loading history...</p>
-                        )}
-                        {history && history.length > 1 && (
-                          <div className="mt-3 border-t border-border pt-3">
-                            <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
-                              <TrendingUp className="size-3.5" />
-                              Progress History
-                            </p>
-                            <div className="space-y-1.5">
-                              {history.map((entry, i) => {
-                                const prev = i > 0 ? history[i - 1].result_value : null
-                                const diff = prev != null ? entry.result_value - prev : null
+                          {/* Progress history */}
+                          {isLoading && <p className="text-xs text-muted-foreground mt-2">Loading history...</p>}
+                          {history && history.length > 1 && (
+                            <div className="mt-3 border-t border-border pt-3">
+                              <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
+                                <TrendingUp className="size-3.5" />
+                                Progress History
+                              </p>
+                              <div className="space-y-1.5">
+                                {history.map((entry, i) => {
+                                  const prev = i > 0 ? history[i - 1].result_value : null
+                                  const diff = prev != null ? entry.result_value - prev : null
 
-                                return (
-                                  <div
-                                    key={`${entry.assessment_date}-${i}`}
-                                    className="flex items-center justify-between text-xs"
-                                  >
-                                    <span className="text-muted-foreground">
-                                      {new Date(entry.assessment_date).toLocaleDateString("en-US", {
-                                        month: "short",
-                                        day: "numeric",
-                                        year: "numeric",
-                                      })}
-                                    </span>
-                                    <div className="flex items-center gap-2">
-                                      <span className="font-medium text-foreground">
-                                        {entry.result_value}{entry.result_unit ? ` ${entry.result_unit}` : ""}
+                                  return (
+                                    <div
+                                      key={`${entry.assessment_date}-${i}`}
+                                      className="flex items-center justify-between text-xs"
+                                    >
+                                      <span className="text-muted-foreground">
+                                        {new Date(entry.assessment_date).toLocaleDateString("en-US", {
+                                          month: "short",
+                                          day: "numeric",
+                                          year: "numeric",
+                                        })}
                                       </span>
-                                      {diff != null && diff !== 0 && (
-                                        <span
-                                          className={cn(
-                                            "flex items-center gap-0.5 font-medium",
-                                            diff > 0 ? "text-green-600" : "text-red-500"
-                                          )}
-                                        >
-                                          {diff > 0 ? (
-                                            <TrendingUp className="size-3" />
-                                          ) : (
-                                            <TrendingDown className="size-3" />
-                                          )}
-                                          {diff > 0 ? "+" : ""}{Math.round(diff * 100) / 100}
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-medium text-foreground">
+                                          {entry.result_value}
+                                          {entry.result_unit ? ` ${entry.result_unit}` : ""}
                                         </span>
-                                      )}
-                                      {diff === 0 && (
-                                        <span className="flex items-center gap-0.5 text-muted-foreground">
-                                          <Minus className="size-3" />
-                                          0
-                                        </span>
-                                      )}
+                                        {diff != null && diff !== 0 && (
+                                          <span
+                                            className={cn(
+                                              "flex items-center gap-0.5 font-medium",
+                                              diff > 0 ? "text-green-600" : "text-red-500",
+                                            )}
+                                          >
+                                            {diff > 0 ? (
+                                              <TrendingUp className="size-3" />
+                                            ) : (
+                                              <TrendingDown className="size-3" />
+                                            )}
+                                            {diff > 0 ? "+" : ""}
+                                            {Math.round(diff * 100) / 100}
+                                          </span>
+                                        )}
+                                        {diff === 0 && (
+                                          <span className="flex items-center gap-0.5 text-muted-foreground">
+                                            <Minus className="size-3" />0
+                                          </span>
+                                        )}
+                                      </div>
                                     </div>
-                                  </div>
-                                )
-                              })}
+                                  )
+                                })}
+                              </div>
                             </div>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })()}
+                          )}
+                        </div>
+                      )
+                    })()}
 
                   {/* YouTube example */}
                   {exercise.youtube_url && (
@@ -447,7 +436,7 @@ export function PerformanceAssessmentClientDetail({
                       <div
                         className={cn(
                           "relative border-2 border-dashed rounded-xl p-8 text-center transition-colors cursor-pointer",
-                          "border-border hover:border-primary/40"
+                          "border-border hover:border-primary/40",
                         )}
                         onClick={() => fileRefs.current[exercise.id]?.click()}
                       >
@@ -460,16 +449,12 @@ export function PerformanceAssessmentClientDetail({
                                 style={{ width: `${uploadProgress}%` }}
                               />
                             </div>
-                            <p className="text-xs text-muted-foreground">
-                              Uploading... {uploadProgress}%
-                            </p>
+                            <p className="text-xs text-muted-foreground">Uploading... {uploadProgress}%</p>
                           </div>
                         ) : (
                           <div className="space-y-2">
                             <Upload className="size-8 text-muted-foreground mx-auto" />
-                            <p className="text-sm text-muted-foreground">
-                              Tap to upload your video
-                            </p>
+                            <p className="text-sm text-muted-foreground">Tap to upload your video</p>
                             <p className="text-xs text-muted-foreground">
                               MP4, MOV, WebM, or AVI. Max {MAX_SIZE_MB}MB, 5 minutes.
                             </p>
@@ -483,7 +468,9 @@ export function PerformanceAssessmentClientDetail({
                     )}
 
                     <input
-                      ref={(el) => { fileRefs.current[exercise.id] = el }}
+                      ref={(el) => {
+                        fileRefs.current[exercise.id] = el
+                      }}
                       type="file"
                       accept="video/*"
                       className="hidden"

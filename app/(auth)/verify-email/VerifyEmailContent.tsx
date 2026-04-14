@@ -9,9 +9,7 @@ export function VerifyEmailContent() {
   const searchParams = useSearchParams()
   const token = searchParams.get("token")
 
-  const [status, setStatus] = useState<"loading" | "success" | "error" | "invalid">(
-    token ? "loading" : "invalid"
-  )
+  const [status, setStatus] = useState<"loading" | "success" | "error" | "invalid">(token ? "loading" : "invalid")
   const [errorMessage, setErrorMessage] = useState<string>("")
   const [userId, setUserId] = useState<string | null>(null)
   const [resendStatus, setResendStatus] = useState<"idle" | "sending" | "sent" | "error">("idle")
@@ -36,9 +34,7 @@ export function VerifyEmailContent() {
 
         setStatus("success")
       } catch (err) {
-        setErrorMessage(
-          err instanceof Error ? err.message : "Something went wrong. Please try again."
-        )
+        setErrorMessage(err instanceof Error ? err.message : "Something went wrong. Please try again.")
         setStatus("error")
       }
     }
@@ -71,12 +67,8 @@ export function VerifyEmailContent() {
         <div className="flex size-12 items-center justify-center rounded-full bg-primary/10 mb-4 mx-auto">
           <Mail className="size-6 text-primary animate-pulse" />
         </div>
-        <h1 className="text-2xl font-semibold text-primary tracking-tight">
-          Verifying your email...
-        </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Please wait while we verify your email address.
-        </p>
+        <h1 className="text-2xl font-semibold text-primary tracking-tight">Verifying your email...</h1>
+        <p className="mt-2 text-sm text-muted-foreground">Please wait while we verify your email address.</p>
       </div>
     )
   }
@@ -87,9 +79,7 @@ export function VerifyEmailContent() {
         <div className="flex size-12 items-center justify-center rounded-full bg-success/10 mb-4 mx-auto">
           <CheckCircle2 className="size-6 text-success" />
         </div>
-        <h1 className="text-2xl font-semibold text-primary tracking-tight">
-          Email verified!
-        </h1>
+        <h1 className="text-2xl font-semibold text-primary tracking-tight">Email verified!</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Your email address has been successfully verified. You can now access all features.
         </p>
@@ -109,9 +99,7 @@ export function VerifyEmailContent() {
         <div className="mb-4 rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           {errorMessage}
         </div>
-        <h1 className="text-2xl font-semibold text-primary tracking-tight mb-2">
-          Verification failed
-        </h1>
+        <h1 className="text-2xl font-semibold text-primary tracking-tight mb-2">Verification failed</h1>
         <p className="text-sm text-muted-foreground mb-6">
           The verification link may have expired or already been used.
         </p>
@@ -132,9 +120,7 @@ export function VerifyEmailContent() {
               </button>
             )}
             {resendStatus === "error" && (
-              <p className="text-sm text-destructive">
-                Failed to resend. Please try again or go to your dashboard.
-              </p>
+              <p className="text-sm text-destructive">Failed to resend. Please try again or go to your dashboard.</p>
             )}
             <div>
               <Link
@@ -146,10 +132,7 @@ export function VerifyEmailContent() {
             </div>
           </div>
         ) : (
-          <Link
-            href="/client/dashboard"
-            className="text-sm font-medium text-primary hover:underline"
-          >
+          <Link href="/client/dashboard" className="text-sm font-medium text-primary hover:underline">
             Go to Dashboard
           </Link>
         )}
@@ -163,16 +146,11 @@ export function VerifyEmailContent() {
       <div className="mb-4 rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
         No verification token found in the URL.
       </div>
-      <h1 className="text-2xl font-semibold text-primary tracking-tight mb-2">
-        Invalid link
-      </h1>
+      <h1 className="text-2xl font-semibold text-primary tracking-tight mb-2">Invalid link</h1>
       <p className="text-sm text-muted-foreground mb-6">
         This verification link appears to be invalid. Please check your email for the correct link.
       </p>
-      <Link
-        href="/client/dashboard"
-        className="text-sm font-medium text-primary hover:underline"
-      >
+      <Link href="/client/dashboard" className="text-sm font-medium text-primary hover:underline">
         Go to Dashboard
       </Link>
     </div>

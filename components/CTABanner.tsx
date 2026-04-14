@@ -17,7 +17,8 @@ export function CTABanner() {
           Start training like an elite athlete today
         </h2>
         <p className="text-lg leading-7 text-foreground/70 max-w-xl mx-auto mb-8">
-          Join hundreds of athletes using DJP Athlete for personalized coaching, performance tracking, and expert guidance to reach their full potential.
+          Join hundreds of athletes using DJP Athlete for personalized coaching, performance tracking, and expert
+          guidance to reach their full potential.
         </p>
         <a
           href="#pricing"

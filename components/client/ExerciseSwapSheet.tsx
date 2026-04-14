@@ -4,13 +4,7 @@ import { useState, useEffect, useMemo } from "react"
 import { ArrowLeftRight, Loader2, Dumbbell, Sparkles, Search, Play } from "lucide-react"
 import { extractYouTubeId } from "@/lib/youtube"
 import { motion, AnimatePresence } from "framer-motion"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
@@ -42,7 +36,6 @@ const EQUIPMENT_FILTERS = [
   { label: "Machine", value: "machine" },
 ] as const
 
-
 // ─── Exercise Row ───────────────────────────────────────────────────────────
 
 function ExerciseRow({
@@ -57,7 +50,8 @@ function ExerciseRow({
   index: number
 }) {
   const videoId = exercise.video_url ? extractYouTubeId(exercise.video_url) : null
-  const thumbnailUrl = exercise.thumbnail_url ?? (videoId ? `https://img.youtube.com/vi/${videoId}/mqdefault.jpg` : null)
+  const thumbnailUrl =
+    exercise.thumbnail_url ?? (videoId ? `https://img.youtube.com/vi/${videoId}/mqdefault.jpg` : null)
 
   return (
     <motion.button
@@ -70,12 +64,7 @@ function ExerciseRow({
       {/* Video thumbnail or fallback icon */}
       {thumbnailUrl ? (
         <div className="size-10 rounded-lg overflow-hidden bg-muted shrink-0 relative">
-          <img
-            src={thumbnailUrl}
-            alt=""
-            className="size-full object-cover"
-            loading="lazy"
-          />
+          <img src={thumbnailUrl} alt="" className="size-full object-cover" loading="lazy" />
           <div className="absolute inset-0 flex items-center justify-center bg-black/20">
             <Play className="size-3.5 text-white fill-white" />
           </div>
@@ -86,20 +75,11 @@ function ExerciseRow({
         </div>
       )}
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-foreground truncate">
-          {exercise.name}
-        </p>
+        <p className="text-sm font-medium text-foreground truncate">{exercise.name}</p>
         <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-          {exercise.equipment && (
-            <span className="text-[10px] text-muted-foreground">
-              {exercise.equipment}
-            </span>
-          )}
+          {exercise.equipment && <span className="text-[10px] text-muted-foreground">{exercise.equipment}</span>}
           {isCurated && (
-            <Badge
-              variant="outline"
-              className="text-[9px] h-4 border-accent/30 text-accent gap-0.5"
-            >
+            <Badge variant="outline" className="text-[9px] h-4 border-accent/30 text-accent gap-0.5">
               <Sparkles className="size-2.5" />
               Curated
             </Badge>
@@ -145,12 +125,7 @@ function ConfirmSwap({
         </p>
       </div>
       <div className="flex gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          className="flex-1"
-          onClick={onCancel}
-        >
+        <Button variant="outline" size="sm" className="flex-1" onClick={onCancel}>
           Cancel
         </Button>
         <Button size="sm" className="flex-1 gap-1" onClick={onConfirm}>
@@ -193,9 +168,7 @@ export function ExerciseSwapSheet({
       setLoading(true)
       setError(null)
       try {
-        const res = await fetch(
-          `/api/client/workouts/alternatives?exerciseId=${encodeURIComponent(exerciseId)}`
-        )
+        const res = await fetch(`/api/client/workouts/alternatives?exerciseId=${encodeURIComponent(exerciseId)}`)
         if (!res.ok) throw new Error("Failed to fetch alternatives")
         const data = await res.json()
         setLinked(data.linked ?? [])
@@ -210,22 +183,30 @@ export function ExerciseSwapSheet({
     fetchAlternatives()
   }, [open, exerciseId])
 
-  const filteredLinked = useMemo(() => filterExercises(linked, equipmentFilter, searchQuery), [linked, equipmentFilter, searchQuery])
-  const filteredSimilar = useMemo(() => filterExercises(similar, equipmentFilter, searchQuery), [similar, equipmentFilter, searchQuery])
+  const filteredLinked = useMemo(
+    () => filterExercises(linked, equipmentFilter, searchQuery),
+    [linked, equipmentFilter, searchQuery],
+  )
+  const filteredSimilar = useMemo(
+    () => filterExercises(similar, equipmentFilter, searchQuery),
+    [similar, equipmentFilter, searchQuery],
+  )
 
   // Split similar exercises: same equipment vs different equipment
   const normalizedEquipment = equipment?.toLowerCase().trim() ?? ""
   const similarSameEquip = useMemo(
-    () => normalizedEquipment
-      ? filteredSimilar.filter((ex) => (ex.equipment ?? "").toLowerCase().trim() === normalizedEquipment)
-      : filteredSimilar,
-    [filteredSimilar, normalizedEquipment]
+    () =>
+      normalizedEquipment
+        ? filteredSimilar.filter((ex) => (ex.equipment ?? "").toLowerCase().trim() === normalizedEquipment)
+        : filteredSimilar,
+    [filteredSimilar, normalizedEquipment],
   )
   const similarDiffEquip = useMemo(
-    () => normalizedEquipment
-      ? filteredSimilar.filter((ex) => (ex.equipment ?? "").toLowerCase().trim() !== normalizedEquipment)
-      : [],
-    [filteredSimilar, normalizedEquipment]
+    () =>
+      normalizedEquipment
+        ? filteredSimilar.filter((ex) => (ex.equipment ?? "").toLowerCase().trim() !== normalizedEquipment)
+        : [],
+    [filteredSimilar, normalizedEquipment],
   )
 
   const totalResults = filteredLinked.length + filteredSimilar.length
@@ -249,12 +230,8 @@ export function ExerciseSwapSheet({
               <ArrowLeftRight className="size-5 text-primary" />
             </div>
             <div>
-              <DialogTitle className="text-base font-heading">
-                Swap Exercise
-              </DialogTitle>
-              <DialogDescription className="text-xs">
-                {exerciseName}
-              </DialogDescription>
+              <DialogTitle className="text-base font-heading">Swap Exercise</DialogTitle>
+              <DialogDescription className="text-xs">{exerciseName}</DialogDescription>
             </div>
           </div>
         </DialogHeader>
@@ -297,7 +274,7 @@ export function ExerciseSwapSheet({
                         "shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors",
                         equipmentFilter === filter.value
                           ? "bg-primary text-white"
-                          : "bg-muted text-muted-foreground hover:bg-muted/80"
+                          : "bg-muted text-muted-foreground hover:bg-muted/80",
                       )}
                       onClick={() => setEquipmentFilter(filter.value)}
                     >
@@ -324,12 +301,8 @@ export function ExerciseSwapSheet({
                 {!loading && !error && totalResults === 0 && (
                   <div className="px-5 py-8 text-center">
                     <Dumbbell className="size-8 text-muted-foreground/30 mx-auto mb-2" />
-                    <p className="text-sm text-muted-foreground">
-                      No alternatives found
-                    </p>
-                    <p className="text-xs text-muted-foreground/60 mt-1">
-                      Try adjusting your equipment filter
-                    </p>
+                    <p className="text-sm text-muted-foreground">No alternatives found</p>
+                    <p className="text-xs text-muted-foreground/60 mt-1">Try adjusting your equipment filter</p>
                   </div>
                 )}
 
@@ -422,7 +395,7 @@ export function ExerciseSwapSheet({
 function filterExercises(
   exercises: ExerciseWithRelationship[],
   equipmentFilter: string,
-  searchQuery: string
+  searchQuery: string,
 ): ExerciseWithRelationship[] {
   return exercises.filter((ex) => {
     // Equipment filter
@@ -432,9 +405,7 @@ function filterExercises(
       } else {
         const equip = (ex.equipment ?? "").toLowerCase()
         const equipReq = ex.equipment_required.map((e) => e.toLowerCase())
-        const match =
-          equip.includes(equipmentFilter) ||
-          equipReq.some((e) => e.includes(equipmentFilter))
+        const match = equip.includes(equipmentFilter) || equipReq.some((e) => e.includes(equipmentFilter))
         if (!match) return false
       }
     }

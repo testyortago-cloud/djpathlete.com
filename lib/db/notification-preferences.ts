@@ -13,9 +13,7 @@ const DEFAULTS: Omit<NotificationPreferences, "id" | "user_id" | "created_at" | 
   workout_reminders: false,
 }
 
-export async function getPreferences(
-  userId: string
-): Promise<NotificationPreferences> {
+export async function getPreferences(userId: string): Promise<NotificationPreferences> {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("notification_preferences")
@@ -37,7 +35,7 @@ export async function getPreferences(
 
 export async function upsertPreferences(
   userId: string,
-  updates: Partial<Omit<NotificationPreferences, "id" | "user_id" | "created_at" | "updated_at">>
+  updates: Partial<Omit<NotificationPreferences, "id" | "user_id" | "created_at" | "updated_at">>,
 ): Promise<NotificationPreferences> {
   const supabase = getClient()
 

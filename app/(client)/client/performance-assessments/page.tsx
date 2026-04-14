@@ -21,16 +21,12 @@ export default async function ClientPerformanceAssessmentsPage() {
 
   return (
     <div>
-      <h1 className="text-xl sm:text-2xl font-semibold text-primary mb-5">
-        Performance Assessments
-      </h1>
+      <h1 className="text-xl sm:text-2xl font-semibold text-primary mb-5">Performance Assessments</h1>
 
       {assessments.length === 0 ? (
         <div className="text-center py-16">
           <ClipboardCheck className="size-12 text-muted-foreground/40 mx-auto mb-3" />
-          <p className="text-sm text-muted-foreground">
-            No assessments yet. Your coach will create one for you.
-          </p>
+          <p className="text-sm text-muted-foreground">No assessments yet. Your coach will create one for you.</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -41,9 +37,7 @@ export default async function ClientPerformanceAssessmentsPage() {
               className="flex items-center justify-between p-4 bg-white rounded-xl border border-border hover:border-primary/20 transition-colors"
             >
               <div className="min-w-0">
-                <p className="text-sm font-medium text-foreground truncate">
-                  {assessment.title}
-                </p>
+                <p className="text-sm font-medium text-foreground truncate">{assessment.title}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   {new Date(assessment.created_at).toLocaleDateString("en-US", {
                     month: "short",
@@ -55,15 +49,17 @@ export default async function ClientPerformanceAssessmentsPage() {
               <span
                 className={cn(
                   "inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full shrink-0 ml-3",
-                  assessment.status === "in_progress"
-                    ? "bg-blue-100 text-blue-700"
-                    : "bg-green-100 text-green-700"
+                  assessment.status === "in_progress" ? "bg-blue-100 text-blue-700" : "bg-green-100 text-green-700",
                 )}
               >
                 {assessment.status === "in_progress" ? (
-                  <><MessageSquare className="size-3.5" /> In Progress</>
+                  <>
+                    <MessageSquare className="size-3.5" /> In Progress
+                  </>
                 ) : (
-                  <><CheckCircle2 className="size-3.5" /> Completed</>
+                  <>
+                    <CheckCircle2 className="size-3.5" /> Completed
+                  </>
                 )}
               </span>
             </Link>

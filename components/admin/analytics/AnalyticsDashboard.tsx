@@ -57,21 +57,13 @@ export function AnalyticsDashboard({
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <h1 className="text-2xl font-semibold text-primary">Analytics</h1>
-        <DateRangePicker
-          currentMonths={currentMonths}
-          customFrom={customFrom}
-          customTo={customTo}
-        />
+        <DateRangePicker currentMonths={currentMonths} customFrom={customFrom} customTo={customTo} />
       </div>
 
       <Tabs defaultValue={activeTab} onValueChange={handleTabChange}>
         <TabsList variant="line" className="mb-6 w-full sm:w-auto">
           {TABS.map((tab) => (
-            <TabsTrigger
-              key={tab.value}
-              value={tab.value}
-              className="gap-1.5"
-            >
+            <TabsTrigger key={tab.value} value={tab.value} className="gap-1.5">
               <tab.icon className="size-4" />
               <span className="hidden sm:inline">{tab.label}</span>
             </TabsTrigger>

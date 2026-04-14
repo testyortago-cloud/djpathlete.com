@@ -11,20 +11,13 @@ import type { FormReviewStatus } from "@/types/database"
 
 export const metadata = { title: "Form Review | DJP Athlete" }
 
-const statusConfig: Record<
-  FormReviewStatus,
-  { label: string; icon: typeof Clock; className: string }
-> = {
+const statusConfig: Record<FormReviewStatus, { label: string; icon: typeof Clock; className: string }> = {
   pending: { label: "Pending Review", icon: Clock, className: "bg-amber-100 text-amber-700" },
   in_progress: { label: "In Progress", icon: MessageSquare, className: "bg-blue-100 text-blue-700" },
   reviewed: { label: "Reviewed", icon: CheckCircle2, className: "bg-green-100 text-green-700" },
 }
 
-export default async function FormReviewDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>
-}) {
+export default async function FormReviewDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
   if (!session?.user) redirect("/login")
 
@@ -68,7 +61,7 @@ export default async function FormReviewDetailPage({
         <span
           className={cn(
             "inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full",
-            config.className
+            config.className,
           )}
         >
           <StatusIcon className="size-3.5" />

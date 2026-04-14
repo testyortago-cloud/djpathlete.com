@@ -8,8 +8,7 @@ export const metadata: Metadata = {
     "Read the DJP Athlete Terms of Service. Understand your rights and responsibilities when using our athletic training platform.",
   openGraph: {
     title: "Terms of Service | DJP Athlete",
-    description:
-      "Read the DJP Athlete Terms of Service for our athletic training platform.",
+    description: "Read the DJP Athlete Terms of Service for our athletic training platform.",
     type: "website",
   },
 }
@@ -40,9 +39,7 @@ export default async function TermsOfServicePage() {
           {doc ? (
             <div dangerouslySetInnerHTML={{ __html: renderLegalContent(doc.content) }} />
           ) : (
-            <p className="text-muted-foreground">
-              Our Terms of Service are being prepared. Please check back soon.
-            </p>
+            <p className="text-muted-foreground">Our Terms of Service are being prepared. Please check back soon.</p>
           )}
         </div>
       </div>

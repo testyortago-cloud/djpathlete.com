@@ -22,11 +22,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   }
 }
 
-export default async function ProgramBuilderPage({
-  params,
-}: {
-  params: Promise<{ id: string }>
-}) {
+export default async function ProgramBuilderPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
 
   let program
@@ -47,7 +43,16 @@ export default async function ProgramBuilderPage({
   const assignedUserIds = activeAssignments.map((a) => a.user_id)
   const assignmentMap = Object.fromEntries(activeAssignments.map((a) => [a.user_id, a.id]))
   const assignmentDetails = Object.fromEntries(
-    activeAssignments.map((a) => [a.user_id, { id: a.id, start_date: a.start_date, notes: a.notes, payment_status: a.payment_status as import("@/types/database").AssignmentPaymentStatus, expires_at: a.expires_at }])
+    activeAssignments.map((a) => [
+      a.user_id,
+      {
+        id: a.id,
+        start_date: a.start_date,
+        notes: a.notes,
+        payment_status: a.payment_status as import("@/types/database").AssignmentPaymentStatus,
+        expires_at: a.expires_at,
+      },
+    ]),
   )
 
   const assignmentInfo = activeAssignment
@@ -64,7 +69,13 @@ export default async function ProgramBuilderPage({
         Back to Programs
       </Link>
 
-      <ProgramHeader program={program} clients={clients} assignedUserIds={assignedUserIds} assignmentMap={assignmentMap} assignmentDetails={assignmentDetails} />
+      <ProgramHeader
+        program={program}
+        clients={clients}
+        assignedUserIds={assignedUserIds}
+        assignmentMap={assignmentMap}
+        assignmentDetails={assignmentDetails}
+      />
 
       {program.is_ai_generated && program.ai_generation_params && (
         <AiGenerationSummary params={program.ai_generation_params} />
@@ -82,9 +93,7 @@ export default async function ProgramBuilderPage({
         <WeekAccessPanel
           programId={program.id}
           totalWeeks={program.duration_weeks}
-          clientNames={Object.fromEntries(
-            clients.map((c) => [c.id, `${c.first_name} ${c.last_name}`.trim()])
-          )}
+          clientNames={Object.fromEntries(clients.map((c) => [c.id, `${c.first_name} ${c.last_name}`.trim()]))}
         />
       )}
 
@@ -95,12 +104,8 @@ export default async function ProgramBuilderPage({
               <Sparkles className="size-4 text-accent" />
             </div>
             <div>
-              <h3 className="text-sm font-heading font-semibold text-foreground">
-                Rate AI-Generated Program
-              </h3>
-              <p className="text-xs text-muted-foreground">
-                Your feedback helps improve future AI generations
-              </p>
+              <h3 className="text-sm font-heading font-semibold text-foreground">Rate AI-Generated Program</h3>
+              <p className="text-xs text-muted-foreground">Your feedback helps improve future AI generations</p>
             </div>
           </div>
           <ProgramFeedbackForm programId={program.id} />
@@ -112,13 +117,14 @@ export default async function ProgramBuilderPage({
 
 // ─── AI Generation Summary Card ──────────────────────────────────────────────
 
-function AiGenerationSummary({
-  params,
-}: {
-  params: Record<string, unknown>
-}) {
+function AiGenerationSummary({ params }: { params: Record<string, unknown> }) {
   const validation = params.validation as
-    | { pass?: boolean; warnings?: number; errors?: number; issues?: { type: string; category: string; message: string; slot_ref?: string }[] }
+    | {
+        pass?: boolean
+        warnings?: number
+        errors?: number
+        issues?: { type: string; category: string; message: string; slot_ref?: string }[]
+      }
     | undefined
   const tokenUsage = params.token_usage as
     | { total?: number; agent1?: number; agent2?: number; agent3?: number; agent4?: number }
@@ -140,9 +146,7 @@ function AiGenerationSummary({
     <div className="bg-white rounded-xl border border-border p-4 shadow-sm">
       <div className="flex items-center gap-2 mb-3">
         <Sparkles className="size-4 text-accent" />
-        <h3 className="text-sm font-heading font-semibold text-foreground">
-          AI Generation Details
-        </h3>
+        <h3 className="text-sm font-heading font-semibold text-foreground">AI Generation Details</h3>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -184,12 +188,11 @@ function AiGenerationSummary({
           </Badge>
         )}
 
-        {analysisSummary?.constraints_count != null &&
-          analysisSummary.constraints_count > 0 && (
-            <Badge variant="outline">
-              {analysisSummary.constraints_count} constraint{analysisSummary.constraints_count !== 1 ? "s" : ""} applied
-            </Badge>
-          )}
+        {analysisSummary?.constraints_count != null && analysisSummary.constraints_count > 0 && (
+          <Badge variant="outline">
+            {analysisSummary.constraints_count} constraint{analysisSummary.constraints_count !== 1 ? "s" : ""} applied
+          </Badge>
+        )}
       </div>
 
       {issues.length > 0 && (
@@ -199,10 +202,7 @@ function AiGenerationSummary({
           </summary>
           <div className="mt-2 space-y-1.5 max-h-64 overflow-y-auto">
             {errors.map((issue, idx) => (
-              <div
-                key={`err-${idx}`}
-                className="flex items-start gap-1.5 text-xs"
-              >
+              <div key={`err-${idx}`} className="flex items-start gap-1.5 text-xs">
                 <XCircle className="size-3 text-destructive shrink-0 mt-0.5" />
                 <span>
                   <span className="font-medium text-destructive">{issue.category}</span>
@@ -211,10 +211,7 @@ function AiGenerationSummary({
               </div>
             ))}
             {warnings.map((issue, idx) => (
-              <div
-                key={`warn-${idx}`}
-                className="flex items-start gap-1.5 text-xs"
-              >
+              <div key={`warn-${idx}`} className="flex items-start gap-1.5 text-xs">
                 <AlertTriangle className="size-3 text-warning shrink-0 mt-0.5" />
                 <span>
                   <span className="font-medium text-warning">{issue.category}</span>

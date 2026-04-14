@@ -24,8 +24,7 @@ export const ADMIN_TOOLS: Anthropic.Tool[] = [
         status: {
           type: "string",
           enum: ["all", "active", "inactive"],
-          description:
-            "Filter by activity status. Active = logged workout in last 14 days. Default: all.",
+          description: "Filter by activity status. Active = logged workout in last 14 days. Default: all.",
         },
       },
       required: [],
@@ -48,8 +47,7 @@ export const ADMIN_TOOLS: Anthropic.Tool[] = [
   },
   {
     name: "get_revenue",
-    description:
-      "Get revenue analytics: total, this month vs last month, MoM change, breakdown by program.",
+    description: "Get revenue analytics: total, this month vs last month, MoM change, breakdown by program.",
     input_schema: {
       type: "object" as const,
       properties: {},
@@ -58,8 +56,7 @@ export const ADMIN_TOOLS: Anthropic.Tool[] = [
   },
   {
     name: "get_programs",
-    description:
-      "Get all active programs with pricing, total sales, active assignments, and new sales this month.",
+    description: "Get all active programs with pricing, total sales, active assignments, and new sales this month.",
     input_schema: {
       type: "object" as const,
       properties: {},
@@ -68,8 +65,7 @@ export const ADMIN_TOOLS: Anthropic.Tool[] = [
   },
   {
     name: "get_recent_activity",
-    description:
-      "Get recent platform events: new signups, purchases, PRs hit, reviews. Defaults to last 7 days.",
+    description: "Get recent platform events: new signups, purchases, PRs hit, reviews. Defaults to last 7 days.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -112,10 +108,7 @@ export const TOOL_LABELS: Record<string, string> = {
 
 // ─── Tool Executor ──────────────────────────────────────────────────────────
 
-export async function executeAdminTool(
-  name: string,
-  input: Record<string, unknown>
-): Promise<string> {
+export async function executeAdminTool(name: string, input: Record<string, unknown>): Promise<string> {
   try {
     switch (name) {
       case "get_platform_overview":
@@ -156,9 +149,7 @@ async function getPlatformOverview(): Promise<string> {
     .limit(500)
 
   const allClients = clients ?? []
-  const newThisMonth = allClients.filter(
-    (c) => new Date(c.created_at) >= startOfMonth
-  ).length
+  const newThisMonth = allClients.filter((c) => new Date(c.created_at) >= startOfMonth).length
 
   // Get latest workout per user
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
@@ -228,9 +219,7 @@ async function getClientList(statusFilter?: string): Promise<string> {
     if (statusFilter === "active" && !isActive) continue
     if (statusFilter === "inactive" && isActive) continue
 
-    const lastStr = last
-      ? new Date(last).toLocaleDateString()
-      : "Never"
+    const lastStr = last ? new Date(last).toLocaleDateString() : "Never"
     const status = isActive ? "Active" : "Inactive"
     const joined = new Date(client.created_at).toLocaleDateString()
 
@@ -270,11 +259,7 @@ async function getClientDetails(clientName: string): Promise<string> {
     ]
 
     // Client profile/questionnaire
-    const { data: profile } = await supabase
-      .from("client_profiles")
-      .select("*")
-      .eq("user_id", client.id)
-      .single()
+    const { data: profile } = await supabase.from("client_profiles").select("*").eq("user_id", client.id).single()
 
     if (profile) {
       const profileParts: string[] = []
@@ -373,10 +358,7 @@ async function getRevenue(): Promise<string> {
   const allPayments = payments ?? []
 
   // All-time revenue
-  const { data: allTimePayments } = await supabase
-    .from("payments")
-    .select("amount_cents")
-    .eq("status", "succeeded")
+  const { data: allTimePayments } = await supabase.from("payments").select("amount_cents").eq("status", "succeeded")
 
   const totalRevenue = (allTimePayments ?? []).reduce((sum, p) => sum + p.amount_cents, 0)
 
@@ -419,7 +401,9 @@ async function getRevenue(): Promise<string> {
     for (const p of thisMonthPayments) {
       const user = p.users as unknown as { first_name: string; last_name: string } | null
       const name = user ? `${user.first_name} ${user.last_name}` : "Unknown"
-      lines.push(`  ${name} - ${p.description || "Payment"} - $${(p.amount_cents / 100).toFixed(2)} (${new Date(p.created_at).toLocaleDateString()})`)
+      lines.push(
+        `  ${name} - ${p.description || "Payment"} - $${(p.amount_cents / 100).toFixed(2)} (${new Date(p.created_at).toLocaleDateString()})`,
+      )
     }
   }
 
@@ -448,10 +432,7 @@ async function getPrograms(): Promise<string> {
     .select("program_id, status, created_at")
     .limit(2000)
 
-  const { data: reviews } = await supabase
-    .from("reviews")
-    .select("rating")
-    .limit(1000)
+  const { data: reviews } = await supabase.from("reviews").select("rating").limit(1000)
 
   const assignmentsByProgram = new Map<string, { total: number; active: number; thisMonth: number }>()
   for (const a of assignments ?? []) {
@@ -463,9 +444,8 @@ async function getPrograms(): Promise<string> {
   }
 
   const allReviews = reviews ?? []
-  const avgRating = allReviews.length > 0
-    ? (allReviews.reduce((sum, r) => sum + r.rating, 0) / allReviews.length).toFixed(1)
-    : "N/A"
+  const avgRating =
+    allReviews.length > 0 ? (allReviews.reduce((sum, r) => sum + r.rating, 0) / allReviews.length).toFixed(1) : "N/A"
 
   const lines = [
     `Active Programs: ${(programs ?? []).length}`,
@@ -476,7 +456,9 @@ async function getPrograms(): Promise<string> {
   for (const program of programs ?? []) {
     const stats = assignmentsByProgram.get(program.id) ?? { total: 0, active: 0, thisMonth: 0 }
     const price = program.price_cents ? `$${(program.price_cents / 100).toFixed(2)}` : "Free"
-    lines.push(`${program.name}: ${price} | ${stats.total} total sales | ${stats.active} active | ${stats.thisMonth} new this month`)
+    lines.push(
+      `${program.name}: ${price} | ${stats.total} total sales | ${stats.active} active | ${stats.thisMonth} new this month`,
+    )
   }
 
   const noSales = (programs ?? []).filter((p) => {
@@ -512,7 +494,9 @@ async function getRecentActivity(days?: number): Promise<string> {
 
     supabase
       .from("exercise_progress")
-      .select("user_id, pr_type, weight_kg, reps_completed, completed_at, exercises(name), users(first_name, last_name)")
+      .select(
+        "user_id, pr_type, weight_kg, reps_completed, completed_at, exercises(name), users(first_name, last_name)",
+      )
       .eq("is_pr", true)
       .gte("completed_at", since.toISOString())
       .order("completed_at", { ascending: false }),
@@ -528,9 +512,10 @@ async function getRecentActivity(days?: number): Promise<string> {
 
   // Signups
   const signups = signupsResult.data ?? []
-  lines.push(signups.length > 0
-    ? `\nNew Signups (${signups.length}): ${signups.map((s) => `${s.first_name} ${s.last_name}`).join(", ")}`
-    : "\nNew Signups: None"
+  lines.push(
+    signups.length > 0
+      ? `\nNew Signups (${signups.length}): ${signups.map((s) => `${s.first_name} ${s.last_name}`).join(", ")}`
+      : "\nNew Signups: None",
   )
 
   // Purchases
@@ -624,8 +609,8 @@ async function getClientProgress(days?: number): Promise<string> {
   const topPerformers = Array.from(workoutsByUser.entries())
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
-    .map(([uid, count]) =>
-      `${nameMap.get(uid) ?? "Unknown"} (${count} exercises logged, ${prsByUser.get(uid) ?? 0} PRs)`
+    .map(
+      ([uid, count]) => `${nameMap.get(uid) ?? "Unknown"} (${count} exercises logged, ${prsByUser.get(uid) ?? 0} PRs)`,
     )
 
   // Needs attention
@@ -634,7 +619,7 @@ async function getClientProgress(days?: number): Promise<string> {
     const last = latestByUser.get(uid)
     if (!last || new Date(last) < fourteenDaysAgo) {
       needsAttention.push(
-        `${nameMap.get(uid) ?? "Unknown"} (last: ${last ? new Date(last).toLocaleDateString() : "No workouts"})`
+        `${nameMap.get(uid) ?? "Unknown"} (last: ${last ? new Date(last).toLocaleDateString() : "No workouts"})`,
       )
     }
   }

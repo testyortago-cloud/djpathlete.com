@@ -9,11 +9,7 @@ import type { User, ProgramAssignment } from "@/types/database"
 export const metadata = { title: "Clients" }
 
 export default async function ClientsPage() {
-  const [users, assignments, profiles] = await Promise.all([
-    getUsers(),
-    getAssignments(),
-    getAllProfiles(),
-  ])
+  const [users, assignments, profiles] = await Promise.all([getUsers(), getAssignments(), getAllProfiles()])
 
   const clients = (users as User[]).filter((u) => u.role === "client")
   const totalClients = clients.length
@@ -21,24 +17,17 @@ export default async function ClientsPage() {
   // New this month
   const now = new Date()
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
-  const newThisMonth = clients.filter(
-    (u) => new Date(u.created_at) >= monthStart
-  ).length
+  const newThisMonth = clients.filter((u) => new Date(u.created_at) >= monthStart).length
 
   // Active (on a program)
   const activeUserIds = new Set(
-    (assignments as ProgramAssignment[])
-      .filter((a) => a.status === "active")
-      .map((a) => a.user_id)
+    (assignments as ProgramAssignment[]).filter((a) => a.status === "active").map((a) => a.user_id),
   )
   const activeOnProgram = activeUserIds.size
 
   // Profile completion
   const profilesWithGoals = profiles.filter((p) => p.goals)
-  const profileCompletion =
-    totalClients > 0
-      ? Math.round((profilesWithGoals.length / totalClients) * 100)
-      : 0
+  const profileCompletion = totalClients > 0 ? Math.round((profilesWithGoals.length / totalClients) * 100) : 0
 
   return (
     <div>

@@ -1,10 +1,7 @@
 "use client"
 
 import { Plus, Sparkles, Copy, Trash2 } from "lucide-react"
-import {
-  SortableContext,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable"
+import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { useDroppable } from "@dnd-kit/core"
 import { Button } from "@/components/ui/button"
 import { ExerciseCard } from "@/components/admin/ExerciseCard"
@@ -24,7 +21,12 @@ type ProgramExerciseWithExercise = ProgramExercise & { exercises: Exercise }
 /** A single exercise or a group of exercises that share a group_tag letter */
 type ExerciseSlot =
   | { type: "single"; exercise: ProgramExerciseWithExercise; index: number }
-  | { type: "group"; letter: string; label: string; exercises: { exercise: ProgramExerciseWithExercise; index: number }[] }
+  | {
+      type: "group"
+      letter: string
+      label: string
+      exercises: { exercise: ProgramExerciseWithExercise; index: number }[]
+    }
 
 /** Group exercises by their group_tag letter while preserving order */
 function buildSlots(exercises: ProgramExerciseWithExercise[]): ExerciseSlot[] {
@@ -99,7 +101,9 @@ export function DayColumn({
   const { setNodeRef, isOver } = useDroppable({ id: `day-${dayOfWeek}` })
 
   return (
-    <div className={`rounded-xl border bg-surface/30 transition-colors ${isOver ? "border-primary border-2 bg-primary/5" : "border-border"}`}>
+    <div
+      className={`rounded-xl border bg-surface/30 transition-colors ${isOver ? "border-primary border-2 bg-primary/5" : "border-border"}`}
+    >
       <div className="flex items-center justify-between border-b border-border px-3 py-2">
         <h3 className="text-sm font-medium text-foreground">{dayName}</h3>
         <div className="flex items-center gap-1.5">
@@ -135,12 +139,7 @@ export function DayColumn({
           <div className="flex flex-col items-center gap-2 py-6">
             <p className="text-xs text-muted-foreground">No exercises</p>
             {onGenerateDay && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5 text-xs"
-                onClick={() => onGenerateDay(dayOfWeek)}
-              >
+              <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={() => onGenerateDay(dayOfWeek)}>
                 <Sparkles className="size-3" />
                 AI Generate
               </Button>
@@ -171,12 +170,8 @@ export function DayColumn({
                     <span className="inline-flex items-center justify-center size-5 rounded bg-primary/10 text-[10px] font-bold text-primary">
                       {slot.letter}
                     </span>
-                    <span className="text-[11px] font-medium text-primary">
-                      {slot.label}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground">
-                      ({slot.exercises.length} exercises)
-                    </span>
+                    <span className="text-[11px] font-medium text-primary">{slot.label}</span>
+                    <span className="text-[10px] text-muted-foreground">({slot.exercises.length} exercises)</span>
                     {onDuplicateGroup && (
                       <Button
                         variant="ghost"

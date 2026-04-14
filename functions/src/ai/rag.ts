@@ -6,16 +6,13 @@ import type { AiFeature } from "./types.js"
 
 export async function embedConversationMessage(messageId: string): Promise<void> {
   const supabase = getSupabase()
-  const { data: message } = await supabase
-    .from("ai_conversation_history")
-    .select("*")
-    .eq("id", messageId)
-    .single()
+  const { data: message } = await supabase.from("ai_conversation_history").select("*").eq("id", messageId).single()
 
   if (!message || message.role !== "assistant") return
 
   const metadataSummary = buildMetadataSummary(message.feature, message.metadata ?? {})
-  const textToEmbed = `Feature: ${message.feature}${metadataSummary ? ` | ${metadataSummary}` : ""}\n${message.content}`.slice(0, 2000)
+  const textToEmbed =
+    `Feature: ${message.feature}${metadataSummary ? ` | ${metadataSummary}` : ""}\n${message.content}`.slice(0, 2000)
 
   const embedding = await embedText(textToEmbed)
   await supabase
@@ -50,15 +47,16 @@ export interface RagContext {
 }
 
 export async function retrieveSimilarContext(
-  query: string, feature: AiFeature,
-  opts?: { excludeSession?: string; threshold?: number; limit?: number; timeoutMs?: number }
+  query: string,
+  feature: AiFeature,
+  opts?: { excludeSession?: string; threshold?: number; limit?: number; timeoutMs?: number },
 ): Promise<RagContext[]> {
   const timeoutMs = opts?.timeoutMs ?? 2000
   try {
     const results = await Promise.race([
       doRetrieval(query, feature, opts),
       new Promise<RagContext[]>((_, reject) =>
-        setTimeout(() => reject(new Error("RAG retrieval timed out")), timeoutMs)
+        setTimeout(() => reject(new Error("RAG retrieval timed out")), timeoutMs),
       ),
     ])
     return results
@@ -68,8 +66,9 @@ export async function retrieveSimilarContext(
 }
 
 async function doRetrieval(
-  query: string, feature: AiFeature,
-  opts?: { excludeSession?: string; threshold?: number; limit?: number }
+  query: string,
+  feature: AiFeature,
+  opts?: { excludeSession?: string; threshold?: number; limit?: number },
 ): Promise<RagContext[]> {
   const supabase = getSupabase()
   const queryEmbedding = await embedText(query)
@@ -85,7 +84,15 @@ async function doRetrieval(
   if (!matches?.length) return []
 
   const enriched = await Promise.all(
-    (matches as Array<{ id: string; content: string; feature: string; metadata: Record<string, unknown>; similarity: number }>).map(async (match) => {
+    (
+      matches as Array<{
+        id: string
+        content: string
+        feature: string
+        metadata: Record<string, unknown>
+        similarity: number
+      }>
+    ).map(async (match) => {
       let avgRating: number | null = null
       try {
         const { data: feedback } = await supabase
@@ -98,10 +105,19 @@ async function doRetrieval(
             .filter((r): r is number => r != null)
           if (ratings.length > 0) avgRating = ratings.reduce((a, b) => a + b, 0) / ratings.length
         }
-      } catch { /* non-fatal */ }
+      } catch {
+        /* non-fatal */
+      }
 
-      return { id: match.id, content: match.content, feature: match.feature, metadata: match.metadata, similarity: match.similarity, avgRating }
-    })
+      return {
+        id: match.id,
+        content: match.content,
+        feature: match.feature,
+        metadata: match.metadata,
+        similarity: match.similarity,
+        avgRating,
+      }
+    }),
   )
 
   return enriched.filter((r) => r.avgRating === null || r.avgRating >= 2.0)

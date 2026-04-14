@@ -28,15 +28,14 @@ export default async function DashboardPage() {
   const adminName = session.user?.name ?? "Admin"
   const adminFirstName = adminName.split(" ")[0]
 
-  const [users, programs, payments, assignments, progress, achievements] =
-    await Promise.all([
-      getUsers(),
-      getPrograms(),
-      getPaymentsWithDetails(),
-      getAssignments(),
-      getAllProgress(500),
-      getAllAchievements(15),
-    ])
+  const [users, programs, payments, assignments, progress, achievements] = await Promise.all([
+    getUsers(),
+    getPrograms(),
+    getPaymentsWithDetails(),
+    getAssignments(),
+    getAllProgress(500),
+    getAllAchievements(15),
+  ])
 
   const now = new Date()
   const clients = (users as User[]).filter((u) => u.role === "client")
@@ -44,12 +43,11 @@ export default async function DashboardPage() {
   // ---- Stats ----
   const totalClients = clients.length
   const activePrograms = programs.length
-  const succeededPayments = (payments as (Payment & { users: { first_name: string; last_name: string; email: string } | null })[])
-    .filter((p) => p.status === "succeeded")
+  const succeededPayments = (
+    payments as (Payment & { users: { first_name: string; last_name: string; email: string } | null })[]
+  ).filter((p) => p.status === "succeeded")
   const totalRevenue = succeededPayments.reduce((s, p) => s + p.amount_cents, 0)
-  const activeAssignments = (assignments as ProgramAssignment[]).filter(
-    (a) => a.status === "active"
-  ).length
+  const activeAssignments = (assignments as ProgramAssignment[]).filter((a) => a.status === "active").length
 
   // ---- Revenue trend (this month vs last month) ----
   const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1)
@@ -83,14 +81,10 @@ export default async function DashboardPage() {
 
   // ---- Engagement snapshot ----
   const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-  const workoutsThisWeek = progress.filter(
-    (p) => new Date(p.completed_at) >= weekAgo
-  ).length
+  const workoutsThisWeek = progress.filter((p) => new Date(p.completed_at) >= weekAgo).length
 
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
-  const prsThisMonth = progress.filter(
-    (p) => p.is_pr && new Date(p.completed_at) >= monthStart
-  ).length
+  const prsThisMonth = progress.filter((p) => p.is_pr && new Date(p.completed_at) >= monthStart).length
 
   // Avg RPE (last 30 days)
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
@@ -98,9 +92,7 @@ export default async function DashboardPage() {
     .filter((p) => p.rpe != null && new Date(p.completed_at) >= thirtyDaysAgo)
     .map((p) => p.rpe!)
   const avgRPE =
-    recentRPE.length > 0
-      ? Math.round((recentRPE.reduce((s, v) => s + v, 0) / recentRPE.length) * 10) / 10
-      : null
+    recentRPE.length > 0 ? Math.round((recentRPE.reduce((s, v) => s + v, 0) / recentRPE.length) * 10) / 10 : null
 
   // Active streaks: count users who logged a workout today or yesterday
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`
@@ -133,9 +125,7 @@ export default async function DashboardPage() {
 
   // Recent payments
   for (const p of payments.slice(0, 15)) {
-    const name = p.users
-      ? `${p.users.first_name} ${p.users.last_name}`
-      : "Unknown"
+    const name = p.users ? `${p.users.first_name} ${p.users.last_name}` : "Unknown"
     feedItems.push({
       id: `pay-${p.id}`,
       type: "payment",
@@ -188,10 +178,7 @@ export default async function DashboardPage() {
   // ---- Program popularity (top 5) ----
   const assignmentCounts = new Map<string, number>()
   for (const a of assignments as ProgramAssignment[]) {
-    assignmentCounts.set(
-      a.program_id,
-      (assignmentCounts.get(a.program_id) ?? 0) + 1
-    )
+    assignmentCounts.set(a.program_id, (assignmentCounts.get(a.program_id) ?? 0) + 1)
   }
   const programPopularity = Array.from(assignmentCounts.entries())
     .map(([id, count]) => ({

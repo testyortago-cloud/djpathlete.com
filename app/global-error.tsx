@@ -2,13 +2,7 @@
 
 import { useEffect } from "react"
 
-export default function GlobalError({
-  error,
-  reset,
-}: {
-  error: Error & { digest?: string }
-  reset: () => void
-}) {
+export default function GlobalError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   useEffect(() => {
     console.error("Global error:", error)
   }, [error])
@@ -41,14 +35,7 @@ export default function GlobalError({
               justifyContent: "center",
             }}
           >
-            <svg
-              width="32"
-              height="32"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth={1.5}
-              stroke="#EF4444"
-            >
+            <svg width="32" height="32" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="#EF4444">
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"

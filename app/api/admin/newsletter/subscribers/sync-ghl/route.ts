@@ -13,7 +13,7 @@ export async function POST() {
     if (!isGHLConfigured()) {
       return NextResponse.json(
         { error: "GoHighLevel is not configured. Check your GHL_API_KEY and GHL_LOCATION_ID environment variables." },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
@@ -43,9 +43,6 @@ export async function POST() {
     })
   } catch (error) {
     console.error("[GHL Sync] Error:", error)
-    return NextResponse.json(
-      { error: "Failed to sync from GoHighLevel" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to sync from GoHighLevel" }, { status: 500 })
   }
 }

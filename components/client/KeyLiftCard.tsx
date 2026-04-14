@@ -1,14 +1,6 @@
 "use client"
 
-import {
-  ResponsiveContainer,
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ReferenceLine,
-} from "recharts"
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, ReferenceLine } from "recharts"
 import { Badge } from "@/components/ui/badge"
 import { Trophy, TrendingUp, TrendingDown, Minus, Dumbbell } from "lucide-react"
 import { useWeightUnit } from "@/hooks/use-weight-unit"
@@ -65,15 +57,10 @@ export function KeyLiftCard({
           <div className="size-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
             <Dumbbell className="size-4 text-primary" strokeWidth={1.5} />
           </div>
-          <h3 className="text-sm font-semibold text-foreground truncate">
-            {exerciseName}
-          </h3>
+          <h3 className="text-sm font-semibold text-foreground truncate">{exerciseName}</h3>
         </div>
         {isPR && (
-          <Badge
-            variant="outline"
-            className="shrink-0 gap-1 text-[10px] border-amber-300 bg-amber-50 text-amber-700"
-          >
+          <Badge variant="outline" className="shrink-0 gap-1 text-[10px] border-amber-300 bg-amber-50 text-amber-700">
             <Trophy className="size-3" />
             PR
           </Badge>
@@ -83,15 +70,15 @@ export function KeyLiftCard({
       {/* Big number + trend */}
       <div className="flex items-end gap-3 mb-3 ml-10">
         <div>
-          <p className="text-2xl font-bold text-primary leading-none">
-            {formatWeight(currentBest)}
-          </p>
+          <p className="text-2xl font-bold text-primary leading-none">{formatWeight(currentBest)}</p>
           <p className="text-[10px] text-muted-foreground mt-0.5">Best weight</p>
         </div>
         {trend && trend.pct !== 0 && (
-          <div className={`flex items-center gap-0.5 text-xs font-medium pb-0.5 ${
-            trend.pct > 0 ? "text-success" : trend.pct < 0 ? "text-destructive" : "text-muted-foreground"
-          }`}>
+          <div
+            className={`flex items-center gap-0.5 text-xs font-medium pb-0.5 ${
+              trend.pct > 0 ? "text-success" : trend.pct < 0 ? "text-destructive" : "text-muted-foreground"
+            }`}
+          >
             {trend.pct > 0 ? (
               <TrendingUp className="size-3.5" />
             ) : trend.pct < 0 ? (
@@ -99,7 +86,8 @@ export function KeyLiftCard({
             ) : (
               <Minus className="size-3.5" />
             )}
-            {trend.pct > 0 ? "+" : ""}{trend.pct}%
+            {trend.pct > 0 ? "+" : ""}
+            {trend.pct}%
           </div>
         )}
       </div>
@@ -134,10 +122,7 @@ export function KeyLiftCard({
                 axisLine={false}
                 interval="preserveStartEnd"
               />
-              <YAxis
-                domain={["dataMin - 2", "dataMax + 2"]}
-                hide
-              />
+              <YAxis domain={["dataMin - 2", "dataMax + 2"]} hide />
               <Tooltip
                 formatter={(value) => [`${value} ${unitLabel()}`, "Weight"]}
                 contentStyle={{

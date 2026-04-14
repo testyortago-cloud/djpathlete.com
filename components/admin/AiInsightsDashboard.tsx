@@ -1,24 +1,9 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import {
-  MessageSquare,
-  Star,
-  Target,
-  TrendingUp,
-  ThumbsUp,
-  ThumbsDown,
-  RefreshCw,
-  HelpCircle,
-  X,
-} from "lucide-react"
+import { MessageSquare, Star, Target, TrendingUp, ThumbsUp, ThumbsDown, RefreshCw, HelpCircle, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 
 interface InsightsData {
@@ -57,33 +42,20 @@ interface InsightsData {
 const METRIC_TOOLTIPS = {
   conversations:
     "Number of AI chat sessions across all features (Coach DJP, program generation, etc.). Higher numbers mean clients are actively using AI tools.",
-  feedback:
-    "How many times users rated an AI response. The percentage shows thumbs-up vs total — aim for above 80%.",
+  feedback: "How many times users rated an AI response. The percentage shows thumbs-up vs total — aim for above 80%.",
   predictions:
-    "AI predictions like weight suggestions. \"Resolved\" means it was later compared to what actually happened.",
+    'AI predictions like weight suggestions. "Resolved" means it was later compared to what actually happened.',
   outcomeAccuracy:
     "How often AI predictions were correct once resolved. Higher is better — this directly reflects AI quality.",
-  accuracy:
-    "How factually correct and precise the AI response was.",
-  relevance:
-    "How well the response addressed the specific question or context.",
-  helpfulness:
-    "How useful the response was for making a decision or taking action.",
-  avgWeightAccuracy:
-    "Overall accuracy of weight suggestions compared to actual weights used by the client.",
-  within5:
-    "Percentage of predictions within 5% of the actual weight — the gold standard for accuracy.",
-  within10:
-    "Percentage within 10% of actual weight — still considered a good prediction.",
+  accuracy: "How factually correct and precise the AI response was.",
+  relevance: "How well the response addressed the specific question or context.",
+  helpfulness: "How useful the response was for making a decision or taking action.",
+  avgWeightAccuracy: "Overall accuracy of weight suggestions compared to actual weights used by the client.",
+  within5: "Percentage of predictions within 5% of the actual weight — the gold standard for accuracy.",
+  within10: "Percentage within 10% of actual weight — still considered a good prediction.",
 }
 
-function MetricLabel({
-  children,
-  tooltip,
-}: {
-  children: React.ReactNode
-  tooltip: string
-}) {
+function MetricLabel({ children, tooltip }: { children: React.ReactNode; tooltip: string }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -120,7 +92,7 @@ function StatCard({
         <div
           className={cn(
             "size-8 sm:size-9 rounded-lg flex items-center justify-center",
-            iconColor ?? "bg-primary/10 text-primary"
+            iconColor ?? "bg-primary/10 text-primary",
           )}
         >
           <Icon className="size-4" />
@@ -132,9 +104,7 @@ function StatCard({
         )}
       </div>
       <p className="text-xl sm:text-2xl font-semibold">{value}</p>
-      {subtitle && (
-        <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">{subtitle}</p>
-      )}
+      {subtitle && <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
     </div>
   )
 }
@@ -169,14 +139,9 @@ function RatingBar({
         <span className="text-sm text-muted-foreground w-28">{label}</span>
       )}
       <div className="flex-1 bg-muted rounded-full h-2">
-        <div
-          className="bg-accent rounded-full h-2 transition-all"
-          style={{ width: `${pct}%` }}
-        />
+        <div className="bg-accent rounded-full h-2 transition-all" style={{ width: `${pct}%` }} />
       </div>
-      <span className="text-sm font-medium w-12 text-right">
-        {value ? value.toFixed(1) : "—"}/5
-      </span>
+      <span className="text-sm font-medium w-12 text-right">{value ? value.toFixed(1) : "—"}/5</span>
     </div>
   )
 }
@@ -215,11 +180,7 @@ export function AiInsightsDashboard() {
   }
 
   if (loading && !data) {
-    return (
-      <div className="text-center py-12 text-muted-foreground">
-        Loading AI insights...
-      </div>
-    )
+    return <div className="text-center py-12 text-muted-foreground">Loading AI insights...</div>
   }
 
   if (error && !data) {
@@ -238,9 +199,10 @@ export function AiInsightsDashboard() {
   const thumbsTotal = data.overview.thumbs_up_count + data.overview.thumbs_down_count
   const thumbsUpPct = thumbsTotal > 0 ? Math.round((data.overview.thumbs_up_count / thumbsTotal) * 100) : 0
 
-  const outcomePct = data.outcomes.resolved_count > 0
-    ? Math.round((data.outcomes.positive_count / data.outcomes.resolved_count) * 100)
-    : null
+  const outcomePct =
+    data.outcomes.resolved_count > 0
+      ? Math.round((data.outcomes.positive_count / data.outcomes.resolved_count) * 100)
+      : null
 
   return (
     <TooltipProvider>
@@ -265,7 +227,8 @@ export function AiInsightsDashboard() {
             </div>
             <div className="p-4 space-y-4">
               <p className="text-sm text-muted-foreground">
-                This page measures how well the AI is serving your clients. Use it to track quality over time and catch issues early — a drop in ratings or accuracy could mean a prompt needs tuning.
+                This page measures how well the AI is serving your clients. Use it to track quality over time and catch
+                issues early — a drop in ratings or accuracy could mean a prompt needs tuning.
               </p>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -285,7 +248,7 @@ export function AiInsightsDashboard() {
                   {
                     icon: Target,
                     label: "Predictions & Outcomes",
-                    desc: "Tracks AI predictions (like weight suggestions) against actual results. \"Resolved\" means verified against real data.",
+                    desc: 'Tracks AI predictions (like weight suggestions) against actual results. "Resolved" means verified against real data.',
                     color: "bg-blue-100 text-blue-600",
                   },
                   {
@@ -310,7 +273,9 @@ export function AiInsightsDashboard() {
               <div className="flex items-start gap-2 pt-2 border-t border-border">
                 <ThumbsUp className="size-3.5 text-muted-foreground shrink-0 mt-0.5" />
                 <p className="text-xs text-muted-foreground">
-                  <strong className="text-foreground">Tip:</strong> The weekly feedback trends table at the bottom shows how ratings change over time. A sudden drop may indicate a prompt or model change that needs attention.
+                  <strong className="text-foreground">Tip:</strong> The weekly feedback trends table at the bottom shows
+                  how ratings change over time. A sudden drop may indicate a prompt or model change that needs
+                  attention.
                 </p>
               </div>
             </div>
@@ -330,13 +295,7 @@ export function AiInsightsDashboard() {
           ) : (
             <div />
           )}
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5 shrink-0"
-            onClick={fetchData}
-            disabled={loading}
-          >
+          <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={fetchData} disabled={loading}>
             <RefreshCw className={cn("size-3.5", loading && "animate-spin")} />
             Refresh
           </Button>
@@ -388,7 +347,11 @@ export function AiInsightsDashboard() {
             <div className="p-4 space-y-3">
               <RatingBar label="Accuracy" value={data.overview.avg_accuracy} tooltip={METRIC_TOOLTIPS.accuracy} />
               <RatingBar label="Relevance" value={data.overview.avg_relevance} tooltip={METRIC_TOOLTIPS.relevance} />
-              <RatingBar label="Helpfulness" value={data.overview.avg_helpfulness} tooltip={METRIC_TOOLTIPS.helpfulness} />
+              <RatingBar
+                label="Helpfulness"
+                value={data.overview.avg_helpfulness}
+                tooltip={METRIC_TOOLTIPS.helpfulness}
+              />
 
               {thumbsTotal > 0 && (
                 <div className="flex items-center gap-3 pt-2 border-t border-border">
@@ -412,7 +375,9 @@ export function AiInsightsDashboard() {
           <div className="bg-white rounded-xl border border-border">
             <div className="p-4 border-b border-border">
               <h3 className="font-medium">Weight Prediction Accuracy</h3>
-              <p className="text-xs text-muted-foreground mt-0.5">How close AI weight suggestions are to actual weights used</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                How close AI weight suggestions are to actual weights used
+              </p>
             </div>
             <div className="p-4">
               {data.weight_accuracy.total === 0 ? (
@@ -436,9 +401,7 @@ export function AiInsightsDashboard() {
                           </p>
                         </div>
                       </TooltipTrigger>
-                      <TooltipContent className="max-w-[200px]">
-                        {METRIC_TOOLTIPS.avgWeightAccuracy}
-                      </TooltipContent>
+                      <TooltipContent className="max-w-[200px]">{METRIC_TOOLTIPS.avgWeightAccuracy}</TooltipContent>
                     </Tooltip>
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -454,9 +417,7 @@ export function AiInsightsDashboard() {
                           </p>
                         </div>
                       </TooltipTrigger>
-                      <TooltipContent className="max-w-[200px]">
-                        {METRIC_TOOLTIPS.within5}
-                      </TooltipContent>
+                      <TooltipContent className="max-w-[200px]">{METRIC_TOOLTIPS.within5}</TooltipContent>
                     </Tooltip>
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -472,9 +433,7 @@ export function AiInsightsDashboard() {
                           </p>
                         </div>
                       </TooltipTrigger>
-                      <TooltipContent className="max-w-[200px]">
-                        {METRIC_TOOLTIPS.within10}
-                      </TooltipContent>
+                      <TooltipContent className="max-w-[200px]">{METRIC_TOOLTIPS.within10}</TooltipContent>
                     </Tooltip>
                   </div>
                   <p className="text-xs text-muted-foreground text-center">
@@ -491,7 +450,9 @@ export function AiInsightsDashboard() {
           <div className="bg-white rounded-xl border border-border">
             <div className="p-4 border-b border-border">
               <h3 className="font-medium">Feedback Trends (Weekly)</h3>
-              <p className="text-xs text-muted-foreground mt-0.5">Track how AI quality changes over time — a sudden drop may need attention</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Track how AI quality changes over time — a sudden drop may need attention
+              </p>
             </div>
             <div className="p-4 overflow-x-auto">
               <table className="w-full text-sm">

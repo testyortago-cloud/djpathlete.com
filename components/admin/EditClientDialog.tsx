@@ -72,16 +72,20 @@ export function EditClientDialog({ open, onOpenChange, client }: EditClientDialo
   }
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) tour.close(); onOpenChange(o) }}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) tour.close()
+        onOpenChange(o)
+      }}
+    >
       <DialogContent ref={dialogRef} className="sm:max-w-md">
         <DialogHeader>
           <div className="flex items-center gap-2">
             <DialogTitle>Edit Client</DialogTitle>
             <TourButton onClick={tour.start} />
           </div>
-          <DialogDescription>
-            Update {client.first_name}&apos;s account details.
-          </DialogDescription>
+          <DialogDescription>Update {client.first_name}&apos;s account details.</DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -157,12 +161,7 @@ export function EditClientDialog({ open, onOpenChange, client }: EditClientDialo
           </div>
 
           <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={isSubmitting}
-            >
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
               Cancel
             </Button>
             <Button type="submit" disabled={isSubmitting}>

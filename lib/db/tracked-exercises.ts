@@ -54,17 +54,11 @@ export async function createTrackedExercise(data: {
 
 export async function deleteTrackedExercise(id: string) {
   const supabase = getClient()
-  const { error } = await supabase
-    .from("tracked_exercises")
-    .delete()
-    .eq("id", id)
+  const { error } = await supabase.from("tracked_exercises").delete().eq("id", id)
   if (error) throw error
 }
 
-export async function isExerciseTracked(
-  assignmentId: string,
-  exerciseId: string
-): Promise<boolean> {
+export async function isExerciseTracked(assignmentId: string, exerciseId: string): Promise<boolean> {
   const supabase = getClient()
   const { count, error } = await supabase
     .from("tracked_exercises")

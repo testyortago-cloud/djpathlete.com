@@ -3,10 +3,7 @@ import { auth } from "@/lib/auth"
 import { getBlogPostById, updateBlogPost } from "@/lib/db/blog-posts"
 import { sendBlogNewsletterToAll } from "@/lib/email"
 
-export async function POST(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
     if (!session?.user?.id || session.user.role !== "admin") {
@@ -22,8 +19,7 @@ export async function POST(
     })
 
     // Send newsletter to all subscribers (fire-and-forget)
-    const baseUrl =
-      process.env.NEXT_PUBLIC_APP_URL ?? "https://djpathlete.com"
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://djpathlete.com"
 
     sendBlogNewsletterToAll({
       title: updated.title,
@@ -31,16 +27,11 @@ export async function POST(
       url: `${baseUrl}/blog/${updated.slug}`,
       category: updated.category,
       coverImageUrl: updated.cover_image_url,
-    }).catch((err) =>
-      console.error("[Blog] Newsletter send failed:", err)
-    )
+    }).catch((err) => console.error("[Blog] Newsletter send failed:", err))
 
     return NextResponse.json(updated)
   } catch (error) {
     console.error("Blog publish error:", error)
-    return NextResponse.json(
-      { error: "Failed to publish post" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to publish post" }, { status: 500 })
   }
 }

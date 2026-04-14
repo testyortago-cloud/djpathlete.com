@@ -2,10 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { deleteRelationship } from "@/lib/db/exercise-relationships"
 
-export async function DELETE(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
     if (!session?.user?.id) {
@@ -20,9 +17,6 @@ export async function DELETE(
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("Exercise relationship DELETE error:", error)
-    return NextResponse.json(
-      { error: "Failed to delete relationship" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to delete relationship" }, { status: 500 })
   }
 }

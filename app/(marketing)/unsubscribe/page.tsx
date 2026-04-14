@@ -34,18 +34,14 @@ export default function UnsubscribePage() {
       <div className="max-w-md w-full text-center">
         {done ? (
           <>
-            <h1 className="text-2xl font-heading font-semibold text-primary mb-4">
-              Unsubscribed
-            </h1>
+            <h1 className="text-2xl font-heading font-semibold text-primary mb-4">Unsubscribed</h1>
             <p className="text-muted-foreground">
               You&apos;ve been removed from our newsletter. You won&apos;t receive any more blog updates.
             </p>
           </>
         ) : (
           <>
-            <h1 className="text-2xl font-heading font-semibold text-primary mb-4">
-              Unsubscribe from Newsletter
-            </h1>
+            <h1 className="text-2xl font-heading font-semibold text-primary mb-4">Unsubscribe from Newsletter</h1>
             <p className="text-muted-foreground mb-8">
               Enter your email to stop receiving blog updates from DJP Athlete.
             </p>

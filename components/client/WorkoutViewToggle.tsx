@@ -14,10 +14,7 @@ interface WorkoutViewToggleProps {
   calendarDays: WorkoutCalendarDay[]
 }
 
-export function WorkoutViewToggle({
-  tabsProps,
-  calendarDays,
-}: WorkoutViewToggleProps) {
+export function WorkoutViewToggle({ tabsProps, calendarDays }: WorkoutViewToggleProps) {
   const [view, setView] = useState<"list" | "calendar">("list")
 
   return (
@@ -27,9 +24,7 @@ export function WorkoutViewToggle({
           onClick={() => setView("list")}
           className={cn(
             "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
-            view === "list"
-              ? "bg-primary text-primary-foreground"
-              : "text-muted-foreground hover:text-foreground"
+            view === "list" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
           )}
         >
           <List className="size-3.5" />
@@ -39,9 +34,7 @@ export function WorkoutViewToggle({
           onClick={() => setView("calendar")}
           className={cn(
             "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
-            view === "calendar"
-              ? "bg-primary text-primary-foreground"
-              : "text-muted-foreground hover:text-foreground"
+            view === "calendar" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
           )}
         >
           <CalendarDays className="size-3.5" />

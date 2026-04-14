@@ -1,19 +1,13 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { z } from "zod"
-import {
-  getPerformanceAssessmentById,
-  updateAssessmentExercise,
-} from "@/lib/db/performance-assessments"
+import { getPerformanceAssessmentById, updateAssessmentExercise } from "@/lib/db/performance-assessments"
 
 const updateSchema = z.object({
   video_path: z.string().nullable().optional(),
 })
 
-export async function PATCH(
-  request: Request,
-  { params }: { params: Promise<{ id: string; exerciseId: string }> }
-) {
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string; exerciseId: string }> }) {
   try {
     const session = await auth()
     if (!session?.user?.id) {
@@ -29,28 +23,19 @@ export async function PATCH(
     }
 
     if (assessment.status !== "in_progress") {
-      return NextResponse.json(
-        { error: "Assessment is not accepting uploads" },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Assessment is not accepting uploads" }, { status: 400 })
     }
 
     const body = await request.json()
     const parsed = updateSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Invalid data", details: parsed.error.flatten() },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Invalid data", details: parsed.error.flatten() }, { status: 400 })
     }
 
     const updated = await updateAssessmentExercise(exerciseId, parsed.data)
     return NextResponse.json(updated)
   } catch (error) {
     console.error("Client assessment exercise PATCH error:", error)
-    return NextResponse.json(
-      { error: "Failed to update exercise" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to update exercise" }, { status: 500 })
   }
 }

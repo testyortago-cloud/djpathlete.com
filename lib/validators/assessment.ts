@@ -1,28 +1,12 @@
 import { z } from "zod"
 
-export const ASSESSMENT_SECTIONS = [
-  "movement_screen",
-  "background",
-  "context",
-  "preferences",
-] as const
+export const ASSESSMENT_SECTIONS = ["movement_screen", "background", "context", "preferences"] as const
 
-export const ASSESSMENT_QUESTION_TYPES = [
-  "yes_no",
-  "single_select",
-  "multi_select",
-  "number",
-  "text",
-] as const
+export const ASSESSMENT_QUESTION_TYPES = ["yes_no", "single_select", "multi_select", "number", "text"] as const
 
 export const ASSESSMENT_TYPES = ["initial", "reassessment"] as const
 
-export const ABILITY_LEVELS = [
-  "beginner",
-  "intermediate",
-  "advanced",
-  "elite",
-] as const
+export const ABILITY_LEVELS = ["beginner", "intermediate", "advanced", "elite"] as const
 
 export const SECTION_LABELS: Record<string, string> = {
   movement_screen: "Movement Screen",
@@ -69,7 +53,7 @@ export const assessmentQuestionSchema = z.object({
       z.object({
         value: z.string().min(1, "Option value is required"),
         label: z.string().min(1, "Option label is required"),
-      })
+      }),
     )
     .nullable()
     .optional()
@@ -121,7 +105,7 @@ export const assessmentReorderSchema = z.object({
       z.object({
         id: z.string().uuid(),
         order_index: z.number().int().min(0),
-      })
+      }),
     )
     .min(1, "At least one update is required"),
 })

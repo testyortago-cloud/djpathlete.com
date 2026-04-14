@@ -1,25 +1,17 @@
 "use client"
 
 import { DollarSign, TrendingUp, Hash, CreditCard } from "lucide-react"
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts"
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 import type { RevenueMetrics } from "@/types/analytics"
 import { StatCard } from "./StatCard"
 
 // Recharts needs plain hex — CSS vars use oklch which Recharts can't resolve
 const CHART = {
-  green: "#22c55e",      // revenue bars — a confident green
+  green: "#22c55e", // revenue bars — a confident green
   greenLight: "#bbf7d0", // revenue gradient
-  grid: "#e5e7eb",       // subtle grid lines
-  tick: "#6b7280",       // axis labels
-  border: "#e5e7eb",     // tooltip border
+  grid: "#e5e7eb", // subtle grid lines
+  tick: "#6b7280", // axis labels
+  border: "#e5e7eb", // tooltip border
 } as const
 
 const STATUS_COLORS: Record<string, string> = {
@@ -82,9 +74,7 @@ export function RevenueTab({ data }: RevenueTabProps) {
       <div className="bg-white rounded-xl border border-border shadow-sm mb-8">
         <div className="flex items-center gap-2 p-4 border-b border-border">
           <DollarSign className="size-4 text-primary" />
-          <h2 className="text-lg font-semibold text-primary">
-            Monthly Revenue
-          </h2>
+          <h2 className="text-lg font-semibold text-primary">Monthly Revenue</h2>
         </div>
         <div className="p-4">
           {chartData.length > 0 ? (
@@ -97,12 +87,7 @@ export function RevenueTab({ data }: RevenueTabProps) {
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} vertical={false} />
-                <XAxis
-                  dataKey="name"
-                  tick={{ fontSize: 12, fill: CHART.tick }}
-                  axisLine={false}
-                  tickLine={false}
-                />
+                <XAxis dataKey="name" tick={{ fontSize: 12, fill: CHART.tick }} axisLine={false} tickLine={false} />
                 <YAxis
                   tick={{ fontSize: 12, fill: CHART.tick }}
                   tickFormatter={(v) => `$${v}`}
@@ -136,15 +121,11 @@ export function RevenueTab({ data }: RevenueTabProps) {
         <div className="bg-white rounded-xl border border-border shadow-sm">
           <div className="flex items-center gap-2 p-4 border-b border-border">
             <CreditCard className="size-4 text-primary" />
-            <h2 className="text-lg font-semibold text-primary">
-              Payment Status
-            </h2>
+            <h2 className="text-lg font-semibold text-primary">Payment Status</h2>
           </div>
           <div className="p-4">
             {data.revenueByStatus.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                No payments in this period.
-              </p>
+              <p className="text-sm text-muted-foreground text-center py-4">No payments in this period.</p>
             ) : (
               <div className="flex flex-wrap gap-3">
                 {data.revenueByStatus.map((s) => (
@@ -154,9 +135,7 @@ export function RevenueTab({ data }: RevenueTabProps) {
                       STATUS_COLORS[s.status] ?? "bg-muted text-muted-foreground"
                     }`}
                   >
-                    <span className="text-sm font-medium capitalize">
-                      {s.status}
-                    </span>
+                    <span className="text-sm font-medium capitalize">{s.status}</span>
                     <span className="text-lg font-semibold">{s.count}</span>
                   </div>
                 ))}
@@ -169,28 +148,18 @@ export function RevenueTab({ data }: RevenueTabProps) {
         <div className="bg-white rounded-xl border border-border shadow-sm">
           <div className="flex items-center gap-2 p-4 border-b border-border">
             <DollarSign className="size-4 text-primary" />
-            <h2 className="text-lg font-semibold text-primary">
-              Top Paying Clients
-            </h2>
+            <h2 className="text-lg font-semibold text-primary">Top Paying Clients</h2>
           </div>
           {data.topPayingClients.length === 0 ? (
-            <div className="p-8 text-center text-sm text-muted-foreground">
-              No client payments in this period.
-            </div>
+            <div className="p-8 text-center text-sm text-muted-foreground">No client payments in this period.</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-surface/50">
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                      Client
-                    </th>
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                      Total
-                    </th>
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                      Txns
-                    </th>
+                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Client</th>
+                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Total</th>
+                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Txns</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -201,16 +170,10 @@ export function RevenueTab({ data }: RevenueTabProps) {
                     >
                       <td className="px-4 py-3">
                         <p className="font-medium text-foreground">{c.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {c.email}
-                        </p>
+                        <p className="text-xs text-muted-foreground">{c.email}</p>
                       </td>
-                      <td className="px-4 py-3 font-medium text-foreground">
-                        {formatCents(c.total)}
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {c.count}
-                      </td>
+                      <td className="px-4 py-3 font-medium text-foreground">{formatCents(c.total)}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{c.count}</td>
                     </tr>
                   ))}
                 </tbody>

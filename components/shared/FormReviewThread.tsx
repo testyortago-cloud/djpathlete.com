@@ -86,20 +86,13 @@ export function FormReviewThread({
         )}
         {messages.map((msg) => {
           const isOwn = msg.user_id === currentUserId
-          const name = msg.users
-            ? `${msg.users.first_name} ${msg.users.last_name}`
-            : "Unknown"
+          const name = msg.users ? `${msg.users.first_name} ${msg.users.last_name}` : "Unknown"
           const isCoach = msg.users?.role === "admin"
 
           return (
-            <div
-              key={msg.id}
-              className={cn("flex flex-col gap-1", isOwn ? "items-end" : "items-start")}
-            >
+            <div key={msg.id} className={cn("flex flex-col gap-1", isOwn ? "items-end" : "items-start")}>
               <div className="flex items-center gap-1.5">
-                <span className="text-xs font-medium text-muted-foreground">
-                  {name}
-                </span>
+                <span className="text-xs font-medium text-muted-foreground">{name}</span>
                 {isCoach && (
                   <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground font-medium">
                     Coach
@@ -109,16 +102,12 @@ export function FormReviewThread({
               <div
                 className={cn(
                   "max-w-[80%] rounded-xl px-4 py-2.5 text-sm leading-relaxed",
-                  isOwn
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-white border border-border text-foreground"
+                  isOwn ? "bg-primary text-primary-foreground" : "bg-white border border-border text-foreground",
                 )}
               >
                 {msg.message}
               </div>
-              <span className="text-[10px] text-muted-foreground">
-                {formatTime(msg.created_at)}
-              </span>
+              <span className="text-[10px] text-muted-foreground">{formatTime(msg.created_at)}</span>
             </div>
           )
         })}
@@ -138,12 +127,7 @@ export function FormReviewThread({
             }
           }}
         />
-        <Button
-          size="icon"
-          onClick={handleSend}
-          disabled={!newMessage.trim() || sending}
-          className="shrink-0"
-        >
+        <Button size="icon" onClick={handleSend} disabled={!newMessage.trim() || sending} className="shrink-0">
           <Send className="size-4" />
         </Button>
       </div>

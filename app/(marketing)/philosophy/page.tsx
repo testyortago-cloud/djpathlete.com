@@ -1,13 +1,5 @@
 import type { Metadata } from "next"
-import {
-  Search,
-  ClipboardList,
-  Activity,
-  Video,
-  TrendingUp,
-  ArrowRight,
-  Quote,
-} from "lucide-react"
+import { Search, ClipboardList, Activity, Video, TrendingUp, ArrowRight, Quote } from "lucide-react"
 import Link from "next/link"
 import { JsonLd } from "@/components/shared/JsonLd"
 import { FadeIn } from "@/components/shared/FadeIn"
@@ -98,17 +90,14 @@ export default function PhilosophyPage() {
           <FadeIn>
             <div className="flex items-center justify-center gap-3 mb-4">
               <div className="h-px w-8 bg-accent" />
-              <p className="text-sm font-medium text-accent uppercase tracking-widest">
-                Coaching Philosophy
-              </p>
+              <p className="text-sm font-medium text-accent uppercase tracking-widest">Coaching Philosophy</p>
               <div className="h-px w-8 bg-accent" />
             </div>
             <h1 className="text-3xl sm:text-4xl lg:text-5xl font-heading font-semibold text-primary tracking-tight mb-6">
               The Grey Zone
             </h1>
             <p className="text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-              Most training lives in black and white. Performance happens in the
-              grey.
+              Most training lives in black and white. Performance happens in the grey.
             </p>
           </FadeIn>
         </div>
@@ -120,9 +109,7 @@ export default function PhilosophyPage() {
           <FadeIn>
             <div className="flex items-center gap-3 mb-4">
               <div className="h-px w-12 bg-accent" />
-              <p className="text-sm font-medium text-accent uppercase tracking-widest">
-                The Problem
-              </p>
+              <p className="text-sm font-medium text-accent uppercase tracking-widest">The Problem</p>
             </div>
             <h2 className="text-2xl sm:text-3xl font-heading font-semibold text-primary tracking-tight mb-6">
               Training in Extremes Does Not Work.
@@ -132,19 +119,17 @@ export default function PhilosophyPage() {
           <FadeIn delay={0.1}>
             <div className="max-w-3xl space-y-5">
               <p className="text-lg text-muted-foreground leading-relaxed">
-                Most training systems operate in extremes — all-out effort or
-                complete rest, rigid protocols or no structure at all. They offer
-                two speeds: maximum intensity or nothing.
+                Most training systems operate in extremes — all-out effort or complete rest, rigid protocols or no
+                structure at all. They offer two speeds: maximum intensity or nothing.
               </p>
               <p className="text-lg text-muted-foreground leading-relaxed">
-                But athletes exist in a complex space between these extremes.
-                Context, readiness, and adaptation interact in ways that a
-                spreadsheet cannot predict. Fatigue is not always visible. Progress
-                is not always linear. Competition demands are never generic.
+                But athletes exist in a complex space between these extremes. Context, readiness, and adaptation
+                interact in ways that a spreadsheet cannot predict. Fatigue is not always visible. Progress is not
+                always linear. Competition demands are never generic.
               </p>
               <p className="text-lg text-foreground font-medium leading-relaxed">
-                Generic programming ignores this complexity. And athletes pay the
-                price — in injuries, plateaus, and unrealized potential.
+                Generic programming ignores this complexity. And athletes pay the price — in injuries, plateaus, and
+                unrealized potential.
               </p>
             </div>
           </FadeIn>
@@ -159,24 +144,20 @@ export default function PhilosophyPage() {
               <div>
                 <div className="flex items-center gap-3 mb-4">
                   <div className="h-px w-12 bg-accent" />
-                  <p className="text-sm font-medium text-accent uppercase tracking-widest">
-                    The Framework
-                  </p>
+                  <p className="text-sm font-medium text-accent uppercase tracking-widest">The Framework</p>
                 </div>
                 <h2 className="text-2xl sm:text-3xl font-heading font-semibold text-primary tracking-tight mb-6">
                   The Space Between Protocol and Performance
                 </h2>
                 <div className="space-y-5">
                   <p className="text-lg text-muted-foreground leading-relaxed">
-                    The Grey Zone is the space between textbook protocols and
-                    real-world performance demands. It is where adaptation actually
-                    happens — not in the controlled environment of theory, but in
-                    the unpredictable reality of sport.
+                    The Grey Zone is the space between textbook protocols and real-world performance demands. It is
+                    where adaptation actually happens — not in the controlled environment of theory, but in the
+                    unpredictable reality of sport.
                   </p>
                   <p className="text-lg text-muted-foreground leading-relaxed">
-                    Navigating it requires a coach who can read context, adjust in
-                    real time, and make informed decisions based on what the athlete
-                    needs today — not what the plan said last week.
+                    Navigating it requires a coach who can read context, adjust in real time, and make informed
+                    decisions based on what the athlete needs today — not what the plan said last week.
                   </p>
                 </div>
               </div>
@@ -188,9 +169,7 @@ export default function PhilosophyPage() {
                 <blockquote className="text-xl sm:text-2xl font-heading font-semibold text-primary leading-snug mb-4">
                   I think in systems, not exercises.
                 </blockquote>
-                <p className="text-sm text-muted-foreground">
-                  — Darren J Paul
-                </p>
+                <p className="text-sm text-muted-foreground">— Darren J Paul</p>
                 <div className="absolute -bottom-3 -right-3 w-24 h-24 bg-accent/20 rounded-2xl -z-10" />
               </div>
             </FadeIn>
@@ -205,17 +184,14 @@ export default function PhilosophyPage() {
             <div className="text-center mb-12">
               <div className="flex items-center justify-center gap-3 mb-4">
                 <div className="h-px w-8 bg-accent" />
-                <p className="text-sm font-medium text-accent uppercase tracking-widest">
-                  The System
-                </p>
+                <p className="text-sm font-medium text-accent uppercase tracking-widest">The System</p>
                 <div className="h-px w-8 bg-accent" />
               </div>
               <h2 className="text-2xl sm:text-3xl font-heading font-semibold text-primary tracking-tight mb-4">
                 The Five Pillar Framework
               </h2>
               <p className="text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-                Five interconnected pillars that drive every decision, every
-                program, and every athlete interaction.
+                Five interconnected pillars that drive every decision, every program, and every athlete interaction.
               </p>
             </div>
           </FadeIn>
@@ -227,18 +203,12 @@ export default function PhilosophyPage() {
                 <FadeIn key={pillar.number} delay={i * 0.08}>
                   <div className="group relative overflow-hidden bg-white rounded-2xl border border-border p-6 hover:shadow-md transition-shadow h-full">
                     <div className="absolute top-0 left-0 right-0 h-1 bg-accent scale-x-0 group-hover:scale-x-100 transition-transform duration-300 origin-left" />
-                    <div className="text-3xl font-heading font-bold text-accent/30 mb-3">
-                      {pillar.number}
-                    </div>
+                    <div className="text-3xl font-heading font-bold text-accent/30 mb-3">{pillar.number}</div>
                     <div className="flex size-12 items-center justify-center rounded-xl bg-primary/10 mb-4">
                       <Icon className="size-6 text-primary" />
                     </div>
-                    <h3 className="text-base font-semibold text-primary mb-2">
-                      {pillar.title}
-                    </h3>
-                    <p className="text-sm text-muted-foreground leading-relaxed">
-                      {pillar.description}
-                    </p>
+                    <h3 className="text-base font-semibold text-primary mb-2">{pillar.title}</h3>
+                    <p className="text-sm text-muted-foreground leading-relaxed">{pillar.description}</p>
                   </div>
                 </FadeIn>
               )
@@ -254,9 +224,7 @@ export default function PhilosophyPage() {
             <div className="text-center mb-12">
               <div className="flex items-center justify-center gap-3 mb-4">
                 <div className="h-px w-8 bg-accent" />
-                <p className="text-sm font-medium text-accent uppercase tracking-widest">
-                  The Difference
-                </p>
+                <p className="text-sm font-medium text-accent uppercase tracking-widest">The Difference</p>
                 <div className="h-px w-8 bg-accent" />
               </div>
               <h2 className="text-2xl sm:text-3xl font-heading font-semibold text-primary tracking-tight mb-8">
@@ -267,18 +235,9 @@ export default function PhilosophyPage() {
 
           <FadeIn delay={0.1}>
             <div className="grid sm:grid-cols-3 gap-6 mb-12">
-              {[
-                "Precision beats volume.",
-                "Capacity beats fatigue.",
-                "Systems beat workouts.",
-              ].map((statement) => (
-                <div
-                  key={statement}
-                  className="text-center p-6 rounded-2xl bg-surface border border-border"
-                >
-                  <p className="text-lg font-heading font-semibold text-primary">
-                    {statement}
-                  </p>
+              {["Precision beats volume.", "Capacity beats fatigue.", "Systems beat workouts."].map((statement) => (
+                <div key={statement} className="text-center p-6 rounded-2xl bg-surface border border-border">
+                  <p className="text-lg font-heading font-semibold text-primary">{statement}</p>
                 </div>
               ))}
             </div>
@@ -287,10 +246,8 @@ export default function PhilosophyPage() {
           <FadeIn delay={0.2}>
             <div className="max-w-3xl mx-auto text-center">
               <p className="text-lg text-muted-foreground leading-relaxed">
-                This is not about doing more. It is about doing what matters,
-                when it matters, for the athlete in front of you. The Grey Zone
-                is where good coaching lives — and it is where athletes become
-                their best.
+                This is not about doing more. It is about doing what matters, when it matters, for the athlete in front
+                of you. The Grey Zone is where good coaching lives — and it is where athletes become their best.
               </p>
             </div>
           </FadeIn>
@@ -303,17 +260,15 @@ export default function PhilosophyPage() {
           <FadeIn>
             <div className="flex items-center justify-center gap-3 mb-4">
               <div className="h-px w-8 bg-accent" />
-              <p className="text-sm font-medium text-accent uppercase tracking-widest">
-                Get Started
-              </p>
+              <p className="text-sm font-medium text-accent uppercase tracking-widest">Get Started</p>
               <div className="h-px w-8 bg-accent" />
             </div>
             <h2 className="text-2xl sm:text-3xl font-heading font-semibold text-primary tracking-tight mb-4">
               Ready to train in the Grey Zone?
             </h2>
             <p className="text-lg text-muted-foreground mb-8">
-              Book a free consultation and find out how a systems-based approach
-              can change the way you train, recover, and perform.
+              Book a free consultation and find out how a systems-based approach can change the way you train, recover,
+              and perform.
             </p>
             <Link
               href="/contact"

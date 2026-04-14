@@ -31,9 +31,7 @@ export function EmailVerificationBanner({ userId }: EmailVerificationBannerProps
 
       toast.success("Verification email sent!")
     } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Failed to send verification email"
-      )
+      toast.error(err instanceof Error ? err.message : "Failed to send verification email")
     } finally {
       setIsSending(false)
     }

@@ -1,31 +1,14 @@
 "use client"
 
-import {
-  Dumbbell,
-  Trophy,
-  UserCheck,
-  Gauge,
-  Flame,
-  Medal,
-  Target,
-  Star,
-} from "lucide-react"
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts"
+import { Dumbbell, Trophy, UserCheck, Gauge, Flame, Medal, Target, Star } from "lucide-react"
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 import type { EngagementMetrics } from "@/types/analytics"
 import { StatCard } from "./StatCard"
 import { HorizontalBar } from "./HorizontalBar"
 
 // Recharts needs plain hex — CSS vars use oklch which Recharts can't resolve
 const CHART = {
-  indigo: "#6366f1",     // workout activity — vibrant purple-blue
+  indigo: "#6366f1", // workout activity — vibrant purple-blue
   indigoLight: "#6366f1",
   grid: "#e5e7eb",
   tick: "#6b7280",
@@ -90,9 +73,7 @@ export function EngagementTab({ data }: EngagementTabProps) {
       <div className="bg-white rounded-xl border border-border shadow-sm mb-8">
         <div className="flex items-center gap-2 p-4 border-b border-border">
           <Dumbbell className="size-4 text-primary" />
-          <h2 className="text-lg font-semibold text-primary">
-            Workout Activity
-          </h2>
+          <h2 className="text-lg font-semibold text-primary">Workout Activity</h2>
         </div>
         <div className="p-4">
           {chartData.length > 0 ? (
@@ -105,17 +86,8 @@ export function EngagementTab({ data }: EngagementTabProps) {
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} vertical={false} />
-                <XAxis
-                  dataKey="name"
-                  tick={{ fontSize: 12, fill: CHART.tick }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis
-                  tick={{ fontSize: 12, fill: CHART.tick }}
-                  axisLine={false}
-                  tickLine={false}
-                />
+                <XAxis dataKey="name" tick={{ fontSize: 12, fill: CHART.tick }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 12, fill: CHART.tick }} axisLine={false} tickLine={false} />
                 <Tooltip
                   contentStyle={{
                     borderRadius: "8px",
@@ -148,9 +120,7 @@ export function EngagementTab({ data }: EngagementTabProps) {
         <div className="bg-white rounded-xl border border-border shadow-sm">
           <div className="flex items-center gap-2 p-4 border-b border-border">
             <Dumbbell className="size-4 text-primary" />
-            <h2 className="text-sm font-semibold text-primary">
-              Top Exercises
-            </h2>
+            <h2 className="text-sm font-semibold text-primary">Top Exercises</h2>
           </div>
           <HorizontalBar
             items={data.topExercises}
@@ -163,25 +133,17 @@ export function EngagementTab({ data }: EngagementTabProps) {
         <div className="bg-white rounded-xl border border-border shadow-sm">
           <div className="flex items-center gap-2 p-4 border-b border-border">
             <Star className="size-4 text-primary" />
-            <h2 className="text-sm font-semibold text-primary">
-              Most Active Clients
-            </h2>
+            <h2 className="text-sm font-semibold text-primary">Most Active Clients</h2>
           </div>
           {data.mostActiveClients.length === 0 ? (
-            <div className="p-8 text-center text-sm text-muted-foreground">
-              No workout data yet.
-            </div>
+            <div className="p-8 text-center text-sm text-muted-foreground">No workout data yet.</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-surface/50">
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                      Client
-                    </th>
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                      Workouts
-                    </th>
+                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Client</th>
+                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Workouts</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -190,12 +152,8 @@ export function EngagementTab({ data }: EngagementTabProps) {
                       key={i}
                       className="border-b border-border last:border-b-0 hover:bg-surface/30 transition-colors"
                     >
-                      <td className="px-4 py-3 font-medium text-foreground">
-                        {c.name}
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {c.count}
-                      </td>
+                      <td className="px-4 py-3 font-medium text-foreground">{c.name}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{c.count}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -211,35 +169,22 @@ export function EngagementTab({ data }: EngagementTabProps) {
         <div className="bg-white rounded-xl border border-border shadow-sm">
           <div className="flex items-center gap-2 p-4 border-b border-border">
             <Trophy className="size-4 text-primary" />
-            <h2 className="text-sm font-semibold text-primary">
-              Achievements
-            </h2>
+            <h2 className="text-sm font-semibold text-primary">Achievements</h2>
           </div>
           <div className="p-4">
             {data.achievementsByType.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                No achievements in this period.
-              </p>
+              <p className="text-sm text-muted-foreground text-center py-4">No achievements in this period.</p>
             ) : (
               <div className="grid grid-cols-2 gap-3">
                 {data.achievementsByType.map((a) => (
-                  <div
-                    key={a.type}
-                    className={`rounded-lg p-3 ${
-                      ACHIEVEMENT_COLORS[a.type] ?? "bg-muted"
-                    }`}
-                  >
+                  <div key={a.type} className={`rounded-lg p-3 ${ACHIEVEMENT_COLORS[a.type] ?? "bg-muted"}`}>
                     <div className="flex items-center gap-2 mb-1">
-                      {ACHIEVEMENT_ICONS[a.type] ?? (
-                        <Medal className="size-4 text-muted-foreground" />
-                      )}
+                      {ACHIEVEMENT_ICONS[a.type] ?? <Medal className="size-4 text-muted-foreground" />}
                       <span className="text-xs font-medium capitalize text-muted-foreground">
                         {a.type === "pr" ? "PRs" : `${a.type}s`}
                       </span>
                     </div>
-                    <p className="text-2xl font-semibold text-foreground">
-                      {a.count}
-                    </p>
+                    <p className="text-2xl font-semibold text-foreground">{a.count}</p>
                   </div>
                 ))}
               </div>
@@ -251,25 +196,17 @@ export function EngagementTab({ data }: EngagementTabProps) {
         <div className="bg-white rounded-xl border border-border shadow-sm">
           <div className="flex items-center gap-2 p-4 border-b border-border">
             <Flame className="size-4 text-destructive" />
-            <h2 className="text-sm font-semibold text-primary">
-              Streak Leaders
-            </h2>
+            <h2 className="text-sm font-semibold text-primary">Streak Leaders</h2>
           </div>
           {data.streakLeaders.length === 0 ? (
-            <div className="p-8 text-center text-sm text-muted-foreground">
-              No active streaks.
-            </div>
+            <div className="p-8 text-center text-sm text-muted-foreground">No active streaks.</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-surface/50">
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                      Client
-                    </th>
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                      Streak
-                    </th>
+                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Client</th>
+                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Streak</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -278,9 +215,7 @@ export function EngagementTab({ data }: EngagementTabProps) {
                       key={i}
                       className="border-b border-border last:border-b-0 hover:bg-surface/30 transition-colors"
                     >
-                      <td className="px-4 py-3 font-medium text-foreground">
-                        {s.name}
-                      </td>
+                      <td className="px-4 py-3 font-medium text-foreground">{s.name}</td>
                       <td className="px-4 py-3">
                         <span className="inline-flex items-center gap-1 text-destructive font-medium">
                           <Flame className="size-3" />

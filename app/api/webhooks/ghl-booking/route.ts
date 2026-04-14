@@ -43,10 +43,7 @@ export async function POST(request: Request) {
     if (secret) {
       const provided = request.headers.get("x-webhook-secret")
       if (provided !== secret) {
-        return NextResponse.json(
-          { error: "Invalid webhook secret" },
-          { status: 401 }
-        )
+        return NextResponse.json({ error: "Invalid webhook secret" }, { status: 401 })
       }
     }
 
@@ -59,14 +56,10 @@ export async function POST(request: Request) {
         raw.contactName ||
         raw.full_name ||
         raw.fullName ||
-        [raw.first_name || raw.firstName, raw.last_name || raw.lastName]
-          .filter(Boolean)
-          .join(" ") ||
+        [raw.first_name || raw.firstName, raw.last_name || raw.lastName].filter(Boolean).join(" ") ||
         "Unknown",
-      contact_email:
-        raw.contact_email || raw.contactEmail || raw.email || "",
-      contact_phone:
-        raw.contact_phone ?? raw.contactPhone ?? raw.phone ?? null,
+      contact_email: raw.contact_email || raw.contactEmail || raw.email || "",
+      contact_phone: raw.contact_phone ?? raw.contactPhone ?? raw.phone ?? null,
       booking_date:
         raw.booking_date ||
         raw.bookingDate ||
@@ -77,22 +70,12 @@ export async function POST(request: Request) {
         raw.appointmentStartTime ||
         new Date().toISOString(),
       duration_minutes:
-        raw.duration_minutes ??
-        raw.durationMinutes ??
-        raw.appointment_duration ??
-        raw.appointmentDuration ??
-        30,
-      status:
-        raw.status ||
-        raw.appointmentStatus ||
-        raw.appointment_status ||
-        "scheduled",
-      ghl_contact_id:
-        raw.ghl_contact_id ?? raw.ghlContactId ?? raw.contactId ?? raw.contact_id ?? null,
+        raw.duration_minutes ?? raw.durationMinutes ?? raw.appointment_duration ?? raw.appointmentDuration ?? 30,
+      status: raw.status || raw.appointmentStatus || raw.appointment_status || "scheduled",
+      ghl_contact_id: raw.ghl_contact_id ?? raw.ghlContactId ?? raw.contactId ?? raw.contact_id ?? null,
       ghl_appointment_id:
         raw.ghl_appointment_id ?? raw.ghlAppointmentId ?? raw.appointmentId ?? raw.appointment_id ?? raw.id ?? null,
-      notes:
-        raw.notes ?? raw.appointmentNotes ?? raw.appointment_notes ?? null,
+      notes: raw.notes ?? raw.appointmentNotes ?? raw.appointment_notes ?? null,
     }
 
     // Map GHL statuses to our schema
@@ -115,7 +98,7 @@ export async function POST(request: Request) {
       console.error("[ghl-booking-webhook] Validation failed:", result.error.flatten())
       return NextResponse.json(
         { error: "Invalid booking data", details: result.error.flatten().fieldErrors },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
@@ -163,10 +146,7 @@ export async function POST(request: Request) {
     if (error) throw error
 
     // Notify admins
-    const { data: admins } = await supabase
-      .from("users")
-      .select("id")
-      .eq("role", "admin")
+    const { data: admins } = await supabase.from("users").select("id").eq("role", "admin")
 
     if (admins && admins.length > 0) {
       const bookingDate = new Date(data.booking_date).toLocaleString("en-US", {
@@ -189,9 +169,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, action: "created" }, { status: 201 })
   } catch (err) {
     console.error("[ghl-booking-webhook] Error:", err)
-    return NextResponse.json(
-      { error: "Failed to process booking webhook" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to process booking webhook" }, { status: 500 })
   }
 }

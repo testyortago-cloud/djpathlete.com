@@ -109,14 +109,10 @@ function AlternativeExercisesReadonly({ exerciseId }: { exerciseId: string }) {
 
   const fetchAlternatives = useCallback(async () => {
     try {
-      const response = await fetch(
-        `/api/admin/exercise-relationships?exerciseId=${exerciseId}`
-      )
+      const response = await fetch(`/api/admin/exercise-relationships?exerciseId=${exerciseId}`)
       if (!response.ok) throw new Error("Failed to fetch")
       const data = await response.json()
-      setAlternatives(
-        data.filter((r: { relationship_type: string }) => r.relationship_type === "alternative")
-      )
+      setAlternatives(data.filter((r: { relationship_type: string }) => r.relationship_type === "alternative"))
     } catch {
       // Silently fail — informational only
     } finally {
@@ -135,9 +131,7 @@ function AlternativeExercisesReadonly({ exerciseId }: { exerciseId: string }) {
     <div className="rounded-lg border border-border bg-surface/30 px-3 py-2.5 space-y-1.5">
       <div className="flex items-center gap-1.5">
         <Repeat2 className="size-3.5 text-primary" />
-        <span className="text-xs font-medium text-muted-foreground">
-          Alternatives ({alternatives.length})
-        </span>
+        <span className="text-xs font-medium text-muted-foreground">Alternatives ({alternatives.length})</span>
       </div>
       <div className="flex flex-wrap gap-1.5">
         {alternatives.map((alt) => (
@@ -224,16 +218,12 @@ export function AddExerciseDialog({
     let groupTag: string | null = null
     if (needsGrouping && linkedExerciseIds.length > 0) {
       // Check if any linked exercise already has a group — reuse that letter
-      const linkedPeer = dayExercises.find(
-        (pe) => linkedExerciseIds.includes(pe.id) && pe.group_tag
-      )
-      const letter = linkedPeer
-        ? linkedPeer.group_tag!.charAt(0).toUpperCase()
-        : getNextGroupLetter(dayExercises)
+      const linkedPeer = dayExercises.find((pe) => linkedExerciseIds.includes(pe.id) && pe.group_tag)
+      const letter = linkedPeer ? linkedPeer.group_tag!.charAt(0).toUpperCase() : getNextGroupLetter(dayExercises)
 
       // Count existing exercises in this group to determine the new number
       const existingInGroup = dayExercises.filter(
-        (pe) => pe.group_tag && pe.group_tag.charAt(0).toUpperCase() === letter
+        (pe) => pe.group_tag && pe.group_tag.charAt(0).toUpperCase() === letter,
       )
       groupTag = `${letter}${existingInGroup.length + 1}`
     }
@@ -287,22 +277,18 @@ export function AddExerciseDialog({
             const linkedPe = dayExercises.find((pe) => pe.id === peId)
             // Only update if the exercise isn't already in this group
             const alreadyInGroup =
-              linkedPe?.group_tag?.charAt(0).toUpperCase() === letter &&
-              linkedPe?.technique === technique
+              linkedPe?.group_tag?.charAt(0).toUpperCase() === letter && linkedPe?.technique === technique
             if (alreadyInGroup) return
 
-            await fetch(
-              `/api/admin/programs/${programId}/exercises/${peId}`,
-              {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  group_tag: `${letter}${idx + 1}`,
-                  technique,
-                }),
-              }
-            )
-          })
+            await fetch(`/api/admin/programs/${programId}/exercises/${peId}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                group_tag: `${letter}${idx + 1}`,
+                technique,
+              }),
+            })
+          }),
         )
       }
 
@@ -321,9 +307,7 @@ export function AddExerciseDialog({
       <DialogContent ref={dialogRef} className="sm:max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
         <DialogHeader>
           <div className="flex items-center gap-2">
-            <DialogTitle>
-              {step === 1 ? "Select Exercise" : "Configure Exercise"}
-            </DialogTitle>
+            <DialogTitle>{step === 1 ? "Select Exercise" : "Configure Exercise"}</DialogTitle>
             {step === 2 && <TourButton onClick={tour.start} />}
           </div>
           <DialogDescription>
@@ -353,7 +337,9 @@ export function AddExerciseDialog({
               >
                 <option value="all">All</option>
                 {Object.entries(CATEGORY_LABELS).map(([key, label]) => (
-                  <option key={key} value={key}>{label}</option>
+                  <option key={key} value={key}>
+                    {label}
+                  </option>
                 ))}
               </select>
             </div>
@@ -361,9 +347,7 @@ export function AddExerciseDialog({
             {/* Exercise list */}
             <div className="max-h-[350px] overflow-y-auto space-y-1">
               {filtered.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">
-                  No exercises found.
-                </p>
+                <p className="text-sm text-muted-foreground text-center py-8">No exercises found.</p>
               ) : (
                 filtered.map((ex) => {
                   const ytId = ex.video_url ? extractYouTubeId(ex.video_url) : null
@@ -388,7 +372,9 @@ export function AddExerciseDialog({
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium truncate">{ex.name}</p>
                         <p className="text-xs text-muted-foreground capitalize">
-                          {(Array.isArray(ex.category) ? ex.category : [ex.category]).map((c) => CATEGORY_LABELS[c] ?? c).join(", ")}
+                          {(Array.isArray(ex.category) ? ex.category : [ex.category])
+                            .map((c) => CATEGORY_LABELS[c] ?? c)
+                            .join(", ")}
                           {ex.muscle_group && ` · ${ex.muscle_group}`}
                         </p>
                       </div>
@@ -400,160 +386,178 @@ export function AddExerciseDialog({
           </div>
         ) : (
           <>
-          <form id="add-exercise-form" onSubmit={handleSubmit} className="space-y-4 overflow-y-auto min-h-0 pr-1">
-            {(() => {
-              const catFields = getCategoryFields(selectedExercise!.category as ExerciseCategory[])
-              return (
-                <>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setStep(1)}
-                    className="mb-2"
-                  >
-                    <ArrowLeft className="size-3.5" />
-                    Back to selection
-                  </Button>
+            <form id="add-exercise-form" onSubmit={handleSubmit} className="space-y-4 overflow-y-auto min-h-0 pr-1">
+              {(() => {
+                const catFields = getCategoryFields(selectedExercise!.category as ExerciseCategory[])
+                return (
+                  <>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setStep(1)} className="mb-2">
+                      <ArrowLeft className="size-3.5" />
+                      Back to selection
+                    </Button>
 
-                  <AlternativeExercisesReadonly exerciseId={selectedExercise!.id} />
+                    <AlternativeExercisesReadonly exerciseId={selectedExercise!.id} />
 
-                  <p className="text-xs text-muted-foreground">Fields marked with * are recommended.</p>
+                    <p className="text-xs text-muted-foreground">Fields marked with * are recommended.</p>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="sets">Sets *</Label>
-                      <Input id="sets" name="sets" type="number" min={1} placeholder="e.g. 3" />
-                    </div>
-                    {catFields.showReps && (
-                      <div className="space-y-2">
-                        <Label htmlFor="reps">Reps *</Label>
-                        <Input id="reps" name="reps" placeholder="e.g. 8-12" />
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    {catFields.showRest && (
-                      <div className="space-y-2">
-                        <Label htmlFor="rest_seconds">Rest (seconds)</Label>
-                        <Input id="rest_seconds" name="rest_seconds" type="number" min={0} placeholder="e.g. 60" />
-                      </div>
-                    )}
-                    {catFields.showDuration && (
-                      <div className="space-y-2">
-                        <Label htmlFor="duration_seconds">
-                          Duration per set (sec){catFields.showDuration === "prominent" ? " *" : ""}
-                        </Label>
-                        <Input id="duration_seconds" name="duration_seconds" type="number" min={0} placeholder="e.g. 30" />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Weight & Intensity fields */}
-                  {(catFields.showWeight || catFields.showRpe || catFields.showIntensity) && (
                     <div className="grid grid-cols-2 gap-4">
-                      {catFields.showWeight && (
+                      <div className="space-y-2">
+                        <Label htmlFor="sets">Sets *</Label>
+                        <Input id="sets" name="sets" type="number" min={1} placeholder="e.g. 3" />
+                      </div>
+                      {catFields.showReps && (
                         <div className="space-y-2">
-                          <Label htmlFor="suggested_weight_kg">Suggested Weight ({unitLabel()})</Label>
-                          <Input id="suggested_weight_kg" name="suggested_weight_kg" type="number" min={0} step={0.5} placeholder={unit === "lbs" ? "e.g. 135" : "e.g. 60"} />
-                        </div>
-                      )}
-                      {catFields.showIntensity && (
-                        <div className="space-y-2">
-                          <Label htmlFor="intensity_pct">Intensity (%1RM)</Label>
-                          <Input id="intensity_pct" name="intensity_pct" type="number" min={0} max={100} placeholder="e.g. 75" />
+                          <Label htmlFor="reps">Reps *</Label>
+                          <Input id="reps" name="reps" placeholder="e.g. 8-12" />
                         </div>
                       )}
                     </div>
-                  )}
 
-                  {catFields.showRpe && (
                     <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="rpe_target">RPE Target (1-10)</Label>
-                        <Input id="rpe_target" name="rpe_target" type="number" min={1} max={10} step={0.5} placeholder="e.g. 7" />
+                      {catFields.showRest && (
+                        <div className="space-y-2">
+                          <Label htmlFor="rest_seconds">Rest (seconds)</Label>
+                          <Input id="rest_seconds" name="rest_seconds" type="number" min={0} placeholder="e.g. 60" />
+                        </div>
+                      )}
+                      {catFields.showDuration && (
+                        <div className="space-y-2">
+                          <Label htmlFor="duration_seconds">
+                            Duration per set (sec){catFields.showDuration === "prominent" ? " *" : ""}
+                          </Label>
+                          <Input
+                            id="duration_seconds"
+                            name="duration_seconds"
+                            type="number"
+                            min={0}
+                            placeholder="e.g. 30"
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Weight & Intensity fields */}
+                    {(catFields.showWeight || catFields.showRpe || catFields.showIntensity) && (
+                      <div className="grid grid-cols-2 gap-4">
+                        {catFields.showWeight && (
+                          <div className="space-y-2">
+                            <Label htmlFor="suggested_weight_kg">Suggested Weight ({unitLabel()})</Label>
+                            <Input
+                              id="suggested_weight_kg"
+                              name="suggested_weight_kg"
+                              type="number"
+                              min={0}
+                              step={0.5}
+                              placeholder={unit === "lbs" ? "e.g. 135" : "e.g. 60"}
+                            />
+                          </div>
+                        )}
+                        {catFields.showIntensity && (
+                          <div className="space-y-2">
+                            <Label htmlFor="intensity_pct">Intensity (%1RM)</Label>
+                            <Input
+                              id="intensity_pct"
+                              name="intensity_pct"
+                              type="number"
+                              min={0}
+                              max={100}
+                              placeholder="e.g. 75"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {catFields.showRpe && (
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="rpe_target">RPE Target (1-10)</Label>
+                          <Input
+                            id="rpe_target"
+                            name="rpe_target"
+                            type="number"
+                            min={1}
+                            max={10}
+                            step={0.5}
+                            placeholder="e.g. 7"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Technique picker */}
+                    <div className="space-y-2" id="technique-picker">
+                      <Label>Method</Label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {TRAINING_TECHNIQUE_OPTIONS.map((t) => {
+                          const config = TECHNIQUE_CONFIG[t]
+                          const isSelected = technique === t
+                          return (
+                            <button
+                              key={t}
+                              type="button"
+                              onClick={() => {
+                                setTechnique(t)
+                                if (!GROUPED_TECHNIQUES.includes(t)) {
+                                  setLinkedExerciseIds([])
+                                }
+                              }}
+                              className={`flex flex-col items-start rounded-lg border px-3 py-2 text-left transition-colors ${
+                                isSelected
+                                  ? "border-primary bg-primary/5 ring-1 ring-primary"
+                                  : "border-border hover:bg-surface/50"
+                              }`}
+                            >
+                              <span className="text-sm font-medium">{config.label}</span>
+                              <span className="text-[11px] text-muted-foreground leading-tight">
+                                {config.description}
+                              </span>
+                            </button>
+                          )
+                        })}
                       </div>
                     </div>
-                  )}
 
-                  {/* Technique picker */}
-                  <div className="space-y-2" id="technique-picker">
-                    <Label>Method</Label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {TRAINING_TECHNIQUE_OPTIONS.map((t) => {
-                        const config = TECHNIQUE_CONFIG[t]
-                        const isSelected = technique === t
-                        return (
-                          <button
-                            key={t}
-                            type="button"
-                            onClick={() => {
-                              setTechnique(t)
-                              if (!GROUPED_TECHNIQUES.includes(t)) {
-                                setLinkedExerciseIds([])
-                              }
-                            }}
-                            className={`flex flex-col items-start rounded-lg border px-3 py-2 text-left transition-colors ${
-                              isSelected
-                                ? "border-primary bg-primary/5 ring-1 ring-primary"
-                                : "border-border hover:bg-surface/50"
-                            }`}
-                          >
-                            <span className="text-sm font-medium">{config.label}</span>
-                            <span className="text-[11px] text-muted-foreground leading-tight">{config.description}</span>
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
+                    {/* Exercise linker — shown for grouped techniques */}
+                    {needsGrouping && (
+                      <ExerciseLinker
+                        technique={technique as "superset" | "giant_set" | "circuit"}
+                        dayExercises={dayExercises}
+                        selectedIds={linkedExerciseIds}
+                        onSelectionChange={setLinkedExerciseIds}
+                      />
+                    )}
 
-                  {/* Exercise linker — shown for grouped techniques */}
-                  {needsGrouping && (
-                    <ExerciseLinker
-                      technique={technique as "superset" | "giant_set" | "circuit"}
-                      dayExercises={dayExercises}
-                      selectedIds={linkedExerciseIds}
-                      onSelectionChange={setLinkedExerciseIds}
-                    />
-                  )}
+                    {catFields.showTempo && (
+                      <div className="space-y-2">
+                        <Label htmlFor="tempo">Tempo</Label>
+                        <Input id="tempo" name="tempo" placeholder="e.g. 3-1-2-0" />
+                      </div>
+                    )}
 
-                  {catFields.showTempo && (
                     <div className="space-y-2">
-                      <Label htmlFor="tempo">Tempo</Label>
-                      <Input id="tempo" name="tempo" placeholder="e.g. 3-1-2-0" />
+                      <Label htmlFor="notes">Notes</Label>
+                      <textarea
+                        id="notes"
+                        name="notes"
+                        rows={2}
+                        placeholder="Any specific instructions..."
+                        className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
+                      />
                     </div>
-                  )}
+                  </>
+                )
+              })()}
+            </form>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="notes">Notes</Label>
-                    <textarea
-                      id="notes"
-                      name="notes"
-                      rows={2}
-                      placeholder="Any specific instructions..."
-                      className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
-                    />
-                  </div>
-
-                </>
-              )
-            })()}
-          </form>
-
-          <DialogFooter className="shrink-0 border-t border-border pt-4">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => resetAndClose(false)}
-              disabled={isSubmitting}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" form="add-exercise-form" disabled={isSubmitting}>
-              {isSubmitting ? "Adding..." : "Add Exercise"}
-            </Button>
-          </DialogFooter>
+            <DialogFooter className="shrink-0 border-t border-border pt-4">
+              <Button type="button" variant="outline" onClick={() => resetAndClose(false)} disabled={isSubmitting}>
+                Cancel
+              </Button>
+              <Button type="submit" form="add-exercise-form" disabled={isSubmitting}>
+                {isSubmitting ? "Adding..." : "Add Exercise"}
+              </Button>
+            </DialogFooter>
           </>
         )}
         <FormTour {...tour} />

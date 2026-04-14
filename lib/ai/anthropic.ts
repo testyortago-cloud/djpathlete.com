@@ -39,7 +39,13 @@ function isTransientError(error: unknown): boolean {
   // Vercel AI SDK wraps errors — check for status in the cause chain
   if (error instanceof Error) {
     const msg = error.message
-    if (msg.includes("429") || msg.includes("529") || msg.includes("500") || msg.includes("502") || msg.includes("503")) {
+    if (
+      msg.includes("429") ||
+      msg.includes("529") ||
+      msg.includes("500") ||
+      msg.includes("502") ||
+      msg.includes("503")
+    ) {
       return true
     }
   }
@@ -56,7 +62,7 @@ export async function callAgent<T>(
     maxTokens?: number
     model?: string
     cacheSystemPrompt?: boolean
-  }
+  },
 ): Promise<AgentCallResult<T>> {
   const maxTokens = options?.maxTokens ?? DEFAULT_MAX_TOKENS
   const modelId = options?.model ?? MODEL_SONNET
@@ -87,10 +93,10 @@ export async function callAgent<T>(
       shouldRetry: (error) => isTransientError(error),
       onFailedAttempt: (context) => {
         console.warn(
-          `[callAgent] Attempt ${context.attemptNumber} failed (${context.retriesLeft} retries left): ${context.error.message}`
+          `[callAgent] Attempt ${context.attemptNumber} failed (${context.retriesLeft} retries left): ${context.error.message}`,
         )
       },
-    }
+    },
   )
 
   const usage = result.usage

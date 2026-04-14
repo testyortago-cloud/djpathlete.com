@@ -66,9 +66,7 @@ export function ContactForm() {
             disabled={isSubmitting}
             className="h-11 rounded-lg border-border focus:border-primary focus:ring-primary"
           />
-          {errors.name && (
-            <p className="text-xs text-destructive">{errors.name[0]}</p>
-          )}
+          {errors.name && <p className="text-xs text-destructive">{errors.name[0]}</p>}
         </div>
 
         <div className="space-y-2">
@@ -84,9 +82,7 @@ export function ContactForm() {
             disabled={isSubmitting}
             className="h-11 rounded-lg border-border focus:border-primary focus:ring-primary"
           />
-          {errors.email && (
-            <p className="text-xs text-destructive">{errors.email[0]}</p>
-          )}
+          {errors.email && <p className="text-xs text-destructive">{errors.email[0]}</p>}
         </div>
       </div>
 
@@ -102,9 +98,7 @@ export function ContactForm() {
           disabled={isSubmitting}
           className="h-11 rounded-lg border-border focus:border-primary focus:ring-primary"
         />
-        {errors.subject && (
-          <p className="text-xs text-destructive">{errors.subject[0]}</p>
-        )}
+        {errors.subject && <p className="text-xs text-destructive">{errors.subject[0]}</p>}
       </div>
 
       <div className="space-y-2">
@@ -120,9 +114,7 @@ export function ContactForm() {
           disabled={isSubmitting}
           className="flex w-full rounded-lg border border-border bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-none"
         />
-        {errors.message && (
-          <p className="text-xs text-destructive">{errors.message[0]}</p>
-        )}
+        {errors.message && <p className="text-xs text-destructive">{errors.message[0]}</p>}
       </div>
 
       <button

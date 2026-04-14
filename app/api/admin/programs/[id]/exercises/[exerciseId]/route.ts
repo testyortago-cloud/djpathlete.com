@@ -13,7 +13,7 @@ export async function PATCH(request: Request, { params }: Params) {
     if (!result.success) {
       return NextResponse.json(
         { error: "Invalid form data", details: result.error.flatten().fieldErrors },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
@@ -31,10 +31,7 @@ export async function PATCH(request: Request, { params }: Params) {
     const updated = await updateProgramExercise(exerciseId, updates)
     return NextResponse.json(updated)
   } catch {
-    return NextResponse.json(
-      { error: "Failed to update exercise. Please try again." },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to update exercise. Please try again." }, { status: 500 })
   }
 }
 
@@ -44,9 +41,6 @@ export async function DELETE(_request: Request, { params }: Params) {
     await removeExerciseFromProgram(exerciseId)
     return NextResponse.json({ success: true })
   } catch {
-    return NextResponse.json(
-      { error: "Failed to remove exercise. Please try again." },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to remove exercise. Please try again." }, { status: 500 })
   }
 }

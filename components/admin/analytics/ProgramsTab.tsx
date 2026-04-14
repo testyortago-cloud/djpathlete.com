@@ -51,9 +51,7 @@ export function ProgramsTab({ data }: ProgramsTabProps) {
       <div className="bg-white rounded-xl border border-border shadow-sm mb-8">
         <div className="flex items-center gap-2 p-4 border-b border-border">
           <BarChart3 className="size-4 text-primary" />
-          <h2 className="text-lg font-semibold text-primary">
-            Program Popularity
-          </h2>
+          <h2 className="text-lg font-semibold text-primary">Program Popularity</h2>
         </div>
         <HorizontalBar
           items={data.programPopularity.map((p) => ({
@@ -62,9 +60,7 @@ export function ProgramsTab({ data }: ProgramsTabProps) {
             badge: p.category.replace(/_/g, " "),
             secondBadge: p.difficulty,
           }))}
-          formatValue={(v) =>
-            `${v} ${v === 1 ? "assignment" : "assignments"}`
-          }
+          formatValue={(v) => `${v} ${v === 1 ? "assignment" : "assignments"}`}
           emptyMessage="No program assignments yet."
         />
       </div>
@@ -75,23 +71,14 @@ export function ProgramsTab({ data }: ProgramsTabProps) {
           <div className="flex items-center gap-2 p-4 border-b border-border">
             <h2 className="text-sm font-semibold text-primary">By Category</h2>
           </div>
-          <HorizontalBar
-            items={data.programsByCategory}
-            emptyMessage="No programs yet."
-          />
+          <HorizontalBar items={data.programsByCategory} emptyMessage="No programs yet." />
         </div>
 
         <div className="bg-white rounded-xl border border-border shadow-sm">
           <div className="flex items-center gap-2 p-4 border-b border-border">
-            <h2 className="text-sm font-semibold text-primary">
-              By Difficulty
-            </h2>
+            <h2 className="text-sm font-semibold text-primary">By Difficulty</h2>
           </div>
-          <HorizontalBar
-            items={data.programsByDifficulty}
-            colorClass="bg-accent"
-            emptyMessage="No programs yet."
-          />
+          <HorizontalBar items={data.programsByDifficulty} colorClass="bg-accent" emptyMessage="No programs yet." />
         </div>
       </div>
 
@@ -99,15 +86,11 @@ export function ProgramsTab({ data }: ProgramsTabProps) {
       <div className="bg-white rounded-xl border border-border shadow-sm">
         <div className="flex items-center gap-2 p-4 border-b border-border">
           <Activity className="size-4 text-primary" />
-          <h2 className="text-lg font-semibold text-primary">
-            Assignment Status
-          </h2>
+          <h2 className="text-lg font-semibold text-primary">Assignment Status</h2>
         </div>
         <div className="p-4">
           {data.assignmentsByStatus.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              No assignments in this period.
-            </p>
+            <p className="text-sm text-muted-foreground text-center py-4">No assignments in this period.</p>
           ) : (
             <div className="flex flex-wrap gap-3">
               {data.assignmentsByStatus.map((s) => (
@@ -117,9 +100,7 @@ export function ProgramsTab({ data }: ProgramsTabProps) {
                     STATUS_COLORS[s.status] ?? "bg-muted text-muted-foreground"
                   }`}
                 >
-                  <span className="text-sm font-medium capitalize">
-                    {s.status}
-                  </span>
+                  <span className="text-sm font-medium capitalize">{s.status}</span>
                   <span className="text-lg font-semibold">{s.count}</span>
                 </div>
               ))}

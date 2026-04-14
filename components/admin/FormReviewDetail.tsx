@@ -31,30 +31,20 @@ interface FormReviewDetailProps {
   currentUserId: string
 }
 
-const statusConfig: Record<
-  FormReviewStatus,
-  { label: string; icon: typeof Clock; className: string }
-> = {
+const statusConfig: Record<FormReviewStatus, { label: string; icon: typeof Clock; className: string }> = {
   pending: { label: "Pending Review", icon: Clock, className: "bg-amber-100 text-amber-700" },
   in_progress: { label: "In Progress", icon: MessageSquare, className: "bg-blue-100 text-blue-700" },
   reviewed: { label: "Reviewed", icon: CheckCircle2, className: "bg-green-100 text-green-700" },
 }
 
-export function FormReviewDetail({
-  review,
-  videoUrl,
-  messages,
-  currentUserId,
-}: FormReviewDetailProps) {
+export function FormReviewDetail({ review, videoUrl, messages, currentUserId }: FormReviewDetailProps) {
   const router = useRouter()
   const [status, setStatus] = useState(review.status as FormReviewStatus)
   const [updating, setUpdating] = useState(false)
 
   const config = statusConfig[status]
   const StatusIcon = config.icon
-  const clientName = review.users
-    ? `${review.users.first_name} ${review.users.last_name}`
-    : "Unknown"
+  const clientName = review.users ? `${review.users.first_name} ${review.users.last_name}` : "Unknown"
   async function markAsReviewed() {
     setUpdating(true)
     try {
@@ -96,19 +86,14 @@ export function FormReviewDetail({
           <span
             className={cn(
               "inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full",
-              config.className
+              config.className,
             )}
           >
             <StatusIcon className="size-3.5" />
             {config.label}
           </span>
           {status !== "reviewed" && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={markAsReviewed}
-              disabled={updating}
-            >
+            <Button size="sm" variant="outline" onClick={markAsReviewed} disabled={updating}>
               {updating ? (
                 <Loader2 className="size-4 mr-1.5 animate-spin" />
               ) : (
@@ -124,9 +109,7 @@ export function FormReviewDetail({
       {videoUrl ? (
         <VideoPlayer src={videoUrl} />
       ) : (
-        <div className="bg-muted rounded-xl p-8 text-center text-sm text-muted-foreground">
-          Video not available
-        </div>
+        <div className="bg-muted rounded-xl p-8 text-center text-sm text-muted-foreground">Video not available</div>
       )}
 
       {/* Client info + notes */}

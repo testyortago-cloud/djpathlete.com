@@ -19,14 +19,9 @@ export function HeroContent() {
         <div className="max-w-6xl mx-auto">
           <div className="lg:ml-auto lg:w-[55%] lg:pl-16">
             {/* Overline */}
-            <motion.div
-              {...item(0.2)}
-              className="flex items-center gap-3 mb-8"
-            >
+            <motion.div {...item(0.2)} className="flex items-center gap-3 mb-8">
               <div className="h-px w-12 bg-accent" />
-              <p className="text-sm font-medium text-accent uppercase tracking-widest">
-                DJP Athlete
-              </p>
+              <p className="text-sm font-medium text-accent uppercase tracking-widest">DJP Athlete</p>
             </motion.div>
 
             {/* Headline */}
@@ -52,10 +47,7 @@ export function HeroContent() {
             </motion.p>
 
             {/* CTA row */}
-            <motion.div
-              {...item(0.8)}
-              className="flex flex-col sm:flex-row items-start gap-4"
-            >
+            <motion.div {...item(0.8)} className="flex flex-col sm:flex-row items-start gap-4">
               <Link
                 href="/in-person"
                 className="inline-flex items-center gap-3 bg-accent text-primary px-8 py-4 rounded-full text-sm font-semibold hover:bg-accent/90 transition-all hover:shadow-lg group"
@@ -82,13 +74,8 @@ export function HeroContent() {
         transition={{ delay: 1.4, duration: 0.8 }}
         className="absolute bottom-8 left-1/2 -translate-x-1/2 z-10 flex flex-col items-center gap-2"
       >
-        <span className="text-xs text-primary-foreground/50 uppercase tracking-widest">
-          Scroll
-        </span>
-        <motion.div
-          animate={{ y: [0, 8, 0] }}
-          transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
-        >
+        <span className="text-xs text-primary-foreground/50 uppercase tracking-widest">Scroll</span>
+        <motion.div animate={{ y: [0, 8, 0] }} transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}>
           <ChevronDown className="size-5 text-accent/70" />
         </motion.div>
       </motion.div>

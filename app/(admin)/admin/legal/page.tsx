@@ -10,10 +10,7 @@ export const metadata = { title: "Legal Documents | DJP Athlete Admin" }
 export default async function AdminLegalPage() {
   await requireAdmin()
 
-  const [documents, consentCounts] = await Promise.all([
-    getAllDocuments(),
-    getConsentCountsByDocument(),
-  ])
+  const [documents, consentCounts] = await Promise.all([getAllDocuments(), getConsentCountsByDocument()])
 
   const activeDocuments = documents.filter((d) => d.is_active)
   const totalVersions = documents.length
@@ -55,10 +52,7 @@ export default async function AdminLegalPage() {
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 mb-8">
         {stats.map((stat) => (
-          <div
-            key={stat.label}
-            className="rounded-xl border border-border bg-card p-4"
-          >
+          <div key={stat.label} className="rounded-xl border border-border bg-card p-4">
             <div className="flex items-center gap-3">
               <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${stat.color}`}>
                 <stat.icon className="h-5 w-5" />

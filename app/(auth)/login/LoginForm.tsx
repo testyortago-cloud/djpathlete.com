@@ -64,12 +64,8 @@ export function LoginForm() {
   return (
     <>
       <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-primary tracking-tight">
-          Welcome back
-        </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Log in to your DJP Athlete account
-        </p>
+        <h1 className="text-2xl font-semibold text-primary tracking-tight">Welcome back</h1>
+        <p className="mt-2 text-sm text-muted-foreground">Log in to your DJP Athlete account</p>
       </div>
 
       {error && (

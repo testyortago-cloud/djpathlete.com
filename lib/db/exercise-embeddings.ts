@@ -5,10 +5,7 @@ function getClient() {
   return createServiceRoleClient()
 }
 
-export async function updateExerciseEmbedding(
-  exerciseId: string,
-  embedding: number[]
-): Promise<void> {
+export async function updateExerciseEmbedding(exerciseId: string, embedding: number[]): Promise<void> {
   const supabase = getClient()
   // pgvector accepts embedding as a string: '[0.1, 0.2, ...]'
   const { error } = await supabase
@@ -21,7 +18,7 @@ export async function updateExerciseEmbedding(
 export async function searchExercisesByEmbedding(
   queryEmbedding: number[],
   limit: number = 20,
-  threshold: number = 0.3
+  threshold: number = 0.3,
 ): Promise<Array<{ id: string; similarity: number }>> {
   const supabase = getClient()
   // pgvector expects the embedding as a string for RPC
@@ -60,11 +57,7 @@ export async function getExercisesWithEmbeddingCount(): Promise<{
 
 export async function getAllExercisesForEmbedding(): Promise<Exercise[]> {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("exercises")
-    .select("*")
-    .eq("is_active", true)
-    .order("name")
+  const { data, error } = await supabase.from("exercises").select("*").eq("is_active", true).order("name")
   if (error) throw error
   return data as Exercise[]
 }

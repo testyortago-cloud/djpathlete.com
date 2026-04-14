@@ -36,21 +36,8 @@ const CATEGORY_BORDER_COLORS: Record<string, string> = {
   relative_strength: "border-l-primary",
 }
 
-export function ExerciseCard({
-  programExercise,
-  onEdit,
-  onRemove,
-  onDuplicate,
-  isOverlay,
-}: ExerciseCardProps) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({
+export function ExerciseCard({ programExercise, onEdit, onRemove, onDuplicate, isOverlay }: ExerciseCardProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: programExercise.id,
     data: { dayOfWeek: programExercise.day_of_week },
     disabled: isOverlay,
@@ -109,46 +96,35 @@ export function ExerciseCard({
           <div className="flex items-center gap-1.5 flex-wrap">
             <p className="text-sm font-medium text-foreground truncate">{exercise.name}</p>
             {categories.map((cat) => (
-              <span key={cat} className="shrink-0 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground capitalize">
+              <span
+                key={cat}
+                className="shrink-0 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground capitalize"
+              >
                 {cat.replace("_", " ")}
               </span>
             ))}
             {programExercise.technique &&
               programExercise.technique !== "straight_set" &&
               TECHNIQUE_BADGE_LABELS[programExercise.technique as TrainingTechnique] && (
-              <span className="shrink-0 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium bg-accent/15 text-accent">
-                {TECHNIQUE_BADGE_LABELS[programExercise.technique as TrainingTechnique]}
-              </span>
-            )}
+                <span className="shrink-0 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium bg-accent/15 text-accent">
+                  {TECHNIQUE_BADGE_LABELS[programExercise.technique as TrainingTechnique]}
+                </span>
+              )}
           </div>
-          {details.length > 0 && (
-            <p className="text-xs text-muted-foreground mt-0.5">{details.join(" / ")}</p>
-          )}
+          {details.length > 0 && <p className="text-xs text-muted-foreground mt-0.5">{details.join(" / ")}</p>}
           {programExercise.notes && (
-            <p className="text-xs text-muted-foreground mt-0.5 truncate italic">
-              {programExercise.notes}
-            </p>
+            <p className="text-xs text-muted-foreground mt-0.5 truncate italic">{programExercise.notes}</p>
           )}
         </div>
       </div>
 
       {/* Hover actions */}
       <div className="absolute right-1 top-1 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 rounded-md p-0.5">
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          onClick={onEdit}
-          title="Edit parameters"
-        >
+        <Button variant="ghost" size="icon-xs" onClick={onEdit} title="Edit parameters">
           <Pencil className="size-3.5" />
         </Button>
         {onDuplicate && (
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            onClick={onDuplicate}
-            title="Duplicate exercise"
-          >
+          <Button variant="ghost" size="icon-xs" onClick={onDuplicate} title="Duplicate exercise">
             <Copy className="size-3.5" />
           </Button>
         )}

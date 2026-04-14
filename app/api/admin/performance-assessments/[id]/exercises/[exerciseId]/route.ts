@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { z } from "zod"
-import {
-  updateAssessmentExercise,
-  deleteAssessmentExercise,
-} from "@/lib/db/performance-assessments"
+import { updateAssessmentExercise, deleteAssessmentExercise } from "@/lib/db/performance-assessments"
 
 const updateSchema = z.object({
   video_path: z.string().nullable().optional(),
@@ -14,10 +11,7 @@ const updateSchema = z.object({
   result_unit: z.string().max(50).nullable().optional(),
 })
 
-export async function PATCH(
-  request: Request,
-  { params }: { params: Promise<{ id: string; exerciseId: string }> }
-) {
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string; exerciseId: string }> }) {
   try {
     const session = await auth()
     if (!session?.user?.id || session.user.role !== "admin") {
@@ -28,27 +22,18 @@ export async function PATCH(
     const body = await request.json()
     const parsed = updateSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Invalid data", details: parsed.error.flatten() },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Invalid data", details: parsed.error.flatten() }, { status: 400 })
     }
 
     const updated = await updateAssessmentExercise(exerciseId, parsed.data)
     return NextResponse.json(updated)
   } catch (error) {
     console.error("Admin assessment exercise PATCH error:", error)
-    return NextResponse.json(
-      { error: "Failed to update exercise" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to update exercise" }, { status: 500 })
   }
 }
 
-export async function DELETE(
-  _request: Request,
-  { params }: { params: Promise<{ id: string; exerciseId: string }> }
-) {
+export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string; exerciseId: string }> }) {
   try {
     const session = await auth()
     if (!session?.user?.id || session.user.role !== "admin") {
@@ -60,9 +45,6 @@ export async function DELETE(
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("Admin assessment exercise DELETE error:", error)
-    return NextResponse.json(
-      { error: "Failed to delete exercise" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to delete exercise" }, { status: 500 })
   }
 }

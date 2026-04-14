@@ -49,9 +49,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ status: "cancelled" })
   } catch (error) {
     console.error("[cancel] Failed to cancel job:", error)
-    return NextResponse.json(
-      { error: "Failed to cancel generation" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to cancel generation" }, { status: 500 })
   }
 }

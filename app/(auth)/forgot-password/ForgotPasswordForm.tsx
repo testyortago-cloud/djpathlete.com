@@ -46,18 +46,14 @@ export function ForgotPasswordForm() {
           <div className="flex size-12 items-center justify-center rounded-full bg-primary/10 mb-4">
             <Mail className="size-6 text-primary" />
           </div>
-          <h1 className="text-2xl font-semibold text-primary tracking-tight">
-            Check your email
-          </h1>
+          <h1 className="text-2xl font-semibold text-primary tracking-tight">Check your email</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            If an account exists with that email, we&apos;ve sent a password reset link. Check your inbox and spam folder.
+            If an account exists with that email, we&apos;ve sent a password reset link. Check your inbox and spam
+            folder.
           </p>
         </div>
 
-        <Link
-          href="/login"
-          className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline"
-        >
+        <Link href="/login" className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline">
           <ArrowLeft className="size-4" />
           Back to login
         </Link>
@@ -68,9 +64,7 @@ export function ForgotPasswordForm() {
   return (
     <>
       <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-primary tracking-tight">
-          Forgot password?
-        </h1>
+        <h1 className="text-2xl font-semibold text-primary tracking-tight">Forgot password?</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Enter your email address and we&apos;ll send you a link to reset your password.
         </p>

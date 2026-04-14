@@ -4,13 +4,7 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useWeightUnit } from "@/hooks/use-weight-unit"
 import type { ClientProfile, Gender, ExperienceLevel } from "@/types/database"
 
@@ -42,27 +36,15 @@ export function ProfileForm({ profile }: ProfileFormProps) {
 
   const [sport, setSport] = useState(profile?.sport ?? "")
   const [position, setPosition] = useState(profile?.position ?? "")
-  const [experienceLevel, setExperienceLevel] = useState<string>(
-    profile?.experience_level ?? ""
-  )
+  const [experienceLevel, setExperienceLevel] = useState<string>(profile?.experience_level ?? "")
   const [goals, setGoals] = useState(profile?.goals ?? "")
   const [injuries, setInjuries] = useState(profile?.injuries ?? "")
-  const [heightCm, setHeightCm] = useState(
-    profile?.height_cm?.toString() ?? ""
-  )
-  const [weightKg, setWeightKg] = useState(
-    displayWeight(profile?.weight_kg ?? null)?.toString() ?? ""
-  )
-  const [dateOfBirth, setDateOfBirth] = useState(
-    profile?.date_of_birth ?? ""
-  )
+  const [heightCm, setHeightCm] = useState(profile?.height_cm?.toString() ?? "")
+  const [weightKg, setWeightKg] = useState(displayWeight(profile?.weight_kg ?? null)?.toString() ?? "")
+  const [dateOfBirth, setDateOfBirth] = useState(profile?.date_of_birth ?? "")
   const [gender, setGender] = useState<string>(profile?.gender ?? "")
-  const [emergencyContactName, setEmergencyContactName] = useState(
-    profile?.emergency_contact_name ?? ""
-  )
-  const [emergencyContactPhone, setEmergencyContactPhone] = useState(
-    profile?.emergency_contact_phone ?? ""
-  )
+  const [emergencyContactName, setEmergencyContactName] = useState(profile?.emergency_contact_name ?? "")
+  const [emergencyContactPhone, setEmergencyContactPhone] = useState(profile?.emergency_contact_phone ?? "")
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -137,10 +119,7 @@ export function ProfileForm({ profile }: ProfileFormProps) {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="experience_level">Experience Level</Label>
-            <Select
-              value={experienceLevel}
-              onValueChange={setExperienceLevel}
-            >
+            <Select value={experienceLevel} onValueChange={setExperienceLevel}>
               <SelectTrigger id="experience_level" className="w-full">
                 <SelectValue placeholder="Select level" />
               </SelectTrigger>
@@ -260,9 +239,7 @@ export function ProfileForm({ profile }: ProfileFormProps) {
         {message && (
           <div
             className={`text-sm font-medium rounded-lg px-4 py-2 ${
-              message.type === "success"
-                ? "bg-success/10 text-success"
-                : "bg-destructive/10 text-destructive"
+              message.type === "success" ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"
             }`}
           >
             {message.text}

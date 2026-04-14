@@ -3,22 +3,42 @@ import { z } from "zod"
 // ─── Shared constants (duplicated from Next.js validators to avoid cross-project deps) ──
 
 const SPLIT_TYPES = [
-  "full_body", "upper_lower", "push_pull_legs", "push_pull",
-  "body_part", "movement_pattern", "custom",
+  "full_body",
+  "upper_lower",
+  "push_pull_legs",
+  "push_pull",
+  "body_part",
+  "movement_pattern",
+  "custom",
 ] as const
 
-const PERIODIZATION_TYPES = [
-  "linear", "undulating", "block", "reverse_linear", "none",
-] as const
+const PERIODIZATION_TYPES = ["linear", "undulating", "block", "reverse_linear", "none"] as const
 
 const MOVEMENT_PATTERNS = [
-  "push", "pull", "squat", "hinge", "lunge",
-  "carry", "rotation", "isometric", "locomotion", "conditioning",
+  "push",
+  "pull",
+  "squat",
+  "hinge",
+  "lunge",
+  "carry",
+  "rotation",
+  "isometric",
+  "locomotion",
+  "conditioning",
 ] as const
 
 const TECHNIQUES = [
-  "straight_set", "superset", "dropset", "giant_set", "circuit",
-  "rest_pause", "amrap", "cluster_set", "complex", "emom", "wave_loading",
+  "straight_set",
+  "superset",
+  "dropset",
+  "giant_set",
+  "circuit",
+  "rest_pause",
+  "amrap",
+  "cluster_set",
+  "complex",
+  "emom",
+  "wave_loading",
 ] as const
 
 const DIFFICULTY_TIERS = ["beginner", "intermediate", "advanced"] as const
@@ -32,10 +52,7 @@ const volumeTargetSchema = z.object({
 })
 
 const exerciseConstraintSchema = z.object({
-  type: z.enum([
-    "avoid_movement", "avoid_equipment", "avoid_muscle",
-    "limit_load", "require_unilateral",
-  ]),
+  type: z.enum(["avoid_movement", "avoid_equipment", "avoid_muscle", "limit_load", "require_unilateral"]),
   value: z.string(),
   reason: z.string(),
 })
@@ -79,9 +96,16 @@ export const profileAnalysisSchema = z.object({
 const exerciseSlotSchema = z.object({
   slot_id: z.string(),
   role: z.enum([
-    "warm_up", "primary_compound", "secondary_compound",
-    "accessory", "isolation", "cool_down",
-    "power", "conditioning", "activation", "testing",
+    "warm_up",
+    "primary_compound",
+    "secondary_compound",
+    "accessory",
+    "isolation",
+    "cool_down",
+    "power",
+    "conditioning",
+    "activation",
+    "testing",
   ]),
   movement_pattern: z.enum(MOVEMENT_PATTERNS),
   target_muscles: z.array(z.string()).min(1),
@@ -163,7 +187,7 @@ export interface ValidatorResult {
  */
 export function validateSkeletonAgainstAnalysis(
   skeleton: z.infer<typeof programSkeletonSchema>,
-  analysis: z.infer<typeof profileAnalysisSchema>
+  analysis: z.infer<typeof profileAnalysisSchema>,
 ): ValidatorResult {
   const planByWeek = new Map<number, TechniquePlanWeek>()
   for (const wk of analysis.technique_plan) planByWeek.set(wk.week_number, wk)
@@ -180,7 +204,7 @@ export function validateSkeletonAgainstAnalysis(
       for (const slot of day.slots) {
         if (!allowed.has(slot.technique)) {
           violations.push(
-            `week ${week.week_number} slot ${slot.slot_id}: technique "${slot.technique}" not allowed (allowed: ${plan.allowed_techniques.join(", ")})`
+            `week ${week.week_number} slot ${slot.slot_id}: technique "${slot.technique}" not allowed (allowed: ${plan.allowed_techniques.join(", ")})`,
           )
         }
       }
@@ -199,13 +223,13 @@ export function validateAssignmentAgainstCeiling(
   assignment: z.infer<typeof exerciseAssignmentSchema>,
   difficultyCeiling: DifficultyCeilingWeek[],
   slotInWeek: Map<string, number>,
-  exerciseLibrary: Array<{ id: string; difficulty: string; difficulty_score: number | null | undefined }>
+  exerciseLibrary: Array<{ id: string; difficulty: string; difficulty_score: number | null | undefined }>,
 ): ValidatorResult {
   const ceilingByWeek = new Map<number, DifficultyCeilingWeek>()
   for (const c of difficultyCeiling) ceilingByWeek.set(c.week_number, c)
 
   const exById = new Map(exerciseLibrary.map((e) => [e.id, e]))
-  const tierIdx = (tier: string) => DIFFICULTY_TIERS.indexOf(tier as typeof DIFFICULTY_TIERS[number])
+  const tierIdx = (tier: string) => DIFFICULTY_TIERS.indexOf(tier as (typeof DIFFICULTY_TIERS)[number])
 
   const violations: string[] = []
   for (const a of assignment.assignments) {
@@ -225,13 +249,13 @@ export function validateAssignmentAgainstCeiling(
 
     if (exIdx > maxIdx) {
       violations.push(
-        `week ${weekNum} slot ${a.slot_id}: exercise "${ex.id}" tier "${ex.difficulty}" exceeds ceiling "${ceiling.max_tier}"`
+        `week ${weekNum} slot ${a.slot_id}: exercise "${ex.id}" tier "${ex.difficulty}" exceeds ceiling "${ceiling.max_tier}"`,
       )
       continue
     }
     if (exIdx === maxIdx && ex.difficulty_score != null && ex.difficulty_score > ceiling.max_score) {
       violations.push(
-        `week ${weekNum} slot ${a.slot_id}: exercise "${ex.id}" score ${ex.difficulty_score} exceeds max_score ${ceiling.max_score}`
+        `week ${weekNum} slot ${a.slot_id}: exercise "${ex.id}" score ${ex.difficulty_score} exceeds max_score ${ceiling.max_score}`,
       )
     }
   }

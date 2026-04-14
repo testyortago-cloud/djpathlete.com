@@ -1,10 +1,6 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import {
-  getNotifications,
-  markAsRead,
-  markAllAsRead,
-} from "@/lib/db/notifications"
+import { getNotifications, markAsRead, markAllAsRead } from "@/lib/db/notifications"
 import { z } from "zod"
 
 export async function GET() {
@@ -21,17 +17,11 @@ export async function GET() {
     return NextResponse.json({ notifications, unreadCount })
   } catch (error) {
     console.error("Notifications GET error:", error)
-    return NextResponse.json(
-      { error: "Failed to fetch notifications" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to fetch notifications" }, { status: 500 })
   }
 }
 
-const patchSchema = z.union([
-  z.object({ id: z.string().uuid() }),
-  z.object({ markAll: z.literal(true) }),
-])
+const patchSchema = z.union([z.object({ id: z.string().uuid() }), z.object({ markAll: z.literal(true) })])
 
 export async function PATCH(request: Request) {
   try {
@@ -44,10 +34,7 @@ export async function PATCH(request: Request) {
     const parsed = patchSchema.safeParse(body)
 
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Invalid data", details: parsed.error.flatten() },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Invalid data", details: parsed.error.flatten() }, { status: 400 })
     }
 
     if ("markAll" in parsed.data) {
@@ -59,9 +46,6 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ notification })
   } catch (error) {
     console.error("Notifications PATCH error:", error)
-    return NextResponse.json(
-      { error: "Failed to update notification" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to update notification" }, { status: 500 })
   }
 }

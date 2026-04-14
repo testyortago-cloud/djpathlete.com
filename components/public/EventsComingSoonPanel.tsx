@@ -28,9 +28,7 @@ export function EventsComingSoonPanel({ type }: EventsComingSoonPanelProps) {
           <h3 className="text-2xl font-heading font-semibold tracking-tight text-foreground md:text-3xl">
             {copy.title}
           </h3>
-          <p className="mt-3 max-w-2xl text-base leading-7 text-muted-foreground md:text-lg">
-            {copy.body}
-          </p>
+          <p className="mt-3 max-w-2xl text-base leading-7 text-muted-foreground md:text-lg">{copy.body}</p>
           <Link
             href="#register-interest"
             className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-accent hover:text-accent/80"

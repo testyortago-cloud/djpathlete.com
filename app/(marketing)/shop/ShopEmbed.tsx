@@ -23,9 +23,7 @@ export function ShopEmbed() {
         src="https://shop.yortago.com/"
         title="DJP Athlete Shop"
         onLoad={() => setIsLoaded(true)}
-        className={`w-full transition-opacity duration-500 ${
-          isLoaded ? "opacity-100" : "opacity-0"
-        }`}
+        className={`w-full transition-opacity duration-500 ${isLoaded ? "opacity-100" : "opacity-0"}`}
         style={{
           border: 0,
           height: "calc(100vh - 200px)",

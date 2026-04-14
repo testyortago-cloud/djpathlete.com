@@ -1,13 +1,7 @@
 "use client"
 
 import { useEffect } from "react"
-export default function Error({
-  error,
-  reset,
-}: {
-  error: Error & { digest?: string }
-  reset: () => void
-}) {
+export default function Error({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   useEffect(() => {
     console.error("Unhandled error:", error)
   }, [error])
@@ -30,9 +24,7 @@ export default function Error({
             />
           </svg>
         </div>
-        <h1 className="text-2xl font-heading font-semibold text-foreground mb-2">
-          Something went wrong
-        </h1>
+        <h1 className="text-2xl font-heading font-semibold text-foreground mb-2">Something went wrong</h1>
         <p className="text-muted-foreground font-body mb-8">
           An unexpected error occurred. Please try again or return to the home page.
         </p>

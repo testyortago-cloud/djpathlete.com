@@ -18,26 +18,26 @@ Source design doc: [docs/superpowers/specs/2026-04-14-clinics-and-camps-design.m
 
 **New files:**
 
-| path | responsibility |
-|---|---|
-| `app/(marketing)/clinics/page.tsx` | Clinics landing page — metadata, JsonLd, assembled sections |
-| `app/(marketing)/camps/page.tsx` | Camps landing page — metadata, JsonLd, assembled sections |
-| `components/public/ClinicHero.tsx` | Hero section specific to clinics (copy + stats) |
-| `components/public/CampHero.tsx` | Hero section specific to camps (copy + stats) |
-| `components/public/FocusGrid.tsx` | Reusable 4-card "what gets coached" grid |
-| `components/public/NumberedFlow.tsx` | Reusable numbered-steps block |
-| `components/public/EventsComingSoonPanel.tsx` | Placeholder "New dates coming soon" panel for the upcoming-events section |
-| `__tests__/components/public/FocusGrid.test.tsx` | Unit tests for FocusGrid |
-| `__tests__/components/public/NumberedFlow.test.tsx` | Unit tests for NumberedFlow |
-| `__tests__/e2e/clinics-camps.spec.ts` | Playwright smoke test for both pages |
+| path                                                | responsibility                                                            |
+| --------------------------------------------------- | ------------------------------------------------------------------------- |
+| `app/(marketing)/clinics/page.tsx`                  | Clinics landing page — metadata, JsonLd, assembled sections               |
+| `app/(marketing)/camps/page.tsx`                    | Camps landing page — metadata, JsonLd, assembled sections                 |
+| `components/public/ClinicHero.tsx`                  | Hero section specific to clinics (copy + stats)                           |
+| `components/public/CampHero.tsx`                    | Hero section specific to camps (copy + stats)                             |
+| `components/public/FocusGrid.tsx`                   | Reusable 4-card "what gets coached" grid                                  |
+| `components/public/NumberedFlow.tsx`                | Reusable numbered-steps block                                             |
+| `components/public/EventsComingSoonPanel.tsx`       | Placeholder "New dates coming soon" panel for the upcoming-events section |
+| `__tests__/components/public/FocusGrid.test.tsx`    | Unit tests for FocusGrid                                                  |
+| `__tests__/components/public/NumberedFlow.test.tsx` | Unit tests for NumberedFlow                                               |
+| `__tests__/e2e/clinics-camps.spec.ts`               | Playwright smoke test for both pages                                      |
 
 **Modified files:**
 
-| path | change |
-|---|---|
-| `lib/validators/inquiry.ts` | Add `"clinic"` and `"camp"` to `SERVICE_TYPES` + labels |
-| `lib/constants.ts` | Add Clinics + Camps to `NAV_ITEMS` and `FOOTER_SECTIONS` |
-| `app/sitemap.ts` | Add `/clinics` and `/camps` static entries |
+| path                        | change                                                   |
+| --------------------------- | -------------------------------------------------------- |
+| `lib/validators/inquiry.ts` | Add `"clinic"` and `"camp"` to `SERVICE_TYPES` + labels  |
+| `lib/constants.ts`          | Add Clinics + Camps to `NAV_ITEMS` and `FOOTER_SECTIONS` |
+| `app/sitemap.ts`            | Add `/clinics` and `/camps` static entries               |
 
 ## Design Tokens Reference
 
@@ -56,6 +56,7 @@ Use these throughout — never hardcoded hex or Darren's `bg-[#0b0b0b]`:
 **Why:** Phase 1 CTAs on both pages use `<InquiryForm defaultService="clinic" />` / `defaultService="camp"`. The Zod enum needs those values or the form will reject them.
 
 **Files:**
+
 - Modify: `lib/validators/inquiry.ts`
 
 - [ ] **Step 1: Read current SERVICE_TYPES** (context only — already seen in plan prep)
@@ -65,13 +66,7 @@ Use these throughout — never hardcoded hex or Darren's `bg-[#0b0b0b]`:
 Replace the `SERVICE_TYPES` and `SERVICE_LABELS` declarations in `lib/validators/inquiry.ts` with:
 
 ```typescript
-export const SERVICE_TYPES = [
-  "in_person",
-  "online",
-  "assessment",
-  "clinic",
-  "camp",
-] as const
+export const SERVICE_TYPES = ["in_person", "online", "assessment", "clinic", "camp"] as const
 
 export type ServiceType = (typeof SERVICE_TYPES)[number]
 
@@ -103,6 +98,7 @@ git commit -m "feat(inquiry): add clinic and camp service types"
 **Why:** Reusable 4-card grid used in "What gets coached" (clinics) and "What gets developed" (camps). Takes an array of `{ title, body }` items and renders them as numbered cards with Lucide icons.
 
 **Files:**
+
 - Create: `components/public/FocusGrid.tsx`
 - Test: `__tests__/components/public/FocusGrid.test.tsx`
 
@@ -179,22 +175,15 @@ export function FocusGrid({ items }: FocusGridProps) {
         const Icon = ICONS[i % ICONS.length]
         const number = String(i + 1).padStart(2, "0")
         return (
-          <Card
-            key={item.title}
-            className="h-full border-border bg-background rounded-2xl shadow-sm"
-          >
+          <Card key={item.title} className="h-full border-border bg-background rounded-2xl shadow-sm">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
                   <Icon className="h-5 w-5" strokeWidth={1.8} />
                 </div>
-                <div className="text-xs uppercase tracking-[0.25em] text-muted-foreground">
-                  {number}
-                </div>
+                <div className="text-xs uppercase tracking-[0.25em] text-muted-foreground">{number}</div>
               </div>
-              <h3 className="mt-5 text-2xl font-heading font-semibold tracking-tight text-foreground">
-                {item.title}
-              </h3>
+              <h3 className="mt-5 text-2xl font-heading font-semibold tracking-tight text-foreground">{item.title}</h3>
               <p className="mt-4 leading-7 text-muted-foreground">{item.body}</p>
             </CardContent>
           </Card>
@@ -224,6 +213,7 @@ git commit -m "feat(public): add FocusGrid component for clinic/camp focus cards
 **Why:** Reusable numbered-steps block used in the "How it runs" section on clinics. Takes a `string[]` and renders each with a numbered badge.
 
 **Files:**
+
 - Create: `components/public/NumberedFlow.tsx`
 - Test: `__tests__/components/public/NumberedFlow.test.tsx`
 
@@ -279,10 +269,7 @@ export function NumberedFlow({ steps }: NumberedFlowProps) {
   return (
     <div className="grid gap-4">
       {steps.map((step, i) => (
-        <div
-          key={step}
-          className="flex items-start gap-4 rounded-2xl border border-border bg-background p-5 shadow-sm"
-        >
+        <div key={step} className="flex items-start gap-4 rounded-2xl border border-border bg-background p-5 shadow-sm">
           <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
             {i + 1}
           </div>
@@ -313,6 +300,7 @@ git commit -m "feat(public): add NumberedFlow component for step-by-step section
 **Why:** Phase 1 placeholder for the "Upcoming dates" section. Explains that dates are rolling out and points visitors to the inquiry form below. Takes a `type: 'clinic' | 'camp'` prop so copy can differ.
 
 **Files:**
+
 - Create: `components/public/EventsComingSoonPanel.tsx`
 
 No tests — this is pure presentational copy that'll be replaced entirely in Phase 2.
@@ -351,9 +339,7 @@ export function EventsComingSoonPanel({ type }: EventsComingSoonPanelProps) {
           <h3 className="text-2xl font-heading font-semibold tracking-tight text-foreground md:text-3xl">
             {copy.title}
           </h3>
-          <p className="mt-3 max-w-2xl text-base leading-7 text-muted-foreground md:text-lg">
-            {copy.body}
-          </p>
+          <p className="mt-3 max-w-2xl text-base leading-7 text-muted-foreground md:text-lg">{copy.body}</p>
         </div>
       </div>
     </div>
@@ -380,6 +366,7 @@ git commit -m "feat(public): add EventsComingSoonPanel placeholder for upcoming 
 **Why:** Hero section for `/clinics`. Green Azure background, Lexend Exa headline, right-side pitch card, three-stat row. Content lifted from Darren's mockup.
 
 **Files:**
+
 - Create: `components/public/ClinicHero.tsx`
 
 - [ ] **Step 1: Implement ClinicHero**
@@ -418,16 +405,12 @@ export function ClinicHero() {
             Get quicker where the game actually changes.
           </h1>
           <p className="mt-6 max-w-3xl text-lg leading-8 text-primary-foreground/80 md:text-xl">
-            A 2-hour coaching session for athletes who want to move better, react faster, and
-            look more in control when the game gets chaotic. The focus is agility through
-            acceleration, deceleration, change of direction, and rotation.
+            A 2-hour coaching session for athletes who want to move better, react faster, and look more in control when
+            the game gets chaotic. The focus is agility through acceleration, deceleration, change of direction, and
+            rotation.
           </p>
           <div className="mt-8 flex flex-wrap gap-4">
-            <Button
-              asChild
-              size="lg"
-              className="rounded-full bg-accent text-primary hover:bg-accent/90"
-            >
+            <Button asChild size="lg" className="rounded-full bg-accent text-primary hover:bg-accent/90">
               <Link href="#register-interest">
                 Register Your Interest
                 <ArrowRight className="ml-2 h-4 w-4" />
@@ -447,9 +430,7 @@ export function ClinicHero() {
               <div
                 key={stat.label}
                 className={`rounded-2xl border p-4 ${
-                  stat.accent
-                    ? "border-accent/40 bg-accent/15"
-                    : "border-primary-foreground/15 bg-primary-foreground/5"
+                  stat.accent ? "border-accent/40 bg-accent/15" : "border-primary-foreground/15 bg-primary-foreground/5"
                 }`}
               >
                 <div className="text-sm text-primary-foreground/60">{stat.label}</div>
@@ -462,25 +443,21 @@ export function ClinicHero() {
         <FadeIn delay={0.1}>
           <Card className="rounded-3xl border-primary-foreground/15 bg-primary-foreground/[0.06] shadow-2xl backdrop-blur">
             <CardContent className="p-6 md:p-8">
-              <div className="text-xs uppercase tracking-[0.3em] text-primary-foreground/50">
-                The pitch
-              </div>
+              <div className="text-xs uppercase tracking-[0.3em] text-primary-foreground/50">The pitch</div>
               <div className="mt-4 font-heading text-2xl font-medium leading-9 md:text-3xl">
                 Not cone drills for the sake of cone drills.
               </div>
               <div className="mt-5 space-y-4 text-sm leading-7 text-primary-foreground/75 md:text-base">
                 <p>
-                  Athletes are coached through the actions that decide real moments in sport:
-                  starting, stopping, redirecting, and re-organising under pressure.
+                  Athletes are coached through the actions that decide real moments in sport: starting, stopping,
+                  redirecting, and re-organising under pressure.
                 </p>
                 <p>
-                  Smaller group numbers mean better feedback, better reps, and a better
-                  standard of coaching throughout.
+                  Smaller group numbers mean better feedback, better reps, and a better standard of coaching throughout.
                 </p>
               </div>
               <div className="mt-7 rounded-2xl border border-accent/40 bg-accent/15 p-4 text-sm text-primary-foreground">
-                Designed for athletes who want their movement to stand out, not just their
-                effort.
+                Designed for athletes who want their movement to stand out, not just their effort.
               </div>
             </CardContent>
           </Card>
@@ -510,6 +487,7 @@ git commit -m "feat(public): add ClinicHero section for /clinics landing page"
 **Why:** Hero section for `/camps`. Same structural pattern as ClinicHero but with camp-specific copy, stats, and CTA labels.
 
 **Files:**
+
 - Create: `components/public/CampHero.tsx`
 
 - [ ] **Step 1: Implement CampHero**
@@ -548,16 +526,11 @@ export function CampHero() {
             Build more before the season takes over.
           </h1>
           <p className="mt-6 max-w-3xl text-lg leading-8 text-primary-foreground/80 md:text-xl">
-            Camps built to develop the physical base behind performance: speed, power,
-            movement quality, conditioning, and robustness. In selected settings, athletes
-            also get testing, insight, and reporting.
+            Camps built to develop the physical base behind performance: speed, power, movement quality, conditioning,
+            and robustness. In selected settings, athletes also get testing, insight, and reporting.
           </p>
           <div className="mt-8 flex flex-wrap gap-4">
-            <Button
-              asChild
-              size="lg"
-              className="rounded-full bg-accent text-primary hover:bg-accent/90"
-            >
+            <Button asChild size="lg" className="rounded-full bg-accent text-primary hover:bg-accent/90">
               <Link href="#register-interest">
                 Register Your Interest
                 <ArrowRight className="ml-2 h-4 w-4" />
@@ -577,9 +550,7 @@ export function CampHero() {
               <div
                 key={stat.label}
                 className={`rounded-2xl border p-4 ${
-                  stat.accent
-                    ? "border-accent/40 bg-accent/15"
-                    : "border-primary-foreground/15 bg-primary-foreground/5"
+                  stat.accent ? "border-accent/40 bg-accent/15" : "border-primary-foreground/15 bg-primary-foreground/5"
                 }`}
               >
                 <div className="text-sm text-primary-foreground/60">{stat.label}</div>
@@ -592,20 +563,18 @@ export function CampHero() {
         <FadeIn delay={0.1}>
           <Card className="rounded-3xl border-primary-foreground/15 bg-primary-foreground/[0.06] shadow-2xl backdrop-blur">
             <CardContent className="p-6 md:p-8">
-              <div className="text-xs uppercase tracking-[0.3em] text-primary-foreground/50">
-                The difference
-              </div>
+              <div className="text-xs uppercase tracking-[0.3em] text-primary-foreground/50">The difference</div>
               <div className="mt-4 font-heading text-2xl font-medium leading-9 md:text-3xl">
                 More than sessions that just leave athletes tired.
               </div>
               <div className="mt-5 space-y-4 text-sm leading-7 text-primary-foreground/75 md:text-base">
                 <p>
-                  The aim is to build real physical qualities with more structure, more
-                  purpose, and better feedback around progress.
+                  The aim is to build real physical qualities with more structure, more purpose, and better feedback
+                  around progress.
                 </p>
                 <p>
-                  In some environments that also means using selected technology to give
-                  athletes clearer performance insight.
+                  In some environments that also means using selected technology to give athletes clearer performance
+                  insight.
                 </p>
               </div>
               <div className="mt-7 rounded-2xl border border-accent/40 bg-accent/15 p-4 text-sm text-primary-foreground">
@@ -639,6 +608,7 @@ git commit -m "feat(public): add CampHero section for /camps landing page"
 **Why:** Combines the components from Tasks 2–5 into the complete clinic landing page with metadata, JsonLd, and an anchored inquiry form at the bottom.
 
 **Files:**
+
 - Create: `app/(marketing)/clinics/page.tsx`
 
 - [ ] **Step 1: Implement /clinics page**
@@ -738,15 +708,13 @@ export default function ClinicsPage() {
       <section id="what-gets-coached" className="mx-auto max-w-7xl px-4 py-16 md:px-6 md:py-20">
         <FadeIn>
           <div className="max-w-3xl">
-            <div className="text-sm font-medium uppercase tracking-[0.25em] text-accent">
-              What gets coached
-            </div>
+            <div className="text-sm font-medium uppercase tracking-[0.25em] text-accent">What gets coached</div>
             <h2 className="mt-3 font-heading text-3xl font-semibold tracking-tight md:text-5xl">
               Agility work with proper coaching behind it.
             </h2>
             <p className="mt-5 text-lg leading-8 text-muted-foreground">
-              Built around the movement actions that show up again and again in competitive
-              sport. Less filler. More transfer.
+              Built around the movement actions that show up again and again in competitive sport. Less filler. More
+              transfer.
             </p>
           </div>
           <div className="mt-10">
@@ -758,15 +726,13 @@ export default function ClinicsPage() {
       <section className="bg-surface border-y border-border">
         <div className="mx-auto grid max-w-7xl gap-10 px-4 py-16 md:px-6 md:py-20 lg:grid-cols-[0.95fr_1.05fr]">
           <FadeIn>
-            <div className="text-sm font-medium uppercase tracking-[0.25em] text-accent">
-              How it runs
-            </div>
+            <div className="text-sm font-medium uppercase tracking-[0.25em] text-accent">How it runs</div>
             <h2 className="mt-3 font-heading text-3xl font-semibold tracking-tight md:text-5xl">
               Coach first. Then challenge it.
             </h2>
             <p className="mt-5 text-lg leading-8 text-muted-foreground">
-              A clear progression so quality comes before pressure. The session builds
-              understanding, then asks athletes to use it.
+              A clear progression so quality comes before pressure. The session builds understanding, then asks athletes
+              to use it.
             </p>
           </FadeIn>
           <FadeIn delay={0.1}>
@@ -778,12 +744,8 @@ export default function ClinicsPage() {
       <section className="mx-auto max-w-7xl px-4 py-16 md:px-6 md:py-20">
         <FadeIn>
           <div className="max-w-3xl">
-            <div className="text-sm font-medium uppercase tracking-[0.25em] text-accent">
-              Upcoming dates
-            </div>
-            <h2 className="mt-3 font-heading text-3xl font-semibold tracking-tight md:text-5xl">
-              When and where
-            </h2>
+            <div className="text-sm font-medium uppercase tracking-[0.25em] text-accent">Upcoming dates</div>
+            <h2 className="mt-3 font-heading text-3xl font-semibold tracking-tight md:text-5xl">When and where</h2>
           </div>
           <div className="mt-10">
             <EventsComingSoonPanel type="clinic" />
@@ -796,9 +758,7 @@ export default function ClinicsPage() {
           <FadeIn>
             <Card className="rounded-3xl border-border bg-background">
               <CardContent className="p-8">
-                <div className="text-sm uppercase tracking-[0.25em] text-accent">
-                  Who it is for
-                </div>
+                <div className="text-sm uppercase tracking-[0.25em] text-accent">Who it is for</div>
                 <h3 className="mt-3 font-heading text-3xl font-semibold tracking-tight">
                   Athletes who want to look and feel more effective in sport.
                 </h3>
@@ -817,15 +777,13 @@ export default function ClinicsPage() {
           <FadeIn delay={0.1}>
             <Card className="rounded-3xl border-border bg-gradient-to-br from-accent/10 to-surface">
               <CardContent className="p-8">
-                <div className="text-sm uppercase tracking-[0.25em] text-muted-foreground">
-                  Outcome
-                </div>
+                <div className="text-sm uppercase tracking-[0.25em] text-muted-foreground">Outcome</div>
                 <div className="mt-4 font-heading text-3xl font-semibold tracking-tight">
                   Better movement. Better control. Better transfer.
                 </div>
                 <p className="mt-5 leading-8 text-muted-foreground">
-                  Athletes leave with clearer movement understanding, sharper agility
-                  mechanics, and better confidence when the game becomes less predictable.
+                  Athletes leave with clearer movement understanding, sharper agility mechanics, and better confidence
+                  when the game becomes less predictable.
                 </p>
                 <Button asChild className="mt-8 rounded-full">
                   <Link href="#register-interest">Register Your Interest</Link>
@@ -859,6 +817,7 @@ Run: `npm run dev` (port 3050 per CLAUDE.md).
 Navigate to `http://localhost:3050/clinics`.
 
 Expected:
+
 - Hero renders on Green Azure background with Lexend Exa headline
 - Four focus cards show Acceleration / Deceleration / Change of Direction / Rotation
 - Numbered flow shows 4 steps
@@ -888,6 +847,7 @@ git commit -m "feat(clinics): add /clinics landing page with static content and 
 **Why:** Camp equivalent of Task 7. Structurally parallel but with camp-specific copy, a "Technology + feedback" section (cards grid) in place of the numbered flow, and camp inquiry.
 
 **Files:**
+
 - Create: `app/(marketing)/camps/page.tsx`
 
 - [ ] **Step 1: Implement /camps page**
@@ -938,8 +898,7 @@ const serviceSchema = {
     },
   },
   serviceType: "Off-Season / Pre-Season Performance Camp",
-  description:
-    "Multi-week off-season and pre-season athletic performance camps for youth athletes aged 12–18.",
+  description: "Multi-week off-season and pre-season athletic performance camps for youth athletes aged 12–18.",
   url: "https://djpathlete.com/camps",
   audience: { "@type": "Audience", audienceType: "Youth Athletes, 12–18" },
 }
@@ -986,15 +945,13 @@ export default function CampsPage() {
       <section id="what-gets-developed" className="mx-auto max-w-7xl px-4 py-16 md:px-6 md:py-20">
         <FadeIn>
           <div className="max-w-3xl">
-            <div className="text-sm font-medium uppercase tracking-[0.25em] text-accent">
-              What gets developed
-            </div>
+            <div className="text-sm font-medium uppercase tracking-[0.25em] text-accent">What gets developed</div>
             <h2 className="mt-3 font-heading text-3xl font-semibold tracking-tight md:text-5xl">
               A stronger, more complete performance base.
             </h2>
             <p className="mt-5 text-lg leading-8 text-muted-foreground">
-              Wider than agility alone. Built to help athletes develop the qualities that
-              support performance before the competitive period ramps up.
+              Wider than agility alone. Built to help athletes develop the qualities that support performance before the
+              competitive period ramps up.
             </p>
           </div>
           <div className="mt-10">
@@ -1006,15 +963,13 @@ export default function CampsPage() {
       <section className="bg-surface border-y border-border">
         <div className="mx-auto grid max-w-7xl gap-10 px-4 py-16 md:px-6 md:py-20 lg:grid-cols-[0.95fr_1.05fr]">
           <FadeIn>
-            <div className="text-sm font-medium uppercase tracking-[0.25em] text-accent">
-              Technology + feedback
-            </div>
+            <div className="text-sm font-medium uppercase tracking-[0.25em] text-accent">Technology + feedback</div>
             <h2 className="mt-3 font-heading text-3xl font-semibold tracking-tight md:text-5xl">
               Train with more visibility on progress.
             </h2>
             <p className="mt-5 text-lg leading-8 text-muted-foreground">
-              Where appropriate, selected testing and reporting add another layer to the camp
-              experience. Not to overcomplicate it — to make progress more visible and useful.
+              Where appropriate, selected testing and reporting add another layer to the camp experience. Not to
+              overcomplicate it — to make progress more visible and useful.
             </p>
           </FadeIn>
           <FadeIn delay={0.1}>
@@ -1035,9 +990,7 @@ export default function CampsPage() {
       <section className="mx-auto max-w-7xl px-4 py-16 md:px-6 md:py-20">
         <FadeIn>
           <div className="max-w-3xl">
-            <div className="text-sm font-medium uppercase tracking-[0.25em] text-accent">
-              Upcoming blocks
-            </div>
+            <div className="text-sm font-medium uppercase tracking-[0.25em] text-accent">Upcoming blocks</div>
             <h2 className="mt-3 font-heading text-3xl font-semibold tracking-tight md:text-5xl">
               When the next camp runs
             </h2>
@@ -1053,9 +1006,7 @@ export default function CampsPage() {
           <FadeIn>
             <Card className="rounded-3xl border-border bg-background">
               <CardContent className="p-8">
-                <div className="text-sm uppercase tracking-[0.25em] text-accent">
-                  Who it is for
-                </div>
+                <div className="text-sm uppercase tracking-[0.25em] text-accent">Who it is for</div>
                 <h3 className="mt-3 font-heading text-3xl font-semibold tracking-tight">
                   Athletes building toward the next level.
                 </h3>
@@ -1074,15 +1025,13 @@ export default function CampsPage() {
           <FadeIn delay={0.1}>
             <Card className="rounded-3xl border-border bg-gradient-to-br from-accent/10 to-surface">
               <CardContent className="p-8">
-                <div className="text-sm uppercase tracking-[0.25em] text-muted-foreground">
-                  Outcome
-                </div>
+                <div className="text-sm uppercase tracking-[0.25em] text-muted-foreground">Outcome</div>
                 <div className="mt-4 font-heading text-3xl font-semibold tracking-tight">
                   Better prepared. Better built. Better informed.
                 </div>
                 <p className="mt-5 leading-8 text-muted-foreground">
-                  Athletes leave with a stronger performance base and, where included, a
-                  clearer view of what is improving and what still needs work.
+                  Athletes leave with a stronger performance base and, where included, a clearer view of what is
+                  improving and what still needs work.
                 </p>
                 <Button asChild className="mt-8 rounded-full">
                   <Link href="#register-interest">Register Your Interest</Link>
@@ -1116,6 +1065,7 @@ Run: `npm run dev`.
 Navigate to `http://localhost:3050/camps`.
 
 Expected:
+
 - Hero renders with camp copy and stats
 - Four focus cards show Speed + Power / Strength Qualities / Movement Quality / Conditioning
 - Tech + feedback section shows 4 radar-icon cards
@@ -1145,6 +1095,7 @@ git commit -m "feat(camps): add /camps landing page with static content and inqu
 **Why:** Users need a way to find these pages from other pages on the site.
 
 **Files:**
+
 - Modify: `lib/constants.ts`
 
 - [ ] **Step 1: Extend the Services nav group and add to footer**
@@ -1216,6 +1167,7 @@ export const FOOTER_SECTIONS = [
 Run: `npm run dev`.
 
 On the homepage:
+
 - Hover "Services" in the top nav → dropdown shows Agility Clinics and Performance Camps with descriptions
 - Scroll to footer → Services column shows Agility Clinics and Performance Camps
 - Click each link → page loads correctly
@@ -1241,6 +1193,7 @@ git commit -m "feat(nav): add Agility Clinics and Performance Camps to nav and f
 **Why:** SEO — both pages need to be discoverable by search engines via the generated sitemap.
 
 **Files:**
+
 - Modify: `app/sitemap.ts`
 
 - [ ] **Step 1: Add two static entries**
@@ -1286,6 +1239,7 @@ git commit -m "feat(seo): add /clinics and /camps to sitemap"
 **Why:** Catch regressions if someone breaks a component or the marketing layout later. Smoke-level only in Phase 1 — full interaction testing comes in Phase 2 when there are actual signup flows to verify.
 
 **Files:**
+
 - Create: `__tests__/e2e/clinics-camps.spec.ts`
 
 - [ ] **Step 1: Write the e2e smoke test**
@@ -1300,7 +1254,7 @@ test.describe("Clinics landing page", () => {
     await page.goto("/clinics")
 
     await expect(
-      page.getByRole("heading", { level: 1, name: /get quicker where the game actually changes/i })
+      page.getByRole("heading", { level: 1, name: /get quicker where the game actually changes/i }),
     ).toBeVisible()
 
     await expect(page.getByText("Acceleration")).toBeVisible()
@@ -1316,7 +1270,10 @@ test.describe("Clinics landing page", () => {
 
   test("hero CTA scrolls to the inquiry form", async ({ page }) => {
     await page.goto("/clinics")
-    await page.getByRole("link", { name: /register your interest/i }).first().click()
+    await page
+      .getByRole("link", { name: /register your interest/i })
+      .first()
+      .click()
     await expect(page).toHaveURL(/#register-interest$/)
   })
 })
@@ -1326,7 +1283,7 @@ test.describe("Camps landing page", () => {
     await page.goto("/camps")
 
     await expect(
-      page.getByRole("heading", { level: 1, name: /build more before the season takes over/i })
+      page.getByRole("heading", { level: 1, name: /build more before the season takes over/i }),
     ).toBeVisible()
 
     await expect(page.getByText("Speed + Power")).toBeVisible()
@@ -1381,6 +1338,7 @@ Run: `npm run lint && npm run format:check`
 Expected: no errors.
 
 If format:check fails, run `npm run format` and commit the formatting fix as a separate commit:
+
 ```bash
 git add -A
 git commit -m "style: prettier format clinics/camps phase 1 files"
@@ -1396,6 +1354,7 @@ Expected: build completes without errors. Both `/clinics` and `/camps` appear in
 Run: `npm run dev`.
 
 Walk through, in one session:
+
 1. `/` → header nav hover → Services dropdown shows Clinics + Camps
 2. Click Clinics → full page renders, scroll through every section
 3. Hero CTA → scrolls to form → form shows "Agility Clinic" pre-selected
@@ -1417,21 +1376,21 @@ git tag phase-1-clinics-camps-complete
 
 **Spec coverage:**
 
-| Spec requirement (Phase 1 scope) | Task |
-|---|---|
-| Two server-rendered pages at `/clinics` and `/camps` | Tasks 7, 8 |
-| Hero with Green Azure bg, Lexend Exa, pitch card, stat row | Tasks 5, 6 |
-| 4-card "what gets coached/developed" grid | Tasks 2, 7, 8 |
-| Numbered 4-step "How it runs" (clinics) | Tasks 3, 7 |
-| 4-card "Technology + feedback" block (camps) | Task 8 |
-| "Coming soon" panel as upcoming-dates placeholder | Tasks 4, 7, 8 |
-| "Who it's for" + "Outcome" two-card split | Tasks 7, 8 |
-| Inline inquiry form with pre-filled service | Tasks 1, 7, 8 |
-| Per-page metadata + Service JsonLd | Tasks 7, 8 |
-| Navigation entry for both pages | Task 9 |
-| Sitemap entries | Task 10 |
-| Smoke-level component tests | Tasks 2, 3 |
-| E2E smoke test | Task 11 |
+| Spec requirement (Phase 1 scope)                           | Task          |
+| ---------------------------------------------------------- | ------------- |
+| Two server-rendered pages at `/clinics` and `/camps`       | Tasks 7, 8    |
+| Hero with Green Azure bg, Lexend Exa, pitch card, stat row | Tasks 5, 6    |
+| 4-card "what gets coached/developed" grid                  | Tasks 2, 7, 8 |
+| Numbered 4-step "How it runs" (clinics)                    | Tasks 3, 7    |
+| 4-card "Technology + feedback" block (camps)               | Task 8        |
+| "Coming soon" panel as upcoming-dates placeholder          | Tasks 4, 7, 8 |
+| "Who it's for" + "Outcome" two-card split                  | Tasks 7, 8    |
+| Inline inquiry form with pre-filled service                | Tasks 1, 7, 8 |
+| Per-page metadata + Service JsonLd                         | Tasks 7, 8    |
+| Navigation entry for both pages                            | Task 9        |
+| Sitemap entries                                            | Task 10       |
+| Smoke-level component tests                                | Tasks 2, 3    |
+| E2E smoke test                                             | Task 11       |
 
 No Phase 1 spec requirement is uncovered.
 

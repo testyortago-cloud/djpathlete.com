@@ -6,10 +6,7 @@ export async function GET() {
     const testimonials = await getTestimonials(false)
     return NextResponse.json(testimonials)
   } catch {
-    return NextResponse.json(
-      { error: "Failed to fetch testimonials." },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to fetch testimonials." }, { status: 500 })
   }
 }
 
@@ -20,10 +17,7 @@ export async function POST(request: Request) {
     const { name, role, sport, quote, rating, is_featured, is_active, display_order } = body
 
     if (!name || !quote) {
-      return NextResponse.json(
-        { error: "Name and quote are required." },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Name and quote are required." }, { status: 400 })
     }
 
     const testimonial = await createTestimonial({
@@ -40,9 +34,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json(testimonial, { status: 201 })
   } catch {
-    return NextResponse.json(
-      { error: "Failed to create testimonial." },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to create testimonial." }, { status: 500 })
   }
 }

@@ -81,9 +81,7 @@ export function FormTour({
             >
               {/* Header */}
               <div className="flex items-start justify-between gap-2">
-                <h4 className="text-sm font-semibold text-foreground leading-tight">
-                  {step.title}
-                </h4>
+                <h4 className="text-sm font-semibold text-foreground leading-tight">{step.title}</h4>
                 <button
                   type="button"
                   onClick={close}
@@ -94,9 +92,7 @@ export function FormTour({
               </div>
 
               {/* Description */}
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                {step.description}
-              </p>
+              <p className="text-xs text-muted-foreground leading-relaxed">{step.description}</p>
 
               {/* Footer */}
               <div className="flex items-center justify-between pt-1">
@@ -114,13 +110,7 @@ export function FormTour({
                   >
                     <ChevronLeft className="size-3.5" />
                   </Button>
-                  <Button
-                    type="button"
-                    variant="default"
-                    size="sm"
-                    className="h-7 px-3 text-xs"
-                    onClick={next}
-                  >
+                  <Button type="button" variant="default" size="sm" className="h-7 px-3 text-xs" onClick={next}>
                     {currentIndex === steps.length - 1 ? "Done" : "Next"}
                   </Button>
                 </div>

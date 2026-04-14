@@ -13,8 +13,7 @@ const DISMISS_KEY = "installPromptDismissed"
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
 
 export function InstallPrompt() {
-  const [deferredPrompt, setDeferredPrompt] =
-    useState<BeforeInstallPromptEvent | null>(null)
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null)
   const [showBanner, setShowBanner] = useState(false)
 
   // Check if the app is already installed (standalone mode)
@@ -69,15 +68,8 @@ export function InstallPrompt() {
   return (
     <div className="fixed bottom-20 lg:bottom-6 left-4 right-4 lg:left-auto lg:right-6 lg:max-w-sm z-50">
       <div className="bg-primary text-primary-foreground rounded-lg shadow-lg p-4 flex items-center gap-3">
-        <p className="flex-1 text-sm font-medium">
-          Install DJP Athlete for quick access
-        </p>
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={handleInstall}
-          className="shrink-0"
-        >
+        <p className="flex-1 text-sm font-medium">Install DJP Athlete for quick access</p>
+        <Button variant="secondary" size="sm" onClick={handleInstall} className="shrink-0">
           Install
         </Button>
         <button

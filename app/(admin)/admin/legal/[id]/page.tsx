@@ -6,11 +6,7 @@ import { LegalDocumentEditor } from "@/components/admin/LegalDocumentEditor"
 export const dynamic = "force-dynamic"
 export const metadata = { title: "Edit Legal Document | DJP Athlete Admin" }
 
-export default async function AdminLegalEditPage({
-  params,
-}: {
-  params: Promise<{ id: string }>
-}) {
+export default async function AdminLegalEditPage({ params }: { params: Promise<{ id: string }> }) {
   await requireAdmin()
   const { id } = await params
 

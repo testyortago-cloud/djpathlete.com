@@ -58,9 +58,7 @@ export function useNotifications(): UseNotificationsReturn {
 
   const markAsRead = useCallback(
     async (id: string) => {
-      setNotifications((prev) =>
-        prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
-      )
+      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)))
       setUnreadCount((prev) => Math.max(0, prev - 1))
 
       try {
@@ -73,7 +71,7 @@ export function useNotifications(): UseNotificationsReturn {
         fetchNotifications()
       }
     },
-    [fetchNotifications]
+    [fetchNotifications],
   )
 
   const markAllAsRead = useCallback(async () => {

@@ -27,12 +27,7 @@ export function ChangePasswordButton({ email }: { email: string }) {
   }
 
   return (
-    <Button
-      variant="outline"
-      size="sm"
-      onClick={handleClick}
-      disabled={pending}
-    >
+    <Button variant="outline" size="sm" onClick={handleClick} disabled={pending}>
       {pending ? "Sending…" : "Change Password"}
     </Button>
   )

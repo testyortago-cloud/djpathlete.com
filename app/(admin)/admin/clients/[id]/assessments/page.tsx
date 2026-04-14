@@ -1,13 +1,6 @@
 import Link from "next/link"
 import { notFound } from "next/navigation"
-import {
-  ArrowLeft,
-  ClipboardCheck,
-  Activity,
-  Calendar,
-  Target,
-  Video,
-} from "lucide-react"
+import { ArrowLeft, ClipboardCheck, Activity, Calendar, Target, Video } from "lucide-react"
 import { requireAdmin } from "@/lib/auth-helpers"
 import { getUserById } from "@/lib/db/users"
 import { getAssessmentResultsByUser } from "@/lib/db/assessments"
@@ -37,11 +30,7 @@ function formatDate(dateString: string): string {
   })
 }
 
-export default async function ClientAssessmentsPage({
-  params,
-}: {
-  params: Promise<{ id: string }>
-}) {
+export default async function ClientAssessmentsPage({ params }: { params: Promise<{ id: string }> }) {
   await requireAdmin()
   const { id } = await params
 
@@ -84,22 +73,15 @@ export default async function ClientAssessmentsPage({
         <div className="bg-white rounded-xl border border-border p-6">
           <div className="flex items-center gap-2 mb-4">
             <ClipboardCheck className="size-5 text-primary" />
-            <h2 className="text-lg font-semibold text-primary">
-              Movement Screen Results
-            </h2>
+            <h2 className="text-lg font-semibold text-primary">Movement Screen Results</h2>
           </div>
 
           {assessmentResults.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No movement screen results yet.
-            </p>
+            <p className="text-sm text-muted-foreground">No movement screen results yet.</p>
           ) : (
             <div className="space-y-4">
               {assessmentResults.map((result) => (
-                <div
-                  key={result.id}
-                  className="border border-border rounded-lg p-4"
-                >
+                <div key={result.id} className="border border-border rounded-lg p-4">
                   <div className="flex flex-wrap items-center gap-3 mb-3">
                     <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
                       <Calendar className="size-3.5" />
@@ -143,29 +125,19 @@ export default async function ClientAssessmentsPage({
         <div className="bg-white rounded-xl border border-border p-6">
           <div className="flex items-center gap-2 mb-4">
             <Activity className="size-5 text-primary" />
-            <h2 className="text-lg font-semibold text-primary">
-              Performance Assessments
-            </h2>
+            <h2 className="text-lg font-semibold text-primary">Performance Assessments</h2>
           </div>
 
           {performanceAssessments.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No performance assessments yet.
-            </p>
+            <p className="text-sm text-muted-foreground">No performance assessments yet.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-surface/50">
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                      Title
-                    </th>
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                      Status
-                    </th>
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden sm:table-cell">
-                      Date
-                    </th>
+                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Title</th>
+                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
+                    <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden sm:table-cell">Date</th>
                     <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">
                       Notes
                     </th>
@@ -178,9 +150,7 @@ export default async function ClientAssessmentsPage({
                       key={pa.id}
                       className="border-b border-border last:border-b-0 hover:bg-surface/30 transition-colors"
                     >
-                      <td className="px-4 py-3 font-medium text-foreground">
-                        {pa.title}
-                      </td>
+                      <td className="px-4 py-3 font-medium text-foreground">{pa.title}</td>
                       <td className="px-4 py-3">
                         <span
                           className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${

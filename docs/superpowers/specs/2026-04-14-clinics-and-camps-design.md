@@ -38,48 +38,48 @@ Add two public marketing pages (`/clinics` and `/camps`) backed by a shared even
 
 ### `events` table
 
-| column | type | notes |
-|---|---|---|
-| `id` | uuid PK | |
-| `type` | text | `'clinic' \| 'camp'` |
-| `slug` | text unique | URL slug, e.g. `agility-clinic-2026-05-03-richmond` |
-| `title` | text | |
-| `summary` | text | short card blurb (1–2 lines) |
-| `description` | text | long-form plain text |
-| `focus_areas` | text[] | drives the "what gets coached" section |
-| `start_date` | timestamptz | clinic: start time; camp: first day |
-| `end_date` | timestamptz nullable | clinic: same-day end time; camp: last day |
-| `session_schedule` | text nullable | camp only — free-text like "M–F, 9–11am" |
-| `location_name` | text | |
-| `location_address` | text nullable | |
-| `location_map_url` | text nullable | |
-| `age_min`, `age_max` | int nullable | |
-| `capacity` | int | max signups |
-| `signup_count` | int default 0 | incremented on confirmed signup |
-| `price_cents` | int nullable | null for clinics (offline), set for camps |
-| `stripe_price_id` | text nullable | camp only, set when synced to Stripe |
-| `status` | text | `'draft' \| 'published' \| 'cancelled' \| 'completed'` |
-| `hero_image_url` | text nullable | |
-| `created_at`, `updated_at` | timestamptz | |
+| column                     | type                 | notes                                                  |
+| -------------------------- | -------------------- | ------------------------------------------------------ |
+| `id`                       | uuid PK              |                                                        |
+| `type`                     | text                 | `'clinic' \| 'camp'`                                   |
+| `slug`                     | text unique          | URL slug, e.g. `agility-clinic-2026-05-03-richmond`    |
+| `title`                    | text                 |                                                        |
+| `summary`                  | text                 | short card blurb (1–2 lines)                           |
+| `description`              | text                 | long-form plain text                                   |
+| `focus_areas`              | text[]               | drives the "what gets coached" section                 |
+| `start_date`               | timestamptz          | clinic: start time; camp: first day                    |
+| `end_date`                 | timestamptz nullable | clinic: same-day end time; camp: last day              |
+| `session_schedule`         | text nullable        | camp only — free-text like "M–F, 9–11am"               |
+| `location_name`            | text                 |                                                        |
+| `location_address`         | text nullable        |                                                        |
+| `location_map_url`         | text nullable        |                                                        |
+| `age_min`, `age_max`       | int nullable         |                                                        |
+| `capacity`                 | int                  | max signups                                            |
+| `signup_count`             | int default 0        | incremented on confirmed signup                        |
+| `price_cents`              | int nullable         | null for clinics (offline), set for camps              |
+| `stripe_price_id`          | text nullable        | camp only, set when synced to Stripe                   |
+| `status`                   | text                 | `'draft' \| 'published' \| 'cancelled' \| 'completed'` |
+| `hero_image_url`           | text nullable        |                                                        |
+| `created_at`, `updated_at` | timestamptz          |                                                        |
 
 Indices: `status`, `type`, `start_date`, `slug`.
 
 ### `event_signups` table
 
-| column | type | notes |
-|---|---|---|
-| `id` | uuid PK | |
-| `event_id` | uuid FK | |
-| `signup_type` | text | `'interest' \| 'paid'` |
-| `parent_name`, `parent_email`, `parent_phone` | text | guest-friendly |
-| `athlete_name`, `athlete_age` | text, int | |
-| `sport` | text nullable | |
-| `notes` | text nullable | |
-| `status` | text | `'pending' \| 'confirmed' \| 'cancelled' \| 'refunded'` |
-| `stripe_session_id`, `stripe_payment_intent_id` | text nullable | camp paid signups |
-| `amount_paid_cents` | int nullable | |
-| `user_id` | uuid nullable FK → users | optional link if email matches an account |
-| `created_at` | timestamptz | |
+| column                                          | type                     | notes                                                   |
+| ----------------------------------------------- | ------------------------ | ------------------------------------------------------- |
+| `id`                                            | uuid PK                  |                                                         |
+| `event_id`                                      | uuid FK                  |                                                         |
+| `signup_type`                                   | text                     | `'interest' \| 'paid'`                                  |
+| `parent_name`, `parent_email`, `parent_phone`   | text                     | guest-friendly                                          |
+| `athlete_name`, `athlete_age`                   | text, int                |                                                         |
+| `sport`                                         | text nullable            |                                                         |
+| `notes`                                         | text nullable            |                                                         |
+| `status`                                        | text                     | `'pending' \| 'confirmed' \| 'cancelled' \| 'refunded'` |
+| `stripe_session_id`, `stripe_payment_intent_id` | text nullable            | camp paid signups                                       |
+| `amount_paid_cents`                             | int nullable             |                                                         |
+| `user_id`                                       | uuid nullable FK → users | optional link if email matches an account               |
+| `created_at`                                    | timestamptz              |                                                         |
 
 ### Counter maintenance
 
@@ -136,12 +136,12 @@ Increment happens on status transition to `confirmed` (admin click for clinics; 
 
 ### Admin routes
 
-| route | purpose |
-|---|---|
-| `/admin/events` | List view — filter by type + status, "New event" button |
-| `/admin/events/new` | Create form — type selector drives conditional fields |
-| `/admin/events/[id]` | Edit form + signups table |
-| `/admin/events/[id]/signups/[signupId]` | Signup detail — confirm, cancel, add notes |
+| route                                   | purpose                                                 |
+| --------------------------------------- | ------------------------------------------------------- |
+| `/admin/events`                         | List view — filter by type + status, "New event" button |
+| `/admin/events/new`                     | Create form — type selector drives conditional fields   |
+| `/admin/events/[id]`                    | Edit form + signups table                               |
+| `/admin/events/[id]/signups/[signupId]` | Signup detail — confirm, cancel, add notes              |
 
 List columns: Title • Type • Start date • Location • Signups (`3/10`) • Status • Actions (edit / duplicate / publish / cancel). Default sort: upcoming first. Filters: type, status, title search.
 
@@ -178,6 +178,7 @@ Add "Events" to the admin sidebar between "Bookings" and "Clients". Clinic/camp 
 ### Emails (Phase 2)
 
 Three templates via existing Resend integration:
+
 - `event-signup-received` → parent on submit
 - `event-signup-confirmed` → parent on admin confirm
 - `admin-new-signup-notification` → Darren on every new signup
@@ -198,11 +199,11 @@ Existing `/api/stripe/checkout` requires `auth()`. Phase 3 adds a parallel, gues
 
 ### New routes
 
-| route | purpose |
-|---|---|
-| `POST /api/events/[id]/checkout` | Creates Stripe Checkout Session for a camp. Accepts guest payload, creates pending `event_signups` row, returns `sessionUrl`. No auth. |
-| `POST /api/admin/events/[id]/stripe-sync` | Creates Stripe Product + Price, writes `stripe_price_id` back to event. Admin-only. |
-| `/camps/[slug]/success` | Success screen reads `session_id`, shows confirmation from the updated signup row. |
+| route                                     | purpose                                                                                                                                |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/events/[id]/checkout`          | Creates Stripe Checkout Session for a camp. Accepts guest payload, creates pending `event_signups` row, returns `sessionUrl`. No auth. |
+| `POST /api/admin/events/[id]/stripe-sync` | Creates Stripe Product + Price, writes `stripe_price_id` back to event. Admin-only.                                                    |
+| `/camps/[slug]/success`                   | Success screen reads `session_id`, shows confirmation from the updated signup row.                                                     |
 
 Existing `POST /api/stripe/webhook` is **extended** with a `checkout.session.completed` handler branch keyed on `metadata.event_signup_id`. Existing program-purchase branch untouched.
 
@@ -236,27 +237,27 @@ Existing `POST /api/stripe/webhook` is **extended** with a `checkout.session.com
 
 ## Routing Summary
 
-| route | phase | purpose |
-|---|---|---|
-| `/clinics` | 1 | landing page |
-| `/camps` | 1 | landing page |
-| `/clinics/[slug]` | 2 | event detail |
-| `/camps/[slug]` | 2 | event detail |
-| `/camps/[slug]/success` | 3 | Stripe post-checkout |
-| `/admin/events` | 2 | list |
-| `/admin/events/new` | 2 | create |
-| `/admin/events/[id]` | 2 | edit + signups |
-| `/admin/events/[id]/signups/[signupId]` | 2 | signup detail |
+| route                                   | phase | purpose              |
+| --------------------------------------- | ----- | -------------------- |
+| `/clinics`                              | 1     | landing page         |
+| `/camps`                                | 1     | landing page         |
+| `/clinics/[slug]`                       | 2     | event detail         |
+| `/camps/[slug]`                         | 2     | event detail         |
+| `/camps/[slug]/success`                 | 3     | Stripe post-checkout |
+| `/admin/events`                         | 2     | list                 |
+| `/admin/events/new`                     | 2     | create               |
+| `/admin/events/[id]`                    | 2     | edit + signups       |
+| `/admin/events/[id]/signups/[signupId]` | 2     | signup detail        |
 
-| API route | phase |
-|---|---|
-| `POST /api/events/[id]/signup` | 2 |
-| `POST /api/events/[id]/checkout` | 3 |
-| `POST /api/admin/events` | 2 |
-| `PATCH /api/admin/events/[id]` | 2 |
-| `POST /api/admin/events/[id]/stripe-sync` | 3 |
-| `PATCH /api/admin/events/[id]/signups/[signupId]` | 2 |
-| `POST /api/stripe/webhook` | 3 (extended, not replaced) |
+| API route                                         | phase                      |
+| ------------------------------------------------- | -------------------------- |
+| `POST /api/events/[id]/signup`                    | 2                          |
+| `POST /api/events/[id]/checkout`                  | 3                          |
+| `POST /api/admin/events`                          | 2                          |
+| `PATCH /api/admin/events/[id]`                    | 2                          |
+| `POST /api/admin/events/[id]/stripe-sync`         | 3                          |
+| `PATCH /api/admin/events/[id]/signups/[signupId]` | 2                          |
+| `POST /api/stripe/webhook`                        | 3 (extended, not replaced) |
 
 ## Navigation
 

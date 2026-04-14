@@ -32,7 +32,10 @@ function markdownToHtml(markdown: string, stripTitle: boolean): string {
 
     // Horizontal rule
     if (line.trim() === "---") {
-      if (inList) { html.push("</ul>"); inList = false }
+      if (inList) {
+        html.push("</ul>")
+        inList = false
+      }
       html.push("<hr />")
       continue
     }
@@ -40,21 +43,30 @@ function markdownToHtml(markdown: string, stripTitle: boolean): string {
     // Headings
     const h3Match = line.match(/^### (.+)$/)
     if (h3Match) {
-      if (inList) { html.push("</ul>"); inList = false }
+      if (inList) {
+        html.push("</ul>")
+        inList = false
+      }
       html.push(`<h3>${inlineFormat(h3Match[1])}</h3>`)
       continue
     }
 
     const h2Match = line.match(/^## (.+)$/)
     if (h2Match) {
-      if (inList) { html.push("</ul>"); inList = false }
+      if (inList) {
+        html.push("</ul>")
+        inList = false
+      }
       html.push(`<h2>${inlineFormat(h2Match[1])}</h2>`)
       continue
     }
 
     const h1Match = line.match(/^# (.+)$/)
     if (h1Match) {
-      if (inList) { html.push("</ul>"); inList = false }
+      if (inList) {
+        html.push("</ul>")
+        inList = false
+      }
       // Skip the first h1 if stripTitle is true (page already has its own heading)
       if (stripTitle && !firstH1Skipped) {
         firstH1Skipped = true
@@ -67,7 +79,10 @@ function markdownToHtml(markdown: string, stripTitle: boolean): string {
     // List items
     const liMatch = line.match(/^- (.+)$/)
     if (liMatch) {
-      if (!inList) { html.push("<ul>"); inList = true }
+      if (!inList) {
+        html.push("<ul>")
+        inList = true
+      }
       html.push(`<li>${inlineFormat(liMatch[1])}</li>`)
       continue
     }
@@ -94,7 +109,5 @@ function markdownToHtml(markdown: string, stripTitle: boolean): string {
 
 /** Apply inline formatting: bold, italic */
 function inlineFormat(text: string): string {
-  return text
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\*(.+?)\*/g, "<em>$1</em>")
+  return text.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/\*(.+?)\*/g, "<em>$1</em>")
 }

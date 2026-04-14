@@ -30,9 +30,7 @@ const RATE_LIMIT_WINDOW_MS = 120_000
 
 function checkRateLimit(userId: string): boolean {
   const now = Date.now()
-  const timestamps = (rateLimitMap.get(userId) ?? []).filter(
-    (t) => now - t < RATE_LIMIT_WINDOW_MS
-  )
+  const timestamps = (rateLimitMap.get(userId) ?? []).filter((t) => now - t < RATE_LIMIT_WINDOW_MS)
   if (timestamps.length >= RATE_LIMIT_MAX) {
     rateLimitMap.set(userId, timestamps)
     return false
@@ -49,29 +47,20 @@ export async function POST(request: NextRequest) {
     // Auth
     const session = await auth()
     if (!session?.user?.id || session.user.role !== "admin") {
-      return NextResponse.json(
-        { error: "Unauthorized. Admin access required." },
-        { status: 403 }
-      )
+      return NextResponse.json({ error: "Unauthorized. Admin access required." }, { status: 403 })
     }
     const userId = session.user.id
 
     // Rate limit
     if (!checkRateLimit(userId)) {
-      return NextResponse.json(
-        { error: "Too many requests. Please wait a few minutes." },
-        { status: 429 }
-      )
+      return NextResponse.json({ error: "Too many requests. Please wait a few minutes." }, { status: 429 })
     }
 
     // Parse body
     const body = await request.json()
     const parsed = requestSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Invalid request body.", details: parsed.error.issues },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Invalid request body.", details: parsed.error.issues }, { status: 400 })
     }
 
     // Create Firestore job doc
@@ -94,15 +83,9 @@ export async function POST(request: NextRequest) {
       updatedAt: FieldValue.serverTimestamp(),
     })
 
-    return NextResponse.json(
-      { jobId: jobRef.id, status: "pending" },
-      { status: 202 }
-    )
+    return NextResponse.json({ jobId: jobRef.id, status: "pending" }, { status: 202 })
   } catch (error) {
     console.error("[Program Chat] Error:", error)
-    return NextResponse.json(
-      { error: "Internal server error." },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Internal server error." }, { status: 500 })
   }
 }

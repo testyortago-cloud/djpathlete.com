@@ -15,10 +15,7 @@ const __dirname = dirname(__filename)
 
 dotenv.config({ path: resolve(__dirname, "../.env.local") })
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
 // Seed program IDs to keep
 const SEED_PROGRAM_IDS = [
@@ -31,9 +28,7 @@ const SEED_PROGRAM_IDS = [
 async function cleanup() {
   console.log("Fetching all programs...")
 
-  const { data: allPrograms, error: fetchErr } = await supabase
-    .from("programs")
-    .select("id, name")
+  const { data: allPrograms, error: fetchErr } = await supabase.from("programs").select("id, name")
 
   if (fetchErr) {
     console.error("Failed to fetch programs:", fetchErr.message)

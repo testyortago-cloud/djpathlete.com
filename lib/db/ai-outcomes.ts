@@ -7,15 +7,9 @@ function getClient() {
 
 // ─── Create ─────────────────────────────────────────────────────────────────
 
-export async function createOutcomeTracking(
-  data: Omit<AiOutcomeTracking, "id" | "created_at">
-) {
+export async function createOutcomeTracking(data: Omit<AiOutcomeTracking, "id" | "created_at">) {
   const supabase = getClient()
-  const { data: result, error } = await supabase
-    .from("ai_outcome_tracking")
-    .insert(data)
-    .select()
-    .single()
+  const { data: result, error } = await supabase.from("ai_outcome_tracking").insert(data).select().single()
   if (error) throw error
   return result as AiOutcomeTracking
 }
@@ -26,7 +20,7 @@ export async function resolveOutcome(
   id: string,
   actualValue: Record<string, unknown>,
   accuracyScore: number | null,
-  outcomePositive: boolean | null
+  outcomePositive: boolean | null,
 ) {
   const supabase = getClient()
   const { data, error } = await supabase
@@ -46,16 +40,9 @@ export async function resolveOutcome(
 
 // ─── Query pending outcomes ─────────────────────────────────────────────────
 
-export async function getPendingOutcomes(
-  userId: string,
-  exerciseId?: string
-): Promise<AiOutcomeTracking[]> {
+export async function getPendingOutcomes(userId: string, exerciseId?: string): Promise<AiOutcomeTracking[]> {
   const supabase = getClient()
-  let query = supabase
-    .from("ai_outcome_tracking")
-    .select("*")
-    .eq("user_id", userId)
-    .is("actual_value", null)
+  let query = supabase.from("ai_outcome_tracking").select("*").eq("user_id", userId).is("actual_value", null)
 
   if (exerciseId) {
     query = query.eq("exercise_id", exerciseId)
@@ -76,9 +63,7 @@ export interface OutcomeAccuracyStats {
   negative_count: number
 }
 
-export async function getAccuracyStats(
-  recommendationType?: AiRecommendationType
-): Promise<OutcomeAccuracyStats> {
+export async function getAccuracyStats(recommendationType?: AiRecommendationType): Promise<OutcomeAccuracyStats> {
   const supabase = getClient()
   let query = supabase.from("ai_outcome_tracking").select("*")
 
@@ -125,9 +110,7 @@ export async function getWeightPredictionAccuracy(): Promise<{
   const resolved = rows.filter((r) => r.actual_value != null && r.accuracy_score != null)
 
   const avg =
-    resolved.length > 0
-      ? resolved.reduce((sum, r) => sum + (r.accuracy_score ?? 0), 0) / resolved.length
-      : null
+    resolved.length > 0 ? resolved.reduce((sum, r) => sum + (r.accuracy_score ?? 0), 0) / resolved.length : null
 
   return {
     total: rows.length,
@@ -140,15 +123,9 @@ export async function getWeightPredictionAccuracy(): Promise<{
 
 // ─── Resolve weight outcomes for an exercise after progress is logged ────
 
-export async function resolveWeightOutcomes(
-  userId: string,
-  exerciseId: string,
-  actualWeightKg: number
-): Promise<void> {
+export async function resolveWeightOutcomes(userId: string, exerciseId: string, actualWeightKg: number): Promise<void> {
   const pending = await getPendingOutcomes(userId, exerciseId)
-  const weightPredictions = pending.filter(
-    (p) => p.recommendation_type === "weight_suggestion"
-  )
+  const weightPredictions = pending.filter((p) => p.recommendation_type === "weight_suggestion")
 
   for (const prediction of weightPredictions) {
     const predictedWeight = (prediction.predicted_value as { weight_kg?: number })?.weight_kg
@@ -157,11 +134,6 @@ export async function resolveWeightOutcomes(
     const accuracy = Math.max(0, 1 - Math.abs(predictedWeight - actualWeightKg) / predictedWeight)
     const isPositive = accuracy >= 0.9 // within 10% is a positive outcome
 
-    await resolveOutcome(
-      prediction.id,
-      { weight_kg: actualWeightKg },
-      accuracy,
-      isPositive
-    )
+    await resolveOutcome(prediction.id, { weight_kg: actualWeightKg }, accuracy, isPositive)
   }
 }

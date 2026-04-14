@@ -17,10 +17,7 @@ export async function getAchievements(userId: string) {
   return data as Achievement[]
 }
 
-export async function getAchievementsByType(
-  userId: string,
-  type: AchievementType
-) {
+export async function getAchievementsByType(userId: string, type: AchievementType) {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("achievements")
@@ -44,15 +41,9 @@ export async function getUncelebratedAchievements(userId: string) {
   return data as Achievement[]
 }
 
-export async function createAchievement(
-  data: Omit<Achievement, "id" | "created_at">
-) {
+export async function createAchievement(data: Omit<Achievement, "id" | "created_at">) {
   const supabase = getClient()
-  const { data: result, error } = await supabase
-    .from("achievements")
-    .insert(data)
-    .select()
-    .single()
+  const { data: result, error } = await supabase.from("achievements").insert(data).select().single()
   if (error) throw error
   return result as Achievement
 }
@@ -71,10 +62,7 @@ export async function markCelebrated(id: string) {
 
 export async function getAllAchievements(limit?: number) {
   const supabase = getClient()
-  let query = supabase
-    .from("achievements")
-    .select("*")
-    .order("earned_at", { ascending: false })
+  let query = supabase.from("achievements").select("*").order("earned_at", { ascending: false })
   if (limit) query = query.limit(limit)
   const { data, error } = await query
   if (error) throw error

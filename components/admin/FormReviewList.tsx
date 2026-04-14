@@ -2,15 +2,7 @@
 
 import { useMemo, useState } from "react"
 import Link from "next/link"
-import {
-  Video,
-  Clock,
-  MessageSquare,
-  CheckCircle2,
-  Search,
-  ArrowUpDown,
-  X,
-} from "lucide-react"
+import { Video, Clock, MessageSquare, CheckCircle2, Search, ArrowUpDown, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { FormReviewStatus } from "@/types/database"
 
@@ -34,10 +26,7 @@ const tabs: { label: string; value: string; count?: keyof FormReviewListProps["c
   { label: "Reviewed", value: "reviewed", count: "reviewed" },
 ]
 
-const statusConfig: Record<
-  FormReviewStatus,
-  { label: string; icon: typeof Clock; className: string }
-> = {
+const statusConfig: Record<FormReviewStatus, { label: string; icon: typeof Clock; className: string }> = {
   pending: { label: "Pending", icon: Clock, className: "bg-amber-100 text-amber-700" },
   in_progress: { label: "In Progress", icon: MessageSquare, className: "bg-blue-100 text-blue-700" },
   reviewed: { label: "Reviewed", icon: CheckCircle2, className: "bg-green-100 text-green-700" },
@@ -59,17 +48,10 @@ export function FormReviewList({ reviews, counts }: FormReviewListProps) {
 
       // Search across athlete name, title, email
       if (q) {
-        const clientName = r.users
-          ? `${r.users.first_name} ${r.users.last_name}`.toLowerCase()
-          : ""
+        const clientName = r.users ? `${r.users.first_name} ${r.users.last_name}`.toLowerCase() : ""
         const email = r.users?.email?.toLowerCase() ?? ""
         const title = r.title.toLowerCase()
-        if (
-          !clientName.includes(q) &&
-          !email.includes(q) &&
-          !title.includes(q)
-        )
-          return false
+        if (!clientName.includes(q) && !email.includes(q) && !title.includes(q)) return false
       }
 
       return true
@@ -130,7 +112,7 @@ export function FormReviewList({ reviews, counts }: FormReviewListProps) {
                 "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors shrink-0",
                 activeTab === tab.value
                   ? "bg-primary text-primary-foreground"
-                  : "bg-white border border-border text-muted-foreground hover:text-foreground"
+                  : "bg-white border border-border text-muted-foreground hover:text-foreground",
               )}
             >
               {tab.label}
@@ -138,9 +120,7 @@ export function FormReviewList({ reviews, counts }: FormReviewListProps) {
                 <span
                   className={cn(
                     "text-[10px] px-1.5 py-0.5 rounded-full font-semibold",
-                    activeTab === tab.value
-                      ? "bg-white/20 text-primary-foreground"
-                      : "bg-muted text-muted-foreground"
+                    activeTab === tab.value ? "bg-white/20 text-primary-foreground" : "bg-muted text-muted-foreground",
                   )}
                 >
                   {count}
@@ -157,10 +137,7 @@ export function FormReviewList({ reviews, counts }: FormReviewListProps) {
           <span>
             {filtered.length} result{filtered.length !== 1 && "s"}
           </span>
-          <button
-            onClick={() => setSearch("")}
-            className="text-primary hover:underline"
-          >
+          <button onClick={() => setSearch("")} className="text-primary hover:underline">
             Clear filters
           </button>
         </div>
@@ -169,18 +146,14 @@ export function FormReviewList({ reviews, counts }: FormReviewListProps) {
       {/* Review list */}
       {filtered.length === 0 ? (
         <div className="text-center py-12 text-sm text-muted-foreground">
-          {hasActiveFilters
-            ? "No form reviews match your filters."
-            : "No form reviews found."}
+          {hasActiveFilters ? "No form reviews match your filters." : "No form reviews found."}
         </div>
       ) : (
         <div className="space-y-2">
           {filtered.map((review) => {
             const config = statusConfig[review.status as FormReviewStatus]
             const StatusIcon = config?.icon ?? Clock
-            const clientName = review.users
-              ? `${review.users.first_name} ${review.users.last_name}`
-              : "Unknown"
+            const clientName = review.users ? `${review.users.first_name} ${review.users.last_name}` : "Unknown"
 
             return (
               <Link
@@ -200,7 +173,7 @@ export function FormReviewList({ reviews, counts }: FormReviewListProps) {
                       <span
                         className={cn(
                           "inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0",
-                          config.className
+                          config.className,
                         )}
                       >
                         <StatusIcon className="size-3" />
@@ -208,9 +181,7 @@ export function FormReviewList({ reviews, counts }: FormReviewListProps) {
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    {clientName}
-                  </p>
+                  <p className="text-xs text-muted-foreground">{clientName}</p>
                 </div>
                 <span className="text-xs text-muted-foreground shrink-0 hidden sm:block">
                   {new Date(review.created_at).toLocaleDateString("en-US", {

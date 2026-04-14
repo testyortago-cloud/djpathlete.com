@@ -2,16 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import {
-  Search,
-  ChevronLeft,
-  ChevronRight,
-  Calendar,
-  Clock,
-  Mail,
-  Phone,
-  MoreHorizontal,
-} from "lucide-react"
+import { Search, ChevronLeft, ChevronRight, Calendar, Clock, Mail, Phone, MoreHorizontal } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { EmptyState } from "@/components/ui/empty-state"
 import { toast } from "sonner"
@@ -114,7 +105,10 @@ export function BookingList({ bookings }: BookingListProps) {
           <Input
             placeholder="Search by name, email, or phone..."
             value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(1) }}
+            onChange={(e) => {
+              setSearch(e.target.value)
+              setPage(1)
+            }}
             className="pl-10 h-10"
           />
         </div>
@@ -122,7 +116,10 @@ export function BookingList({ bookings }: BookingListProps) {
           {FILTER_OPTIONS.map((opt) => (
             <button
               key={opt.value}
-              onClick={() => { setFilter(opt.value); setPage(1) }}
+              onClick={() => {
+                setFilter(opt.value)
+                setPage(1)
+              }}
               className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
                 filter === opt.value
                   ? "bg-primary text-primary-foreground"
@@ -195,7 +192,9 @@ export function BookingList({ bookings }: BookingListProps) {
                     {booking.duration_minutes} min
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[booking.status]}`}>
+                    <span
+                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[booking.status]}`}
+                    >
                       {STATUS_LABELS[booking.status]}
                     </span>
                   </td>
@@ -257,7 +256,11 @@ export function BookingList({ bookings }: BookingListProps) {
           <EmptyState
             icon={Calendar}
             heading="No bookings found"
-            description={search || filter !== "all" ? "Try adjusting your search or filter." : "Bookings will appear here when people schedule calls through your booking link."}
+            description={
+              search || filter !== "all"
+                ? "Try adjusting your search or filter."
+                : "Bookings will appear here when people schedule calls through your booking link."
+            }
           />
         </div>
       )}
@@ -271,11 +274,16 @@ export function BookingList({ bookings }: BookingListProps) {
             </span>
             <select
               value={perPage}
-              onChange={(e) => { setPerPage(Number(e.target.value)); setPage(1) }}
+              onChange={(e) => {
+                setPerPage(Number(e.target.value))
+                setPage(1)
+              }}
               className="text-xs border border-border rounded px-1.5 py-1 bg-white"
             >
               {[10, 25, 50].map((n) => (
-                <option key={n} value={n}>{n} / page</option>
+                <option key={n} value={n}>
+                  {n} / page
+                </option>
               ))}
             </select>
           </div>

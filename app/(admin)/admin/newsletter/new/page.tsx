@@ -8,9 +8,7 @@ export default async function NewNewsletterPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-primary mb-6">
-        New Newsletter
-      </h1>
+      <h1 className="text-2xl font-semibold text-primary mb-6">New Newsletter</h1>
       <NewsletterForm authorId={session.user!.id!} />
     </div>
   )

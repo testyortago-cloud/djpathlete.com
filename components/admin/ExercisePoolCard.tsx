@@ -26,21 +26,13 @@ interface ExercisePoolCardProps {
 }
 
 export function ExercisePoolCard({ exercise, onRemove, isOverlay }: ExercisePoolCardProps) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    isDragging,
-  } = useDraggable({
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `pool-${exercise.id}`,
     data: { type: "pool", exercise },
     disabled: isOverlay,
   })
 
-  const style = transform
-    ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
-    : undefined
+  const style = transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` } : undefined
 
   const categories = Array.isArray(exercise.category) ? exercise.category : [exercise.category]
   const borderColor = CATEGORY_BORDER_COLORS[categories[0]] ?? "border-l-muted-foreground"
@@ -80,7 +72,10 @@ export function ExercisePoolCard({ exercise, onRemove, isOverlay }: ExercisePool
           <p className="text-xs font-medium text-foreground truncate">{exercise.name}</p>
           <div className="flex items-center gap-1 mt-0.5 flex-wrap">
             {categories.slice(0, 2).map((cat) => (
-              <span key={cat} className="inline-flex items-center rounded px-1 py-0.5 text-[9px] font-medium bg-muted text-muted-foreground capitalize">
+              <span
+                key={cat}
+                className="inline-flex items-center rounded px-1 py-0.5 text-[9px] font-medium bg-muted text-muted-foreground capitalize"
+              >
                 {cat.replace("_", " ")}
               </span>
             ))}

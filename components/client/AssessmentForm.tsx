@@ -24,12 +24,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
-import type {
-  AssessmentQuestion,
-  AssessmentSection,
-  AbilityLevel,
-  ComputedLevels,
-} from "@/types/database"
+import type { AssessmentQuestion, AssessmentSection, AbilityLevel, ComputedLevels } from "@/types/database"
 
 /* ─── Constants ──────────────────────────────────────────────────── */
 
@@ -183,7 +178,7 @@ export function AssessmentForm() {
       }
       return visible
     },
-    [questionsBySection, answers]
+    [questionsBySection, answers],
   )
 
   // Total visible questions for progress calculation
@@ -362,11 +357,10 @@ export function AssessmentForm() {
           </div>
         </div>
         <div className="text-center space-y-2">
-          <h2 className="text-xl font-semibold text-primary font-heading">
-            Generating your program...
-          </h2>
+          <h2 className="text-xl font-semibold text-primary font-heading">Generating your program...</h2>
           <p className="text-sm text-muted-foreground max-w-sm">
-            We are analyzing your assessment results and building a personalized training program. You will be redirected shortly.
+            We are analyzing your assessment results and building a personalized training program. You will be
+            redirected shortly.
           </p>
         </div>
       </motion.div>
@@ -378,9 +372,7 @@ export function AssessmentForm() {
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-4">
         <Activity className="size-8 text-muted-foreground" />
-        <p className="text-sm text-muted-foreground">
-          No assessment questions available yet. Please check back later.
-        </p>
+        <p className="text-sm text-muted-foreground">No assessment questions available yet. Please check back later.</p>
       </div>
     )
   }
@@ -391,24 +383,18 @@ export function AssessmentForm() {
       <div className="bg-white rounded-xl border border-border p-4 sm:p-6">
         <div className="flex items-center justify-between mb-2.5 sm:mb-3">
           <p className="text-xs sm:text-sm font-medium text-muted-foreground">
-            {showResults
-              ? "Review Results"
-              : `Section ${currentSectionIndex + 1} of ${SECTIONS.length}`}
+            {showResults ? "Review Results" : `Section ${currentSectionIndex + 1} of ${SECTIONS.length}`}
           </p>
           <div className="flex items-center gap-1.5">
             {showResults ? (
-              <span className="text-xs sm:text-sm font-medium text-primary">
-                Assessment Complete
-              </span>
+              <span className="text-xs sm:text-sm font-medium text-primary">Assessment Complete</span>
             ) : (
               <>
                 {(() => {
                   const SectionIcon = currentSection.icon
                   return <SectionIcon className="size-3.5 sm:size-4 text-primary" />
                 })()}
-                <span className="text-xs sm:text-sm font-medium text-primary">
-                  {currentSection.label}
-                </span>
+                <span className="text-xs sm:text-sm font-medium text-primary">{currentSection.label}</span>
               </>
             )}
           </div>
@@ -493,11 +479,7 @@ export function AssessmentForm() {
         </Button>
 
         {showResults ? (
-          <Button
-            onClick={handleSubmit}
-            disabled={isSubmitting}
-            className="gap-1.5 px-4 sm:px-6"
-          >
+          <Button onClick={handleSubmit} disabled={isSubmitting} className="gap-1.5 px-4 sm:px-6">
             {isSubmitting ? (
               <>
                 <Loader2 className="size-4 animate-spin" />
@@ -572,9 +554,7 @@ function GenericSection({
           />
         ))}
         {questions.length === 0 && (
-          <p className="text-sm text-muted-foreground py-8 text-center">
-            No questions in this section yet.
-          </p>
+          <p className="text-sm text-muted-foreground py-8 text-center">No questions in this section yet.</p>
         )}
       </div>
     </div>
@@ -613,9 +593,7 @@ function MovementScreenSection({
                 <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10">
                   <PatternIcon className="size-4 text-primary" />
                 </div>
-                <h3 className="text-base font-semibold text-foreground font-heading">
-                  {patternLabel}
-                </h3>
+                <h3 className="text-base font-semibold text-foreground font-heading">{patternLabel}</h3>
               </div>
               <div className="space-y-4 pl-2">
                 {patternQuestions.map((q) => (
@@ -641,9 +619,7 @@ function MovementScreenSection({
           )
         })}
         {patterns.length === 0 && (
-          <p className="text-sm text-muted-foreground py-8 text-center">
-            No movement screen questions available yet.
-          </p>
+          <p className="text-sm text-muted-foreground py-8 text-center">No movement screen questions available yet.</p>
         )}
       </div>
     </div>
@@ -774,9 +750,7 @@ function ResultsSummary({ levels }: { levels: ComputedLevels }) {
   return (
     <div>
       <div className="mb-6">
-        <h2 className="text-lg font-semibold text-primary font-heading mb-2">
-          Assessment Results
-        </h2>
+        <h2 className="text-lg font-semibold text-primary font-heading mb-2">Assessment Results</h2>
         <p className="text-sm text-muted-foreground">
           Here is a summary of your computed ability levels. Review them before submitting.
         </p>
@@ -784,13 +758,8 @@ function ResultsSummary({ levels }: { levels: ComputedLevels }) {
 
       {/* Overall level */}
       <div className="mb-8 p-4 rounded-xl bg-surface border border-border text-center">
-        <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">
-          Overall Level
-        </p>
-        <Badge
-          className={`text-base px-4 py-1.5 ${LEVEL_COLORS[levels.overall]}`}
-          variant="outline"
-        >
+        <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">Overall Level</p>
+        <Badge className={`text-base px-4 py-1.5 ${LEVEL_COLORS[levels.overall]}`} variant="outline">
           {LEVEL_LABELS[levels.overall]}
         </Badge>
       </div>
@@ -801,18 +770,12 @@ function ResultsSummary({ levels }: { levels: ComputedLevels }) {
           const level = levels[key]
           const PatternIcon = MOVEMENT_PATTERN_ICONS[key] ?? Activity
           return (
-            <div
-              key={key}
-              className="flex flex-col items-center gap-2 p-4 rounded-xl border border-border"
-            >
+            <div key={key} className="flex flex-col items-center gap-2 p-4 rounded-xl border border-border">
               <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
                 <PatternIcon className="size-5 text-primary" />
               </div>
               <p className="text-sm font-medium text-foreground">{label}</p>
-              <Badge
-                className={`text-xs ${LEVEL_COLORS[level]}`}
-                variant="outline"
-              >
+              <Badge className={`text-xs ${LEVEL_COLORS[level]}`} variant="outline">
                 {LEVEL_LABELS[level]}
               </Badge>
             </div>

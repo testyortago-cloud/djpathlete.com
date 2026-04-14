@@ -1,11 +1,7 @@
 import { SiteNavbar } from "@/components/SiteNavbar"
 import { Footer } from "@/components/Footer"
 
-export default function MarketingLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default function MarketingLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
       <SiteNavbar />

@@ -15,10 +15,7 @@ interface TestimonialCarouselProps {
   interval?: number
 }
 
-export function TestimonialCarousel({
-  testimonials,
-  interval = 5000,
-}: TestimonialCarouselProps) {
+export function TestimonialCarousel({ testimonials, interval = 5000 }: TestimonialCarouselProps) {
   const [current, setCurrent] = useState(0)
   const [direction, setDirection] = useState(1)
   const [isPaused, setIsPaused] = useState(false)
@@ -35,7 +32,7 @@ export function TestimonialCarousel({
       setProgress(0)
       startTimeRef.current = Date.now()
     },
-    [current]
+    [current],
   )
 
   const next = useCallback(() => {
@@ -86,11 +83,7 @@ export function TestimonialCarousel({
   }
 
   return (
-    <div
-      className="relative"
-      onMouseEnter={() => setIsPaused(true)}
-      onMouseLeave={() => setIsPaused(false)}
-    >
+    <div className="relative" onMouseEnter={() => setIsPaused(true)} onMouseLeave={() => setIsPaused(false)}>
       {/* Carousel viewport */}
       <div className="overflow-hidden">
         <AnimatePresence custom={direction} mode="wait">
@@ -112,17 +105,11 @@ export function TestimonialCarousel({
               </blockquote>
               <div className="flex items-center gap-3">
                 <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                  <span className="text-sm font-semibold">
-                    {testimonials[current].name.charAt(0)}
-                  </span>
+                  <span className="text-sm font-semibold">{testimonials[current].name.charAt(0)}</span>
                 </div>
                 <div className="text-left">
-                  <p className="text-sm font-semibold text-foreground">
-                    {testimonials[current].name}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {testimonials[current].title}
-                  </p>
+                  <p className="text-sm font-semibold text-foreground">{testimonials[current].name}</p>
+                  <p className="text-xs text-muted-foreground">{testimonials[current].title}</p>
                 </div>
               </div>
             </div>
@@ -157,9 +144,7 @@ export function TestimonialCarousel({
                   style={{ width: `${progress * 100}%` }}
                 />
               )}
-              {i !== current && (
-                <div className="absolute inset-0 bg-primary/15 rounded-full" />
-              )}
+              {i !== current && <div className="absolute inset-0 bg-primary/15 rounded-full" />}
             </button>
           ))}
         </div>

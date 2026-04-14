@@ -1,9 +1,6 @@
 import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
-import {
-  getLatestAssessmentResult,
-  getActiveQuestions,
-} from "@/lib/db/assessments"
+import { getLatestAssessmentResult, getActiveQuestions } from "@/lib/db/assessments"
 import { getAssignments } from "@/lib/db/assignments"
 import { getProgramExercises } from "@/lib/db/program-exercises"
 import { ReassessmentForm } from "@/components/client/ReassessmentForm"
@@ -52,14 +49,10 @@ export default async function ReassessmentPage() {
   let programExercises: { id: string; name: string }[] = []
   try {
     const allAssignments = await getAssignments(userId)
-    const completedAssignment = (allAssignments as ProgramAssignment[]).find(
-      (a) => a.status === "completed"
-    )
+    const completedAssignment = (allAssignments as ProgramAssignment[]).find((a) => a.status === "completed")
 
     if (completedAssignment) {
-      const exercises = (await getProgramExercises(
-        completedAssignment.program_id
-      )) as ProgramExerciseWithExercise[]
+      const exercises = (await getProgramExercises(completedAssignment.program_id)) as ProgramExerciseWithExercise[]
 
       // Deduplicate by exercise_id and extract name
       const seen = new Set<string>()

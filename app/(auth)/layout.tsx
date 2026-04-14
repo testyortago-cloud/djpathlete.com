@@ -39,9 +39,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
               style={{ height: 48, width: "auto" }}
               priority
             />
-            <span className="font-heading font-semibold tracking-[0.2em] text-base uppercase text-white">
-              Athlete
-            </span>
+            <span className="font-heading font-semibold tracking-[0.2em] text-base uppercase text-white">Athlete</span>
           </Link>
 
           {/* Quote */}
@@ -53,8 +51,8 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
                 Perform like a champion.
               </p>
               <p className="mt-6 text-base text-white/50 leading-relaxed">
-                Personalized coaching, performance tracking, and expert
-                guidance — everything you need to reach your full potential.
+                Personalized coaching, performance tracking, and expert guidance — everything you need to reach your
+                full potential.
               </p>
             </blockquote>
           </div>
@@ -62,30 +60,18 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
           {/* Bottom stats */}
           <div className="flex items-center gap-8">
             <div>
-              <p className="text-2xl font-semibold text-white font-heading">
-                500+
-              </p>
-              <p className="text-sm text-white/40">
-                Athletes coached
-              </p>
+              <p className="text-2xl font-semibold text-white font-heading">500+</p>
+              <p className="text-sm text-white/40">Athletes coached</p>
             </div>
             <div className="w-px h-10 bg-white/10" />
             <div>
-              <p className="text-2xl font-semibold text-white font-heading">
-                98%
-              </p>
-              <p className="text-sm text-white/40">
-                Satisfaction rate
-              </p>
+              <p className="text-2xl font-semibold text-white font-heading">98%</p>
+              <p className="text-sm text-white/40">Satisfaction rate</p>
             </div>
             <div className="w-px h-10 bg-white/10" />
             <div>
-              <p className="text-2xl font-semibold text-white font-heading">
-                12+
-              </p>
-              <p className="text-sm text-white/40">
-                Sports covered
-              </p>
+              <p className="text-2xl font-semibold text-white font-heading">12+</p>
+              <p className="text-sm text-white/40">Sports covered</p>
             </div>
           </div>
         </div>

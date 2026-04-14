@@ -11,11 +11,7 @@ interface CoverImageUploadProps {
   onUploaded: (url: string | null) => void
 }
 
-export function CoverImageUpload({
-  currentUrl,
-  postId,
-  onUploaded,
-}: CoverImageUploadProps) {
+export function CoverImageUpload({ currentUrl, postId, onUploaded }: CoverImageUploadProps) {
   const [uploading, setUploading] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -55,12 +51,7 @@ export function CoverImageUpload({
   if (currentUrl) {
     return (
       <div className="relative aspect-[16/9] rounded-lg overflow-hidden border border-border">
-        <NextImage
-          src={currentUrl}
-          alt="Cover image"
-          fill
-          className="object-cover"
-        />
+        <NextImage src={currentUrl} alt="Cover image" fill className="object-cover" />
         <button
           type="button"
           onClick={() => onUploaded(null)}

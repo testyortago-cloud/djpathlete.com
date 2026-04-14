@@ -14,12 +14,7 @@ import {
   X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 interface AiStats {
   total_generations: number
@@ -60,14 +55,12 @@ const STATUS_COLORS: Record<string, string> = {
 }
 
 const METRIC_TOOLTIPS = {
-  generations:
-    "Total AI requests across all features — program creation, exercise swaps, coach suggestions, etc.",
+  generations: "Total AI requests across all features — program creation, exercise swaps, coach suggestions, etc.",
   successRate:
     "Percentage of AI requests that completed without errors. A low rate may indicate prompt issues or API outages.",
   avgTokens:
     "Average tokens consumed per request. Tokens are units of text the AI reads and writes — more complex requests use more tokens and cost more.",
-  avgDuration:
-    "Average time each AI request takes. Longer times may mean complex prompts or API load.",
+  avgDuration: "Average time each AI request takes. Longer times may mean complex prompts or API load.",
   estCost:
     "Estimated spend based on ~$0.009 per 1K tokens (blended input/output rate). Check your Anthropic dashboard for exact billing.",
 }
@@ -98,13 +91,7 @@ function estimateCost(totalTokens: number): string {
   return `$${cost.toFixed(4)}`
 }
 
-function MetricLabel({
-  children,
-  tooltip,
-}: {
-  children: React.ReactNode
-  tooltip: string
-}) {
+function MetricLabel({ children, tooltip }: { children: React.ReactNode; tooltip: string }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -181,9 +168,7 @@ export function AiUsageDashboard() {
 
   const { stats, recent_logs } = data
   const successRate =
-    stats.total_generations > 0
-      ? ((stats.successful / stats.total_generations) * 100).toFixed(1)
-      : "0"
+    stats.total_generations > 0 ? ((stats.successful / stats.total_generations) * 100).toFixed(1) : "0"
 
   return (
     <TooltipProvider>
@@ -208,7 +193,9 @@ export function AiUsageDashboard() {
             </div>
             <div className="p-4 space-y-4">
               <p className="text-sm text-muted-foreground">
-                This page tracks every AI call made on the platform — from program generation to Coach DJP suggestions. Each call uses <strong className="text-foreground">tokens</strong> (units of text the AI reads and writes), and costs are estimated from Claude API pricing to help you monitor spending.
+                This page tracks every AI call made on the platform — from program generation to Coach DJP suggestions.
+                Each call uses <strong className="text-foreground">tokens</strong> (units of text the AI reads and
+                writes), and costs are estimated from Claude API pricing to help you monitor spending.
               </p>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -259,10 +246,22 @@ export function AiUsageDashboard() {
               <div className="flex items-center gap-3 pt-2 border-t border-border">
                 <p className="text-xs text-muted-foreground">
                   <strong className="text-foreground">Status guide:</strong>{" "}
-                  <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-success/10 text-success mx-0.5">Completed</span> finished successfully,{" "}
-                  <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-destructive/10 text-destructive mx-0.5">Failed</span> hit an error,{" "}
-                  <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-warning/10 text-warning mx-0.5">Generating</span> in progress,{" "}
-                  <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground mx-0.5">Pending</span> queued.
+                  <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-success/10 text-success mx-0.5">
+                    Completed
+                  </span>{" "}
+                  finished successfully,{" "}
+                  <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-destructive/10 text-destructive mx-0.5">
+                    Failed
+                  </span>{" "}
+                  hit an error,{" "}
+                  <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-warning/10 text-warning mx-0.5">
+                    Generating
+                  </span>{" "}
+                  in progress,{" "}
+                  <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground mx-0.5">
+                    Pending
+                  </span>{" "}
+                  queued.
                 </p>
               </div>
             </div>
@@ -298,9 +297,7 @@ export function AiUsageDashboard() {
               <MetricLabel tooltip={METRIC_TOOLTIPS.generations}>Generations</MetricLabel>
             </div>
             <p className="text-xl sm:text-2xl font-semibold text-primary">{stats.total_generations}</p>
-            {stats.generating > 0 && (
-              <p className="text-xs text-warning mt-0.5">{stats.generating} active</p>
-            )}
+            {stats.generating > 0 && <p className="text-xs text-warning mt-0.5">{stats.generating} active</p>}
           </div>
 
           <div className="bg-white rounded-xl border border-border p-3 sm:p-4">
@@ -311,7 +308,9 @@ export function AiUsageDashboard() {
               <MetricLabel tooltip={METRIC_TOOLTIPS.successRate}>Success Rate</MetricLabel>
             </div>
             <p className="text-xl sm:text-2xl font-semibold text-primary">{successRate}%</p>
-            <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">{stats.successful} ok, {stats.failed} failed</p>
+            <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">
+              {stats.successful} ok, {stats.failed} failed
+            </p>
           </div>
 
           <div className="bg-white rounded-xl border border-border p-3 sm:p-4">
@@ -321,8 +320,12 @@ export function AiUsageDashboard() {
               </div>
               <MetricLabel tooltip={METRIC_TOOLTIPS.avgTokens}>Avg Tokens</MetricLabel>
             </div>
-            <p className="text-xl sm:text-2xl font-semibold text-primary">{formatTokens(stats.avg_tokens_per_generation)}</p>
-            <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">{formatTokens(stats.total_tokens)} total</p>
+            <p className="text-xl sm:text-2xl font-semibold text-primary">
+              {formatTokens(stats.avg_tokens_per_generation)}
+            </p>
+            <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">
+              {formatTokens(stats.total_tokens)} total
+            </p>
           </div>
 
           <div className="bg-white rounded-xl border border-border p-3 sm:p-4">
@@ -350,38 +353,22 @@ export function AiUsageDashboard() {
         <div className="bg-white rounded-xl border border-border shadow-sm">
           <div className="flex items-center gap-2 p-4 border-b border-border">
             <Brain className="size-4 text-primary" />
-            <h2 className="text-lg font-semibold text-primary">
-              Recent Generations
-            </h2>
+            <h2 className="text-lg font-semibold text-primary">Recent Generations</h2>
           </div>
 
           {recent_logs.length === 0 ? (
-            <div className="p-8 text-center text-sm text-muted-foreground">
-              No AI generations yet.
-            </div>
+            <div className="p-8 text-center text-sm text-muted-foreground">No AI generations yet.</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-surface/50">
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                      Date
-                    </th>
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                      Status
-                    </th>
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                      Model
-                    </th>
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                      Tokens Used
-                    </th>
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                      Duration
-                    </th>
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                      Error
-                    </th>
+                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Date</th>
+                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
+                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Model</th>
+                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Tokens Used</th>
+                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Duration</th>
+                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Error</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -400,17 +387,11 @@ export function AiUsageDashboard() {
                           {log.status}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-foreground font-mono text-xs">
-                        {log.model_used ?? "-"}
-                      </td>
+                      <td className="px-4 py-3 text-foreground font-mono text-xs">{log.model_used ?? "-"}</td>
                       <td className="px-4 py-3 text-foreground">
-                        {log.tokens_used != null
-                          ? formatTokens(log.tokens_used)
-                          : "-"}
+                        {log.tokens_used != null ? formatTokens(log.tokens_used) : "-"}
                       </td>
-                      <td className="px-4 py-3 text-foreground">
-                        {formatDuration(log.duration_ms)}
-                      </td>
+                      <td className="px-4 py-3 text-foreground">{formatDuration(log.duration_ms)}</td>
                       <td className="px-4 py-3 text-destructive text-xs max-w-[200px] truncate">
                         {log.error_message ?? "-"}
                       </td>

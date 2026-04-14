@@ -17,10 +17,7 @@ const __dirname = dirname(__filename)
 
 dotenv.config({ path: resolve(__dirname, "../.env.local") })
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
 const DRY_RUN = process.argv.includes("--dry-run")
 const BATCH_SIZE = 50
@@ -79,8 +76,7 @@ function mapSingleCategory(val: string): string | null {
   )
     return "motor_control"
   if (v === "strength endurance") return "strength_endurance"
-  if (["relative strength", "realtive strength"].includes(v))
-    return "relative_strength"
+  if (["relative strength", "realtive strength"].includes(v)) return "relative_strength"
   if (v === "cardio") return "strength_endurance"
 
   // Core / stability → motor_control
@@ -155,8 +151,7 @@ function mapDifficulty(raw: string | undefined | null): {
   difficulty: string
   difficulty_max: string | null
 } {
-  if (!raw || !raw.trim())
-    return { difficulty: "intermediate", difficulty_max: null }
+  if (!raw || !raw.trim()) return { difficulty: "intermediate", difficulty_max: null }
 
   const v = raw.trim().toLowerCase()
 
@@ -171,16 +166,13 @@ function mapDifficulty(raw: string | undefined | null): {
     .trim()
 
   // Range patterns with dash/en-dash
-  if (/^beginner[\s–-]+intermediate$/i.test(norm))
-    return { difficulty: "beginner", difficulty_max: "intermediate" }
-  if (/^intermediate[\s–-]+advanced$/i.test(norm))
-    return { difficulty: "intermediate", difficulty_max: "advanced" }
+  if (/^beginner[\s–-]+intermediate$/i.test(norm)) return { difficulty: "beginner", difficulty_max: "intermediate" }
+  if (/^intermediate[\s–-]+advanced$/i.test(norm)) return { difficulty: "intermediate", difficulty_max: "advanced" }
 
   // "OR" patterns
   if (/beginner\s+or\s+intermediate\s+or\s+advanced/i.test(norm))
     return { difficulty: "beginner", difficulty_max: "advanced" }
-  if (/intermediate\s+or\s+advanced/i.test(norm))
-    return { difficulty: "intermediate", difficulty_max: "advanced" }
+  if (/intermediate\s+or\s+advanced/i.test(norm)) return { difficulty: "intermediate", difficulty_max: "advanced" }
 
   // Comma-separated lists
   const commaParts = norm
@@ -188,31 +180,23 @@ function mapDifficulty(raw: string | undefined | null): {
     .map((s) => s.trim())
     .filter((s) => ["beginner", "intermediate", "advanced"].includes(s))
 
-  if (commaParts.length >= 3)
-    return { difficulty: "beginner", difficulty_max: "advanced" }
+  if (commaParts.length >= 3) return { difficulty: "beginner", difficulty_max: "advanced" }
 
   if (commaParts.length === 2) {
     const sorted = commaParts.sort((a, b) => {
       const order = { beginner: 0, intermediate: 1, advanced: 2 }
-      return (
-        (order[a as keyof typeof order] ?? 1) -
-        (order[b as keyof typeof order] ?? 1)
-      )
+      return (order[a as keyof typeof order] ?? 1) - (order[b as keyof typeof order] ?? 1)
     })
     return { difficulty: sorted[0], difficulty_max: sorted[1] }
   }
 
   // "intermediate, strength" and similar — just take the valid difficulty
-  if (commaParts.length === 1)
-    return { difficulty: commaParts[0], difficulty_max: null }
+  if (commaParts.length === 1) return { difficulty: commaParts[0], difficulty_max: null }
 
   // Single values
-  if (/^\s*beginner\s*$/.test(norm))
-    return { difficulty: "beginner", difficulty_max: null }
-  if (/^\s*intermediate\s*$/.test(norm))
-    return { difficulty: "intermediate", difficulty_max: null }
-  if (/^\s*advanced\s*$/.test(norm))
-    return { difficulty: "advanced", difficulty_max: null }
+  if (/^\s*beginner\s*$/.test(norm)) return { difficulty: "beginner", difficulty_max: null }
+  if (/^\s*intermediate\s*$/.test(norm)) return { difficulty: "intermediate", difficulty_max: null }
+  if (/^\s*advanced\s*$/.test(norm)) return { difficulty: "advanced", difficulty_max: null }
 
   // Default
   return { difficulty: "intermediate", difficulty_max: null }
@@ -431,45 +415,35 @@ async function main() {
     for (const c of ex.category) catCounts[c] = (catCounts[c] ?? 0) + 1
   }
   console.log("\n  Category distribution:")
-  for (const [cat, count] of Object.entries(catCounts).sort(
-    (a, b) => b[1] - a[1]
-  )) {
+  for (const [cat, count] of Object.entries(catCounts).sort((a, b) => b[1] - a[1])) {
     console.log(`    ${cat}: ${count}`)
   }
 
   // Training intent distribution
   const intentCounts: Record<string, number> = {}
   for (const ex of exercises) {
-    for (const i of ex.training_intent)
-      intentCounts[i] = (intentCounts[i] ?? 0) + 1
+    for (const i of ex.training_intent) intentCounts[i] = (intentCounts[i] ?? 0) + 1
   }
   console.log("\n  Training intent distribution:")
-  for (const [intent, count] of Object.entries(intentCounts).sort(
-    (a, b) => b[1] - a[1]
-  )) {
+  for (const [intent, count] of Object.entries(intentCounts).sort((a, b) => b[1] - a[1])) {
     console.log(`    ${intent}: ${count}`)
   }
 
   // Difficulty distribution
   const diffCounts: Record<string, number> = {}
   for (const ex of exercises) {
-    const key = ex.difficulty_max
-      ? `${ex.difficulty}–${ex.difficulty_max}`
-      : ex.difficulty
+    const key = ex.difficulty_max ? `${ex.difficulty}–${ex.difficulty_max}` : ex.difficulty
     diffCounts[key] = (diffCounts[key] ?? 0) + 1
   }
   console.log("\n  Difficulty distribution:")
-  for (const [d, count] of Object.entries(diffCounts).sort(
-    (a, b) => b[1] - a[1]
-  )) {
+  for (const [d, count] of Object.entries(diffCounts).sort((a, b) => b[1] - a[1])) {
     console.log(`    ${d}: ${count}`)
   }
 
   // Equipment distribution
   const equipCounts: Record<string, number> = {}
   for (const ex of exercises) {
-    for (const e of ex.equipment_required)
-      equipCounts[e] = (equipCounts[e] ?? 0) + 1
+    for (const e of ex.equipment_required) equipCounts[e] = (equipCounts[e] ?? 0) + 1
   }
   console.log("\n  Equipment distribution (top 15):")
   for (const [eq, count] of Object.entries(equipCounts)
@@ -498,13 +472,9 @@ async function main() {
       console.log(`  ${ex.name}`)
       console.log(`    category: [${ex.category.join(", ")}]`)
       console.log(`    intent: [${ex.training_intent.join(", ")}]`)
-      console.log(
-        `    difficulty: ${ex.difficulty}${ex.difficulty_max ? `–${ex.difficulty_max}` : ""}`
-      )
+      console.log(`    difficulty: ${ex.difficulty}${ex.difficulty_max ? `–${ex.difficulty_max}` : ""}`)
       console.log(`    equipment: ${ex.equipment ?? "(none)"}`)
-      console.log(
-        `    equipment_required: [${ex.equipment_required.join(", ")}]`
-      )
+      console.log(`    equipment_required: [${ex.equipment_required.join(", ")}]`)
       console.log(`    bodyweight: ${ex.is_bodyweight}`)
       console.log(`    video: ${ex.video_url ?? "(none)"}`)
       console.log()
@@ -531,10 +501,7 @@ async function main() {
   if (peErr) console.warn(`  ⚠ program_exercises: ${peErr.message}`)
 
   console.log("  Deleting exercises...")
-  const { error: exErr } = await supabase
-    .from("exercises")
-    .delete()
-    .neq("id", "00000000-0000-0000-0000-000000000000")
+  const { error: exErr } = await supabase.from("exercises").delete().neq("id", "00000000-0000-0000-0000-000000000000")
   if (exErr) throw new Error(`Failed to delete exercises: ${exErr.message}`)
 
   console.log("  ✓ Cleared\n")
@@ -554,16 +521,12 @@ async function main() {
     const { error } = await supabase.from("exercises").insert(batch)
 
     if (error) {
-      console.error(
-        `  ✗ Batch ${batchNum}/${totalBatches} failed: ${error.message}`
-      )
+      console.error(`  ✗ Batch ${batchNum}/${totalBatches} failed: ${error.message}`)
       failed += batch.length
     } else {
       inserted += batch.length
       if (batchNum % 5 === 0 || batchNum === totalBatches) {
-        console.log(
-          `  ✓ Batch ${batchNum}/${totalBatches} — ${inserted} inserted so far`
-        )
+        console.log(`  ✓ Batch ${batchNum}/${totalBatches} — ${inserted} inserted so far`)
       }
     }
   }

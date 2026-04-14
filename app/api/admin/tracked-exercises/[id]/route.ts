@@ -2,10 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { deleteTrackedExercise } from "@/lib/db/tracked-exercises"
 
-export async function DELETE(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
     if (!session?.user?.id) {
@@ -21,9 +18,6 @@ export async function DELETE(
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("Admin tracked exercise DELETE error:", error)
-    return NextResponse.json(
-      { error: "Failed to delete tracked exercise" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to delete tracked exercise" }, { status: 500 })
   }
 }

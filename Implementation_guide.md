@@ -10,38 +10,39 @@ You are building **darrenjpaul.com**, a Next.js 16 Progressive Web App for Darre
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Framework | Next.js 16 (App Router) |
-| Language | TypeScript (strict mode) |
-| Styling | Tailwind CSS |
-| Database | Supabase (PostgreSQL) |
-| Auth | NextAuth.js (v5) |
-| Payments | Stripe (Checkout + Webhooks) |
-| AI | OpenAI / Claude API |
-| Marketing | GoHighLevel (REST API + Webhooks) |
-| Video | YouTube Embeds (iframe API) |
-| Hosting | Vercel |
-| Testing | Vitest + React Testing Library + Playwright (E2E) |
+| Layer     | Technology                                        |
+| --------- | ------------------------------------------------- |
+| Framework | Next.js 16 (App Router)                           |
+| Language  | TypeScript (strict mode)                          |
+| Styling   | Tailwind CSS                                      |
+| Database  | Supabase (PostgreSQL)                             |
+| Auth      | NextAuth.js (v5)                                  |
+| Payments  | Stripe (Checkout + Webhooks)                      |
+| AI        | OpenAI / Claude API                               |
+| Marketing | GoHighLevel (REST API + Webhooks)                 |
+| Video     | YouTube Embeds (iframe API)                       |
+| Hosting   | Vercel                                            |
+| Testing   | Vitest + React Testing Library + Playwright (E2E) |
 
 ## Brand
 
 ### Color Palette
 
-| Role | Color | Hex | Usage |
-|------|-------|-----|-------|
-| Primary | Green Azure | `#0E3F50` | Headers, nav, buttons, primary actions, dark sections |
-| Accent | Gray Orange | `#C49B7A` | Highlights, active states, CTAs, badges, hover accents. Use sparingly (5–10%) |
-| Background | White | `#FFFFFF` | Page backgrounds, cards, content areas |
-| Text Primary | Dark | `#1A1A1A` | Body text, headings |
-| Text Secondary | Gray | `#6B7280` | Captions, labels, secondary info |
-| Surface | Light Gray | `#F5F5F5` | Table headers, input backgrounds, section dividers |
-| Border | Border Gray | `#E5E7EB` | Card borders, dividers, table borders |
-| Success | Green | `#16A34A` | Success states, completed badges |
-| Error | Red | `#DC2626` | Error states, destructive actions |
-| Warning | Amber | `#D97706` | Warning states, pending badges |
+| Role           | Color       | Hex       | Usage                                                                         |
+| -------------- | ----------- | --------- | ----------------------------------------------------------------------------- |
+| Primary        | Green Azure | `#0E3F50` | Headers, nav, buttons, primary actions, dark sections                         |
+| Accent         | Gray Orange | `#C49B7A` | Highlights, active states, CTAs, badges, hover accents. Use sparingly (5–10%) |
+| Background     | White       | `#FFFFFF` | Page backgrounds, cards, content areas                                        |
+| Text Primary   | Dark        | `#1A1A1A` | Body text, headings                                                           |
+| Text Secondary | Gray        | `#6B7280` | Captions, labels, secondary info                                              |
+| Surface        | Light Gray  | `#F5F5F5` | Table headers, input backgrounds, section dividers                            |
+| Border         | Border Gray | `#E5E7EB` | Card borders, dividers, table borders                                         |
+| Success        | Green       | `#16A34A` | Success states, completed badges                                              |
+| Error          | Red         | `#DC2626` | Error states, destructive actions                                             |
+| Warning        | Amber       | `#D97706` | Warning states, pending badges                                                |
 
 **Color usage rules:**
+
 - Green Azure (`#0E3F50`) is the dominant brand color. Use it for the admin sidebar, navigation bars, primary buttons, and section headers.
 - Gray Orange (`#C49B7A`) is the accent. Use it only for highlights: active nav items, hover states on primary buttons, CTA button variants, star ratings, progress bars, and small emphasis details. It should feel like a warm highlight, not a competing primary.
 - White is the default background. Keep the design clean and airy.
@@ -49,13 +50,14 @@ You are building **darrenjpaul.com**, a Next.js 16 Progressive Web App for Darre
 
 ### Typography
 
-| Role | Font | Weight | Usage |
-|------|------|--------|-------|
-| Headings | **Lexend Exa** | 600–700 | Page titles, section headers, hero text. Matches the logo branding. |
-| Body | **Lexend Deca** | 300–500 | Paragraphs, labels, table content, form fields, buttons |
-| Mono | **JetBrains Mono** | 400 | Code blocks, data values, stats (if needed) |
+| Role     | Font               | Weight  | Usage                                                               |
+| -------- | ------------------ | ------- | ------------------------------------------------------------------- |
+| Headings | **Lexend Exa**     | 600–700 | Page titles, section headers, hero text. Matches the logo branding. |
+| Body     | **Lexend Deca**    | 300–500 | Paragraphs, labels, table content, form fields, buttons             |
+| Mono     | **JetBrains Mono** | 400     | Code blocks, data values, stats (if needed)                         |
 
 **Font notes:**
+
 - Both fonts are from the Lexend family (Google Fonts), designed for readability.
 - Lexend Exa has wider letter-spacing which gives headings a bold, athletic feel that matches the "ATHLETE" wordmark in the logo.
 - Lexend Deca is the more standard-width variant, perfect for readable body text.
@@ -340,6 +342,7 @@ Test file convention: `src/__tests__/[mirror-path]/[filename].test.ts(x)`
 **Goal:** Working Next.js 16 project with all tooling configured.
 
 **Tasks:**
+
 1. Initialize Next.js 16 project with App Router, TypeScript strict mode, Tailwind CSS
 2. Configure path aliases (`@/components`, `@/lib`, `@/types`, `@/utils`, `@/hooks`)
 3. Set up Vitest with React Testing Library (`vitest.config.ts`, test utils, setup file)
@@ -351,6 +354,7 @@ Test file convention: `src/__tests__/[mirror-path]/[filename].test.ts(x)`
 9. Create base Tailwind config with brand tokens (primary: #0E3F50, accent: #C49B7A, font families: Lexend Exa + Lexend Deca)
 
 **Tests:**
+
 - `vitest.config.ts` runs successfully with a sample test
 - Playwright config validates
 - PWA manifest.json passes Lighthouse PWA audit (basic)
@@ -363,6 +367,7 @@ Test file convention: `src/__tests__/[mirror-path]/[filename].test.ts(x)`
 **Goal:** Full Supabase schema with migrations, seed data, and typed client.
 
 **Tasks:**
+
 1. Create Supabase project (or configure local dev with Supabase CLI)
 2. Write all migration files per Database Schema above
 3. Implement RLS policies for all tables per security spec
@@ -372,6 +377,7 @@ Test file convention: `src/__tests__/[mirror-path]/[filename].test.ts(x)`
 7. Create data access layer (`src/lib/db/`) with functions for each table (CRUD operations)
 
 **Tests:**
+
 - Migration files apply cleanly on fresh database
 - RLS policies: admin can read/write all, client can only read own data, public can only read published content
 - Supabase client connects and returns typed data
@@ -385,6 +391,7 @@ Test file convention: `src/__tests__/[mirror-path]/[filename].test.ts(x)`
 **Goal:** Complete NextAuth.js v5 setup with role-based access.
 
 **Tasks:**
+
 1. Configure NextAuth.js with Supabase adapter
 2. Implement credential provider (email + password with bcrypt hashing)
 3. Extend session and JWT types to include `role` and `userId`
@@ -400,6 +407,7 @@ Test file convention: `src/__tests__/[mirror-path]/[filename].test.ts(x)`
 9. Email verification flow on registration
 
 **Tests:**
+
 - Register new user: creates user in DB with correct role
 - Login with valid credentials: returns session with role
 - Login with invalid credentials: returns error
@@ -418,6 +426,7 @@ Test file convention: `src/__tests__/[mirror-path]/[filename].test.ts(x)`
 **Goal:** Global design system with all shared UI components using the brand palette.
 
 **Tasks:**
+
 1. Implement brand tokens in Tailwind config:
    - Colors: `primary` (#0E3F50), `accent` (#C49B7A), `surface` (#F5F5F5), plus semantic colors (success, error, warning)
    - Extend with shades: `primary-light`, `primary-dark`, `accent-light`, `accent-dark` (generate 100-900 scale)
@@ -447,6 +456,7 @@ Test file convention: `src/__tests__/[mirror-path]/[filename].test.ts(x)`
 6. Set up global meta tags, favicon (generate from logo), OG defaults
 
 **Tests:**
+
 - Every UI component: renders without errors, applies correct variant classes, handles all prop combinations
 - Button: primary variant uses Green Azure bg, accent variant uses Gray Orange bg, fires onClick, shows loading state, disabled state
 - Input: controlled value, validation errors display, focus border uses primary color, label association
@@ -467,6 +477,7 @@ Test file convention: `src/__tests__/[mirror-path]/[filename].test.ts(x)`
 **Goal:** Working admin layout with navigation and placeholder pages.
 
 **Tasks:**
+
 1. Build admin sidebar with Green Azure (`#0E3F50`) background:
    - White djpATHLETE logo at top of sidebar
    - Navigation links: Dashboard (home), Clients, Exercises, Programs, Payments, Analytics, Reviews, Settings
@@ -484,6 +495,7 @@ Test file convention: `src/__tests__/[mirror-path]/[filename].test.ts(x)`
 6. Admin route guard (redirect to login if not admin)
 
 **Tests:**
+
 - Sidebar renders all navigation items with correct icons
 - Sidebar background uses primary Green Azure color
 - Active nav item shows accent highlight
@@ -504,6 +516,7 @@ Test file convention: `src/__tests__/[mirror-path]/[filename].test.ts(x)`
 **Goal:** High-converting landing page for darrenjpaul.com.
 
 **Tasks:**
+
 1. Hero section: headline in Lexend Exa, subheadline in Lexend Deca, primary CTA button (Green Azure with accent hover), hero image/video background
 2. Social proof bar (client count, results stats) — subtle surface background
 3. Services overview section (3-4 cards with subtle borders, accent-colored icons or highlights)
@@ -515,6 +528,7 @@ Test file convention: `src/__tests__/[mirror-path]/[filename].test.ts(x)`
 9. Implement smooth scroll animations on section entry
 
 **Tests:**
+
 - Page renders all sections
 - CTA buttons link to correct routes
 - Responsive layout at mobile/tablet/desktop breakpoints
@@ -528,6 +542,7 @@ Test file convention: `src/__tests__/[mirror-path]/[filename].test.ts(x)`
 **Goal:** About, Services, Contact, and Testimonials pages.
 
 **Tasks:**
+
 1. **About page:** Coach bio, credentials, training philosophy, personal story, image
 2. **Services page:** Training offerings grid, pricing info, what to expect, CTA
 3. **Contact page:** Contact form (name, email, subject, message), form validation with Zod
@@ -537,6 +552,7 @@ Test file convention: `src/__tests__/[mirror-path]/[filename].test.ts(x)`
 7. Generate `sitemap.xml` and `robots.txt`
 
 **Tests:**
+
 - Each page renders correct content and structure
 - Contact form: validates required fields, shows errors for invalid input, submits successfully
 - Newsletter component: validates email, shows success/error state
@@ -551,6 +567,7 @@ Test file convention: `src/__tests__/[mirror-path]/[filename].test.ts(x)`
 **Goal:** Full CRUD for exercises with YouTube integration.
 
 **Tasks:**
+
 1. **API routes** (`src/app/api/exercises/`):
    - `GET /api/exercises` — list with pagination, search, filters (muscle group, difficulty, equipment, type)
    - `GET /api/exercises/[id]` — single exercise
@@ -575,6 +592,7 @@ Test file convention: `src/__tests__/[mirror-path]/[filename].test.ts(x)`
    - Import progress indicator
 
 **Tests:**
+
 - API: GET returns paginated results, respects filters, search works
 - API: POST creates exercise with valid data, rejects invalid data
 - API: PUT updates exercise, returns 404 for non-existent
@@ -594,6 +612,7 @@ Test file convention: `src/__tests__/[mirror-path]/[filename].test.ts(x)`
 **Goal:** Program builder with week/day structure, exercise assignment, and management.
 
 **Tasks:**
+
 1. **API routes** (`src/app/api/programs/`):
    - `GET /api/programs` — list (with type filter: evergreen, private, ai_generated)
    - `GET /api/programs/[id]` — full program with exercises (joined)
@@ -624,6 +643,7 @@ Test file convention: `src/__tests__/[mirror-path]/[filename].test.ts(x)`
    - Confirm and create assignment
 
 **Tests:**
+
 - API: CRUD operations for programs (create, read, update, delete)
 - API: add/update/remove exercises from program
 - API: duplicate creates exact copy with new ID, draft status
@@ -643,6 +663,7 @@ Test file convention: `src/__tests__/[mirror-path]/[filename].test.ts(x)`
 **Goal:** Public storefront with Stripe checkout and instant access.
 
 **Tasks:**
+
 1. **Stripe setup** (`src/lib/stripe.ts`):
    - Initialize Stripe client (server-side)
    - Helper: create Stripe Product + Price for evergreen programs
@@ -679,6 +700,7 @@ Test file convention: `src/__tests__/[mirror-path]/[filename].test.ts(x)`
    - Click to view payment detail (Stripe payment ID, session ID, client info)
 
 **Tests:**
+
 - Stripe client: initializes correctly with API key
 - Checkout session: creates with correct metadata, line items, redirect URLs
 - Webhook signature: validates correct signature, rejects invalid
@@ -699,6 +721,7 @@ Test file convention: `src/__tests__/[mirror-path]/[filename].test.ts(x)`
 **Goal:** Multi-step questionnaire that feeds into client profiles and AI assignment.
 
 **Tasks:**
+
 1. **API routes:**
    - `POST /api/questionnaire` — submit questionnaire (creates/updates client_profile)
    - `GET /api/questionnaire` — get current user's questionnaire responses
@@ -726,6 +749,7 @@ Test file convention: `src/__tests__/[mirror-path]/[filename].test.ts(x)`
    - Quick reference sidebar when assigning programs or reviewing AI output
 
 **Tests:**
+
 - API: POST validates all questionnaire fields, creates client_profile record
 - API: GET returns current user's responses (empty if not submitted)
 - API: admin endpoints return 403 for non-admin
@@ -745,6 +769,7 @@ Test file convention: `src/__tests__/[mirror-path]/[filename].test.ts(x)`
 **Goal:** AI reads questionnaire data + exercise library and generates complete programs.
 
 **Tasks:**
+
 1. **AI client** (`src/lib/ai.ts`):
    - Initialize OpenAI/Claude client
    - System prompt engineering for exercise matching
@@ -784,6 +809,7 @@ Test file convention: `src/__tests__/[mirror-path]/[filename].test.ts(x)`
    - Admin can view aggregate usage stats
 
 **Tests:**
+
 - AI client: calls API with correct system prompt and user data
 - AI client: parses structured JSON response correctly
 - AI client: handles API errors gracefully (timeout, rate limit, invalid response)
@@ -808,6 +834,7 @@ Test file convention: `src/__tests__/[mirror-path]/[filename].test.ts(x)`
 **Goal:** The training experience clients use daily.
 
 **Tasks:**
+
 1. **Client dashboard** (`/client/dashboard`):
    - Active program card (current program with progress percentage)
    - Quick stats: exercises completed this week, streak count
@@ -840,6 +867,7 @@ Test file convention: `src/__tests__/[mirror-path]/[filename].test.ts(x)`
    - Skeleton loading states everywhere
 
 **Tests:**
+
 - Client dashboard: renders active program, progress stats, CTA if no questionnaire
 - Client dashboard: handles no active program (empty state)
 - Program view: renders correct exercises for selected week/day
@@ -903,6 +931,7 @@ achievements (
 ```
 
 #### RLS
+
 - Clients: read/write own `workout_logs`, read own `tracked_exercises` and `achievements`
 - Admin: full access to all three tables
 
@@ -953,6 +982,7 @@ achievements (
    - Quick-add tracked exercises during program building (checkbox "Track this lift")
 
 #### Tests
+
 - API: POST workout log creates record, validates set data structure
 - API: GET workout logs returns filtered history for correct user/exercise
 - API: tracked exercises CRUD works, respects assignment ownership
@@ -983,6 +1013,7 @@ achievements (
 **Goal:** Website events automatically flow to GHL for marketing automation.
 
 **Tasks:**
+
 1. **GHL client** (`src/lib/ghl.ts`):
    - API client with auth (API key or OAuth)
    - Create/update contact
@@ -1007,6 +1038,7 @@ achievements (
    - Admin can view failed webhook logs in settings
 
 **Tests:**
+
 - GHL client: creates contact with correct fields
 - GHL client: triggers webhook with correct payload
 - GHL client: retries on failure (mock 500 response, verify retry count)
@@ -1024,6 +1056,7 @@ achievements (
 **Goal:** Admin overview of traffic, revenue, and client metrics.
 
 **Tasks:**
+
 1. **API routes:**
    - `GET /api/analytics/revenue` — revenue metrics (total, this month, by program, by date range)
    - `GET /api/analytics/clients` — client metrics (total, new this month, active, churn)
@@ -1044,6 +1077,7 @@ achievements (
    - Average rating per program (from reviews table)
 
 **Tests:**
+
 - API: revenue endpoint returns correct totals for date range
 - API: revenue endpoint handles empty date range (all time)
 - API: client metrics return correct counts
@@ -1062,6 +1096,7 @@ achievements (
 **Goal:** Admin gets notified of key events in real-time.
 
 **Tasks:**
+
 1. **Notification service** (`src/lib/notifications.ts`):
    - Create notification record in DB
    - Send email notification (use Resend, Supabase email, or simple SMTP)
@@ -1082,6 +1117,7 @@ achievements (
    - Email address for notifications (default: admin login email)
 
 **Tests:**
+
 - Notification service: creates DB record with correct type, title, message
 - Notification service: sends email when preference is enabled
 - Notification service: skips email when preference is off
@@ -1098,6 +1134,7 @@ achievements (
 **Goal:** Clients rate programs, admin moderates, reviews display on store.
 
 **Tasks:**
+
 1. **API routes:**
    - `POST /api/reviews` — submit review (authenticated, must own completed assignment)
    - `GET /api/reviews/program/[programId]` — get approved reviews for program (public)
@@ -1122,6 +1159,7 @@ achievements (
    - Display: client name, star rating, review text, client photo (if available)
 
 **Tests:**
+
 - API: POST creates review, rejects if no completed assignment
 - API: POST rejects duplicate review (one per assignment)
 - API: GET public only returns approved reviews
@@ -1140,6 +1178,7 @@ achievements (
 **Goal:** PWA feels like a native app, not a website.
 
 **Tasks:**
+
 1. Audit all client-facing pages for mobile UX:
    - Touch targets minimum 44x44px
    - No horizontal scroll on any viewport
@@ -1158,6 +1197,7 @@ achievements (
 9. Optimize images: next/image with proper sizing, WebP format, blur placeholders
 
 **Tests:**
+
 - No horizontal overflow on any page at 320px viewport width
 - Touch targets: all interactive elements >= 44x44px (visual regression or DOM check)
 - Skeleton screens: render on every page with loading state
@@ -1173,6 +1213,7 @@ achievements (
 **Goal:** Everything works perfectly on every device and browser.
 
 **Tasks:**
+
 1. **Playwright E2E test suite** covering critical flows:
    - Full auth flow: register, login, logout, password reset
    - Public buyer flow: browse store, view program, purchase (Stripe test mode), access program
@@ -1189,6 +1230,7 @@ achievements (
 5. Performance audit: Lighthouse scores > 90 for Performance, Accessibility, Best Practices, SEO
 
 **Tests:**
+
 - All Playwright E2E tests pass at all three viewport sizes
 - Lighthouse CI: Performance > 90, Accessibility > 90, Best Practices > 90, SEO > 90
 - No console errors on any page at any viewport
@@ -1202,6 +1244,7 @@ achievements (
 **Goal:** Every page is polished, consistent, and production-ready.
 
 **Tasks:**
+
 1. Full visual audit: consistent spacing, fonts, colors across all pages
 2. Copy review: button labels, error messages, empty states, tooltips
 3. Error pages: custom 404, 500, and offline fallback pages (branded)
@@ -1210,6 +1253,7 @@ achievements (
 6. Performance: code splitting, lazy loading for heavy components, image optimization, bundle analysis
 
 **Tests:**
+
 - Accessibility: axe-core audit passes on all pages (integrate with Playwright)
 - 404 page: renders on invalid routes
 - 500 page: renders on server error
@@ -1223,6 +1267,7 @@ achievements (
 **Goal:** Platform is live at darrenjpaul.com.
 
 **Tasks:**
+
 1. Vercel production environment:
    - All environment variables set (Supabase, Stripe live keys, AI API key, GHL API key, NextAuth secret)
    - Custom domain configured with SSL
@@ -1246,6 +1291,7 @@ achievements (
 6. Final smoke test of all features in production
 
 **Tests:**
+
 - Production build: zero errors, zero warnings
 - All API endpoints return correct responses
 - Stripe webhook: test event fires and processes correctly
@@ -1260,6 +1306,7 @@ achievements (
 **Goal:** Existing client data from Laravel system moved to new platform.
 
 **Tasks:**
+
 1. Export existing client data from Laravel system (CSV or JSON)
 2. Write migration script:
    - Map old user records to new `users` table schema
@@ -1272,6 +1319,7 @@ achievements (
 4. Run migration on production after deployment
 
 **Tests:**
+
 - Migration script: transforms sample old data to new schema correctly
 - Migration script: handles missing/null fields gracefully
 - Migration script: reports errors for unmappable records
@@ -1285,6 +1333,7 @@ achievements (
 **Goal:** Client can manage the platform independently.
 
 **Tasks:**
+
 1. Admin user guide (markdown):
    - How to add exercises to the library
    - How to build a program manually
@@ -1307,6 +1356,7 @@ achievements (
    - All environment variables documented
 
 **Tests:**
+
 - Documentation: all links in docs are valid
 - README: setup instructions work on a clean environment
 - All documented API endpoints exist and return expected responses

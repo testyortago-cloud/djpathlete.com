@@ -15,10 +15,7 @@ const messageSchema = z.object({
   message: z.string().min(1).max(5000),
 })
 
-export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
     if (!session?.user?.id || session.user.role !== "admin") {
@@ -30,17 +27,11 @@ export async function GET(
     return NextResponse.json(messages)
   } catch (error) {
     console.error("Admin form review messages GET error:", error)
-    return NextResponse.json(
-      { error: "Failed to fetch messages" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to fetch messages" }, { status: 500 })
   }
 }
 
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
     if (!session?.user?.id || session.user.role !== "admin") {
@@ -51,10 +42,7 @@ export async function POST(
     const body = await request.json()
     const parsed = messageSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Invalid data", details: parsed.error.flatten() },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Invalid data", details: parsed.error.flatten() }, { status: 400 })
     }
 
     const message = await createFormReviewMessage({
@@ -87,9 +75,7 @@ export async function POST(
         clientUserId: client.id,
         reviewTitle: review.title,
         reviewId: review.id,
-      }).catch((err) =>
-        console.error("Failed to send form review feedback email:", err)
-      )
+      }).catch((err) => console.error("Failed to send form review feedback email:", err))
     } catch (err) {
       console.error("Failed to notify client of form review feedback:", err)
     }
@@ -97,9 +83,6 @@ export async function POST(
     return NextResponse.json(message, { status: 201 })
   } catch (error) {
     console.error("Admin form review message POST error:", error)
-    return NextResponse.json(
-      { error: "Failed to create message" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to create message" }, { status: 500 })
   }
 }

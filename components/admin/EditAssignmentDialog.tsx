@@ -49,12 +49,8 @@ export function EditAssignmentDialog({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [startDate, setStartDate] = useState(currentStartDate)
   const [notes, setNotes] = useState(currentNotes ?? "")
-  const [paymentStatus, setPaymentStatus] = useState<AssignmentPaymentStatus>(
-    currentPaymentStatus ?? "not_required"
-  )
-  const [expiresAt, setExpiresAt] = useState(
-    currentExpiresAt ? currentExpiresAt.slice(0, 10) : ""
-  )
+  const [paymentStatus, setPaymentStatus] = useState<AssignmentPaymentStatus>(currentPaymentStatus ?? "not_required")
+  const [expiresAt, setExpiresAt] = useState(currentExpiresAt ? currentExpiresAt.slice(0, 10) : "")
 
   function handleClose(o: boolean) {
     if (!o) {
@@ -101,19 +97,18 @@ export function EditAssignmentDialog({
     }
   }
 
-  const hasChanges = startDate !== currentStartDate
-    || (notes || null) !== currentNotes
-    || (currentPaymentStatus !== undefined && paymentStatus !== currentPaymentStatus)
-    || expiresAt !== (currentExpiresAt ? currentExpiresAt.slice(0, 10) : "")
+  const hasChanges =
+    startDate !== currentStartDate ||
+    (notes || null) !== currentNotes ||
+    (currentPaymentStatus !== undefined && paymentStatus !== currentPaymentStatus) ||
+    expiresAt !== (currentExpiresAt ? currentExpiresAt.slice(0, 10) : "")
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Edit Assignment</DialogTitle>
-          <DialogDescription>
-            Update the start date or notes for {clientName}&apos;s assignment.
-          </DialogDescription>
+          <DialogDescription>Update the start date or notes for {clientName}&apos;s assignment.</DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -128,8 +123,8 @@ export function EditAssignmentDialog({
               disabled={isSubmitting}
             />
             <p className="text-xs text-muted-foreground">
-              Changing the start date shifts when Week 1 begins. The client&apos;s
-              weekly calendar will recalculate from this date.
+              Changing the start date shifts when Week 1 begins. The client&apos;s weekly calendar will recalculate from
+              this date.
             </p>
           </div>
 
@@ -189,19 +184,14 @@ export function EditAssignmentDialog({
                     <option key={value} value={value}>
                       {label}
                     </option>
-                  )
+                  ),
                 )}
               </select>
             </div>
           )}
 
           <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => handleClose(false)}
-              disabled={isSubmitting}
-            >
+            <Button type="button" variant="outline" onClick={() => handleClose(false)} disabled={isSubmitting}>
               Cancel
             </Button>
             <Button type="submit" disabled={isSubmitting || !hasChanges}>

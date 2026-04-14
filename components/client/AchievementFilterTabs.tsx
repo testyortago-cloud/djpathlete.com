@@ -15,24 +15,20 @@ const TABS: Array<{ label: string; value: AchievementType | "all" }> = [
   { label: "Milestones", value: "milestone" },
 ]
 
-export function AchievementFilterTabs({
-  achievements,
-}: AchievementFilterTabsProps) {
+export function AchievementFilterTabs({ achievements }: AchievementFilterTabsProps) {
   const [activeTab, setActiveTab] = useState<AchievementType | "all">("all")
 
-  const filtered =
-    activeTab === "all"
-      ? achievements
-      : achievements.filter((a) => a.achievement_type === activeTab)
+  const filtered = activeTab === "all" ? achievements : achievements.filter((a) => a.achievement_type === activeTab)
 
   return (
     <div>
       {/* Tabs */}
       <div className="flex items-center gap-1.5 mb-4 overflow-x-auto scrollbar-none -mx-1 px-1 pb-1">
         {TABS.map((tab) => {
-          const count = tab.value === "all"
-            ? achievements.length
-            : achievements.filter((a) => a.achievement_type === tab.value).length
+          const count =
+            tab.value === "all"
+              ? achievements.length
+              : achievements.filter((a) => a.achievement_type === tab.value).length
           return (
             <button
               key={tab.value}
@@ -44,7 +40,9 @@ export function AchievementFilterTabs({
               }`}
             >
               {tab.label}
-              <span className={`ml-1 ${activeTab === tab.value ? "text-primary-foreground/70" : "text-muted-foreground/50"}`}>
+              <span
+                className={`ml-1 ${activeTab === tab.value ? "text-primary-foreground/70" : "text-muted-foreground/50"}`}
+              >
                 {count}
               </span>
             </button>

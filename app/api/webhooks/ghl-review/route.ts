@@ -37,10 +37,7 @@ export async function POST(request: Request) {
     if (secret) {
       const provided = request.headers.get("x-webhook-secret")
       if (provided !== secret) {
-        return NextResponse.json(
-          { error: "Invalid webhook secret" },
-          { status: 401 }
-        )
+        return NextResponse.json({ error: "Invalid webhook secret" }, { status: 401 })
       }
     }
 
@@ -53,24 +50,10 @@ export async function POST(request: Request) {
         raw.reviewerName ||
         raw.full_name ||
         raw.fullName ||
-        [raw.first_name || raw.firstName, raw.last_name || raw.lastName]
-          .filter(Boolean)
-          .join(" ") ||
+        [raw.first_name || raw.firstName, raw.last_name || raw.lastName].filter(Boolean).join(" ") ||
         "Anonymous",
-      rating:
-        raw.rating ??
-        raw.starRating ??
-        raw.star_rating ??
-        raw.reviewRating ??
-        raw.review_rating ??
-        5,
-      comment:
-        raw.comment ??
-        raw.reviewBody ??
-        raw.review_body ??
-        raw.body ??
-        raw.text ??
-        null,
+      rating: raw.rating ?? raw.starRating ?? raw.star_rating ?? raw.reviewRating ?? raw.review_rating ?? 5,
+      comment: raw.comment ?? raw.reviewBody ?? raw.review_body ?? raw.body ?? raw.text ?? null,
       review_date:
         raw.review_date ||
         raw.reviewDate ||
@@ -85,7 +68,7 @@ export async function POST(request: Request) {
       console.error("[ghl-review-webhook] Validation failed:", result.error.flatten())
       return NextResponse.json(
         { error: "Invalid review data", details: result.error.flatten().fieldErrors },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
@@ -103,9 +86,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true }, { status: 201 })
   } catch (err) {
     console.error("[ghl-review-webhook] Error:", err)
-    return NextResponse.json(
-      { error: "Failed to process review webhook" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to process review webhook" }, { status: 500 })
   }
 }

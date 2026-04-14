@@ -7,10 +7,7 @@ function getClient() {
 
 export async function getTestimonials(activeOnly = true) {
   const supabase = getClient()
-  let query = supabase
-    .from("testimonials")
-    .select("*")
-    .order("display_order", { ascending: true })
+  let query = supabase.from("testimonials").select("*").order("display_order", { ascending: true })
 
   if (activeOnly) {
     query = query.eq("is_active", true)
@@ -36,34 +33,21 @@ export async function getFeaturedTestimonials() {
 
 export async function getTestimonialById(id: string) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("testimonials")
-    .select("*")
-    .eq("id", id)
-    .single()
+  const { data, error } = await supabase.from("testimonials").select("*").eq("id", id).single()
 
   if (error) throw error
   return data as Testimonial
 }
 
-export async function createTestimonial(
-  input: Omit<Testimonial, "id" | "created_at" | "updated_at" | "user_id">
-) {
+export async function createTestimonial(input: Omit<Testimonial, "id" | "created_at" | "updated_at" | "user_id">) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("testimonials")
-    .insert(input)
-    .select()
-    .single()
+  const { data, error } = await supabase.from("testimonials").insert(input).select().single()
 
   if (error) throw error
   return data as Testimonial
 }
 
-export async function updateTestimonial(
-  id: string,
-  updates: Partial<Omit<Testimonial, "id" | "created_at">>
-) {
+export async function updateTestimonial(id: string, updates: Partial<Omit<Testimonial, "id" | "created_at">>) {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("testimonials")
@@ -78,10 +62,7 @@ export async function updateTestimonial(
 
 export async function deleteTestimonial(id: string) {
   const supabase = getClient()
-  const { error } = await supabase
-    .from("testimonials")
-    .delete()
-    .eq("id", id)
+  const { error } = await supabase.from("testimonials").delete().eq("id", id)
 
   if (error) throw error
 }

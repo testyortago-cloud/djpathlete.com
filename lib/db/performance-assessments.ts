@@ -15,14 +15,10 @@ function getClient() {
 // ---------------------------------------------------------------------------
 
 export async function createPerformanceAssessment(
-  assessment: Omit<PerformanceAssessment, "id" | "created_at" | "updated_at">
+  assessment: Omit<PerformanceAssessment, "id" | "created_at" | "updated_at">,
 ) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("performance_assessments")
-    .insert(assessment)
-    .select()
-    .single()
+  const { data, error } = await supabase.from("performance_assessments").insert(assessment).select().single()
   if (error) throw error
   return data as PerformanceAssessment
 }
@@ -50,9 +46,7 @@ export async function getPerformanceAssessmentsByClient(userId: string) {
   return data
 }
 
-export async function getAllPerformanceAssessments(filters?: {
-  status?: PerformanceAssessmentStatus
-}) {
+export async function getAllPerformanceAssessments(filters?: { status?: PerformanceAssessmentStatus }) {
   const supabase = getClient()
   let query = supabase
     .from("performance_assessments")
@@ -70,25 +64,17 @@ export async function getAllPerformanceAssessments(filters?: {
 
 export async function updatePerformanceAssessment(
   id: string,
-  updates: Partial<Pick<PerformanceAssessment, "status" | "title" | "notes">>
+  updates: Partial<Pick<PerformanceAssessment, "status" | "title" | "notes">>,
 ) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("performance_assessments")
-    .update(updates)
-    .eq("id", id)
-    .select()
-    .single()
+  const { data, error } = await supabase.from("performance_assessments").update(updates).eq("id", id).select().single()
   if (error) throw error
   return data as PerformanceAssessment
 }
 
 export async function deletePerformanceAssessment(id: string) {
   const supabase = getClient()
-  const { error } = await supabase
-    .from("performance_assessments")
-    .delete()
-    .eq("id", id)
+  const { error } = await supabase.from("performance_assessments").delete().eq("id", id)
   if (error) throw error
 }
 
@@ -97,13 +83,10 @@ export async function deletePerformanceAssessment(id: string) {
 // ---------------------------------------------------------------------------
 
 export async function createAssessmentExercises(
-  exercises: Omit<PerformanceAssessmentExercise, "id" | "created_at" | "updated_at">[]
+  exercises: Omit<PerformanceAssessmentExercise, "id" | "created_at" | "updated_at">[],
 ) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("performance_assessment_exercises")
-    .insert(exercises)
-    .select()
+  const { data, error } = await supabase.from("performance_assessment_exercises").insert(exercises).select()
   if (error) throw error
   return data as PerformanceAssessmentExercise[]
 }
@@ -121,7 +104,9 @@ export async function getAssessmentExercises(assessmentId: string) {
 
 export async function updateAssessmentExercise(
   id: string,
-  updates: Partial<Pick<PerformanceAssessmentExercise, "video_path" | "admin_notes" | "youtube_url" | "result_value" | "result_unit">>
+  updates: Partial<
+    Pick<PerformanceAssessmentExercise, "video_path" | "admin_notes" | "youtube_url" | "result_value" | "result_unit">
+  >,
 ) {
   const supabase = getClient()
   const { data, error } = await supabase
@@ -135,7 +120,7 @@ export async function updateAssessmentExercise(
 }
 
 export async function addAssessmentExercise(
-  exercise: Omit<PerformanceAssessmentExercise, "id" | "created_at" | "updated_at">
+  exercise: Omit<PerformanceAssessmentExercise, "id" | "created_at" | "updated_at">,
 ) {
   const supabase = getClient()
   const { data, error } = await supabase
@@ -149,10 +134,7 @@ export async function addAssessmentExercise(
 
 export async function deleteAssessmentExercise(id: string) {
   const supabase = getClient()
-  const { error } = await supabase
-    .from("performance_assessment_exercises")
-    .delete()
-    .eq("id", id)
+  const { error } = await supabase.from("performance_assessment_exercises").delete().eq("id", id)
   if (error) throw error
 }
 
@@ -171,9 +153,7 @@ export async function getAssessmentMessages(assessmentExerciseId: string) {
   return data
 }
 
-export async function createAssessmentMessage(
-  message: Omit<PerformanceAssessmentMessage, "id" | "created_at">
-) {
+export async function createAssessmentMessage(message: Omit<PerformanceAssessmentMessage, "id" | "created_at">) {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("performance_assessment_messages")
@@ -190,12 +170,13 @@ export async function createAssessmentMessage(
 
 export async function getExerciseResultHistory(
   clientUserId: string,
-  exerciseIdentifier: { exercise_id?: string; custom_name?: string }
+  exerciseIdentifier: { exercise_id?: string; custom_name?: string },
 ) {
   const supabase = getClient()
   let query = supabase
     .from("performance_assessment_exercises")
-    .select(`
+    .select(
+      `
       id,
       result_value,
       result_unit,
@@ -204,7 +185,8 @@ export async function getExerciseResultHistory(
       exercises(id, name),
       assessment_id,
       performance_assessments!inner(id, title, created_at, client_user_id, status)
-    `)
+    `,
+    )
     .eq("performance_assessments.client_user_id", clientUserId)
     .neq("performance_assessments.status", "draft")
     .not("result_value", "is", null)
@@ -227,9 +209,7 @@ export async function getExerciseResultHistory(
 
 export async function getPerformanceAssessmentCounts() {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("performance_assessments")
-    .select("status")
+  const { data, error } = await supabase.from("performance_assessments").select("status")
   if (error) throw error
 
   const counts = { draft: 0, in_progress: 0, completed: 0, total: 0 }

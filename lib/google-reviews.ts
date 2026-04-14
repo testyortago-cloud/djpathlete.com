@@ -24,10 +24,7 @@ export interface NormalizedGoogleReview {
 export async function fetchGoogleReviews(): Promise<NormalizedGoogleReview[]> {
   const supabase = createServiceRoleClient()
 
-  const { data, error } = await supabase
-    .from("google_reviews")
-    .select("*")
-    .order("review_date", { ascending: false })
+  const { data, error } = await supabase.from("google_reviews").select("*").order("review_date", { ascending: false })
 
   if (error) {
     console.error("[google-reviews] DB query failed:", error)

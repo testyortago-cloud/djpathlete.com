@@ -16,9 +16,8 @@ export default async function AiPolicyPage() {
       <div className="space-y-2 mb-6">
         <h1 className="text-2xl font-heading text-primary">AI Program Policy</h1>
         <p className="text-sm text-muted-foreground">
-          Control how the AI generates programs across all of your clients. These
-          rules are injected into every program generation as coach instructions
-          and override the AI&apos;s defaults.
+          Control how the AI generates programs across all of your clients. These rules are injected into every program
+          generation as coach instructions and override the AI&apos;s defaults.
         </p>
       </div>
       <AiPolicyForm initialPolicy={policy} />

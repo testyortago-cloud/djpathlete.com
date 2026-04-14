@@ -1,16 +1,9 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import {
-  getLatestAssessmentResult,
-  getActiveQuestions,
-  createAssessmentResult,
-} from "@/lib/db/assessments"
+import { getLatestAssessmentResult, getActiveQuestions, createAssessmentResult } from "@/lib/db/assessments"
 import { getAssignments } from "@/lib/db/assignments"
 import { getProgress } from "@/lib/db/progress"
-import {
-  computeReassessmentAdjustment,
-  computeAssessmentScores,
-} from "@/lib/assessment-scoring"
+import { computeReassessmentAdjustment, computeAssessmentScores } from "@/lib/assessment-scoring"
 import type { AssessmentFeedback, ProgramAssignment } from "@/types/database"
 
 export async function POST(request: Request) {
@@ -32,10 +25,7 @@ export async function POST(request: Request) {
     } = body
 
     if (!answers || !feedback || !feedback.overall_feeling) {
-      return NextResponse.json(
-        { error: "Missing required fields: answers, feedback" },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Missing required fields: answers, feedback" }, { status: 400 })
     }
 
     // Get previous assessment result
@@ -43,7 +33,7 @@ export async function POST(request: Request) {
     if (!previousResult) {
       return NextResponse.json(
         { error: "No previous assessment found. Complete an initial assessment first." },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
@@ -56,9 +46,7 @@ export async function POST(request: Request) {
 
     // Get the most recently completed assignment for RPE data
     const allAssignments = await getAssignments(userId)
-    const completedAssignment = (allAssignments as ProgramAssignment[]).find(
-      (a) => a.status === "completed"
-    )
+    const completedAssignment = (allAssignments as ProgramAssignment[]).find((a) => a.status === "completed")
 
     // Compute average RPE from exercise progress for the completed assignment
     let avgRpe: number = 7 // default mid-range RPE
@@ -67,7 +55,7 @@ export async function POST(request: Request) {
         const progressRecords = await getProgress(userId)
         const assignmentProgress = progressRecords.filter(
           (p: { assignment_id: string | null; rpe: number | null }) =>
-            p.assignment_id === completedAssignment.id && p.rpe != null
+            p.assignment_id === completedAssignment.id && p.rpe != null,
         )
         if (assignmentProgress.length > 0) {
           avgRpe =
@@ -119,9 +107,6 @@ export async function POST(request: Request) {
     })
   } catch (error) {
     console.error("Reassessment error:", error)
-    return NextResponse.json(
-      { error: "Failed to process reassessment. Please try again." },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to process reassessment. Please try again." }, { status: 500 })
   }
 }

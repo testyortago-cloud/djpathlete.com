@@ -15,13 +15,16 @@ export const registerSchema = z
   .object({
     firstName: z.string().min(1, "First name is required").max(50),
     lastName: z.string().min(1, "Last name is required").max(50),
-    dateOfBirth: z.string().min(1, "Date of birth is required").refine(
-      (val) => {
-        const date = new Date(val)
-        return !isNaN(date.getTime()) && date < new Date()
-      },
-      { message: "Please enter a valid date of birth" }
-    ),
+    dateOfBirth: z
+      .string()
+      .min(1, "Date of birth is required")
+      .refine(
+        (val) => {
+          const date = new Date(val)
+          return !isNaN(date.getTime()) && date < new Date()
+        },
+        { message: "Please enter a valid date of birth" },
+      ),
     email: z.string().email("Please enter a valid email"),
     password: z.string().min(8, "Password must be at least 8 characters"),
     confirmPassword: z.string(),

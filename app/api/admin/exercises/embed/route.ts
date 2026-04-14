@@ -21,10 +21,7 @@ export async function GET() {
     return NextResponse.json(stats)
   } catch (error) {
     console.error("[embed] Failed to get stats:", error)
-    return NextResponse.json(
-      { error: "Failed to get embedding stats" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to get embedding stats" }, { status: 500 })
   }
 }
 
@@ -45,10 +42,7 @@ export async function POST(request: Request) {
     const exercises = await getAllExercisesForEmbedding()
 
     // Filter to only exercises missing embeddings if mode is "missing"
-    const toEmbed =
-      mode === "missing"
-        ? exercises.filter((e) => !e.embedding)
-        : exercises
+    const toEmbed = mode === "missing" ? exercises.filter((e) => !e.embedding) : exercises
 
     if (toEmbed.length === 0) {
       return NextResponse.json({
@@ -70,10 +64,7 @@ export async function POST(request: Request) {
         await updateExerciseEmbedding(exercise.id, embedding)
         embedded++
       } catch (err) {
-        console.error(
-          `[embed] Failed to embed "${exercise.name}":`,
-          err instanceof Error ? err.message : err
-        )
+        console.error(`[embed] Failed to embed "${exercise.name}":`, err instanceof Error ? err.message : err)
         failed++
       }
     }
@@ -87,9 +78,6 @@ export async function POST(request: Request) {
     })
   } catch (error) {
     console.error("[embed] Failed to regenerate embeddings:", error)
-    return NextResponse.json(
-      { error: "Failed to regenerate embeddings" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to regenerate embeddings" }, { status: 500 })
   }
 }

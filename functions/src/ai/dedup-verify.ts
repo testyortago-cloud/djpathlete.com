@@ -76,7 +76,13 @@ function getSlotDetails(slotId: string, weeks: ProgramWeek[]): ExerciseSlot | nu
  * prior weeks — it uses the actual DB data instead.
  */
 export function buildPriorContextFromExistingExercises(
-  existingExercises: { exercise_id: string; exercise_name: string; week_number: number; role?: string; slot_group?: string }[]
+  existingExercises: {
+    exercise_id: string
+    exercise_name: string
+    week_number: number
+    role?: string
+    slot_group?: string
+  }[],
 ): PriorWeekContext {
   const anchor_exercises = new Map<string, string>()
   const used_accessory_exercises = new Map<string, Set<string>>()
@@ -118,7 +124,9 @@ export function buildPriorContextFromExistingExercises(
     }
 
     if (used_accessory_exercises.size > 0) {
-      lines.push("EXERCISES ALREADY USED — MUST choose DIFFERENT exercises for ALL working slots (compounds, accessories, isolations):")
+      lines.push(
+        "EXERCISES ALREADY USED — MUST choose DIFFERENT exercises for ALL working slots (compounds, accessories, isolations):",
+      )
       for (const [groupKey, exerciseIds] of used_accessory_exercises) {
         lines.push(`  ${groupKey}:`)
         for (const id of exerciseIds) {
@@ -132,15 +140,23 @@ export function buildPriorContextFromExistingExercises(
     lines.push(`Total unique exercises used so far: ${exercise_week_map.size}`)
     lines.push("")
     lines.push("RULES FOR USING THIS CONTEXT:")
-    lines.push("- EVERY working exercise (compounds, accessories, isolations) MUST be different each week. Target < 3% repetition.")
+    lines.push(
+      "- EVERY working exercise (compounds, accessories, isolations) MUST be different each week. Target < 3% repetition.",
+    )
     lines.push("- For compound slots: pick a DIFFERENT exercise that trains the same movement pattern and muscles.")
-    lines.push("  Example: Week 1 Barbell Back Squat → Week 2 Front Squat → Week 3 Goblet Squat (all squat pattern, all quads/glutes)")
+    lines.push(
+      "  Example: Week 1 Barbell Back Squat → Week 2 Front Squat → Week 3 Goblet Squat (all squat pattern, all quads/glutes)",
+    )
     lines.push("  Example: Week 1 Barbell Bench Press → Week 2 Dumbbell Bench Press → Week 3 Incline Barbell Press")
     lines.push("- For accessory/isolation slots: pick a DIFFERENT exercise. Vary by equipment, angle, or stance.")
     lines.push("- CRITICAL: Alternatives MUST still match the slot's movement_pattern, target_muscles, and role.")
-    lines.push("  Do NOT pick a random exercise just to avoid repetition — the alternative must serve the same training purpose.")
+    lines.push(
+      "  Do NOT pick a random exercise just to avoid repetition — the alternative must serve the same training purpose.",
+    )
     lines.push("- Only warm-up and cool-down exercises may repeat across weeks.")
-    lines.push("- If the exercise library has NO suitable alternatives, you MAY reuse but MUST explain why in substitution_notes.")
+    lines.push(
+      "- If the exercise library has NO suitable alternatives, you MAY reuse but MUST explain why in substitution_notes.",
+    )
     lines.push("")
   }
 
@@ -165,10 +181,7 @@ export function buildPriorContextFromExistingExercises(
  * the next week's generation. Used by the full program generator which has
  * the complete skeleton for all weeks.
  */
-export function buildPriorWeekContext(
-  priorWeeks: WeekAssignment[],
-  allWeeks: ProgramWeek[]
-): PriorWeekContext {
+export function buildPriorWeekContext(priorWeeks: WeekAssignment[], allWeeks: ProgramWeek[]): PriorWeekContext {
   const anchor_exercises = new Map<string, string>()
   const used_accessory_exercises = new Map<string, Set<string>>()
   const exercise_week_map = new Map<string, number[]>()
@@ -216,7 +229,9 @@ export function buildPriorWeekContext(
     }
 
     if (used_accessory_exercises.size > 0) {
-      lines.push("EXERCISES ALREADY USED — MUST choose DIFFERENT exercises for ALL working slots (compounds, accessories, isolations):")
+      lines.push(
+        "EXERCISES ALREADY USED — MUST choose DIFFERENT exercises for ALL working slots (compounds, accessories, isolations):",
+      )
       for (const [groupKey, exerciseIds] of used_accessory_exercises) {
         const [role, pattern, muscles] = groupKey.split("|")
         const exerciseNames: string[] = []
@@ -240,15 +255,23 @@ export function buildPriorWeekContext(
     lines.push(`Total unique exercises used so far: ${exercise_week_map.size}`)
     lines.push("")
     lines.push("RULES FOR USING THIS CONTEXT:")
-    lines.push("- EVERY working exercise (compounds, accessories, isolations) MUST be different each week. Target < 3% repetition.")
+    lines.push(
+      "- EVERY working exercise (compounds, accessories, isolations) MUST be different each week. Target < 3% repetition.",
+    )
     lines.push("- For compound slots: pick a DIFFERENT exercise that trains the same movement pattern and muscles.")
-    lines.push("  Example: Week 1 Barbell Back Squat → Week 2 Front Squat → Week 3 Goblet Squat (all squat pattern, all quads/glutes)")
+    lines.push(
+      "  Example: Week 1 Barbell Back Squat → Week 2 Front Squat → Week 3 Goblet Squat (all squat pattern, all quads/glutes)",
+    )
     lines.push("  Example: Week 1 Barbell Bench Press → Week 2 Dumbbell Bench Press → Week 3 Incline Barbell Press")
     lines.push("- For accessory/isolation slots: pick a DIFFERENT exercise. Vary by equipment, angle, or stance.")
     lines.push("- CRITICAL: Alternatives MUST still match the slot's movement_pattern, target_muscles, and role.")
-    lines.push("  Do NOT pick a random exercise just to avoid repetition — the alternative must serve the same training purpose.")
+    lines.push(
+      "  Do NOT pick a random exercise just to avoid repetition — the alternative must serve the same training purpose.",
+    )
     lines.push("- Only warm-up and cool-down exercises may repeat across weeks.")
-    lines.push("- If the exercise library has NO suitable alternatives, you MAY reuse but MUST explain why in substitution_notes.")
+    lines.push(
+      "- If the exercise library has NO suitable alternatives, you MAY reuse but MUST explain why in substitution_notes.",
+    )
     lines.push("")
   }
 
@@ -269,7 +292,7 @@ export function buildPriorWeekContext(
 export function verifyWeekDiversity(
   currentWeek: WeekAssignment,
   priorWeeks: WeekAssignment[],
-  allWeeks: ProgramWeek[]
+  allWeeks: ProgramWeek[],
 ): WeekVerificationResult {
   if (priorWeeks.length === 0) {
     return {
@@ -319,9 +342,7 @@ export function verifyWeekDiversity(
     }
   }
 
-  const repetition_score = varietySlotCount > 0
-    ? repeatedVarietyCount / varietySlotCount
-    : 0
+  const repetition_score = varietySlotCount > 0 ? repeatedVarietyCount / varietySlotCount : 0
 
   const errorCount = issues.filter((i) => i.severity === "error").length
   const pass = repetition_score <= MAX_REPETITION_SCORE && errorCount === 0
@@ -354,7 +375,7 @@ export interface ProgramRepetitionReport {
  */
 export function analyzeFullProgramRepetition(
   allAssignments: WeekAssignment[],
-  allWeeks: ProgramWeek[]
+  allWeeks: ProgramWeek[],
 ): ProgramRepetitionReport {
   const exerciseFrequency = new Map<string, { name: string; count: number; weeks: number[] }>()
   let totalVarietySlots = 0
@@ -387,9 +408,7 @@ export function analyzeFullProgramRepetition(
 
   const blockSize = totalWeeks <= 8 ? 2 : 3
   const idealUniqueCount = Math.ceil(totalVarietySlots / blockSize)
-  const repetition_score = idealUniqueCount > 0
-    ? Math.max(0, 1 - (uniqueExercisesUsed / idealUniqueCount))
-    : 0
+  const repetition_score = idealUniqueCount > 0 ? Math.max(0, 1 - uniqueExercisesUsed / idealUniqueCount) : 0
 
   const sorted = [...exerciseFrequency.values()].sort((a, b) => b.count - a.count)
   const most_repeated = sorted.slice(0, 5).filter((e) => e.count > 1)
@@ -415,10 +434,7 @@ export function analyzeFullProgramRepetition(
 /**
  * Extract a single week from the full skeleton to send to Agent 3.
  */
-export function extractWeekSkeleton(
-  fullSkeleton: ProgramWeek[],
-  weekNumber: number
-): ProgramWeek | null {
+export function extractWeekSkeleton(fullSkeleton: ProgramWeek[], weekNumber: number): ProgramWeek | null {
   return fullSkeleton.find((w) => w.week_number === weekNumber) ?? null
 }
 
@@ -427,7 +443,7 @@ export function extractWeekSkeleton(
 export function verifyWeekAgainstExisting(
   newAssignments: AssignedExercise[],
   newWeekSkeleton: ProgramWeek,
-  priorContext: PriorWeekContext
+  priorContext: PriorWeekContext,
 ): WeekVerificationResult {
   const issues: RepetitionIssue[] = []
 
@@ -466,7 +482,7 @@ export function verifyWeekAgainstExisting(
         slot_id: assignment.slot_id,
         repeated_in_weeks: priorWeekNums,
         role,
-        severity: isGroupRepeat ? "error" : (isAnyPriorUse ? "warning" : "warning"),
+        severity: isGroupRepeat ? "error" : isAnyPriorUse ? "warning" : "warning",
         message: isGroupRepeat
           ? `${assignment.exercise_name} was already used for the same slot type in week(s) ${priorWeekNums.join(", ")}. Choose a different exercise.`
           : `${assignment.exercise_name} was used in week(s) ${priorWeekNums.join(", ")}. Consider using a different exercise for variety.`,
@@ -474,9 +490,7 @@ export function verifyWeekAgainstExisting(
     }
   }
 
-  const repetition_score = varietySlotCount > 0
-    ? repeatedVarietyCount / varietySlotCount
-    : 0
+  const repetition_score = varietySlotCount > 0 ? repeatedVarietyCount / varietySlotCount : 0
 
   const errorCount = issues.filter((i) => i.severity === "error").length
   const pass = repetition_score <= MAX_REPETITION_SCORE && errorCount === 0

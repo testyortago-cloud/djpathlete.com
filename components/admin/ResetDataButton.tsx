@@ -41,9 +41,7 @@ export function ResetDataButton() {
       }
 
       if (data.warnings?.length) {
-        toast.warning(
-          `Data reset completed with ${data.warnings.length} warning(s). Check console for details.`
-        )
+        toast.warning(`Data reset completed with ${data.warnings.length} warning(s). Check console for details.`)
         console.warn("Reset warnings:", data.warnings)
       } else {
         toast.success("Platform data has been reset successfully.")
@@ -62,11 +60,7 @@ export function ResetDataButton() {
 
   return (
     <>
-      <Button
-        variant="destructive"
-        size="sm"
-        onClick={() => setOpen(true)}
-      >
+      <Button variant="destructive" size="sm" onClick={() => setOpen(true)}>
         Reset Data
       </Button>
 
@@ -82,22 +76,16 @@ export function ResetDataButton() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="text-destructive">
-              Reset Platform Data
-            </DialogTitle>
+            <DialogTitle className="text-destructive">Reset Platform Data</DialogTitle>
             <DialogDescription>
-              This will permanently delete all client accounts, workout
-              progress, assignments, payments, reviews, notifications, and AI
-              history. Your admin account, exercises, and programs will be
-              preserved.
+              This will permanently delete all client accounts, workout progress, assignments, payments, reviews,
+              notifications, and AI history. Your admin account, exercises, and programs will be preserved.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <Label htmlFor="reset-password">
-                Enter your admin password to confirm
-              </Label>
+              <Label htmlFor="reset-password">Enter your admin password to confirm</Label>
               <Input
                 id="reset-password"
                 type="password"
@@ -123,18 +111,10 @@ export function ResetDataButton() {
           </div>
 
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setOpen(false)}
-              disabled={pending}
-            >
+            <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
               Cancel
             </Button>
-            <Button
-              variant="destructive"
-              onClick={handleReset}
-              disabled={!canSubmit || pending}
-            >
+            <Button variant="destructive" onClick={handleReset} disabled={!canSubmit || pending}>
               {pending ? "Resetting..." : "Reset All Data"}
             </Button>
           </DialogFooter>

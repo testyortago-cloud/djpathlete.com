@@ -16,7 +16,7 @@ export async function POST(request: Request) {
     if (!result.success) {
       return NextResponse.json(
         { error: "Invalid request", details: result.error.flatten().fieldErrors },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
@@ -25,17 +25,11 @@ export async function POST(request: Request) {
     const user = await getUserById(userId)
 
     if (!user) {
-      return NextResponse.json(
-        { error: "User not found." },
-        { status: 404 }
-      )
+      return NextResponse.json({ error: "User not found." }, { status: 404 })
     }
 
     if (user.email_verified) {
-      return NextResponse.json(
-        { error: "Email is already verified." },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Email is already verified." }, { status: 400 })
     }
 
     const token = await createEmailVerificationToken(userId)
@@ -46,9 +40,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("Resend verification error:", error)
-    return NextResponse.json(
-      { error: "An unexpected error occurred. Please try again." },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "An unexpected error occurred. Please try again." }, { status: 500 })
   }
 }

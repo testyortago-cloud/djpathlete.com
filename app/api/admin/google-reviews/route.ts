@@ -25,7 +25,7 @@ export async function POST(request: Request) {
           error: "Invalid review data",
           details: result.error.flatten().fieldErrors,
         },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
@@ -38,21 +38,12 @@ export async function POST(request: Request) {
       review_date: r.review_date,
     }))
 
-    const { data, error } = await supabase
-      .from("google_reviews")
-      .insert(rows)
-      .select()
+    const { data, error } = await supabase.from("google_reviews").insert(rows).select()
 
     if (error) throw error
 
-    return NextResponse.json(
-      { imported: data?.length ?? 0 },
-      { status: 201 }
-    )
+    return NextResponse.json({ imported: data?.length ?? 0 }, { status: 201 })
   } catch {
-    return NextResponse.json(
-      { error: "Failed to import reviews. Please try again." },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to import reviews. Please try again." }, { status: 500 })
   }
 }

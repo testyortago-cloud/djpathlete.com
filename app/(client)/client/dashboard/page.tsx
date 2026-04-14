@@ -51,7 +51,9 @@ export default async function ClientDashboardPage() {
     ])
 
     const typedAssignments = assignments as AssignmentWithProgram[]
-    activeAssignments = typedAssignments.filter((a) => a.status === "active" && a.payment_status !== "pending" && !isAssignmentExpired(a.expires_at))
+    activeAssignments = typedAssignments.filter(
+      (a) => a.status === "active" && a.payment_status !== "pending" && !isAssignmentExpired(a.expires_at),
+    )
     totalWorkouts = progress.length
     currentStreak = streak
     hasCompletedQuestionnaire = !!(profile?.goals && profile.goals.trim().length > 0)
@@ -66,9 +68,7 @@ export default async function ClientDashboardPage() {
         for (const assignment of completedAssignments) {
           const completedDate = assignment.updated_at
           const hasFollowUp = assessmentResults.some(
-            (r) =>
-              r.assessment_type === "reassessment" &&
-              new Date(r.completed_at) >= new Date(completedDate)
+            (r) => r.assessment_type === "reassessment" && new Date(r.completed_at) >= new Date(completedDate),
           )
           if (!hasFollowUp) {
             completedAssignmentNeedingReassessment = assignment.id
@@ -93,9 +93,7 @@ export default async function ClientDashboardPage() {
       {!emailVerified && <EmailVerificationBanner userId={userId} />}
 
       {completedAssignmentNeedingReassessment && (
-        <ReassessmentBanner
-          completedAssignmentId={completedAssignmentNeedingReassessment}
-        />
+        <ReassessmentBanner completedAssignmentId={completedAssignmentNeedingReassessment} />
       )}
 
       {!hasCompletedQuestionnaire && (
@@ -107,16 +105,12 @@ export default async function ClientDashboardPage() {
             <ClipboardList className="size-5 text-accent" strokeWidth={1.5} />
           </div>
           <div className="flex-1">
-            <p className="font-semibold text-foreground text-sm">
-              Complete Your Assessment
-            </p>
+            <p className="font-semibold text-foreground text-sm">Complete Your Assessment</p>
             <p className="text-xs text-muted-foreground">
               Tell us about your goals, experience, and preferences so your coach can build the perfect program for you.
             </p>
           </div>
-          <span className="text-sm font-medium text-primary shrink-0">
-            Start &rarr;
-          </span>
+          <span className="text-sm font-medium text-primary shrink-0">Start &rarr;</span>
         </Link>
       )}
 
@@ -130,9 +124,7 @@ export default async function ClientDashboardPage() {
                   <Dumbbell className="size-4 sm:size-5 text-primary" strokeWidth={1.5} />
                 </div>
                 <div>
-                  <p className="text-xl sm:text-2xl font-semibold text-foreground">
-                    {activeAssignments.length}
-                  </p>
+                  <p className="text-xl sm:text-2xl font-semibold text-foreground">{activeAssignments.length}</p>
                   <p className="text-[10px] sm:text-sm text-muted-foreground leading-tight">Programs</p>
                 </div>
               </div>
@@ -149,9 +141,7 @@ export default async function ClientDashboardPage() {
                   <Activity className="size-4 sm:size-5 text-success" strokeWidth={1.5} />
                 </div>
                 <div>
-                  <p className="text-xl sm:text-2xl font-semibold text-foreground">
-                    {totalWorkouts}
-                  </p>
+                  <p className="text-xl sm:text-2xl font-semibold text-foreground">{totalWorkouts}</p>
                   <p className="text-[10px] sm:text-sm text-muted-foreground leading-tight">Workouts</p>
                 </div>
               </div>
@@ -181,9 +171,7 @@ export default async function ClientDashboardPage() {
       </TooltipProvider>
 
       {/* Active Programs */}
-      <h2 className="text-lg font-semibold text-primary mb-4">
-        Active Programs
-      </h2>
+      <h2 className="text-lg font-semibold text-primary mb-4">Active Programs</h2>
 
       {activeAssignments.length === 0 ? (
         <EmptyState
@@ -203,28 +191,20 @@ export default async function ClientDashboardPage() {
             const now = new Date()
             const weeksElapsed = Math.max(
               1,
-              Math.ceil(
-                (now.getTime() - startDate.getTime()) /
-                  (1000 * 60 * 60 * 24 * 7)
-              )
+              Math.ceil((now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 7)),
             )
-            const progressPercent = Math.min(
-              100,
-              Math.round((weeksElapsed / program.duration_weeks) * 100)
-            )
+            const progressPercent = Math.min(100, Math.round((weeksElapsed / program.duration_weeks) * 100))
 
             return (
-              <div
-                key={assignment.id}
-                className="bg-white rounded-xl border border-border p-4 sm:p-6"
-              >
+              <div key={assignment.id} className="bg-white rounded-xl border border-border p-4 sm:p-6">
                 <div className="mb-3">
-                  <h3 className="font-semibold text-foreground text-sm sm:text-base leading-snug">
-                    {program.name}
-                  </h3>
+                  <h3 className="font-semibold text-foreground text-sm sm:text-base leading-snug">{program.name}</h3>
                   <div className="flex flex-wrap gap-1.5 mt-2">
                     {(Array.isArray(program.category) ? program.category : [program.category]).map((cat) => (
-                      <span key={cat} className="rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[10px] sm:text-xs font-medium capitalize whitespace-nowrap">
+                      <span
+                        key={cat}
+                        className="rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[10px] sm:text-xs font-medium capitalize whitespace-nowrap"
+                      >
                         {cat.replace("_", " ")}
                       </span>
                     ))}
@@ -244,8 +224,7 @@ export default async function ClientDashboardPage() {
                   <div className="flex items-center justify-between text-xs sm:text-sm text-muted-foreground mb-1">
                     <span>Progress</span>
                     <span>
-                      Week {Math.min(weeksElapsed, program.duration_weeks)} of{" "}
-                      {program.duration_weeks}
+                      Week {Math.min(weeksElapsed, program.duration_weeks)} of {program.duration_weeks}
                     </span>
                   </div>
                   <div className="h-1.5 sm:h-2 bg-surface rounded-full overflow-hidden">

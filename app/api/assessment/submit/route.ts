@@ -15,10 +15,7 @@ export async function POST(request: Request) {
     const parsed = assessmentSubmitSchema.safeParse(body)
 
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Invalid data", details: parsed.error.flatten().fieldErrors },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Invalid data", details: parsed.error.flatten().fieldErrors }, { status: 400 })
     }
 
     const { assessment_type, answers, feedback } = parsed.data
@@ -57,9 +54,6 @@ export async function POST(request: Request) {
     return NextResponse.json(result, { status: 201 })
   } catch (error) {
     console.error("Assessment submit error:", error)
-    return NextResponse.json(
-      { error: "Failed to submit assessment. Please try again." },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to submit assessment. Please try again." }, { status: 500 })
   }
 }

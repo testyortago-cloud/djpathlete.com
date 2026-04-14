@@ -58,7 +58,8 @@ export const ProductTeaserCard = (props: ProductTeaserCardProps) => {
             transition={{ duration: 0.8, ease: [0.645, 0.045, 0.355, 1], delay: 0.2 }}
             className="col-span-12 lg:col-span-6 bg-white rounded-b-3xl lg:rounded-[40px] flex justify-center items-center aspect-[5/2] sm:aspect-[3/1] lg:aspect-square overflow-hidden"
             style={{
-              backgroundImage: "url(https://images.unsplash.com/photo-1517963879433-6ad2b056d712?w=1200&auto=format&fit=crop&q=80)",
+              backgroundImage:
+                "url(https://images.unsplash.com/photo-1517963879433-6ad2b056d712?w=1200&auto=format&fit=crop&q=80)",
               backgroundSize: "cover",
               backgroundPosition: "center",
               backgroundRepeat: "no-repeat",

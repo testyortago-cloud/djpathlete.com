@@ -18,7 +18,8 @@ export const ProductShowcase = () => {
             <div
               className="w-full aspect-[16/10] rounded-2xl shadow-[0_8px_40px_-12px_rgba(0,0,0,0.12)]"
               style={{
-                backgroundImage: "url(https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=1200&auto=format&fit=crop&q=80)",
+                backgroundImage:
+                  "url(https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=1200&auto=format&fit=crop&q=80)",
                 backgroundSize: "cover",
                 backgroundPosition: "center",
               }}
@@ -34,12 +35,12 @@ export const ProductShowcase = () => {
             transition={{ duration: 0.6, delay: 0.15, ease: [0.25, 0.1, 0.25, 1] }}
           >
             <h2 className="text-2xl sm:text-3xl lg:text-[40px] font-semibold leading-tight tracking-tight text-primary mb-4 lg:mb-6">
-              Your coaching dashboard{" "}
-              <span className="opacity-40">for training plans and performance tracking.</span>
+              Your coaching dashboard <span className="opacity-40">for training plans and performance tracking.</span>
             </h2>
 
             <p className="text-lg leading-7 text-muted-foreground mb-8">
-              Visualize your entire athletic program — from training schedules and performance metrics to nutrition plans and recovery protocols — all in one real-time dashboard.
+              Visualize your entire athletic program — from training schedules and performance metrics to nutrition
+              plans and recovery protocols — all in one real-time dashboard.
             </p>
 
             <a

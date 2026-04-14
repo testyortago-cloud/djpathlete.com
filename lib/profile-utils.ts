@@ -9,10 +9,16 @@ export function parseGoalsFromProfile(goalsString: string): string[] {
   // Old format: "Goals: weight_loss, muscle_gain | Training background: ..."
   const goalsMatch = goalsString.match(/^Goals:\s*(.+?)(?:\s*\||$)/)
   if (goalsMatch) {
-    return goalsMatch[1].split(",").map((g) => g.trim()).filter(Boolean)
+    return goalsMatch[1]
+      .split(",")
+      .map((g) => g.trim())
+      .filter(Boolean)
   }
   // New format: "weight_loss, muscle_gain"
-  const items = goalsString.split(",").map((g) => g.trim()).filter(Boolean)
+  const items = goalsString
+    .split(",")
+    .map((g) => g.trim())
+    .filter(Boolean)
   if (items.length > 0) {
     return items
   }
@@ -23,10 +29,7 @@ export function parseGoalsFromProfile(goalsString: string): string[] {
  * Parse a named field value from the composite goals string.
  * e.g. parseFieldFromProfile(str, "Training background") → "5 years lifting"
  */
-export function parseFieldFromProfile(
-  goalsString: string,
-  prefix: string
-): string {
+export function parseFieldFromProfile(goalsString: string, prefix: string): string {
   const regex = new RegExp(`${prefix}:\\s*(.+?)(?:\\s*\\||$)`)
   const match = goalsString.match(regex)
   return match ? match[1].trim() : ""
@@ -66,14 +69,10 @@ export function parseProfileSummary(profile: ClientProfile): ProfileSummary {
   // New questionnaire stores goals as clean comma-separated list
   const goals = parseGoalsFromProfile(goalsString)
   // Fall back to old pipe-delimited fields if new columns are empty
-  const trainingBackground =
-    profile.training_background || parseFieldFromProfile(goalsString, "Training background")
-  const likes =
-    profile.exercise_likes || parseFieldFromProfile(goalsString, "Likes")
-  const dislikes =
-    profile.exercise_dislikes || parseFieldFromProfile(goalsString, "Dislikes")
-  const notes =
-    profile.additional_notes || parseFieldFromProfile(goalsString, "Notes")
+  const trainingBackground = profile.training_background || parseFieldFromProfile(goalsString, "Training background")
+  const likes = profile.exercise_likes || parseFieldFromProfile(goalsString, "Likes")
+  const dislikes = profile.exercise_dislikes || parseFieldFromProfile(goalsString, "Dislikes")
+  const notes = profile.additional_notes || parseFieldFromProfile(goalsString, "Notes")
 
   return {
     goals,

@@ -59,10 +59,9 @@ export function AddClientDialog({ open, onOpenChange }: AddClientDialogProps) {
       if (data.emailSent) {
         toast.success("Client added — welcome email sent")
       } else {
-        toast.warning(
-          `Client added but email failed to send. Temporary password: ${data.tempPassword}`,
-          { duration: 30000 }
-        )
+        toast.warning(`Client added but email failed to send. Temporary password: ${data.tempPassword}`, {
+          duration: 30000,
+        })
       }
 
       onOpenChange(false)
@@ -75,7 +74,13 @@ export function AddClientDialog({ open, onOpenChange }: AddClientDialogProps) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) tour.close(); onOpenChange(o) }}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) tour.close()
+        onOpenChange(o)
+      }}
+    >
       <DialogContent ref={dialogRef} className="sm:max-w-md">
         <DialogHeader>
           <div className="flex items-center gap-2">
@@ -83,8 +88,7 @@ export function AddClientDialog({ open, onOpenChange }: AddClientDialogProps) {
             <TourButton onClick={tour.start} />
           </div>
           <DialogDescription>
-            Create a new client account. They&apos;ll receive an email with a
-            temporary password.
+            Create a new client account. They&apos;ll receive an email with a temporary password.
           </DialogDescription>
         </DialogHeader>
 
@@ -103,14 +107,7 @@ export function AddClientDialog({ open, onOpenChange }: AddClientDialogProps) {
             </div>
             <div className="space-y-2">
               <Label htmlFor="lastName">Last Name *</Label>
-              <Input
-                id="lastName"
-                name="lastName"
-                required
-                maxLength={50}
-                placeholder="Doe"
-                disabled={isSubmitting}
-              />
+              <Input id="lastName" name="lastName" required maxLength={50} placeholder="Doe" disabled={isSubmitting} />
             </div>
           </div>
 
@@ -128,22 +125,11 @@ export function AddClientDialog({ open, onOpenChange }: AddClientDialogProps) {
 
           <div className="space-y-2">
             <Label htmlFor="phone">Phone</Label>
-            <Input
-              id="phone"
-              name="phone"
-              type="tel"
-              placeholder="+1 (555) 000-0000"
-              disabled={isSubmitting}
-            />
+            <Input id="phone" name="phone" type="tel" placeholder="+1 (555) 000-0000" disabled={isSubmitting} />
           </div>
 
           <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={isSubmitting}
-            >
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
               Cancel
             </Button>
             <Button type="submit" disabled={isSubmitting}>

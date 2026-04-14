@@ -1,10 +1,7 @@
 /**
  * Generic retry wrapper with exponential back-off (1 s, 2 s, 4 s, ...).
  */
-export async function withRetry<T>(
-  fn: () => Promise<T>,
-  retries: number = 3
-): Promise<T> {
+export async function withRetry<T>(fn: () => Promise<T>, retries: number = 3): Promise<T> {
   let lastError: unknown
 
   for (let attempt = 0; attempt < retries; attempt++) {

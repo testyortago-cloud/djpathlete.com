@@ -22,11 +22,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
-import {
-  AI_CHAT_STORAGE_KEY,
-  AI_CHAT_HISTORY_LIMIT,
-  AI_CHAT_MAX_CONVERSATIONS,
-} from "@/lib/admin-ai-config"
+import { AI_CHAT_STORAGE_KEY, AI_CHAT_HISTORY_LIMIT, AI_CHAT_MAX_CONVERSATIONS } from "@/lib/admin-ai-config"
 import { useAiJob } from "@/hooks/use-ai-job"
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -83,8 +79,7 @@ interface DbConversation {
 
 const WELCOME_MESSAGE: Message = {
   role: "assistant",
-  content:
-    "Hi Darren! I've analyzed your platform data. Ask me anything about your clients, revenue, or programs.",
+  content: "Hi Darren! I've analyzed your platform data. Ask me anything about your clients, revenue, or programs.",
   timestamp: new Date(),
   status: "done",
 }
@@ -152,25 +147,23 @@ async function loadConversationsFromDb(): Promise<Conversation[]> {
 
 function saveConversationsToStorage(convos: Conversation[]) {
   try {
-    const toStore: StoredConversation[] = convos
-      .slice(0, AI_CHAT_MAX_CONVERSATIONS)
-      .map((c) => ({
-        id: c.id,
-        sessionId: c.sessionId,
-        title: c.title,
-        createdAt: c.createdAt.toISOString(),
-        updatedAt: c.updatedAt.toISOString(),
-        messages: c.messages
-          .filter((m) => m.content && m.status !== "streaming")
-          .slice(-AI_CHAT_HISTORY_LIMIT)
-          .map((m) => ({
-            role: m.role,
-            content: m.content,
-            timestamp: m.timestamp.toISOString(),
-            status: m.status === "error" ? ("error" as const) : ("done" as const),
-            errorType: m.errorType ?? null,
-          })),
-      }))
+    const toStore: StoredConversation[] = convos.slice(0, AI_CHAT_MAX_CONVERSATIONS).map((c) => ({
+      id: c.id,
+      sessionId: c.sessionId,
+      title: c.title,
+      createdAt: c.createdAt.toISOString(),
+      updatedAt: c.updatedAt.toISOString(),
+      messages: c.messages
+        .filter((m) => m.content && m.status !== "streaming")
+        .slice(-AI_CHAT_HISTORY_LIMIT)
+        .map((m) => ({
+          role: m.role,
+          content: m.content,
+          timestamp: m.timestamp.toISOString(),
+          status: m.status === "error" ? ("error" as const) : ("done" as const),
+          errorType: m.errorType ?? null,
+        })),
+    }))
     localStorage.setItem(AI_CHAT_STORAGE_KEY, JSON.stringify(toStore))
   } catch {
     // localStorage full or unavailable
@@ -216,14 +209,18 @@ function renderContent(content: string) {
   lines.forEach((line, i) => {
     if (line.startsWith("- ") || line.startsWith("* ")) {
       elements.push(
-        <li key={i} className="ml-4 list-disc">{renderInline(line.slice(2))}</li>
+        <li key={i} className="ml-4 list-disc">
+          {renderInline(line.slice(2))}
+        </li>,
       )
       return
     }
     const numberedMatch = line.match(/^\d+\.\s(.+)/)
     if (numberedMatch) {
       elements.push(
-        <li key={i} className="ml-4 list-decimal">{renderInline(numberedMatch[1])}</li>
+        <li key={i} className="ml-4 list-decimal">
+          {renderInline(numberedMatch[1])}
+        </li>,
       )
       return
     }
@@ -232,7 +229,9 @@ function renderContent(content: string) {
       return
     }
     elements.push(
-      <p key={i} className="leading-relaxed">{renderInline(line)}</p>
+      <p key={i} className="leading-relaxed">
+        {renderInline(line)}
+      </p>,
     )
   })
 
@@ -243,7 +242,11 @@ function renderInline(text: string): React.ReactNode {
   const parts = text.split(/(\*\*[^*]+\*\*)/g)
   return parts.map((part, i) => {
     if (part.startsWith("**") && part.endsWith("**")) {
-      return <span key={i} className="font-semibold">{part.slice(2, -2)}</span>
+      return (
+        <span key={i} className="font-semibold">
+          {part.slice(2, -2)}
+        </span>
+      )
     }
     return part
   })
@@ -274,11 +277,7 @@ function TypingIndicator() {
 function ToolActivityIndicator({ tools }: { tools: { name: string; label: string }[] }) {
   if (tools.length === 0) return null
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 4 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="flex gap-3 w-full"
-    >
+    <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="flex gap-3 w-full">
       <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/10">
         <Search className="size-3.5 text-primary animate-pulse" />
       </div>
@@ -305,9 +304,7 @@ export function AdminAiChat() {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [input, setInput] = useState("")
   const [isStreaming, setIsStreaming] = useState(false)
-  const [sidebarOpen, setSidebarOpen] = useState(() =>
-    typeof window !== "undefined" && window.innerWidth >= 768
-  )
+  const [sidebarOpen, setSidebarOpen] = useState(() => typeof window !== "undefined" && window.innerWidth >= 768)
   const [modelPref, setModelPref] = useState<"auto" | "sonnet" | "haiku">("auto")
   const [currentJobId, setCurrentJobId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -395,7 +392,9 @@ export function AdminAiChat() {
 
   // ── Abort on unmount ────────────────────────────────────────────────────
   useEffect(() => {
-    return () => { abortControllerRef.current?.abort() }
+    return () => {
+      abortControllerRef.current?.abort()
+    }
   }, [])
 
   // ── Process AI job updates from Firestore ─────────────────────────────
@@ -406,11 +405,7 @@ export function AdminAiChat() {
 
     const updateMsgs = (updater: (prev: Message[]) => Message[]) => {
       setConversations((prev) =>
-        prev.map((c) =>
-          c.id === convoId
-            ? { ...c, messages: updater(c.messages), updatedAt: new Date() }
-            : c
-        )
+        prev.map((c) => (c.id === convoId ? { ...c, messages: updater(c.messages), updatedAt: new Date() } : c)),
       )
     }
 
@@ -480,14 +475,10 @@ export function AdminAiChat() {
   const updateActiveMessages = useCallback(
     (updater: (prev: Message[]) => Message[]) => {
       setConversations((prev) =>
-        prev.map((c) =>
-          c.id === activeId
-            ? { ...c, messages: updater(c.messages), updatedAt: new Date() }
-            : c
-        )
+        prev.map((c) => (c.id === activeId ? { ...c, messages: updater(c.messages), updatedAt: new Date() } : c)),
       )
     },
-    [activeId]
+    [activeId],
   )
 
   const startNewChat = useCallback(() => {
@@ -516,7 +507,7 @@ export function AdminAiChat() {
       setActiveId(id)
       setInput("")
     },
-    [isStreaming]
+    [isStreaming],
   )
 
   const deleteConversation = useCallback(
@@ -530,7 +521,7 @@ export function AdminAiChat() {
         })
       }
     },
-    [activeId]
+    [activeId],
   )
 
   const stopGenerating = useCallback(() => {
@@ -588,10 +579,8 @@ export function AdminAiChat() {
       // Auto-title: set title from first user message if it's still "New chat"
       setConversations((prev) =>
         prev.map((c) =>
-          c.id === currentId && c.title === "New chat"
-            ? { ...c, title: content.trim().slice(0, 60) }
-            : c
-        )
+          c.id === currentId && c.title === "New chat" ? { ...c, title: content.trim().slice(0, 60) } : c,
+        ),
       )
 
       // Add user message + streaming placeholder
@@ -605,21 +594,15 @@ export function AdminAiChat() {
 
       setConversations((prev) =>
         prev.map((c) =>
-          c.id === currentId
-            ? { ...c, messages: [...updatedMessages, placeholder], updatedAt: new Date() }
-            : c
-        )
+          c.id === currentId ? { ...c, messages: [...updatedMessages, placeholder], updatedAt: new Date() } : c,
+        ),
       )
       setInput("")
       setIsStreaming(true)
 
       const updateMsgs = (updater: (prev: Message[]) => Message[]) => {
         setConversations((prev) =>
-          prev.map((c) =>
-            c.id === currentId
-              ? { ...c, messages: updater(c.messages), updatedAt: new Date() }
-              : c
-          )
+          prev.map((c) => (c.id === currentId ? { ...c, messages: updater(c.messages), updatedAt: new Date() } : c)),
         )
       }
 
@@ -686,7 +669,7 @@ export function AdminAiChat() {
         textareaRef.current?.focus()
       }
     },
-    [messages, isStreaming, activeId, modelPref, conversations]
+    [messages, isStreaming, activeId, modelPref, conversations],
   )
 
   const retryLastMessage = useCallback(() => {
@@ -718,7 +701,8 @@ export function AdminAiChat() {
   // ── Derived state ───────────────────────────────────────────────────────
   const isNewChat = !activeId || messages.length <= 1
   const lastMessage = messages[messages.length - 1]
-  const showTyping = isStreaming && lastMessage?.role === "assistant" && !lastMessage.content && aiJob.activeTools.length === 0
+  const showTyping =
+    isStreaming && lastMessage?.role === "assistant" && !lastMessage.content && aiJob.activeTools.length === 0
   const showStop = isStreaming && lastMessage?.role === "assistant" && !!lastMessage.content
   const showToolActivity = isStreaming && aiJob.activeTools.length > 0
 
@@ -731,10 +715,7 @@ export function AdminAiChat() {
   const groupOrder = ["Today", "Yesterday", "Previous 7 days", "Older"]
 
   return (
-    <div
-      className="fixed inset-0 flex lg:left-64"
-      style={{ top: "4rem" }}
-    >
+    <div className="fixed inset-0 flex lg:left-64" style={{ top: "4rem" }}>
       {/* ── Mobile sidebar backdrop ───────────────────────────────────── */}
       <AnimatePresence>
         {sidebarOpen && (
@@ -754,18 +735,12 @@ export function AdminAiChat() {
         className={cn(
           "fixed inset-y-0 left-0 z-50 flex w-72 flex-col bg-background border-r border-border transition-transform duration-300 ease-in-out",
           "md:relative md:inset-auto md:z-auto md:transition-all md:duration-200",
-          sidebarOpen
-            ? "translate-x-0 md:w-64"
-            : "-translate-x-full md:translate-x-0 md:w-0 md:overflow-hidden"
+          sidebarOpen ? "translate-x-0 md:w-64" : "-translate-x-full md:translate-x-0 md:w-0 md:overflow-hidden",
         )}
       >
         {/* Sidebar header */}
         <div className="flex items-center justify-between p-3 border-b border-border md:border-b-0">
-          <Button
-            onClick={startNewChat}
-            variant="outline"
-            className="flex-1 justify-start gap-2 text-sm"
-          >
+          <Button onClick={startNewChat} variant="outline" className="flex-1 justify-start gap-2 text-sm">
             <Plus className="size-4" />
             New chat
           </Button>
@@ -797,7 +772,7 @@ export function AdminAiChat() {
                       "group flex items-center gap-2 rounded-lg px-2 py-2.5 text-sm cursor-pointer transition-colors",
                       convo.id === activeId
                         ? "bg-primary/10 text-primary font-medium"
-                        : "text-foreground hover:bg-muted"
+                        : "text-foreground hover:bg-muted",
                     )}
                     onClick={() => {
                       switchConversation(convo.id)
@@ -823,9 +798,7 @@ export function AdminAiChat() {
           })}
 
           {conversations.length === 0 && (
-            <p className="px-3 py-6 text-xs text-muted-foreground text-center">
-              No conversations yet
-            </p>
+            <p className="px-3 py-6 text-xs text-muted-foreground text-center">No conversations yet</p>
           )}
         </div>
       </div>
@@ -842,11 +815,7 @@ export function AdminAiChat() {
               onClick={() => setSidebarOpen((p) => !p)}
               aria-label={sidebarOpen ? "Close sidebar" : "Open sidebar"}
             >
-              {sidebarOpen ? (
-                <PanelLeftClose className="size-4" />
-              ) : (
-                <PanelLeftOpen className="size-4" />
-              )}
+              {sidebarOpen ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />}
             </Button>
             <span className="text-sm font-medium text-foreground truncate max-w-[40vw] sm:max-w-none">
               {activeConvo?.title ?? "DJP Assistant"}
@@ -856,11 +825,13 @@ export function AdminAiChat() {
           <div className="flex items-center gap-1.5 shrink-0">
             {/* Model selector — icons only on mobile */}
             <div className="flex items-center gap-0.5 bg-muted rounded-lg p-0.5">
-              {([
-                { value: "auto", label: "Auto", icon: Wand2 },
-                { value: "sonnet", label: "Sonnet", icon: Brain },
-                { value: "haiku", label: "Haiku", icon: Zap },
-              ] as const).map(({ value, label, icon: Icon }) => (
+              {(
+                [
+                  { value: "auto", label: "Auto", icon: Wand2 },
+                  { value: "sonnet", label: "Sonnet", icon: Brain },
+                  { value: "haiku", label: "Haiku", icon: Zap },
+                ] as const
+              ).map(({ value, label, icon: Icon }) => (
                 <button
                   key={value}
                   onClick={() => setModelPref(value)}
@@ -869,7 +840,7 @@ export function AdminAiChat() {
                     "p-1.5 sm:px-2 sm:py-1",
                     modelPref === value
                       ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
+                      : "text-muted-foreground hover:text-foreground",
                   )}
                   title={label}
                 >
@@ -922,7 +893,12 @@ export function AdminAiChat() {
                       </div>
                     )}
 
-                    <div className={cn("flex flex-col gap-1", isUser ? "items-end max-w-[85%] sm:max-w-[80%]" : "flex-1 min-w-0")}>
+                    <div
+                      className={cn(
+                        "flex flex-col gap-1",
+                        isUser ? "items-end max-w-[85%] sm:max-w-[80%]" : "flex-1 min-w-0",
+                      )}
+                    >
                       <div
                         className={cn(
                           "rounded-2xl px-3.5 py-2.5 text-sm",
@@ -930,16 +906,14 @@ export function AdminAiChat() {
                             ? "bg-primary text-primary-foreground rounded-br-sm"
                             : message.status === "error"
                               ? "bg-red-50 border border-red-200 text-foreground rounded-bl-sm"
-                              : "text-foreground"
+                              : "text-foreground",
                         )}
                       >
                         {isUser ? message.content : renderContent(message.content)}
                       </div>
 
                       <div className="flex items-center gap-2 px-1">
-                        <span className="text-[10px] text-muted-foreground">
-                          {formatTime(message.timestamp)}
-                        </span>
+                        <span className="text-[10px] text-muted-foreground">{formatTime(message.timestamp)}</span>
                         {message.status === "error" &&
                           message.errorType !== "auth" &&
                           index === messages.length - 1 && (
@@ -964,9 +938,7 @@ export function AdminAiChat() {
               })}
             </AnimatePresence>
 
-            {showToolActivity && (
-              <ToolActivityIndicator tools={aiJob.activeTools} />
-            )}
+            {showToolActivity && <ToolActivityIndicator tools={aiJob.activeTools} />}
 
             {showTyping && (
               <motion.div

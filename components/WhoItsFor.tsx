@@ -62,7 +62,8 @@ export function WhoItsFor() {
             Coaching programs for every level of athlete.
           </h2>
           <p className="text-lg leading-7 text-muted-foreground max-w-2xl mx-auto">
-            Whether you are a youth athlete just starting out, a college competitor, a seasoned professional, or a weekend warrior chasing personal goals, DJP Athlete adapts to your level.
+            Whether you are a youth athlete just starting out, a college competitor, a seasoned professional, or a
+            weekend warrior chasing personal goals, DJP Athlete adapts to your level.
           </p>
         </motion.div>
 
@@ -80,20 +81,11 @@ export function WhoItsFor() {
               className="rounded-2xl border border-border/40 bg-surface hover:bg-white hover:shadow-md transition-all duration-200 overflow-hidden"
             >
               <div className="aspect-[16/9] overflow-hidden">
-                <img
-                  src={segment.image}
-                  alt={segment.title}
-                  className="w-full h-full object-cover"
-                  loading="lazy"
-                />
+                <img src={segment.image} alt={segment.title} className="w-full h-full object-cover" loading="lazy" />
               </div>
               <div className="p-8">
-                <h3 className="text-xl font-semibold text-primary mb-3">
-                  {segment.title}
-                </h3>
-                <p className="text-[15px] leading-relaxed text-muted-foreground">
-                  {segment.description}
-                </p>
+                <h3 className="text-xl font-semibold text-primary mb-3">{segment.title}</h3>
+                <p className="text-[15px] leading-relaxed text-muted-foreground">{segment.description}</p>
               </div>
             </motion.div>
           ))}

@@ -61,20 +61,13 @@ function isGHLBlogConfigured(): boolean {
 // Category mapping
 // ---------------------------------------------------------------------------
 
-const VALID_CATEGORIES: Category[] = [
-  "Performance",
-  "Recovery",
-  "Coaching",
-  "Youth Development",
-]
+const VALID_CATEGORIES: Category[] = ["Performance", "Recovery", "Coaching", "Youth Development"]
 
 function mapCategory(categories?: string[]): Category {
   if (!categories || categories.length === 0) return "Performance"
 
   for (const cat of categories) {
-    const match = VALID_CATEGORIES.find(
-      (c) => c.toLowerCase() === cat.toLowerCase()
-    )
+    const match = VALID_CATEGORIES.find((c) => c.toLowerCase() === cat.toLowerCase())
     if (match) return match
   }
 
@@ -92,14 +85,16 @@ function mapCategory(categories?: string[]): Category {
  * Splits on h2/h3 tags. Falls back to a single section if
  * no headings are found.
  */
-function parseBodySections(
-  html: string | undefined
-): { subheading: string; text: string }[] {
+function parseBodySections(html: string | undefined): { subheading: string; text: string }[] {
   if (!html) return []
 
   // Strip HTML tags for a plain-text version
   const stripTags = (s: string): string =>
-    s.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim()
+    s
+      .replace(/<[^>]*>/g, "")
+      .replace(/&nbsp;/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
 
   // Split on h2 or h3 tags
   const parts = html.split(/<h[23][^>]*>/i)
@@ -144,9 +139,7 @@ function parseBodySections(
 
 function transformPost(ghlPost: GHLBlogPost, index: number): Post {
   const date =
-    ghlPost.publishedAt?.slice(0, 10) ??
-    ghlPost.createdAt?.slice(0, 10) ??
-    new Date().toISOString().slice(0, 10)
+    ghlPost.publishedAt?.slice(0, 10) ?? ghlPost.createdAt?.slice(0, 10) ?? new Date().toISOString().slice(0, 10)
 
   const bodyContent = ghlPost.rawHTML ?? ghlPost.body ?? ""
   const bodySections = parseBodySections(bodyContent)
@@ -158,10 +151,7 @@ function transformPost(ghlPost: GHLBlogPost, index: number): Post {
     category: mapCategory(ghlPost.categories),
     date,
     slug: ghlPost.slug ?? ghlPost._id ?? `post-${index + 1}`,
-    body:
-      bodySections.length > 0
-        ? bodySections
-        : [{ subheading: "Content", text: ghlPost.description ?? "" }],
+    body: bodySections.length > 0 ? bodySections : [{ subheading: "Content", text: ghlPost.description ?? "" }],
     htmlContent: bodyContent || undefined,
   }
 }
@@ -200,10 +190,7 @@ export async function getBlogPosts(): Promise<Post[]> {
     })
 
     if (!response.ok) {
-      console.error(
-        `[GHL Blog] API error ${response.status}:`,
-        await response.text().catch(() => "unknown")
-      )
+      console.error(`[GHL Blog] API error ${response.status}:`, await response.text().catch(() => "unknown"))
       return []
     }
 

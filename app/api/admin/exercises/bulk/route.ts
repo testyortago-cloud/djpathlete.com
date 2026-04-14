@@ -13,10 +13,7 @@ export async function POST(request: Request) {
     const parsed = bulkActionSchema.safeParse(body)
 
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Invalid request", details: parsed.error.flatten() },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Invalid request", details: parsed.error.flatten() }, { status: 400 })
     }
 
     const { action, ids } = parsed.data
@@ -35,9 +32,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, affected: ids.length })
   } catch {
-    return NextResponse.json(
-      { error: "Failed to perform bulk action" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to perform bulk action" }, { status: 500 })
   }
 }

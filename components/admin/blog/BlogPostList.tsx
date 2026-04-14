@@ -28,9 +28,7 @@ export function BlogPostList({ posts }: BlogPostListProps) {
     if (search) {
       const q = search.toLowerCase()
       return (
-        p.title.toLowerCase().includes(q) ||
-        p.category.toLowerCase().includes(q) ||
-        p.excerpt.toLowerCase().includes(q)
+        p.title.toLowerCase().includes(q) || p.category.toLowerCase().includes(q) || p.excerpt.toLowerCase().includes(q)
       )
     }
     return true
@@ -71,9 +69,7 @@ export function BlogPostList({ posts }: BlogPostListProps) {
               onClick={() => setTab(t)}
               className={cn(
                 "px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
-                tab === t
-                  ? "bg-white text-primary shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
+                tab === t ? "bg-white text-primary shadow-sm" : "text-muted-foreground hover:text-foreground",
               )}
             >
               {t}
@@ -119,21 +115,13 @@ export function BlogPostList({ posts }: BlogPostListProps) {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-surface/50">
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                    Title
-                  </th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Title</th>
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden sm:table-cell">
                     Category
                   </th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">
-                    Status
-                  </th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden lg:table-cell">
-                    Date
-                  </th>
-                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">
-                    Actions
-                  </th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Status</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden lg:table-cell">Date</th>
+                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -144,26 +132,20 @@ export function BlogPostList({ posts }: BlogPostListProps) {
                   >
                     <td className="px-4 py-3">
                       <div>
-                        <p className="font-medium text-primary line-clamp-1">
-                          {post.title}
-                        </p>
+                        <p className="font-medium text-primary line-clamp-1">{post.title}</p>
                         <p className="text-xs text-muted-foreground line-clamp-1 sm:hidden">
                           {post.category} · {post.status}
                         </p>
                       </div>
                     </td>
                     <td className="px-4 py-3 hidden sm:table-cell">
-                      <span className="text-xs text-muted-foreground">
-                        {post.category}
-                      </span>
+                      <span className="text-xs text-muted-foreground">{post.category}</span>
                     </td>
                     <td className="px-4 py-3 hidden md:table-cell">
                       <span
                         className={cn(
                           "inline-block px-2 py-0.5 rounded-full text-xs font-medium",
-                          post.status === "published"
-                            ? "bg-success/10 text-success"
-                            : "bg-warning/10 text-warning"
+                          post.status === "published" ? "bg-success/10 text-success" : "bg-warning/10 text-warning",
                         )}
                       >
                         {post.status === "published" ? "Published" : "Draft"}
@@ -188,11 +170,7 @@ export function BlogPostList({ posts }: BlogPostListProps) {
                               disabled={deletingId === post.id}
                               className="px-2 py-1 rounded-md text-xs font-medium bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-50"
                             >
-                              {deletingId === post.id ? (
-                                <Loader2 className="size-3 animate-spin" />
-                              ) : (
-                                "Delete"
-                              )}
+                              {deletingId === post.id ? <Loader2 className="size-3 animate-spin" /> : "Delete"}
                             </button>
                             <button
                               onClick={() => setConfirmId(null)}

@@ -3,16 +3,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import {
-  FileText,
-  Shield,
-  Lock,
-  Plus,
-  Pencil,
-  CheckCircle2,
-  Clock,
-  Users,
-} from "lucide-react"
+import { FileText, Shield, Lock, Plus, Pencil, CheckCircle2, Clock, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -28,10 +19,7 @@ import { LegalEditor } from "@/components/admin/LegalEditor"
 import { toast } from "sonner"
 import type { LegalDocument, LegalDocumentType } from "@/types/database"
 
-const DOC_TYPE_CONFIG: Record<
-  LegalDocumentType,
-  { label: string; icon: typeof FileText; color: string }
-> = {
+const DOC_TYPE_CONFIG: Record<LegalDocumentType, { label: string; icon: typeof FileText; color: string }> = {
   terms_of_service: {
     label: "Terms of Service",
     icon: FileText,
@@ -59,9 +47,7 @@ export function LegalDocumentList({ documents, consentCounts }: LegalDocumentLis
   const [newVersionOpen, setNewVersionOpen] = useState(false)
   const [newVersionType, setNewVersionType] = useState<LegalDocumentType | null>(null)
   const [newTitle, setNewTitle] = useState("")
-  const [newEffectiveDate, setNewEffectiveDate] = useState(
-    new Date().toISOString().split("T")[0]
-  )
+  const [newEffectiveDate, setNewEffectiveDate] = useState(new Date().toISOString().split("T")[0])
   const [newContent, setNewContent] = useState("")
   const [isCreating, setIsCreating] = useState(false)
 
@@ -72,7 +58,7 @@ export function LegalDocumentList({ documents, consentCounts }: LegalDocumentLis
       acc[doc.document_type].push(doc)
       return acc
     },
-    {} as Record<string, LegalDocument[]>
+    {} as Record<string, LegalDocument[]>,
   )
 
   const docTypes: LegalDocumentType[] = ["terms_of_service", "privacy_policy", "liability_waiver"]
@@ -130,10 +116,7 @@ export function LegalDocumentList({ documents, consentCounts }: LegalDocumentLis
           const Icon = config.icon
 
           return (
-            <div
-              key={type}
-              className="rounded-xl border border-border bg-card overflow-hidden"
-            >
+            <div key={type} className="rounded-xl border border-border bg-card overflow-hidden">
               {/* Header */}
               <div className="flex items-center justify-between border-b border-border px-5 py-4">
                 <div className="flex items-center gap-3">
@@ -141,20 +124,13 @@ export function LegalDocumentList({ documents, consentCounts }: LegalDocumentLis
                     <Icon className="h-4.5 w-4.5" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-semibold text-foreground">
-                      {config.label}
-                    </h3>
+                    <h3 className="text-sm font-semibold text-foreground">{config.label}</h3>
                     <p className="text-xs text-muted-foreground">
                       {docs.length} version{docs.length !== 1 ? "s" : ""}
                     </p>
                   </div>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleNewVersion(type)}
-                  className="gap-1.5"
-                >
+                <Button variant="outline" size="sm" onClick={() => handleNewVersion(type)} className="gap-1.5">
                   <Plus className="h-3.5 w-3.5" />
                   New Version
                 </Button>
@@ -182,9 +158,7 @@ export function LegalDocumentList({ documents, consentCounts }: LegalDocumentLis
                           )}
                           <div className="min-w-0">
                             <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium text-foreground">
-                                v{doc.version}
-                              </span>
+                              <span className="text-sm font-medium text-foreground">v{doc.version}</span>
                               {doc.is_active && (
                                 <span className="inline-flex items-center rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-medium text-success">
                                   Active
@@ -227,12 +201,11 @@ export function LegalDocumentList({ documents, consentCounts }: LegalDocumentLis
         <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>
-              Create New Version —{" "}
-              {newVersionType ? DOC_TYPE_CONFIG[newVersionType].label : ""}
+              Create New Version — {newVersionType ? DOC_TYPE_CONFIG[newVersionType].label : ""}
             </DialogTitle>
             <DialogDescription>
-              This will create a new active version and deactivate the current one.
-              Existing consent records are preserved.
+              This will create a new active version and deactivate the current one. Existing consent records are
+              preserved.
             </DialogDescription>
           </DialogHeader>
 
@@ -260,27 +233,15 @@ export function LegalDocumentList({ documents, consentCounts }: LegalDocumentLis
             </div>
             <div className="space-y-2">
               <Label>Content</Label>
-              <LegalEditor
-                content={newContent}
-                onChange={setNewContent}
-                disabled={isCreating}
-                minHeight="350px"
-              />
+              <LegalEditor content={newContent} onChange={setNewContent} disabled={isCreating} minHeight="350px" />
             </div>
           </div>
 
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setNewVersionOpen(false)}
-              disabled={isCreating}
-            >
+            <Button variant="outline" onClick={() => setNewVersionOpen(false)} disabled={isCreating}>
               Cancel
             </Button>
-            <Button
-              onClick={handleCreateVersion}
-              disabled={isCreating || !newTitle.trim() || !newContent.trim()}
-            >
+            <Button onClick={handleCreateVersion} disabled={isCreating || !newTitle.trim() || !newContent.trim()}>
               {isCreating ? "Creating..." : "Create Version"}
             </Button>
           </DialogFooter>

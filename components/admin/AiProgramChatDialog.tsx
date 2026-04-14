@@ -19,12 +19,7 @@ import {
   Sparkles,
   Square,
 } from "lucide-react"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
@@ -101,7 +96,10 @@ function saveChatState(sessionId: string, items: ChatItem[]) {
   try {
     // Only save messages that are "done" (skip streaming/in-progress)
     const safeItems = items.filter(
-      (item) => item.kind === "event" || item.kind === "params" || (item.kind === "message" && item.data.status !== "streaming")
+      (item) =>
+        item.kind === "event" ||
+        item.kind === "params" ||
+        (item.kind === "message" && item.data.status !== "streaming"),
     )
     const state: StoredChatState = {
       sessionId,
@@ -197,7 +195,7 @@ function ToolStatusCard({ event }: { event: ToolEvent }) {
       ) : (
         <CheckCircle2 className="size-3.5 text-success shrink-0" />
       )}
-      <span>{isLoading ? labels.loading : event.summary ?? labels.done}</span>
+      <span>{isLoading ? labels.loading : (event.summary ?? labels.done)}</span>
     </motion.div>
   )
 }
@@ -230,9 +228,7 @@ function PipelineProgress({ steps }: { steps: PipelineStep[] }) {
     >
       <div className="flex items-center gap-2">
         <Loader2 className="size-4 animate-spin text-primary" />
-        <span className="text-sm font-medium text-foreground">
-          Building your program...
-        </span>
+        <span className="text-sm font-medium text-foreground">Building your program...</span>
       </div>
       <div className="space-y-1.5">
         {PIPELINE_LABELS.map((label, idx) => {
@@ -249,7 +245,7 @@ function PipelineProgress({ steps }: { steps: PipelineStep[] }) {
                 "flex items-center gap-2 text-xs transition-colors",
                 isComplete && "text-success",
                 isActive && "text-primary font-medium",
-                isPending && "text-muted-foreground/40"
+                isPending && "text-muted-foreground/40",
               )}
             >
               {isComplete ? (
@@ -261,9 +257,7 @@ function PipelineProgress({ steps }: { steps: PipelineStep[] }) {
               )}
               <span>{label}</span>
               {isActive && activeStep?.detail && (
-                <span className="text-muted-foreground ml-1">
-                  — {activeStep.detail}
-                </span>
+                <span className="text-muted-foreground ml-1">— {activeStep.detail}</span>
               )}
             </div>
           )
@@ -273,13 +267,7 @@ function PipelineProgress({ steps }: { steps: PipelineStep[] }) {
   )
 }
 
-function ProgramResultCard({
-  event,
-  onAssign,
-}: {
-  event: ToolEvent
-  onAssign: () => void
-}) {
+function ProgramResultCard({ event, onAssign }: { event: ToolEvent; onAssign: () => void }) {
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.97 }}
@@ -289,19 +277,13 @@ function ProgramResultCard({
     >
       <div className="flex items-center gap-2">
         <CheckCircle2 className="size-5 text-success" />
-        <span className="text-sm font-semibold text-foreground">
-          Program Generated
-        </span>
+        <span className="text-sm font-semibold text-foreground">Program Generated</span>
         {event.validationPass && (
-          <Badge className="bg-success/10 text-success border-success/20 text-[10px]">
-            Validated
-          </Badge>
+          <Badge className="bg-success/10 text-success border-success/20 text-[10px]">Validated</Badge>
         )}
       </div>
       {event.durationMs != null && (
-        <p className="text-xs text-muted-foreground">
-          Generated in {Math.round(event.durationMs / 1000)}s
-        </p>
+        <p className="text-xs text-muted-foreground">Generated in {Math.round(event.durationMs / 1000)}s</p>
       )}
       <div className="flex items-center gap-2">
         <Link href={`/admin/programs/${event.programId}`}>
@@ -364,9 +346,7 @@ function ParametersCard({
       <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
         <div>
           <span className="text-muted-foreground">Goals:</span>{" "}
-          <span className="text-foreground font-medium">
-            {params.goals.map((g) => GOAL_LABELS[g] ?? g).join(", ")}
-          </span>
+          <span className="text-foreground font-medium">{params.goals.map((g) => GOAL_LABELS[g] ?? g).join(", ")}</span>
         </div>
         <div>
           <span className="text-muted-foreground">Duration:</span>{" "}
@@ -381,9 +361,7 @@ function ParametersCard({
         {params.split_type && (
           <div>
             <span className="text-muted-foreground">Split:</span>{" "}
-            <span className="text-foreground font-medium">
-              {SPLIT_LABELS[params.split_type] ?? params.split_type}
-            </span>
+            <span className="text-foreground font-medium">{SPLIT_LABELS[params.split_type] ?? params.split_type}</span>
           </div>
         )}
         {params.periodization && (
@@ -440,23 +418,17 @@ function MessageBubble({ message }: { message: ChatMessage }) {
       <div
         className={cn(
           "size-7 rounded-full flex items-center justify-center shrink-0 mt-0.5",
-          isUser
-            ? "bg-primary text-primary-foreground"
-            : "bg-accent/20 text-accent"
+          isUser ? "bg-primary text-primary-foreground" : "bg-accent/20 text-accent",
         )}
       >
-        {isUser ? (
-          <User className="size-3.5" />
-        ) : (
-          <Bot className="size-3.5" />
-        )}
+        {isUser ? <User className="size-3.5" /> : <Bot className="size-3.5" />}
       </div>
       <div
         className={cn(
           "rounded-2xl px-3.5 py-2.5 max-w-[80%] text-sm leading-relaxed",
           isUser
             ? "bg-primary text-primary-foreground rounded-tr-sm"
-            : "bg-surface/50 border border-border text-foreground rounded-tl-sm"
+            : "bg-surface/50 border border-border text-foreground rounded-tl-sm",
         )}
       >
         {renderContent(message.content)}
@@ -480,15 +452,12 @@ function renderContent(content: string) {
     elements.push(
       <Tag
         key={`list-${elements.length}`}
-        className={cn(
-          "my-1 pl-4 space-y-0.5",
-          listType === "ol" ? "list-decimal" : "list-disc"
-        )}
+        className={cn("my-1 pl-4 space-y-0.5", listType === "ol" ? "list-decimal" : "list-disc")}
       >
         {listItems.map((item, i) => (
           <li key={i}>{formatBold(item)}</li>
         ))}
-      </Tag>
+      </Tag>,
     )
     listItems = []
     listType = null
@@ -511,9 +480,7 @@ function renderContent(content: string) {
       if (line.trim() === "") {
         elements.push(<div key={`sp-${elements.length}`} className="h-2" />)
       } else {
-        elements.push(
-          <p key={`p-${elements.length}`}>{formatBold(line)}</p>
-        )
+        elements.push(<p key={`p-${elements.length}`}>{formatBold(line)}</p>)
       }
     }
   }
@@ -562,10 +529,7 @@ interface AiProgramChatDialogProps {
   onOpenChange: (open: boolean) => void
 }
 
-export function AiProgramChatDialog({
-  open,
-  onOpenChange,
-}: AiProgramChatDialogProps) {
+export function AiProgramChatDialog({ open, onOpenChange }: AiProgramChatDialogProps) {
   const router = useRouter()
   const [items, setItems] = useState<ChatItem[]>(() => {
     const stored = loadChatState()
@@ -575,7 +539,7 @@ export function AiProgramChatDialog({
   const [isStreaming, setIsStreaming] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
   const sessionIdRef = useRef(
-    loadChatState()?.sessionId ?? `program-chat-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    loadChatState()?.sessionId ?? `program-chat-${Date.now()}-${Math.random().toString(36).slice(2)}`,
   )
 
   // Assign dialog
@@ -609,9 +573,7 @@ export function AiProgramChatDialog({
         case "delta": {
           const assistantId = jobAssistantIdRef.current
           setItems((prev) => {
-            const exists = prev.some(
-              (item) => item.kind === "message" && item.data.id === assistantId
-            )
+            const exists = prev.some((item) => item.kind === "message" && item.data.id === assistantId)
             if (!exists) {
               return [
                 ...prev,
@@ -629,7 +591,7 @@ export function AiProgramChatDialog({
             return prev.map((item) =>
               item.kind === "message" && item.data.id === assistantId
                 ? { ...item, data: { ...item.data, content: item.data.content + (chunk.data.text as string) } }
-                : item
+                : item,
             )
           })
           break
@@ -639,14 +601,14 @@ export function AiProgramChatDialog({
           // Flush current assistant message and start new one
           const flushedId = jobAssistantIdRef.current
           setItems((prev) => {
-            const updated = prev.map((item) => {
-              if (item.kind === "message" && item.data.id === flushedId && item.data.status === "streaming") {
-                return item.data.content.trim()
-                  ? { ...item, data: { ...item.data, status: "done" as const } }
-                  : null
-              }
-              return item
-            }).filter(Boolean) as ChatItem[]
+            const updated = prev
+              .map((item) => {
+                if (item.kind === "message" && item.data.id === flushedId && item.data.status === "streaming") {
+                  return item.data.content.trim() ? { ...item, data: { ...item.data, status: "done" as const } } : null
+                }
+                return item
+              })
+              .filter(Boolean) as ChatItem[]
 
             return [
               ...updated,
@@ -688,7 +650,7 @@ export function AiProgramChatDialog({
           // Remove the tool_start card for propose_parameters
           setItems((prev) => {
             const filtered = prev.filter(
-              (i) => !(i.kind === "event" && i.data.type === "tool_start" && i.data.tool === "propose_parameters")
+              (i) => !(i.kind === "event" && i.data.type === "tool_start" && i.data.tool === "propose_parameters"),
             )
             return [
               ...filtered,
@@ -718,7 +680,7 @@ export function AiProgramChatDialog({
           setIsGenerating(false)
           setItems((prev) => {
             const lastToolIdx = prev.findLastIndex(
-              (i) => i.kind === "event" && i.data.type === "tool_start" && i.data.tool === (chunk.data.tool as string)
+              (i) => i.kind === "event" && i.data.type === "tool_start" && i.data.tool === (chunk.data.tool as string),
             )
             if (lastToolIdx === -1) return prev
             const updated = [...prev]
@@ -740,9 +702,7 @@ export function AiProgramChatDialog({
           setIsGenerating(false)
           setPipelineSteps([])
           setItems((prev) => {
-            const lastToolIdx = prev.findLastIndex(
-              (i) => i.kind === "event" && i.data.tool === "generate_program"
-            )
+            const lastToolIdx = prev.findLastIndex((i) => i.kind === "event" && i.data.tool === "generate_program")
             const newItem: ChatItem = {
               kind: "event",
               data: {
@@ -786,8 +746,8 @@ export function AiProgramChatDialog({
             prev.map((item) =>
               item.kind === "message" && item.data.id === doneAssistantId && item.data.status === "streaming"
                 ? { ...item, data: { ...item.data, status: "done" as const } }
-                : item
-            )
+                : item,
+            ),
           )
           setIsStreaming(false)
           setCurrentJobId(null)
@@ -804,9 +764,7 @@ export function AiProgramChatDialog({
     if (aiJob.status === "completed" && aiJob.result) {
       // Direct generate endpoint completed (no chunks emitted)
       // Only handle if we don't already have a program_created event from chunks
-      const alreadyHasProgramCreated = items.some(
-        (i) => i.kind === "event" && i.data.type === "program_created"
-      )
+      const alreadyHasProgramCreated = items.some((i) => i.kind === "event" && i.data.type === "program_created")
       if (!alreadyHasProgramCreated && aiJob.result.program_id) {
         setIsGenerating(false)
         setIsStreaming(false)
@@ -819,8 +777,8 @@ export function AiProgramChatDialog({
               id: nextId("program"),
               type: "program_created" as const,
               programId: aiJob.result!.program_id as string,
-              validationPass: (aiJob.result!.validation as Record<string, unknown>)?.pass as boolean ?? true,
-              durationMs: aiJob.result!.duration_ms as number ?? 0,
+              validationPass: ((aiJob.result!.validation as Record<string, unknown>)?.pass as boolean) ?? true,
+              durationMs: (aiJob.result!.duration_ms as number) ?? 0,
             },
           },
         ])
@@ -856,8 +814,8 @@ export function AiProgramChatDialog({
         prev.map((item) =>
           item.kind === "message" && item.data.id === assistantId && item.data.status === "streaming"
             ? { ...item, data: { ...item.data, status: "done" as const } }
-            : item
-        )
+            : item,
+        ),
       )
     }
   }, [currentJobId, aiJob.status, aiJob.error, aiJob.result, nextId, items, router])
@@ -951,10 +909,7 @@ export function AiProgramChatDialog({
           result.push({ role: "assistant", content: paramsText })
           lastRole = "assistant"
         }
-      } else if (
-        item.kind === "event" &&
-        (item.data.type === "tool_result" || item.data.type === "program_created")
-      ) {
+      } else if (item.kind === "event" && (item.data.type === "tool_result" || item.data.type === "program_created")) {
         // Embed tool results as part of the assistant context
         const toolName = item.data.tool ?? "tool"
         const summary = item.data.summary ?? "completed"
@@ -989,8 +944,8 @@ export function AiProgramChatDialog({
       prev.map((item) =>
         item.kind === "params" && item.data.id === params.id
           ? { ...item, data: { ...item.data, status: "confirmed" as const } }
-          : item
-      )
+          : item,
+      ),
     )
 
     setIsStreaming(true)
@@ -1082,10 +1037,7 @@ export function AiProgramChatDialog({
     prevChunkCountRef.current = 0
 
     try {
-      const messages = [
-        ...getConversationMessages(),
-        { role: "user" as const, content: text },
-      ]
+      const messages = [...getConversationMessages(), { role: "user" as const, content: text }]
 
       let res: Response | null = null
       for (let attempt = 0; attempt < 3; attempt++) {
@@ -1100,7 +1052,7 @@ export function AiProgramChatDialog({
       }
 
       if (!res || !res.ok) {
-        const data = await res?.json().catch(() => ({ error: "Request failed" })) ?? { error: "Request failed" }
+        const data = (await res?.json().catch(() => ({ error: "Request failed" }))) ?? { error: "Request failed" }
         throw new Error(data.error || `HTTP ${res?.status}`)
       }
 
@@ -1108,8 +1060,7 @@ export function AiProgramChatDialog({
       setCurrentJobId(data.jobId)
       // Streaming is now handled by the useAiJob effect above
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Something went wrong"
+      const message = err instanceof Error ? err.message : "Something went wrong"
       setItems((prev) => [
         ...prev,
         {
@@ -1143,8 +1094,8 @@ export function AiProgramChatDialog({
       prev.map((item) =>
         item.kind === "message" && item.data.id === assistantId && item.data.status === "streaming"
           ? { ...item, data: { ...item.data, status: "done" as const } }
-          : item
-      )
+          : item,
+      ),
     )
 
     // Cancel the backend job so it stops processing
@@ -1224,9 +1175,7 @@ export function AiProgramChatDialog({
           <AnimatePresence initial={false}>
             {items.map((item) => {
               if (item.kind === "message") {
-                return (
-                  <MessageBubble key={item.data.id} message={item.data} />
-                )
+                return <MessageBubble key={item.data.id} message={item.data} />
               }
 
               if (item.kind === "params") {
@@ -1243,10 +1192,7 @@ export function AiProgramChatDialog({
 
               // Event items
               const evt = item.data
-              if (
-                evt.type === "tool_start" &&
-                evt.tool === "generate_program"
-              ) {
+              if (evt.type === "tool_start" && evt.tool === "generate_program") {
                 return <PipelineProgress key={evt.id} steps={pipelineSteps} />
               }
               if (evt.type === "program_created") {
@@ -1254,9 +1200,7 @@ export function AiProgramChatDialog({
                   <ProgramResultCard
                     key={evt.id}
                     event={evt}
-                    onAssign={() =>
-                      evt.programId && setAssignProgramId(evt.programId)
-                    }
+                    onAssign={() => evt.programId && setAssignProgramId(evt.programId)}
                   />
                 )
               }
@@ -1284,21 +1228,14 @@ export function AiProgramChatDialog({
                   <span className="text-xs font-medium text-foreground group-hover:text-primary transition-colors">
                     {tpl.label}
                   </span>
-                  <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">
-                    {tpl.prompt.slice(0, 80)}...
-                  </p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">{tpl.prompt.slice(0, 80)}...</p>
                 </button>
               ))}
             </motion.div>
           )}
 
           {isStreaming &&
-            !items.some(
-              (i) =>
-                i.kind === "message" &&
-                i.data.status === "streaming" &&
-                i.data.content.length > 0
-            ) &&
+            !items.some((i) => i.kind === "message" && i.data.status === "streaming" && i.data.content.length > 0) &&
             !isGenerating && <TypingDots />}
 
           <div ref={messagesEndRef} />
@@ -1312,11 +1249,7 @@ export function AiProgramChatDialog({
               value={input}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
-              placeholder={
-                isStreaming
-                  ? "Waiting for response..."
-                  : "Tell me about the program you want to build..."
-              }
+              placeholder={isStreaming ? "Waiting for response..." : "Tell me about the program you want to build..."}
               disabled={isStreaming}
               rows={1}
               className="flex-1 resize-none rounded-xl border border-input bg-background px-3.5 py-2.5 text-sm shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"

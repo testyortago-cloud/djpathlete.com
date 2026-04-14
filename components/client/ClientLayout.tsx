@@ -4,7 +4,20 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { usePathname } from "next/navigation"
-import { LayoutDashboard, Dumbbell, ShoppingBag, TrendingUp, Trophy, Video, ClipboardCheck, User, Settings, ClipboardList, LogOut, MoreHorizontal } from "lucide-react"
+import {
+  LayoutDashboard,
+  Dumbbell,
+  ShoppingBag,
+  TrendingUp,
+  Trophy,
+  Video,
+  ClipboardCheck,
+  User,
+  Settings,
+  ClipboardList,
+  LogOut,
+  MoreHorizontal,
+} from "lucide-react"
 import { signOut } from "next-auth/react"
 import { cn } from "@/lib/utils"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet"
@@ -88,7 +101,7 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
                   "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
                   isActive
                     ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground hover:bg-surface"
+                    : "text-muted-foreground hover:text-foreground hover:bg-surface",
                 )}
               >
                 <Icon className="size-5" strokeWidth={1.5} />
@@ -149,7 +162,7 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
                 href={item.href}
                 className={cn(
                   "flex flex-col items-center justify-center gap-0.5 min-w-[64px] py-1 text-[10px] font-medium transition-colors",
-                  isActive ? "text-primary" : "text-muted-foreground"
+                  isActive ? "text-primary" : "text-muted-foreground",
                 )}
               >
                 <Icon className="size-5" strokeWidth={1.5} />
@@ -161,7 +174,7 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
             onClick={() => setMoreOpen(true)}
             className={cn(
               "flex flex-col items-center justify-center gap-0.5 min-w-[64px] py-1 text-[10px] font-medium transition-colors",
-              isMoreActive ? "text-primary" : "text-muted-foreground"
+              isMoreActive ? "text-primary" : "text-muted-foreground",
             )}
           >
             <MoreHorizontal className="size-5" strokeWidth={1.5} />
@@ -187,9 +200,7 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
                   href={item.href}
                   className={cn(
                     "flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors",
-                    isActive
-                      ? "bg-primary/10 text-primary"
-                      : "text-foreground hover:bg-surface"
+                    isActive ? "bg-primary/10 text-primary" : "text-foreground hover:bg-surface",
                   )}
                 >
                   <Icon className="size-5" strokeWidth={1.5} />

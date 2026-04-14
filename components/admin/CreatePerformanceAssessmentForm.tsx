@@ -6,13 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Plus, X, Loader2, GripVertical, Youtube, User, FileText, Dumbbell, Ruler } from "lucide-react"
 import { toast } from "sonner"
 
@@ -42,10 +36,7 @@ interface CreatePerformanceAssessmentFormProps {
   exercises: Exercise[]
 }
 
-export function CreatePerformanceAssessmentForm({
-  clients,
-  exercises,
-}: CreatePerformanceAssessmentFormProps) {
+export function CreatePerformanceAssessmentForm({ clients, exercises }: CreatePerformanceAssessmentFormProps) {
   const router = useRouter()
   const [clientId, setClientId] = useState("")
   const [title, setTitle] = useState("")
@@ -59,7 +50,14 @@ export function CreatePerformanceAssessmentForm({
   function addRow() {
     setRows((prev) => [
       ...prev,
-      { key: crypto.randomUUID(), exercise_id: null, custom_name: "", youtube_url: "", admin_notes: "", result_unit: "" },
+      {
+        key: crypto.randomUUID(),
+        exercise_id: null,
+        custom_name: "",
+        youtube_url: "",
+        admin_notes: "",
+        result_unit: "",
+      },
     ])
   }
 
@@ -68,9 +66,7 @@ export function CreatePerformanceAssessmentForm({
   }
 
   function updateRow(key: string, updates: Partial<ExerciseRow>) {
-    setRows((prev) =>
-      prev.map((r) => (r.key === key ? { ...r, ...updates } : r))
-    )
+    setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...updates } : r)))
   }
 
   function getFilteredExercises(searchKey: string) {
@@ -160,11 +156,7 @@ export function CreatePerformanceAssessmentForm({
                   ))}
                 </SelectContent>
               </Select>
-              {selectedClient && (
-                <p className="text-xs text-muted-foreground">
-                  {selectedClient.email}
-                </p>
-              )}
+              {selectedClient && <p className="text-xs text-muted-foreground">{selectedClient.email}</p>}
             </div>
 
             <div className="space-y-2">
@@ -200,9 +192,7 @@ export function CreatePerformanceAssessmentForm({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Dumbbell className="size-4 text-primary" />
-            <h2 className="text-sm font-semibold text-primary">
-              Exercises ({rows.length})
-            </h2>
+            <h2 className="text-sm font-semibold text-primary">Exercises ({rows.length})</h2>
           </div>
           <Button type="button" variant="outline" size="sm" onClick={addRow}>
             <Plus className="size-3.5 mr-1.5" />
@@ -212,26 +202,19 @@ export function CreatePerformanceAssessmentForm({
 
         <div className="space-y-4">
           {rows.map((row, index) => (
-            <div
-              key={row.key}
-              className="bg-white rounded-xl border border-border overflow-hidden"
-            >
+            <div key={row.key} className="bg-white rounded-xl border border-border overflow-hidden">
               {/* Exercise header */}
               <div className="px-5 py-3 border-b border-border bg-surface/30 flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
                   <GripVertical className="size-4 text-muted-foreground/50" />
-                  <span className="text-sm font-medium text-primary">
-                    Exercise {index + 1}
-                  </span>
+                  <span className="text-sm font-medium text-primary">Exercise {index + 1}</span>
                   {row.exercise_id && (
                     <span className="text-xs text-muted-foreground bg-primary/5 px-2 py-0.5 rounded-full">
                       From Library
                     </span>
                   )}
                   {!row.exercise_id && row.custom_name && (
-                    <span className="text-xs text-muted-foreground bg-accent/10 px-2 py-0.5 rounded-full">
-                      Custom
-                    </span>
+                    <span className="text-xs text-muted-foreground bg-accent/10 px-2 py-0.5 rounded-full">Custom</span>
                   )}
                 </div>
                 {rows.length > 1 && (
@@ -267,9 +250,7 @@ export function CreatePerformanceAssessmentForm({
                           <Input
                             placeholder="Type to search..."
                             value={exerciseSearch[row.key] ?? ""}
-                            onChange={(e) =>
-                              setExerciseSearch((prev) => ({ ...prev, [row.key]: e.target.value }))
-                            }
+                            onChange={(e) => setExerciseSearch((prev) => ({ ...prev, [row.key]: e.target.value }))}
                             className="h-8 text-sm"
                             onClick={(e) => e.stopPropagation()}
                           />
@@ -366,12 +347,7 @@ export function CreatePerformanceAssessmentForm({
             "Create Assessment"
           )}
         </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="lg"
-          onClick={() => router.back()}
-        >
+        <Button type="button" variant="outline" size="lg" onClick={() => router.back()}>
           Cancel
         </Button>
       </div>

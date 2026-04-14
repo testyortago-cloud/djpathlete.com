@@ -14,10 +14,7 @@ export default function AdminFormReviewsLoading() {
       {/* Review items */}
       <div className="space-y-2">
         {Array.from({ length: 5 }).map((_, i) => (
-          <div
-            key={i}
-            className="bg-white rounded-xl border border-border p-4 flex items-center gap-4"
-          >
+          <div key={i} className="bg-white rounded-xl border border-border p-4 flex items-center gap-4">
             <div className="size-10 bg-muted animate-pulse rounded-full shrink-0" />
             <div className="flex-1 space-y-2">
               <div className="h-4 w-48 bg-muted animate-pulse rounded-md" />

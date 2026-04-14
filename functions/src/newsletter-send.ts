@@ -63,7 +63,7 @@ export async function handleNewsletterSend(jobId: string): Promise<void> {
             to: sub.email,
             subject: input.subject,
             html: input.html,
-          }))
+          })),
         )
 
         if (error) {
@@ -79,12 +79,14 @@ export async function handleNewsletterSend(jobId: string): Promise<void> {
 
       // Update progress periodically (every 5 batches)
       if ((i / BATCH_SIZE) % 5 === 4) {
-        await jobRef.update({
-          "result.sent": sent,
-          "result.failed": failed,
-          "result.total": subscribers.length,
-          updatedAt: FieldValue.serverTimestamp(),
-        }).catch(() => {})
+        await jobRef
+          .update({
+            "result.sent": sent,
+            "result.failed": failed,
+            "result.total": subscribers.length,
+            updatedAt: FieldValue.serverTimestamp(),
+          })
+          .catch(() => {})
       }
 
       // Rate-limit delay

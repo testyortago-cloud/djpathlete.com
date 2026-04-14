@@ -108,12 +108,7 @@ export function LegalDocumentEditor({ document: doc }: LegalDocumentEditorProps)
           <Label htmlFor="title" className="text-xs font-medium">
             Title
           </Label>
-          <Input
-            id="title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            disabled={isSaving}
-          />
+          <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} disabled={isSaving} />
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="effectiveDate" className="text-xs font-medium">
@@ -132,12 +127,7 @@ export function LegalDocumentEditor({ document: doc }: LegalDocumentEditorProps)
       {/* Rich text editor */}
       <div className="space-y-1.5">
         <Label className="text-xs font-medium">Content</Label>
-        <LegalEditor
-          content={content}
-          onChange={setContent}
-          disabled={isSaving}
-          minHeight="500px"
-        />
+        <LegalEditor content={content} onChange={setContent} disabled={isSaving} minHeight="500px" />
       </div>
     </div>
   )

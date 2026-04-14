@@ -11,10 +11,7 @@ export default async function AdminFormReviewsPage() {
   let counts = { pending: 0, in_progress: 0, reviewed: 0, total: 0 }
 
   try {
-    ;[reviews, counts] = await Promise.all([
-      getAllFormReviews(),
-      getFormReviewCounts(),
-    ])
+    ;[reviews, counts] = await Promise.all([getAllFormReviews(), getFormReviewCounts()])
   } catch {
     // Tables may not exist yet
   }

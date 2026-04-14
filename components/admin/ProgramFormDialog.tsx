@@ -4,25 +4,11 @@ import { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { motion, AnimatePresence } from "framer-motion"
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import {
-  Globe,
-  Lock,
-  CheckCircle2,
-  ChevronRight,
-  ChevronLeft,
-  Gift,
-  CreditCard,
-  RefreshCw,
-} from "lucide-react"
+import { Globe, Lock, CheckCircle2, ChevronRight, ChevronLeft, Gift, CreditCard, RefreshCw } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
   programFormSchema,
@@ -132,11 +118,7 @@ const stepVariants = {
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
-export function ProgramFormDialog({
-  open,
-  onOpenChange,
-  program,
-}: ProgramFormDialogProps) {
+export function ProgramFormDialog({ open, onOpenChange, program }: ProgramFormDialogProps) {
   const router = useRouter()
   const isEditing = !!program
   const dialogRef = useRef<HTMLDivElement>(null)
@@ -151,7 +133,7 @@ export function ProgramFormDialog({
   const [name, setName] = useState(program?.name ?? "")
   const [description, setDescription] = useState(program?.description ?? "")
   const [selectedCategories, setSelectedCategories] = useState<string[]>(
-    Array.isArray(program?.category) ? program.category : program?.category ? [program.category] : []
+    Array.isArray(program?.category) ? program.category : program?.category ? [program.category] : [],
   )
   const [difficulty, setDifficulty] = useState(program?.difficulty ?? "")
   const [selectedTier, setSelectedTier] = useState<string>(program?.tier ?? "generalize")
@@ -160,7 +142,7 @@ export function ProgramFormDialog({
   const [durationWeeks, setDurationWeeks] = useState(program?.duration_weeks?.toString() ?? "")
   const [sessionsPerWeek, setSessionsPerWeek] = useState(program?.sessions_per_week?.toString() ?? "")
   const [priceDollars, setPriceDollars] = useState(
-    program?.price_cents != null ? (program.price_cents / 100).toFixed(2) : ""
+    program?.price_cents != null ? (program.price_cents / 100).toFixed(2) : "",
   )
   const [paymentType, setPaymentType] = useState<PaymentType>(program?.payment_type ?? "one_time")
   const [billingInterval, setBillingInterval] = useState<string>(program?.billing_interval ?? "month")
@@ -179,7 +161,7 @@ export function ProgramFormDialog({
     setName(program?.name ?? "")
     setDescription(program?.description ?? "")
     setSelectedCategories(
-      Array.isArray(program?.category) ? program.category : program?.category ? [program.category] : []
+      Array.isArray(program?.category) ? program.category : program?.category ? [program.category] : [],
     )
     setDifficulty(program?.difficulty ?? "")
     setSelectedTier(program?.tier ?? "generalize")
@@ -199,21 +181,41 @@ export function ProgramFormDialog({
 
   function validateStep(s: number): boolean {
     if (s === 0) {
-      if (!name.trim()) { toast.error("Name is required"); return false }
-      if (selectedCategories.length === 0) { toast.error("Select at least one category"); return false }
-      if (!difficulty) { toast.error("Difficulty is required"); return false }
-      if (!selectedTier) { toast.error("Tier is required"); return false }
+      if (!name.trim()) {
+        toast.error("Name is required")
+        return false
+      }
+      if (selectedCategories.length === 0) {
+        toast.error("Select at least one category")
+        return false
+      }
+      if (!difficulty) {
+        toast.error("Difficulty is required")
+        return false
+      }
+      if (!selectedTier) {
+        toast.error("Tier is required")
+        return false
+      }
     }
     if (s === 1) {
       const weeks = parseInt(durationWeeks)
       const sessions = parseInt(sessionsPerWeek)
-      if (!weeks || weeks < 1) { toast.error("Duration must be at least 1 week"); return false }
-      if (!sessions || sessions < 1) { toast.error("Sessions per week must be at least 1"); return false }
+      if (!weeks || weeks < 1) {
+        toast.error("Duration must be at least 1 week")
+        return false
+      }
+      if (!sessions || sessions < 1) {
+        toast.error("Sessions per week must be at least 1")
+        return false
+      }
       if (paymentType !== "free" && (!priceDollars || parseFloat(priceDollars) <= 0)) {
-        toast.error("Price is required for paid programs"); return false
+        toast.error("Price is required for paid programs")
+        return false
       }
       if (paymentType === "subscription" && !billingInterval) {
-        toast.error("Billing interval is required for subscriptions"); return false
+        toast.error("Billing interval is required for subscriptions")
+        return false
       }
     }
     if (s === 2) {
@@ -268,9 +270,7 @@ export function ProgramFormDialog({
     if (!validateStep(2)) return
     setErrors({})
 
-    const priceCents = priceDollars && priceDollars !== ""
-      ? Math.round(parseFloat(priceDollars) * 100)
-      : null
+    const priceCents = priceDollars && priceDollars !== "" ? Math.round(parseFloat(priceDollars) * 100) : null
 
     const data = {
       name: name.trim(),
@@ -303,9 +303,7 @@ export function ProgramFormDialog({
     setIsSubmitting(true)
 
     try {
-      const url = isEditing
-        ? `/api/admin/programs/${program.id}`
-        : "/api/admin/programs"
+      const url = isEditing ? `/api/admin/programs/${program.id}` : "/api/admin/programs"
       const method = isEditing ? "PATCH" : "POST"
 
       const response = await fetch(url, {
@@ -336,7 +334,9 @@ export function ProgramFormDialog({
       setSavedProgramId(isEditing ? program.id : responseData.id)
       router.refresh()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : (isEditing ? "Failed to update program" : "Failed to create program"))
+      toast.error(
+        err instanceof Error ? err.message : isEditing ? "Failed to update program" : "Failed to create program",
+      )
     } finally {
       setIsSubmitting(false)
     }
@@ -391,7 +391,10 @@ export function ProgramFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleDialogClose}>
-      <DialogContent className={cn("sm:max-w-lg max-h-[90vh] overflow-y-auto", tour.isActive && "pb-48")} ref={dialogRef}>
+      <DialogContent
+        className={cn("sm:max-w-lg max-h-[90vh] overflow-y-auto", tour.isActive && "pb-48")}
+        ref={dialogRef}
+      >
         {/* Header */}
         <div className="space-y-3">
           <div className="flex items-center gap-1.5">
@@ -415,17 +418,19 @@ export function ProgramFormDialog({
                     ? "bg-primary text-primary-foreground"
                     : idx < step
                       ? "bg-primary/10 text-primary cursor-pointer hover:bg-primary/20"
-                      : "bg-muted text-muted-foreground cursor-default"
+                      : "bg-muted text-muted-foreground cursor-default",
                 )}
               >
-                <span className={cn(
-                  "flex items-center justify-center size-4 rounded-full text-[10px] font-bold",
-                  idx === step
-                    ? "bg-primary-foreground/20 text-primary-foreground"
-                    : idx < step
-                      ? "bg-primary/20 text-primary"
-                      : "bg-muted-foreground/20 text-muted-foreground"
-                )}>
+                <span
+                  className={cn(
+                    "flex items-center justify-center size-4 rounded-full text-[10px] font-bold",
+                    idx === step
+                      ? "bg-primary-foreground/20 text-primary-foreground"
+                      : idx < step
+                        ? "bg-primary/20 text-primary"
+                        : "bg-muted-foreground/20 text-muted-foreground",
+                  )}
+                >
                   {idx < step ? "\u2713" : s.number}
                 </span>
                 {s.label}
@@ -482,13 +487,7 @@ export function ProgramFormDialog({
                   disabled={isSubmitting}
                 />
               )}
-              {step === 2 && (
-                <Step3Audience
-                  audience={audience}
-                  setAudience={setAudience}
-                  disabled={isSubmitting}
-                />
-              )}
+              {step === 2 && <Step3Audience audience={audience} setAudience={setAudience} disabled={isSubmitting} />}
             </motion.div>
           </AnimatePresence>
         </div>
@@ -516,9 +515,7 @@ export function ProgramFormDialog({
             </Button>
           ) : (
             <Button type="button" onClick={handleSubmit} disabled={isSubmitting}>
-              {isSubmitting
-                ? isEditing ? "Saving..." : "Creating..."
-                : isEditing ? "Save Changes" : "Create Program"}
+              {isSubmitting ? (isEditing ? "Saving..." : "Creating...") : isEditing ? "Save Changes" : "Create Program"}
             </Button>
           )}
         </DialogFooter>
@@ -591,15 +588,13 @@ function Step1Info({
                 type="button"
                 disabled={disabled}
                 onClick={() =>
-                  setSelectedCategories((prev) =>
-                    selected ? prev.filter((c) => c !== cat) : [...prev, cat]
-                  )
+                  setSelectedCategories((prev) => (selected ? prev.filter((c) => c !== cat) : [...prev, cat]))
                 }
                 className={cn(
                   "inline-flex items-center rounded-full px-3 py-1.5 text-xs font-medium border transition-colors",
                   selected
                     ? "bg-primary text-primary-foreground border-primary"
-                    : "bg-white text-muted-foreground border-border hover:border-primary/40"
+                    : "bg-white text-muted-foreground border-border hover:border-primary/40",
                 )}
               >
                 {CATEGORY_LABELS[cat]}
@@ -621,9 +616,13 @@ function Step1Info({
             disabled={disabled}
             className={selectClass}
           >
-            <option value="" disabled>Select difficulty</option>
+            <option value="" disabled>
+              Select difficulty
+            </option>
             {PROGRAM_DIFFICULTIES.map((diff) => (
-              <option key={diff} value={diff}>{DIFFICULTY_LABELS[diff]}</option>
+              <option key={diff} value={diff}>
+                {DIFFICULTY_LABELS[diff]}
+              </option>
             ))}
           </select>
           {errors.difficulty && <p className="text-xs text-destructive">{errors.difficulty[0]}</p>}
@@ -639,7 +638,9 @@ function Step1Info({
           >
             <option value="">None</option>
             {SPLIT_TYPES.map((st) => (
-              <option key={st} value={st}>{SPLIT_TYPE_LABELS[st]}</option>
+              <option key={st} value={st}>
+                {SPLIT_TYPE_LABELS[st]}
+              </option>
             ))}
           </select>
         </div>
@@ -656,12 +657,12 @@ function Step1Info({
           className={selectClass}
         >
           {PROGRAM_TIERS.map((t) => (
-            <option key={t} value={t}>{TIER_LABELS[t]}</option>
+            <option key={t} value={t}>
+              {TIER_LABELS[t]}
+            </option>
           ))}
         </select>
-        <p className="text-[11px] text-muted-foreground">
-          {TIER_DESCRIPTIONS[selectedTier]}
-        </p>
+        <p className="text-[11px] text-muted-foreground">{TIER_DESCRIPTIONS[selectedTier]}</p>
         {errors.tier && <p className="text-xs text-destructive">{errors.tier[0]}</p>}
       </div>
 
@@ -677,7 +678,9 @@ function Step1Info({
         >
           <option value="">None</option>
           {PERIODIZATION_TYPES.map((p) => (
-            <option key={p} value={p}>{PERIODIZATION_LABELS[p]}</option>
+            <option key={p} value={p}>
+              {PERIODIZATION_LABELS[p]}
+            </option>
           ))}
         </select>
       </div>
@@ -737,9 +740,7 @@ function Step2Schedule({
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        Set up the program schedule and pricing.
-      </p>
+      <p className="text-sm text-muted-foreground">Set up the program schedule and pricing.</p>
 
       {/* Duration & Sessions */}
       <div className="grid sm:grid-cols-2 gap-4">
@@ -754,9 +755,7 @@ function Step2Schedule({
             placeholder="e.g. 12"
             disabled={disabled}
           />
-          {errors.duration_weeks && (
-            <p className="text-xs text-destructive">{errors.duration_weeks[0]}</p>
-          )}
+          {errors.duration_weeks && <p className="text-xs text-destructive">{errors.duration_weeks[0]}</p>}
         </div>
         <div className="space-y-2">
           <Label htmlFor="sessions_per_week">Sessions/Week *</Label>
@@ -769,9 +768,7 @@ function Step2Schedule({
             placeholder="e.g. 4"
             disabled={disabled}
           />
-          {errors.sessions_per_week && (
-            <p className="text-xs text-destructive">{errors.sessions_per_week[0]}</p>
-          )}
+          {errors.sessions_per_week && <p className="text-xs text-destructive">{errors.sessions_per_week[0]}</p>}
         </div>
       </div>
 
@@ -792,29 +789,22 @@ function Step2Schedule({
                 "flex flex-col items-center gap-1.5 rounded-lg border-2 px-3 py-3 text-center transition-colors",
                 paymentType === opt.value
                   ? "border-primary bg-primary/5"
-                  : "border-border hover:border-muted-foreground/30"
+                  : "border-border hover:border-muted-foreground/30",
               )}
             >
-              <span className={cn(
-                paymentType === opt.value ? "text-primary" : "text-muted-foreground"
-              )}>
+              <span className={cn(paymentType === opt.value ? "text-primary" : "text-muted-foreground")}>
                 {opt.icon}
               </span>
-              <span className={cn(
-                "text-xs font-medium",
-                paymentType === opt.value ? "text-primary" : "text-foreground"
-              )}>
+              <span
+                className={cn("text-xs font-medium", paymentType === opt.value ? "text-primary" : "text-foreground")}
+              >
                 {opt.label}
               </span>
-              <span className="text-[10px] text-muted-foreground leading-tight">
-                {opt.desc}
-              </span>
+              <span className="text-[10px] text-muted-foreground leading-tight">{opt.desc}</span>
             </button>
           ))}
         </div>
-        {errors.payment_type && (
-          <p className="text-xs text-destructive">{errors.payment_type[0]}</p>
-        )}
+        {errors.payment_type && <p className="text-xs text-destructive">{errors.payment_type[0]}</p>}
       </div>
 
       {/* Price — hidden for free */}
@@ -825,7 +815,8 @@ function Step2Schedule({
               Price ($) *
               {paymentType === "subscription" && billingInterval && (
                 <span className="text-muted-foreground font-normal">
-                  {" "}/ {billingInterval === "month" ? "mo" : "wk"}
+                  {" "}
+                  / {billingInterval === "month" ? "mo" : "wk"}
                 </span>
               )}
             </Label>
@@ -839,9 +830,7 @@ function Step2Schedule({
               placeholder="e.g. 99.99"
               disabled={disabled}
             />
-            {errors.price_cents && (
-              <p className="text-xs text-destructive">{errors.price_cents[0]}</p>
-            )}
+            {errors.price_cents && <p className="text-xs text-destructive">{errors.price_cents[0]}</p>}
           </div>
 
           {/* Billing Interval — only for subscription */}
@@ -861,9 +850,7 @@ function Step2Schedule({
                   </option>
                 ))}
               </select>
-              {errors.billing_interval && (
-                <p className="text-xs text-destructive">{errors.billing_interval[0]}</p>
-              )}
+              {errors.billing_interval && <p className="text-xs text-destructive">{errors.billing_interval[0]}</p>}
             </div>
           )}
         </div>
@@ -885,9 +872,7 @@ function Step3Audience({
 }) {
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        Who should have access to this program?
-      </p>
+      <p className="text-sm text-muted-foreground">Who should have access to this program?</p>
 
       <div id="audience-options" className="grid gap-2">
         {/* Public */}
@@ -897,12 +882,12 @@ function Step3Audience({
           onClick={() => setAudience("public")}
           className={cn(
             "flex items-start gap-3 rounded-lg border-2 px-4 py-3 text-left transition-colors",
-            audience === "public"
-              ? "border-primary bg-primary/5"
-              : "border-border hover:border-muted-foreground/30"
+            audience === "public" ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/30",
           )}
         >
-          <Globe className={cn("size-5 shrink-0 mt-0.5", audience === "public" ? "text-primary" : "text-muted-foreground")} />
+          <Globe
+            className={cn("size-5 shrink-0 mt-0.5", audience === "public" ? "text-primary" : "text-muted-foreground")}
+          />
           <div>
             <p className={cn("text-sm font-medium", audience === "public" ? "text-primary" : "text-foreground")}>
               Public
@@ -920,12 +905,12 @@ function Step3Audience({
           onClick={() => setAudience("private")}
           className={cn(
             "flex items-start gap-3 rounded-lg border-2 px-4 py-3 text-left transition-colors",
-            audience === "private"
-              ? "border-primary bg-primary/5"
-              : "border-border hover:border-muted-foreground/30"
+            audience === "private" ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/30",
           )}
         >
-          <Lock className={cn("size-5 shrink-0 mt-0.5", audience === "private" ? "text-primary" : "text-muted-foreground")} />
+          <Lock
+            className={cn("size-5 shrink-0 mt-0.5", audience === "private" ? "text-primary" : "text-muted-foreground")}
+          />
           <div>
             <p className={cn("text-sm font-medium", audience === "private" ? "text-primary" : "text-foreground")}>
               Private
@@ -936,7 +921,6 @@ function Step3Audience({
           </div>
         </button>
       </div>
-
     </div>
   )
 }

@@ -1,9 +1,6 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import {
-  getPreferences,
-  upsertPreferences,
-} from "@/lib/db/notification-preferences"
+import { getPreferences, upsertPreferences } from "@/lib/db/notification-preferences"
 
 export async function GET() {
   const session = await auth()
@@ -40,10 +37,7 @@ export async function PATCH(request: Request) {
   }
 
   if (Object.keys(updates).length === 0) {
-    return NextResponse.json(
-      { error: "No valid preferences provided" },
-      { status: 400 }
-    )
+    return NextResponse.json({ error: "No valid preferences provided" }, { status: 400 })
   }
 
   const prefs = await upsertPreferences(session.user.id, updates)

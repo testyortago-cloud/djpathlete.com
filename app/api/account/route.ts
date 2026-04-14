@@ -20,10 +20,7 @@ export async function PATCH(request: Request) {
     const parsed = updateAccountSchema.safeParse(body)
 
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Invalid data", details: parsed.error.flatten() },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Invalid data", details: parsed.error.flatten() }, { status: 400 })
     }
 
     const { first_name, last_name, email } = parsed.data
@@ -32,10 +29,7 @@ export async function PATCH(request: Request) {
     if (email !== session.user.email) {
       const existing = await getUserByEmail(email)
       if (existing && existing.id !== session.user.id) {
-        return NextResponse.json(
-          { error: "Email is already in use" },
-          { status: 409 }
-        )
+        return NextResponse.json({ error: "Email is already in use" }, { status: 409 })
       }
     }
 
@@ -55,9 +49,6 @@ export async function PATCH(request: Request) {
     })
   } catch (error) {
     console.error("Account update error:", error)
-    return NextResponse.json(
-      { error: "Failed to update account" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to update account" }, { status: 500 })
   }
 }

@@ -5,10 +5,7 @@ import { importSubscribers } from "@/lib/db/newsletter"
 import { ghlCreateContact } from "@/lib/ghl"
 
 const importSchema = z.object({
-  emails: z
-    .array(z.string().email())
-    .min(1, "At least 1 email required")
-    .max(5000, "Maximum 5000 emails per import"),
+  emails: z.array(z.string().email()).min(1, "At least 1 email required").max(5000, "Maximum 5000 emails per import"),
 })
 
 export async function POST(request: NextRequest) {
@@ -29,7 +26,7 @@ export async function POST(request: NextRequest) {
             message: i.message,
           })),
         },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
@@ -52,9 +49,6 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     console.error("[Subscribers Import] Error:", error)
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

@@ -16,11 +16,7 @@ export async function createConsent(consent: {
   guardian_email?: string | null
 }) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("user_consents")
-    .insert(consent)
-    .select()
-    .single()
+  const { data, error } = await supabase.from("user_consents").insert(consent).select().single()
   if (error) throw error
   return data as UserConsent
 }
@@ -36,11 +32,7 @@ export async function getUserConsents(userId: string) {
   return data as UserConsent[]
 }
 
-export async function getActiveConsent(
-  userId: string,
-  type: ConsentType,
-  programId?: string
-) {
+export async function getActiveConsent(userId: string, type: ConsentType, programId?: string) {
   const supabase = getClient()
   let query = supabase
     .from("user_consents")

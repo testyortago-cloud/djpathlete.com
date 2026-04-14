@@ -10,7 +10,7 @@ export function estimateTokens(text: string): number {
 export function checkTokenBudget(
   system: string,
   user: string,
-  maxTokens: number
+  maxTokens: number,
 ): { estimated: number; fits: boolean; overage: number } {
   const estimated = estimateTokens(system) + estimateTokens(user)
   const overage = Math.max(0, estimated - maxTokens)

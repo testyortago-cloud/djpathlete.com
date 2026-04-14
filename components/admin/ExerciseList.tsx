@@ -3,7 +3,19 @@
 import { useState, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { Search, ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Dumbbell, Upload, Download, Brain, Loader2 } from "lucide-react"
+import {
+  Search,
+  ChevronLeft,
+  ChevronRight,
+  Plus,
+  Pencil,
+  Trash2,
+  Dumbbell,
+  Upload,
+  Download,
+  Brain,
+  Loader2,
+} from "lucide-react"
 import { EXERCISE_RELATIONSHIPS_TEMPLATE_CSV } from "@/lib/csv-templates"
 import { generateExerciseTemplate } from "@/lib/excel-templates"
 import { Input } from "@/components/ui/input"
@@ -86,8 +98,10 @@ export function ExerciseList({ exercises }: ExerciseListProps) {
   // Fetch embedding stats on mount
   useEffect(() => {
     fetch("/api/admin/exercises/embed")
-      .then((res) => res.ok ? res.json() : null)
-      .then((data) => { if (data) setEmbeddingStats(data) })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data) setEmbeddingStats(data)
+      })
       .catch(() => {})
   }, [])
 
@@ -294,15 +308,8 @@ export function ExerciseList({ exercises }: ExerciseListProps) {
             Add Exercise
           </Button>
         </div>
-        <ExerciseFormDialog
-          open={formOpen}
-          onOpenChange={setFormOpen}
-          exercise={editingExercise}
-        />
-        <ExerciseImportDialog
-          open={importOpen}
-          onOpenChange={setImportOpen}
-        />
+        <ExerciseFormDialog open={formOpen} onOpenChange={setFormOpen} exercise={editingExercise} />
+        <ExerciseImportDialog open={importOpen} onOpenChange={setImportOpen} />
       </div>
     )
   }
@@ -312,7 +319,9 @@ export function ExerciseList({ exercises }: ExerciseListProps) {
       {/* Header with Add + Import buttons */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <span>{exercises.length} exercise{exercises.length !== 1 ? "s" : ""} in library</span>
+          <span>
+            {exercises.length} exercise{exercises.length !== 1 ? "s" : ""} in library
+          </span>
           {embeddingStats && embeddingStats.embedded < embeddingStats.total && (
             <span className="text-warning text-xs">
               ({embeddingStats.total - embeddingStats.embedded} missing embeddings)
@@ -323,11 +332,15 @@ export function ExerciseList({ exercises }: ExerciseListProps) {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => handleEmbed(embeddingStats && embeddingStats.embedded < embeddingStats.total ? "missing" : "all")}
+            onClick={() =>
+              handleEmbed(embeddingStats && embeddingStats.embedded < embeddingStats.total ? "missing" : "all")
+            }
             disabled={isEmbedding}
-            title={embeddingStats && embeddingStats.embedded < embeddingStats.total
-              ? `Embed ${embeddingStats.total - embeddingStats.embedded} missing exercises`
-              : "Re-embed all exercises for AI search"}
+            title={
+              embeddingStats && embeddingStats.embedded < embeddingStats.total
+                ? `Embed ${embeddingStats.total - embeddingStats.embedded} missing exercises`
+                : "Re-embed all exercises for AI search"
+            }
           >
             {isEmbedding ? <Loader2 className="size-4 animate-spin" /> : <Brain className="size-4" />}
             <span className="hidden sm:inline">
@@ -337,9 +350,7 @@ export function ExerciseList({ exercises }: ExerciseListProps) {
                   ? `Embed Missing (${embeddingStats.total - embeddingStats.embedded})`
                   : "Re-embed All"}
             </span>
-            <span className="sm:hidden">
-              {isEmbedding ? "..." : "Embed"}
-            </span>
+            <span className="sm:hidden">{isEmbedding ? "..." : "Embed"}</span>
           </Button>
           <div className="relative" ref={templateMenuRef}>
             <Button variant="outline" size="sm" onClick={() => setTemplateMenuOpen(!templateMenuOpen)}>
@@ -380,32 +391,16 @@ export function ExerciseList({ exercises }: ExerciseListProps) {
       {/* Bulk Actions Toolbar */}
       {selectedIds.size > 0 && (
         <div className="mb-3 flex flex-wrap items-center gap-2 sm:gap-3 bg-primary/5 border border-primary/20 rounded-lg px-3 sm:px-4 py-2.5">
-          <span className="text-sm font-medium text-primary">
-            {selectedIds.size} selected
-          </span>
+          <span className="text-sm font-medium text-primary">{selectedIds.size} selected</span>
           <div className="flex items-center gap-2 ml-auto">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => handleBulkAction("deactivate")}
-              disabled={isBulkActing}
-            >
+            <Button size="sm" variant="outline" onClick={() => handleBulkAction("deactivate")} disabled={isBulkActing}>
               Deactivate
             </Button>
-            <Button
-              size="sm"
-              variant="destructive"
-              onClick={() => handleBulkAction("delete")}
-              disabled={isBulkActing}
-            >
+            <Button size="sm" variant="destructive" onClick={() => handleBulkAction("delete")} disabled={isBulkActing}>
               <Trash2 className="size-3.5" />
               <span className="hidden sm:inline">Delete</span>
             </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setSelectedIds(new Set())}
-            >
+            <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
               Clear
             </Button>
           </div>
@@ -420,29 +415,42 @@ export function ExerciseList({ exercises }: ExerciseListProps) {
             <Input
               placeholder="Search exercises..."
               value={search}
-              onChange={(e) => { setSearch(e.target.value); setPage(1) }}
+              onChange={(e) => {
+                setSearch(e.target.value)
+                setPage(1)
+              }}
               className="pl-9 h-9"
             />
           </div>
           <div className="flex gap-2">
             <select
               value={categoryFilter}
-              onChange={(e) => { setCategoryFilter(e.target.value); setPage(1) }}
+              onChange={(e) => {
+                setCategoryFilter(e.target.value)
+                setPage(1)
+              }}
               className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-foreground"
             >
               <option value="all">All Categories</option>
               {EXERCISE_CATEGORIES.map((cat) => (
-                <option key={cat} value={cat}>{CATEGORY_LABELS[cat]}</option>
+                <option key={cat} value={cat}>
+                  {CATEGORY_LABELS[cat]}
+                </option>
               ))}
             </select>
             <select
               value={difficultyFilter}
-              onChange={(e) => { setDifficultyFilter(e.target.value); setPage(1) }}
+              onChange={(e) => {
+                setDifficultyFilter(e.target.value)
+                setPage(1)
+              }}
               className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-foreground"
             >
               <option value="all">All Difficulties</option>
               {EXERCISE_DIFFICULTIES.map((diff) => (
-                <option key={diff} value={diff}>{DIFFICULTY_LABELS[diff]}</option>
+                <option key={diff} value={diff}>
+                  {DIFFICULTY_LABELS[diff]}
+                </option>
               ))}
             </select>
           </div>
@@ -464,14 +472,21 @@ export function ExerciseList({ exercises }: ExerciseListProps) {
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Name</th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Category</th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Difficulty</th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Muscle Group</th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden lg:table-cell">Equipment</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">
+                  Muscle Group
+                </th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden lg:table-cell">
+                  Equipment
+                </th>
                 <th className="text-right px-4 py-3 font-medium text-muted-foreground">Actions</th>
               </tr>
             </thead>
             <tbody>
               {paginated.map((exercise) => (
-                <tr key={exercise.id} className="border-b border-border last:border-b-0 hover:bg-surface/30 transition-colors">
+                <tr
+                  key={exercise.id}
+                  className="border-b border-border last:border-b-0 hover:bg-surface/30 transition-colors"
+                >
                   <td className="px-4 py-3">
                     <input
                       type="checkbox"
@@ -484,31 +499,29 @@ export function ExerciseList({ exercises }: ExerciseListProps) {
                   <td className="px-4 py-3">
                     <span className="inline-flex items-center gap-1 flex-wrap">
                       {(Array.isArray(exercise.category) ? exercise.category : [exercise.category]).map((cat) => (
-                        <span key={cat} className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-primary/10 text-primary capitalize">
+                        <span
+                          key={cat}
+                          className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-primary/10 text-primary capitalize"
+                        >
                           {CATEGORY_LABELS[cat] ?? cat}
                         </span>
                       ))}
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${DIFFICULTY_COLORS[exercise.difficulty] ?? "bg-muted text-muted-foreground"}`}>
+                    <span
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${DIFFICULTY_COLORS[exercise.difficulty] ?? "bg-muted text-muted-foreground"}`}
+                    >
                       {DIFFICULTY_LABELS[exercise.difficulty] ?? exercise.difficulty}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">
                     {exercise.muscle_group || "—"}
                   </td>
-                  <td className="px-4 py-3 text-muted-foreground hidden lg:table-cell">
-                    {exercise.equipment || "—"}
-                  </td>
+                  <td className="px-4 py-3 text-muted-foreground hidden lg:table-cell">{exercise.equipment || "—"}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        onClick={() => handleEdit(exercise)}
-                        title="Edit exercise"
-                      >
+                      <Button variant="ghost" size="icon-xs" onClick={() => handleEdit(exercise)} title="Edit exercise">
                         <Pencil className="size-3.5" />
                       </Button>
                       <Button
@@ -541,17 +554,20 @@ export function ExerciseList({ exercises }: ExerciseListProps) {
             <span className="hidden sm:inline">Rows per page:</span>
             <select
               value={perPage}
-              onChange={(e) => { setPerPage(Number(e.target.value)); setPage(1) }}
+              onChange={(e) => {
+                setPerPage(Number(e.target.value))
+                setPage(1)
+              }}
               className="h-8 rounded border border-border bg-white px-2 text-sm"
             >
               {PAGE_SIZE_OPTIONS.map((size) => (
-                <option key={size} value={size}>{size}</option>
+                <option key={size} value={size}>
+                  {size}
+                </option>
               ))}
             </select>
             <span className="text-xs sm:text-sm">
-              {filtered.length === 0
-                ? "0"
-                : `${(page - 1) * perPage + 1}-${Math.min(page * perPage, filtered.length)}`}{" "}
+              {filtered.length === 0 ? "0" : `${(page - 1) * perPage + 1}-${Math.min(page * perPage, filtered.length)}`}{" "}
               of {filtered.length}
             </span>
           </div>
@@ -575,17 +591,10 @@ export function ExerciseList({ exercises }: ExerciseListProps) {
       </div>
 
       {/* Create/Edit Dialog */}
-      <ExerciseFormDialog
-        open={formOpen}
-        onOpenChange={setFormOpen}
-        exercise={editingExercise}
-      />
+      <ExerciseFormDialog open={formOpen} onOpenChange={setFormOpen} exercise={editingExercise} />
 
       {/* Import Dialog */}
-      <ExerciseImportDialog
-        open={importOpen}
-        onOpenChange={setImportOpen}
-      />
+      <ExerciseImportDialog open={importOpen} onOpenChange={setImportOpen} />
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
@@ -593,22 +602,15 @@ export function ExerciseList({ exercises }: ExerciseListProps) {
           <DialogHeader>
             <DialogTitle>Delete Exercise</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete &ldquo;{deleteTarget?.name}&rdquo;? This action can be undone by an administrator.
+              Are you sure you want to delete &ldquo;{deleteTarget?.name}&rdquo;? This action can be undone by an
+              administrator.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setDeleteTarget(null)}
-              disabled={isDeleting}
-            >
+            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={isDeleting}>
               Cancel
             </Button>
-            <Button
-              variant="destructive"
-              onClick={handleDelete}
-              disabled={isDeleting}
-            >
+            <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
               {isDeleting ? "Deleting..." : "Delete"}
             </Button>
           </DialogFooter>
@@ -621,22 +623,15 @@ export function ExerciseList({ exercises }: ExerciseListProps) {
           <DialogHeader>
             <DialogTitle>Delete {selectedIds.size} Exercises</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete {selectedIds.size} exercise{selectedIds.size !== 1 ? "s" : ""}? This action can be undone by an administrator.
+              Are you sure you want to delete {selectedIds.size} exercise{selectedIds.size !== 1 ? "s" : ""}? This
+              action can be undone by an administrator.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setBulkDeleteOpen(false)}
-              disabled={isBulkActing}
-            >
+            <Button variant="outline" onClick={() => setBulkDeleteOpen(false)} disabled={isBulkActing}>
               Cancel
             </Button>
-            <Button
-              variant="destructive"
-              onClick={confirmBulkDelete}
-              disabled={isBulkActing}
-            >
+            <Button variant="destructive" onClick={confirmBulkDelete} disabled={isBulkActing}>
               {isBulkActing ? "Deleting..." : "Delete All"}
             </Button>
           </DialogFooter>

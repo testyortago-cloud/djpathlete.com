@@ -4,12 +4,10 @@ import { renderLegalContent } from "@/lib/legal-content"
 
 export const metadata: Metadata = {
   title: "Privacy Policy",
-  description:
-    "Read the DJP Athlete Privacy Policy. Learn how we collect, use, and protect your personal information.",
+  description: "Read the DJP Athlete Privacy Policy. Learn how we collect, use, and protect your personal information.",
   openGraph: {
     title: "Privacy Policy | DJP Athlete",
-    description:
-      "Read the DJP Athlete Privacy Policy. Learn how we protect your personal information.",
+    description: "Read the DJP Athlete Privacy Policy. Learn how we protect your personal information.",
     type: "website",
   },
 }
@@ -21,9 +19,7 @@ export default async function PrivacyPolicyPage() {
     <div className="min-h-screen bg-background">
       <div className="mx-auto max-w-3xl px-4 pt-28 pb-16 sm:px-6 lg:px-8">
         <div className="mb-8">
-          <h1 className="font-heading text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-            Privacy Policy
-          </h1>
+          <h1 className="font-heading text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Privacy Policy</h1>
           {doc && (
             <p className="mt-2 text-sm text-muted-foreground">
               Version {doc.version} &middot; Effective{" "}
@@ -40,9 +36,7 @@ export default async function PrivacyPolicyPage() {
           {doc ? (
             <div dangerouslySetInnerHTML={{ __html: renderLegalContent(doc.content) }} />
           ) : (
-            <p className="text-muted-foreground">
-              Our Privacy Policy is being prepared. Please check back soon.
-            </p>
+            <p className="text-muted-foreground">Our Privacy Policy is being prepared. Please check back soon.</p>
           )}
         </div>
       </div>

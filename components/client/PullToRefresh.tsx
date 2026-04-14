@@ -28,7 +28,7 @@ export function PullToRefresh({ children }: PullToRefreshProps) {
       touchStartY.current = e.touches[0].clientY
       isPulling.current = true
     },
-    [isRefreshing]
+    [isRefreshing],
   )
 
   const handleTouchMove = useCallback(
@@ -48,7 +48,7 @@ export function PullToRefresh({ children }: PullToRefreshProps) {
       const distance = Math.min(MAX_PULL, diff * 0.5)
       setPullDistance(distance)
     },
-    [isRefreshing]
+    [isRefreshing],
   )
 
   const handleTouchEnd = useCallback(() => {
@@ -75,12 +75,7 @@ export function PullToRefresh({ children }: PullToRefreshProps) {
   const showIndicator = pullDistance > 10 || isRefreshing
 
   return (
-    <div
-      ref={containerRef}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-    >
+    <div ref={containerRef} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
       {/* Pull indicator */}
       {showIndicator && (
         <div
@@ -88,13 +83,9 @@ export function PullToRefresh({ children }: PullToRefreshProps) {
           style={{ height: `${pullDistance}px` }}
         >
           <div
-            className={`size-8 flex items-center justify-center ${
-              isRefreshing ? "animate-spin" : ""
-            }`}
+            className={`size-8 flex items-center justify-center ${isRefreshing ? "animate-spin" : ""}`}
             style={{
-              transform: isRefreshing
-                ? undefined
-                : `rotate(${pullProgress * 360}deg)`,
+              transform: isRefreshing ? undefined : `rotate(${pullProgress * 360}deg)`,
               opacity: Math.min(1, pullProgress * 1.5),
             }}
           >

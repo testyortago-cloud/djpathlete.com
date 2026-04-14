@@ -10,15 +10,17 @@ import { createNotification } from "@/lib/db/notifications"
 import { getUserById } from "@/lib/db/users"
 import { sendPerformanceAssessmentSharedEmail } from "@/lib/email"
 
-const exerciseSchema = z.object({
-  exercise_id: z.string().uuid().nullable(),
-  custom_name: z.string().max(200).nullable(),
-  youtube_url: z.string().url().nullable().optional(),
-  admin_notes: z.string().max(2000).nullable().optional(),
-  result_unit: z.string().max(50).nullable().optional(),
-}).refine((d) => d.exercise_id || d.custom_name, {
-  message: "Either exercise_id or custom_name is required",
-})
+const exerciseSchema = z
+  .object({
+    exercise_id: z.string().uuid().nullable(),
+    custom_name: z.string().max(200).nullable(),
+    youtube_url: z.string().url().nullable().optional(),
+    admin_notes: z.string().max(2000).nullable().optional(),
+    result_unit: z.string().max(50).nullable().optional(),
+  })
+  .refine((d) => d.exercise_id || d.custom_name, {
+    message: "Either exercise_id or custom_name is required",
+  })
 
 const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
 
@@ -40,10 +42,7 @@ export async function GET() {
     return NextResponse.json(assessments)
   } catch (error) {
     console.error("Admin performance assessments GET error:", error)
-    return NextResponse.json(
-      { error: "Failed to fetch assessments" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to fetch assessments" }, { status: 500 })
   }
 }
 
@@ -59,10 +58,7 @@ export async function POST(request: Request) {
     if (!parsed.success) {
       console.error("[assessment-create] Validation error:", JSON.stringify(parsed.error.flatten(), null, 2))
       console.error("[assessment-create] Body:", JSON.stringify(body, null, 2))
-      return NextResponse.json(
-        { error: "Invalid data", details: parsed.error.flatten() },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Invalid data", details: parsed.error.flatten() }, { status: 400 })
     }
 
     const { client_user_id, title, notes, exercises } = parsed.data
@@ -88,15 +84,12 @@ export async function POST(request: Request) {
         result_value: null,
         result_unit: ex.result_unit ?? null,
         order_index: i,
-      }))
+      })),
     )
 
     return NextResponse.json(assessment, { status: 201 })
   } catch (error) {
     console.error("Admin performance assessment POST error:", error)
-    return NextResponse.json(
-      { error: "Failed to create assessment" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to create assessment" }, { status: 500 })
   }
 }

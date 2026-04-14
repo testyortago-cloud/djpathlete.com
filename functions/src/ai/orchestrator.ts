@@ -13,10 +13,21 @@ import type {
 import { callAgent, MODEL_HAIKU, MODEL_OPUS, MODEL_SONNET } from "./anthropic.js"
 import { scoreAndFilterExercises, semanticFilterExercises, filterByInjuredJoints } from "./exercise-filter.js"
 import { estimateTokens } from "./token-utils.js"
-import { profileAnalysisSchema, programSkeletonSchema, exerciseAssignmentSchema, validateSkeletonAgainstAnalysis, validateAssignmentAgainstCeiling } from "./schemas.js"
+import {
+  profileAnalysisSchema,
+  programSkeletonSchema,
+  exerciseAssignmentSchema,
+  validateSkeletonAgainstAnalysis,
+  validateAssignmentAgainstCeiling,
+} from "./schemas.js"
 import { PROFILE_ANALYZER_PROMPT, PROGRAM_ARCHITECT_PROMPT, EXERCISE_SELECTOR_PROMPT } from "./prompts.js"
 import { validateProgram } from "./validate.js"
-import { filterByDifficultyScore, filterByDifficultyLevel, filterByProgressionPhase, formatExerciseLibrary } from "./exercise-context.js"
+import {
+  filterByDifficultyScore,
+  filterByDifficultyLevel,
+  filterByProgressionPhase,
+  formatExerciseLibrary,
+} from "./exercise-context.js"
 import { getCoachRecentUsageFromFn, getClientRecentUsageFromFn, recordUsageFromFn } from "./usage-history.js"
 import { getCoachPolicyFromFn, formatCoachPolicyAsInstructions } from "./coach-policy.js"
 import { getExercisesForAI } from "./program-chat-tools.js"
@@ -86,11 +97,16 @@ function deriveProgramCategory(goals: string[]): ProgramCategory {
 
 function mapDifficulty(experienceLevel: string | null): ProgramDifficulty {
   switch (experienceLevel) {
-    case "beginner": return "beginner"
-    case "intermediate": return "intermediate"
-    case "advanced": return "advanced"
-    case "elite": return "elite"
-    default: return "beginner"
+    case "beginner":
+      return "beginner"
+    case "intermediate":
+      return "intermediate"
+    case "advanced":
+      return "advanced"
+    case "elite":
+      return "elite"
+    default:
+      return "beginner"
   }
 }
 
@@ -153,7 +169,7 @@ export async function generateProgramSync(
   assessmentContext?: AssessmentContext,
   existingLogId?: string,
   firebaseJobId?: string,
-  onProgress?: PipelineProgressCallback
+  onProgress?: PipelineProgressCallback,
 ): Promise<OrchestrationResult> {
   console.log("[orchestrator:sync] Starting generateProgramSync", {
     client_id: request.client_id ?? "none",
@@ -177,10 +193,12 @@ export async function generateProgramSync(
     await updateGenerationLog(existingLogId, {
       status: "generating",
       current_step: 0,
-      ...(assessmentContext ? {
-        generation_trigger: assessmentContext.generationTrigger,
-        assessment_result_id: assessmentContext.assessmentResultId,
-      } : {}),
+      ...(assessmentContext
+        ? {
+            generation_trigger: assessmentContext.generationTrigger,
+            assessment_result_id: assessmentContext.assessmentResultId,
+          }
+        : {}),
     })
     log = { id: existingLogId }
     console.log("[orchestrator:sync] Using existing generation log:", log.id)
@@ -200,10 +218,12 @@ export async function generateProgramSync(
       completed_at: null,
       current_step: 0,
       total_steps: 3,
-      ...(assessmentContext ? {
-        generation_trigger: assessmentContext.generationTrigger,
-        assessment_result_id: assessmentContext.assessmentResultId,
-      } : {}),
+      ...(assessmentContext
+        ? {
+            generation_trigger: assessmentContext.generationTrigger,
+            assessment_result_id: assessmentContext.assessmentResultId,
+          }
+        : {}),
     }
     try {
       log = await createGenerationLog(logParams)
@@ -230,7 +250,9 @@ export async function generateProgramSync(
       try {
         const user = await getUserById(request.client_id)
         clientName = `${user.first_name} ${user.last_name}`.trim()
-      } catch { clientName = "Client" }
+      } catch {
+        clientName = "Client"
+      }
     }
 
     let age: number | null = null
@@ -241,23 +263,36 @@ export async function generateProgramSync(
 
     const profileContext = profile
       ? JSON.stringify({
-          goals: profile.goals, sport: profile.sport, gender: profile.gender, age,
-          date_of_birth: profile.date_of_birth, experience_level: profile.experience_level,
-          movement_confidence: profile.movement_confidence, sleep_hours: profile.sleep_hours,
-          stress_level: profile.stress_level, occupation_activity_level: profile.occupation_activity_level,
-          training_years: profile.training_years, injuries: profile.injuries,
-          injury_details: profile.injury_details, available_equipment: profile.available_equipment,
+          goals: profile.goals,
+          sport: profile.sport,
+          gender: profile.gender,
+          age,
+          date_of_birth: profile.date_of_birth,
+          experience_level: profile.experience_level,
+          movement_confidence: profile.movement_confidence,
+          sleep_hours: profile.sleep_hours,
+          stress_level: profile.stress_level,
+          occupation_activity_level: profile.occupation_activity_level,
+          training_years: profile.training_years,
+          injuries: profile.injuries,
+          injury_details: profile.injury_details,
+          available_equipment: profile.available_equipment,
           preferred_session_minutes: profile.preferred_session_minutes,
           preferred_training_days: profile.preferred_training_days,
           preferred_day_names: profile.preferred_day_names,
           preferred_techniques: profile.preferred_techniques,
           time_efficiency_preference: profile.time_efficiency_preference,
-          height_cm: profile.height_cm, weight_kg: profile.weight_kg,
-          exercise_likes: profile.exercise_likes, exercise_dislikes: profile.exercise_dislikes,
-          training_background: profile.training_background, additional_notes: profile.additional_notes,
+          height_cm: profile.height_cm,
+          weight_kg: profile.weight_kg,
+          exercise_likes: profile.exercise_likes,
+          exercise_dislikes: profile.exercise_dislikes,
+          training_background: profile.training_background,
+          additional_notes: profile.additional_notes,
         })
       : request.ignore_profile
-        ? JSON.stringify({ note: "Coach has opted to ignore the client profile. Rely entirely on the training request parameters and coach instructions below. Do NOT assume any client-specific constraints — treat this as a coach-directed program." })
+        ? JSON.stringify({
+            note: "Coach has opted to ignore the client profile. Rely entirely on the training request parameters and coach instructions below. Do NOT assume any client-specific constraints — treat this as a coach-directed program.",
+          })
         : JSON.stringify({ note: "No profile found — use defaults for a general fitness client." })
 
     const assessmentSection = assessmentContext
@@ -282,32 +317,71 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
 
     // RAG
     const ragQuery = `${request.goals.join(", ")} ${request.duration_weeks}wk ${request.sessions_per_week}x/wk ${profile?.experience_level ?? "beginner"}`
-    const ragResults = await retrieveSimilarContext(ragQuery, "program_generation", { threshold: 0.5, limit: 2 }).catch(() => [])
+    const ragResults = await retrieveSimilarContext(ragQuery, "program_generation", { threshold: 0.5, limit: 2 }).catch(
+      () => [],
+    )
     const ragContext = formatRagContext(ragResults)
-    const augmentedAgent1Prompt = ragContext ? buildRagAugmentedPrompt(PROFILE_ANALYZER_PROMPT, ragContext) : PROFILE_ANALYZER_PROMPT
+    const augmentedAgent1Prompt = ragContext
+      ? buildRagAugmentedPrompt(PROFILE_ANALYZER_PROMPT, ragContext)
+      : PROFILE_ANALYZER_PROMPT
 
     // Agent 1 + exercise fetch in parallel
     await updateJobProgress("analyzing_profile", 1, "Analyzing client profile & fetching exercises")
     await onProgress?.("Analyzing client profile", 1, 5)
     console.log("[orchestrator:sync] Running Agent 1 + exercise fetch...")
     const [agent1Result, allExercises, coachUsage, clientUsage] = await Promise.all([
-      callAgent<ProfileAnalysis>(augmentedAgent1Prompt, agent1UserMessage, profileAnalysisSchema, { model: MODEL_SONNET, cacheSystemPrompt: true }),
+      callAgent<ProfileAnalysis>(augmentedAgent1Prompt, agent1UserMessage, profileAnalysisSchema, {
+        model: MODEL_SONNET,
+        cacheSystemPrompt: true,
+      }),
       getExercisesForAI(),
-      getCoachRecentUsageFromFn(requestedBy, 60).catch((e) => { console.warn("[orchestrator:sync] coach usage fetch failed:", e instanceof Error ? e.message : e); return new Map<string, number>() }),
-      request.client_id ? getClientRecentUsageFromFn(request.client_id, 90).catch((e) => { console.warn("[orchestrator:sync] client usage fetch failed:", e instanceof Error ? e.message : e); return new Map<string, number>() }) : Promise.resolve(new Map<string, number>()),
+      getCoachRecentUsageFromFn(requestedBy, 60).catch((e) => {
+        console.warn("[orchestrator:sync] coach usage fetch failed:", e instanceof Error ? e.message : e)
+        return new Map<string, number>()
+      }),
+      request.client_id
+        ? getClientRecentUsageFromFn(request.client_id, 90).catch((e) => {
+            console.warn("[orchestrator:sync] client usage fetch failed:", e instanceof Error ? e.message : e)
+            return new Map<string, number>()
+          })
+        : Promise.resolve(new Map<string, number>()),
     ])
     tokenUsage.agent1 = agent1Result.tokens_used
-    console.log(`[orchestrator:sync] Agent 1 complete. Tokens: ${agent1Result.tokens_used}. Exercises: ${allExercises.length}. Coach policy: ${coachPolicy ? "loaded" : "none"}. Usage — coach: ${coachUsage.size}, client: ${clientUsage.size}.`)
+    console.log(
+      `[orchestrator:sync] Agent 1 complete. Tokens: ${agent1Result.tokens_used}. Exercises: ${allExercises.length}. Coach policy: ${coachPolicy ? "loaded" : "none"}. Usage — coach: ${coachUsage.size}, client: ${clientUsage.size}.`,
+    )
 
     // Save conversation (fire-and-forget)
     const genSessionId = `gen-${log.id}`
     saveConversationBatch([
-      { user_id: requestedBy, feature: "program_generation", session_id: genSessionId, role: "user", content: agent1UserMessage, metadata: { step: 1, log_id: log.id, client_id: request.client_id }, tokens_input: null, tokens_output: null, model_used: null },
-      { user_id: requestedBy, feature: "program_generation", session_id: genSessionId, role: "assistant", content: JSON.stringify(agent1Result.content), metadata: { step: 1, log_id: log.id, model: MODEL_SONNET }, tokens_input: null, tokens_output: agent1Result.tokens_used, model_used: MODEL_SONNET },
-    ]).then((saved) => {
-      const assistantMsg = saved.find((m: Record<string, unknown>) => m.role === "assistant")
-      if (assistantMsg) embedConversationMessage(assistantMsg.id).catch(() => {})
-    }).catch(() => {})
+      {
+        user_id: requestedBy,
+        feature: "program_generation",
+        session_id: genSessionId,
+        role: "user",
+        content: agent1UserMessage,
+        metadata: { step: 1, log_id: log.id, client_id: request.client_id },
+        tokens_input: null,
+        tokens_output: null,
+        model_used: null,
+      },
+      {
+        user_id: requestedBy,
+        feature: "program_generation",
+        session_id: genSessionId,
+        role: "assistant",
+        content: JSON.stringify(agent1Result.content),
+        metadata: { step: 1, log_id: log.id, model: MODEL_SONNET },
+        tokens_input: null,
+        tokens_output: agent1Result.tokens_used,
+        model_used: MODEL_SONNET,
+      },
+    ])
+      .then((saved) => {
+        const assistantMsg = saved.find((m: Record<string, unknown>) => m.role === "assistant")
+        if (assistantMsg) embedConversationMessage(assistantMsg.id).catch(() => {})
+      })
+      .catch(() => {})
 
     const analysis = agent1Result.content
     const allCompressed = allExercises // already compressed from getExercisesForAI
@@ -329,13 +403,18 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     if (injuredJoints.length > 0) {
       const beforeCount = compressed.length
       compressed = filterByInjuredJoints(compressed, injuredJoints)
-      console.log(`[orchestrator:sync] Joint injury filter: ${beforeCount} → ${compressed.length} (excluded high-load on: ${injuredJoints.join(", ")})`)
+      console.log(
+        `[orchestrator:sync] Joint injury filter: ${beforeCount} → ${compressed.length} (excluded high-load on: ${injuredJoints.join(", ")})`,
+      )
     }
 
-    console.log(`[orchestrator:sync] Exercise filtering: ${allCompressed.length} total → ${compressed.length} after all filters (level: ${clientDifficultyLevel})${poolActive ? ` [pool: ${poolIds!.length}]` : ""}`)
+    console.log(
+      `[orchestrator:sync] Exercise filtering: ${allCompressed.length} total → ${compressed.length} after all filters (level: ${clientDifficultyLevel})${poolActive ? ` [pool: ${poolIds!.length}]` : ""}`,
+    )
 
     if (request.split_type) analysis.recommended_split = request.split_type as typeof analysis.recommended_split
-    if (request.periodization) analysis.recommended_periodization = request.periodization as typeof analysis.recommended_periodization
+    if (request.periodization)
+      analysis.recommended_periodization = request.periodization as typeof analysis.recommended_periodization
 
     await updateJobProgress("profile_complete", 2, `Profile analyzed — ${compressed.length} exercises available`)
 
@@ -343,7 +422,13 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     if (await checkCancelled()) {
       console.log("[orchestrator:sync] Job cancelled by user before Agent 2")
       await updateGenerationLog(log.id, { status: "cancelled", duration_ms: Date.now() - startTime })
-      return { program_id: "", validation: { pass: false, issues: [], summary: "Cancelled" }, token_usage: tokenUsage, duration_ms: Date.now() - startTime, retries: 0 }
+      return {
+        program_id: "",
+        validation: { pass: false, issues: [], summary: "Cancelled" },
+        token_usage: tokenUsage,
+        duration_ms: Date.now() - startTime,
+        retries: 0,
+      }
     }
 
     // Agent 2
@@ -352,7 +437,12 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     const agent2UserMessage = `Profile Analysis:\n${JSON.stringify(analysis)}\n\nTraining Parameters:\n- Duration: ${request.duration_weeks} weeks\n- Sessions per week: ${request.sessions_per_week}\n- Session length: ${request.session_minutes ?? 60} minutes\n- Split type: ${analysis.recommended_split}\n- Periodization: ${analysis.recommended_periodization}\n- Goals: ${request.goals.join(", ")}${coachInstructionsSection}`
 
     console.log("[orchestrator:sync] Running Agent 2 (program architect)...")
-    const agent2Result = await callAgent<ProgramSkeleton>(PROGRAM_ARCHITECT_PROMPT, agent2UserMessage, programSkeletonSchema, { model: MODEL_OPUS, cacheSystemPrompt: true })
+    const agent2Result = await callAgent<ProgramSkeleton>(
+      PROGRAM_ARCHITECT_PROMPT,
+      agent2UserMessage,
+      programSkeletonSchema,
+      { model: MODEL_OPUS, cacheSystemPrompt: true },
+    )
     tokenUsage.agent2 = agent2Result.tokens_used
     const skeleton = agent2Result.content
     // Backfill total_sessions if the AI omitted it or returned 0
@@ -362,15 +452,41 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     console.log("[orchestrator:sync] Agent 2 complete. Tokens:", agent2Result.tokens_used)
 
     saveConversationBatch([
-      { user_id: requestedBy, feature: "program_generation", session_id: genSessionId, role: "user", content: agent2UserMessage, metadata: { step: 2, log_id: log.id }, tokens_input: null, tokens_output: null, model_used: null },
-      { user_id: requestedBy, feature: "program_generation", session_id: genSessionId, role: "assistant", content: JSON.stringify(agent2Result.content), metadata: { step: 2, log_id: log.id }, tokens_input: null, tokens_output: agent2Result.tokens_used, model_used: MODEL_OPUS },
-    ]).then((saved) => {
-      const assistantMsg = saved.find((m: Record<string, unknown>) => m.role === "assistant")
-      if (assistantMsg) embedConversationMessage(assistantMsg.id).catch(() => {})
-    }).catch(() => {})
+      {
+        user_id: requestedBy,
+        feature: "program_generation",
+        session_id: genSessionId,
+        role: "user",
+        content: agent2UserMessage,
+        metadata: { step: 2, log_id: log.id },
+        tokens_input: null,
+        tokens_output: null,
+        model_used: null,
+      },
+      {
+        user_id: requestedBy,
+        feature: "program_generation",
+        session_id: genSessionId,
+        role: "assistant",
+        content: JSON.stringify(agent2Result.content),
+        metadata: { step: 2, log_id: log.id },
+        tokens_input: null,
+        tokens_output: agent2Result.tokens_used,
+        model_used: MODEL_OPUS,
+      },
+    ])
+      .then((saved) => {
+        const assistantMsg = saved.find((m: Record<string, unknown>) => m.role === "assistant")
+        if (assistantMsg) embedConversationMessage(assistantMsg.id).catch(() => {})
+      })
+      .catch(() => {})
 
     const totalSlots = skeleton.weeks.reduce((sum, w) => sum + w.days.reduce((ds, d) => ds + d.slots.length, 0), 0)
-    await updateJobProgress("structure_complete", 4, `${skeleton.weeks.length} weeks × ${skeleton.weeks[0]?.days.length ?? 0} days — ${totalSlots} exercise slots`)
+    await updateJobProgress(
+      "structure_complete",
+      4,
+      `${skeleton.weeks.length} weeks × ${skeleton.weeks[0]?.days.length ?? 0} days — ${totalSlots} exercise slots`,
+    )
 
     // Pre-filter exercises
     const availableEquipment = request.equipment_override ?? profile?.available_equipment ?? []
@@ -381,21 +497,46 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     })
 
     let filtered: CompressedExercise[]
-    try { filtered = await semanticFilterExercises(compressed, skeleton, availableEquipment, analysis, { poolActive, coachUsage, clientUsage }) }
-    catch { filtered = scoreAndFilterExercises(compressed, skeleton, availableEquipment, analysis, { poolActive, coachUsage, clientUsage }) }
+    try {
+      filtered = await semanticFilterExercises(compressed, skeleton, availableEquipment, analysis, {
+        poolActive,
+        coachUsage,
+        clientUsage,
+      })
+    } catch {
+      filtered = scoreAndFilterExercises(compressed, skeleton, availableEquipment, analysis, {
+        poolActive,
+        coachUsage,
+        clientUsage,
+      })
+    }
     const poolNote = buildPoolNote(poolIds, filtered.length)
 
     // Check cancellation before Agent 3
     if (await checkCancelled()) {
       console.log("[orchestrator:sync] Job cancelled by user before Agent 3")
       await updateGenerationLog(log.id, { status: "cancelled", duration_ms: Date.now() - startTime })
-      return { program_id: "", validation: { pass: false, issues: [], summary: "Cancelled" }, token_usage: tokenUsage, duration_ms: Date.now() - startTime, retries: 0 }
+      return {
+        program_id: "",
+        validation: { pass: false, issues: [], summary: "Cancelled" },
+        token_usage: tokenUsage,
+        duration_ms: Date.now() - startTime,
+        retries: 0,
+      }
     }
 
     // ─── Week-by-Week Agent 3 with Dedup Verification ──────────────────────
-    await updateJobProgress("selecting_exercises", 5, `Selecting exercises week-by-week for ${totalSlots} slots across ${skeleton.weeks.length} weeks`)
+    await updateJobProgress(
+      "selecting_exercises",
+      5,
+      `Selecting exercises week-by-week for ${totalSlots} slots across ${skeleton.weeks.length} weeks`,
+    )
     await onProgress?.("Selecting exercises", 3, 5, `0/${skeleton.weeks.length} weeks`)
-    console.log("[orchestrator:sync] Running Agent 3 (exercise selection) week-by-week with", filtered.length, "filtered exercises...")
+    console.log(
+      "[orchestrator:sync] Running Agent 3 (exercise selection) week-by-week with",
+      filtered.length,
+      "filtered exercises...",
+    )
     const completedWeeksSync: WeekAssignment[] = []
     const clientDifficultySync = profile?.experience_level ?? "beginner"
 
@@ -417,7 +558,9 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
       }
 
       const weekTotalSlots = weekSkeleton.days.reduce((sum, d) => sum + d.slots.length, 0)
-      console.log(`[orchestrator:sync] Week ${weekNum}/${skeleton.weeks.length} (${weekTotalSlots} slots, ${completedWeeksSync.length} prior weeks)`)
+      console.log(
+        `[orchestrator:sync] Week ${weekNum}/${skeleton.weeks.length} (${weekTotalSlots} slots, ${completedWeeksSync.length} prior weeks)`,
+      )
 
       // Per-week progression filter — tightens library for early weeks
       const thisWeekLibrary = filterByProgressionPhase(filtered, clientDifficultySync, weekNum)
@@ -427,7 +570,13 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
       if (await checkCancelled()) {
         console.log("[orchestrator:sync] Job cancelled by user during week-by-week generation")
         await updateGenerationLog(log.id, { status: "cancelled", duration_ms: Date.now() - startTime })
-        return { program_id: "", validation: { pass: false, issues: [], summary: "Cancelled" }, token_usage: tokenUsage, duration_ms: Date.now() - startTime, retries: 0 }
+        return {
+          program_id: "",
+          validation: { pass: false, issues: [], summary: "Cancelled" },
+          token_usage: tokenUsage,
+          duration_ms: Date.now() - startTime,
+          retries: 0,
+        }
       }
 
       let weekAssignment: ExerciseAssignment | null = null
@@ -445,7 +594,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
           const dedupResult = verifyWeekDiversity(
             { week_number: weekNum, assignments: weekAssignment.assignments },
             completedWeeksSync,
-            skeleton.weeks
+            skeleton.weeks,
           )
           if (!dedupResult.pass) {
             const repetitionIssues = dedupResult.issues
@@ -464,7 +613,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
             EXERCISE_SELECTOR_PROMPT,
             agent3UserMessage,
             exerciseAssignmentSchema,
-            { cacheSystemPrompt: true }
+            { cacheSystemPrompt: true },
           )
           tokenUsage.agent3 += agent3Result.tokens_used
           weekAssignment = agent3Result.content
@@ -487,14 +636,14 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
             compressed,
             availableEquipment,
             clientDifficultySync,
-            assessmentContext?.maxDifficultyScore
+            assessmentContext?.maxDifficultyScore,
           )
 
           // Dedup verification against prior weeks
           const dedupResult = verifyWeekDiversity(
             { week_number: weekNum, assignments: weekAssignment.assignments },
             completedWeeksSync,
-            skeleton.weeks
+            skeleton.weeks,
           )
           console.log(`[orchestrator:sync] Week ${weekNum} dedup: ${dedupResult.summary}`)
 
@@ -511,7 +660,10 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
           }
 
           // Technique plan validation (Agent 2 output check)
-          const skelCheck = validateSkeletonAgainstAnalysis(weekSkeletonPayload as unknown as Parameters<typeof validateSkeletonAgainstAnalysis>[0], analysis as unknown as Parameters<typeof validateSkeletonAgainstAnalysis>[1])
+          const skelCheck = validateSkeletonAgainstAnalysis(
+            weekSkeletonPayload as unknown as Parameters<typeof validateSkeletonAgainstAnalysis>[0],
+            analysis as unknown as Parameters<typeof validateSkeletonAgainstAnalysis>[1],
+          )
           if (!skelCheck.ok) {
             for (const v of skelCheck.violations) {
               weekValidation.issues.push({ type: "error", category: "technique_plan_violation", message: v })
@@ -527,7 +679,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
               weekAssignment,
               analysis.difficulty_ceiling,
               slotInWeek,
-              compressed.map((e) => ({ id: e.id, difficulty: e.difficulty, difficulty_score: e.difficulty_score }))
+              compressed.map((e) => ({ id: e.id, difficulty: e.difficulty, difficulty_score: e.difficulty_score })),
             )
             if (!ceilingCheck.ok) {
               for (const v of ceilingCheck.violations) {
@@ -537,18 +689,26 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
             }
           }
 
-          const errors = weekValidation.issues.filter(i => i.type === "error")
+          const errors = weekValidation.issues.filter((i) => i.type === "error")
           if (errors.length > 0) {
-            console.log(`[orchestrator:sync] Week ${weekNum} errors:`, errors.map(e => e.message))
+            console.log(
+              `[orchestrator:sync] Week ${weekNum} errors:`,
+              errors.map((e) => e.message),
+            )
           }
 
           if (weekValidation.pass || !weekValidation.issues.some((i) => i.type === "error")) break
           console.log(`[orchestrator:sync] Week ${weekNum} retrying...`)
           retries++
         } catch (agentError) {
-          console.error(`[orchestrator:sync] Week ${weekNum} attempt ${attempt + 1} error:`, agentError instanceof Error ? agentError.message : agentError)
+          console.error(
+            `[orchestrator:sync] Week ${weekNum} attempt ${attempt + 1} error:`,
+            agentError instanceof Error ? agentError.message : agentError,
+          )
           if (attempt === MAX_RETRIES) {
-            throw new Error(`Exercise selection failed for week ${weekNum} after ${MAX_RETRIES + 1} attempts: ${agentError instanceof Error ? agentError.message : "Unknown error"}`)
+            throw new Error(
+              `Exercise selection failed for week ${weekNum} after ${MAX_RETRIES + 1} attempts: ${agentError instanceof Error ? agentError.message : "Unknown error"}`,
+            )
           }
           retries++
         }
@@ -559,7 +719,11 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
       completedWeeksSync.push({ week_number: weekNum, assignments: weekAssignment.assignments })
       console.log(`[orchestrator:sync] Week ${weekNum} complete`)
 
-      await updateJobProgress("selecting_exercises", 5, `Week ${weekNum}/${skeleton.weeks.length} done — ${completedWeeksSync.reduce((s, w) => s + w.assignments.length, 0)} exercises so far`)
+      await updateJobProgress(
+        "selecting_exercises",
+        5,
+        `Week ${weekNum}/${skeleton.weeks.length} done — ${completedWeeksSync.reduce((s, w) => s + w.assignments.length, 0)} exercises so far`,
+      )
       await onProgress?.("Selecting exercises", 3, 5, `Week ${weekNum}/${skeleton.weeks.length} done`)
     }
 
@@ -572,31 +736,60 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     console.log(`[orchestrator:sync] Full program repetition: ${syncRepetitionReport.summary}`)
 
     // Full-program validation
-    const validation = validateProgram(skeleton, assignment, analysis, compressed, availableEquipment, clientDifficultySync, assessmentContext?.maxDifficultyScore)
+    const validation = validateProgram(
+      skeleton,
+      assignment,
+      analysis,
+      compressed,
+      availableEquipment,
+      clientDifficultySync,
+      assessmentContext?.maxDifficultyScore,
+    )
 
     if (!syncRepetitionReport.pass) {
-      validation.issues.push({ type: "warning", category: "exercise_repetition", message: syncRepetitionReport.summary })
+      validation.issues.push({
+        type: "warning",
+        category: "exercise_repetition",
+        message: syncRepetitionReport.summary,
+      })
     }
 
-    const finalErrors = validation.issues.filter(i => i.type === "error")
-    const finalWarnings = validation.issues.filter(i => i.type === "warning")
-    console.log("[orchestrator:sync] Final validation:", { pass: validation.pass, errors: finalErrors.length, warnings: finalWarnings.length })
+    const finalErrors = validation.issues.filter((i) => i.type === "error")
+    const finalWarnings = validation.issues.filter((i) => i.type === "warning")
+    console.log("[orchestrator:sync] Final validation:", {
+      pass: validation.pass,
+      errors: finalErrors.length,
+      warnings: finalWarnings.length,
+    })
     if (finalErrors.length > 0) {
       console.log("[orchestrator:sync] Validation ERRORS:")
       finalErrors.forEach((e, i) => console.log(`  ${i + 1}. ${e.message}`))
     }
 
-    await updateJobProgress("validated", 6, `${assignment.assignments.length} exercises assigned — ${validation.pass ? "all checks passed" : `${finalWarnings.length} warnings`}`)
-    await onProgress?.("Validating program", 4, 5, `${assignment.assignments.length} exercises — ${validation.pass ? "all checks passed" : `${finalWarnings.length} warnings`}`)
+    await updateJobProgress(
+      "validated",
+      6,
+      `${assignment.assignments.length} exercises assigned — ${validation.pass ? "all checks passed" : `${finalWarnings.length} warnings`}`,
+    )
+    await onProgress?.(
+      "Validating program",
+      4,
+      5,
+      `${assignment.assignments.length} exercises — ${validation.pass ? "all checks passed" : `${finalWarnings.length} warnings`}`,
+    )
 
     // Create program
     const programCategory = deriveProgramCategory(request.goals)
     const programDifficulty = mapDifficulty(profile?.experience_level ?? null)
-    const goalsLabel = request.goals.map((g) => g.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())).join(" & ")
+    const goalsLabel = request.goals
+      .map((g) => g.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()))
+      .join(" & ")
     const splitLabel = skeleton.split_type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
 
     const program = await createProgram({
-      name: request.client_id ? `${clientName}'s ${request.duration_weeks}-Week ${goalsLabel} Program` : `${request.duration_weeks}-Week ${goalsLabel} Program`,
+      name: request.client_id
+        ? `${clientName}'s ${request.duration_weeks}-Week ${goalsLabel} Program`
+        : `${request.duration_weeks}-Week ${goalsLabel} Program`,
       description: `A ${request.duration_weeks}-week ${splitLabel.toLowerCase()} program designed for ${goalsLabel.toLowerCase()}, training ${request.sessions_per_week}x per week. ${skeleton.notes}`,
       category: [programCategory],
       difficulty: programDifficulty,
@@ -607,7 +800,22 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
       periodization: skeleton.periodization,
       is_public: request.is_public ?? false,
       is_ai_generated: true,
-      ai_generation_params: { request, analysis_summary: { split: analysis.recommended_split, periodization: analysis.recommended_periodization, training_age: analysis.training_age_category, constraints_count: analysis.exercise_constraints.length }, validation: { pass: validation.pass, warnings: validation.issues.filter((i) => i.type === "warning").length, errors: validation.issues.filter((i) => i.type === "error").length, issues: validation.issues }, token_usage: tokenUsage },
+      ai_generation_params: {
+        request,
+        analysis_summary: {
+          split: analysis.recommended_split,
+          periodization: analysis.recommended_periodization,
+          training_age: analysis.training_age_category,
+          constraints_count: analysis.exercise_constraints.length,
+        },
+        validation: {
+          pass: validation.pass,
+          warnings: validation.issues.filter((i) => i.type === "warning").length,
+          errors: validation.issues.filter((i) => i.type === "error").length,
+          issues: validation.issues,
+        },
+        token_usage: tokenUsage,
+      },
       is_active: true,
       created_by: requestedBy,
       price_cents: request.price_cents ?? null,
@@ -627,12 +835,19 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     if (request.client_id) {
       try {
         await createAssignment({
-          program_id: program.id, user_id: request.client_id,
-          assigned_by: requestedBy, start_date: new Date().toISOString().split("T")[0],
-          end_date: null, status: "active", notes: "Auto-assigned from AI program generation",
-          current_week: 1, total_weeks: program.duration_weeks ?? null,
+          program_id: program.id,
+          user_id: request.client_id,
+          assigned_by: requestedBy,
+          start_date: new Date().toISOString().split("T")[0],
+          end_date: null,
+          status: "active",
+          notes: "Auto-assigned from AI program generation",
+          current_week: 1,
+          total_weeks: program.duration_weeks ?? null,
         })
-      } catch (e) { console.error("[orchestrator:sync] Failed to auto-assign:", e) }
+      } catch (e) {
+        console.error("[orchestrator:sync] Failed to auto-assign:", e)
+      }
     }
 
     // Update log
@@ -640,10 +855,19 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     tokenUsage.total = tokenUsage.agent1 + tokenUsage.agent2 + tokenUsage.agent3
 
     await updateGenerationLog(log.id, {
-      program_id: program.id, status: "completed",
-      tokens_used: tokenUsage.total, duration_ms: durationMs,
+      program_id: program.id,
+      status: "completed",
+      tokens_used: tokenUsage.total,
+      duration_ms: durationMs,
       completed_at: new Date().toISOString(),
-      output_summary: { program_id: program.id, program_name: program.name, exercises_assigned: assignment.assignments.length, validation_pass: validation.pass, warnings: validation.issues.filter((i) => i.type === "warning").length, retries },
+      output_summary: {
+        program_id: program.id,
+        program_name: program.name,
+        exercises_assigned: assignment.assignments.length,
+        validation_pass: validation.pass,
+        warnings: validation.issues.filter((i) => i.type === "warning").length,
+        retries,
+      },
     })
 
     // Record exercise usage for future variety enforcement (fire-and-forget, never blocks)
@@ -660,14 +884,16 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
           exercise_id: a.exercise_id,
           week_number: w.week_number,
           day_number: slotToDayMap.get(a.slot_id) ?? 1,
-        }))
+        })),
       )
       recordUsageFromFn({
         coach_id: requestedBy,
         client_id: request.client_id ?? null,
         program_id: programId,
         rows: usageRows,
-      }).catch((e) => console.warn("[orchestrator:sync] recordUsage failed (non-blocking):", e instanceof Error ? e.message : e))
+      }).catch((e) =>
+        console.warn("[orchestrator:sync] recordUsage failed (non-blocking):", e instanceof Error ? e.message : e),
+      )
     }
 
     return { program_id: program.id, validation, token_usage: tokenUsage, duration_ms: durationMs, retries }
@@ -678,8 +904,10 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     console.error("[orchestrator:sync] PIPELINE FAILED:", errorMessage)
 
     await updateGenerationLog(log.id, {
-      status: "failed", error_message: errorMessage,
-      tokens_used: tokenUsage.total, duration_ms: durationMs,
+      status: "failed",
+      error_message: errorMessage,
+      tokens_used: tokenUsage.total,
+      duration_ms: durationMs,
     }).catch((e) => console.error("Failed to update generation log:", e))
 
     throw error

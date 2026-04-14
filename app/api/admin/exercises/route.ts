@@ -21,19 +21,14 @@ export async function GET(request: Request) {
     if (search) {
       const lower = search.toLowerCase()
       const filtered = exercises.filter(
-        (ex) =>
-          ex.name.toLowerCase().includes(lower) ||
-          (ex.muscle_group?.toLowerCase().includes(lower) ?? false)
+        (ex) => ex.name.toLowerCase().includes(lower) || (ex.muscle_group?.toLowerCase().includes(lower) ?? false),
       )
       return NextResponse.json(filtered)
     }
 
     return NextResponse.json(exercises)
   } catch {
-    return NextResponse.json(
-      { error: "Failed to fetch exercises." },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to fetch exercises." }, { status: 500 })
   }
 }
 
@@ -45,7 +40,7 @@ export async function POST(request: Request) {
     if (!result.success) {
       return NextResponse.json(
         { error: "Invalid form data", details: result.error.flatten().fieldErrors },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
@@ -58,9 +53,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json(exercise, { status: 201 })
   } catch {
-    return NextResponse.json(
-      { error: "Failed to create exercise. Please try again." },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to create exercise. Please try again." }, { status: 500 })
   }
 }

@@ -29,7 +29,7 @@ export async function getProgress(userId: string, exerciseId?: string) {
 export async function getLatestProgressByExercises(
   userId: string,
   exerciseIds: string[],
-  limit = 5
+  limit = 5,
 ): Promise<Record<string, ExerciseProgress[]>> {
   if (exerciseIds.length === 0) return {}
 
@@ -77,7 +77,9 @@ export async function getWorkoutStreak(userId: string): Promise<number> {
   for (const row of data) {
     if (row.completed_at) {
       const d = new Date(row.completed_at)
-      uniqueDates.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`)
+      uniqueDates.add(
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`,
+      )
     }
   }
 
@@ -125,7 +127,7 @@ export async function getRelatedProgressByPattern(
   userId: string,
   movementPattern: string,
   excludeExerciseId: string,
-  limit = 9
+  limit = 9,
 ) {
   const supabase = getClient()
   const { data, error } = await supabase
@@ -164,15 +166,9 @@ export async function getAllProgress(limit?: number) {
   return data as (ExerciseProgress & { exercises: { name: string } | null })[]
 }
 
-export async function logProgress(
-  progress: Omit<ExerciseProgress, "id" | "created_at">
-) {
+export async function logProgress(progress: Omit<ExerciseProgress, "id" | "created_at">) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("exercise_progress")
-    .insert(progress)
-    .select()
-    .single()
+  const { data, error } = await supabase.from("exercise_progress").insert(progress).select().single()
   if (error) throw error
 
   const result = data as ExerciseProgress

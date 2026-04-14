@@ -58,10 +58,7 @@ export default function ProgressLoading() {
       <div className="bg-white rounded-xl border border-border overflow-hidden">
         <div className="divide-y divide-border">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div
-              key={i}
-              className="px-3 sm:px-4 py-2.5 sm:py-3 flex items-center justify-between gap-3"
-            >
+            <div key={i} className="px-3 sm:px-4 py-2.5 sm:py-3 flex items-center justify-between gap-3">
               <div className="flex-1 min-w-0 space-y-1.5">
                 <div className="h-3 sm:h-4 w-36 bg-muted animate-pulse rounded-md" />
                 <div className="h-2.5 sm:h-3 w-24 bg-muted animate-pulse rounded-md" />

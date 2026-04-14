@@ -29,11 +29,7 @@ export async function listClients() {
 
 export async function lookupClientProfile(clientId: string, clientName: string) {
   const supabase = getSupabase()
-  const { data: profile, error } = await supabase
-    .from("client_profiles")
-    .select("*")
-    .eq("user_id", clientId)
-    .single()
+  const { data: profile, error } = await supabase.from("client_profiles").select("*").eq("user_id", clientId).single()
 
   if (error || !profile) {
     return {
@@ -82,7 +78,9 @@ export async function getExercisesForAI(): Promise<CompressedExercise[]> {
   const supabase = getSupabase()
   const { data: exercises } = await supabase
     .from("exercises")
-    .select("id, name, category, difficulty, difficulty_score, muscle_group, movement_pattern, primary_muscles, secondary_muscles, force_type, laterality, equipment_required, is_bodyweight, training_intent, sport_tags, plane_of_motion, joints_loaded")
+    .select(
+      "id, name, category, difficulty, difficulty_score, muscle_group, movement_pattern, primary_muscles, secondary_muscles, force_type, laterality, equipment_required, is_bodyweight, training_intent, sport_tags, plane_of_motion, joints_loaded",
+    )
     .eq("is_active", true)
     .limit(1000)
 

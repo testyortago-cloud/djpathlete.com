@@ -27,10 +27,7 @@ export function NewsletterList({ newsletters }: NewsletterListProps) {
     if (tab === "Sent" && n.status !== "sent") return false
     if (search) {
       const q = search.toLowerCase()
-      return (
-        n.subject.toLowerCase().includes(q) ||
-        n.preview_text.toLowerCase().includes(q)
-      )
+      return n.subject.toLowerCase().includes(q) || n.preview_text.toLowerCase().includes(q)
     }
     return true
   })
@@ -72,9 +69,7 @@ export function NewsletterList({ newsletters }: NewsletterListProps) {
               onClick={() => setTab(t)}
               className={cn(
                 "px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
-                tab === t
-                  ? "bg-white text-primary shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
+                tab === t ? "bg-white text-primary shadow-sm" : "text-muted-foreground hover:text-foreground",
               )}
             >
               {t}
@@ -120,21 +115,11 @@ export function NewsletterList({ newsletters }: NewsletterListProps) {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-surface/50">
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                    Subject
-                  </th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">
-                    Status
-                  </th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden lg:table-cell">
-                    Sent
-                  </th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden lg:table-cell">
-                    Date
-                  </th>
-                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">
-                    Actions
-                  </th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Subject</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Status</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden lg:table-cell">Sent</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden lg:table-cell">Date</th>
+                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -145,13 +130,9 @@ export function NewsletterList({ newsletters }: NewsletterListProps) {
                   >
                     <td className="px-4 py-3">
                       <div>
-                        <p className="font-medium text-primary line-clamp-1">
-                          {nl.subject}
-                        </p>
+                        <p className="font-medium text-primary line-clamp-1">{nl.subject}</p>
                         {nl.preview_text && (
-                          <p className="text-xs text-muted-foreground line-clamp-1">
-                            {nl.preview_text}
-                          </p>
+                          <p className="text-xs text-muted-foreground line-clamp-1">{nl.preview_text}</p>
                         )}
                       </div>
                     </td>
@@ -159,9 +140,7 @@ export function NewsletterList({ newsletters }: NewsletterListProps) {
                       <span
                         className={cn(
                           "inline-block px-2 py-0.5 rounded-full text-xs font-medium",
-                          nl.status === "sent"
-                            ? "bg-success/10 text-success"
-                            : "bg-warning/10 text-warning"
+                          nl.status === "sent" ? "bg-success/10 text-success" : "bg-warning/10 text-warning",
                         )}
                       >
                         {nl.status === "sent" ? "Sent" : "Draft"}
@@ -182,11 +161,7 @@ export function NewsletterList({ newsletters }: NewsletterListProps) {
                           className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
                           title={nl.status === "sent" ? "View" : "Edit"}
                         >
-                          {nl.status === "sent" ? (
-                            <Eye className="size-4" />
-                          ) : (
-                            <Pencil className="size-4" />
-                          )}
+                          {nl.status === "sent" ? <Eye className="size-4" /> : <Pencil className="size-4" />}
                         </Link>
                         {confirmId === nl.id ? (
                           <div className="flex items-center gap-1">
@@ -195,11 +170,7 @@ export function NewsletterList({ newsletters }: NewsletterListProps) {
                               disabled={deletingId === nl.id}
                               className="px-2 py-1 rounded-md text-xs font-medium bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-50"
                             >
-                              {deletingId === nl.id ? (
-                                <Loader2 className="size-3 animate-spin" />
-                              ) : (
-                                "Delete"
-                              )}
+                              {deletingId === nl.id ? <Loader2 className="size-3 animate-spin" /> : "Delete"}
                             </button>
                             <button
                               onClick={() => setConfirmId(null)}

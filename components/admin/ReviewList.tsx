@@ -3,16 +3,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import {
-  Search,
-  ChevronLeft,
-  ChevronRight,
-  Star,
-  Eye,
-  EyeOff,
-  Trash2,
-  Plus,
-} from "lucide-react"
+import { Search, ChevronLeft, ChevronRight, Star, Eye, EyeOff, Trash2, Plus } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -58,11 +49,7 @@ function StarRating({ rating }: { rating: number }) {
       {Array.from({ length: 5 }, (_, i) => (
         <Star
           key={i}
-          className={`size-3.5 ${
-            i < rating
-              ? "fill-warning text-warning"
-              : "fill-none text-muted-foreground/40"
-          }`}
+          className={`size-3.5 ${i < rating ? "fill-warning text-warning" : "fill-none text-muted-foreground/40"}`}
         />
       ))}
     </span>
@@ -99,9 +86,7 @@ export function ReviewList({ reviews }: ReviewListProps) {
     // Search
     if (search) {
       const q = search.toLowerCase()
-      const userName = review.users
-        ? `${review.users.first_name} ${review.users.last_name}`.toLowerCase()
-        : ""
+      const userName = review.users ? `${review.users.first_name} ${review.users.last_name}`.toLowerCase() : ""
       const comment = review.comment?.toLowerCase() ?? ""
       if (!userName.includes(q) && !comment.includes(q)) return false
     }
@@ -123,11 +108,7 @@ export function ReviewList({ reviews }: ReviewListProps) {
 
       if (!response.ok) throw new Error("Failed to update")
 
-      toast.success(
-        review.is_published
-          ? "Review unpublished"
-          : "Review published"
-      )
+      toast.success(review.is_published ? "Review unpublished" : "Review published")
       router.refresh()
     } catch {
       toast.error("Failed to update review")
@@ -142,12 +123,8 @@ export function ReviewList({ reviews }: ReviewListProps) {
 
     try {
       const isGoogle = deleteTarget.source === "google"
-      const apiId = isGoogle
-        ? deleteTarget.id.replace("google_", "")
-        : deleteTarget.id
-      const url = isGoogle
-        ? `/api/admin/google-reviews/${apiId}`
-        : `/api/admin/reviews/${apiId}`
+      const apiId = isGoogle ? deleteTarget.id.replace("google_", "") : deleteTarget.id
+      const url = isGoogle ? `/api/admin/google-reviews/${apiId}` : `/api/admin/reviews/${apiId}`
 
       const response = await fetch(url, {
         method: "DELETE",
@@ -179,10 +156,7 @@ export function ReviewList({ reviews }: ReviewListProps) {
           heading="No reviews yet"
           description="Client reviews and testimonials will appear here once athletes submit their feedback."
         />
-        <ImportGoogleReviewDialog
-          open={importOpen}
-          onOpenChange={setImportOpen}
-        />
+        <ImportGoogleReviewDialog open={importOpen} onOpenChange={setImportOpen} />
       </div>
     )
   }
@@ -219,17 +193,13 @@ export function ReviewList({ reviews }: ReviewListProps) {
                 setPage(1)
               }}
               className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-colors shrink-0 ${
-                filterTab === tab.key
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-surface"
+                filterTab === tab.key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-surface"
               }`}
             >
               {tab.label}
               <span
                 className={`ml-1 text-[10px] sm:text-xs ${
-                  filterTab === tab.key
-                    ? "text-primary-foreground/70"
-                    : "text-muted-foreground/60"
+                  filterTab === tab.key ? "text-primary-foreground/70" : "text-muted-foreground/60"
                 }`}
               >
                 {tab.count}
@@ -266,27 +236,13 @@ export function ReviewList({ reviews }: ReviewListProps) {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-surface/50">
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                  User
-                </th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                  Rating
-                </th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">
-                  Comment
-                </th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                  Source
-                </th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                  Status
-                </th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden sm:table-cell">
-                  Date
-                </th>
-                <th className="text-right px-4 py-3 font-medium text-muted-foreground">
-                  Actions
-                </th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">User</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Rating</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Comment</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Source</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden sm:table-cell">Date</th>
+                <th className="text-right px-4 py-3 font-medium text-muted-foreground">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -296,17 +252,13 @@ export function ReviewList({ reviews }: ReviewListProps) {
                   className="border-b border-border last:border-b-0 hover:bg-surface/30 transition-colors"
                 >
                   <td className="px-4 py-3 font-medium text-foreground">
-                    {review.users
-                      ? `${review.users.first_name} ${review.users.last_name}`
-                      : "Unknown User"}
+                    {review.users ? `${review.users.first_name} ${review.users.last_name}` : "Unknown User"}
                   </td>
                   <td className="px-4 py-3">
                     <StarRating rating={review.rating} />
                   </td>
                   <td className="px-4 py-3 text-muted-foreground hidden md:table-cell max-w-xs">
-                    <span className="line-clamp-2">
-                      {review.comment || "No comment"}
-                    </span>
+                    <span className="line-clamp-2">{review.comment || "No comment"}</span>
                   </td>
                   <td className="px-4 py-3">
                     {review.source === "google" ? (
@@ -341,17 +293,9 @@ export function ReviewList({ reviews }: ReviewListProps) {
                           size="icon-xs"
                           onClick={() => handleTogglePublish(review)}
                           disabled={togglingId === review.id}
-                          title={
-                            review.is_published
-                              ? "Unpublish review"
-                              : "Publish review"
-                          }
+                          title={review.is_published ? "Unpublish review" : "Publish review"}
                         >
-                          {review.is_published ? (
-                            <EyeOff className="size-3.5" />
-                          ) : (
-                            <Eye className="size-3.5" />
-                          )}
+                          {review.is_published ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
                         </Button>
                       )}
                       <Button
@@ -369,10 +313,7 @@ export function ReviewList({ reviews }: ReviewListProps) {
               ))}
               {paginated.length === 0 && (
                 <tr>
-                  <td
-                    colSpan={7}
-                    className="px-4 py-12 text-center text-muted-foreground"
-                  >
+                  <td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">
                     No reviews found matching your filters.
                   </td>
                 </tr>
@@ -400,12 +341,7 @@ export function ReviewList({ reviews }: ReviewListProps) {
               ))}
             </select>
             <span className="sm:ml-2">
-              {filtered.length === 0
-                ? "0"
-                : `${(page - 1) * perPage + 1}-${Math.min(
-                    page * perPage,
-                    filtered.length
-                  )}`}{" "}
+              {filtered.length === 0 ? "0" : `${(page - 1) * perPage + 1}-${Math.min(page * perPage, filtered.length)}`}{" "}
               of {filtered.length}
             </span>
           </div>
@@ -429,16 +365,12 @@ export function ReviewList({ reviews }: ReviewListProps) {
       </div>
 
       {/* Delete Confirmation Dialog */}
-      <Dialog
-        open={!!deleteTarget}
-        onOpenChange={(open) => !open && setDeleteTarget(null)}
-      >
+      <Dialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete Review</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete the review from{" "}
-              &ldquo;
+              Are you sure you want to delete the review from &ldquo;
               {deleteTarget?.users
                 ? `${deleteTarget.users.first_name} ${deleteTarget.users.last_name}`
                 : "Unknown User"}
@@ -446,28 +378,17 @@ export function ReviewList({ reviews }: ReviewListProps) {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setDeleteTarget(null)}
-              disabled={isDeleting}
-            >
+            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={isDeleting}>
               Cancel
             </Button>
-            <Button
-              variant="destructive"
-              onClick={handleDelete}
-              disabled={isDeleting}
-            >
+            <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
               {isDeleting ? "Deleting..." : "Delete"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <ImportGoogleReviewDialog
-        open={importOpen}
-        onOpenChange={setImportOpen}
-      />
+      <ImportGoogleReviewDialog open={importOpen} onOpenChange={setImportOpen} />
     </div>
   )
 }

@@ -7,19 +7,13 @@ export async function POST(request: NextRequest) {
   try {
     const session = await auth()
     if (!session?.user?.id || session.user.role !== "admin") {
-      return NextResponse.json(
-        { error: "Unauthorized. Admin access required." },
-        { status: 403 }
-      )
+      return NextResponse.json({ error: "Unauthorized. Admin access required." }, { status: 403 })
     }
 
     const body = await request.json()
     const parsed = adminFeedbackSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Invalid request body.", details: parsed.error.issues },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Invalid request body.", details: parsed.error.issues }, { status: 400 })
     }
 
     const feedback = await submitFeedback({
@@ -36,9 +30,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, feedback })
   } catch (error) {
     console.error("[AI Feedback] Error:", error)
-    return NextResponse.json(
-      { error: "Failed to submit feedback." },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to submit feedback." }, { status: 500 })
   }
 }

@@ -13,10 +13,7 @@ export async function GET(request: Request) {
     const exerciseId = searchParams.get("exerciseId")
 
     if (!exerciseId) {
-      return NextResponse.json(
-        { error: "exerciseId is required" },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "exerciseId is required" }, { status: 400 })
     }
 
     const exercise = await getExerciseById(exerciseId)
@@ -30,9 +27,6 @@ export async function GET(request: Request) {
     return NextResponse.json({ linked, similar })
   } catch (error) {
     console.error("[Alternatives] Error:", error)
-    return NextResponse.json(
-      { error: "Failed to fetch alternatives" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to fetch alternatives" }, { status: 500 })
   }
 }

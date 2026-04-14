@@ -20,10 +20,7 @@ export async function PATCH(request: Request) {
     const result = updateSchema.safeParse(body)
 
     if (!result.success) {
-      return NextResponse.json(
-        { error: "Invalid data", details: result.error.flatten().fieldErrors },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Invalid data", details: result.error.flatten().fieldErrors }, { status: 400 })
     }
 
     const booking = await updateBookingStatus(result.data.id, result.data.status, result.data.notes)

@@ -15,10 +15,7 @@ const __dirname = dirname(__filename)
 
 dotenv.config({ path: resolve(__dirname, "../.env.local") })
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
 // ─── Fixed IDs ──────────────────────────────────────────────────────────────
 
@@ -31,33 +28,56 @@ const PROGRAM_FOUNDATION = "00000000-0000-0000-0000-000000000101"
 const PROGRAM_ELITE = "00000000-0000-0000-0000-000000000102"
 const PROGRAM_SPORT = "00000000-0000-0000-0000-000000000103"
 
-
 // ─── Programs ───────────────────────────────────────────────────────────────
 
 const programs = [
   {
     id: PROGRAM_FOUNDATION,
     name: "Foundation Strength Program",
-    description: "Build a solid strength base with compound movements and progressive overload. Perfect for athletes looking to establish fundamental movement patterns.",
-    category: ["strength"], difficulty: "beginner", duration_weeks: 8, sessions_per_week: 3,
-    price_cents: 9900, is_active: true, created_by: ADMIN_ID,
-    split_type: "full_body", periodization: "linear", is_ai_generated: false,
+    description:
+      "Build a solid strength base with compound movements and progressive overload. Perfect for athletes looking to establish fundamental movement patterns.",
+    category: ["strength"],
+    difficulty: "beginner",
+    duration_weeks: 8,
+    sessions_per_week: 3,
+    price_cents: 9900,
+    is_active: true,
+    created_by: ADMIN_ID,
+    split_type: "full_body",
+    periodization: "linear",
+    is_ai_generated: false,
   },
   {
     id: PROGRAM_ELITE,
     name: "Elite Performance Package",
-    description: "Advanced training combining strength, power, and sport-specific conditioning for competitive athletes seeking peak performance.",
-    category: ["strength"], difficulty: "advanced", duration_weeks: 12, sessions_per_week: 5,
-    price_cents: 34900, is_active: true, created_by: ADMIN_ID,
-    split_type: "upper_lower", periodization: "undulating", is_ai_generated: false,
+    description:
+      "Advanced training combining strength, power, and sport-specific conditioning for competitive athletes seeking peak performance.",
+    category: ["strength"],
+    difficulty: "advanced",
+    duration_weeks: 12,
+    sessions_per_week: 5,
+    price_cents: 34900,
+    is_active: true,
+    created_by: ADMIN_ID,
+    split_type: "upper_lower",
+    periodization: "undulating",
+    is_ai_generated: false,
   },
   {
     id: PROGRAM_SPORT,
     name: "Athletic Speed & Power",
-    description: "Sport-specific training focused on explosive power, agility, and speed development. Ideal for team sport athletes.",
-    category: ["power"], difficulty: "intermediate", duration_weeks: 6, sessions_per_week: 4,
-    price_cents: 14900, is_active: true, created_by: ADMIN_ID,
-    split_type: "push_pull", periodization: "block", is_ai_generated: false,
+    description:
+      "Sport-specific training focused on explosive power, agility, and speed development. Ideal for team sport athletes.",
+    category: ["power"],
+    difficulty: "intermediate",
+    duration_weeks: 6,
+    sessions_per_week: 4,
+    price_cents: 14900,
+    is_active: true,
+    created_by: ADMIN_ID,
+    split_type: "push_pull",
+    periodization: "block",
+    is_ai_generated: false,
   },
 ]
 
@@ -76,7 +96,13 @@ const today = new Date().toISOString().slice(0, 10)
 
 const assignments = [
   // Marcus gets Foundation + Sport
-  { program_id: PROGRAM_FOUNDATION, user_id: CLIENT_MARCUS, assigned_by: ADMIN_ID, start_date: today, status: "active" },
+  {
+    program_id: PROGRAM_FOUNDATION,
+    user_id: CLIENT_MARCUS,
+    assigned_by: ADMIN_ID,
+    start_date: today,
+    status: "active",
+  },
   { program_id: PROGRAM_SPORT, user_id: CLIENT_MARCUS, assigned_by: ADMIN_ID, start_date: today, status: "active" },
   // Sarah gets Elite
   { program_id: PROGRAM_ELITE, user_id: CLIENT_SARAH, assigned_by: ADMIN_ID, start_date: today, status: "active" },
@@ -94,13 +120,24 @@ const clientProfiles = [
     sport: "Rugby",
     position: "Flanker",
     experience_level: "intermediate",
-    goals: "Goals: muscle_gain, sport_specific | Training background: 3 years of gym training, 5 years rugby | Likes: compound lifts, sprints | Dislikes: long cardio",
+    goals:
+      "Goals: muscle_gain, sport_specific | Training background: 3 years of gym training, 5 years rugby | Likes: compound lifts, sprints | Dislikes: long cardio",
     injuries: null,
     height_cm: 183,
     weight_kg: 92,
     emergency_contact_name: "Lisa Thompson",
     emergency_contact_phone: "+61 400 111 222",
-    available_equipment: ["barbell", "dumbbells", "squat_rack", "bench", "pull_up_bar", "cable_machine", "kettlebell", "plyo_box", "sled"],
+    available_equipment: [
+      "barbell",
+      "dumbbells",
+      "squat_rack",
+      "bench",
+      "pull_up_bar",
+      "cable_machine",
+      "kettlebell",
+      "plyo_box",
+      "sled",
+    ],
     preferred_session_minutes: 60,
     preferred_training_days: 4,
     injury_details: [],
@@ -113,16 +150,35 @@ const clientProfiles = [
     sport: "CrossFit",
     position: null,
     experience_level: "advanced",
-    goals: "Goals: muscle_gain, endurance | Training background: 6 years CrossFit, competitive regionals | Likes: Olympic lifts, gymnastics | Dislikes: machines",
+    goals:
+      "Goals: muscle_gain, endurance | Training background: 6 years CrossFit, competitive regionals | Likes: Olympic lifts, gymnastics | Dislikes: machines",
     injuries: "Previous left shoulder impingement (resolved)",
     height_cm: 165,
     weight_kg: 63,
     emergency_contact_name: "David Kim",
     emergency_contact_phone: "+61 400 333 444",
-    available_equipment: ["barbell", "dumbbells", "squat_rack", "bench", "pull_up_bar", "kettlebell", "plyo_box", "battle_ropes", "medicine_ball", "sled"],
+    available_equipment: [
+      "barbell",
+      "dumbbells",
+      "squat_rack",
+      "bench",
+      "pull_up_bar",
+      "kettlebell",
+      "plyo_box",
+      "battle_ropes",
+      "medicine_ball",
+      "sled",
+    ],
     preferred_session_minutes: 75,
     preferred_training_days: 5,
-    injury_details: [{ area: "shoulder", side: "left", severity: "mild", notes: "Previous impingement — resolved, avoid heavy overhead volume" }],
+    injury_details: [
+      {
+        area: "shoulder",
+        side: "left",
+        severity: "mild",
+        notes: "Previous impingement — resolved, avoid heavy overhead volume",
+      },
+    ],
     training_years: 6,
   },
   {
@@ -132,7 +188,8 @@ const clientProfiles = [
     sport: "Soccer",
     position: "Midfielder",
     experience_level: "beginner",
-    goals: "Goals: general_health, sport_specific | Training background: 1 year casual gym | Likes: anything | Dislikes: none",
+    goals:
+      "Goals: general_health, sport_specific | Training background: 1 year casual gym | Likes: anything | Dislikes: none",
     injuries: null,
     height_cm: 178,
     weight_kg: 73,
@@ -145,7 +202,6 @@ const clientProfiles = [
     training_years: 1,
   },
 ]
-
 
 // ─── Execute ────────────────────────────────────────────────────────────────
 
@@ -169,12 +225,51 @@ async function seed() {
 
   // 2. Ensure users exist
   console.log("  Upserting users...")
-  const { error: usersErr } = await supabase.from("users").upsert([
-    { id: ADMIN_ID, email: "admin@darrenjpaul.com", password_hash: "$2b$12$WESyL.XRso7rzSEHahgeFuPbXqLl6GsqBKa2RCBiwBkL9Dqi/8kUO", first_name: "Darren", last_name: "Paul", role: "admin", email_verified: true, status: "active" },
-    { id: CLIENT_MARCUS, email: "marcus@test.com", password_hash: "$2b$12$WESyL.XRso7rzSEHahgeFuPbXqLl6GsqBKa2RCBiwBkL9Dqi/8kUO", first_name: "Marcus", last_name: "Thompson", role: "client", email_verified: true, status: "active" },
-    { id: CLIENT_SARAH, email: "sarah@test.com", password_hash: "$2b$12$WESyL.XRso7rzSEHahgeFuPbXqLl6GsqBKa2RCBiwBkL9Dqi/8kUO", first_name: "Sarah", last_name: "Kim", role: "client", email_verified: true, status: "active" },
-    { id: CLIENT_JAMES, email: "james@test.com", password_hash: "$2b$12$WESyL.XRso7rzSEHahgeFuPbXqLl6GsqBKa2RCBiwBkL9Dqi/8kUO", first_name: "James", last_name: "Rodriguez", role: "client", email_verified: true, status: "active" },
-  ], { onConflict: "id" })
+  const { error: usersErr } = await supabase.from("users").upsert(
+    [
+      {
+        id: ADMIN_ID,
+        email: "admin@darrenjpaul.com",
+        password_hash: "$2b$12$WESyL.XRso7rzSEHahgeFuPbXqLl6GsqBKa2RCBiwBkL9Dqi/8kUO",
+        first_name: "Darren",
+        last_name: "Paul",
+        role: "admin",
+        email_verified: true,
+        status: "active",
+      },
+      {
+        id: CLIENT_MARCUS,
+        email: "marcus@test.com",
+        password_hash: "$2b$12$WESyL.XRso7rzSEHahgeFuPbXqLl6GsqBKa2RCBiwBkL9Dqi/8kUO",
+        first_name: "Marcus",
+        last_name: "Thompson",
+        role: "client",
+        email_verified: true,
+        status: "active",
+      },
+      {
+        id: CLIENT_SARAH,
+        email: "sarah@test.com",
+        password_hash: "$2b$12$WESyL.XRso7rzSEHahgeFuPbXqLl6GsqBKa2RCBiwBkL9Dqi/8kUO",
+        first_name: "Sarah",
+        last_name: "Kim",
+        role: "client",
+        email_verified: true,
+        status: "active",
+      },
+      {
+        id: CLIENT_JAMES,
+        email: "james@test.com",
+        password_hash: "$2b$12$WESyL.XRso7rzSEHahgeFuPbXqLl6GsqBKa2RCBiwBkL9Dqi/8kUO",
+        first_name: "James",
+        last_name: "Rodriguez",
+        role: "client",
+        email_verified: true,
+        status: "active",
+      },
+    ],
+    { onConflict: "id" },
+  )
   if (usersErr) throw new Error(`Users: ${usersErr.message}`)
   console.log("  ✓ 4 users (1 admin + 3 clients)\n")
 

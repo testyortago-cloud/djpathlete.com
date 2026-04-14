@@ -12,11 +12,7 @@ import Link from "next/link"
 
 export const metadata = { title: "Assessment Detail | DJP Athlete" }
 
-export default async function ClientPerformanceAssessmentDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>
-}) {
+export default async function ClientPerformanceAssessmentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
   if (!session?.user?.id) redirect("/login")
 
@@ -26,10 +22,7 @@ export default async function ClientPerformanceAssessmentDetailPage({
   let exercises: Awaited<ReturnType<typeof getAssessmentExercises>>
 
   try {
-    ;[assessment, exercises] = await Promise.all([
-      getPerformanceAssessmentById(id),
-      getAssessmentExercises(id),
-    ])
+    ;[assessment, exercises] = await Promise.all([getPerformanceAssessmentById(id), getAssessmentExercises(id)])
   } catch {
     notFound()
   }
@@ -42,9 +35,7 @@ export default async function ClientPerformanceAssessmentDetailPage({
   // Fetch messages for each exercise
   const messagesMap: Record<string, Awaited<ReturnType<typeof getAssessmentMessages>>> = {}
   const messageResults = await Promise.all(
-    exercises.map((ex) =>
-      getAssessmentMessages(ex.id).then((msgs) => ({ exerciseId: ex.id, msgs }))
-    )
+    exercises.map((ex) => getAssessmentMessages(ex.id).then((msgs) => ({ exerciseId: ex.id, msgs }))),
   )
   for (const { exerciseId, msgs } of messageResults) {
     messagesMap[exerciseId] = msgs
@@ -58,8 +49,8 @@ export default async function ClientPerformanceAssessmentDetailPage({
       .map((ex) =>
         getSignedVideoUrl(ex.video_path!)
           .then((url) => ({ exerciseId: ex.id, url }))
-          .catch(() => ({ exerciseId: ex.id, url: null }))
-      )
+          .catch(() => ({ exerciseId: ex.id, url: null })),
+      ),
   )
   for (const { exerciseId, url } of videoResults) {
     if (url) videoUrlsMap[exerciseId] = url

@@ -18,48 +18,51 @@ Source design: [docs/superpowers/specs/2026-04-14-clinics-and-camps-phase-2a-des
 
 **New files:**
 
-| path | responsibility |
-|---|---|
-| `supabase/migrations/00062_create_events.sql` | `events` + `event_signups` tables, indices, CHECK constraints, 2 RPCs |
-| `__tests__/migrations/00062.test.ts` | Integration test for migration: tables exist, RPCs behave atomically |
-| `types/database.ts` (modified) | Add `Event`, `EventSignup`, `EventType`, `EventStatus`, `SignupType`, `SignupStatus` |
-| `lib/validators/events.ts` | Zod schemas for event create/update (discriminated union on `type`) |
-| `lib/validators/event-signups.ts` | Zod schema for signup creation (used in Phase 2b) |
-| `__tests__/lib/validators/events.test.ts` | Validator unit tests |
-| `__tests__/lib/validators/event-signups.test.ts` | Validator unit tests |
-| `lib/db/events.ts` | Event DAL (service-role client, read + write functions) |
-| `lib/db/event-signups.ts` | Signup DAL + RPC wrappers |
-| `__tests__/db/events.test.ts` | DAL integration tests |
-| `__tests__/db/event-signups.test.ts` | DAL integration tests |
-| `lib/event-storage.ts` | Supabase Storage helper for event hero images |
-| `app/api/upload/event-image/route.ts` | Admin-only multipart upload endpoint |
-| `app/api/admin/events/route.ts` | POST (create) |
-| `app/api/admin/events/[id]/route.ts` | PATCH (update), DELETE |
-| `app/api/admin/events/[id]/duplicate/route.ts` | POST (duplicate) |
-| `__tests__/api/admin/events.test.ts` | API route tests |
-| `components/admin/events/EventForm.tsx` | Shared create/edit form component |
-| `components/admin/events/EventList.tsx` | List view with filters |
-| `components/admin/events/EventHeroImageUpload.tsx` | File picker integrated with upload endpoint |
-| `app/(admin)/admin/events/page.tsx` | List page (server component wrapping EventList) |
-| `app/(admin)/admin/events/new/page.tsx` | Create page |
-| `app/(admin)/admin/events/[id]/page.tsx` | Edit page |
-| `app/(admin)/admin/events/loading.tsx` | Loading state (copy pattern from `admin/bookings/page.tsx` — no loading.tsx there, so match `admin/blog/loading.tsx`) |
-| `__tests__/e2e/admin-events.spec.ts` | Playwright smoke test |
+| path                                               | responsibility                                                                                                        |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `supabase/migrations/00062_create_events.sql`      | `events` + `event_signups` tables, indices, CHECK constraints, 2 RPCs                                                 |
+| `__tests__/migrations/00062.test.ts`               | Integration test for migration: tables exist, RPCs behave atomically                                                  |
+| `types/database.ts` (modified)                     | Add `Event`, `EventSignup`, `EventType`, `EventStatus`, `SignupType`, `SignupStatus`                                  |
+| `lib/validators/events.ts`                         | Zod schemas for event create/update (discriminated union on `type`)                                                   |
+| `lib/validators/event-signups.ts`                  | Zod schema for signup creation (used in Phase 2b)                                                                     |
+| `__tests__/lib/validators/events.test.ts`          | Validator unit tests                                                                                                  |
+| `__tests__/lib/validators/event-signups.test.ts`   | Validator unit tests                                                                                                  |
+| `lib/db/events.ts`                                 | Event DAL (service-role client, read + write functions)                                                               |
+| `lib/db/event-signups.ts`                          | Signup DAL + RPC wrappers                                                                                             |
+| `__tests__/db/events.test.ts`                      | DAL integration tests                                                                                                 |
+| `__tests__/db/event-signups.test.ts`               | DAL integration tests                                                                                                 |
+| `lib/event-storage.ts`                             | Supabase Storage helper for event hero images                                                                         |
+| `app/api/upload/event-image/route.ts`              | Admin-only multipart upload endpoint                                                                                  |
+| `app/api/admin/events/route.ts`                    | POST (create)                                                                                                         |
+| `app/api/admin/events/[id]/route.ts`               | PATCH (update), DELETE                                                                                                |
+| `app/api/admin/events/[id]/duplicate/route.ts`     | POST (duplicate)                                                                                                      |
+| `__tests__/api/admin/events.test.ts`               | API route tests                                                                                                       |
+| `components/admin/events/EventForm.tsx`            | Shared create/edit form component                                                                                     |
+| `components/admin/events/EventList.tsx`            | List view with filters                                                                                                |
+| `components/admin/events/EventHeroImageUpload.tsx` | File picker integrated with upload endpoint                                                                           |
+| `app/(admin)/admin/events/page.tsx`                | List page (server component wrapping EventList)                                                                       |
+| `app/(admin)/admin/events/new/page.tsx`            | Create page                                                                                                           |
+| `app/(admin)/admin/events/[id]/page.tsx`           | Edit page                                                                                                             |
+| `app/(admin)/admin/events/loading.tsx`             | Loading state (copy pattern from `admin/bookings/page.tsx` — no loading.tsx there, so match `admin/blog/loading.tsx`) |
+| `__tests__/e2e/admin-events.spec.ts`               | Playwright smoke test                                                                                                 |
 
 **Modified files:**
 
-| path | change |
-|---|---|
-| `types/database.ts` | Add event-related types |
-| `components/admin/AdminSidebar.tsx` | Add "Events" entry in "Business" section, position after "Bookings" |
-| `components/admin/AdminMobileSidebar.tsx` | Mirror the sidebar change for the mobile drawer |
+| path                                      | change                                                              |
+| ----------------------------------------- | ------------------------------------------------------------------- |
+| `types/database.ts`                       | Add event-related types                                             |
+| `components/admin/AdminSidebar.tsx`       | Add "Events" entry in "Business" section, position after "Bookings" |
+| `components/admin/AdminMobileSidebar.tsx` | Mirror the sidebar change for the mobile drawer                     |
 
 ## Reference Snippets (context for implementers)
 
 **DAL pattern** (from `lib/db/bookings.ts`):
+
 ```typescript
 import { createServiceRoleClient } from "@/lib/supabase"
-function getClient() { return createServiceRoleClient() }
+function getClient() {
+  return createServiceRoleClient()
+}
 export async function getBookings(status?: BookingStatus) {
   const supabase = getClient()
   let query = supabase.from("bookings").select("*").order("booking_date", { ascending: false })
@@ -71,6 +74,7 @@ export async function getBookings(status?: BookingStatus) {
 ```
 
 **Admin API route pattern** (from `app/api/admin/programs/route.ts`):
+
 ```typescript
 import { auth } from "@/lib/auth"
 export async function POST(request: Request) {
@@ -81,7 +85,10 @@ export async function POST(request: Request) {
   const body = await request.json()
   const result = createEventSchema.safeParse(body)
   if (!result.success) {
-    return NextResponse.json({ error: "Invalid form data", details: result.error.flatten().fieldErrors }, { status: 400 })
+    return NextResponse.json(
+      { error: "Invalid form data", details: result.error.flatten().fieldErrors },
+      { status: 400 },
+    )
   }
   // ... call DAL, return response
 }
@@ -94,6 +101,7 @@ export async function POST(request: Request) {
 ## Task 1: Migration — create `events` and `event_signups` tables
 
 **Files:**
+
 - Create: `supabase/migrations/00062_create_events.sql`
 
 - [ ] **Step 1: Write the migration file (schema only — RPCs in Task 2)**
@@ -175,6 +183,7 @@ Note: the migration is committed but not yet applied. Task 3 applies it against 
 ## Task 2: Migration — add `confirm_event_signup` and `cancel_event_signup` RPCs
 
 **Files:**
+
 - Modify: `supabase/migrations/00062_create_events.sql` (append)
 
 - [ ] **Step 1: Append RPC functions to the migration**
@@ -295,6 +304,7 @@ No commit in this task — it's an operational step.
 ## Task 4: Migration integration test
 
 **Files:**
+
 - Create: `__tests__/migrations/00062.test.ts`
 
 - [ ] **Step 1: Write the test**
@@ -364,10 +374,7 @@ describe("Migration 00062: events + event_signups + RPCs", () => {
   })
 
   it("event_signups foreign key cascades delete", async () => {
-    const { data } = await supabase
-      .from("event_signups")
-      .select("id")
-      .eq("event_id", eventId)
+    const { data } = await supabase.from("event_signups").select("id").eq("event_id", eventId)
     expect(data?.length).toBe(2)
   })
 
@@ -393,12 +400,24 @@ describe("Migration 00062: events + event_signups + RPCs", () => {
   it("slug uniqueness is enforced", async () => {
     const slug = `dup-${randomUUID()}`
     await supabase.from("events").insert({
-      type: "clinic", slug, title: "a", summary: "a", description: "a",
-      start_date: new Date().toISOString(), location_name: "x", capacity: 1,
+      type: "clinic",
+      slug,
+      title: "a",
+      summary: "a",
+      description: "a",
+      start_date: new Date().toISOString(),
+      location_name: "x",
+      capacity: 1,
     })
     const { error } = await supabase.from("events").insert({
-      type: "clinic", slug, title: "b", summary: "b", description: "b",
-      start_date: new Date().toISOString(), location_name: "x", capacity: 1,
+      type: "clinic",
+      slug,
+      title: "b",
+      summary: "b",
+      description: "b",
+      start_date: new Date().toISOString(),
+      location_name: "x",
+      capacity: 1,
     })
     expect(error).not.toBeNull()
     expect(error?.message.toLowerCase()).toMatch(/duplicate|unique/)
@@ -425,6 +444,7 @@ git commit -m "test(events): migration 00062 integration test"
 ## Task 5: Add event-related types to `types/database.ts`
 
 **Files:**
+
 - Modify: `types/database.ts`
 
 - [ ] **Step 1: Read the existing file**
@@ -507,6 +527,7 @@ git commit -m "feat(events): add Event and EventSignup types"
 ## Task 6: Event validators
 
 **Files:**
+
 - Create: `lib/validators/events.ts`
 - Test: `__tests__/lib/validators/events.test.ts`
 
@@ -679,6 +700,7 @@ git commit -m "feat(events): add event Zod validators with discriminated union"
 ## Task 7: Signup validator
 
 **Files:**
+
 - Create: `lib/validators/event-signups.ts`
 - Test: `__tests__/lib/validators/event-signups.test.ts`
 
@@ -758,6 +780,7 @@ git commit -m "feat(events): add event signup Zod validator"
 ## Task 8: `lib/db/events.ts` — read functions
 
 **Files:**
+
 - Create: `lib/db/events.ts`
 
 - [ ] **Step 1: Write the file with read functions**
@@ -789,9 +812,7 @@ export async function getEvents(filters: EventListFilters = {}): Promise<Event[]
   return (data ?? []) as Event[]
 }
 
-export async function getPublishedEvents(
-  filters: { type?: EventType; from?: Date } = {},
-): Promise<Event[]> {
+export async function getPublishedEvents(filters: { type?: EventType; from?: Date } = {}): Promise<Event[]> {
   const supabase = getClient()
   const from = filters.from ?? new Date()
   let query = supabase
@@ -838,6 +859,7 @@ git commit -m "feat(events): add events DAL read functions"
 ## Task 9: `lib/db/events.ts` — write functions
 
 **Files:**
+
 - Modify: `lib/db/events.ts` (append)
 
 - [ ] **Step 1: Append write functions**
@@ -874,15 +896,9 @@ export async function createEvent(input: CreateEventInput): Promise<Event> {
     age_min: input.age_min ?? null,
     age_max: input.age_max ?? null,
     start_date: input.start_date,
-    end_date:
-      input.type === "clinic"
-        ? computeEndDate("clinic", input.start_date)
-        : input.end_date,
-    session_schedule: input.type === "camp" ? input.session_schedule ?? null : null,
-    price_cents:
-      input.type === "camp" && input.price_dollars != null
-        ? Math.round(input.price_dollars * 100)
-        : null,
+    end_date: input.type === "clinic" ? computeEndDate("clinic", input.start_date) : input.end_date,
+    session_schedule: input.type === "camp" ? (input.session_schedule ?? null) : null,
+    price_cents: input.type === "camp" && input.price_dollars != null ? Math.round(input.price_dollars * 100) : null,
   }
   const { data, error } = await supabase.from("events").insert(base).select().single()
   if (error) throw error
@@ -960,6 +976,7 @@ git commit -m "feat(events): add events DAL write + status transition functions"
 ## Task 10: DAL tests for `lib/db/events.ts`
 
 **Files:**
+
 - Create: `__tests__/db/events.test.ts`
 
 - [ ] **Step 1: Write integration tests**
@@ -1016,33 +1033,61 @@ describe("events DAL", () => {
   it("rejects duplicate slugs", async () => {
     const slug = `dup-${randomUUID()}`
     const event = await createEvent({
-      type: "clinic", slug, title: "T", summary: "S", description: "D",
-      focus_areas: [], start_date: new Date(Date.now() + 86400000).toISOString(),
-      location_name: "L", capacity: 5, status: "draft",
+      type: "clinic",
+      slug,
+      title: "T",
+      summary: "S",
+      description: "D",
+      focus_areas: [],
+      start_date: new Date(Date.now() + 86400000).toISOString(),
+      location_name: "L",
+      capacity: 5,
+      status: "draft",
     })
     createdIds.push(event.id)
 
     await expect(
       createEvent({
-        type: "clinic", slug, title: "T2", summary: "S", description: "D",
-        focus_areas: [], start_date: new Date(Date.now() + 86400000).toISOString(),
-        location_name: "L", capacity: 5, status: "draft",
+        type: "clinic",
+        slug,
+        title: "T2",
+        summary: "S",
+        description: "D",
+        focus_areas: [],
+        start_date: new Date(Date.now() + 86400000).toISOString(),
+        location_name: "L",
+        capacity: 5,
+        status: "draft",
       }),
     ).rejects.toThrow()
   })
 
   it("getPublishedEvents returns only published + upcoming", async () => {
     const draft = await createEvent({
-      type: "clinic", slug: `draft-${randomUUID()}`, title: "D", summary: "S", description: "D",
-      focus_areas: [], start_date: new Date(Date.now() + 86400000).toISOString(),
-      location_name: "L", capacity: 5, status: "draft",
+      type: "clinic",
+      slug: `draft-${randomUUID()}`,
+      title: "D",
+      summary: "S",
+      description: "D",
+      focus_areas: [],
+      start_date: new Date(Date.now() + 86400000).toISOString(),
+      location_name: "L",
+      capacity: 5,
+      status: "draft",
     })
     createdIds.push(draft.id)
 
     const published = await createEvent({
-      type: "clinic", slug: `pub-${randomUUID()}`, title: "P", summary: "S", description: "D",
-      focus_areas: [], start_date: new Date(Date.now() + 86400000).toISOString(),
-      location_name: "L", capacity: 5, status: "published",
+      type: "clinic",
+      slug: `pub-${randomUUID()}`,
+      title: "P",
+      summary: "S",
+      description: "D",
+      focus_areas: [],
+      start_date: new Date(Date.now() + 86400000).toISOString(),
+      location_name: "L",
+      capacity: 5,
+      status: "published",
     })
     createdIds.push(published.id)
 
@@ -1053,9 +1098,16 @@ describe("events DAL", () => {
 
   it("setEventStatus enforces allowed transitions", async () => {
     const event = await createEvent({
-      type: "clinic", slug: `trans-${randomUUID()}`, title: "T", summary: "S", description: "D",
-      focus_areas: [], start_date: new Date(Date.now() + 86400000).toISOString(),
-      location_name: "L", capacity: 5, status: "draft",
+      type: "clinic",
+      slug: `trans-${randomUUID()}`,
+      title: "T",
+      summary: "S",
+      description: "D",
+      focus_areas: [],
+      start_date: new Date(Date.now() + 86400000).toISOString(),
+      location_name: "L",
+      capacity: 5,
+      status: "draft",
     })
     createdIds.push(event.id)
 
@@ -1065,9 +1117,16 @@ describe("events DAL", () => {
 
   it("deleteEvent rejects non-draft", async () => {
     const event = await createEvent({
-      type: "clinic", slug: `del-${randomUUID()}`, title: "T", summary: "S", description: "D",
-      focus_areas: [], start_date: new Date(Date.now() + 86400000).toISOString(),
-      location_name: "L", capacity: 5, status: "published",
+      type: "clinic",
+      slug: `del-${randomUUID()}`,
+      title: "T",
+      summary: "S",
+      description: "D",
+      focus_areas: [],
+      start_date: new Date(Date.now() + 86400000).toISOString(),
+      location_name: "L",
+      capacity: 5,
+      status: "published",
     })
     createdIds.push(event.id)
     await expect(deleteEvent(event.id)).rejects.toThrow()
@@ -1077,10 +1136,15 @@ describe("events DAL", () => {
     const event = await createEvent({
       type: "camp",
       slug: `camp-${randomUUID()}`,
-      title: "C", summary: "S", description: "D", focus_areas: [],
+      title: "C",
+      summary: "S",
+      description: "D",
+      focus_areas: [],
       start_date: new Date(Date.now() + 86400000).toISOString(),
       end_date: new Date(Date.now() + 7 * 86400000).toISOString(),
-      location_name: "L", capacity: 10, status: "draft",
+      location_name: "L",
+      capacity: 10,
+      status: "draft",
       price_dollars: 299,
     })
     createdIds.push(event.id)
@@ -1109,6 +1173,7 @@ git commit -m "test(events): integration tests for events DAL"
 ## Task 11: `lib/db/event-signups.ts` — all functions
 
 **Files:**
+
 - Create: `lib/db/event-signups.ts`
 - Test: `__tests__/db/event-signups.test.ts`
 
@@ -1120,13 +1185,7 @@ Create `__tests__/db/event-signups.test.ts`:
 import { describe, it, expect, afterAll, beforeAll } from "vitest"
 import { randomUUID } from "crypto"
 import { createEvent, deleteEvent } from "@/lib/db/events"
-import {
-  createSignup,
-  getSignupsForEvent,
-  getSignupById,
-  confirmSignup,
-  cancelSignup,
-} from "@/lib/db/event-signups"
+import { createSignup, getSignupsForEvent, getSignupById, confirmSignup, cancelSignup } from "@/lib/db/event-signups"
 
 describe("event-signups DAL", () => {
   let eventId: string
@@ -1136,9 +1195,14 @@ describe("event-signups DAL", () => {
     const e = await createEvent({
       type: "clinic",
       slug: `signup-test-${randomUUID()}`,
-      title: "T", summary: "S", description: "D", focus_areas: [],
+      title: "T",
+      summary: "S",
+      description: "D",
+      focus_areas: [],
       start_date: new Date(Date.now() + 86400000).toISOString(),
-      location_name: "L", capacity: 2, status: "draft",
+      location_name: "L",
+      capacity: 2,
+      status: "draft",
     })
     eventId = e.id
   })
@@ -1151,9 +1215,16 @@ describe("event-signups DAL", () => {
   })
 
   it("creates a signup and fetches it back", async () => {
-    const signup = await createSignup(eventId, {
-      parent_name: "A", parent_email: "a@x.com", athlete_name: "S", athlete_age: 14,
-    }, "interest")
+    const signup = await createSignup(
+      eventId,
+      {
+        parent_name: "A",
+        parent_email: "a@x.com",
+        athlete_name: "S",
+        athlete_age: 14,
+      },
+      "interest",
+    )
     expect(signup.status).toBe("pending")
 
     const fetched = await getSignupById(signup.id)
@@ -1164,9 +1235,16 @@ describe("event-signups DAL", () => {
   })
 
   it("confirm + cancel flip status and adjust signup_count", async () => {
-    const signup = await createSignup(eventId, {
-      parent_name: "B", parent_email: "b@x.com", athlete_name: "S2", athlete_age: 14,
-    }, "interest")
+    const signup = await createSignup(
+      eventId,
+      {
+        parent_name: "B",
+        parent_email: "b@x.com",
+        athlete_name: "S2",
+        athlete_age: 14,
+      },
+      "interest",
+    )
 
     const confirmed = await confirmSignup(signup.id)
     expect(confirmed.ok).toBe(true)
@@ -1182,18 +1260,37 @@ describe("event-signups DAL", () => {
     const e = await createEvent({
       type: "clinic",
       slug: `cap-${randomUUID()}`,
-      title: "T", summary: "S", description: "D", focus_areas: [],
+      title: "T",
+      summary: "S",
+      description: "D",
+      focus_areas: [],
       start_date: new Date(Date.now() + 86400000).toISOString(),
-      location_name: "L", capacity: 1, status: "draft",
+      location_name: "L",
+      capacity: 1,
+      status: "draft",
     })
     extraEventIds.push(e.id)
 
-    const s1 = await createSignup(e.id, {
-      parent_name: "A", parent_email: "a@x.com", athlete_name: "X", athlete_age: 14,
-    }, "interest")
-    const s2 = await createSignup(e.id, {
-      parent_name: "B", parent_email: "b@x.com", athlete_name: "Y", athlete_age: 14,
-    }, "interest")
+    const s1 = await createSignup(
+      e.id,
+      {
+        parent_name: "A",
+        parent_email: "a@x.com",
+        athlete_name: "X",
+        athlete_age: 14,
+      },
+      "interest",
+    )
+    const s2 = await createSignup(
+      e.id,
+      {
+        parent_name: "B",
+        parent_email: "b@x.com",
+        athlete_name: "Y",
+        athlete_age: 14,
+      },
+      "interest",
+    )
 
     const r1 = await confirmSignup(s1.id)
     expect(r1.ok).toBe(true)
@@ -1291,6 +1388,7 @@ git commit -m "feat(events): add event-signups DAL with RPC wrappers"
 ## Task 12: Event storage helper + upload route
 
 **Files:**
+
 - Create: `lib/event-storage.ts`
 - Create: `app/api/upload/event-image/route.ts`
 
@@ -1392,6 +1490,7 @@ git commit -m "feat(events): add event image storage helper + upload route"
 ## Task 13: Admin API — POST /api/admin/events (create)
 
 **Files:**
+
 - Create: `app/api/admin/events/route.ts`
 
 - [ ] **Step 1: Write the route**
@@ -1457,6 +1556,7 @@ git commit -m "feat(events): add POST /api/admin/events create endpoint"
 ## Task 14: Admin API — PATCH and DELETE /api/admin/events/[id]
 
 **Files:**
+
 - Create: `app/api/admin/events/[id]/route.ts`
 
 - [ ] **Step 1: Write the route**
@@ -1558,6 +1658,7 @@ git commit -m "feat(events): add PATCH + DELETE /api/admin/events/[id]"
 ## Task 15: Admin API — POST /api/admin/events/[id]/duplicate
 
 **Files:**
+
 - Create: `app/api/admin/events/[id]/duplicate/route.ts`
 
 - [ ] **Step 1: Write the route**
@@ -1644,6 +1745,7 @@ git commit -m "feat(events): add duplicate event endpoint"
 ## Task 16: API route tests
 
 **Files:**
+
 - Create: `__tests__/api/admin/events.test.ts`
 
 - [ ] **Step 1: Write tests**
@@ -1704,6 +1806,7 @@ git commit -m "test(events): admin API route smoke tests"
 ## Task 17: Add "Events" to admin sidebar (desktop + mobile)
 
 **Files:**
+
 - Modify: `components/admin/AdminSidebar.tsx`
 - Modify: `components/admin/AdminMobileSidebar.tsx`
 
@@ -1743,6 +1846,7 @@ git commit -m "feat(admin): add Events entry to admin sidebar"
 ## Task 18: `EventHeroImageUpload` client component
 
 **Files:**
+
 - Create: `components/admin/events/EventHeroImageUpload.tsx`
 
 - [ ] **Step 1: Write the component**
@@ -1840,6 +1944,7 @@ git commit -m "feat(events): add EventHeroImageUpload component"
 ## Task 19: `EventForm` component (shared create/edit)
 
 **Files:**
+
 - Create: `components/admin/events/EventForm.tsx`
 
 - [ ] **Step 1: Write the form**
@@ -1855,13 +1960,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { EventHeroImageUpload } from "@/components/admin/events/EventHeroImageUpload"
 import type { Event, EventStatus, EventType } from "@/types/database"
 
@@ -1870,7 +1969,11 @@ interface EventFormProps {
 }
 
 function slugify(s: string) {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 120)
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 120)
 }
 
 export function EventForm({ event }: EventFormProps) {
@@ -1978,14 +2081,22 @@ export function EventForm({ event }: EventFormProps) {
   }
 
   return (
-    <form onSubmit={(e) => { e.preventDefault(); void handleSubmit() }} className="space-y-6">
+    <form
+      onSubmit={(e) => {
+        e.preventDefault()
+        void handleSubmit()
+      }}
+      className="space-y-6"
+    >
       {formError && <div className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{formError}</div>}
 
       <div className="grid gap-6 md:grid-cols-2">
         <div>
           <Label>Type</Label>
           <Select value={type} onValueChange={(v) => setType(v as EventType)} disabled={isEdit}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="clinic">Agility Clinic</SelectItem>
               <SelectItem value="camp">Performance Camp</SelectItem>
@@ -1995,7 +2106,9 @@ export function EventForm({ event }: EventFormProps) {
         <div>
           <Label>Status</Label>
           <Select value={status} onValueChange={(v) => setStatus(v as EventStatus)}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="draft">Draft</SelectItem>
               <SelectItem value="published">Published</SelectItem>
@@ -2033,7 +2146,10 @@ export function EventForm({ event }: EventFormProps) {
         <div className="flex flex-wrap gap-2">
           {focusAreas.map((fa) => (
             <span key={fa} className="rounded-full bg-primary/10 px-3 py-1 text-sm text-primary">
-              {fa} <button type="button" onClick={() => removeFocusArea(fa)} className="ml-1">×</button>
+              {fa}{" "}
+              <button type="button" onClick={() => removeFocusArea(fa)} className="ml-1">
+                ×
+              </button>
             </span>
           ))}
         </div>
@@ -2041,10 +2157,17 @@ export function EventForm({ event }: EventFormProps) {
           <Input
             value={focusAreasInput}
             onChange={(e) => setFocusAreasInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addFocusArea() } }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault()
+                addFocusArea()
+              }
+            }}
             placeholder="Add a focus area and press Enter"
           />
-          <Button type="button" variant="outline" onClick={addFocusArea}>Add</Button>
+          <Button type="button" variant="outline" onClick={addFocusArea}>
+            Add
+          </Button>
         </div>
       </div>
 
@@ -2066,15 +2189,33 @@ export function EventForm({ event }: EventFormProps) {
       <div className="grid gap-4 md:grid-cols-3">
         <div>
           <Label>Capacity</Label>
-          <Input type="number" min={1} value={capacity} onChange={(e) => setCapacity(Number(e.target.value))} required />
+          <Input
+            type="number"
+            min={1}
+            value={capacity}
+            onChange={(e) => setCapacity(Number(e.target.value))}
+            required
+          />
         </div>
         <div>
           <Label>Age Min (optional)</Label>
-          <Input type="number" min={6} max={21} value={ageMin} onChange={(e) => setAgeMin(e.target.value === "" ? "" : Number(e.target.value))} />
+          <Input
+            type="number"
+            min={6}
+            max={21}
+            value={ageMin}
+            onChange={(e) => setAgeMin(e.target.value === "" ? "" : Number(e.target.value))}
+          />
         </div>
         <div>
           <Label>Age Max (optional)</Label>
-          <Input type="number" min={6} max={21} value={ageMax} onChange={(e) => setAgeMax(e.target.value === "" ? "" : Number(e.target.value))} />
+          <Input
+            type="number"
+            min={6}
+            max={21}
+            value={ageMax}
+            onChange={(e) => setAgeMax(e.target.value === "" ? "" : Number(e.target.value))}
+          />
         </div>
       </div>
 
@@ -2089,7 +2230,12 @@ export function EventForm({ event }: EventFormProps) {
           <div className="grid gap-4 md:grid-cols-2">
             <div>
               <Label>Start date</Label>
-              <Input type="date" value={startDate.slice(0, 10)} onChange={(e) => setStartDate(e.target.value)} required />
+              <Input
+                type="date"
+                value={startDate.slice(0, 10)}
+                onChange={(e) => setStartDate(e.target.value)}
+                required
+              />
             </div>
             <div>
               <Label>End date</Label>
@@ -2098,15 +2244,27 @@ export function EventForm({ event }: EventFormProps) {
           </div>
           <div>
             <Label>Session schedule (free-text)</Label>
-            <Input value={sessionSchedule} onChange={(e) => setSessionSchedule(e.target.value)} placeholder="M–F, 9–11am" />
+            <Input
+              value={sessionSchedule}
+              onChange={(e) => setSessionSchedule(e.target.value)}
+              placeholder="M–F, 9–11am"
+            />
           </div>
           <div className="grid gap-4 md:grid-cols-2 md:items-end">
             <div>
               <Label>Price (USD)</Label>
-              <Input type="number" step="0.01" min={0} value={priceDollars} onChange={(e) => setPriceDollars(e.target.value === "" ? "" : Number(e.target.value))} />
+              <Input
+                type="number"
+                step="0.01"
+                min={0}
+                value={priceDollars}
+                onChange={(e) => setPriceDollars(e.target.value === "" ? "" : Number(e.target.value))}
+              />
             </div>
             <div>
-              <Button type="button" disabled title="Available in Phase 3">Sync to Stripe</Button>
+              <Button type="button" disabled title="Available in Phase 3">
+                Sync to Stripe
+              </Button>
             </div>
           </div>
         </>
@@ -2128,7 +2286,9 @@ export function EventForm({ event }: EventFormProps) {
             </Button>
           </>
         ) : (
-          <Button type="submit" disabled={submitting}>Save</Button>
+          <Button type="submit" disabled={submitting}>
+            Save
+          </Button>
         )}
       </div>
     </form>
@@ -2153,6 +2313,7 @@ git commit -m "feat(events): add EventForm component for admin create/edit"
 ## Task 20: `EventList` component
 
 **Files:**
+
 - Create: `components/admin/events/EventList.tsx`
 
 - [ ] **Step 1: Write the component**
@@ -2168,13 +2329,7 @@ import { useRouter } from "next/navigation"
 import { Plus, Pencil, Copy, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import type { Event, EventStatus, EventType } from "@/types/database"
 
 interface EventListProps {
@@ -2228,7 +2383,9 @@ export function EventList({ initialEvents }: EventListProps) {
           className="max-w-xs"
         />
         <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v as EventType | "all")}>
-          <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-40">
+            <SelectValue />
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All types</SelectItem>
             <SelectItem value="clinic">Clinic</SelectItem>
@@ -2236,7 +2393,9 @@ export function EventList({ initialEvents }: EventListProps) {
           </SelectContent>
         </Select>
         <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as EventStatus | "all")}>
-          <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-40">
+            <SelectValue />
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All statuses</SelectItem>
             <SelectItem value="draft">Draft</SelectItem>
@@ -2246,7 +2405,11 @@ export function EventList({ initialEvents }: EventListProps) {
           </SelectContent>
         </Select>
         <div className="ml-auto">
-          <Button asChild><Link href="/admin/events/new"><Plus className="mr-1 h-4 w-4" /> New event</Link></Button>
+          <Button asChild>
+            <Link href="/admin/events/new">
+              <Plus className="mr-1 h-4 w-4" /> New event
+            </Link>
+          </Button>
         </div>
       </div>
 
@@ -2265,28 +2428,50 @@ export function EventList({ initialEvents }: EventListProps) {
           </thead>
           <tbody>
             {filtered.length === 0 ? (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">No events</td></tr>
-            ) : filtered.map((e) => (
-              <tr key={e.id} className="border-t border-border">
-                <td className="px-4 py-3"><Link href={`/admin/events/${e.id}`} className="font-medium hover:text-primary">{e.title}</Link></td>
-                <td className="px-4 py-3 capitalize">{e.type}</td>
-                <td className="px-4 py-3">{new Date(e.start_date).toLocaleString()}</td>
-                <td className="px-4 py-3">{e.location_name}</td>
-                <td className="px-4 py-3">{e.signup_count} / {e.capacity}</td>
-                <td className="px-4 py-3">
-                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[e.status]}`}>{e.status}</span>
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <div className="flex justify-end gap-2">
-                    <Button asChild variant="ghost" size="sm"><Link href={`/admin/events/${e.id}`}><Pencil className="h-4 w-4" /></Link></Button>
-                    <Button variant="ghost" size="sm" onClick={() => void handleDuplicate(e.id)}><Copy className="h-4 w-4" /></Button>
-                    {e.status === "draft" && e.signup_count === 0 && (
-                      <Button variant="ghost" size="sm" onClick={() => void handleDelete(e.id)}><Trash2 className="h-4 w-4" /></Button>
-                    )}
-                  </div>
+              <tr>
+                <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                  No events
                 </td>
               </tr>
-            ))}
+            ) : (
+              filtered.map((e) => (
+                <tr key={e.id} className="border-t border-border">
+                  <td className="px-4 py-3">
+                    <Link href={`/admin/events/${e.id}`} className="font-medium hover:text-primary">
+                      {e.title}
+                    </Link>
+                  </td>
+                  <td className="px-4 py-3 capitalize">{e.type}</td>
+                  <td className="px-4 py-3">{new Date(e.start_date).toLocaleString()}</td>
+                  <td className="px-4 py-3">{e.location_name}</td>
+                  <td className="px-4 py-3">
+                    {e.signup_count} / {e.capacity}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[e.status]}`}>
+                      {e.status}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex justify-end gap-2">
+                      <Button asChild variant="ghost" size="sm">
+                        <Link href={`/admin/events/${e.id}`}>
+                          <Pencil className="h-4 w-4" />
+                        </Link>
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => void handleDuplicate(e.id)}>
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                      {e.status === "draft" && e.signup_count === 0 && (
+                        <Button variant="ghost" size="sm" onClick={() => void handleDelete(e.id)}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
@@ -2312,6 +2497,7 @@ git commit -m "feat(events): add EventList component with filters and actions"
 ## Task 21: Admin list page `/admin/events/page.tsx`
 
 **Files:**
+
 - Create: `app/(admin)/admin/events/page.tsx`
 
 - [ ] **Step 1: Write the page**
@@ -2353,6 +2539,7 @@ git commit -m "feat(events): add /admin/events list page"
 ## Task 22: Admin create page `/admin/events/new/page.tsx`
 
 **Files:**
+
 - Create: `app/(admin)/admin/events/new/page.tsx`
 
 - [ ] **Step 1: Write the page**
@@ -2391,6 +2578,7 @@ git commit -m "feat(events): add /admin/events/new create page"
 ## Task 23: Admin edit page `/admin/events/[id]/page.tsx` with signups placeholder
 
 **Files:**
+
 - Create: `app/(admin)/admin/events/[id]/page.tsx`
 
 - [ ] **Step 1: Write the page**
@@ -2488,6 +2676,7 @@ git commit -m "feat(events): add /admin/events/[id] edit page with signups place
 ## Task 24: Playwright admin smoke test
 
 **Files:**
+
 - Create: `__tests__/e2e/admin-events.spec.ts`
 
 - [ ] **Step 1: Write the test**
@@ -2561,6 +2750,7 @@ Expected: build completes. `/admin/events`, `/admin/events/new`, and `/admin/eve
 - [ ] **Step 4: Manual browser walkthrough**
 
 Start dev server (`npm run dev`), log in as admin, visit `/admin/events`:
+
 1. Sidebar shows the "Events" entry under Business.
 2. Click "New event" → form loads, type selector toggles clinic/camp fields.
 3. Fill in minimum required fields, upload a hero image, "Save as draft" → lands back on list with draft row.
@@ -2592,31 +2782,31 @@ Report the branch state: commits, tag, which tests pass, build result.
 
 **Spec coverage:**
 
-| Phase 2a requirement | Task |
-|---|---|
-| Migration with both tables + indices + CHECK constraints | Task 1 |
-| Two RPCs (confirm/cancel) | Task 2 |
-| Migration applied to dev DB | Task 3 |
-| Migration integration test | Task 4 |
-| Type additions in types/database.ts | Task 5 |
-| Event + signup Zod validators | Tasks 6, 7 |
-| Event DAL (read + write) | Tasks 8, 9 |
-| Event DAL tests | Task 10 |
-| Signup DAL + tests | Task 11 |
-| Image storage helper + upload route + bucket | Task 12 |
-| POST /api/admin/events | Task 13 |
-| PATCH + DELETE /api/admin/events/[id] | Task 14 |
-| POST /api/admin/events/[id]/duplicate | Task 15 |
-| API route tests | Task 16 |
-| Admin sidebar entry (desktop + mobile) | Task 17 |
-| EventHeroImageUpload component | Task 18 |
-| EventForm component | Task 19 |
-| EventList component | Task 20 |
-| Admin list page | Task 21 |
-| Admin create page | Task 22 |
-| Admin edit page with empty signups | Task 23 |
-| Playwright smoke test | Task 24 |
-| Final verification | Task 25 |
+| Phase 2a requirement                                     | Task       |
+| -------------------------------------------------------- | ---------- |
+| Migration with both tables + indices + CHECK constraints | Task 1     |
+| Two RPCs (confirm/cancel)                                | Task 2     |
+| Migration applied to dev DB                              | Task 3     |
+| Migration integration test                               | Task 4     |
+| Type additions in types/database.ts                      | Task 5     |
+| Event + signup Zod validators                            | Tasks 6, 7 |
+| Event DAL (read + write)                                 | Tasks 8, 9 |
+| Event DAL tests                                          | Task 10    |
+| Signup DAL + tests                                       | Task 11    |
+| Image storage helper + upload route + bucket             | Task 12    |
+| POST /api/admin/events                                   | Task 13    |
+| PATCH + DELETE /api/admin/events/[id]                    | Task 14    |
+| POST /api/admin/events/[id]/duplicate                    | Task 15    |
+| API route tests                                          | Task 16    |
+| Admin sidebar entry (desktop + mobile)                   | Task 17    |
+| EventHeroImageUpload component                           | Task 18    |
+| EventForm component                                      | Task 19    |
+| EventList component                                      | Task 20    |
+| Admin list page                                          | Task 21    |
+| Admin create page                                        | Task 22    |
+| Admin edit page with empty signups                       | Task 23    |
+| Playwright smoke test                                    | Task 24    |
+| Final verification                                       | Task 25    |
 
 Every Phase 2a spec requirement has a task.
 
@@ -2625,6 +2815,7 @@ Every Phase 2a spec requirement has a task.
 **Placeholder scan:** no TBDs or TODOs. The one "investigate first" spot (mobile sidebar — Task 17) has explicit guidance on what to check. The e2e test (Task 24) is scaffolding gated behind env vars — documented as such.
 
 **Assumptions flagged:**
+
 - Task 3 assumes the implementer knows how to apply a Supabase migration in this project; explicit commands shown.
 - Task 12 creates the `event-images` storage bucket via SQL insert; if Supabase Storage requires a different setup path in this project (e.g., dashboard-only), implementer should escalate.
 - Task 17 assumes the mobile sidebar either imports from the desktop sidebar or mirrors its `navSections` — the step says "inspect first."

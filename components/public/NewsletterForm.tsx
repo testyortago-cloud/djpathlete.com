@@ -34,11 +34,7 @@ export function NewsletterForm() {
   }
 
   if (submitted) {
-    return (
-      <p className="text-primary-foreground/70 text-sm">
-        Thanks for subscribing! You'll hear from us soon.
-      </p>
-    )
+    return <p className="text-primary-foreground/70 text-sm">Thanks for subscribing! You'll hear from us soon.</p>
   }
 
   return (

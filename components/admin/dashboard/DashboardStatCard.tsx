@@ -10,18 +10,9 @@ interface DashboardStatCardProps {
   trend?: { current: number; previous: number }
 }
 
-export function DashboardStatCard({
-  icon,
-  iconBg,
-  label,
-  value,
-  href,
-  trend,
-}: DashboardStatCardProps) {
+export function DashboardStatCard({ icon, iconBg, label, value, href, trend }: DashboardStatCardProps) {
   const hasTrend = trend && trend.previous > 0
-  const pct = hasTrend
-    ? Math.round(((trend.current - trend.previous) / trend.previous) * 100)
-    : 0
+  const pct = hasTrend ? Math.round(((trend.current - trend.previous) / trend.previous) * 100) : 0
 
   return (
     <Link
@@ -30,11 +21,7 @@ export function DashboardStatCard({
     >
       <div className="flex items-center justify-between mb-1.5">
         <div className="flex items-center gap-2 sm:gap-3">
-          <div
-            className={`flex size-8 sm:size-9 items-center justify-center rounded-lg ${iconBg}`}
-          >
-            {icon}
-          </div>
+          <div className={`flex size-8 sm:size-9 items-center justify-center rounded-lg ${iconBg}`}>{icon}</div>
           <p className="text-xs sm:text-sm text-muted-foreground">{label}</p>
         </div>
         <ArrowUpRight className="size-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -47,11 +34,7 @@ export function DashboardStatCard({
               pct > 0 ? "text-success" : "text-destructive"
             }`}
           >
-            {pct > 0 ? (
-              <TrendingUp className="size-3" />
-            ) : (
-              <TrendingDown className="size-3" />
-            )}
+            {pct > 0 ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}
             {pct > 0 ? "+" : ""}
             {pct}%
           </span>

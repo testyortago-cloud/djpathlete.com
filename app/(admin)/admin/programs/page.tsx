@@ -23,10 +23,7 @@ export default async function ProgramsPage() {
   // Completion rate
   const completed = asgList.filter((a) => a.status === "completed").length
   const cancelled = asgList.filter((a) => a.status === "cancelled").length
-  const completionRate =
-    completed + cancelled > 0
-      ? Math.round((completed / (completed + cancelled)) * 100)
-      : 0
+  const completionRate = completed + cancelled > 0 ? Math.round((completed / (completed + cancelled)) * 100) : 0
 
   return (
     <div>

@@ -36,13 +36,9 @@ export function BlogPostForm({ post, authorId }: BlogPostFormProps) {
   const [excerpt, setExcerpt] = useState(post?.excerpt ?? "")
   const [content, setContent] = useState(post?.content ?? "")
   const [category, setCategory] = useState(post?.category ?? "")
-  const [coverImageUrl, setCoverImageUrl] = useState<string | null>(
-    post?.cover_image_url ?? null
-  )
+  const [coverImageUrl, setCoverImageUrl] = useState<string | null>(post?.cover_image_url ?? null)
   const [tags, setTags] = useState(post?.tags?.join(", ") ?? "")
-  const [metaDescription, setMetaDescription] = useState(
-    post?.meta_description ?? ""
-  )
+  const [metaDescription, setMetaDescription] = useState(post?.meta_description ?? "")
 
   // Auto-slug from title unless manually edited
   useEffect(() => {
@@ -202,11 +198,7 @@ export function BlogPostForm({ post, authorId }: BlogPostFormProps) {
             disabled={busy}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border text-sm font-medium hover:bg-surface transition-colors disabled:opacity-50"
           >
-            {saving ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Save className="size-4" />
-            )}
+            {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
             Save Draft
           </button>
           <button
@@ -215,11 +207,7 @@ export function BlogPostForm({ post, authorId }: BlogPostFormProps) {
             disabled={busy}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
           >
-            {publishing ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Send className="size-4" />
-            )}
+            {publishing ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
             {post?.status === "published" ? "Update" : "Publish"}
           </button>
         </div>
@@ -231,9 +219,7 @@ export function BlogPostForm({ post, authorId }: BlogPostFormProps) {
         <div className="space-y-4">
           {/* Title */}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">
-              Title
-            </label>
+            <label className="block text-sm font-medium text-foreground mb-1">Title</label>
             <input
               type="text"
               value={title}
@@ -245,9 +231,7 @@ export function BlogPostForm({ post, authorId }: BlogPostFormProps) {
 
           {/* Slug */}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">
-              Slug
-            </label>
+            <label className="block text-sm font-medium text-foreground mb-1">Slug</label>
             <input
               type="text"
               value={slug}
@@ -258,24 +242,18 @@ export function BlogPostForm({ post, authorId }: BlogPostFormProps) {
               placeholder="post-slug"
               className="w-full px-3 py-2 rounded-lg border border-border bg-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             />
-            <p className="text-xs text-muted-foreground mt-1">
-              /blog/{slug || "..."}
-            </p>
+            <p className="text-xs text-muted-foreground mt-1">/blog/{slug || "..."}</p>
           </div>
 
           {/* Editor */}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">
-              Content
-            </label>
+            <label className="block text-sm font-medium text-foreground mb-1">Content</label>
             <BlogEditor key={editorKey} content={content} onChange={setContent} />
           </div>
 
           {/* Excerpt */}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">
-              Excerpt
-            </label>
+            <label className="block text-sm font-medium text-foreground mb-1">Excerpt</label>
             <textarea
               value={excerpt}
               onChange={(e) => setExcerpt(e.target.value)}
@@ -283,9 +261,7 @@ export function BlogPostForm({ post, authorId }: BlogPostFormProps) {
               rows={3}
               className="w-full px-3 py-2 rounded-lg border border-border bg-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             />
-            <p className="text-xs text-muted-foreground mt-1">
-              {excerpt.length}/500
-            </p>
+            <p className="text-xs text-muted-foreground mt-1">{excerpt.length}/500</p>
           </div>
         </div>
 
@@ -293,21 +269,13 @@ export function BlogPostForm({ post, authorId }: BlogPostFormProps) {
         <div className="space-y-4">
           {/* Cover Image */}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">
-              Cover Image
-            </label>
-            <CoverImageUpload
-              currentUrl={coverImageUrl}
-              postId={post?.id}
-              onUploaded={setCoverImageUrl}
-            />
+            <label className="block text-sm font-medium text-foreground mb-1">Cover Image</label>
+            <CoverImageUpload currentUrl={coverImageUrl} postId={post?.id} onUploaded={setCoverImageUrl} />
           </div>
 
           {/* Category */}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">
-              Category
-            </label>
+            <label className="block text-sm font-medium text-foreground mb-1">Category</label>
             <select
               value={category}
               onChange={(e) => setCategory(e.target.value)}
@@ -324,9 +292,7 @@ export function BlogPostForm({ post, authorId }: BlogPostFormProps) {
 
           {/* Tags */}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">
-              Tags
-            </label>
+            <label className="block text-sm font-medium text-foreground mb-1">Tags</label>
             <input
               type="text"
               value={tags}
@@ -334,16 +300,12 @@ export function BlogPostForm({ post, authorId }: BlogPostFormProps) {
               placeholder="strength, recovery, youth"
               className="w-full px-3 py-2 rounded-lg border border-border bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             />
-            <p className="text-xs text-muted-foreground mt-1">
-              Comma-separated
-            </p>
+            <p className="text-xs text-muted-foreground mt-1">Comma-separated</p>
           </div>
 
           {/* Meta Description */}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">
-              Meta Description
-            </label>
+            <label className="block text-sm font-medium text-foreground mb-1">Meta Description</label>
             <textarea
               value={metaDescription}
               onChange={(e) => setMetaDescription(e.target.value)}
@@ -352,9 +314,7 @@ export function BlogPostForm({ post, authorId }: BlogPostFormProps) {
               maxLength={160}
               className="w-full px-3 py-2 rounded-lg border border-border bg-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             />
-            <p className="text-xs text-muted-foreground mt-1">
-              {metaDescription.length}/160
-            </p>
+            <p className="text-xs text-muted-foreground mt-1">{metaDescription.length}/160</p>
           </div>
 
           {/* Status info */}

@@ -49,20 +49,15 @@ export function CompleteWeekButton({
         toast.success("Program complete! Great work!")
       } else {
         const nextWeek = currentWeek + 1
-        toast.success(
-          `Week ${currentWeek} complete! Starting Week ${nextWeek}`,
-          {
-            description: totalWeeks
-              ? `${totalWeeks - nextWeek + 1} week${totalWeeks - nextWeek + 1 !== 1 ? "s" : ""} remaining`
-              : undefined,
-          }
-        )
+        toast.success(`Week ${currentWeek} complete! Starting Week ${nextWeek}`, {
+          description: totalWeeks
+            ? `${totalWeeks - nextWeek + 1} week${totalWeeks - nextWeek + 1 !== 1 ? "s" : ""} remaining`
+            : undefined,
+        })
         router.refresh()
       }
     } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Failed to complete week"
-      )
+      toast.error(err instanceof Error ? err.message : "Failed to complete week")
     } finally {
       setSubmitting(false)
     }
@@ -90,17 +85,11 @@ export function CompleteWeekButton({
         >
           <Trophy className="size-8 text-primary" />
         </motion.div>
-        <h4 className="text-lg font-semibold text-foreground">
-          Program Complete!
-        </h4>
+        <h4 className="text-lg font-semibold text-foreground">Program Complete!</h4>
         <p className="text-sm text-muted-foreground mt-1">
           You&apos;ve finished all {totalWeeks} weeks. Outstanding work!
         </p>
-        <Button
-          variant="outline"
-          className="mt-4"
-          onClick={() => router.refresh()}
-        >
+        <Button variant="outline" className="mt-4" onClick={() => router.refresh()}>
           Back to Workouts
         </Button>
       </motion.div>
@@ -122,9 +111,7 @@ export function CompleteWeekButton({
             disabled={submitting}
             className={cn(
               "w-full gap-2 h-12 text-sm font-semibold",
-              isFinalWeek
-                ? "bg-success hover:bg-success/90 text-white"
-                : "bg-primary hover:bg-primary/90"
+              isFinalWeek ? "bg-success hover:bg-success/90 text-white" : "bg-primary hover:bg-primary/90",
             )}
           >
             {submitting ? (

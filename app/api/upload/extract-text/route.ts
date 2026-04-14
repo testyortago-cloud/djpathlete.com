@@ -23,17 +23,11 @@ export async function POST(request: Request) {
     }
 
     if (!ALLOWED_TYPES.includes(file.type)) {
-      return NextResponse.json(
-        { error: "Invalid file type. Allowed: PDF, DOC, DOCX" },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Invalid file type. Allowed: PDF, DOC, DOCX" }, { status: 400 })
     }
 
     if (file.size > MAX_SIZE) {
-      return NextResponse.json(
-        { error: "File too large. Maximum 15 MB" },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "File too large. Maximum 15 MB" }, { status: 400 })
     }
 
     const buffer = Buffer.from(await file.arrayBuffer())
@@ -64,9 +58,6 @@ export async function POST(request: Request) {
     })
   } catch (error) {
     console.error("Text extraction error:", error)
-    return NextResponse.json(
-      { error: "Failed to extract text from document" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to extract text from document" }, { status: 500 })
   }
 }

@@ -27,17 +27,11 @@ export async function POST(request: Request) {
     }
 
     if (!ALLOWED_TYPES.includes(file.type)) {
-      return NextResponse.json(
-        { error: "Invalid file type. Use JPEG, PNG, WebP, or GIF." },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Invalid file type. Use JPEG, PNG, WebP, or GIF." }, { status: 400 })
     }
 
     if (file.size > MAX_SIZE) {
-      return NextResponse.json(
-        { error: "File too large. Maximum size is 2 MB." },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "File too large. Maximum size is 2 MB." }, { status: 400 })
     }
 
     const url = await uploadAvatar(userId, file, file.name)
@@ -46,10 +40,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ url })
   } catch (error) {
     console.error("Avatar upload error:", error)
-    return NextResponse.json(
-      { error: "Failed to upload avatar" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to upload avatar" }, { status: 500 })
   }
 }
 
@@ -74,9 +65,6 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("Avatar delete error:", error)
-    return NextResponse.json(
-      { error: "Failed to delete avatar" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to delete avatar" }, { status: 500 })
   }
 }

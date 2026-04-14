@@ -32,10 +32,7 @@ export async function recordProgramExerciseUsage(args: RecordUsageArgs): Promise
   if (error) throw error
 }
 
-export async function getCoachRecentUsage(
-  coachId: string,
-  daysBack: number
-): Promise<Map<string, number>> {
+export async function getCoachRecentUsage(coachId: string, daysBack: number): Promise<Map<string, number>> {
   const supabase = getClient()
   const cutoff = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000).toISOString()
   const { data, error } = await supabase
@@ -48,10 +45,7 @@ export async function getCoachRecentUsage(
   return reduceToRecencyMap(data ?? [])
 }
 
-export async function getClientRecentUsage(
-  clientId: string,
-  daysBack: number
-): Promise<Map<string, number>> {
+export async function getClientRecentUsage(clientId: string, daysBack: number): Promise<Map<string, number>> {
   const supabase = getClient()
   const cutoff = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000).toISOString()
   const { data, error } = await supabase
@@ -64,9 +58,7 @@ export async function getClientRecentUsage(
   return reduceToRecencyMap(data ?? [])
 }
 
-function reduceToRecencyMap(
-  rows: Array<{ exercise_id: string; assigned_at: string }>
-): Map<string, number> {
+function reduceToRecencyMap(rows: Array<{ exercise_id: string; assigned_at: string }>): Map<string, number> {
   const now = Date.now()
   const out = new Map<string, number>()
   for (const r of rows) {

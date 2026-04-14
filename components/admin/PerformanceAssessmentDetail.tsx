@@ -74,10 +74,7 @@ interface PerformanceAssessmentDetailProps {
   currentUserId: string
 }
 
-const statusConfig: Record<
-  PerformanceAssessmentStatus,
-  { label: string; icon: typeof Clock; className: string }
-> = {
+const statusConfig: Record<PerformanceAssessmentStatus, { label: string; icon: typeof Clock; className: string }> = {
   draft: { label: "Draft", icon: FileEdit, className: "bg-gray-100 text-gray-700" },
   in_progress: { label: "In Progress", icon: MessageSquare, className: "bg-blue-100 text-blue-700" },
   completed: { label: "Completed", icon: CheckCircle2, className: "bg-green-100 text-green-700" },
@@ -94,28 +91,22 @@ export function PerformanceAssessmentDetail({
   const [status, setStatus] = useState(assessment.status as PerformanceAssessmentStatus)
   const [updating, setUpdating] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const [expandedExercises, setExpandedExercises] = useState<Set<string>>(
-    new Set(exercises.map((e) => e.id))
-  )
-  const [results, setResults] = useState<Record<string, { value: string; unit: string }>>(
-    () => {
-      const initial: Record<string, { value: string; unit: string }> = {}
-      for (const ex of exercises) {
-        initial[ex.id] = {
-          value: ex.result_value != null ? String(ex.result_value) : "",
-          unit: ex.result_unit ?? "",
-        }
+  const [expandedExercises, setExpandedExercises] = useState<Set<string>>(new Set(exercises.map((e) => e.id)))
+  const [results, setResults] = useState<Record<string, { value: string; unit: string }>>(() => {
+    const initial: Record<string, { value: string; unit: string }> = {}
+    for (const ex of exercises) {
+      initial[ex.id] = {
+        value: ex.result_value != null ? String(ex.result_value) : "",
+        unit: ex.result_unit ?? "",
       }
-      return initial
     }
-  )
+    return initial
+  })
   const [savingResult, setSavingResult] = useState<string | null>(null)
 
   const config = statusConfig[status]
   const StatusIcon = config.icon
-  const clientName = assessment.users
-    ? `${assessment.users.first_name} ${assessment.users.last_name}`
-    : "Unknown"
+  const clientName = assessment.users ? `${assessment.users.first_name} ${assessment.users.last_name}` : "Unknown"
 
   async function updateStatus(newStatus: PerformanceAssessmentStatus) {
     setUpdating(true)
@@ -127,11 +118,7 @@ export function PerformanceAssessmentDetail({
       })
       if (!res.ok) throw new Error("Failed to update status")
       setStatus(newStatus)
-      toast.success(
-        newStatus === "in_progress"
-          ? "Assessment shared with client"
-          : "Assessment marked as completed"
-      )
+      toast.success(newStatus === "in_progress" ? "Assessment shared with client" : "Assessment marked as completed")
       router.refresh()
     } catch {
       toast.error("Failed to update status")
@@ -163,17 +150,14 @@ export function PerformanceAssessmentDetail({
 
     setSavingResult(exerciseId)
     try {
-      const res = await fetch(
-        `/api/admin/performance-assessments/${assessment.id}/exercises/${exerciseId}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            result_value: r.value ? parseFloat(r.value) : null,
-            result_unit: r.unit.trim() || null,
-          }),
-        }
-      )
+      const res = await fetch(`/api/admin/performance-assessments/${assessment.id}/exercises/${exerciseId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          result_value: r.value ? parseFloat(r.value) : null,
+          result_unit: r.unit.trim() || null,
+        }),
+      })
       if (!res.ok) throw new Error("Failed to save result")
       toast.success("Result saved")
     } catch {
@@ -197,9 +181,7 @@ export function PerformanceAssessmentDetail({
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl sm:text-2xl font-semibold text-primary">
-            {assessment.title}
-          </h1>
+          <h1 className="text-xl sm:text-2xl font-semibold text-primary">{assessment.title}</h1>
           <div className="flex flex-wrap items-center gap-2 mt-1 text-sm text-muted-foreground">
             <span>{clientName}</span>
             <span className="text-border">|</span>
@@ -218,33 +200,20 @@ export function PerformanceAssessmentDetail({
           <span
             className={cn(
               "inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full",
-              config.className
+              config.className,
             )}
           >
             <StatusIcon className="size-3.5" />
             {config.label}
           </span>
           {status === "draft" && (
-            <Button
-              size="sm"
-              onClick={() => updateStatus("in_progress")}
-              disabled={updating}
-            >
-              {updating ? (
-                <Loader2 className="size-4 mr-1.5 animate-spin" />
-              ) : (
-                <Share2 className="size-4 mr-1.5" />
-              )}
+            <Button size="sm" onClick={() => updateStatus("in_progress")} disabled={updating}>
+              {updating ? <Loader2 className="size-4 mr-1.5 animate-spin" /> : <Share2 className="size-4 mr-1.5" />}
               Share with Client
             </Button>
           )}
           {status === "in_progress" && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => updateStatus("completed")}
-              disabled={updating}
-            >
+            <Button size="sm" variant="outline" onClick={() => updateStatus("completed")} disabled={updating}>
               {updating ? (
                 <Loader2 className="size-4 mr-1.5 animate-spin" />
               ) : (
@@ -260,11 +229,7 @@ export function PerformanceAssessmentDetail({
             disabled={deleting}
             className="text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/30"
           >
-            {deleting ? (
-              <Loader2 className="size-4 mr-1.5 animate-spin" />
-            ) : (
-              <Trash2 className="size-4 mr-1.5" />
-            )}
+            {deleting ? <Loader2 className="size-4 mr-1.5 animate-spin" /> : <Trash2 className="size-4 mr-1.5" />}
             Delete
           </Button>
         </div>
@@ -289,10 +254,7 @@ export function PerformanceAssessmentDetail({
           const hasVideo = !!exercise.video_path
 
           return (
-            <div
-              key={exercise.id}
-              className="bg-white rounded-xl border border-border overflow-hidden"
-            >
+            <div key={exercise.id} className="bg-white rounded-xl border border-border overflow-hidden">
               {/* Exercise header */}
               <button
                 type="button"
@@ -300,19 +262,14 @@ export function PerformanceAssessmentDetail({
                 className="w-full flex items-center justify-between p-4 hover:bg-surface/50 transition-colors"
               >
                 <div className="flex items-center gap-3">
-                  <span className="text-xs font-mono text-muted-foreground w-6">
-                    {index + 1}.
-                  </span>
+                  <span className="text-xs font-mono text-muted-foreground w-6">{index + 1}.</span>
                   <span className="text-sm font-medium text-foreground">{exerciseName}</span>
-                  {exercise.youtube_url && (
-                    <Youtube className="size-4 text-red-500" />
-                  )}
-                  {hasVideo && (
-                    <Video className="size-4 text-green-600" />
-                  )}
+                  {exercise.youtube_url && <Youtube className="size-4 text-red-500" />}
+                  {hasVideo && <Video className="size-4 text-green-600" />}
                   {exercise.result_value != null && (
                     <span className="text-xs bg-accent/15 text-accent-foreground px-1.5 py-0.5 rounded-full font-medium">
-                      {exercise.result_value}{exercise.result_unit ? ` ${exercise.result_unit}` : ""}
+                      {exercise.result_value}
+                      {exercise.result_unit ? ` ${exercise.result_unit}` : ""}
                     </span>
                   )}
                   {messages.length > 0 && (
@@ -335,9 +292,7 @@ export function PerformanceAssessmentDetail({
                   {exercise.admin_notes && (
                     <div className="bg-surface rounded-lg p-3">
                       <p className="text-xs font-medium text-muted-foreground mb-1">Coach Notes</p>
-                      <p className="text-sm text-foreground whitespace-pre-wrap">
-                        {exercise.admin_notes}
-                      </p>
+                      <p className="text-sm text-foreground whitespace-pre-wrap">{exercise.admin_notes}</p>
                     </div>
                   )}
 
@@ -395,7 +350,11 @@ export function PerformanceAssessmentDetail({
                     </div>
                     {exercise.result_value != null && (
                       <p className="text-xs text-muted-foreground mt-1.5">
-                        Current: <span className="font-medium text-foreground">{exercise.result_value}{exercise.result_unit ? ` ${exercise.result_unit}` : ""}</span>
+                        Current:{" "}
+                        <span className="font-medium text-foreground">
+                          {exercise.result_value}
+                          {exercise.result_unit ? ` ${exercise.result_unit}` : ""}
+                        </span>
                       </p>
                     )}
                   </div>

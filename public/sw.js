@@ -31,13 +31,13 @@ self.addEventListener("install", (event) => {
           APP_SHELL_URLS.map((url) =>
             cache.add(url).catch((err) => {
               console.warn(`[SW] Failed to pre-cache ${url}:`, err)
-            })
-          )
+            }),
+          ),
         )
       })
       .then(() => {
         console.log("[SW] App shell pre-cached")
-      })
+      }),
   )
 })
 
@@ -53,13 +53,13 @@ self.addEventListener("activate", (event) => {
             .map((name) => {
               console.log(`[SW] Deleting old cache: ${name}`)
               return caches.delete(name)
-            })
+            }),
         )
       })
       .then(() => {
         console.log("[SW] Activated and old caches cleaned")
         return self.clients.claim()
-      })
+      }),
   )
 })
 
@@ -79,8 +79,7 @@ function isApiRequest(url) {
 // Helper: determine if a request is a navigation (HTML page)
 function isNavigationRequest(request) {
   return (
-    request.mode === "navigate" ||
-    (request.method === "GET" && request.headers.get("accept")?.includes("text/html"))
+    request.mode === "navigate" || (request.method === "GET" && request.headers.get("accept")?.includes("text/html"))
   )
 }
 
@@ -115,7 +114,7 @@ self.addEventListener("fetch", (event) => {
             // Static asset unavailable offline — return nothing
             return new Response("", { status: 408, statusText: "Offline" })
           })
-      })
+      }),
     )
     return
   }
@@ -136,15 +135,18 @@ self.addEventListener("fetch", (event) => {
           })
           .catch(() => {
             // Network failed — cached version was already returned if available
-            return cached || new Response(JSON.stringify({ error: "Offline" }), {
-              status: 503,
-              headers: { "Content-Type": "application/json" },
-            })
+            return (
+              cached ||
+              new Response(JSON.stringify({ error: "Offline" }), {
+                status: 503,
+                headers: { "Content-Type": "application/json" },
+              })
+            )
           })
 
         // Return cached immediately if available, otherwise wait for network
         return cached || fetchPromise
-      })
+      }),
     )
     return
   }
@@ -174,15 +176,14 @@ self.addEventListener("fetch", (event) => {
               return caches.match("/offline.html").then((offlinePage) => {
                 return (
                   offlinePage ||
-                  new Response(
-                    "<html><body><h1>Offline</h1><p>Please check your connection.</p></body></html>",
-                    { headers: { "Content-Type": "text/html" } }
-                  )
+                  new Response("<html><body><h1>Offline</h1><p>Please check your connection.</p></body></html>", {
+                    headers: { "Content-Type": "text/html" },
+                  })
                 )
               })
             })
           })
-        })
+        }),
     )
     return
   }
@@ -201,7 +202,7 @@ self.addEventListener("fetch", (event) => {
       })
       .catch(() => {
         return caches.match(event.request)
-      })
+      }),
   )
 })
 

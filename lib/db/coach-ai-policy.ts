@@ -15,11 +15,7 @@ export interface CoachAiPolicy {
 
 export async function getCoachPolicy(coachId: string): Promise<CoachAiPolicy | null> {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("coach_ai_policy")
-    .select("*")
-    .eq("coach_id", coachId)
-    .maybeSingle()
+  const { data, error } = await supabase.from("coach_ai_policy").select("*").eq("coach_id", coachId).maybeSingle()
   if (error) throw error
   return data as CoachAiPolicy | null
 }
@@ -31,10 +27,7 @@ export interface UpsertCoachPolicyInput {
   programming_notes: string
 }
 
-export async function upsertCoachPolicy(
-  coachId: string,
-  input: UpsertCoachPolicyInput
-): Promise<CoachAiPolicy> {
+export async function upsertCoachPolicy(coachId: string, input: UpsertCoachPolicyInput): Promise<CoachAiPolicy> {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("coach_ai_policy")

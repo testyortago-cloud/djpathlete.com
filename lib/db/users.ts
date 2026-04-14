@@ -8,32 +8,21 @@ function getClient() {
 
 export async function getUsers() {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("users")
-    .select("*")
-    .order("created_at", { ascending: false })
+  const { data, error } = await supabase.from("users").select("*").order("created_at", { ascending: false })
   if (error) throw error
   return data as User[]
 }
 
 export async function getUserById(id: string) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("users")
-    .select("*")
-    .eq("id", id)
-    .single()
+  const { data, error } = await supabase.from("users").select("*").eq("id", id).single()
   if (error) throw error
   return data as User
 }
 
 export async function getUserByEmail(email: string) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("users")
-    .select("*")
-    .eq("email", email)
-    .single()
+  const { data, error } = await supabase.from("users").select("*").eq("email", email).single()
   if (error) return null
   return data as User
 }
@@ -46,23 +35,14 @@ export async function createUser(user: {
   role?: string
 }) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("users")
-    .insert(user)
-    .select()
-    .single()
+  const { data, error } = await supabase.from("users").insert(user).select().single()
   if (error) throw error
   return data as User
 }
 
 export async function updateUser(id: string, updates: Partial<User>) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("users")
-    .update(updates)
-    .eq("id", id)
-    .select()
-    .single()
+  const { data, error } = await supabase.from("users").update(updates).eq("id", id).select().single()
   if (error) throw error
   return data as User
 }
@@ -86,18 +66,12 @@ export async function getClients() {
 
 export async function getUsersCount() {
   const supabase = getClient()
-  const { count, error } = await supabase
-    .from("users")
-    .select("*", { count: "exact", head: true })
+  const { count, error } = await supabase.from("users").select("*", { count: "exact", head: true })
   if (error) throw error
   return count ?? 0
 }
 
-export async function getUsersPaginated(
-  page: number,
-  perPage: number,
-  search?: string
-) {
+export async function getUsersPaginated(page: number, perPage: number, search?: string) {
   const supabase = getClient()
   const from = (page - 1) * perPage
   const to = from + perPage - 1
@@ -107,9 +81,7 @@ export async function getUsersPaginated(
     .order("created_at", { ascending: false })
     .range(from, to)
   if (search) {
-    query = query.or(
-      `first_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%`
-    )
+    query = query.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%`)
   }
   const { data, count, error } = await query
   if (error) throw error

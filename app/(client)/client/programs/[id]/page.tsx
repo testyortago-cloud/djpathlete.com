@@ -73,9 +73,7 @@ export default async function ClientProgramDetailPage({ params }: Props) {
   const isSubscription = program.payment_type === "subscription"
 
   // Check for active subscription
-  const activeSub = isSubscription && owned
-    ? await getActiveSubscription(session.user.id, program.id)
-    : null
+  const activeSub = isSubscription && owned ? await getActiveSubscription(session.user.id, program.id) : null
 
   // Block access if program is private and user has no assignment
   if (!program.is_public && !assignment) {
@@ -95,7 +93,10 @@ export default async function ClientProgramDetailPage({ params }: Props) {
       {/* Badges */}
       <div className="flex items-center gap-2 mb-3">
         {(Array.isArray(program.category) ? program.category : [program.category]).map((cat) => (
-          <span key={cat} className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-primary/10 text-primary">
+          <span
+            key={cat}
+            className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-primary/10 text-primary"
+          >
             {CATEGORY_LABELS[cat] ?? cat}
           </span>
         ))}
@@ -125,32 +126,24 @@ export default async function ClientProgramDetailPage({ params }: Props) {
 
       {/* Description */}
       {program.description && (
-        <p className="text-base text-muted-foreground leading-relaxed mb-6 max-w-3xl">
-          {program.description}
-        </p>
+        <p className="text-base text-muted-foreground leading-relaxed mb-6 max-w-3xl">{program.description}</p>
       )}
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-3 max-w-sm mb-8">
         <div className="rounded-xl border border-border bg-white p-4 text-center">
           <Clock className="size-5 text-accent mx-auto mb-1.5" strokeWidth={1.5} />
-          <p className="text-xl font-semibold text-primary">
-            {program.duration_weeks}
-          </p>
+          <p className="text-xl font-semibold text-primary">{program.duration_weeks}</p>
           <p className="text-xs text-muted-foreground">Weeks</p>
         </div>
         <div className="rounded-xl border border-border bg-white p-4 text-center">
           <CalendarDays className="size-5 text-accent mx-auto mb-1.5" strokeWidth={1.5} />
-          <p className="text-xl font-semibold text-primary">
-            {program.sessions_per_week}
-          </p>
+          <p className="text-xl font-semibold text-primary">{program.sessions_per_week}</p>
           <p className="text-xs text-muted-foreground">Sessions/Wk</p>
         </div>
         <div className="rounded-xl border border-border bg-white p-4 text-center">
           <BarChart3 className="size-5 text-accent mx-auto mb-1.5" strokeWidth={1.5} />
-          <p className="text-sm sm:text-xl font-semibold text-primary capitalize truncate">
-            {program.difficulty}
-          </p>
+          <p className="text-sm sm:text-xl font-semibold text-primary capitalize truncate">{program.difficulty}</p>
           <p className="text-xs text-muted-foreground">Level</p>
         </div>
       </div>
@@ -166,9 +159,7 @@ export default async function ClientProgramDetailPage({ params }: Props) {
               <CheckCircle2 className="size-4" />
               Start Training
             </Link>
-            {activeSub && (
-              <ManageSubscriptionButton />
-            )}
+            {activeSub && <ManageSubscriptionButton />}
           </>
         ) : (
           <>
@@ -183,10 +174,7 @@ export default async function ClientProgramDetailPage({ params }: Props) {
               </p>
             )}
             {program.price_cents ? (
-              <ClientBuyButton
-                programId={program.id}
-                label={isSubscription ? "Subscribe" : "Buy Now"}
-              />
+              <ClientBuyButton programId={program.id} label={isSubscription ? "Subscribe" : "Buy Now"} />
             ) : (
               <Link
                 href="/contact"

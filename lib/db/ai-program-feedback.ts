@@ -8,7 +8,7 @@ function getClient() {
 // ─── Upsert ──────────────────────────────────────────────────────────────────
 
 export async function submitProgramFeedback(
-  data: Omit<AiProgramFeedback, "id" | "embedding" | "created_at" | "updated_at">
+  data: Omit<AiProgramFeedback, "id" | "embedding" | "created_at" | "updated_at">,
 ) {
   const supabase = getClient()
   const { data: result, error } = await supabase
@@ -24,23 +24,14 @@ export async function submitProgramFeedback(
 
 export async function getProgramFeedback(programId: string) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("ai_program_feedback")
-    .select("*")
-    .eq("program_id", programId)
+  const { data, error } = await supabase.from("ai_program_feedback").select("*").eq("program_id", programId)
   if (error) throw error
   return data as AiProgramFeedback[]
 }
 
-export async function getRecentProgramFeedback(opts?: {
-  splitType?: string
-  difficulty?: string
-  limit?: number
-}) {
+export async function getRecentProgramFeedback(opts?: { splitType?: string; difficulty?: string; limit?: number }) {
   const supabase = getClient()
-  let query = supabase
-    .from("ai_program_feedback")
-    .select("*")
+  let query = supabase.from("ai_program_feedback").select("*")
 
   if (opts?.splitType) {
     query = query.eq("split_type", opts.splitType)
@@ -49,9 +40,7 @@ export async function getRecentProgramFeedback(opts?: {
     query = query.eq("difficulty", opts.difficulty)
   }
 
-  const { data, error } = await query
-    .order("created_at", { ascending: false })
-    .limit(opts?.limit ?? 20)
+  const { data, error } = await query.order("created_at", { ascending: false }).limit(opts?.limit ?? 20)
   if (error) throw error
   return data as AiProgramFeedback[]
 }
@@ -81,7 +70,7 @@ export async function searchSimilarProgramFeedback(
     difficulty?: string
     threshold?: number
     limit?: number
-  }
+  },
 ) {
   const supabase = getClient()
   const { data, error } = await supabase.rpc("match_ai_program_feedback", {
@@ -97,10 +86,7 @@ export async function searchSimilarProgramFeedback(
 
 // ─── Update embedding ────────────────────────────────────────────────────────
 
-export async function updateProgramFeedbackEmbedding(
-  feedbackId: string,
-  embedding: number[]
-) {
+export async function updateProgramFeedbackEmbedding(feedbackId: string, embedding: number[]) {
   const supabase = getClient()
   const { error } = await supabase
     .from("ai_program_feedback")

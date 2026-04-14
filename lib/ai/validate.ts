@@ -20,12 +20,37 @@ import { stringSimilarity } from "string-similarity-js"
  */
 
 const CANONICAL_EQUIPMENT = [
-  "barbell", "dumbbell", "kettlebell", "cable_machine", "smith_machine",
-  "resistance_band", "pull_up_bar", "bench", "squat_rack", "leg_press",
-  "leg_curl_machine", "lat_pulldown_machine", "rowing_machine", "treadmill",
-  "bike", "box", "plyo_box", "medicine_ball", "stability_ball", "foam_roller",
-  "trx", "landmine", "sled", "battle_ropes", "agility_ladder", "cones", "yoga_mat",
-  "gliders", "wall", "weight_plate", "short_barbell",
+  "barbell",
+  "dumbbell",
+  "kettlebell",
+  "cable_machine",
+  "smith_machine",
+  "resistance_band",
+  "pull_up_bar",
+  "bench",
+  "squat_rack",
+  "leg_press",
+  "leg_curl_machine",
+  "lat_pulldown_machine",
+  "rowing_machine",
+  "treadmill",
+  "bike",
+  "box",
+  "plyo_box",
+  "medicine_ball",
+  "stability_ball",
+  "foam_roller",
+  "trx",
+  "landmine",
+  "sled",
+  "battle_ropes",
+  "agility_ladder",
+  "cones",
+  "yoga_mat",
+  "gliders",
+  "wall",
+  "weight_plate",
+  "short_barbell",
 ] as const
 
 /**
@@ -125,17 +150,14 @@ export function validateProgram(
   exercises: CompressedExercise[],
   availableEquipment: string[],
   clientDifficulty: string,
-  maxDifficultyScore?: number
+  maxDifficultyScore?: number,
 ): ValidationResult {
   const issues: ValidationIssue[] = []
 
   // Build lookups
   const exerciseMap = new Map(exercises.map((e) => [e.id, e]))
 
-  const slotMap = new Map<
-    string,
-    { week: number; day: number; role: string; movement: string; muscles: string[] }
-  >()
+  const slotMap = new Map<string, { week: number; day: number; role: string; movement: string; muscles: string[] }>()
   for (const week of skeleton.weeks) {
     for (const day of week.days) {
       for (const slot of day.slots) {
@@ -152,19 +174,13 @@ export function validateProgram(
 
   // Constraint lookups
   const avoidedMovements = new Set(
-    analysis.exercise_constraints
-      .filter((c) => c.type === "avoid_movement")
-      .map((c) => c.value.toLowerCase())
+    analysis.exercise_constraints.filter((c) => c.type === "avoid_movement").map((c) => c.value.toLowerCase()),
   )
   const avoidedEquipment = new Set(
-    analysis.exercise_constraints
-      .filter((c) => c.type === "avoid_equipment")
-      .map((c) => c.value.toLowerCase())
+    analysis.exercise_constraints.filter((c) => c.type === "avoid_equipment").map((c) => c.value.toLowerCase()),
   )
   const avoidedMuscles = new Set(
-    analysis.exercise_constraints
-      .filter((c) => c.type === "avoid_muscle")
-      .map((c) => c.value.toLowerCase())
+    analysis.exercise_constraints.filter((c) => c.type === "avoid_muscle").map((c) => c.value.toLowerCase()),
   )
   const equipmentSet = new Set(availableEquipment.map(normalizeEquipment))
   const isFullGym = availableEquipment.length >= FULL_GYM_THRESHOLD
@@ -291,13 +307,12 @@ export function validateProgram(
     const difficultyOrder = ["beginner", "intermediate", "advanced"]
     const clientIdx = difficultyOrder.indexOf(clientDifficulty)
     const exerciseMinIdx = difficultyOrder.indexOf(exercise.difficulty)
-    const exerciseMaxIdx = exercise.difficulty_max
-      ? difficultyOrder.indexOf(exercise.difficulty_max)
-      : exerciseMinIdx
+    const exerciseMaxIdx = exercise.difficulty_max ? difficultyOrder.indexOf(exercise.difficulty_max) : exerciseMinIdx
     // If exercise has a difficulty range (min to max), it's valid for any level in that range
     // Only flag if the exercise's minimum difficulty is too far above the client
     const effectiveMaxIdx = exerciseMaxIdx >= 0 ? exerciseMaxIdx : exerciseMinIdx
-    const clientInRange = clientIdx >= 0 && exerciseMinIdx >= 0 && clientIdx >= exerciseMinIdx && clientIdx <= effectiveMaxIdx
+    const clientInRange =
+      clientIdx >= 0 && exerciseMinIdx >= 0 && clientIdx >= exerciseMinIdx && clientIdx <= effectiveMaxIdx
     if (clientIdx >= 0 && exerciseMinIdx >= 0 && !clientInRange && exerciseMinIdx > clientIdx + 1) {
       issues.push({
         type: "warning",

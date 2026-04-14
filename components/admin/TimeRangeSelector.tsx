@@ -37,7 +37,7 @@ export function TimeRangeSelector({ currentMonths }: TimeRangeSelectorProps) {
             "px-3 py-1 text-xs font-medium rounded-md transition-colors",
             currentMonths === r.value
               ? "bg-primary text-primary-foreground"
-              : "text-muted-foreground hover:text-foreground hover:bg-surface"
+              : "text-muted-foreground hover:text-foreground hover:bg-surface",
           )}
         >
           {r.label}

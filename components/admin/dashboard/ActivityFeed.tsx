@@ -1,10 +1,5 @@
 import Link from "next/link"
-import {
-  DollarSign,
-  ClipboardCheck,
-  Trophy,
-  ArrowRight,
-} from "lucide-react"
+import { DollarSign, ClipboardCheck, Trophy, ArrowRight } from "lucide-react"
 
 export interface ActivityItem {
   id: string
@@ -18,10 +13,7 @@ interface ActivityFeedProps {
   items: ActivityItem[]
 }
 
-const TYPE_CONFIG: Record<
-  ActivityItem["type"],
-  { icon: React.ReactNode; color: string }
-> = {
+const TYPE_CONFIG: Record<ActivityItem["type"], { icon: React.ReactNode; color: string }> = {
   payment: {
     icon: <DollarSign className="size-3.5" />,
     color: "bg-success/10 text-success",
@@ -66,30 +58,19 @@ export function ActivityFeed({ items }: ActivityFeedProps) {
       </div>
 
       {items.length === 0 ? (
-        <div className="p-8 text-center text-sm text-muted-foreground">
-          No recent activity.
-        </div>
+        <div className="p-8 text-center text-sm text-muted-foreground">No recent activity.</div>
       ) : (
         <div className="divide-y divide-border">
           {items.map((item) => {
             const config = TYPE_CONFIG[item.type]
             return (
-              <div
-                key={item.id}
-                className="flex items-start gap-3 px-4 py-3 hover:bg-surface/30 transition-colors"
-              >
-                <div
-                  className={`flex size-7 shrink-0 items-center justify-center rounded-full mt-0.5 ${config.color}`}
-                >
+              <div key={item.id} className="flex items-start gap-3 px-4 py-3 hover:bg-surface/30 transition-colors">
+                <div className={`flex size-7 shrink-0 items-center justify-center rounded-full mt-0.5 ${config.color}`}>
                   {config.icon}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm text-foreground leading-snug">
-                    {item.description}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {relativeTime(item.date)}
-                  </p>
+                  <p className="text-sm text-foreground leading-snug">{item.description}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{relativeTime(item.date)}</p>
                 </div>
               </div>
             )

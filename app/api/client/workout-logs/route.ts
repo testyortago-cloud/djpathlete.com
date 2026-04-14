@@ -13,10 +13,7 @@ export async function GET(request: Request) {
     const exerciseId = searchParams.get("exerciseId")
 
     if (!exerciseId) {
-      return NextResponse.json(
-        { error: "exerciseId query parameter is required" },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "exerciseId query parameter is required" }, { status: 400 })
     }
 
     const from = searchParams.get("from")
@@ -29,15 +26,11 @@ export async function GET(request: Request) {
     // Apply optional date range filters
     if (from) {
       const fromDate = new Date(from)
-      records = records.filter(
-        (r) => new Date(r.completed_at) >= fromDate
-      )
+      records = records.filter((r) => new Date(r.completed_at) >= fromDate)
     }
     if (to) {
       const toDate = new Date(to)
-      records = records.filter(
-        (r) => new Date(r.completed_at) <= toDate
-      )
+      records = records.filter((r) => new Date(r.completed_at) <= toDate)
     }
 
     // Apply limit
@@ -48,9 +41,6 @@ export async function GET(request: Request) {
     return NextResponse.json(records)
   } catch (error) {
     console.error("Workout logs GET error:", error)
-    return NextResponse.json(
-      { error: "Failed to fetch workout logs" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Failed to fetch workout logs" }, { status: 500 })
   }
 }

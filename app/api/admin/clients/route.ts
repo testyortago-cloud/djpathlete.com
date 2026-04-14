@@ -15,10 +15,7 @@ export async function POST(request: Request) {
     // Auth check
     const session = await auth()
     if (!session?.user?.id || session.user.role !== "admin") {
-      return NextResponse.json(
-        { error: "Unauthorized. Admin access required." },
-        { status: 403 }
-      )
+      return NextResponse.json({ error: "Unauthorized. Admin access required." }, { status: 403 })
     }
 
     const body = await request.json()
@@ -27,7 +24,7 @@ export async function POST(request: Request) {
     if (!result.success) {
       return NextResponse.json(
         { error: "Invalid form data", details: result.error.flatten().fieldErrors },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
@@ -36,10 +33,7 @@ export async function POST(request: Request) {
     // Check duplicate email
     const existingUser = await getUserByEmail(email)
     if (existingUser) {
-      return NextResponse.json(
-        { error: "A user with this email already exists." },
-        { status: 409 }
-      )
+      return NextResponse.json({ error: "A user with this email already exists." }, { status: 409 })
     }
 
     // Generate random temporary password
@@ -59,22 +53,20 @@ export async function POST(request: Request) {
 
     // Create empty client profile
     const supabase = createServiceRoleClient()
-    const { error: profileError } = await supabase
-      .from("client_profiles")
-      .insert({
-        user_id: typedUser.id,
-        date_of_birth: null,
-        gender: null,
-        sport: null,
-        position: null,
-        experience_level: null,
-        goals: null,
-        injuries: null,
-        height_cm: null,
-        weight_kg: null,
-        emergency_contact_name: null,
-        emergency_contact_phone: null,
-      })
+    const { error: profileError } = await supabase.from("client_profiles").insert({
+      user_id: typedUser.id,
+      date_of_birth: null,
+      gender: null,
+      sport: null,
+      position: null,
+      experience_level: null,
+      goals: null,
+      injuries: null,
+      height_cm: null,
+      weight_kg: null,
+      emergency_contact_name: null,
+      emergency_contact_phone: null,
+    })
 
     if (profileError) {
       console.error("Failed to create client profile:", profileError)
@@ -82,16 +74,10 @@ export async function POST(request: Request) {
 
     // Update phone if provided
     if (phone) {
-      await supabase
-        .from("users")
-        .update({ phone })
-        .eq("id", typedUser.id)
+      await supabase.from("users").update({ phone }).eq("id", typedUser.id)
     }
 
-    const baseUrl =
-      process.env.NEXTAUTH_URL ??
-      process.env.NEXT_PUBLIC_APP_URL ??
-      "http://localhost:3000"
+    const baseUrl = process.env.NEXTAUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
 
     const loginUrl = `${baseUrl}/login`
 
@@ -133,15 +119,9 @@ export async function POST(request: Request) {
     // Return user without password_hash
     const { password_hash: _, ...safeUser } = typedUser
 
-    return NextResponse.json(
-      { ...safeUser, emailSent, ...(emailSent ? {} : { tempPassword }) },
-      { status: 201 }
-    )
+    return NextResponse.json({ ...safeUser, emailSent, ...(emailSent ? {} : { tempPassword }) }, { status: 201 })
   } catch (error) {
     console.error("Add client error:", error)
-    return NextResponse.json(
-      { error: "An unexpected error occurred. Please try again." },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "An unexpected error occurred. Please try again." }, { status: 500 })
   }
 }

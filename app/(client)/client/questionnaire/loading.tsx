@@ -12,10 +12,7 @@ export default function QuestionnaireLoading() {
         {/* Step indicator */}
         <div className="flex items-center gap-2 mb-2">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div
-              key={i}
-              className="h-1.5 flex-1 bg-muted animate-pulse rounded-full"
-            />
+            <div key={i} className="h-1.5 flex-1 bg-muted animate-pulse rounded-full" />
           ))}
         </div>
 

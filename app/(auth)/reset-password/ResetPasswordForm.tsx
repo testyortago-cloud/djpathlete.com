@@ -20,9 +20,7 @@ export function ResetPasswordForm() {
     return (
       <>
         <div className="mb-8">
-          <h1 className="text-2xl font-semibold text-primary tracking-tight">
-            Invalid reset link
-          </h1>
+          <h1 className="text-2xl font-semibold text-primary tracking-tight">Invalid reset link</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             This password reset link is invalid or missing. Please request a new one.
           </p>
@@ -88,9 +86,7 @@ export function ResetPasswordForm() {
           <div className="flex size-12 items-center justify-center rounded-full bg-success/10 mb-4">
             <CheckCircle2 className="size-6 text-success" />
           </div>
-          <h1 className="text-2xl font-semibold text-primary tracking-tight">
-            Password reset!
-          </h1>
+          <h1 className="text-2xl font-semibold text-primary tracking-tight">Password reset!</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             Your password has been successfully updated. You can now log in with your new password.
           </p>
@@ -109,9 +105,7 @@ export function ResetPasswordForm() {
   return (
     <>
       <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-primary tracking-tight">
-          Reset your password
-        </h1>
+        <h1 className="text-2xl font-semibold text-primary tracking-tight">Reset your password</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Enter your new password below. Must be at least 8 characters.
         </p>

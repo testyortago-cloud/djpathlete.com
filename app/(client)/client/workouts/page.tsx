@@ -43,11 +43,7 @@ function getTodayDow(): number {
 }
 
 /** Convert a (startDate, weekNumber, dayOfWeek) triple to an actual calendar Date */
-function getDateForWorkoutDay(
-  startDate: string,
-  weekNumber: number,
-  dayOfWeek: number
-): Date {
+function getDateForWorkoutDay(startDate: string, weekNumber: number, dayOfWeek: number): Date {
   const start = new Date(startDate)
   // Normalize start to its Monday (ISO week start)
   const jsDay = start.getDay() // 0=Sun..6=Sat
@@ -65,9 +61,7 @@ function getDateForWorkoutDay(
 function getCurrentWeekFromDate(startDate: string, totalWeeks: number): number {
   const start = new Date(startDate)
   const now = new Date()
-  const daysSinceStart = Math.floor(
-    (now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)
-  )
+  const daysSinceStart = Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
   // If program hasn't started yet, return 0 to signal "not started"
   if (daysSinceStart < 0) return 0
   // Week 1 = first 7 days, clamp to valid range
@@ -86,16 +80,16 @@ export default async function ClientWorkoutsPage() {
 
   try {
     const assignments = (await getAssignments(userId)) as AssignmentWithProgram[]
-    activeAssignments = assignments.filter((a) => a.status === "active" && a.payment_status !== "pending" && !isAssignmentExpired(a.expires_at))
+    activeAssignments = assignments.filter(
+      (a) => a.status === "active" && a.payment_status !== "pending" && !isAssignmentExpired(a.expires_at),
+    )
 
     programExercises = await Promise.all(
       activeAssignments.map(async (assignment) => {
         if (!assignment.programs) return { assignment, exercises: [] }
-        const exercises = (await getProgramExercises(
-          assignment.program_id
-        )) as ProgramExerciseWithExercise[]
+        const exercises = (await getProgramExercises(assignment.program_id)) as ProgramExerciseWithExercise[]
         return { assignment, exercises }
-      })
+      }),
     )
   } catch {
     // DB tables may not exist yet — render gracefully with empty data
@@ -120,13 +114,7 @@ export default async function ClientWorkoutsPage() {
 
   // Collect all unique exercise IDs across all programs
   const allExerciseIds = [
-    ...new Set(
-      programExercises.flatMap(({ exercises }) =>
-        exercises
-          .map((pe) => pe.exercise_id)
-          .filter(Boolean)
-      )
-    ),
+    ...new Set(programExercises.flatMap(({ exercises }) => exercises.map((pe) => pe.exercise_id).filter(Boolean))),
   ]
 
   // Batch-fetch progress history and client profile in parallel
@@ -202,13 +190,12 @@ export default async function ClientWorkoutsPage() {
           const isCurrentWeek = w === currentWeek
           const sortedDays = [...dayMap.keys()].sort((a, b) => a - b)
           const labels = buildDayLabels(sortedDays)
-          weeks[w] = sortedDays
-            .map((day) => ({
-              day,
-              dayLabel: labels[day] ?? `Day ${day}`,
-              assignmentId: assignment.id,
-              exercises: buildExerciseData(dayMap.get(day)!, isCurrentWeek),
-            }))
+          weeks[w] = sortedDays.map((day) => ({
+            day,
+            dayLabel: labels[day] ?? `Day ${day}`,
+            assignmentId: assignment.id,
+            exercises: buildExerciseData(dayMap.get(day)!, isCurrentWeek),
+          }))
         }
       }
 

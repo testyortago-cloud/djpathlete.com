@@ -22,13 +22,12 @@ export default async function AchievementsPage() {
   let longestStreak = 0
 
   try {
-    const [allAchievements, prAchievements, streakAchievements, currentStreak] =
-      await Promise.all([
-        getAchievements(userId),
-        getAchievementsByType(userId, "pr"),
-        getAchievementsByType(userId, "streak"),
-        getWorkoutStreak(userId),
-      ])
+    const [allAchievements, prAchievements, streakAchievements, currentStreak] = await Promise.all([
+      getAchievements(userId),
+      getAchievementsByType(userId, "pr"),
+      getAchievementsByType(userId, "streak"),
+      getWorkoutStreak(userId),
+    ])
 
     achievements = allAchievements
     prCount = prAchievements.length
@@ -61,9 +60,7 @@ export default async function AchievementsPage() {
             <Trophy className="size-4 sm:size-5 text-amber-500" strokeWidth={1.5} />
           </div>
           <div>
-            <p className="text-xl sm:text-2xl font-semibold text-foreground leading-none">
-              {achievements.length}
-            </p>
+            <p className="text-xl sm:text-2xl font-semibold text-foreground leading-none">{achievements.length}</p>
             <p className="text-[10px] sm:text-sm text-muted-foreground leading-tight mt-0.5">Total</p>
           </div>
         </div>
@@ -83,9 +80,7 @@ export default async function AchievementsPage() {
             <Flame className="size-4 sm:size-5 text-orange-500" strokeWidth={1.5} />
           </div>
           <div>
-            <p className="text-xl sm:text-2xl font-semibold text-foreground leading-none">
-              {longestStreak}
-            </p>
+            <p className="text-xl sm:text-2xl font-semibold text-foreground leading-none">{longestStreak}</p>
             <p className="text-[10px] sm:text-sm text-muted-foreground leading-tight mt-0.5">Streak</p>
           </div>
         </div>

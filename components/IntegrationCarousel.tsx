@@ -108,8 +108,8 @@ export const IntegrationCarousel = () => {
               Every step of your journey, from assessment to competition.
             </h2>
             <p className="text-lg leading-7 text-muted-foreground text-center max-w-[600px] mt-2">
-              Plan, track, and optimize every phase of your athletic development
-              &mdash; from initial assessment to peak performance and beyond.
+              Plan, track, and optimize every phase of your athletic development &mdash; from initial assessment to peak
+              performance and beyond.
             </p>
           </div>
           <motion.div
@@ -139,16 +139,11 @@ export const IntegrationCarousel = () => {
           {[...topRowStages, ...topRowStages].map((stage, index) => {
             const Icon = stage.icon
             return (
-              <div
-                key={`top-${index}`}
-                className="flex flex-col items-center gap-2 w-28 flex-shrink-0"
-              >
+              <div key={`top-${index}`} className="flex flex-col items-center gap-2 w-28 flex-shrink-0">
                 <div className="flex items-center justify-center w-24 h-24 rounded-3xl transition-transform duration-300 hover:scale-105 bg-surface shadow-[rgba(0,0,0,0.04)_0px_0px_0px_1px,rgba(0,0,0,0.04)_0px_1px_1px_0px,rgba(0,0,0,0.04)_0px_3px_3px_-1.4px,rgba(0,0,0,0.04)_0px_6px_6px_-3px,rgba(0,0,0,0.04)_0px_12px_12px_-6px]">
                   <Icon className="size-9 text-primary/70" strokeWidth={1.5} />
                 </div>
-                <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">
-                  {stage.name}
-                </span>
+                <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">{stage.name}</span>
               </div>
             )
           })}
@@ -173,16 +168,11 @@ export const IntegrationCarousel = () => {
           {[...bottomRowStages, ...bottomRowStages].map((stage, index) => {
             const Icon = stage.icon
             return (
-              <div
-                key={`bottom-${index}`}
-                className="flex flex-col items-center gap-2 w-28 flex-shrink-0"
-              >
+              <div key={`bottom-${index}`} className="flex flex-col items-center gap-2 w-28 flex-shrink-0">
                 <div className="flex items-center justify-center w-24 h-24 rounded-3xl transition-transform duration-300 hover:scale-105 bg-surface shadow-[rgba(0,0,0,0.04)_0px_0px_0px_1px,rgba(0,0,0,0.04)_0px_1px_1px_0px,rgba(0,0,0,0.04)_0px_3px_3px_-1.4px,rgba(0,0,0,0.04)_0px_6px_6px_-3px,rgba(0,0,0,0.04)_0px_12px_12px_-6px]">
                   <Icon className="size-9 text-primary/70" strokeWidth={1.5} />
                 </div>
-                <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">
-                  {stage.name}
-                </span>
+                <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">{stage.name}</span>
               </div>
             )
           })}

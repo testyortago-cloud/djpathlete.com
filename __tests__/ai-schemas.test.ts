@@ -122,9 +122,7 @@ describe("profileAnalysisSchema", () => {
   const validAnalysis = {
     recommended_split: "upper_lower",
     recommended_periodization: "linear",
-    volume_targets: [
-      { muscle_group: "quads", sets_per_week: 16, priority: "high" },
-    ],
+    volume_targets: [{ muscle_group: "quads", sets_per_week: 16, priority: "high" }],
     exercise_constraints: [],
     session_structure: {
       warm_up_minutes: 5,
