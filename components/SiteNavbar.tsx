@@ -14,6 +14,8 @@ import {
   FileText,
   Database,
   Activity,
+  Zap,
+  Tent,
   type LucideIcon,
 } from "lucide-react"
 import { NAV_ITEMS, type NavGroup } from "@/lib/constants"
@@ -26,23 +28,15 @@ const DROPDOWN_ICONS: Record<string, LucideIcon> = {
   Blog: FileText,
   "Performance Database": Database,
   "Comeback Code": Activity,
+  "Agility Clinics": Zap,
+  "Performance Camps": Tent,
 }
 
-function DesktopDropdown({
-  item,
-  useLight,
-  pathname,
-}: {
-  item: NavGroup
-  useLight: boolean
-  pathname: string
-}) {
+function DesktopDropdown({ item, useLight, pathname }: { item: NavGroup; useLight: boolean; pathname: string }) {
   const [open, setOpen] = useState(false)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const isActive = item.children?.some(
-    (child) => pathname === child.href || pathname.startsWith(child.href + "/")
-  )
+  const isActive = item.children?.some((child) => pathname === child.href || pathname.startsWith(child.href + "/"))
 
   const handleEnter = () => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current)
@@ -75,9 +69,7 @@ function DesktopDropdown({
         aria-expanded={open}
       >
         {item.label}
-        <ChevronDown
-          className={`w-3.5 h-3.5 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
-        />
+        <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
       </button>
 
       <AnimatePresence>
@@ -108,8 +100,7 @@ function DesktopDropdown({
               <div className="p-2">
                 {item.children?.map((child, i) => {
                   const Icon = DROPDOWN_ICONS[child.label]
-                  const childActive =
-                    pathname === child.href || pathname.startsWith(child.href + "/")
+                  const childActive = pathname === child.href || pathname.startsWith(child.href + "/")
 
                   return (
                     <motion.div
@@ -122,9 +113,7 @@ function DesktopDropdown({
                         href={child.href}
                         onClick={() => setOpen(false)}
                         className={`group flex items-start gap-3.5 px-3.5 py-3 rounded-xl transition-all duration-200 ${
-                          childActive
-                            ? "bg-primary/[0.06]"
-                            : "hover:bg-primary/[0.04]"
+                          childActive ? "bg-primary/[0.06]" : "hover:bg-primary/[0.04]"
                         }`}
                       >
                         {/* Icon container */}
@@ -156,9 +145,7 @@ function DesktopDropdown({
                         </div>
 
                         {/* Active indicator dot */}
-                        {childActive && (
-                          <div className="mt-2.5 flex-shrink-0 w-1.5 h-1.5 rounded-full bg-accent" />
-                        )}
+                        {childActive && <div className="mt-2.5 flex-shrink-0 w-1.5 h-1.5 rounded-full bg-accent" />}
                       </Link>
                     </motion.div>
                   )
@@ -172,35 +159,21 @@ function DesktopDropdown({
   )
 }
 
-function MobileDropdown({
-  item,
-  pathname,
-  onNavigate,
-}: {
-  item: NavGroup
-  pathname: string
-  onNavigate: () => void
-}) {
+function MobileDropdown({ item, pathname, onNavigate }: { item: NavGroup; pathname: string; onNavigate: () => void }) {
   const [open, setOpen] = useState(false)
 
-  const isActive = item.children?.some(
-    (child) => pathname === child.href || pathname.startsWith(child.href + "/")
-  )
+  const isActive = item.children?.some((child) => pathname === child.href || pathname.startsWith(child.href + "/"))
 
   return (
     <div>
       <button
         onClick={() => setOpen(!open)}
         className={`flex items-center justify-between w-full py-3 px-3 rounded-lg text-base transition-colors ${
-          isActive
-            ? "text-primary font-medium bg-surface"
-            : "text-foreground hover:text-primary hover:bg-surface"
+          isActive ? "text-primary font-medium bg-surface" : "text-foreground hover:text-primary hover:bg-surface"
         }`}
       >
         {item.label}
-        <ChevronDown
-          className={`w-4 h-4 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
-        />
+        <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
       </button>
 
       <AnimatePresence>
@@ -215,8 +188,7 @@ function MobileDropdown({
             <div className="ml-3 pl-3 py-1 border-l-2 border-primary/10 space-y-0.5">
               {item.children?.map((child, i) => {
                 const Icon = DROPDOWN_ICONS[child.label]
-                const childActive =
-                  pathname === child.href || pathname.startsWith(child.href + "/")
+                const childActive = pathname === child.href || pathname.startsWith(child.href + "/")
                 return (
                   <motion.div
                     key={child.label}
@@ -235,18 +207,14 @@ function MobileDropdown({
                     >
                       {Icon && (
                         <Icon
-                          className={`w-4 h-4 flex-shrink-0 ${
-                            childActive ? "text-primary" : "text-muted-foreground"
-                          }`}
+                          className={`w-4 h-4 flex-shrink-0 ${childActive ? "text-primary" : "text-muted-foreground"}`}
                           strokeWidth={1.8}
                         />
                       )}
                       <div>
                         {child.label}
                         {child.description && (
-                          <span className="block text-xs text-muted-foreground mt-0.5">
-                            {child.description}
-                          </span>
+                          <span className="block text-xs text-muted-foreground mt-0.5">{child.description}</span>
                         )}
                       </div>
                     </Link>
@@ -338,14 +306,7 @@ export function SiteNavbar() {
             <div className="hidden xl:flex items-center gap-1">
               {NAV_ITEMS.map((item) => {
                 if (item.children) {
-                  return (
-                    <DesktopDropdown
-                      key={item.label}
-                      item={item}
-                      useLight={useLight}
-                      pathname={pathname}
-                    />
-                  )
+                  return <DesktopDropdown key={item.label} item={item} useLight={useLight} pathname={pathname} />
                 }
 
                 const isActive = pathname === item.href || pathname.startsWith(item.href + "/")
@@ -374,9 +335,7 @@ export function SiteNavbar() {
               <Link
                 href="/login"
                 className={`text-sm font-medium transition-colors whitespace-nowrap ${
-                  useLight
-                    ? "text-white/80 hover:text-white"
-                    : "text-primary hover:text-foreground/80"
+                  useLight ? "text-white/80 hover:text-white" : "text-primary hover:text-foreground/80"
                 }`}
               >
                 Log in
@@ -397,10 +356,7 @@ export function SiteNavbar() {
             <div className="xl:hidden">
               <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
                 <SheetTrigger asChild>
-                  <button
-                    className={`p-2 ${useLight ? "text-white" : "text-foreground"}`}
-                    aria-label="Open menu"
-                  >
+                  <button className={`p-2 ${useLight ? "text-white" : "text-foreground"}`} aria-label="Open menu">
                     <Menu className="w-6 h-6" />
                   </button>
                 </SheetTrigger>
