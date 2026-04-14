@@ -14,6 +14,7 @@ const getUserByEmailMock = vi.fn(async (..._a: any[]) => null as any)
 
 vi.mock("@/lib/stripe", () => ({
   verifyWebhookSignature: (...a: unknown[]) => verifyMock(...a),
+  resolveSessionPaymentIntent: vi.fn(async (session: { payment_intent?: string | null }) => session.payment_intent ?? null),
 }))
 vi.mock("@/lib/db/payments", () => ({
   createPayment: (...a: unknown[]) => createPaymentMock(...a),
@@ -178,5 +179,36 @@ describe("Stripe webhook — external (metadata-less) checkouts", () => {
     const res = await POST(makeReq())
     expect(res.status).toBe(200)
     expect(createPaymentMock).not.toHaveBeenCalled()
+  })
+
+  it("external subscription with null session.payment_intent resolves PI from latest_invoice", async () => {
+    const stripeMod = await import("@/lib/stripe")
+    const resolveSpy = vi.spyOn(stripeMod, "resolveSessionPaymentIntent").mockResolvedValueOnce("pi_resolved_1")
+
+    verifyMock.mockReturnValueOnce({
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          mode: "subscription",
+          metadata: {},
+          subscription: "sub_ext_5",
+          payment_intent: null,
+          customer: "cus_ext_5",
+          customer_details: { email: "stranger@example.com" },
+          amount_total: 24000,
+          currency: "usd",
+          id: "cs_ext_5",
+        },
+      },
+    })
+
+    const { POST } = await import("@/app/api/stripe/webhook/route")
+    const res = await POST(makeReq())
+    expect(res.status).toBe(200)
+    expect(createPaymentMock).toHaveBeenCalledTimes(1)
+    const arg = createPaymentMock.mock.calls[0][0] as { stripe_payment_id: string }
+    expect(arg.stripe_payment_id).toBe("pi_resolved_1")
+
+    resolveSpy.mockRestore()
   })
 })

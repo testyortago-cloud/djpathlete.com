@@ -311,3 +311,42 @@ export async function createEventCheckoutSession(opts: {
     cancel_url: `${opts.baseUrl}/camps/${opts.event.slug}?checkout=cancelled`,
   })
 }
+
+/**
+ * Resolves the actual payment intent id from a checkout session.
+ * For one-time/payment sessions, returns session.payment_intent directly.
+ * For subscription sessions, session.payment_intent is null — the initial
+ * charge lives on the auto-created invoice, so we fetch the subscription's
+ * latest_invoice and pull the payment_intent from there.
+ *
+ * Returns null if no payment_intent can be resolved (e.g., trial subscription
+ * with no immediate charge, free session, etc.).
+ */
+export async function resolveSessionPaymentIntent(
+  session: Stripe.Checkout.Session,
+): Promise<string | null> {
+  if (session.payment_intent) {
+    return typeof session.payment_intent === "string"
+      ? session.payment_intent
+      : session.payment_intent.id
+  }
+
+  if (session.mode === "subscription" && session.subscription) {
+    const subId = typeof session.subscription === "string" ? session.subscription : session.subscription.id
+    try {
+      const sub = await stripe.subscriptions.retrieve(subId, {
+        expand: ["latest_invoice.payment_intent"],
+      })
+      const invoice = sub.latest_invoice
+      if (invoice && typeof invoice !== "string") {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const pi = (invoice as any).payment_intent
+        if (pi) return typeof pi === "string" ? pi : pi.id
+      }
+    } catch {
+      return null
+    }
+  }
+
+  return null
+}

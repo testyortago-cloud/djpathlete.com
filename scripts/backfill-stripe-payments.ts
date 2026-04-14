@@ -49,6 +49,31 @@ interface Counters {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+async function resolveSessionPaymentIntent(session: Stripe.Checkout.Session): Promise<string | null> {
+  if (session.payment_intent) {
+    return typeof session.payment_intent === "string"
+      ? session.payment_intent
+      : session.payment_intent.id
+  }
+  if (session.mode === "subscription" && session.subscription) {
+    const subId = typeof session.subscription === "string" ? session.subscription : session.subscription.id
+    try {
+      const sub = await stripe.subscriptions.retrieve(subId, {
+        expand: ["latest_invoice.payment_intent"],
+      })
+      const invoice = sub.latest_invoice
+      if (invoice && typeof invoice !== "string") {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const pi = (invoice as any).payment_intent
+        if (pi) return typeof pi === "string" ? pi : pi.id
+      }
+    } catch {
+      return null
+    }
+  }
+  return null
+}
+
 async function tryResolveUserIdFromEmail(email: string | null | undefined): Promise<string | null> {
   if (!email) return null
   try {
@@ -124,8 +149,8 @@ async function backfillSession(session: Stripe.Checkout.Session, counters: Count
   }
 
   // Payments: capture the initial payment intent for both one-time and subscription sessions
-  if (session.payment_intent) {
-    const stripePaymentId = session.payment_intent as string
+  const stripePaymentId = await resolveSessionPaymentIntent(session)
+  if (stripePaymentId) {
     const exists = await getPaymentByStripeId(stripePaymentId)
     if (exists) {
       counters.paymentsSkipped++

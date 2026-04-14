@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import type Stripe from "stripe"
-import { verifyWebhookSignature } from "@/lib/stripe"
+import { verifyWebhookSignature, resolveSessionPaymentIntent } from "@/lib/stripe"
 import { createPayment, getPaymentByStripeId, updatePayment } from "@/lib/db/payments"
 import { createAssignment, getAssignmentByUserAndProgram, updateAssignment } from "@/lib/db/assignments"
 import { updateWeekAccess, createWeekAccessBulk } from "@/lib/db/week-access"
@@ -271,8 +271,8 @@ async function handleSubscriptionCheckout(session: Stripe.Checkout.Session) {
       },
     })
 
-    if (session.payment_intent) {
-      const stripePaymentId = session.payment_intent as string
+    const stripePaymentId = await resolveSessionPaymentIntent(session)
+    if (stripePaymentId) {
       const existingPayment = await getPaymentByStripeId(stripePaymentId)
       if (!existingPayment) {
         await createPayment({
@@ -357,12 +357,13 @@ async function handleSubscriptionCheckout(session: Stripe.Checkout.Session) {
   })
 
   // Also create a payment record for the initial charge
-  if (session.payment_intent) {
-    const existingPayment = await getPaymentByStripeId(session.payment_intent as string)
+  const stripePaymentId = await resolveSessionPaymentIntent(session)
+  if (stripePaymentId) {
+    const existingPayment = await getPaymentByStripeId(stripePaymentId)
     if (!existingPayment) {
       await createPayment({
         user_id: userId,
-        stripe_payment_id: session.payment_intent as string,
+        stripe_payment_id: stripePaymentId,
         stripe_customer_id: (session.customer as string) ?? null,
         amount_cents: session.amount_total ?? 0,
         currency: session.currency ?? "usd",
