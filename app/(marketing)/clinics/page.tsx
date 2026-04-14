@@ -90,15 +90,13 @@ export default function ClinicsPage() {
       <section id="what-gets-coached" className="mx-auto max-w-7xl px-4 py-16 md:px-6 md:py-20">
         <FadeIn>
           <div className="max-w-3xl">
-            <div className="text-sm font-medium uppercase tracking-[0.25em] text-accent">
-              What gets coached
-            </div>
+            <div className="text-sm font-medium uppercase tracking-[0.25em] text-accent">What gets coached</div>
             <h2 className="mt-3 font-heading text-3xl font-semibold tracking-tight md:text-5xl">
               Agility work with proper coaching behind it.
             </h2>
             <p className="mt-5 text-lg leading-8 text-muted-foreground">
-              Built around the movement actions that show up again and again in competitive
-              sport. Less filler. More transfer.
+              Built around the movement actions that show up again and again in competitive sport. Less filler. More
+              transfer.
             </p>
           </div>
           <div className="mt-10">
@@ -110,15 +108,13 @@ export default function ClinicsPage() {
       <section className="bg-surface border-y border-border">
         <div className="mx-auto grid max-w-7xl gap-10 px-4 py-16 md:px-6 md:py-20 lg:grid-cols-[0.95fr_1.05fr]">
           <FadeIn>
-            <div className="text-sm font-medium uppercase tracking-[0.25em] text-accent">
-              How it runs
-            </div>
+            <div className="text-sm font-medium uppercase tracking-[0.25em] text-accent">How it runs</div>
             <h2 className="mt-3 font-heading text-3xl font-semibold tracking-tight md:text-5xl">
               Coach first. Then challenge it.
             </h2>
             <p className="mt-5 text-lg leading-8 text-muted-foreground">
-              A clear progression so quality comes before pressure. The session builds
-              understanding, then asks athletes to use it.
+              A clear progression so quality comes before pressure. The session builds understanding, then asks athletes
+              to use it.
             </p>
           </FadeIn>
           <FadeIn delay={0.1}>
@@ -130,12 +126,8 @@ export default function ClinicsPage() {
       <section className="mx-auto max-w-7xl px-4 py-16 md:px-6 md:py-20">
         <FadeIn>
           <div className="max-w-3xl">
-            <div className="text-sm font-medium uppercase tracking-[0.25em] text-accent">
-              Upcoming dates
-            </div>
-            <h2 className="mt-3 font-heading text-3xl font-semibold tracking-tight md:text-5xl">
-              When and where
-            </h2>
+            <div className="text-sm font-medium uppercase tracking-[0.25em] text-accent">Upcoming dates</div>
+            <h2 className="mt-3 font-heading text-3xl font-semibold tracking-tight md:text-5xl">When and where</h2>
           </div>
           <div className="mt-10">
             <EventsComingSoonPanel type="clinic" />
@@ -148,9 +140,7 @@ export default function ClinicsPage() {
           <FadeIn>
             <Card className="rounded-3xl border-border bg-background">
               <CardContent className="p-8">
-                <div className="text-sm uppercase tracking-[0.25em] text-accent">
-                  Who it is for
-                </div>
+                <div className="text-sm uppercase tracking-[0.25em] text-accent">Who it is for</div>
                 <h3 className="mt-3 font-heading text-3xl font-semibold tracking-tight">
                   Athletes who want to look and feel more effective in sport.
                 </h3>
@@ -169,15 +159,13 @@ export default function ClinicsPage() {
           <FadeIn delay={0.1}>
             <Card className="rounded-3xl border-border bg-gradient-to-br from-accent/10 to-surface">
               <CardContent className="p-8">
-                <div className="text-sm uppercase tracking-[0.25em] text-muted-foreground">
-                  Outcome
-                </div>
+                <div className="text-sm uppercase tracking-[0.25em] text-muted-foreground">Outcome</div>
                 <div className="mt-4 font-heading text-3xl font-semibold tracking-tight">
                   Better movement. Better control. Better transfer.
                 </div>
                 <p className="mt-5 leading-8 text-muted-foreground">
-                  Athletes leave with clearer movement understanding, sharper agility
-                  mechanics, and better confidence when the game becomes less predictable.
+                  Athletes leave with clearer movement understanding, sharper agility mechanics, and better confidence
+                  when the game becomes less predictable.
                 </p>
                 <Button asChild className="mt-8 rounded-full">
                   <Link href="#register-interest">Register Your Interest</Link>

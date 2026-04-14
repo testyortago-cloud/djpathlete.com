@@ -29,16 +29,12 @@ export function ClinicHero() {
             Get quicker where the game actually changes.
           </h1>
           <p className="mt-6 max-w-3xl text-lg leading-8 text-primary-foreground/80 md:text-xl">
-            A 2-hour coaching session for athletes who want to move better, react faster, and
-            look more in control when the game gets chaotic. The focus is agility through
-            acceleration, deceleration, change of direction, and rotation.
+            A 2-hour coaching session for athletes who want to move better, react faster, and look more in control when
+            the game gets chaotic. The focus is agility through acceleration, deceleration, change of direction, and
+            rotation.
           </p>
           <div className="mt-8 flex flex-wrap gap-4">
-            <Button
-              asChild
-              size="lg"
-              className="rounded-full bg-accent text-primary hover:bg-accent/90"
-            >
+            <Button asChild size="lg" className="rounded-full bg-accent text-primary hover:bg-accent/90">
               <Link href="#register-interest">
                 Register Your Interest
                 <ArrowRight className="ml-2 h-4 w-4" />
@@ -58,9 +54,7 @@ export function ClinicHero() {
               <div
                 key={stat.label}
                 className={`rounded-2xl border p-4 ${
-                  stat.accent
-                    ? "border-accent/40 bg-accent/15"
-                    : "border-primary-foreground/15 bg-primary-foreground/5"
+                  stat.accent ? "border-accent/40 bg-accent/15" : "border-primary-foreground/15 bg-primary-foreground/5"
                 }`}
               >
                 <div className="text-sm text-primary-foreground/60">{stat.label}</div>
@@ -73,25 +67,21 @@ export function ClinicHero() {
         <FadeIn delay={0.1}>
           <Card className="rounded-3xl border-primary-foreground/15 bg-primary-foreground/[0.06] shadow-2xl backdrop-blur">
             <CardContent className="p-6 md:p-8">
-              <div className="text-xs uppercase tracking-[0.3em] text-primary-foreground/50">
-                The pitch
-              </div>
+              <div className="text-xs uppercase tracking-[0.3em] text-primary-foreground/50">The pitch</div>
               <div className="mt-4 font-heading text-2xl font-medium leading-9 md:text-3xl">
                 Not cone drills for the sake of cone drills.
               </div>
               <div className="mt-5 space-y-4 text-sm leading-7 text-primary-foreground/75 md:text-base">
                 <p>
-                  Athletes are coached through the actions that decide real moments in sport:
-                  starting, stopping, redirecting, and re-organising under pressure.
+                  Athletes are coached through the actions that decide real moments in sport: starting, stopping,
+                  redirecting, and re-organising under pressure.
                 </p>
                 <p>
-                  Smaller group numbers mean better feedback, better reps, and a better
-                  standard of coaching throughout.
+                  Smaller group numbers mean better feedback, better reps, and a better standard of coaching throughout.
                 </p>
               </div>
               <div className="mt-7 rounded-2xl border border-accent/40 bg-accent/15 p-4 text-sm text-primary-foreground">
-                Designed for athletes who want their movement to stand out, not just their
-                effort.
+                Designed for athletes who want their movement to stand out, not just their effort.
               </div>
             </CardContent>
           </Card>

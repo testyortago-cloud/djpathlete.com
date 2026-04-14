@@ -1,10 +1,4 @@
-import type {
-  CompressedExercise,
-  ExerciseSlot,
-  ProgramWeek,
-  ExerciseAssignment,
-  ValidationResult,
-} from "./types.js"
+import type { CompressedExercise, ExerciseSlot, ProgramWeek, ExerciseAssignment, ValidationResult } from "./types.js"
 import { callAgent, MODEL_OPUS, MODEL_SONNET } from "./anthropic.js"
 import { scoreAndFilterExercises, semanticFilterExercises, filterByInjuredJoints } from "./exercise-filter.js"
 import { programSkeletonSchema, exerciseAssignmentSchema } from "./schemas.js"
@@ -87,19 +81,13 @@ async function getRecentProgress(userId: string, exerciseIds: string[], limit = 
 
 async function updateProgramDuration(programId: string, newDuration: number) {
   const supabase = getSupabase()
-  const { error } = await supabase
-    .from("programs")
-    .update({ duration_weeks: newDuration })
-    .eq("id", programId)
+  const { error } = await supabase.from("programs").update({ duration_weeks: newDuration }).eq("id", programId)
   if (error) throw new Error(`Failed to update program duration: ${error.message}`)
 }
 
 async function updateAssignmentTotalWeeks(assignmentId: string, newTotal: number) {
   const supabase = getSupabase()
-  const { error } = await supabase
-    .from("program_assignments")
-    .update({ total_weeks: newTotal })
-    .eq("id", assignmentId)
+  const { error } = await supabase.from("program_assignments").update({ total_weeks: newTotal }).eq("id", assignmentId)
   if (error) console.warn(`[week-orchestrator] Failed to update assignment total_weeks: ${error.message}`)
 }
 
@@ -226,15 +214,23 @@ const weekSkeletonSchema = programSkeletonSchema
  * movement patterns used, and exercise count. This gives the AI full
  * progression context without sending every exercise detail for every week.
  */
-function buildWeekFocusSummary(
-  exercises: Record<string, unknown>[]
-): { week: number; days: number; exercises: number; primary_muscles: string[]; movement_patterns: string[]; exercise_names: string[] }[] {
-  const weekMap = new Map<number, {
-    days: Set<number>
-    muscles: Map<string, number>
-    patterns: Map<string, number>
-    names: string[]
-  }>()
+function buildWeekFocusSummary(exercises: Record<string, unknown>[]): {
+  week: number
+  days: number
+  exercises: number
+  primary_muscles: string[]
+  movement_patterns: string[]
+  exercise_names: string[]
+}[] {
+  const weekMap = new Map<
+    number,
+    {
+      days: Set<number>
+      muscles: Map<string, number>
+      patterns: Map<string, number>
+      names: string[]
+    }
+  >()
 
   for (const pe of exercises) {
     const week = pe.week_number as number
@@ -278,7 +274,7 @@ function buildWeekFocusSummary(
 export async function generateWeekSync(
   request: WeekGenerationRequest,
   requestedBy: string,
-  firebaseJobId?: string
+  firebaseJobId?: string,
 ): Promise<WeekGenerationResult> {
   console.log("[week-orchestrator] Starting generateWeekSync", {
     program_id: request.program_id,
@@ -308,7 +304,7 @@ export async function generateWeekSync(
 
   // Client data is optional — programs without assignments can still use AI generation
   // Skip profile fetch when coach has opted to ignore it
-  const profile = (request.client_id && !request.ignore_profile) ? await getClientProfile(request.client_id) : null
+  const profile = request.client_id && !request.ignore_profile ? await getClientProfile(request.client_id) : null
   const clientName = request.client_id ? await getClientName(request.client_id) : "Unassigned"
 
   // Determine whether we're filling a blank existing week or appending a new one
@@ -318,11 +314,11 @@ export async function generateWeekSync(
 
   // If filling a blank week, verify it has no exercises already (skip check for single-day mode)
   if (isFillingBlank && !isSingleDay) {
-    const existingInTarget = existingExercises.filter(
-      (pe: { week_number: number }) => pe.week_number === newWeekNumber
-    )
+    const existingInTarget = existingExercises.filter((pe: { week_number: number }) => pe.week_number === newWeekNumber)
     if (existingInTarget.length > 0) {
-      throw new Error(`Week ${newWeekNumber} already has ${existingInTarget.length} exercises. Clear them first or generate into a blank week.`)
+      throw new Error(
+        `Week ${newWeekNumber} already has ${existingInTarget.length} exercises. Clear them first or generate into a blank week.`,
+      )
     }
   }
 
@@ -330,25 +326,25 @@ export async function generateWeekSync(
   if (isSingleDay) {
     const existingInDay = existingExercises.filter(
       (pe: { week_number: number; day_of_week: number }) =>
-        pe.week_number === newWeekNumber && pe.day_of_week === request.target_day_of_week
+        pe.week_number === newWeekNumber && pe.day_of_week === request.target_day_of_week,
     )
     if (existingInDay.length > 0) {
-      throw new Error(`${DAY_NAMES[(request.target_day_of_week!) - 1]} in Week ${newWeekNumber} already has ${existingInDay.length} exercises. Clear them first.`)
+      throw new Error(
+        `${DAY_NAMES[request.target_day_of_week! - 1]} in Week ${newWeekNumber} already has ${existingInDay.length} exercises. Clear them first.`,
+      )
     }
   }
 
   // Get unique exercise IDs from the program for progress lookup
   const programExerciseIds = [...new Set(existingExercises.map((pe: { exercise_id: string }) => pe.exercise_id))]
-  const recentProgress = request.client_id
-    ? await getRecentProgress(request.client_id, programExerciseIds)
-    : []
+  const recentProgress = request.client_id ? await getRecentProgress(request.client_id, programExerciseIds) : []
 
   // Build compact summary of ALL weeks (focus/theme only) for full progression context
   const weekFocusSummary = buildWeekFocusSummary(existingExercises)
 
   // Detailed exercises from the 3 weeks before the target week for structure matching
   const recentWeeksDetailed = existingExercises.filter(
-    (pe: { week_number: number }) => pe.week_number >= Math.max(1, newWeekNumber - 3) && pe.week_number < newWeekNumber
+    (pe: { week_number: number }) => pe.week_number >= Math.max(1, newWeekNumber - 3) && pe.week_number < newWeekNumber,
   )
 
   // Keep lastTwoWeeks alias for exercise rotation logic below
@@ -393,36 +389,51 @@ export async function generateWeekSync(
 
   const profileContext = profile
     ? JSON.stringify({
-        goals: profile.goals, experience_level: profile.experience_level,
-        injuries: profile.injuries, injury_details: profile.injury_details,
+        goals: profile.goals,
+        experience_level: profile.experience_level,
+        injuries: profile.injuries,
+        injury_details: profile.injury_details,
         available_equipment: profile.available_equipment,
         preferred_session_minutes: profile.preferred_session_minutes,
         preferred_training_days: profile.preferred_training_days,
         preferred_techniques: profile.preferred_techniques,
-        sleep_hours: profile.sleep_hours, stress_level: profile.stress_level,
+        sleep_hours: profile.sleep_hours,
+        stress_level: profile.stress_level,
       })
     : request.ignore_profile
       ? "Coach-directed mode — client profile intentionally ignored. Rely on coach instructions and program context."
       : "No profile available"
 
-  await updateJobProgress("context_loaded", 2, `${existingExercises.length} exercises, ${recentProgress.length} logs loaded`)
+  await updateJobProgress(
+    "context_loaded",
+    2,
+    `${existingExercises.length} exercises, ${recentProgress.length} logs loaded`,
+  )
 
   if (await checkCancelled()) {
-    return { new_week_number: newWeekNumber, exercises_added: 0, token_usage: tokenUsage, duration_ms: Date.now() - startTime }
+    return {
+      new_week_number: newWeekNumber,
+      exercises_added: 0,
+      token_usage: tokenUsage,
+      duration_ms: Date.now() - startTime,
+    }
   }
 
   // ── Step 2: Agent 1 — Week/Day Architect ─────────────────────────────
 
   const targetDayName = isSingleDay ? DAY_NAMES[request.target_day_of_week! - 1] : null
-  await updateJobProgress("designing_week", 3, isSingleDay
-    ? `Designing ${targetDayName} for Week ${newWeekNumber}`
-    : `Designing Week ${newWeekNumber}`)
+  await updateJobProgress(
+    "designing_week",
+    3,
+    isSingleDay ? `Designing ${targetDayName} for Week ${newWeekNumber}` : `Designing Week ${newWeekNumber}`,
+  )
 
   // Build context about other days already in this week (for single-day mode)
   const sameWeekOtherDays = isSingleDay
     ? existingExercises
-        .filter((pe: { week_number: number; day_of_week: number }) =>
-          pe.week_number === newWeekNumber && pe.day_of_week !== request.target_day_of_week
+        .filter(
+          (pe: { week_number: number; day_of_week: number }) =>
+            pe.week_number === newWeekNumber && pe.day_of_week !== request.target_day_of_week,
         )
         .map((pe: Record<string, unknown>) => ({
           day: pe.day_of_week,
@@ -441,10 +452,14 @@ ${weekFocusSummary.length > 0 ? JSON.stringify(weekFocusSummary) : "No previous 
 
 ## Detailed Recent Weeks (last ${Math.min(3, program.duration_weeks ?? 1)} weeks — exercises, sets, reps)
 ${JSON.stringify(weekStructure)}
-${isSingleDay && sameWeekOtherDays.length > 0 ? `
+${
+  isSingleDay && sameWeekOtherDays.length > 0
+    ? `
 ## Other Days Already Programmed in Week ${newWeekNumber}
 ${JSON.stringify(sameWeekOtherDays)}
-IMPORTANT: The day you are designing must COMPLEMENT these existing days. Do NOT duplicate the same primary muscle groups or movement patterns.` : ""}
+IMPORTANT: The day you are designing must COMPLEMENT these existing days. Do NOT duplicate the same primary muscle groups or movement patterns.`
+    : ""
+}
 
 ## Client Profile
 ${profileContext}
@@ -459,9 +474,11 @@ ${isSingleDay ? `${targetDayName} (day_of_week=${request.target_day_of_week}) in
 ${request.admin_instructions || "No specific instructions — use standard progression logic based on the client's performance data."}
 ${request.admin_instructions ? "\nYou MUST follow these instructions. If they conflict with default technique, structure, or progression rules, the coach's instructions WIN." : ""}
 
-${isSingleDay
+${
+  isSingleDay
     ? `Design ${targetDayName} for Week ${newWeekNumber}. The output MUST have week_number=${newWeekNumber} and exactly ONE day with day_of_week=${request.target_day_of_week}. Match the existing program's split (${program.split_type}) and periodization (${program.periodization}). Look at what ${targetDayName} typically contains in prior weeks to determine the appropriate focus, exercise count, and session structure.`
-    : `Design Week ${newWeekNumber} for this program. The week MUST have week_number=${newWeekNumber}. Match the existing program's split (${program.split_type}), periodization (${program.periodization}), and training days.`}
+    : `Design Week ${newWeekNumber} for this program. The week MUST have week_number=${newWeekNumber}. Match the existing program's split (${program.split_type}), periodization (${program.periodization}), and training days.`
+}
 
 IMPORTANT: Review the full program progression summary above. If the coach's instructions reference themes, focus areas, or progressions from previous weeks, ensure this ${isSingleDay ? "day" : "week"} builds on that trajectory logically. The coach may ask to maintain a theme while shifting emphasis (e.g., "keep lower leg focus but add glute work") — honor this by blending continuity with the new direction.`
 
@@ -469,7 +486,7 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
     buildArchitectPrompt(isSingleDay ? "day" : "week"),
     architectMessage,
     weekSkeletonSchema,
-    { model: MODEL_OPUS, cacheSystemPrompt: true }
+    { model: MODEL_OPUS, cacheSystemPrompt: true },
   )
   tokenUsage.architect = architectResult.tokens_used
   const skeleton = architectResult.content
@@ -480,9 +497,7 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
 
     // In single-day mode, filter to only the target day
     if (isSingleDay) {
-      skeleton.weeks[0].days = skeleton.weeks[0].days.filter(
-        (d) => d.day_of_week === request.target_day_of_week
-      )
+      skeleton.weeks[0].days = skeleton.weeks[0].days.filter((d) => d.day_of_week === request.target_day_of_week)
       // If AI didn't produce the right day, force it
       if (skeleton.weeks[0].days.length === 0) {
         throw new Error(`AI did not produce exercises for ${targetDayName}. Try again.`)
@@ -503,25 +518,34 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
   }
 
   const totalSlots = skeleton.weeks.reduce((sum, w) => sum + w.days.reduce((ds, d) => ds + d.slots.length, 0), 0)
-  console.log(`[week-orchestrator] Week ${newWeekNumber} skeleton: ${totalSlots} slots across ${skeleton.weeks[0]?.days.length ?? 0} days`)
+  console.log(
+    `[week-orchestrator] Week ${newWeekNumber} skeleton: ${totalSlots} slots across ${skeleton.weeks[0]?.days.length ?? 0} days`,
+  )
 
   if (await checkCancelled()) {
-    return { new_week_number: newWeekNumber, exercises_added: 0, token_usage: tokenUsage, duration_ms: Date.now() - startTime }
+    return {
+      new_week_number: newWeekNumber,
+      exercises_added: 0,
+      token_usage: tokenUsage,
+      duration_ms: Date.now() - startTime,
+    }
   }
 
   // ── Step 3: Agent 2 — Exercise Selector with Dedup Verification ────────
 
   await updateJobProgress("selecting_exercises", 4, `Selecting exercises for ${totalSlots} slots`)
 
-  const availableEquipment = profile?.available_equipment ?? [] as string[]
+  const availableEquipment = profile?.available_equipment ?? ([] as string[])
   const exerciseIdSet = new Set(allExercises.map((e) => e.id))
 
   // Resolve client difficulty for filtering and ceiling construction
   const clientDifficultyLevel = profile?.experience_level ?? (request.ignore_profile ? "advanced" : "intermediate")
   const ceilingTier: "beginner" | "intermediate" | "advanced" =
-    clientDifficultyLevel === "beginner" ? "beginner" :
-    clientDifficultyLevel === "intermediate" ? "intermediate" :
-    "advanced"
+    clientDifficultyLevel === "beginner"
+      ? "beginner"
+      : clientDifficultyLevel === "intermediate"
+        ? "intermediate"
+        : "advanced"
   const ceilingScore = newWeekNumber <= 2 ? 4 : 6
 
   // Build a mock ProfileAnalysis for filtering.
@@ -533,7 +557,14 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
     recommended_periodization: program.periodization,
     volume_targets: [],
     exercise_constraints: [],
-    session_structure: { warm_up_minutes: 5, main_work_minutes: 45, cool_down_minutes: 5, total_exercises: 6, compound_count: 3, isolation_count: 3 },
+    session_structure: {
+      warm_up_minutes: 5,
+      main_work_minutes: 45,
+      cool_down_minutes: 5,
+      total_exercises: 6,
+      compound_count: 3,
+      isolation_count: 3,
+    },
     training_age_category: clientDifficultyLevel as "novice" | "intermediate" | "advanced" | "elite",
     technique_plan: [
       {
@@ -558,7 +589,9 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
   // exercises in weeks 1-2; low-score intermediates unlock from week 3.
   let exercisesForSelection = filterByDifficultyLevel(allExercises, clientDifficultyLevel)
   exercisesForSelection = filterByProgressionPhase(exercisesForSelection, clientDifficultyLevel, newWeekNumber)
-  console.log(`[week-orchestrator] Difficulty filter (${clientDifficultyLevel}, week ${newWeekNumber}): ${allExercises.length} -> ${exercisesForSelection.length}`)
+  console.log(
+    `[week-orchestrator] Difficulty filter (${clientDifficultyLevel}, week ${newWeekNumber}): ${allExercises.length} -> ${exercisesForSelection.length}`,
+  )
 
   // Apply injury-aware joint filtering
   const injuredJoints = extractInjuredJoints(profile?.injury_details as Array<{ area?: string }> | undefined)
@@ -570,9 +603,13 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
   const poolActive = !!poolIds && poolIds.length > 0
   let filtered: CompressedExercise[]
   try {
-    filtered = await semanticFilterExercises(exercisesForSelection, skeleton, availableEquipment, mockAnalysis, { poolActive })
+    filtered = await semanticFilterExercises(exercisesForSelection, skeleton, availableEquipment, mockAnalysis, {
+      poolActive,
+    })
   } catch {
-    filtered = scoreAndFilterExercises(exercisesForSelection, skeleton, availableEquipment, mockAnalysis, { poolActive })
+    filtered = scoreAndFilterExercises(exercisesForSelection, skeleton, availableEquipment, mockAnalysis, {
+      poolActive,
+    })
   }
   const exerciseLibrary = formatExerciseLibrary(filtered)
 
@@ -596,7 +633,9 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
   })
 
   const priorContext = buildPriorContextFromExistingExercises(priorExercisesForDedup)
-  console.log(`[week-orchestrator] Dedup context: ${priorContext.anchor_exercises.size} anchors, ${priorContext.used_accessory_exercises.size} accessory groups, ${priorContext.exercise_week_map.size} total unique exercises`)
+  console.log(
+    `[week-orchestrator] Dedup context: ${priorContext.anchor_exercises.size} anchors, ${priorContext.used_accessory_exercises.size} accessory groups, ${priorContext.exercise_week_map.size} total unique exercises`,
+  )
 
   const constraintsContext = JSON.stringify({
     available_equipment: availableEquipment,
@@ -610,11 +649,7 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
     let feedbackSection = ""
     if (attempt > 0 && assignment) {
       // Verify the previous attempt's dedup compliance
-      const dedupResult = verifyWeekAgainstExisting(
-        assignment.assignments,
-        skeleton.weeks[0],
-        priorContext
-      )
+      const dedupResult = verifyWeekAgainstExisting(assignment.assignments, skeleton.weeks[0], priorContext)
       if (!dedupResult.pass) {
         const repetitionIssues = dedupResult.issues
           .filter((i) => i.severity === "error")
@@ -635,7 +670,7 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
         EXERCISE_SELECTOR_PROMPT,
         selectorMessage,
         exerciseAssignmentSchema,
-        { cacheSystemPrompt: true }
+        { cacheSystemPrompt: true },
       )
       tokenUsage.selector += selectorResult.tokens_used
       assignment = selectorResult.content
@@ -649,26 +684,29 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
       }
 
       // Verify dedup compliance
-      const dedupResult = verifyWeekAgainstExisting(
-        assignment.assignments,
-        skeleton.weeks[0],
-        priorContext
-      )
+      const dedupResult = verifyWeekAgainstExisting(assignment.assignments, skeleton.weeks[0], priorContext)
       console.log(`[week-orchestrator] Dedup verification: ${dedupResult.summary}`)
 
       if (dedupResult.pass) break
 
       // If dedup fails but no retries left, accept the result with a warning
       if (attempt === MAX_RETRIES) {
-        console.warn(`[week-orchestrator] Dedup still failing after ${MAX_RETRIES + 1} attempts — accepting with repetition warnings`)
+        console.warn(
+          `[week-orchestrator] Dedup still failing after ${MAX_RETRIES + 1} attempts — accepting with repetition warnings`,
+        )
         break
       }
 
       console.log(`[week-orchestrator] Dedup failed, retrying...`)
     } catch (agentError) {
-      console.error(`[week-orchestrator] Selector attempt ${attempt + 1} error:`, agentError instanceof Error ? agentError.message : agentError)
+      console.error(
+        `[week-orchestrator] Selector attempt ${attempt + 1} error:`,
+        agentError instanceof Error ? agentError.message : agentError,
+      )
       if (attempt === MAX_RETRIES) {
-        throw new Error(`Exercise selection failed after ${MAX_RETRIES + 1} attempts: ${agentError instanceof Error ? agentError.message : "Unknown error"}`)
+        throw new Error(
+          `Exercise selection failed after ${MAX_RETRIES + 1} attempts: ${agentError instanceof Error ? agentError.message : "Unknown error"}`,
+        )
       }
     }
   }
@@ -679,9 +717,13 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
 
   // ── Step 4: Save to database ───────────────────────────────────────────
 
-  await updateJobProgress("saving_week", 5, isSingleDay
-    ? `Saving ${assignment.assignments.length} exercises for ${targetDayName}`
-    : `Saving ${assignment.assignments.length} exercises for Week ${newWeekNumber}`)
+  await updateJobProgress(
+    "saving_week",
+    5,
+    isSingleDay
+      ? `Saving ${assignment.assignments.length} exercises for ${targetDayName}`
+      : `Saving ${assignment.assignments.length} exercises for Week ${newWeekNumber}`,
+  )
 
   const { slotLookup, slotDetailsLookup } = buildSlotLookups(skeleton.weeks)
   const exerciseRows = buildExerciseRows(assignment.assignments, slotLookup, slotDetailsLookup, request.program_id)
@@ -699,7 +741,9 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
   tokenUsage.total = tokenUsage.architect + tokenUsage.selector
   const durationMs = Date.now() - startTime
 
-  console.log(`[week-orchestrator] Week ${newWeekNumber} generated: ${assignment.assignments.length} exercises in ${durationMs}ms`)
+  console.log(
+    `[week-orchestrator] Week ${newWeekNumber} generated: ${assignment.assignments.length} exercises in ${durationMs}ms`,
+  )
 
   return {
     new_week_number: newWeekNumber,

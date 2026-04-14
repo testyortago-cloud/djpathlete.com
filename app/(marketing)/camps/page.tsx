@@ -41,8 +41,7 @@ const serviceSchema = {
     },
   },
   serviceType: "Off-Season / Pre-Season Performance Camp",
-  description:
-    "Multi-week off-season and pre-season athletic performance camps for youth athletes aged 12–18.",
+  description: "Multi-week off-season and pre-season athletic performance camps for youth athletes aged 12–18.",
   url: "https://djpathlete.com/camps",
   audience: { "@type": "Audience", audienceType: "Youth Athletes, 12–18" },
 }
@@ -89,15 +88,13 @@ export default function CampsPage() {
       <section id="what-gets-developed" className="mx-auto max-w-7xl px-4 py-16 md:px-6 md:py-20">
         <FadeIn>
           <div className="max-w-3xl">
-            <div className="text-sm font-medium uppercase tracking-[0.25em] text-accent">
-              What gets developed
-            </div>
+            <div className="text-sm font-medium uppercase tracking-[0.25em] text-accent">What gets developed</div>
             <h2 className="mt-3 font-heading text-3xl font-semibold tracking-tight md:text-5xl">
               A stronger, more complete performance base.
             </h2>
             <p className="mt-5 text-lg leading-8 text-muted-foreground">
-              Wider than agility alone. Built to help athletes develop the qualities that
-              support performance before the competitive period ramps up.
+              Wider than agility alone. Built to help athletes develop the qualities that support performance before the
+              competitive period ramps up.
             </p>
           </div>
           <div className="mt-10">
@@ -109,15 +106,13 @@ export default function CampsPage() {
       <section className="bg-surface border-y border-border">
         <div className="mx-auto grid max-w-7xl gap-10 px-4 py-16 md:px-6 md:py-20 lg:grid-cols-[0.95fr_1.05fr]">
           <FadeIn>
-            <div className="text-sm font-medium uppercase tracking-[0.25em] text-accent">
-              Technology + feedback
-            </div>
+            <div className="text-sm font-medium uppercase tracking-[0.25em] text-accent">Technology + feedback</div>
             <h2 className="mt-3 font-heading text-3xl font-semibold tracking-tight md:text-5xl">
               Train with more visibility on progress.
             </h2>
             <p className="mt-5 text-lg leading-8 text-muted-foreground">
-              Where appropriate, selected testing and reporting add another layer to the camp
-              experience. Not to overcomplicate it — to make progress more visible and useful.
+              Where appropriate, selected testing and reporting add another layer to the camp experience. Not to
+              overcomplicate it — to make progress more visible and useful.
             </p>
           </FadeIn>
           <FadeIn delay={0.1}>
@@ -138,9 +133,7 @@ export default function CampsPage() {
       <section className="mx-auto max-w-7xl px-4 py-16 md:px-6 md:py-20">
         <FadeIn>
           <div className="max-w-3xl">
-            <div className="text-sm font-medium uppercase tracking-[0.25em] text-accent">
-              Upcoming blocks
-            </div>
+            <div className="text-sm font-medium uppercase tracking-[0.25em] text-accent">Upcoming blocks</div>
             <h2 className="mt-3 font-heading text-3xl font-semibold tracking-tight md:text-5xl">
               When the next camp runs
             </h2>
@@ -156,9 +149,7 @@ export default function CampsPage() {
           <FadeIn>
             <Card className="rounded-3xl border-border bg-background">
               <CardContent className="p-8">
-                <div className="text-sm uppercase tracking-[0.25em] text-accent">
-                  Who it is for
-                </div>
+                <div className="text-sm uppercase tracking-[0.25em] text-accent">Who it is for</div>
                 <h3 className="mt-3 font-heading text-3xl font-semibold tracking-tight">
                   Athletes building toward the next level.
                 </h3>
@@ -177,15 +168,13 @@ export default function CampsPage() {
           <FadeIn delay={0.1}>
             <Card className="rounded-3xl border-border bg-gradient-to-br from-accent/10 to-surface">
               <CardContent className="p-8">
-                <div className="text-sm uppercase tracking-[0.25em] text-muted-foreground">
-                  Outcome
-                </div>
+                <div className="text-sm uppercase tracking-[0.25em] text-muted-foreground">Outcome</div>
                 <div className="mt-4 font-heading text-3xl font-semibold tracking-tight">
                   Better prepared. Better built. Better informed.
                 </div>
                 <p className="mt-5 leading-8 text-muted-foreground">
-                  Athletes leave with a stronger performance base and, where included, a
-                  clearer view of what is improving and what still needs work.
+                  Athletes leave with a stronger performance base and, where included, a clearer view of what is
+                  improving and what still needs work.
                 </p>
                 <Button asChild className="mt-8 rounded-full">
                   <Link href="#register-interest">Register Your Interest</Link>

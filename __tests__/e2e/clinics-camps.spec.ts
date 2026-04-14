@@ -5,7 +5,7 @@ test.describe("Clinics landing page", () => {
     await page.goto("/clinics")
 
     await expect(
-      page.getByRole("heading", { level: 1, name: /get quicker where the game actually changes/i })
+      page.getByRole("heading", { level: 1, name: /get quicker where the game actually changes/i }),
     ).toBeVisible()
 
     await expect(page.getByText("Acceleration")).toBeVisible()
@@ -21,7 +21,10 @@ test.describe("Clinics landing page", () => {
 
   test("hero CTA scrolls to the inquiry form", async ({ page }) => {
     await page.goto("/clinics")
-    await page.getByRole("link", { name: /register your interest/i }).first().click()
+    await page
+      .getByRole("link", { name: /register your interest/i })
+      .first()
+      .click()
     await expect(page).toHaveURL(/#register-interest$/)
   })
 })
@@ -31,7 +34,7 @@ test.describe("Camps landing page", () => {
     await page.goto("/camps")
 
     await expect(
-      page.getByRole("heading", { level: 1, name: /build more before the season takes over/i })
+      page.getByRole("heading", { level: 1, name: /build more before the season takes over/i }),
     ).toBeVisible()
 
     await expect(page.getByText("Speed + Power")).toBeVisible()

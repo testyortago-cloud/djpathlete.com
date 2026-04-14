@@ -29,16 +29,11 @@ export function CampHero() {
             Build more before the season takes over.
           </h1>
           <p className="mt-6 max-w-3xl text-lg leading-8 text-primary-foreground/80 md:text-xl">
-            Camps built to develop the physical base behind performance: speed, power,
-            movement quality, conditioning, and robustness. In selected settings, athletes
-            also get testing, insight, and reporting.
+            Camps built to develop the physical base behind performance: speed, power, movement quality, conditioning,
+            and robustness. In selected settings, athletes also get testing, insight, and reporting.
           </p>
           <div className="mt-8 flex flex-wrap gap-4">
-            <Button
-              asChild
-              size="lg"
-              className="rounded-full bg-accent text-primary hover:bg-accent/90"
-            >
+            <Button asChild size="lg" className="rounded-full bg-accent text-primary hover:bg-accent/90">
               <Link href="#register-interest">
                 Register Your Interest
                 <ArrowRight className="ml-2 h-4 w-4" />
@@ -58,9 +53,7 @@ export function CampHero() {
               <div
                 key={stat.label}
                 className={`rounded-2xl border p-4 ${
-                  stat.accent
-                    ? "border-accent/40 bg-accent/15"
-                    : "border-primary-foreground/15 bg-primary-foreground/5"
+                  stat.accent ? "border-accent/40 bg-accent/15" : "border-primary-foreground/15 bg-primary-foreground/5"
                 }`}
               >
                 <div className="text-sm text-primary-foreground/60">{stat.label}</div>
@@ -73,20 +66,18 @@ export function CampHero() {
         <FadeIn delay={0.1}>
           <Card className="rounded-3xl border-primary-foreground/15 bg-primary-foreground/[0.06] shadow-2xl backdrop-blur">
             <CardContent className="p-6 md:p-8">
-              <div className="text-xs uppercase tracking-[0.3em] text-primary-foreground/50">
-                The difference
-              </div>
+              <div className="text-xs uppercase tracking-[0.3em] text-primary-foreground/50">The difference</div>
               <div className="mt-4 font-heading text-2xl font-medium leading-9 md:text-3xl">
                 More than sessions that just leave athletes tired.
               </div>
               <div className="mt-5 space-y-4 text-sm leading-7 text-primary-foreground/75 md:text-base">
                 <p>
-                  The aim is to build real physical qualities with more structure, more
-                  purpose, and better feedback around progress.
+                  The aim is to build real physical qualities with more structure, more purpose, and better feedback
+                  around progress.
                 </p>
                 <p>
-                  In some environments that also means using selected technology to give
-                  athletes clearer performance insight.
+                  In some environments that also means using selected technology to give athletes clearer performance
+                  insight.
                 </p>
               </div>
               <div className="mt-7 rounded-2xl border border-accent/40 bg-accent/15 p-4 text-sm text-primary-foreground">

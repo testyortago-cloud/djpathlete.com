@@ -8,10 +8,7 @@ function getClient() {
 
 export async function getAssignments(userId?: string) {
   const supabase = getClient()
-  let query = supabase
-    .from("program_assignments")
-    .select("*, programs(*)")
-    .order("created_at", { ascending: false })
+  let query = supabase.from("program_assignments").select("*, programs(*)").order("created_at", { ascending: false })
   if (userId) {
     query = query.eq("user_id", userId)
   }
@@ -20,10 +17,7 @@ export async function getAssignments(userId?: string) {
   return data
 }
 
-export async function getAssignmentByUserAndProgram(
-  userId: string,
-  programId: string
-) {
+export async function getAssignmentByUserAndProgram(userId: string, programId: string) {
   const supabase = getClient()
   // Order so active assignments come first; use limit(1) to handle duplicates
   const { data, error } = await supabase
@@ -38,15 +32,9 @@ export async function getAssignmentByUserAndProgram(
   return data as ProgramAssignment | null
 }
 
-export async function createAssignment(
-  assignment: Omit<ProgramAssignment, "id" | "created_at" | "updated_at">
-) {
+export async function createAssignment(assignment: Omit<ProgramAssignment, "id" | "created_at" | "updated_at">) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("program_assignments")
-    .insert(assignment)
-    .select()
-    .single()
+  const { data, error } = await supabase.from("program_assignments").insert(assignment).select().single()
   if (error) throw error
   return data as ProgramAssignment
 }
@@ -64,9 +52,16 @@ export async function getActiveUserIdsForProgram(programId: string): Promise<str
 }
 
 /** Get active assignments for a program with assignment IDs, user IDs, and editable fields. */
-export async function getActiveAssignmentsForProgram(
-  programId: string
-): Promise<{ id: string; user_id: string; start_date: string; notes: string | null; payment_status: string; expires_at: string | null }[]> {
+export async function getActiveAssignmentsForProgram(programId: string): Promise<
+  {
+    id: string
+    user_id: string
+    start_date: string
+    notes: string | null
+    payment_status: string
+    expires_at: string | null
+  }[]
+> {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("program_assignments")
@@ -110,10 +105,7 @@ export async function getActiveAssignment(userId: string) {
 
 export async function getAssignmentCountsByProgram(): Promise<Record<string, number>> {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("program_assignments")
-    .select("program_id")
-    .eq("status", "active")
+  const { data, error } = await supabase.from("program_assignments").select("program_id").eq("status", "active")
   if (error) throw error
   const counts: Record<string, number> = {}
   for (const row of data ?? []) {
@@ -122,17 +114,9 @@ export async function getAssignmentCountsByProgram(): Promise<Record<string, num
   return counts
 }
 
-export async function updateAssignment(
-  id: string,
-  updates: Partial<Omit<ProgramAssignment, "id" | "created_at">>
-) {
+export async function updateAssignment(id: string, updates: Partial<Omit<ProgramAssignment, "id" | "created_at">>) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("program_assignments")
-    .update(updates)
-    .eq("id", id)
-    .select()
-    .single()
+  const { data, error } = await supabase.from("program_assignments").update(updates).eq("id", id).select().single()
   if (error) throw error
   return data as ProgramAssignment
 }
@@ -177,21 +161,14 @@ export async function advanceWeek(assignmentId: string) {
 /** Hard-delete an assignment row (cascades to tracked_exercises, nulls exercise_progress). */
 export async function deleteAssignment(assignmentId: string) {
   const supabase = getClient()
-  const { error } = await supabase
-    .from("program_assignments")
-    .delete()
-    .eq("id", assignmentId)
+  const { error } = await supabase.from("program_assignments").delete().eq("id", assignmentId)
   if (error) throw error
 }
 
 /** Get the assignment by ID, verifying ownership */
 export async function getAssignmentById(assignmentId: string) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("program_assignments")
-    .select("*")
-    .eq("id", assignmentId)
-    .single()
+  const { data, error } = await supabase.from("program_assignments").select("*").eq("id", assignmentId).single()
   if (error) throw error
   return data as ProgramAssignment
 }
