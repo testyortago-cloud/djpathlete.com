@@ -23,9 +23,7 @@ export async function getEvents(filters: EventListFilters = {}): Promise<Event[]
   return (data ?? []) as Event[]
 }
 
-export async function getPublishedEvents(
-  filters: { type?: EventType; from?: Date } = {},
-): Promise<Event[]> {
+export async function getPublishedEvents(filters: { type?: EventType; from?: Date } = {}): Promise<Event[]> {
   const supabase = getClient()
   const from = filters.from ?? new Date()
   let query = supabase
@@ -79,15 +77,9 @@ export async function createEvent(input: CreateEventInput): Promise<Event> {
     age_min: input.age_min ?? null,
     age_max: input.age_max ?? null,
     start_date: input.start_date,
-    end_date:
-      input.type === "clinic"
-        ? computeEndDate("clinic", input.start_date)
-        : input.end_date,
-    session_schedule: input.type === "camp" ? input.session_schedule ?? null : null,
-    price_cents:
-      input.type === "camp" && input.price_dollars != null
-        ? Math.round(input.price_dollars * 100)
-        : null,
+    end_date: input.type === "clinic" ? computeEndDate("clinic", input.start_date) : input.end_date,
+    session_schedule: input.type === "camp" ? (input.session_schedule ?? null) : null,
+    price_cents: input.type === "camp" && input.price_dollars != null ? Math.round(input.price_dollars * 100) : null,
   }
   const { data, error } = await supabase.from("events").insert(base).select().single()
   if (error) throw error

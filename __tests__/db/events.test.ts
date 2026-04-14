@@ -47,33 +47,61 @@ describe("events DAL", () => {
   it("rejects duplicate slugs", async () => {
     const slug = `dup-${randomUUID()}`
     const event = await createEvent({
-      type: "clinic", slug, title: "T", summary: "S", description: "D",
-      focus_areas: [], start_date: new Date(Date.now() + 86400000).toISOString(),
-      location_name: "L", capacity: 5, status: "draft",
+      type: "clinic",
+      slug,
+      title: "T",
+      summary: "S",
+      description: "D",
+      focus_areas: [],
+      start_date: new Date(Date.now() + 86400000).toISOString(),
+      location_name: "L",
+      capacity: 5,
+      status: "draft",
     })
     createdIds.push(event.id)
 
     await expect(
       createEvent({
-        type: "clinic", slug, title: "T2", summary: "S", description: "D",
-        focus_areas: [], start_date: new Date(Date.now() + 86400000).toISOString(),
-        location_name: "L", capacity: 5, status: "draft",
+        type: "clinic",
+        slug,
+        title: "T2",
+        summary: "S",
+        description: "D",
+        focus_areas: [],
+        start_date: new Date(Date.now() + 86400000).toISOString(),
+        location_name: "L",
+        capacity: 5,
+        status: "draft",
       }),
     ).rejects.toThrow()
   })
 
   it("getPublishedEvents returns only published + upcoming", async () => {
     const draft = await createEvent({
-      type: "clinic", slug: `draft-${randomUUID()}`, title: "D", summary: "S", description: "D",
-      focus_areas: [], start_date: new Date(Date.now() + 86400000).toISOString(),
-      location_name: "L", capacity: 5, status: "draft",
+      type: "clinic",
+      slug: `draft-${randomUUID()}`,
+      title: "D",
+      summary: "S",
+      description: "D",
+      focus_areas: [],
+      start_date: new Date(Date.now() + 86400000).toISOString(),
+      location_name: "L",
+      capacity: 5,
+      status: "draft",
     })
     createdIds.push(draft.id)
 
     const published = await createEvent({
-      type: "clinic", slug: `pub-${randomUUID()}`, title: "P", summary: "S", description: "D",
-      focus_areas: [], start_date: new Date(Date.now() + 86400000).toISOString(),
-      location_name: "L", capacity: 5, status: "published",
+      type: "clinic",
+      slug: `pub-${randomUUID()}`,
+      title: "P",
+      summary: "S",
+      description: "D",
+      focus_areas: [],
+      start_date: new Date(Date.now() + 86400000).toISOString(),
+      location_name: "L",
+      capacity: 5,
+      status: "published",
     })
     createdIds.push(published.id)
 
@@ -84,9 +112,16 @@ describe("events DAL", () => {
 
   it("setEventStatus enforces allowed transitions", async () => {
     const event = await createEvent({
-      type: "clinic", slug: `trans-${randomUUID()}`, title: "T", summary: "S", description: "D",
-      focus_areas: [], start_date: new Date(Date.now() + 86400000).toISOString(),
-      location_name: "L", capacity: 5, status: "draft",
+      type: "clinic",
+      slug: `trans-${randomUUID()}`,
+      title: "T",
+      summary: "S",
+      description: "D",
+      focus_areas: [],
+      start_date: new Date(Date.now() + 86400000).toISOString(),
+      location_name: "L",
+      capacity: 5,
+      status: "draft",
     })
     createdIds.push(event.id)
 
@@ -96,9 +131,16 @@ describe("events DAL", () => {
 
   it("deleteEvent rejects non-draft", async () => {
     const event = await createEvent({
-      type: "clinic", slug: `del-${randomUUID()}`, title: "T", summary: "S", description: "D",
-      focus_areas: [], start_date: new Date(Date.now() + 86400000).toISOString(),
-      location_name: "L", capacity: 5, status: "published",
+      type: "clinic",
+      slug: `del-${randomUUID()}`,
+      title: "T",
+      summary: "S",
+      description: "D",
+      focus_areas: [],
+      start_date: new Date(Date.now() + 86400000).toISOString(),
+      location_name: "L",
+      capacity: 5,
+      status: "published",
     })
     createdIds.push(event.id)
     await expect(deleteEvent(event.id)).rejects.toThrow()
@@ -108,10 +150,15 @@ describe("events DAL", () => {
     const event = await createEvent({
       type: "camp",
       slug: `camp-${randomUUID()}`,
-      title: "C", summary: "S", description: "D", focus_areas: [],
+      title: "C",
+      summary: "S",
+      description: "D",
+      focus_areas: [],
       start_date: new Date(Date.now() + 86400000).toISOString(),
       end_date: new Date(Date.now() + 7 * 86400000).toISOString(),
-      location_name: "L", capacity: 10, status: "draft",
+      location_name: "L",
+      capacity: 10,
+      status: "draft",
       price_dollars: 299,
     })
     createdIds.push(event.id)

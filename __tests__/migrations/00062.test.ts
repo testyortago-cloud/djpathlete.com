@@ -60,10 +60,7 @@ describe("Migration 00062: events + event_signups + RPCs", () => {
   })
 
   it("event_signups foreign key cascades delete", async () => {
-    const { data } = await supabase
-      .from("event_signups")
-      .select("id")
-      .eq("event_id", eventId)
+    const { data } = await supabase.from("event_signups").select("id").eq("event_id", eventId)
     expect(data?.length).toBe(2)
   })
 
@@ -88,13 +85,29 @@ describe("Migration 00062: events + event_signups + RPCs", () => {
 
   it("slug uniqueness is enforced", async () => {
     const slug = `dup-${randomUUID()}`
-    const { data: first } = await supabase.from("events").insert({
-      type: "clinic", slug, title: "a", summary: "a", description: "a",
-      start_date: new Date().toISOString(), location_name: "x", capacity: 1,
-    }).select("id").single()
+    const { data: first } = await supabase
+      .from("events")
+      .insert({
+        type: "clinic",
+        slug,
+        title: "a",
+        summary: "a",
+        description: "a",
+        start_date: new Date().toISOString(),
+        location_name: "x",
+        capacity: 1,
+      })
+      .select("id")
+      .single()
     const { error } = await supabase.from("events").insert({
-      type: "clinic", slug, title: "b", summary: "b", description: "b",
-      start_date: new Date().toISOString(), location_name: "x", capacity: 1,
+      type: "clinic",
+      slug,
+      title: "b",
+      summary: "b",
+      description: "b",
+      start_date: new Date().toISOString(),
+      location_name: "x",
+      capacity: 1,
     })
     expect(error).not.toBeNull()
     expect(error?.message.toLowerCase()).toMatch(/duplicate|unique/)

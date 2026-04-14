@@ -6,13 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { EventHeroImageUpload } from "@/components/admin/events/EventHeroImageUpload"
 import type { Event, EventStatus, EventType } from "@/types/database"
 
@@ -21,7 +15,11 @@ interface EventFormProps {
 }
 
 function slugify(s: string) {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 120)
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 120)
 }
 
 export function EventForm({ event }: EventFormProps) {
@@ -129,14 +127,22 @@ export function EventForm({ event }: EventFormProps) {
   }
 
   return (
-    <form onSubmit={(e) => { e.preventDefault(); void handleSubmit() }} className="space-y-6">
+    <form
+      onSubmit={(e) => {
+        e.preventDefault()
+        void handleSubmit()
+      }}
+      className="space-y-6"
+    >
       {formError && <div className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{formError}</div>}
 
       <div className="grid gap-6 md:grid-cols-2">
         <div>
           <Label>Type</Label>
           <Select value={type} onValueChange={(v) => setType(v as EventType)} disabled={isEdit}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="clinic">Agility Clinic</SelectItem>
               <SelectItem value="camp">Performance Camp</SelectItem>
@@ -146,7 +152,9 @@ export function EventForm({ event }: EventFormProps) {
         <div>
           <Label>Status</Label>
           <Select value={status} onValueChange={(v) => setStatus(v as EventStatus)}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="draft">Draft</SelectItem>
               <SelectItem value="published">Published</SelectItem>
@@ -184,7 +192,10 @@ export function EventForm({ event }: EventFormProps) {
         <div className="flex flex-wrap gap-2">
           {focusAreas.map((fa) => (
             <span key={fa} className="rounded-full bg-primary/10 px-3 py-1 text-sm text-primary">
-              {fa} <button type="button" onClick={() => removeFocusArea(fa)} className="ml-1">×</button>
+              {fa}{" "}
+              <button type="button" onClick={() => removeFocusArea(fa)} className="ml-1">
+                ×
+              </button>
             </span>
           ))}
         </div>
@@ -192,10 +203,17 @@ export function EventForm({ event }: EventFormProps) {
           <Input
             value={focusAreasInput}
             onChange={(e) => setFocusAreasInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addFocusArea() } }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault()
+                addFocusArea()
+              }
+            }}
             placeholder="Add a focus area and press Enter"
           />
-          <Button type="button" variant="outline" onClick={addFocusArea}>Add</Button>
+          <Button type="button" variant="outline" onClick={addFocusArea}>
+            Add
+          </Button>
         </div>
       </div>
 
@@ -217,15 +235,33 @@ export function EventForm({ event }: EventFormProps) {
       <div className="grid gap-4 md:grid-cols-3">
         <div>
           <Label>Capacity</Label>
-          <Input type="number" min={1} value={capacity} onChange={(e) => setCapacity(Number(e.target.value))} required />
+          <Input
+            type="number"
+            min={1}
+            value={capacity}
+            onChange={(e) => setCapacity(Number(e.target.value))}
+            required
+          />
         </div>
         <div>
           <Label>Age Min (optional)</Label>
-          <Input type="number" min={6} max={21} value={ageMin} onChange={(e) => setAgeMin(e.target.value === "" ? "" : Number(e.target.value))} />
+          <Input
+            type="number"
+            min={6}
+            max={21}
+            value={ageMin}
+            onChange={(e) => setAgeMin(e.target.value === "" ? "" : Number(e.target.value))}
+          />
         </div>
         <div>
           <Label>Age Max (optional)</Label>
-          <Input type="number" min={6} max={21} value={ageMax} onChange={(e) => setAgeMax(e.target.value === "" ? "" : Number(e.target.value))} />
+          <Input
+            type="number"
+            min={6}
+            max={21}
+            value={ageMax}
+            onChange={(e) => setAgeMax(e.target.value === "" ? "" : Number(e.target.value))}
+          />
         </div>
       </div>
 
@@ -240,7 +276,12 @@ export function EventForm({ event }: EventFormProps) {
           <div className="grid gap-4 md:grid-cols-2">
             <div>
               <Label>Start date</Label>
-              <Input type="date" value={startDate.slice(0, 10)} onChange={(e) => setStartDate(e.target.value)} required />
+              <Input
+                type="date"
+                value={startDate.slice(0, 10)}
+                onChange={(e) => setStartDate(e.target.value)}
+                required
+              />
             </div>
             <div>
               <Label>End date</Label>
@@ -249,15 +290,27 @@ export function EventForm({ event }: EventFormProps) {
           </div>
           <div>
             <Label>Session schedule (free-text)</Label>
-            <Input value={sessionSchedule} onChange={(e) => setSessionSchedule(e.target.value)} placeholder="M–F, 9–11am" />
+            <Input
+              value={sessionSchedule}
+              onChange={(e) => setSessionSchedule(e.target.value)}
+              placeholder="M–F, 9–11am"
+            />
           </div>
           <div className="grid gap-4 md:grid-cols-2 md:items-end">
             <div>
               <Label>Price (USD)</Label>
-              <Input type="number" step="0.01" min={0} value={priceDollars} onChange={(e) => setPriceDollars(e.target.value === "" ? "" : Number(e.target.value))} />
+              <Input
+                type="number"
+                step="0.01"
+                min={0}
+                value={priceDollars}
+                onChange={(e) => setPriceDollars(e.target.value === "" ? "" : Number(e.target.value))}
+              />
             </div>
             <div>
-              <Button type="button" disabled title="Available in Phase 3">Sync to Stripe</Button>
+              <Button type="button" disabled title="Available in Phase 3">
+                Sync to Stripe
+              </Button>
             </div>
           </div>
         </>
@@ -279,7 +332,9 @@ export function EventForm({ event }: EventFormProps) {
             </Button>
           </>
         ) : (
-          <Button type="submit" disabled={submitting}>Save</Button>
+          <Button type="submit" disabled={submitting}>
+            Save
+          </Button>
         )}
       </div>
     </form>

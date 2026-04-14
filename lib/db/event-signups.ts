@@ -19,11 +19,7 @@ export async function getSignupsForEvent(eventId: string): Promise<EventSignup[]
 
 export async function getSignupById(id: string): Promise<EventSignup | null> {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("event_signups")
-    .select("*")
-    .eq("id", id)
-    .maybeSingle()
+  const { data, error } = await supabase.from("event_signups").select("*").eq("id", id).maybeSingle()
   if (error) throw error
   return (data as EventSignup) ?? null
 }

@@ -6,13 +6,7 @@ import { useRouter } from "next/navigation"
 import { Plus, Pencil, Copy, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import type { Event, EventStatus, EventType } from "@/types/database"
 
 interface EventListProps {
@@ -66,7 +60,9 @@ export function EventList({ initialEvents }: EventListProps) {
           className="max-w-xs"
         />
         <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v as EventType | "all")}>
-          <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-40">
+            <SelectValue />
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All types</SelectItem>
             <SelectItem value="clinic">Clinic</SelectItem>
@@ -74,7 +70,9 @@ export function EventList({ initialEvents }: EventListProps) {
           </SelectContent>
         </Select>
         <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as EventStatus | "all")}>
-          <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-40">
+            <SelectValue />
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All statuses</SelectItem>
             <SelectItem value="draft">Draft</SelectItem>
@@ -84,7 +82,11 @@ export function EventList({ initialEvents }: EventListProps) {
           </SelectContent>
         </Select>
         <div className="ml-auto">
-          <Button asChild><Link href="/admin/events/new"><Plus className="mr-1 h-4 w-4" /> New event</Link></Button>
+          <Button asChild>
+            <Link href="/admin/events/new">
+              <Plus className="mr-1 h-4 w-4" /> New event
+            </Link>
+          </Button>
         </div>
       </div>
 
@@ -103,28 +105,50 @@ export function EventList({ initialEvents }: EventListProps) {
           </thead>
           <tbody>
             {filtered.length === 0 ? (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">No events</td></tr>
-            ) : filtered.map((e) => (
-              <tr key={e.id} className="border-t border-border">
-                <td className="px-4 py-3"><Link href={`/admin/events/${e.id}`} className="font-medium hover:text-primary">{e.title}</Link></td>
-                <td className="px-4 py-3 capitalize">{e.type}</td>
-                <td className="px-4 py-3">{new Date(e.start_date).toLocaleString()}</td>
-                <td className="px-4 py-3">{e.location_name}</td>
-                <td className="px-4 py-3">{e.signup_count} / {e.capacity}</td>
-                <td className="px-4 py-3">
-                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[e.status]}`}>{e.status}</span>
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <div className="flex justify-end gap-2">
-                    <Button asChild variant="ghost" size="sm"><Link href={`/admin/events/${e.id}`}><Pencil className="h-4 w-4" /></Link></Button>
-                    <Button variant="ghost" size="sm" onClick={() => void handleDuplicate(e.id)}><Copy className="h-4 w-4" /></Button>
-                    {e.status === "draft" && e.signup_count === 0 && (
-                      <Button variant="ghost" size="sm" onClick={() => void handleDelete(e.id)}><Trash2 className="h-4 w-4" /></Button>
-                    )}
-                  </div>
+              <tr>
+                <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                  No events
                 </td>
               </tr>
-            ))}
+            ) : (
+              filtered.map((e) => (
+                <tr key={e.id} className="border-t border-border">
+                  <td className="px-4 py-3">
+                    <Link href={`/admin/events/${e.id}`} className="font-medium hover:text-primary">
+                      {e.title}
+                    </Link>
+                  </td>
+                  <td className="px-4 py-3 capitalize">{e.type}</td>
+                  <td className="px-4 py-3">{new Date(e.start_date).toLocaleString()}</td>
+                  <td className="px-4 py-3">{e.location_name}</td>
+                  <td className="px-4 py-3">
+                    {e.signup_count} / {e.capacity}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[e.status]}`}>
+                      {e.status}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex justify-end gap-2">
+                      <Button asChild variant="ghost" size="sm">
+                        <Link href={`/admin/events/${e.id}`}>
+                          <Pencil className="h-4 w-4" />
+                        </Link>
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => void handleDuplicate(e.id)}>
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                      {e.status === "draft" && e.signup_count === 0 && (
+                        <Button variant="ghost" size="sm" onClick={() => void handleDelete(e.id)}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>

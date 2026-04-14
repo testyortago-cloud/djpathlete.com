@@ -1,13 +1,7 @@
 import { describe, it, expect, afterAll, beforeAll } from "vitest"
 import { randomUUID } from "crypto"
 import { createEvent } from "@/lib/db/events"
-import {
-  createSignup,
-  getSignupsForEvent,
-  getSignupById,
-  confirmSignup,
-  cancelSignup,
-} from "@/lib/db/event-signups"
+import { createSignup, getSignupsForEvent, getSignupById, confirmSignup, cancelSignup } from "@/lib/db/event-signups"
 
 describe("event-signups DAL", () => {
   let eventId: string
@@ -17,9 +11,14 @@ describe("event-signups DAL", () => {
     const e = await createEvent({
       type: "clinic",
       slug: `signup-test-${randomUUID()}`,
-      title: "T", summary: "S", description: "D", focus_areas: [],
+      title: "T",
+      summary: "S",
+      description: "D",
+      focus_areas: [],
       start_date: new Date(Date.now() + 86400000).toISOString(),
-      location_name: "L", capacity: 2, status: "draft",
+      location_name: "L",
+      capacity: 2,
+      status: "draft",
     })
     eventId = e.id
   })
@@ -32,9 +31,16 @@ describe("event-signups DAL", () => {
   })
 
   it("creates a signup and fetches it back", async () => {
-    const signup = await createSignup(eventId, {
-      parent_name: "A", parent_email: "a@x.com", athlete_name: "S", athlete_age: 14,
-    }, "interest")
+    const signup = await createSignup(
+      eventId,
+      {
+        parent_name: "A",
+        parent_email: "a@x.com",
+        athlete_name: "S",
+        athlete_age: 14,
+      },
+      "interest",
+    )
     expect(signup.status).toBe("pending")
 
     const fetched = await getSignupById(signup.id)
@@ -45,9 +51,16 @@ describe("event-signups DAL", () => {
   })
 
   it("confirm + cancel flip status and adjust signup_count", async () => {
-    const signup = await createSignup(eventId, {
-      parent_name: "B", parent_email: "b@x.com", athlete_name: "S2", athlete_age: 14,
-    }, "interest")
+    const signup = await createSignup(
+      eventId,
+      {
+        parent_name: "B",
+        parent_email: "b@x.com",
+        athlete_name: "S2",
+        athlete_age: 14,
+      },
+      "interest",
+    )
 
     const confirmed = await confirmSignup(signup.id)
     expect(confirmed.ok).toBe(true)
@@ -63,18 +76,37 @@ describe("event-signups DAL", () => {
     const e = await createEvent({
       type: "clinic",
       slug: `cap-${randomUUID()}`,
-      title: "T", summary: "S", description: "D", focus_areas: [],
+      title: "T",
+      summary: "S",
+      description: "D",
+      focus_areas: [],
       start_date: new Date(Date.now() + 86400000).toISOString(),
-      location_name: "L", capacity: 1, status: "draft",
+      location_name: "L",
+      capacity: 1,
+      status: "draft",
     })
     extraEventIds.push(e.id)
 
-    const s1 = await createSignup(e.id, {
-      parent_name: "A", parent_email: "a@x.com", athlete_name: "X", athlete_age: 14,
-    }, "interest")
-    const s2 = await createSignup(e.id, {
-      parent_name: "B", parent_email: "b@x.com", athlete_name: "Y", athlete_age: 14,
-    }, "interest")
+    const s1 = await createSignup(
+      e.id,
+      {
+        parent_name: "A",
+        parent_email: "a@x.com",
+        athlete_name: "X",
+        athlete_age: 14,
+      },
+      "interest",
+    )
+    const s2 = await createSignup(
+      e.id,
+      {
+        parent_name: "B",
+        parent_email: "b@x.com",
+        athlete_name: "Y",
+        athlete_age: 14,
+      },
+      "interest",
+    )
 
     const r1 = await confirmSignup(s1.id)
     expect(r1.ok).toBe(true)
