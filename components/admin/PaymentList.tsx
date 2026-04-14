@@ -158,7 +158,14 @@ export function PaymentList({ payments }: PaymentListProps) {
                         <p className="text-xs text-muted-foreground">{payment.users.email}</p>
                       </div>
                     ) : (
-                      <span className="text-muted-foreground">{payment.user_id ? `${payment.user_id.slice(0, 8)}...` : "External"}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">{payment.user_id ? `${payment.user_id.slice(0, 8)}...` : "—"}</span>
+                        {payment.user_id === null && (
+                          <span className="inline-block rounded-full bg-accent/15 px-2 py-0.5 text-xs font-medium text-accent">
+                            External
+                          </span>
+                        )}
+                      </div>
                     )}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">{payment.description ?? "—"}</td>
