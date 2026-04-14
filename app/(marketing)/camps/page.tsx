@@ -9,6 +9,8 @@ import { CampHero } from "@/components/public/CampHero"
 import { FocusGrid, type FocusItem } from "@/components/public/FocusGrid"
 import { EventsComingSoonPanel } from "@/components/public/EventsComingSoonPanel"
 import { InquiryForm } from "@/components/public/InquiryForm"
+import { getPublishedEvents } from "@/lib/db/events"
+import { EventCard } from "@/components/public/EventCard"
 
 export const metadata: Metadata = {
   title: "Performance Camps",
@@ -78,7 +80,8 @@ const WHO_ITS_FOR = [
   "Parents and teams who value both training quality and measurable feedback",
 ]
 
-export default function CampsPage() {
+export default async function CampsPage() {
+  const events = await getPublishedEvents({ type: "camp" })
   return (
     <>
       <JsonLd data={serviceSchema} />
@@ -139,7 +142,15 @@ export default function CampsPage() {
             </h2>
           </div>
           <div className="mt-10">
-            <EventsComingSoonPanel type="camp" />
+            {events.length > 0 ? (
+              <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                {events.map((event) => (
+                  <EventCard key={event.id} event={event} />
+                ))}
+              </div>
+            ) : (
+              <EventsComingSoonPanel type="camp" />
+            )}
           </div>
         </FadeIn>
       </section>
