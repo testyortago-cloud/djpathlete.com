@@ -236,4 +236,40 @@ describe("event-signups DAL", () => {
     const fetched = await getEventSignupByPaymentIntent(piId)
     expect(fetched?.id).toBe(sig.id)
   })
+
+  it("getSignupsForEvent sweeps stale paid+pending rows to cancelled", async () => {
+    const { getSignupsForEvent } = await import("@/lib/db/event-signups")
+    const e = await createEvent({
+      type: "camp",
+      slug: `sweep-${randomUUID()}`,
+      title: "T", summary: "S", description: "D", focus_areas: [],
+      start_date: new Date(Date.now() + 86400000).toISOString(),
+      end_date: new Date(Date.now() + 7 * 86400000).toISOString(),
+      location_name: "L", capacity: 10, status: "draft", price_dollars: 100,
+    })
+    extraEventIds.push(e.id)
+
+    // Create a paid pending signup, then manually backdate created_at to >1 hour ago
+    const stale = await createSignup(e.id, {
+      parent_name: "A", parent_email: "a@x.com", athlete_name: "X", athlete_age: 14,
+    }, "paid")
+
+    const { createServiceRoleClient } = await import("@/lib/supabase")
+    const supabase = createServiceRoleClient()
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
+    await supabase.from("event_signups").update({ created_at: twoHoursAgo }).eq("id", stale.id)
+
+    // Calling getSignupsForEvent should sweep the stale row to 'cancelled'
+    const signups = await getSignupsForEvent(e.id)
+    const swept = signups.find((s) => s.id === stale.id)
+    expect(swept?.status).toBe("cancelled")
+
+    // Also verify a fresh paid+pending row is NOT swept
+    const fresh = await createSignup(e.id, {
+      parent_name: "B", parent_email: "b@x.com", athlete_name: "Y", athlete_age: 14,
+    }, "paid")
+    const after = await getSignupsForEvent(e.id)
+    const freshAfter = after.find((s) => s.id === fresh.id)
+    expect(freshAfter?.status).toBe("pending")
+  })
 })

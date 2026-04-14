@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { getEventById, updateEvent } from "@/lib/db/events"
-import type { UpdateEventInput } from "@/lib/validators/events"
+import { getEventById } from "@/lib/db/events"
 import { syncEventToStripe } from "@/lib/stripe"
+import { createServiceRoleClient } from "@/lib/supabase"
 
 export async function POST(_request: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
@@ -29,11 +29,18 @@ export async function POST(_request: Request, ctx: { params: Promise<{ id: strin
       return NextResponse.json({ error: "Stripe sync failed — try again" }, { status: 502 })
     }
 
-    const stripeUpdates = {
-      stripe_product_id: result.productId,
-      stripe_price_id: result.priceId,
-    } as unknown as UpdateEventInput
-    const updated = await updateEvent(id, stripeUpdates)
+    const supabase = createServiceRoleClient()
+    const { data: updated, error: updateErr } = await supabase
+      .from("events")
+      .update({
+        stripe_product_id: result.productId,
+        stripe_price_id: result.priceId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+      .select()
+      .single()
+    if (updateErr) throw updateErr
     return NextResponse.json({ event: updated })
   } catch (err) {
     console.error("[admin stripe-sync] unexpected error", err)

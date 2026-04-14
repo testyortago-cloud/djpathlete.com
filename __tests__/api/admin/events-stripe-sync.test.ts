@@ -2,16 +2,32 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 
 const authMock = vi.fn()
 const getEventByIdMock = vi.fn()
-const updateEventMock = vi.fn()
 const syncEventToStripeMock = vi.fn()
+
+const updateChainMock = vi.fn(async () => ({
+  data: { id: "evt-1", stripe_product_id: "prod_x", stripe_price_id: "price_x" },
+  error: null,
+}))
 
 vi.mock("@/lib/auth", () => ({ auth: (...a: unknown[]) => authMock(...a) }))
 vi.mock("@/lib/db/events", () => ({
   getEventById: (...a: unknown[]) => getEventByIdMock(...a),
-  updateEvent: (...a: unknown[]) => updateEventMock(...a),
 }))
 vi.mock("@/lib/stripe", () => ({
   syncEventToStripe: (...a: unknown[]) => syncEventToStripeMock(...a),
+}))
+vi.mock("@/lib/supabase", () => ({
+  createServiceRoleClient: () => ({
+    from: () => ({
+      update: () => ({
+        eq: () => ({
+          select: () => ({
+            single: updateChainMock,
+          }),
+        }),
+      }),
+    }),
+  }),
 }))
 
 const camp = {
@@ -31,9 +47,13 @@ describe("POST /api/admin/events/[id]/stripe-sync", () => {
   beforeEach(() => {
     authMock.mockReset()
     getEventByIdMock.mockReset()
-    updateEventMock.mockReset()
     syncEventToStripeMock.mockReset()
+    updateChainMock.mockReset()
     authMock.mockResolvedValue({ user: { id: "u1", role: "admin" } })
+    updateChainMock.mockResolvedValue({
+      data: { id: "evt-1", stripe_product_id: "prod_x", stripe_price_id: "price_x" },
+      error: null,
+    })
   })
 
   it("403 when not admin", async () => {
@@ -60,11 +80,10 @@ describe("POST /api/admin/events/[id]/stripe-sync", () => {
   it("happy path syncs and persists ids", async () => {
     getEventByIdMock.mockResolvedValueOnce(camp)
     syncEventToStripeMock.mockResolvedValueOnce({ productId: "prod_x", priceId: "price_x" })
-    updateEventMock.mockResolvedValueOnce({ ...camp, stripe_product_id: "prod_x", stripe_price_id: "price_x" })
     const { POST } = await import("@/app/api/admin/events/[id]/stripe-sync/route")
     const res = await POST(makeReq(), ctx)
     expect(res.status).toBe(200)
-    expect(updateEventMock).toHaveBeenCalledWith("evt-1", { stripe_product_id: "prod_x", stripe_price_id: "price_x" })
+    expect(updateChainMock).toHaveBeenCalled()
   })
 
   it("502 when Stripe sync throws", async () => {
