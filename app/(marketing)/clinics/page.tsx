@@ -15,18 +15,18 @@ export const dynamic = "force-dynamic"
 export const metadata: Metadata = {
   title: "Agility Clinics",
   description:
-    "2-hour agility coaching clinics for athletes aged 12–18. Acceleration, deceleration, change of direction, and rotation — coached in small groups for serious feedback.",
+    "2-hour agility coaching clinics for athletes aged 10–18. Acceleration, deceleration, change of direction, and rotation — coached in small groups of 8–12 for serious feedback.",
   openGraph: {
     title: "Agility Clinics | DJP Athlete",
     description:
-      "2-hour agility coaching clinics for athletes aged 12–18. Small groups, proper coaching, real transfer to sport.",
+      "2-hour agility coaching clinics for athletes aged 10–18. Small groups, proper coaching, real transfer to sport.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
     title: "Agility Clinics | DJP Athlete",
     description:
-      "2-hour agility coaching clinics for athletes aged 12–18. Small groups, proper coaching, real transfer to sport.",
+      "2-hour agility coaching clinics for athletes aged 10–18. Small groups, proper coaching, real transfer to sport.",
   },
 }
 
@@ -40,9 +40,9 @@ const serviceSchema = {
   },
   serviceType: "Youth Agility Clinic",
   description:
-    "2-hour agility coaching clinics for youth athletes aged 12–18, focused on acceleration, deceleration, change of direction, and rotation.",
+    "2-hour agility coaching clinics for youth athletes aged 10–18, focused on acceleration, deceleration, change of direction, and rotation, in groups of 8–12.",
   url: "https://djpathlete.com/clinics",
-  audience: { "@type": "Audience", audienceType: "Youth Athletes, 12–18" },
+  audience: { "@type": "Audience", audienceType: "Youth Athletes, 10–18" },
 }
 
 // Action diagrams — each rendered inline as a mini-play
@@ -62,27 +62,6 @@ const ACTIONS: ActionDiagram[] = [
     body: "First-step intent, projection, and creating a better start when space opens up.",
     diagram: (
       <svg viewBox="0 0 200 120" className="w-full h-full" aria-hidden>
-        {/* Player X */}
-        <g stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-          <line x1="30" y1="85" x2="45" y2="100" />
-          <line x1="45" y1="85" x2="30" y2="100" />
-        </g>
-        {/* Burst arrow */}
-        <path
-          d="M 55 92 L 170 30"
-          fill="none"
-          stroke="oklch(0.70 0.08 60)"
-          strokeWidth="2.5"
-          strokeDasharray="8 5"
-          strokeLinecap="round"
-          markerEnd="url(#ah1)"
-        />
-        {/* Acceleration step marks */}
-        <g fill="oklch(0.70 0.08 60 / 0.6)">
-          <circle cx="80" cy="72" r="2.5" />
-          <circle cx="105" cy="58" r="2.5" />
-          <circle cx="130" cy="46" r="2.5" />
-        </g>
         <defs>
           <marker
             id="ah1"
@@ -96,6 +75,38 @@ const ACTIONS: ActionDiagram[] = [
             <path d="M 0 0 L 10 5 L 0 10 z" fill="oklch(0.70 0.08 60)" />
           </marker>
         </defs>
+        {/* Ground line */}
+        <line x1="10" y1="102" x2="190" y2="102" stroke="currentColor" strokeOpacity="0.2" strokeWidth="1" strokeDasharray="2 3" />
+        {/* Starting line (two tick marks) */}
+        <g stroke="currentColor" strokeOpacity="0.5" strokeWidth="2" strokeLinecap="round">
+          <line x1="22" y1="95" x2="22" y2="108" />
+          <line x1="28" y1="95" x2="28" y2="108" />
+        </g>
+        {/* Sprinter in drive phase */}
+        <g stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none">
+          <circle cx="44" cy="66" r="5" fill="currentColor" stroke="none" />
+          <line x1="46" y1="70" x2="54" y2="88" />
+          <line x1="50" y1="76" x2="60" y2="70" />
+          <line x1="50" y1="78" x2="42" y2="86" />
+          <line x1="54" y1="88" x2="64" y2="100" />
+          <line x1="54" y1="88" x2="44" y2="100" />
+        </g>
+        {/* Track cones getting smaller (perspective) */}
+        <g stroke="oklch(0.70 0.08 60)" strokeWidth="1.2" fill="oklch(0.70 0.08 60 / 0.4)">
+          <polygon points="92,66 86,78 98,78" />
+          <polygon points="122,52 117,62 127,62" />
+          <polygon points="150,40 146,48 154,48" />
+        </g>
+        {/* Burst arrow */}
+        <path
+          d="M 68 70 L 178 22"
+          fill="none"
+          stroke="oklch(0.70 0.08 60)"
+          strokeWidth="2.5"
+          strokeDasharray="8 5"
+          strokeLinecap="round"
+          markerEnd="url(#ah1)"
+        />
       </svg>
     ),
   },
@@ -106,9 +117,11 @@ const ACTIONS: ActionDiagram[] = [
     body: "Learning to brake with control so the next action is cleaner, quicker, and more usable.",
     diagram: (
       <svg viewBox="0 0 200 120" className="w-full h-full" aria-hidden>
-        {/* Incoming path slowing */}
+        {/* Ground line */}
+        <line x1="10" y1="102" x2="190" y2="102" stroke="currentColor" strokeOpacity="0.2" strokeWidth="1" strokeDasharray="2 3" />
+        {/* Incoming path (fading dashes) */}
         <path
-          d="M 30 30 L 150 90"
+          d="M 18 36 L 118 78"
           fill="none"
           stroke="currentColor"
           strokeOpacity="0.5"
@@ -117,18 +130,25 @@ const ACTIONS: ActionDiagram[] = [
           strokeLinecap="round"
         />
         {/* Brake hash marks */}
-        <g stroke="oklch(0.70 0.08 60)" strokeWidth="3" strokeLinecap="round">
-          <line x1="82" y1="62" x2="98" y2="52" />
-          <line x1="98" y1="72" x2="114" y2="62" />
-          <line x1="114" y1="82" x2="130" y2="72" />
+        <g stroke="oklch(0.70 0.08 60)" strokeWidth="2.5" strokeLinecap="round">
+          <line x1="72" y1="62" x2="86" y2="54" />
+          <line x1="85" y1="70" x2="99" y2="62" />
+          <line x1="98" y1="78" x2="112" y2="70" />
         </g>
-        {/* Player X stopped */}
-        <g stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-          <line x1="145" y1="82" x2="160" y2="97" />
-          <line x1="160" y1="82" x2="145" y2="97" />
+        {/* Athlete braking — torso back, front leg planted */}
+        <g stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none">
+          <circle cx="128" cy="54" r="5" fill="currentColor" stroke="none" />
+          <line x1="128" y1="58" x2="134" y2="82" />
+          <line x1="130" y1="66" x2="120" y2="60" />
+          <line x1="132" y1="72" x2="144" y2="68" />
+          <line x1="134" y1="82" x2="144" y2="100" />
+          <line x1="134" y1="82" x2="124" y2="100" />
         </g>
-        {/* STOP marker */}
-        <circle cx="152" cy="90" r="18" fill="none" stroke="oklch(0.70 0.08 60)" strokeWidth="1.5" />
+        {/* Cone at brake target */}
+        <g stroke="oklch(0.70 0.08 60)" strokeWidth="1.5" fill="oklch(0.70 0.08 60 / 0.5)">
+          <polygon points="170,78 162,98 178,98" />
+          <ellipse cx="170" cy="100" rx="8" ry="2" fill="none" strokeOpacity="0.6" strokeWidth="1" />
+        </g>
       </svg>
     ),
   },
@@ -139,29 +159,6 @@ const ACTIONS: ActionDiagram[] = [
     body: "Sharper repositioning, better angles, and more efficient redirection under pressure.",
     diagram: (
       <svg viewBox="0 0 200 120" className="w-full h-full" aria-hidden>
-        {/* Approach */}
-        <path
-          d="M 25 90 L 100 45"
-          fill="none"
-          stroke="currentColor"
-          strokeOpacity="0.55"
-          strokeWidth="2"
-          strokeDasharray="8 5"
-          strokeLinecap="round"
-        />
-        {/* Cut */}
-        <path
-          d="M 100 45 L 175 100"
-          fill="none"
-          stroke="oklch(0.70 0.08 60)"
-          strokeWidth="2.5"
-          strokeDasharray="8 5"
-          strokeLinecap="round"
-          markerEnd="url(#ah3)"
-        />
-        {/* Plant foot marker */}
-        <circle cx="100" cy="45" r="6" fill="oklch(0.70 0.08 60)" />
-        <circle cx="100" cy="45" r="12" fill="none" stroke="oklch(0.70 0.08 60)" strokeWidth="1.2" strokeDasharray="2 3" />
         <defs>
           <marker
             id="ah3"
@@ -175,6 +172,43 @@ const ACTIONS: ActionDiagram[] = [
             <path d="M 0 0 L 10 5 L 0 10 z" fill="oklch(0.70 0.08 60)" />
           </marker>
         </defs>
+        {/* Ground line */}
+        <line x1="10" y1="102" x2="190" y2="102" stroke="currentColor" strokeOpacity="0.2" strokeWidth="1" strokeDasharray="2 3" />
+        {/* Approach */}
+        <path
+          d="M 18 88 L 94 48"
+          fill="none"
+          stroke="currentColor"
+          strokeOpacity="0.55"
+          strokeWidth="2"
+          strokeDasharray="8 5"
+          strokeLinecap="round"
+        />
+        {/* Cone at cut point */}
+        <g>
+          <polygon
+            points="100,32 90,54 110,54"
+            fill="oklch(0.70 0.08 60 / 0.55)"
+            stroke="currentColor"
+            strokeOpacity="0.8"
+            strokeWidth="1.8"
+          />
+          <rect x="94" y="40" width="12" height="3" fill="currentColor" fillOpacity="0.2" />
+          <ellipse cx="100" cy="55" rx="11" ry="3" fill="none" stroke="currentColor" strokeOpacity="0.35" strokeWidth="1" />
+        </g>
+        {/* Plant foot marker */}
+        <ellipse cx="92" cy="62" rx="5" ry="3" fill="oklch(0.70 0.08 60)" transform="rotate(-30, 92, 62)" />
+        <circle cx="92" cy="62" r="10" fill="none" stroke="oklch(0.70 0.08 60)" strokeWidth="1" strokeDasharray="2 3" strokeOpacity="0.6" />
+        {/* Exit cut */}
+        <path
+          d="M 100 64 L 178 104"
+          fill="none"
+          stroke="oklch(0.70 0.08 60)"
+          strokeWidth="2.5"
+          strokeDasharray="8 5"
+          strokeLinecap="round"
+          markerEnd="url(#ah3)"
+        />
       </svg>
     ),
   },
@@ -185,30 +219,6 @@ const ACTIONS: ActionDiagram[] = [
     body: "Turning, re-orienting, and organising the body better in the moments that matter.",
     diagram: (
       <svg viewBox="0 0 200 120" className="w-full h-full" aria-hidden>
-        {/* Spiral / rotation arc */}
-        <path
-          d="M 100 30 A 35 35 0 1 0 135 65"
-          fill="none"
-          stroke="oklch(0.70 0.08 60)"
-          strokeWidth="2.5"
-          strokeDasharray="6 4"
-          strokeLinecap="round"
-          markerEnd="url(#ah4)"
-        />
-        <path
-          d="M 100 30 A 60 60 0 1 1 160 90"
-          fill="none"
-          stroke="currentColor"
-          strokeOpacity="0.35"
-          strokeWidth="1.5"
-          strokeDasharray="2 4"
-          strokeLinecap="round"
-        />
-        {/* Center pivot */}
-        <g stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-          <line x1="93" y1="53" x2="107" y2="67" />
-          <line x1="107" y1="53" x2="93" y2="67" />
-        </g>
         <defs>
           <marker
             id="ah4"
@@ -222,6 +232,43 @@ const ACTIONS: ActionDiagram[] = [
             <path d="M 0 0 L 10 5 L 0 10 z" fill="oklch(0.70 0.08 60)" />
           </marker>
         </defs>
+        {/* Ground line */}
+        <line x1="10" y1="108" x2="190" y2="108" stroke="currentColor" strokeOpacity="0.2" strokeWidth="1" strokeDasharray="2 3" />
+        {/* Central pivot cone */}
+        <g>
+          <polygon
+            points="100,40 88,66 112,66"
+            fill="oklch(0.70 0.08 60 / 0.5)"
+            stroke="currentColor"
+            strokeOpacity="0.8"
+            strokeWidth="1.8"
+          />
+          <rect x="93" y="50" width="14" height="3" fill="currentColor" fillOpacity="0.2" />
+          <ellipse cx="100" cy="67" rx="13" ry="3" fill="none" stroke="currentColor" strokeOpacity="0.35" strokeWidth="1" />
+        </g>
+        {/* Rotation arc around cone */}
+        <path
+          d="M 100 22 A 38 38 0 1 0 138 60"
+          fill="none"
+          stroke="oklch(0.70 0.08 60)"
+          strokeWidth="2.5"
+          strokeDasharray="6 4"
+          strokeLinecap="round"
+          markerEnd="url(#ah4)"
+        />
+        {/* Footprints tracing the rotation */}
+        <g fill="currentColor" fillOpacity="0.4">
+          <ellipse cx="138" cy="28" rx="2.5" ry="4" transform="rotate(35, 138, 28)" />
+          <ellipse cx="155" cy="58" rx="2.5" ry="4" transform="rotate(85, 155, 58)" />
+          <ellipse cx="146" cy="86" rx="2.5" ry="4" transform="rotate(135, 146, 86)" />
+        </g>
+        {/* Athlete outside arc (body marker) */}
+        <g stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" fill="none">
+          <circle cx="62" cy="50" r="4" fill="currentColor" stroke="none" />
+          <line x1="62" y1="54" x2="62" y2="72" />
+          <line x1="62" y1="60" x2="54" y2="68" />
+          <line x1="62" y1="60" x2="70" y2="64" />
+        </g>
       </svg>
     ),
   },
@@ -251,9 +298,9 @@ const FLOW_STEPS = [
 ]
 
 const WHO_ITS_FOR = [
-  "Field and court sport athletes aged 12–18",
+  "Field and court sport athletes aged 10–18",
   "Players who want sharper movement and more confidence in open play",
-  "Parents looking for better athletic development, not generic hard work",
+  "Parents looking for proper athletic development — not just hard work for its own sake",
 ]
 
 export default async function ClinicsPage() {
@@ -263,6 +310,43 @@ export default async function ClinicsPage() {
       <JsonLd data={serviceSchema} />
 
       <ClinicHero />
+
+      {/* ===================== THE COACH ===================== */}
+      <section className="relative py-20 lg:py-28 px-4 sm:px-8 bg-surface">
+        <div className="mx-auto max-w-6xl">
+          <FadeIn>
+            <div className="grid gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:gap-16 items-start">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.3em] text-accent">The Coach</div>
+                <h2 className="mt-4 font-heading text-3xl sm:text-4xl md:text-5xl font-semibold tracking-tight leading-[1.05] text-primary">
+                  Darren J Paul
+                </h2>
+                <p className="mt-5 max-w-md text-muted-foreground leading-7">
+                  Not cone drills for the sake of cone drills.
+                </p>
+                <p className="mt-4 max-w-md font-heading text-lg md:text-xl font-semibold leading-snug text-primary">
+                  Designed for athletes who want their movement to{" "}
+                  <span className="italic font-normal text-accent">stand out</span>, not just their effort.
+                </p>
+              </div>
+              <div className="space-y-5 text-base md:text-lg leading-8 text-muted-foreground">
+                <p>
+                  Darren has spent years working alongside elite athletes across football, rugby, athletics,
+                  and court sports. His understanding of agility isn't borrowed from textbooks — it comes from
+                  being in environments where movement decides outcomes, and from a genuine, deep study of how
+                  athletes accelerate, decelerate, and change direction under pressure. These clinics are built
+                  around that work.
+                </p>
+                <p>
+                  Athletes are coached through the actions that decide real moments in sport: starting,
+                  stopping, redirecting, and re-organising under pressure. Smaller group numbers mean better
+                  feedback, better reps, and a better standard of coaching throughout.
+                </p>
+              </div>
+            </div>
+          </FadeIn>
+        </div>
+      </section>
 
       {/* ===================== WHAT GETS COACHED · PLAY CARDS ===================== */}
       <section
@@ -283,11 +367,11 @@ export default async function ClinicsPage() {
         <div className="relative max-w-7xl mx-auto">
           <FadeIn>
             <div className="max-w-2xl">
-              <div className="text-[11px] uppercase tracking-[0.3em] text-accent">The Playbook</div>
+              <div className="text-[11px] uppercase tracking-[0.3em] text-accent">What gets coached</div>
               <h2 className="mt-4 font-heading text-3xl sm:text-4xl md:text-5xl font-semibold tracking-tight leading-[1.05]">
-                Four plays.
+                Agility work with
                 <br />
-                <span className="italic font-normal text-accent">Drawn up properly.</span>
+                <span className="italic font-normal text-accent">proper coaching behind it.</span>
               </h2>
               <p className="mt-5 text-primary-foreground/70 leading-7">
                 Built around the movement actions that show up again and again in competitive sport. Less
@@ -383,10 +467,13 @@ export default async function ClinicsPage() {
         <FadeIn>
           <div className="flex items-end justify-between flex-wrap gap-6">
             <div className="max-w-2xl">
-              <div className="text-[11px] uppercase tracking-[0.3em] text-accent">Next fixtures</div>
+              <div className="text-[11px] uppercase tracking-[0.3em] text-accent">Upcoming dates</div>
               <h2 className="mt-4 font-heading text-3xl font-semibold tracking-tight md:text-5xl text-primary">
                 When and where
               </h2>
+              <p className="mt-4 text-muted-foreground leading-7">
+                Places are limited to 12 per session.
+              </p>
             </div>
           </div>
           <div className="mt-10">
@@ -442,7 +529,7 @@ export default async function ClinicsPage() {
                   <div className="absolute -top-2 left-6 h-4 w-16 bg-accent/30 rotate-[-3deg]" aria-hidden />
                   <div className="absolute -bottom-2 right-6 h-4 w-16 bg-accent/30 rotate-[2deg]" aria-hidden />
 
-                  <div className="text-[11px] uppercase tracking-[0.3em] text-accent">Final whistle</div>
+                  <div className="text-[11px] uppercase tracking-[0.3em] text-accent">Outcome</div>
                   <p className="mt-3 font-heading text-3xl font-semibold tracking-tight leading-tight md:text-4xl">
                     Better movement.
                     <br />

@@ -4,12 +4,12 @@ import { Button } from "@/components/ui/button"
 import { FadeIn } from "@/components/shared/FadeIn"
 
 const WEEKS = [
-  { n: "WK 01", phase: "Base" },
-  { n: "WK 02", phase: "Base" },
-  { n: "WK 03", phase: "Build" },
-  { n: "WK 04", phase: "Build" },
-  { n: "WK 05", phase: "Peak", peak: true },
-  { n: "WK 06", phase: "Test" },
+  { n: "D 01", phase: "Assess" },
+  { n: "D 03", phase: "Build" },
+  { n: "D 05", phase: "Apply" },
+  { n: "D 07", phase: "Develop" },
+  { n: "D 09", phase: "Peak", peak: true },
+  { n: "D 10", phase: "Test" },
 ]
 
 /**
@@ -39,7 +39,7 @@ export function CampHero() {
           <div className="hidden sm:flex items-center gap-6 text-[11px] uppercase tracking-[0.3em] text-primary/60">
             <span>Vol. IV</span>
             <span>Issue · Off + Pre</span>
-            <span>Ages 12–18</span>
+            <span>Soccer · College + Pro</span>
           </div>
         </div>
       </div>
@@ -50,12 +50,12 @@ export function CampHero() {
           <div className="flex items-start justify-between gap-6 flex-wrap">
             <div>
               <div className="inline-block border-2 border-primary px-3 py-1 font-heading text-[11px] uppercase tracking-[0.35em] text-primary">
-                Block A · Performance Camp
+                Soccer Performance Camp · Off + Pre-Season
               </div>
             </div>
             {/* Rubber stamp */}
             <div className="inline-flex items-center gap-2 rotate-[-6deg] border-2 border-accent rounded-sm px-4 py-2 font-heading font-bold uppercase tracking-[0.2em] text-sm md:text-base text-accent bg-accent/[0.06]">
-              6-Week Programme
+              2-Week Intensive
               <span className="w-px h-5 bg-accent/50" />
               <span className="tabular-nums">2026</span>
             </div>
@@ -64,25 +64,40 @@ export function CampHero() {
           {/* Headline — huge poster typography */}
           <h1
             className="mt-10 font-heading font-semibold tracking-tight leading-[0.88] text-primary"
-            style={{ fontSize: "clamp(3rem, 11vw, 10.5rem)" }}
+            style={{ fontSize: "clamp(2.5rem, 9vw, 8.5rem)" }}
           >
-            BUILD
+            TRAIN AT THE LEVEL
             <br />
-            THE <span className="italic font-normal text-accent">BASE.</span>
+            THE GAME <span className="italic font-normal text-accent">DEMANDS.</span>
           </h1>
 
           {/* Two-column lede */}
           <div className="mt-10 grid gap-10 md:grid-cols-[1.3fr_1fr] md:gap-16 max-w-5xl">
             <p className="text-base md:text-lg leading-7 md:leading-8 text-muted-foreground">
-              Off-season and pre-season performance camps for athletes aged 12–18. Speed, power, movement
-              quality, conditioning, and robustness — built before the competitive period takes over.
+              Built for soccer players who are serious about what comes next. Whether you're competing at
+              college or professional level — or pushing hard to get there — this camp is built around the
+              physical qualities that separate players when it matters. Every session is designed to
+              transfer directly to soccer-specific performance, not just general fitness.
             </p>
             <div className="border-l-2 border-primary/30 pl-6">
               <p className="font-heading text-lg md:text-xl font-semibold leading-snug text-primary">
-                "The athlete you become in the off-season is the athlete you race with in-season."
+                "The athlete you become in the off-season is the athlete you compete with in-season."
               </p>
               <p className="mt-2 text-[11px] uppercase tracking-[0.3em] text-accent">— Camp ethos</p>
             </div>
+          </div>
+
+          {/* Pills */}
+          <div className="mt-8 flex flex-wrap gap-2">
+            {["Soccer-Specific Performance", "2-Week Intensive Camp", "2 Hours Per Session"].map((p) => (
+              <span
+                key={p}
+                className="inline-flex items-center gap-2 border border-primary/25 bg-primary/[0.04] px-3 py-1.5 text-[11px] uppercase tracking-[0.2em] text-primary font-heading"
+              >
+                <span className="size-1.5 rounded-full bg-accent" />
+                {p}
+              </span>
+            ))}
           </div>
 
           <div className="mt-10 flex flex-wrap items-center gap-4">

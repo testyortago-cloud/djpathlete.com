@@ -6,7 +6,7 @@ import { FadeIn } from "@/components/shared/FadeIn"
 const SPEC = [
   { value: "02", unit: "hrs", label: "Session" },
   { value: "8–12", unit: "max", label: "Athletes" },
-  { value: "12–18", unit: "yrs", label: "Ages" },
+  { value: "10–18", unit: "yrs", label: "Ages" },
 ]
 
 /**
@@ -27,12 +27,12 @@ export function ClinicHero() {
         }}
       />
 
-      {/* Chalk markings — goal box, halfway line, routes */}
+      {/* Agility session plan — chalk-drawn kit on a pitch */}
       <svg
         aria-hidden
         viewBox="0 0 1400 900"
         preserveAspectRatio="xMidYMid slice"
-        className="absolute inset-0 w-full h-full opacity-80"
+        className="absolute inset-0 w-full h-full opacity-85"
       >
         <defs>
           <filter id="chalk">
@@ -63,53 +63,190 @@ export function ClinicHero() {
           </marker>
         </defs>
 
-        {/* Outer touchline */}
-        <rect
-          x="60"
-          y="60"
-          width="1280"
-          height="780"
-          fill="none"
-          stroke="rgba(255,255,255,0.3)"
-          strokeWidth="2"
-          filter="url(#chalk)"
-        />
-        {/* Halfway line */}
-        <line
-          x1="700"
-          y1="60"
-          x2="700"
-          y2="840"
-          stroke="rgba(255,255,255,0.3)"
-          strokeWidth="1.5"
-          filter="url(#chalk)"
-        />
-        {/* Center circle */}
-        <circle
-          cx="700"
-          cy="450"
-          r="100"
-          fill="none"
-          stroke="rgba(255,255,255,0.3)"
-          strokeWidth="1.5"
-          filter="url(#chalk)"
-        />
-        <circle cx="700" cy="450" r="3" fill="rgba(255,255,255,0.45)" />
+        {/* Subtle pitch corner markings */}
+        <g stroke="rgba(255,255,255,0.22)" strokeWidth="1.5" fill="none" filter="url(#chalk)">
+          <path d="M 60 120 A 60 60 0 0 1 120 60" />
+          <path d="M 1280 60 A 60 60 0 0 1 1340 120" />
+          <path d="M 60 780 A 60 60 0 0 0 120 840" />
+          <path d="M 1280 840 A 60 60 0 0 0 1340 780" />
+          <line x1="60" y1="450" x2="140" y2="450" />
+          <line x1="1260" y1="450" x2="1340" y2="450" />
+        </g>
 
-        {/* Route 1 — Acceleration (hard linear burst) */}
+        {/* ======================= AGILITY LADDER (bottom-left) ======================= */}
+        <g transform="translate(140 600) rotate(-14)" filter="url(#chalk)">
+          <g stroke="rgba(255,255,255,0.55)" strokeWidth="3" fill="none">
+            {/* rails */}
+            <line x1="0" y1="0" x2="400" y2="0" />
+            <line x1="0" y1="70" x2="400" y2="70" />
+            {/* rungs */}
+            {Array.from({ length: 9 }).map((_, i) => (
+              <line key={i} x1={i * 50} y1="0" x2={i * 50} y2="70" />
+            ))}
+          </g>
+        </g>
+        <text
+          x="140"
+          y="760"
+          fill="rgba(255,255,255,0.75)"
+          fontFamily="var(--font-heading), sans-serif"
+          fontWeight="700"
+          fontSize="22"
+          letterSpacing="3"
+        >
+          LADDER · QUICK FEET
+        </text>
+
+        {/* ======================= SLALOM CONES (middle) ======================= */}
+        {[
+          { x: 490, y: 600 },
+          { x: 640, y: 540 },
+          { x: 790, y: 480 },
+          { x: 940, y: 420 },
+        ].map((c, i) => (
+          <g key={i} filter="url(#chalk)">
+            {/* cone body */}
+            <polygon
+              points={`${c.x},${c.y - 50} ${c.x - 24},${c.y + 6} ${c.x + 24},${c.y + 6}`}
+              fill="var(--accent)"
+              fillOpacity="0.55"
+              stroke="rgba(255,255,255,0.85)"
+              strokeWidth="2.5"
+            />
+            {/* cone stripe */}
+            <polygon
+              points={`${c.x - 14},${c.y - 18} ${c.x + 14},${c.y - 18} ${c.x + 18},${c.y - 6} ${c.x - 18},${c.y - 6}`}
+              fill="rgba(255,255,255,0.18)"
+            />
+            {/* base ellipse */}
+            <ellipse cx={c.x} cy={c.y + 10} rx="26" ry="6" fill="none" stroke="rgba(255,255,255,0.45)" strokeWidth="1.5" />
+          </g>
+        ))}
+        <text
+          x="640"
+          y="360"
+          fill="var(--accent)"
+          fontFamily="var(--font-heading), sans-serif"
+          fontWeight="700"
+          fontSize="26"
+          letterSpacing="3"
+        >
+          SLALOM · CUT
+        </text>
+
+        {/* ======================= MINI HURDLES (right) ======================= */}
+        <g stroke="rgba(255,255,255,0.65)" strokeWidth="3" fill="none" filter="url(#chalk)">
+          {/* hurdle 1 */}
+          <rect x="1100" y="560" width="90" height="40" />
+          <line x1="1100" y1="580" x2="1190" y2="580" />
+          {/* hurdle 2 */}
+          <rect x="1210" y="560" width="90" height="40" />
+          <line x1="1210" y1="580" x2="1300" y2="580" />
+        </g>
+        <text
+          x="1100"
+          y="660"
+          fill="rgba(255,255,255,0.8)"
+          fontFamily="var(--font-heading), sans-serif"
+          fontWeight="700"
+          fontSize="22"
+          letterSpacing="3"
+        >
+          HURDLES · DECEL
+        </text>
+
+        {/* ======================= ROUTE — ladder → slalom → cut → hurdles ======================= */}
+        {/* Start burst out of ladder */}
         <path
-          d="M 220 700 L 420 500"
+          d="M 470 720 C 480 680 490 660 500 640"
           fill="none"
-          stroke="rgba(255,255,255,0.7)"
+          stroke="var(--accent)"
+          strokeWidth="3.5"
+          strokeDasharray="14 8"
+          strokeLinecap="round"
+          filter="url(#chalk)"
+        />
+        {/* Zig-zag through cones */}
+        <path
+          d="M 500 640 Q 540 580 600 580 Q 660 580 680 520 Q 720 470 790 470 Q 860 470 900 410 Q 950 370 1010 380"
+          fill="none"
+          stroke="rgba(255,255,255,0.85)"
           strokeWidth="3"
           strokeDasharray="12 8"
           strokeLinecap="round"
-          markerEnd="url(#arrowhead)"
           filter="url(#chalk)"
         />
+        {/* Hard cut + run to hurdles */}
+        <path
+          d="M 1010 380 C 1060 400 1090 480 1140 540"
+          fill="none"
+          stroke="var(--accent)"
+          strokeWidth="3.5"
+          strokeDasharray="14 8"
+          strokeLinecap="round"
+          markerEnd="url(#arrowhead-accent)"
+          filter="url(#chalk)"
+        />
+        {/* Plant marker at cut */}
+        <circle cx="1010" cy="380" r="6" fill="var(--accent)" />
+        <circle cx="1010" cy="380" r="14" fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeDasharray="3 4" />
+
+        {/* Brake hashes before a cone */}
+        <g stroke="var(--accent)" strokeWidth="3" strokeLinecap="round" filter="url(#chalk)">
+          <line x1="570" y1="560" x2="600" y2="555" />
+          <line x1="585" y1="580" x2="615" y2="575" />
+          <line x1="600" y1="600" x2="630" y2="595" />
+        </g>
+
+        {/* ======================= ATHLETE (stick figure) at ladder start ======================= */}
+        <g fill="none" stroke="rgba(255,255,255,0.9)" strokeWidth="3" strokeLinecap="round" filter="url(#chalk)">
+          {/* head */}
+          <circle cx="380" cy="720" r="11" fill="rgba(255,255,255,0.9)" stroke="none" />
+          {/* torso */}
+          <line x1="380" y1="732" x2="378" y2="778" />
+          {/* leading arm (forward) */}
+          <line x1="379" y1="745" x2="405" y2="738" />
+          {/* trailing arm */}
+          <line x1="379" y1="745" x2="360" y2="770" />
+          {/* lead leg (drive) */}
+          <line x1="378" y1="778" x2="408" y2="800" />
+          {/* back leg (push) */}
+          <line x1="378" y1="778" x2="355" y2="810" />
+          {/* forward lean indicator */}
+          <line x1="395" y1="715" x2="420" y2="705" strokeDasharray="4 4" strokeOpacity="0.6" />
+        </g>
+
+        {/* ======================= ROTATION ARC (top-right) ======================= */}
+        <g filter="url(#chalk)">
+          <path
+            d="M 1180 220 A 70 70 0 1 0 1320 220"
+            fill="none"
+            stroke="rgba(255,255,255,0.7)"
+            strokeWidth="3"
+            strokeDasharray="8 6"
+            strokeLinecap="round"
+            markerEnd="url(#arrowhead)"
+          />
+          {/* pivot foot */}
+          <circle cx="1250" cy="220" r="5" fill="var(--accent)" />
+          <ellipse cx="1250" cy="228" rx="10" ry="3" fill="none" stroke="rgba(255,255,255,0.55)" strokeWidth="1.5" />
+        </g>
         <text
-          x="160"
-          y="740"
+          x="1180"
+          y="170"
+          fill="var(--accent)"
+          fontFamily="var(--font-heading), sans-serif"
+          fontWeight="700"
+          fontSize="24"
+          letterSpacing="3"
+        >
+          ROTATE
+        </text>
+
+        {/* ======================= ACCEL label near athlete/ladder exit ======================= */}
+        <text
+          x="300"
+          y="680"
           fill="var(--accent)"
           fontFamily="var(--font-heading), sans-serif"
           fontWeight="700"
@@ -118,92 +255,6 @@ export function ClinicHero() {
         >
           ACCEL
         </text>
-        {/* X marker at start */}
-        <g stroke="rgba(255,255,255,0.6)" strokeWidth="2" filter="url(#chalk)">
-          <line x1="210" y1="690" x2="230" y2="710" />
-          <line x1="230" y1="690" x2="210" y2="710" />
-        </g>
-
-        {/* Route 2 — Deceleration */}
-        <path
-          d="M 420 500 L 560 360"
-          fill="none"
-          stroke="rgba(255,255,255,0.7)"
-          strokeWidth="3"
-          strokeDasharray="6 4"
-          strokeLinecap="round"
-          filter="url(#chalk)"
-        />
-        <g stroke="var(--accent)" strokeWidth="2.5">
-          <line x1="480" y1="420" x2="510" y2="415" />
-          <line x1="500" y1="440" x2="530" y2="435" />
-          <line x1="520" y1="460" x2="550" y2="455" />
-        </g>
-        <text
-          x="430"
-          y="330"
-          fill="var(--accent)"
-          fontFamily="var(--font-heading), sans-serif"
-          fontWeight="700"
-          fontSize="26"
-          letterSpacing="3"
-        >
-          DECEL
-        </text>
-
-        {/* Route 3 — Cut */}
-        <path
-          d="M 560 360 C 640 340 720 400 820 280"
-          fill="none"
-          stroke="rgba(255,255,255,0.75)"
-          strokeWidth="3"
-          strokeDasharray="12 8"
-          strokeLinecap="round"
-          markerEnd="url(#arrowhead-accent)"
-          filter="url(#chalk)"
-        />
-        <circle cx="700" cy="340" r="6" fill="var(--accent)" />
-        <text
-          x="720"
-          y="250"
-          fill="rgba(255,255,255,0.9)"
-          fontFamily="var(--font-heading), sans-serif"
-          fontWeight="700"
-          fontSize="26"
-          letterSpacing="3"
-        >
-          CUT
-        </text>
-
-        {/* Route 4 — Rotation */}
-        <path
-          d="M 1000 500 A 80 80 0 1 0 1160 500"
-          fill="none"
-          stroke="rgba(255,255,255,0.7)"
-          strokeWidth="3"
-          strokeDasharray="8 6"
-          strokeLinecap="round"
-          markerEnd="url(#arrowhead)"
-          filter="url(#chalk)"
-        />
-        <text
-          x="1000"
-          y="620"
-          fill="var(--accent)"
-          fontFamily="var(--font-heading), sans-serif"
-          fontWeight="700"
-          fontSize="26"
-          letterSpacing="3"
-        >
-          ROTATE
-        </text>
-
-        {/* O markers */}
-        <g fill="none" stroke="rgba(255,255,255,0.45)" strokeWidth="2">
-          <circle cx="900" cy="700" r="14" />
-          <circle cx="1100" cy="750" r="14" />
-          <circle cx="350" cy="250" r="14" />
-        </g>
       </svg>
 
       {/* Foreground content */}
@@ -212,18 +263,21 @@ export function ClinicHero() {
           <div className="max-w-3xl">
             <div className="inline-flex items-center gap-3 rounded-full bg-primary-foreground/10 border border-primary-foreground/20 backdrop-blur-sm px-4 py-1.5 text-[11px] uppercase tracking-[0.25em]">
               <span className="size-1.5 rounded-full bg-accent shadow-[0_0_10px_currentColor] text-accent" />
-              Agility Clinic · 12–18 yrs
+              Agility Clinic · Ages 10–18 · 8–12 Athletes
             </div>
 
-            <h1 className="mt-7 font-heading text-[42px] leading-[0.95] tracking-tight font-semibold sm:text-7xl md:text-8xl lg:text-[108px]">
-              Move sharp.
+            <h1 className="mt-7 font-heading text-[40px] leading-[0.95] tracking-tight font-semibold sm:text-6xl md:text-7xl lg:text-[92px]">
+              Move faster.
               <br />
-              <span className="text-accent italic font-normal">Think sharper.</span>
+              React sooner.
+              <br />
+              <span className="text-accent italic font-normal">Do it when it actually matters.</span>
             </h1>
 
             <p className="mt-7 max-w-xl text-base leading-7 text-primary-foreground/80 md:text-lg md:leading-8">
-              A 2-hour coaching session for athletes who want to move better, react faster, and look more in
-              control when the game gets chaotic.
+              A focused 2-hour session on the movements that change outcomes in real sport — starting,
+              stopping, redirecting, and recovering. Smaller groups, proper coaching, and work that transfers
+              to the pitch, court, or field.
             </p>
 
             {/* Four-action pills, written as play-calls */}

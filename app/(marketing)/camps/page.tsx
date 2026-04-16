@@ -13,20 +13,20 @@ import { EventCard } from "@/components/public/EventCard"
 export const dynamic = "force-dynamic"
 
 export const metadata: Metadata = {
-  title: "Performance Camps",
+  title: "Soccer Performance Camps",
   description:
-    "Off-season and pre-season performance camps for athletes aged 12–18. Speed, power, movement quality, conditioning, plus testing and reporting where included.",
+    "2-week off-season and pre-season soccer performance camps. Built for college, semi-pro, and professional players — and emerging talent aged 14–17 on the way up.",
   openGraph: {
-    title: "Performance Camps | DJP Athlete",
+    title: "Soccer Performance Camps | DJP Athlete",
     description:
-      "Off-season and pre-season performance camps for athletes aged 12–18. Build a stronger base before the season takes over.",
+      "2-week intensive soccer performance camps for high-performing and emerging talent. Train at the level the game demands.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Performance Camps | DJP Athlete",
+    title: "Soccer Performance Camps | DJP Athlete",
     description:
-      "Off-season and pre-season performance camps for athletes aged 12–18. Build a stronger base before the season takes over.",
+      "2-week intensive soccer performance camps for high-performing and emerging talent. Train at the level the game demands.",
   },
 }
 
@@ -38,50 +38,55 @@ const serviceSchema = {
     name: "Darren J Paul",
     worksFor: { "@type": "Organization", name: "DJP Athlete", url: "https://djpathlete.com" },
   },
-  serviceType: "Off-Season / Pre-Season Performance Camp",
-  description: "Multi-week off-season and pre-season athletic performance camps for youth athletes aged 12–18.",
+  serviceType: "Soccer Performance Camp · Off-Season / Pre-Season",
+  description:
+    "2-week intensive soccer performance camps for college, semi-pro, and professional players, plus emerging talent aged 14–17.",
   url: "https://djpathlete.com/camps",
-  audience: { "@type": "Audience", audienceType: "Youth Athletes, 12–18" },
+  audience: { "@type": "Audience", audienceType: "Soccer players — college, semi-pro, professional, and emerging talent aged 14–17" },
 }
 
 const PILLARS: { n: string; title: string; lede: string; body: string }[] = [
   {
     n: "I",
-    title: "Speed + Power",
-    lede: "Explode further, faster.",
-    body: "Acceleration, sprint mechanics, jumping, and force expression — developed as qualities, not random workouts.",
+    title: "Speed + Agility",
+    lede: "Sharper. Faster.",
+    body: "Acceleration, sprint mechanics, change of direction, explosive outputs, and force expression.",
   },
   {
     n: "II",
-    title: "Strength",
+    title: "Strength + Power",
     lede: "A foundation that holds.",
-    body: "Physical qualities that support robustness, force transfer, and repeatable performance through a season.",
+    body: "Physical qualities that support robustness, force transfer, and repeatable performance.",
   },
   {
     n: "III",
-    title: "Movement",
+    title: "Movement Quality",
     lede: "Look like an athlete.",
-    body: "Better rhythm, posture, coordination, and control through athletic actions — coached with intent.",
+    body: "Better posture, coordination, and control through athletic actions.",
   },
   {
     n: "IV",
     title: "Conditioning",
     lede: "Capacity to compete.",
-    body: "The capacity to train, recover, and compete — without turning sessions into random suffering.",
+    body: "Capacity to train, recover, and compete without turning sessions into random suffering.",
   },
 ]
 
-const TECH_ITEMS = [
-  { n: "01", label: "Selected testing", detail: "where it adds value, not as a gimmick" },
-  { n: "02", label: "Useful insight", detail: "translating numbers into coaching decisions" },
-  { n: "03", label: "Clear reporting", detail: "one-page summaries athletes and parents can read" },
-  { n: "04", label: "Actionable feedback", detail: "the one or two things to work on next" },
-]
-
-const WHO_ITS_FOR = [
-  "Athletes aged 12–18 in an off-season or pre-season block",
-  "Players who want better physical preparation before competition ramps up",
-  "Parents and teams who value both training quality and measurable feedback",
+const TRACKS = [
+  {
+    tag: "High-performing talent",
+    title: "Professional and college-level players.",
+    body:
+      "For players already competing at college, semi-professional, or professional level who need a structured off-season or pre-season block. The standard is high. The expectation is that you rise to the level.",
+    meta: "18+ · College, semi-pro, and professional",
+  },
+  {
+    tag: "Emerging talent",
+    title: "Serious players on the way up.",
+    body:
+      "For players aged 14–17 who are competing at a high level and want to build the physical foundation before the next step. Coached with the same standards as the senior group — just calibrated for where you are right now.",
+    meta: "14–17 · Academy, club, and regional level",
+  },
 ]
 
 export default async function CampsPage() {
@@ -92,19 +97,49 @@ export default async function CampsPage() {
 
       <CampHero />
 
-      {/* ===================== PILLARS · FEATURE SPREAD ===================== */}
+      {/* ===================== § 2 · WHY THIS CAMP ===================== */}
+      <section id="why-this-camp" className="relative py-20 lg:py-28 px-4 sm:px-8 border-b-2 border-primary bg-background text-primary">
+        <div className="max-w-5xl mx-auto">
+          <FadeIn>
+            <div className="font-heading text-xs uppercase tracking-[0.35em] mb-6 text-accent">
+              § Why this camp
+            </div>
+            <h2
+              className="font-heading font-semibold tracking-tight leading-[0.95] text-primary"
+              style={{ fontSize: "clamp(2rem, 5vw, 4rem)" }}
+            >
+              Built around what the game{" "}
+              <span className="italic font-normal text-accent">actually requires.</span>
+            </h2>
+            <p className="mt-8 text-base md:text-lg leading-8 max-w-3xl text-muted-foreground">
+              Most training environments don't move fast enough for players at this level. This camp does.
+              Every session is structured around the physical demands of high-level soccer — acceleration,
+              change of direction, force output, repeat sprint capacity, and the movement quality needed to
+              stay on the pitch. In selected groups, athletes also receive testing and performance reporting
+              so they leave with data, not just reps.
+            </p>
+          </FadeIn>
+        </div>
+      </section>
+
+      {/* ===================== § 3 · PILLARS ===================== */}
       <section id="what-gets-developed" className="relative py-20 lg:py-28 px-4 sm:px-8 bg-surface text-primary">
         <div className="relative max-w-7xl mx-auto">
           <FadeIn>
             <div className="flex items-end justify-between flex-wrap gap-6 border-b-2 border-primary pb-6 mb-14">
-              <h2
-                className="font-heading font-semibold tracking-tight leading-[0.9] text-primary"
-                style={{ fontSize: "clamp(2.25rem, 5vw, 4rem)" }}
-              >
-                The four <span className="italic font-normal text-accent">pillars.</span>
-              </h2>
+              <div>
+                <div className="font-heading text-xs uppercase tracking-[0.35em] text-accent mb-4">
+                  § What gets developed · 4 pillars
+                </div>
+                <h2
+                  className="font-heading font-semibold tracking-tight leading-[0.9] text-primary"
+                  style={{ fontSize: "clamp(2.25rem, 5vw, 4rem)" }}
+                >
+                  The four <span className="italic font-normal text-accent">pillars.</span>
+                </h2>
+              </div>
               <div className="font-heading text-xs uppercase tracking-[0.35em] text-primary/55">
-                § Feature · page 2
+                § Feature · page 3
               </div>
             </div>
           </FadeIn>
@@ -135,66 +170,143 @@ export default async function CampsPage() {
         </div>
       </section>
 
-      {/* ===================== TECH + FEEDBACK · SPREAD ===================== */}
-      <section className="relative py-20 lg:py-28 px-4 sm:px-8 border-t-2 border-b-2 border-primary bg-background text-primary">
+      {/* ===================== COACH · RESERVED PLACEHOLDER ===================== */}
+      {/*
+        Reserved per handoff doc: "Reserve a section on the page for future video content
+        from Darren. Can be slotted in without restructuring the rest of the page."
+        The slot is hidden from the UI by default — flip to visible once the video is ready.
+      */}
+      <section
+        id="coach"
+        aria-hidden="true"
+        className="hidden border-t-2 border-b-2 border-primary bg-background py-20 lg:py-28 px-4 sm:px-8"
+      >
         <div className="max-w-7xl mx-auto">
-          <div className="grid gap-12 lg:grid-cols-[1fr_1.2fr] lg:gap-16">
-            <FadeIn>
-              <div>
-                <div className="font-heading text-xs uppercase tracking-[0.35em] mb-6 text-accent">
-                  § Column II · Technology + Feedback
-                </div>
-                <h2
-                  className="font-heading font-semibold tracking-tight leading-[0.95] text-primary"
-                  style={{ fontSize: "clamp(2rem, 4.5vw, 3.5rem)" }}
-                >
-                  Train with <span className="italic font-normal text-accent">receipts.</span>
-                </h2>
-                <p className="mt-6 text-base md:text-lg leading-8 max-w-md text-muted-foreground">
-                  Where appropriate, selected testing and reporting add another layer to the camp
-                  experience. Not to overcomplicate it — to make progress visible and useful.
-                </p>
-              </div>
-            </FadeIn>
-            <FadeIn delay={0.1}>
-              <div>
-                {TECH_ITEMS.map((item) => (
-                  <div
-                    key={item.n}
-                    className="group grid grid-cols-[auto_1fr_auto] items-baseline gap-6 py-5 border-b-2 last:border-b-0 border-primary/15 transition-colors"
-                  >
-                    <span className="font-heading text-2xl font-bold tabular-nums text-accent">
-                      {item.n}
-                    </span>
-                    <span className="font-heading text-xl md:text-2xl font-semibold tracking-tight text-primary">
-                      {item.label}
-                    </span>
-                    <span className="text-sm md:text-base italic text-right text-muted-foreground">
-                      {item.detail}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </FadeIn>
+          <div className="font-heading text-xs uppercase tracking-[0.35em] text-accent mb-6">
+            § Coach · reserved
+          </div>
+          <div className="aspect-video w-full border-2 border-dashed border-primary/30 bg-surface grid place-items-center">
+            <span className="font-heading text-sm uppercase tracking-[0.3em] text-primary/40">
+              Video content — to be slotted in
+            </span>
           </div>
         </div>
       </section>
 
-      {/* ===================== UPCOMING ===================== */}
+      {/* ===================== § 4 · WHO IT'S FOR · TWO TRACKS ===================== */}
+      <section className="relative overflow-hidden py-20 lg:py-28 px-4 sm:px-8 border-t-2 border-b-2 border-primary bg-primary text-primary-foreground">
+        <div className="relative max-w-7xl mx-auto">
+          <FadeIn>
+            <div className="flex items-end justify-between flex-wrap gap-6 border-b border-primary-foreground/20 pb-6 mb-14">
+              <div>
+                <div className="font-heading text-xs uppercase tracking-[0.35em] text-accent">
+                  § Who it's for · Two tracks
+                </div>
+                <h3
+                  className="mt-4 font-heading font-semibold tracking-tight leading-[0.95]"
+                  style={{ fontSize: "clamp(2rem, 5vw, 4rem)" }}
+                >
+                  Select the track that <span className="italic font-normal text-accent">fits you.</span>
+                </h3>
+              </div>
+            </div>
+          </FadeIn>
+
+          <div className="grid gap-8 lg:grid-cols-2 lg:gap-10">
+            {TRACKS.map((t, i) => (
+              <FadeIn key={t.tag} delay={i * 0.08}>
+                <article className="relative h-full p-8 md:p-10 border-2 border-primary-foreground/25 bg-primary-foreground/[0.04]">
+                  <div className="font-heading text-[11px] uppercase tracking-[0.35em] text-accent">
+                    {t.tag}
+                  </div>
+                  <h4 className="mt-5 font-heading text-2xl md:text-3xl font-semibold tracking-tight leading-tight">
+                    {t.title}
+                  </h4>
+                  <p className="mt-5 leading-7 text-primary-foreground/80">{t.body}</p>
+                  <div className="mt-8 pt-5 border-t border-primary-foreground/15 font-heading text-[11px] uppercase tracking-[0.3em] text-primary-foreground/70">
+                    {t.meta}
+                  </div>
+                </article>
+              </FadeIn>
+            ))}
+          </div>
+
+          <FadeIn delay={0.15}>
+            <div className="mt-16 grid gap-10 lg:grid-cols-[1.1fr_0.9fr] lg:gap-16 items-start">
+              <div>
+                <div className="font-heading text-xs uppercase tracking-[0.35em] text-accent">
+                  § What you leave with
+                </div>
+                <p
+                  className="mt-4 font-heading font-semibold tracking-tight leading-[0.95]"
+                  style={{ fontSize: "clamp(2rem, 4.5vw, 3.5rem)" }}
+                >
+                  Faster.
+                  <br />
+                  Stronger.
+                  <br />
+                  <span className="italic font-normal text-accent">Ready.</span>
+                </p>
+                <p className="mt-6 max-w-lg leading-7 text-primary-foreground/80">
+                  Two weeks of structured, high-intensity work builds the physical base that carries into the
+                  season. Where testing is included, you also leave with a performance report — concrete data
+                  on what improved and what to keep working on.
+                </p>
+              </div>
+
+              <div className="relative p-8 md:p-10 border-2 border-accent bg-accent/[0.08]">
+                <div className="absolute -top-3 -right-3 rotate-6 px-3 py-1 border-2 border-accent font-heading text-[11px] uppercase tracking-[0.3em] text-accent bg-primary">
+                  Apply
+                </div>
+                <p className="font-heading text-2xl md:text-3xl font-semibold tracking-tight leading-tight">
+                  Not sure which track is right for you?{" "}
+                  <span className="italic font-normal text-accent">Let's talk.</span>
+                </p>
+                <p className="mt-5 leading-7 text-primary-foreground/80">
+                  Places are limited and selected carefully. Fill in your details and Darren will be in touch
+                  directly to talk through where you're at, which track fits, and whether the camp is the
+                  right move for you right now.
+                </p>
+                <Button
+                  asChild
+                  size="lg"
+                  className="mt-8 rounded-none bg-accent text-primary hover:bg-accent/90 font-heading font-semibold uppercase tracking-[0.15em]"
+                >
+                  <Link href="#register-interest">
+                    Apply for a spot
+                    <ArrowUpRight className="ml-1.5 h-4 w-4" />
+                  </Link>
+                </Button>
+              </div>
+            </div>
+          </FadeIn>
+        </div>
+      </section>
+
+      {/* ===================== § 6 · UPCOMING SESSIONS ===================== */}
       <section className="relative py-20 lg:py-28 px-4 sm:px-8 bg-surface text-primary">
         <div className="max-w-7xl mx-auto">
           <FadeIn>
-            <div className="flex items-end justify-between flex-wrap gap-6 border-b-2 border-primary pb-6 mb-12">
-              <h2
-                className="font-heading font-semibold tracking-tight leading-[0.9] text-primary"
-                style={{ fontSize: "clamp(2.25rem, 5vw, 4rem)" }}
-              >
-                Upcoming blocks
-              </h2>
+            <div className="flex items-end justify-between flex-wrap gap-6 border-b-2 border-primary pb-6 mb-6">
+              <div>
+                <div className="font-heading text-xs uppercase tracking-[0.35em] text-accent mb-4">
+                  § Upcoming sessions
+                </div>
+                <h2
+                  className="font-heading font-semibold tracking-tight leading-[0.9] text-primary"
+                  style={{ fontSize: "clamp(2.25rem, 5vw, 4rem)" }}
+                >
+                  When and where
+                </h2>
+              </div>
               <div className="font-heading text-xs uppercase tracking-[0.35em] text-primary/55">
-                § Fixtures · page 4
+                § Fixtures · page 6
               </div>
             </div>
+            <p className="mb-12 max-w-2xl text-muted-foreground leading-7">
+              Select a track to filter, or browse all upcoming camp blocks below. Places are limited to 8 per
+              group.
+            </p>
           </FadeIn>
           <div>
             {events.length > 0 ? (
@@ -210,69 +322,7 @@ export default async function CampsPage() {
         </div>
       </section>
 
-      {/* ===================== WHO IT'S FOR ===================== */}
-      <section className="relative overflow-hidden py-20 lg:py-28 px-4 sm:px-8 border-t-2 border-b-2 border-primary bg-primary text-primary-foreground">
-        <div className="relative max-w-7xl mx-auto grid gap-12 lg:grid-cols-[1.1fr_0.9fr] lg:gap-16">
-          <FadeIn>
-            <div className="font-heading text-xs uppercase tracking-[0.35em] text-accent">
-              § Readers · Who it's for
-            </div>
-            <h3
-              className="mt-4 font-heading font-semibold tracking-tight leading-[0.95]"
-              style={{ fontSize: "clamp(2rem, 5vw, 4rem)" }}
-            >
-              Athletes building toward the{" "}
-              <span className="italic font-normal text-accent">next level.</span>
-            </h3>
-            <ul className="mt-10 divide-y divide-primary-foreground/15 border-y border-primary-foreground/15">
-              {WHO_ITS_FOR.map((item, i) => (
-                <li key={item} className="flex items-start gap-5 py-5">
-                  <span className="font-heading text-2xl font-bold tabular-nums pt-0.5 min-w-[3rem] text-accent">
-                    0{i + 1}
-                  </span>
-                  <span className="text-base md:text-lg leading-7 text-primary-foreground/85">{item}</span>
-                </li>
-              ))}
-            </ul>
-          </FadeIn>
-
-          <FadeIn delay={0.1}>
-            <div className="lg:sticky lg:top-28">
-              <div className="relative p-8 md:p-10 border-2 border-accent bg-accent/[0.08]">
-                <div className="absolute -top-3 -right-3 rotate-6 px-3 py-1 border-2 border-accent font-heading text-[11px] uppercase tracking-[0.3em] text-accent bg-primary">
-                  Verdict
-                </div>
-                <p
-                  className="font-heading font-semibold tracking-tight leading-[0.95]"
-                  style={{ fontSize: "clamp(1.75rem, 3.5vw, 3rem)" }}
-                >
-                  Better prepared.
-                  <br />
-                  Better built.
-                  <br />
-                  <span className="italic font-normal text-accent">Better informed.</span>
-                </p>
-                <p className="mt-6 leading-7 text-primary-foreground/80">
-                  Athletes leave with a stronger performance base and, where included, a clearer view of
-                  what's improving and what still needs work.
-                </p>
-                <Button
-                  asChild
-                  size="lg"
-                  className="mt-8 rounded-none bg-accent text-primary hover:bg-accent/90 font-heading font-semibold uppercase tracking-[0.15em]"
-                >
-                  <Link href="#register-interest">
-                    Register your interest
-                    <ArrowUpRight className="ml-1.5 h-4 w-4" />
-                  </Link>
-                </Button>
-              </div>
-            </div>
-          </FadeIn>
-        </div>
-      </section>
-
-      {/* ===================== INTAKE ===================== */}
+      {/* ===================== § 7 · INQUIRY · CALL FUNNEL ===================== */}
       <section id="register-interest" className="relative py-20 lg:py-28 px-4 sm:px-8 bg-surface text-primary">
         <div className="max-w-3xl mx-auto">
           <FadeIn>
@@ -284,8 +334,8 @@ export default async function CampsPage() {
             <div className="bg-background rounded-none border-2 border-primary p-6 sm:p-8">
               <InquiryForm
                 defaultService="camp"
-                heading="Register interest in the next camp"
-                description="Leave your details and we'll get in touch as soon as camp dates are confirmed."
+                heading="Apply for a spot"
+                description="Places are limited and selected carefully. If you're serious about the work, fill in your details below and Darren will be in touch directly — within 48 hours — to set up a call. No hard sell, just an honest conversation about what you need."
               />
             </div>
           </FadeIn>
