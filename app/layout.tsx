@@ -3,6 +3,7 @@ import type { Metadata } from "next"
 import { Lexend_Exa, Lexend_Deca, JetBrains_Mono } from "next/font/google"
 import { SessionProvider } from "@/components/providers/SessionProvider"
 import { Toaster } from "@/components/ui/sonner"
+import { GoogleAnalytics } from "@/components/shared/GoogleAnalytics"
 import "./globals.css"
 
 const lexendExa = Lexend_Exa({
@@ -90,6 +91,7 @@ export default function RootLayout({
           {children}
           <Toaster />
         </SessionProvider>
+        <GoogleAnalytics />
       </body>
     </html>
   )
