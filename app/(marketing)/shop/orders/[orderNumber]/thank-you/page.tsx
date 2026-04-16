@@ -2,6 +2,7 @@ import { notFound } from "next/navigation"
 import Link from "next/link"
 import { getOrderByNumber } from "@/lib/db/shop-orders"
 import { stripe } from "@/lib/stripe"
+import { isShopEnabled } from "@/lib/shop/feature-flag"
 import { ClearCartOnMount } from "@/components/public/shop/ClearCartOnMount"
 
 export default async function Page({
@@ -11,6 +12,7 @@ export default async function Page({
   params: Promise<{ orderNumber: string }>
   searchParams: Promise<{ session_id?: string }>
 }) {
+  if (!isShopEnabled()) notFound()
   const { orderNumber } = await params
   const { session_id } = await searchParams
   const order = await getOrderByNumber(orderNumber)

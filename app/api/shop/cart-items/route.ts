@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { isShopEnabled } from "@/lib/shop/feature-flag"
 import { z } from "zod"
 import { getVariantsByIds } from "@/lib/db/shop-variants"
 import { getProductById } from "@/lib/db/shop-products"
@@ -20,6 +21,7 @@ export interface CartItemResponse {
 }
 
 export async function POST(request: Request) {
+  if (!isShopEnabled()) return NextResponse.json({ error: "Not found" }, { status: 404 })
   let body: unknown
   try {
     body = await request.json()

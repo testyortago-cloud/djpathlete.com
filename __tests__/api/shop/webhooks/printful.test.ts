@@ -258,6 +258,36 @@ describe("POST /api/shop/webhooks/printful", () => {
     expect(mockSendOrderShippedEmail).not.toHaveBeenCalled()
   })
 
+  it("package_shipped: returns 200 and skips update when shipment payload is missing", async () => {
+    const eventWithoutShipment = {
+      type: "package_shipped",
+      created: 1704067200,
+      retries: 0,
+      store: 1,
+      data: {
+        order: {
+          id: PRINTFUL_ORDER_ID,
+          external_id: ORDER_ID,
+          status: "fulfilled",
+          shipping: "STANDARD",
+        },
+        // shipment intentionally omitted
+      },
+    }
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const { POST } = await import("@/app/api/shop/webhooks/printful/route")
+    const res = await POST(makeRequest(eventWithoutShipment))
+    expect(res.status).toBe(200)
+    const json = await res.json()
+    expect(json.ok).toBe(true)
+    expect(mockUpdateOrderStatus).not.toHaveBeenCalled()
+    expect(mockSendOrderShippedEmail).not.toHaveBeenCalled()
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining("missing shipment payload"),
+    )
+    consoleSpy.mockRestore()
+  })
+
   // ── order_updated ─────────────────────────────────────────────────────────
 
   it("order_updated: advances to in_production when inprocess and current status is confirmed", async () => {

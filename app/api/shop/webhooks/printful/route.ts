@@ -42,14 +42,12 @@ export async function POST(request: Request) {
 
   switch (event.type) {
     case "package_shipped": {
-      if (
-        order.status === "shipped" ||
-        order.status === "refunded" ||
-        order.status === "canceled"
-      ) {
+      if (order.status === "shipped" || order.status === "refunded" || order.status === "canceled") break
+      const s = event.data.shipment
+      if (!s) {
+        console.error(`[printful webhook] package_shipped for order ${order.id} missing shipment payload`)
         break
       }
-      const s = event.data.shipment!
       const updated = await updateOrderStatus(order.id, "shipped", {
         tracking_number: s.tracking_number,
         tracking_url: s.tracking_url,

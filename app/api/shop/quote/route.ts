@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server"
+import { isShopEnabled } from "@/lib/shop/feature-flag"
 import { shippingQuoteRequestSchema } from "@/lib/validators/shop"
 import { getVariantsByIds } from "@/lib/db/shop-variants"
 import { getShippingRates, PrintfulError } from "@/lib/printful"
 
 export async function POST(request: Request) {
+  if (!isShopEnabled()) return NextResponse.json({ error: "Not found" }, { status: 404 })
   const body = await request.json()
   const parsed = shippingQuoteRequestSchema.safeParse(body)
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })

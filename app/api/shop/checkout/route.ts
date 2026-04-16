@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { isShopEnabled } from "@/lib/shop/feature-flag"
 import { auth } from "@/lib/auth"
 import { checkoutRequestSchema } from "@/lib/validators/shop"
 import { getVariantsByIds } from "@/lib/db/shop-variants"
@@ -8,6 +9,7 @@ import { stripe } from "@/lib/stripe"
 import type { ShopOrderItem } from "@/types/database"
 
 export async function POST(request: Request) {
+  if (!isShopEnabled()) return NextResponse.json({ error: "Not found" }, { status: 404 })
   const body = await request.json()
   const parsed = checkoutRequestSchema.safeParse(body)
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })

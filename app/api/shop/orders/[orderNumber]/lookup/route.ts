@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { isShopEnabled } from "@/lib/shop/feature-flag"
 import { orderLookupSchema } from "@/lib/validators/shop"
 import { getOrderByNumber } from "@/lib/db/shop-orders"
 import { rateLimit } from "@/lib/shop/rate-limit"
@@ -7,6 +8,7 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ orderNumber: string }> },
 ) {
+  if (!isShopEnabled()) return NextResponse.json({ error: "Not found" }, { status: 404 })
   const { orderNumber } = await params
 
   const rl = rateLimit(`lookup:${orderNumber}`, 5, 10 * 60 * 1000)
