@@ -66,7 +66,16 @@ export async function cancelShopOrder(orderId: string): Promise<ShopOrder> {
   }
 
   if (order.stripe_payment_intent_id) {
-    await stripe.refunds.create({ payment_intent: order.stripe_payment_intent_id })
+    try {
+      await stripe.refunds.create({ payment_intent: order.stripe_payment_intent_id })
+    } catch (err) {
+      console.error(
+        `[cancel] Stripe refund failed for order ${order.id} (printful_order_id=${order.printful_order_id ?? "none"}, stripe_payment_intent=${order.stripe_payment_intent_id}). ` +
+        `Printful cancel already ${order.printful_order_id ? "attempted" : "skipped"}. Manual Stripe refund required.`,
+        err,
+      )
+      throw err
+    }
   }
 
   return updateOrderStatus(order.id, "canceled", { refund_amount_cents: order.total_cents })
