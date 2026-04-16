@@ -23,6 +23,8 @@ import {
   CalendarCheck,
   Settings,
   LogOut,
+  ShoppingBag,
+  Package,
 } from "lucide-react"
 import { signOut } from "next-auth/react"
 import { cn } from "@/lib/utils"
@@ -77,6 +79,13 @@ const navSections: NavSection[] = [
       { label: "Payments", href: "/admin/payments", icon: CreditCard },
       { label: "Analytics", href: "/admin/analytics", icon: BarChart3 },
       { label: "Reviews", href: "/admin/reviews", icon: Star },
+    ],
+  },
+  {
+    title: "Shop",
+    items: [
+      { label: "Products", href: "/admin/shop/products", icon: ShoppingBag },
+      { label: "Orders", href: "/admin/shop/orders", icon: Package },
     ],
   },
 ]
