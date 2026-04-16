@@ -10,6 +10,8 @@ import { InquiryForm } from "@/components/public/InquiryForm"
 import { getPublishedEvents } from "@/lib/db/events"
 import { EventCard } from "@/components/public/EventCard"
 
+export const dynamic = "force-dynamic"
+
 export const metadata: Metadata = {
   title: "Agility Clinics",
   description:

@@ -143,16 +143,31 @@ export async function DELETE(_request: Request, ctx: { params: Promise<{ id: str
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
     const { id } = await ctx.params
+
+    const current = await getEventById(id)
+    if (!current) return NextResponse.json({ ok: true })
+
     try {
       await deleteEvent(id)
-      return NextResponse.json({ ok: true })
     } catch (err) {
       const msg = (err as Error).message
-      if (msg.includes("Only draft events") || msg.includes("Cannot delete")) {
+      if (msg.includes("Cannot delete")) {
         return NextResponse.json({ error: msg }, { status: 409 })
       }
       throw err
     }
+
+    // Best-effort: archive any Stripe product tied to this event so the
+    // catalog stays clean. Non-fatal — the row is already gone.
+    if (current.stripe_product_id) {
+      try {
+        await stripe.products.update(current.stripe_product_id, { active: false })
+      } catch (err) {
+        console.error("[admin events DELETE] Stripe product archive failed (non-fatal)", err)
+      }
+    }
+
+    return NextResponse.json({ ok: true })
   } catch (err) {
     console.error("[API admin/events DELETE]", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

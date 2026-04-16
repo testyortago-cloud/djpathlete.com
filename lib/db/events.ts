@@ -128,11 +128,8 @@ export async function setEventStatus(id: string, status: EventStatus): Promise<E
 export async function deleteEvent(id: string): Promise<void> {
   const event = await getEventById(id)
   if (!event) return
-  if (event.status !== "draft") {
-    throw new Error("Only draft events can be deleted; cancel the event instead")
-  }
   if (event.signup_count > 0) {
-    throw new Error("Cannot delete an event with existing signups")
+    throw new Error("Cannot delete an event with existing signups; cancel the event instead")
   }
   const supabase = getClient()
   const { error } = await supabase.from("events").delete().eq("id", id)

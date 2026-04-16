@@ -61,7 +61,7 @@ export function EventList({ initialEvents }: EventListProps) {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Delete this draft event?")) return
+    if (!confirm("Delete this event? This cannot be undone.")) return
     const res = await fetch(`/api/admin/events/${id}`, { method: "DELETE" })
     if (res.ok) router.refresh()
     else {
@@ -189,12 +189,12 @@ export function EventList({ initialEvents }: EventListProps) {
                         >
                           <Copy className="h-4 w-4" />
                         </Button>
-                        {e.status === "draft" && e.signup_count === 0 && (
+                        {e.signup_count === 0 && (
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => void handleDelete(e.id)}
-                            title="Delete draft"
+                            title="Delete event"
                             className="text-destructive hover:text-destructive"
                           >
                             <Trash2 className="h-4 w-4" />
