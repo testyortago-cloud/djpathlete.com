@@ -24,7 +24,7 @@ export const NAV_ITEMS: NavGroup[] = [
   { label: "Resources", href: "/resources" },
   { label: "Education", href: "/education" },
   { label: "Blog", href: "/blog" },
-  { label: "Coming Soon", href: "/coming-soon" },
+  { label: "Shop", href: "/shop" },
 ]
 
 export const SOCIAL_LINKS = {
@@ -44,7 +44,7 @@ export const FOOTER_SECTIONS = [
       { label: "Agility Clinics", href: "/clinics" },
       { label: "Performance Camps", href: "/camps" },
       { label: "Education", href: "/education" },
-      { label: "Coming Soon", href: "/coming-soon" },
+      { label: "Shop", href: "/shop" },
     ],
   },
   {

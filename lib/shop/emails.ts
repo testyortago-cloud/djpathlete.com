@@ -1,5 +1,4 @@
-import { renderToStaticMarkup } from "react-dom/server"
-import { createElement } from "react"
+import { createElement, type ReactElement } from "react"
 import { resend, FROM_EMAIL } from "@/lib/resend"
 import type { ShopOrder } from "@/types/database"
 import { OrderReceivedEmail } from "@/lib/shop/emails/order-received"
@@ -7,6 +6,13 @@ import { OrderConfirmedEmail } from "@/lib/shop/emails/order-confirmed"
 import { OrderShippedEmail } from "@/lib/shop/emails/order-shipped"
 import { OrderCanceledEmail } from "@/lib/shop/emails/order-canceled"
 import { OrderRefundedEmail } from "@/lib/shop/emails/order-refunded"
+
+// Dynamically imported to avoid Turbopack's app-route static check for
+// `react-dom/server` imports. Only ever runs server-side from route handlers.
+async function renderEmail(element: ReactElement): Promise<string> {
+  const { renderToStaticMarkup } = await import("react-dom/server")
+  return renderToStaticMarkup(element)
+}
 
 function lookupUrl(order: ShopOrder): string {
   const base =
@@ -29,7 +35,7 @@ export async function sendOrderReceivedEmail(order: ShopOrder): Promise<void> {
   }
 
   const url = lookupUrl(order)
-  const html = renderToStaticMarkup(
+  const html = await renderEmail(
     createElement(OrderReceivedEmail, { order, lookupUrl: url }),
   )
 
@@ -52,7 +58,7 @@ export async function sendOrderConfirmedEmail(order: ShopOrder): Promise<void> {
   }
 
   const url = lookupUrl(order)
-  const html = renderToStaticMarkup(
+  const html = await renderEmail(
     createElement(OrderConfirmedEmail, { order, lookupUrl: url }),
   )
 
@@ -75,7 +81,7 @@ export async function sendOrderShippedEmail(order: ShopOrder): Promise<void> {
   }
 
   const url = lookupUrl(order)
-  const html = renderToStaticMarkup(
+  const html = await renderEmail(
     createElement(OrderShippedEmail, { order, lookupUrl: url }),
   )
 
@@ -98,7 +104,7 @@ export async function sendOrderCanceledEmail(order: ShopOrder): Promise<void> {
   }
 
   const url = lookupUrl(order)
-  const html = renderToStaticMarkup(
+  const html = await renderEmail(
     createElement(OrderCanceledEmail, { order, lookupUrl: url }),
   )
 
@@ -121,7 +127,7 @@ export async function sendOrderRefundedEmail(order: ShopOrder): Promise<void> {
   }
 
   const url = lookupUrl(order)
-  const html = renderToStaticMarkup(
+  const html = await renderEmail(
     createElement(OrderRefundedEmail, { order, lookupUrl: url }),
   )
 
