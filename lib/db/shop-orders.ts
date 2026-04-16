@@ -151,6 +151,20 @@ export async function findPendingOrdersOlderThan(hours: number): Promise<ShopOrd
   return (data ?? []) as ShopOrder[]
 }
 
+export async function getOrderByPrintfulOrderId(printfulOrderId: number): Promise<ShopOrder | null> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("shop_orders")
+    .select("*")
+    .eq("printful_order_id", printfulOrderId)
+    .single()
+  if (error) {
+    if ((error as { code?: string }).code === "PGRST116") return null
+    throw error
+  }
+  return data as ShopOrder
+}
+
 export async function getOrderStats(): Promise<{
   today: number
   needs_action: number
