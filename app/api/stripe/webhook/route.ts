@@ -11,6 +11,7 @@ import { getProgramById } from "@/lib/db/programs"
 import { sendCoachPurchaseNotification, sendEventSignupConfirmedEmail } from "@/lib/email"
 import { ghlCreateContact, ghlTriggerWorkflow } from "@/lib/ghl"
 import { confirmSignup, cancelSignup, getSignupById, getEventSignupByPaymentIntent } from "@/lib/db/event-signups"
+import { handleShopOrderCheckout } from "@/lib/shop/webhooks"
 import { getEventById as getEventByIdForSignup } from "@/lib/db/events"
 import { createServiceRoleClient as createSupabaseServiceClient } from "@/lib/supabase"
 
@@ -33,6 +34,11 @@ export async function POST(request: Request) {
     switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session
+
+        if (session.metadata?.type === "shop_order") {
+          await handleShopOrderCheckout(session)
+          break
+        }
 
         if (session.metadata?.type === "event_signup") {
           await handleEventSignupCheckout(session)

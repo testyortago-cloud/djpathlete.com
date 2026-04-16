@@ -1,11 +1,13 @@
 import type { Metadata } from "next"
-import { ExternalLink } from "lucide-react"
-import Link from "next/link"
 import { JsonLd } from "@/components/shared/JsonLd"
-import { ShopEmbed } from "./ShopEmbed"
+import { isShopEnabled } from "@/lib/shop/feature-flag"
+import { listActiveProducts } from "@/lib/db/shop-products"
+import { listVariantsForProduct } from "@/lib/db/shop-variants"
+import { ComingSoon } from "@/components/public/shop/ComingSoon"
+import { ProductCard } from "@/components/public/shop/ProductCard"
 
 export const metadata: Metadata = {
-  title: "Shop",
+  title: "Shop | DJP Athlete",
   description:
     "Shop DJP Athlete performance apparel and training gear. Compression wear, training tops, and branded athletic clothing.",
   openGraph: {
@@ -33,39 +35,66 @@ const shopSchema = {
   },
 }
 
-export default function ShopPage() {
+export default async function ShopPage() {
+  if (!isShopEnabled()) {
+    return (
+      <>
+        <JsonLd data={shopSchema} />
+        <ComingSoon />
+      </>
+    )
+  }
+
+  const products = await listActiveProducts()
+
+  // Fetch min variant price for each product in parallel
+  const productsWithPrices = await Promise.all(
+    products.map(async (product) => {
+      const variants = await listVariantsForProduct(product.id)
+      const minPriceCents =
+        variants.length > 0
+          ? variants.reduce(
+              (min, v) => Math.min(min, v.retail_price_cents),
+              variants[0].retail_price_cents,
+            )
+          : null
+      return { product, minPriceCents }
+    }),
+  )
+
   return (
     <>
       <JsonLd data={shopSchema} />
 
       {/* Header */}
       <section className="pt-32 pb-8 lg:pt-40 lg:pb-10 px-4 sm:px-8">
-        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-3 mb-4">
-              <div className="h-px w-12 bg-accent" />
-              <p className="text-sm font-medium text-accent uppercase tracking-widest">Shop</p>
-            </div>
-            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-heading font-semibold text-primary tracking-tight">
-              Performance Gear
-            </h1>
+        <div className="max-w-7xl mx-auto">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="h-px w-12 bg-accent" />
+            <p className="text-sm font-medium text-accent uppercase tracking-widest">Shop</p>
           </div>
-          <Link
-            href="https://shop.yortago.com/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:text-accent transition-colors group"
-          >
-            Open full store
-            <ExternalLink className="size-4 transition-transform group-hover:translate-x-0.5" />
-          </Link>
+          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-heading font-semibold text-primary tracking-tight">
+            Performance Gear
+          </h1>
         </div>
       </section>
 
-      {/* Embedded Shop */}
+      {/* Product Grid */}
       <section className="pb-16 lg:pb-24 px-4 sm:px-8">
-        <div className="max-w-6xl mx-auto">
-          <ShopEmbed />
+        <div className="max-w-7xl mx-auto">
+          {productsWithPrices.length === 0 ? (
+            <div className="py-24 text-center">
+              <p className="text-lg text-muted-foreground">
+                No products yet. Check back soon!
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+              {productsWithPrices.map(({ product, minPriceCents }) => (
+                <ProductCard key={product.id} product={product} minPriceCents={minPriceCents} />
+              ))}
+            </div>
+          )}
         </div>
       </section>
     </>
