@@ -33,7 +33,7 @@ export type ShippingQuoteRequest = z.infer<typeof shippingQuoteRequestSchema>
 export const checkoutRequestSchema = z.object({
   items: z.array(cartItemSchema).min(1),
   address: shippingAddressSchema,
-  shipping_cents: z.number().int().min(0),
+  shipping_cents: z.number().int().min(0).max(100_000),
 })
 export type CheckoutRequest = z.infer<typeof checkoutRequestSchema>
 
@@ -46,7 +46,7 @@ export const adminUpdateProductSchema = z.object({
   description: z.string().max(5000).optional(),
   is_active: z.boolean().optional(),
   is_featured: z.boolean().optional(),
-  sort_order: z.number().int().optional(),
+  sort_order: z.number().int().min(-1000).max(1000).optional(),
   thumbnail_url_override: z.string().url().nullable().optional(),
 })
 export type AdminUpdateProduct = z.infer<typeof adminUpdateProductSchema>
@@ -57,7 +57,7 @@ export const adminUpdateVariantSchema = z.object({
 export type AdminUpdateVariant = z.infer<typeof adminUpdateVariantSchema>
 
 export const adminRefundSchema = z.object({
-  amount_cents: z.number().int().min(1),
+  amount_cents: z.number().int().min(1).max(10_000_000),
   reason: z.string().max(500).optional(),
 })
 export type AdminRefund = z.infer<typeof adminRefundSchema>

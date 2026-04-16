@@ -4,6 +4,8 @@ import {
   cartItemSchema,
   checkoutRequestSchema,
   orderLookupSchema,
+  adminRefundSchema,
+  adminUpdateProductSchema,
 } from "@/lib/validators/shop"
 
 describe("shippingAddressSchema", () => {
@@ -81,5 +83,50 @@ describe("checkoutRequestSchema", () => {
 describe("orderLookupSchema", () => {
   it("requires email", () => {
     expect(orderLookupSchema.safeParse({}).success).toBe(false)
+  })
+})
+
+describe("adminRefundSchema", () => {
+  it("rejects amount_cents above max", () => {
+    const r = adminRefundSchema.safeParse({
+      amount_cents: 10_000_001,
+      reason: "Testing max bound",
+    })
+    expect(r.success).toBe(false)
+  })
+})
+
+describe("checkoutRequestSchema - shipping_cents bound", () => {
+  it("rejects shipping_cents above max", () => {
+    const r = checkoutRequestSchema.safeParse({
+      items: [
+        {
+          variant_id: "a7f0a5c3-0000-4000-8000-000000000000",
+          quantity: 1,
+        },
+      ],
+      address: {
+        name: "J",
+        email: "j@x.co",
+        phone: null,
+        line1: "1 A St",
+        line2: null,
+        city: "A",
+        state: "TX",
+        country: "US",
+        postal_code: "78701",
+      },
+      shipping_cents: 100_001,
+    })
+    expect(r.success).toBe(false)
+  })
+})
+
+describe("adminUpdateProductSchema", () => {
+  it("rejects sort_order above max", () => {
+    const r = adminUpdateProductSchema.safeParse({
+      sort_order: 1001,
+    })
+    expect(r.success).toBe(false)
   })
 })
