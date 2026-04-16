@@ -98,11 +98,47 @@ describe("confirmOrderToPrintful", () => {
     )
   })
 
-  it("throws when status is draft", async () => {
-    vi.mocked(getOrderById).mockResolvedValue({ ...baseOrder, status: "draft" })
+  it("throws when status is not paid or draft (e.g. confirmed)", async () => {
+    vi.mocked(getOrderById).mockResolvedValue({ ...baseOrder, status: "confirmed" })
     await expect(confirmOrderToPrintful("order-uuid")).rejects.toThrow(
-      "Cannot confirm order in status draft",
+      "Cannot confirm order in status confirmed",
     )
+  })
+
+  it("skips createOrder and only calls confirmPrintfulOrder when status is draft with printful_order_id", async () => {
+    const draftOrder = { ...baseOrder, status: "draft" as const, printful_order_id: 9999 }
+    vi.mocked(getOrderById).mockResolvedValue(draftOrder)
+    vi.mocked(confirmOrder).mockResolvedValue({ ...mockPrintfulDraft, status: "confirmed" } as never)
+    const confirmedOrder = { ...draftOrder, status: "confirmed" as const }
+    vi.mocked(updateOrderStatus).mockResolvedValue(confirmedOrder)
+
+    const result = await confirmOrderToPrintful("order-uuid")
+
+    // createPrintfulOrder must NOT be called — we already have a draft
+    expect(createPrintfulOrder).not.toHaveBeenCalled()
+
+    // confirmOrder should be called with the existing printful_order_id
+    expect(confirmOrder).toHaveBeenCalledWith(9999)
+
+    // DB should transition to confirmed
+    expect(updateOrderStatus).toHaveBeenCalledWith("order-uuid", "confirmed")
+
+    expect(result.status).toBe("confirmed")
+  })
+
+  it("throws when status is draft but printful_order_id is missing", async () => {
+    vi.mocked(getOrderById).mockResolvedValue({
+      ...baseOrder,
+      status: "draft" as const,
+      printful_order_id: null,
+    })
+
+    await expect(confirmOrderToPrintful("order-uuid")).rejects.toThrow(
+      /draft status but has no printful_order_id/,
+    )
+
+    expect(createPrintfulOrder).not.toHaveBeenCalled()
+    expect(confirmOrder).not.toHaveBeenCalled()
   })
 
   it("creates Printful draft, updates DB to draft, confirms, then sets status confirmed", async () => {
@@ -204,6 +240,28 @@ describe("cancelShopOrder", () => {
     expect(updateOrderStatus).toHaveBeenCalledWith("order-uuid", "canceled", {
       refund_amount_cents: 5000,
     })
+  })
+
+  it("transitions DB to canceled with failure note then rethrows when Stripe refund fails", async () => {
+    vi.mocked(getOrderById).mockResolvedValue({ ...baseOrder, status: "paid" })
+    vi.mocked(stripe.refunds.create).mockRejectedValueOnce(new Error("card_declined"))
+    vi.mocked(updateOrderStatus).mockResolvedValue({ ...baseOrder, status: "canceled" })
+
+    await expect(cancelShopOrder("order-uuid")).rejects.toThrow("card_declined")
+
+    // DB must still transition to canceled
+    expect(updateOrderStatus).toHaveBeenCalledWith(
+      "order-uuid",
+      "canceled",
+      expect.objectContaining({
+        notes: expect.stringContaining("Stripe refund FAILED"),
+      }),
+    )
+
+    // The note must include the payment_intent id and not include refund_amount_cents
+    const call = vi.mocked(updateOrderStatus).mock.calls[0]
+    expect(call[2]).not.toHaveProperty("refund_amount_cents")
+    expect(call[2]?.notes).toMatch(/manual refund required for payment_intent pi_test/)
   })
 
   it("allows canceling a paid order (no Printful draft)", async () => {

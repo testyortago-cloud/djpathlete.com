@@ -27,27 +27,43 @@ function addressToRecipient(order: ShopOrder): PrintfulRecipient {
 export async function confirmOrderToPrintful(orderId: string): Promise<ShopOrder> {
   const order = await getOrderById(orderId)
   if (!order) throw new Error("Order not found")
-  if (order.status !== "paid") throw new Error(`Cannot confirm order in status ${order.status}`)
+  if (order.status !== "paid" && order.status !== "draft") {
+    throw new Error(`Cannot confirm order in status ${order.status}`)
+  }
 
-  const items = order.items.map((i) => ({
-    sync_variant_id: undefined as number | undefined,
-    variant_id: i.printful_variant_id,
-    quantity: i.quantity,
-    retail_price: (i.unit_price_cents / 100).toFixed(2),
-  }))
+  let printfulOrderId: number
 
-  const draft = await createPrintfulOrder({
-    external_id: order.order_number,
-    recipient: addressToRecipient(order),
-    items,
-  })
+  if (order.status === "paid") {
+    const items = order.items.map((i) => ({
+      sync_variant_id: undefined as number | undefined,
+      variant_id: i.printful_variant_id,
+      quantity: i.quantity,
+      retail_price: (i.unit_price_cents / 100).toFixed(2),
+    }))
 
-  await updateOrder(order.id, {
-    status: "draft",
-    printful_order_id: draft.id,
-  })
+    const draft = await createPrintfulOrder({
+      external_id: order.order_number,
+      recipient: addressToRecipient(order),
+      items,
+    })
 
-  await confirmPrintfulOrder(draft.id)
+    await updateOrder(order.id, {
+      status: "draft",
+      printful_order_id: draft.id,
+    })
+
+    printfulOrderId = draft.id
+  } else {
+    // status === "draft" — Printful draft already created, retry the confirm step
+    if (!order.printful_order_id) {
+      throw new Error(
+        `Order ${order.id} is in draft status but has no printful_order_id — cannot retry confirm`,
+      )
+    }
+    printfulOrderId = order.printful_order_id
+  }
+
+  await confirmPrintfulOrder(printfulOrderId)
   return updateOrderStatus(order.id, "confirmed")
 }
 
@@ -75,6 +91,9 @@ export async function cancelShopOrder(orderId: string): Promise<ShopOrder> {
         `Printful cancel already ${order.printful_order_id ? "attempted" : "skipped"}. Manual Stripe refund required.`,
         err,
       )
+      const note =
+        `${order.notes ?? ""}\n[cancel] Stripe refund FAILED at ${new Date().toISOString()} — manual refund required for payment_intent ${order.stripe_payment_intent_id}`.trim()
+      await updateOrderStatus(order.id, "canceled", { notes: note })
       throw err
     }
   }

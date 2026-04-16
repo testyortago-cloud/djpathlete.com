@@ -23,7 +23,7 @@ export function OrderActions({ order }: OrderActionsProps) {
   const [refundType, setRefundType] = useState<"full" | "partial">("full")
   const [partialAmount, setPartialAmount] = useState("")
 
-  const canConfirm = order.status === "paid"
+  const canConfirm = order.status === "paid" || order.status === "draft"
   const canCancel = CANCELABLE_STATUSES.includes(order.status)
   const canRefund = REFUNDABLE_STATUSES.includes(order.status)
 
@@ -108,7 +108,11 @@ export function OrderActions({ order }: OrderActionsProps) {
             disabled={isPending}
             className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50 transition-colors"
           >
-            {isPending ? "Confirming…" : "Confirm to Printful"}
+            {isPending
+              ? "Confirming…"
+              : order.status === "draft"
+                ? "Retry Confirm to Printful"
+                : "Confirm to Printful"}
           </button>
         )}
 
