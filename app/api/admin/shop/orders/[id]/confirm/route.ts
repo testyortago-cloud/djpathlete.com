@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { confirmOrderToPrintful } from "@/lib/shop/fulfillment"
+import { sendOrderConfirmedEmail } from "@/lib/shop/emails"
 
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
@@ -12,7 +13,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
 
   try {
     const order = await confirmOrderToPrintful(id)
-    // TODO: Task 24 will wire up sendOrderConfirmedEmail(order) once lib/shop/emails.ts exists
+    await sendOrderConfirmedEmail(order)
     return NextResponse.json(order)
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 400 })

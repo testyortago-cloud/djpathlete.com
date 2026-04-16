@@ -1,5 +1,6 @@
 import type Stripe from "stripe"
 import { getOrderByStripeSessionId, updateOrderStatus } from "@/lib/db/shop-orders"
+import { sendOrderReceivedEmail } from "@/lib/shop/emails"
 
 /**
  * Handles `checkout.session.completed` events where `metadata.type === "shop_order"`.
@@ -27,10 +28,9 @@ export async function handleShopOrderCheckout(session: Stripe.Checkout.Session):
   const stripePaymentIntentId =
     typeof paymentIntent === "string" ? paymentIntent : paymentIntent?.id ?? null
 
-  await updateOrderStatus(order.id, "paid", {
+  const updated = await updateOrderStatus(order.id, "paid", {
     ...(stripePaymentIntentId ? { stripe_payment_intent_id: stripePaymentIntentId } : {}),
   })
 
-  // TODO (Task 24): send order-received email to customer
-  // await sendOrderReceivedEmail(order)
+  await sendOrderReceivedEmail(updated)
 }

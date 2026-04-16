@@ -6,6 +6,7 @@ import {
   type PrintfulRecipient,
 } from "@/lib/printful"
 import { getOrderById, updateOrder, updateOrderStatus } from "@/lib/db/shop-orders"
+import { sendOrderCanceledEmail, sendOrderRefundedEmail } from "@/lib/shop/emails"
 import type { ShopOrder } from "@/types/database"
 
 function addressToRecipient(order: ShopOrder): PrintfulRecipient {
@@ -78,7 +79,9 @@ export async function cancelShopOrder(orderId: string): Promise<ShopOrder> {
     }
   }
 
-  return updateOrderStatus(order.id, "canceled", { refund_amount_cents: order.total_cents })
+  const updated = await updateOrderStatus(order.id, "canceled", { refund_amount_cents: order.total_cents })
+  await sendOrderCanceledEmail(updated)
+  return updated
 }
 
 export async function refundShopOrder(
@@ -99,11 +102,15 @@ export async function refundShopOrder(
 
   const isFull = amountCents >= order.total_cents
   const notes = reason ? `${order.notes ?? ""}\n[refund] ${reason}`.trim() : order.notes
+  let updated: ShopOrder
   if (isFull) {
-    return updateOrderStatus(order.id, "refunded", { refund_amount_cents: amountCents, notes: notes ?? undefined })
+    updated = await updateOrderStatus(order.id, "refunded", { refund_amount_cents: amountCents, notes: notes ?? undefined })
+  } else {
+    updated = await updateOrder(order.id, {
+      refund_amount_cents: (order.refund_amount_cents ?? 0) + amountCents,
+      notes: notes ?? undefined,
+    })
   }
-  return updateOrder(order.id, {
-    refund_amount_cents: (order.refund_amount_cents ?? 0) + amountCents,
-    notes: notes ?? undefined,
-  })
+  await sendOrderRefundedEmail(updated)
+  return updated
 }
