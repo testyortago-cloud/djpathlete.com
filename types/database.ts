@@ -752,6 +752,100 @@ export interface EventSignup {
   updated_at: string
 }
 
+// ---------- Shop (Printful POD) ----------
+
+export type ShopOrderStatus =
+  | "pending"
+  | "paid"
+  | "draft"
+  | "confirmed"
+  | "in_production"
+  | "shipped"
+  | "canceled"
+  | "refunded"
+
+export interface ShopProduct {
+  id: string
+  printful_sync_id: number
+  slug: string
+  name: string
+  description: string
+  thumbnail_url: string
+  thumbnail_url_override: string | null
+  is_active: boolean
+  is_featured: boolean
+  sort_order: number
+  last_synced_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ShopProductVariant {
+  id: string
+  product_id: string
+  printful_sync_variant_id: number
+  printful_variant_id: number
+  sku: string
+  name: string
+  size: string | null
+  color: string | null
+  retail_price_cents: number
+  printful_cost_cents: number
+  mockup_url: string
+  mockup_url_override: string | null
+  is_available: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface ShopOrderItem {
+  variant_id: string
+  product_id: string
+  name: string
+  variant_name: string
+  thumbnail_url: string
+  quantity: number
+  unit_price_cents: number
+  printful_variant_id: number
+}
+
+export interface ShopOrderShippingAddress {
+  name: string
+  email: string
+  phone: string | null
+  line1: string
+  line2: string | null
+  city: string
+  state: string
+  country: string
+  postal_code: string
+}
+
+export interface ShopOrder {
+  id: string
+  order_number: string
+  user_id: string | null
+  customer_email: string
+  customer_name: string
+  shipping_address: ShopOrderShippingAddress
+  stripe_session_id: string | null
+  stripe_payment_intent_id: string | null
+  printful_order_id: number | null
+  status: ShopOrderStatus
+  items: ShopOrderItem[]
+  subtotal_cents: number
+  shipping_cents: number
+  total_cents: number
+  tracking_number: string | null
+  tracking_url: string | null
+  carrier: string | null
+  refund_amount_cents: number | null
+  notes: string | null
+  created_at: string
+  updated_at: string
+  shipped_at: string | null
+}
+
 export interface Database {
   public: {
     Tables: {
