@@ -71,6 +71,8 @@ create table if not exists public.shop_orders (
 create index if not exists shop_orders_status_created_idx on public.shop_orders (status, created_at desc);
 create index if not exists shop_orders_user_idx on public.shop_orders (user_id);
 create index if not exists shop_orders_email_idx on public.shop_orders (customer_email);
+create index if not exists shop_orders_printful_order_idx
+  on public.shop_orders (printful_order_id) where printful_order_id is not null;
 
 -- RLS
 alter table public.shop_products enable row level security;
