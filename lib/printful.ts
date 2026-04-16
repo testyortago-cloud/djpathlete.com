@@ -4,8 +4,8 @@ const BASE = "https://api.printful.com"
 
 export class PrintfulError extends Error {
   status: number
-  code?: string
-  constructor(status: number, message: string, code?: string) {
+  code?: number | string
+  constructor(status: number, message: string, code?: number | string) {
     super(message)
     this.status = status
     this.code = code
@@ -27,10 +27,11 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     ...init,
     headers: { ...headers(), ...(init.headers ?? {}) },
+    signal: init.signal ?? AbortSignal.timeout(15_000),
   })
   const body = await res.json().catch(() => ({}))
   if (!res.ok) {
-    const msg = body?.error?.message ?? body?.result ?? `Printful ${res.status}`
+    const msg = body?.error?.message ?? (typeof body?.result === "string" ? body.result : `Printful ${res.status}`)
     throw new PrintfulError(res.status, msg, body?.code)
   }
   return body.result as T
@@ -70,8 +71,8 @@ export interface ShippingRate {
   name: string
   rate: string
   currency: string
-  minDeliveryDays?: number
-  maxDeliveryDays?: number
+  min_delivery_days?: number
+  max_delivery_days?: number
 }
 
 export interface PrintfulRecipient {
