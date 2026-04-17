@@ -7,6 +7,7 @@ import { toast } from "sonner"
 import { ExternalLink, Pencil } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import type { ShopProduct } from "@/types/database"
 
 interface ShopProductsTableProps {
@@ -55,6 +56,9 @@ export function ShopProductsTable({ products: initialProducts }: ShopProductsTab
               <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wide">
                 Product
               </th>
+              <th className="text-left px-3 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Type
+              </th>
               <th className="text-center px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wide">
                 Active
               </th>
@@ -102,6 +106,20 @@ export function ShopProductsTable({ products: initialProducts }: ShopProductsTab
                         <p className="text-xs text-muted-foreground truncate max-w-[200px]">/{product.slug}</p>
                       </div>
                     </div>
+                  </td>
+
+                  {/* Type badge */}
+                  <td className="px-3 py-2">
+                    <span
+                      className={cn(
+                        "inline-flex rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest",
+                        product.product_type === "pod" && "bg-primary/10 text-primary",
+                        product.product_type === "digital" && "bg-accent/15 text-accent",
+                        product.product_type === "affiliate" && "bg-muted text-muted-foreground",
+                      )}
+                    >
+                      {product.product_type}
+                    </span>
                   </td>
 
                   {/* Active toggle */}

@@ -1,12 +1,29 @@
 import { ShoppingBag, Star, CheckCircle2, RefreshCw } from "lucide-react"
-import { listAllProducts } from "@/lib/db/shop-products"
+import Link from "next/link"
+import { listAllProducts, listProductsByType } from "@/lib/db/shop-products"
 import { ShopProductsTable } from "./ShopProductsTable"
 import { SyncButton } from "./SyncButton"
+import { cn } from "@/lib/utils"
+import type { ProductType } from "@/types/database"
 
 export const metadata = { title: "Shop Products · Admin" }
 
-export default async function ShopProductsPage() {
-  const products = await listAllProducts()
+const VALID_TYPES = ["pod", "digital", "affiliate"] as const
+
+export default async function ShopProductsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ type?: string }>
+}) {
+  const { type } = await searchParams
+  const filter: ProductType | "all" =
+    type && (VALID_TYPES as readonly string[]).includes(type)
+      ? (type as ProductType)
+      : "all"
+
+  const products =
+    filter === "all" ? await listAllProducts() : await listProductsByType(filter)
+
   const total = products.length
   const active = products.filter((p) => p.is_active).length
   const featured = products.filter((p) => p.is_featured).length
@@ -22,7 +39,21 @@ export default async function ShopProductsPage() {
           <h1 className="text-2xl font-heading text-primary">Shop Products</h1>
           <p className="text-sm text-muted-foreground">Manage products synced from Printful</p>
         </div>
-        <SyncButton />
+        <div className="flex items-center gap-2">
+          <SyncButton />
+          <Link
+            href="/admin/shop/products/new/digital"
+            className="rounded-md border border-border px-3 py-1.5 font-body text-sm hover:bg-muted"
+          >
+            + Digital
+          </Link>
+          <Link
+            href="/admin/shop/products/new/affiliate"
+            className="rounded-md border border-border px-3 py-1.5 font-body text-sm hover:bg-muted"
+          >
+            + Affiliate
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-6">
@@ -35,6 +66,23 @@ export default async function ShopProductsPage() {
           value={lastSync ? new Date(lastSync).toLocaleDateString() : "Never"}
         />
       </div>
+
+      <nav className="mb-4 flex gap-1 border-b border-border">
+        {(["all", "pod", "digital", "affiliate"] as const).map((t) => (
+          <Link
+            key={t}
+            href={t === "all" ? "/admin/shop/products" : `/admin/shop/products?type=${t}`}
+            className={cn(
+              "border-b-2 px-4 py-2 font-mono text-xs uppercase tracking-widest",
+              filter === t
+                ? "border-accent text-primary"
+                : "border-transparent text-muted-foreground hover:text-primary",
+            )}
+          >
+            {t}
+          </Link>
+        ))}
+      </nav>
 
       <ShopProductsTable products={products} />
     </div>
