@@ -848,12 +848,13 @@ export interface ShopProductVariant {
 export interface ShopOrderItem {
   variant_id: string
   product_id: string
+  product_type: "pod" | "digital"
   name: string
   variant_name: string
   thumbnail_url: string
   quantity: number
   unit_price_cents: number
-  printful_variant_id: number
+  printful_variant_id: number | null
 }
 
 export interface ShopOrderShippingAddress {
