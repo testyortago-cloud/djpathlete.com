@@ -2,6 +2,9 @@ import Link from "next/link"
 import { ArrowUpRight, ExternalLink } from "lucide-react"
 import type { ShopProduct, ShopProductVariant } from "@/types/database"
 
+const resolveThumb = (product: ShopProduct) =>
+  product.thumbnail_url_override ?? product.thumbnail_url
+
 interface ProductCardProps {
   product: ShopProduct
   minPriceCents: number | null
@@ -78,6 +81,42 @@ export function ProductCard({ product, minPriceCents, variants = [] }: ProductCa
           </span>
         </div>
       </a>
+    )
+  }
+
+  if (product.product_type === "digital") {
+    const resolvedThumb = resolveThumb(product)
+    const price = product.digital_is_free ? null : minPriceCents
+    return (
+      <Link href={`/shop/${product.slug}`} className="group block">
+        <div className="aspect-[4/5] overflow-hidden rounded-2xl bg-muted">
+          {resolvedThumb ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={resolvedThumb}
+              alt={product.name}
+              className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.04]"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center">
+              <span className="text-sm text-muted-foreground">No image</span>
+            </div>
+          )}
+        </div>
+        <div className="mt-3">
+          <h3 className="font-heading text-sm font-semibold text-primary transition-colors group-hover:text-accent">
+            {product.name}
+          </h3>
+          <p className="mt-1 font-mono text-xs text-muted-foreground">
+            {product.digital_is_free
+              ? "Free download"
+              : `From $${((price ?? 0) / 100).toFixed(2)}`}
+          </p>
+          <span className="mt-1 inline-block font-mono text-[10px] uppercase tracking-widest text-accent">
+            Digital
+          </span>
+        </div>
+      </Link>
     )
   }
 
