@@ -236,7 +236,7 @@ export function SiteNavbar() {
 
   // Pages with dark hero backgrounds where nav text should be white.
   // Exact matches first, then prefix matches for routes with sub-pages (e.g. /clinics/[slug]).
-  const darkHeroExact = ["/", "/in-person", "/education"]
+  const darkHeroExact = ["/", "/in-person", "/education", "/shop"]
   const darkHeroPrefixes = ["/clinics", "/online"]
   const isDarkHero =
     darkHeroExact.includes(pathname) ||

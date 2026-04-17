@@ -30,11 +30,19 @@ export async function syncPrintfulCatalog(): Promise<SyncResult> {
     const detail = await getSyncProduct(summary.id)
     const existing = await getProductByPrintfulSyncId(summary.id)
 
+    // Printful may return a null/empty thumbnail_url on products that haven't
+    // had mockups generated yet. Fall back to the first variant's preview
+    // image so the DB's NOT NULL constraint isn't violated.
+    const fallbackVariantImage = detail.sync_variants
+      .find((v) => !v.is_ignored)
+      ?.files.find((f) => f.type === "preview")?.preview_url
+    const thumbnail_url = summary.thumbnail_url || fallbackVariantImage || ""
+
     const product = await upsertProductFromSync({
       printful_sync_id: summary.id,
       name: summary.name,
       slug: existing?.slug ?? slugify(summary.name),
-      thumbnail_url: summary.thumbnail_url,
+      thumbnail_url,
     })
 
     if (existing) result.updated += 1
@@ -44,6 +52,27 @@ export async function syncPrintfulCatalog(): Promise<SyncResult> {
     for (const v of detail.sync_variants) {
       if (v.is_ignored) continue
       const { size, color } = extractSizeColor(v)
+
+      // Collect every usable Printful mockup (preview, back, flat, sleeve,
+      // lifestyle renders…). Skip "default" — that's the raw artwork file.
+      const mockup_urls = Array.from(
+        new Set(
+          v.files
+            .filter(
+              (f) =>
+                f.type !== "default" &&
+                typeof f.preview_url === "string" &&
+                f.preview_url.length > 0,
+            )
+            .map((f) => f.preview_url),
+        ),
+      )
+      const primary =
+        v.files.find((f) => f.type === "preview")?.preview_url ??
+        mockup_urls[0] ??
+        v.product.image ??
+        ""
+
       await upsertVariantFromSync({
         product_id: product.id,
         printful_sync_variant_id: v.id,
@@ -54,7 +83,8 @@ export async function syncPrintfulCatalog(): Promise<SyncResult> {
         color,
         retail_price_cents: dollarsToCents(v.retail_price),
         printful_cost_cents: 0,
-        mockup_url: v.files.find((f) => f.type === "preview")?.preview_url ?? v.product.image ?? "",
+        mockup_url: primary,
+        mockup_urls,
       })
       keepIds.push(v.id)
     }

@@ -120,6 +120,7 @@ describe("shop-variants DAL", () => {
       retail_price_cents: 2500,
       printful_cost_cents: 1200,
       mockup_url: "http://new.com/mock.jpg",
+      mockup_urls: ["http://new.com/mock.jpg"],
     })
 
     // The override should be preserved (not overwritten by the new mockup_url)
@@ -151,6 +152,7 @@ describe("shop-variants DAL", () => {
       retail_price_cents: 3000,
       printful_cost_cents: 1500,
       mockup_url: "http://new.com/mock2.jpg",
+      mockup_urls: ["http://new.com/mock2.jpg"],
     })
 
     expect(result.is_available).toBe(true)

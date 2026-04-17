@@ -792,6 +792,7 @@ export interface ShopProductVariant {
   retail_price_cents: number
   printful_cost_cents: number
   mockup_url: string
+  mockup_urls: string[]
   mockup_url_override: string | null
   is_available: boolean
   created_at: string

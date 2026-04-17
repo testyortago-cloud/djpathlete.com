@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { Minus, Plus, Trash2 } from "lucide-react"
+import { Minus, Plus, Trash2, ArrowLeft } from "lucide-react"
 import { useCart } from "@/lib/shop/cart"
 import type { CartItemResponse } from "@/app/api/shop/cart-items/route"
 
@@ -78,15 +78,26 @@ export function CartPageClient() {
   return (
     <div className="pt-28 pb-20 lg:pt-36 lg:pb-28 px-4 sm:px-8">
       <div className="max-w-5xl mx-auto px-4 py-12">
+        {/* Back to shop */}
+        <Link
+          href="/shop"
+          className="mb-6 inline-flex items-center gap-2 font-body text-sm text-muted-foreground transition-colors hover:text-primary"
+        >
+          <ArrowLeft className="size-4" />
+          Continue shopping
+        </Link>
+
         {/* Page heading */}
-        <div className="mb-8">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="h-px w-12 bg-accent" />
-            <p className="text-sm font-medium text-accent uppercase tracking-widest">Shop</p>
+        <div className="mb-8 flex items-end justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-3 mb-3">
+              <div className="h-px w-12 bg-accent" />
+              <p className="text-sm font-medium text-accent uppercase tracking-widest">Shop</p>
+            </div>
+            <h1 className="text-3xl sm:text-4xl font-heading font-semibold text-primary tracking-tight">
+              Your Cart
+            </h1>
           </div>
-          <h1 className="text-3xl sm:text-4xl font-heading font-semibold text-primary tracking-tight">
-            Your Cart
-          </h1>
         </div>
 
         {/* Unavailability banner */}

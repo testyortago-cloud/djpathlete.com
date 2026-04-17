@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { ChevronRight, CalendarDays, MapPin, Users } from "lucide-react"
+import { ChevronRight, CalendarDays, MapPin, Users, UserRound } from "lucide-react"
 import type { Event } from "@/types/database"
 
 interface EventDetailHeroProps {
@@ -25,6 +25,13 @@ function formatDuration(event: Event) {
     return `${days}-day camp`
   }
   return "Performance camp"
+}
+
+function formatAgeRange(min: number | null, max: number | null): string | null {
+  if (min != null && max != null) return `Ages ${min}–${max}`
+  if (min != null) return `Ages ${min}+`
+  if (max != null) return `Ages up to ${max}`
+  return null
 }
 
 export function EventDetailHero({ event }: EventDetailHeroProps) {

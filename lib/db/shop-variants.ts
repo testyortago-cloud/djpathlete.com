@@ -81,6 +81,7 @@ interface SyncVariantInput {
   retail_price_cents: number
   printful_cost_cents: number
   mockup_url: string
+  mockup_urls: string[]
 }
 
 export async function upsertVariantFromSync(input: SyncVariantInput): Promise<ShopProductVariant> {
@@ -100,6 +101,7 @@ export async function upsertVariantFromSync(input: SyncVariantInput): Promise<Sh
         retail_price_cents: input.retail_price_cents,
         printful_cost_cents: input.printful_cost_cents,
         mockup_url: input.mockup_url,
+        mockup_urls: input.mockup_urls,
         is_available: true,
       })
       .eq("id", existing.id)

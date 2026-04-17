@@ -61,6 +61,7 @@ const AVAILABLE_VARIANT = {
   retail_price_cents: 2500,
   printful_cost_cents: 1200,
   mockup_url: "https://example.com/mockup.png",
+  mockup_urls: ["https://example.com/mockup.png"],
   mockup_url_override: null,
   is_available: true,
   created_at: "2026-01-01T00:00:00Z",
