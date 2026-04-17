@@ -7,6 +7,10 @@ import { listVariantsForProduct } from "@/lib/db/shop-variants"
 import { ComingSoon } from "@/components/public/shop/ComingSoon"
 import { ProductCard } from "@/components/public/shop/ProductCard"
 
+// Re-query on every request so admin activate/deactivate shows immediately
+// (avoids the static-page cache burning in a now-inactive product).
+export const dynamic = "force-dynamic"
+
 export const metadata: Metadata = {
   title: "Shop | DJP Athlete",
   description:
