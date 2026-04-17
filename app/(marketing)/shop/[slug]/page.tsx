@@ -2,7 +2,11 @@ import type { Metadata } from "next"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { ChevronRight } from "lucide-react"
-import { isShopEnabled } from "@/lib/shop/feature-flag"
+import {
+  isShopEnabled,
+  isShopAffiliateEnabled,
+  isShopDigitalEnabled,
+} from "@/lib/shop/feature-flag"
 import { getProductBySlug, listActiveProducts } from "@/lib/db/shop-products"
 import { listVariantsForProduct } from "@/lib/db/shop-variants"
 import { VariantPicker } from "@/components/public/shop/VariantPicker"
@@ -44,6 +48,46 @@ export default async function ProductDetailPage({ params }: Props) {
   const product = await getProductBySlug(slug)
 
   if (!product || !product.is_active) notFound()
+  if (product.product_type === "affiliate" && !isShopAffiliateEnabled()) notFound()
+  if (product.product_type === "digital" && !isShopDigitalEnabled()) notFound()
+
+  if (product.product_type === "affiliate") {
+    return (
+      <article className="mx-auto max-w-5xl px-4 py-12 pt-24 sm:pt-28 lg:pt-32">
+        <div className="grid grid-cols-1 gap-10 md:grid-cols-2">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={product.thumbnail_url_override ?? product.thumbnail_url}
+            alt={product.name}
+            className="w-full rounded-2xl"
+          />
+          <div>
+            <h1 className="font-heading text-3xl text-primary">{product.name}</h1>
+            {product.affiliate_price_cents != null ? (
+              <p className="mt-2 font-mono text-sm text-muted-foreground">
+                Approx. ${(product.affiliate_price_cents / 100).toFixed(2)}
+              </p>
+            ) : null}
+            <div
+              className="prose mt-6"
+              dangerouslySetInnerHTML={{ __html: product.description }}
+            />
+            <a
+              href={`/shop/go/${product.id}`}
+              target="_blank"
+              rel="nofollow sponsored noopener"
+              className="mt-8 inline-flex items-center gap-2 rounded-full bg-primary px-6 py-3 font-mono text-sm uppercase tracking-widest text-primary-foreground hover:bg-primary/90"
+            >
+              View on Amazon →
+            </a>
+            <p className="mt-3 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+              As an Amazon Associate, DJP Athlete earns from qualifying purchases.
+            </p>
+          </div>
+        </div>
+      </article>
+    )
+  }
 
   const variants = await listVariantsForProduct(product.id)
 
