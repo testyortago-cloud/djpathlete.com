@@ -6,8 +6,11 @@ import {
   countClicksForProductSince,
 } from "@/lib/db/shop-affiliate-clicks"
 import { buildAffiliateUrl } from "@/lib/shop/amazon"
+import { listFilesForProduct } from "@/lib/db/shop-product-files"
+import { countLeadsForProduct } from "@/lib/db/shop-leads"
 import { ProductEditor } from "@/components/admin/shop/products/ProductEditor"
 import { VariantsPanel } from "@/components/admin/shop/products/VariantsPanel"
+import { DigitalFileManager } from "./DigitalFileManager"
 import { ArrowLeft } from "lucide-react"
 import Link from "next/link"
 
@@ -22,6 +25,52 @@ export default async function ShopProductDetailPage({ params }: Props) {
   const product = await getProductById(id)
 
   if (!product) notFound()
+
+  if (product.product_type === "digital") {
+    const files = await listFilesForProduct(product.id)
+    const leadsCount = product.digital_is_free
+      ? await countLeadsForProduct(product.id)
+      : 0
+    return (
+      <div className="mx-auto max-w-4xl space-y-8 px-4 py-8">
+        <div>
+          <Link
+            href="/admin/shop/products"
+            className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <ArrowLeft className="size-4" />
+            Back to Products
+          </Link>
+          <h1 className="font-heading text-2xl text-primary">{product.name}</h1>
+          <p className="text-sm text-muted-foreground">
+            Slug:{" "}
+            <code className="rounded bg-surface px-1 py-0.5 font-mono text-xs">
+              {product.slug}
+            </code>
+          </p>
+        </div>
+        <section className="rounded-2xl border border-border p-6">
+          <h2 className="mb-4 font-heading text-lg">Access settings</h2>
+          <dl className="grid grid-cols-2 gap-4 text-sm">
+            <div><dt className="text-muted-foreground">Mode</dt><dd>{product.digital_is_free ? "Free (email-gated)" : "Paid (cart)"}</dd></div>
+            <div><dt className="text-muted-foreground">Signed URL TTL</dt><dd>{product.digital_signed_url_ttl_seconds}s</dd></div>
+            <div><dt className="text-muted-foreground">Access window</dt><dd>{product.digital_access_days ?? "Forever"}</dd></div>
+            <div><dt className="text-muted-foreground">Max downloads</dt><dd>{product.digital_max_downloads ?? "Unlimited"}</dd></div>
+          </dl>
+        </section>
+        <section className="rounded-2xl border border-border p-6">
+          <h2 className="mb-4 font-heading text-lg">Files</h2>
+          <DigitalFileManager productId={product.id} initialFiles={files} />
+        </section>
+        {product.digital_is_free && (
+          <section className="rounded-2xl border border-border p-6">
+            <h2 className="mb-2 font-heading text-lg">Leads captured</h2>
+            <div className="font-heading text-3xl">{leadsCount}</div>
+          </section>
+        )}
+      </div>
+    )
+  }
 
   if (product.product_type === "affiliate") {
     const total = await countClicksForProduct(product.id)
