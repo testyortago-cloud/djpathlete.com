@@ -35,12 +35,13 @@ export async function POST(request: Request) {
     orderItems.push({
       variant_id: v.id,
       product_id: v.product_id,
+      product_type: (p.product_type === "digital" ? "digital" : "pod") as "pod" | "digital",
       name: p.name,
       variant_name: v.name,
       thumbnail_url: v.mockup_url_override ?? v.mockup_url ?? p.thumbnail_url_override ?? p.thumbnail_url,
       quantity: line.quantity,
       unit_price_cents: v.retail_price_cents,
-      printful_variant_id: v.printful_variant_id,
+      printful_variant_id: v.printful_variant_id ?? null,
     })
   }
 
@@ -60,6 +61,10 @@ export async function POST(request: Request) {
     notes: null,
   } as any)
 
+  const containsDigital = orderItems.some((i) => i.product_type === "digital")
+  const containsPod = orderItems.some((i) => i.product_type === "pod")
+  const hasPodShipping = containsPod && shipping_cents > 0
+
   const origin = new URL(request.url).origin
   const stripeSession = await stripe.checkout.sessions.create({
     mode: "payment",
@@ -68,12 +73,19 @@ export async function POST(request: Request) {
       ...orderItems.map((i) => ({
         price_data: {
           currency: "usd",
-          product_data: { name: `${i.name} — ${i.variant_name}` },
+          product_data: {
+            name: `${i.name} — ${i.variant_name}`,
+            metadata: {
+              product_id: i.product_id,
+              variant_id: i.variant_id,
+              product_type: i.product_type,
+            },
+          },
           unit_amount: i.unit_price_cents,
         },
         quantity: i.quantity,
       })),
-      ...(shipping_cents > 0
+      ...(hasPodShipping
         ? [
             {
               price_data: {
@@ -86,7 +98,13 @@ export async function POST(request: Request) {
           ]
         : []),
     ],
-    metadata: { type: "shop_order", order_id: order.id, order_number: order.order_number },
+    metadata: {
+      type: "shop_order",
+      order_id: order.id,
+      order_number: order.order_number,
+      contains_digital: containsDigital ? "true" : "false",
+      contains_pod: containsPod ? "true" : "false",
+    },
     success_url: `${origin}/shop/orders/${order.order_number}/thank-you?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${origin}/shop/cart`,
   })

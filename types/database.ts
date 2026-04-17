@@ -754,6 +754,8 @@ export interface EventSignup {
 
 // ---------- Shop (Printful POD) ----------
 
+export type ProductType = "pod" | "digital" | "affiliate"
+
 export type ShopOrderStatus =
   | "pending"
   | "paid"
@@ -763,10 +765,11 @@ export type ShopOrderStatus =
   | "shipped"
   | "canceled"
   | "refunded"
+  | "fulfilled_digital"
 
 export interface ShopProduct {
   id: string
-  printful_sync_id: number
+  printful_sync_id: number | null
   slug: string
   name: string
   description: string
@@ -778,6 +781,49 @@ export interface ShopProduct {
   last_synced_at: string | null
   created_at: string
   updated_at: string
+  product_type: ProductType
+  affiliate_url: string | null
+  affiliate_asin: string | null
+  affiliate_price_cents: number | null
+  digital_access_days: number | null
+  digital_signed_url_ttl_seconds: number
+  digital_max_downloads: number | null
+  digital_is_free: boolean
+}
+
+export interface ShopProductFile {
+  id: string
+  product_id: string
+  file_name: string
+  display_name: string
+  storage_path: string
+  file_size_bytes: number
+  mime_type: string
+  sort_order: number
+  created_at: string
+}
+
+export interface ShopOrderDownload {
+  id: string
+  order_id: string
+  product_id: string
+  file_id: string
+  access_expires_at: string | null
+  download_count: number
+  max_downloads: number | null
+  last_downloaded_at: string | null
+  created_at: string
+}
+
+export interface ShopLead {
+  id: string
+  product_id: string
+  email: string
+  resend_contact_id: string | null
+  resend_sync_status: string
+  resend_sync_error: string | null
+  ip_address: string | null
+  created_at: string
 }
 
 export interface ShopProductVariant {
@@ -802,12 +848,13 @@ export interface ShopProductVariant {
 export interface ShopOrderItem {
   variant_id: string
   product_id: string
+  product_type: "pod" | "digital"
   name: string
   variant_name: string
   thumbnail_url: string
   quantity: number
   unit_price_cents: number
-  printful_variant_id: number
+  printful_variant_id: number | null
 }
 
 export interface ShopOrderShippingAddress {

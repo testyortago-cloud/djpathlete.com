@@ -142,3 +142,55 @@ export async function sendOrderRefundedEmail(order: ShopOrder): Promise<void> {
     console.error("[shop/emails] Failed to send order-refunded email:", error)
   }
 }
+
+export async function sendDigitalFulfillmentEmail(input: {
+  to: string
+  orderNumber: string
+}): Promise<void> {
+  if (!hasApiKey()) {
+    warnMissingKey("sendDigitalFulfillmentEmail")
+    return
+  }
+  const base = process.env.NEXTAUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3050"
+  await resend.emails.send({
+    from: FROM_EMAIL,
+    to: input.to,
+    subject: `Your download is ready — order ${input.orderNumber}`,
+    html: `<h1>Your download is ready</h1><p>You can access your files any time at:</p><p><a href="${base}/shop/orders/${input.orderNumber}/downloads">View downloads</a></p>`,
+  })
+}
+
+export async function sendFreeDownloadEmail(input: {
+  to: string
+  productName: string
+  files: import("@/types/database").ShopProductFile[]
+  ttlSeconds: number
+}) {
+  if (!hasApiKey()) {
+    warnMissingKey("sendFreeDownloadEmail")
+    return
+  }
+  const { generateSignedDownloadUrl } = await import("@/lib/shop/downloads")
+  const urls = await Promise.all(
+    input.files.map(async (f) => ({
+      name: f.display_name,
+      url: await generateSignedDownloadUrl(f.storage_path, input.ttlSeconds),
+    })),
+  )
+  const ttlMinutes = Math.round(input.ttlSeconds / 60)
+  const linksHtml = urls
+    .map((u) => `<li><a href="${u.url}">${u.name}</a></li>`)
+    .join("")
+  const html = `
+    <h1>Your free download</h1>
+    <p>Thanks for subscribing. Here's your download for <strong>${input.productName}</strong>:</p>
+    <ul>${linksHtml}</ul>
+    <p>Links expire in ${ttlMinutes} minutes. Re-submit the form on the product page if you need fresh links.</p>
+  `
+  await resend.emails.send({
+    from: FROM_EMAIL,
+    to: input.to,
+    subject: `Your free download — ${input.productName}`,
+    html,
+  })
+}

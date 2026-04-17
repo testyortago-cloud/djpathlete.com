@@ -1,6 +1,9 @@
 import type Stripe from "stripe"
-import { getOrderByStripeSessionId, updateOrderStatus } from "@/lib/db/shop-orders"
-import { sendOrderReceivedEmail } from "@/lib/shop/emails"
+import { getOrderByStripeSessionId, updateOrderStatus, updateOrder } from "@/lib/db/shop-orders"
+import { sendOrderReceivedEmail, sendDigitalFulfillmentEmail } from "@/lib/shop/emails"
+import { listDownloadsForOrder, createOrderDownload } from "@/lib/db/shop-order-downloads"
+import { listFilesForProduct } from "@/lib/db/shop-product-files"
+import { getProductById } from "@/lib/db/shop-products"
 
 /**
  * Handles `checkout.session.completed` events where `metadata.type === "shop_order"`.
@@ -33,4 +36,49 @@ export async function handleShopOrderCheckout(session: Stripe.Checkout.Session):
   })
 
   await sendOrderReceivedEmail(updated)
+
+  // ─── Digital fulfillment ─────────────────────────────────────────────────────
+
+  const digitalItems = updated.items.filter((i) => i.product_type === "digital")
+
+  if (digitalItems.length > 0) {
+    // Idempotency: only create downloads if none exist yet
+    const existingDownloads = await listDownloadsForOrder(updated.id)
+    if (existingDownloads.length === 0) {
+      const now = new Date()
+
+      for (const item of digitalItems) {
+        const product = await getProductById(item.product_id)
+        if (!product) continue
+
+        const files = await listFilesForProduct(product.id)
+        for (const file of files) {
+          const accessExpiresAt =
+            product.digital_access_days != null
+              ? new Date(now.getTime() + product.digital_access_days * 86400 * 1000).toISOString()
+              : null
+
+          await createOrderDownload({
+            order_id: updated.id,
+            product_id: product.id,
+            file_id: file.id,
+            access_expires_at: accessExpiresAt,
+            max_downloads: product.digital_max_downloads ?? null,
+          })
+        }
+      }
+
+      // Send fulfillment email
+      await sendDigitalFulfillmentEmail({
+        to: updated.customer_email,
+        orderNumber: updated.order_number,
+      })
+    }
+
+    // If order is digital-only (no POD items), advance to fulfilled_digital
+    const hasPodItems = updated.items.some((i) => i.product_type !== "digital")
+    if (!hasPodItems) {
+      await updateOrder(updated.id, { status: "fulfilled_digital" })
+    }
+  }
 }

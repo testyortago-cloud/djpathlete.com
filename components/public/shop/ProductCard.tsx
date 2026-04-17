@@ -1,6 +1,9 @@
 import Link from "next/link"
-import { ArrowUpRight } from "lucide-react"
+import { ArrowUpRight, ExternalLink } from "lucide-react"
 import type { ShopProduct, ShopProductVariant } from "@/types/database"
+
+const resolveThumb = (product: ShopProduct) =>
+  product.thumbnail_url_override ?? product.thumbnail_url
 
 interface ProductCardProps {
   product: ShopProduct
@@ -37,6 +40,85 @@ function colorToSwatch(color: string): string {
 
 export function ProductCard({ product, minPriceCents, variants = [] }: ProductCardProps) {
   const imageSrc = product.thumbnail_url_override ?? product.thumbnail_url
+
+  if (product.product_type === "affiliate") {
+    const price = product.affiliate_price_cents
+    return (
+      <a
+        href={`/shop/go/${product.id}`}
+        target="_blank"
+        rel="nofollow sponsored noopener"
+        className="group block"
+      >
+        <div className="relative aspect-[4/5] overflow-hidden rounded-2xl bg-gradient-to-br from-muted via-background to-muted ring-1 ring-border/60">
+          {imageSrc ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={imageSrc}
+              alt={product.name}
+              className="absolute inset-0 h-full w-full object-contain p-6 transition-transform duration-700 ease-out group-hover:scale-[1.04]"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center">
+              <span className="text-sm text-muted-foreground">No image</span>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-4 flex items-start justify-between gap-2">
+          <div>
+            <h3 className="font-heading text-base font-semibold text-primary transition-colors group-hover:text-accent">
+              {product.name}
+            </h3>
+            {price != null ? (
+              <p className="mt-1 font-mono text-xs text-muted-foreground">
+                ~{formatPrice(price)}
+              </p>
+            ) : null}
+          </div>
+          <span className="mt-1 inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-widest text-accent">
+            Amazon <ExternalLink className="size-3" />
+          </span>
+        </div>
+      </a>
+    )
+  }
+
+  if (product.product_type === "digital") {
+    const resolvedThumb = resolveThumb(product)
+    const price = product.digital_is_free ? null : minPriceCents
+    return (
+      <Link href={`/shop/${product.slug}`} className="group block">
+        <div className="aspect-[4/5] overflow-hidden rounded-2xl bg-muted">
+          {resolvedThumb ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={resolvedThumb}
+              alt={product.name}
+              className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.04]"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center">
+              <span className="text-sm text-muted-foreground">No image</span>
+            </div>
+          )}
+        </div>
+        <div className="mt-3">
+          <h3 className="font-heading text-sm font-semibold text-primary transition-colors group-hover:text-accent">
+            {product.name}
+          </h3>
+          <p className="mt-1 font-mono text-xs text-muted-foreground">
+            {product.digital_is_free
+              ? "Free download"
+              : `From $${((price ?? 0) / 100).toFixed(2)}`}
+          </p>
+          <span className="mt-1 inline-block font-mono text-[10px] uppercase tracking-widest text-accent">
+            Digital
+          </span>
+        </div>
+      </Link>
+    )
+  }
 
   const uniqueColors = Array.from(
     new Set(

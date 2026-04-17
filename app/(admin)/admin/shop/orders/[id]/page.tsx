@@ -2,8 +2,11 @@ import { notFound } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft, Package, Truck, User, MapPin } from "lucide-react"
 import { getOrderById } from "@/lib/db/shop-orders"
+import { listDownloadsForOrder } from "@/lib/db/shop-order-downloads"
+import { getProductFile } from "@/lib/db/shop-product-files"
 import { OrderActions } from "@/components/admin/shop/orders/OrderActions"
 import { NotesField } from "@/components/admin/shop/orders/NotesField"
+import { DownloadAdminActions } from "./DownloadAdminActions"
 import type { ShopOrder, ShopOrderStatus } from "@/types/database"
 
 export const metadata = { title: "Order Detail · Admin" }
@@ -32,6 +35,7 @@ function StatusBadge({ status }: { status: ShopOrderStatus }) {
     shipped: { label: "Shipped", className: "bg-green-100 text-green-800" },
     canceled: { label: "Canceled", className: "bg-gray-100 text-gray-700" },
     refunded: { label: "Refunded", className: "bg-red-100 text-red-700" },
+    fulfilled_digital: { label: "Fulfilled (Digital)", className: "bg-green-100 text-green-800" },
   }
   const { label, className } = MAP[status] ?? { label: status, className: "bg-muted" }
   return (
@@ -129,6 +133,10 @@ export default async function OrderDetailPage({
   const order = await getOrderById(id)
   if (!order) notFound()
 
+  const hasDigital = order.items.some((i) => i.product_type === "digital")
+  const downloads = hasDigital ? await listDownloadsForOrder(order.id) : []
+  const files = await Promise.all(downloads.map((d) => getProductFile(d.file_id)))
+
   const addr = order.shipping_address
 
   return (
@@ -214,6 +222,31 @@ export default async function OrderDetailPage({
               )}
             </div>
           </div>
+
+          {/* Digital fulfillment */}
+          {hasDigital && (
+            <section className="rounded-2xl border border-border p-6">
+              <h2 className="mb-4 font-heading text-lg">Digital fulfillment</h2>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-muted-foreground">
+                    <th>File</th><th>Downloads</th><th>Expires</th><th>Last download</th><th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {downloads.map((d, i) => (
+                    <tr key={d.id} className="border-t">
+                      <td>{files[i]?.display_name ?? "—"}</td>
+                      <td>{d.download_count}{d.max_downloads != null ? ` / ${d.max_downloads}` : ""}</td>
+                      <td>{d.access_expires_at ?? "Forever"}</td>
+                      <td>{d.last_downloaded_at ?? "—"}</td>
+                      <td><DownloadAdminActions downloadId={d.id} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          )}
 
           {/* Timeline */}
           <Timeline order={order} />

@@ -23,6 +23,9 @@ export default async function Page({
     if (s.metadata?.order_number !== orderNumber) notFound()
   }
 
+  const hasDigital = order.items.some((i) => i.product_type === "digital")
+  const hasPod = order.items.some((i) => i.product_type === "pod")
+
   return (
     <>
       <div className="container mx-auto px-4 py-16 max-w-2xl">
@@ -47,6 +50,33 @@ export default async function Page({
             <span>${(order.total_cents / 100).toFixed(2)}</span>
           </div>
         </div>
+
+        {hasDigital && (
+          <section className="mt-8 rounded-2xl border border-border p-6">
+            <h2 className="font-heading text-lg">Your downloads</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {hasPod
+                ? "Your digital files are ready now. Your physical items will ship separately."
+                : "Your files are ready now."}
+            </p>
+            <a
+              href={`/shop/orders/${order.order_number}/downloads`}
+              className="mt-4 inline-flex rounded-full bg-primary px-5 py-2.5 font-mono text-xs uppercase tracking-widest text-primary-foreground"
+            >
+              Go to downloads
+            </a>
+          </section>
+        )}
+
+        {hasPod && (
+          <section className="mt-6 rounded-2xl border border-border p-6">
+            <h2 className="font-heading text-lg">Shipping to you</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Your physical order is being prepared. We'll email tracking info when it ships.
+            </p>
+          </section>
+        )}
+
         <p className="mt-8">
           <Link className="underline text-primary" href={`/shop/orders/${order.order_number}`}>
             View order status

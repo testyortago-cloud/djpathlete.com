@@ -1,7 +1,11 @@
 import type { Metadata } from "next"
 import { Truck, RotateCcw, Leaf, ShieldCheck } from "lucide-react"
 import { JsonLd } from "@/components/shared/JsonLd"
-import { isShopEnabled } from "@/lib/shop/feature-flag"
+import {
+  isShopEnabled,
+  isShopAffiliateEnabled,
+  isShopDigitalEnabled,
+} from "@/lib/shop/feature-flag"
 import { listActiveProducts } from "@/lib/db/shop-products"
 import { listVariantsForProduct } from "@/lib/db/shop-variants"
 import { ComingSoon } from "@/components/public/shop/ComingSoon"
@@ -74,9 +78,16 @@ export default async function ShopPage() {
   }
 
   const products = await listActiveProducts()
+  const affOn = isShopAffiliateEnabled()
+  const digOn = isShopDigitalEnabled()
+  const visible = products.filter((p) => {
+    if (p.product_type === "affiliate") return affOn
+    if (p.product_type === "digital") return digOn
+    return true
+  })
 
   const productsWithDetails = await Promise.all(
-    products.map(async (product) => {
+    visible.map(async (product) => {
       const variants = await listVariantsForProduct(product.id)
       const minPriceCents =
         variants.length > 0

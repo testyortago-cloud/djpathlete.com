@@ -102,6 +102,14 @@ const ACTIVE_PRODUCT = {
   last_synced_at: "2026-01-01T00:00:00Z",
   created_at: "2026-01-01T00:00:00Z",
   updated_at: "2026-01-01T00:00:00Z",
+  product_type: "pod" as const,
+  affiliate_url: null,
+  affiliate_asin: null,
+  affiliate_price_cents: null,
+  digital_access_days: null,
+  digital_signed_url_ttl_seconds: 3600,
+  digital_max_downloads: null,
+  digital_is_free: false,
 }
 
 const CREATED_ORDER = {
