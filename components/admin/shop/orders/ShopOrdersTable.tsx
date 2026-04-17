@@ -9,21 +9,41 @@ interface ShopOrdersTableProps {
   orders: ShopOrder[]
 }
 
-type Tab = "all" | "needs_action" | "in_production" | "shipped" | "issues"
+type Tab =
+  | "all"
+  | "needs_action"
+  | "in_production"
+  | "shipped"
+  | "digital"
+  | "issues"
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "all", label: "All" },
   { id: "needs_action", label: "Needs Action" },
   { id: "in_production", label: "In Production" },
   { id: "shipped", label: "Shipped" },
+  { id: "digital", label: "Digital" },
   { id: "issues", label: "Issues" },
 ]
+
+// Item-type predicate ("pod" vs "digital") or null for all statuses.
+const TYPE_FILTER: Record<Tab, "digital" | null> = {
+  all: null,
+  needs_action: null,
+  in_production: null,
+  shipped: null,
+  digital: "digital",
+  issues: null,
+}
 
 const STATUS_FILTER: Record<Tab, ShopOrderStatus[] | null> = {
   all: null,
   needs_action: ["paid"],
   in_production: ["confirmed", "in_production"],
   shipped: ["shipped"],
+  // Digital tab shows any order containing a digital item (by product_type),
+  // regardless of lifecycle status — it's a type-based view, not a state one.
+  digital: null,
   issues: ["canceled", "refunded"],
 }
 
@@ -52,6 +72,8 @@ function statusBadge(status: ShopOrderStatus): { label: string; className: strin
       }
     case "shipped":
       return { label: "Shipped", className: "bg-green-100 text-green-800" }
+    case "fulfilled_digital":
+      return { label: "Fulfilled", className: "bg-green-100 text-green-800" }
     case "canceled":
       return { label: "Canceled", className: "bg-gray-100 text-gray-700" }
     case "refunded":
@@ -85,9 +107,14 @@ export function ShopOrdersTable({ orders }: ShopOrdersTableProps) {
 
   const filtered = useMemo(() => {
     const statusFilter = STATUS_FILTER[activeTab]
-    const base = statusFilter
-      ? orders.filter((o) => statusFilter.includes(o.status))
-      : orders
+    const typeFilter = TYPE_FILTER[activeTab]
+    const base = orders.filter((o) => {
+      if (statusFilter && !statusFilter.includes(o.status)) return false
+      if (typeFilter && !o.items.some((i) => i.product_type === typeFilter)) {
+        return false
+      }
+      return true
+    })
 
     return [...base].sort((a, b) => {
       const priorityDiff = STATUS_SORT_PRIORITY[a.status] - STATUS_SORT_PRIORITY[b.status]
