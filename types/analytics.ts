@@ -63,3 +63,47 @@ export interface EngagementMetrics {
   achievementsByType: { type: string; count: number }[]
   streakLeaders: { name: string; streak: number }[]
 }
+
+export interface ShopMetrics {
+  // Revenue (in cents)
+  totalRevenueCents: number
+  previousPeriodRevenueCents: number
+  thisMonthRevenueCents: number
+
+  // Order counts
+  totalOrders: number
+  podOrders: number
+  digitalOrders: number
+
+  // Profit
+  grossProfitCents: number
+  grossMarginBps: number
+
+  // Per-type breakdown
+  podRevenueCents: number
+  podCogsCents: number
+  podProfitCents: number
+  podMarginBps: number
+  digitalRevenueCents: number
+  digitalProfitCents: number
+  digitalMarginBps: number
+
+  // Time series — stacked by product type
+  revenueByMonth: {
+    key: string
+    label: string
+    total: number
+    pod: number
+    digital: number
+    count: number
+  }[]
+
+  // Top products by revenue
+  topProducts: {
+    product_id: string
+    product_name: string
+    product_type: "pod" | "digital"
+    revenueCents: number
+    unitsSold: number
+  }[]
+}

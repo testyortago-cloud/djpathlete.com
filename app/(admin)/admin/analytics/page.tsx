@@ -5,11 +5,13 @@ import { getAssignments } from "@/lib/db/assignments"
 import { getAllProgress } from "@/lib/db/progress"
 import { getAllAchievements } from "@/lib/db/achievements"
 import { getAllProfiles } from "@/lib/db/client-profiles"
+import { listOrders } from "@/lib/db/shop-orders"
 import {
   computeRevenueMetrics,
   computeClientMetrics,
   computeProgramMetrics,
   computeEngagementMetrics,
+  computeShopMetrics,
   computeDateRange,
 } from "@/lib/analytics/compute"
 import { AnalyticsDashboard } from "@/components/admin/analytics/AnalyticsDashboard"
@@ -17,7 +19,7 @@ import type { User, Program, ProgramAssignment } from "@/types/database"
 
 export const metadata = { title: "Analytics" }
 
-const VALID_TABS = ["revenue", "clients", "programs", "engagement"] as const
+const VALID_TABS = ["revenue", "shop", "clients", "programs", "engagement"] as const
 const VALID_MONTHS = [0, 1, 3, 6, 12] as const
 
 export default async function AnalyticsPage({
@@ -42,20 +44,23 @@ export default async function AnalyticsPage({
   const customTo = params.to
 
   // Fetch all data in parallel
-  const [users, programs, payments, assignments, progress, achievements, profiles] = await Promise.all([
-    getUsers(),
-    getPrograms(),
-    getPaymentsWithDetails(),
-    getAssignments(),
-    getAllProgress(),
-    getAllAchievements(),
-    getAllProfiles(),
-  ])
+  const [users, programs, payments, assignments, progress, achievements, profiles, shopOrders] =
+    await Promise.all([
+      getUsers(),
+      getPrograms(),
+      getPaymentsWithDetails(),
+      getAssignments(),
+      getAllProgress(),
+      getAllAchievements(),
+      getAllProfiles(),
+      listOrders(),
+    ])
 
   // Determine earliest date for "All" range
   const allDates = [
     ...payments.map((p) => new Date(p.created_at)),
     ...(users as User[]).map((u) => new Date(u.created_at)),
+    ...shopOrders.map((o) => new Date(o.created_at)),
   ]
   const earliestDate = allDates.length > 0 ? new Date(Math.min(...allDates.map((d) => d.getTime()))) : undefined
 
@@ -64,6 +69,7 @@ export default async function AnalyticsPage({
 
   // Compute metrics for all tabs
   const revenue = computeRevenueMetrics(payments, range, previousRange)
+  const shop = computeShopMetrics(shopOrders, range, previousRange)
   const clients = computeClientMetrics(users as User[], profiles, assignments as ProgramAssignment[], range)
   const programMetrics = computeProgramMetrics(programs as Program[], assignments as ProgramAssignment[], range)
   const engagement = computeEngagementMetrics(progress, achievements, users as User[], range)
@@ -75,6 +81,7 @@ export default async function AnalyticsPage({
       customFrom={customFrom}
       customTo={customTo}
       revenue={revenue}
+      shop={shop}
       clients={clients}
       programs={programMetrics}
       engagement={engagement}

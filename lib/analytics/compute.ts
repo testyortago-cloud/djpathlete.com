@@ -6,8 +6,17 @@ import type {
   ExerciseProgress,
   Achievement,
   ClientProfile,
+  ShopOrder,
+  ShopOrderStatus,
 } from "@/types/database"
-import type { DateRange, RevenueMetrics, ClientMetrics, ProgramMetrics, EngagementMetrics } from "@/types/analytics"
+import type {
+  DateRange,
+  RevenueMetrics,
+  ClientMetrics,
+  ProgramMetrics,
+  EngagementMetrics,
+  ShopMetrics,
+} from "@/types/analytics"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -469,6 +478,168 @@ export function computeEngagementMetrics(
     mostActiveClients,
     achievementsByType,
     streakLeaders,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Shop
+// ---------------------------------------------------------------------------
+
+const SHOP_REVENUE_STATUSES: ReadonlySet<ShopOrderStatus> = new Set([
+  "paid",
+  "draft",
+  "confirmed",
+  "in_production",
+  "shipped",
+  "fulfilled_digital",
+])
+
+export function computeShopMetrics(
+  orders: ShopOrder[],
+  range: DateRange,
+  previousRange: DateRange | null,
+): ShopMetrics {
+  const months = getMonthsInRange(range)
+
+  const isRevenueOrder = (o: ShopOrder) => SHOP_REVENUE_STATUSES.has(o.status)
+  const inRangeOrders = orders.filter(
+    (o) => isRevenueOrder(o) && inRange(o.created_at, range),
+  )
+
+  let totalRevenueCents = 0
+  let podRevenueCents = 0
+  let digitalRevenueCents = 0
+  let podCogsCents = 0
+
+  const podOrderIds = new Set<string>()
+  const digitalOrderIds = new Set<string>()
+
+  const productMap = new Map<
+    string,
+    {
+      product_id: string
+      product_name: string
+      product_type: "pod" | "digital"
+      revenueCents: number
+      unitsSold: number
+    }
+  >()
+
+  for (const o of inRangeOrders) {
+    totalRevenueCents += o.total_cents
+    let hasPod = false
+    let hasDigital = false
+
+    for (const it of o.items) {
+      const lineSubtotal = it.unit_price_cents * it.quantity
+
+      // Aggregate per-product
+      const existing = productMap.get(it.product_id)
+      if (existing) {
+        existing.revenueCents += lineSubtotal
+        existing.unitsSold += it.quantity
+      } else {
+        productMap.set(it.product_id, {
+          product_id: it.product_id,
+          product_name: it.name,
+          product_type: it.product_type,
+          revenueCents: lineSubtotal,
+          unitsSold: it.quantity,
+        })
+      }
+
+      if (it.product_type === "digital") {
+        digitalRevenueCents += lineSubtotal
+        hasDigital = true
+      } else {
+        podRevenueCents += lineSubtotal
+        podCogsCents += (it.printful_cost_cents ?? 0) * it.quantity
+        hasPod = true
+      }
+    }
+
+    if (hasPod) podOrderIds.add(o.id)
+    if (hasDigital) digitalOrderIds.add(o.id)
+  }
+
+  const subtotal = podRevenueCents + digitalRevenueCents
+  const grossProfitCents = subtotal - podCogsCents
+  const grossMarginBps =
+    subtotal > 0 ? Math.round((grossProfitCents / subtotal) * 10000) : 0
+
+  const podProfitCents = podRevenueCents - podCogsCents
+  const podMarginBps =
+    podRevenueCents > 0
+      ? Math.round((podProfitCents / podRevenueCents) * 10000)
+      : 0
+  const digitalProfitCents = digitalRevenueCents
+  const digitalMarginBps = digitalRevenueCents > 0 ? 10000 : 0
+
+  // Previous period
+  let previousPeriodRevenueCents = 0
+  if (previousRange) {
+    previousPeriodRevenueCents = orders
+      .filter((o) => isRevenueOrder(o) && inRange(o.created_at, previousRange))
+      .reduce((s, o) => s + o.total_cents, 0)
+  }
+
+  // This month
+  const now = new Date()
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+  const thisMonthRevenueCents = inRangeOrders
+    .filter((o) => new Date(o.created_at) >= monthStart)
+    .reduce((s, o) => s + o.total_cents, 0)
+
+  // Monthly stacked series
+  const monthlyBase = months.map((m) => ({
+    ...m,
+    total: 0,
+    pod: 0,
+    digital: 0,
+    count: 0,
+  }))
+  const monthMap = new Map(monthlyBase.map((m) => [m.key, m]))
+  for (const o of inRangeOrders) {
+    const entry = monthMap.get(getMonthKey(new Date(o.created_at)))
+    if (!entry) continue
+    entry.count += 1
+    for (const it of o.items) {
+      const lineSubtotal = it.unit_price_cents * it.quantity
+      if (it.product_type === "digital") {
+        entry.digital += lineSubtotal
+      } else {
+        entry.pod += lineSubtotal
+      }
+      entry.total += lineSubtotal
+    }
+  }
+
+  const topProducts = Array.from(productMap.values())
+    .sort((a, b) => b.revenueCents - a.revenueCents)
+    .slice(0, 8)
+
+  return {
+    totalRevenueCents,
+    previousPeriodRevenueCents,
+    thisMonthRevenueCents,
+
+    totalOrders: inRangeOrders.length,
+    podOrders: podOrderIds.size,
+    digitalOrders: digitalOrderIds.size,
+
+    grossProfitCents,
+    grossMarginBps,
+
+    podRevenueCents,
+    podCogsCents,
+    podProfitCents,
+    podMarginBps,
+    digitalRevenueCents,
+    digitalProfitCents,
+    digitalMarginBps,
+
+    revenueByMonth: monthlyBase,
+    topProducts,
   }
 }
 
