@@ -754,6 +754,8 @@ export interface EventSignup {
 
 // ---------- Shop (Printful POD) ----------
 
+export type ProductType = "pod" | "digital" | "affiliate"
+
 export type ShopOrderStatus =
   | "pending"
   | "paid"
@@ -763,10 +765,11 @@ export type ShopOrderStatus =
   | "shipped"
   | "canceled"
   | "refunded"
+  | "fulfilled_digital"
 
 export interface ShopProduct {
   id: string
-  printful_sync_id: number
+  printful_sync_id: number | null
   slug: string
   name: string
   description: string
@@ -778,6 +781,14 @@ export interface ShopProduct {
   last_synced_at: string | null
   created_at: string
   updated_at: string
+  product_type: ProductType
+  affiliate_url: string | null
+  affiliate_asin: string | null
+  affiliate_price_cents: number | null
+  digital_access_days: number | null
+  digital_signed_url_ttl_seconds: number
+  digital_max_downloads: number | null
+  digital_is_free: boolean
 }
 
 export interface ShopProductVariant {

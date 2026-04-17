@@ -56,6 +56,7 @@ function StatusBadge({ status }: { status: ShopOrderStatus }) {
     shipped: { label: "Shipped", className: "bg-green-100 text-green-800" },
     canceled: { label: "Canceled", className: "bg-red-100 text-red-800" },
     refunded: { label: "Refunded", className: "bg-gray-100 text-gray-700" },
+    fulfilled_digital: { label: "Fulfilled (Digital)", className: "bg-green-100 text-green-800" },
   }
   const { label, className } = map[status] ?? { label: status, className: "bg-gray-100 text-gray-700" }
   return (

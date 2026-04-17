@@ -13,6 +13,7 @@ const STATUS_ORDER: Record<ShopOrderStatus, number> = {
   confirmed: 3,
   in_production: 4,
   shipped: 5,
+  fulfilled_digital: 6,
   canceled: 90,
   refunded: 91,
 }

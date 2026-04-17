@@ -37,6 +37,7 @@ const STATUS_SORT_PRIORITY: Record<ShopOrderStatus, number> = {
   shipped: 5,
   canceled: 6,
   refunded: 7,
+  fulfilled_digital: 5,
 }
 
 function statusBadge(status: ShopOrderStatus): { label: string; className: string } {
