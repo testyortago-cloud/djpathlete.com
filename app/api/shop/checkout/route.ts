@@ -42,6 +42,7 @@ export async function POST(request: Request) {
       quantity: line.quantity,
       unit_price_cents: v.retail_price_cents,
       printful_variant_id: v.printful_variant_id ?? null,
+      printful_cost_cents: v.printful_cost_cents,
     })
   }
 

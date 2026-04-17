@@ -855,6 +855,8 @@ export interface ShopOrderItem {
   quantity: number
   unit_price_cents: number
   printful_variant_id: number | null
+  /** Cost-of-goods snapshot at order time, for historical margin analytics. */
+  printful_cost_cents?: number
 }
 
 export interface ShopOrderShippingAddress {

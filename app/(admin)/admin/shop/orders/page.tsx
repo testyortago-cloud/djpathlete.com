@@ -1,32 +1,30 @@
-import { ShoppingCart, AlertCircle, Factory, Truck, DollarSign } from "lucide-react"
-import { listOrders } from "@/lib/db/shop-orders"
-import { getOrderStats } from "@/lib/db/shop-orders"
+import { ShoppingCart, AlertCircle, Factory, Truck } from "lucide-react"
+import { listOrders, getOrderStats } from "@/lib/db/shop-orders"
 import { ShopOrdersTable } from "@/components/admin/shop/orders/ShopOrdersTable"
+import { FinancialsPanel } from "@/components/admin/shop/orders/FinancialsPanel"
 
 export const metadata = { title: "Shop Orders · Admin" }
 
 export default async function ShopOrdersPage() {
   const [orders, stats] = await Promise.all([listOrders(), getOrderStats()])
 
-  const revenue = new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(stats.revenue_all_time_cents / 100)
-
   return (
-    <div className="p-4 sm:p-6 lg:p-8">
-      <div className="mb-6">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6">
+      <div>
         <h1 className="text-2xl font-heading text-primary">Shop Orders</h1>
         <p className="text-sm text-muted-foreground">View and manage customer orders</p>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 sm:gap-4 mb-6">
+      {/* Operational queue */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         <StatCard icon={ShoppingCart} label="Today" value={stats.today} />
         <StatCard icon={AlertCircle} label="Needs Action" value={stats.needs_action} />
         <StatCard icon={Factory} label="In Production" value={stats.in_production} />
         <StatCard icon={Truck} label="Shipped This Week" value={stats.shipped_this_week} />
-        <StatCard icon={DollarSign} label="Revenue (All Time)" value={revenue} />
       </div>
+
+      {/* Financials + profit breakdown */}
+      <FinancialsPanel stats={stats} />
 
       <ShopOrdersTable orders={orders} />
     </div>
