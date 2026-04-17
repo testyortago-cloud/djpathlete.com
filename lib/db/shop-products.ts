@@ -1,5 +1,5 @@
 import { createServiceRoleClient } from "@/lib/supabase"
-import type { ShopProduct } from "@/types/database"
+import type { ProductType, ShopProduct } from "@/types/database"
 
 /** Service-role client bypasses RLS — these functions are only called from server-side routes. */
 function getClient() {
@@ -131,4 +131,62 @@ export async function upsertProductFromSync(input: {
     .single()
   if (error) throw error
   return data as ShopProduct
+}
+
+export async function createAffiliateProduct(input: {
+  name: string
+  slug: string
+  description: string
+  thumbnail_url: string
+  affiliate_url: string
+  affiliate_asin?: string | null
+  affiliate_price_cents?: number | null
+}): Promise<ShopProduct> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("shop_products")
+    .insert({
+      slug: input.slug,
+      name: input.name,
+      description: input.description,
+      thumbnail_url: input.thumbnail_url,
+      product_type: "affiliate",
+      affiliate_url: input.affiliate_url,
+      affiliate_asin: input.affiliate_asin ?? null,
+      affiliate_price_cents: input.affiliate_price_cents ?? null,
+      is_active: false,
+      is_featured: false,
+      sort_order: 0,
+    })
+    .select()
+    .single()
+  if (error) throw error
+  return data as ShopProduct
+}
+
+export async function listProductsByType(type: ProductType): Promise<ShopProduct[]> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("shop_products")
+    .select("*")
+    .eq("product_type", type)
+    .order("created_at", { ascending: false })
+  if (error) throw error
+  return data as ShopProduct[]
+}
+
+export async function listActiveProductsByType(
+  type: ProductType,
+): Promise<ShopProduct[]> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("shop_products")
+    .select("*")
+    .eq("product_type", type)
+    .eq("is_active", true)
+    .order("is_featured", { ascending: false })
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: false })
+  if (error) throw error
+  return data as ShopProduct[]
 }
