@@ -34,12 +34,19 @@ export async function confirmOrderToPrintful(orderId: string): Promise<ShopOrder
   let printfulOrderId: number
 
   if (order.status === "paid") {
-    const items = order.items.map((i) => ({
-      sync_variant_id: undefined as number | undefined,
-      variant_id: i.printful_variant_id,
-      quantity: i.quantity,
-      retail_price: (i.unit_price_cents / 100).toFixed(2),
-    }))
+    // Only POD items go to Printful; digital lines have no printful_variant_id
+    // and are fulfilled separately by the Stripe webhook.
+    const items = order.items
+      .filter(
+        (i): i is typeof i & { printful_variant_id: number } =>
+          i.printful_variant_id != null,
+      )
+      .map((i) => ({
+        sync_variant_id: undefined as number | undefined,
+        variant_id: i.printful_variant_id,
+        quantity: i.quantity,
+        retail_price: (i.unit_price_cents / 100).toFixed(2),
+      }))
 
     const draft = await createPrintfulOrder({
       external_id: order.order_number,
