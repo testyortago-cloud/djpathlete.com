@@ -3,6 +3,7 @@ import Link from "next/link"
 import { getOrderByNumber } from "@/lib/db/shop-orders"
 import { stripe } from "@/lib/stripe"
 import { isShopEnabled } from "@/lib/shop/feature-flag"
+import { handleShopOrderCheckout } from "@/lib/shop/webhooks"
 import { ClearCartOnMount } from "@/components/public/shop/ClearCartOnMount"
 
 export default async function Page({
@@ -15,12 +16,24 @@ export default async function Page({
   if (!isShopEnabled()) notFound()
   const { orderNumber } = await params
   const { session_id } = await searchParams
-  const order = await getOrderByNumber(orderNumber)
+  let order = await getOrderByNumber(orderNumber)
   if (!order) notFound()
 
   if (session_id) {
     const s = await stripe.checkout.sessions.retrieve(session_id)
     if (s.metadata?.order_number !== orderNumber) notFound()
+
+    // Fallback: if the Stripe webhook hasn't reached us yet (common locally
+    // without `stripe listen`, or if the webhook briefly failed), reconcile
+    // the order here. `handleShopOrderCheckout` is idempotent.
+    if (order.status === "pending" && s.payment_status === "paid") {
+      try {
+        await handleShopOrderCheckout(s)
+        order = (await getOrderByNumber(orderNumber)) ?? order
+      } catch (err) {
+        console.error("[thank-you] reconcile failed", err)
+      }
+    }
   }
 
   const hasDigital = order.items.some((i) => i.product_type === "digital")

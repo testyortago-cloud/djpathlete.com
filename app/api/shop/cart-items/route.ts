@@ -11,6 +11,7 @@ const BodySchema = z.object({
 export interface CartItemResponse {
   variant_id: string
   product_id: string
+  product_type: "pod" | "digital" | "affiliate"
   product_slug: string
   product_name: string
   variant_name: string
@@ -67,6 +68,7 @@ export async function POST(request: Request) {
         {
           variant_id: variant.id,
           product_id: product.id,
+          product_type: product.product_type,
           product_slug: product.slug,
           product_name: product.name,
           variant_name: variant.name,

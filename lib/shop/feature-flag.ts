@@ -3,9 +3,9 @@ export function isShopEnabled(): boolean {
 }
 
 export function isShopDigitalEnabled(): boolean {
-  return process.env.SHOP_DIGITAL_ENABLED === "true"
+  return process.env.SHOP_DIGITAL_ENABLED !== "false"
 }
 
 export function isShopAffiliateEnabled(): boolean {
-  return process.env.SHOP_AFFILIATE_ENABLED === "true"
+  return process.env.SHOP_AFFILIATE_ENABLED !== "false"
 }

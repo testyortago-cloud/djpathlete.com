@@ -1,4 +1,3 @@
-// app/(admin)/admin/shop/products/[id]/DigitalFileManager.tsx
 "use client"
 import { useState } from "react"
 import { toast } from "sonner"
@@ -17,25 +16,32 @@ export function DigitalFileManager({
   async function onUpload(f: File) {
     setUploading(true)
     try {
-      const signRes = await fetch("/api/uploads/shop-pdf", {
+      const uploadForm = new FormData()
+      uploadForm.append("file", f)
+      const uploadRes = await fetch("/api/uploads/shop-pdf", {
         method: "POST",
-        body: JSON.stringify({
-          file_name: f.name, content_type: f.type, file_size_bytes: f.size,
-        }),
+        body: uploadForm,
       })
-      if (!signRes.ok) throw new Error("sign failed")
-      const { upload_url, storage_path } = await signRes.json()
-      const put = await fetch(upload_url, {
-        method: "PUT", body: f, headers: { "Content-Type": f.type },
-      })
-      if (!put.ok) throw new Error("upload failed")
+      if (!uploadRes.ok) {
+        const err = await uploadRes.json().catch(() => ({}))
+        throw new Error(typeof err.error === "string" ? err.error : "Upload failed")
+      }
+      const { storage_path, file_name, file_size_bytes, mime_type } = await uploadRes.json()
       const attach = await fetch(`/api/admin/shop/products/${productId}/files`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          file_name: f.name, display_name: f.name,
-          storage_path, file_size_bytes: f.size, mime_type: f.type,
+          file_name,
+          display_name: file_name,
+          storage_path,
+          file_size_bytes,
+          mime_type,
         }),
       })
+      if (!attach.ok) {
+        const err = await attach.json().catch(() => ({}))
+        throw new Error(typeof err.error === "string" ? err.error : "Attach failed")
+      }
       const { file } = await attach.json()
       setFiles((prev) => [...prev, file])
       toast.success("Uploaded")

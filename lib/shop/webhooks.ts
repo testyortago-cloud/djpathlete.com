@@ -46,12 +46,20 @@ export async function handleShopOrderCheckout(session: Stripe.Checkout.Session):
     const existingDownloads = await listDownloadsForOrder(updated.id)
     if (existingDownloads.length === 0) {
       const now = new Date()
+      let createdCount = 0
 
       for (const item of digitalItems) {
         const product = await getProductById(item.product_id)
         if (!product) continue
 
         const files = await listFilesForProduct(product.id)
+        if (files.length === 0) {
+          console.error(
+            `[shop_order ${updated.order_number}] digital product ${product.id} (${product.slug}) has no files — customer will see an empty downloads page`,
+          )
+          continue
+        }
+
         for (const file of files) {
           const accessExpiresAt =
             product.digital_access_days != null
@@ -65,14 +73,17 @@ export async function handleShopOrderCheckout(session: Stripe.Checkout.Session):
             access_expires_at: accessExpiresAt,
             max_downloads: product.digital_max_downloads ?? null,
           })
+          createdCount++
         }
       }
 
-      // Send fulfillment email
-      await sendDigitalFulfillmentEmail({
-        to: updated.customer_email,
-        orderNumber: updated.order_number,
-      })
+      // Only send the fulfillment email if we actually created download rows.
+      if (createdCount > 0) {
+        await sendDigitalFulfillmentEmail({
+          to: updated.customer_email,
+          orderNumber: updated.order_number,
+        })
+      }
     }
 
     // If order is digital-only (no POD items), advance to fulfilled_digital

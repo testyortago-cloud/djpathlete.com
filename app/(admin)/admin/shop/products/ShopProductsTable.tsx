@@ -2,11 +2,21 @@
 
 import { useState } from "react"
 import Image from "next/image"
-import Link from "next/link"
 import { toast } from "sonner"
-import { ExternalLink, Pencil } from "lucide-react"
+import { ExternalLink, Pencil, Trash2 } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { EditProductDialog } from "@/components/admin/shop/products/dialogs/EditProductDialog"
 import { cn } from "@/lib/utils"
 import type { ShopProduct } from "@/types/database"
 
@@ -16,6 +26,32 @@ interface ShopProductsTableProps {
 
 export function ShopProductsTable({ products: initialProducts }: ShopProductsTableProps) {
   const [products, setProducts] = useState(initialProducts)
+  const [editing, setEditing] = useState<ShopProduct | null>(null)
+  const [deleting, setDeleting] = useState<ShopProduct | null>(null)
+  const [deletingInFlight, setDeletingInFlight] = useState(false)
+
+  async function handleDelete() {
+    if (!deleting) return
+    setDeletingInFlight(true)
+    try {
+      const res = await fetch(`/api/admin/shop/products/${deleting.id}`, {
+        method: "DELETE",
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(
+          typeof err.error === "string" ? err.error : `Delete failed (${res.status})`,
+        )
+      }
+      setProducts((prev) => prev.filter((p) => p.id !== deleting.id))
+      toast.success(`Deleted "${deleting.name}"`)
+      setDeleting(null)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Delete failed")
+    } finally {
+      setDeletingInFlight(false)
+    }
+  }
 
   async function handleToggle(id: string, field: "is_active" | "is_featured", value: boolean) {
     // Optimistic update
@@ -48,6 +84,7 @@ export function ShopProductsTable({ products: initialProducts }: ShopProductsTab
   }
 
   return (
+    <>
     <div className="bg-white rounded-xl border border-border overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -150,10 +187,13 @@ export function ShopProductsTable({ products: initialProducts }: ShopProductsTab
                   {/* Actions */}
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
-                      <Button variant="ghost" size="icon-xs" asChild>
-                        <Link href={`/admin/shop/products/${product.id}`} title="Edit product">
-                          <Pencil className="size-3.5" />
-                        </Link>
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        onClick={() => setEditing(product)}
+                        title="Edit product"
+                      >
+                        <Pencil className="size-3.5" />
                       </Button>
                       <Button variant="ghost" size="icon-xs" asChild>
                         <a
@@ -165,6 +205,17 @@ export function ShopProductsTable({ products: initialProducts }: ShopProductsTab
                           <ExternalLink className="size-3.5" />
                         </a>
                       </Button>
+                      {product.product_type !== "pod" && (
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          onClick={() => setDeleting(product)}
+                          title="Delete product"
+                          className="text-muted-foreground hover:text-destructive"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -174,5 +225,43 @@ export function ShopProductsTable({ products: initialProducts }: ShopProductsTab
         </table>
       </div>
     </div>
+    <EditProductDialog
+      product={editing}
+      open={editing !== null}
+      onOpenChange={(open) => {
+        if (!open) setEditing(null)
+      }}
+    />
+    <AlertDialog
+      open={deleting !== null}
+      onOpenChange={(open) => {
+        if (!open && !deletingInFlight) setDeleting(null)
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete product?</AlertDialogTitle>
+          <AlertDialogDescription>
+            {deleting
+              ? `This will permanently delete "${deleting.name}" and its files${deleting.product_type === "affiliate" ? " and click history" : ""}. This cannot be undone.`
+              : ""}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={deletingInFlight}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={(e) => {
+              e.preventDefault()
+              handleDelete()
+            }}
+            disabled={deletingInFlight}
+            className="bg-destructive text-white hover:bg-destructive/90"
+          >
+            {deletingInFlight ? "Deleting…" : "Delete"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   )
 }

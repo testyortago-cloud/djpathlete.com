@@ -10,6 +10,7 @@ import { listActiveProducts } from "@/lib/db/shop-products"
 import { listVariantsForProduct } from "@/lib/db/shop-variants"
 import { ComingSoon } from "@/components/public/shop/ComingSoon"
 import { ProductCard } from "@/components/public/shop/ProductCard"
+import { ShopFilterBar, type ShopCategory, type ShopSort } from "./ShopFilterBar"
 
 // Re-query on every request so admin activate/deactivate shows immediately
 // (avoids the static-page cache burning in a now-inactive product).
@@ -67,7 +68,14 @@ const TRUST_ITEMS = [
   },
 ]
 
-export default async function ShopPage() {
+const VALID_CATEGORIES: readonly ShopCategory[] = ["all", "pod", "digital", "affiliate"]
+const VALID_SORTS: readonly ShopSort[] = ["featured", "newest", "price-asc", "price-desc"]
+
+export default async function ShopPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ category?: string; sort?: string }>
+}) {
   if (!isShopEnabled()) {
     return (
       <>
@@ -76,6 +84,16 @@ export default async function ShopPage() {
       </>
     )
   }
+
+  const { category: categoryParam, sort: sortParam } = await searchParams
+  const activeCategory: ShopCategory = VALID_CATEGORIES.includes(
+    categoryParam as ShopCategory,
+  )
+    ? (categoryParam as ShopCategory)
+    : "all"
+  const activeSort: ShopSort = VALID_SORTS.includes(sortParam as ShopSort)
+    ? (sortParam as ShopSort)
+    : "featured"
 
   const products = await listActiveProducts()
   const affOn = isShopAffiliateEnabled()
@@ -86,7 +104,7 @@ export default async function ShopPage() {
     return true
   })
 
-  const productsWithDetails = await Promise.all(
+  const allWithDetails = await Promise.all(
     visible.map(async (product) => {
       const variants = await listVariantsForProduct(product.id)
       const minPriceCents =
@@ -100,7 +118,45 @@ export default async function ShopPage() {
     }),
   )
 
-  const totalStyles = productsWithDetails.length
+  const categoryCounts = {
+    pod: allWithDetails.filter((x) => x.product.product_type === "pod").length,
+    digital: allWithDetails.filter((x) => x.product.product_type === "digital").length,
+    affiliate: allWithDetails.filter((x) => x.product.product_type === "affiliate").length,
+  }
+
+  const filtered =
+    activeCategory === "all"
+      ? allWithDetails
+      : allWithDetails.filter((x) => x.product.product_type === activeCategory)
+
+  const productsWithDetails = [...filtered].sort((a, b) => {
+    switch (activeSort) {
+      case "newest":
+        return (
+          new Date(b.product.created_at).getTime() -
+          new Date(a.product.created_at).getTime()
+        )
+      case "price-asc":
+        return (a.minPriceCents ?? Infinity) - (b.minPriceCents ?? Infinity)
+      case "price-desc":
+        return (b.minPriceCents ?? -Infinity) - (a.minPriceCents ?? -Infinity)
+      case "featured":
+      default: {
+        const fa = a.product.is_featured ? 0 : 1
+        const fb = b.product.is_featured ? 0 : 1
+        if (fa !== fb) return fa - fb
+        if (a.product.sort_order !== b.product.sort_order) {
+          return a.product.sort_order - b.product.sort_order
+        }
+        return (
+          new Date(b.product.created_at).getTime() -
+          new Date(a.product.created_at).getTime()
+        )
+      }
+    }
+  })
+
+  const totalStyles = allWithDetails.length
 
   return (
     <>
@@ -186,42 +242,12 @@ export default async function ShopPage() {
 
       {/* Category + sort bar */}
       <section className="border-b border-border bg-background">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-8">
-          <nav className="flex items-center gap-1 overflow-x-auto">
-            {["All", "Apparel", "Training", "Accessories"].map((label, i) => (
-              <button
-                key={label}
-                type="button"
-                className={`shrink-0 rounded-full px-4 py-1.5 font-body text-sm transition-colors ${
-                  i === 0
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:bg-muted hover:text-primary"
-                }`}
-              >
-                {label}
-                {i === 0 && (
-                  <span className="ml-2 font-mono text-[10px] opacity-80">
-                    {totalStyles}
-                  </span>
-                )}
-              </button>
-            ))}
-          </nav>
-          <div className="hidden items-center gap-3 sm:flex">
-            <span className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-              Sort
-            </span>
-            <select
-              defaultValue="featured"
-              className="rounded-full border border-border bg-background px-3 py-1.5 font-body text-sm text-primary focus:outline-none focus:ring-2 focus:ring-primary"
-            >
-              <option value="featured">Featured</option>
-              <option value="newest">Newest</option>
-              <option value="price-asc">Price: low to high</option>
-              <option value="price-desc">Price: high to low</option>
-            </select>
-          </div>
-        </div>
+        <ShopFilterBar
+          activeCategory={activeCategory}
+          activeSort={activeSort}
+          totalCount={totalStyles}
+          categoryCounts={categoryCounts}
+        />
       </section>
 
       {/* Product grid */}

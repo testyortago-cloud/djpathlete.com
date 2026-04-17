@@ -79,6 +79,9 @@ export function CheckoutPageClient() {
     email: session?.user?.email ?? undefined,
   }
 
+  const isDigitalOnly =
+    cartItems.length > 0 && cartItems.every((i) => i.product_type === "digital")
+
   async function handleAddressSubmit(submitted: ShippingAddress) {
     setAddress(submitted)
     setQuote(null)
@@ -175,7 +178,7 @@ export function CheckoutPageClient() {
                 step === "address" ? "text-primary" : "text-muted-foreground"
               }`}
             >
-              1. Shipping address
+              1. {isDigitalOnly ? "Delivery details" : "Shipping address"}
             </span>
             <span className="text-muted-foreground">›</span>
             <span
@@ -195,12 +198,18 @@ export function CheckoutPageClient() {
             {/* ── Step A: Address form ── */}
             {step === "address" && (
               <div className="rounded-2xl border border-border bg-background p-6">
-                <h2 className="text-lg font-heading font-semibold text-primary mb-5">
-                  Shipping address
+                <h2 className="text-lg font-heading font-semibold text-primary mb-2">
+                  {isDigitalOnly ? "Delivery details" : "Shipping address"}
                 </h2>
+                {isDigitalOnly && (
+                  <p className="text-sm font-body text-muted-foreground mb-5">
+                    We&apos;ll send your download link to this email. No shipping required.
+                  </p>
+                )}
                 <AddressForm
                   initial={address ?? sessionPrefill}
                   onSubmit={handleAddressSubmit}
+                  digitalOnly={isDigitalOnly}
                 />
               </div>
             )}
@@ -226,17 +235,24 @@ export function CheckoutPageClient() {
                 {address && (
                   <div className="rounded-xl border border-border bg-surface/50 p-4">
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1.5">
-                      Shipping to
+                      {isDigitalOnly ? "Delivering to" : "Shipping to"}
                     </p>
                     <p className="text-sm font-body text-primary">{address.name}</p>
-                    <p className="text-sm font-body text-muted-foreground">
-                      {address.line1}
-                      {address.line2 ? `, ${address.line2}` : ""}
-                    </p>
-                    <p className="text-sm font-body text-muted-foreground">
-                      {address.city}, {address.state} {address.postal_code}
-                    </p>
-                    <p className="text-sm font-body text-muted-foreground">{address.country}</p>
+                    <p className="text-sm font-body text-muted-foreground">{address.email}</p>
+                    {!isDigitalOnly && (
+                      <>
+                        <p className="text-sm font-body text-muted-foreground">
+                          {address.line1}
+                          {address.line2 ? `, ${address.line2}` : ""}
+                        </p>
+                        <p className="text-sm font-body text-muted-foreground">
+                          {address.city}, {address.state} {address.postal_code}
+                        </p>
+                        <p className="text-sm font-body text-muted-foreground">
+                          {address.country}
+                        </p>
+                      </>
+                    )}
                   </div>
                 )}
 
@@ -245,7 +261,7 @@ export function CheckoutPageClient() {
                   <div className="flex items-center gap-3 py-6">
                     <Loader2 className="w-5 h-5 animate-spin text-muted-foreground flex-shrink-0" />
                     <p className="text-sm font-body text-muted-foreground">
-                      Calculating shipping…
+                      {isDigitalOnly ? "Preparing your order…" : "Calculating shipping…"}
                     </p>
                   </div>
                 )}

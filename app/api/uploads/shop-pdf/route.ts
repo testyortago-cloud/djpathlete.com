@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server"
 import { requireAdmin } from "@/lib/auth-helpers"
-import { generateSignedUploadUrl } from "@/lib/shop/downloads"
-import { z } from "zod"
+import { getPrivateBucket } from "@/lib/firebase-admin"
 import crypto from "node:crypto"
 
 const ALLOWED_MIMES = new Set([
@@ -12,32 +11,48 @@ const ALLOWED_MIMES = new Set([
 ])
 const MAX_BYTES = 500 * 1024 * 1024 // 500 MB
 
-const bodySchema = z.object({
-  file_name: z.string().min(1).max(200),
-  content_type: z.string().min(1),
-  file_size_bytes: z.number().int().positive(),
-})
-
 export async function POST(req: Request) {
   await requireAdmin()
-  const parsed = bodySchema.safeParse(await req.json())
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+
+  const formData = await req.formData()
+  const file = formData.get("file")
+  if (!file || typeof (file as File).arrayBuffer !== "function") {
+    return NextResponse.json({ error: "Missing file" }, { status: 400 })
   }
-  const v = parsed.data
-  if (!ALLOWED_MIMES.has(v.content_type)) {
-    return NextResponse.json({ error: "unsupported mime type" }, { status: 400 })
+  const uploaded = file as File
+  if (uploaded.size > MAX_BYTES) {
+    return NextResponse.json({ error: "file exceeds 500MB" }, { status: 413 })
   }
-  if (v.file_size_bytes > MAX_BYTES) {
-    return NextResponse.json({ error: "file exceeds 500MB" }, { status: 400 })
+  if (!ALLOWED_MIMES.has(uploaded.type)) {
+    return NextResponse.json(
+      { error: `unsupported mime type: ${uploaded.type}` },
+      { status: 415 },
+    )
   }
-  const safeName = v.file_name.replace(/[^a-zA-Z0-9._-]/g, "_")
+
+  const safeName = uploaded.name.replace(/[^a-zA-Z0-9._-]/g, "_")
   const prefix = crypto.randomUUID()
   const storage_path = `shop-downloads/${prefix}/${safeName}`
-  const upload_url = await generateSignedUploadUrl(
+
+  try {
+    const bucket = getPrivateBucket()
+    const buffer = Buffer.from(await uploaded.arrayBuffer())
+    await bucket.file(storage_path).save(buffer, {
+      metadata: { contentType: uploaded.type },
+      resumable: false,
+    })
+  } catch (err) {
+    const e = err as { message?: string }
+    return NextResponse.json(
+      { error: e.message ?? "Failed to upload file" },
+      { status: 500 },
+    )
+  }
+
+  return NextResponse.json({
     storage_path,
-    v.content_type,
-    600,
-  )
-  return NextResponse.json({ upload_url, storage_path })
+    file_name: uploaded.name,
+    file_size_bytes: uploaded.size,
+    mime_type: uploaded.type,
+  })
 }

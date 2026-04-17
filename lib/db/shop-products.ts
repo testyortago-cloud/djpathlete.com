@@ -95,6 +95,12 @@ export async function updateProduct(
   return data as ShopProduct
 }
 
+export async function deleteProduct(id: string) {
+  const supabase = getClient()
+  const { error } = await supabase.from("shop_products").delete().eq("id", id)
+  if (error) throw error
+}
+
 export async function upsertProductFromSync(input: {
   printful_sync_id: number
   name: string

@@ -1,8 +1,9 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import { useParams } from "next/navigation"
-import { Loader2, Package, Truck } from "lucide-react"
+import { Download, Loader2, Package, Truck } from "lucide-react"
 import type { ShopOrderStatus } from "@/types/database"
 
 interface OrderLookupResponse {
@@ -14,6 +15,7 @@ interface OrderLookupResponse {
     variant_name: string
     quantity: number
     unit_price_cents: number
+    product_type?: "pod" | "digital"
   }>
   shipping_address: {
     name: string
@@ -159,6 +161,26 @@ export function OrderLookupPageClient() {
             )}
           </div>
 
+          {order.items.some((i) => i.product_type === "digital") && (
+            <div className="rounded-xl border border-accent/30 bg-accent/5 p-5 flex items-center gap-4">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <Download className="size-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-primary">Your digital files are ready</p>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  You&apos;ll need the email you used at checkout.
+                </p>
+              </div>
+              <Link
+                href={`/shop/orders/${order.order_number}/downloads`}
+                className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 transition-opacity"
+              >
+                Go to downloads
+              </Link>
+            </div>
+          )}
+
           <div className="bg-white rounded-xl border p-6">
             <h2 className="font-semibold mb-4 flex items-center gap-2">
               <Package className="h-4 w-4" />
@@ -183,7 +205,12 @@ export function OrderLookupPageClient() {
               </div>
               <div className="flex justify-between text-muted-foreground">
                 <span>Shipping</span>
-                <span>{formatPrice(order.shipping_cents)}</span>
+                <span>
+                  {order.shipping_cents === 0 &&
+                  order.items.every((i) => i.product_type === "digital")
+                    ? "Free (digital)"
+                    : formatPrice(order.shipping_cents)}
+                </span>
               </div>
               <div className="flex justify-between font-semibold text-base mt-2">
                 <span>Total</span>
@@ -225,19 +252,21 @@ export function OrderLookupPageClient() {
             </div>
           )}
 
-          <div className="bg-white rounded-xl border p-6">
-            <h2 className="font-semibold mb-3">Ship to</h2>
-            <div className="text-sm text-muted-foreground space-y-0.5">
-              <p>{order.shipping_address.name}</p>
-              <p>{order.shipping_address.line1}</p>
-              {order.shipping_address.line2 && <p>{order.shipping_address.line2}</p>}
-              <p>
-                {order.shipping_address.city}, {order.shipping_address.state}{" "}
-                {order.shipping_address.postal_code}
-              </p>
-              <p>{order.shipping_address.country}</p>
+          {order.items.some((i) => i.product_type !== "digital") && (
+            <div className="bg-white rounded-xl border p-6">
+              <h2 className="font-semibold mb-3">Ship to</h2>
+              <div className="text-sm text-muted-foreground space-y-0.5">
+                <p>{order.shipping_address.name}</p>
+                <p>{order.shipping_address.line1}</p>
+                {order.shipping_address.line2 && <p>{order.shipping_address.line2}</p>}
+                <p>
+                  {order.shipping_address.city}, {order.shipping_address.state}{" "}
+                  {order.shipping_address.postal_code}
+                </p>
+                <p>{order.shipping_address.country}</p>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
     </div>

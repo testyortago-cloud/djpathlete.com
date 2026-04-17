@@ -3,6 +3,7 @@ import Link from "next/link"
 import { listAllProducts, listProductsByType } from "@/lib/db/shop-products"
 import { ShopProductsTable } from "./ShopProductsTable"
 import { SyncButton } from "./SyncButton"
+import { NewProductButtons } from "./NewProductButtons"
 import { cn } from "@/lib/utils"
 import type { ProductType } from "@/types/database"
 
@@ -41,18 +42,7 @@ export default async function ShopProductsPage({
         </div>
         <div className="flex items-center gap-2">
           <SyncButton />
-          <Link
-            href="/admin/shop/products/new/digital"
-            className="rounded-md border border-border px-3 py-1.5 font-body text-sm hover:bg-muted"
-          >
-            + Digital
-          </Link>
-          <Link
-            href="/admin/shop/products/new/affiliate"
-            className="rounded-md border border-border px-3 py-1.5 font-body text-sm hover:bg-muted"
-          >
-            + Affiliate
-          </Link>
+          <NewProductButtons />
         </div>
       </div>
 

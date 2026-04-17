@@ -25,6 +25,14 @@ export function CheckoutSummary({ items, quote }: CheckoutSummaryProps) {
   const lineFor = (variantId: string) =>
     lines.find((l) => l.variant_id === variantId)
 
+  const subtotalCents = items.reduce((sum, item) => {
+    const qty = lineFor(item.variant_id)?.quantity ?? 1
+    return sum + item.unit_price_cents * qty
+  }, 0)
+
+  const digitalOnly =
+    items.length > 0 && items.every((i) => i.product_type === "digital")
+
   return (
     <div className="rounded-2xl border border-border bg-background p-6 space-y-4">
       <h2 className="text-lg font-heading font-semibold text-primary">Order Summary</h2>
@@ -100,12 +108,20 @@ export function CheckoutSummary({ items, quote }: CheckoutSummaryProps) {
           <>
             <div className="flex justify-between text-muted-foreground">
               <span>Subtotal</span>
-              <span>—</span>
+              <span className="font-medium text-primary">{formatPrice(subtotalCents)}</span>
             </div>
             <div className="flex justify-between text-muted-foreground">
               <span>Shipping</span>
-              <span>Calculated after address</span>
+              <span className={digitalOnly ? "font-medium text-primary" : ""}>
+                {digitalOnly ? "Free (digital)" : "Calculated after address"}
+              </span>
             </div>
+            {digitalOnly && (
+              <div className="flex justify-between text-base font-semibold text-primary pt-2 border-t border-border">
+                <span>Total</span>
+                <span>{formatPrice(subtotalCents)}</span>
+              </div>
+            )}
           </>
         )}
       </div>
