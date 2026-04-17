@@ -9,8 +9,11 @@ import {
 } from "@/lib/shop/feature-flag"
 import { getProductBySlug, listActiveProducts } from "@/lib/db/shop-products"
 import { listVariantsForProduct } from "@/lib/db/shop-variants"
+import { listFilesForProduct } from "@/lib/db/shop-product-files"
 import { VariantPicker } from "@/components/public/shop/VariantPicker"
 import { ProductCard } from "@/components/public/shop/ProductCard"
+import { FreePdfForm } from "@/components/public/shop/FreePdfForm"
+import { DigitalAddToCartButton } from "@/components/public/shop/DigitalAddToCartButton"
 
 interface Props {
   params: Promise<{ slug: string }>
@@ -50,6 +53,57 @@ export default async function ProductDetailPage({ params }: Props) {
   if (!product || !product.is_active) notFound()
   if (product.product_type === "affiliate" && !isShopAffiliateEnabled()) notFound()
   if (product.product_type === "digital" && !isShopDigitalEnabled()) notFound()
+
+  if (product.product_type === "digital") {
+    const digitalVariants = await listVariantsForProduct(product.id)
+    const files = await listFilesForProduct(product.id)
+    const defaultVariant = digitalVariants[0] ?? null
+    return (
+      <article className="mx-auto max-w-5xl px-4 py-12 pt-24 sm:pt-28 lg:pt-32">
+        <div className="grid grid-cols-1 gap-10 md:grid-cols-2">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={product.thumbnail_url_override ?? product.thumbnail_url}
+            alt={product.name}
+            className="w-full rounded-2xl"
+          />
+          <div>
+            <h1 className="font-heading text-3xl text-primary">{product.name}</h1>
+            {product.digital_is_free ? (
+              <p className="mt-2 font-mono text-xs uppercase tracking-widest text-accent">
+                Free download
+              </p>
+            ) : (
+              <p className="mt-2 font-mono text-sm text-muted-foreground">
+                ${((defaultVariant?.retail_price_cents ?? 0) / 100).toFixed(2)}
+              </p>
+            )}
+            <div
+              className="prose mt-6"
+              dangerouslySetInnerHTML={{ __html: product.description }}
+            />
+            {files.length > 0 && (
+              <ul className="mt-4 space-y-1 text-sm text-muted-foreground">
+                {files.map((f) => (
+                  <li key={f.id}>&#8226; {f.display_name}</li>
+                ))}
+              </ul>
+            )}
+            <div className="mt-8">
+              {product.digital_is_free ? (
+                <FreePdfForm productId={product.id} />
+              ) : defaultVariant ? (
+                <DigitalAddToCartButton
+                  variantId={defaultVariant.id}
+                  priceCents={defaultVariant.retail_price_cents}
+                />
+              ) : null}
+            </div>
+          </div>
+        </div>
+      </article>
+    )
+  }
 
   if (product.product_type === "affiliate") {
     return (
