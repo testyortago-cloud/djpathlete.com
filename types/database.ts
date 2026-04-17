@@ -791,6 +791,41 @@ export interface ShopProduct {
   digital_is_free: boolean
 }
 
+export interface ShopProductFile {
+  id: string
+  product_id: string
+  file_name: string
+  display_name: string
+  storage_path: string
+  file_size_bytes: number
+  mime_type: string
+  sort_order: number
+  created_at: string
+}
+
+export interface ShopOrderDownload {
+  id: string
+  order_id: string
+  product_id: string
+  file_id: string
+  access_expires_at: string | null
+  download_count: number
+  max_downloads: number | null
+  last_downloaded_at: string | null
+  created_at: string
+}
+
+export interface ShopLead {
+  id: string
+  product_id: string
+  email: string
+  resend_contact_id: string | null
+  resend_sync_status: string
+  resend_sync_error: string | null
+  ip_address: string | null
+  created_at: string
+}
+
 export interface ShopProductVariant {
   id: string
   product_id: string
