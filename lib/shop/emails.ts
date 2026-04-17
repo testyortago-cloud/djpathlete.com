@@ -143,6 +143,23 @@ export async function sendOrderRefundedEmail(order: ShopOrder): Promise<void> {
   }
 }
 
+export async function sendDigitalFulfillmentEmail(input: {
+  to: string
+  orderNumber: string
+}): Promise<void> {
+  if (!hasApiKey()) {
+    warnMissingKey("sendDigitalFulfillmentEmail")
+    return
+  }
+  const base = process.env.NEXTAUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3050"
+  await resend.emails.send({
+    from: FROM_EMAIL,
+    to: input.to,
+    subject: `Your download is ready — order ${input.orderNumber}`,
+    html: `<h1>Your download is ready</h1><p>You can access your files any time at:</p><p><a href="${base}/shop/orders/${input.orderNumber}/downloads">View downloads</a></p>`,
+  })
+}
+
 export async function sendFreeDownloadEmail(input: {
   to: string
   productName: string
