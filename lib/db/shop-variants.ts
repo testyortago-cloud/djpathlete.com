@@ -165,3 +165,31 @@ export async function updateVariant(
   if (error) throw error
   return data as ShopProductVariant
 }
+
+export async function createDefaultVariant(input: {
+  product_id: string
+  retail_price_cents: number
+  thumbnail_url: string
+}): Promise<ShopProductVariant> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("shop_product_variants")
+    .insert({
+      product_id: input.product_id,
+      printful_sync_variant_id: null,
+      printful_variant_id: null,
+      sku: `digital-${input.product_id.slice(0, 8)}`,
+      name: "Default",
+      size: null,
+      color: null,
+      retail_price_cents: input.retail_price_cents,
+      printful_cost_cents: 0,
+      mockup_url: input.thumbnail_url,
+      mockup_urls: [],
+      is_available: true,
+    })
+    .select()
+    .single()
+  if (error) throw error
+  return data as ShopProductVariant
+}
