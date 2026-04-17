@@ -25,6 +25,16 @@ export function getAdminStorage() {
   return getStorage(getAdminApp())
 }
 
+/**
+ * Bucket for private shop downloads (signed URLs only).
+ * Name comes from FIREBASE_PRIVATE_BUCKET.
+ */
+export function getPrivateBucket() {
+  const bucketName = process.env.FIREBASE_PRIVATE_BUCKET
+  if (!bucketName) throw new Error("FIREBASE_PRIVATE_BUCKET not set")
+  return getStorage(getAdminApp()).bucket(bucketName)
+}
+
 export function getAdminFirestore() {
   return getFirestore(getAdminApp())
 }
