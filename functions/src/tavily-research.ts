@@ -6,58 +6,17 @@
 import { FieldValue, getFirestore } from "firebase-admin/firestore"
 import { tavilySearch, tavilyExtract } from "./lib/tavily.js"
 import { getSupabase } from "./lib/supabase.js"
+import { buildResearchBrief, type TavilyResearchBrief } from "./lib/research-brief.js"
+
+// Re-export so downstream consumers (ResearchPanel test types, etc.) still work.
+export { buildResearchBrief }
+export type { TavilyResearchBrief }
 
 export interface TavilyResearchInput {
   topic: string
   extract_top_n?: number
   search_depth?: "basic" | "advanced"
   blog_post_id?: string
-}
-
-export interface TavilyResearchBrief {
-  topic: string
-  summary: string | null
-  results: Array<{
-    title: string
-    url: string
-    snippet: string
-    score: number
-    published_date: string | null
-  }>
-  extracted: Array<{ url: string; content: string }>
-  generated_at: string
-}
-
-interface BuildBriefParams {
-  topic: string
-  search: {
-    answer: string | null
-    results: Array<{
-      title: string
-      url: string
-      content: string
-      score: number
-      published_date?: string | null
-    }>
-  }
-  extractedContent: Array<{ url: string; content: string }>
-  generatedAt: string
-}
-
-export function buildResearchBrief(p: BuildBriefParams): TavilyResearchBrief {
-  return {
-    topic: p.topic,
-    summary: p.search.answer ?? null,
-    results: p.search.results.map((r) => ({
-      title: r.title,
-      url: r.url,
-      snippet: r.content,
-      score: r.score,
-      published_date: r.published_date ?? null,
-    })),
-    extracted: p.extractedContent,
-    generated_at: p.generatedAt,
-  }
 }
 
 export function shouldPersist(input: TavilyResearchInput): boolean {
