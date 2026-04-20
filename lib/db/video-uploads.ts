@@ -39,6 +39,12 @@ export async function listVideoUploads(
   return (data ?? []) as VideoUpload[]
 }
 
+export async function deleteVideoUpload(id: string): Promise<void> {
+  const supabase = getClient()
+  const { error } = await supabase.from("video_uploads").delete().eq("id", id)
+  if (error) throw error
+}
+
 export async function updateVideoUploadStatus(
   id: string,
   status: VideoUploadStatus,
