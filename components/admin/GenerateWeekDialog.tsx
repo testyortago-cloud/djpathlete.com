@@ -219,6 +219,7 @@ export function GenerateWeekDialog({
                   {ignoreProfile ? "Coach Instructions (recommended)" : "Coach Instructions (optional)"}
                 </Label>
                 <TemplateSelector
+                  scope="week"
                   onSelect={(prompt) => setInstructions((prev) => (prev ? `${prev}\n\n${prompt}` : prompt))}
                 />
               </div>

@@ -218,6 +218,7 @@ export function GenerateDayDialog({
                   {ignoreProfile ? "Coach Instructions (recommended)" : "Coach Instructions (optional)"}
                 </Label>
                 <TemplateSelector
+                  scope="day"
                   onSelect={(prompt) => setInstructions((prev) => (prev ? `${prev}\n\n${prompt}` : prompt))}
                 />
               </div>

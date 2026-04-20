@@ -258,6 +258,7 @@ export function GenerationDialog(props: GenerationDialogProps) {
               <div className="flex items-center justify-between">
                 <Label htmlFor="gen-instructions">Coach Instructions (optional)</Label>
                 <TemplateSelector
+                  scope={isWeek ? "week" : "day"}
                   onSelect={(prompt) => setInstructions((prev) => (prev ? `${prev}\n\n${prompt}` : prompt))}
                 />
               </div>

@@ -1,18 +1,27 @@
 /**
  * Prompt templates for AI program generation.
  * Coaches can select a template to pre-fill the "Coach Instructions" textarea.
+ *
+ * `scope` controls which dialog the template appears in:
+ *   - "week" — only in the AI Generate Week dialog
+ *   - "day"  — only in the AI Generate Day dialog
+ *   - "both" — available in both dialogs
  */
+
+export type TemplateScope = "week" | "day" | "both"
 
 export interface PromptTemplate {
   id: string
   name: string
-  category: "structure" | "periodization" | "sport" | "rehab" | "conditioning" | "specialty"
+  category: "structure" | "periodization" | "sport" | "rehab" | "conditioning" | "specialty" | "session"
+  scope: TemplateScope
   description: string
   prompt: string
 }
 
 export const PROMPT_TEMPLATE_CATEGORIES: Record<string, string> = {
   structure: "Program Structure",
+  session: "Session Focus",
   periodization: "Periodization & Loading",
   sport: "Sport-Specific",
   rehab: "Rehab & Return-to-Play",
@@ -26,6 +35,7 @@ export const PROMPT_TEMPLATES: PromptTemplate[] = [
     id: "deload-week",
     name: "Deload Week",
     category: "structure",
+    scope: "week",
     description: "Generate a recovery-focused deload week",
     prompt: `Make this a DELOAD WEEK. Reduce working volume by 40-50%:
 - Keep main compound movements but reduce sets by half
@@ -38,6 +48,7 @@ export const PROMPT_TEMPLATES: PromptTemplate[] = [
     id: "testing-week",
     name: "Testing / Baseline Week",
     category: "structure",
+    scope: "week",
     description: "Program a testing week to establish baselines",
     prompt: `This is a TESTING WEEK to establish baseline numbers:
 - Program work-up-to-max testing for main lifts (squat, bench/press, deadlift/hinge)
@@ -52,6 +63,7 @@ export const PROMPT_TEMPLATES: PromptTemplate[] = [
     id: "recovery-day",
     name: "Active Recovery Day",
     category: "structure",
+    scope: "day",
     description: "Light recovery session focused on mobility",
     prompt: `This is an ACTIVE RECOVERY DAY — not a training session:
 - Use "activation" role for all exercises
@@ -66,6 +78,7 @@ export const PROMPT_TEMPLATES: PromptTemplate[] = [
     id: "custom-exercise-counts",
     name: "Custom Exercise Breakdown",
     category: "structure",
+    scope: "both",
     description: "Specify exact exercise counts per category",
     prompt: `Use this exact exercise breakdown per session:
 - 1 warm-up / activation
@@ -80,6 +93,7 @@ Adjust the numbers above to match your needs.`,
     id: "bodyweight-only",
     name: "Bodyweight / No Equipment",
     category: "structure",
+    scope: "both",
     description: "Program using only bodyweight exercises",
     prompt: `BODYWEIGHT ONLY — no equipment available:
 - Select only bodyweight exercises from the library
@@ -92,6 +106,7 @@ Adjust the numbers above to match your needs.`,
     id: "travel-hotel",
     name: "Travel / Hotel Gym",
     category: "structure",
+    scope: "both",
     description: "Program for limited hotel gym equipment",
     prompt: `HOTEL GYM — limited equipment (dumbbells and bodyweight only):
 - Use only dumbbells and bodyweight exercises
@@ -102,11 +117,105 @@ Adjust the numbers above to match your needs.`,
 - 45-60 minute sessions`,
   },
 
+  // ─── Session Focus (day only) ───────────────────────────────────────────────
+  {
+    id: "upper-push-day",
+    name: "Upper Push Day",
+    category: "session",
+    scope: "day",
+    description: "Chest, shoulders, and triceps emphasis",
+    prompt: `UPPER PUSH DAY — chest, shoulders, and triceps:
+- 1 primary compound press (bench, incline, or overhead press) at RPE 8 for 4-5 sets
+- 1 secondary press (dumbbell press, landmine press, or dips) at RPE 7-8 for 3-4 sets
+- 2 accessory movements: one shoulder (lateral raise, face pull), one chest (fly, cable crossover)
+- 1 tricep isolation (pushdown, skull crusher, or overhead extension)
+- Finish with scapular health work (band pull-apart or Y-T-W)
+- 5-6 exercises total, 45-60 minutes`,
+  },
+  {
+    id: "upper-pull-day",
+    name: "Upper Pull Day",
+    category: "session",
+    scope: "day",
+    description: "Back, lats, rear delts, and biceps emphasis",
+    prompt: `UPPER PULL DAY — back, lats, rear delts, and biceps:
+- 1 vertical pull (pull-up, chin-up, or lat pulldown) at RPE 8 for 4 sets
+- 1 horizontal pull (barbell row, dumbbell row, or cable row) at RPE 7-8 for 3-4 sets
+- 1 upper back accessory (face pull, reverse fly, or rear delt fly)
+- 1 lat/mid-back accessory (straight-arm pulldown or pullover)
+- 1 bicep isolation (curl variation)
+- Optional: grip work (hangs or farmer carries) as a finisher
+- 5-6 exercises total, 45-60 minutes`,
+  },
+  {
+    id: "lower-leg-day",
+    name: "Lower / Leg Day",
+    category: "session",
+    scope: "day",
+    description: "Quads, hamstrings, glutes, and calves",
+    prompt: `LOWER / LEG DAY — full lower body:
+- 1 primary squat pattern (back squat, front squat, or goblet squat) at RPE 8 for 4-5 sets
+- 1 primary hinge pattern (deadlift, RDL, or hip thrust) at RPE 7-8 for 3-4 sets
+- 1 unilateral movement (split squat, lunge, or step-up) for 3 sets
+- 1 posterior chain accessory (hamstring curl, good morning, or glute-ham raise)
+- 1 calf movement (standing or seated calf raise)
+- Optional: short core finisher (2-3 minutes)
+- 5-6 exercises total, 50-70 minutes`,
+  },
+  {
+    id: "full-body-day",
+    name: "Full Body Day",
+    category: "session",
+    scope: "day",
+    description: "Balanced session hitting every major pattern",
+    prompt: `FULL BODY DAY — hit every major movement pattern once:
+- 1 squat pattern (squat variation)
+- 1 hinge pattern (deadlift or RDL variation)
+- 1 upper push (horizontal or vertical)
+- 1 upper pull (horizontal or vertical)
+- 1 core / carry / anti-rotation
+- Optional: 1 conditioning or power finisher
+- Keep sets moderate (3 per exercise) to respect total session volume
+- 5-6 exercises total, 50-60 minutes`,
+  },
+  {
+    id: "mobility-movement-prep",
+    name: "Mobility & Movement Prep",
+    category: "session",
+    scope: "day",
+    description: "Pure mobility / movement-quality session",
+    prompt: `MOBILITY & MOVEMENT PREP — no loaded strength work:
+- Use "activation" and "warmup" roles throughout
+- 6-8 exercises targeting: ankles, hips, thoracic spine, shoulders
+- Include CARs (controlled articular rotations), 90/90 hip flow, thoracic rotations, wall slides
+- All bodyweight or very light bands — RPE 3-5
+- Breathe deeply and move deliberately
+- 20-30 minutes total — quality over quantity`,
+  },
+  {
+    id: "core-anti-rotation-session",
+    name: "Core / Anti-Rotation Session",
+    category: "session",
+    scope: "day",
+    description: "Dedicated core, bracing, and anti-rotation block",
+    prompt: `CORE / ANTI-ROTATION SESSION:
+- 5-6 exercises split across the 4 core functions:
+  * Anti-extension: dead bug, plank variation, ab wheel
+  * Anti-rotation: Pallof press, bird dog, side plank with reach
+  * Anti-lateral flexion: suitcase carry, single-arm farmer walk
+  * Flexion/rotation: cable woodchop, hanging leg raise (used sparingly)
+- 3 sets per exercise, RPE 7
+- No crunches or sit-ups as primary work
+- Emphasize bracing and breathing patterns on every rep
+- 25-35 minutes`,
+  },
+
   // ─── Periodization & Loading ────────────────────────────────────────────────
   {
     id: "dup",
     name: "Daily Undulating Periodization",
     category: "periodization",
+    scope: "week",
     description: "Same lifts, different loading across the week",
     prompt: `Use DAILY UNDULATING PERIODIZATION (DUP):
 - Program the SAME main lifts across all training days this week
@@ -121,6 +230,7 @@ Adjust the numbers above to match your needs.`,
     id: "percentage-based",
     name: "Percentage-Based Loading",
     category: "periodization",
+    scope: "week",
     description: "Program with specific 1RM percentages",
     prompt: `Use PERCENTAGE-BASED LOADING for all main compound lifts:
 - Week 1: 70% x 4x8
@@ -133,6 +243,7 @@ Set the intensity_pct field on compound slots. Use RPE for accessories.`,
     id: "wave-loading",
     name: "Wave Loading Protocol",
     category: "periodization",
+    scope: "both",
     description: "Ascending wave sets for strength development",
     prompt: `Use WAVE LOADING for primary compound lifts:
 - Perform 2 waves per exercise: 3/2/1/3/2/1
@@ -146,6 +257,7 @@ Set the intensity_pct field on compound slots. Use RPE for accessories.`,
     id: "eccentric-emphasis",
     name: "Eccentric Emphasis Block",
     category: "periodization",
+    scope: "both",
     description: "Slow tempo eccentrics throughout the program",
     prompt: `ECCENTRIC EMPHASIS BLOCK — all working exercises use controlled tempo:
 - All compound lifts: 4-0-1-0 tempo (4-second eccentric)
@@ -159,6 +271,7 @@ Set the intensity_pct field on compound slots. Use RPE for accessories.`,
     id: "taper-competition",
     name: "Competition Taper",
     category: "periodization",
+    scope: "week",
     description: "Taper for an upcoming competition or event",
     prompt: `COMPETITION TAPER — event is at the end of this program:
 - Reduce volume progressively: 30% less than normal first week, 50% less final week
@@ -174,6 +287,7 @@ Set the intensity_pct field on compound slots. Use RPE for accessories.`,
     id: "rotational-sport",
     name: "Rotational Sport (Tennis, Golf, Baseball)",
     category: "sport",
+    scope: "both",
     description: "Emphasis on rotational power and anti-rotation",
     prompt: `ROTATIONAL SPORT FOCUS (tennis/golf/baseball):
 - At least 2 rotational exercises per session (med ball throws, cable rotation, Pallof press)
@@ -188,6 +302,7 @@ Set the intensity_pct field on compound slots. Use RPE for accessories.`,
     id: "court-sport",
     name: "Court Sport (Basketball, Soccer, Lacrosse)",
     category: "sport",
+    scope: "both",
     description: "Agility, deceleration, and reactive strength",
     prompt: `COURT SPORT FOCUS (basketball/soccer/lacrosse):
 - Include plyometric work: box jumps, broad jumps, lateral bounds
@@ -202,6 +317,7 @@ Set the intensity_pct field on compound slots. Use RPE for accessories.`,
     id: "in-season",
     name: "In-Season Maintenance",
     category: "sport",
+    scope: "week",
     description: "Maintain strength during competitive season",
     prompt: `IN-SEASON MAINTENANCE — athlete is competing regularly:
 - 2 sessions per week maximum
@@ -219,6 +335,7 @@ Set the intensity_pct field on compound slots. Use RPE for accessories.`,
     id: "lower-body-rehab",
     name: "Lower Body Rehab Progression",
     category: "rehab",
+    scope: "week",
     description: "Graduated return from knee/ankle/hip injury",
     prompt: `LOWER BODY REHAB PROGRESSION:
 - Weeks 1-2: Isometric and activation only for lower body (wall sits, glute bridges, banded clam shells). Use "activation" role. Upper body can train normally.
@@ -232,6 +349,7 @@ Start conservative. Movement quality and pain-free range of motion are the prior
     id: "upper-body-rehab",
     name: "Upper Body Rehab (Shoulder Focus)",
     category: "rehab",
+    scope: "week",
     description: "Graduated return from shoulder/elbow injury",
     prompt: `UPPER BODY REHAB (SHOULDER FOCUS):
 - Weeks 1-2: Scapular stability and rotator cuff activation only (band pull-aparts, external rotation, scapular wall slides). No overhead or heavy pressing. Lower body trains normally.
@@ -245,6 +363,7 @@ Never push through shoulder pain. Stability before strength.`,
     id: "post-surgery",
     name: "Post-Surgery General",
     category: "rehab",
+    scope: "week",
     description: "Conservative return-to-training after surgery",
     prompt: `POST-SURGERY RETURN — be extremely conservative:
 - Weeks 1-2: Activation and mobility work ONLY for affected area. Train unaffected areas normally. All exercises bodyweight or light bands.
@@ -260,6 +379,7 @@ The surgeon and physio's guidelines override everything. When in doubt, do less.
     id: "conditioning-finisher",
     name: "Conditioning Finisher",
     category: "conditioning",
+    scope: "both",
     description: "Add a conditioning finisher to each session",
     prompt: `Add a CONDITIONING FINISHER at the end of every session:
 - Use "conditioning" role with "conditioning" movement_pattern
@@ -274,6 +394,7 @@ The surgeon and physio's guidelines override everything. When in doubt, do less.
     id: "emom-protocol",
     name: "EMOM Protocol",
     category: "conditioning",
+    scope: "day",
     description: "Every-minute-on-the-minute conditioning block",
     prompt: `Include an EMOM BLOCK in the session:
 - Use "emom" technique on conditioning slots
@@ -288,6 +409,7 @@ The surgeon and physio's guidelines override everything. When in doubt, do less.
     id: "hybrid-strength-conditioning",
     name: "Hybrid Strength + Conditioning",
     category: "conditioning",
+    scope: "both",
     description: "Combine strength and metabolic work in one session",
     prompt: `HYBRID STRENGTH + CONDITIONING session structure:
 - First 30 minutes: Heavy strength work (2-3 compound exercises, straight sets, full rest)
@@ -303,6 +425,7 @@ The surgeon and physio's guidelines override everything. When in doubt, do less.
     id: "cluster-sets",
     name: "Cluster Set Protocol",
     category: "specialty",
+    scope: "day",
     description: "Intra-set rest for strength/power development",
     prompt: `Use CLUSTER SETS for primary compound lifts:
 - Technique: "cluster_set"
@@ -317,6 +440,7 @@ The surgeon and physio's guidelines override everything. When in doubt, do less.
     id: "complex-training",
     name: "Complex / Contrast Training",
     category: "specialty",
+    scope: "day",
     description: "Heavy lift paired with explosive movement",
     prompt: `Use COMPLEX/CONTRAST TRAINING for power development:
 - Pair a heavy compound with an explosive bodyweight movement:
@@ -332,6 +456,7 @@ The surgeon and physio's guidelines override everything. When in doubt, do less.
     id: "unilateral-focus",
     name: "Unilateral Focus",
     category: "specialty",
+    scope: "both",
     description: "50%+ unilateral exercises for asymmetry correction",
     prompt: `UNILATERAL FOCUS — at least 60% of exercises must be single-limb:
 - Lower body: split squats, single-leg RDL, step-ups, lunges (not bilateral squats/deadlifts)
@@ -345,6 +470,7 @@ The surgeon and physio's guidelines override everything. When in doubt, do less.
     id: "power-development",
     name: "Power Development Block",
     category: "specialty",
+    scope: "both",
     description: "Explosive training for athletic performance",
     prompt: `POWER DEVELOPMENT BLOCK:
 - Start every session with "power" role exercises: plyometrics, med ball throws, or jumps

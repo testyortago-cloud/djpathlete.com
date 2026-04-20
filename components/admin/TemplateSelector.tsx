@@ -7,9 +7,11 @@ import { PROMPT_TEMPLATES, PROMPT_TEMPLATE_CATEGORIES, type PromptTemplate } fro
 
 interface TemplateSelectorProps {
   onSelect: (prompt: string) => void
+  /** Restrict templates to the week or day dialog. "both"-scoped templates always show. */
+  scope: "week" | "day"
 }
 
-export function TemplateSelector({ onSelect }: TemplateSelectorProps) {
+export function TemplateSelector({ onSelect, scope }: TemplateSelectorProps) {
   const [open, setOpen] = useState(false)
   const ref_ = useRef<HTMLDivElement>(null)
 
@@ -30,11 +32,13 @@ export function TemplateSelector({ onSelect }: TemplateSelectorProps) {
     setOpen(false)
   }
 
+  const visibleTemplates = PROMPT_TEMPLATES.filter((t) => t.scope === scope || t.scope === "both")
+
   const grouped = Object.entries(PROMPT_TEMPLATE_CATEGORIES)
     .map(([key, label]) => ({
       key,
       label,
-      templates: PROMPT_TEMPLATES.filter((t) => t.category === key),
+      templates: visibleTemplates.filter((t) => t.category === key),
     }))
     .filter((g) => g.templates.length > 0)
 
