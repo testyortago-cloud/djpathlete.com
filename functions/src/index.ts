@@ -12,6 +12,7 @@ const supabaseServiceRoleKey = defineSecret("SUPABASE_SERVICE_ROLE_KEY")
 const resendApiKey = defineSecret("RESEND_API_KEY")
 const assemblyAiApiKey = defineSecret("ASSEMBLYAI_API_KEY")
 const appUrl = defineSecret("APP_URL")
+const tavilyApiKey = defineSecret("TAVILY_API_KEY")
 
 const allSecrets = [anthropicApiKey, supabaseUrl, supabaseServiceRoleKey]
 const sendSecrets = [supabaseUrl, supabaseServiceRoleKey, resendApiKey]
@@ -202,5 +203,25 @@ export const transcribeVideo = onDocumentCreated(
 
     const { handleVideoTranscription } = await import("./transcribe-video.js")
     await handleVideoTranscription(event.params.jobId)
+  },
+)
+
+// ─── Tavily Research ──────────────────────────────────────────────────────────
+// Triggered when a new ai_jobs doc is created with type "tavily_research"
+
+export const tavilyResearch = onDocumentCreated(
+  {
+    document: "ai_jobs/{jobId}",
+    timeoutSeconds: 120,
+    memory: "512MiB",
+    region: "us-central1",
+    secrets: [tavilyApiKey],
+  },
+  async (event) => {
+    const data = event.data?.data()
+    if (!data || data.type !== "tavily_research") return
+
+    const { handleTavilyResearch } = await import("./tavily-research.js")
+    await handleTavilyResearch(event.params.jobId)
   },
 )
