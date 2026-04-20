@@ -271,6 +271,7 @@ export function GenerationDialog(props: GenerationDialogProps) {
                 rows={3}
                 maxLength={2000}
                 disabled={isSubmitting}
+                className="field-sizing-fixed resize-none"
               />
               <p className="text-xs text-muted-foreground">{helperText}</p>
             </div>

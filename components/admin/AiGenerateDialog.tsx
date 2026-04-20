@@ -1696,6 +1696,7 @@ function Step3Settings({
           }
           rows={ignoreProfile && hasClient ? 4 : 3}
           maxLength={2000}
+          className="field-sizing-fixed resize-none"
         />
       </div>
     </div>
