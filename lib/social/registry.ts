@@ -7,6 +7,7 @@ export interface PluginRegistry {
   get(name: SocialPlatform): PublishPlugin | undefined
   list(): SocialPlatform[]
   all(): PublishPlugin[]
+  reset(): void
 }
 
 export function createPluginRegistry(): PluginRegistry {
@@ -30,6 +31,10 @@ export function createPluginRegistry(): PluginRegistry {
 
     all(): PublishPlugin[] {
       return Array.from(plugins.values())
+    },
+
+    reset(): void {
+      plugins.clear()
     },
   }
 }
