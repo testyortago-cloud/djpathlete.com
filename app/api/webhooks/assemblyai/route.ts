@@ -1,11 +1,61 @@
 // app/api/webhooks/assemblyai/route.ts
-// AssemblyAI POSTs here when a transcript is completed.
+// AssemblyAI POSTs here when a transcript completes (success or error).
+//
+// Failure modes handled:
+//   1. status=error — the audio had no audio track / was corrupted / unsupported.
+//      We fetch AssemblyAI's own error message for the UI and flip BOTH ai_job
+//      AND video_uploads to "failed" so the row doesn't stay stuck on Transcribing.
+//   2. status=completed but transcript.text is empty/near-empty — the audio was
+//      present but contained no speech (silent footage, music only). Treated as
+//      a soft failure: same failed state, message tells the admin why. No
+//      transcript row is written so "Generate Social" can't run on garbage.
 
 import { NextRequest, NextResponse } from "next/server"
 import { getAdminFirestore } from "@/lib/firebase-admin"
 import { createServiceRoleClient } from "@/lib/supabase"
 
 const ASSEMBLYAI_BASE = "https://api.assemblyai.com/v2"
+
+/**
+ * AssemblyAI occasionally returns a completed transcript with whitespace-only
+ * or very short text when the audio had no real speech. Anything shorter than
+ * this threshold is treated as "no speech detected" and surfaced as a clean
+ * failed state rather than letting downstream captioning run on empty input.
+ */
+const MIN_USEFUL_TRANSCRIPT_LENGTH = 30
+
+async function fetchTranscriptErrorMessage(
+  transcriptId: string,
+  apiKey: string,
+): Promise<string | null> {
+  try {
+    const res = await fetch(`${ASSEMBLYAI_BASE}/transcript/${transcriptId}`, {
+      headers: { authorization: apiKey },
+    })
+    if (!res.ok) return null
+    const body = (await res.json()) as { error?: string }
+    return body.error ?? null
+  } catch {
+    return null
+  }
+}
+
+async function markFailed(opts: {
+  aiJobId: string
+  videoUploadId: string | null
+  errorMessage: string
+}) {
+  const firestore = getAdminFirestore()
+  await firestore.collection("ai_jobs").doc(opts.aiJobId).update({
+    status: "failed",
+    error: opts.errorMessage,
+    updatedAt: new Date(),
+  })
+  if (opts.videoUploadId) {
+    const supabase = createServiceRoleClient()
+    await supabase.from("video_uploads").update({ status: "failed" }).eq("id", opts.videoUploadId)
+  }
+}
 
 export async function POST(request: NextRequest) {
   const { searchParams } = new URL(request.url)
@@ -36,20 +86,27 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Transcript id mismatch" }, { status: 409 })
   }
 
+  const videoUploadId = (job.input as { videoUploadId?: string })?.videoUploadId ?? null
+  const apiKey = process.env.ASSEMBLYAI_API_KEY
+
+  // ── Failure path ─────────────────────────────────────────────────────────
   if (status === "error") {
-    await jobRef.update({
-      status: "failed",
-      error: "AssemblyAI reported error status",
-      updatedAt: new Date(),
-    })
+    let errorMessage = "AssemblyAI reported error status"
+    if (apiKey) {
+      const upstream = await fetchTranscriptErrorMessage(transcriptId, apiKey)
+      if (upstream) errorMessage = upstream
+    }
+    await markFailed({ aiJobId, videoUploadId, errorMessage })
     return NextResponse.json({ ok: true })
   }
 
   if (status !== "completed") {
+    // Intermediate states (queued, processing) — ignore, AssemblyAI will
+    // re-fire the webhook when it reaches a terminal status.
     return NextResponse.json({ ok: true })
   }
 
-  const apiKey = process.env.ASSEMBLYAI_API_KEY
+  // ── Success path ────────────────────────────────────────────────────────
   if (!apiKey) {
     return NextResponse.json({ error: "ASSEMBLYAI_API_KEY not configured" }, { status: 500 })
   }
@@ -59,10 +116,10 @@ export async function POST(request: NextRequest) {
   })
   if (!response.ok) {
     const text = await response.text().catch(() => "")
-    await jobRef.update({
-      status: "failed",
-      error: `AssemblyAI fetch failed: ${text}`,
-      updatedAt: new Date(),
+    await markFailed({
+      aiJobId,
+      videoUploadId,
+      errorMessage: `AssemblyAI fetch failed: ${text}`,
     })
     return NextResponse.json({ error: "Upstream fetch failed" }, { status: 502 })
   }
@@ -71,16 +128,29 @@ export async function POST(request: NextRequest) {
     text: string
     language_code?: string
     status: string
+    error?: string
   }
 
-  const videoUploadId = (job.input as { videoUploadId?: string })?.videoUploadId
   if (!videoUploadId) {
-    await jobRef.update({
-      status: "failed",
-      error: "ai_job missing videoUploadId",
-      updatedAt: new Date(),
+    await markFailed({
+      aiJobId,
+      videoUploadId: null,
+      errorMessage: "ai_job missing videoUploadId",
     })
     return NextResponse.json({ error: "Missing videoUploadId" }, { status: 400 })
+  }
+
+  // Empty-speech guard — AssemblyAI completes with empty text when the audio
+  // has no speech (silent footage, music only, etc). Treat as a clean failure
+  // so downstream caption generation doesn't run on nothing.
+  const cleanText = (transcript.text ?? "").trim()
+  if (cleanText.length < MIN_USEFUL_TRANSCRIPT_LENGTH) {
+    await markFailed({
+      aiJobId,
+      videoUploadId,
+      errorMessage: "No speech detected — check that the video has a spoken audio track.",
+    })
+    return NextResponse.json({ ok: true })
   }
 
   const supabase = createServiceRoleClient()
