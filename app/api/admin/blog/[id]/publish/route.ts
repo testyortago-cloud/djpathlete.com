@@ -26,6 +26,13 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
       input: { blog_post_id: id },
     }).catch((err) => console.error("[Blog] newsletter_from_blog queue failed:", err))
 
+    // Queue SEO enrichment (parallel to newsletter_from_blog). Fire-and-forget.
+    createAiJob({
+      type: "seo_enhance",
+      userId: session.user.id,
+      input: { blog_post_id: id },
+    }).catch((err) => console.error("[Blog] seo_enhance queue failed:", err))
+
     return NextResponse.json(updated)
   } catch (error) {
     console.error("Blog publish error:", error)
