@@ -701,6 +701,23 @@ export interface BlogPost {
   fact_check_details: Record<string, unknown> | null
 }
 
+export interface SeoMetadataInternalLink {
+  blog_post_id: string
+  title: string
+  slug: string
+  overlap_score: number
+  reason: string
+}
+
+export interface SeoMetadata {
+  meta_title?: string
+  meta_description?: string
+  keywords?: string[]
+  json_ld?: Record<string, unknown>
+  internal_link_suggestions?: SeoMetadataInternalLink[]
+  generated_at?: string
+}
+
 export interface Newsletter {
   id: string
   subject: string

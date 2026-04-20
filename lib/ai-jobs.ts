@@ -27,6 +27,7 @@ export type AiJobType =
   | "tavily_trending_scan"
   | "blog_from_video"
   | "newsletter_from_blog"
+  | "seo_enhance"
   | "enhance_caption"
 
 export interface CreateAiJobOptions {
