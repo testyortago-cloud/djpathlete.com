@@ -226,6 +226,26 @@ export const tavilyResearch = onDocumentCreated(
   },
 )
 
+// ─── Tavily Fact Check ────────────────────────────────────────────────────────
+// Triggered when a new ai_jobs doc is created with type "tavily_fact_check"
+
+export const tavilyFactCheck = onDocumentCreated(
+  {
+    document: "ai_jobs/{jobId}",
+    timeoutSeconds: 180,
+    memory: "512MiB",
+    region: "us-central1",
+    secrets: [anthropicApiKey, supabaseUrl, supabaseServiceRoleKey],
+  },
+  async (event) => {
+    const data = event.data?.data()
+    if (!data || data.type !== "tavily_fact_check") return
+
+    const { handleTavilyFactCheck } = await import("./tavily-fact-check.js")
+    await handleTavilyFactCheck(event.params.jobId)
+  },
+)
+
 // ─── Social Fanout ─────────────────────────────────────────────────────────────
 // Triggered when a new ai_jobs doc is created with type "social_fanout"
 
