@@ -13,7 +13,7 @@ describe("migration 00078 — platform_connections", () => {
 
     expect(error).toBeNull()
     const names = (data ?? []).map((r) => r.plugin_name).sort()
-    expect(names).toEqual(["instagram", "linkedin", "meta", "tiktok", "youtube", "youtube_shorts"])
+    expect(names).toEqual(["facebook", "instagram", "linkedin", "tiktok", "youtube", "youtube_shorts"])
     for (const row of data ?? []) {
       expect(row.status).toBe("not_connected")
     }
