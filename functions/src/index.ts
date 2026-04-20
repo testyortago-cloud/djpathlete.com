@@ -225,3 +225,23 @@ export const tavilyResearch = onDocumentCreated(
     await handleTavilyResearch(event.params.jobId)
   },
 )
+
+// ─── Social Fanout ─────────────────────────────────────────────────────────────
+// Triggered when a new ai_jobs doc is created with type "social_fanout"
+
+export const socialFanout = onDocumentCreated(
+  {
+    document: "ai_jobs/{jobId}",
+    timeoutSeconds: 540,
+    memory: "1GiB",
+    region: "us-central1",
+    secrets: [anthropicApiKey, supabaseUrl, supabaseServiceRoleKey],
+  },
+  async (event) => {
+    const data = event.data?.data()
+    if (!data || data.type !== "social_fanout") return
+
+    const { handleSocialFanout } = await import("./social-fanout.js")
+    await handleSocialFanout(event.params.jobId)
+  },
+)

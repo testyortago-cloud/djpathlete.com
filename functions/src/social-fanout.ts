@@ -142,7 +142,7 @@ export async function handleSocialFanout(jobId: string): Promise<void> {
           cacheSystemPrompt: true,
         })
 
-        return { platform, caption: result.data }
+        return { platform, caption: result.content }
       }),
     )
 
