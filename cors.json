@@ -1,0 +1,21 @@
+[
+  {
+    "origin": [
+      "https://www.darrenjpaul.com",
+      "https://darrenjpaul.com",
+      "https://djpathlete.com",
+      "https://staging.darrenjpaul.com",
+      "http://localhost:3050"
+    ],
+    "method": ["GET", "HEAD", "PUT", "POST"],
+    "responseHeader": [
+      "Content-Type",
+      "Content-Length",
+      "Content-Range",
+      "Content-Disposition",
+      "x-goog-resumable",
+      "x-goog-meta-*"
+    ],
+    "maxAgeSeconds": 3600
+  }
+]

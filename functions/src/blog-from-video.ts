@@ -67,6 +67,14 @@ export function buildBlogUserMessage({
   ].join("\n")
 }
 
+// Silently truncate meta_description on the rare overrun rather than failing
+// the whole job — the frontend validator caps at 160 chars; the admin can
+// hand-edit before saving if the truncation cuts something important.
+function capMetaDescription(s: string): string {
+  if (s.length <= 160) return s
+  return s.slice(0, 157).trimEnd() + "…"
+}
+
 const BlogGenerationSchema = z.object({
   title: z.string().max(200),
   slug: z.string().max(200),
@@ -74,12 +82,12 @@ const BlogGenerationSchema = z.object({
   content: z.string(),
   category: z.string(),
   tags: z.array(z.string()),
-  meta_description: z.string().max(160),
+  meta_description: z.string().transform(capMetaDescription),
 })
 
 const BLOG_SYSTEM_PROMPT = `You are an expert content writer for DJP Athlete, a fitness coaching platform run by Darren Paul, a strength & conditioning coach. Write an evidence-based, practical, engaging blog post from a video transcript and research brief.
 
-You must output a JSON object with: title (max 200), slug (lowercase, hyphens only, max 200), excerpt (10-500), content (semantic HTML using only h2/h3/p/ul/ol/li/blockquote/strong/em/u/a), category ("Performance" | "Recovery" | "Coaching" | "Youth Development"), tags (3-5 lowercase keywords), meta_description (max 160).
+You must output a JSON object with: title (max 200), slug (lowercase, hyphens only, max 200), excerpt (10-500), content (semantic HTML using only h2/h3/p/ul/ol/li/blockquote/strong/em/u/a), category ("Performance" | "Recovery" | "Coaching" | "Youth Development"), tags (3-5 lowercase keywords), meta_description (AIM FOR 140-150 CHARACTERS — do not exceed 150).
 
 Use inline <a href="..."> source references where the research brief provides URLs. Never fabricate URLs. Do not use <h1> (the title serves that purpose).`
 

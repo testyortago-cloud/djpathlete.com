@@ -56,7 +56,7 @@ You must output a JSON object with these fields:
 - content: Full blog post body as semantic HTML using ONLY the allowed elements above
 - category: One of "Performance", "Recovery", "Coaching", or "Youth Development"
 - tags: Array of 3-5 lowercase keyword tags
-- meta_description: SEO meta description (max 160 chars)
+- meta_description: SEO meta description — AIM FOR 140-150 CHARACTERS (hard limit 160). Do NOT exceed 150.
 
 Output ONLY the JSON object, no additional text.`
 
@@ -220,6 +220,14 @@ ${sections.join("\n\n")}
 
 // ─── Schema ──────────────────────────────────────────────────────────────────
 
+// Hard cap to satisfy the frontend validator (lib/validators/blog-post.ts) which
+// rejects meta_description > 160 chars. Truncation is silent on the rare overrun;
+// the admin can still hand-edit the field.
+function capMetaDescription(s: string): string {
+  if (s.length <= 160) return s
+  return s.slice(0, 157).trimEnd() + "…"
+}
+
 const blogResultSchema = z.object({
   title: z.string(),
   slug: z.string(),
@@ -227,7 +235,7 @@ const blogResultSchema = z.object({
   content: z.string(),
   category: z.enum(["Performance", "Recovery", "Coaching", "Youth Development"]),
   tags: z.array(z.string()),
-  meta_description: z.string(),
+  meta_description: z.string().transform(capMetaDescription),
 })
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
