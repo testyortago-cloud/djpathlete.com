@@ -7,6 +7,8 @@ import { ArrowLeft, Save, Send, Loader2, Sparkles, Search } from "lucide-react"
 import { toast } from "sonner"
 import { blogPostFormSchema, BLOG_CATEGORIES } from "@/lib/validators/blog-post"
 import { BlogEditor } from "./BlogEditor"
+import type { FactCheckStatus } from "./FactCheckBanner"
+import type { FactCheckDetails } from "./FactCheckSidebar"
 import { CoverImageUpload } from "./CoverImageUpload"
 import { BlogGenerateDialog } from "./BlogGenerateDialog"
 import { ResearchPanel, type TavilyResearchBrief } from "./ResearchPanel"
@@ -279,7 +281,13 @@ export function BlogPostForm({ post, authorId }: BlogPostFormProps) {
               {/* Editor */}
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1">Content</label>
-                <BlogEditor key={editorKey} content={content} onChange={setContent} />
+                <BlogEditor
+                  key={editorKey}
+                  content={content}
+                  onChange={setContent}
+                  factCheckStatus={(post?.fact_check_status as FactCheckStatus | null) ?? null}
+                  factCheckDetails={(post?.fact_check_details as FactCheckDetails | null) ?? null}
+                />
               </div>
 
               {/* Excerpt */}

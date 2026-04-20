@@ -21,15 +21,27 @@ import {
   Redo,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { useRef } from "react"
+import { useRef, useState } from "react"
+import { FactCheckBanner, type FactCheckStatus } from "./FactCheckBanner"
+import { FactCheckSidebar, type FactCheckFlaggedClaim, type FactCheckDetails } from "./FactCheckSidebar"
 
 interface BlogEditorProps {
   content: string
   onChange: (html: string) => void
+  factCheckStatus?: FactCheckStatus | null
+  factCheckDetails?: FactCheckDetails | null
 }
 
-export function BlogEditor({ content, onChange }: BlogEditorProps) {
+export function BlogEditor({
+  content,
+  onChange,
+  factCheckStatus: factCheckStatusProp,
+  factCheckDetails,
+}: BlogEditorProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const factCheckStatus: FactCheckStatus = factCheckStatusProp ?? "pending"
+  const flaggedClaims: FactCheckFlaggedClaim[] = factCheckDetails?.flagged_claims ?? []
 
   const editor = useEditor({
     extensions: [
@@ -164,46 +176,61 @@ export function BlogEditor({ content, onChange }: BlogEditorProps) {
   ] as const
 
   return (
-    <div className="rounded-xl border border-border bg-white overflow-hidden">
-      {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-0.5 px-2 py-1.5 border-b border-border bg-surface/50">
-        {tools.map((tool, i) =>
-          "divider" in tool ? (
-            <div key={`d-${i}`} className="w-px h-5 bg-border mx-1" />
-          ) : (
-            <button
-              key={tool.title}
-              type="button"
-              onClick={tool.action}
-              className={cn(
-                "p-1.5 rounded-md transition-colors",
-                tool.active
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:text-foreground hover:bg-surface",
+    <div className="flex flex-col gap-3">
+      <FactCheckBanner
+        status={factCheckStatus}
+        flaggedCount={flaggedClaims.length}
+        open={sidebarOpen}
+        onToggle={() => setSidebarOpen((o) => !o)}
+      />
+      <div className="flex flex-col lg:flex-row gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="rounded-xl border border-border bg-white overflow-hidden">
+            {/* Toolbar */}
+            <div className="flex flex-wrap items-center gap-0.5 px-2 py-1.5 border-b border-border bg-surface/50">
+              {tools.map((tool, i) =>
+                "divider" in tool ? (
+                  <div key={`d-${i}`} className="w-px h-5 bg-border mx-1" />
+                ) : (
+                  <button
+                    key={tool.title}
+                    type="button"
+                    onClick={tool.action}
+                    className={cn(
+                      "p-1.5 rounded-md transition-colors",
+                      tool.active
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:text-foreground hover:bg-surface",
+                    )}
+                    title={tool.title}
+                  >
+                    <tool.icon className="size-4" />
+                  </button>
+                ),
               )}
-              title={tool.title}
-            >
-              <tool.icon className="size-4" />
-            </button>
-          ),
+            </div>
+
+            {/* Hidden file input for image upload */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) handleImageUpload(file)
+                e.target.value = ""
+              }}
+            />
+
+            {/* Editor */}
+            <EditorContent editor={editor} />
+          </div>
+        </div>
+        {sidebarOpen && (
+          <FactCheckSidebar claims={flaggedClaims} onClose={() => setSidebarOpen(false)} />
         )}
       </div>
-
-      {/* Hidden file input for image upload */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/jpeg,image/png,image/webp,image/gif"
-        className="hidden"
-        onChange={(e) => {
-          const file = e.target.files?.[0]
-          if (file) handleImageUpload(file)
-          e.target.value = ""
-        }}
-      />
-
-      {/* Editor */}
-      <EditorContent editor={editor} />
     </div>
   )
 }
