@@ -36,6 +36,7 @@ export async function POST(request: Request) {
       ...parsed.data,
       status: "draft",
       author_id: session.user.id,
+      source_blog_post_id: null,
     })
 
     return NextResponse.json(newsletter, { status: 201 })

@@ -710,6 +710,7 @@ export interface Newsletter {
   sent_at: string | null
   sent_count: number
   failed_count: number
+  source_blog_post_id: string | null
   author_id: string
   created_at: string
   updated_at: string
