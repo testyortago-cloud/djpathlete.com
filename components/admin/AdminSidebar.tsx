@@ -29,6 +29,9 @@ import {
   LogOut,
   ShoppingBag,
   Package,
+  Megaphone,
+  Film,
+  Link2,
 } from "lucide-react"
 import { signOut } from "next-auth/react"
 import { cn } from "@/lib/utils"
@@ -76,6 +79,14 @@ const navSections: NavSection[] = [
       { label: "AI Insights", href: "/admin/ai-insights", icon: Lightbulb },
       { label: "AI Templates", href: "/admin/ai-templates", icon: FileText },
       { label: "AI Policy", href: "/admin/settings/ai-policy", icon: Sparkles },
+    ],
+  },
+  {
+    title: "AI Automation",
+    items: [
+      { label: "Social", href: "/admin/social", icon: Megaphone },
+      { label: "Videos", href: "/admin/videos", icon: Film },
+      { label: "Platform Connections", href: "/admin/platform-connections", icon: Link2 },
     ],
   },
   {
