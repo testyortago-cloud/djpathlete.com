@@ -8,9 +8,7 @@ export function ContentStudioShell({ children }: { children: React.ReactNode }) 
         <div className="flex items-center justify-between mb-4">
           <div>
             <h1 className="font-heading text-2xl">Content Studio</h1>
-            <p className="text-sm text-muted-foreground">
-              Videos, posts, and scheduling in one place.
-            </p>
+            <p className="text-sm text-muted-foreground">Videos, posts, and scheduling in one place.</p>
           </div>
           <div className="flex items-center gap-2">
             <div className="relative">
