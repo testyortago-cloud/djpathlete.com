@@ -9,7 +9,7 @@ CREATE TABLE prompt_templates (
   scope         text NOT NULL CHECK (scope IN ('week', 'day', 'both')),
   description   text NOT NULL,
   prompt        text NOT NULL,
-  created_by    uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_by    uuid REFERENCES users(id) ON DELETE SET NULL,
   created_at    timestamptz NOT NULL DEFAULT now(),
   updated_at    timestamptz NOT NULL DEFAULT now()
 );
