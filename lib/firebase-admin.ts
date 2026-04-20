@@ -5,7 +5,7 @@ import { getDatabase } from "firebase-admin/database"
 
 let app: App
 
-function getAdminApp() {
+export function getAdminApp() {
   if (!app) {
     if (getApps().length) {
       app = getApps()[0]
