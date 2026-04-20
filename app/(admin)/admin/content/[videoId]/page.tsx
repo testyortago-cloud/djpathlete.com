@@ -1,4 +1,4 @@
-import { TabPlaceholder } from "@/components/admin/content-studio/TabPlaceholder"
+import { TabContent } from "@/components/admin/content-studio/TabContent"
 import { DetailDrawer } from "@/components/admin/content-studio/DetailDrawer"
 
 interface PageProps {
@@ -10,24 +10,9 @@ export default async function ContentStudioDrawerPage({ params, searchParams }: 
   const { videoId } = await params
   const { tab } = await searchParams
 
-  let tabContent: React.ReactNode
-  switch (tab) {
-    case "calendar":
-      tabContent = <TabPlaceholder tabName="Calendar" phaseLabel="Phase 4" />
-      break
-    case "videos":
-      tabContent = <TabPlaceholder tabName="Videos" phaseLabel="Phase 3" />
-      break
-    case "posts":
-      tabContent = <TabPlaceholder tabName="Posts" phaseLabel="Phase 3" />
-      break
-    default:
-      tabContent = <TabPlaceholder tabName="Pipeline" phaseLabel="Phase 3" />
-  }
-
   return (
     <>
-      {tabContent}
+      <TabContent tab={tab} />
       <DetailDrawer videoId={videoId} />
     </>
   )

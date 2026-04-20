@@ -12,21 +12,24 @@ export function DetailDrawer({ videoId }: DetailDrawerProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
 
+  // Preserve the current tab when closing (e.g., stay on Calendar tab)
   const handleClose = () => {
-    // Preserve the current tab when closing (e.g., stay on Calendar tab)
     const tab = searchParams.get("tab")
     router.push(tab ? `/admin/content?tab=${tab}` : "/admin/content")
   }
 
-  // ESC to close
+  // ESC to close — re-subscribes when searchParams changes so the
+  // handler always closes to the current tab
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") handleClose()
+      if (e.key === "Escape") {
+        const tab = searchParams.get("tab")
+        router.push(tab ? `/admin/content?tab=${tab}` : "/admin/content")
+      }
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams])
+  }, [searchParams, router])
 
   return (
     <>

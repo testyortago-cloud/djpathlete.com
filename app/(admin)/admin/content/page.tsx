@@ -1,4 +1,4 @@
-import { TabPlaceholder } from "@/components/admin/content-studio/TabPlaceholder"
+import { TabContent } from "@/components/admin/content-studio/TabContent"
 
 interface PageProps {
   searchParams: Promise<{ tab?: string }>
@@ -6,15 +6,5 @@ interface PageProps {
 
 export default async function ContentStudioPage({ searchParams }: PageProps) {
   const { tab } = await searchParams
-
-  switch (tab) {
-    case "calendar":
-      return <TabPlaceholder tabName="Calendar" phaseLabel="Phase 4" />
-    case "videos":
-      return <TabPlaceholder tabName="Videos" phaseLabel="Phase 3" />
-    case "posts":
-      return <TabPlaceholder tabName="Posts" phaseLabel="Phase 3" />
-    default:
-      return <TabPlaceholder tabName="Pipeline" phaseLabel="Phase 3" />
-  }
+  return <TabContent tab={tab} />
 }
