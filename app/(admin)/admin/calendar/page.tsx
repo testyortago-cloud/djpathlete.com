@@ -1,11 +1,16 @@
 // app/(admin)/admin/calendar/page.tsx
+import { redirect } from "next/navigation"
 import { listSocialPosts } from "@/lib/db/social-posts"
 import { WeekGrid } from "@/components/admin/calendar/WeekGrid"
+import { isContentStudioEnabled } from "@/lib/content-studio/feature-flag"
 import type { SocialPost } from "@/types/database"
 
 export const metadata = { title: "Content Calendar" }
 
 export default async function CalendarPage() {
+  if (isContentStudioEnabled()) {
+    redirect("/admin/content?tab=calendar")
+  }
   const scheduled = await listSocialPosts({ approval_status: "scheduled" })
   const published = await listSocialPosts({ approval_status: "published" })
   const posts: SocialPost[] = [...scheduled, ...published]
