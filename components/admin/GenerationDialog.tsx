@@ -268,7 +268,7 @@ export function GenerationDialog(props: GenerationDialogProps) {
                 placeholder={placeholder}
                 value={instructions}
                 onChange={(e) => setInstructions(e.target.value)}
-                rows={3}
+                rows={8}
                 maxLength={2000}
                 disabled={isSubmitting}
                 className="field-sizing-fixed resize-none"

@@ -86,7 +86,7 @@ export function EnhancePreviewModal({ open, onOpenChange, result, loading, onRet
               <Textarea
                 readOnly
                 value={result.prompt}
-                rows={10}
+                rows={16}
                 className="font-mono text-xs field-sizing-fixed resize-none"
               />
             </div>

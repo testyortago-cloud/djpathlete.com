@@ -200,7 +200,7 @@ export function TemplateEditorModal({ open, onOpenChange, template, seed, onSave
                 id="tpl-prompt"
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                rows={8}
+                rows={14}
                 maxLength={4000}
                 className="font-mono text-xs field-sizing-fixed resize-none"
               />

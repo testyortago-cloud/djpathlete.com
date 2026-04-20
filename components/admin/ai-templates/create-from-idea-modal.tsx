@@ -89,8 +89,9 @@ export function CreateFromIdeaModal({ open, onOpenChange, onSaved }: Props) {
               id="idea-seed"
               value={seed}
               onChange={(e) => setSeed(e.target.value)}
-              rows={4}
+              rows={6}
               maxLength={2000}
+              className="field-sizing-fixed resize-none"
               placeholder="e.g., A back day focused on lat width — wide grip work, pullovers, mid-back accessories."
             />
           </div>
