@@ -44,6 +44,31 @@ export async function getBlogPostById(id: string): Promise<BlogPost> {
   return data as BlogPost
 }
 
+export async function createDraftForVideo(params: {
+  authorId: string
+  videoUploadId: string
+}): Promise<{ id: string }> {
+  const supabase = getClient()
+  const now = Date.now()
+  const { data, error } = await supabase
+    .from("blog_posts")
+    .insert({
+      title: "Generating from video…",
+      slug: `generating-${now}`,
+      content: "",
+      excerpt: "",
+      category: "Performance",
+      tags: [],
+      author_id: params.authorId,
+      source_video_id: params.videoUploadId,
+      status: "draft",
+    })
+    .select("id")
+    .single()
+  if (error) throw error
+  return { id: (data as { id: string }).id }
+}
+
 export async function getPublishedBlogPostBySlug(slug: string): Promise<BlogPost | null> {
   const supabase = getClient()
   const { data, error } = await supabase
