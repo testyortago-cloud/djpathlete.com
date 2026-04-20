@@ -220,6 +220,7 @@ export function GenerateWeekDialog({
                 </Label>
                 <TemplateSelector
                   scope="week"
+                  currentText={instructions}
                   onSelect={(prompt) => setInstructions((prev) => (prev ? `${prev}\n\n${prompt}` : prompt))}
                 />
               </div>

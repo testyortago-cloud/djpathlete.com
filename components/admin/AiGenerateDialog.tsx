@@ -1679,6 +1679,7 @@ function Step3Settings({
           </Label>
           <TemplateSelector
             scope="week"
+            currentText={additionalInstructions}
             onSelect={(prompt) =>
               setAdditionalInstructions(additionalInstructions ? `${additionalInstructions}\n\n${prompt}` : prompt)
             }

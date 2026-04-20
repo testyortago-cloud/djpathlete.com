@@ -219,6 +219,7 @@ export function GenerateDayDialog({
                 </Label>
                 <TemplateSelector
                   scope="day"
+                  currentText={instructions}
                   onSelect={(prompt) => setInstructions((prev) => (prev ? `${prev}\n\n${prompt}` : prompt))}
                 />
               </div>

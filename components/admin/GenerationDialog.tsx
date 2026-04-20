@@ -259,6 +259,7 @@ export function GenerationDialog(props: GenerationDialogProps) {
                 <Label htmlFor="gen-instructions">Coach Instructions (optional)</Label>
                 <TemplateSelector
                   scope={isWeek ? "week" : "day"}
+                  currentText={instructions}
                   onSelect={(prompt) => setInstructions((prev) => (prev ? `${prev}\n\n${prompt}` : prompt))}
                 />
               </div>
