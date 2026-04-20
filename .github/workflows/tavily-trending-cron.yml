@@ -18,15 +18,21 @@ jobs:
         env:
           CRON_TRENDING_TARGET_URL: ${{ secrets.CRON_TRENDING_TARGET_URL }}
           INTERNAL_CRON_TOKEN: ${{ secrets.INTERNAL_CRON_TOKEN }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
           if [ -z "$CRON_TRENDING_TARGET_URL" ] || [ -z "$INTERNAL_CRON_TOKEN" ]; then
             echo "::error::Missing CRON_TRENDING_TARGET_URL or INTERNAL_CRON_TOKEN repository secret"
             exit 1
           fi
+          bypass_header=()
+          if [ -n "$VERCEL_AUTOMATION_BYPASS_SECRET" ]; then
+            bypass_header=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
+          fi
           status=$(curl -sS -o response.json -w "%{http_code}" \
             -X POST "$CRON_TRENDING_TARGET_URL" \
             -H "Authorization: Bearer $INTERNAL_CRON_TOKEN" \
             -H "Content-Type: application/json" \
+            "${bypass_header[@]}" \
             --max-time 120)
           echo "HTTP $status"
           cat response.json || true
