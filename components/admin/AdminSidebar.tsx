@@ -33,6 +33,7 @@ import {
   Film,
   Link2,
   TrendingUp,
+  Layers,
 } from "lucide-react"
 import { signOut } from "next-auth/react"
 import { cn } from "@/lib/utils"
@@ -49,74 +50,89 @@ interface NavSection {
   items: NavItem[]
 }
 
-const navSections: NavSection[] = [
-  {
-    title: "",
-    items: [{ label: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard }],
-  },
-  {
-    title: "Coaching",
-    items: [
-      { label: "Clients", href: "/admin/clients", icon: Users },
-      { label: "Programs", href: "/admin/programs", icon: ClipboardList },
-      { label: "Exercises", href: "/admin/exercises", icon: Dumbbell },
-      { label: "Form Reviews", href: "/admin/form-reviews", icon: Video },
-      { label: "Assessments", href: "/admin/performance-assessments", icon: ClipboardCheck },
-    ],
-  },
-  {
-    title: "Content",
-    items: [
-      { label: "Blog", href: "/admin/blog", icon: FileText },
-      { label: "Testimonials", href: "/admin/testimonials", icon: MessageSquareQuote },
-      { label: "Newsletter", href: "/admin/newsletter", icon: Mail },
-    ],
-  },
-  {
-    title: "AI Tools",
-    items: [
-      { label: "AI Assistant", href: "/admin/ai-assistant", icon: Bot },
-      { label: "AI Usage", href: "/admin/ai-usage", icon: Brain },
-      { label: "AI Insights", href: "/admin/ai-insights", icon: Lightbulb },
-      { label: "AI Templates", href: "/admin/ai-templates", icon: FileText },
-      { label: "AI Policy", href: "/admin/settings/ai-policy", icon: Sparkles },
-    ],
-  },
-  {
-    title: "AI Automation",
-    items: [
-      { label: "Social", href: "/admin/social", icon: Megaphone },
-      { label: "Calendar", href: "/admin/calendar", icon: CalendarDays },
-      { label: "Topic Suggestions", href: "/admin/topic-suggestions", icon: TrendingUp },
-      { label: "Videos", href: "/admin/videos", icon: Film },
-      { label: "Platform Connections", href: "/admin/platform-connections", icon: Link2 },
-    ],
-  },
-  {
-    title: "Business",
-    items: [
-      { label: "Bookings", href: "/admin/bookings", icon: CalendarCheck },
-      { label: "Events", href: "/admin/events", icon: CalendarDays },
-      { label: "Payments", href: "/admin/payments", icon: CreditCard },
-      { label: "Analytics", href: "/admin/analytics", icon: BarChart3 },
-      { label: "Reviews", href: "/admin/reviews", icon: Star },
-    ],
-  },
-  {
-    title: "Shop",
-    items: [
-      { label: "Products", href: "/admin/shop/products", icon: ShoppingBag },
-      { label: "Orders", href: "/admin/shop/orders", icon: Package },
-    ],
-  },
-  {
-    title: "Legal",
-    items: [{ label: "Legal Documents", href: "/admin/legal", icon: Scale }],
-  },
-]
+function getNavSections(contentStudioOn: boolean): NavSection[] {
+  const aiAutomationItems: NavItem[] = contentStudioOn
+    ? [
+        { label: "Content Studio", href: "/admin/content", icon: Layers },
+        { label: "Topic Suggestions", href: "/admin/topic-suggestions", icon: TrendingUp },
+        { label: "Platform Connections", href: "/admin/platform-connections", icon: Link2 },
+      ]
+    : [
+        { label: "Social", href: "/admin/social", icon: Megaphone },
+        { label: "Calendar", href: "/admin/calendar", icon: CalendarDays },
+        { label: "Topic Suggestions", href: "/admin/topic-suggestions", icon: TrendingUp },
+        { label: "Videos", href: "/admin/videos", icon: Film },
+        { label: "Platform Connections", href: "/admin/platform-connections", icon: Link2 },
+      ]
 
-export function AdminSidebar() {
+  return [
+    {
+      title: "",
+      items: [{ label: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard }],
+    },
+    {
+      title: "Coaching",
+      items: [
+        { label: "Clients", href: "/admin/clients", icon: Users },
+        { label: "Programs", href: "/admin/programs", icon: ClipboardList },
+        { label: "Exercises", href: "/admin/exercises", icon: Dumbbell },
+        { label: "Form Reviews", href: "/admin/form-reviews", icon: Video },
+        { label: "Assessments", href: "/admin/performance-assessments", icon: ClipboardCheck },
+      ],
+    },
+    {
+      title: "Content",
+      items: [
+        { label: "Blog", href: "/admin/blog", icon: FileText },
+        { label: "Testimonials", href: "/admin/testimonials", icon: MessageSquareQuote },
+        { label: "Newsletter", href: "/admin/newsletter", icon: Mail },
+      ],
+    },
+    {
+      title: "AI Tools",
+      items: [
+        { label: "AI Assistant", href: "/admin/ai-assistant", icon: Bot },
+        { label: "AI Usage", href: "/admin/ai-usage", icon: Brain },
+        { label: "AI Insights", href: "/admin/ai-insights", icon: Lightbulb },
+        { label: "AI Templates", href: "/admin/ai-templates", icon: FileText },
+        { label: "AI Policy", href: "/admin/settings/ai-policy", icon: Sparkles },
+      ],
+    },
+    {
+      title: "AI Automation",
+      items: aiAutomationItems,
+    },
+    {
+      title: "Business",
+      items: [
+        { label: "Bookings", href: "/admin/bookings", icon: CalendarCheck },
+        { label: "Events", href: "/admin/events", icon: CalendarDays },
+        { label: "Payments", href: "/admin/payments", icon: CreditCard },
+        { label: "Analytics", href: "/admin/analytics", icon: BarChart3 },
+        { label: "Reviews", href: "/admin/reviews", icon: Star },
+      ],
+    },
+    {
+      title: "Shop",
+      items: [
+        { label: "Products", href: "/admin/shop/products", icon: ShoppingBag },
+        { label: "Orders", href: "/admin/shop/orders", icon: Package },
+      ],
+    },
+    {
+      title: "Legal",
+      items: [{ label: "Legal Documents", href: "/admin/legal", icon: Scale }],
+    },
+  ]
+}
+
+interface AdminSidebarProps {
+  contentStudioEnabled?: boolean
+}
+
+export function AdminSidebar({ contentStudioEnabled = false }: AdminSidebarProps) {
   const pathname = usePathname()
+  const navSections = getNavSections(contentStudioEnabled)
 
   // Sections with a title are collapsible; auto-open if they contain the active route
   const initialOpen = navSections.reduce(

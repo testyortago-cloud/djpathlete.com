@@ -1,6 +1,7 @@
 import { requireAdmin } from "@/lib/auth-helpers"
 import { getUserById } from "@/lib/db/users"
 import { AdminLayout } from "@/components/admin/AdminLayout"
+import { isContentStudioEnabled } from "@/lib/content-studio/feature-flag"
 
 export default async function AdminRootLayout({ children }: { children: React.ReactNode }) {
   const session = await requireAdmin()
@@ -16,7 +17,7 @@ export default async function AdminRootLayout({ children }: { children: React.Re
   }
 
   return (
-    <AdminLayout avatarUrl={avatarUrl} initials={initials}>
+    <AdminLayout avatarUrl={avatarUrl} initials={initials} contentStudioEnabled={isContentStudioEnabled()}>
       {children}
     </AdminLayout>
   )
