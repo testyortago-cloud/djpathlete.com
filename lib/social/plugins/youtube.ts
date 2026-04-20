@@ -105,9 +105,18 @@ export function createYouTubePlugin(credentials: YouTubeCredentials): PublishPlu
         return { success: false, error: "YouTube requires a video URL" }
       }
 
-      const parts = input.content.split(/\r?\n\r?\n/, 2)
-      const title = parts[0].trim().slice(0, 100)
-      const description = (parts.length > 1 ? parts[1] : "").trim()
+      const separatorMatch = input.content.match(/\r?\n\r?\n/)
+      const separatorIndex = separatorMatch ? input.content.indexOf(separatorMatch[0]) : -1
+      const title = (
+        separatorIndex >= 0 ? input.content.slice(0, separatorIndex) : input.content
+      )
+        .trim()
+        .slice(0, 100)
+      const description = (
+        separatorIndex >= 0
+          ? input.content.slice(separatorIndex + (separatorMatch?.[0].length ?? 0))
+          : ""
+      ).trim()
       const tags = (input.metadata?.tags as string[] | undefined) ?? []
 
       const fileResponse = await fetch(input.mediaUrl)
