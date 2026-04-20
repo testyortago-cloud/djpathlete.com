@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { useAiJob } from "@/hooks/use-ai-job"
 import { TemplateSelector } from "@/components/admin/TemplateSelector"
+import { EnhanceTextareaButton } from "@/components/admin/ai-templates/enhance-textarea-button"
 
 const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
@@ -217,10 +218,18 @@ export function GenerateDayDialog({
                 <Label htmlFor="day-instructions">
                   {ignoreProfile ? "Coach Instructions (recommended)" : "Coach Instructions (optional)"}
                 </Label>
-                <TemplateSelector
-                  scope="day"
-                  onSelect={(prompt) => setInstructions((prev) => (prev ? `${prev}\n\n${prompt}` : prompt))}
-                />
+                <div className="flex items-center gap-1">
+                  <EnhanceTextareaButton
+                    value={instructions}
+                    scope="day"
+                    onApply={setInstructions}
+                  />
+                  <TemplateSelector
+                    scope="day"
+                    currentText={instructions}
+                    onSelect={(prompt) => setInstructions((prev) => (prev ? `${prev}\n\n${prompt}` : prompt))}
+                  />
+                </div>
               </div>
               <Textarea
                 id="day-instructions"
@@ -231,9 +240,10 @@ export function GenerateDayDialog({
                 }
                 value={instructions}
                 onChange={(e) => setInstructions(e.target.value)}
-                rows={3}
+                rows={8}
                 maxLength={2000}
                 disabled={isSubmitting}
+                className="field-sizing-fixed resize-none"
               />
               {!ignoreProfile && (
                 <p className="text-xs text-muted-foreground">

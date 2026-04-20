@@ -1679,6 +1679,7 @@ function Step3Settings({
           </Label>
           <TemplateSelector
             scope="week"
+            currentText={additionalInstructions}
             onSelect={(prompt) =>
               setAdditionalInstructions(additionalInstructions ? `${additionalInstructions}\n\n${prompt}` : prompt)
             }
@@ -1693,8 +1694,9 @@ function Step3Settings({
               ? "Describe the program you want — goals, structure, focus areas, techniques..."
               : "e.g. Focus on posterior chain, include sprint work on lower body days..."
           }
-          rows={ignoreProfile && hasClient ? 4 : 3}
+          rows={ignoreProfile && hasClient ? 10 : 8}
           maxLength={2000}
+          className="field-sizing-fixed resize-none"
         />
       </div>
     </div>

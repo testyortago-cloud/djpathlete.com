@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { useAiJob } from "@/hooks/use-ai-job"
 import { TemplateSelector } from "@/components/admin/TemplateSelector"
+import { EnhanceTextareaButton } from "@/components/admin/ai-templates/enhance-textarea-button"
 
 interface GenerateWeekDialogProps {
   open: boolean
@@ -218,10 +219,18 @@ export function GenerateWeekDialog({
                 <Label htmlFor="instructions">
                   {ignoreProfile ? "Coach Instructions (recommended)" : "Coach Instructions (optional)"}
                 </Label>
-                <TemplateSelector
-                  scope="week"
-                  onSelect={(prompt) => setInstructions((prev) => (prev ? `${prev}\n\n${prompt}` : prompt))}
-                />
+                <div className="flex items-center gap-1">
+                  <EnhanceTextareaButton
+                    value={instructions}
+                    scope="week"
+                    onApply={setInstructions}
+                  />
+                  <TemplateSelector
+                    scope="week"
+                    currentText={instructions}
+                    onSelect={(prompt) => setInstructions((prev) => (prev ? `${prev}\n\n${prompt}` : prompt))}
+                  />
+                </div>
               </div>
               <Textarea
                 id="instructions"
@@ -232,9 +241,10 @@ export function GenerateWeekDialog({
                 }
                 value={instructions}
                 onChange={(e) => setInstructions(e.target.value)}
-                rows={3}
+                rows={8}
                 maxLength={2000}
                 disabled={isSubmitting}
+                className="field-sizing-fixed resize-none"
               />
               {!ignoreProfile && (
                 <p className="text-xs text-muted-foreground">

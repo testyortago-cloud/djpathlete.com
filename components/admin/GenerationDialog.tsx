@@ -259,6 +259,7 @@ export function GenerationDialog(props: GenerationDialogProps) {
                 <Label htmlFor="gen-instructions">Coach Instructions (optional)</Label>
                 <TemplateSelector
                   scope={isWeek ? "week" : "day"}
+                  currentText={instructions}
                   onSelect={(prompt) => setInstructions((prev) => (prev ? `${prev}\n\n${prompt}` : prompt))}
                 />
               </div>
@@ -267,9 +268,10 @@ export function GenerationDialog(props: GenerationDialogProps) {
                 placeholder={placeholder}
                 value={instructions}
                 onChange={(e) => setInstructions(e.target.value)}
-                rows={3}
+                rows={8}
                 maxLength={2000}
                 disabled={isSubmitting}
+                className="field-sizing-fixed resize-none"
               />
               <p className="text-xs text-muted-foreground">{helperText}</p>
             </div>
