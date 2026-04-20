@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { Sparkles, Loader2, AlertCircle } from "lucide-react"
 import { toast } from "sonner"
+import { useRouter } from "next/navigation"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { useAiJob } from "@/hooks/use-ai-job"
 import { cn } from "@/lib/utils"
@@ -41,11 +42,15 @@ export function NewsletterGenerateDialog({
   const [prompt, setPrompt] = useState("")
   const [tone, setTone] = useState<"professional" | "conversational" | "motivational">("professional")
   const [length, setLength] = useState<"short" | "medium" | "long">("medium")
+  const [mode, setMode] = useState<"prompt" | "blog">("prompt")
+  const [blogs, setBlogs] = useState<Array<{ id: string; title: string; published_at: string }>>([])
+  const [selectedBlogId, setSelectedBlogId] = useState<string | null>(null)
   const [jobId, setJobId] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [confirmed, setConfirmed] = useState(false)
   const [elapsed, setElapsed] = useState(0)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const router = useRouter()
 
   const aiJob = useAiJob(jobId)
 
@@ -80,7 +85,26 @@ export function NewsletterGenerateDialog({
     }
   }, [aiJob.status])
 
+  // Fetch published blog posts when switching to blog mode
+  useEffect(() => {
+    if (mode !== "blog" || !open) return
+    let cancelled = false
+    fetch("/api/admin/blog?status=published")
+      .then((r) => r.json())
+      .then((data: Array<{ id: string; title: string; published_at: string }>) => {
+        // Route returns a bare array (not { posts })
+        if (!cancelled) setBlogs(Array.isArray(data) ? data : [])
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [mode, open])
+
   function resetState() {
+    setMode("prompt")
+    setBlogs([])
+    setSelectedBlogId(null)
     setPrompt("")
     setTone("professional")
     setLength("medium")
@@ -189,34 +213,64 @@ export function NewsletterGenerateDialog({
           </div>
         ) : (
           <>
-            {/* Confirmation warning */}
-            {hasExistingContent && confirmed && (
-              <div className="p-3 rounded-lg bg-warning/10 border border-warning/20">
-                <p className="text-sm text-warning font-medium">
-                  This will replace your current draft. Click Generate again to confirm.
-                </p>
-              </div>
-            )}
-
-            {/* Prompt */}
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1">
-                What should the newsletter be about?
-              </label>
-              <textarea
-                value={prompt}
-                onChange={(e) => {
-                  setPrompt(e.target.value)
-                  setConfirmed(false)
-                }}
-                placeholder="e.g., Monthly training tips for off-season athletes, highlight our new program offerings"
-                rows={3}
-                className="w-full px-3 py-2 rounded-lg border border-border bg-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-              />
-              <p className="text-xs text-muted-foreground mt-1">{prompt.length}/2000</p>
+            {/* Tab strip */}
+            <div className="flex border-b border-border mb-4">
+              <button
+                type="button"
+                role="tab"
+                onClick={() => setMode("prompt")}
+                className={cn(
+                  "px-4 py-2 text-sm font-medium border-b-2",
+                  mode === "prompt" ? "border-primary text-primary" : "border-transparent text-muted-foreground",
+                )}
+              >
+                From prompt
+              </button>
+              <button
+                type="button"
+                role="tab"
+                onClick={() => setMode("blog")}
+                className={cn(
+                  "px-4 py-2 text-sm font-medium border-b-2",
+                  mode === "blog" ? "border-primary text-primary" : "border-transparent text-muted-foreground",
+                )}
+              >
+                From blog post
+              </button>
             </div>
 
-            {/* Tone */}
+            {mode === "prompt" && (
+              <>
+                {/* Confirmation warning */}
+                {hasExistingContent && confirmed && (
+                  <div className="p-3 rounded-lg bg-warning/10 border border-warning/20">
+                    <p className="text-sm text-warning font-medium">
+                      This will replace your current draft. Click Generate again to confirm.
+                    </p>
+                  </div>
+                )}
+
+                {/* Prompt */}
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1">
+                    What should the newsletter be about?
+                  </label>
+                  <textarea
+                    value={prompt}
+                    onChange={(e) => {
+                      setPrompt(e.target.value)
+                      setConfirmed(false)
+                    }}
+                    placeholder="e.g., Monthly training tips for off-season athletes, highlight our new program offerings"
+                    rows={3}
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">{prompt.length}/2000</p>
+                </div>
+              </>
+            )}
+
+            {/* Tone — shared between both modes */}
             <div>
               <label className="block text-sm font-medium text-foreground mb-1.5">Tone</label>
               <div className="flex gap-1 bg-surface rounded-lg p-1">
@@ -238,7 +292,7 @@ export function NewsletterGenerateDialog({
               </div>
             </div>
 
-            {/* Length */}
+            {/* Length — shared between both modes */}
             <div>
               <label className="block text-sm font-medium text-foreground mb-1.5">Length</label>
               <div className="flex gap-1 bg-surface rounded-lg p-1">
@@ -261,16 +315,72 @@ export function NewsletterGenerateDialog({
               </div>
             </div>
 
-            {/* Generate button */}
-            <button
-              type="button"
-              onClick={handleGenerate}
-              disabled={prompt.length < 10 || submitting}
-              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
-            >
-              {submitting ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-              {hasExistingContent && confirmed ? "Confirm & Generate" : "Generate Newsletter"}
-            </button>
+            {/* Blog mode — blog picker + submit */}
+            {mode === "blog" && (
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium">Pick a published blog post</label>
+                  <ul className="mt-2 border border-border rounded-md divide-y divide-border max-h-60 overflow-y-auto">
+                    {blogs.length === 0 && (
+                      <li className="px-3 py-2 text-sm text-muted-foreground">No published posts yet.</li>
+                    )}
+                    {blogs.map((b) => (
+                      <li key={b.id}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedBlogId(b.id)}
+                          className={cn(
+                            "w-full text-left px-3 py-2 text-sm hover:bg-surface/50",
+                            selectedBlogId === b.id && "bg-primary/5",
+                          )}
+                        >
+                          <div className="font-medium text-primary">{b.title}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {new Date(b.published_at).toLocaleDateString()}
+                          </div>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={!selectedBlogId}
+                  onClick={async () => {
+                    if (!selectedBlogId) return
+                    const res = await fetch("/api/admin/newsletter/generate-from-blog", {
+                      method: "POST",
+                      headers: { "content-type": "application/json" },
+                      body: JSON.stringify({ blog_post_id: selectedBlogId, tone, length }),
+                    })
+                    if (res.ok) {
+                      onOpenChange(false)
+                      router.push("/admin/newsletter")
+                    }
+                  }}
+                  className={cn(
+                    "w-full inline-flex items-center justify-center gap-2 px-4 py-2 rounded-md bg-primary text-white font-medium",
+                    "disabled:opacity-50 disabled:cursor-not-allowed",
+                  )}
+                >
+                  Generate from blog
+                </button>
+              </div>
+            )}
+
+            {/* Generate button — prompt mode only */}
+            {mode === "prompt" && (
+              <button
+                type="button"
+                onClick={handleGenerate}
+                disabled={prompt.length < 10 || submitting}
+                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
+              >
+                {submitting ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+                {hasExistingContent && confirmed ? "Confirm & Generate" : "Generate Newsletter"}
+              </button>
+            )}
           </>
         )}
       </DialogContent>
