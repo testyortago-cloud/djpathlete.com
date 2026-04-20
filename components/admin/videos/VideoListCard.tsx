@@ -1,9 +1,10 @@
 "use client"
 
 import { Film, Loader2, CheckCircle, AlertCircle, Sparkles, Play, Trash2, X } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
+import { useAiJob } from "@/hooks/use-ai-job"
 import type { VideoUpload } from "@/types/database"
 
 interface VideoListCardProps {
@@ -44,8 +45,40 @@ export function VideoListCard({ video, onAction }: VideoListCardProps) {
   const [busy, setBusy] = useState<"transcribe" | "fanout" | "delete" | "preview" | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
 
+  // Optimistic status override — flips instantly when the user clicks
+  // Transcribe so the spinner badge shows without waiting for the page
+  // to refresh with the real value from Supabase.
+  const [optimisticStatus, setOptimisticStatus] = useState<VideoUpload["status"] | null>(null)
+
+  // Firestore ai_jobs doc id — when set, useAiJob subscribes in real time.
+  // Set after the Transcribe POST returns, cleared when the Function completes.
+  const [activeJobId, setActiveJobId] = useState<string | null>(null)
+  const aiJob = useAiJob(activeJobId)
+
+  // When the tracked job reaches a terminal state, refresh the page to pick
+  // up the final video_uploads.status (either "transcribed" from the webhook
+  // or "failed" if AssemblyAI / the Function errored).
+  useEffect(() => {
+    if (!activeJobId) return
+    const terminal = ["completed", "failed", "cancelled"]
+    if (!terminal.includes(aiJob.status)) return
+    // Small delay so the webhook's video_uploads UPDATE lands before we re-read.
+    const t = setTimeout(() => {
+      setActiveJobId(null)
+      setOptimisticStatus(null)
+      if (aiJob.status === "failed") {
+        toast.error(`Transcription failed: ${aiJob.error ?? "unknown error"}`)
+      } else if (aiJob.status === "completed") {
+        toast.success("Transcription complete")
+      }
+      onAction()
+    }, 750)
+    return () => clearTimeout(t)
+  }, [activeJobId, aiJob.status, aiJob.error, onAction])
+
   async function transcribe() {
     setBusy("transcribe")
+    setOptimisticStatus("transcribing") // instant visual flip
     try {
       const res = await fetch("/api/admin/videos/transcribe", {
         method: "POST",
@@ -53,9 +86,11 @@ export function VideoListCard({ video, onAction }: VideoListCardProps) {
         body: JSON.stringify({ videoUploadId: video.id }),
       })
       if (!res.ok) throw new Error((await res.text()) || "Transcribe failed")
-      toast.success("Transcription queued")
-      onAction()
+      const body = (await res.json()) as { jobId: string }
+      setActiveJobId(body.jobId) // start listening for completion
+      toast.success("Transcription queued — this takes 1-5 min")
     } catch (error) {
+      setOptimisticStatus(null) // revert optimistic flip
       toast.error(`Transcribe failed: ${(error as Error).message}`)
     } finally {
       setBusy(null)
@@ -111,8 +146,9 @@ export function VideoListCard({ video, onAction }: VideoListCardProps) {
     }
   }
 
-  const canTranscribe = video.status === "uploaded"
-  const canFanout = video.status === "transcribed" || video.status === "analyzed"
+  const effectiveStatus = optimisticStatus ?? video.status
+  const canTranscribe = effectiveStatus === "uploaded"
+  const canFanout = effectiveStatus === "transcribed" || effectiveStatus === "analyzed"
 
   return (
     <>
@@ -145,7 +181,7 @@ export function VideoListCard({ video, onAction }: VideoListCardProps) {
         </div>
 
         <div className="flex items-center gap-3 flex-wrap">
-          {statusBadge(video.status)}
+          {statusBadge(effectiveStatus)}
           <button
             type="button"
             onClick={transcribe}
