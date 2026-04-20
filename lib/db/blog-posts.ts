@@ -5,13 +5,13 @@ function getClient() {
   return createServiceRoleClient()
 }
 
-// AI-automation fields added in migration 00080 all have DB defaults or are nullable,
+// AI-automation fields added in migrations 00080 & 00084 all have DB defaults or are nullable,
 // so they stay optional on insert while remaining required on read.
 type CreateBlogPostInput = Omit<
   BlogPost,
-  "id" | "created_at" | "updated_at" | "source_video_id" | "seo_metadata" | "tavily_research" | "fact_check_status"
+  "id" | "created_at" | "updated_at" | "source_video_id" | "seo_metadata" | "tavily_research" | "fact_check_status" | "fact_check_details"
 > &
-  Partial<Pick<BlogPost, "source_video_id" | "seo_metadata" | "tavily_research" | "fact_check_status">>
+  Partial<Pick<BlogPost, "source_video_id" | "seo_metadata" | "tavily_research" | "fact_check_status" | "fact_check_details">>
 
 export async function getBlogPosts(status?: BlogPostStatus): Promise<BlogPost[]> {
   const supabase = getClient()

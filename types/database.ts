@@ -698,6 +698,7 @@ export interface BlogPost {
   seo_metadata: Record<string, unknown>
   tavily_research: Record<string, unknown> | null
   fact_check_status: FactCheckStatus | null
+  fact_check_details: Record<string, unknown> | null
 }
 
 export interface Newsletter {
