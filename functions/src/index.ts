@@ -10,6 +10,9 @@ const anthropicApiKey = defineSecret("ANTHROPIC_API_KEY")
 const supabaseUrl = defineSecret("SUPABASE_URL")
 const supabaseServiceRoleKey = defineSecret("SUPABASE_SERVICE_ROLE_KEY")
 const resendApiKey = defineSecret("RESEND_API_KEY")
+const assemblyAiApiKey = defineSecret("ASSEMBLYAI_API_KEY")
+const appUrl = defineSecret("APP_URL")
+const tavilyApiKey = defineSecret("TAVILY_API_KEY")
 
 const allSecrets = [anthropicApiKey, supabaseUrl, supabaseServiceRoleKey]
 const sendSecrets = [supabaseUrl, supabaseServiceRoleKey, resendApiKey]
@@ -180,5 +183,165 @@ export const aiCoach = onDocumentCreated(
 
     const { handleAiCoach } = await import("./ai-coach.js")
     await handleAiCoach(event.params.jobId)
+  },
+)
+
+// ─── Video Transcription ──────────────────────────────────────────────────────
+// Triggered when a new ai_jobs doc is created with type "video_transcription"
+
+export const transcribeVideo = onDocumentCreated(
+  {
+    document: "ai_jobs/{jobId}",
+    timeoutSeconds: 540,
+    memory: "512MiB",
+    region: "us-central1",
+    secrets: [supabaseUrl, supabaseServiceRoleKey, assemblyAiApiKey, appUrl],
+  },
+  async (event) => {
+    const data = event.data?.data()
+    if (!data || data.type !== "video_transcription") return
+
+    const { handleVideoTranscription } = await import("./transcribe-video.js")
+    await handleVideoTranscription(event.params.jobId)
+  },
+)
+
+// ─── Tavily Research ──────────────────────────────────────────────────────────
+// Triggered when a new ai_jobs doc is created with type "tavily_research"
+
+export const tavilyResearch = onDocumentCreated(
+  {
+    document: "ai_jobs/{jobId}",
+    timeoutSeconds: 120,
+    memory: "512MiB",
+    region: "us-central1",
+    secrets: [tavilyApiKey, supabaseUrl, supabaseServiceRoleKey],
+  },
+  async (event) => {
+    const data = event.data?.data()
+    if (!data || data.type !== "tavily_research") return
+
+    const { handleTavilyResearch } = await import("./tavily-research.js")
+    await handleTavilyResearch(event.params.jobId)
+  },
+)
+
+// ─── Tavily Fact Check ────────────────────────────────────────────────────────
+// Triggered when a new ai_jobs doc is created with type "tavily_fact_check"
+
+export const tavilyFactCheck = onDocumentCreated(
+  {
+    document: "ai_jobs/{jobId}",
+    timeoutSeconds: 180,
+    memory: "512MiB",
+    region: "us-central1",
+    secrets: [anthropicApiKey, supabaseUrl, supabaseServiceRoleKey],
+  },
+  async (event) => {
+    const data = event.data?.data()
+    if (!data || data.type !== "tavily_fact_check") return
+
+    const { handleTavilyFactCheck } = await import("./tavily-fact-check.js")
+    await handleTavilyFactCheck(event.params.jobId)
+  },
+)
+
+// ─── Social Fanout ─────────────────────────────────────────────────────────────
+// Triggered when a new ai_jobs doc is created with type "social_fanout"
+
+export const socialFanout = onDocumentCreated(
+  {
+    document: "ai_jobs/{jobId}",
+    timeoutSeconds: 540,
+    memory: "1GiB",
+    region: "us-central1",
+    secrets: [anthropicApiKey, supabaseUrl, supabaseServiceRoleKey],
+  },
+  async (event) => {
+    const data = event.data?.data()
+    if (!data || data.type !== "social_fanout") return
+
+    const { handleSocialFanout } = await import("./social-fanout.js")
+    await handleSocialFanout(event.params.jobId)
+  },
+)
+
+// ─── Blog From Video ──────────────────────────────────────────────────────────
+// Triggered when a new ai_jobs doc is created with type "blog_from_video"
+
+export const blogFromVideo = onDocumentCreated(
+  {
+    document: "ai_jobs/{jobId}",
+    timeoutSeconds: 540,
+    memory: "1GiB",
+    region: "us-central1",
+    secrets: [anthropicApiKey, tavilyApiKey, supabaseUrl, supabaseServiceRoleKey],
+  },
+  async (event) => {
+    const data = event.data?.data()
+    if (!data || data.type !== "blog_from_video") return
+
+    const { handleBlogFromVideo } = await import("./blog-from-video.js")
+    await handleBlogFromVideo(event.params.jobId)
+  },
+)
+
+// ─── Newsletter From Blog ─────────────────────────────────────────────────────
+// Triggered when a new ai_jobs doc is created with type "newsletter_from_blog"
+
+export const newsletterFromBlog = onDocumentCreated(
+  {
+    document: "ai_jobs/{jobId}",
+    timeoutSeconds: 300,
+    memory: "512MiB",
+    region: "us-central1",
+    secrets: [anthropicApiKey, supabaseUrl, supabaseServiceRoleKey],
+  },
+  async (event) => {
+    const data = event.data?.data()
+    if (!data || data.type !== "newsletter_from_blog") return
+
+    const { handleNewsletterFromBlog } = await import("./newsletter-from-blog.js")
+    await handleNewsletterFromBlog(event.params.jobId)
+  },
+)
+
+// ─── Tavily Trending Scan ─────────────────────────────────────────────────────
+// Triggered weekly via ai_jobs doc with type "tavily_trending_scan"
+
+export const tavilyTrendingScan = onDocumentCreated(
+  {
+    document: "ai_jobs/{jobId}",
+    timeoutSeconds: 300,
+    memory: "512MiB",
+    region: "us-central1",
+    secrets: [anthropicApiKey, tavilyApiKey, supabaseUrl, supabaseServiceRoleKey],
+  },
+  async (event) => {
+    const data = event.data?.data()
+    if (!data || data.type !== "tavily_trending_scan") return
+
+    const { handleTavilyTrendingScan } = await import("./tavily-trending-scan.js")
+    await handleTavilyTrendingScan(event.params.jobId)
+  },
+)
+
+// ─── SEO Enhance ──────────────────────────────────────────────────────────────
+// Triggered on blog publish via ai_jobs doc with type "seo_enhance"
+
+export const seoEnhance = onDocumentCreated(
+  {
+    document: "ai_jobs/{jobId}",
+    timeoutSeconds: 300,
+    memory: "512MiB",
+    region: "us-central1",
+    secrets: [anthropicApiKey, supabaseUrl, supabaseServiceRoleKey],
+  },
+  async (event) => {
+    const data = event.data?.data()
+    if (!data || data.type !== "seo_enhance") return
+
+    const { handleSeoEnhance } = await import("./seo-enhance.js")
+    await handleSeoEnhance(event.params.jobId)
   },
 )

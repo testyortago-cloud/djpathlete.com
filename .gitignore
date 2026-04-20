@@ -38,6 +38,7 @@ test-results/
 
 # claude code
 .claude/
+.superpowers/
 
 # vercel
 .vercel

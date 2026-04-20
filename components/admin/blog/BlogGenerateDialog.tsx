@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { Sparkles, Loader2, AlertCircle, ChevronDown, X, Plus, Link, FileText, Upload } from "lucide-react"
 import { toast } from "sonner"
+import { useRouter } from "next/navigation"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { useAiJob } from "@/hooks/use-ai-job"
 import { cn } from "@/lib/utils"
@@ -37,6 +38,10 @@ const lengths = [
 ] as const
 
 export function BlogGenerateDialog({ open, onOpenChange, onGenerated, hasExistingContent }: BlogGenerateDialogProps) {
+  const router = useRouter()
+  const [mode, setMode] = useState<"prompt" | "video">("prompt")
+  const [videos, setVideos] = useState<Array<{ id: string; title: string; created_at: string }>>([])
+  const [selectedVideoId, setSelectedVideoId] = useState<string | null>(null)
   const [prompt, setPrompt] = useState("")
   const [tone, setTone] = useState<"professional" | "conversational" | "motivational">("professional")
   const [length, setLength] = useState<"short" | "medium" | "long">("medium")
@@ -85,7 +90,25 @@ export function BlogGenerateDialog({ open, onOpenChange, onGenerated, hasExistin
     }
   }, [aiJob.status])
 
+  // Fetch transcribed videos when switching to video mode
+  useEffect(() => {
+    if (mode !== "video" || !open) return
+    let cancelled = false
+    fetch("/api/admin/videos?status=transcribed")
+      .then((r) => r.json())
+      .then((body: { videos: Array<{ id: string; title: string; created_at: string }> }) => {
+        if (!cancelled) setVideos(body.videos)
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [mode, open])
+
   function resetState() {
+    setMode("prompt")
+    setVideos([])
+    setSelectedVideoId(null)
     setPrompt("")
     setTone("professional")
     setLength("medium")
@@ -332,6 +355,34 @@ export function BlogGenerateDialog({ open, onOpenChange, onGenerated, hasExistin
           </div>
         ) : (
           <>
+            {/* Tab strip */}
+            <div className="flex border-b border-border mb-4">
+              <button
+                type="button"
+                role="tab"
+                onClick={() => setMode("prompt")}
+                className={cn(
+                  "px-4 py-2 text-sm font-medium border-b-2",
+                  mode === "prompt" ? "border-primary text-primary" : "border-transparent text-muted-foreground",
+                )}
+              >
+                From prompt
+              </button>
+              <button
+                type="button"
+                role="tab"
+                onClick={() => setMode("video")}
+                className={cn(
+                  "px-4 py-2 text-sm font-medium border-b-2",
+                  mode === "video" ? "border-primary text-primary" : "border-transparent text-muted-foreground",
+                )}
+              >
+                From video
+              </button>
+            </div>
+
+            {mode === "prompt" && (
+              <>
             {/* Confirmation warning */}
             {hasExistingContent && confirmed && (
               <div className="p-3 rounded-lg bg-warning/10 border border-warning/20">
@@ -529,8 +580,10 @@ export function BlogGenerateDialog({ open, onOpenChange, onGenerated, hasExistin
                 </div>
               )}
             </div>
+              </>
+            )}
 
-            {/* Tone */}
+            {/* Tone — shared between both modes */}
             <div>
               <label className="block text-sm font-semibold text-foreground mb-2">Tone</label>
               <div className="grid grid-cols-3 gap-0 rounded-lg border border-border overflow-hidden">
@@ -553,7 +606,7 @@ export function BlogGenerateDialog({ open, onOpenChange, onGenerated, hasExistin
               </div>
             </div>
 
-            {/* Length */}
+            {/* Length — shared between both modes */}
             <div>
               <label className="block text-sm font-semibold text-foreground mb-2">Length</label>
               <div className="grid grid-cols-3 gap-0 rounded-lg border border-border overflow-hidden">
@@ -584,16 +637,73 @@ export function BlogGenerateDialog({ open, onOpenChange, onGenerated, hasExistin
               </div>
             </div>
 
-            {/* Generate button */}
-            <button
-              type="button"
-              onClick={handleGenerate}
-              disabled={prompt.length < 10 || submitting}
-              className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-all disabled:opacity-40 disabled:cursor-not-allowed mt-1"
-            >
-              {submitting ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-              {hasExistingContent && confirmed ? "Confirm & Generate" : "Generate Blog Post"}
-            </button>
+            {/* Video mode — video picker + submit */}
+            {mode === "video" && (
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium">Pick a transcribed video</label>
+                  <ul className="mt-2 border border-border rounded-md divide-y divide-border max-h-60 overflow-y-auto">
+                    {videos.length === 0 && (
+                      <li className="px-3 py-2 text-sm text-muted-foreground">No transcribed videos yet.</li>
+                    )}
+                    {videos.map((v) => (
+                      <li key={v.id}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedVideoId(v.id)}
+                          className={cn(
+                            "w-full text-left px-3 py-2 text-sm hover:bg-surface/50",
+                            selectedVideoId === v.id && "bg-primary/5",
+                          )}
+                        >
+                          <div className="font-medium text-primary">{v.title}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {new Date(v.created_at).toLocaleDateString()}
+                          </div>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={!selectedVideoId}
+                  onClick={async () => {
+                    if (!selectedVideoId) return
+                    const res = await fetch("/api/admin/blog-posts/generate-from-video", {
+                      method: "POST",
+                      headers: { "content-type": "application/json" },
+                      body: JSON.stringify({ video_upload_id: selectedVideoId, tone, length }),
+                    })
+                    if (res.ok) {
+                      const body = (await res.json()) as { jobId: string; blog_post_id: string }
+                      onOpenChange(false)
+                      router.push(`/admin/blog/${body.blog_post_id}/edit`)
+                    }
+                  }}
+                  className={cn(
+                    "w-full inline-flex items-center justify-center gap-2 px-4 py-2 rounded-md bg-primary text-white font-medium",
+                    "disabled:opacity-50 disabled:cursor-not-allowed",
+                  )}
+                >
+                  Generate from video
+                </button>
+              </div>
+            )}
+
+            {/* Generate button — prompt mode only */}
+            {mode === "prompt" && (
+              <button
+                type="button"
+                onClick={handleGenerate}
+                disabled={prompt.length < 10 || submitting}
+                className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-all disabled:opacity-40 disabled:cursor-not-allowed mt-1"
+              >
+                {submitting ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+                {hasExistingContent && confirmed ? "Confirm & Generate" : "Generate Blog Post"}
+              </button>
+            )}
           </>
         )}
       </DialogContent>

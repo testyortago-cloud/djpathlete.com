@@ -3,12 +3,17 @@
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { ArrowLeft, Save, Send, Loader2, Sparkles } from "lucide-react"
+import { ArrowLeft, Save, Send, Loader2, Sparkles, Search } from "lucide-react"
 import { toast } from "sonner"
 import { blogPostFormSchema, BLOG_CATEGORIES } from "@/lib/validators/blog-post"
 import { BlogEditor } from "./BlogEditor"
+import type { FactCheckStatus } from "./FactCheckBanner"
+import type { FactCheckDetails } from "./FactCheckSidebar"
+import type { SeoMetadata } from "@/types/database"
 import { CoverImageUpload } from "./CoverImageUpload"
 import { BlogGenerateDialog } from "./BlogGenerateDialog"
+import { ResearchPanel, type TavilyResearchBrief } from "./ResearchPanel"
+import { cn } from "@/lib/utils"
 import type { BlogPost } from "@/types/database"
 
 interface BlogPostFormProps {
@@ -30,6 +35,11 @@ export function BlogPostForm({ post, authorId }: BlogPostFormProps) {
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false)
   const [generateOpen, setGenerateOpen] = useState(false)
   const [editorKey, setEditorKey] = useState(0)
+  const [researchOpen, setResearchOpen] = useState(false)
+  const [researchBrief, setResearchBrief] = useState<TavilyResearchBrief | null>(
+    (post?.tavily_research as TavilyResearchBrief | null) ?? null,
+  )
+  const hasBrief = researchBrief !== null
 
   const [title, setTitle] = useState(post?.title ?? "")
   const [slug, setSlug] = useState(post?.slug ?? "")
@@ -194,6 +204,28 @@ export function BlogPostForm({ post, authorId }: BlogPostFormProps) {
           </button>
           <button
             type="button"
+            onClick={() => setResearchOpen((o) => !o)}
+            disabled={!post?.id || !title.trim()}
+            className={cn(
+              "inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-md",
+              "bg-surface text-primary border border-border hover:bg-surface/80",
+              "disabled:opacity-50 disabled:cursor-not-allowed",
+              researchOpen && "bg-primary/5 border-primary/30",
+            )}
+            title={
+              !post?.id
+                ? "Save the post once before researching"
+                : !title.trim()
+                  ? "Add a title first"
+                  : "Open research panel"
+            }
+          >
+            <Search className="size-4" />
+            Research
+            {hasBrief && <span className="ml-1 size-1.5 rounded-full bg-accent" aria-label="Has research brief" />}
+          </button>
+          <button
+            type="button"
             onClick={() => handleSave(false)}
             disabled={busy}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border text-sm font-medium hover:bg-surface transition-colors disabled:opacity-50"
@@ -214,139 +246,159 @@ export function BlogPostForm({ post, authorId }: BlogPostFormProps) {
       </div>
 
       {/* Two column layout */}
-      <div className="grid lg:grid-cols-[1fr_320px] gap-6">
-        {/* Left column — main content */}
-        <div className="space-y-4">
-          {/* Title */}
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Title</label>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Post title"
-              className="w-full px-3 py-2 rounded-lg border border-border bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-            />
-          </div>
+      <div className="flex flex-col lg:flex-row">
+        <div className="flex-1 min-w-0">
+          <div className="grid lg:grid-cols-[1fr_320px] gap-6">
+            {/* Left column — main content */}
+            <div className="space-y-4">
+              {/* Title */}
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Title</label>
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="Post title"
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                />
+              </div>
 
-          {/* Slug */}
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Slug</label>
-            <input
-              type="text"
-              value={slug}
-              onChange={(e) => {
-                setSlug(e.target.value)
-                setSlugManuallyEdited(true)
-              }}
-              placeholder="post-slug"
-              className="w-full px-3 py-2 rounded-lg border border-border bg-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-            />
-            <p className="text-xs text-muted-foreground mt-1">/blog/{slug || "..."}</p>
-          </div>
+              {/* Slug */}
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Slug</label>
+                <input
+                  type="text"
+                  value={slug}
+                  onChange={(e) => {
+                    setSlug(e.target.value)
+                    setSlugManuallyEdited(true)
+                  }}
+                  placeholder="post-slug"
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                />
+                <p className="text-xs text-muted-foreground mt-1">/blog/{slug || "..."}</p>
+              </div>
 
-          {/* Editor */}
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Content</label>
-            <BlogEditor key={editorKey} content={content} onChange={setContent} />
-          </div>
+              {/* Editor */}
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Content</label>
+                <BlogEditor
+                  key={editorKey}
+                  content={content}
+                  onChange={setContent}
+                  factCheckStatus={(post?.fact_check_status as FactCheckStatus | null) ?? null}
+                  factCheckDetails={(post?.fact_check_details as FactCheckDetails | null) ?? null}
+                  seoMetadata={(post?.seo_metadata as SeoMetadata | null) ?? null}
+                />
+              </div>
 
-          {/* Excerpt */}
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Excerpt</label>
-            <textarea
-              value={excerpt}
-              onChange={(e) => setExcerpt(e.target.value)}
-              placeholder="Brief summary of the post (10-500 characters)"
-              rows={3}
-              className="w-full px-3 py-2 rounded-lg border border-border bg-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-            />
-            <p className="text-xs text-muted-foreground mt-1">{excerpt.length}/500</p>
-          </div>
-        </div>
-
-        {/* Right column — sidebar */}
-        <div className="space-y-4">
-          {/* Cover Image */}
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Cover Image</label>
-            <CoverImageUpload currentUrl={coverImageUrl} postId={post?.id} onUploaded={setCoverImageUrl} />
-          </div>
-
-          {/* Category */}
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Category</label>
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-border bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-            >
-              <option value="">Select category</option>
-              {BLOG_CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Tags */}
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Tags</label>
-            <input
-              type="text"
-              value={tags}
-              onChange={(e) => setTags(e.target.value)}
-              placeholder="strength, recovery, youth"
-              className="w-full px-3 py-2 rounded-lg border border-border bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-            />
-            <p className="text-xs text-muted-foreground mt-1">Comma-separated</p>
-          </div>
-
-          {/* Meta Description */}
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Meta Description</label>
-            <textarea
-              value={metaDescription}
-              onChange={(e) => setMetaDescription(e.target.value)}
-              placeholder="SEO description (max 160 characters)"
-              rows={3}
-              maxLength={160}
-              className="w-full px-3 py-2 rounded-lg border border-border bg-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-            />
-            <p className="text-xs text-muted-foreground mt-1">{metaDescription.length}/160</p>
-          </div>
-
-          {/* Status info */}
-          {post && (
-            <div className="rounded-lg border border-border bg-surface/50 p-3 text-xs text-muted-foreground space-y-1">
-              <p>
-                Status:{" "}
-                <span className="font-medium text-foreground">
-                  {post.status === "published" ? "Published" : "Draft"}
-                </span>
-              </p>
-              {post.published_at && (
-                <p>
-                  Published:{" "}
-                  {new Date(post.published_at).toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                    year: "numeric",
-                  })}
-                </p>
-              )}
-              <p>
-                Created:{" "}
-                {new Date(post.created_at).toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                  year: "numeric",
-                })}
-              </p>
+              {/* Excerpt */}
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Excerpt</label>
+                <textarea
+                  value={excerpt}
+                  onChange={(e) => setExcerpt(e.target.value)}
+                  placeholder="Brief summary of the post (10-500 characters)"
+                  rows={3}
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                />
+                <p className="text-xs text-muted-foreground mt-1">{excerpt.length}/500</p>
+              </div>
             </div>
-          )}
+
+            {/* Right column — sidebar */}
+            <div className="space-y-4">
+              {/* Cover Image */}
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Cover Image</label>
+                <CoverImageUpload currentUrl={coverImageUrl} postId={post?.id} onUploaded={setCoverImageUrl} />
+              </div>
+
+              {/* Category */}
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Category</label>
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                >
+                  <option value="">Select category</option>
+                  {BLOG_CATEGORIES.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Tags */}
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Tags</label>
+                <input
+                  type="text"
+                  value={tags}
+                  onChange={(e) => setTags(e.target.value)}
+                  placeholder="strength, recovery, youth"
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                />
+                <p className="text-xs text-muted-foreground mt-1">Comma-separated</p>
+              </div>
+
+              {/* Meta Description */}
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Meta Description</label>
+                <textarea
+                  value={metaDescription}
+                  onChange={(e) => setMetaDescription(e.target.value)}
+                  placeholder="SEO description (max 160 characters)"
+                  rows={3}
+                  maxLength={160}
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                />
+                <p className="text-xs text-muted-foreground mt-1">{metaDescription.length}/160</p>
+              </div>
+
+              {/* Status info */}
+              {post && (
+                <div className="rounded-lg border border-border bg-surface/50 p-3 text-xs text-muted-foreground space-y-1">
+                  <p>
+                    Status:{" "}
+                    <span className="font-medium text-foreground">
+                      {post.status === "published" ? "Published" : "Draft"}
+                    </span>
+                  </p>
+                  {post.published_at && (
+                    <p>
+                      Published:{" "}
+                      {new Date(post.published_at).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      })}
+                    </p>
+                  )}
+                  <p>
+                    Created:{" "}
+                    {new Date(post.created_at).toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                    })}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
+        {researchOpen && post?.id && (
+          <ResearchPanel
+            blogPostId={post.id}
+            postTitle={title}
+            initialBrief={researchBrief}
+            onBriefChange={setResearchBrief}
+            onClose={() => setResearchOpen(false)}
+          />
+        )}
       </div>
 
       <BlogGenerateDialog

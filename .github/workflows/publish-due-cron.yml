@@ -1,0 +1,35 @@
+name: Publish Scheduled Posts
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: publish-due-cron
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: POST /api/admin/internal/publish-due
+        env:
+          CRON_TARGET_URL: ${{ secrets.CRON_TARGET_URL }}
+          INTERNAL_CRON_TOKEN: ${{ secrets.INTERNAL_CRON_TOKEN }}
+        run: |
+          if [ -z "$CRON_TARGET_URL" ] || [ -z "$INTERNAL_CRON_TOKEN" ]; then
+            echo "::error::Missing CRON_TARGET_URL or INTERNAL_CRON_TOKEN repository secret"
+            exit 1
+          fi
+          status=$(curl -sS -o response.json -w "%{http_code}" \
+            -X POST "$CRON_TARGET_URL" \
+            -H "Authorization: Bearer $INTERNAL_CRON_TOKEN" \
+            -H "Content-Type: application/json" \
+            --max-time 120)
+          echo "HTTP $status"
+          cat response.json || true
+          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+            exit 1
+          fi

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { getBlogPostById, updateBlogPost } from "@/lib/db/blog-posts"
-import { sendBlogNewsletterToAll } from "@/lib/email"
+import { createAiJob } from "@/lib/ai-jobs"
 
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -18,16 +18,20 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
       published_at: post.published_at ?? new Date().toISOString(),
     })
 
-    // Send newsletter to all subscribers (fire-and-forget)
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://djpathlete.com"
+    // Queue an AI-drafted newsletter for admin review (replaces the old plain blast).
+    // Fire-and-forget: if queuing fails, publishing still succeeds.
+    createAiJob({
+      type: "newsletter_from_blog",
+      userId: session.user.id,
+      input: { blog_post_id: id },
+    }).catch((err) => console.error("[Blog] newsletter_from_blog queue failed:", err))
 
-    sendBlogNewsletterToAll({
-      title: updated.title,
-      excerpt: updated.excerpt,
-      url: `${baseUrl}/blog/${updated.slug}`,
-      category: updated.category,
-      coverImageUrl: updated.cover_image_url,
-    }).catch((err) => console.error("[Blog] Newsletter send failed:", err))
+    // Queue SEO enrichment (parallel to newsletter_from_blog). Fire-and-forget.
+    createAiJob({
+      type: "seo_enhance",
+      userId: session.user.id,
+      input: { blog_post_id: id },
+    }).catch((err) => console.error("[Blog] seo_enhance queue failed:", err))
 
     return NextResponse.json(updated)
   } catch (error) {

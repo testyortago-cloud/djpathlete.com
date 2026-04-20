@@ -43,3 +43,27 @@ export async function deleteNewsletter(id: string): Promise<void> {
   const { error } = await supabase.from("newsletters").delete().eq("id", id)
   if (error) throw error
 }
+
+export async function createDraftFromBlog(params: {
+  subject: string
+  previewText: string
+  content: string
+  sourceBlogPostId: string
+  authorId: string
+}): Promise<Newsletter> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("newsletters")
+    .insert({
+      subject: params.subject,
+      preview_text: params.previewText,
+      content: params.content,
+      source_blog_post_id: params.sourceBlogPostId,
+      author_id: params.authorId,
+      status: "draft",
+    })
+    .select()
+    .single()
+  if (error) throw error
+  return data as Newsletter
+}
