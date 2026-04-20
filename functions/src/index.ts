@@ -305,3 +305,23 @@ export const newsletterFromBlog = onDocumentCreated(
     await handleNewsletterFromBlog(event.params.jobId)
   },
 )
+
+// ─── Tavily Trending Scan ─────────────────────────────────────────────────────
+// Triggered weekly via ai_jobs doc with type "tavily_trending_scan"
+
+export const tavilyTrendingScan = onDocumentCreated(
+  {
+    document: "ai_jobs/{jobId}",
+    timeoutSeconds: 300,
+    memory: "512MiB",
+    region: "us-central1",
+    secrets: [anthropicApiKey, tavilyApiKey, supabaseUrl, supabaseServiceRoleKey],
+  },
+  async (event) => {
+    const data = event.data?.data()
+    if (!data || data.type !== "tavily_trending_scan") return
+
+    const { handleTavilyTrendingScan } = await import("./tavily-trending-scan.js")
+    await handleTavilyTrendingScan(event.params.jobId)
+  },
+)
