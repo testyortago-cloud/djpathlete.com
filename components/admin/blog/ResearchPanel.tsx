@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Loader2, AlertCircle, RefreshCw, ChevronDown, ChevronRight, Search, X } from "lucide-react"
 import { toast } from "sonner"
 import { useAiJob } from "@/hooks/use-ai-job"
@@ -68,13 +68,24 @@ export function ResearchPanel({
     if (activeJobIdProp !== undefined) setJobId(activeJobIdProp ?? null)
   }, [activeJobIdProp])
 
-  // When job completes, surface the brief to parent and clear the job id so a
-  // subsequent re-run can start fresh.
+  const notifiedJobIdRef = useRef<string | null>(null)
+
+  // When job completes, surface the brief to parent exactly once, then clear
+  // the jobId so a subsequent re-run starts fresh (isLoading/isError gates
+  // depend on jobId !== null). Ref is keyed on the current jobId so re-runs
+  // with a new jobId re-arm the notification.
   useEffect(() => {
-    if (aiJob.status === "completed" && aiJob.result) {
+    if (
+      jobId &&
+      aiJob.status === "completed" &&
+      aiJob.result &&
+      notifiedJobIdRef.current !== jobId
+    ) {
+      notifiedJobIdRef.current = jobId
       onBriefChange(aiJob.result as unknown as TavilyResearchBrief)
+      setJobId(null)
     }
-  }, [aiJob.status, aiJob.result, onBriefChange])
+  }, [jobId, aiJob.status, aiJob.result, onBriefChange])
 
   async function kickOff() {
     const trimmed = postTitle.trim()
@@ -215,7 +226,7 @@ export function ResearchPanel({
                     const expanded = expandedUrl === r.url
                     const extract = brief.extracted.find((e) => e.url === r.url)
                     return (
-                      <li key={r.url} className="border border-border rounded-md bg-white">
+                      <li key={r.url} className="border border-border rounded-md bg-card">
                         <button
                           type="button"
                           onClick={() => setExpandedUrl(expanded ? null : r.url)}
