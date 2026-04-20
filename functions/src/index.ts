@@ -215,7 +215,7 @@ export const tavilyResearch = onDocumentCreated(
     timeoutSeconds: 120,
     memory: "512MiB",
     region: "us-central1",
-    secrets: [tavilyApiKey],
+    secrets: [tavilyApiKey, supabaseUrl, supabaseServiceRoleKey],
   },
   async (event) => {
     const data = event.data?.data()

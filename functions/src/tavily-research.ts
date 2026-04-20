@@ -1,14 +1,67 @@
 // Firebase Function: runs Tavily search for a topic, optionally extracts full
-// content from the top N results, and writes a research brief to the ai_jobs
-// doc so the caller (typically a blog generation flow) can consume it.
+// content from the top N results, writes a research brief to the ai_jobs doc,
+// and — when input.blog_post_id is provided — upserts the same brief into
+// blog_posts.tavily_research so Phase 4b can consume it on the next page load.
 
 import { FieldValue, getFirestore } from "firebase-admin/firestore"
 import { tavilySearch, tavilyExtract } from "./lib/tavily.js"
+import { getSupabase } from "./lib/supabase.js"
 
 export interface TavilyResearchInput {
   topic: string
   extract_top_n?: number
   search_depth?: "basic" | "advanced"
+  blog_post_id?: string
+}
+
+export interface TavilyResearchBrief {
+  topic: string
+  summary: string | null
+  results: Array<{
+    title: string
+    url: string
+    snippet: string
+    score: number
+    published_date: string | null
+  }>
+  extracted: Array<{ url: string; content: string }>
+  generated_at: string
+}
+
+interface BuildBriefParams {
+  topic: string
+  search: {
+    answer: string | null
+    results: Array<{
+      title: string
+      url: string
+      content: string
+      score: number
+      published_date?: string | null
+    }>
+  }
+  extractedContent: Array<{ url: string; content: string }>
+  generatedAt: string
+}
+
+export function buildResearchBrief(p: BuildBriefParams): TavilyResearchBrief {
+  return {
+    topic: p.topic,
+    summary: p.search.answer ?? null,
+    results: p.search.results.map((r) => ({
+      title: r.title,
+      url: r.url,
+      snippet: r.content,
+      score: r.score,
+      published_date: r.published_date ?? null,
+    })),
+    extracted: p.extractedContent,
+    generated_at: p.generatedAt,
+  }
+}
+
+export function shouldPersist(input: TavilyResearchInput): boolean {
+  return typeof input.blog_post_id === "string" && input.blog_post_id.length > 0
 }
 
 export async function handleTavilyResearch(jobId: string): Promise<void> {
@@ -54,20 +107,28 @@ export async function handleTavilyResearch(jobId: string): Promise<void> {
       extractedContent = extract.results.map((r) => ({ url: r.url, content: r.raw_content }))
     }
 
+    const brief = buildResearchBrief({
+      topic: input.topic,
+      search: { answer: search.answer ?? null, results: search.results },
+      extractedContent,
+      generatedAt: new Date().toISOString(),
+    })
+
+    if (shouldPersist(input)) {
+      const supabase = getSupabase()
+      const { error: upsertError } = await supabase
+        .from("blog_posts")
+        .update({ tavily_research: brief })
+        .eq("id", input.blog_post_id)
+      if (upsertError) {
+        console.error("[tavily-research] blog_posts upsert failed:", upsertError)
+        // Do NOT fail the job — the brief is still useful on-screen.
+      }
+    }
+
     await jobRef.update({
       status: "completed",
-      result: {
-        topic: input.topic,
-        summary: search.answer ?? null,
-        results: search.results.map((r) => ({
-          title: r.title,
-          url: r.url,
-          snippet: r.content,
-          score: r.score,
-          published_date: r.published_date ?? null,
-        })),
-        extracted: extractedContent,
-      },
+      result: brief,
       updatedAt: FieldValue.serverTimestamp(),
     })
   } catch (error) {
