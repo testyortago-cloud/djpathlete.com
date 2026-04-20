@@ -1175,6 +1175,8 @@ export interface VideoUpload {
   updated_at: string
 }
 
+export type VideoTranscriptSource = "speech" | "vision"
+
 export interface VideoTranscript {
   id: string
   video_upload_id: string
@@ -1182,5 +1184,6 @@ export interface VideoTranscript {
   language: string
   assemblyai_job_id: string | null
   analysis: Record<string, unknown> | null
+  source: VideoTranscriptSource
   created_at: string
 }

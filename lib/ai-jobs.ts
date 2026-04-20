@@ -22,6 +22,7 @@ export type AiJobType =
   // Starter AI Automation (Phase 2+ — handlers not yet implemented)
   | "social_fanout"
   | "video_transcription"
+  | "video_vision"
   | "tavily_research"
   | "tavily_fact_check"
   | "tavily_trending_scan"

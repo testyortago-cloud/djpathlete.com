@@ -206,6 +206,28 @@ export const transcribeVideo = onDocumentCreated(
   },
 )
 
+// ─── Video Vision (fallback for silent clips) ─────────────────────────────────
+// Triggered when a new ai_jobs doc is created with type "video_vision".
+// Downloads the video, samples 8 frames via ffmpeg, calls Claude Vision to
+// describe what's happening, writes the description to video_transcripts.
+
+export const videoVision = onDocumentCreated(
+  {
+    document: "ai_jobs/{jobId}",
+    timeoutSeconds: 540,
+    memory: "2GiB", // ffmpeg + video buffer can be memory-hungry
+    region: "us-central1",
+    secrets: [supabaseUrl, supabaseServiceRoleKey, anthropicApiKey],
+  },
+  async (event) => {
+    const data = event.data?.data()
+    if (!data || data.type !== "video_vision") return
+
+    const { handleVideoVision } = await import("./video-vision.js")
+    await handleVideoVision(event.params.jobId)
+  },
+)
+
 // ─── Tavily Research ──────────────────────────────────────────────────────────
 // Triggered when a new ai_jobs doc is created with type "tavily_research"
 

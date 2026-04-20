@@ -13,6 +13,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getAdminFirestore } from "@/lib/firebase-admin"
 import { createServiceRoleClient } from "@/lib/supabase"
+import { createAiJob } from "@/lib/ai-jobs"
 
 const ASSEMBLYAI_BASE = "https://api.assemblyai.com/v2"
 
@@ -57,6 +58,33 @@ async function markFailed(opts: {
   }
 }
 
+/**
+ * AssemblyAI failed on this video — attempt the vision fallback.
+ * Queues a new ai_jobs doc of type "video_vision"; the videoVision Function
+ * extracts frames and asks Claude Vision to describe what's happening.
+ * The original ai_jobs doc is marked "completed" with a fallbackJobId ref so
+ * it doesn't stay stuck as processing — the videoVision doc is what the UI
+ * now watches via useAiJob.
+ */
+async function queueVisionFallback(opts: {
+  originalJobId: string
+  videoUploadId: string
+  reason: string
+  userId: string
+}): Promise<void> {
+  const firestore = getAdminFirestore()
+  const { jobId: visionJobId } = await createAiJob({
+    type: "video_vision",
+    userId: opts.userId,
+    input: { videoUploadId: opts.videoUploadId, fallbackReason: opts.reason },
+  })
+  await firestore.collection("ai_jobs").doc(opts.originalJobId).update({
+    status: "completed",
+    result: { fallbackJobId: visionJobId, reason: opts.reason },
+    updatedAt: new Date(),
+  })
+}
+
 export async function POST(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const aiJobId = searchParams.get("ai_job_id")
@@ -87,16 +115,21 @@ export async function POST(request: NextRequest) {
   }
 
   const videoUploadId = (job.input as { videoUploadId?: string })?.videoUploadId ?? null
+  const userId = (job.input as { userId?: string })?.userId ?? (job.userId as string | undefined) ?? null
   const apiKey = process.env.ASSEMBLYAI_API_KEY
 
-  // ── Failure path ─────────────────────────────────────────────────────────
+  // ── Failure path — try Claude Vision fallback before marking failed ─────
   if (status === "error") {
-    let errorMessage = "AssemblyAI reported error status"
+    let reason = "AssemblyAI reported error status"
     if (apiKey) {
       const upstream = await fetchTranscriptErrorMessage(transcriptId, apiKey)
-      if (upstream) errorMessage = upstream
+      if (upstream) reason = upstream
     }
-    await markFailed({ aiJobId, videoUploadId, errorMessage })
+    if (videoUploadId && userId) {
+      await queueVisionFallback({ originalJobId: aiJobId, videoUploadId, reason, userId })
+    } else {
+      await markFailed({ aiJobId, videoUploadId, errorMessage: reason })
+    }
     return NextResponse.json({ ok: true })
   }
 
@@ -141,15 +174,24 @@ export async function POST(request: NextRequest) {
   }
 
   // Empty-speech guard — AssemblyAI completes with empty text when the audio
-  // has no speech (silent footage, music only, etc). Treat as a clean failure
-  // so downstream caption generation doesn't run on nothing.
+  // has no speech (silent footage, music only, etc). Fall back to Claude
+  // Vision analysis of sampled frames rather than giving up.
   const cleanText = (transcript.text ?? "").trim()
   if (cleanText.length < MIN_USEFUL_TRANSCRIPT_LENGTH) {
-    await markFailed({
-      aiJobId,
-      videoUploadId,
-      errorMessage: "No speech detected — check that the video has a spoken audio track.",
-    })
+    if (userId) {
+      await queueVisionFallback({
+        originalJobId: aiJobId,
+        videoUploadId,
+        reason: "No speech detected — falling back to vision analysis.",
+        userId,
+      })
+    } else {
+      await markFailed({
+        aiJobId,
+        videoUploadId,
+        errorMessage: "No speech detected — check that the video has a spoken audio track.",
+      })
+    }
     return NextResponse.json({ ok: true })
   }
 

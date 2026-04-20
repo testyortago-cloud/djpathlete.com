@@ -41,6 +41,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       ? {
           id: transcript.id,
           text: transcript.transcript_text,
+          source: transcript.source,
           created_at: transcript.created_at,
         }
       : null,

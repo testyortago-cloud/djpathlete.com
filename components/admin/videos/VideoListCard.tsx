@@ -45,6 +45,7 @@ export function VideoListCard({ video, onAction }: VideoListCardProps) {
   const [busy, setBusy] = useState<"transcribe" | "fanout" | "delete" | "preview" | "transcript" | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [transcriptText, setTranscriptText] = useState<string | null>(null)
+  const [transcriptSource, setTranscriptSource] = useState<"speech" | "vision" | null>(null)
 
   // Optimistic status override — flips instantly when the user clicks
   // Transcribe so the spinner badge shows without waiting for the page
@@ -59,23 +60,48 @@ export function VideoListCard({ video, onAction }: VideoListCardProps) {
   // When the tracked job reaches a terminal state, refresh the page to pick
   // up the final video_uploads.status (either "transcribed" from the webhook
   // or "failed" if AssemblyAI / the Function errored).
+  //
+  // If the original transcription job completes with a `fallbackJobId` in its
+  // result (meaning the webhook queued a Claude Vision fallback for a silent
+  // video), chain the listener to that new job instead of clearing.
   useEffect(() => {
     if (!activeJobId) return
     const terminal = ["completed", "failed", "cancelled"]
     if (!terminal.includes(aiJob.status)) return
-    // Small delay so the webhook's video_uploads UPDATE lands before we re-read.
+
+    const fallbackJobId =
+      aiJob.status === "completed" &&
+      aiJob.result &&
+      typeof (aiJob.result as Record<string, unknown>).fallbackJobId === "string"
+        ? ((aiJob.result as Record<string, unknown>).fallbackJobId as string)
+        : null
+
+    if (fallbackJobId) {
+      toast.info("No speech detected — analyzing video frames with Claude Vision")
+      setActiveJobId(fallbackJobId)
+      return
+    }
+
     const t = setTimeout(() => {
       setActiveJobId(null)
       setOptimisticStatus(null)
       if (aiJob.status === "failed") {
         toast.error(`Transcription failed: ${aiJob.error ?? "unknown error"}`)
       } else if (aiJob.status === "completed") {
-        toast.success("Transcription complete")
+        const resultSource =
+          aiJob.result && typeof (aiJob.result as Record<string, unknown>).source === "string"
+            ? ((aiJob.result as Record<string, unknown>).source as string)
+            : null
+        if (resultSource === "vision") {
+          toast.success("Video described via Claude Vision — review the transcript to verify")
+        } else {
+          toast.success("Transcription complete")
+        }
       }
       onAction()
     }, 750)
     return () => clearTimeout(t)
-  }, [activeJobId, aiJob.status, aiJob.error, onAction])
+  }, [activeJobId, aiJob.status, aiJob.error, aiJob.result, onAction])
 
   async function transcribe() {
     setBusy("transcribe")
@@ -135,12 +161,15 @@ export function VideoListCard({ video, onAction }: VideoListCardProps) {
     try {
       const res = await fetch(`/api/admin/videos/${video.id}`)
       if (!res.ok) throw new Error((await res.text()) || "Transcript unavailable")
-      const body = (await res.json()) as { transcript: { text: string } | null }
+      const body = (await res.json()) as {
+        transcript: { text: string; source?: "speech" | "vision" } | null
+      }
       if (!body.transcript) {
         toast.error("No transcript on file for this video")
         return
       }
       setTranscriptText(body.transcript.text)
+      setTranscriptSource(body.transcript.source ?? "speech")
     } catch (error) {
       toast.error(`Transcript failed: ${(error as Error).message}`)
     } finally {
@@ -300,7 +329,10 @@ export function VideoListCard({ video, onAction }: VideoListCardProps) {
       {transcriptText !== null && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-          onClick={() => setTranscriptText(null)}
+          onClick={() => {
+            setTranscriptText(null)
+            setTranscriptSource(null)
+          }}
           role="dialog"
           aria-modal="true"
           aria-label="Video transcript"
@@ -313,8 +345,14 @@ export function VideoListCard({ video, onAction }: VideoListCardProps) {
               <div className="flex items-center gap-2 min-w-0">
                 <FileText className="size-4 text-primary shrink-0" />
                 <div className="text-sm font-semibold text-primary truncate">
-                  Transcript — {video.title ?? video.original_filename}
+                  {transcriptSource === "vision" ? "Vision description" : "Transcript"} —{" "}
+                  {video.title ?? video.original_filename}
                 </div>
+                {transcriptSource === "vision" && (
+                  <span className="shrink-0 px-2 py-0.5 rounded-full bg-accent/10 text-accent text-xs font-medium">
+                    Vision
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <button
@@ -326,7 +364,10 @@ export function VideoListCard({ video, onAction }: VideoListCardProps) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setTranscriptText(null)}
+                  onClick={() => {
+                    setTranscriptText(null)
+                    setTranscriptSource(null)
+                  }}
                   className="text-muted-foreground hover:text-primary"
                   aria-label="Close transcript"
                 >
