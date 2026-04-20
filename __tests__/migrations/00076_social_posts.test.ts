@@ -33,28 +33,41 @@ describe("migration 00076 — social_posts + social_captions", () => {
       .select()
       .single()
 
-    const caption = await supabase
-      .from("social_captions")
-      .insert({
-        social_post_id: post.data!.id,
-        caption_text: "hello world",
-        hashtags: ["#fit", "#dj"],
-      })
-      .select()
-      .single()
+    expect(post.error).toBeNull()
+    expect(post.data?.id).toBeTruthy()
+    const postId = post.data!.id
 
-    expect(caption.error).toBeNull()
-    expect(caption.data?.caption_text).toBe("hello world")
-    expect(caption.data?.hashtags).toEqual(["#fit", "#dj"])
+    try {
+      const caption = await supabase
+        .from("social_captions")
+        .insert({
+          social_post_id: postId,
+          caption_text: "hello world",
+          hashtags: ["#fit", "#dj"],
+        })
+        .select()
+        .single()
 
-    await supabase.from("social_posts").delete().eq("id", post.data!.id)
+      expect(caption.error).toBeNull()
+      expect(caption.data?.caption_text).toBe("hello world")
+      expect(caption.data?.hashtags).toEqual(["#fit", "#dj"])
+    } finally {
+      await supabase.from("social_posts").delete().eq("id", postId)
+    }
   })
 
   it("rejects invalid platform value via CHECK constraint", async () => {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("social_posts")
       .insert({ platform: "myspace", content: "x", approval_status: "draft" })
+      .select()
+      .single()
 
     expect(error).not.toBeNull()
+
+    // Defensive cleanup in case the CHECK constraint is ever regressed
+    if (data?.id) {
+      await supabase.from("social_posts").delete().eq("id", data.id)
+    }
   })
 })

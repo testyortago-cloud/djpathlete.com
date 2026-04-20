@@ -41,3 +41,11 @@ CREATE TRIGGER trg_social_posts_updated_at
 
 ALTER TABLE social_posts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE social_captions ENABLE ROW LEVEL SECURITY;
+
+create policy "Admins manage all social_posts"
+  on public.social_posts for all
+  using (exists (select 1 from public.users u where u.id = auth.uid() and u.role = 'admin'));
+
+create policy "Admins manage all social_captions"
+  on public.social_captions for all
+  using (exists (select 1 from public.users u where u.id = auth.uid() and u.role = 'admin'));
