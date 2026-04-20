@@ -2,7 +2,6 @@
 
 import { Film, Upload, CheckCircle } from "lucide-react"
 import { useRouter } from "next/navigation"
-import { useState } from "react"
 import { VideoUploader } from "./VideoUploader"
 import { VideoListCard } from "./VideoListCard"
 import type { VideoUpload } from "@/types/database"
@@ -13,7 +12,9 @@ interface VideosPageClientProps {
 
 export function VideosPageClient({ initialVideos }: VideosPageClientProps) {
   const router = useRouter()
-  const [videos] = useState<VideoUpload[]>(initialVideos)
+  // Read directly from props — router.refresh() re-renders with fresh data.
+  // A local useState() would cache the first value and ignore subsequent refreshes.
+  const videos = initialVideos
 
   const processing = videos.filter((v) => v.status === "uploaded" || v.status === "transcribing").length
   const ready = videos.filter((v) => v.status === "transcribed" || v.status === "analyzed").length
