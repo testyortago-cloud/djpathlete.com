@@ -694,6 +694,10 @@ export interface BlogPost {
   published_at: string | null
   created_at: string
   updated_at: string
+  source_video_id: string | null
+  seo_metadata: Record<string, unknown>
+  tavily_research: Record<string, unknown> | null
+  fact_check_status: FactCheckStatus | null
 }
 
 export interface Newsletter {
@@ -1053,4 +1057,111 @@ export interface Database {
       }
     }
   }
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Starter AI Automation types (Phase 1 — migrations 00076–00081)
+// ─────────────────────────────────────────────────────────────────
+
+export type SocialPlatform =
+  | "facebook"
+  | "instagram"
+  | "tiktok"
+  | "youtube"
+  | "youtube_shorts"
+  | "linkedin"
+
+export type SocialApprovalStatus =
+  | "draft"
+  | "edited"
+  | "approved"
+  | "scheduled"
+  | "published"
+  | "rejected"
+  | "awaiting_connection"
+  | "failed"
+
+export type PlatformConnectionStatus = "not_connected" | "connected" | "paused" | "error"
+
+export type CalendarEntryType = "social_post" | "blog_post" | "newsletter" | "topic_suggestion"
+export type CalendarStatus = "planned" | "in_progress" | "published" | "cancelled"
+
+export type VideoUploadStatus = "uploaded" | "transcribing" | "transcribed" | "analyzed" | "failed"
+
+export type FactCheckStatus = "pending" | "passed" | "flagged" | "failed"
+
+export interface SocialPost {
+  id: string
+  platform: SocialPlatform
+  content: string
+  media_url: string | null
+  approval_status: SocialApprovalStatus
+  scheduled_at: string | null
+  published_at: string | null
+  source_video_id: string | null
+  rejection_notes: string | null
+  platform_post_id: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface SocialCaption {
+  id: string
+  social_post_id: string
+  caption_text: string
+  hashtags: string[]
+  version: number
+  created_at: string
+}
+
+export interface ContentCalendarEntry {
+  id: string
+  entry_type: CalendarEntryType
+  reference_id: string | null
+  title: string
+  scheduled_for: string
+  scheduled_time: string | null
+  status: CalendarStatus
+  metadata: Record<string, unknown>
+  created_at: string
+  updated_at: string
+}
+
+export interface PlatformConnection {
+  id: string
+  plugin_name: SocialPlatform
+  status: PlatformConnectionStatus
+  credentials: Record<string, unknown>
+  account_handle: string | null
+  last_sync_at: string | null
+  last_error: string | null
+  connected_at: string | null
+  connected_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface VideoUpload {
+  id: string
+  storage_path: string
+  original_filename: string
+  duration_seconds: number | null
+  size_bytes: number | null
+  mime_type: string | null
+  title: string | null
+  uploaded_by: string | null
+  status: VideoUploadStatus
+  created_at: string
+  updated_at: string
+}
+
+export interface VideoTranscript {
+  id: string
+  video_upload_id: string
+  transcript_text: string
+  language: string
+  assemblyai_job_id: string | null
+  analysis: Record<string, unknown> | null
+  created_at: string
 }
