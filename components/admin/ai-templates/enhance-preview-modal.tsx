@@ -40,7 +40,7 @@ interface Props {
 export function EnhancePreviewModal({ open, onOpenChange, result, loading, onRetry, onUse }: Props) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="size-4 text-accent" />
@@ -87,7 +87,7 @@ export function EnhancePreviewModal({ open, onOpenChange, result, loading, onRet
                 readOnly
                 value={result.prompt}
                 rows={10}
-                className="font-mono text-xs max-h-[50vh] overflow-y-auto"
+                className="font-mono text-xs field-sizing-fixed resize-none"
               />
             </div>
           </div>

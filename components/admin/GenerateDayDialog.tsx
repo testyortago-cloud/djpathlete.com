@@ -140,7 +140,7 @@ export function GenerateDayDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="size-4 text-accent" />
@@ -243,7 +243,7 @@ export function GenerateDayDialog({
                 rows={3}
                 maxLength={2000}
                 disabled={isSubmitting}
-                className="max-h-[40vh] overflow-y-auto"
+                className="field-sizing-fixed resize-none"
               />
               {!ignoreProfile && (
                 <p className="text-xs text-muted-foreground">
