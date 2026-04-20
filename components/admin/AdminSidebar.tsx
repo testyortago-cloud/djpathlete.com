@@ -85,6 +85,7 @@ const navSections: NavSection[] = [
     title: "AI Automation",
     items: [
       { label: "Social", href: "/admin/social", icon: Megaphone },
+      { label: "Calendar", href: "/admin/calendar", icon: CalendarDays },
       { label: "Videos", href: "/admin/videos", icon: Film },
       { label: "Platform Connections", href: "/admin/platform-connections", icon: Link2 },
     ],
