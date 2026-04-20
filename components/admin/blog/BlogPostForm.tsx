@@ -9,6 +9,7 @@ import { blogPostFormSchema, BLOG_CATEGORIES } from "@/lib/validators/blog-post"
 import { BlogEditor } from "./BlogEditor"
 import type { FactCheckStatus } from "./FactCheckBanner"
 import type { FactCheckDetails } from "./FactCheckSidebar"
+import type { SeoMetadata } from "@/types/database"
 import { CoverImageUpload } from "./CoverImageUpload"
 import { BlogGenerateDialog } from "./BlogGenerateDialog"
 import { ResearchPanel, type TavilyResearchBrief } from "./ResearchPanel"
@@ -287,6 +288,7 @@ export function BlogPostForm({ post, authorId }: BlogPostFormProps) {
                   onChange={setContent}
                   factCheckStatus={(post?.fact_check_status as FactCheckStatus | null) ?? null}
                   factCheckDetails={(post?.fact_check_details as FactCheckDetails | null) ?? null}
+                  seoMetadata={(post?.seo_metadata as SeoMetadata | null) ?? null}
                 />
               </div>
 

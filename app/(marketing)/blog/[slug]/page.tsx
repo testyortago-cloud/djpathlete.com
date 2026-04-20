@@ -86,9 +86,12 @@ export default async function BlogPostPage({ params }: Props) {
     ...(post.cover_image_url && { image: post.cover_image_url }),
   }
 
+  const storedJsonLd = (post.seo_metadata as { json_ld?: Record<string, unknown> } | null)?.json_ld
+  const jsonLdData = storedJsonLd && Object.keys(storedJsonLd).length > 0 ? storedJsonLd : blogPostSchema
+
   return (
     <>
-      <JsonLd data={blogPostSchema} />
+      <JsonLd data={jsonLdData} />
 
       {/* Hero */}
       <section className="pt-32 pb-16 lg:pt-40 lg:pb-24 px-4 sm:px-8">

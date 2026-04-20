@@ -19,17 +19,21 @@ import {
   ImageIcon,
   Undo,
   Redo,
+  Link2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useRef, useState } from "react"
 import { FactCheckBanner, type FactCheckStatus } from "./FactCheckBanner"
 import { FactCheckSidebar, type FactCheckFlaggedClaim, type FactCheckDetails } from "./FactCheckSidebar"
+import { SeoSidebar } from "./SeoSidebar"
+import type { SeoMetadata } from "@/types/database"
 
 interface BlogEditorProps {
   content: string
   onChange: (html: string) => void
   factCheckStatus?: FactCheckStatus | null
   factCheckDetails?: FactCheckDetails | null
+  seoMetadata?: SeoMetadata | null
 }
 
 export function BlogEditor({
@@ -37,9 +41,11 @@ export function BlogEditor({
   onChange,
   factCheckStatus: factCheckStatusProp,
   factCheckDetails,
+  seoMetadata,
 }: BlogEditorProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [seoSidebarOpen, setSeoSidebarOpen] = useState(false)
   const factCheckStatus: FactCheckStatus = factCheckStatusProp ?? "pending"
   const flaggedClaims: FactCheckFlaggedClaim[] = factCheckDetails?.flagged_claims ?? []
 
@@ -208,6 +214,26 @@ export function BlogEditor({
                   </button>
                 ),
               )}
+              <div className="w-px h-5 bg-border mx-1" />
+              <button
+                type="button"
+                onClick={() => setSeoSidebarOpen((o) => !o)}
+                disabled={!seoMetadata?.internal_link_suggestions?.length}
+                title={
+                  seoMetadata?.internal_link_suggestions?.length
+                    ? "Toggle SEO link suggestions"
+                    : "Publish the post to generate link suggestions"
+                }
+                className={cn(
+                  "p-1.5 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
+                  seoSidebarOpen
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:text-foreground hover:bg-surface",
+                )}
+                aria-label="SEO link suggestions"
+              >
+                <Link2 className="size-4" />
+              </button>
             </div>
 
             {/* Hidden file input for image upload */}
@@ -229,6 +255,9 @@ export function BlogEditor({
         </div>
         {sidebarOpen && (
           <FactCheckSidebar claims={flaggedClaims} onClose={() => setSidebarOpen(false)} />
+        )}
+        {seoSidebarOpen && (
+          <SeoSidebar seoMetadata={seoMetadata ?? null} onClose={() => setSeoSidebarOpen(false)} />
         )}
       </div>
     </div>
