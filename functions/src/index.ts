@@ -285,3 +285,23 @@ export const blogFromVideo = onDocumentCreated(
     await handleBlogFromVideo(event.params.jobId)
   },
 )
+
+// ─── Newsletter From Blog ─────────────────────────────────────────────────────
+// Triggered when a new ai_jobs doc is created with type "newsletter_from_blog"
+
+export const newsletterFromBlog = onDocumentCreated(
+  {
+    document: "ai_jobs/{jobId}",
+    timeoutSeconds: 300,
+    memory: "512MiB",
+    region: "us-central1",
+    secrets: [anthropicApiKey, supabaseUrl, supabaseServiceRoleKey],
+  },
+  async (event) => {
+    const data = event.data?.data()
+    if (!data || data.type !== "newsletter_from_blog") return
+
+    const { handleNewsletterFromBlog } = await import("./newsletter-from-blog.js")
+    await handleNewsletterFromBlog(event.params.jobId)
+  },
+)
