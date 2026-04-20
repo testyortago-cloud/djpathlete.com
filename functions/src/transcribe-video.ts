@@ -1,9 +1,11 @@
 // functions/src/transcribe-video.ts
-// Firebase Function handler: submits a video from Supabase Storage to
+// Firebase Function handler: submits a video from Firebase Storage to
 // AssemblyAI for transcription. Called when an ai_jobs doc is created with
-// type="video_transcription".
+// type="video_transcription". video_uploads.storage_path is a Firebase
+// Storage object path in the default bucket.
 
 import { FieldValue, getFirestore } from "firebase-admin/firestore"
+import { getStorage } from "firebase-admin/storage"
 import { getSupabase } from "./lib/supabase.js"
 import { submitTranscription } from "./lib/assemblyai.js"
 
@@ -46,12 +48,17 @@ export async function handleVideoTranscription(jobId: string): Promise<void> {
       return
     }
 
-    const { data: signed, error: signError } = await supabase.storage
-      .from("video-uploads")
-      .createSignedUrl(upload.storage_path, 60 * 60 * 4)
-
-    if (signError || !signed?.signedUrl) {
-      await failJob(`Could not sign URL for ${upload.storage_path}: ${signError?.message ?? "unknown"}`)
+    let signedUrl: string
+    try {
+      const bucket = getStorage().bucket()
+      const file = bucket.file(upload.storage_path)
+      const [url] = await file.getSignedUrl({
+        action: "read",
+        expires: Date.now() + 4 * 60 * 60 * 1000,
+      })
+      signedUrl = url
+    } catch (storageError) {
+      await failJob(`Could not sign Firebase Storage URL for ${upload.storage_path}: ${(storageError as Error).message}`)
       return
     }
 
@@ -63,7 +70,7 @@ export async function handleVideoTranscription(jobId: string): Promise<void> {
     const webhookUrl = `${webhookBase.replace(/\/$/, "")}/api/webhooks/assemblyai?ai_job_id=${jobId}`
 
     const transcript = await submitTranscription({
-      audio_url: signed.signedUrl,
+      audio_url: signedUrl,
       webhook_url: webhookUrl,
     })
 
