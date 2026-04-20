@@ -408,6 +408,18 @@ export interface Notification {
   created_at: string
 }
 
+export interface PromptTemplate {
+  id: string
+  name: string
+  category: "structure" | "session" | "periodization" | "sport" | "rehab" | "conditioning" | "specialty"
+  scope: "week" | "day" | "both"
+  description: string
+  prompt: string
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface ExerciseRelationship {
   id: string
   exercise_id: string
@@ -958,6 +970,11 @@ export interface Database {
         Row: Notification
         Insert: Omit<Notification, "id" | "created_at">
         Update: Partial<Omit<Notification, "id" | "created_at">>
+      }
+      prompt_templates: {
+        Row: PromptTemplate
+        Insert: Omit<PromptTemplate, "id" | "created_at" | "updated_at">
+        Update: Partial<Omit<PromptTemplate, "id" | "created_at" | "updated_at">>
       }
       exercise_relationships: {
         Row: ExerciseRelationship
