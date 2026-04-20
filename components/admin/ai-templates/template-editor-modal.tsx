@@ -128,7 +128,7 @@ export function TemplateEditorModal({ open, onOpenChange, template, seed, onSave
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{template ? "Edit template" : "New template"}</DialogTitle>
           </DialogHeader>
@@ -202,7 +202,7 @@ export function TemplateEditorModal({ open, onOpenChange, template, seed, onSave
                 onChange={(e) => setPrompt(e.target.value)}
                 rows={8}
                 maxLength={4000}
-                className="font-mono text-xs"
+                className="font-mono text-xs max-h-[50vh] overflow-y-auto"
               />
             </div>
           </div>

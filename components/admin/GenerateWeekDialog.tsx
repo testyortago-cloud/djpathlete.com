@@ -140,7 +140,7 @@ export function GenerateWeekDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="size-4 text-accent" />
@@ -244,6 +244,7 @@ export function GenerateWeekDialog({
                 rows={3}
                 maxLength={2000}
                 disabled={isSubmitting}
+                className="max-h-[40vh] overflow-y-auto"
               />
               {!ignoreProfile && (
                 <p className="text-xs text-muted-foreground">
