@@ -1,6 +1,6 @@
 "use client"
 
-import { Film, Loader2, CheckCircle, AlertCircle, Sparkles, Play, Trash2, X } from "lucide-react"
+import { Film, Loader2, CheckCircle, AlertCircle, Sparkles, Play, Trash2, X, FileText } from "lucide-react"
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
@@ -42,8 +42,9 @@ function statusBadge(status: VideoUpload["status"]) {
 }
 
 export function VideoListCard({ video, onAction }: VideoListCardProps) {
-  const [busy, setBusy] = useState<"transcribe" | "fanout" | "delete" | "preview" | null>(null)
+  const [busy, setBusy] = useState<"transcribe" | "fanout" | "delete" | "preview" | "transcript" | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [transcriptText, setTranscriptText] = useState<string | null>(null)
 
   // Optimistic status override — flips instantly when the user clicks
   // Transcribe so the spinner badge shows without waiting for the page
@@ -129,6 +130,34 @@ export function VideoListCard({ video, onAction }: VideoListCardProps) {
     }
   }
 
+  async function openTranscript() {
+    setBusy("transcript")
+    try {
+      const res = await fetch(`/api/admin/videos/${video.id}`)
+      if (!res.ok) throw new Error((await res.text()) || "Transcript unavailable")
+      const body = (await res.json()) as { transcript: { text: string } | null }
+      if (!body.transcript) {
+        toast.error("No transcript on file for this video")
+        return
+      }
+      setTranscriptText(body.transcript.text)
+    } catch (error) {
+      toast.error(`Transcript failed: ${(error as Error).message}`)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function copyTranscript() {
+    if (!transcriptText) return
+    try {
+      await navigator.clipboard.writeText(transcriptText)
+      toast.success("Transcript copied")
+    } catch {
+      toast.error("Copy failed")
+    }
+  }
+
   async function deleteVideo() {
     const confirmed = window.confirm(
       `Delete "${video.title ?? video.original_filename}"?\n\nThis removes the video file from storage and the database row. Cannot be undone.`,
@@ -190,6 +219,22 @@ export function VideoListCard({ video, onAction }: VideoListCardProps) {
           >
             {busy === "transcribe" ? "Queueing..." : "Transcribe"}
           </button>
+          {canFanout && (
+            <button
+              type="button"
+              onClick={openTranscript}
+              disabled={busy !== null}
+              className="text-xs p-1.5 rounded-md text-muted-foreground hover:bg-primary/10 hover:text-primary disabled:opacity-50 disabled:cursor-not-allowed"
+              aria-label="View transcript"
+              title="View transcript"
+            >
+              {busy === "transcript" ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <FileText className="size-4" />
+              )}
+            </button>
+          )}
           <button
             type="button"
             onClick={fanout}
@@ -247,6 +292,53 @@ export function VideoListCard({ video, onAction }: VideoListCardProps) {
             </video>
             <div className="bg-surface px-4 py-2 text-sm text-primary">
               {video.title ?? video.original_filename}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {transcriptText !== null && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          onClick={() => setTranscriptText(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Video transcript"
+        >
+          <div
+            className="relative w-full max-w-3xl max-h-[85vh] bg-white rounded-lg shadow-2xl flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-3 border-b border-border">
+              <div className="flex items-center gap-2 min-w-0">
+                <FileText className="size-4 text-primary shrink-0" />
+                <div className="text-sm font-semibold text-primary truncate">
+                  Transcript — {video.title ?? video.original_filename}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={copyTranscript}
+                  className="text-xs px-3 py-1.5 rounded-md bg-surface hover:bg-primary/10 text-primary border border-border"
+                >
+                  Copy
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTranscriptText(null)}
+                  className="text-muted-foreground hover:text-primary"
+                  aria-label="Close transcript"
+                >
+                  <X className="size-5" />
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto px-5 py-4">
+              <p className="text-sm text-primary leading-relaxed whitespace-pre-wrap">{transcriptText}</p>
+            </div>
+            <div className="px-5 py-2 border-t border-border text-xs text-muted-foreground">
+              {transcriptText.length.toLocaleString()} characters
             </div>
           </div>
         </div>

@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { getAdminStorage } from "@/lib/firebase-admin"
 import { getVideoUploadById, deleteVideoUpload } from "@/lib/db/video-uploads"
+import { getTranscriptForVideo } from "@/lib/db/video-transcripts"
 
 const PREVIEW_URL_EXPIRY_MS = 10 * 60 * 1000 // 10 minutes
 
@@ -29,7 +30,21 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     expires: Date.now() + PREVIEW_URL_EXPIRY_MS,
   })
 
-  return NextResponse.json({ video, previewUrl, expiresInSeconds: Math.floor(PREVIEW_URL_EXPIRY_MS / 1000) })
+  // Attach transcript when available — admin UI surfaces it inline from this response.
+  const transcript = await getTranscriptForVideo(id)
+
+  return NextResponse.json({
+    video,
+    previewUrl,
+    expiresInSeconds: Math.floor(PREVIEW_URL_EXPIRY_MS / 1000),
+    transcript: transcript
+      ? {
+          id: transcript.id,
+          text: transcript.transcript_text,
+          created_at: transcript.created_at,
+        }
+      : null,
+  })
 }
 
 export async function DELETE(
