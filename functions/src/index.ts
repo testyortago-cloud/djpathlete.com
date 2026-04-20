@@ -10,6 +10,8 @@ const anthropicApiKey = defineSecret("ANTHROPIC_API_KEY")
 const supabaseUrl = defineSecret("SUPABASE_URL")
 const supabaseServiceRoleKey = defineSecret("SUPABASE_SERVICE_ROLE_KEY")
 const resendApiKey = defineSecret("RESEND_API_KEY")
+const assemblyAiApiKey = defineSecret("ASSEMBLYAI_API_KEY")
+const appUrl = defineSecret("APP_URL")
 
 const allSecrets = [anthropicApiKey, supabaseUrl, supabaseServiceRoleKey]
 const sendSecrets = [supabaseUrl, supabaseServiceRoleKey, resendApiKey]
@@ -180,5 +182,25 @@ export const aiCoach = onDocumentCreated(
 
     const { handleAiCoach } = await import("./ai-coach.js")
     await handleAiCoach(event.params.jobId)
+  },
+)
+
+// ─── Video Transcription ──────────────────────────────────────────────────────
+// Triggered when a new ai_jobs doc is created with type "video_transcription"
+
+export const transcribeVideo = onDocumentCreated(
+  {
+    document: "ai_jobs/{jobId}",
+    timeoutSeconds: 540,
+    memory: "512MiB",
+    region: "us-central1",
+    secrets: [supabaseUrl, supabaseServiceRoleKey, assemblyAiApiKey, appUrl],
+  },
+  async (event) => {
+    const data = event.data?.data()
+    if (!data || data.type !== "video_transcription") return
+
+    const { handleVideoTranscription } = await import("./transcribe-video.js")
+    await handleVideoTranscription(event.params.jobId)
   },
 )
