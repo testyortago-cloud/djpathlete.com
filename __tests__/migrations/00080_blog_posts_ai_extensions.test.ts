@@ -3,6 +3,8 @@ import { describe, it, expect, afterAll } from "vitest"
 import { createServiceRoleClient } from "@/lib/supabase"
 
 const TEST_TAG = "__TEST_BLOG_00080__"
+// Admin user seeded in users table; safe to reuse across tests as FK target.
+const adminUserId = "00000000-0000-0000-0000-000000000001"
 
 describe("migration 00080 — blog_posts AI extensions", () => {
   const supabase = createServiceRoleClient()
@@ -23,6 +25,7 @@ describe("migration 00080 — blog_posts AI extensions", () => {
         category: "Performance",
         status: "draft",
         content: "test body",
+        author_id: adminUserId,
         source_video_id: null,
         seo_metadata: { meta_title: "x", keywords: ["a"] },
         tavily_research: { summary: "s" },
@@ -48,6 +51,7 @@ describe("migration 00080 — blog_posts AI extensions", () => {
         category: "Performance",
         status: "draft",
         content: "x",
+        author_id: adminUserId,
         fact_check_status: "made-up-value",
       })
       .select()
@@ -66,6 +70,7 @@ describe("migration 00080 — blog_posts AI extensions", () => {
         category: "Performance",
         status: "draft",
         content: "x",
+        author_id: adminUserId,
       })
       .select()
       .single()
