@@ -23,6 +23,8 @@ interface BlogGenerateDialogProps {
   onOpenChange: (open: boolean) => void
   onGenerated: (data: GeneratedBlogData) => void
   hasExistingContent?: boolean
+  /** Pre-fills the prompt field when the dialog opens (e.g. from topic suggestions). */
+  initialPrompt?: string
 }
 
 const tones = [
@@ -37,12 +39,17 @@ const lengths = [
   { value: "long", label: "Long", desc: "~1500 words" },
 ] as const
 
-export function BlogGenerateDialog({ open, onOpenChange, onGenerated, hasExistingContent }: BlogGenerateDialogProps) {
+export function BlogGenerateDialog({ open, onOpenChange, onGenerated, hasExistingContent, initialPrompt }: BlogGenerateDialogProps) {
   const router = useRouter()
   const [mode, setMode] = useState<"prompt" | "video">("prompt")
   const [videos, setVideos] = useState<Array<{ id: string; title: string; created_at: string }>>([])
   const [selectedVideoId, setSelectedVideoId] = useState<string | null>(null)
-  const [prompt, setPrompt] = useState("")
+  const [prompt, setPrompt] = useState(initialPrompt ?? "")
+
+  // Reseed prompt when initialPrompt becomes available (e.g. on dialog open from a topic-suggestion deep link)
+  useEffect(() => {
+    if (initialPrompt) setPrompt(initialPrompt)
+  }, [initialPrompt])
   const [tone, setTone] = useState<"professional" | "conversational" | "motivational">("professional")
   const [length, setLength] = useState<"short" | "medium" | "long">("medium")
   const [jobId, setJobId] = useState<string | null>(null)

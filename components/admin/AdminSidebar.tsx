@@ -32,6 +32,7 @@ import {
   Megaphone,
   Film,
   Link2,
+  TrendingUp,
 } from "lucide-react"
 import { signOut } from "next-auth/react"
 import { cn } from "@/lib/utils"
@@ -86,6 +87,7 @@ const navSections: NavSection[] = [
     items: [
       { label: "Social", href: "/admin/social", icon: Megaphone },
       { label: "Calendar", href: "/admin/calendar", icon: CalendarDays },
+      { label: "Topic Suggestions", href: "/admin/topic-suggestions", icon: TrendingUp },
       { label: "Videos", href: "/admin/videos", icon: Film },
       { label: "Platform Connections", href: "/admin/platform-connections", icon: Link2 },
     ],

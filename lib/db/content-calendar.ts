@@ -50,6 +50,18 @@ export async function listCalendarEntries(
   return (data ?? []) as ContentCalendarEntry[]
 }
 
+export async function listTopicSuggestions(): Promise<ContentCalendarEntry[]> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("content_calendar")
+    .select("*")
+    .eq("entry_type", "topic_suggestion")
+    .order("scheduled_for", { ascending: false })
+    .order("created_at", { ascending: false })
+  if (error) throw error
+  return (data ?? []) as ContentCalendarEntry[]
+}
+
 export async function updateCalendarEntry(
   id: string,
   updates: Partial<Omit<ContentCalendarEntry, "id" | "created_at">>,

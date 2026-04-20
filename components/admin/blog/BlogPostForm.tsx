@@ -19,6 +19,8 @@ import type { BlogPost } from "@/types/database"
 interface BlogPostFormProps {
   post?: BlogPost
   authorId: string
+  /** Pre-fills the Generate dialog and opens it automatically (e.g. from topic suggestions). */
+  initialPrompt?: string
 }
 
 function slugify(text: string): string {
@@ -28,12 +30,12 @@ function slugify(text: string): string {
     .replace(/^-+|-+$/g, "")
 }
 
-export function BlogPostForm({ post, authorId }: BlogPostFormProps) {
+export function BlogPostForm({ post, authorId, initialPrompt }: BlogPostFormProps) {
   const router = useRouter()
   const [saving, setSaving] = useState(false)
   const [publishing, setPublishing] = useState(false)
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false)
-  const [generateOpen, setGenerateOpen] = useState(false)
+  const [generateOpen, setGenerateOpen] = useState(Boolean(initialPrompt))
   const [editorKey, setEditorKey] = useState(0)
   const [researchOpen, setResearchOpen] = useState(false)
   const [researchBrief, setResearchBrief] = useState<TavilyResearchBrief | null>(
@@ -406,6 +408,7 @@ export function BlogPostForm({ post, authorId }: BlogPostFormProps) {
         onOpenChange={setGenerateOpen}
         onGenerated={handleAiGenerated}
         hasExistingContent={hasExistingContent}
+        initialPrompt={initialPrompt}
       />
     </div>
   )
