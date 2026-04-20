@@ -132,8 +132,25 @@ async function createProgram(params: Record<string, unknown>) {
 
 async function createAssignment(params: Record<string, unknown>) {
   const supabase = getSupabase()
-  const { error } = await supabase.from("program_assignments").insert(params)
+  const { data, error } = await supabase.from("program_assignments").insert(params).select("id").single()
   if (error) throw new Error(`Failed to create assignment: ${error.message}`)
+  return data as { id: string }
+}
+
+async function createWeekAccessRecords(assignmentId: string, totalWeeks: number) {
+  if (totalWeeks < 1) return
+  const supabase = getSupabase()
+  const rows = Array.from({ length: totalWeeks }, (_, i) => ({
+    assignment_id: assignmentId,
+    week_number: i + 1,
+    access_type: "included",
+    price_cents: null,
+    payment_status: "not_required",
+    stripe_session_id: null,
+    stripe_payment_id: null,
+  }))
+  const { error } = await supabase.from("program_week_access").insert(rows)
+  if (error) throw new Error(`Failed to create week access records: ${error.message}`)
 }
 
 async function createGenerationLog(params: Record<string, unknown>) {
@@ -834,7 +851,8 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     // Auto-assign
     if (request.client_id) {
       try {
-        await createAssignment({
+        const totalWeeks = program.duration_weeks ?? 1
+        const created = await createAssignment({
           program_id: program.id,
           user_id: request.client_id,
           assigned_by: requestedBy,
@@ -843,8 +861,9 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
           status: "active",
           notes: "Auto-assigned from AI program generation",
           current_week: 1,
-          total_weeks: program.duration_weeks ?? null,
+          total_weeks: totalWeeks,
         })
+        await createWeekAccessRecords(created.id, totalWeeks)
       } catch (e) {
         console.error("[orchestrator:sync] Failed to auto-assign:", e)
       }

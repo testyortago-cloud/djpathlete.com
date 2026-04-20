@@ -65,7 +65,7 @@ export function WeekAccessPanel({ programId, totalWeeks, clientNames }: WeekAcce
 
   useEffect(() => {
     if (expanded) fetchData()
-  }, [expanded, fetchData])
+  }, [expanded, fetchData, totalWeeks])
 
   function getAccessForWeek(assignmentId: string, weekNumber: number): ProgramWeekAccess | undefined {
     return accessByAssignment[assignmentId]?.find((a) => a.week_number === weekNumber)
