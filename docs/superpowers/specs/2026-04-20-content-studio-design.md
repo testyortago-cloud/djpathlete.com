@@ -120,7 +120,7 @@ Three-column layout: filters (left) · calendar (center) · unscheduled posts (r
 
 ### Right panel — unscheduled posts
 
-- Lists posts in `Approved` status with no `scheduled_for` value, ordered by source-video upload date
+- Lists posts in `Approved` status with no `scheduled_at` value, ordered by source-video upload date
 - Collapsible groups by source video: "Rotational Reboot teaser (6 posts, 4 unscheduled)" so a fanout batch stays visually together
 - Drag any card onto a day cell to schedule; on drop, a time-picker popover opens (default: next free slot on that day per platform best-time rules — best-time logic is out of scope for this spec and can start as a fixed default time per platform)
 
@@ -161,7 +161,7 @@ See "Detail drawer" under Architecture. The drawer is the transcript-context fix
 1. User uploads video → existing pipeline creates `video_uploads` row → AssemblyAI webhook populates `video_transcripts` → fanout creates 6 `social_posts` rows with `source_video_id` set.
 2. Pipeline board subscribes to `video_uploads` and `social_posts` (via Supabase realtime or polling; decide in implementation plan) and renders cards in the correct column based on status.
 3. User clicks any card → URL updates → `<ContentStudioDrawer>` mounts and fetches `video_uploads`, `video_transcripts`, and all `social_posts WHERE source_video_id = $1` in a single RPC or parallel queries.
-4. User drags a post chip to a new calendar day → client optimistically updates → mutation writes `social_posts.scheduled_for` → realtime (or refetch) updates other clients.
+4. User drags a post chip to a new calendar day → client optimistically updates → mutation writes `social_posts.scheduled_at` → realtime (or refetch) updates other clients.
 5. Publishing happens via existing pipelines (unchanged). Published chips reflect new `status = 'published'` + `published_at`.
 
 ---
@@ -171,9 +171,9 @@ See "Detail drawer" under Architecture. The drawer is the transcript-context fix
 Most columns needed already exist. Verify during implementation:
 
 - `social_posts.source_video_id` — **exists** ✓ (confirmed in types/database.ts line 1120)
-- `social_posts.scheduled_for` — verify; used by Calendar drag-drop and unscheduled panel. If missing, add a nullable `timestamptz` column.
-- `social_posts.status` enum — must cover: `draft | needs_review | approved | scheduled | published | failed | rejected`. Verify the current enum and add missing values via migration if needed.
-- `content_calendar_entry` — the existing generic calendar table. **Decision: keep for backward compatibility and for calendar items that are not social posts (e.g., content planning notes). The Calendar view reads from both `social_posts.scheduled_for` AND `content_calendar_entry`, merging into a single chip stream.**
+- `social_posts.scheduled_at` — **exists** ✓ (confirmed in types/database.ts line 1118). Used by Calendar drag-drop and unscheduled panel.
+- `social_posts.approval_status` enum — already includes `draft | edited | awaiting_connection | approved | scheduled | published | failed | rejected`. Pipeline columns map these sensibly; verify against `supabase/migrations/00076_social_posts_and_captions.sql` during implementation.
+- `content_calendar_entry.scheduled_for` — note the column on this table IS called `scheduled_for` (separate from `social_posts.scheduled_at`). **Decision: keep `content_calendar_entry` for backward compatibility and for calendar items that are not social posts. The Calendar view reads from both `social_posts.scheduled_at` AND `content_calendar_entry.scheduled_for`, merging into a single chip stream.**
 
 ### New: user preferences
 
@@ -223,7 +223,7 @@ After a 2-week confidence period with the flag on, the legacy page files and sid
 
 - Post fanout → posts appear in Pipeline `Needs Review` column
 - Approve all posts for a video → video card moves to `Complete` archive column
-- Drag post from unscheduled panel onto day → `scheduled_for` is written + chip appears on calendar
+- Drag post from unscheduled panel onto day → `scheduled_at` is written + chip appears on calendar
 
 **E2E (Playwright)**
 
