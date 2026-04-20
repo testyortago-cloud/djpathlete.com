@@ -7,9 +7,21 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { getAdminStorage } from "@/lib/firebase-admin"
-import { createVideoUpload } from "@/lib/db/video-uploads"
+import { createVideoUpload, listVideoUploads } from "@/lib/db/video-uploads"
 
 const UPLOAD_URL_EXPIRY_MS = 15 * 60 * 1000 // 15 minutes
+
+export async function GET(request: NextRequest) {
+  const session = await auth()
+  if (!session?.user?.id || session.user.role !== "admin") {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+  const { searchParams } = new URL(request.url)
+  const statusFilter = searchParams.get("status") // e.g., "transcribed"
+  const all = await listVideoUploads()
+  const videos = statusFilter ? all.filter((v) => v.status === statusFilter) : all
+  return NextResponse.json({ videos })
+}
 
 function sanitizeFilename(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 120)
