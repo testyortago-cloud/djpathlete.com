@@ -325,3 +325,23 @@ export const tavilyTrendingScan = onDocumentCreated(
     await handleTavilyTrendingScan(event.params.jobId)
   },
 )
+
+// ─── SEO Enhance ──────────────────────────────────────────────────────────────
+// Triggered on blog publish via ai_jobs doc with type "seo_enhance"
+
+export const seoEnhance = onDocumentCreated(
+  {
+    document: "ai_jobs/{jobId}",
+    timeoutSeconds: 300,
+    memory: "512MiB",
+    region: "us-central1",
+    secrets: [anthropicApiKey, supabaseUrl, supabaseServiceRoleKey],
+  },
+  async (event) => {
+    const data = event.data?.data()
+    if (!data || data.type !== "seo_enhance") return
+
+    const { handleSeoEnhance } = await import("./seo-enhance.js")
+    await handleSeoEnhance(event.params.jobId)
+  },
+)
