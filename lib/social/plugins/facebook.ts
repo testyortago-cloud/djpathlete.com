@@ -32,7 +32,7 @@ export function createFacebookPlugin(credentials: FacebookCredentials): PublishP
     displayName: "Facebook",
 
     async connect(creds): Promise<ConnectResult> {
-      const token = (creds as FacebookCredentials).access_token ?? access_token
+      const token = typeof creds?.access_token === "string" ? creds.access_token : access_token
       const result = await fetchJson<{ id?: string; name?: string; error?: { message: string } }>(
         `${GRAPH_API_BASE}/${page_id}?${new URLSearchParams({ access_token: token, fields: "id,name" }).toString()}`,
       )

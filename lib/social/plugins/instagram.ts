@@ -27,7 +27,7 @@ export function createInstagramPlugin(credentials: InstagramCredentials): Publis
     displayName: "Instagram",
 
     async connect(creds): Promise<ConnectResult> {
-      const token = (creds as InstagramCredentials).access_token ?? access_token
+      const token = typeof creds?.access_token === "string" ? creds.access_token : access_token
       const result = await fetchJson<{ id?: string; username?: string }>(
         `${GRAPH_API_BASE}/${ig_user_id}?${new URLSearchParams({ access_token: token, fields: "id,username" }).toString()}`,
       )
