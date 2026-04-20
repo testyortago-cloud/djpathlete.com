@@ -265,3 +265,23 @@ export const socialFanout = onDocumentCreated(
     await handleSocialFanout(event.params.jobId)
   },
 )
+
+// ─── Blog From Video ──────────────────────────────────────────────────────────
+// Triggered when a new ai_jobs doc is created with type "blog_from_video"
+
+export const blogFromVideo = onDocumentCreated(
+  {
+    document: "ai_jobs/{jobId}",
+    timeoutSeconds: 540,
+    memory: "1GiB",
+    region: "us-central1",
+    secrets: [anthropicApiKey, tavilyApiKey, supabaseUrl, supabaseServiceRoleKey],
+  },
+  async (event) => {
+    const data = event.data?.data()
+    if (!data || data.type !== "blog_from_video") return
+
+    const { handleBlogFromVideo } = await import("./blog-from-video.js")
+    await handleBlogFromVideo(event.params.jobId)
+  },
+)
