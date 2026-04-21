@@ -65,7 +65,7 @@ export function DrawerContent({ data, defaultTab }: DrawerContentProps) {
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {active === "transcript" && <TranscriptTab transcript={data.transcript} />}
+        {active === "transcript" && <TranscriptTab transcript={data.transcript} video={data.video} />}
         {active === "posts" && <PostsTab posts={data.posts} initialExpandedPostId={data.highlightPostId} />}
         {active === "meta" && <MetaTab video={data.video} transcript={data.transcript} posts={data.posts} />}
       </div>
