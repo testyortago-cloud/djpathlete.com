@@ -51,7 +51,7 @@ export async function searchContentStudio(query: string): Promise<SearchResults>
   return {
     videos: (vidRes.data ?? []) as SearchResults["videos"],
     transcripts: (transRes.data ?? []).map((r) => {
-      const rec = r as {
+      const rec = r as unknown as {
         id: string
         video_upload_id: string
         transcript_text: string
@@ -70,7 +70,7 @@ export async function searchContentStudio(query: string): Promise<SearchResults>
       }
     }),
     posts: (postRes.data ?? []).map((r) => {
-      const rec = r as SocialPost & {
+      const rec = r as unknown as SocialPost & {
         video_uploads: { original_filename: string } | null
       }
       return {

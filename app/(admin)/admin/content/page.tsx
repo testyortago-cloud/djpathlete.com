@@ -12,10 +12,18 @@ interface PageProps {
   searchParams: Promise<{ tab?: string; view?: string; anchor?: string }>
 }
 
+type CalendarView = "month" | "week" | "day"
+const VALID_VIEWS: readonly CalendarView[] = ["month", "week", "day"] as const
+
+function toCalendarView(raw: string | null | undefined): CalendarView | null {
+  return raw && (VALID_VIEWS as readonly string[]).includes(raw) ? (raw as CalendarView) : null
+}
+
 export default async function ContentStudioPage({ searchParams }: PageProps) {
   const { tab, view, anchor } = await searchParams
   const prefs = await readPreferences()
-  const effectiveView = view ?? prefs?.calendar_default_view ?? "month"
+  const effectiveView: CalendarView =
+    toCalendarView(view) ?? toCalendarView(prefs?.calendar_default_view) ?? "month"
 
   if (tab === "calendar") {
     const window = computeCalendarWindow(effectiveView, anchor)
