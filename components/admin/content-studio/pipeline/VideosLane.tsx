@@ -23,7 +23,12 @@ export function VideosLane({ data }: VideosLaneProps) {
           accepts={false}
         >
           {grouped[col].map((v) => (
-            <VideoCard key={v.id} video={v} counts={data.postCountsByVideo[v.id] ?? null} />
+            <VideoCard
+              key={v.id}
+              video={v}
+              counts={data.postCountsByVideo[v.id] ?? null}
+              thumbnailUrl={data.thumbnailUrlsByVideo[v.id] ?? null}
+            />
           ))}
           {grouped[col].length === 0 && (
             <div className="py-6 text-center text-[11px] text-muted-foreground/60 italic">empty</div>

@@ -43,9 +43,11 @@ function StatusBadge({ status }: { status: VideoUpload["status"] }) {
 interface VideoCardProps {
   video: VideoUpload
   counts: PostCounts | null
+  /** Signed read URL for the thumbnail, if one has been generated. */
+  thumbnailUrl?: string | null
 }
 
-export function VideoCard({ video, counts }: VideoCardProps) {
+export function VideoCard({ video, counts, thumbnailUrl }: VideoCardProps) {
   const title = video.title ?? video.original_filename
   const isFailed = video.status === "failed"
 
@@ -58,7 +60,17 @@ export function VideoCard({ video, counts }: VideoCardProps) {
       )}
     >
       <div className="aspect-video bg-muted/50 rounded-md overflow-hidden flex items-center justify-center">
-        <Film className="size-6 text-muted-foreground/60" strokeWidth={1.5} />
+        {thumbnailUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={thumbnailUrl}
+            alt=""
+            className="w-full h-full object-cover"
+            loading="lazy"
+          />
+        ) : (
+          <Film className="size-6 text-muted-foreground/60" strokeWidth={1.5} />
+        )}
       </div>
       <div>
         <p className="text-sm font-medium text-primary truncate" title={title}>

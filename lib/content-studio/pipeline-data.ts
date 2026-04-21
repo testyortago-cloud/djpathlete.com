@@ -1,11 +1,16 @@
 import { listVideoUploads } from "@/lib/db/video-uploads"
 import { listSocialPostsForPipeline, type PipelinePostRow } from "@/lib/db/social-posts"
+import { getAdminStorage } from "@/lib/firebase-admin"
 import type { VideoUpload } from "@/types/database"
+
+const THUMBNAIL_URL_EXPIRY_MS = 30 * 60 * 1000 // 30 minutes
 
 export interface PipelineData {
   videos: VideoUpload[]
   posts: PipelinePostRow[]
   postCountsByVideo: Record<string, PostCounts>
+  /** Signed read URL per video-id, only for videos that have a thumbnail_path. */
+  thumbnailUrlsByVideo: Record<string, string>
 }
 
 export interface PostCounts {
@@ -21,8 +26,39 @@ function emptyCounts(): PostCounts {
   return { total: 0, approved: 0, scheduled: 0, published: 0, failed: 0, needs_review: 0 }
 }
 
+async function signThumbnailUrls(
+  videos: VideoUpload[],
+): Promise<Record<string, string>> {
+  const bucket = getAdminStorage().bucket()
+  const entries = await Promise.all(
+    videos
+      .filter((v) => v.thumbnail_path)
+      .map(async (v) => {
+        try {
+          const [url] = await bucket.file(v.thumbnail_path!).getSignedUrl({
+            version: "v4",
+            action: "read",
+            expires: Date.now() + THUMBNAIL_URL_EXPIRY_MS,
+          })
+          return [v.id, url] as const
+        } catch {
+          // Blob may be missing if upload failed mid-flight — just skip.
+          return null
+        }
+      }),
+  )
+  const out: Record<string, string> = {}
+  for (const entry of entries) {
+    if (entry) out[entry[0]] = entry[1]
+  }
+  return out
+}
+
 export async function getPipelineData(): Promise<PipelineData> {
-  const [videos, posts] = await Promise.all([listVideoUploads({ limit: 200 }), listSocialPostsForPipeline()])
+  const [videos, posts] = await Promise.all([
+    listVideoUploads({ limit: 200 }),
+    listSocialPostsForPipeline(),
+  ])
 
   const postCountsByVideo: Record<string, PostCounts> = {}
   for (const p of posts) {
@@ -50,5 +86,7 @@ export async function getPipelineData(): Promise<PipelineData> {
     }
   }
 
-  return { videos, posts, postCountsByVideo }
+  const thumbnailUrlsByVideo = await signThumbnailUrls(videos)
+
+  return { videos, posts, postCountsByVideo, thumbnailUrlsByVideo }
 }

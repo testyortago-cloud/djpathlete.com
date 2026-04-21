@@ -21,12 +21,14 @@ const data: PipelineData = {
       title: "A",
       uploaded_by: null,
       status: "uploaded",
+      thumbnail_path: null,
       created_at: "",
       updated_at: "",
     },
   ],
   posts: [],
   postCountsByVideo: {},
+  thumbnailUrlsByVideo: {},
 }
 
 describe("<PipelineBoard>", () => {

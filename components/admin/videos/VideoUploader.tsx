@@ -4,6 +4,7 @@ import { useState, useRef } from "react"
 import { Upload, Loader2, CheckCircle, AlertCircle } from "lucide-react"
 import { toast } from "sonner"
 import { uploadVideoFile, type UploadProgressEvent } from "@/lib/firebase-client-upload"
+import { generateAndUploadThumbnail } from "@/lib/firebase-client-thumbnail"
 import { cn } from "@/lib/utils"
 
 interface VideoUploaderProps {
@@ -39,6 +40,10 @@ export function VideoUploader({ onUploaded }: VideoUploaderProps) {
       setState({ status: "done", filename: file.name })
       toast.success(`${file.name} uploaded`)
       onUploaded(videoUploadId)
+      // Best-effort: generate a Kanban thumbnail in the background. A failure
+      // here (unsupported codec, canvas tainting, etc.) is silent — the card
+      // renderer falls back to a generic icon.
+      void generateAndUploadThumbnail(file, videoUploadId)
     } catch (error) {
       const message = (error as Error).message ?? "Upload failed"
       setState({ status: "error", message })

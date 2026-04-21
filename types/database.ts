@@ -1171,6 +1171,8 @@ export interface VideoUpload {
   title: string | null
   uploaded_by: string | null
   status: VideoUploadStatus
+  /** Firebase Storage path of a small JPG thumbnail; null until generated. */
+  thumbnail_path: string | null
   created_at: string
   updated_at: string
 }
