@@ -73,8 +73,8 @@ export function postColumnFor(post: SocialPost): PostColumn | null {
   }
 }
 
-export function postsByColumn(posts: SocialPost[]): Record<PostColumn, SocialPost[]> {
-  const out: Record<PostColumn, SocialPost[]> = {
+export function postsByColumn<P extends SocialPost>(posts: P[]): Record<PostColumn, P[]> {
+  const out: Record<PostColumn, P[]> = {
     needs_review: [],
     approved: [],
     scheduled: [],

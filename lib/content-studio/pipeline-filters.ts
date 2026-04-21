@@ -72,11 +72,11 @@ function postMatchesTimeRange(post: SocialPost, from: string | null, to: string 
   return true
 }
 
-export function applyFilters(
+export function applyFilters<P extends SocialPost>(
   videos: VideoUpload[],
-  posts: SocialPost[],
+  posts: P[],
   filters: PipelineFilters,
-): { videos: VideoUpload[]; posts: SocialPost[] } {
+): { videos: VideoUpload[]; posts: P[] } {
   const filteredPosts = posts.filter((p) => {
     if (filters.platforms.length && !filters.platforms.includes(p.platform)) return false
     if (filters.statuses.length && !filters.statuses.includes(p.approval_status)) return false

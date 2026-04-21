@@ -20,7 +20,11 @@ export function BulkActionsBar({ selectedIds, onClear, onApproved }: BulkActions
     try {
       const ids = Array.from(selectedIds)
       const results = await Promise.allSettled(
-        ids.map((id) => fetch(`/api/admin/social/posts/${id}/approve`, { method: "POST" })),
+        ids.map(async (id) => {
+          const res = await fetch(`/api/admin/social/posts/${id}/approve`, { method: "POST" })
+          if (!res.ok) throw new Error(`${id} ${res.status}`)
+          return res
+        }),
       )
       const failed = results.filter((r) => r.status === "rejected").length
       if (failed > 0) toast.error(`${failed} of ${ids.length} failed`)
