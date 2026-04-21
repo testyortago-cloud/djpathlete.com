@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation"
 import { getDrawerDataForPost } from "@/lib/content-studio/drawer-data"
+import { getPipelineData } from "@/lib/content-studio/pipeline-data"
 import { DetailDrawer } from "@/components/admin/content-studio/DetailDrawer"
-import { TabContent } from "@/components/admin/content-studio/TabContent"
+import { PostsList } from "@/components/admin/content-studio/list/PostsList"
 import type { DrawerTab } from "@/components/admin/content-studio/drawer/DrawerContent"
 
 interface PageProps {
@@ -21,14 +22,15 @@ export default async function ContentStudioPostDrawerPage({ params, searchParams
   const data = await getDrawerDataForPost(postId)
   if (!data) notFound()
 
-  // Prefer ?drawerTab=, then legacy ?tab= (when it matches a drawer tab),
-  // otherwise land on Posts since we entered from a post card.
-  const defaultTab: DrawerTab = resolveDrawerTab(drawerTab) ?? resolveDrawerTab(tab) ?? "posts"
+  const pipeline = await getPipelineData()
+
+  const defaultTab: DrawerTab =
+    resolveDrawerTab(drawerTab) ?? resolveDrawerTab(tab) ?? "posts"
   const closeHref = "/admin/content?tab=posts"
 
   return (
     <>
-      <TabContent tab="posts" />
+      <PostsList posts={pipeline.posts} />
       <DetailDrawer data={data} defaultTab={defaultTab} closeHref={closeHref} />
     </>
   )

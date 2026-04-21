@@ -1,7 +1,11 @@
 import { notFound } from "next/navigation"
 import { getDrawerData } from "@/lib/content-studio/drawer-data"
+import { getPipelineData } from "@/lib/content-studio/pipeline-data"
 import { DetailDrawer } from "@/components/admin/content-studio/DetailDrawer"
-import { TabContent } from "@/components/admin/content-studio/TabContent"
+import { PipelineBoard } from "@/components/admin/content-studio/pipeline/PipelineBoard"
+import { VideosList } from "@/components/admin/content-studio/list/VideosList"
+import { PostsList } from "@/components/admin/content-studio/list/PostsList"
+import { TabPlaceholder } from "@/components/admin/content-studio/TabPlaceholder"
 import type { DrawerTab } from "@/components/admin/content-studio/drawer/DrawerContent"
 
 interface PageProps {
@@ -14,12 +18,6 @@ function resolveDrawerTab(raw: string | undefined, fallback: DrawerTab): DrawerT
   return fallback
 }
 
-// The outer ?tab= param drives shell tab state (pipeline/calendar/videos/posts)
-// and is preserved across drawer interactions so ESC / close can return the
-// user to the tab they came from. Drawer-internal tab state lives in
-// ?drawerTab= so it never corrupts ?tab=. For backwards-compatible deep links
-// we still accept ?tab=transcript|posts|meta as a drawer value when ?tab= is
-// not a shell value.
 function resolveShellTab(raw: string | undefined): string | undefined {
   if (raw === "pipeline" || raw === "calendar" || raw === "videos" || raw === "posts") return raw
   return undefined
@@ -32,23 +30,40 @@ export default async function ContentStudioDrawerPage({ params, searchParams }: 
   const data = await getDrawerData(videoId)
   if (!data) notFound()
 
+  // Pipeline data is only needed for the tab rendered behind the drawer.
+  // Phase 5 may hoist this into the shell layout so it's cached across
+  // drawer opens.
+  const pipeline = await getPipelineData()
+
   const effectiveData = postId ? { ...data, highlightPostId: postId } : data
 
-  // Default tab selection follows the spec:
-  //   video card → transcript
-  //   post card (postId present) → posts
-  // ?drawerTab= wins, then a drawer-valued ?tab= (deep-link), then the card
-  // source default.
   const shellTab = resolveShellTab(tab)
   const drawerFromOuterTab = shellTab ? undefined : tab
-  const defaultTab = resolveDrawerTab(drawerTab ?? drawerFromOuterTab, postId ? "posts" : "transcript")
-
+  const defaultDrawerTab = resolveDrawerTab(
+    drawerTab ?? drawerFromOuterTab,
+    postId ? "posts" : "transcript",
+  )
   const closeHref = shellTab ? `/admin/content?tab=${shellTab}` : "/admin/content"
+
+  let underneath: React.ReactNode
+  switch (shellTab) {
+    case "calendar":
+      underneath = <TabPlaceholder tabName="Calendar" phaseLabel="Phase 4" />
+      break
+    case "videos":
+      underneath = <VideosList videos={pipeline.videos} />
+      break
+    case "posts":
+      underneath = <PostsList posts={pipeline.posts} />
+      break
+    default:
+      underneath = <PipelineBoard initialData={pipeline} />
+  }
 
   return (
     <>
-      <TabContent tab={shellTab} />
-      <DetailDrawer data={effectiveData} defaultTab={defaultTab} closeHref={closeHref} />
+      {underneath}
+      <DetailDrawer data={effectiveData} defaultTab={defaultDrawerTab} closeHref={closeHref} />
     </>
   )
 }
