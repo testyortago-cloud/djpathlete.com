@@ -1,7 +1,7 @@
 "use client"
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
-import { DollarSign, Users, BarChart3, Activity, ShoppingBag } from "lucide-react"
+import { DollarSign, Users, BarChart3, Activity, ShoppingBag, Share2, BookOpen } from "lucide-react"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { DateRangePicker } from "./DateRangePicker"
 import { RevenueTab } from "./RevenueTab"
@@ -9,12 +9,16 @@ import { ClientsTab } from "./ClientsTab"
 import { ProgramsTab } from "./ProgramsTab"
 import { EngagementTab } from "./EngagementTab"
 import { ShopTab } from "./ShopTab"
+import { SocialTab } from "./SocialTab"
+import { ContentTab } from "./ContentTab"
 import type {
   RevenueMetrics,
   ClientMetrics,
   ProgramMetrics,
   EngagementMetrics,
   ShopMetrics,
+  SocialMetrics,
+  ContentMetrics,
 } from "@/types/analytics"
 
 const TABS = [
@@ -23,6 +27,8 @@ const TABS = [
   { value: "clients", label: "Clients", icon: Users },
   { value: "programs", label: "Programs", icon: BarChart3 },
   { value: "engagement", label: "Engagement", icon: Activity },
+  { value: "social", label: "Social", icon: Share2 },
+  { value: "content", label: "Content", icon: BookOpen },
 ] as const
 
 interface AnalyticsDashboardProps {
@@ -35,6 +41,8 @@ interface AnalyticsDashboardProps {
   clients: ClientMetrics
   programs: ProgramMetrics
   engagement: EngagementMetrics
+  social: SocialMetrics
+  content: ContentMetrics
 }
 
 export function AnalyticsDashboard({
@@ -47,6 +55,8 @@ export function AnalyticsDashboard({
   clients,
   programs,
   engagement,
+  social,
+  content,
 }: AnalyticsDashboardProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -94,6 +104,12 @@ export function AnalyticsDashboard({
         </TabsContent>
         <TabsContent value="engagement">
           <EngagementTab data={engagement} />
+        </TabsContent>
+        <TabsContent value="social">
+          <SocialTab data={social} />
+        </TabsContent>
+        <TabsContent value="content">
+          <ContentTab data={content} />
         </TabsContent>
       </Tabs>
     </div>

@@ -5,6 +5,7 @@ import { MessageSquare, Star, Target, TrendingUp, ThumbsUp, ThumbsDown, RefreshC
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
+import { VoiceDriftCard } from "./ai-insights/VoiceDriftCard"
 
 interface InsightsData {
   overview: {
@@ -480,6 +481,8 @@ export function AiInsightsDashboard() {
             </div>
           </div>
         )}
+
+        <VoiceDriftCard />
       </div>
     </TooltipProvider>
   )

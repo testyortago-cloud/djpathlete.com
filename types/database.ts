@@ -408,13 +408,55 @@ export interface Notification {
   created_at: string
 }
 
+export type PromptTemplateCategory =
+  | "structure"
+  | "session"
+  | "periodization"
+  | "sport"
+  | "rehab"
+  | "conditioning"
+  | "specialty"
+  | "voice_profile"
+  | "social_caption"
+  | "blog_generation"
+  | "blog_research"
+  | "newsletter"
+
+export type PromptTemplateScope =
+  | "week"
+  | "day"
+  | "both"
+  | "global"
+  | "facebook"
+  | "instagram"
+  | "tiktok"
+  | "youtube"
+  | "youtube_shorts"
+  | "linkedin"
+  | "blog"
+  | "newsletter"
+
+export interface PromptFewShotExample {
+  caption: string
+  platform: SocialPlatform
+  engagement: number
+  impressions: number
+  recorded_at: string
+  social_post_id: string
+}
+
 export interface PromptTemplate {
   id: string
   name: string
-  category: "structure" | "session" | "periodization" | "sport" | "rehab" | "conditioning" | "specialty"
-  scope: "week" | "day" | "both"
+  category: PromptTemplateCategory
+  scope: PromptTemplateScope
   description: string
   prompt: string
+  /**
+   * Top-performing real examples, populated weekly by performanceLearningLoop.
+   * Optional on insert (DB default is `[]`). Always present on read.
+   */
+  few_shot_examples?: PromptFewShotExample[]
   created_by: string | null
   created_at: string
   updated_at: string
@@ -1082,13 +1124,7 @@ export interface Database {
 // Starter AI Automation types (Phase 1 — migrations 00076–00081)
 // ─────────────────────────────────────────────────────────────────
 
-export type SocialPlatform =
-  | "facebook"
-  | "instagram"
-  | "tiktok"
-  | "youtube"
-  | "youtube_shorts"
-  | "linkedin"
+export type SocialPlatform = "facebook" | "instagram" | "tiktok" | "youtube" | "youtube_shorts" | "linkedin"
 
 export type SocialApprovalStatus =
   | "draft"
@@ -1147,6 +1183,62 @@ export interface ContentCalendarEntry {
   updated_at: string
 }
 
+// ─────────────────────────────────────────────────────────────────
+// Phase 6 — Admin Operations (migration 00092)
+// ─────────────────────────────────────────────────────────────────
+
+export interface SystemSetting {
+  key: string
+  value: unknown
+  description: string | null
+  updated_by: string | null
+  updated_at: string
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Starter AI Automation — Phase 5e (migration 00090)
+// ─────────────────────────────────────────────────────────────────
+
+export type VoiceDriftEntityType = "social_post" | "blog_post" | "newsletter"
+export type VoiceDriftSeverity = "low" | "medium" | "high"
+
+export interface VoiceDriftIssue {
+  issue: string
+  suggestion: string
+}
+
+export interface VoiceDriftFlag {
+  id: string
+  entity_type: VoiceDriftEntityType
+  entity_id: string
+  drift_score: number
+  severity: VoiceDriftSeverity
+  issues: VoiceDriftIssue[]
+  content_preview: string
+  scanned_at: string
+  created_at: string
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Starter AI Automation — Phase 5a (migration 00089)
+// ─────────────────────────────────────────────────────────────────
+
+export interface SocialAnalytics {
+  id: string
+  social_post_id: string
+  platform: SocialPlatform
+  platform_post_id: string
+  impressions: number | null
+  engagement: number | null
+  likes: number | null
+  comments: number | null
+  shares: number | null
+  views: number | null
+  extra: Record<string, unknown> | null
+  recorded_at: string
+  created_at: string
+}
+
 export interface PlatformConnection {
   id: string
   plugin_name: SocialPlatform
@@ -1171,8 +1263,12 @@ export interface VideoUpload {
   title: string | null
   uploaded_by: string | null
   status: VideoUploadStatus
-  /** Firebase Storage path of a small JPG thumbnail; null until generated. */
-  thumbnail_path: string | null
+  /**
+   * Firebase Storage path of a small JPG thumbnail; null until generated.
+   * Optional on insert — the DB column is nullable with no default, so
+   * callers (and test fixtures) may omit it entirely.
+   */
+  thumbnail_path?: string | null
   created_at: string
   updated_at: string
 }

@@ -26,7 +26,7 @@ export default async function ContentStudioPage({ searchParams }: PageProps) {
   const data = await getPipelineData()
   switch (tab) {
     case "videos":
-      return <VideosList videos={data.videos} />
+      return <VideosList videos={data.videos} postCountsByVideo={data.postCountsByVideo} />
     case "posts":
       return <PostsList posts={data.posts} />
     default:

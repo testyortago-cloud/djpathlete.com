@@ -34,6 +34,7 @@ import {
   Link2,
   TrendingUp,
   Layers,
+  PlayCircle,
 } from "lucide-react"
 import { signOut } from "next-auth/react"
 import { cn } from "@/lib/utils"
@@ -56,6 +57,7 @@ function getNavSections(contentStudioOn: boolean): NavSection[] {
         { label: "Content Studio", href: "/admin/content", icon: Layers },
         { label: "Topic Suggestions", href: "/admin/topic-suggestions", icon: TrendingUp },
         { label: "Platform Connections", href: "/admin/platform-connections", icon: Link2 },
+        { label: "Automation", href: "/admin/automation", icon: PlayCircle },
       ]
     : [
         { label: "Social", href: "/admin/social", icon: Megaphone },
@@ -63,6 +65,7 @@ function getNavSections(contentStudioOn: boolean): NavSection[] {
         { label: "Topic Suggestions", href: "/admin/topic-suggestions", icon: TrendingUp },
         { label: "Videos", href: "/admin/videos", icon: Film },
         { label: "Platform Connections", href: "/admin/platform-connections", icon: Link2 },
+        { label: "Automation", href: "/admin/automation", icon: PlayCircle },
       ]
 
   return [

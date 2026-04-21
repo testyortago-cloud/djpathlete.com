@@ -1,6 +1,7 @@
 import { GlobalSearch } from "./search/GlobalSearch"
 import { UploadModal } from "./upload/UploadModal"
 import { TabSwitcher } from "./TabSwitcher"
+import { ConnectionsBanner } from "./ConnectionsBanner"
 
 export function ContentStudioShell({ children }: { children: React.ReactNode }) {
   return (
@@ -18,7 +19,10 @@ export function ContentStudioShell({ children }: { children: React.ReactNode }) 
         </div>
         <TabSwitcher />
       </div>
-      <div className="flex-1 overflow-y-auto p-6">{children}</div>
+      <div className="flex-1 overflow-y-auto p-6">
+        <ConnectionsBanner />
+        {children}
+      </div>
       {/* Live region for screen-reader announcements (drag-drop results, etc.) */}
       <div role="status" aria-live="polite" className="sr-only" id="content-studio-announce" />
     </div>
