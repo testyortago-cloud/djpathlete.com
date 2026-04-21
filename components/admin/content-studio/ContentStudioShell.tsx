@@ -1,4 +1,5 @@
-import { Upload, Search } from "lucide-react"
+import { GlobalSearch } from "./search/GlobalSearch"
+import { UploadModal } from "./upload/UploadModal"
 import { TabSwitcher } from "./TabSwitcher"
 
 export function ContentStudioShell({ children }: { children: React.ReactNode }) {
@@ -8,26 +9,13 @@ export function ContentStudioShell({ children }: { children: React.ReactNode }) 
         <div className="flex items-center justify-between mb-4">
           <div>
             <h1 className="font-heading text-2xl">Content Studio</h1>
-            <p className="text-sm text-muted-foreground">Videos, posts, and scheduling in one place.</p>
+            <p className="text-sm text-muted-foreground">
+              Videos, posts, and scheduling in one place.
+            </p>
           </div>
           <div className="flex items-center gap-2">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-              <input
-                type="search"
-                placeholder="Search videos, transcripts, posts..."
-                disabled
-                className="pl-9 pr-3 py-2 text-sm rounded-md border border-border bg-muted/30 w-80 placeholder:text-muted-foreground/60 disabled:cursor-not-allowed"
-              />
-            </div>
-            <button
-              type="button"
-              disabled
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-md disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              <Upload className="size-4" />
-              Upload Video
-            </button>
+            <GlobalSearch />
+            <UploadModal />
           </div>
         </div>
         <TabSwitcher />
