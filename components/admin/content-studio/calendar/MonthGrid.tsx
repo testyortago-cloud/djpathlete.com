@@ -85,9 +85,7 @@ function DayCell({
         {chips.slice(0, 3).map((c) => (
           <PostChip key={`${c.kind}-${c.id}`} chip={c} />
         ))}
-        {chips.length > 3 && (
-          <span className="text-[10px] text-muted-foreground">+{chips.length - 3} more</span>
-        )}
+        {chips.length > 3 && <span className="text-[10px] text-muted-foreground">+{chips.length - 3} more</span>}
       </div>
     </div>
   )

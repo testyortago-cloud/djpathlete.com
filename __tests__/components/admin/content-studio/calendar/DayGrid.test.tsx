@@ -9,28 +9,12 @@ function wrap(ui: React.ReactNode) {
 
 describe("<DayGrid>", () => {
   it("renders 24 hour rows", () => {
-    render(
-      wrap(
-        <DayGrid
-          anchor={new Date("2026-04-20T00:00:00Z")}
-          chips={[]}
-          onEmptyDayClick={vi.fn()}
-        />,
-      ),
-    )
+    render(wrap(<DayGrid anchor={new Date("2026-04-20T00:00:00Z")} chips={[]} onEmptyDayClick={vi.fn()} />))
     expect(screen.getAllByRole("row")).toHaveLength(24)
   })
 
   it("renders hour labels", () => {
-    render(
-      wrap(
-        <DayGrid
-          anchor={new Date("2026-04-20T00:00:00Z")}
-          chips={[]}
-          onEmptyDayClick={vi.fn()}
-        />,
-      ),
-    )
+    render(wrap(<DayGrid anchor={new Date("2026-04-20T00:00:00Z")} chips={[]} onEmptyDayClick={vi.fn()} />))
     expect(screen.getByText("09:00")).toBeInTheDocument()
     expect(screen.getByText("23:00")).toBeInTheDocument()
   })

@@ -62,9 +62,7 @@ describe("postToChip", () => {
   })
 
   it("returns chip with scheduledAt=null for unscheduled posts", () => {
-    const c = postToChip(
-      post({ scheduled_at: null, published_at: null, approval_status: "approved" }),
-    )
+    const c = postToChip(post({ scheduled_at: null, published_at: null, approval_status: "approved" }))
     expect(c.scheduledAt).toBeNull()
   })
 })
@@ -108,9 +106,7 @@ describe("groupByDay", () => {
   })
 
   it("skips chips with no scheduledAt", () => {
-    const chips = [
-      postToChip(post({ scheduled_at: null, published_at: null, approval_status: "approved" })),
-    ]
+    const chips = [postToChip(post({ scheduled_at: null, published_at: null, approval_status: "approved" }))]
     expect(Object.keys(groupByDay(chips))).toEqual([])
   })
 })

@@ -39,9 +39,7 @@ function HourRow({
         if (chips.length === 0) onEmptyDayClick(key.slice(0, 10))
       }}
     >
-      <div className="text-[11px] text-muted-foreground px-2 py-1.5">
-        {String(hour).padStart(2, "0")}:00
-      </div>
+      <div className="text-[11px] text-muted-foreground px-2 py-1.5">{String(hour).padStart(2, "0")}:00</div>
       <div className="flex flex-wrap gap-1 p-1">
         {chips.map((c) => (
           <PostChip key={`${c.kind}-${c.id}`} chip={c} />

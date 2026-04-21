@@ -12,18 +12,9 @@ vi.mock("next/navigation", () => ({
 describe("<CalendarViewToggle>", () => {
   it("renders Month/Week/Day buttons with Month active", () => {
     render(<CalendarViewToggle />)
-    expect(screen.getByRole("button", { name: /^month$/i })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    )
-    expect(screen.getByRole("button", { name: /^week$/i })).toHaveAttribute(
-      "aria-pressed",
-      "false",
-    )
-    expect(screen.getByRole("button", { name: /^day$/i })).toHaveAttribute(
-      "aria-pressed",
-      "false",
-    )
+    expect(screen.getByRole("button", { name: /^month$/i })).toHaveAttribute("aria-pressed", "true")
+    expect(screen.getByRole("button", { name: /^week$/i })).toHaveAttribute("aria-pressed", "false")
+    expect(screen.getByRole("button", { name: /^day$/i })).toHaveAttribute("aria-pressed", "false")
   })
 
   it("clicking Week updates the URL", () => {
@@ -66,10 +57,7 @@ describe("<CalendarViewToggle>", () => {
     replaceMock.mockClear()
     render(<CalendarViewToggle />)
     fireEvent.keyDown(document, { key: "t" })
-    expect(replaceMock).toHaveBeenCalledWith(
-      expect.stringMatching(/anchor=\d{4}-\d{2}-\d{2}/),
-      { scroll: false },
-    )
+    expect(replaceMock).toHaveBeenCalledWith(expect.stringMatching(/anchor=\d{4}-\d{2}-\d{2}/), { scroll: false })
   })
 
   it("Prev arrow moves anchor backwards", () => {

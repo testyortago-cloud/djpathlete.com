@@ -2,16 +2,8 @@
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import { useMemo, useState, useCallback } from "react"
-import {
-  parseFilters,
-  filtersToSearchParams,
-  type PipelineFilters,
-} from "@/lib/content-studio/pipeline-filters"
-import type {
-  SocialPlatform,
-  SocialApprovalStatus,
-  VideoUpload,
-} from "@/types/database"
+import { parseFilters, filtersToSearchParams, type PipelineFilters } from "@/lib/content-studio/pipeline-filters"
+import type { SocialPlatform, SocialApprovalStatus, VideoUpload } from "@/types/database"
 
 const PLATFORMS: { id: SocialPlatform; label: string }[] = [
   { id: "instagram", label: "Instagram" },
@@ -54,35 +46,24 @@ export function LeftFilters({ videos }: LeftFiltersProps) {
     const has = filters.platforms.includes(id)
     update({
       ...filters,
-      platforms: has
-        ? filters.platforms.filter((p) => p !== id)
-        : [...filters.platforms, id],
+      platforms: has ? filters.platforms.filter((p) => p !== id) : [...filters.platforms, id],
     })
   }
   function toggleStatus(id: SocialApprovalStatus) {
     const has = filters.statuses.includes(id)
     update({
       ...filters,
-      statuses: has
-        ? filters.statuses.filter((s) => s !== id)
-        : [...filters.statuses, id],
+      statuses: has ? filters.statuses.filter((s) => s !== id) : [...filters.statuses, id],
     })
   }
 
-  const matching = videos.filter((v) =>
-    (v.title ?? v.original_filename).toLowerCase().includes(search.toLowerCase()),
-  )
+  const matching = videos.filter((v) => (v.title ?? v.original_filename).toLowerCase().includes(search.toLowerCase()))
 
   return (
-    <aside
-      aria-label="Calendar filters"
-      className="w-60 shrink-0 border-r border-border bg-surface/30 overflow-y-auto"
-    >
+    <aside aria-label="Calendar filters" className="w-60 shrink-0 border-r border-border bg-surface/30 overflow-y-auto">
       <div className="p-3 space-y-5">
         <section>
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-primary mb-2">
-            Platform
-          </h3>
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-primary mb-2">Platform</h3>
           <ul className="space-y-1">
             {PLATFORMS.map(({ id, label }) => (
               <li key={id}>
@@ -100,9 +81,7 @@ export function LeftFilters({ videos }: LeftFiltersProps) {
           </ul>
         </section>
         <section>
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-primary mb-2">
-            Status
-          </h3>
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-primary mb-2">Status</h3>
           <ul className="space-y-1">
             {STATUSES.map(({ id, label }) => (
               <li key={id}>
@@ -120,9 +99,7 @@ export function LeftFilters({ videos }: LeftFiltersProps) {
           </ul>
         </section>
         <section>
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-primary mb-2">
-            Source video
-          </h3>
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-primary mb-2">Source video</h3>
           <input
             type="search"
             value={search}

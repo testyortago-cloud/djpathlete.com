@@ -60,9 +60,7 @@ function DayCell({
           <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
             {day.toLocaleDateString(undefined, { weekday: "short", timeZone: "UTC" })}
           </div>
-          <div className={cn("text-lg font-semibold", today ? "text-accent" : "text-primary")}>
-            {day.getUTCDate()}
-          </div>
+          <div className={cn("text-lg font-semibold", today ? "text-accent" : "text-primary")}>{day.getUTCDate()}</div>
         </div>
       </div>
       <div className="flex flex-col gap-1 flex-1 overflow-y-auto">
@@ -91,12 +89,7 @@ export function WeekGrid({ anchor, chips, onEmptyDayClick }: WeekGridProps) {
       aria-label="Calendar week view"
     >
       {days.map((d) => (
-        <DayCell
-          key={d.toISOString()}
-          day={d}
-          chips={grouped[dayKey(d)] ?? []}
-          onEmptyClick={onEmptyDayClick}
-        />
+        <DayCell key={d.toISOString()} day={d} chips={grouped[dayKey(d)] ?? []} onEmptyClick={onEmptyDayClick} />
       ))}
     </div>
   )

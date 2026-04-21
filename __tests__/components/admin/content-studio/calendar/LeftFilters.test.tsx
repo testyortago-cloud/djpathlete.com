@@ -20,10 +20,7 @@ describe("<LeftFilters>", () => {
     replaceMock.mockClear()
     render(<LeftFilters videos={[]} />)
     fireEvent.click(screen.getByLabelText(/Instagram/i))
-    expect(replaceMock).toHaveBeenCalledWith(
-      expect.stringMatching(/platform=instagram/),
-      { scroll: false },
-    )
+    expect(replaceMock).toHaveBeenCalledWith(expect.stringMatching(/platform=instagram/), { scroll: false })
   })
 
   it("source video search filters the dropdown list", () => {

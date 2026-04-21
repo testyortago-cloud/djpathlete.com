@@ -18,12 +18,7 @@ function toLocalInputValue(iso: Date): string {
   )}:${pad(iso.getMinutes())}`
 }
 
-export function TimePickerPopover({
-  platform,
-  dayKey,
-  onConfirm,
-  onCancel,
-}: TimePickerPopoverProps) {
+export function TimePickerPopover({ platform, dayKey, onConfirm, onCancel }: TimePickerPopoverProps) {
   const day = new Date(`${dayKey}T00:00:00Z`)
   const defaultTime = defaultPublishTimeForPlatform(platform, day)
   const [value, setValue] = useState(() => toLocalInputValue(defaultTime))
@@ -39,14 +34,8 @@ export function TimePickerPopover({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-      onClick={onCancel}
-    >
-      <div
-        className="rounded-lg bg-white border border-border shadow-lg p-4 w-80"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onCancel}>
+      <div className="rounded-lg bg-white border border-border shadow-lg p-4 w-80" onClick={(e) => e.stopPropagation()}>
         <h3 className="font-heading text-sm text-primary mb-2">Schedule on {dayKey}</h3>
         <label className="block text-xs text-muted-foreground">
           Time

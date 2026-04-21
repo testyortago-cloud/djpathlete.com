@@ -2,13 +2,7 @@
 
 import { useState, useMemo } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import {
-  DndContext,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core"
+import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core"
 import { toast } from "sonner"
 import { CalendarViewToggle } from "./CalendarViewToggle"
 import { MonthGrid } from "./MonthGrid"
@@ -50,19 +44,15 @@ export function CalendarContainer({ data, videos }: CalendarContainerProps) {
   const anchor = resolveAnchor(searchParams.get("anchor"))
 
   const [manualPostDay, setManualPostDay] = useState<string | null>(null)
-  const [pendingDrop, setPendingDrop] = useState<
-    { postId: string; platform: SocialPlatform; dayKey: string } | null
-  >(null)
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+  const [pendingDrop, setPendingDrop] = useState<{ postId: string; platform: SocialPlatform; dayKey: string } | null>(
+    null,
   )
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
   const filters = useMemo(() => parseFilters(searchParams), [searchParams])
 
   const chipsFiltered = useMemo(() => {
-    const postChips = data.chips.filter(
-      (c): c is Extract<CalendarChip, { kind: "post" }> => c.kind === "post",
-    )
+    const postChips = data.chips.filter((c): c is Extract<CalendarChip, { kind: "post" }> => c.kind === "post")
     const entryChips = data.chips.filter((c) => c.kind === "entry")
     const fakePosts = postChips.map((c) => c.raw)
     const { posts: afterFilter } = applyFilters([], fakePosts, filters)
@@ -112,11 +102,7 @@ export function CalendarContainer({ data, videos }: CalendarContainerProps) {
     const { active, over } = event
     if (!over) return
     const overId = String(over.id)
-    const dayKey = overId.startsWith("day-")
-      ? overId.slice(4)
-      : overId.startsWith("hour-")
-        ? overId.slice(5, 15)
-        : null
+    const dayKey = overId.startsWith("day-") ? overId.slice(4) : overId.startsWith("hour-") ? overId.slice(5, 15) : null
     if (!dayKey) return
 
     const activeId = String(active.id)
@@ -127,9 +113,7 @@ export function CalendarContainer({ data, videos }: CalendarContainerProps) {
     }
 
     if (activeId.startsWith("unscheduled-")) {
-      const payload = active.data.current as
-        | { postId: string; platform: SocialPlatform }
-        | undefined
+      const payload = active.data.current as { postId: string; platform: SocialPlatform } | undefined
       if (!payload) return
       setPendingDrop({ postId: payload.postId, platform: payload.platform, dayKey })
     }
@@ -164,8 +148,7 @@ export function CalendarContainer({ data, videos }: CalendarContainerProps) {
                   year: "numeric",
                   timeZone: "UTC",
                 })}
-              {view === "week" &&
-                `Week of ${anchor.toLocaleDateString(undefined, { timeZone: "UTC" })}`}
+              {view === "week" && `Week of ${anchor.toLocaleDateString(undefined, { timeZone: "UTC" })}`}
               {view === "day" &&
                 anchor.toLocaleDateString(undefined, {
                   weekday: "long",
@@ -177,27 +160,9 @@ export function CalendarContainer({ data, videos }: CalendarContainerProps) {
             <CalendarViewToggle />
           </div>
           <div className="flex-1 overflow-auto p-2">
-            {view === "month" && (
-              <MonthGrid
-                anchor={anchor}
-                chips={chipsFiltered}
-                onEmptyDayClick={setManualPostDay}
-              />
-            )}
-            {view === "week" && (
-              <WeekGrid
-                anchor={anchor}
-                chips={chipsFiltered}
-                onEmptyDayClick={setManualPostDay}
-              />
-            )}
-            {view === "day" && (
-              <DayGrid
-                anchor={anchor}
-                chips={chipsFiltered}
-                onEmptyDayClick={setManualPostDay}
-              />
-            )}
+            {view === "month" && <MonthGrid anchor={anchor} chips={chipsFiltered} onEmptyDayClick={setManualPostDay} />}
+            {view === "week" && <WeekGrid anchor={anchor} chips={chipsFiltered} onEmptyDayClick={setManualPostDay} />}
+            {view === "day" && <DayGrid anchor={anchor} chips={chipsFiltered} onEmptyDayClick={setManualPostDay} />}
           </div>
         </div>
         <UnscheduledPanel posts={data.unscheduledPosts} />

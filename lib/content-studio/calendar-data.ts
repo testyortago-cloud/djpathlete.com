@@ -36,9 +36,7 @@ export async function getCalendarData(window: CalendarWindow): Promise<CalendarD
     return t >= fromTs && t <= toTs
   })
 
-  const unscheduledPosts = posts.filter(
-    (p) => p.approval_status === "approved" && !p.scheduled_at,
-  )
+  const unscheduledPosts = posts.filter((p) => p.approval_status === "approved" && !p.scheduled_at)
 
   const postChips = windowPosts.map((p) => postToChip(p, p.source_video_filename))
   const entryChips = entries.map(entryToChip)

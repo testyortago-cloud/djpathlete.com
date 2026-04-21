@@ -3,10 +3,7 @@ export interface CalendarWindow {
   to: string
 }
 
-export function computeCalendarWindow(
-  view: string | undefined,
-  anchor: string | undefined,
-): CalendarWindow {
+export function computeCalendarWindow(view: string | undefined, anchor: string | undefined): CalendarWindow {
   const anchorDate = anchor ? new Date(`${anchor}T00:00:00Z`) : new Date()
   anchorDate.setUTCHours(0, 0, 0, 0)
   const from = new Date(anchorDate)

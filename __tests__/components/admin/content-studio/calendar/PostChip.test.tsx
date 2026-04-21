@@ -36,10 +36,7 @@ describe("<PostChip>", () => {
   it("hover shows the mini-card with full label + Open link", () => {
     render(wrap(<PostChip chip={chip} />))
     fireEvent.mouseEnter(screen.getByRole("button", { name: /scheduled/i }))
-    expect(screen.getByRole("link", { name: /Open/ })).toHaveAttribute(
-      "href",
-      "/admin/content/post/p1",
-    )
+    expect(screen.getByRole("link", { name: /Open/ })).toHaveAttribute("href", "/admin/content/post/p1")
   })
 
   it("published chips are non-draggable (no pointer cursor)", () => {

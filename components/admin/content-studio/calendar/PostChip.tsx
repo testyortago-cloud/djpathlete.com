@@ -3,16 +3,7 @@
 import Link from "next/link"
 import { useState } from "react"
 import { useDraggable } from "@dnd-kit/core"
-import {
-  FileText,
-  Mail,
-  Lightbulb,
-  Instagram,
-  AlertCircle,
-  Zap,
-  ExternalLink,
-  Film,
-} from "lucide-react"
+import { FileText, Mail, Lightbulb, Instagram, AlertCircle, Zap, ExternalLink, Film } from "lucide-react"
 import { toast } from "sonner"
 import type { CalendarChip } from "@/lib/content-studio/calendar-chips"
 import type { SocialPlatform, CalendarEntryType } from "@/types/database"
@@ -51,15 +42,10 @@ export function PostChip({ chip }: PostChipProps) {
     disabled: isLocked,
   })
 
-  const Icon =
-    chip.kind === "post"
-      ? PLATFORM_ICONS[chip.platformOrType]
-      : ENTRY_ICONS[chip.platformOrType]
+  const Icon = chip.kind === "post" ? PLATFORM_ICONS[chip.platformOrType] : ENTRY_ICONS[chip.platformOrType]
 
   const colorClasses =
-    chip.kind === "post"
-      ? PLATFORM_COLORS[chip.platformOrType]
-      : "bg-accent/10 text-accent border-accent/30"
+    chip.kind === "post" ? PLATFORM_COLORS[chip.platformOrType] : "bg-accent/10 text-accent border-accent/30"
 
   const drawerHref = chip.kind === "post" ? `/admin/content/post/${chip.id}` : "#"
 
@@ -103,9 +89,7 @@ export function PostChip({ chip }: PostChipProps) {
       <Icon className="size-3 shrink-0" />
       <span className="truncate">{chip.label}</span>
       {isFailed && <AlertCircle className="size-3 shrink-0 text-error" />}
-      {chip.kind === "post" && chip.sourceVideoId && (
-        <Film className="size-3 shrink-0 opacity-70" />
-      )}
+      {chip.kind === "post" && chip.sourceVideoId && <Film className="size-3 shrink-0 opacity-70" />}
 
       {hovered && (
         <div
@@ -115,9 +99,7 @@ export function PostChip({ chip }: PostChipProps) {
           <p className="text-xs font-semibold text-primary flex items-center gap-2">
             <Icon className="size-3.5" />
             {chip.platformOrType.replace("_", " ")}
-            <span className="ml-auto text-[10px] uppercase tracking-wide text-muted-foreground">
-              {chip.status}
-            </span>
+            <span className="ml-auto text-[10px] uppercase tracking-wide text-muted-foreground">{chip.status}</span>
           </p>
           <p className="mt-2 text-sm text-primary line-clamp-4 break-words">
             {chip.kind === "post" ? chip.raw.content : chip.raw.title}

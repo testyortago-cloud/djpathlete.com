@@ -27,8 +27,7 @@ function resolveDrawerTab(raw: string | undefined, fallback: DrawerTab): DrawerT
 }
 
 function resolveShellTab(raw: string | undefined): string | undefined {
-  if (raw === "pipeline" || raw === "calendar" || raw === "videos" || raw === "posts")
-    return raw
+  if (raw === "pipeline" || raw === "calendar" || raw === "videos" || raw === "posts") return raw
   return undefined
 }
 
@@ -45,10 +44,7 @@ export default async function ContentStudioDrawerPage({ params, searchParams }: 
 
   const shellTab = resolveShellTab(tab)
   const drawerFromOuterTab = shellTab ? undefined : tab
-  const defaultDrawerTab = resolveDrawerTab(
-    drawerTab ?? drawerFromOuterTab,
-    postId ? "posts" : "transcript",
-  )
+  const defaultDrawerTab = resolveDrawerTab(drawerTab ?? drawerFromOuterTab, postId ? "posts" : "transcript")
   const closeHref = shellTab ? `/admin/content?tab=${shellTab}` : "/admin/content"
 
   let underneath: React.ReactNode

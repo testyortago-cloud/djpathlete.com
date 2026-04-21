@@ -21,23 +21,13 @@ function DraggableCard({ post }: { post: PipelinePostRow }) {
         isDragging && "opacity-40",
       )}
     >
-      <p className="text-[11px] text-muted-foreground uppercase tracking-wide">
-        {post.platform}
-      </p>
+      <p className="text-[11px] text-muted-foreground uppercase tracking-wide">{post.platform}</p>
       <p className="text-primary line-clamp-3 mt-0.5">{post.content}</p>
     </div>
   )
 }
 
-function Group({
-  title,
-  posts,
-  icon,
-}: {
-  title: string
-  posts: PipelinePostRow[]
-  icon: React.ReactNode
-}) {
+function Group({ title, posts, icon }: { title: string; posts: PipelinePostRow[]; icon: React.ReactNode }) {
   const [open, setOpen] = useState(true)
   return (
     <section className="mb-3">
@@ -75,9 +65,7 @@ export function UnscheduledPanel({ posts }: UnscheduledPanelProps) {
       >
         <Sparkles className="size-6 text-muted-foreground mx-auto mb-2" strokeWidth={1.5} />
         <p className="text-sm text-muted-foreground">All caught up.</p>
-        <p className="text-xs text-muted-foreground/70 mt-1">
-          Nothing is waiting to be scheduled.
-        </p>
+        <p className="text-xs text-muted-foreground/70 mt-1">Nothing is waiting to be scheduled.</p>
       </aside>
     )
   }
@@ -85,8 +73,7 @@ export function UnscheduledPanel({ posts }: UnscheduledPanelProps) {
   const groups = new Map<string, { title: string; posts: PipelinePostRow[] }>()
   for (const p of posts) {
     const key = p.source_video_id ?? "__manual__"
-    const title =
-      p.source_video_filename ?? (key === "__manual__" ? "Manual posts" : "Unknown source")
+    const title = p.source_video_filename ?? (key === "__manual__" ? "Manual posts" : "Unknown source")
     const g = groups.get(key) ?? { title, posts: [] }
     g.posts.push(p)
     groups.set(key, g)
@@ -98,21 +85,12 @@ export function UnscheduledPanel({ posts }: UnscheduledPanelProps) {
       className="w-72 shrink-0 border-l border-border bg-surface/30 overflow-y-auto"
     >
       <header className="px-3 py-2 border-b border-border">
-        <h3 className="font-heading text-xs uppercase tracking-wide text-primary">
-          Unscheduled
-        </h3>
-        <p className="text-[11px] text-muted-foreground">
-          Drag any post onto a day to schedule
-        </p>
+        <h3 className="font-heading text-xs uppercase tracking-wide text-primary">Unscheduled</h3>
+        <p className="text-[11px] text-muted-foreground">Drag any post onto a day to schedule</p>
       </header>
       <div className="p-3">
         {Array.from(groups.entries()).map(([key, g]) => (
-          <Group
-            key={key}
-            title={g.title}
-            icon={<Film className="size-3 shrink-0" />}
-            posts={g.posts}
-          />
+          <Group key={key} title={g.title} icon={<Film className="size-3 shrink-0" />} posts={g.posts} />
         ))}
       </div>
     </aside>

@@ -17,9 +17,7 @@ describe("<ManualPostDialog>", () => {
   })
 
   it("submits to the manual-post API and calls onCreated", async () => {
-    fetchMock.mockResolvedValue(
-      new Response(JSON.stringify({ id: "new-1" }), { status: 200 }),
-    )
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ id: "new-1" }), { status: 200 }))
     const onCreated = vi.fn()
     render(<ManualPostDialog dayKey="2099-01-01" onClose={vi.fn()} onCreated={onCreated} />)
     fireEvent.change(screen.getByLabelText(/Caption/i), { target: { value: "hello" } })

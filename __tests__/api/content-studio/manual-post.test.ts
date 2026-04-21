@@ -27,18 +27,14 @@ describe("POST /api/admin/content-studio/posts", () => {
   })
 
   it("rejects when scheduled_at is in the past", async () => {
-    const res = await POST(
-      req({ platform: "instagram", caption: "hi", scheduled_at: "2020-01-01T00:00:00Z" }) as never,
-    )
+    const res = await POST(req({ platform: "instagram", caption: "hi", scheduled_at: "2020-01-01T00:00:00Z" }) as never)
     expect(res.status).toBe(400)
   })
 
   it("creates a manual post with source_video_id=null", async () => {
     createMock.mockResolvedValueOnce({ id: "new-1", approval_status: "scheduled" })
     const future = new Date(Date.now() + 24 * 3600 * 1000).toISOString()
-    const res = await POST(
-      req({ platform: "instagram", caption: "hello world", scheduled_at: future }) as never,
-    )
+    const res = await POST(req({ platform: "instagram", caption: "hello world", scheduled_at: future }) as never)
     expect(res.status).toBe(200)
     expect(createMock).toHaveBeenCalledWith(
       expect.objectContaining({

@@ -11,14 +11,7 @@ interface ManualPostDialogProps {
   onCreated: (postId: string) => void
 }
 
-const PLATFORMS: SocialPlatform[] = [
-  "instagram",
-  "tiktok",
-  "facebook",
-  "youtube",
-  "youtube_shorts",
-  "linkedin",
-]
+const PLATFORMS: SocialPlatform[] = ["instagram", "tiktok", "facebook", "youtube", "youtube_shorts", "linkedin"]
 
 export function ManualPostDialog({ dayKey, onClose, onCreated }: ManualPostDialogProps) {
   const [platform, setPlatform] = useState<SocialPlatform>("instagram")
@@ -47,17 +40,9 @@ export function ManualPostDialog({ dayKey, onClose, onCreated }: ManualPostDialo
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-      onClick={onClose}
-    >
-      <div
-        className="rounded-lg bg-white border border-border shadow-lg p-4 w-96"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h3 className="font-heading text-sm text-primary mb-3">
-          New manual post — {dayKey}
-        </h3>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div className="rounded-lg bg-white border border-border shadow-lg p-4 w-96" onClick={(e) => e.stopPropagation()}>
+        <h3 className="font-heading text-sm text-primary mb-3">New manual post — {dayKey}</h3>
         <label className="block text-xs text-muted-foreground mb-3">
           Platform
           <select

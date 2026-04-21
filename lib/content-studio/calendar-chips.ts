@@ -33,15 +33,9 @@ export interface CalendarEntryChip {
 
 export type CalendarChip = SocialPostChip | CalendarEntryChip
 
-export function postToChip(
-  post: SocialPost,
-  sourceVideoFilename: string | null = null,
-): SocialPostChip {
+export function postToChip(post: SocialPost, sourceVideoFilename: string | null = null): SocialPostChip {
   // For published posts, use published_at as the chip time; otherwise scheduled_at.
-  const ref =
-    post.approval_status === "published" && post.published_at
-      ? post.published_at
-      : post.scheduled_at
+  const ref = post.approval_status === "published" && post.published_at ? post.published_at : post.scheduled_at
   return {
     kind: "post",
     id: post.id,

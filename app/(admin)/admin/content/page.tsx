@@ -15,10 +15,7 @@ export default async function ContentStudioPage({ searchParams }: PageProps) {
 
   if (tab === "calendar") {
     const window = computeCalendarWindow(view, anchor)
-    const [calendar, pipeline] = await Promise.all([
-      getCalendarData(window),
-      getPipelineData(),
-    ])
+    const [calendar, pipeline] = await Promise.all([getCalendarData(window), getPipelineData()])
     return <CalendarContainer data={calendar} videos={pipeline.videos} />
   }
 
