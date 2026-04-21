@@ -21,6 +21,8 @@ export function ContentStudioShell({ children }: { children: React.ReactNode }) 
         <TabSwitcher />
       </div>
       <div className="flex-1 overflow-y-auto p-6">{children}</div>
+      {/* Live region for screen-reader announcements (drag-drop results, etc.) */}
+      <div role="status" aria-live="polite" className="sr-only" id="content-studio-announce" />
     </div>
   )
 }

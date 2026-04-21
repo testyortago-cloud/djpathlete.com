@@ -76,7 +76,11 @@ export function PostsLane({ posts: initialPosts, selectedIds, onToggleSelected }
         body: JSON.stringify({ targetColumn }),
       })
       if (!res.ok) throw new Error((await res.text()) || "Move failed")
-      toast.success(`Moved to ${POST_COLUMN_LABELS[targetColumn]}`)
+      const label = POST_COLUMN_LABELS[targetColumn]
+      toast.success(`Moved to ${label}`)
+      // Announce for screen readers via the shell's live region
+      const announce = document.getElementById("content-studio-announce")
+      if (announce) announce.textContent = `Moved to ${label}`
       router.refresh()
     } catch (err) {
       setPosts((prev) => prev.map((p) => (p.id === post.id ? { ...p, approval_status: prevStatus } : p)))

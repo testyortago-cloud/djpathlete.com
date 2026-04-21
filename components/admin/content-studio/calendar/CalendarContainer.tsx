@@ -100,7 +100,10 @@ export function CalendarContainer({
       toast.error("Reschedule failed")
       return
     }
-    toast.success(`Moved to ${next.toLocaleString()}`)
+    const label = next.toLocaleString()
+    toast.success(`Moved to ${label}`)
+    const announce = document.getElementById("content-studio-announce")
+    if (announce) announce.textContent = `Moved to ${label}`
     router.refresh()
   }
 
