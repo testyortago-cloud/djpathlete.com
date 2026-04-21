@@ -14,9 +14,7 @@ export function TranscriptTab({ transcript }: TranscriptTabProps) {
       <div className="py-12 text-center">
         <Sparkles className="size-8 text-muted-foreground mx-auto mb-2" strokeWidth={1.5} />
         <p className="text-sm text-muted-foreground">No transcript yet.</p>
-        <p className="text-xs text-muted-foreground mt-1">
-          Click Transcribe on the video card to generate one.
-        </p>
+        <p className="text-xs text-muted-foreground mt-1">Click Transcribe on the video card to generate one.</p>
       </div>
     )
   }
@@ -33,9 +31,7 @@ export function TranscriptTab({ transcript }: TranscriptTabProps) {
   }
 
   function handleStub(label: string) {
-    toast.info(
-      `${label} is coming in a later phase — Phase 2 ships the transcript-next-to-video fix only.`,
-    )
+    toast.info(`${label} is coming in a later phase — Phase 2 ships the transcript-next-to-video fix only.`)
   }
 
   return (

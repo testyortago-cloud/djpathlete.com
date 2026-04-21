@@ -28,7 +28,7 @@ export function PostsTab({ posts: initialPosts, initialExpandedPostId }: PostsTa
     if (!initialExpandedPostId) return
     const el = document.querySelector(`[data-post-id="${initialExpandedPostId}"]`)
     if (el && typeof (el as HTMLElement).scrollIntoView === "function") {
-      (el as HTMLElement).scrollIntoView({ behavior: "smooth", block: "center" })
+      ;(el as HTMLElement).scrollIntoView({ behavior: "smooth", block: "center" })
     }
   }, [initialExpandedPostId])
 

@@ -18,9 +18,7 @@ async function loginAsAdmin(page: Page) {
 async function firstVideoIdWithPosts(page: Page): Promise<string | null> {
   const res = await page.request.get("/api/admin/videos")
   if (!res.ok()) return null
-  const body = (await res.json()) as
-    | { videos?: Array<{ id: string }> }
-    | Array<{ id: string }>
+  const body = (await res.json()) as { videos?: Array<{ id: string }> } | Array<{ id: string }>
   const arr = Array.isArray(body) ? body : (body.videos ?? [])
   return arr[0]?.id ?? null
 }
@@ -42,10 +40,7 @@ test.describe("Content Studio drawer", () => {
     const dialog = page.getByRole("dialog")
     await expect(dialog).toBeVisible()
     await expect(dialog.locator("video")).toHaveCount(1)
-    await expect(dialog.getByRole("tab", { name: /Transcript/ })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    )
+    await expect(dialog.getByRole("tab", { name: /Transcript/ })).toHaveAttribute("aria-selected", "true")
   })
 
   test("switches to Posts tab via URL", async ({ page }) => {
@@ -56,10 +51,7 @@ test.describe("Content Studio drawer", () => {
     if (response?.status() === 404) test.skip(true, "CONTENT_STUDIO_ENABLED not set")
 
     const dialog = page.getByRole("dialog")
-    await expect(dialog.getByRole("tab", { name: /Posts/ })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    )
+    await expect(dialog.getByRole("tab", { name: /Posts/ })).toHaveAttribute("aria-selected", "true")
   })
 
   test("clicking Meta tab updates the URL", async ({ page }) => {

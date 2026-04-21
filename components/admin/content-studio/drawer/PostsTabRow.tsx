@@ -152,9 +152,7 @@ export function PostsTabRow({ post, isExpanded, onToggle, onMutate }: PostsTabRo
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-primary">
-              {PLATFORM_LABELS[post.platform]}
-            </span>
+            <span className="text-sm font-medium text-primary">{PLATFORM_LABELS[post.platform]}</span>
             <span
               className={cn(
                 "text-[10px] font-medium uppercase tracking-wide px-2 py-0.5 rounded-full",
@@ -164,9 +162,7 @@ export function PostsTabRow({ post, isExpanded, onToggle, onMutate }: PostsTabRo
               {STATUS_LABELS[post.approval_status]}
             </span>
             {post.scheduled_at && (
-              <span className="text-[10px] text-muted-foreground">
-                {new Date(post.scheduled_at).toLocaleString()}
-              </span>
+              <span className="text-[10px] text-muted-foreground">{new Date(post.scheduled_at).toLocaleString()}</span>
             )}
           </div>
           <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{post.content}</p>
@@ -240,8 +236,7 @@ export function PostsTabRow({ post, isExpanded, onToggle, onMutate }: PostsTabRo
             )}
             {isPublished && (
               <span className="text-xs text-muted-foreground">
-                Published{" "}
-                {post.published_at ? new Date(post.published_at).toLocaleString() : ""}
+                Published {post.published_at ? new Date(post.published_at).toLocaleString() : ""}
               </span>
             )}
           </div>

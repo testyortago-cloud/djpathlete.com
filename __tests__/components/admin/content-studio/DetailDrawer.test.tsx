@@ -44,9 +44,7 @@ describe("<DetailDrawer>", () => {
 
   it("navigates to closeHref when close is clicked", () => {
     pushMock.mockClear()
-    render(
-      <DetailDrawer data={data} defaultTab="transcript" closeHref="/admin/content?tab=videos" />,
-    )
+    render(<DetailDrawer data={data} defaultTab="transcript" closeHref="/admin/content?tab=videos" />)
     fireEvent.click(screen.getByRole("button", { name: /close drawer$/i }))
     expect(pushMock).toHaveBeenCalledWith("/admin/content?tab=videos")
   })

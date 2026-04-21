@@ -18,9 +18,7 @@ export function DetailDrawer({ data, defaultTab, closeHref }: DetailDrawerProps)
   const searchParams = useSearchParams()
 
   const title =
-    data.mode === "video" && data.video
-      ? `Video · ${data.video.title ?? data.video.original_filename}`
-      : "Manual post"
+    data.mode === "video" && data.video ? `Video · ${data.video.title ?? data.video.original_filename}` : "Manual post"
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {

@@ -26,12 +26,7 @@ export function DrawerVideoHeader({ video, previewUrl }: DrawerVideoHeaderProps)
   return (
     <div className="border-b border-border bg-surface/40">
       {previewUrl ? (
-        <video
-          src={previewUrl}
-          controls
-          preload="metadata"
-          className="w-full aspect-video bg-black"
-        >
+        <video src={previewUrl} controls preload="metadata" className="w-full aspect-video bg-black">
           Your browser does not support the video element.
         </video>
       ) : (

@@ -24,9 +24,7 @@ function makePost(overrides: Partial<SocialPost> = {}): SocialPost {
 
 describe("<PostsTabRow>", () => {
   it("shows platform label, status pill, and caption preview when collapsed", () => {
-    render(
-      <PostsTabRow post={makePost()} isExpanded={false} onToggle={vi.fn()} onMutate={vi.fn()} />,
-    )
+    render(<PostsTabRow post={makePost()} isExpanded={false} onToggle={vi.fn()} onMutate={vi.fn()} />)
     expect(screen.getByText(/Instagram/)).toBeInTheDocument()
     expect(screen.getByText(/needs review/i)).toBeInTheDocument()
     expect(screen.getByText(/Morning rotation check-in/)).toBeInTheDocument()
@@ -34,22 +32,13 @@ describe("<PostsTabRow>", () => {
 
   it("clicking the row header calls onToggle", () => {
     const onToggle = vi.fn()
-    render(
-      <PostsTabRow
-        post={makePost()}
-        isExpanded={false}
-        onToggle={onToggle}
-        onMutate={vi.fn()}
-      />,
-    )
+    render(<PostsTabRow post={makePost()} isExpanded={false} onToggle={onToggle} onMutate={vi.fn()} />)
     fireEvent.click(screen.getByRole("button", { name: /expand/i }))
     expect(onToggle).toHaveBeenCalledWith("post-1")
   })
 
   it("when expanded, shows the edit textarea and action buttons", () => {
-    render(
-      <PostsTabRow post={makePost()} isExpanded={true} onToggle={vi.fn()} onMutate={vi.fn()} />,
-    )
+    render(<PostsTabRow post={makePost()} isExpanded={true} onToggle={vi.fn()} onMutate={vi.fn()} />)
     expect(screen.getByRole("textbox", { name: /caption/i })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /approve/i })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /schedule/i })).toBeInTheDocument()

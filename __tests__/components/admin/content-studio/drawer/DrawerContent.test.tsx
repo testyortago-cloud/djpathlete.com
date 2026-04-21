@@ -72,12 +72,7 @@ describe("<DrawerContent>", () => {
   })
 
   it("shows the posts count in the tab label", () => {
-    render(
-      <DrawerContent
-        data={{ ...videoData, posts: [postOnlyData.posts[0]] }}
-        defaultTab="transcript"
-      />,
-    )
+    render(<DrawerContent data={{ ...videoData, posts: [postOnlyData.posts[0]] }} defaultTab="transcript" />)
     expect(screen.getByRole("tab", { name: /Posts \(1\)/ })).toBeInTheDocument()
   })
 
@@ -85,9 +80,6 @@ describe("<DrawerContent>", () => {
     replaceMock.mockClear()
     render(<DrawerContent data={videoData} defaultTab="transcript" />)
     fireEvent.click(screen.getByRole("tab", { name: /Meta/ }))
-    expect(replaceMock).toHaveBeenCalledWith(
-      expect.stringMatching(/tab=meta/),
-      { scroll: false },
-    )
+    expect(replaceMock).toHaveBeenCalledWith(expect.stringMatching(/tab=meta/), { scroll: false })
   })
 })

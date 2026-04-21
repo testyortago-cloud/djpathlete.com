@@ -52,41 +52,21 @@ export function DrawerContent({ data, defaultTab }: DrawerContentProps) {
         aria-label="Video detail tabs"
         className="flex items-center border-b border-border px-2 bg-background"
       >
-        <TabButton
-          label="Transcript"
-          isActive={active === "transcript"}
-          onClick={() => setTab("transcript")}
-        />
-        <TabButton
-          label={`Posts (${postsCount})`}
-          isActive={active === "posts"}
-          onClick={() => setTab("posts")}
-        />
+        <TabButton label="Transcript" isActive={active === "transcript"} onClick={() => setTab("transcript")} />
+        <TabButton label={`Posts (${postsCount})`} isActive={active === "posts"} onClick={() => setTab("posts")} />
         <TabButton label="Meta" isActive={active === "meta"} onClick={() => setTab("meta")} />
       </div>
 
       <div className="flex-1 overflow-y-auto">
         {active === "transcript" && <TranscriptTab transcript={data.transcript} />}
-        {active === "posts" && (
-          <PostsTab posts={data.posts} initialExpandedPostId={data.highlightPostId} />
-        )}
-        {active === "meta" && (
-          <MetaTab video={data.video} transcript={data.transcript} posts={data.posts} />
-        )}
+        {active === "posts" && <PostsTab posts={data.posts} initialExpandedPostId={data.highlightPostId} />}
+        {active === "meta" && <MetaTab video={data.video} transcript={data.transcript} posts={data.posts} />}
       </div>
     </div>
   )
 }
 
-function TabButton({
-  label,
-  isActive,
-  onClick,
-}: {
-  label: string
-  isActive: boolean
-  onClick: () => void
-}) {
+function TabButton({ label, isActive, onClick }: { label: string; isActive: boolean; onClick: () => void }) {
   return (
     <button
       role="tab"
@@ -95,9 +75,7 @@ function TabButton({
       onClick={onClick}
       className={cn(
         "px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors",
-        isActive
-          ? "border-primary text-primary"
-          : "border-transparent text-muted-foreground hover:text-foreground",
+        isActive ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground",
       )}
     >
       {label}
