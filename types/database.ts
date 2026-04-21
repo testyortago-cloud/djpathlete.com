@@ -1187,3 +1187,13 @@ export interface VideoTranscript {
   source: VideoTranscriptSource
   created_at: string
 }
+
+export type CalendarDefaultView = "month" | "week" | "day"
+
+export interface UserPreferences {
+  user_id: string
+  calendar_default_view: CalendarDefaultView
+  last_pipeline_filters: Record<string, unknown>
+  pipeline_lanes_collapsed: Record<string, boolean>
+  updated_at: string
+}
