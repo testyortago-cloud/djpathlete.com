@@ -46,6 +46,17 @@ export async function listSocialPosts(
   return (data ?? []) as SocialPost[]
 }
 
+export async function listSocialPostsBySourceVideo(videoId: string): Promise<SocialPost[]> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("social_posts")
+    .select("*")
+    .eq("source_video_id", videoId)
+    .order("created_at", { ascending: true })
+  if (error) throw error
+  return (data ?? []) as SocialPost[]
+}
+
 export async function updateSocialPost(
   id: string,
   updates: Partial<Omit<SocialPost, "id" | "created_at">>,
