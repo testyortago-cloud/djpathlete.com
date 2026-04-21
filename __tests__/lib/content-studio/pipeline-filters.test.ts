@@ -3,6 +3,7 @@ import {
   parseFilters,
   filtersToSearchParams,
   applyFilters,
+  coerceStoredFilters,
   type PipelineFilters,
 } from "@/lib/content-studio/pipeline-filters"
 import type { SocialPost, VideoUpload } from "@/types/database"
@@ -187,5 +188,40 @@ describe("applyFilters", () => {
     })
     expect(out.videos.length).toBe(2)
     expect(out.posts.length).toBe(3)
+  })
+})
+
+describe("coerceStoredFilters", () => {
+  it("returns null for non-object inputs", () => {
+    expect(coerceStoredFilters(null)).toBeNull()
+    expect(coerceStoredFilters("bad")).toBeNull()
+    expect(coerceStoredFilters([])).toBeNull()
+  })
+
+  it("drops unknown platforms and statuses", () => {
+    const out = coerceStoredFilters({
+      platforms: ["instagram", "myspace"],
+      statuses: ["approved", "vaporware"],
+      from: "2026-01-01",
+      to: null,
+      sourceVideoId: "vid-1",
+    })
+    expect(out).toEqual({
+      platforms: ["instagram"],
+      statuses: ["approved"],
+      from: "2026-01-01",
+      to: null,
+      sourceVideoId: "vid-1",
+    })
+  })
+
+  it("defaults missing fields to safe empties", () => {
+    expect(coerceStoredFilters({})).toEqual({
+      platforms: [],
+      statuses: [],
+      from: null,
+      to: null,
+      sourceVideoId: null,
+    })
   })
 })

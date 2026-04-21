@@ -9,7 +9,14 @@ import type { UserPreferences } from "@/types/database"
 export async function readPreferences(): Promise<UserPreferences | null> {
   const session = await auth()
   if (!session?.user?.id) return null
-  return dalGet(session.user.id)
+  try {
+    return await dalGet(session.user.id)
+  } catch (err) {
+    // Never let a preference-read failure crash the Content Studio page —
+    // callers treat null as "fall back to hard-coded defaults".
+    console.error("[readPreferences] failed:", err)
+    return null
+  }
 }
 
 export async function writePreferences(patch: PreferencesPatch): Promise<UserPreferences | null> {

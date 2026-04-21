@@ -46,6 +46,26 @@ export function parseFilters(sp: URLSearchParams): PipelineFilters {
   }
 }
 
+/**
+ * Coerce an untrusted value (e.g. a jsonb column from user_preferences that
+ * might be stale after a schema change) into a safe PipelineFilters, dropping
+ * anything unexpected. Returns null if the input isn't a plain object.
+ */
+export function coerceStoredFilters(raw: unknown): PipelineFilters | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null
+  const o = raw as Record<string, unknown>
+  const platforms = Array.isArray(o.platforms)
+    ? o.platforms.filter((x): x is SocialPlatform => (ALL_PLATFORMS as readonly string[]).includes(String(x)))
+    : []
+  const statuses = Array.isArray(o.statuses)
+    ? o.statuses.filter((x): x is SocialApprovalStatus => (ALL_STATUSES as readonly string[]).includes(String(x)))
+    : []
+  const from = typeof o.from === "string" && o.from ? o.from : null
+  const to = typeof o.to === "string" && o.to ? o.to : null
+  const sourceVideoId = typeof o.sourceVideoId === "string" && o.sourceVideoId ? o.sourceVideoId : null
+  return { platforms, statuses, from, to, sourceVideoId }
+}
+
 export function filtersToSearchParams(filters: PipelineFilters): URLSearchParams {
   const sp = new URLSearchParams()
   if (filters.platforms.length) sp.set("platform", filters.platforms.join(","))

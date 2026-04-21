@@ -6,7 +6,7 @@ import { getCalendarData } from "@/lib/content-studio/calendar-data"
 import { computeCalendarWindow } from "@/lib/content-studio/calendar-window"
 import { CalendarContainer } from "@/components/admin/content-studio/calendar/CalendarContainer"
 import { readPreferences } from "@/lib/content-studio/preferences"
-import type { PipelineFilters } from "@/lib/content-studio/pipeline-filters"
+import { coerceStoredFilters } from "@/lib/content-studio/pipeline-filters"
 
 interface PageProps {
   searchParams: Promise<{ tab?: string; view?: string; anchor?: string }>
@@ -33,7 +33,7 @@ export default async function ContentStudioPage({ searchParams }: PageProps) {
       return (
         <PipelineBoard
           initialData={data}
-          initialFilters={(prefs?.last_pipeline_filters as PipelineFilters | undefined) ?? undefined}
+          initialFilters={coerceStoredFilters(prefs?.last_pipeline_filters) ?? undefined}
         />
       )
   }
