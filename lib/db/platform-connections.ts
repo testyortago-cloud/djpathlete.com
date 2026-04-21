@@ -8,10 +8,7 @@ function getClient() {
 
 export async function listPlatformConnections(): Promise<PlatformConnection[]> {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("platform_connections")
-    .select("*")
-    .order("plugin_name", { ascending: true })
+  const { data, error } = await supabase.rpc("fn_list_platform_connections")
   if (error) throw error
   return (data ?? []) as PlatformConnection[]
 }
@@ -20,13 +17,12 @@ export async function getPlatformConnection(
   pluginName: SocialPlatform,
 ): Promise<PlatformConnection | null> {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("platform_connections")
-    .select("*")
-    .eq("plugin_name", pluginName)
-    .maybeSingle()
+  const { data, error } = await supabase.rpc("fn_get_platform_connection", {
+    p_plugin_name: pluginName,
+  })
   if (error) throw error
-  return (data as PlatformConnection | null) ?? null
+  const rows = (data ?? []) as PlatformConnection[]
+  return rows[0] ?? null
 }
 
 export interface ConnectPayload {
@@ -40,54 +36,41 @@ export async function connectPlatform(
   payload: ConnectPayload,
 ): Promise<PlatformConnection> {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("platform_connections")
-    .update({
-      status: "connected",
-      credentials: payload.credentials,
-      account_handle: payload.account_handle ?? null,
-      connected_at: new Date().toISOString(),
-      connected_by: payload.connected_by ?? null,
-      last_error: null,
-    })
-    .eq("plugin_name", pluginName)
-    .select()
-    .single()
+  const { data, error } = await supabase.rpc("fn_connect_platform", {
+    p_plugin_name: pluginName,
+    p_credentials: payload.credentials,
+    p_account_handle: payload.account_handle ?? null,
+    p_connected_by: payload.connected_by ?? null,
+  })
   if (error) throw error
-  return data as PlatformConnection
+  const rows = (data ?? []) as PlatformConnection[]
+  if (!rows[0]) throw new Error(`connectPlatform: no row returned for ${pluginName}`)
+  return rows[0]
 }
 
 export async function pausePlatform(pluginName: SocialPlatform): Promise<PlatformConnection> {
   const supabase = getClient()
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from("platform_connections")
     .update({ status: "paused" })
     .eq("plugin_name", pluginName)
-    .select()
-    .single()
   if (error) throw error
-  return data as PlatformConnection
+  const row = await getPlatformConnection(pluginName)
+  if (!row) throw new Error(`pausePlatform: plugin ${pluginName} not found`)
+  return row
 }
 
 export async function disconnectPlatform(
   pluginName: SocialPlatform,
 ): Promise<PlatformConnection> {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("platform_connections")
-    .update({
-      status: "not_connected",
-      credentials: {},
-      account_handle: null,
-      connected_at: null,
-      connected_by: null,
-      last_error: null,
-    })
-    .eq("plugin_name", pluginName)
-    .select()
-    .single()
+  const { data, error } = await supabase.rpc("fn_disconnect_platform", {
+    p_plugin_name: pluginName,
+  })
   if (error) throw error
-  return data as PlatformConnection
+  const rows = (data ?? []) as PlatformConnection[]
+  if (!rows[0]) throw new Error(`disconnectPlatform: no row returned for ${pluginName}`)
+  return rows[0]
 }
 
 export async function setConnectionError(
@@ -95,12 +78,12 @@ export async function setConnectionError(
   errorMessage: string,
 ): Promise<PlatformConnection> {
   const supabase = getClient()
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from("platform_connections")
     .update({ status: "error", last_error: errorMessage })
     .eq("plugin_name", pluginName)
-    .select()
-    .single()
   if (error) throw error
-  return data as PlatformConnection
+  const row = await getPlatformConnection(pluginName)
+  if (!row) throw new Error(`setConnectionError: plugin ${pluginName} not found`)
+  return row
 }

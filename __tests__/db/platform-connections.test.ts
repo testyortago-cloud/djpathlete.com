@@ -7,23 +7,10 @@ import {
   pausePlatform,
   disconnectPlatform,
 } from "@/lib/db/platform-connections"
-import { createServiceRoleClient } from "@/lib/supabase"
 
 describe("platform-connections DAL", () => {
-  const supabase = createServiceRoleClient()
-
   async function resetFacebookToDefault() {
-    await supabase
-      .from("platform_connections")
-      .update({
-        status: "not_connected",
-        credentials: {},
-        account_handle: null,
-        connected_at: null,
-        connected_by: null,
-        last_error: null,
-      })
-      .eq("plugin_name", "facebook")
+    await disconnectPlatform("facebook")
   }
 
   beforeAll(resetFacebookToDefault)
