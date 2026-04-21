@@ -20,12 +20,14 @@ import type { SocialPlatform, VideoUpload } from "@/types/database"
 interface CalendarContainerProps {
   data: CalendarData
   videos: VideoUpload[]
+  /** Preference-driven default when the URL has no ?view=. */
+  defaultView?: "month" | "week" | "day"
 }
 
 type View = "month" | "week" | "day"
-function resolveView(raw: string | null): View {
-  if (raw === "week" || raw === "day") return raw
-  return "month"
+function resolveView(raw: string | null, fallback: View): View {
+  if (raw === "week" || raw === "day" || raw === "month") return raw
+  return fallback
 }
 function resolveAnchor(raw: string | null): Date {
   if (raw) {
@@ -37,10 +39,14 @@ function resolveAnchor(raw: string | null): Date {
   return today
 }
 
-export function CalendarContainer({ data, videos }: CalendarContainerProps) {
+export function CalendarContainer({
+  data,
+  videos,
+  defaultView = "month",
+}: CalendarContainerProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const view = resolveView(searchParams.get("view"))
+  const view = resolveView(searchParams.get("view"), defaultView)
   const anchor = resolveAnchor(searchParams.get("anchor"))
 
   const [manualPostDay, setManualPostDay] = useState<string | null>(null)

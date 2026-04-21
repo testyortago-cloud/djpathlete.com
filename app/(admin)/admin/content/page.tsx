@@ -5,6 +5,8 @@ import { PostsList } from "@/components/admin/content-studio/list/PostsList"
 import { getCalendarData } from "@/lib/content-studio/calendar-data"
 import { computeCalendarWindow } from "@/lib/content-studio/calendar-window"
 import { CalendarContainer } from "@/components/admin/content-studio/calendar/CalendarContainer"
+import { readPreferences } from "@/lib/content-studio/preferences"
+import type { PipelineFilters } from "@/lib/content-studio/pipeline-filters"
 
 interface PageProps {
   searchParams: Promise<{ tab?: string; view?: string; anchor?: string }>
@@ -12,11 +14,22 @@ interface PageProps {
 
 export default async function ContentStudioPage({ searchParams }: PageProps) {
   const { tab, view, anchor } = await searchParams
+  const prefs = await readPreferences()
+  const effectiveView = view ?? prefs?.calendar_default_view ?? "month"
 
   if (tab === "calendar") {
-    const window = computeCalendarWindow(view, anchor)
-    const [calendar, pipeline] = await Promise.all([getCalendarData(window), getPipelineData()])
-    return <CalendarContainer data={calendar} videos={pipeline.videos} />
+    const window = computeCalendarWindow(effectiveView, anchor)
+    const [calendar, pipeline] = await Promise.all([
+      getCalendarData(window),
+      getPipelineData(),
+    ])
+    return (
+      <CalendarContainer
+        data={calendar}
+        videos={pipeline.videos}
+        defaultView={effectiveView}
+      />
+    )
   }
 
   const data = await getPipelineData()
@@ -26,6 +39,13 @@ export default async function ContentStudioPage({ searchParams }: PageProps) {
     case "posts":
       return <PostsList posts={data.posts} />
     default:
-      return <PipelineBoard initialData={data} />
+      return (
+        <PipelineBoard
+          initialData={data}
+          initialFilters={
+            (prefs?.last_pipeline_filters as PipelineFilters | undefined) ?? undefined
+          }
+        />
+      )
   }
 }

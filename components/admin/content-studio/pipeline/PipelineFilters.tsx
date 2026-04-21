@@ -51,6 +51,13 @@ export function PipelineFilters({ videos }: PipelineFiltersProps) {
       }
       const qs = sp.toString()
       router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+      // Persist the latest filter set to user_preferences. Fire-and-forget —
+      // a failed PATCH does not affect the local render.
+      fetch("/api/admin/content-studio/preferences", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ last_pipeline_filters: next }),
+      }).catch(() => {})
     },
     [pathname, router, searchParams],
   )

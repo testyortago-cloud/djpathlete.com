@@ -6,16 +6,37 @@ import { VideosLane } from "./VideosLane"
 import { PostsLane } from "./PostsLane"
 import { BulkActionsBar } from "./BulkActionsBar"
 import { PipelineFilters } from "./PipelineFilters"
-import { applyFilters, parseFilters } from "@/lib/content-studio/pipeline-filters"
+import {
+  applyFilters,
+  parseFilters,
+  type PipelineFilters as Filters,
+} from "@/lib/content-studio/pipeline-filters"
 import type { PipelineData } from "@/lib/content-studio/pipeline-data"
 
-export function PipelineBoard({ initialData }: { initialData: PipelineData }) {
+interface PipelineBoardProps {
+  initialData: PipelineData
+  /** When the URL has no filter params, fall back to these (from user_preferences). */
+  initialFilters?: Filters
+}
+
+export function PipelineBoard({ initialData, initialFilters }: PipelineBoardProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
-  const filters = useMemo(() => parseFilters(searchParams), [searchParams])
-  const filtered = useMemo(() => applyFilters(initialData.videos, initialData.posts, filters), [initialData, filters])
+  const filtersFromUrl = useMemo(() => parseFilters(searchParams), [searchParams])
+  const hasAnyUrlFilter =
+    searchParams.has("platform") ||
+    searchParams.has("status") ||
+    searchParams.has("from") ||
+    searchParams.has("to") ||
+    searchParams.has("sourceVideo")
+  const filters = hasAnyUrlFilter || !initialFilters ? filtersFromUrl : initialFilters
+
+  const filtered = useMemo(
+    () => applyFilters(initialData.videos, initialData.posts, filters),
+    [initialData, filters],
+  )
 
   function toggleSelected(id: string, value: boolean) {
     setSelectedIds((prev) => {
@@ -36,7 +57,11 @@ export function PipelineBoard({ initialData }: { initialData: PipelineData }) {
           posts: filtered.posts,
         }}
       />
-      <PostsLane posts={filtered.posts} selectedIds={selectedIds} onToggleSelected={toggleSelected} />
+      <PostsLane
+        posts={filtered.posts}
+        selectedIds={selectedIds}
+        onToggleSelected={toggleSelected}
+      />
       <BulkActionsBar
         selectedIds={selectedIds}
         onClear={() => setSelectedIds(new Set())}
