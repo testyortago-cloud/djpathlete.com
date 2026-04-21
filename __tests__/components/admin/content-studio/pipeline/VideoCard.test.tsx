@@ -44,8 +44,9 @@ describe("<VideoCard>", () => {
       />,
     )
     expect(screen.getByText(/6 posts/)).toBeInTheDocument()
-    expect(screen.getByText(/4.*approved/i)).toBeInTheDocument()
-    expect(screen.getByText(/2.*scheduled/i)).toBeInTheDocument()
+    // Compact pill rendering: "✓N" with a sr-only " approved" label, same for "⏱N scheduled".
+    expect(screen.getByText(/✓4/)).toBeInTheDocument()
+    expect(screen.getByText(/⏱2/)).toBeInTheDocument()
   })
 
   it("links to /admin/content/[videoId] so clicking opens the drawer", () => {

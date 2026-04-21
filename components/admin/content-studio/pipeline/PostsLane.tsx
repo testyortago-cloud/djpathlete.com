@@ -5,7 +5,8 @@ import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } f
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 import { POST_COLUMNS, POST_COLUMN_LABELS, postsByColumn, type PostColumn } from "@/lib/content-studio/pipeline-columns"
-import { Lane, LaneColumn } from "./Lane"
+import { HELP_COPY } from "@/lib/help-copy"
+import { Lane, LaneColumn, type LaneTone } from "./Lane"
 import { PostCard } from "./PostCard"
 import type { PipelinePostRow } from "@/lib/db/social-posts"
 import type { SocialApprovalStatus } from "@/types/database"
@@ -14,6 +15,25 @@ interface PostsLaneProps {
   posts: PipelinePostRow[]
   selectedIds: Set<string>
   onToggleSelected: (postId: string, selected: boolean) => void
+  /** Signed thumbnail URL per source video id. Passed to each PostCard so it
+   *  can show which video the post came from. */
+  thumbnailUrlsByVideo: Record<string, string>
+}
+
+const POST_COLUMN_TONES: Record<PostColumn, LaneTone> = {
+  needs_review: "warning",
+  approved:     "success",
+  scheduled:    "progress",
+  published:    "published",
+  failed:       "failed",
+}
+
+const POST_COLUMN_HELP: Record<PostColumn, string> = {
+  needs_review: HELP_COPY.needsReview,
+  approved:     HELP_COPY.approvedColumn,
+  scheduled:    HELP_COPY.scheduledColumn,
+  published:    HELP_COPY.publishedColumn,
+  failed:       HELP_COPY.failedColumn,
 }
 
 // Column → DB status for optimistic update (must mirror the API's columnToStatus).
@@ -31,7 +51,12 @@ function columnToStatus(column: PostColumn): SocialApprovalStatus | null {
   }
 }
 
-export function PostsLane({ posts: initialPosts, selectedIds, onToggleSelected }: PostsLaneProps) {
+export function PostsLane({
+  posts: initialPosts,
+  selectedIds,
+  onToggleSelected,
+  thumbnailUrlsByVideo,
+}: PostsLaneProps) {
   const [posts, setPosts] = useState(initialPosts)
   const router = useRouter()
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
@@ -42,6 +67,9 @@ export function PostsLane({ posts: initialPosts, selectedIds, onToggleSelected }
   }, [initialPosts])
 
   const grouped = postsByColumn(posts)
+  const totalApproved = posts.filter(
+    (p) => p.approval_status === "approved" || p.approval_status === "awaiting_connection",
+  ).length
 
   async function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
@@ -90,7 +118,17 @@ export function PostsLane({ posts: initialPosts, selectedIds, onToggleSelected }
 
   return (
     <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-      <Lane title="Posts" subtitle="Drag between columns to approve, reject, or retry">
+      <Lane
+        title="Posts"
+        subtitle="Drag between columns to approve, reject, or retry"
+        tone="primary"
+        help={HELP_COPY.postsLane}
+        meta={
+          posts.length > 0
+            ? `${posts.length} total${totalApproved > 0 ? ` · ${totalApproved} approved` : ""}`
+            : undefined
+        }
+      >
         {POST_COLUMNS.map((col) => (
           <LaneColumn
             key={col}
@@ -98,12 +136,22 @@ export function PostsLane({ posts: initialPosts, selectedIds, onToggleSelected }
             label={POST_COLUMN_LABELS[col]}
             count={grouped[col].length}
             accepts={col !== "scheduled" && col !== "published"}
+            tone={POST_COLUMN_TONES[col]}
+            help={POST_COLUMN_HELP[col]}
           >
             {grouped[col].map((p) => (
-              <PostCard key={p.id} post={p} selected={selectedIds.has(p.id)} onToggleSelected={onToggleSelected} />
+              <PostCard
+                key={p.id}
+                post={p}
+                selected={selectedIds.has(p.id)}
+                onToggleSelected={onToggleSelected}
+                sourceThumbnailUrl={
+                  p.source_video_id ? thumbnailUrlsByVideo[p.source_video_id] ?? null : null
+                }
+              />
             ))}
             {grouped[col].length === 0 && (
-              <div className="py-6 text-center text-[11px] text-muted-foreground/60 italic">empty</div>
+              <div className="py-6 text-center text-[11px] text-muted-foreground/50 italic">empty</div>
             )}
           </LaneColumn>
         ))}

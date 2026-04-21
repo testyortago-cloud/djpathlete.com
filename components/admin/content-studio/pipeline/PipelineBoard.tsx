@@ -50,7 +50,12 @@ export function PipelineBoard({ initialData, initialFilters }: PipelineBoardProp
           posts: filtered.posts,
         }}
       />
-      <PostsLane posts={filtered.posts} selectedIds={selectedIds} onToggleSelected={toggleSelected} />
+      <PostsLane
+        posts={filtered.posts}
+        selectedIds={selectedIds}
+        onToggleSelected={toggleSelected}
+        thumbnailUrlsByVideo={initialData.thumbnailUrlsByVideo}
+      />
       <BulkActionsBar
         selectedIds={selectedIds}
         onClear={() => setSelectedIds(new Set())}

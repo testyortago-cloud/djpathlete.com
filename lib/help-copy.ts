@@ -5,7 +5,25 @@
 // readable at narrow widths.
 
 export const HELP_COPY = {
-  // ─── Content Studio pipeline columns ──
+  // ─── Content Studio lanes (section-level) ──
+  videosLane:
+    "The video side of the pipeline. Upload → transcribe → generate captions → complete. Cards auto-advance based on background-job status; failed videos stay in Uploaded with an error badge.",
+  postsLane:
+    "The approval board. Drag a card between columns to change status. Needs Review → Approved hands it to the scheduler; Scheduled and Published are read-only once they land there.",
+
+  // ─── Content Studio — video columns ──
+  uploadedColumn:
+    "Video file landed in storage. A background job picks it up in seconds to kick off transcription.",
+  transcribingColumn:
+    "AssemblyAI is processing the audio. Usually 30 seconds to 5 minutes depending on length.",
+  transcribedColumn:
+    "Transcript is ready. Open the video and hit Generate to fan out captions to every connected platform.",
+  generatedColumn:
+    "Captions have been drafted for at least one platform. The per-platform count on the card shows how many are awaiting your review.",
+  completeColumn:
+    "Every platform caption has been approved. Nothing more to do here — the posts live on the right side of the board.",
+
+  // ─── Content Studio — post columns ──
   needsReview: "AI just generated these. Nothing publishes until you approve. Edit first if the voice is off.",
   approvedColumn:
     "You approved these. Connected platforms will publish on schedule; disconnected platforms wait for the platform to be connected.",
