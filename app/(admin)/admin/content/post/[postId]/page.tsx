@@ -6,22 +6,24 @@ import type { DrawerTab } from "@/components/admin/content-studio/drawer/DrawerC
 
 interface PageProps {
   params: Promise<{ postId: string }>
-  searchParams: Promise<{ tab?: string }>
+  searchParams: Promise<{ tab?: string; drawerTab?: string }>
 }
 
-function resolveDrawerTab(raw: string | undefined): DrawerTab {
+function resolveDrawerTab(raw: string | undefined): DrawerTab | null {
   if (raw === "posts" || raw === "meta" || raw === "transcript") return raw
-  return "posts"
+  return null
 }
 
 export default async function ContentStudioPostDrawerPage({ params, searchParams }: PageProps) {
   const { postId } = await params
-  const { tab } = await searchParams
+  const { tab, drawerTab } = await searchParams
 
   const data = await getDrawerDataForPost(postId)
   if (!data) notFound()
 
-  const defaultTab = resolveDrawerTab(tab)
+  // Prefer ?drawerTab=, then legacy ?tab= (when it matches a drawer tab),
+  // otherwise land on Posts since we entered from a post card.
+  const defaultTab: DrawerTab = resolveDrawerTab(drawerTab) ?? resolveDrawerTab(tab) ?? "posts"
   const closeHref = "/admin/content?tab=posts"
 
   return (

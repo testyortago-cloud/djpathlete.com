@@ -1,38 +1,11 @@
 "use client"
 
 import { useState } from "react"
-import {
-  Facebook,
-  Instagram,
-  Music2,
-  Youtube,
-  Linkedin,
-  AlertCircle,
-  ChevronDown,
-  ChevronRight,
-  Zap,
-} from "lucide-react"
+import { AlertCircle, ChevronDown, ChevronRight, Zap } from "lucide-react"
 import { toast } from "sonner"
-import type { SocialPost, SocialPlatform, SocialApprovalStatus } from "@/types/database"
+import type { SocialPost, SocialApprovalStatus } from "@/types/database"
 import { cn } from "@/lib/utils"
-
-const PLATFORM_ICONS: Record<SocialPlatform, typeof Facebook> = {
-  facebook: Facebook,
-  instagram: Instagram,
-  tiktok: Music2,
-  youtube: Youtube,
-  youtube_shorts: Youtube,
-  linkedin: Linkedin,
-}
-
-const PLATFORM_LABELS: Record<SocialPlatform, string> = {
-  facebook: "Facebook",
-  instagram: "Instagram",
-  tiktok: "TikTok",
-  youtube: "YouTube",
-  youtube_shorts: "YouTube Shorts",
-  linkedin: "LinkedIn",
-}
+import { PLATFORM_ICONS, PLATFORM_LABELS } from "@/lib/social/platform-ui"
 
 const STATUS_PILL_CLASSES: Record<SocialApprovalStatus, string> = {
   draft: "bg-warning/10 text-warning",

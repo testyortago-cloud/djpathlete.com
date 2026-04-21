@@ -9,7 +9,7 @@ vi.mock("next/navigation", async () => {
   return {
     ...actual,
     useRouter: () => ({ push: vi.fn(), replace: replaceMock, back: vi.fn() }),
-    useSearchParams: () => new URLSearchParams("tab=posts"),
+    useSearchParams: () => new URLSearchParams("drawerTab=posts"),
     usePathname: () => "/admin/content/video-1",
   }
 })
@@ -80,6 +80,6 @@ describe("<DrawerContent>", () => {
     replaceMock.mockClear()
     render(<DrawerContent data={videoData} defaultTab="transcript" />)
     fireEvent.click(screen.getByRole("tab", { name: /Meta/ }))
-    expect(replaceMock).toHaveBeenCalledWith(expect.stringMatching(/tab=meta/), { scroll: false })
+    expect(replaceMock).toHaveBeenCalledWith(expect.stringMatching(/drawerTab=meta/), { scroll: false })
   })
 })

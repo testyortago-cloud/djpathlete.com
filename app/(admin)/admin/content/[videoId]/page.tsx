@@ -6,7 +6,7 @@ import type { DrawerTab } from "@/components/admin/content-studio/drawer/DrawerC
 
 interface PageProps {
   params: Promise<{ videoId: string }>
-  searchParams: Promise<{ tab?: string; postId?: string }>
+  searchParams: Promise<{ tab?: string; drawerTab?: string; postId?: string }>
 }
 
 function resolveDrawerTab(raw: string | undefined, fallback: DrawerTab): DrawerTab {
@@ -14,10 +14,12 @@ function resolveDrawerTab(raw: string | undefined, fallback: DrawerTab): DrawerT
   return fallback
 }
 
-// The outer ?tab= param is shared between the shell tabs (pipeline/calendar/
-// videos/posts) and the drawer tabs (transcript/posts/meta). The drawer tabs
-// are a subset of values, so we route the shell-tab values through TabContent
-// and only interpret drawer-specific tabs for the drawer.
+// The outer ?tab= param drives shell tab state (pipeline/calendar/videos/posts)
+// and is preserved across drawer interactions so ESC / close can return the
+// user to the tab they came from. Drawer-internal tab state lives in
+// ?drawerTab= so it never corrupts ?tab=. For backwards-compatible deep links
+// we still accept ?tab=transcript|posts|meta as a drawer value when ?tab= is
+// not a shell value.
 function resolveShellTab(raw: string | undefined): string | undefined {
   if (raw === "pipeline" || raw === "calendar" || raw === "videos" || raw === "posts") return raw
   return undefined
@@ -25,7 +27,7 @@ function resolveShellTab(raw: string | undefined): string | undefined {
 
 export default async function ContentStudioDrawerPage({ params, searchParams }: PageProps) {
   const { videoId } = await params
-  const { tab, postId } = await searchParams
+  const { tab, drawerTab, postId } = await searchParams
 
   const data = await getDrawerData(videoId)
   if (!data) notFound()
@@ -35,10 +37,12 @@ export default async function ContentStudioDrawerPage({ params, searchParams }: 
   // Default tab selection follows the spec:
   //   video card → transcript
   //   post card (postId present) → posts
-  // A drawer-specific ?tab= value wins.
-  const defaultTab = resolveDrawerTab(tab, postId ? "posts" : "transcript")
-
+  // ?drawerTab= wins, then a drawer-valued ?tab= (deep-link), then the card
+  // source default.
   const shellTab = resolveShellTab(tab)
+  const drawerFromOuterTab = shellTab ? undefined : tab
+  const defaultTab = resolveDrawerTab(drawerTab ?? drawerFromOuterTab, postId ? "posts" : "transcript")
+
   const closeHref = shellTab ? `/admin/content?tab=${shellTab}` : "/admin/content"
 
   return (

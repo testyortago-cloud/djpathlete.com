@@ -1,41 +1,11 @@
 "use client"
 
 import { useState } from "react"
-import {
-  Facebook,
-  Instagram,
-  Music2,
-  Youtube,
-  Linkedin,
-  Check,
-  X,
-  Pencil,
-  Calendar,
-  CalendarX,
-  Zap,
-  AlertCircle,
-} from "lucide-react"
+import { Check, X, Pencil, Calendar, CalendarX, Zap, AlertCircle } from "lucide-react"
 import { toast } from "sonner"
 import { SchedulePickerDialog } from "./SchedulePickerDialog"
-import type { SocialPost, SocialPlatform } from "@/types/database"
-
-const PLATFORM_ICONS: Record<SocialPlatform, typeof Facebook> = {
-  facebook: Facebook,
-  instagram: Instagram,
-  tiktok: Music2,
-  youtube: Youtube,
-  youtube_shorts: Youtube,
-  linkedin: Linkedin,
-}
-
-const PLATFORM_LABELS: Record<SocialPlatform, string> = {
-  facebook: "Facebook",
-  instagram: "Instagram",
-  tiktok: "TikTok",
-  youtube: "YouTube",
-  youtube_shorts: "YouTube Shorts",
-  linkedin: "LinkedIn",
-}
+import type { SocialPost } from "@/types/database"
+import { PLATFORM_ICONS, PLATFORM_LABELS } from "@/lib/social/platform-ui"
 
 interface SocialPostCardProps {
   post: SocialPost
@@ -68,7 +38,9 @@ export function SocialPostCard({
       if (!res.ok) throw new Error(await res.text())
       const { approval_status } = (await res.json()) as { approval_status: SocialPost["approval_status"] }
       onUpdate({ ...post, approval_status })
-      toast.success(approval_status === "awaiting_connection" ? "Approved — waiting for platform connection" : "Approved")
+      toast.success(
+        approval_status === "awaiting_connection" ? "Approved — waiting for platform connection" : "Approved",
+      )
     } catch (error) {
       toast.error((error as Error).message || "Approve failed")
     } finally {
@@ -139,7 +111,12 @@ export function SocialPostCard({
       const res = await fetch(`/api/admin/social/posts/${post.id}/publish-now`, { method: "POST" })
       if (!res.ok) throw new Error(await res.text())
       const data = (await res.json()) as { approval_status: SocialPost["approval_status"]; scheduled_at: string | null }
-      onUpdate({ ...post, approval_status: data.approval_status, scheduled_at: data.scheduled_at, rejection_notes: null })
+      onUpdate({
+        ...post,
+        approval_status: data.approval_status,
+        scheduled_at: data.scheduled_at,
+        rejection_notes: null,
+      })
       toast.success("Queued for next publish cycle (≤5 min)")
     } catch (error) {
       toast.error((error as Error).message || "Publish now failed")
@@ -261,7 +238,12 @@ export function SocialPostCard({
                   disabled={busy !== null}
                   className="text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-60 inline-flex items-center gap-1"
                 >
-                  <Zap className="size-3" /> {busy === "publishNow" ? "Queueing..." : post.approval_status === "failed" ? "Retry now" : "Publish now"}
+                  <Zap className="size-3" />{" "}
+                  {busy === "publishNow"
+                    ? "Queueing..."
+                    : post.approval_status === "failed"
+                      ? "Retry now"
+                      : "Publish now"}
                 </button>
               )}
               <button

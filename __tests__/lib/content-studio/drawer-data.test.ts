@@ -145,4 +145,16 @@ describe("getDrawerDataForPost", () => {
     expect(result!.mode).toBe("video")
     expect(result!.video?.id).toBe("video-1")
   })
+
+  it("falls back to post-only mode when the referenced source_video_id no longer exists", async () => {
+    // Post references a video that has since been deleted.
+    vi.mocked(getSocialPostById).mockResolvedValueOnce(fixturePost)
+    vi.mocked(getVideoUploadById).mockResolvedValueOnce(null)
+    const result = await getDrawerDataForPost("post-1")
+    expect(result).not.toBeNull()
+    expect(result!.mode).toBe("post-only")
+    expect(result!.video).toBeNull()
+    expect(result!.posts).toHaveLength(1)
+    expect(result!.highlightPostId).toBe("post-1")
+  })
 })

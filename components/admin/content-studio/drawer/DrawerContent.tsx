@@ -17,21 +17,28 @@ interface DrawerContentProps {
   defaultTab: DrawerTab
 }
 
-function resolveTab(raw: string | null): DrawerTab {
+function resolveTab(raw: string | null): DrawerTab | null {
   if (raw === "posts" || raw === "meta" || raw === "transcript") return raw
-  return "transcript"
+  return null
 }
 
 export function DrawerContent({ data, defaultTab }: DrawerContentProps) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const active: DrawerTab = resolveTab(searchParams.get("tab") ?? defaultTab)
+  // The drawer reads its tab state from `?drawerTab=`. We fall back to the
+  // outer `?tab=` value only when it maps to a drawer-specific tab name (for
+  // deep-link URLs like `?tab=posts`), and finally to the server-provided
+  // default. Using a distinct param keeps the shell tab in `?tab=` intact, so
+  // `closeHref` (computed from `?tab=` on the server) stays correct even after
+  // the user clicks through drawer tabs.
+  const active: DrawerTab =
+    resolveTab(searchParams.get("drawerTab")) ?? resolveTab(searchParams.get("tab")) ?? defaultTab
 
   const setTab = useCallback(
     (nextTab: DrawerTab) => {
       const params = new URLSearchParams(searchParams.toString())
-      params.set("tab", nextTab)
+      params.set("drawerTab", nextTab)
       router.replace(`${pathname}?${params.toString()}`, { scroll: false })
     },
     [pathname, router, searchParams],

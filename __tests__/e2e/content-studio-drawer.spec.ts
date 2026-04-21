@@ -62,7 +62,7 @@ test.describe("Content Studio drawer", () => {
     if (response?.status() === 404) test.skip(true, "CONTENT_STUDIO_ENABLED not set")
 
     await page.getByRole("tab", { name: /Meta/ }).click()
-    await expect(page).toHaveURL(/tab=meta/)
+    await expect(page).toHaveURL(/drawerTab=meta/)
     await expect(page.getByText(/Storage path/i)).toBeVisible()
   })
 
