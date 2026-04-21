@@ -22,7 +22,7 @@ import type {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function getMonthKey(date: Date): string {
+export function getMonthKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
 }
 
@@ -40,7 +40,7 @@ export function getMonthsInRange(range: DateRange): { key: string; label: string
   return months
 }
 
-function inRange(dateStr: string, range: DateRange): boolean {
+export function inRange(dateStr: string, range: DateRange): boolean {
   const d = new Date(dateStr)
   return d >= range.from && d <= range.to
 }
@@ -49,7 +49,7 @@ function formatCents(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`
 }
 
-function capitalize(s: string): string {
+export function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, " ")
 }
 
@@ -502,9 +502,7 @@ export function computeShopMetrics(
   const months = getMonthsInRange(range)
 
   const isRevenueOrder = (o: ShopOrder) => SHOP_REVENUE_STATUSES.has(o.status)
-  const inRangeOrders = orders.filter(
-    (o) => isRevenueOrder(o) && inRange(o.created_at, range),
-  )
+  const inRangeOrders = orders.filter((o) => isRevenueOrder(o) && inRange(o.created_at, range))
 
   let totalRevenueCents = 0
   let podRevenueCents = 0
@@ -564,14 +562,10 @@ export function computeShopMetrics(
 
   const subtotal = podRevenueCents + digitalRevenueCents
   const grossProfitCents = subtotal - podCogsCents
-  const grossMarginBps =
-    subtotal > 0 ? Math.round((grossProfitCents / subtotal) * 10000) : 0
+  const grossMarginBps = subtotal > 0 ? Math.round((grossProfitCents / subtotal) * 10000) : 0
 
   const podProfitCents = podRevenueCents - podCogsCents
-  const podMarginBps =
-    podRevenueCents > 0
-      ? Math.round((podProfitCents / podRevenueCents) * 10000)
-      : 0
+  const podMarginBps = podRevenueCents > 0 ? Math.round((podProfitCents / podRevenueCents) * 10000) : 0
   const digitalProfitCents = digitalRevenueCents
   const digitalMarginBps = digitalRevenueCents > 0 ? 10000 : 0
 

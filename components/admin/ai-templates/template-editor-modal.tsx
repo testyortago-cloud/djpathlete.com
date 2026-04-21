@@ -3,24 +3,12 @@
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import { Loader2, Sparkles } from "lucide-react"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import type { PromptTemplate } from "@/types/database"
 import { TEMPLATE_CATEGORIES, TEMPLATE_SCOPES } from "@/lib/validators/prompt-template"
 import { PROMPT_TEMPLATE_CATEGORIES } from "@/lib/prompt-templates"
@@ -56,8 +44,8 @@ export function TemplateEditorModal({ open, onOpenChange, template, seed, onSave
     if (template) {
       setName(template.name)
       setDescription(template.description)
-      setCategory(template.category)
-      setScope(template.scope)
+      setCategory(template.category as Category)
+      setScope(template.scope as Scope)
       setPrompt(template.prompt)
     } else {
       setName(seed?.name ?? "")

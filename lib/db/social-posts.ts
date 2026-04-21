@@ -46,6 +46,17 @@ export async function listSocialPosts(
   return (data ?? []) as SocialPost[]
 }
 
+export async function listSocialPostsBySourceVideo(videoId: string): Promise<SocialPost[]> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("social_posts")
+    .select("*")
+    .eq("source_video_id", videoId)
+    .order("created_at", { ascending: true })
+  if (error) throw error
+  return (data ?? []) as SocialPost[]
+}
+
 export async function updateSocialPost(
   id: string,
   updates: Partial<Omit<SocialPost, "id" | "created_at">>,
@@ -65,4 +76,23 @@ export async function deleteSocialPost(id: string): Promise<void> {
   const supabase = getClient()
   const { error } = await supabase.from("social_posts").delete().eq("id", id)
   if (error) throw error
+}
+
+export interface PipelinePostRow extends SocialPost {
+  source_video_filename: string | null
+}
+
+export async function listSocialPostsForPipeline(): Promise<PipelinePostRow[]> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("social_posts")
+    .select("*, video_uploads(original_filename)")
+    .order("created_at", { ascending: false })
+  if (error) throw error
+  return (data ?? []).map(
+    (row: SocialPost & { video_uploads?: { original_filename: string } | null }) => ({
+      ...(row as SocialPost),
+      source_video_filename: row.video_uploads?.original_filename ?? null,
+    }),
+  )
 }

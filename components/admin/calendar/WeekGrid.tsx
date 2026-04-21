@@ -10,18 +10,10 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core"
-import { ChevronLeft, ChevronRight, Facebook, Instagram, Music2, Youtube, Linkedin } from "lucide-react"
+import { ChevronLeft, ChevronRight } from "lucide-react"
 import { toast } from "sonner"
-import type { SocialPost, SocialPlatform } from "@/types/database"
-
-const PLATFORM_ICONS: Record<SocialPlatform, typeof Facebook> = {
-  facebook: Facebook,
-  instagram: Instagram,
-  tiktok: Music2,
-  youtube: Youtube,
-  youtube_shorts: Youtube,
-  linkedin: Linkedin,
-}
+import type { SocialPost } from "@/types/database"
+import { PLATFORM_ICONS } from "@/lib/social/platform-ui"
 
 interface WeekGridProps {
   posts: SocialPost[]
@@ -61,9 +53,7 @@ function DraggablePostChip({ post }: DraggablePostChipProps) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: post.id })
   const Icon = PLATFORM_ICONS[post.platform]
   const timeRef = post.scheduled_at ?? post.published_at
-  const timeStr = timeRef
-    ? new Date(timeRef).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
-    : ""
+  const timeStr = timeRef ? new Date(timeRef).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) : ""
   const isDraggableNow = post.approval_status === "scheduled"
 
   const dragProps = isDraggableNow ? { ref: setNodeRef, ...listeners, ...attributes } : {}
@@ -73,7 +63,9 @@ function DraggablePostChip({ post }: DraggablePostChipProps) {
       {...dragProps}
       title={post.content.slice(0, 80)}
       className={`flex items-center gap-1 text-[11px] rounded px-1.5 py-1 truncate ${
-        isDraggableNow ? "text-primary bg-primary/5 cursor-grab active:cursor-grabbing" : "text-muted-foreground bg-muted/30"
+        isDraggableNow
+          ? "text-primary bg-primary/5 cursor-grab active:cursor-grabbing"
+          : "text-muted-foreground bg-muted/30"
       } ${isDragging ? "opacity-40" : ""}`}
     >
       <Icon className="size-3 shrink-0" />
@@ -144,9 +136,7 @@ export function WeekGrid({ posts: initialPosts }: WeekGridProps) {
     }
 
     const prevScheduledAt = post.scheduled_at
-    setPosts((prev) =>
-      prev.map((p) => (p.id === post.id ? { ...p, scheduled_at: next.toISOString() } : p)),
-    )
+    setPosts((prev) => prev.map((p) => (p.id === post.id ? { ...p, scheduled_at: next.toISOString() } : p)))
 
     try {
       const res = await fetch(`/api/admin/social/posts/${post.id}/schedule`, {
@@ -157,9 +147,7 @@ export function WeekGrid({ posts: initialPosts }: WeekGridProps) {
       if (!res.ok) throw new Error((await res.text()) || "Reschedule failed")
       toast.success(`Moved to ${next.toLocaleString()}`)
     } catch (error) {
-      setPosts((prev) =>
-        prev.map((p) => (p.id === post.id ? { ...p, scheduled_at: prevScheduledAt } : p)),
-      )
+      setPosts((prev) => prev.map((p) => (p.id === post.id ? { ...p, scheduled_at: prevScheduledAt } : p)))
       toast.error((error as Error).message || "Reschedule failed")
     }
   }

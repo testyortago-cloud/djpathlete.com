@@ -261,3 +261,21 @@ export function validateAssignmentAgainstCeiling(
   }
   return { ok: violations.length === 0, violations }
 }
+
+// ─── Voice drift assessment (Phase 5e) ──
+// Used by voice-drift-monitor.ts to structure Claude's audit output.
+
+export const voiceDriftIssueSchema = z.object({
+  issue: z.string().min(1).describe("Concrete deviation from the voice profile"),
+  suggestion: z.string().min(1).describe("One-sentence actionable fix"),
+})
+
+export const voiceDriftAssessmentSchema = z.object({
+  drift_score: z.number().int().min(0).max(100).describe("0 = perfectly on-brand, 100 = completely off-brand"),
+  severity: z
+    .enum(["low", "medium", "high"])
+    .describe("low (<40), medium (40-69), high (>=70). Use editorial judgment on the boundary"),
+  issues: z.array(voiceDriftIssueSchema).max(4).describe("Empty when on-brand, otherwise 1-4 items"),
+})
+
+export type VoiceDriftAssessment = z.infer<typeof voiceDriftAssessmentSchema>

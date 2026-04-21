@@ -1,11 +1,16 @@
+import { redirect } from "next/navigation"
 import { Sparkles, Clock, CheckCircle } from "lucide-react"
 import { listSocialPosts } from "@/lib/db/social-posts"
 import { SocialPostsList } from "@/components/admin/social/SocialPostsList"
+import { isContentStudioEnabled } from "@/lib/content-studio/feature-flag"
 import type { SocialPost } from "@/types/database"
 
 export const metadata = { title: "Social" }
 
 export default async function SocialPage() {
+  if (isContentStudioEnabled()) {
+    redirect("/admin/content?tab=posts")
+  }
   const posts: SocialPost[] = await listSocialPosts()
 
   const drafts = posts.filter((p) => p.approval_status === "draft" || p.approval_status === "edited").length

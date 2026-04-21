@@ -1,5 +1,7 @@
 import { initializeApp } from "firebase-admin/app"
 import { onDocumentCreated } from "firebase-functions/v2/firestore"
+import { onSchedule } from "firebase-functions/v2/scheduler"
+import { onRequest } from "firebase-functions/v2/https"
 import { defineSecret } from "firebase-functions/params"
 
 // Initialize Firebase Admin
@@ -13,6 +15,7 @@ const resendApiKey = defineSecret("RESEND_API_KEY")
 const assemblyAiApiKey = defineSecret("ASSEMBLYAI_API_KEY")
 const appUrl = defineSecret("APP_URL")
 const tavilyApiKey = defineSecret("TAVILY_API_KEY")
+const internalCronToken = defineSecret("INTERNAL_CRON_TOKEN")
 
 const allSecrets = [anthropicApiKey, supabaseUrl, supabaseServiceRoleKey]
 const sendSecrets = [supabaseUrl, supabaseServiceRoleKey, resendApiKey]
@@ -365,5 +368,132 @@ export const seoEnhance = onDocumentCreated(
 
     const { handleSeoEnhance } = await import("./seo-enhance.js")
     await handleSeoEnhance(event.params.jobId)
+  },
+)
+
+// ─── Sync Platform Analytics (nightly) ────────────────────────────────────────
+// Scheduled daily at 03:00 UTC. Walks every published social_post, asks the
+// Next.js side to invoke the matching plugin's fetchAnalytics(), and writes
+// one time-series row per non-empty result to social_analytics. Never throws
+// on per-post failure — logs counters and continues.
+
+export const syncPlatformAnalytics = onSchedule(
+  {
+    schedule: "0 3 * * *",
+    timeZone: "UTC",
+    timeoutSeconds: 540,
+    memory: "512MiB",
+    region: "us-central1",
+    secrets: [supabaseUrl, supabaseServiceRoleKey, internalCronToken, appUrl],
+  },
+  async () => {
+    const { runSyncPlatformAnalytics } = await import("./sync-platform-analytics.js")
+    const result = await runSyncPlatformAnalytics()
+    console.log("[syncPlatformAnalytics]", result)
+  },
+)
+
+// ─── Send Weekly Content Report (Friday 5 PM Central) ────────────────────────
+// Scheduled weekly. Triggers the Next.js internal route which composes the
+// email (WeeklyContentReport component → Resend) and delivers it to
+// COACH_EMAIL. Kept thin so the React/render/Resend path stays in one stack.
+
+export const sendWeeklyContentReport = onSchedule(
+  {
+    schedule: "0 17 * * 5",
+    timeZone: "America/Chicago",
+    timeoutSeconds: 120,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [internalCronToken, appUrl],
+  },
+  async () => {
+    const { runSendWeeklyContentReport } = await import("./send-weekly-content-report.js")
+    const result = await runSendWeeklyContentReport()
+    console.log("[sendWeeklyContentReport]", result)
+  },
+)
+
+// ─── Send Daily Pulse (Mon-Fri 7 AM Central) ─────────────────────────────────
+// Scheduled weekday mornings. Triggers the Next.js internal route which
+// composes the Daily Pulse (pipeline counters + Monday trending topics)
+// and delivers it to COACH_EMAIL.
+
+export const sendDailyPulse = onSchedule(
+  {
+    schedule: "0 7 * * 1-5",
+    timeZone: "America/Chicago",
+    timeoutSeconds: 120,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [internalCronToken, appUrl],
+  },
+  async () => {
+    const { runSendDailyPulse } = await import("./send-daily-pulse.js")
+    const result = await runSendDailyPulse()
+    console.log("[sendDailyPulse]", result)
+  },
+)
+
+// ─── Voice Drift Monitor (Mon 4 AM Central) ──────────────────────────────────
+// Weekly scan. Claude audits the last 7 days of AI-generated content against
+// prompt_templates.voice_profile and writes non-low severity findings to
+// voice_drift_flags. Read by /api/admin/ai/voice-drift → AiInsightsDashboard.
+
+export const voiceDriftMonitor = onSchedule(
+  {
+    schedule: "0 4 * * 1",
+    timeZone: "America/Chicago",
+    timeoutSeconds: 540,
+    memory: "512MiB",
+    region: "us-central1",
+    secrets: [anthropicApiKey, supabaseUrl, supabaseServiceRoleKey],
+  },
+  async () => {
+    const { runVoiceDriftMonitor } = await import("./voice-drift-monitor.js")
+    const result = await runVoiceDriftMonitor()
+    console.log("[voiceDriftMonitor]", result)
+  },
+)
+
+// ─── Performance Learning Loop (Mon 3 AM Central) ────────────────────────────
+// Weekly aggregation. Picks the top-3 performing published social posts per
+// platform from the last 30 days (by engagement on the latest snapshot) and
+// writes them to prompt_templates.few_shot_examples. No Claude calls — pure
+// aggregation from social_analytics. Runs before voiceDriftMonitor so Monday's
+// reports can (in future phases) reflect the refreshed examples.
+
+export const performanceLearningLoop = onSchedule(
+  {
+    schedule: "0 3 * * 1",
+    timeZone: "America/Chicago",
+    timeoutSeconds: 300,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [supabaseUrl, supabaseServiceRoleKey],
+  },
+  async () => {
+    const { runPerformanceLearningLoop } = await import("./performance-learning-loop.js")
+    const result = await runPerformanceLearningLoop()
+    console.log("[performanceLearningLoop]", result)
+  },
+)
+
+// ─── runJob (Phase 6 HTTPS dispatcher) ───────────────────────────────────────
+// Manual-trigger endpoint hit by the admin's "Run now" buttons via the
+// Next.js /api/admin/automation/trigger route. Dispatches to the same pure
+// runners the scheduled functions use. All secrets included so any runner
+// can fire here.
+
+export const runJob = onRequest(
+  {
+    region: "us-central1",
+    timeoutSeconds: 540,
+    memory: "512MiB",
+    secrets: [anthropicApiKey, supabaseUrl, supabaseServiceRoleKey, internalCronToken, appUrl, resendApiKey],
+  },
+  async (req, res) => {
+    const { handleRunJob } = await import("./run-job.js")
+    await handleRunJob(req, res)
   },
 )

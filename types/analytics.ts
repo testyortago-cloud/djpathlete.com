@@ -64,6 +64,55 @@ export interface EngagementMetrics {
   streakLeaders: { name: string; streak: number }[]
 }
 
+export interface SocialMetrics {
+  totalPosts: number
+  previousTotalPosts: number
+  publishedPosts: number
+  previousPublishedPosts: number
+  totalImpressions: number
+  totalEngagement: number
+  postsByMonth: {
+    key: string
+    label: string
+    total: number
+    published: number
+  }[]
+  postsByPlatform: { label: string; count: number }[]
+  postsByStatus: { label: string; count: number }[]
+  topPostsByEngagement: {
+    social_post_id: string
+    platform: string
+    content_preview: string
+    engagement: number
+    impressions: number
+  }[]
+}
+
+export interface ContentMetrics {
+  blogsCreated: number
+  previousBlogsCreated: number
+  blogsPublished: number
+  previousBlogsPublished: number
+  newslettersSent: number
+  activeSubscribers: number
+  blogsByMonth: {
+    key: string
+    label: string
+    drafts: number
+    published: number
+  }[]
+  blogsByCategory: { label: string; count: number }[]
+  blogsByFactCheckStatus: { label: string; count: number }[]
+  recentPublishes: {
+    id: string
+    title: string
+    status: string
+    category: string
+    published_at: string | null
+    created_at: string
+  }[]
+}
+
 export interface ShopMetrics {
   // Revenue (in cents)
   totalRevenueCents: number

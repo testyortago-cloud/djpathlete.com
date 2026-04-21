@@ -3,7 +3,7 @@ import { TrendingUp, TrendingDown } from "lucide-react"
 interface StatCardProps {
   icon: React.ReactNode
   iconBg: string
-  label: string
+  label: React.ReactNode
   value: string | number
   trend?: { current: number; previous: number }
 }

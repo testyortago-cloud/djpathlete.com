@@ -5,12 +5,16 @@ const authMock = vi.fn()
 const createAiJobMock = vi.fn()
 const getVideoUploadByIdMock = vi.fn()
 const getTranscriptForVideoMock = vi.fn()
+const listSocialPostsBySourceVideoMock = vi.fn()
 
 vi.mock("@/lib/auth", () => ({ auth: () => authMock() }))
 vi.mock("@/lib/ai-jobs", () => ({ createAiJob: (x: unknown) => createAiJobMock(x) }))
 vi.mock("@/lib/db/video-uploads", () => ({ getVideoUploadById: (x: string) => getVideoUploadByIdMock(x) }))
 vi.mock("@/lib/db/video-transcripts", () => ({
   getTranscriptForVideo: (x: string) => getTranscriptForVideoMock(x),
+}))
+vi.mock("@/lib/db/social-posts", () => ({
+  listSocialPostsBySourceVideo: (x: string) => listSocialPostsBySourceVideoMock(x),
 }))
 
 import { POST } from "@/app/api/admin/social/fanout/route"
@@ -27,6 +31,7 @@ describe("POST /api/admin/social/fanout", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     authMock.mockResolvedValue({ user: { id: "admin-1", role: "admin" } })
+    listSocialPostsBySourceVideoMock.mockResolvedValue([])
   })
 
   it("returns 401 when not admin", async () => {
@@ -69,5 +74,28 @@ describe("POST /api/admin/social/fanout", () => {
       userId: "admin-1",
       input: { videoUploadId: "v1" },
     })
+  })
+
+  it("returns 409 when social posts already exist and force is not set", async () => {
+    getVideoUploadByIdMock.mockResolvedValue({ id: "v1", status: "transcribed" })
+    getTranscriptForVideoMock.mockResolvedValue({ id: "t1", transcript_text: "hello" })
+    listSocialPostsBySourceVideoMock.mockResolvedValue([{ id: "p1" }, { id: "p2" }])
+
+    const res = await POST(makeRequest({ videoUploadId: "v1" }))
+    expect(res.status).toBe(409)
+    const body = await res.json()
+    expect(body.existingCount).toBe(2)
+    expect(createAiJobMock).not.toHaveBeenCalled()
+  })
+
+  it("regenerates when force=true is passed even if posts exist", async () => {
+    getVideoUploadByIdMock.mockResolvedValue({ id: "v1", status: "transcribed" })
+    getTranscriptForVideoMock.mockResolvedValue({ id: "t1", transcript_text: "hello" })
+    listSocialPostsBySourceVideoMock.mockResolvedValue([{ id: "p1" }])
+    createAiJobMock.mockResolvedValue({ jobId: "job-2", status: "pending" })
+
+    const res = await POST(makeRequest({ videoUploadId: "v1", force: true }))
+    expect(res.status).toBe(202)
+    expect(createAiJobMock).toHaveBeenCalled()
   })
 })

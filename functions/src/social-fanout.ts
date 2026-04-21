@@ -42,13 +42,6 @@ export function buildUserMessage(input: BuildUserMessageInput): string {
   ].join("\n")
 }
 
-export function resolveApprovalStatus(
-  platform: SocialPlatform,
-  connectedPlugins: Set<string>,
-): "draft" | "awaiting_connection" {
-  return connectedPlugins.has(platform) ? "draft" : "awaiting_connection"
-}
-
 export async function handleSocialFanout(jobId: string): Promise<void> {
   const firestore = getFirestore()
   const supabase = getSupabase()
@@ -116,14 +109,10 @@ export async function handleSocialFanout(jobId: string): Promise<void> {
       if (p.category === "social_caption") byPlatform.set(p.scope, p.prompt)
     }
 
-    // 4. Read connected plugins
-    const { data: connections } = await supabase
-      .from("platform_connections")
-      .select("plugin_name, status")
-      .eq("status", "connected")
-    const connectedSet = new Set((connections ?? []).map((c) => c.plugin_name))
-
-    // 5. Generate 6 captions in parallel
+    // 4. Generate 6 captions in parallel. New captions always start in the
+    // "draft" (Needs Review) state regardless of platform connection status —
+    // the user reviews each one and clicks Approve, at which point the
+    // approve route flips to "approved" (connected) or "awaiting_connection".
     const results = await Promise.allSettled(
       PLATFORMS.map(async (platform) => {
         const platformPrompt = byPlatform.get(platform)
@@ -146,19 +135,18 @@ export async function handleSocialFanout(jobId: string): Promise<void> {
       }),
     )
 
-    // 6. Persist successes
+    // 5. Persist successes
     const created: Array<{ platform: SocialPlatform; social_post_id: string }> = []
     for (const r of results) {
       if (r.status !== "fulfilled") continue
       const { platform, caption } = r.value as { platform: SocialPlatform; caption: Caption }
 
-      const approvalStatus = resolveApprovalStatus(platform, connectedSet)
       const { data: post, error: postErr } = await supabase
         .from("social_posts")
         .insert({
           platform,
           content: caption.caption_text,
-          approval_status: approvalStatus,
+          approval_status: "draft",
           source_video_id: videoUploadId,
         })
         .select()

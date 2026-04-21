@@ -59,3 +59,18 @@ export async function updateVideoUploadStatus(
   if (error) throw error
   return data as VideoUpload
 }
+
+export async function updateVideoUpload(
+  id: string,
+  patch: Partial<Omit<VideoUpload, "id" | "created_at" | "updated_at">>,
+): Promise<VideoUpload> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("video_uploads")
+    .update(patch)
+    .eq("id", id)
+    .select()
+    .single()
+  if (error) throw error
+  return data as VideoUpload
+}
