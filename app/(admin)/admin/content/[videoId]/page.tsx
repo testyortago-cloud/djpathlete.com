@@ -38,8 +38,6 @@ export default async function ContentStudioDrawerPage({ params, searchParams }: 
   const data = await getDrawerData(videoId)
   if (!data) notFound()
 
-  const pipeline = await getPipelineData()
-
   const effectiveData = postId ? { ...data, highlightPostId: postId } : data
 
   const shellTab = resolveShellTab(tab)
@@ -47,12 +45,18 @@ export default async function ContentStudioDrawerPage({ params, searchParams }: 
   const defaultDrawerTab = resolveDrawerTab(drawerTab ?? drawerFromOuterTab, postId ? "posts" : "transcript")
   const closeHref = shellTab ? `/admin/content?tab=${shellTab}` : "/admin/content"
 
+  // Fetch pipeline + calendar (if shellTab=calendar) in parallel — both feed the
+  // content rendered behind the drawer.
+  const win = computeCalendarWindow(view, anchor)
+  const [pipeline, calendar] = await Promise.all([
+    getPipelineData(),
+    shellTab === "calendar" ? getCalendarData(win) : Promise.resolve(null),
+  ])
+
   let underneath: React.ReactNode
   switch (shellTab) {
     case "calendar": {
-      const win = computeCalendarWindow(view, anchor)
-      const calendar = await getCalendarData(win)
-      underneath = <CalendarContainer data={calendar} videos={pipeline.videos} />
+      underneath = <CalendarContainer data={calendar!} videos={pipeline.videos} />
       break
     }
     case "videos":

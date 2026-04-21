@@ -68,11 +68,6 @@ export function isLocked(chip: CalendarChip): boolean {
   return chip.status === "published"
 }
 
-export function isFailed(chip: CalendarChip): boolean {
-  if (chip.kind === "post") return chip.status === "failed"
-  return false
-}
-
 function dayKeyOf(date: Date): string {
   const y = date.getUTCFullYear()
   const m = String(date.getUTCMonth() + 1).padStart(2, "0")
