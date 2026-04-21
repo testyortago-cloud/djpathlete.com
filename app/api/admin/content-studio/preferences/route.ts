@@ -1,10 +1,6 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import {
-  getPreferences,
-  upsertPreferences,
-  type PreferencesPatch,
-} from "@/lib/db/user-preferences"
+import { getPreferences, upsertPreferences, type PreferencesPatch } from "@/lib/db/user-preferences"
 import type { CalendarDefaultView } from "@/types/database"
 
 export async function GET() {
@@ -31,10 +27,7 @@ export async function PATCH(request: Request) {
   if (body.calendar_default_view !== undefined) {
     const v = body.calendar_default_view
     if (v !== "month" && v !== "week" && v !== "day") {
-      return NextResponse.json(
-        { error: "calendar_default_view must be month|week|day" },
-        { status: 400 },
-      )
+      return NextResponse.json({ error: "calendar_default_view must be month|week|day" }, { status: 400 })
     }
     patch.calendar_default_view = v as CalendarDefaultView
   }
@@ -44,10 +37,7 @@ export async function PATCH(request: Request) {
       Array.isArray(body.last_pipeline_filters) ||
       body.last_pipeline_filters === null
     ) {
-      return NextResponse.json(
-        { error: "last_pipeline_filters must be an object" },
-        { status: 400 },
-      )
+      return NextResponse.json({ error: "last_pipeline_filters must be an object" }, { status: 400 })
     }
     patch.last_pipeline_filters = body.last_pipeline_filters as Record<string, unknown>
   }
@@ -57,10 +47,7 @@ export async function PATCH(request: Request) {
       Array.isArray(body.pipeline_lanes_collapsed) ||
       body.pipeline_lanes_collapsed === null
     ) {
-      return NextResponse.json(
-        { error: "pipeline_lanes_collapsed must be an object" },
-        { status: 400 },
-      )
+      return NextResponse.json({ error: "pipeline_lanes_collapsed must be an object" }, { status: 400 })
     }
     patch.pipeline_lanes_collapsed = body.pipeline_lanes_collapsed as Record<string, boolean>
   }

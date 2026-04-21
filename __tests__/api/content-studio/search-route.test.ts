@@ -23,9 +23,7 @@ describe("GET /api/admin/content-studio/search", () => {
 
   it("delegates to searchContentStudio when ?q is set", async () => {
     searchMock.mockResolvedValueOnce({ videos: [], transcripts: [], posts: [] })
-    const res = await GET(
-      new Request("http://x/api/admin/content-studio/search?q=rotational"),
-    )
+    const res = await GET(new Request("http://x/api/admin/content-studio/search?q=rotational"))
     expect(res.status).toBe(200)
     expect(searchMock).toHaveBeenCalledWith("rotational")
   })

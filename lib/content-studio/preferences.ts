@@ -12,9 +12,7 @@ export async function readPreferences(): Promise<UserPreferences | null> {
   return dalGet(session.user.id)
 }
 
-export async function writePreferences(
-  patch: PreferencesPatch,
-): Promise<UserPreferences | null> {
+export async function writePreferences(patch: PreferencesPatch): Promise<UserPreferences | null> {
   const session = await auth()
   if (!session?.user?.id) return null
   return dalUpsert(session.user.id, patch)

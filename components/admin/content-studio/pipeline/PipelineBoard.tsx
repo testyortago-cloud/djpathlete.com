@@ -6,11 +6,7 @@ import { VideosLane } from "./VideosLane"
 import { PostsLane } from "./PostsLane"
 import { BulkActionsBar } from "./BulkActionsBar"
 import { PipelineFilters } from "./PipelineFilters"
-import {
-  applyFilters,
-  parseFilters,
-  type PipelineFilters as Filters,
-} from "@/lib/content-studio/pipeline-filters"
+import { applyFilters, parseFilters, type PipelineFilters as Filters } from "@/lib/content-studio/pipeline-filters"
 import type { PipelineData } from "@/lib/content-studio/pipeline-data"
 
 interface PipelineBoardProps {
@@ -33,10 +29,7 @@ export function PipelineBoard({ initialData, initialFilters }: PipelineBoardProp
     searchParams.has("sourceVideo")
   const filters = hasAnyUrlFilter || !initialFilters ? filtersFromUrl : initialFilters
 
-  const filtered = useMemo(
-    () => applyFilters(initialData.videos, initialData.posts, filters),
-    [initialData, filters],
-  )
+  const filtered = useMemo(() => applyFilters(initialData.videos, initialData.posts, filters), [initialData, filters])
 
   function toggleSelected(id: string, value: boolean) {
     setSelectedIds((prev) => {
@@ -57,11 +50,7 @@ export function PipelineBoard({ initialData, initialFilters }: PipelineBoardProp
           posts: filtered.posts,
         }}
       />
-      <PostsLane
-        posts={filtered.posts}
-        selectedIds={selectedIds}
-        onToggleSelected={toggleSelected}
-      />
+      <PostsLane posts={filtered.posts} selectedIds={selectedIds} onToggleSelected={toggleSelected} />
       <BulkActionsBar
         selectedIds={selectedIds}
         onClear={() => setSelectedIds(new Set())}

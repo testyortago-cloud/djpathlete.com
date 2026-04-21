@@ -48,10 +48,7 @@ describe("PATCH /api/admin/content-studio/preferences", () => {
     })
     const res = await PATCH(req)
     expect(res.status).toBe(200)
-    expect(upsertMock).toHaveBeenCalledWith(
-      "user-1",
-      expect.objectContaining({ calendar_default_view: "day" }),
-    )
+    expect(upsertMock).toHaveBeenCalledWith("user-1", expect.objectContaining({ calendar_default_view: "day" }))
   })
 
   it("rejects a non-object last_pipeline_filters", async () => {

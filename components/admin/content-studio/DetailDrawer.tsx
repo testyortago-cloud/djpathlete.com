@@ -20,9 +20,7 @@ export function DetailDrawer({ data, defaultTab, closeHref }: DetailDrawerProps)
   const closeButtonRef = useRef<HTMLButtonElement>(null)
 
   const title =
-    data.mode === "video" && data.video
-      ? `Video · ${data.video.title ?? data.video.original_filename}`
-      : "Manual post"
+    data.mode === "video" && data.video ? `Video · ${data.video.title ?? data.video.original_filename}` : "Manual post"
 
   // Remember whatever was focused when the drawer opened, and restore it on
   // close. Move focus into the drawer (to the close button) for keyboard users.

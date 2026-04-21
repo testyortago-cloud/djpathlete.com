@@ -19,10 +19,7 @@ export function UploadModal() {
         <Upload className="size-4" /> Upload Video
       </button>
       {open && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-          onClick={() => setOpen(false)}
-        >
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setOpen(false)}>
           <div
             className="relative w-full max-w-xl bg-white rounded-lg shadow-lg overflow-hidden"
             onClick={(e) => e.stopPropagation()}

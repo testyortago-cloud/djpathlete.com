@@ -11,10 +11,7 @@ beforeEach(() => {
 describe("<GlobalSearch>", () => {
   it("debounces typing before firing a request", async () => {
     fetchMock.mockResolvedValue(
-      new Response(
-        JSON.stringify({ videos: [], transcripts: [], posts: [] }),
-        { status: 200 },
-      ),
+      new Response(JSON.stringify({ videos: [], transcripts: [], posts: [] }), { status: 200 }),
     )
     render(<GlobalSearch />)
     const input = screen.getByPlaceholderText(/Search videos/i)
@@ -23,18 +20,12 @@ describe("<GlobalSearch>", () => {
     fireEvent.change(input, { target: { value: "rot" } })
     expect(fetchMock).not.toHaveBeenCalled()
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/admin/content-studio/search?q=rot",
-      expect.any(Object),
-    )
+    expect(fetchMock).toHaveBeenCalledWith("/api/admin/content-studio/search?q=rot", expect.any(Object))
   })
 
   it("closes the dropdown on Escape", async () => {
     fetchMock.mockResolvedValue(
-      new Response(
-        JSON.stringify({ videos: [], transcripts: [], posts: [] }),
-        { status: 200 },
-      ),
+      new Response(JSON.stringify({ videos: [], transcripts: [], posts: [] }), { status: 200 }),
     )
     render(<GlobalSearch />)
     const input = screen.getByPlaceholderText(/Search videos/i)

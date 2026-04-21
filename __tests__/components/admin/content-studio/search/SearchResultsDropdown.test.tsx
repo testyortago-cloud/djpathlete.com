@@ -34,36 +34,16 @@ const results: SearchResults = {
 
 describe("<SearchResultsDropdown>", () => {
   it("groups results by type with headers", () => {
-    render(
-      <SearchResultsDropdown
-        q="rotate"
-        results={results}
-        loading={false}
-        onSelect={() => {}}
-      />,
-    )
+    render(<SearchResultsDropdown q="rotate" results={results} loading={false} onSelect={() => {}} />)
     expect(screen.getByText(/Videos/)).toBeInTheDocument()
     expect(screen.getByText(/Transcripts/)).toBeInTheDocument()
     expect(screen.getByText(/Posts/)).toBeInTheDocument()
   })
 
   it("each row is a link to the drawer", () => {
-    render(
-      <SearchResultsDropdown
-        q="rotate"
-        results={results}
-        loading={false}
-        onSelect={() => {}}
-      />,
-    )
-    expect(screen.getByRole("link", { name: /Rotational Reboot/ })).toHaveAttribute(
-      "href",
-      "/admin/content/v1",
-    )
-    expect(screen.getByRole("link", { name: /stay rotational/ })).toHaveAttribute(
-      "href",
-      "/admin/content/post/p1",
-    )
+    render(<SearchResultsDropdown q="rotate" results={results} loading={false} onSelect={() => {}} />)
+    expect(screen.getByRole("link", { name: /Rotational Reboot/ })).toHaveAttribute("href", "/admin/content/v1")
+    expect(screen.getByRole("link", { name: /stay rotational/ })).toHaveAttribute("href", "/admin/content/post/p1")
   })
 
   it("shows a loading indicator", () => {

@@ -26,10 +26,9 @@ export function GlobalSearch() {
     const controller = new AbortController()
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch(
-          `/api/admin/content-studio/search?q=${encodeURIComponent(value.trim())}`,
-          { signal: controller.signal },
-        )
+        const res = await fetch(`/api/admin/content-studio/search?q=${encodeURIComponent(value.trim())}`, {
+          signal: controller.signal,
+        })
         if (!res.ok) throw new Error("Search failed")
         const body = (await res.json()) as SearchResults
         setResults(body)
@@ -70,14 +69,7 @@ export function GlobalSearch() {
         aria-label="Global search"
         className="w-full pl-9 pr-3 py-2 text-sm rounded-md border border-border bg-background placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/30"
       />
-      {open && (
-        <SearchResultsDropdown
-          q={value}
-          results={results}
-          loading={loading}
-          onSelect={() => setOpen(false)}
-        />
-      )}
+      {open && <SearchResultsDropdown q={value} results={results} loading={loading} onSelect={() => setOpen(false)} />}
     </div>
   )
 }

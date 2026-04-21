@@ -33,14 +33,8 @@ function Section({
   )
 }
 
-export function SearchResultsDropdown({
-  q,
-  results,
-  loading,
-  onSelect,
-}: SearchResultsDropdownProps) {
-  const total =
-    results.videos.length + results.transcripts.length + results.posts.length
+export function SearchResultsDropdown({ q, results, loading, onSelect }: SearchResultsDropdownProps) {
+  const total = results.videos.length + results.transcripts.length + results.posts.length
   if (loading) {
     return (
       <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-border rounded-md shadow-lg z-40 px-3 py-3 text-sm text-muted-foreground inline-flex items-center gap-2">
@@ -71,11 +65,7 @@ export function SearchResultsDropdown({
           </li>
         ))}
       </Section>
-      <Section
-        title="Transcripts"
-        icon={<FileText className="size-3" />}
-        count={results.transcripts.length}
-      >
+      <Section title="Transcripts" icon={<FileText className="size-3" />} count={results.transcripts.length}>
         {results.transcripts.map((t) => (
           <li key={t.id}>
             <Link
@@ -84,11 +74,7 @@ export function SearchResultsDropdown({
               className="block px-3 py-1.5 hover:bg-surface/40"
             >
               <p className="text-sm text-primary line-clamp-2">{t.snippet}</p>
-              {t.video_filename && (
-                <p className="text-[11px] text-muted-foreground truncate">
-                  {t.video_filename}
-                </p>
-              )}
+              {t.video_filename && <p className="text-[11px] text-muted-foreground truncate">{t.video_filename}</p>}
             </Link>
           </li>
         ))}
@@ -103,8 +89,7 @@ export function SearchResultsDropdown({
             >
               <p className="text-sm text-primary line-clamp-2">{p.content}</p>
               <p className="text-[11px] text-muted-foreground">
-                {p.platform} · {p.approval_status} ·{" "}
-                {p.source_video_filename ?? "Manual"}
+                {p.platform} · {p.approval_status} · {p.source_video_filename ?? "Manual"}
               </p>
             </Link>
           </li>

@@ -13,11 +13,7 @@ const DEFAULTS: Omit<UserPreferences, "user_id" | "updated_at"> = {
 
 export async function getPreferences(userId: string): Promise<UserPreferences> {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("user_preferences")
-    .select("*")
-    .eq("user_id", userId)
-    .maybeSingle()
+  const { data, error } = await supabase.from("user_preferences").select("*").eq("user_id", userId).maybeSingle()
   if (error) throw error
   if (!data) {
     return {
@@ -35,18 +31,14 @@ export interface PreferencesPatch {
   pipeline_lanes_collapsed?: Record<string, boolean>
 }
 
-export async function upsertPreferences(
-  userId: string,
-  patch: PreferencesPatch,
-): Promise<UserPreferences> {
+export async function upsertPreferences(userId: string, patch: PreferencesPatch): Promise<UserPreferences> {
   const supabase = getClient()
   const existing = await getPreferences(userId)
   const next = {
     user_id: userId,
     calendar_default_view: patch.calendar_default_view ?? existing.calendar_default_view,
     last_pipeline_filters: patch.last_pipeline_filters ?? existing.last_pipeline_filters,
-    pipeline_lanes_collapsed:
-      patch.pipeline_lanes_collapsed ?? existing.pipeline_lanes_collapsed,
+    pipeline_lanes_collapsed: patch.pipeline_lanes_collapsed ?? existing.pipeline_lanes_collapsed,
   }
   const { data, error } = await supabase
     .from("user_preferences")

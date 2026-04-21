@@ -39,11 +39,7 @@ function resolveAnchor(raw: string | null): Date {
   return today
 }
 
-export function CalendarContainer({
-  data,
-  videos,
-  defaultView = "month",
-}: CalendarContainerProps) {
+export function CalendarContainer({ data, videos, defaultView = "month" }: CalendarContainerProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const view = resolveView(searchParams.get("view"), defaultView)

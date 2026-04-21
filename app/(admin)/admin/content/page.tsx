@@ -19,17 +19,8 @@ export default async function ContentStudioPage({ searchParams }: PageProps) {
 
   if (tab === "calendar") {
     const window = computeCalendarWindow(effectiveView, anchor)
-    const [calendar, pipeline] = await Promise.all([
-      getCalendarData(window),
-      getPipelineData(),
-    ])
-    return (
-      <CalendarContainer
-        data={calendar}
-        videos={pipeline.videos}
-        defaultView={effectiveView}
-      />
-    )
+    const [calendar, pipeline] = await Promise.all([getCalendarData(window), getPipelineData()])
+    return <CalendarContainer data={calendar} videos={pipeline.videos} defaultView={effectiveView} />
   }
 
   const data = await getPipelineData()
@@ -42,9 +33,7 @@ export default async function ContentStudioPage({ searchParams }: PageProps) {
       return (
         <PipelineBoard
           initialData={data}
-          initialFilters={
-            (prefs?.last_pipeline_filters as PipelineFilters | undefined) ?? undefined
-          }
+          initialFilters={(prefs?.last_pipeline_filters as PipelineFilters | undefined) ?? undefined}
         />
       )
   }

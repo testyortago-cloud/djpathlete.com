@@ -10,10 +10,7 @@ export interface SearchResults {
     video_filename: string | null
   }>
   posts: Array<
-    Pick<
-      SocialPost,
-      "id" | "platform" | "content" | "approval_status" | "source_video_id"
-    > & {
+    Pick<SocialPost, "id" | "platform" | "content" | "approval_status" | "source_video_id"> & {
       source_video_filename: string | null
     }
   >
@@ -42,9 +39,7 @@ export async function searchContentStudio(query: string): Promise<SearchResults>
       .limit(LIMIT),
     supabase
       .from("social_posts")
-      .select(
-        "id, platform, content, approval_status, source_video_id, video_uploads(original_filename)",
-      )
+      .select("id, platform, content, approval_status, source_video_id, video_uploads(original_filename)")
       .ilike("content", likePattern)
       .limit(LIMIT),
   ])
@@ -65,14 +60,8 @@ export async function searchContentStudio(query: string): Promise<SearchResults>
       const text = rec.transcript_text
       const idx = text.toLowerCase().indexOf(q.toLowerCase())
       const start = Math.max(0, idx - 40)
-      const end = Math.min(
-        text.length,
-        (idx === -1 ? 0 : idx) + q.length + 80,
-      )
-      const snippet =
-        (start > 0 ? "…" : "") +
-        text.slice(start, end) +
-        (end < text.length ? "…" : "")
+      const end = Math.min(text.length, (idx === -1 ? 0 : idx) + q.length + 80)
+      const snippet = (start > 0 ? "…" : "") + text.slice(start, end) + (end < text.length ? "…" : "")
       return {
         id: rec.id,
         video_upload_id: rec.video_upload_id,

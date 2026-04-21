@@ -35,9 +35,7 @@ test.describe("Content Studio search + polish", () => {
     const input = page.getByPlaceholder(/Search videos, transcripts, posts/i)
     await input.fill("rotational")
     // Wait for either results or "No results" to appear
-    await expect(
-      page.getByText(/(No results|Videos|Transcripts|Posts)/).first(),
-    ).toBeVisible({ timeout: 3000 })
+    await expect(page.getByText(/(No results|Videos|Transcripts|Posts)/).first()).toBeVisible({ timeout: 3000 })
     await input.press("Escape")
   })
 
@@ -49,9 +47,7 @@ test.describe("Content Studio search + polish", () => {
     await expect(live).toHaveAttribute("aria-live", "polite")
   })
 
-  test("GET /api/admin/content-studio/preferences returns defaults for a fresh user", async ({
-    page,
-  }) => {
+  test("GET /api/admin/content-studio/preferences returns defaults for a fresh user", async ({ page }) => {
     const res = await page.request.get("/api/admin/content-studio/preferences")
     if (res.status() === 404) test.skip(true, "Route not deployed yet")
     expect(res.ok()).toBeTruthy()
