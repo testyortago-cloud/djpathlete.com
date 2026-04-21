@@ -1,9 +1,4 @@
-import type {
-  SocialPost,
-  SocialPlatform,
-  SocialApprovalStatus,
-  VideoUpload,
-} from "@/types/database"
+import type { SocialPost, SocialPlatform, SocialApprovalStatus, VideoUpload } from "@/types/database"
 
 const ALL_PLATFORMS: readonly SocialPlatform[] = [
   "facebook",
@@ -61,11 +56,7 @@ export function filtersToSearchParams(filters: PipelineFilters): URLSearchParams
   return sp
 }
 
-function postMatchesTimeRange(
-  post: SocialPost,
-  from: string | null,
-  to: string | null,
-): boolean {
+function postMatchesTimeRange(post: SocialPost, from: string | null, to: string | null): boolean {
   if (!from && !to) return true
   const ref = post.scheduled_at ?? post.published_at ?? post.created_at
   const d = new Date(ref).getTime()
@@ -101,12 +92,8 @@ export function applyFilters(
     filters.from !== null ||
     filters.to !== null
 
-  const allowedVideoIds = new Set(
-    filteredPosts.map((p) => p.source_video_id).filter((id): id is string => !!id),
-  )
-  const filteredVideos = hasPostScopedFilter
-    ? videos.filter((v) => allowedVideoIds.has(v.id))
-    : videos
+  const allowedVideoIds = new Set(filteredPosts.map((p) => p.source_video_id).filter((id): id is string => !!id))
+  const filteredVideos = hasPostScopedFilter ? videos.filter((v) => allowedVideoIds.has(v.id)) : videos
 
   return { videos: filteredVideos, posts: filteredPosts }
 }

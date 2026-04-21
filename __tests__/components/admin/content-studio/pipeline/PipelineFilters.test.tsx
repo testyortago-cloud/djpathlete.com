@@ -20,10 +20,7 @@ describe("<PipelineFilters>", () => {
 
   it("toggles the initial 'instagram' platform chip as active", () => {
     render(<PipelineFilters videos={[]} />)
-    expect(screen.getByRole("button", { name: /Instagram/i })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    )
+    expect(screen.getByRole("button", { name: /Instagram/i })).toHaveAttribute("aria-pressed", "true")
   })
 
   it("clicking a platform pill updates the URL", () => {

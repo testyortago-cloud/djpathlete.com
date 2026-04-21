@@ -8,11 +8,7 @@ import {
   filtersToSearchParams,
   type PipelineFilters as Filters,
 } from "@/lib/content-studio/pipeline-filters"
-import type {
-  SocialPlatform,
-  SocialApprovalStatus,
-  VideoUpload,
-} from "@/types/database"
+import type { SocialPlatform, SocialApprovalStatus, VideoUpload } from "@/types/database"
 import { cn } from "@/lib/utils"
 
 const PLATFORMS: { id: SocialPlatform; label: string }[] = [
@@ -61,9 +57,7 @@ export function PipelineFilters({ videos }: PipelineFiltersProps) {
 
   function togglePlatform(id: SocialPlatform) {
     const has = filters.platforms.includes(id)
-    const next = has
-      ? filters.platforms.filter((p) => p !== id)
-      : [...filters.platforms, id]
+    const next = has ? filters.platforms.filter((p) => p !== id) : [...filters.platforms, id]
     update({ ...filters, platforms: next })
   }
 
@@ -106,9 +100,7 @@ export function PipelineFilters({ videos }: PipelineFiltersProps) {
       </div>
 
       <div>
-        <p className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">
-          Platform
-        </p>
+        <p className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">Platform</p>
         <div className="flex flex-wrap gap-1">
           {PLATFORMS.map(({ id, label }) => {
             const active = filters.platforms.includes(id)
@@ -133,9 +125,7 @@ export function PipelineFilters({ videos }: PipelineFiltersProps) {
       </div>
 
       <div>
-        <p className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">
-          Status
-        </p>
+        <p className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">Status</p>
         <div className="flex flex-wrap gap-1">
           {STATUS_CHIPS.map(({ id, label, statuses }) => {
             const active = statuses.every((s) => filters.statuses.includes(s))
@@ -182,9 +172,7 @@ export function PipelineFilters({ videos }: PipelineFiltersProps) {
           Source video
           <select
             value={filters.sourceVideoId ?? ""}
-            onChange={(e) =>
-              update({ ...filters, sourceVideoId: e.target.value || null })
-            }
+            onChange={(e) => update({ ...filters, sourceVideoId: e.target.value || null })}
             className="mt-0.5 block w-full rounded border border-border px-2 py-1 text-xs"
           >
             <option value="">All videos</option>

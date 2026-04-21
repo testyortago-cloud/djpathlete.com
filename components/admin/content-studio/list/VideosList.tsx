@@ -39,19 +39,14 @@ export function VideosList({ videos }: VideosListProps) {
           {videos.map((v) => (
             <tr key={v.id} className="border-t border-border hover:bg-surface/30">
               <td className="px-4 py-2">
-                <Link
-                  href={`/admin/content/${v.id}`}
-                  className="text-primary font-medium hover:underline"
-                >
+                <Link href={`/admin/content/${v.id}`} className="text-primary font-medium hover:underline">
                   {v.title ?? v.original_filename}
                 </Link>
               </td>
               <td className="px-4 py-2 text-muted-foreground">{v.original_filename}</td>
               <td className="px-4 py-2">{v.status}</td>
               <td className="px-4 py-2">{formatDuration(v.duration_seconds)}</td>
-              <td className="px-4 py-2 text-muted-foreground">
-                {new Date(v.created_at).toLocaleDateString()}
-              </td>
+              <td className="px-4 py-2 text-muted-foreground">{new Date(v.created_at).toLocaleDateString()}</td>
             </tr>
           ))}
         </tbody>

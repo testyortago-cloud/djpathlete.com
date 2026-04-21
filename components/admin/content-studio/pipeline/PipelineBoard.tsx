@@ -15,10 +15,7 @@ export function PipelineBoard({ initialData }: { initialData: PipelineData }) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
   const filters = useMemo(() => parseFilters(searchParams), [searchParams])
-  const filtered = useMemo(
-    () => applyFilters(initialData.videos, initialData.posts, filters),
-    [initialData, filters],
-  )
+  const filtered = useMemo(() => applyFilters(initialData.videos, initialData.posts, filters), [initialData, filters])
 
   function toggleSelected(id: string, value: boolean) {
     setSelectedIds((prev) => {
@@ -39,11 +36,7 @@ export function PipelineBoard({ initialData }: { initialData: PipelineData }) {
           posts: filtered.posts,
         }}
       />
-      <PostsLane
-        posts={filtered.posts}
-        selectedIds={selectedIds}
-        onToggleSelected={toggleSelected}
-      />
+      <PostsLane posts={filtered.posts} selectedIds={selectedIds} onToggleSelected={toggleSelected} />
       <BulkActionsBar
         selectedIds={selectedIds}
         onClear={() => setSelectedIds(new Set())}

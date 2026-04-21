@@ -26,10 +26,7 @@ function columnToStatus(column: Exclude<TargetColumn, "scheduled" | "published">
   }
 }
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
   if (!session?.user?.id || session.user.role !== "admin") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -40,24 +37,17 @@ export async function POST(
   if (!isColumn(target)) {
     return NextResponse.json(
       {
-        error:
-          "targetColumn must be one of needs_review|approved|scheduled|published|failed",
+        error: "targetColumn must be one of needs_review|approved|scheduled|published|failed",
       },
       { status: 400 },
     )
   }
 
   if (target === "scheduled") {
-    return NextResponse.json(
-      { error: "Use the schedule dialog to pick a date/time" },
-      { status: 409 },
-    )
+    return NextResponse.json({ error: "Use the schedule dialog to pick a date/time" }, { status: 409 })
   }
   if (target === "published") {
-    return NextResponse.json(
-      { error: "Posts publish automatically — use Publish Now instead" },
-      { status: 409 },
-    )
+    return NextResponse.json({ error: "Posts publish automatically — use Publish Now instead" }, { status: 409 })
   }
 
   const { id } = await params

@@ -95,10 +95,7 @@ describe("postColumnFor", () => {
 
 describe("postsByColumn", () => {
   it("excludes rejected posts by default", () => {
-    const ps = [
-      post("p1", { approval_status: "draft" }),
-      post("p2", { approval_status: "rejected" }),
-    ]
+    const ps = [post("p1", { approval_status: "draft" }), post("p2", { approval_status: "rejected" })]
     const grouped = postsByColumn(ps)
     expect(grouped.needs_review.map((p) => p.id)).toEqual(["p1"])
     for (const col of POST_COLUMNS) {

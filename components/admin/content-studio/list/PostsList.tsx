@@ -33,16 +33,11 @@ export function PostsList({ posts }: PostsListProps) {
             <tr key={p.id} className="border-t border-border hover:bg-surface/30">
               <td className="px-4 py-2 text-muted-foreground">{p.platform}</td>
               <td className="px-4 py-2">
-                <Link
-                  href={`/admin/content/post/${p.id}`}
-                  className="text-primary hover:underline line-clamp-2"
-                >
+                <Link href={`/admin/content/post/${p.id}`} className="text-primary hover:underline line-clamp-2">
                   {p.content}
                 </Link>
               </td>
-              <td className="px-4 py-2 text-muted-foreground">
-                {p.source_video_filename ?? "—"}
-              </td>
+              <td className="px-4 py-2 text-muted-foreground">{p.source_video_filename ?? "—"}</td>
               <td className="px-4 py-2">{p.approval_status}</td>
               <td className="px-4 py-2 text-muted-foreground">
                 {p.scheduled_at ? new Date(p.scheduled_at).toLocaleString() : "—"}

@@ -31,10 +31,7 @@ describe("<PostsList>", () => {
 
   it("rows link to the post-only drawer", () => {
     render(<PostsList posts={posts} />)
-    expect(screen.getByRole("link", { name: /caption one/ })).toHaveAttribute(
-      "href",
-      "/admin/content/post/p1",
-    )
+    expect(screen.getByRole("link", { name: /caption one/ })).toHaveAttribute("href", "/admin/content/post/p1")
   })
 
   it("renders an empty state when no posts", () => {

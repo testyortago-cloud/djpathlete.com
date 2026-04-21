@@ -1,10 +1,6 @@
 "use client"
 
-import {
-  VIDEO_COLUMNS,
-  VIDEO_COLUMN_LABELS,
-  videosByColumn,
-} from "@/lib/content-studio/pipeline-columns"
+import { VIDEO_COLUMNS, VIDEO_COLUMN_LABELS, videosByColumn } from "@/lib/content-studio/pipeline-columns"
 import { Lane, LaneColumn } from "./Lane"
 import { VideoCard } from "./VideoCard"
 import type { PipelineData } from "@/lib/content-studio/pipeline-data"
@@ -30,9 +26,7 @@ export function VideosLane({ data }: VideosLaneProps) {
             <VideoCard key={v.id} video={v} counts={data.postCountsByVideo[v.id] ?? null} />
           ))}
           {grouped[col].length === 0 && (
-            <div className="py-6 text-center text-[11px] text-muted-foreground/60 italic">
-              empty
-            </div>
+            <div className="py-6 text-center text-[11px] text-muted-foreground/60 italic">empty</div>
           )}
         </LaneColumn>
       ))}

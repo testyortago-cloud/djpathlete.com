@@ -32,7 +32,10 @@ test.describe("Content Studio pipeline", () => {
   test("platform filter narrows posts", async ({ page }) => {
     const response = await page.goto("/admin/content")
     if (response?.status() === 404) test.skip(true, "CONTENT_STUDIO_ENABLED not set")
-    await page.getByRole("button", { name: /^Instagram$/i }).first().click()
+    await page
+      .getByRole("button", { name: /^Instagram$/i })
+      .first()
+      .click()
     await expect(page).toHaveURL(/platform=instagram/)
   })
 

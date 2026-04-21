@@ -1,12 +1,6 @@
 import type { SocialPost, VideoUpload } from "@/types/database"
 
-export const VIDEO_COLUMNS = [
-  "uploaded",
-  "transcribing",
-  "transcribed",
-  "generated",
-  "complete",
-] as const
+export const VIDEO_COLUMNS = ["uploaded", "transcribing", "transcribed", "generated", "complete"] as const
 export type VideoColumn = (typeof VIDEO_COLUMNS)[number]
 
 export const VIDEO_COLUMN_LABELS: Record<VideoColumn, string> = {
@@ -17,13 +11,7 @@ export const VIDEO_COLUMN_LABELS: Record<VideoColumn, string> = {
   complete: "Complete",
 }
 
-export const POST_COLUMNS = [
-  "needs_review",
-  "approved",
-  "scheduled",
-  "published",
-  "failed",
-] as const
+export const POST_COLUMNS = ["needs_review", "approved", "scheduled", "published", "failed"] as const
 export type PostColumn = (typeof POST_COLUMNS)[number]
 
 export const POST_COLUMN_LABELS: Record<PostColumn, string> = {
@@ -54,10 +42,7 @@ export function videoColumnFor(video: VideoUpload, posts: SocialPost[]): VideoCo
   }
 }
 
-export function videosByColumn(
-  videos: VideoUpload[],
-  posts: SocialPost[],
-): Record<VideoColumn, VideoUpload[]> {
+export function videosByColumn(videos: VideoUpload[], posts: SocialPost[]): Record<VideoColumn, VideoUpload[]> {
   const out: Record<VideoColumn, VideoUpload[]> = {
     uploaded: [],
     transcribing: [],

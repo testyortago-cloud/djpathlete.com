@@ -51,17 +51,13 @@ describe("parseFilters", () => {
   })
 
   it("splits comma-separated platform and status lists", () => {
-    const f = parseFilters(
-      new URLSearchParams("platform=instagram,tiktok&status=approved,scheduled"),
-    )
+    const f = parseFilters(new URLSearchParams("platform=instagram,tiktok&status=approved,scheduled"))
     expect(f.platforms).toEqual(["instagram", "tiktok"])
     expect(f.statuses).toEqual(["approved", "scheduled"])
   })
 
   it("drops unknown platform and status tokens", () => {
-    const f = parseFilters(
-      new URLSearchParams("platform=instagram,nope&status=approved,bogus"),
-    )
+    const f = parseFilters(new URLSearchParams("platform=instagram,nope&status=approved,bogus"))
     expect(f.platforms).toEqual(["instagram"])
     expect(f.statuses).toEqual(["approved"])
   })

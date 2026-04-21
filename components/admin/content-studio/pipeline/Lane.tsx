@@ -35,15 +35,7 @@ export function LaneColumn({
   )
 }
 
-export function Lane({
-  title,
-  subtitle,
-  children,
-}: {
-  title: string
-  subtitle?: string
-  children: React.ReactNode
-}) {
+export function Lane({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
     <section aria-label={title} className="space-y-2">
       <div>

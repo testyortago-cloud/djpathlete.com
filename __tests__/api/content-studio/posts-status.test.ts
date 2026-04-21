@@ -45,57 +45,36 @@ describe("POST /api/admin/content-studio/posts/[id]/status", () => {
   })
 
   it("rejects an unknown target column", async () => {
-    const res = await POST(
-      req({ targetColumn: "bogus" }) as never,
-      { params: Promise.resolve({ id: "p1" }) },
-    )
+    const res = await POST(req({ targetColumn: "bogus" }) as never, { params: Promise.resolve({ id: "p1" }) })
     expect(res.status).toBe(400)
   })
 
   it("needs_review → approved: updates approval_status=approved", async () => {
     mockGetPost.mockResolvedValueOnce(basePost)
     mockUpdatePost.mockResolvedValueOnce({ ...basePost, approval_status: "approved" })
-    const res = await POST(
-      req({ targetColumn: "approved" }) as never,
-      { params: Promise.resolve({ id: "p1" }) },
-    )
+    const res = await POST(req({ targetColumn: "approved" }) as never, { params: Promise.resolve({ id: "p1" }) })
     expect(res.status).toBe(200)
-    expect(mockUpdatePost).toHaveBeenCalledWith(
-      "p1",
-      expect.objectContaining({ approval_status: "approved" }),
-    )
+    expect(mockUpdatePost).toHaveBeenCalledWith("p1", expect.objectContaining({ approval_status: "approved" }))
   })
 
   it("approved → needs_review: moves back to draft", async () => {
     mockGetPost.mockResolvedValueOnce({ ...basePost, approval_status: "approved" })
     mockUpdatePost.mockResolvedValueOnce({ ...basePost, approval_status: "draft" })
-    const res = await POST(
-      req({ targetColumn: "needs_review" }) as never,
-      { params: Promise.resolve({ id: "p1" }) },
-    )
+    const res = await POST(req({ targetColumn: "needs_review" }) as never, { params: Promise.resolve({ id: "p1" }) })
     expect(res.status).toBe(200)
-    expect(mockUpdatePost).toHaveBeenCalledWith(
-      "p1",
-      expect.objectContaining({ approval_status: "draft" }),
-    )
+    expect(mockUpdatePost).toHaveBeenCalledWith("p1", expect.objectContaining({ approval_status: "draft" }))
   })
 
   it("rejects a drop directly into 'scheduled' (requires date picker)", async () => {
     mockGetPost.mockResolvedValueOnce({ ...basePost, approval_status: "approved" })
-    const res = await POST(
-      req({ targetColumn: "scheduled" }) as never,
-      { params: Promise.resolve({ id: "p1" }) },
-    )
+    const res = await POST(req({ targetColumn: "scheduled" }) as never, { params: Promise.resolve({ id: "p1" }) })
     expect(res.status).toBe(409)
     expect(mockUpdatePost).not.toHaveBeenCalled()
   })
 
   it("rejects a drop into 'published' (server-side side effect only)", async () => {
     mockGetPost.mockResolvedValueOnce({ ...basePost, approval_status: "approved" })
-    const res = await POST(
-      req({ targetColumn: "published" }) as never,
-      { params: Promise.resolve({ id: "p1" }) },
-    )
+    const res = await POST(req({ targetColumn: "published" }) as never, { params: Promise.resolve({ id: "p1" }) })
     expect(res.status).toBe(409)
   })
 
@@ -110,10 +89,7 @@ describe("POST /api/admin/content-studio/posts/[id]/status", () => {
       approval_status: "draft",
       rejection_notes: null,
     })
-    const res = await POST(
-      req({ targetColumn: "needs_review" }) as never,
-      { params: Promise.resolve({ id: "p1" }) },
-    )
+    const res = await POST(req({ targetColumn: "needs_review" }) as never, { params: Promise.resolve({ id: "p1" }) })
     expect(res.status).toBe(200)
     expect(mockUpdatePost).toHaveBeenCalledWith(
       "p1",
@@ -126,10 +102,7 @@ describe("POST /api/admin/content-studio/posts/[id]/status", () => {
 
   it("404 when the post does not exist", async () => {
     mockGetPost.mockResolvedValueOnce(null)
-    const res = await POST(
-      req({ targetColumn: "approved" }) as never,
-      { params: Promise.resolve({ id: "p1" }) },
-    )
+    const res = await POST(req({ targetColumn: "approved" }) as never, { params: Promise.resolve({ id: "p1" }) })
     expect(res.status).toBe(404)
   })
 })

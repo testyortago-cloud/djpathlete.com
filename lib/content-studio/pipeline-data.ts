@@ -22,10 +22,7 @@ function emptyCounts(): PostCounts {
 }
 
 export async function getPipelineData(): Promise<PipelineData> {
-  const [videos, posts] = await Promise.all([
-    listVideoUploads({ limit: 200 }),
-    listSocialPostsForPipeline(),
-  ])
+  const [videos, posts] = await Promise.all([listVideoUploads({ limit: 200 }), listSocialPostsForPipeline()])
 
   const postCountsByVideo: Record<string, PostCounts> = {}
   for (const p of posts) {

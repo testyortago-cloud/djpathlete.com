@@ -41,10 +41,7 @@ describe("<VideosList>", () => {
 
   it("each row links to the drawer", () => {
     render(<VideosList videos={vids} />)
-    expect(screen.getByRole("link", { name: /Alpha/ })).toHaveAttribute(
-      "href",
-      "/admin/content/v1",
-    )
+    expect(screen.getByRole("link", { name: /Alpha/ })).toHaveAttribute("href", "/admin/content/v1")
   })
 
   it("renders an empty state when no videos", () => {

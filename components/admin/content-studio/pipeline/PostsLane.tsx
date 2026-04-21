@@ -1,21 +1,10 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import {
-  DndContext,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core"
+import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
-import {
-  POST_COLUMNS,
-  POST_COLUMN_LABELS,
-  postsByColumn,
-  type PostColumn,
-} from "@/lib/content-studio/pipeline-columns"
+import { POST_COLUMNS, POST_COLUMN_LABELS, postsByColumn, type PostColumn } from "@/lib/content-studio/pipeline-columns"
 import { Lane, LaneColumn } from "./Lane"
 import { PostCard } from "./PostCard"
 import type { PipelinePostRow } from "@/lib/db/social-posts"
@@ -42,16 +31,10 @@ function columnToStatus(column: PostColumn): SocialApprovalStatus | null {
   }
 }
 
-export function PostsLane({
-  posts: initialPosts,
-  selectedIds,
-  onToggleSelected,
-}: PostsLaneProps) {
+export function PostsLane({ posts: initialPosts, selectedIds, onToggleSelected }: PostsLaneProps) {
   const [posts, setPosts] = useState(initialPosts)
   const router = useRouter()
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-  )
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
   // Keep local state in sync if server data changes under us (e.g. after refresh).
   useEffect(() => {
@@ -84,9 +67,7 @@ export function PostsLane({
     if (post.approval_status === nextStatus) return
 
     const prevStatus = post.approval_status
-    setPosts((prev) =>
-      prev.map((p) => (p.id === post.id ? { ...p, approval_status: nextStatus } : p)),
-    )
+    setPosts((prev) => prev.map((p) => (p.id === post.id ? { ...p, approval_status: nextStatus } : p)))
 
     try {
       const res = await fetch(`/api/admin/content-studio/posts/${post.id}/status`, {
@@ -98,9 +79,7 @@ export function PostsLane({
       toast.success(`Moved to ${POST_COLUMN_LABELS[targetColumn]}`)
       router.refresh()
     } catch (err) {
-      setPosts((prev) =>
-        prev.map((p) => (p.id === post.id ? { ...p, approval_status: prevStatus } : p)),
-      )
+      setPosts((prev) => prev.map((p) => (p.id === post.id ? { ...p, approval_status: prevStatus } : p)))
       toast.error((err as Error).message || "Move failed")
     }
   }
@@ -117,17 +96,10 @@ export function PostsLane({
             accepts={col !== "scheduled" && col !== "published"}
           >
             {grouped[col].map((p) => (
-              <PostCard
-                key={p.id}
-                post={p}
-                selected={selectedIds.has(p.id)}
-                onToggleSelected={onToggleSelected}
-              />
+              <PostCard key={p.id} post={p} selected={selectedIds.has(p.id)} onToggleSelected={onToggleSelected} />
             ))}
             {grouped[col].length === 0 && (
-              <div className="py-6 text-center text-[11px] text-muted-foreground/60 italic">
-                empty
-              </div>
+              <div className="py-6 text-center text-[11px] text-muted-foreground/60 italic">empty</div>
             )}
           </LaneColumn>
         ))}
