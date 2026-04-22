@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { describe, it, expect, beforeEach } from "vitest"
 import { bootstrapPlugins } from "@/lib/social/bootstrap"
 import { pluginRegistry } from "@/lib/social/registry"
 import type { PlatformConnection } from "@/types/database"
@@ -25,12 +25,7 @@ describe("bootstrapPlugins", () => {
       },
     ]
 
-    bootstrapPlugins(connections, {
-      tiktokEmail: "coach@example.com",
-      tiktokFcmToken: null,
-      sendPush: vi.fn(),
-      sendEmail: vi.fn(),
-    })
+    bootstrapPlugins(connections)
 
     const fb = pluginRegistry.get("facebook")
     expect(fb).toBeDefined()
@@ -38,48 +33,66 @@ describe("bootstrapPlugins", () => {
   })
 
   it("skips connections that are not connected", () => {
-    bootstrapPlugins(
-      [
-        {
-          id: "1",
-          plugin_name: "facebook",
-          status: "not_connected",
-          credentials: {},
-          account_handle: null,
-          last_sync_at: null,
-          last_error: null,
-          connected_at: null,
-          connected_by: null,
-          created_at: "",
-          updated_at: "",
-        },
-      ],
-      { tiktokEmail: "a@b.c", tiktokFcmToken: null, sendPush: vi.fn(), sendEmail: vi.fn() },
-    )
+    bootstrapPlugins([
+      {
+        id: "1",
+        plugin_name: "facebook",
+        status: "not_connected",
+        credentials: {},
+        account_handle: null,
+        last_sync_at: null,
+        last_error: null,
+        connected_at: null,
+        connected_by: null,
+        created_at: "",
+        updated_at: "",
+      },
+    ])
     expect(pluginRegistry.get("facebook")).toBeUndefined()
   })
 
-  it("registers tiktok plugin using the provided push + email senders", () => {
-    bootstrapPlugins(
-      [
-        {
-          id: "1",
-          plugin_name: "tiktok",
-          status: "connected",
-          credentials: {},
-          account_handle: "coach@example.com",
-          last_sync_at: null,
-          last_error: null,
-          connected_at: null,
-          connected_by: null,
-          created_at: "",
-          updated_at: "",
+  it("registers tiktok plugin when credentials include OAuth tokens", () => {
+    bootstrapPlugins([
+      {
+        id: "1",
+        plugin_name: "tiktok",
+        status: "connected",
+        credentials: {
+          access_token: "at",
+          refresh_token: "rt",
+          client_key: "ck",
+          client_secret: "cs",
         },
-      ],
-      { tiktokEmail: "coach@example.com", tiktokFcmToken: "fcm_abc", sendPush: vi.fn(), sendEmail: vi.fn() },
-    )
+        account_handle: "@djpathlete",
+        last_sync_at: null,
+        last_error: null,
+        connected_at: null,
+        connected_by: null,
+        created_at: "",
+        updated_at: "",
+      },
+    ])
     const tk = pluginRegistry.get("tiktok")
     expect(tk).toBeDefined()
     expect(tk?.name).toBe("tiktok")
+  })
+
+  it("skips tiktok plugin when OAuth credentials are missing", () => {
+    bootstrapPlugins([
+      {
+        id: "1",
+        plugin_name: "tiktok",
+        status: "connected",
+        credentials: {},
+        account_handle: null,
+        last_sync_at: null,
+        last_error: null,
+        connected_at: null,
+        connected_by: null,
+        created_at: "",
+        updated_at: "",
+      },
+    ])
+    expect(pluginRegistry.get("tiktok")).toBeUndefined()
   })
 })

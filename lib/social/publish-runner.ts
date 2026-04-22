@@ -41,12 +41,7 @@ export async function runScheduledPublish(
   if (options.bootstrap) {
     await options.bootstrap(connections)
   } else {
-    bootstrapPlugins(connections, {
-      tiktokEmail: "",
-      tiktokFcmToken: null,
-      sendPush: async () => {},
-      sendEmail: async () => {},
-    })
+    bootstrapPlugins(connections)
   }
 
   let published = 0

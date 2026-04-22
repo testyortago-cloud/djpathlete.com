@@ -31,7 +31,7 @@ vi.mock("@/lib/social/registry", () => ({
 
 const bootstrapPluginsMock = vi.fn()
 vi.mock("@/lib/social/bootstrap", () => ({
-  bootstrapPlugins: (conns: unknown, opts: unknown) => bootstrapPluginsMock(conns, opts),
+  bootstrapPlugins: (conns: unknown) => bootstrapPluginsMock(conns),
 }))
 
 import { runScheduledPublish } from "@/lib/social/publish-runner"

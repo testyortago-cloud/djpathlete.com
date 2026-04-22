@@ -13,7 +13,7 @@ vi.mock("@/lib/db/platform-connections", () => ({
   listPlatformConnections: () => listPlatformConnectionsMock(),
 }))
 vi.mock("@/lib/social/bootstrap", () => ({
-  bootstrapPlugins: (conns: unknown, opts: unknown) => bootstrapPluginsMock(conns, opts),
+  bootstrapPlugins: (conns: unknown) => bootstrapPluginsMock(conns),
 }))
 vi.mock("@/lib/social/registry", () => ({
   pluginRegistry: {

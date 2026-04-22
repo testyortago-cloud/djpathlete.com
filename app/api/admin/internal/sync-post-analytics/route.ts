@@ -16,18 +16,7 @@ const BodySchema = z.object({ socialPostId: z.string().uuid() })
 
 async function noopBootstrap() {
   const connections = await listPlatformConnections()
-  bootstrapPlugins(connections, {
-    // fetchAnalytics paths don't need real push/email senders — TikTok's
-    // analytics stub ignores them. Stub them anyway so bootstrap is safe.
-    tiktokEmail: "",
-    tiktokFcmToken: null,
-    async sendPush() {
-      /* not used on the analytics path */
-    },
-    async sendEmail() {
-      /* not used on the analytics path */
-    },
-  })
+  bootstrapPlugins(connections)
 }
 
 export async function POST(request: NextRequest) {

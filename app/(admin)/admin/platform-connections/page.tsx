@@ -30,6 +30,7 @@ const DISPLAY_ORDER: SocialPlatform[] = ["facebook", "instagram", "tiktok", "you
 const OAUTH_PRIMARY: Partial<Record<SocialPlatform, { primary: SocialPlatform; path: string }>> = {
   youtube: { primary: "youtube", path: "youtube" },
   facebook: { primary: "facebook", path: "facebook" },
+  tiktok: { primary: "tiktok", path: "tiktok" },
 }
 
 const SHARED_PAIR: Partial<Record<SocialPlatform, { sharesWith: string }>> = {

@@ -9,21 +9,14 @@ import { createFacebookPlugin, type FacebookCredentials } from "./plugins/facebo
 import { createInstagramPlugin, type InstagramCredentials } from "./plugins/instagram"
 import { createYouTubePlugin, type YouTubeCredentials } from "./plugins/youtube"
 import { createYouTubeShortsPlugin } from "./plugins/youtube-shorts"
-import { createTikTokPlugin, type TikTokHybridConfig } from "./plugins/tiktok"
+import { createTikTokPlugin, type TikTokCredentials } from "./plugins/tiktok"
 import { createLinkedInPlugin, type LinkedInCredentials } from "./plugins/linkedin"
-
-export interface BootstrapOptions {
-  tiktokEmail: string
-  tiktokFcmToken: string | null
-  sendPush: TikTokHybridConfig["sendPush"]
-  sendEmail: TikTokHybridConfig["sendEmail"]
-}
 
 function hasKeys(obj: Record<string, unknown>, keys: string[]): boolean {
   return keys.every((k) => typeof obj[k] === "string" && (obj[k] as string).length > 0)
 }
 
-export function bootstrapPlugins(connections: PlatformConnection[], options: BootstrapOptions): void {
+export function bootstrapPlugins(connections: PlatformConnection[]): void {
   pluginRegistry.reset()
 
   for (const conn of connections) {
@@ -56,14 +49,9 @@ export function bootstrapPlugins(connections: PlatformConnection[], options: Boo
         break
 
       case "tiktok":
-        pluginRegistry.register(
-          createTikTokPlugin({
-            user_email: options.tiktokEmail,
-            fcm_token: options.tiktokFcmToken,
-            sendPush: options.sendPush,
-            sendEmail: options.sendEmail,
-          }),
-        )
+        if (hasKeys(creds, ["access_token", "refresh_token", "client_key", "client_secret"])) {
+          pluginRegistry.register(createTikTokPlugin(creds as unknown as TikTokCredentials))
+        }
         break
 
       case "linkedin":
