@@ -98,14 +98,27 @@ export default async function PlatformConnectionsPage() {
                 <div className="flex items-center gap-3">
                   {statusBadge(c.status)}
                   {c.plugin_name === "youtube" ? (
-                    <Link
-                      href="/api/admin/platform-connections/youtube/connect"
-                      prefetch={false}
-                      aria-label={c.status === "connected" ? "Reconnect YouTube" : "Connect YouTube"}
-                      className="text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-                    >
-                      {c.status === "connected" ? "Reconnect" : "Connect"}
-                    </Link>
+                    <>
+                      <Link
+                        href="/api/admin/platform-connections/youtube/connect"
+                        prefetch={false}
+                        aria-label={c.status === "connected" ? "Reconnect YouTube" : "Connect YouTube"}
+                        className="text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                      >
+                        {c.status === "connected" ? "Reconnect" : "Connect"}
+                      </Link>
+                      {c.status === "connected" ? (
+                        <form action="/api/admin/platform-connections/youtube/disconnect" method="post">
+                          <button
+                            type="submit"
+                            aria-label="Disconnect YouTube"
+                            className="text-xs px-3 py-1.5 rounded-md border border-border text-muted-foreground hover:text-error hover:border-error/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                          >
+                            Disconnect
+                          </button>
+                        </form>
+                      ) : null}
+                    </>
                   ) : c.plugin_name === "youtube_shorts" ? (
                     <span
                       aria-label="YouTube Shorts shares its connection with YouTube"

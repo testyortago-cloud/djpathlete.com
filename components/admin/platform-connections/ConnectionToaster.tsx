@@ -22,15 +22,18 @@ export function ConnectionToaster() {
     if (fired.current) return
 
     const connected = searchParams.get("connected")
+    const disconnected = searchParams.get("disconnected")
     const error = searchParams.get("error")
     const reason = searchParams.get("reason")
 
-    if (!connected && !error) return
+    if (!connected && !disconnected && !error) return
 
     fired.current = true
 
     if (connected) {
       toast.success(`${labelFor(connected)} connected successfully.`)
+    } else if (disconnected) {
+      toast.success(`${labelFor(disconnected)} disconnected.`)
     } else if (error) {
       toast.error(
         `Couldn't connect ${labelFor(error)}. ${reason ? (ERROR_COPY[reason] ?? `(${reason})`) : ""}`.trim(),
@@ -39,6 +42,7 @@ export function ConnectionToaster() {
 
     const params = new URLSearchParams(searchParams.toString())
     params.delete("connected")
+    params.delete("disconnected")
     params.delete("error")
     params.delete("reason")
     const query = params.toString()
