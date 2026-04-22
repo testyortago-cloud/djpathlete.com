@@ -31,6 +31,7 @@ const OAUTH_PRIMARY: Partial<Record<SocialPlatform, { primary: SocialPlatform; p
   youtube: { primary: "youtube", path: "youtube" },
   facebook: { primary: "facebook", path: "facebook" },
   tiktok: { primary: "tiktok", path: "tiktok" },
+  linkedin: { primary: "linkedin", path: "linkedin" },
 }
 
 const SHARED_PAIR: Partial<Record<SocialPlatform, { sharesWith: string }>> = {
