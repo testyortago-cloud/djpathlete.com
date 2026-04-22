@@ -7,10 +7,14 @@ import { toast } from "sonner"
 const ERROR_COPY: Record<string, string> = {
   access_denied: "You cancelled the connection before finishing.",
   state_mismatch: "Security check failed — please try connecting again.",
-  env_missing: "Server is missing YouTube credentials. Check Vercel env vars.",
-  token_exchange: "Google rejected the authorization code. Please try again.",
-  missing_refresh_token: "Google didn't return a refresh token. Try again and make sure you grant all permissions.",
-  db_write: "Connected with Google, but saving the tokens failed. Try again.",
+  env_missing: "Server is missing platform credentials. Check Vercel env vars.",
+  token_exchange: "The platform rejected the authorization code. Please try again.",
+  missing_refresh_token:
+    "No refresh token was returned. Try again and make sure you grant all permissions.",
+  pages_lookup: "Couldn't read your Facebook Pages. Make sure you granted the Pages permissions.",
+  no_pages:
+    "No Facebook Pages found on this account. Create a Page (or confirm admin access) and try again.",
+  db_write: "Connected successfully, but saving the tokens failed. Try again.",
 }
 
 export function ConnectionToaster() {

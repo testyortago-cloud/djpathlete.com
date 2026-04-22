@@ -24,6 +24,81 @@ const PLUGIN_META: Record<SocialPlatform, PluginMeta> = {
 
 const DISPLAY_ORDER: SocialPlatform[] = ["facebook", "instagram", "tiktok", "youtube", "youtube_shorts", "linkedin"]
 
+// Platforms that drive their own OAuth flow. Paired platforms (youtube_shorts,
+// instagram) ride on the same OAuth grant as their parent — they show a
+// "Shares X" badge instead of their own buttons.
+const OAUTH_PRIMARY: Partial<Record<SocialPlatform, { primary: SocialPlatform; path: string }>> = {
+  youtube: { primary: "youtube", path: "youtube" },
+  facebook: { primary: "facebook", path: "facebook" },
+}
+
+const SHARED_PAIR: Partial<Record<SocialPlatform, { sharesWith: string }>> = {
+  youtube_shorts: { sharesWith: "YouTube" },
+  instagram: { sharesWith: "Facebook" },
+}
+
+function PlatformActions({
+  connection,
+  label,
+}: {
+  connection: PlatformConnection
+  label: string
+}) {
+  const oauth = OAUTH_PRIMARY[connection.plugin_name]
+  const shared = SHARED_PAIR[connection.plugin_name]
+
+  if (oauth) {
+    const connected = connection.status === "connected"
+    return (
+      <>
+        <Link
+          href={`/api/admin/platform-connections/${oauth.path}/connect`}
+          prefetch={false}
+          aria-label={connected ? `Reconnect ${label}` : `Connect ${label}`}
+          className="text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+        >
+          {connected ? "Reconnect" : "Connect"}
+        </Link>
+        {connected ? (
+          <form action={`/api/admin/platform-connections/${oauth.path}/disconnect`} method="post">
+            <button
+              type="submit"
+              aria-label={`Disconnect ${label}`}
+              className="text-xs px-3 py-1.5 rounded-md border border-border text-muted-foreground hover:text-error hover:border-error/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+            >
+              Disconnect
+            </button>
+          </form>
+        ) : null}
+      </>
+    )
+  }
+
+  if (shared) {
+    return (
+      <span
+        aria-label={`${label} shares its connection with ${shared.sharesWith}`}
+        className="text-xs px-3 py-1.5 rounded-md bg-muted/40 text-muted-foreground"
+        title={`${label} shares the ${shared.sharesWith} connection — connect ${shared.sharesWith} above.`}
+      >
+        Shares {shared.sharesWith}
+      </span>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      disabled
+      aria-label={`Connect ${label} (available in Phase 2)`}
+      className="text-xs px-3 py-1.5 rounded-md bg-primary/5 text-muted-foreground cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+      title="OAuth connect ships in Phase 2"
+    >
+      Connect
+    </button>
+  )
+}
+
 function statusBadge(status: PlatformConnection["status"]) {
   if (status === "connected") {
     return (
@@ -97,47 +172,7 @@ export default async function PlatformConnectionsPage() {
                 </div>
                 <div className="flex items-center gap-3">
                   {statusBadge(c.status)}
-                  {c.plugin_name === "youtube" ? (
-                    <>
-                      <Link
-                        href="/api/admin/platform-connections/youtube/connect"
-                        prefetch={false}
-                        aria-label={c.status === "connected" ? "Reconnect YouTube" : "Connect YouTube"}
-                        className="text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-                      >
-                        {c.status === "connected" ? "Reconnect" : "Connect"}
-                      </Link>
-                      {c.status === "connected" ? (
-                        <form action="/api/admin/platform-connections/youtube/disconnect" method="post">
-                          <button
-                            type="submit"
-                            aria-label="Disconnect YouTube"
-                            className="text-xs px-3 py-1.5 rounded-md border border-border text-muted-foreground hover:text-error hover:border-error/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-                          >
-                            Disconnect
-                          </button>
-                        </form>
-                      ) : null}
-                    </>
-                  ) : c.plugin_name === "youtube_shorts" ? (
-                    <span
-                      aria-label="YouTube Shorts shares its connection with YouTube"
-                      className="text-xs px-3 py-1.5 rounded-md bg-muted/40 text-muted-foreground"
-                      title="Shorts shares the YouTube connection — connect YouTube above."
-                    >
-                      Shares YouTube
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled
-                      aria-label={`Connect ${meta.label} (available in Phase 2)`}
-                      className="text-xs px-3 py-1.5 rounded-md bg-primary/5 text-muted-foreground cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-                      title="OAuth connect ships in Phase 2"
-                    >
-                      Connect
-                    </button>
-                  )}
+                  <PlatformActions connection={c} label={meta.label} />
                 </div>
               </div>
               <SetupGuide
