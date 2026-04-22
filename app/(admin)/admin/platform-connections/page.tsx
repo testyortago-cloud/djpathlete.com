@@ -1,8 +1,10 @@
+import Link from "next/link"
 import { CheckCircle, Pause, XCircle, Circle, Facebook, Instagram, Music2, Youtube, Linkedin } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { listPlatformConnections } from "@/lib/db"
 import type { PlatformConnection, SocialPlatform } from "@/types/database"
 import { SetupGuide } from "@/components/admin/platform-connections/SetupGuide"
+import { ConnectionToaster } from "@/components/admin/platform-connections/ConnectionToaster"
 
 export const metadata = { title: "Platform Connections" }
 
@@ -70,6 +72,7 @@ export default async function PlatformConnectionsPage() {
 
   return (
     <div>
+      <ConnectionToaster />
       <h1 className="text-2xl font-semibold text-primary mb-6">Platform Connections</h1>
       <p className="text-sm text-muted-foreground mb-6">
         Activate each platform when you&apos;re ready. You can do this at any time — the AI keeps generating captions
@@ -94,15 +97,34 @@ export default async function PlatformConnectionsPage() {
                 </div>
                 <div className="flex items-center gap-3">
                   {statusBadge(c.status)}
-                  <button
-                    type="button"
-                    disabled
-                    aria-label={`Connect ${meta.label} (available in Phase 2)`}
-                    className="text-xs px-3 py-1.5 rounded-md bg-primary/5 text-muted-foreground cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-                    title="OAuth connect ships in Phase 2"
-                  >
-                    Connect
-                  </button>
+                  {c.plugin_name === "youtube" ? (
+                    <Link
+                      href="/api/admin/platform-connections/youtube/connect"
+                      prefetch={false}
+                      aria-label={c.status === "connected" ? "Reconnect YouTube" : "Connect YouTube"}
+                      className="text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                    >
+                      {c.status === "connected" ? "Reconnect" : "Connect"}
+                    </Link>
+                  ) : c.plugin_name === "youtube_shorts" ? (
+                    <span
+                      aria-label="YouTube Shorts shares its connection with YouTube"
+                      className="text-xs px-3 py-1.5 rounded-md bg-muted/40 text-muted-foreground"
+                      title="Shorts shares the YouTube connection — connect YouTube above."
+                    >
+                      Shares YouTube
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled
+                      aria-label={`Connect ${meta.label} (available in Phase 2)`}
+                      className="text-xs px-3 py-1.5 rounded-md bg-primary/5 text-muted-foreground cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                      title="OAuth connect ships in Phase 2"
+                    >
+                      Connect
+                    </button>
+                  )}
                 </div>
               </div>
               <SetupGuide
