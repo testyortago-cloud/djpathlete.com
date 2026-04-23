@@ -7,7 +7,7 @@ import crypto from "crypto"
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 
-const SCOPES = ["user.info.basic", "user.info.profile", "user.info.stats", "video.publish", "video.list"]
+const SCOPES = ["user.info.basic", "video.publish", "video.upload"]
 
 const STATE_COOKIE = "tk_oauth_state"
 const STATE_TTL_SECONDS = 60 * 10 // 10 minutes

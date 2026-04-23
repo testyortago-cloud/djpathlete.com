@@ -14,7 +14,7 @@ import { connectPlatform } from "@/lib/db/platform-connections"
 const STATE_COOKIE = "tk_oauth_state"
 const TOKEN_URL = "https://open.tiktokapis.com/v2/oauth/token/"
 const USER_INFO_URL =
-  "https://open.tiktokapis.com/v2/user/info/?fields=open_id,union_id,display_name,username"
+  "https://open.tiktokapis.com/v2/user/info/?fields=open_id,union_id,display_name,avatar_url"
 
 function siteUrl() {
   return (process.env.NEXTAUTH_URL ?? "").replace(/\/$/, "")
@@ -94,12 +94,10 @@ export async function GET(request: NextRequest) {
     })
     if (userResp.ok) {
       const userData = (await userResp.json()) as {
-        data?: { user?: { username?: string; display_name?: string } }
+        data?: { user?: { display_name?: string } }
       }
       const user = userData.data?.user
-      accountHandle = user?.username
-        ? `@${user.username}`
-        : (user?.display_name ?? null)
+      accountHandle = user?.display_name ?? null
     }
   } catch (err) {
     console.warn("[tiktok/callback] user info lookup failed (non-fatal)", err)
