@@ -4,7 +4,7 @@
 // and plugin registry. The route wires in the real bootstrap with push
 // + email senders, then delegates here.
 
-import { listSocialPosts, updateSocialPost } from "@/lib/db/social-posts"
+import { listSocialPosts, updateSocialPost, getSocialPostWithMedia } from "@/lib/db/social-posts"
 import { listPlatformConnections } from "@/lib/db/platform-connections"
 import { pluginRegistry } from "@/lib/social/registry"
 import { bootstrapPlugins } from "@/lib/social/bootstrap"
@@ -66,14 +66,46 @@ async function publishOnePost(post: SocialPost): Promise<"published" | "failed">
     return "failed"
   }
 
-  const mediaUrl = await resolveMediaUrl({
-    source_video_id: post.source_video_id,
-    media_url: post.media_url,
-  })
+  let mediaUrls: string[] | undefined
+
+  if (post.post_type === "carousel") {
+    const full = await getSocialPostWithMedia(post.id)
+    if (!full || full.media.length === 0) {
+      await updateSocialPost(post.id, {
+        approval_status: "failed",
+        rejection_notes: "Carousel post has no attached media",
+      })
+      return "failed"
+    }
+    const resolved: string[] = []
+    for (const slide of full.media) {
+      const url = await resolveMediaUrl({
+        source_video_id: null,
+        media_url: slide.asset?.public_url ?? null,
+      })
+      if (!url) {
+        await updateSocialPost(post.id, {
+          approval_status: "failed",
+          rejection_notes: `Failed to resolve URL for carousel slide at position ${slide.position}`,
+        })
+        return "failed"
+      }
+      resolved.push(url)
+    }
+    mediaUrls = resolved
+  }
+
+  const mediaUrl =
+    mediaUrls?.[0] ??
+    (await resolveMediaUrl({
+      source_video_id: post.source_video_id,
+      media_url: post.media_url,
+    }))
 
   const publishResult = await plugin.publish({
     content: post.content,
     mediaUrl,
+    mediaUrls,
     scheduledAt: null,
   })
 

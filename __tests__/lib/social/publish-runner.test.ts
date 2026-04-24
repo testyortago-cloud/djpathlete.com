@@ -8,10 +8,12 @@ const resolveMediaUrlMock = vi.fn()
 const registryGetMock = vi.fn()
 const registryResetMock = vi.fn()
 const registryRegisterMock = vi.fn()
+const getSocialPostWithMediaMock = vi.fn()
 
 vi.mock("@/lib/db/social-posts", () => ({
   listSocialPosts: (filters?: unknown) => listSocialPostsMock(filters),
   updateSocialPost: (id: string, u: unknown) => updateSocialPostMock(id, u),
+  getSocialPostWithMedia: (id: string) => getSocialPostWithMediaMock(id),
 }))
 vi.mock("@/lib/db/platform-connections", () => ({
   listPlatformConnections: () => listPlatformConnectionsMock(),
@@ -142,6 +144,98 @@ describe("runScheduledPublish", () => {
       approval_status: "failed",
       rejection_notes: "Invalid token",
     }))
+  })
+
+  it("resolves each slide URL for a carousel post and passes mediaUrls to the plugin", async () => {
+    const now = new Date("2026-05-01T12:00:00Z")
+    const duePost = {
+      id: "carousel-1",
+      platform: "instagram",
+      content: "Swipe for 3 ideas",
+      media_url: "images/u/1-a.jpg",
+      source_video_id: null,
+      approval_status: "scheduled",
+      scheduled_at: "2026-05-01T11:55:00Z",
+      post_type: "carousel",
+    }
+
+    listSocialPostsMock.mockResolvedValue([duePost])
+    listPlatformConnectionsMock.mockResolvedValue([])
+    getSocialPostWithMediaMock.mockResolvedValue({
+      ...duePost,
+      media: [
+        { media_asset_id: "a1", position: 0, overlay_text: null, overlay_metadata: null,
+          asset: { id: "a1", kind: "image", public_url: "images/u/1-a.jpg",
+                   storage_path: "images/u/1-a.jpg", mime_type: "image/jpeg",
+                   width: null, height: null, duration_ms: null } },
+        { media_asset_id: "a2", position: 1, overlay_text: null, overlay_metadata: null,
+          asset: { id: "a2", kind: "image", public_url: "images/u/1-b.jpg",
+                   storage_path: "images/u/1-b.jpg", mime_type: "image/jpeg",
+                   width: null, height: null, duration_ms: null } },
+        { media_asset_id: "a3", position: 2, overlay_text: null, overlay_metadata: null,
+          asset: { id: "a3", kind: "image", public_url: "images/u/1-c.jpg",
+                   storage_path: "images/u/1-c.jpg", mime_type: "image/jpeg",
+                   width: null, height: null, duration_ms: null } },
+      ],
+    })
+
+    // resolveMediaUrl returns a signed URL containing the path — map path → signed.
+    resolveMediaUrlMock.mockImplementation(async (input: { media_url: string | null }) => {
+      if (!input.media_url) return null
+      return `https://signed.example/${input.media_url.split("/").pop()}`
+    })
+
+    const publishPluginMock = vi.fn().mockResolvedValue({ success: true, platform_post_id: "ig-post-1" })
+    registryGetMock.mockReturnValue({
+      name: "instagram",
+      publish: publishPluginMock,
+    })
+
+    const result = await runScheduledPublish({ now })
+    expect(result).toEqual({ considered: 1, published: 1, failed: 0 })
+
+    // Plugin was called once with mediaUrls containing 3 signed URLs in order
+    expect(publishPluginMock).toHaveBeenCalledOnce()
+    const publishInput = publishPluginMock.mock.calls[0][0]
+    expect(publishInput.content).toBe("Swipe for 3 ideas")
+    expect(publishInput.mediaUrls).toEqual([
+      "https://signed.example/1-a.jpg",
+      "https://signed.example/1-b.jpg",
+      "https://signed.example/1-c.jpg",
+    ])
+    // mediaUrl (singular) should still be populated to slide 0 for plugin backcompat
+    expect(publishInput.mediaUrl).toBe("https://signed.example/1-a.jpg")
+  })
+
+  it("marks the carousel post as failed when getSocialPostWithMedia returns null", async () => {
+    const now = new Date("2026-05-01T12:00:00Z")
+    const duePost = {
+      id: "carousel-missing",
+      platform: "instagram",
+      content: "x",
+      media_url: "images/u/gone.jpg",
+      source_video_id: null,
+      approval_status: "scheduled",
+      scheduled_at: "2026-05-01T11:55:00Z",
+      post_type: "carousel",
+    }
+    listSocialPostsMock.mockResolvedValue([duePost])
+    listPlatformConnectionsMock.mockResolvedValue([])
+    getSocialPostWithMediaMock.mockResolvedValue(null)
+
+    const publishPluginMock = vi.fn()
+    registryGetMock.mockReturnValue({
+      name: "instagram",
+      publish: publishPluginMock,
+    })
+
+    const result = await runScheduledPublish({ now })
+    expect(result.failed).toBe(1)
+    expect(publishPluginMock).not.toHaveBeenCalled()
+    expect(updateSocialPostMock).toHaveBeenCalledWith(
+      "carousel-missing",
+      expect.objectContaining({ approval_status: "failed" }),
+    )
   })
 
   it("skips scheduled posts whose scheduled_at is still in the future", async () => {
