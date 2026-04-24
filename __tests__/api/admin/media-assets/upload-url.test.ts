@@ -4,6 +4,7 @@ import { NextRequest } from "next/server"
 const mockAuth = vi.fn()
 const mockGetSignedUrl = vi.fn()
 const mockCreateMediaAsset = vi.fn()
+const mockCreateAiJob = vi.fn()
 
 vi.mock("@/lib/auth", () => ({ auth: () => mockAuth() }))
 vi.mock("@/lib/firebase-admin", () => ({
@@ -16,6 +17,9 @@ vi.mock("@/lib/firebase-admin", () => ({
 vi.mock("@/lib/db/media-assets", () => ({
   createMediaAsset: (...args: unknown[]) => mockCreateMediaAsset(...args),
 }))
+vi.mock("@/lib/ai-jobs", () => ({
+  createAiJob: (...args: unknown[]) => mockCreateAiJob(...args),
+}))
 
 describe("POST /api/admin/media-assets/upload-url", () => {
   beforeEach(() => {
@@ -25,6 +29,7 @@ describe("POST /api/admin/media-assets/upload-url", () => {
       id: "asset-123",
       ...input,
     }))
+    mockCreateAiJob.mockResolvedValue({ jobId: "job-xyz", status: "pending" })
   })
 
   async function call(body: unknown, opts?: { role?: "admin" | "client" | null }) {
@@ -66,5 +71,24 @@ describe("POST /api/admin/media-assets/upload-url", () => {
     expect(call0.kind).toBe("image")
     expect(call0.mime_type).toBe("image/jpeg")
     expect(call0.created_by).toBe("user-1")
+  })
+
+  it("enqueues an image_vision job after the asset row is created", async () => {
+    const res = await call({ filename: "photo.jpg", contentType: "image/jpeg" })
+    expect(res.status).toBe(201)
+    expect(mockCreateAiJob).toHaveBeenCalledOnce()
+    expect(mockCreateAiJob).toHaveBeenCalledWith({
+      type: "image_vision",
+      userId: "user-1",
+      input: { mediaAssetId: "asset-123" },
+    })
+  })
+
+  it("still succeeds even if enqueuing the vision job fails", async () => {
+    mockCreateAiJob.mockRejectedValueOnce(new Error("firestore down"))
+    const res = await call({ filename: "photo.jpg", contentType: "image/jpeg" })
+    expect(res.status).toBe(201)
+    const body = await res.json()
+    expect(body.mediaAssetId).toBe("asset-123")
   })
 })

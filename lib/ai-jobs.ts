@@ -23,6 +23,7 @@ export type AiJobType =
   | "social_fanout"
   | "video_transcription"
   | "video_vision"
+  | "image_vision"
   | "tavily_research"
   | "tavily_fact_check"
   | "tavily_trending_scan"

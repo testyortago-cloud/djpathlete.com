@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { getAdminStorage } from "@/lib/firebase-admin"
 import { createMediaAsset } from "@/lib/db/media-assets"
 import { mediaAssetUploadUrlSchema } from "@/lib/validators/media-asset"
+import { createAiJob } from "@/lib/ai-jobs"
 
 const UPLOAD_URL_EXPIRY_MS = 15 * 60 * 1000
 
@@ -52,6 +53,19 @@ export async function POST(request: NextRequest) {
     ai_analysis: null,
     created_by: session.user.id,
   })
+
+  // Fire-and-forget: kick off vision AI alt-text. Failure must not block the
+  // upload response — the asset row is fine without ai metadata and a later
+  // manual "regenerate" could populate it.
+  try {
+    await createAiJob({
+      type: "image_vision",
+      userId: session.user.id,
+      input: { mediaAssetId: asset.id },
+    })
+  } catch (err) {
+    console.error("[upload-url] failed to enqueue image_vision job", err)
+  }
 
   return NextResponse.json(
     {
