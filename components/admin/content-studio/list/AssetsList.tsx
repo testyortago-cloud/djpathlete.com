@@ -9,6 +9,7 @@ type OriginFilter = "all" | "uploaded" | "video_derived" | "quote_card"
 
 interface AssetsListProps {
   assets: AssetWithPostCount[]
+  thumbnailUrls?: Record<string, string>
 }
 
 function originOf(asset: AssetWithPostCount): { key: OriginFilter; label: string } {
@@ -34,7 +35,7 @@ function filenameFromStoragePath(path: string): string {
   return last && last.length > 0 ? last : path
 }
 
-export function AssetsList({ assets }: AssetsListProps) {
+export function AssetsList({ assets, thumbnailUrls }: AssetsListProps) {
   const [kindFilter, setKindFilter] = useState<KindFilter>("all")
   const [originFilter, setOriginFilter] = useState<OriginFilter>("all")
 
@@ -96,9 +97,19 @@ export function AssetsList({ assets }: AssetsListProps) {
                 key={asset.id}
                 className="flex items-start gap-3 px-4 py-3"
               >
-                <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/10">
-                  <Icon className="size-4 text-primary" />
-                </span>
+                {asset.kind === "image" && thumbnailUrls?.[asset.id] ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={thumbnailUrls[asset.id]}
+                    alt={asset.ai_alt_text ?? ""}
+                    loading="lazy"
+                    className="size-10 shrink-0 rounded-md object-cover ring-1 ring-border"
+                  />
+                ) : (
+                  <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-md bg-primary/10">
+                    <Icon className="size-4 text-primary" />
+                  </span>
+                )}
                 <div className="flex-1 min-w-0 space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <p

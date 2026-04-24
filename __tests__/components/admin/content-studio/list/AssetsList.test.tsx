@@ -112,4 +112,27 @@ describe("AssetsList", () => {
     render(<AssetsList assets={[]} />)
     expect(screen.getByText(/no assets/i)).toBeInTheDocument()
   })
+
+  it("renders a thumbnail img for image assets when thumbnailUrls are provided", () => {
+    const assets = [
+      makeAsset({ id: "a-1", kind: "image", storage_path: "images/u/pic.jpg", ai_alt_text: "A squat" }),
+    ]
+    render(<AssetsList assets={assets} thumbnailUrls={{ "a-1": "https://signed.example/thumb" }} />)
+    const img = screen.getByRole("img", { name: /a squat/i })
+    expect(img).toHaveAttribute("src", "https://signed.example/thumb")
+    expect(img).toHaveAttribute("loading", "lazy")
+  })
+
+  it("falls back to the icon when thumbnail URL is absent", () => {
+    const assets = [makeAsset({ id: "a-missing", kind: "image" })]
+    render(<AssetsList assets={assets} />)
+    expect(screen.queryByRole("img")).not.toBeInTheDocument()
+  })
+
+  it("renders the film icon for video assets regardless of thumbnailUrls", () => {
+    const assets = [makeAsset({ id: "v-1", kind: "video", storage_path: "videos/u/clip.mp4" })]
+    render(<AssetsList assets={assets} thumbnailUrls={{ "v-1": "https://signed.example/ignored" }} />)
+    // Videos always fall back to the icon; no img element rendered
+    expect(screen.queryByRole("img")).not.toBeInTheDocument()
+  })
 })
