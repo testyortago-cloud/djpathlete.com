@@ -69,4 +69,4 @@ COMMENT ON TABLE media_assets IS
   'First-class media entity. Sources: direct upload (created_by set), video-derived (derived_from_video_id set), or AI-generated (ai_analysis.origin set). See spec 2026-04-24-content-studio-multimedia-design.md.';
 
 COMMENT ON TABLE social_post_media IS
-  'Join table linking social_posts to media_assets with ordering. position=0 is the primary asset (mirrored into social_posts.media_url via trigger).';
+  'Join table linking social_posts to media_assets with ordering. position=0 is the primary asset (will be mirrored into social_posts.media_url via the trigger added in a later phase).';
