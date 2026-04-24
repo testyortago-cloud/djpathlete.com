@@ -69,9 +69,9 @@ describe("POST /api/admin/content-studio/posts — carousel path", () => {
     expect(mockAttach).toHaveBeenNthCalledWith(3, "post-1", "a-3", 2)
   })
 
-  it("rejects carousel on non-supported platforms", async () => {
+  it("rejects carousel on tiktok (pending Phase 2d)", async () => {
     const res = await call({
-      platform: "linkedin",
+      platform: "tiktok",
       caption: "x",
       postType: "carousel",
       mediaAssetIds: ["a-1", "a-2"],
@@ -152,6 +152,36 @@ describe("POST /api/admin/content-studio/posts — carousel path", () => {
     })
     expect(res.status).toBe(400)
     expect(mockCreate).not.toHaveBeenCalled()
+  })
+
+  it("rejects LinkedIn carousel when an asset is WebP", async () => {
+    mockGetAsset.mockImplementation(async (id: string) =>
+      id === "a-2" ? { id, kind: "image", mime_type: "image/webp" } : { id, kind: "image", mime_type: "image/jpeg" },
+    )
+    const res = await call({
+      platform: "linkedin",
+      caption: "x",
+      postType: "carousel",
+      mediaAssetIds: ["a-1", "a-2", "a-3"],
+    })
+    expect(res.status).toBe(400)
+    expect(mockCreate).not.toHaveBeenCalled()
+  })
+
+  it("accepts LinkedIn carousel with JPEG, PNG, and GIF", async () => {
+    mockGetAsset.mockImplementation(async (id: string) => ({
+      id,
+      kind: "image",
+      mime_type: id === "a-1" ? "image/jpeg" : id === "a-2" ? "image/png" : "image/gif",
+    }))
+    const res = await call({
+      platform: "linkedin",
+      caption: "x",
+      postType: "carousel",
+      mediaAssetIds: ["a-1", "a-2", "a-3"],
+    })
+    expect(res.status).toBe(200)
+    expect(mockCreate).toHaveBeenCalledOnce()
   })
 
   it("rolls back the post when a midway attachMedia fails", async () => {

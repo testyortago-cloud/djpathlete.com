@@ -97,6 +97,17 @@ export async function POST(request: NextRequest) {
           { status: 400 },
         )
       }
+      if (
+        platform === "linkedin" &&
+        asset.mime_type !== "image/jpeg" &&
+        asset.mime_type !== "image/png" &&
+        asset.mime_type !== "image/gif"
+      ) {
+        return NextResponse.json(
+          { error: `LinkedIn multi-image posts require JPEG/PNG/GIF — ${id} is ${asset.mime_type}` },
+          { status: 400 },
+        )
+      }
     }
   }
 
