@@ -43,7 +43,18 @@ export function createFacebookPlugin(credentials: FacebookCredentials): PublishP
     },
 
     async publish(input: PublishInput): Promise<PublishResult> {
-      const { content, mediaUrl, scheduledAt } = input
+      const { content, mediaUrl, mediaUrls, scheduledAt } = input
+
+      // Carousel branch — 2+ slides
+      if (mediaUrls && mediaUrls.length >= 2) {
+        return publishCarousel({
+          accessToken: access_token,
+          pageId: page_id,
+          message: content,
+          slideUrls: mediaUrls,
+          scheduledAt,
+        })
+      }
 
       let endpoint: string
       let body: Record<string, unknown>
@@ -116,7 +127,57 @@ export function createFacebookPlugin(credentials: FacebookCredentials): PublishP
   }
 }
 
-function extractFbError(raw: string): string {
+interface CarouselArgs {
+  accessToken: string
+  pageId: string
+  message: string
+  slideUrls: string[]
+  scheduledAt: string | null
+}
+
+async function publishCarousel(args: CarouselArgs): Promise<PublishResult> {
+  const { accessToken, pageId, message, slideUrls, scheduledAt } = args
+
+  // Step 1: upload each photo unpublished. Sequential to keep error-surface simple
+  // — if one fails, stop and return. Unpublished photos on FB auto-expire in ~24h.
+  const mediaFbIds: string[] = []
+  for (const url of slideUrls) {
+    const photo = await fetchJson<{ id?: string; error?: { message: string } }>(
+      `${GRAPH_API_BASE}/${pageId}/photos`,
+      {
+        method: "POST",
+        body: { url, published: false, access_token: accessToken },
+      },
+    )
+    if (!photo.ok || !photo.data?.id) {
+      return { success: false, error: extractFbError(photo.errorText) }
+    }
+    mediaFbIds.push(photo.data.id)
+  }
+
+  // Step 2: create the feed post referencing all photos in order
+  const feedBody: Record<string, unknown> = {
+    message,
+    attached_media: mediaFbIds.map((id) => ({ media_fbid: id })),
+    access_token: accessToken,
+  }
+  if (scheduledAt) {
+    feedBody.published = false
+    feedBody.scheduled_publish_time = Math.floor(new Date(scheduledAt).getTime() / 1000)
+  }
+
+  const feed = await fetchJson<{ id?: string; error?: { message: string } }>(
+    `${GRAPH_API_BASE}/${pageId}/feed`,
+    { method: "POST", body: feedBody },
+  )
+  if (!feed.ok || !feed.data?.id) {
+    return { success: false, error: extractFbError(feed.errorText) }
+  }
+  return { success: true, platform_post_id: feed.data.id }
+}
+
+function extractFbError(raw: string | null): string {
+  if (!raw) return "Facebook publish failed"
   try {
     const parsed = JSON.parse(raw) as { error?: { message?: string } }
     return parsed.error?.message ?? raw

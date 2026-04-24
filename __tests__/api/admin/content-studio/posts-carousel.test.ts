@@ -71,7 +71,7 @@ describe("POST /api/admin/content-studio/posts — carousel path", () => {
 
   it("rejects carousel on non-supported platforms", async () => {
     const res = await call({
-      platform: "facebook",
+      platform: "linkedin",
       caption: "x",
       postType: "carousel",
       mediaAssetIds: ["a-1", "a-2"],
