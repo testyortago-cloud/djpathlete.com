@@ -29,6 +29,7 @@ const post = (id: string, o: Partial<SocialPost> = {}): SocialPost => ({
   platform: "instagram",
   content: "x",
   media_url: null,
+  post_type: "text",
   approval_status: "draft",
   scheduled_at: null,
   published_at: null,

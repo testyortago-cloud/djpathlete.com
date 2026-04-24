@@ -13,6 +13,7 @@ function mkPost(overrides: Partial<SocialPost>): SocialPost {
     platform: overrides.platform ?? "instagram",
     content: overrides.content ?? "sample caption",
     media_url: null,
+    post_type: overrides.post_type ?? "text",
     approval_status: overrides.approval_status ?? "draft",
     scheduled_at: null,
     published_at: overrides.published_at ?? null,

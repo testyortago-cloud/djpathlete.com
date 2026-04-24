@@ -56,6 +56,7 @@ const fixturePost = {
   platform: "instagram" as const,
   content: "Stay rotational.",
   media_url: null,
+  post_type: "video" as const,
   approval_status: "draft" as const,
   scheduled_at: null,
   published_at: null,
