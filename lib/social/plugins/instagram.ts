@@ -43,15 +43,15 @@ export function createInstagramPlugin(credentials: InstagramCredentials): Publis
     async publish(input: PublishInput): Promise<PublishResult> {
       const { content, mediaUrl, mediaUrls, postType } = input
 
-      // Story branch — single image, media_type=STORIES
+      // Story branch — single image or video, media_type=STORIES
       if (postType === "story") {
         if (!mediaUrl) {
-          return { success: false, error: "Instagram stories require an image URL" }
+          return { success: false, error: "Instagram stories require a media URL" }
         }
         return publishStoryPost({
           accessToken: access_token,
           igUserId: ig_user_id,
-          imageUrl: mediaUrl,
+          mediaUrl,
         })
       }
 
@@ -155,19 +155,28 @@ function extractIgError(raw: string | null): string {
 interface StoryArgs {
   accessToken: string
   igUserId: string
-  imageUrl: string
+  mediaUrl: string
 }
 
 async function publishStoryPost(args: StoryArgs): Promise<PublishResult> {
-  const { accessToken, igUserId, imageUrl } = args
+  const { accessToken, igUserId, mediaUrl } = args
+  const isVideo = VIDEO_EXTENSIONS.test(mediaUrl)
 
-  // Step 1: create Story container (caption NOT sent — IG ignores it on stories)
+  // Step 1: create Story container (caption NOT sent — IG ignores it on stories).
+  // Container body differs for image vs video: image_url vs video_url; media_type=STORIES for both.
+  const containerBody: Record<string, unknown> = {
+    media_type: "STORIES",
+    access_token: accessToken,
+  }
+  if (isVideo) {
+    containerBody.video_url = mediaUrl
+  } else {
+    containerBody.image_url = mediaUrl
+  }
+
   const container = await fetchJson<{ id?: string; error?: { message: string } }>(
     `${GRAPH_API_BASE}/${igUserId}/media`,
-    {
-      method: "POST",
-      body: { image_url: imageUrl, media_type: "STORIES", access_token: accessToken },
-    },
+    { method: "POST", body: containerBody },
   )
   if (!container.ok || !container.data?.id) {
     return { success: false, error: extractIgError(container.errorText) }
