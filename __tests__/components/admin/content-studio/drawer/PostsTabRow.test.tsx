@@ -72,4 +72,40 @@ describe("<PostsTabRow>", () => {
     // "Published [timestamp]" appears in the row footer when the post is published
     expect(screen.getByText(/Published\s+\d/)).toBeInTheDocument()
   })
+
+  it("hides Save caption button for Story posts", () => {
+    render(
+      <PostsTabRow
+        post={makePost({ post_type: "story", approval_status: "draft" })}
+        isExpanded={true}
+        onToggle={vi.fn()}
+        onMutate={vi.fn()}
+      />,
+    )
+    expect(screen.queryByRole("button", { name: /save caption/i })).not.toBeInTheDocument()
+  })
+
+  it("hides Approve button for Story posts", () => {
+    render(
+      <PostsTabRow
+        post={makePost({ post_type: "story", approval_status: "draft" })}
+        isExpanded={true}
+        onToggle={vi.fn()}
+        onMutate={vi.fn()}
+      />,
+    )
+    expect(screen.queryByRole("button", { name: /^approve$/i })).not.toBeInTheDocument()
+  })
+
+  it("shows Publish now button for draft Story posts", () => {
+    render(
+      <PostsTabRow
+        post={makePost({ post_type: "story", approval_status: "draft" })}
+        isExpanded={true}
+        onToggle={vi.fn()}
+        onMutate={vi.fn()}
+      />,
+    )
+    expect(screen.getByRole("button", { name: /publish now/i })).toBeInTheDocument()
+  })
 })

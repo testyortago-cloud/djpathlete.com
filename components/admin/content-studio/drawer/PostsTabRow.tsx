@@ -45,6 +45,7 @@ export function PostsTabRow({ post, isExpanded, onToggle, onMutate }: PostsTabRo
   const Icon = PLATFORM_ICONS[post.platform]
   const isPublished = post.approval_status === "published"
   const isFailed = post.approval_status === "failed"
+  const isStory = post.post_type === "story"
 
   async function approve() {
     setBusy("approve")
@@ -167,7 +168,7 @@ export function PostsTabRow({ post, isExpanded, onToggle, onMutate }: PostsTabRo
             />
           </label>
           <div className="flex flex-wrap gap-2">
-            {!isPublished && (
+            {!isPublished && !isStory && (
               <button
                 type="button"
                 onClick={save}
@@ -177,7 +178,17 @@ export function PostsTabRow({ post, isExpanded, onToggle, onMutate }: PostsTabRo
                 {busy === "save" ? "Saving..." : "Save caption"}
               </button>
             )}
-            {!isPublished && post.approval_status !== "approved" && (
+            {!isPublished && isStory && post.approval_status === "draft" && (
+              <button
+                type="button"
+                onClick={retry}
+                disabled={busy !== null}
+                className="text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-60 inline-flex items-center gap-1"
+              >
+                <Zap className="size-3" /> {busy === "retry" ? "Publishing..." : "Publish now"}
+              </button>
+            )}
+            {!isPublished && post.approval_status !== "approved" && !isStory && (
               <button
                 type="button"
                 onClick={approve}
