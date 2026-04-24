@@ -1,4 +1,4 @@
-import { Film, Image as ImageIcon } from "lucide-react"
+import { Film, Image as ImageIcon, Images } from "lucide-react"
 import type { PostType } from "@/types/database"
 
 interface PostTypeBadgeProps {
@@ -19,6 +19,13 @@ export function PostTypeBadge({ postType, className = "" }: PostTypeBadgeProps) 
     return (
       <span className={`${base} ${className}`.trim()}>
         <Film className="size-3" /> Video
+      </span>
+    )
+  }
+  if (postType === "carousel") {
+    return (
+      <span className={`${base} ${className}`.trim()}>
+        <Images className="size-3" /> Carousel
       </span>
     )
   }

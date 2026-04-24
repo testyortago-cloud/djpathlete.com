@@ -13,6 +13,11 @@ describe("PostTypeBadge", () => {
     expect(screen.getByText(/photo/i)).toBeInTheDocument()
   })
 
+  it("renders 'Carousel' for carousel", () => {
+    render(<PostTypeBadge postType="carousel" />)
+    expect(screen.getByText(/carousel/i)).toBeInTheDocument()
+  })
+
   it("renders nothing for unsupported post_type (graceful fallback)", () => {
     // @ts-expect-error intentional bad input
     const { container } = render(<PostTypeBadge postType="alien" />)
