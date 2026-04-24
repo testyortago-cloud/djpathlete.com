@@ -4,6 +4,13 @@ import type { SocialPlatform, PlatformConnection } from "@/types/database"
 export interface PublishInput {
   content: string
   mediaUrl: string | null
+  /**
+   * Ordered signed URLs for carousel slides. Populated by the publish runner
+   * when post_type === "carousel". Non-carousel posts omit this field.
+   * Plugins that don't support carousels can ignore it — the existing
+   * mediaUrl field still holds slide 0's URL as a backcompat mirror.
+   */
+  mediaUrls?: string[]
   scheduledAt: string | null
   metadata?: Record<string, unknown>
 }
