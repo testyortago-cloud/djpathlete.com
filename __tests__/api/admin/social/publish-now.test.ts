@@ -67,4 +67,37 @@ describe("POST /api/admin/social/posts/:id/publish-now", () => {
     expect(args[1].approval_status).toBe("scheduled")
     expect(args[1].rejection_notes).toBeNull()
   })
+
+  it("accepts draft status for Story posts (lightweight pipeline)", async () => {
+    getSocialPostByIdMock.mockResolvedValue({
+      id: "post-1",
+      approval_status: "draft",
+      post_type: "story",
+      platform: "instagram",
+    })
+    updateSocialPostMock.mockResolvedValue({
+      id: "post-1",
+      approval_status: "scheduled",
+      scheduled_at: new Date().toISOString(),
+    })
+
+    const res = await call("post-1")
+    expect(res.status).toBe(200)
+    expect(updateSocialPostMock).toHaveBeenCalledOnce()
+    const patch = updateSocialPostMock.mock.calls[0][1]
+    expect(patch.approval_status).toBe("scheduled")
+  })
+
+  it("still rejects draft status for non-Story posts (normal flow unchanged)", async () => {
+    getSocialPostByIdMock.mockResolvedValue({
+      id: "post-2",
+      approval_status: "draft",
+      post_type: "image",
+      platform: "instagram",
+    })
+
+    const res = await call("post-2")
+    expect(res.status).toBe(409)
+    expect(updateSocialPostMock).not.toHaveBeenCalled()
+  })
 })

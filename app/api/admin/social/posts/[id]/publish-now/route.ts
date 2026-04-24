@@ -23,11 +23,18 @@ export async function POST(
     return NextResponse.json({ error: "Social post not found" }, { status: 404 })
   }
 
-  const allowed = post.approval_status === "approved" || post.approval_status === "failed"
+  // Stories follow a lightweight pipeline (umbrella spec §5.6) — draft → published
+  // skipping the approved gate. Non-story posts still require approval first.
+  const isStoryDraftBypass =
+    post.approval_status === "draft" && post.post_type === "story"
+  const allowed =
+    post.approval_status === "approved" ||
+    post.approval_status === "failed" ||
+    isStoryDraftBypass
   if (!allowed) {
     return NextResponse.json(
       {
-        error: `Publish Now only works for approved or failed posts (current status: ${post.approval_status})`,
+        error: `Publish Now only works for approved, failed, or draft-Story posts (current status: ${post.approval_status})`,
       },
       { status: 409 },
     )
