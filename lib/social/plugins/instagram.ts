@@ -15,6 +15,9 @@ export interface InstagramCredentials {
 
 const VIDEO_EXTENSIONS = /\.(mp4|mov|webm|mkv)(\?|$)/i
 
+const CAROUSEL_POLL_MAX_ATTEMPTS = 5
+const CAROUSEL_POLL_INITIAL_DELAY_MS = 500
+
 function isVideoUrl(url: string): boolean {
   return VIDEO_EXTENSIONS.test(url)
 }
@@ -38,7 +41,17 @@ export function createInstagramPlugin(credentials: InstagramCredentials): Publis
     },
 
     async publish(input: PublishInput): Promise<PublishResult> {
-      const { content, mediaUrl } = input
+      const { content, mediaUrl, mediaUrls } = input
+
+      // Carousel branch — 2+ slides
+      if (mediaUrls && mediaUrls.length >= 2) {
+        return publishCarousel({
+          accessToken: access_token,
+          igUserId: ig_user_id,
+          caption: content,
+          slideUrls: mediaUrls,
+        })
+      }
 
       if (!mediaUrl) {
         return {
@@ -125,4 +138,115 @@ function extractIgError(raw: string | null): string {
   } catch {
     return raw
   }
+}
+
+interface CarouselArgs {
+  accessToken: string
+  igUserId: string
+  caption: string
+  slideUrls: string[]
+}
+
+async function publishCarousel(args: CarouselArgs): Promise<PublishResult> {
+  const { accessToken, igUserId, caption, slideUrls } = args
+
+  // Step 1: create a child container for each slide
+  const childIds: string[] = []
+  for (const url of slideUrls) {
+    const child = await fetchJson<{ id?: string; error?: { message: string } }>(
+      `${GRAPH_API_BASE}/${igUserId}/media`,
+      {
+        method: "POST",
+        body: {
+          image_url: url,
+          is_carousel_item: true,
+          access_token: accessToken,
+        },
+      },
+    )
+    if (!child.ok || !child.data?.id) {
+      return { success: false, error: extractIgError(child.errorText) }
+    }
+    childIds.push(child.data.id)
+  }
+
+  // Step 2: poll each child until FINISHED
+  for (const childId of childIds) {
+    const ready = await waitForContainerFinished({ accessToken, containerId: childId })
+    if (!ready.ok) return { success: false, error: ready.error }
+  }
+
+  // Step 3: create the parent CAROUSEL container
+  const parent = await fetchJson<{ id?: string; error?: { message: string } }>(
+    `${GRAPH_API_BASE}/${igUserId}/media`,
+    {
+      method: "POST",
+      body: {
+        media_type: "CAROUSEL",
+        children: childIds.join(","),
+        caption,
+        access_token: accessToken,
+      },
+    },
+  )
+  if (!parent.ok || !parent.data?.id) {
+    return { success: false, error: extractIgError(parent.errorText) }
+  }
+
+  // Step 4: publish
+  const publishRes = await fetchJson<{ id?: string }>(
+    `${GRAPH_API_BASE}/${igUserId}/media_publish`,
+    {
+      method: "POST",
+      body: { creation_id: parent.data.id, access_token: accessToken },
+    },
+  )
+  if (!publishRes.ok || !publishRes.data?.id) {
+    return { success: false, error: extractIgError(publishRes.errorText) }
+  }
+  return { success: true, platform_post_id: publishRes.data.id }
+}
+
+interface WaitArgs {
+  accessToken: string
+  containerId: string
+}
+
+async function waitForContainerFinished(
+  args: WaitArgs,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  let delay = CAROUSEL_POLL_INITIAL_DELAY_MS
+  for (let attempt = 0; attempt < CAROUSEL_POLL_MAX_ATTEMPTS; attempt += 1) {
+    const response = await fetchJson<{
+      status_code?: string
+      status?: string
+      error?: { message: string }
+    }>(
+      `${GRAPH_API_BASE}/${args.containerId}?fields=status_code,status&access_token=${encodeURIComponent(args.accessToken)}`,
+      { method: "GET" },
+    )
+    if (response.ok) {
+      const code = response.data?.status_code
+      if (code === "FINISHED") return { ok: true }
+      if (code === "ERROR" || code === "EXPIRED") {
+        return {
+          ok: false,
+          error: `Container ${args.containerId} ${code}: ${response.data?.status ?? ""}`.trim(),
+        }
+      }
+      // IN_PROGRESS or PUBLISHED — keep polling (shouldn't be PUBLISHED yet for a child)
+    }
+    if (attempt < CAROUSEL_POLL_MAX_ATTEMPTS - 1) {
+      await sleep(delay)
+      delay *= 2
+    }
+  }
+  return {
+    ok: false,
+    error: `Container ${args.containerId} did not reach FINISHED before timeout`,
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms))
 }
