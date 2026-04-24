@@ -40,8 +40,11 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
         return NextResponse.json({ error: "Event not found" }, { status: 404 })
       }
 
-      // Validate status transition (read-only, no DB write yet).
-      if (status) {
+      // Validate status transition (read-only, no DB write yet). A payload that
+      // echoes the current status is a no-op — the form sends it on every save
+      // even when the admin is only tweaking non-status fields, so don't treat
+      // that as a transition attempt.
+      if (status && status !== current.status) {
         const allowed = ALLOWED_STATUS_TRANSITIONS[current.status]
         if (!allowed.includes(status as "draft" | "published" | "cancelled" | "completed")) {
           return NextResponse.json(
