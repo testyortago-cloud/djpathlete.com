@@ -16,11 +16,18 @@ Split into three deliverables for clean shipping:
 
 | Sub-phase | Ships | Notes |
 |---|---|---|
-| **1a — Core image flow + IG/FB/LinkedIn publishing** | Image uploader UI + asset DAL wiring + ManualPostDialog type picker + API route updates + verify/extend IG, FB, LinkedIn plugins to publish images. Feature-flagged. | This spec. |
+| **1a — Core image flow + IG/FB publishing** | Image uploader UI + asset DAL wiring + ManualPostDialog type picker + API route updates. Verified IG image publish (already branches on extension) and FB image publish (already has `/photos` endpoint branch). Feature-flagged. | This spec. |
 | **1b — Vision AI alt-text** | Firebase Function that runs Claude Sonnet 4.6 vision on new image assets; stores `ai_alt_text` + `ai_analysis`. Background, non-blocking. | Separate sub-spec. |
-| **1c — TikTok Photo Mode** | TikTok plugin gets a separate code path calling the Content Posting API's `content/init` with `post_mode=DIRECT_POST` + `media_type=PHOTO`. | Separate sub-spec because TikTok Photo requires distinct app-review gating. |
+| **1c — LinkedIn image publish** | LinkedIn UGC requires a 3-step asset-registration flow (registerUpload → PUT bytes → ugcPost with `IMAGE` category). Current plugin treats media URLs as ARTICLE/link-preview only. | Separate sub-spec because it's a meaningful plugin rewrite, not a small branch. |
+| **1d — TikTok Photo Mode** | TikTok plugin gets a separate code path calling the Content Posting API's `content/init` with `post_mode=DIRECT_POST` + `media_type=PHOTO`. | Separate sub-spec because TikTok Photo requires distinct app-review gating. |
 
-This document covers **Phase 1a only.** The other two land after Phase 1a is in prod and dogfooded.
+This document covers **Phase 1a only.** The other three land after Phase 1a is in prod and dogfooded.
+
+**Pre-flight plugin audit (performed during spec drafting):**
+- `lib/social/plugins/instagram.ts` lines 54-59: already branches on video vs image extension; images post to `/media` with `image_url`.
+- `lib/social/plugins/facebook.ts` lines 51-59: already branches on image vs video; images post to `/{page_id}/photos`.
+- `lib/social/plugins/linkedin.ts` lines 37-50: does NOT support image uploads. Uses `shareMediaCategory: "ARTICLE"` with `originalUrl`, which is LinkedIn's link-preview pattern, not image upload. Implementing real image publish is Phase 1c.
+- `lib/social/plugins/tiktok.ts`: video-only via existing Content Posting API; Photo Mode requires a different init call — Phase 1d.
 
 ## 2. Deviations from the umbrella spec
 
@@ -29,10 +36,10 @@ This document covers **Phase 1a only.** The other two land after Phase 1a is in 
 
 ## 3. Goals
 
-- An admin can upload a photo in the studio, attach a caption, and publish to Instagram, Facebook, or LinkedIn on demand or via scheduled publishing.
+- An admin can upload a photo in the studio, attach a caption, and publish to Instagram or Facebook on demand or via scheduled publishing.
 - The new flow reuses the existing pipeline (draft/edited/approved/scheduled/published) unchanged — image posts aren't a separate lifecycle.
 - Existing video post flow is untouched.
-- All four plugins continue to type-check after the PublishInput surface gains `postType` + `media[]` (backcompat via mirrored `mediaUrl`).
+- The API route rejects `postType=image` for LinkedIn and TikTok platforms with a clear error, so admins aren't silently blocked mid-publish.
 
 ## 4. Non-goals
 
@@ -85,11 +92,24 @@ Gate with `CS_MULTIMEDIA_ENABLED` — when flag is off, reject `postType` other 
 
 ### 5.4 Publish path
 
-No code changes required for IG image publishing — the Instagram plugin already branches on URL extension (`VIDEO_EXTENSIONS` regex). Verify via an end-to-end smoke test once the UI flow is live.
+**No plugin code changes required for Phase 1a.** The pre-flight audit confirmed:
 
-**Facebook plugin** — inspect and confirm it supports image publishing through the same `mediaUrl` path. If not, add an `if (isImageUrl(mediaUrl))` branch calling `/me/photos` instead of `/me/videos`.
+- `instagram.ts:54-59` — already branches on video vs image extension; image URLs publish to `/media` with `image_url`.
+- `facebook.ts:51-59` — already branches on image vs video vs text; image URLs publish to `/{page_id}/photos`.
 
-**LinkedIn plugin** — same inspection. LinkedIn's UGC API distinguishes `IMAGE` from `VIDEO` media categories; the plugin likely needs an explicit branch.
+Phase 1a relies on both branches already being exercised by the existing code. The task list includes smoke tests to confirm end-to-end.
+
+**Platform-level rejection for unsupported combinations:** the create-post API route validates `(platform, postType)` pairs. For Phase 1a:
+
+| Platform | image | video | text |
+|---|---|---|---|
+| instagram | ✓ | ✓ | ✗ (IG rejects text-only) |
+| facebook | ✓ | ✓ | ✓ |
+| linkedin | ✗ 400 — defer to Phase 1c | ✓ | ✓ |
+| tiktok | ✗ 400 — defer to Phase 1d | ✓ | ✗ |
+| youtube / youtube_shorts | ✗ 400 | ✓ | ✗ |
+
+Rejecting at the API layer keeps admins from creating posts that will silently fail at publish time. When later sub-phases land, they update this validation table accordingly.
 
 **PublishInput shape change is deferred.** The umbrella spec calls for extending `PublishInput` with `media[]` + `postType`. Phase 1a ships single-image posts through the existing `mediaUrl` field (carousel-ready structural changes move to Phase 2 where multi-media actually matters). This keeps the Phase 1a blast radius small.
 
@@ -138,8 +158,6 @@ Prod rollout: flag starts `false`; enable after smoke test on staging.
 - `app/api/admin/content-studio/posts/route.ts` — accepts `postType`, `mediaAssetId`; validates by type; feature-flag gate.
 - `lib/content-studio/feature-flag.ts` — adds `isContentStudioMultimediaEnabled`.
 - `lib/social/resolve-media-url.ts` — handles Firebase-path values in `media_url`.
-- `lib/social/plugins/facebook.ts` — confirm image branch exists; add if missing.
-- `lib/social/plugins/linkedin.ts` — add explicit image branch using LinkedIn UGC `IMAGE` category.
 - `components/admin/content-studio/pipeline/PostCard.tsx` / `VideoCard.tsx` / `calendar/PostChip.tsx` — small content-type badge.
 
 ## 8. Testing strategy
@@ -148,7 +166,7 @@ Prod rollout: flag starts `false`; enable after smoke test on staging.
   - `lib/validators/media-asset.ts` schemas
   - `lib/content-studio/feature-flag.ts` new function
   - `lib/social/resolve-media-url.ts` Firebase-path branch
-  - Facebook + LinkedIn plugin image branch (mocked HTTP)
+  - Platform-type validator for the create-post route (rejects unsupported combinations)
 - **Integration** (against remote Supabase, existing pattern):
   - `POST /api/admin/content-studio/posts` with `postType=image` — creates post + `social_post_media` row + mirror fires
   - `POST /api/admin/media-assets/upload-url` — issues signed URL, inserts asset row
@@ -162,11 +180,10 @@ Prod rollout: flag starts `false`; enable after smoke test on staging.
 
 | Risk | Mitigation |
 |---|---|
-| Facebook plugin assumes video-only and silently breaks with an image URL | Add explicit branch + unit test with mocked HTTP before shipping |
 | Image asset inserted but PUT to Firebase fails — leaves an "empty" asset row | Upload-url route inserts the asset row; if the client's PUT fails, the asset is orphaned. Acceptable in Phase 1a (admin-only; next upload just creates a new row). A janitor for orphan assets lands later if it becomes a hygiene issue. |
-| LinkedIn's UGC image upload is multi-step (register upload → PUT asset → create post) | Implementation section for LinkedIn plugin must match their flow; unit-test each step |
+| Admin creates LinkedIn or TikTok image post and is surprised by a publish-time error | API route rejects unsupported `(platform, postType)` pairs with a 400 + clear message at create time, not publish time. |
 | Feature flag off in prod, admin UI exposes new control | Flag gates are at UI + server-route level; both must be on to take effect |
-| Existing video publish tests break if PublishInput shape accidentally changes | Phase 1a explicitly does NOT change PublishInput signature; only adds image-branch logic inside plugin bodies |
+| Existing video publish tests break if PublishInput shape accidentally changes | Phase 1a explicitly does NOT change PublishInput signature; the plugin code is untouched entirely. |
 
 ## 10. Open questions (deferred to Phase 1b/1c or cleanup)
 
