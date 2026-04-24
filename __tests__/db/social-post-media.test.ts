@@ -183,4 +183,20 @@ describe("lib/db/social-post-media", () => {
     await attachMedia(postId, a.id, 0)
     await expect(attachMedia(postId, a.id, 1)).rejects.toBeDefined()
   })
+
+  it("getSocialPostWithMedia returns the post together with ordered media rows", async () => {
+    const { getSocialPostWithMedia } = await import("@/lib/db/social-posts")
+
+    const postId = await newPost("carousel")
+    const a = await newAsset("with-a")
+    const b = await newAsset("with-b")
+    await attachMedia(postId, a.id, 0)
+    await attachMedia(postId, b.id, 1)
+
+    const result = await getSocialPostWithMedia(postId)
+    expect(result?.id).toBe(postId)
+    expect(result?.post_type).toBe("carousel")
+    expect(result?.media.map((m) => m.media_asset_id)).toEqual([a.id, b.id])
+    expect(result?.media[0].asset?.public_url).toBe("https://example.invalid/with-a.jpg")
+  })
 })

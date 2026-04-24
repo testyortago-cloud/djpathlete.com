@@ -9,8 +9,8 @@ function getClient() {
 export async function createSocialPost(
   post: Omit<
     SocialPost,
-    "id" | "created_at" | "updated_at" | "published_at" | "platform_post_id" | "rejection_notes"
-  >,
+    "id" | "created_at" | "updated_at" | "published_at" | "platform_post_id" | "rejection_notes" | "post_type"
+  > & { post_type?: SocialPost["post_type"] },
 ): Promise<SocialPost> {
   const supabase = getClient()
   const { data, error } = await supabase.from("social_posts").insert(post).select().single()
@@ -95,4 +95,63 @@ export async function listSocialPostsForPipeline(): Promise<PipelinePostRow[]> {
       source_video_filename: row.video_uploads?.original_filename ?? null,
     }),
   )
+}
+
+export interface SocialPostMediaWithAsset {
+  media_asset_id: string
+  position: number
+  overlay_text: string | null
+  overlay_metadata: Record<string, unknown> | null
+  asset: {
+    id: string
+    kind: "video" | "image"
+    public_url: string
+    storage_path: string
+    mime_type: string
+    width: number | null
+    height: number | null
+    duration_ms: number | null
+  } | null
+}
+
+export interface SocialPostWithMedia extends SocialPost {
+  media: SocialPostMediaWithAsset[]
+}
+
+export async function getSocialPostWithMedia(id: string): Promise<SocialPostWithMedia | null> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("social_posts")
+    .select(
+      "*, social_post_media(media_asset_id, position, overlay_text, overlay_metadata, media_assets(id, kind, public_url, storage_path, mime_type, width, height, duration_ms))",
+    )
+    .eq("id", id)
+    .maybeSingle()
+  if (error) throw error
+  if (!data) return null
+
+  const raw = data as SocialPost & {
+    social_post_media?: Array<{
+      media_asset_id: string
+      position: number
+      overlay_text: string | null
+      overlay_metadata: Record<string, unknown> | null
+      media_assets: SocialPostMediaWithAsset["asset"] | null
+    }>
+  }
+  const media: SocialPostMediaWithAsset[] = (raw.social_post_media ?? [])
+    .slice()
+    .sort((a, b) => a.position - b.position)
+    .map((m) => ({
+      media_asset_id: m.media_asset_id,
+      position: m.position,
+      overlay_text: m.overlay_text,
+      overlay_metadata: m.overlay_metadata,
+      asset: m.media_assets,
+    }))
+
+  const { social_post_media: _drop, ...rest } = raw as SocialPost & {
+    social_post_media?: unknown
+  }
+  return { ...(rest as SocialPost), media }
 }
