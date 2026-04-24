@@ -63,9 +63,15 @@ export async function listSocialPostsBySourceVideo(videoId: string): Promise<Soc
   return (data ?? []) as SocialPost[]
 }
 
+/**
+ * Update a social post. `media_url` is excluded — it's derived from
+ * `social_post_media` at position 0 via the mirror trigger, so direct writes
+ * would silently diverge from the join table. Use `attachMedia` / `detachMedia`
+ * / `reorderMedia` in `lib/db/social-post-media` instead.
+ */
 export async function updateSocialPost(
   id: string,
-  updates: Partial<Omit<SocialPost, "id" | "created_at">>,
+  updates: Partial<Omit<SocialPost, "id" | "created_at" | "media_url">>,
 ): Promise<SocialPost> {
   const supabase = getClient()
   const { data, error } = await supabase
