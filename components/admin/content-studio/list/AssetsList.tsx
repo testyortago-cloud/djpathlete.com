@@ -1,7 +1,9 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { FileImage, Film } from "lucide-react"
+import { FileImage, Film, Trash2 } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 import type { AssetWithPostCount } from "@/lib/db/media-assets"
 
 type KindFilter = "all" | "image" | "video"
@@ -36,8 +38,28 @@ function filenameFromStoragePath(path: string): string {
 }
 
 export function AssetsList({ assets, thumbnailUrls }: AssetsListProps) {
+  const router = useRouter()
   const [kindFilter, setKindFilter] = useState<KindFilter>("all")
   const [originFilter, setOriginFilter] = useState<OriginFilter>("all")
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+
+  async function handleDelete(assetId: string) {
+    if (!confirm("Delete this asset? This can't be undone.")) return
+    setDeletingId(assetId)
+    try {
+      const res = await fetch(`/api/admin/media-assets/${assetId}`, { method: "DELETE" })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body?.error || `Delete failed (${res.status})`)
+      }
+      toast.success("Asset deleted")
+      router.refresh()
+    } catch (err) {
+      toast.error((err as Error).message || "Delete failed")
+    } finally {
+      setDeletingId(null)
+    }
+  }
 
   const filtered = useMemo(() => {
     return assets.filter((a) => {
@@ -141,6 +163,20 @@ export function AssetsList({ assets, thumbnailUrls }: AssetsListProps) {
                     </span>
                   </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => handleDelete(asset.id)}
+                  disabled={asset.post_count > 0 || deletingId === asset.id}
+                  title={
+                    asset.post_count > 0
+                      ? "Detach this asset from its posts before deleting"
+                      : "Delete this asset permanently"
+                  }
+                  aria-label={`Delete ${filename}`}
+                  className="inline-flex items-center justify-center size-8 rounded text-muted-foreground hover:text-error hover:bg-error/5 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <Trash2 className="size-3.5" />
+                </button>
               </li>
             )
           })}

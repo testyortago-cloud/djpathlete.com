@@ -1,7 +1,14 @@
 import { render, screen, fireEvent } from "@testing-library/react"
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, vi } from "vitest"
 import { AssetsList } from "@/components/admin/content-studio/list/AssetsList"
 import type { AssetWithPostCount } from "@/lib/db/media-assets"
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
+}))
+vi.mock("sonner", () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
+}))
 
 function makeAsset(overrides: Partial<AssetWithPostCount> = {}): AssetWithPostCount {
   return {
@@ -134,5 +141,19 @@ describe("AssetsList", () => {
     render(<AssetsList assets={assets} thumbnailUrls={{ "v-1": "https://signed.example/ignored" }} />)
     // Videos always fall back to the icon; no img element rendered
     expect(screen.queryByRole("img")).not.toBeInTheDocument()
+  })
+
+  it("shows a delete button that is disabled when post_count > 0", () => {
+    const assets = [makeAsset({ id: "a", post_count: 2, storage_path: "images/u/used.jpg" })]
+    render(<AssetsList assets={assets} />)
+    const btn = screen.getByRole("button", { name: /delete used\.jpg/i })
+    expect(btn).toBeDisabled()
+  })
+
+  it("enables the delete button when post_count is 0", () => {
+    const assets = [makeAsset({ id: "b", post_count: 0, storage_path: "images/u/free.jpg" })]
+    render(<AssetsList assets={assets} />)
+    const btn = screen.getByRole("button", { name: /delete free\.jpg/i })
+    expect(btn).not.toBeDisabled()
   })
 })
