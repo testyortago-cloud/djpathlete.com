@@ -51,8 +51,17 @@ describe("isPlatformPostTypeSupported", () => {
     expect(isPlatformPostTypeSupported("tiktok", "carousel")).toBe(false)
   })
 
-  it("rejects story for all platforms in Phase 2a (Phase 3)", () => {
-    expect(isPlatformPostTypeSupported("instagram", "story")).toBe(false)
-    expect(isPlatformPostTypeSupported("facebook", "story")).toBe(false)
+  it("accepts instagram + story (new in Phase 3)", () => {
+    expect(isPlatformPostTypeSupported("instagram", "story")).toBe(true)
+  })
+
+  it("accepts facebook + story (new in Phase 3)", () => {
+    expect(isPlatformPostTypeSupported("facebook", "story")).toBe(true)
+  })
+
+  it("rejects story on linkedin, tiktok, youtube (no API support)", () => {
+    expect(isPlatformPostTypeSupported("linkedin", "story")).toBe(false)
+    expect(isPlatformPostTypeSupported("tiktok", "story")).toBe(false)
+    expect(isPlatformPostTypeSupported("youtube", "story")).toBe(false)
   })
 })
