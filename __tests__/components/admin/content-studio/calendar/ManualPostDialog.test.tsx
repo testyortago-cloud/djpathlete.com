@@ -50,4 +50,31 @@ describe("<ManualPostDialog>", () => {
     )
     expect(screen.getByLabelText(/post type/i)).toBeInTheDocument()
   })
+
+  it("shows the CarouselComposer when postType=carousel and flag is on", () => {
+    render(
+      <ManualPostDialog
+        dayKey="2026-05-01"
+        onClose={() => {}}
+        onCreated={() => {}}
+        multimediaEnabled
+      />,
+    )
+    fireEvent.change(screen.getByLabelText(/post type/i), { target: { value: "carousel" } })
+    expect(screen.getByRole("button", { name: /add slide/i })).toBeInTheDocument()
+  })
+
+  it("carousel submit is disabled until 2+ slides uploaded", () => {
+    render(
+      <ManualPostDialog
+        dayKey="2026-05-01"
+        onClose={() => {}}
+        onCreated={() => {}}
+        multimediaEnabled
+      />,
+    )
+    fireEvent.change(screen.getByLabelText(/post type/i), { target: { value: "carousel" } })
+    const submit = screen.getByRole("button", { name: /create/i })
+    expect(submit).toBeDisabled()
+  })
 })

@@ -6,6 +6,7 @@ import type { SocialPlatform, PostType } from "@/types/database"
 import { defaultPublishTimeForPlatform } from "@/lib/content-studio/calendar-defaults"
 import { isPlatformPostTypeSupported } from "@/lib/content-studio/post-type-support"
 import { ImageUploader } from "@/components/admin/content-studio/upload/ImageUploader"
+import { CarouselComposer } from "@/components/admin/content-studio/upload/CarouselComposer"
 
 interface ManualPostDialogProps {
   dayKey: string
@@ -21,12 +22,14 @@ export function ManualPostDialog({ dayKey, onClose, onCreated, multimediaEnabled
   const [postType, setPostType] = useState<PostType>("video")
   const [caption, setCaption] = useState("")
   const [mediaAssetId, setMediaAssetId] = useState<string | null>(null)
+  const [mediaAssetIds, setMediaAssetIds] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
 
   const canSubmit =
     !busy &&
     isPlatformPostTypeSupported(platform, postType) &&
-    (postType !== "image" || mediaAssetId !== null)
+    (postType !== "image" || mediaAssetId !== null) &&
+    (postType !== "carousel" || mediaAssetIds.length >= 2)
 
   async function submit() {
     setBusy(true)
@@ -42,6 +45,7 @@ export function ManualPostDialog({ dayKey, onClose, onCreated, multimediaEnabled
           scheduled_at,
           postType,
           mediaAssetId: postType === "image" ? mediaAssetId : undefined,
+          mediaAssetIds: postType === "carousel" ? mediaAssetIds : undefined,
         }),
       })
       if (!res.ok) throw new Error((await res.text()) || "Create failed")
@@ -57,7 +61,7 @@ export function ManualPostDialog({ dayKey, onClose, onCreated, multimediaEnabled
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div className="rounded-lg bg-white border border-border shadow-lg p-4 w-96" onClick={(e) => e.stopPropagation()}>
+      <div className="rounded-lg bg-white border border-border shadow-lg p-4 w-[28rem] max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <h3 className="font-heading text-sm text-primary mb-3">New manual post — {dayKey}</h3>
 
         {multimediaEnabled ? (
@@ -69,11 +73,13 @@ export function ManualPostDialog({ dayKey, onClose, onCreated, multimediaEnabled
               onChange={(e) => {
                 setPostType(e.target.value as PostType)
                 setMediaAssetId(null)
+                setMediaAssetIds([])
               }}
               className="mt-1 block w-full rounded border border-border px-2 py-1 text-sm"
             >
               <option value="video">Video</option>
               <option value="image">Photo</option>
+              <option value="carousel">Carousel</option>
             </select>
           </label>
         ) : null}
@@ -100,6 +106,17 @@ export function ManualPostDialog({ dayKey, onClose, onCreated, multimediaEnabled
             {!isPlatformPostTypeSupported(platform, "image") ? (
               <p className="mt-2 text-xs text-error">
                 {platform} does not support image posts yet.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
+        {postType === "carousel" && multimediaEnabled ? (
+          <div className="mb-3">
+            <CarouselComposer onChange={setMediaAssetIds} />
+            {!isPlatformPostTypeSupported(platform, "carousel") ? (
+              <p className="mt-2 text-xs text-error">
+                {platform} does not support carousels yet.
               </p>
             ) : null}
           </div>
