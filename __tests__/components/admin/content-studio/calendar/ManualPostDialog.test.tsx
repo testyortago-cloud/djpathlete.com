@@ -2,6 +2,10 @@ import { describe, expect, it, vi, beforeEach } from "vitest"
 import { render, screen, fireEvent, waitFor } from "@testing-library/react"
 import { ManualPostDialog } from "@/components/admin/content-studio/calendar/ManualPostDialog"
 
+vi.mock("@/lib/firebase-client-upload", () => ({
+  uploadImageFile: vi.fn(),
+}))
+
 const fetchMock = vi.fn()
 beforeEach(() => {
   fetchMock.mockReset()
@@ -28,5 +32,22 @@ describe("<ManualPostDialog>", () => {
     expect(body.caption).toBe("hello")
     expect(body.scheduled_at).toMatch(/^2099-01-/)
     expect(onCreated).toHaveBeenCalledWith("new-1")
+  })
+
+  it("hides the post-type picker when multimediaEnabled is false", () => {
+    render(<ManualPostDialog dayKey="2026-05-01" onClose={() => {}} onCreated={() => {}} />)
+    expect(screen.queryByLabelText(/post type/i)).not.toBeInTheDocument()
+  })
+
+  it("shows the post-type picker when multimediaEnabled is true", () => {
+    render(
+      <ManualPostDialog
+        dayKey="2026-05-01"
+        onClose={() => {}}
+        onCreated={() => {}}
+        multimediaEnabled
+      />,
+    )
+    expect(screen.getByLabelText(/post type/i)).toBeInTheDocument()
   })
 })

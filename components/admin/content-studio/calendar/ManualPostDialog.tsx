@@ -2,21 +2,31 @@
 
 import { useState } from "react"
 import { toast } from "sonner"
-import type { SocialPlatform } from "@/types/database"
+import type { SocialPlatform, PostType } from "@/types/database"
 import { defaultPublishTimeForPlatform } from "@/lib/content-studio/calendar-defaults"
+import { isPlatformPostTypeSupported } from "@/lib/content-studio/post-type-support"
+import { ImageUploader } from "@/components/admin/content-studio/upload/ImageUploader"
 
 interface ManualPostDialogProps {
-  dayKey: string // YYYY-MM-DD
+  dayKey: string
   onClose: () => void
   onCreated: (postId: string) => void
+  multimediaEnabled?: boolean
 }
 
 const PLATFORMS: SocialPlatform[] = ["instagram", "tiktok", "facebook", "youtube", "youtube_shorts", "linkedin"]
 
-export function ManualPostDialog({ dayKey, onClose, onCreated }: ManualPostDialogProps) {
+export function ManualPostDialog({ dayKey, onClose, onCreated, multimediaEnabled = false }: ManualPostDialogProps) {
   const [platform, setPlatform] = useState<SocialPlatform>("instagram")
+  const [postType, setPostType] = useState<PostType>("video")
   const [caption, setCaption] = useState("")
+  const [mediaAssetId, setMediaAssetId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+
+  const canSubmit =
+    !busy &&
+    isPlatformPostTypeSupported(platform, postType) &&
+    (postType !== "image" || mediaAssetId !== null)
 
   async function submit() {
     setBusy(true)
@@ -26,7 +36,13 @@ export function ManualPostDialog({ dayKey, onClose, onCreated }: ManualPostDialo
       const res = await fetch("/api/admin/content-studio/posts", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ platform, caption, scheduled_at }),
+        body: JSON.stringify({
+          platform,
+          caption,
+          scheduled_at,
+          postType,
+          mediaAssetId: postType === "image" ? mediaAssetId : undefined,
+        }),
       })
       if (!res.ok) throw new Error((await res.text()) || "Create failed")
       const data = (await res.json()) as { id: string }
@@ -43,6 +59,25 @@ export function ManualPostDialog({ dayKey, onClose, onCreated }: ManualPostDialo
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
       <div className="rounded-lg bg-white border border-border shadow-lg p-4 w-96" onClick={(e) => e.stopPropagation()}>
         <h3 className="font-heading text-sm text-primary mb-3">New manual post — {dayKey}</h3>
+
+        {multimediaEnabled ? (
+          <label className="block text-xs text-muted-foreground mb-3">
+            Post type
+            <select
+              aria-label="Post type"
+              value={postType}
+              onChange={(e) => {
+                setPostType(e.target.value as PostType)
+                setMediaAssetId(null)
+              }}
+              className="mt-1 block w-full rounded border border-border px-2 py-1 text-sm"
+            >
+              <option value="video">Video</option>
+              <option value="image">Photo</option>
+            </select>
+          </label>
+        ) : null}
+
         <label className="block text-xs text-muted-foreground mb-3">
           Platform
           <select
@@ -58,6 +93,18 @@ export function ManualPostDialog({ dayKey, onClose, onCreated }: ManualPostDialo
             ))}
           </select>
         </label>
+
+        {postType === "image" && multimediaEnabled ? (
+          <div className="mb-3">
+            <ImageUploader onUploaded={(e) => setMediaAssetId(e.mediaAssetId)} />
+            {!isPlatformPostTypeSupported(platform, "image") ? (
+              <p className="mt-2 text-xs text-error">
+                {platform} does not support image posts yet.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
         <label className="block text-xs text-muted-foreground mb-3">
           Caption
           <textarea
@@ -68,6 +115,7 @@ export function ManualPostDialog({ dayKey, onClose, onCreated }: ManualPostDialo
             className="mt-1 w-full rounded border border-border px-2 py-1 text-sm"
           />
         </label>
+
         <div className="flex items-center justify-end gap-2">
           <button
             type="button"
@@ -80,7 +128,7 @@ export function ManualPostDialog({ dayKey, onClose, onCreated }: ManualPostDialo
           <button
             type="button"
             onClick={submit}
-            disabled={busy}
+            disabled={!canSubmit}
             className="text-xs px-3 py-1.5 rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
           >
             {busy ? "Creating..." : "Create"}
