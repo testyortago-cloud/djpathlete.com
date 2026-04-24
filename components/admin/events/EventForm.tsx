@@ -305,6 +305,11 @@ export function EventForm({ event }: EventFormProps) {
         </div>
       </Section>
 
+      {/* Hero image — surfaced early since it's the most visible element on the public page */}
+      <Section icon={ImageIcon} title="Hero Image" description="Shown at the top of the public event page and as the cover thumbnail in the admin table.">
+        <EventHeroImageUpload value={heroImageUrl} onChange={setHeroImageUrl} eventId={event?.id} />
+      </Section>
+
       {/* Focus areas */}
       <Section icon={Target} title="Focus Areas" description="Skills or themes this event targets.">
         <div className="space-y-3">
@@ -483,11 +488,6 @@ export function EventForm({ event }: EventFormProps) {
             <p className="text-xs text-success">Synced with Stripe · {event.stripe_price_id.slice(-8)}</p>
           )}
         </div>
-      </Section>
-
-      {/* Hero image */}
-      <Section icon={ImageIcon} title="Hero Image" description="Shown at the top of the public event page.">
-        <EventHeroImageUpload value={heroImageUrl} onChange={setHeroImageUrl} eventId={event?.id} />
       </Section>
 
       {/* Actions (bottom copy for discoverability while scrolling) */}

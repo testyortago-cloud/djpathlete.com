@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Search, Pencil, Copy, Trash2, CalendarX } from "lucide-react"
+import { Search, Pencil, Copy, Trash2, CalendarX, ImageIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import type { Event, EventStatus, EventType } from "@/types/database"
@@ -117,6 +117,7 @@ export function EventList({ initialEvents }: EventListProps) {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border bg-surface/50">
+              <th className="text-left px-4 py-3 font-medium text-muted-foreground w-[80px]">Cover</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Title</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Type</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Start</th>
@@ -129,7 +130,7 @@ export function EventList({ initialEvents }: EventListProps) {
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-16 text-center">
+                <td colSpan={8} className="px-4 py-16 text-center">
                   <div className="flex flex-col items-center gap-2 text-muted-foreground">
                     <CalendarX className="size-8" />
                     <p className="text-sm">No events match your filters.</p>
@@ -145,6 +146,27 @@ export function EventList({ initialEvents }: EventListProps) {
                     key={e.id}
                     className="border-b border-border last:border-b-0 hover:bg-surface/30 transition-colors"
                   >
+                    <td className="px-4 py-3">
+                      <Link
+                        href={`/admin/events/${e.id}`}
+                        aria-label={`Edit ${e.title}`}
+                        className="block size-14 rounded-md overflow-hidden ring-1 ring-border bg-muted"
+                      >
+                        {e.hero_image_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={e.hero_image_url}
+                            alt=""
+                            loading="lazy"
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <span className="flex items-center justify-center w-full h-full text-muted-foreground">
+                            <ImageIcon className="size-5" strokeWidth={1.5} />
+                          </span>
+                        )}
+                      </Link>
+                    </td>
                     <td className="px-4 py-3">
                       <Link href={`/admin/events/${e.id}`} className="font-medium text-primary hover:underline">
                         {e.title}
