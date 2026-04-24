@@ -43,7 +43,19 @@ export function createFacebookPlugin(credentials: FacebookCredentials): PublishP
     },
 
     async publish(input: PublishInput): Promise<PublishResult> {
-      const { content, mediaUrl, mediaUrls, scheduledAt } = input
+      const { content, mediaUrl, mediaUrls, postType, scheduledAt } = input
+
+      // Story branch — single image via /photos (unpublished) + /photo_stories
+      if (postType === "story") {
+        if (!mediaUrl) {
+          return { success: false, error: "Facebook stories require an image URL" }
+        }
+        return publishPhotoStory({
+          accessToken: access_token,
+          pageId: page_id,
+          imageUrl: mediaUrl,
+        })
+      }
 
       // Carousel branch — 2+ slides
       if (mediaUrls && mediaUrls.length >= 2) {
@@ -125,6 +137,35 @@ export function createFacebookPlugin(credentials: FacebookCredentials): PublishP
       ].join("\n")
     },
   }
+}
+
+interface PhotoStoryArgs {
+  accessToken: string
+  pageId: string
+  imageUrl: string
+}
+
+async function publishPhotoStory(args: PhotoStoryArgs): Promise<PublishResult> {
+  const { accessToken, pageId, imageUrl } = args
+
+  // Step 1: upload the photo unpublished
+  const photo = await fetchJson<{ id?: string; error?: { message: string } }>(
+    `${GRAPH_API_BASE}/${pageId}/photos`,
+    { method: "POST", body: { url: imageUrl, published: false, access_token: accessToken } },
+  )
+  if (!photo.ok || !photo.data?.id) {
+    return { success: false, error: extractFbError(photo.errorText) }
+  }
+
+  // Step 2: attach to a Story
+  const story = await fetchJson<{ post_id?: string; success?: boolean; error?: { message: string } }>(
+    `${GRAPH_API_BASE}/${pageId}/photo_stories`,
+    { method: "POST", body: { photo_id: photo.data.id, access_token: accessToken } },
+  )
+  if (!story.ok || !story.data?.post_id) {
+    return { success: false, error: extractFbError(story.errorText) }
+  }
+  return { success: true, platform_post_id: story.data.post_id }
 }
 
 interface CarouselArgs {
