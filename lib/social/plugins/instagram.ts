@@ -41,7 +41,19 @@ export function createInstagramPlugin(credentials: InstagramCredentials): Publis
     },
 
     async publish(input: PublishInput): Promise<PublishResult> {
-      const { content, mediaUrl, mediaUrls } = input
+      const { content, mediaUrl, mediaUrls, postType } = input
+
+      // Story branch — single image, media_type=STORIES
+      if (postType === "story") {
+        if (!mediaUrl) {
+          return { success: false, error: "Instagram stories require an image URL" }
+        }
+        return publishStoryPost({
+          accessToken: access_token,
+          igUserId: ig_user_id,
+          imageUrl: mediaUrl,
+        })
+      }
 
       // Carousel branch — 2+ slides
       if (mediaUrls && mediaUrls.length >= 2) {
@@ -138,6 +150,42 @@ function extractIgError(raw: string | null): string {
   } catch {
     return raw
   }
+}
+
+interface StoryArgs {
+  accessToken: string
+  igUserId: string
+  imageUrl: string
+}
+
+async function publishStoryPost(args: StoryArgs): Promise<PublishResult> {
+  const { accessToken, igUserId, imageUrl } = args
+
+  // Step 1: create Story container (caption NOT sent — IG ignores it on stories)
+  const container = await fetchJson<{ id?: string; error?: { message: string } }>(
+    `${GRAPH_API_BASE}/${igUserId}/media`,
+    {
+      method: "POST",
+      body: { image_url: imageUrl, media_type: "STORIES", access_token: accessToken },
+    },
+  )
+  if (!container.ok || !container.data?.id) {
+    return { success: false, error: extractIgError(container.errorText) }
+  }
+
+  // Step 2: poll until FINISHED (reuse existing carousel poller)
+  const ready = await waitForContainerFinished({ accessToken, containerId: container.data.id })
+  if (!ready.ok) return { success: false, error: ready.error }
+
+  // Step 3: publish
+  const publishRes = await fetchJson<{ id?: string }>(
+    `${GRAPH_API_BASE}/${igUserId}/media_publish`,
+    { method: "POST", body: { creation_id: container.data.id, access_token: accessToken } },
+  )
+  if (!publishRes.ok || !publishRes.data?.id) {
+    return { success: false, error: extractIgError(publishRes.errorText) }
+  }
+  return { success: true, platform_post_id: publishRes.data.id }
 }
 
 interface CarouselArgs {
