@@ -45,10 +45,18 @@ export function createFacebookPlugin(credentials: FacebookCredentials): PublishP
     async publish(input: PublishInput): Promise<PublishResult> {
       const { content, mediaUrl, mediaUrls, postType, scheduledAt } = input
 
-      // Story branch — single image via /photos (unpublished) + /photo_stories
+      // Story branch — single image via /photos (unpublished) + /photo_stories,
+      // OR single video via 3-phase /video_stories (start/upload/finish).
       if (postType === "story") {
         if (!mediaUrl) {
-          return { success: false, error: "Facebook stories require an image URL" }
+          return { success: false, error: "Facebook stories require a media URL" }
+        }
+        if (isVideoUrl(mediaUrl)) {
+          return publishVideoStory({
+            accessToken: access_token,
+            pageId: page_id,
+            videoUrl: mediaUrl,
+          })
         }
         return publishPhotoStory({
           accessToken: access_token,
@@ -137,6 +145,64 @@ export function createFacebookPlugin(credentials: FacebookCredentials): PublishP
       ].join("\n")
     },
   }
+}
+
+interface VideoStoryArgs {
+  accessToken: string
+  pageId: string
+  videoUrl: string
+}
+
+async function publishVideoStory(args: VideoStoryArgs): Promise<PublishResult> {
+  const { accessToken, pageId, videoUrl } = args
+
+  // Phase 1: start upload — returns video_id + upload_url
+  const start = await fetchJson<{
+    video_id?: string
+    upload_url?: string
+    error?: { message: string }
+  }>(`${GRAPH_API_BASE}/${pageId}/video_stories`, {
+    method: "POST",
+    body: { upload_phase: "start", access_token: accessToken },
+  })
+  if (!start.ok || !start.data?.video_id || !start.data?.upload_url) {
+    return { success: false, error: extractFbError(start.errorText) }
+  }
+
+  // Phase 2: POST to upload_url with file_url header — Meta fetches the video
+  // from our signed URL (no byte chunking). Authorization uses the OAuth prefix.
+  const uploadResp = await fetch(start.data.upload_url, {
+    method: "POST",
+    headers: {
+      Authorization: `OAuth ${accessToken}`,
+      file_url: videoUrl,
+    },
+  })
+  if (!uploadResp.ok) {
+    const text = await uploadResp.text().catch(() => "")
+    return {
+      success: false,
+      error: `video_stories upload ${uploadResp.status}: ${text.slice(0, 200)}`,
+    }
+  }
+
+  // Phase 3: finish — returns post_id
+  const finish = await fetchJson<{
+    post_id?: string
+    success?: boolean
+    error?: { message: string }
+  }>(`${GRAPH_API_BASE}/${pageId}/video_stories`, {
+    method: "POST",
+    body: {
+      upload_phase: "finish",
+      video_id: start.data.video_id,
+      access_token: accessToken,
+    },
+  })
+  if (!finish.ok || !finish.data?.post_id) {
+    return { success: false, error: extractFbError(finish.errorText) }
+  }
+  return { success: true, platform_post_id: finish.data.post_id }
 }
 
 interface PhotoStoryArgs {
