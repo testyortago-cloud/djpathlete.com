@@ -106,6 +106,7 @@ async function publishOnePost(post: SocialPost): Promise<"published" | "failed">
     content: post.content,
     mediaUrl,
     mediaUrls,
+    postType: post.post_type,
     scheduledAt: null,
   })
 

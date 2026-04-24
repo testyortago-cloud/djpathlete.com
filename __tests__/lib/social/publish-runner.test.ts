@@ -58,6 +58,7 @@ describe("runScheduledPublish", () => {
       content: "hello",
       media_url: null,
       source_video_id: "v1",
+      post_type: "video",
       approval_status: "scheduled",
       scheduled_at: "2026-05-01T11:55:00Z",
       published_at: null,
@@ -70,8 +71,9 @@ describe("runScheduledPublish", () => {
     listSocialPostsMock.mockResolvedValue([duePost])
     listPlatformConnectionsMock.mockResolvedValue([])
     resolveMediaUrlMock.mockResolvedValue("https://signed.example.com/v1.mp4")
+    const publishPluginMock = vi.fn().mockResolvedValue({ success: true, platform_post_id: "IG_123" })
     registryGetMock.mockReturnValue({
-      publish: vi.fn().mockResolvedValue({ success: true, platform_post_id: "IG_123" }),
+      publish: publishPluginMock,
     })
 
     const result = await runScheduledPublish({ now })
@@ -81,6 +83,8 @@ describe("runScheduledPublish", () => {
       approval_status: "published",
       platform_post_id: "IG_123",
     }))
+    expect(publishPluginMock).toHaveBeenCalledOnce()
+    expect(publishPluginMock.mock.calls[0][0].postType).toBe("video")
   })
 
   it("marks a post failed when no plugin is registered for its platform", async () => {
