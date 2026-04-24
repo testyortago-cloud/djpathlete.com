@@ -439,4 +439,123 @@ describe("migration 00093 — media_assets + social_post_media + post_type", () 
       await supabase.from("media_assets").delete().eq("id", asset.data!.id)
     }
   })
+
+  it("backfills a legacy post with an image media_url into media_assets + social_post_media", async () => {
+    const post = await supabase
+      .from("social_posts")
+      .insert({
+        platform: "instagram",
+        content: "legacy image",
+        approval_status: "draft",
+        media_url: "https://example.invalid/legacy.jpg",
+      })
+      .select()
+      .single()
+    expect(post.error).toBeNull()
+
+    // Clear any join rows the normal flow would create. Legacy rows had none.
+    await supabase.from("social_post_media").delete().eq("social_post_id", post.data!.id)
+
+    let assetId: string | undefined
+    try {
+      const rpc = await supabase.rpc("backfill_social_post_media")
+      expect(rpc.error).toBeNull()
+
+      const join = await supabase
+        .from("social_post_media")
+        .select("media_asset_id, position")
+        .eq("social_post_id", post.data!.id)
+        .single()
+      expect(join.error).toBeNull()
+      expect(join.data?.position).toBe(0)
+      assetId = join.data?.media_asset_id
+
+      const asset = await supabase
+        .from("media_assets")
+        .select("kind, public_url")
+        .eq("id", assetId!)
+        .single()
+      expect(asset.data?.kind).toBe("image")
+      expect(asset.data?.public_url).toBe("https://example.invalid/legacy.jpg")
+
+      const sp = await supabase
+        .from("social_posts")
+        .select("post_type")
+        .eq("id", post.data!.id)
+        .single()
+      expect((sp.data as { post_type?: string })?.post_type).toBe("image")
+    } finally {
+      await supabase.from("social_posts").delete().eq("id", post.data!.id)
+      if (assetId) await supabase.from("media_assets").delete().eq("id", assetId)
+    }
+  })
+
+  it("backfill is idempotent — running twice yields a single join row", async () => {
+    const post = await supabase
+      .from("social_posts")
+      .insert({
+        platform: "instagram",
+        content: "idempotent",
+        approval_status: "draft",
+        media_url: "https://example.invalid/idem.mp4",
+      })
+      .select()
+      .single()
+    await supabase.from("social_post_media").delete().eq("social_post_id", post.data!.id)
+
+    let assetId: string | undefined
+    try {
+      await supabase.rpc("backfill_social_post_media")
+      await supabase.rpc("backfill_social_post_media")
+
+      const rows = await supabase
+        .from("social_post_media")
+        .select("position, media_asset_id")
+        .eq("social_post_id", post.data!.id)
+      expect(rows.data?.length).toBe(1)
+      assetId = rows.data?.[0]?.media_asset_id
+
+      const sp = await supabase
+        .from("social_posts")
+        .select("post_type")
+        .eq("id", post.data!.id)
+        .single()
+      expect((sp.data as { post_type?: string })?.post_type).toBe("video")
+    } finally {
+      await supabase.from("social_posts").delete().eq("id", post.data!.id)
+      if (assetId) await supabase.from("media_assets").delete().eq("id", assetId)
+    }
+  })
+
+  it("backfills a text-only post (no media_url) by setting post_type to 'text'", async () => {
+    const post = await supabase
+      .from("social_posts")
+      .insert({
+        platform: "linkedin",
+        content: "text-only post",
+        approval_status: "draft",
+      })
+      .select()
+      .single()
+
+    try {
+      await supabase.rpc("backfill_social_post_media")
+
+      const sp = await supabase
+        .from("social_posts")
+        .select("post_type, media_url")
+        .eq("id", post.data!.id)
+        .single()
+      expect((sp.data as { post_type?: string })?.post_type).toBe("text")
+      expect(sp.data?.media_url).toBeNull()
+
+      const rows = await supabase
+        .from("social_post_media")
+        .select("position")
+        .eq("social_post_id", post.data!.id)
+      expect(rows.data?.length).toBe(0)
+    } finally {
+      await supabase.from("social_posts").delete().eq("id", post.data!.id)
+    }
+  })
 })
