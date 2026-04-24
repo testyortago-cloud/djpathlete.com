@@ -38,8 +38,18 @@ describe("isPlatformPostTypeSupported", () => {
     expect(isPlatformPostTypeSupported("youtube", "image")).toBe(false)
   })
 
-  it("rejects carousel and story for all platforms in Phase 1a", () => {
-    expect(isPlatformPostTypeSupported("instagram", "carousel")).toBe(false)
+  it("accepts instagram + carousel (new in Phase 2a)", () => {
+    expect(isPlatformPostTypeSupported("instagram", "carousel")).toBe(true)
+  })
+
+  it("rejects carousel on other platforms in Phase 2a", () => {
+    expect(isPlatformPostTypeSupported("facebook", "carousel")).toBe(false)
+    expect(isPlatformPostTypeSupported("linkedin", "carousel")).toBe(false)
+    expect(isPlatformPostTypeSupported("tiktok", "carousel")).toBe(false)
+  })
+
+  it("rejects story for all platforms in Phase 2a (Phase 3)", () => {
     expect(isPlatformPostTypeSupported("instagram", "story")).toBe(false)
+    expect(isPlatformPostTypeSupported("facebook", "story")).toBe(false)
   })
 })
