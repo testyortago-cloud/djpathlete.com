@@ -60,8 +60,22 @@ export function DrawerVideoHeader({ video, previewUrl, hasTranscript = false }: 
             <dd>{formatSize(video.size_bytes)}</dd>
           </div>
         </dl>
-        <div className="mt-4">
-          <GenerateQuoteCardsButton videoUploadId={video.id} hasTranscript={hasTranscript} />
+        <div className="mt-4 flex flex-wrap gap-2">
+          <GenerateQuoteCardsButton
+            videoUploadId={video.id}
+            hasTranscript={hasTranscript}
+            platform="facebook"
+          />
+          <GenerateQuoteCardsButton
+            videoUploadId={video.id}
+            hasTranscript={hasTranscript}
+            platform="instagram"
+          />
+          <GenerateQuoteCardsButton
+            videoUploadId={video.id}
+            hasTranscript={hasTranscript}
+            platform="linkedin"
+          />
         </div>
       </div>
     </div>

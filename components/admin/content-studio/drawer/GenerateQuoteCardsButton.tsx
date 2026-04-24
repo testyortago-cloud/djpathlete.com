@@ -5,16 +5,35 @@ import { Sparkles } from "lucide-react"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 
+type CarouselPlatform = "facebook" | "instagram" | "linkedin"
+
 interface GenerateQuoteCardsButtonProps {
   videoUploadId: string
   hasTranscript: boolean
   count?: number
+  platform?: CarouselPlatform
+}
+
+const PLATFORM_LABELS: Record<CarouselPlatform, string> = {
+  facebook: "Generate FB quote carousel",
+  instagram: "Generate IG quote carousel",
+  linkedin: "Generate LinkedIn carousel",
+}
+
+const PLATFORM_TITLES: Record<CarouselPlatform, string> = {
+  facebook:
+    "Use Claude to extract quotes from this video's transcript and render them as a Facebook carousel",
+  instagram:
+    "Use Claude to extract quotes from this video's transcript and render them as an Instagram carousel (JPEG)",
+  linkedin:
+    "Use Claude to extract quotes from this video's transcript and render them as a LinkedIn carousel",
 }
 
 export function GenerateQuoteCardsButton({
   videoUploadId,
   hasTranscript,
   count,
+  platform = "facebook",
 }: GenerateQuoteCardsButtonProps) {
   const router = useRouter()
   const [busy, setBusy] = useState(false)
@@ -25,7 +44,7 @@ export function GenerateQuoteCardsButton({
       const res = await fetch("/api/admin/content-studio/quote-cards", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ videoUploadId, count }),
+        body: JSON.stringify({ videoUploadId, count, platform }),
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
@@ -42,7 +61,7 @@ export function GenerateQuoteCardsButton({
   }
 
   const disabled = busy || !hasTranscript
-  const label = busy ? "Generating..." : "Generate quote carousel"
+  const label = busy ? "Generating..." : PLATFORM_LABELS[platform]
 
   return (
     <button
@@ -52,7 +71,7 @@ export function GenerateQuoteCardsButton({
       title={
         !hasTranscript
           ? "Transcript required — wait for transcription to finish"
-          : "Use Claude to extract quotes from this video's transcript and render them as a Facebook carousel"
+          : PLATFORM_TITLES[platform]
       }
       className="inline-flex items-center gap-2 text-xs px-3 py-1.5 rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
     >

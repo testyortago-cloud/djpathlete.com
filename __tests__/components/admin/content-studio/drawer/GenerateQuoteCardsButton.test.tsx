@@ -105,4 +105,26 @@ describe("GenerateQuoteCardsButton", () => {
     )
     await waitFor(() => expect(mockPush).toHaveBeenCalled())
   })
+
+  it("sends platform=instagram in the POST body when platform='instagram'", async () => {
+    const Comp = await importComp()
+    render(<Comp videoUploadId="video-1" hasTranscript platform="instagram" />)
+    fireEvent.click(screen.getByRole("button", { name: /ig quote carousel/i }))
+
+    await waitFor(() => expect(mockPush).toHaveBeenCalled())
+    const body = JSON.parse(((fetch as ReturnType<typeof vi.fn>).mock.calls[0][1] as RequestInit).body as string)
+    expect(body.platform).toBe("instagram")
+  })
+
+  it("defaults to platform=facebook and labels the button accordingly", async () => {
+    const Comp = await importComp()
+    render(<Comp videoUploadId="video-1" hasTranscript />)
+    expect(screen.getByRole("button", { name: /fb quote carousel/i })).toBeInTheDocument()
+  })
+
+  it("renders a LinkedIn-labeled button when platform='linkedin'", async () => {
+    const Comp = await importComp()
+    render(<Comp videoUploadId="video-1" hasTranscript platform="linkedin" />)
+    expect(screen.getByRole("button", { name: /linkedin carousel/i })).toBeInTheDocument()
+  })
 })
