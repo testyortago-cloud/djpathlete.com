@@ -64,21 +64,6 @@ describe("LinkedInPlugin — versioned API", () => {
     expect(body.content).toBeUndefined()
   })
 
-  it("publish() rejects video URLs (Phase 1c does not support LinkedIn video)", async () => {
-    const fetchMock = vi.fn()
-    vi.stubGlobal("fetch", fetchMock)
-
-    const plugin = createLinkedInPlugin({ access_token: "tok", organization_id: "123456" })
-    const result = await plugin.publish({
-      content: "hey",
-      mediaUrl: "https://example.com/video.mp4",
-      scheduledAt: null,
-    })
-    expect(result.success).toBe(false)
-    expect(result.error).toMatch(/video/i)
-    expect(fetchMock).not.toHaveBeenCalled()
-  })
-
   it("publish() with image URL runs the 3-step image flow", async () => {
     const imageUrn = "urn:li:image:C4E10AQFoyy"
     let postBodyHeaders: Record<string, string> | undefined

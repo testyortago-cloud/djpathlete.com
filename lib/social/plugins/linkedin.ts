@@ -9,12 +9,16 @@ import type { PublishPlugin, PublishInput, PublishResult, AnalyticsResult, Conne
 const API_VERSION = "202604"
 const POSTS_URL = "https://api.linkedin.com/rest/posts"
 const IMAGES_URL = "https://api.linkedin.com/rest/images"
+const VIDEOS_URL = "https://api.linkedin.com/rest/videos"
 
 const IMAGE_EXTENSIONS = /\.(jpe?g|png|gif|webp)(\?|$)/i
 const VIDEO_EXTENSIONS = /\.(mp4|mov|webm|mkv)(\?|$)/i
 
 const POLL_MAX_ATTEMPTS = 5
 const POLL_INITIAL_DELAY_MS = 500
+
+const VIDEO_POLL_MAX_ATTEMPTS = 30
+const VIDEO_POLL_INITIAL_DELAY_MS = 2000
 
 export interface LinkedInCredentials {
   access_token: string
@@ -58,10 +62,12 @@ export function createLinkedInPlugin(credentials: LinkedInCredentials): PublishP
       }
 
       if (mediaUrl && VIDEO_EXTENSIONS.test(mediaUrl)) {
-        return {
-          success: false,
-          error: "LinkedIn video publishing is not supported in this release",
-        }
+        return publishVideoPost({
+          accessToken: access_token,
+          organizationId: organization_id,
+          caption: content,
+          videoUrl: mediaUrl,
+        })
       }
 
       if (mediaUrl && IMAGE_EXTENSIONS.test(mediaUrl)) {
@@ -254,6 +260,206 @@ async function publishMultiImagePost(args: MultiImageArgs): Promise<PublishResul
     }),
   })
   return extractPostResult(response)
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Video post (5-step: fetch bytes → initializeUpload → PUT chunks → finalize → poll → POST)
+// ──────────────────────────────────────────────────────────────────────────
+
+interface VideoPostArgs {
+  accessToken: string
+  organizationId: string
+  caption: string
+  videoUrl: string
+}
+
+async function publishVideoPost(args: VideoPostArgs): Promise<PublishResult> {
+  const { accessToken, organizationId, caption, videoUrl } = args
+
+  // Step 0: download the video bytes from our Firebase signed URL
+  const binary = await fetchBinary(videoUrl)
+  if (!binary.ok) {
+    return { success: false, error: `Video fetch failed: ${binary.error}` }
+  }
+  const buffer = binary.data
+
+  // Step 1: initialize upload — LinkedIn returns chunked upload instructions
+  const init = await initializeVideoUpload({
+    accessToken,
+    organizationId,
+    fileSizeBytes: buffer.byteLength,
+  })
+  if (!init.ok) return { success: false, error: init.error }
+
+  // Step 2: PUT each chunk, collect ETags in order
+  const uploadedPartIds: string[] = []
+  for (const instr of init.uploadInstructions) {
+    const chunkBytes = buffer.slice(instr.firstByte, instr.lastByte + 1)
+    const put = await putVideoChunk(instr.uploadUrl, chunkBytes)
+    if (!put.ok) return { success: false, error: put.error }
+    uploadedPartIds.push(put.etag)
+  }
+
+  // Step 3: finalize upload
+  const finalize = await finalizeVideoUpload({
+    accessToken,
+    videoUrn: init.videoUrn,
+    uploadedPartIds,
+  })
+  if (!finalize.ok) return { success: false, error: finalize.error }
+
+  // Step 4: poll until AVAILABLE
+  const ready = await waitForVideoReady({ accessToken, videoUrn: init.videoUrn })
+  if (!ready.ok) return { success: false, error: ready.error }
+
+  // Step 5: create the post referencing the video URN
+  const response = await fetch(POSTS_URL, {
+    method: "POST",
+    headers: versionedHeaders(accessToken),
+    body: JSON.stringify({
+      author: `urn:li:organization:${organizationId}`,
+      commentary: caption,
+      visibility: "PUBLIC",
+      distribution: {
+        feedDistribution: "MAIN_FEED",
+        targetEntities: [],
+        thirdPartyDistributionChannels: [],
+      },
+      lifecycleState: "PUBLISHED",
+      isReshareDisabledByAuthor: false,
+      content: {
+        media: {
+          id: init.videoUrn,
+          title: caption.slice(0, 200),
+        },
+      },
+    }),
+  })
+  return extractPostResult(response)
+}
+
+interface VideoUploadInstruction {
+  firstByte: number
+  lastByte: number
+  uploadUrl: string
+}
+
+interface InitVideoOk {
+  ok: true
+  videoUrn: string
+  uploadInstructions: VideoUploadInstruction[]
+}
+interface InitVideoFail {
+  ok: false
+  error: string
+}
+
+async function initializeVideoUpload(args: {
+  accessToken: string
+  organizationId: string
+  fileSizeBytes: number
+}): Promise<InitVideoOk | InitVideoFail> {
+  const response = await fetch(`${VIDEOS_URL}?action=initializeUpload`, {
+    method: "POST",
+    headers: versionedHeaders(args.accessToken),
+    body: JSON.stringify({
+      initializeUploadRequest: {
+        owner: `urn:li:organization:${args.organizationId}`,
+        fileSizeBytes: args.fileSizeBytes,
+        uploadCaptions: false,
+        uploadThumbnail: false,
+      },
+    }),
+  })
+  if (!response.ok) {
+    const text = await response.text().catch(() => "")
+    return { ok: false, error: `initializeUpload ${response.status}: ${extractLiError(text)}` }
+  }
+  const data = (await response.json().catch(() => null)) as {
+    value?: { video?: string; uploadInstructions?: VideoUploadInstruction[] }
+  } | null
+  const videoUrn = data?.value?.video
+  const instructions = data?.value?.uploadInstructions
+  if (!videoUrn || !Array.isArray(instructions) || instructions.length === 0) {
+    return { ok: false, error: "initializeUpload response missing video urn or uploadInstructions" }
+  }
+  return { ok: true, videoUrn, uploadInstructions: instructions }
+}
+
+async function putVideoChunk(
+  uploadUrl: string,
+  bytes: ArrayBuffer,
+): Promise<{ ok: true; etag: string } | { ok: false; error: string }> {
+  const response = await fetch(uploadUrl, {
+    method: "PUT",
+    headers: { "Content-Type": "application/octet-stream" },
+    body: bytes,
+  })
+  if (!response.ok) {
+    const text = await response.text().catch(() => "")
+    return { ok: false, error: `video chunk PUT ${response.status}: ${text.slice(0, 200)}` }
+  }
+  const rawEtag = response.headers.get("etag") ?? response.headers.get("ETag") ?? ""
+  if (!rawEtag) {
+    return { ok: false, error: "video chunk PUT response missing etag header" }
+  }
+  const etag = rawEtag.replace(/^"|"$/g, "")
+  return { ok: true, etag }
+}
+
+async function finalizeVideoUpload(args: {
+  accessToken: string
+  videoUrn: string
+  uploadedPartIds: string[]
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const response = await fetch(`${VIDEOS_URL}?action=finalizeUpload`, {
+    method: "POST",
+    headers: versionedHeaders(args.accessToken),
+    body: JSON.stringify({
+      finalizeUploadRequest: {
+        video: args.videoUrn,
+        uploadToken: "",
+        uploadedPartIds: args.uploadedPartIds,
+      },
+    }),
+  })
+  if (!response.ok) {
+    const text = await response.text().catch(() => "")
+    return { ok: false, error: `finalizeUpload ${response.status}: ${extractLiError(text)}` }
+  }
+  return { ok: true }
+}
+
+async function waitForVideoReady(args: {
+  accessToken: string
+  videoUrn: string
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  let delay = VIDEO_POLL_INITIAL_DELAY_MS
+  for (let attempt = 0; attempt < VIDEO_POLL_MAX_ATTEMPTS; attempt += 1) {
+    const response = await fetch(`${VIDEOS_URL}/${encodeURIComponent(args.videoUrn)}`, {
+      method: "GET",
+      headers: versionedHeaders(args.accessToken),
+    })
+    if (response.ok) {
+      const data = (await response.json().catch(() => null)) as {
+        status?: string
+        processingFailureReason?: string
+      } | null
+      if (data?.status === "AVAILABLE") return { ok: true }
+      if (data?.status === "PROCESSING_FAILED") {
+        return {
+          ok: false,
+          error: `Video PROCESSING_FAILED: ${data.processingFailureReason ?? "unknown"}`,
+        }
+      }
+    }
+    if (attempt < VIDEO_POLL_MAX_ATTEMPTS - 1) {
+      await sleep(delay)
+      // Gentle backoff — cap at 10s to avoid waiting 5min on the last attempt
+      delay = Math.min(delay + 1000, 10_000)
+    }
+  }
+  return { ok: false, error: "Video did not reach AVAILABLE before polling timeout" }
 }
 
 interface InitOk {
