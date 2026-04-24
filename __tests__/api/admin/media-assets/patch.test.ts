@@ -6,25 +6,17 @@ const mockAuth = vi.fn()
 vi.mock("@/lib/auth", () => ({ auth: () => mockAuth() }))
 
 const mockGetMediaAssetById = vi.fn()
+const mockUpdateMediaAsset = vi.fn()
 vi.mock("@/lib/db/media-assets", () => ({
   getMediaAssetById: (...args: unknown[]) => mockGetMediaAssetById(...args),
-}))
-
-const mockEq = vi.fn()
-const mockUpdate = vi.fn(() => ({ eq: mockEq }))
-vi.mock("@/lib/supabase", () => ({
-  createServiceRoleClient: () => ({
-    from: () => ({
-      update: mockUpdate,
-    }),
-  }),
+  updateMediaAsset: (...args: unknown[]) => mockUpdateMediaAsset(...args),
 }))
 
 describe("PATCH /api/admin/media-assets/[id]", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockGetMediaAssetById.mockResolvedValue({ id: "asset-1", kind: "image" })
-    mockEq.mockResolvedValue({ error: null })
+    mockUpdateMediaAsset.mockResolvedValue(undefined)
   })
 
   async function call(id: string, body: unknown, role: "admin" | "client" = "admin") {
@@ -57,6 +49,16 @@ describe("PATCH /api/admin/media-assets/[id]", () => {
   it("updates dimensions on valid payload", async () => {
     const res = await call("asset-1", { width: 1080, height: 1080, bytes: 54321 })
     expect(res.status).toBe(200)
-    expect(mockUpdate).toHaveBeenCalledWith({ width: 1080, height: 1080, bytes: 54321 })
+    expect(mockUpdateMediaAsset).toHaveBeenCalledWith("asset-1", {
+      width: 1080,
+      height: 1080,
+      bytes: 54321,
+    })
+  })
+
+  it("returns 500 when the DAL throws", async () => {
+    mockUpdateMediaAsset.mockRejectedValueOnce(new Error("db dead"))
+    const res = await call("asset-1", { width: 100, height: 100 })
+    expect(res.status).toBe(500)
   })
 })

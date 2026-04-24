@@ -55,6 +55,22 @@ export async function updateMediaAssetAiMetadata(
   if (error) throw error
 }
 
+export type UpdateMediaAssetInput = Partial<
+  Pick<MediaAsset, "width" | "height" | "bytes" | "mime_type">
+>
+
+/**
+ * Partial update of a media_asset. Scoped to dimension/metadata fields that
+ * the upload flow populates after the PUT completes. AI metadata has its
+ * own function (`updateMediaAssetAiMetadata`); immutable fields (kind,
+ * storage_path, public_url, derived_from_video_id, created_by) stay out.
+ */
+export async function updateMediaAsset(id: string, patch: UpdateMediaAssetInput): Promise<void> {
+  const supabase = getClient()
+  const { error } = await supabase.from("media_assets").update(patch).eq("id", id)
+  if (error) throw error
+}
+
 export async function deleteMediaAsset(id: string): Promise<void> {
   const supabase = getClient()
   const { error } = await supabase.from("media_assets").delete().eq("id", id)

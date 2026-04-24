@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { getMediaAssetById } from "@/lib/db/media-assets"
-import { createServiceRoleClient } from "@/lib/supabase"
+import { getMediaAssetById, updateMediaAsset } from "@/lib/db/media-assets"
 import { mediaAssetPatchSchema } from "@/lib/validators/media-asset"
 
 export async function PATCH(
@@ -29,12 +28,11 @@ export async function PATCH(
     return NextResponse.json({ error: "Not found" }, { status: 404 })
   }
 
-  const supabase = createServiceRoleClient()
-  const { error } = await supabase
-    .from("media_assets")
-    .update(parsed.data)
-    .eq("id", id)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  try {
+    await updateMediaAsset(id, parsed.data)
+  } catch (err) {
+    return NextResponse.json({ error: (err as Error).message }, { status: 500 })
+  }
 
   return NextResponse.json({ ok: true })
 }
