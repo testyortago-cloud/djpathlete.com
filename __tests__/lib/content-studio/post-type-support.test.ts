@@ -26,8 +26,8 @@ describe("isPlatformPostTypeSupported", () => {
     expect(isPlatformPostTypeSupported("linkedin", "image")).toBe(true)
   })
 
-  it("rejects linkedin + video (disabled in Phase 1c — legacy ARTICLE path removed)", () => {
-    expect(isPlatformPostTypeSupported("linkedin", "video")).toBe(false)
+  it("accepts linkedin + video (restored via LinkedIn Videos API)", () => {
+    expect(isPlatformPostTypeSupported("linkedin", "video")).toBe(true)
   })
 
   it("rejects tiktok + image (deferred to Phase 1d)", () => {
