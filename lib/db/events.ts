@@ -113,8 +113,11 @@ export async function updateEvent(id: string, input: UpdateEventInput): Promise<
 }
 
 export const ALLOWED_STATUS_TRANSITIONS: Record<EventStatus, EventStatus[]> = {
+  // published -> draft supports "un-publish for major edits"; signups (if any)
+  // stay attached to the event. Public listings hide drafts, so the event
+  // disappears from /clinics + /camps until re-published.
   draft: ["published", "cancelled"],
-  published: ["cancelled", "completed"],
+  published: ["draft", "cancelled", "completed"],
   cancelled: [],
   completed: [],
 }
