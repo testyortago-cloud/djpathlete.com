@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import Link from "next/link"
 import { FileImage, Film, Trash2 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
@@ -117,66 +118,73 @@ export function AssetsList({ assets, thumbnailUrls }: AssetsListProps) {
             return (
               <li
                 key={asset.id}
-                className="flex items-start gap-3 px-4 py-3"
+                className="flex items-stretch"
               >
-                {asset.kind === "image" && thumbnailUrls?.[asset.id] ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={thumbnailUrls[asset.id]}
-                    alt={asset.ai_alt_text ?? ""}
-                    loading="lazy"
-                    className="size-10 shrink-0 rounded-md object-cover ring-1 ring-border"
-                  />
-                ) : (
-                  <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-md bg-primary/10">
-                    <Icon className="size-4 text-primary" />
-                  </span>
-                )}
-                <div className="flex-1 min-w-0 space-y-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p
-                      className="text-sm font-medium text-primary truncate"
-                      title={filename}
-                    >
-                      {filename}
-                    </p>
-                    <span className="text-[10px] font-medium uppercase tracking-wide px-2 py-0.5 rounded-full bg-accent/10 text-accent">
-                      {origin.label}
-                    </span>
-                  </div>
-                  {asset.ai_alt_text ? (
-                    <p className="text-xs text-muted-foreground italic line-clamp-2" title={asset.ai_alt_text}>
-                      “{asset.ai_alt_text}”
-                    </p>
-                  ) : null}
-                  <div className="flex flex-wrap gap-3 text-[11px] text-muted-foreground font-mono">
-                    <span>{asset.kind}</span>
-                    <span>{formatSize(asset.bytes)}</span>
-                    {asset.width && asset.height ? (
-                      <span>
-                        {asset.width}×{asset.height}
-                      </span>
-                    ) : null}
-                    <span>{new Date(asset.created_at).toLocaleDateString()}</span>
-                    <span>
-                      {asset.post_count} {asset.post_count === 1 ? "post" : "posts"}
-                    </span>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => handleDelete(asset.id)}
-                  disabled={asset.post_count > 0 || deletingId === asset.id}
-                  title={
-                    asset.post_count > 0
-                      ? "Detach this asset from its posts before deleting"
-                      : "Delete this asset permanently"
-                  }
-                  aria-label={`Delete ${filename}`}
-                  className="inline-flex items-center justify-center size-8 rounded text-muted-foreground hover:text-error hover:bg-error/5 disabled:opacity-40 disabled:cursor-not-allowed"
+                <Link
+                  href={`/admin/content/assets/${asset.id}`}
+                  className="flex items-start gap-3 px-4 py-3 flex-1 min-w-0 hover:bg-surface/40"
                 >
-                  <Trash2 className="size-3.5" />
-                </button>
+                  {asset.kind === "image" && thumbnailUrls?.[asset.id] ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={thumbnailUrls[asset.id]}
+                      alt={asset.ai_alt_text ?? ""}
+                      loading="lazy"
+                      className="size-10 shrink-0 rounded-md object-cover ring-1 ring-border"
+                    />
+                  ) : (
+                    <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-md bg-primary/10">
+                      <Icon className="size-4 text-primary" />
+                    </span>
+                  )}
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p
+                        className="text-sm font-medium text-primary truncate"
+                        title={filename}
+                      >
+                        {filename}
+                      </p>
+                      <span className="text-[10px] font-medium uppercase tracking-wide px-2 py-0.5 rounded-full bg-accent/10 text-accent">
+                        {origin.label}
+                      </span>
+                    </div>
+                    {asset.ai_alt_text ? (
+                      <p className="text-xs text-muted-foreground italic line-clamp-2" title={asset.ai_alt_text}>
+                        “{asset.ai_alt_text}”
+                      </p>
+                    ) : null}
+                    <div className="flex flex-wrap gap-3 text-[11px] text-muted-foreground font-mono">
+                      <span>{asset.kind}</span>
+                      <span>{formatSize(asset.bytes)}</span>
+                      {asset.width && asset.height ? (
+                        <span>
+                          {asset.width}×{asset.height}
+                        </span>
+                      ) : null}
+                      <span>{new Date(asset.created_at).toLocaleDateString()}</span>
+                      <span>
+                        {asset.post_count} {asset.post_count === 1 ? "post" : "posts"}
+                      </span>
+                    </div>
+                  </div>
+                </Link>
+                <div className="flex items-center pr-3">
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(asset.id)}
+                    disabled={asset.post_count > 0 || deletingId === asset.id}
+                    title={
+                      asset.post_count > 0
+                        ? "Detach this asset from its posts before deleting"
+                        : "Delete this asset permanently"
+                    }
+                    aria-label={`Delete ${filename}`}
+                    className="inline-flex items-center justify-center size-8 rounded text-muted-foreground hover:text-error hover:bg-error/5 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </button>
+                </div>
               </li>
             )
           })}

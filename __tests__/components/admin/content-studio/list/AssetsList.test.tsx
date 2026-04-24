@@ -156,4 +156,20 @@ describe("AssetsList", () => {
     const btn = screen.getByRole("button", { name: /delete free\.jpg/i })
     expect(btn).not.toBeDisabled()
   })
+
+  it("wraps the row content in a link to the asset detail page", () => {
+    const assets = [makeAsset({ id: "a-link", storage_path: "images/u/linky.jpg" })]
+    render(<AssetsList assets={assets} />)
+    const link = screen.getByRole("link", { name: /linky\.jpg/i })
+    expect(link).toHaveAttribute("href", "/admin/content/assets/a-link")
+  })
+
+  it("delete button is outside the link (doesn't navigate when clicked)", () => {
+    const assets = [makeAsset({ id: "a-del", storage_path: "images/u/del.jpg", post_count: 0 })]
+    render(<AssetsList assets={assets} />)
+    const deleteBtn = screen.getByRole("button", { name: /delete del\.jpg/i })
+    // Walk up the DOM — the delete button should not be a descendant of the asset link
+    const link = screen.getByRole("link", { name: /del\.jpg/i })
+    expect(link.contains(deleteBtn)).toBe(false)
+  })
 })
