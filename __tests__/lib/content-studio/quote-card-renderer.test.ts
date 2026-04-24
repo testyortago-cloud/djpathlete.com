@@ -29,4 +29,26 @@ describe("renderQuoteCard", () => {
     const buffer = await renderQuoteCard(text)
     expect(buffer.length).toBeGreaterThan(1000)
   })
+
+  it("renderQuoteCardJpeg returns a buffer with JPEG magic bytes", async () => {
+    const { renderQuoteCardJpeg } = await import("@/lib/content-studio/quote-card-renderer")
+    const buffer = await renderQuoteCardJpeg("Strength is a habit, not a mood.")
+    expect(buffer).toBeInstanceOf(Buffer)
+    expect(buffer.length).toBeGreaterThan(1000)
+    // JPEG magic: 0xFF 0xD8 0xFF
+    expect(buffer[0]).toBe(0xff)
+    expect(buffer[1]).toBe(0xd8)
+    expect(buffer[2]).toBe(0xff)
+  })
+
+  it("renderQuoteCardJpeg output is smaller than renderQuoteCard PNG for the same text", async () => {
+    const { renderQuoteCard, renderQuoteCardJpeg } = await import(
+      "@/lib/content-studio/quote-card-renderer"
+    )
+    const text = "Power is hip hinge plus speed."
+    const png = await renderQuoteCard(text)
+    const jpeg = await renderQuoteCardJpeg(text)
+    // JPEG of a solid-color background with text should be meaningfully smaller
+    expect(jpeg.length).toBeLessThan(png.length)
+  })
 })

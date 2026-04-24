@@ -5,6 +5,7 @@
 // which would need a separate conversion step (deferred to Phase 2f.b).
 
 import { ImageResponse } from "@vercel/og"
+import sharp from "sharp"
 
 const CANVAS_SIZE = 1080
 const PRIMARY = "#0e3f50" // Green Azure approximation of oklch(0.30 0.04 220)
@@ -73,4 +74,17 @@ export async function renderQuoteCard(text: string): Promise<Buffer> {
 
   const arrayBuffer = await response.arrayBuffer()
   return Buffer.from(arrayBuffer)
+}
+
+/**
+ * Same layout as renderQuoteCard but emits JPEG. Required for Instagram
+ * carousels, which reject PNG children via error 2207026. Runs the PNG
+ * through sharp for conversion — sharp is transitively available via
+ * @huggingface/transformers and is the standard server-side image encoder.
+ */
+export async function renderQuoteCardJpeg(text: string): Promise<Buffer> {
+  const png = await renderQuoteCard(text)
+  return await sharp(png)
+    .jpeg({ quality: 90, mozjpeg: true })
+    .toBuffer()
 }
