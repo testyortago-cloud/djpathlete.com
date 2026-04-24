@@ -9,6 +9,7 @@ import { VideosList } from "@/components/admin/content-studio/list/VideosList"
 import { PostsList } from "@/components/admin/content-studio/list/PostsList"
 import { CalendarContainer } from "@/components/admin/content-studio/calendar/CalendarContainer"
 import type { DrawerTab } from "@/components/admin/content-studio/drawer/DrawerContent"
+import { isContentStudioMultimediaEnabled } from "@/lib/content-studio/feature-flag"
 
 interface PageProps {
   params: Promise<{ videoId: string }>
@@ -56,7 +57,13 @@ export default async function ContentStudioDrawerPage({ params, searchParams }: 
   let underneath: React.ReactNode
   switch (shellTab) {
     case "calendar": {
-      underneath = <CalendarContainer data={calendar!} videos={pipeline.videos} />
+      underneath = (
+        <CalendarContainer
+          data={calendar!}
+          videos={pipeline.videos}
+          multimediaEnabled={isContentStudioMultimediaEnabled()}
+        />
+      )
       break
     }
     case "videos":

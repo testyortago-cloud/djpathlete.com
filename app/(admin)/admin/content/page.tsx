@@ -7,6 +7,7 @@ import { computeCalendarWindow } from "@/lib/content-studio/calendar-window"
 import { CalendarContainer } from "@/components/admin/content-studio/calendar/CalendarContainer"
 import { readPreferences } from "@/lib/content-studio/preferences"
 import { coerceStoredFilters } from "@/lib/content-studio/pipeline-filters"
+import { isContentStudioMultimediaEnabled } from "@/lib/content-studio/feature-flag"
 
 interface PageProps {
   searchParams: Promise<{ tab?: string; view?: string; anchor?: string }>
@@ -28,7 +29,14 @@ export default async function ContentStudioPage({ searchParams }: PageProps) {
   if (tab === "calendar") {
     const window = computeCalendarWindow(effectiveView, anchor)
     const [calendar, pipeline] = await Promise.all([getCalendarData(window), getPipelineData()])
-    return <CalendarContainer data={calendar} videos={pipeline.videos} defaultView={effectiveView} />
+    return (
+      <CalendarContainer
+        data={calendar}
+        videos={pipeline.videos}
+        defaultView={effectiveView}
+        multimediaEnabled={isContentStudioMultimediaEnabled()}
+      />
+    )
   }
 
   const data = await getPipelineData()

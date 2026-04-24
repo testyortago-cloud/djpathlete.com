@@ -22,6 +22,8 @@ interface CalendarContainerProps {
   videos: VideoUpload[]
   /** Preference-driven default when the URL has no ?view=. */
   defaultView?: "month" | "week" | "day"
+  /** When true, surfaces multimedia (image) flows in the manual-post dialog. */
+  multimediaEnabled?: boolean
 }
 
 type View = "month" | "week" | "day"
@@ -39,7 +41,12 @@ function resolveAnchor(raw: string | null): Date {
   return today
 }
 
-export function CalendarContainer({ data, videos, defaultView = "month" }: CalendarContainerProps) {
+export function CalendarContainer({
+  data,
+  videos,
+  defaultView = "month",
+  multimediaEnabled = false,
+}: CalendarContainerProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const view = resolveView(searchParams.get("view"), defaultView)
@@ -181,6 +188,7 @@ export function CalendarContainer({ data, videos, defaultView = "month" }: Calen
             setManualPostDay(null)
             router.refresh()
           }}
+          multimediaEnabled={multimediaEnabled}
         />
       )}
       {pendingDrop && (
