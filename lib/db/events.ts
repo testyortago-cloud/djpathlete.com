@@ -26,11 +26,15 @@ export async function getEvents(filters: EventListFilters = {}): Promise<Event[]
 export async function getPublishedEvents(filters: { type?: EventType; from?: Date } = {}): Promise<Event[]> {
   const supabase = getClient()
   const from = filters.from ?? new Date()
+  // An event is "upcoming" until it ends, not until it starts. Clinics auto-set
+  // end_date to start + 2h at create time; camps have an explicit end_date.
+  // Filtering on end_date keeps a same-day event visible during its session
+  // instead of vanishing at the exact start time.
   let query = supabase
     .from("events")
     .select("*")
     .eq("status", "published")
-    .gte("start_date", from.toISOString())
+    .gte("end_date", from.toISOString())
     .order("start_date", { ascending: true })
   if (filters.type) query = query.eq("type", filters.type)
   const { data, error } = await query
