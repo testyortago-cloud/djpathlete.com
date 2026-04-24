@@ -12,6 +12,7 @@ import { auth } from "@/lib/auth"
 import { connectPlatform } from "@/lib/db/platform-connections"
 
 const STATE_COOKIE = "tk_oauth_state"
+const VERIFIER_COOKIE = "tk_oauth_verifier"
 const TOKEN_URL = "https://open.tiktokapis.com/v2/oauth/token/"
 const USER_INFO_URL =
   "https://open.tiktokapis.com/v2/user/info/?fields=open_id,union_id,display_name,avatar_url"
@@ -25,7 +26,9 @@ function redirectHome(reason: string, params: Record<string, string> = {}) {
   url.searchParams.set(reason, "tiktok")
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v)
   const response = NextResponse.redirect(url.toString())
-  response.cookies.delete({ name: STATE_COOKIE, path: "/api/admin/platform-connections/tiktok" })
+  const cookiePath = "/api/admin/platform-connections/tiktok"
+  response.cookies.delete({ name: STATE_COOKIE, path: cookiePath })
+  response.cookies.delete({ name: VERIFIER_COOKIE, path: cookiePath })
   return response
 }
 
@@ -40,12 +43,16 @@ export async function GET(request: NextRequest) {
   const stateParam = url.searchParams.get("state")
   const errorParam = url.searchParams.get("error")
   const stateCookie = request.cookies.get(STATE_COOKIE)?.value
+  const verifierCookie = request.cookies.get(VERIFIER_COOKIE)?.value
 
   if (errorParam) {
     return redirectHome("error", { reason: errorParam })
   }
   if (!code || !stateParam || !stateCookie || stateParam !== stateCookie) {
     return redirectHome("error", { reason: "state_mismatch" })
+  }
+  if (!verifierCookie) {
+    return redirectHome("error", { reason: "missing_code_verifier" })
   }
 
   const clientKey = process.env.TIKTOK_CLIENT_KEY
@@ -66,6 +73,7 @@ export async function GET(request: NextRequest) {
       code,
       grant_type: "authorization_code",
       redirect_uri: redirectUri,
+      code_verifier: verifierCookie,
     }).toString(),
   })
 

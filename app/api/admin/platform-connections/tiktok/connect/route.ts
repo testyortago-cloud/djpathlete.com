@@ -10,10 +10,15 @@ import { auth } from "@/lib/auth"
 const SCOPES = ["user.info.basic", "video.publish", "video.upload"]
 
 const STATE_COOKIE = "tk_oauth_state"
+const VERIFIER_COOKIE = "tk_oauth_verifier"
 const STATE_TTL_SECONDS = 60 * 10 // 10 minutes
 
 function siteUrl() {
   return (process.env.NEXTAUTH_URL ?? "").replace(/\/$/, "")
+}
+
+function base64UrlEncode(buf: Buffer): string {
+  return buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")
 }
 
 export async function GET() {
@@ -32,6 +37,9 @@ export async function GET() {
   }
 
   const state = crypto.randomBytes(32).toString("hex")
+  // PKCE: TikTok v2 requires code_challenge on every authorize request.
+  const codeVerifier = base64UrlEncode(crypto.randomBytes(48)) // 64-char URL-safe string
+  const codeChallenge = base64UrlEncode(crypto.createHash("sha256").update(codeVerifier).digest())
   const redirectUri = `${base}/api/admin/platform-connections/tiktok/callback`
 
   // TikTok auth lives on www.tiktok.com, not open.tiktokapis.com.
@@ -41,16 +49,18 @@ export async function GET() {
   tiktokUrl.searchParams.set("response_type", "code")
   tiktokUrl.searchParams.set("scope", SCOPES.join(","))
   tiktokUrl.searchParams.set("state", state)
+  tiktokUrl.searchParams.set("code_challenge", codeChallenge)
+  tiktokUrl.searchParams.set("code_challenge_method", "S256")
 
   const response = NextResponse.redirect(tiktokUrl.toString())
-  response.cookies.set({
-    name: STATE_COOKIE,
-    value: state,
+  const cookieBase = {
     httpOnly: true,
-    sameSite: "lax",
+    sameSite: "lax" as const,
     secure: process.env.NODE_ENV === "production",
     path: "/api/admin/platform-connections/tiktok",
     maxAge: STATE_TTL_SECONDS,
-  })
+  }
+  response.cookies.set({ name: STATE_COOKIE, value: state, ...cookieBase })
+  response.cookies.set({ name: VERIFIER_COOKIE, value: codeVerifier, ...cookieBase })
   return response
 }
