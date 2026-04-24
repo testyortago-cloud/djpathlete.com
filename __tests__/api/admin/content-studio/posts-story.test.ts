@@ -51,6 +51,41 @@ describe("POST /api/admin/content-studio/posts — story path", () => {
     return POST(req)
   }
 
+  it("creates a Story in draft status when no scheduled_at (lightweight pipeline)", async () => {
+    const res = await call({
+      platform: "instagram",
+      caption: "",
+      postType: "story",
+      mediaAssetId: "asset-1",
+    })
+    expect(res.status).toBe(200)
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        post_type: "story",
+        approval_status: "draft",
+      }),
+    )
+  })
+
+  it("creates a Story in scheduled status when scheduled_at is provided", async () => {
+    const future = new Date(Date.now() + 60 * 60 * 1000).toISOString()
+    const res = await call({
+      platform: "instagram",
+      caption: "",
+      postType: "story",
+      mediaAssetId: "asset-1",
+      scheduled_at: future,
+    })
+    expect(res.status).toBe(200)
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        post_type: "story",
+        approval_status: "scheduled",
+        scheduled_at: future,
+      }),
+    )
+  })
+
   it("creates a story post and attaches the asset", async () => {
     const res = await call({
       platform: "instagram",

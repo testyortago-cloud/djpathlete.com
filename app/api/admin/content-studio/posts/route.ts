@@ -168,12 +168,21 @@ export async function POST(request: NextRequest) {
   const sourceVideoId =
     postType === "image" || postType === "carousel" ? null : body?.source_video_id ?? null
 
+  // Stories follow a lightweight pipeline (umbrella spec §5.6) — they start in
+  // draft and skip the explicit approve step. Other post types jump straight
+  // to approved on creation so admin can schedule/publish right away.
+  const initialStatus: "draft" | "scheduled" | "approved" = scheduledAt
+    ? "scheduled"
+    : postType === "story"
+      ? "draft"
+      : "approved"
+
   const post = await createSocialPost({
     platform,
     content: caption,
     media_url: null,
     post_type: postType,
-    approval_status: scheduledAt ? "scheduled" : "approved",
+    approval_status: initialStatus,
     scheduled_at: scheduledAt,
     source_video_id: sourceVideoId,
     created_by: session.user.id,
