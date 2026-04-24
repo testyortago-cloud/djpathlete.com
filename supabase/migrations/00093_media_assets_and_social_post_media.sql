@@ -78,12 +78,15 @@ COMMENT ON TABLE social_post_media IS
 -- new DAL writes through social_post_media.
 -- ──────────────────────────────────────────────────────────────────────────
 
-CREATE OR REPLACE FUNCTION public.sync_social_post_media_url()
-RETURNS trigger AS $$
+CREATE OR REPLACE FUNCTION public.recompute_social_post_media_url(target_post_id uuid)
+RETURNS void AS $$
 DECLARE
-  target_post_id uuid := COALESCE(NEW.social_post_id, OLD.social_post_id);
-  new_media_url  text;
+  new_media_url text;
 BEGIN
+  IF target_post_id IS NULL THEN
+    RETURN;
+  END IF;
+
   SELECT ma.public_url
     INTO new_media_url
     FROM social_post_media spm
@@ -92,10 +95,25 @@ BEGIN
      AND spm.position = 0;
 
   UPDATE social_posts
-     SET media_url  = new_media_url,
-         updated_at = now()
+     SET media_url = new_media_url
    WHERE id = target_post_id
      AND media_url IS DISTINCT FROM new_media_url;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION public.sync_social_post_media_url()
+RETURNS trigger AS $$
+BEGIN
+  -- Recompute for the NEW row's post (covers INSERT + UPDATE target + UPDATE no-op).
+  IF TG_OP IN ('INSERT', 'UPDATE') THEN
+    PERFORM public.recompute_social_post_media_url(NEW.social_post_id);
+  END IF;
+
+  -- Recompute for the OLD row's post too when it differs (covers DELETE + cross-post UPDATE).
+  IF TG_OP = 'DELETE'
+     OR (TG_OP = 'UPDATE' AND NEW.social_post_id IS DISTINCT FROM OLD.social_post_id) THEN
+    PERFORM public.recompute_social_post_media_url(OLD.social_post_id);
+  END IF;
 
   RETURN NULL;
 END;

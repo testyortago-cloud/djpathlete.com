@@ -357,6 +357,15 @@ describe("migration 00093 — media_assets + social_post_media + post_type", () 
         media_asset_id: asset.data!.id,
         position: 0,
       })
+
+      // Sanity: mirror populated media_url on insert.
+      const mid = await supabase
+        .from("social_posts")
+        .select("media_url")
+        .eq("id", post.data!.id)
+        .single()
+      expect(mid.data?.media_url).toBe("https://example.invalid/mirror-3.jpg")
+
       await supabase
         .from("social_post_media")
         .delete()
@@ -371,6 +380,62 @@ describe("migration 00093 — media_assets + social_post_media + post_type", () 
       expect(after.data?.media_url).toBeNull()
     } finally {
       await supabase.from("social_posts").delete().eq("id", post.data!.id)
+      await supabase.from("media_assets").delete().eq("id", asset.data!.id)
+    }
+  })
+
+  it("recomputes media_url for both posts when a social_post_media row's social_post_id changes", async () => {
+    const asset = await supabase
+      .from("media_assets")
+      .insert({
+        kind: "image",
+        storage_path: "media-assets/mirror-move.jpg",
+        public_url: "https://example.invalid/mirror-move.jpg",
+        mime_type: "image/jpeg",
+        bytes: 10,
+      })
+      .select()
+      .single()
+
+    const p1 = await supabase
+      .from("social_posts")
+      .insert({ platform: "instagram", content: "origin", approval_status: "draft", post_type: "image" })
+      .select()
+      .single()
+    const p2 = await supabase
+      .from("social_posts")
+      .insert({ platform: "instagram", content: "destination", approval_status: "draft", post_type: "image" })
+      .select()
+      .single()
+
+    try {
+      await supabase.from("social_post_media").insert({
+        social_post_id: p1.data!.id,
+        media_asset_id: asset.data!.id,
+        position: 0,
+      })
+
+      // Confirm p1.media_url populated, p2.media_url null.
+      const before1 = await supabase.from("social_posts").select("media_url").eq("id", p1.data!.id).single()
+      const before2 = await supabase.from("social_posts").select("media_url").eq("id", p2.data!.id).single()
+      expect(before1.data?.media_url).toBe("https://example.invalid/mirror-move.jpg")
+      expect(before2.data?.media_url).toBeNull()
+
+      // Move the join row to the other post.
+      const move = await supabase
+        .from("social_post_media")
+        .update({ social_post_id: p2.data!.id })
+        .eq("social_post_id", p1.data!.id)
+        .eq("media_asset_id", asset.data!.id)
+      expect(move.error).toBeNull()
+
+      // Both posts should now reflect the move: p1 cleared, p2 populated.
+      const after1 = await supabase.from("social_posts").select("media_url").eq("id", p1.data!.id).single()
+      const after2 = await supabase.from("social_posts").select("media_url").eq("id", p2.data!.id).single()
+      expect(after1.data?.media_url).toBeNull()
+      expect(after2.data?.media_url).toBe("https://example.invalid/mirror-move.jpg")
+    } finally {
+      await supabase.from("social_posts").delete().in("id", [p1.data!.id, p2.data!.id])
       await supabase.from("media_assets").delete().eq("id", asset.data!.id)
     }
   })
