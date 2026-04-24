@@ -125,9 +125,12 @@ CREATE TRIGGER trg_social_post_media_mirror
 
 -- ──────────────────────────────────────────────────────────────────────────
 -- Backfill: for every social_posts row without a social_post_media row at
--- position 0, create a media_assets row from media_url/source_video_id and
--- link it. Idempotent — safe to re-run. Also normalises post_type for legacy
--- rows still at the default 'video'.
+-- position 0, create a media_assets row from media_url and link it. Also
+-- normalises post_type for legacy rows still at the default 'video'.
+-- Idempotent for sequential re-runs — the outer SELECT excludes already-
+-- backfilled posts. Not intended to run concurrently: overlapping sessions
+-- would both observe the same snapshot and collide on the join table's
+-- (social_post_id, position) primary key.
 -- ──────────────────────────────────────────────────────────────────────────
 
 CREATE OR REPLACE FUNCTION public.backfill_social_post_media()
@@ -136,7 +139,6 @@ DECLARE
   rec record;
   inferred_kind text;
   new_asset_id  uuid;
-  inferred_type text;
 BEGIN
   FOR rec IN
     SELECT sp.id, sp.media_url, sp.source_video_id, sp.post_type
@@ -169,6 +171,9 @@ BEGIN
       inferred_kind := 'image';
     END IF;
 
+    -- bytes=0 and mime_type are best-effort placeholders — the true values
+    -- aren't derivable from a URL alone. New uploads via the DAL (Phase 1+)
+    -- populate real values; a URL-aware backfill will overwrite these later.
     INSERT INTO media_assets (kind, storage_path, public_url, mime_type, bytes, derived_from_video_id)
     VALUES (
       inferred_kind,
@@ -183,10 +188,10 @@ BEGIN
     INSERT INTO social_post_media (social_post_id, media_asset_id, position)
     VALUES (rec.id, new_asset_id, 0);
 
-    -- Normalise post_type for legacy rows still at the default 'video'.
-    inferred_type := CASE inferred_kind WHEN 'image' THEN 'image' ELSE 'video' END;
-    IF rec.post_type = 'video' AND inferred_type <> 'video' THEN
-      UPDATE social_posts SET post_type = inferred_type WHERE id = rec.id;
+    -- If we inferred an image but post_type is still the legacy default
+    -- 'video', correct it. No-op when the inferred kind is 'video'.
+    IF rec.post_type = 'video' AND inferred_kind = 'image' THEN
+      UPDATE social_posts SET post_type = 'image' WHERE id = rec.id;
     END IF;
   END LOOP;
 END;

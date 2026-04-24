@@ -505,8 +505,10 @@ describe("migration 00093 — media_assets + social_post_media + post_type", () 
 
     let assetId: string | undefined
     try {
-      await supabase.rpc("backfill_social_post_media")
-      await supabase.rpc("backfill_social_post_media")
+      const first = await supabase.rpc("backfill_social_post_media")
+      expect(first.error).toBeNull()
+      const second = await supabase.rpc("backfill_social_post_media")
+      expect(second.error).toBeNull()  // proves the exclusion filter worked, not the PK
 
       const rows = await supabase
         .from("social_post_media")
