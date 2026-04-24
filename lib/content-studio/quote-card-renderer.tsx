@@ -1,8 +1,12 @@
-// lib/content-studio/quote-card-renderer.ts
+// lib/content-studio/quote-card-renderer.tsx
 // Renders a single quote string into a 1080×1080 PNG buffer using Satori
 // (via @vercel/og). Server-side only — pulled in by the admin quote-cards
 // route. PNG output works for Facebook + LinkedIn carousels; Instagram
 // requires JPEG via renderQuoteCardJpeg (which pipes through sharp).
+//
+// Uses JSX rather than plain-object Satori children so strict TypeScript
+// (Vercel build) is happy with the `ReactElement` shape ImageResponse
+// expects — plain objects don't carry the implicit `key` field.
 
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
@@ -38,10 +42,9 @@ export async function renderQuoteCard(text: string): Promise<Buffer> {
   const fontSize = fontSizeForLength(safe.length)
 
   const response = new ImageResponse(
-    {
-      type: "div",
-      props: {
-        style: {
+    (
+      <div
+        style={{
           width: "100%",
           height: "100%",
           display: "flex",
@@ -51,40 +54,35 @@ export async function renderQuoteCard(text: string): Promise<Buffer> {
           backgroundColor: PRIMARY,
           padding: 96,
           fontFamily: "Lexend Exa",
-        },
-        children: [
-          {
-            type: "div",
-            props: {
-              style: {
-                display: "flex",
-                color: TEXT_ON_PRIMARY,
-                fontSize,
-                fontWeight: 600,
-                lineHeight: 1.2,
-                textAlign: "center",
-                maxWidth: "100%",
-              },
-              children: safe,
-            },
-          },
-          {
-            type: "div",
-            props: {
-              style: {
-                marginTop: 64,
-                color: ACCENT,
-                fontSize: 28,
-                letterSpacing: 2,
-                textTransform: "uppercase",
-                display: "flex",
-              },
-              children: "— Darren J Paul",
-            },
-          },
-        ],
-      },
-    },
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            color: TEXT_ON_PRIMARY,
+            fontSize,
+            fontWeight: 600,
+            lineHeight: 1.2,
+            textAlign: "center",
+            maxWidth: "100%",
+          }}
+        >
+          {safe}
+        </div>
+        <div
+          style={{
+            marginTop: 64,
+            color: ACCENT,
+            fontSize: 28,
+            letterSpacing: 2,
+            textTransform: "uppercase",
+            display: "flex",
+          }}
+        >
+          — Darren J Paul
+        </div>
+      </div>
+    ),
     {
       width: CANVAS_SIZE,
       height: CANVAS_SIZE,
