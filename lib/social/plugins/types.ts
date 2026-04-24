@@ -1,5 +1,5 @@
 // lib/social/plugins/types.ts
-import type { SocialPlatform, PlatformConnection } from "@/types/database"
+import type { SocialPlatform, PlatformConnection, PostType } from "@/types/database"
 
 export interface PublishInput {
   content: string
@@ -11,6 +11,12 @@ export interface PublishInput {
    * mediaUrl field still holds slide 0's URL as a backcompat mirror.
    */
   mediaUrls?: string[]
+  /**
+   * The post's content type. Plugins use this to differentiate between e.g.
+   * a single-image feed post and a Story, which are published via different
+   * endpoints on IG and FB. Non-Story plugins can ignore this field.
+   */
+  postType?: PostType
   scheduledAt: string | null
   metadata?: Record<string, unknown>
 }
