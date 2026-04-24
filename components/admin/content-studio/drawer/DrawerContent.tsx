@@ -49,7 +49,11 @@ export function DrawerContent({ data, defaultTab }: DrawerContentProps) {
   return (
     <div className="flex flex-col h-full">
       {data.mode === "video" && data.video ? (
-        <DrawerVideoHeader video={data.video} previewUrl={data.previewUrl} />
+        <DrawerVideoHeader
+          video={data.video}
+          previewUrl={data.previewUrl}
+          hasTranscript={Boolean(data.transcript?.transcript_text)}
+        />
       ) : (
         <DrawerPostOnlyHeader />
       )}
