@@ -31,6 +31,7 @@ const failedPost: SocialPost = {
   platform: "facebook",
   content: "oops",
   media_url: null,
+  post_type: "video",
   approval_status: "failed",
   scheduled_at: null,
   published_at: null,

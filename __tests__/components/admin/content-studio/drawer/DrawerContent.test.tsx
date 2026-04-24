@@ -46,6 +46,7 @@ const postOnlyData: DrawerData = {
       platform: "instagram",
       content: "manual",
       media_url: null,
+      post_type: "text",
       approval_status: "draft",
       scheduled_at: null,
       published_at: null,

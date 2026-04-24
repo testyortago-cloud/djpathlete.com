@@ -9,6 +9,7 @@ function makePost(overrides: Partial<SocialPost> = {}): SocialPost {
     platform: "instagram",
     content: "Morning rotation check-in.",
     media_url: null,
+    post_type: "video",
     approval_status: "draft",
     scheduled_at: null,
     published_at: null,
