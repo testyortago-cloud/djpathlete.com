@@ -11,10 +11,11 @@ export interface UploadRequestBody {
 }
 
 export interface UploadApiResponse {
-  videoUploadId: string
   uploadUrl: string
   storagePath: string
   expiresInSeconds: number
+  videoUploadId?: string
+  mediaAssetId?: string
 }
 
 export interface UploadProgressEvent {
@@ -23,8 +24,11 @@ export interface UploadProgressEvent {
   percent: number
 }
 
-export async function requestSignedUpload(body: UploadRequestBody): Promise<UploadApiResponse> {
-  const response = await fetch("/api/admin/videos", {
+export async function requestSignedUpload(
+  body: UploadRequestBody,
+  endpoint: string = "/api/admin/videos",
+): Promise<UploadApiResponse> {
+  const response = await fetch(endpoint, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
@@ -85,6 +89,27 @@ export async function uploadVideoFile(
     contentType: file.type || "video/mp4",
     title: options.title,
   })
+  if (!videoUploadId) throw new Error("Video upload response missing videoUploadId")
   await uploadToSignedUrl(uploadUrl, file, options.onProgress)
   return { videoUploadId, storagePath }
+}
+
+/**
+ * Full flow for an image asset: request signed URL from the media-assets route,
+ * PUT the bytes, return the new media_asset id + storage path.
+ */
+export async function uploadImageFile(
+  file: File,
+  options: { onProgress?: (event: UploadProgressEvent) => void } = {},
+): Promise<{ mediaAssetId: string; storagePath: string }> {
+  const { mediaAssetId, uploadUrl, storagePath } = await requestSignedUpload(
+    {
+      filename: file.name,
+      contentType: file.type || "image/jpeg",
+    },
+    "/api/admin/media-assets/upload-url",
+  )
+  if (!mediaAssetId) throw new Error("Image upload response missing mediaAssetId")
+  await uploadToSignedUrl(uploadUrl, file, options.onProgress)
+  return { mediaAssetId, storagePath }
 }
