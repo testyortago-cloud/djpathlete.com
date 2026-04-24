@@ -28,7 +28,7 @@ export function ManualPostDialog({ dayKey, onClose, onCreated, multimediaEnabled
   const canSubmit =
     !busy &&
     isPlatformPostTypeSupported(platform, postType) &&
-    (postType !== "image" || mediaAssetId !== null) &&
+    ((postType !== "image" && postType !== "story") || mediaAssetId !== null) &&
     (postType !== "carousel" || mediaAssetIds.length >= 2)
 
   async function submit() {
@@ -44,7 +44,7 @@ export function ManualPostDialog({ dayKey, onClose, onCreated, multimediaEnabled
           caption,
           scheduled_at,
           postType,
-          mediaAssetId: postType === "image" ? mediaAssetId : undefined,
+          mediaAssetId: (postType === "image" || postType === "story") ? mediaAssetId : undefined,
           mediaAssetIds: postType === "carousel" ? mediaAssetIds : undefined,
         }),
       })
@@ -80,6 +80,7 @@ export function ManualPostDialog({ dayKey, onClose, onCreated, multimediaEnabled
               <option value="video">Video</option>
               <option value="image">Photo</option>
               <option value="carousel">Carousel</option>
+              <option value="story">Story</option>
             </select>
           </label>
         ) : null}
@@ -122,6 +123,17 @@ export function ManualPostDialog({ dayKey, onClose, onCreated, multimediaEnabled
           </div>
         ) : null}
 
+        {postType === "story" && multimediaEnabled ? (
+          <div className="mb-3">
+            <ImageUploader onUploaded={(e) => setMediaAssetId(e.mediaAssetId)} />
+            {!isPlatformPostTypeSupported(platform, "story") ? (
+              <p className="mt-2 text-xs text-error">
+                {platform} does not support stories.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
         <label className="block text-xs text-muted-foreground mb-3">
           Caption
           <textarea
@@ -132,6 +144,12 @@ export function ManualPostDialog({ dayKey, onClose, onCreated, multimediaEnabled
             className="mt-1 w-full rounded border border-border px-2 py-1 text-sm"
           />
         </label>
+
+        {postType === "story" && multimediaEnabled ? (
+          <p className="-mt-2 mb-3 text-xs text-muted-foreground">
+            Captions are ignored on Instagram and Facebook stories.
+          </p>
+        ) : null}
 
         <div className="flex items-center justify-end gap-2">
           <button

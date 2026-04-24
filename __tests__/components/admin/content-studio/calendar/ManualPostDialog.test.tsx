@@ -77,4 +77,31 @@ describe("<ManualPostDialog>", () => {
     const submit = screen.getByRole("button", { name: /create/i })
     expect(submit).toBeDisabled()
   })
+
+  it("shows the image uploader when postType=story and flag is on", () => {
+    render(
+      <ManualPostDialog
+        dayKey="2026-05-01"
+        onClose={() => {}}
+        onCreated={() => {}}
+        multimediaEnabled
+      />,
+    )
+    fireEvent.change(screen.getByLabelText(/post type/i), { target: { value: "story" } })
+    expect(screen.getByText(/captions are ignored/i)).toBeInTheDocument()
+  })
+
+  it("story submit is disabled until an image is uploaded", () => {
+    render(
+      <ManualPostDialog
+        dayKey="2026-05-01"
+        onClose={() => {}}
+        onCreated={() => {}}
+        multimediaEnabled
+      />,
+    )
+    fireEvent.change(screen.getByLabelText(/post type/i), { target: { value: "story" } })
+    const submit = screen.getByRole("button", { name: /create/i })
+    expect(submit).toBeDisabled()
+  })
 })
