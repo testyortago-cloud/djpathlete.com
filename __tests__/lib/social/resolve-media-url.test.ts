@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 
 const getVideoUploadByIdMock = vi.fn()
 const getAdminStorageMock = vi.fn()
+const mockGetSignedUrl = vi.fn()
 
 vi.mock("@/lib/db/video-uploads", () => ({
   getVideoUploadById: (id: string) => getVideoUploadByIdMock(id),
@@ -15,6 +16,13 @@ import { resolveMediaUrl } from "@/lib/social/resolve-media-url"
 describe("resolveMediaUrl", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockGetSignedUrl.mockResolvedValue(["https://signed.example/read"])
+    getAdminStorageMock.mockReturnValue({
+      bucket: () => ({
+        file: () => ({ getSignedUrl: mockGetSignedUrl }),
+      }),
+    })
+    getVideoUploadByIdMock.mockResolvedValue({ storage_path: "videos/u/1.mp4" })
   })
 
   it("returns the post.media_url when source_video_id is null", async () => {
@@ -62,5 +70,35 @@ describe("resolveMediaUrl", () => {
       media_url: "https://fallback.example.com/pic.jpg",
     })
     expect(url).toBe("https://fallback.example.com/pic.jpg")
+  })
+
+  it("returns null for text-only posts", async () => {
+    const url = await resolveMediaUrl({ source_video_id: null, media_url: null })
+    expect(url).toBeNull()
+  })
+
+  it("returns http media_url unchanged", async () => {
+    const url = await resolveMediaUrl({
+      source_video_id: null,
+      media_url: "https://external.example/img.jpg",
+    })
+    expect(url).toBe("https://external.example/img.jpg")
+  })
+
+  it("signs a Firebase storage path stored in media_url", async () => {
+    const url = await resolveMediaUrl({
+      source_video_id: null,
+      media_url: "images/user-1/1712345678-photo.jpg",
+    })
+    expect(url).toBe("https://signed.example/read")
+    expect(mockGetSignedUrl).toHaveBeenCalledOnce()
+  })
+
+  it("prefers source_video_id when both set", async () => {
+    const url = await resolveMediaUrl({
+      source_video_id: "video-1",
+      media_url: "images/whatever.jpg",
+    })
+    expect(url).toBe("https://signed.example/read")
   })
 })
