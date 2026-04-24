@@ -62,4 +62,102 @@ describe("lib/db/media-assets", () => {
     const missing = await getMediaAssetById("00000000-0000-0000-0000-000000000000")
     expect(missing).toBeNull()
   })
+
+  it("lists media assets filtered by kind and ordered by created_at desc", async () => {
+    const image = await createMediaAsset({
+      kind: "image",
+      storage_path: "media-assets/list-img.jpg",
+      public_url: "https://example.invalid/list-img.jpg",
+      mime_type: "image/jpeg",
+      bytes: 1,
+      width: null, height: null, duration_ms: null,
+      derived_from_video_id: null, ai_alt_text: null, ai_analysis: null, created_by: null,
+    })
+    createdIds.push(image.id)
+
+    const video = await createMediaAsset({
+      kind: "video",
+      storage_path: "media-assets/list-vid.mp4",
+      public_url: "https://example.invalid/list-vid.mp4",
+      mime_type: "video/mp4",
+      bytes: 1,
+      width: null, height: null, duration_ms: 5000,
+      derived_from_video_id: null, ai_alt_text: null, ai_analysis: null, created_by: null,
+    })
+    createdIds.push(video.id)
+
+    const imagesOnly = await listMediaAssets({ kind: "image" })
+    expect(imagesOnly.some((a) => a.id === image.id)).toBe(true)
+    expect(imagesOnly.some((a) => a.id === video.id)).toBe(false)
+  })
+
+  it("updates ai_alt_text and ai_analysis via updateMediaAssetAiMetadata", async () => {
+    const asset = await createMediaAsset({
+      kind: "image",
+      storage_path: "media-assets/ai.jpg",
+      public_url: "https://example.invalid/ai.jpg",
+      mime_type: "image/jpeg",
+      bytes: 1,
+      width: null, height: null, duration_ms: null,
+      derived_from_video_id: null, ai_alt_text: null, ai_analysis: null, created_by: null,
+    })
+    createdIds.push(asset.id)
+
+    await updateMediaAssetAiMetadata(asset.id, {
+      ai_alt_text: "A squat demonstration with a barbell",
+      ai_analysis: { scene: "gym", objects: ["barbell", "rack"] },
+    })
+
+    const fresh = await getMediaAssetById(asset.id)
+    expect(fresh?.ai_alt_text).toBe("A squat demonstration with a barbell")
+    expect(fresh?.ai_analysis).toEqual({ scene: "gym", objects: ["barbell", "rack"] })
+  })
+
+  it("deletes a media asset that is not referenced by any post", async () => {
+    const asset = await createMediaAsset({
+      kind: "image",
+      storage_path: "media-assets/del.jpg",
+      public_url: "https://example.invalid/del.jpg",
+      mime_type: "image/jpeg",
+      bytes: 1,
+      width: null, height: null, duration_ms: null,
+      derived_from_video_id: null, ai_alt_text: null, ai_analysis: null, created_by: null,
+    })
+    // Don't push to createdIds — we're deleting explicitly.
+
+    await deleteMediaAsset(asset.id)
+
+    const fresh = await getMediaAssetById(asset.id)
+    expect(fresh).toBeNull()
+  })
+
+  it("refuses to delete a media asset referenced by a social_post_media row", async () => {
+    const asset = await createMediaAsset({
+      kind: "image",
+      storage_path: "media-assets/ref.jpg",
+      public_url: "https://example.invalid/ref.jpg",
+      mime_type: "image/jpeg",
+      bytes: 1,
+      width: null, height: null, duration_ms: null,
+      derived_from_video_id: null, ai_alt_text: null, ai_analysis: null, created_by: null,
+    })
+    createdIds.push(asset.id)
+
+    const post = await supabase
+      .from("social_posts")
+      .insert({ platform: "instagram", content: "ref", approval_status: "draft", post_type: "image" })
+      .select()
+      .single()
+    await supabase.from("social_post_media").insert({
+      social_post_id: post.data!.id,
+      media_asset_id: asset.id,
+      position: 0,
+    })
+
+    try {
+      await expect(deleteMediaAsset(asset.id)).rejects.toBeDefined()
+    } finally {
+      await supabase.from("social_posts").delete().eq("id", post.data!.id)
+    }
+  })
 })
