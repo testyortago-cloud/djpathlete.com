@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { createSocialPost } from "@/lib/db/social-posts"
-import type { SocialPlatform } from "@/types/database"
+import { attachMedia } from "@/lib/db/social-post-media"
+import { isPlatformPostTypeSupported } from "@/lib/content-studio/post-type-support"
+import { isContentStudioMultimediaEnabled } from "@/lib/content-studio/feature-flag"
+import type { SocialPlatform, PostType } from "@/types/database"
 
 const VALID_PLATFORMS: readonly SocialPlatform[] = [
   "instagram",
@@ -11,6 +14,8 @@ const VALID_PLATFORMS: readonly SocialPlatform[] = [
   "youtube_shorts",
   "linkedin",
 ]
+
+const VALID_POST_TYPES: readonly PostType[] = ["video", "image", "carousel", "story", "text"]
 
 export async function POST(request: NextRequest) {
   const session = await auth()
@@ -23,6 +28,8 @@ export async function POST(request: NextRequest) {
     caption?: string
     scheduled_at?: string | null
     source_video_id?: string | null
+    postType?: string
+    mediaAssetId?: string | null
   } | null
 
   const platform = body?.platform as SocialPlatform | undefined
@@ -30,6 +37,29 @@ export async function POST(request: NextRequest) {
 
   if (!platform || !(VALID_PLATFORMS as readonly string[]).includes(platform)) {
     return NextResponse.json({ error: "platform must be one of " + VALID_PLATFORMS.join(", ") }, { status: 400 })
+  }
+
+  const postType = (body?.postType ?? "video") as PostType
+  if (!(VALID_POST_TYPES as readonly string[]).includes(postType)) {
+    return NextResponse.json({ error: "postType is invalid" }, { status: 400 })
+  }
+
+  if (postType !== "video" && !isContentStudioMultimediaEnabled()) {
+    return NextResponse.json(
+      { error: "Multimedia posts are disabled. Set CS_MULTIMEDIA_ENABLED=true." },
+      { status: 400 },
+    )
+  }
+
+  if (!isPlatformPostTypeSupported(platform, postType)) {
+    return NextResponse.json(
+      { error: `${platform} does not support ${postType} posts` },
+      { status: 400 },
+    )
+  }
+
+  if (postType === "image" && !body?.mediaAssetId) {
+    return NextResponse.json({ error: "mediaAssetId is required for image posts" }, { status: 400 })
   }
 
   let scheduledAt: string | null = null
@@ -48,11 +78,16 @@ export async function POST(request: NextRequest) {
     platform,
     content: caption,
     media_url: null,
+    post_type: postType,
     approval_status: scheduledAt ? "scheduled" : "approved",
     scheduled_at: scheduledAt,
     source_video_id: body?.source_video_id ?? null,
     created_by: session.user.id,
   })
+
+  if (postType === "image" && body?.mediaAssetId) {
+    await attachMedia(post.id, body.mediaAssetId, 0)
+  }
 
   return NextResponse.json({ id: post.id, approval_status: post.approval_status })
 }
