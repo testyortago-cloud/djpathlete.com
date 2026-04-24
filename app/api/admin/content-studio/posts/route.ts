@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { createSocialPost } from "@/lib/db/social-posts"
+import { createSocialPost, deleteSocialPost } from "@/lib/db/social-posts"
 import { attachMedia } from "@/lib/db/social-post-media"
 import { isPlatformPostTypeSupported } from "@/lib/content-studio/post-type-support"
 import { isContentStudioMultimediaEnabled } from "@/lib/content-studio/feature-flag"
@@ -44,16 +44,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "postType is invalid" }, { status: 400 })
   }
 
-  if (postType !== "video" && !isContentStudioMultimediaEnabled()) {
+  // Platform-level support check first — a legitimately-unsupported combo
+  // (e.g. carousel on TikTok) should surface a specific error, not a flag error.
+  if (!isPlatformPostTypeSupported(platform, postType)) {
     return NextResponse.json(
-      { error: "Multimedia posts are disabled. Set CS_MULTIMEDIA_ENABLED=true." },
+      { error: `${platform} does not support ${postType} posts` },
       { status: 400 },
     )
   }
 
-  if (!isPlatformPostTypeSupported(platform, postType)) {
+  if (postType !== "video" && !isContentStudioMultimediaEnabled()) {
     return NextResponse.json(
-      { error: `${platform} does not support ${postType} posts` },
+      { error: "Multimedia posts are disabled. Set CS_MULTIMEDIA_ENABLED=true." },
       { status: 400 },
     )
   }
@@ -86,7 +88,17 @@ export async function POST(request: NextRequest) {
   })
 
   if (postType === "image" && body?.mediaAssetId) {
-    await attachMedia(post.id, body.mediaAssetId, 0)
+    try {
+      await attachMedia(post.id, body.mediaAssetId, 0)
+    } catch (err) {
+      // Roll back the freshly-created post so we don't leave a ghost row that
+      // would later fail to publish (no asset, but post_type=image).
+      await deleteSocialPost(post.id).catch(() => {})
+      return NextResponse.json(
+        { error: `Failed to attach media asset: ${(err as Error).message}` },
+        { status: 500 },
+      )
+    }
   }
 
   return NextResponse.json({ id: post.id, approval_status: post.approval_status })

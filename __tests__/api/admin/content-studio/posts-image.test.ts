@@ -3,11 +3,13 @@ import { NextRequest } from "next/server"
 
 const mockAuth = vi.fn()
 const mockCreate = vi.fn()
+const mockDelete = vi.fn()
 const mockAttach = vi.fn()
 
 vi.mock("@/lib/auth", () => ({ auth: () => mockAuth() }))
 vi.mock("@/lib/db/social-posts", () => ({
   createSocialPost: (...args: unknown[]) => mockCreate(...args),
+  deleteSocialPost: (...args: unknown[]) => mockDelete(...args),
 }))
 vi.mock("@/lib/db/social-post-media", () => ({
   attachMedia: (...args: unknown[]) => mockAttach(...args),
@@ -22,6 +24,7 @@ describe("POST /api/admin/content-studio/posts — image path", () => {
     mockAuth.mockResolvedValue({ user: { id: "admin-1", role: "admin" } })
     mockCreate.mockResolvedValue({ id: "post-1", approval_status: "approved" })
     mockAttach.mockResolvedValue(undefined)
+    mockDelete.mockResolvedValue(undefined)
   })
 
   async function call(body: unknown) {
@@ -95,6 +98,19 @@ describe("POST /api/admin/content-studio/posts — image path", () => {
       expect.objectContaining({ source_video_id: "video-1" }),
     )
     expect(mockAttach).not.toHaveBeenCalled()
+  })
+
+  it("rolls back the post when attachMedia fails", async () => {
+    mockAttach.mockRejectedValueOnce(new Error("attach exploded"))
+    const res = await call({
+      platform: "instagram",
+      caption: "hello",
+      postType: "image",
+      mediaAssetId: "asset-1",
+    })
+    expect(res.status).toBe(500)
+    expect(mockCreate).toHaveBeenCalledOnce()
+    expect(mockDelete).toHaveBeenCalledWith("post-1")
   })
 })
 
