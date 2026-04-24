@@ -76,3 +76,33 @@ export async function deleteMediaAsset(id: string): Promise<void> {
   const { error } = await supabase.from("media_assets").delete().eq("id", id)
   if (error) throw error
 }
+
+export interface AssetWithPostCount extends MediaAsset {
+  post_count: number
+}
+
+export interface ListAssetsWithPostCountsFilters {
+  kind?: MediaAsset["kind"]
+  derived_from_video_id?: string
+}
+
+export async function listAssetsWithPostCounts(
+  filters: ListAssetsWithPostCountsFilters = {},
+): Promise<AssetWithPostCount[]> {
+  const supabase = getClient()
+  let query = supabase
+    .from("media_assets")
+    .select("*, social_post_media(media_asset_id)")
+    .order("created_at", { ascending: false })
+  if (filters.kind) query = query.eq("kind", filters.kind)
+  if (filters.derived_from_video_id) query = query.eq("derived_from_video_id", filters.derived_from_video_id)
+
+  const { data, error } = await query
+  if (error) throw error
+
+  return ((data ?? []) as Array<MediaAsset & { social_post_media: Array<{ media_asset_id: string }> }>)
+    .map((row) => {
+      const { social_post_media, ...asset } = row
+      return { ...asset, post_count: (social_post_media ?? []).length }
+    })
+}

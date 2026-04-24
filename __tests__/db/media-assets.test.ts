@@ -4,6 +4,7 @@ import {
   createMediaAsset,
   getMediaAssetById,
   listMediaAssets,
+  listAssetsWithPostCounts,
   updateMediaAssetAiMetadata,
   deleteMediaAsset,
 } from "@/lib/db/media-assets"
@@ -155,6 +156,63 @@ describe("lib/db/media-assets", () => {
 
     const fresh = await getMediaAssetById(asset.id)
     expect(fresh).toBeNull()
+  })
+
+  it("listAssetsWithPostCounts returns each asset with the count of posts referencing it", async () => {
+    const assetA = await createMediaAsset({
+      kind: "image",
+      storage_path: "media-assets/pc-a.jpg",
+      public_url: "https://example.invalid/pc-a.jpg",
+      mime_type: "image/jpeg",
+      bytes: 1,
+      width: null, height: null, duration_ms: null,
+      derived_from_video_id: null, ai_alt_text: null, ai_analysis: null, created_by: null,
+    })
+    createdIds.push(assetA.id)
+
+    const assetB = await createMediaAsset({
+      kind: "image",
+      storage_path: "media-assets/pc-b.jpg",
+      public_url: "https://example.invalid/pc-b.jpg",
+      mime_type: "image/jpeg",
+      bytes: 1,
+      width: null, height: null, duration_ms: null,
+      derived_from_video_id: null, ai_alt_text: null, ai_analysis: null, created_by: null,
+    })
+    createdIds.push(assetB.id)
+
+    // Create 2 posts that reference assetA, zero that reference assetB
+    const p1 = await supabase
+      .from("social_posts")
+      .insert({ platform: "instagram", content: "p1", approval_status: "draft", post_type: "image" })
+      .select()
+      .single()
+    const p2 = await supabase
+      .from("social_posts")
+      .insert({ platform: "facebook", content: "p2", approval_status: "draft", post_type: "image" })
+      .select()
+      .single()
+
+    try {
+      await supabase.from("social_post_media").insert({
+        social_post_id: p1.data!.id,
+        media_asset_id: assetA.id,
+        position: 0,
+      })
+      await supabase.from("social_post_media").insert({
+        social_post_id: p2.data!.id,
+        media_asset_id: assetA.id,
+        position: 0,
+      })
+
+      const rows = await listAssetsWithPostCounts({})
+      const rowA = rows.find((r) => r.id === assetA.id)
+      const rowB = rows.find((r) => r.id === assetB.id)
+      expect(rowA?.post_count).toBe(2)
+      expect(rowB?.post_count).toBe(0)
+    } finally {
+      await supabase.from("social_posts").delete().in("id", [p1.data!.id, p2.data!.id])
+    }
   })
 
   it("refuses to delete a media asset referenced by a social_post_media row", async () => {
