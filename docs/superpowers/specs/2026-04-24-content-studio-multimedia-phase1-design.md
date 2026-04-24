@@ -64,6 +64,8 @@ Mirrors the video upload flow end-to-end, swapping video-specific pieces for ima
 
 ### 5.2 Manual post creation flow
 
+**Phase 1a entry point is `ManualPostDialog` only.** The existing `UploadModal` keeps its dedicated "Upload Video" button — it doesn't gain a content-type picker in Phase 1a. Image posts flow entirely through the calendar's manual-post dialog. If dedicated image-upload entry points are needed later (e.g. a library view), that's a Phase 1b+ concern.
+
 `ManualPostDialog` grows a "content type" row above the platform picker:
 
 ```
@@ -153,7 +155,6 @@ Prod rollout: flag starts `false`; enable after smoke test on staging.
 
 ## 7. Changed files
 
-- `components/admin/content-studio/upload/UploadModal.tsx` — adds content-type picker (Video | Photo); routes to the appropriate uploader.
 - `components/admin/content-studio/calendar/ManualPostDialog.tsx` — adds content-type picker + media picker for image type.
 - `app/api/admin/content-studio/posts/route.ts` — accepts `postType`, `mediaAssetId`; validates by type; feature-flag gate.
 - `lib/content-studio/feature-flag.ts` — adds `isContentStudioMultimediaEnabled`.

@@ -76,6 +76,10 @@ export async function POST(request: NextRequest) {
     scheduledAt = d.toISOString()
   }
 
+  // Image posts never carry a source_video_id — if both were set the resolver
+  // would prefer the video path and sign the wrong asset at publish time.
+  const sourceVideoId = postType === "image" ? null : body?.source_video_id ?? null
+
   const post = await createSocialPost({
     platform,
     content: caption,
@@ -83,7 +87,7 @@ export async function POST(request: NextRequest) {
     post_type: postType,
     approval_status: scheduledAt ? "scheduled" : "approved",
     scheduled_at: scheduledAt,
-    source_video_id: body?.source_video_id ?? null,
+    source_video_id: sourceVideoId,
     created_by: session.user.id,
   })
 

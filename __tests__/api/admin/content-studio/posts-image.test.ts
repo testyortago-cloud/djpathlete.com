@@ -112,6 +112,23 @@ describe("POST /api/admin/content-studio/posts — image path", () => {
     expect(mockCreate).toHaveBeenCalledOnce()
     expect(mockDelete).toHaveBeenCalledWith("post-1")
   })
+
+  it("clamps source_video_id to null on image posts (defense against crafted payloads)", async () => {
+    const res = await call({
+      platform: "instagram",
+      caption: "hello",
+      postType: "image",
+      mediaAssetId: "asset-1",
+      source_video_id: "video-leak",
+    })
+    expect(res.status).toBe(200)
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        post_type: "image",
+        source_video_id: null,
+      }),
+    )
+  })
 })
 
 describe("POST /api/admin/content-studio/posts — multimedia flag off", () => {
