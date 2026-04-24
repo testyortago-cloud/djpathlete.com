@@ -28,6 +28,7 @@ describe("<MonthGrid>", () => {
       platform: "instagram",
       content: "caption",
       media_url: null,
+      post_type: "text",
       approval_status: "scheduled",
       scheduled_at: "2026-04-20T15:00:00Z",
       published_at: null,

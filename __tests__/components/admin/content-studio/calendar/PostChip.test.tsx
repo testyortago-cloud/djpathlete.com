@@ -10,6 +10,7 @@ const chip: CalendarChip = postToChip(
     platform: "instagram",
     content: "12345678901234567890123456789012345 — long caption preview text",
     media_url: null,
+    post_type: "video",
     approval_status: "scheduled",
     scheduled_at: "2026-04-20T15:00:00Z",
     published_at: null,

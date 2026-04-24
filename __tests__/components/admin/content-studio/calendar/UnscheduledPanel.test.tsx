@@ -9,6 +9,7 @@ const post = (id: string, overrides: Partial<PipelinePostRow> = {}): PipelinePos
   platform: "instagram",
   content: "caption",
   media_url: null,
+  post_type: "video",
   approval_status: "approved",
   scheduled_at: null,
   published_at: null,
