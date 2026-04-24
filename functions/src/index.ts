@@ -231,6 +231,28 @@ export const videoVision = onDocumentCreated(
   },
 )
 
+// ─── Image Vision (alt-text + analysis) ───────────────────────────────────────
+// Triggered when a new ai_jobs doc is created with type "image_vision".
+// Downloads the image from Firebase Storage, calls Claude Vision for alt-text
+// and a structured analysis, writes both back to media_assets.
+
+export const imageVision = onDocumentCreated(
+  {
+    document: "ai_jobs/{jobId}",
+    timeoutSeconds: 120,
+    memory: "512MiB",
+    region: "us-central1",
+    secrets: [supabaseUrl, supabaseServiceRoleKey, anthropicApiKey],
+  },
+  async (event) => {
+    const data = event.data?.data()
+    if (!data || data.type !== "image_vision") return
+
+    const { handleImageVision } = await import("./image-vision.js")
+    await handleImageVision(event.params.jobId)
+  },
+)
+
 // ─── Tavily Research ──────────────────────────────────────────────────────────
 // Triggered when a new ai_jobs doc is created with type "tavily_research"
 
