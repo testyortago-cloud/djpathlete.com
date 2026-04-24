@@ -45,7 +45,17 @@ export function createLinkedInPlugin(credentials: LinkedInCredentials): PublishP
     },
 
     async publish(input: PublishInput): Promise<PublishResult> {
-      const { content, mediaUrl } = input
+      const { content, mediaUrl, mediaUrls } = input
+
+      // Multi-image carousel — must come before the single-media branches
+      if (mediaUrls && mediaUrls.length >= 2) {
+        return publishMultiImagePost({
+          accessToken: access_token,
+          organizationId: organization_id,
+          caption: content,
+          imageUrls: mediaUrls,
+        })
+      }
 
       if (mediaUrl && VIDEO_EXTENSIONS.test(mediaUrl)) {
         return {
@@ -174,6 +184,71 @@ async function publishImagePost(args: ImagePostArgs): Promise<PublishResult> {
         media: {
           id: init.imageUrn,
           altText: args.caption.slice(0, 4086),
+        },
+      },
+    }),
+  })
+  return extractPostResult(response)
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Multi-image post (N × upload flow, then POST /rest/posts with content.multiImage)
+// ──────────────────────────────────────────────────────────────────────────
+
+interface MultiImageArgs {
+  accessToken: string
+  organizationId: string
+  caption: string
+  imageUrls: string[]
+}
+
+async function publishMultiImagePost(args: MultiImageArgs): Promise<PublishResult> {
+  const { accessToken, organizationId, caption, imageUrls } = args
+
+  // Step 1: for each image URL, download bytes → initializeUpload → PUT → poll AVAILABLE.
+  // Sequential to keep error surface simple. If any image fails, bail out and return.
+  const imageUrns: string[] = []
+  for (let i = 0; i < imageUrls.length; i += 1) {
+    const url = imageUrls[i]
+
+    const binary = await fetchBinary(url)
+    if (!binary.ok) {
+      return { success: false, error: `Image ${i + 1} fetch failed: ${binary.error}` }
+    }
+
+    const init = await initializeImageUpload(accessToken, organizationId)
+    if (!init.ok) return { success: false, error: `Image ${i + 1} init: ${init.error}` }
+
+    const put = await putImageBytes(accessToken, init.uploadUrl, binary.data)
+    if (!put.ok) return { success: false, error: `Image ${i + 1} PUT: ${put.error}` }
+
+    const ready = await waitForImageReady(accessToken, init.imageUrn)
+    if (!ready.ok) return { success: false, error: `Image ${i + 1} not ready: ${ready.error}` }
+
+    imageUrns.push(init.imageUrn)
+  }
+
+  // Step 2: create the post with content.multiImage.images[]
+  const response = await fetch(POSTS_URL, {
+    method: "POST",
+    headers: versionedHeaders(accessToken),
+    body: JSON.stringify({
+      author: `urn:li:organization:${organizationId}`,
+      commentary: caption,
+      visibility: "PUBLIC",
+      distribution: {
+        feedDistribution: "MAIN_FEED",
+        targetEntities: [],
+        thirdPartyDistributionChannels: [],
+      },
+      lifecycleState: "PUBLISHED",
+      isReshareDisabledByAuthor: false,
+      content: {
+        multiImage: {
+          images: imageUrns.map((urn, i) => ({
+            id: urn,
+            altText: caption ? `${caption.slice(0, 100)} (slide ${i + 1})` : `Slide ${i + 1}`,
+          })),
         },
       },
     }),
