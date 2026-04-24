@@ -6,6 +6,12 @@ function getClient() {
   return createServiceRoleClient()
 }
 
+/**
+ * Create a social post. `post_type` is optional — omitting it falls through to
+ * the DB default `'video'`. Callers creating non-video posts (image/carousel/
+ * story/text) MUST pass `post_type` explicitly; otherwise the post will be
+ * mis-classified as a video.
+ */
 export async function createSocialPost(
   post: Omit<
     SocialPost,
@@ -118,6 +124,11 @@ export interface SocialPostWithMedia extends SocialPost {
   media: SocialPostMediaWithAsset[]
 }
 
+/**
+ * Fetch a post together with its ordered media (one round-trip, nested select).
+ * Uses the service-role client like the rest of this DAL — callers must enforce
+ * authorization themselves before surfacing the result to non-admin contexts.
+ */
 export async function getSocialPostWithMedia(id: string): Promise<SocialPostWithMedia | null> {
   const supabase = getClient()
   const { data, error } = await supabase
