@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname, useSearchParams } from "next/navigation"
-import { LayoutGrid, CalendarDays, Film, Megaphone } from "lucide-react"
+import { LayoutGrid, CalendarDays, Film, Megaphone, Images } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const TABS = [
@@ -10,13 +10,14 @@ const TABS = [
   { id: "calendar", label: "Calendar", icon: CalendarDays },
   { id: "videos", label: "Videos", icon: Film },
   { id: "posts", label: "Posts", icon: Megaphone },
+  { id: "assets", label: "Assets", icon: Images },
 ] as const
 
 type TabId = (typeof TABS)[number]["id"]
 
 function getActiveTab(searchParams: URLSearchParams): TabId {
   const tab = searchParams.get("tab")
-  if (tab === "calendar" || tab === "videos" || tab === "posts") return tab
+  if (tab === "calendar" || tab === "videos" || tab === "posts" || tab === "assets") return tab
   return "pipeline"
 }
 

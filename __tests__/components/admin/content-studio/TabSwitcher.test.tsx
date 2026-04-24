@@ -9,12 +9,18 @@ vi.mock("next/navigation", () => ({
 }))
 
 describe("<TabSwitcher>", () => {
-  it("renders all four tab labels", () => {
+  it("renders all five tab labels", () => {
     render(<TabSwitcher />)
     expect(screen.getByRole("link", { name: /Pipeline/i })).toBeInTheDocument()
     expect(screen.getByRole("link", { name: /Calendar/i })).toBeInTheDocument()
     expect(screen.getByRole("link", { name: /Videos/i })).toBeInTheDocument()
     expect(screen.getByRole("link", { name: /Posts/i })).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: /Assets/i })).toBeInTheDocument()
+  })
+
+  it("renders the Assets tab link", () => {
+    render(<TabSwitcher />)
+    expect(screen.getByRole("link", { name: /assets/i })).toBeInTheDocument()
   })
 
   it("marks the tab matching the ?tab= search param as active", () => {
