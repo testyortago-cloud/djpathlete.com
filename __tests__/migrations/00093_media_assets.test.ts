@@ -527,6 +527,60 @@ describe("migration 00093 — media_assets + social_post_media + post_type", () 
     }
   })
 
+  it("skips video-derived posts that have source_video_id but no media_url", async () => {
+    // Create a video_uploads fixture so the FK is satisfiable.
+    const video = await supabase
+      .from("video_uploads")
+      .insert({
+        storage_path: "videos/skip-case-c.mp4",
+        original_filename: "skip-case-c.mp4",
+        mime_type: "video/mp4",
+      })
+      .select()
+      .single()
+    expect(video.error).toBeNull()
+
+    const post = await supabase
+      .from("social_posts")
+      .insert({
+        platform: "instagram",
+        content: "video-derived, no media_url",
+        approval_status: "draft",
+        source_video_id: video.data!.id,
+      })
+      .select()
+      .single()
+    expect(post.error).toBeNull()
+
+    try {
+      await supabase.rpc("backfill_social_post_media")
+
+      const rows = await supabase
+        .from("social_post_media")
+        .select("position")
+        .eq("social_post_id", post.data!.id)
+      expect(rows.data?.length).toBe(0)
+
+      const assets = await supabase
+        .from("media_assets")
+        .select("id")
+        .eq("derived_from_video_id", video.data!.id)
+      expect(assets.data?.length).toBe(0)
+
+      const sp = await supabase
+        .from("social_posts")
+        .select("post_type, media_url")
+        .eq("id", post.data!.id)
+        .single()
+      // post_type should still be default 'video'; media_url untouched (still null).
+      expect((sp.data as { post_type?: string })?.post_type).toBe("video")
+      expect(sp.data?.media_url).toBeNull()
+    } finally {
+      await supabase.from("social_posts").delete().eq("id", post.data!.id)
+      await supabase.from("video_uploads").delete().eq("id", video.data!.id)
+    }
+  })
+
   it("backfills a text-only post (no media_url) by setting post_type to 'text'", async () => {
     const post = await supabase
       .from("social_posts")

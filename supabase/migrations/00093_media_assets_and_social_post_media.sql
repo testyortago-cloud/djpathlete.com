@@ -137,7 +137,6 @@ DECLARE
   inferred_kind text;
   new_asset_id  uuid;
   inferred_type text;
-  video_storage text;
 BEGIN
   FOR rec IN
     SELECT sp.id, sp.media_url, sp.source_video_id, sp.post_type
@@ -146,35 +145,35 @@ BEGIN
         ON spm.social_post_id = sp.id AND spm.position = 0
      WHERE spm.social_post_id IS NULL
   LOOP
+    -- Case A: text-only post.
     IF rec.media_url IS NULL AND rec.source_video_id IS NULL THEN
-      -- Text-only post. No asset row; normalise post_type to 'text'.
       IF rec.post_type IS DISTINCT FROM 'text' THEN
         UPDATE social_posts SET post_type = 'text' WHERE id = rec.id;
       END IF;
       CONTINUE;
     END IF;
 
-    -- Infer kind. Prefer source_video_id signal; fall back to URL extension.
-    IF rec.source_video_id IS NOT NULL THEN
+    -- Case C: video-derived post with no resolved media_url. Skip — a later
+    -- phase will backfill these once the DAL can compute real public URLs.
+    IF rec.media_url IS NULL THEN
+      CONTINUE;
+    END IF;
+
+    -- Case B: post has a media_url. Infer kind from the URL extension.
+    IF rec.media_url ~* '\.(mp4|mov|webm|mkv)(\?|$)' THEN
       inferred_kind := 'video';
-      SELECT storage_path INTO video_storage FROM video_uploads WHERE id = rec.source_video_id;
-    ELSIF rec.media_url ~* '\.(mp4|mov|webm|mkv)(\?|$)' THEN
-      inferred_kind := 'video';
-      video_storage := NULL;
     ELSIF rec.media_url ~* '\.(jpe?g|png|webp|gif)(\?|$)' THEN
       inferred_kind := 'image';
-      video_storage := NULL;
     ELSE
-      -- Unknown extension and no source video — assume image; safer than refusing.
+      -- Unknown extension — assume image; safer than refusing.
       inferred_kind := 'image';
-      video_storage := NULL;
     END IF;
 
     INSERT INTO media_assets (kind, storage_path, public_url, mime_type, bytes, derived_from_video_id)
     VALUES (
       inferred_kind,
-      COALESCE(video_storage, rec.media_url),
-      COALESCE(rec.media_url, video_storage),
+      rec.media_url,                             -- unknown true storage path; URL stands in
+      rec.media_url,
       CASE WHEN inferred_kind = 'video' THEN 'video/mp4' ELSE 'image/jpeg' END,
       0,
       rec.source_video_id
