@@ -7,6 +7,7 @@ import { defaultPublishTimeForPlatform } from "@/lib/content-studio/calendar-def
 import { isPlatformPostTypeSupported } from "@/lib/content-studio/post-type-support"
 import { ImageUploader } from "@/components/admin/content-studio/upload/ImageUploader"
 import { CarouselComposer } from "@/components/admin/content-studio/upload/CarouselComposer"
+import { VideoUploader } from "@/components/admin/videos/VideoUploader"
 
 interface ManualPostDialogProps {
   dayKey: string
@@ -23,12 +24,18 @@ export function ManualPostDialog({ dayKey, onClose, onCreated, multimediaEnabled
   const [caption, setCaption] = useState("")
   const [mediaAssetId, setMediaAssetId] = useState<string | null>(null)
   const [mediaAssetIds, setMediaAssetIds] = useState<string[]>([])
+  const [storyMediaType, setStoryMediaType] = useState<"image" | "video">("image")
+  const [sourceVideoId, setSourceVideoId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   const canSubmit =
     !busy &&
     isPlatformPostTypeSupported(platform, postType) &&
-    ((postType !== "image" && postType !== "story") || mediaAssetId !== null) &&
+    ((postType !== "image" && postType !== "story") ||
+      (postType === "image" && mediaAssetId !== null) ||
+      (postType === "story" &&
+        ((storyMediaType === "image" && mediaAssetId !== null) ||
+          (storyMediaType === "video" && sourceVideoId !== null)))) &&
     (postType !== "carousel" || mediaAssetIds.length >= 2)
 
   async function submit() {
@@ -44,7 +51,12 @@ export function ManualPostDialog({ dayKey, onClose, onCreated, multimediaEnabled
           caption,
           scheduled_at,
           postType,
-          mediaAssetId: (postType === "image" || postType === "story") ? mediaAssetId : undefined,
+          mediaAssetId:
+            postType === "image" || (postType === "story" && storyMediaType === "image")
+              ? mediaAssetId
+              : undefined,
+          source_video_id:
+            postType === "story" && storyMediaType === "video" ? sourceVideoId : undefined,
           mediaAssetIds: postType === "carousel" ? mediaAssetIds : undefined,
         }),
       })
@@ -74,6 +86,8 @@ export function ManualPostDialog({ dayKey, onClose, onCreated, multimediaEnabled
                 setPostType(e.target.value as PostType)
                 setMediaAssetId(null)
                 setMediaAssetIds([])
+                setStoryMediaType("image")
+                setSourceVideoId(null)
               }}
               className="mt-1 block w-full rounded border border-border px-2 py-1 text-sm"
             >
@@ -125,7 +139,27 @@ export function ManualPostDialog({ dayKey, onClose, onCreated, multimediaEnabled
 
         {postType === "story" && multimediaEnabled ? (
           <div className="mb-3">
-            <ImageUploader onUploaded={(e) => setMediaAssetId(e.mediaAssetId)} />
+            <label className="block text-xs text-muted-foreground mb-2">
+              Story media
+              <select
+                aria-label="Story media type"
+                value={storyMediaType}
+                onChange={(e) => {
+                  setStoryMediaType(e.target.value as "image" | "video")
+                  setMediaAssetId(null)
+                  setSourceVideoId(null)
+                }}
+                className="mt-1 block w-full rounded border border-border px-2 py-1 text-sm"
+              >
+                <option value="image">Photo</option>
+                <option value="video">Video</option>
+              </select>
+            </label>
+            {storyMediaType === "image" ? (
+              <ImageUploader onUploaded={(e) => setMediaAssetId(e.mediaAssetId)} />
+            ) : (
+              <VideoUploader onUploaded={(id) => setSourceVideoId(id)} />
+            )}
             {!isPlatformPostTypeSupported(platform, "story") ? (
               <p className="mt-2 text-xs text-error">
                 {platform} does not support stories.

@@ -6,6 +6,7 @@ const mockCreate = vi.fn()
 const mockDelete = vi.fn()
 const mockAttach = vi.fn()
 const mockGetAsset = vi.fn()
+const mockGetVideoUpload = vi.fn()
 
 vi.mock("@/lib/auth", () => ({ auth: () => mockAuth() }))
 vi.mock("@/lib/db/social-posts", () => ({
@@ -17,6 +18,9 @@ vi.mock("@/lib/db/social-post-media", () => ({
 }))
 vi.mock("@/lib/db/media-assets", () => ({
   getMediaAssetById: (...args: unknown[]) => mockGetAsset(...args),
+}))
+vi.mock("@/lib/db/video-uploads", () => ({
+  getVideoUploadById: (...args: unknown[]) => mockGetVideoUpload(...args),
 }))
 vi.mock("@/lib/content-studio/feature-flag", () => ({
   isContentStudioMultimediaEnabled: () => true,
@@ -34,6 +38,7 @@ describe("POST /api/admin/content-studio/posts — story path", () => {
       kind: "image",
       mime_type: "image/jpeg",
     }))
+    mockGetVideoUpload.mockResolvedValue({ id: "video-1" })
   })
 
   async function call(body: unknown) {
@@ -78,16 +83,6 @@ describe("POST /api/admin/content-studio/posts — story path", () => {
     )
   })
 
-  it("rejects story without mediaAssetId", async () => {
-    const res = await call({
-      platform: "instagram",
-      caption: "x",
-      postType: "story",
-    })
-    expect(res.status).toBe(400)
-    expect(mockCreate).not.toHaveBeenCalled()
-  })
-
   it("rejects story on linkedin (unsupported)", async () => {
     const res = await call({
       platform: "linkedin",
@@ -129,23 +124,6 @@ describe("POST /api/admin/content-studio/posts — story path", () => {
     expect(res.status).toBe(400)
   })
 
-  it("clamps source_video_id to null on story posts (defense against crafted payloads)", async () => {
-    const res = await call({
-      platform: "instagram",
-      caption: "",
-      postType: "story",
-      mediaAssetId: "asset-1",
-      source_video_id: "video-leak",
-    })
-    expect(res.status).toBe(200)
-    expect(mockCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        post_type: "story",
-        source_video_id: null,
-      }),
-    )
-  })
-
   it("rolls back the post when attachMedia fails", async () => {
     mockAttach.mockRejectedValueOnce(new Error("attach exploded"))
     const res = await call({
@@ -156,5 +134,59 @@ describe("POST /api/admin/content-studio/posts — story path", () => {
     })
     expect(res.status).toBe(500)
     expect(mockDelete).toHaveBeenCalledWith("post-1")
+  })
+
+  it("accepts a video story via source_video_id (no mediaAssetId)", async () => {
+    mockGetVideoUpload.mockResolvedValue({ id: "video-1", storage_path: "videos/u/v.mp4" })
+    const res = await call({
+      platform: "instagram",
+      caption: "",
+      postType: "story",
+      source_video_id: "video-1",
+    })
+    expect(res.status).toBe(200)
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        post_type: "story",
+        source_video_id: "video-1",
+      }),
+    )
+    // Video stories don't attach a media_asset; source_video_id drives resolution
+    expect(mockAttach).not.toHaveBeenCalled()
+  })
+
+  it("rejects story with BOTH mediaAssetId and source_video_id", async () => {
+    mockGetVideoUpload.mockResolvedValue({ id: "video-1" })
+    const res = await call({
+      platform: "instagram",
+      caption: "",
+      postType: "story",
+      mediaAssetId: "asset-1",
+      source_video_id: "video-1",
+    })
+    expect(res.status).toBe(400)
+    expect(mockCreate).not.toHaveBeenCalled()
+  })
+
+  it("rejects story with NEITHER mediaAssetId nor source_video_id", async () => {
+    const res = await call({
+      platform: "instagram",
+      caption: "",
+      postType: "story",
+    })
+    expect(res.status).toBe(400)
+    expect(mockCreate).not.toHaveBeenCalled()
+  })
+
+  it("rejects video story when source_video_id does not exist", async () => {
+    mockGetVideoUpload.mockResolvedValue(null)
+    const res = await call({
+      platform: "instagram",
+      caption: "",
+      postType: "story",
+      source_video_id: "missing-video",
+    })
+    expect(res.status).toBe(400)
+    expect(mockCreate).not.toHaveBeenCalled()
   })
 })

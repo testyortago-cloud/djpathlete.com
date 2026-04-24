@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { createSocialPost, deleteSocialPost } from "@/lib/db/social-posts"
 import { attachMedia } from "@/lib/db/social-post-media"
 import { getMediaAssetById } from "@/lib/db/media-assets"
+import { getVideoUploadById } from "@/lib/db/video-uploads"
 import { isPlatformPostTypeSupported } from "@/lib/content-studio/post-type-support"
 import { isContentStudioMultimediaEnabled } from "@/lib/content-studio/feature-flag"
 import type { SocialPlatform, PostType } from "@/types/database"
@@ -68,8 +69,27 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "mediaAssetId is required for image posts" }, { status: 400 })
   }
 
-  if (postType === "story" && !body?.mediaAssetId) {
-    return NextResponse.json({ error: "mediaAssetId is required for story posts" }, { status: 400 })
+  if (postType === "story") {
+    const hasAsset = !!body?.mediaAssetId
+    const hasVideo = !!body?.source_video_id
+    if (hasAsset === hasVideo) {
+      return NextResponse.json(
+        {
+          error:
+            "Story posts require exactly one of mediaAssetId (image) or source_video_id (video)",
+        },
+        { status: 400 },
+      )
+    }
+    if (hasVideo) {
+      const video = await getVideoUploadById(body!.source_video_id as string)
+      if (!video) {
+        return NextResponse.json(
+          { error: `source_video_id ${body!.source_video_id} not found` },
+          { status: 400 },
+        )
+      }
+    }
   }
 
   if (postType === "carousel") {
@@ -146,9 +166,7 @@ export async function POST(request: NextRequest) {
   // the resolver would prefer the video path and sign the wrong asset at
   // publish time.
   const sourceVideoId =
-    postType === "image" || postType === "carousel" || postType === "story"
-      ? null
-      : body?.source_video_id ?? null
+    postType === "image" || postType === "carousel" ? null : body?.source_video_id ?? null
 
   const post = await createSocialPost({
     platform,
