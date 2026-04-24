@@ -4,6 +4,7 @@ import { VideosList } from "@/components/admin/content-studio/list/VideosList"
 import { PostsList } from "@/components/admin/content-studio/list/PostsList"
 import { AssetsList } from "@/components/admin/content-studio/list/AssetsList"
 import { listAssetsWithPostCounts } from "@/lib/db/media-assets"
+import { signImageAssetThumbnails } from "@/lib/content-studio/asset-thumbnails"
 import { getCalendarData } from "@/lib/content-studio/calendar-data"
 import { computeCalendarWindow } from "@/lib/content-studio/calendar-window"
 import { CalendarContainer } from "@/components/admin/content-studio/calendar/CalendarContainer"
@@ -49,7 +50,8 @@ export default async function ContentStudioPage({ searchParams }: PageProps) {
       return <PostsList posts={data.posts} />
     case "assets": {
       const assets = await listAssetsWithPostCounts({})
-      return <AssetsList assets={assets} />
+      const thumbnailUrls = await signImageAssetThumbnails(assets)
+      return <AssetsList assets={assets} thumbnailUrls={thumbnailUrls} />
     }
     default:
       return (
