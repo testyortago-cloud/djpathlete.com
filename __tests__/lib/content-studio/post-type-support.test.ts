@@ -42,8 +42,11 @@ describe("isPlatformPostTypeSupported", () => {
     expect(isPlatformPostTypeSupported("instagram", "carousel")).toBe(true)
   })
 
-  it("rejects carousel on other platforms in Phase 2a", () => {
-    expect(isPlatformPostTypeSupported("facebook", "carousel")).toBe(false)
+  it("accepts facebook + carousel (new in Phase 2b)", () => {
+    expect(isPlatformPostTypeSupported("facebook", "carousel")).toBe(true)
+  })
+
+  it("rejects carousel on linkedin and tiktok (pending Phases 2c and 2d)", () => {
     expect(isPlatformPostTypeSupported("linkedin", "carousel")).toBe(false)
     expect(isPlatformPostTypeSupported("tiktok", "carousel")).toBe(false)
   })
