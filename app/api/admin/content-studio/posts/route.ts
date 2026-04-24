@@ -68,6 +68,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "mediaAssetId is required for image posts" }, { status: 400 })
   }
 
+  if (postType === "story" && !body?.mediaAssetId) {
+    return NextResponse.json({ error: "mediaAssetId is required for story posts" }, { status: 400 })
+  }
+
   if (postType === "carousel") {
     const ids = body?.mediaAssetIds
     if (!Array.isArray(ids) || ids.length < CAROUSEL_MIN_SLIDES || ids.length > CAROUSEL_MAX_SLIDES) {
@@ -96,6 +100,25 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  if (postType === "story" && body?.mediaAssetId) {
+    const asset = await getMediaAssetById(body.mediaAssetId)
+    if (!asset) {
+      return NextResponse.json({ error: `mediaAsset ${body.mediaAssetId} not found` }, { status: 400 })
+    }
+    if (asset.kind !== "image") {
+      return NextResponse.json(
+        { error: `mediaAsset ${body.mediaAssetId} is not an image (kind=${asset.kind})` },
+        { status: 400 },
+      )
+    }
+    if (platform === "instagram" && asset.mime_type !== "image/jpeg") {
+      return NextResponse.json(
+        { error: `Instagram stories require JPEG images — ${body.mediaAssetId} is ${asset.mime_type}` },
+        { status: 400 },
+      )
+    }
+  }
+
   let scheduledAt: string | null = null
   if (body?.scheduled_at) {
     const d = new Date(body.scheduled_at)
@@ -112,7 +135,9 @@ export async function POST(request: NextRequest) {
   // the resolver would prefer the video path and sign the wrong asset at
   // publish time.
   const sourceVideoId =
-    postType === "image" || postType === "carousel" ? null : body?.source_video_id ?? null
+    postType === "image" || postType === "carousel" || postType === "story"
+      ? null
+      : body?.source_video_id ?? null
 
   const post = await createSocialPost({
     platform,
@@ -126,7 +151,7 @@ export async function POST(request: NextRequest) {
   })
 
   try {
-    if (postType === "image" && body?.mediaAssetId) {
+    if ((postType === "image" || postType === "story") && body?.mediaAssetId) {
       await attachMedia(post.id, body.mediaAssetId, 0)
     } else if (postType === "carousel" && body?.mediaAssetIds) {
       for (let i = 0; i < body.mediaAssetIds.length; i += 1) {
