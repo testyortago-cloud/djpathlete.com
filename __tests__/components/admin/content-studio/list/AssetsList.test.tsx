@@ -66,7 +66,8 @@ describe("AssetsList", () => {
       }),
     ]
     render(<AssetsList assets={assets} />)
-    expect(screen.getByText(/ai quote-card/i)).toBeInTheDocument()
+    // Scope to the row-level badge (a span), not the filter <option>
+    expect(screen.getByText(/^ai quote-card$/i, { selector: "span" })).toBeInTheDocument()
   })
 
   it("labels video-derived non-quote assets as 'Video-derived'", () => {
@@ -80,7 +81,7 @@ describe("AssetsList", () => {
       }),
     ]
     render(<AssetsList assets={assets} />)
-    expect(screen.getByText(/^video-derived$/i)).toBeInTheDocument()
+    expect(screen.getByText(/^video-derived$/i, { selector: "span" })).toBeInTheDocument()
   })
 
   it("labels uploaded assets as 'Uploaded'", () => {
@@ -88,7 +89,7 @@ describe("AssetsList", () => {
       makeAsset({ id: "up-1", storage_path: "images/manual.jpg", derived_from_video_id: null }),
     ]
     render(<AssetsList assets={assets} />)
-    expect(screen.getByText(/^uploaded$/i)).toBeInTheDocument()
+    expect(screen.getByText(/^uploaded$/i, { selector: "span" })).toBeInTheDocument()
   })
 
   it("filters by origin when the origin select changes", () => {

@@ -95,9 +95,9 @@ export function AssetsList({ assets, thumbnailUrls }: AssetsListProps) {
             className="ml-2 rounded border border-border px-2 py-1 text-sm"
           >
             <option value="all">All origins</option>
-            <option value="uploaded">Originals</option>
-            <option value="video_derived">Frames from videos</option>
-            <option value="quote_card">Quote cards (AI)</option>
+            <option value="uploaded">Uploaded</option>
+            <option value="video_derived">Video-derived</option>
+            <option value="quote_card">AI quote-card</option>
           </select>
         </label>
         <span className="ml-auto text-xs text-muted-foreground">
