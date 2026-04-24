@@ -28,14 +28,14 @@ export async function getMediaAssetById(id: string): Promise<MediaAsset | null> 
 
 export interface ListMediaAssetsFilters {
   kind?: MediaAsset["kind"]
-  derivedFromVideoId?: string
+  derived_from_video_id?: string
 }
 
 export async function listMediaAssets(filters: ListMediaAssetsFilters = {}): Promise<MediaAsset[]> {
   const supabase = getClient()
   let query = supabase.from("media_assets").select("*").order("created_at", { ascending: false })
   if (filters.kind) query = query.eq("kind", filters.kind)
-  if (filters.derivedFromVideoId) query = query.eq("derived_from_video_id", filters.derivedFromVideoId)
+  if (filters.derived_from_video_id) query = query.eq("derived_from_video_id", filters.derived_from_video_id)
   const { data, error } = await query
   if (error) throw error
   return (data ?? []) as MediaAsset[]
@@ -48,7 +48,7 @@ export interface MediaAssetAiMetadata {
 
 export async function updateMediaAssetAiMetadata(
   id: string,
-  metadata: MediaAssetAiMetadata,
+  metadata: Partial<MediaAssetAiMetadata>,
 ): Promise<void> {
   const supabase = getClient()
   const { error } = await supabase.from("media_assets").update(metadata).eq("id", id)

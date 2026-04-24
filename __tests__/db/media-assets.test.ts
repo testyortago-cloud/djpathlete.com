@@ -113,6 +113,32 @@ describe("lib/db/media-assets", () => {
     expect(fresh?.ai_analysis).toEqual({ scene: "gym", objects: ["barbell", "rack"] })
   })
 
+  it("updateMediaAssetAiMetadata does a partial overwrite — unspecified fields are preserved", async () => {
+    const asset = await createMediaAsset({
+      kind: "image",
+      storage_path: "media-assets/partial.jpg",
+      public_url: "https://example.invalid/partial.jpg",
+      mime_type: "image/jpeg",
+      bytes: 1,
+      width: null, height: null, duration_ms: null,
+      derived_from_video_id: null, ai_alt_text: null, ai_analysis: null, created_by: null,
+    })
+    createdIds.push(asset.id)
+
+    // Seed both fields.
+    await updateMediaAssetAiMetadata(asset.id, {
+      ai_alt_text: "original alt",
+      ai_analysis: { scene: "gym" },
+    })
+
+    // Update only ai_alt_text. ai_analysis should be preserved.
+    await updateMediaAssetAiMetadata(asset.id, { ai_alt_text: "updated alt" })
+
+    const fresh = await getMediaAssetById(asset.id)
+    expect(fresh?.ai_alt_text).toBe("updated alt")
+    expect(fresh?.ai_analysis).toEqual({ scene: "gym" })
+  })
+
   it("deletes a media asset that is not referenced by any post", async () => {
     const asset = await createMediaAsset({
       kind: "image",
