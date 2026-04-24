@@ -88,15 +88,23 @@ export function EventForm({ event }: EventFormProps) {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({})
   const [formError, setFormError] = useState<string | null>(null)
 
-  const canDelete = isEdit && (event?.signup_count ?? 0) === 0
-
   async function handleDelete() {
     if (!event) return
-    if (!confirm("Delete this event? This cannot be undone.")) return
+    const signups = event.signup_count ?? 0
+    const message =
+      signups > 0
+        ? `This event has ${signups} signup${signups === 1 ? "" : "s"}. Deleting will permanently remove the event AND all ${signups} signup record${signups === 1 ? "" : "s"} (cascades via FK). Continue?`
+        : "Delete this event? This cannot be undone."
+    if (!confirm(message)) return
+
     setDeleting(true)
     setFormError(null)
     try {
-      const res = await fetch(`/api/admin/events/${event.id}`, { method: "DELETE" })
+      const url =
+        signups > 0
+          ? `/api/admin/events/${event.id}?force=true`
+          : `/api/admin/events/${event.id}`
+      const res = await fetch(url, { method: "DELETE" })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         setFormError(data.error ?? "Failed to delete event")
@@ -199,6 +207,44 @@ export function EventForm({ event }: EventFormProps) {
           <span>{formError}</span>
         </div>
       )}
+
+      {/* Actions (sticky top — always in view while scrolling) */}
+      <div className="sticky top-0 z-10 -mx-4 sm:mx-0 bg-white/95 backdrop-blur-sm border border-border rounded-xl p-4 flex items-center justify-end gap-3 shadow-sm">
+        {isEdit && (
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => void handleDelete()}
+            disabled={submitting || deleting}
+            title={
+              (event?.signup_count ?? 0) === 0
+                ? "Permanently delete this event"
+                : `Permanently delete this event AND all ${event?.signup_count ?? 0} attached signups (cascades)`
+            }
+            className="mr-auto text-destructive hover:text-destructive hover:bg-destructive/5 disabled:opacity-50"
+          >
+            <Trash2 className="size-4 mr-1" />
+            {deleting ? "Deleting..." : "Delete"}
+          </Button>
+        )}
+        <Button type="button" variant="ghost" onClick={() => router.push("/admin/events")} disabled={submitting}>
+          Cancel
+        </Button>
+        {status === "draft" ? (
+          <>
+            <Button type="button" variant="outline" onClick={() => void handleSubmit("draft")} disabled={submitting}>
+              Save as draft
+            </Button>
+            <Button type="button" onClick={() => void handleSubmit("published")} disabled={submitting}>
+              {submitting ? "Saving..." : "Save & publish"}
+            </Button>
+          </>
+        ) : (
+          <Button type="submit" disabled={submitting}>
+            {submitting ? "Saving..." : "Save changes"}
+          </Button>
+        )}
+      </div>
 
       {/* Basics */}
       <Section icon={Info} title="Basics" description="The headline info shown on the public event page.">
@@ -444,18 +490,18 @@ export function EventForm({ event }: EventFormProps) {
         <EventHeroImageUpload value={heroImageUrl} onChange={setHeroImageUrl} eventId={event?.id} />
       </Section>
 
-      {/* Actions */}
-      <div className="sticky bottom-0 -mx-4 sm:mx-0 bg-white/95 backdrop-blur-sm border border-border rounded-xl p-4 flex items-center justify-end gap-3 shadow-sm">
+      {/* Actions (bottom copy for discoverability while scrolling) */}
+      <div className="-mx-4 sm:mx-0 bg-white/95 border border-border rounded-xl p-4 flex items-center justify-end gap-3 shadow-sm">
         {isEdit && (
           <Button
             type="button"
             variant="ghost"
             onClick={() => void handleDelete()}
-            disabled={submitting || deleting || !canDelete}
+            disabled={submitting || deleting}
             title={
-              canDelete
+              (event?.signup_count ?? 0) === 0
                 ? "Permanently delete this event"
-                : "Events with signups can't be deleted — use Cancel status instead"
+                : `Permanently delete this event AND all ${event?.signup_count ?? 0} attached signups (cascades)`
             }
             className="mr-auto text-destructive hover:text-destructive hover:bg-destructive/5 disabled:opacity-50"
           >

@@ -60,9 +60,14 @@ export function EventList({ initialEvents }: EventListProps) {
     }
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm("Delete this event? This cannot be undone.")) return
-    const res = await fetch(`/api/admin/events/${id}`, { method: "DELETE" })
+  async function handleDelete(id: string, signupCount: number) {
+    const message =
+      signupCount > 0
+        ? `This event has ${signupCount} signup${signupCount === 1 ? "" : "s"}. Deleting will permanently remove the event AND all ${signupCount} signup record${signupCount === 1 ? "" : "s"} (cascades via FK). Continue?`
+        : "Delete this event? This cannot be undone."
+    if (!confirm(message)) return
+    const url = signupCount > 0 ? `/api/admin/events/${id}?force=true` : `/api/admin/events/${id}`
+    const res = await fetch(url, { method: "DELETE" })
     if (res.ok) router.refresh()
     else {
       const data = await res.json()
@@ -189,17 +194,19 @@ export function EventList({ initialEvents }: EventListProps) {
                         >
                           <Copy className="h-4 w-4" />
                         </Button>
-                        {e.signup_count === 0 && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => void handleDelete(e.id)}
-                            title="Delete event"
-                            className="text-destructive hover:text-destructive"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => void handleDelete(e.id, e.signup_count)}
+                          title={
+                            e.signup_count === 0
+                              ? "Delete event"
+                              : `Delete event AND all ${e.signup_count} signups (cascades)`
+                          }
+                          className="text-destructive hover:text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     </td>
                   </tr>

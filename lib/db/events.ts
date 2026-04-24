@@ -125,10 +125,20 @@ export async function setEventStatus(id: string, status: EventStatus): Promise<E
   return updateEvent(id, { status })
 }
 
-export async function deleteEvent(id: string): Promise<void> {
+export interface DeleteEventOptions {
+  /**
+   * Bypass the signup-count safety check. With force=true, the FK's
+   * ON DELETE CASCADE on event_signups removes all attached signup
+   * records along with the event. Use sparingly — typically reserved
+   * for test events or events the admin knows should be fully purged.
+   */
+  force?: boolean
+}
+
+export async function deleteEvent(id: string, opts: DeleteEventOptions = {}): Promise<void> {
   const event = await getEventById(id)
   if (!event) return
-  if (event.signup_count > 0) {
+  if (!opts.force && event.signup_count > 0) {
     throw new Error("Cannot delete an event with existing signups; cancel the event instead")
   }
   const supabase = getClient()

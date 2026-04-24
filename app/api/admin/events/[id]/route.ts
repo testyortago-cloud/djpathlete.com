@@ -138,18 +138,19 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
   }
 }
 
-export async function DELETE(_request: Request, ctx: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
     if (!(await requireAdmin())) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
     const { id } = await ctx.params
+    const force = new URL(request.url).searchParams.get("force") === "true"
 
     const current = await getEventById(id)
     if (!current) return NextResponse.json({ ok: true })
 
     try {
-      await deleteEvent(id)
+      await deleteEvent(id, { force })
     } catch (err) {
       const msg = (err as Error).message
       if (msg.includes("Cannot delete")) {
