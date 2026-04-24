@@ -74,21 +74,95 @@ describe("lib/db/social-post-media", () => {
     expect(media.map((m) => m.media_asset_id)).toEqual([a.id, b.id, c.id])
   })
 
-  it("reorders attached media via reorderMedia", async () => {
+  it("reorders attached media via reorderMedia (4-item reverse)", async () => {
     const postId = await newPost("carousel")
     const a = await newAsset("re-a")
     const b = await newAsset("re-b")
+    const c = await newAsset("re-c")
+    const d = await newAsset("re-d")
 
     await attachMedia(postId, a.id, 0)
     await attachMedia(postId, b.id, 1)
+    await attachMedia(postId, c.id, 2)
+    await attachMedia(postId, d.id, 3)
 
     await reorderMedia(postId, [
-      { assetId: b.id, position: 0 },
-      { assetId: a.id, position: 1 },
+      { assetId: d.id, position: 0 },
+      { assetId: c.id, position: 1 },
+      { assetId: b.id, position: 2 },
+      { assetId: a.id, position: 3 },
     ])
 
     const media = await listMediaForPost(postId)
-    expect(media.map((m) => m.media_asset_id)).toEqual([b.id, a.id])
+    expect(media.map((m) => m.media_asset_id)).toEqual([d.id, c.id, b.id, a.id])
+  }, 15000)
+
+  it("reorderMedia rejects a partial positions array", async () => {
+    const postId = await newPost("carousel")
+    const a = await newAsset("partial-a")
+    const b = await newAsset("partial-b")
+    await attachMedia(postId, a.id, 0)
+    await attachMedia(postId, b.id, 1)
+
+    await expect(
+      reorderMedia(postId, [{ assetId: a.id, position: 0 }]),
+    ).rejects.toThrow(/positions\.length.*must equal attached media count/)
+
+    // Sanity: original order untouched.
+    const media = await listMediaForPost(postId)
+    expect(media.map((m) => m.media_asset_id)).toEqual([a.id, b.id])
+  })
+
+  it("reorderMedia rejects positions referencing unattached assets", async () => {
+    const postId = await newPost("carousel")
+    const a = await newAsset("ref-a")
+    const b = await newAsset("ref-b")
+    const stranger = await newAsset("ref-stranger")
+    await attachMedia(postId, a.id, 0)
+    await attachMedia(postId, b.id, 1)
+
+    await expect(
+      reorderMedia(postId, [
+        { assetId: a.id, position: 0 },
+        { assetId: stranger.id, position: 1 },
+      ]),
+    ).rejects.toThrow(/currently-attached assets/)
+
+    const media = await listMediaForPost(postId)
+    expect(media.map((m) => m.media_asset_id)).toEqual([a.id, b.id])
+  })
+
+  it("reorderMedia rejects duplicate target positions", async () => {
+    const postId = await newPost("carousel")
+    const a = await newAsset("dup-pos-a")
+    const b = await newAsset("dup-pos-b")
+    await attachMedia(postId, a.id, 0)
+    await attachMedia(postId, b.id, 1)
+
+    await expect(
+      reorderMedia(postId, [
+        { assetId: a.id, position: 0 },
+        { assetId: b.id, position: 0 },
+      ]),
+    ).rejects.toThrow(/unique/)
+
+    const media = await listMediaForPost(postId)
+    expect(media.map((m) => m.media_asset_id)).toEqual([a.id, b.id])
+  })
+
+  it("attachMedia persists overlayText and overlayMetadata when provided", async () => {
+    const postId = await newPost("story")
+    const a = await newAsset("overlay")
+
+    await attachMedia(postId, a.id, 0, {
+      overlayText: "STRONGER",
+      overlayMetadata: { x: 0.5, y: 0.9, color: "#fff" },
+    })
+
+    const media = await listMediaForPost(postId)
+    expect(media).toHaveLength(1)
+    expect(media[0].overlay_text).toBe("STRONGER")
+    expect(media[0].overlay_metadata).toEqual({ x: 0.5, y: 0.9, color: "#fff" })
   })
 
   it("detaches an asset from a post", async () => {
