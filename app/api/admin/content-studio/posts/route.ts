@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { createSocialPost, deleteSocialPost } from "@/lib/db/social-posts"
 import { attachMedia } from "@/lib/db/social-post-media"
+import { getMediaAssetById } from "@/lib/db/media-assets"
 import { isPlatformPostTypeSupported } from "@/lib/content-studio/post-type-support"
 import { isContentStudioMultimediaEnabled } from "@/lib/content-studio/feature-flag"
 import type { SocialPlatform, PostType } from "@/types/database"
@@ -16,6 +17,8 @@ const VALID_PLATFORMS: readonly SocialPlatform[] = [
 ]
 
 const VALID_POST_TYPES: readonly PostType[] = ["video", "image", "carousel", "story", "text"]
+const CAROUSEL_MIN_SLIDES = 2
+const CAROUSEL_MAX_SLIDES = 10
 
 export async function POST(request: NextRequest) {
   const session = await auth()
@@ -30,6 +33,7 @@ export async function POST(request: NextRequest) {
     source_video_id?: string | null
     postType?: string
     mediaAssetId?: string | null
+    mediaAssetIds?: string[]
   } | null
 
   const platform = body?.platform as SocialPlatform | undefined
@@ -64,6 +68,34 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "mediaAssetId is required for image posts" }, { status: 400 })
   }
 
+  if (postType === "carousel") {
+    const ids = body?.mediaAssetIds
+    if (!Array.isArray(ids) || ids.length < CAROUSEL_MIN_SLIDES || ids.length > CAROUSEL_MAX_SLIDES) {
+      return NextResponse.json(
+        { error: `Carousels require between ${CAROUSEL_MIN_SLIDES} and ${CAROUSEL_MAX_SLIDES} mediaAssetIds` },
+        { status: 400 },
+      )
+    }
+    for (const id of ids) {
+      const asset = await getMediaAssetById(id)
+      if (!asset) {
+        return NextResponse.json({ error: `mediaAsset ${id} not found` }, { status: 400 })
+      }
+      if (asset.kind !== "image") {
+        return NextResponse.json(
+          { error: `mediaAsset ${id} is not an image (kind=${asset.kind})` },
+          { status: 400 },
+        )
+      }
+      if (platform === "instagram" && asset.mime_type !== "image/jpeg") {
+        return NextResponse.json(
+          { error: `Instagram carousels require JPEG images — ${id} is ${asset.mime_type}` },
+          { status: 400 },
+        )
+      }
+    }
+  }
+
   let scheduledAt: string | null = null
   if (body?.scheduled_at) {
     const d = new Date(body.scheduled_at)
@@ -76,9 +108,11 @@ export async function POST(request: NextRequest) {
     scheduledAt = d.toISOString()
   }
 
-  // Image posts never carry a source_video_id — if both were set the resolver
-  // would prefer the video path and sign the wrong asset at publish time.
-  const sourceVideoId = postType === "image" ? null : body?.source_video_id ?? null
+  // Image and carousel posts never carry source_video_id — if both were set
+  // the resolver would prefer the video path and sign the wrong asset at
+  // publish time.
+  const sourceVideoId =
+    postType === "image" || postType === "carousel" ? null : body?.source_video_id ?? null
 
   const post = await createSocialPost({
     platform,
@@ -91,18 +125,22 @@ export async function POST(request: NextRequest) {
     created_by: session.user.id,
   })
 
-  if (postType === "image" && body?.mediaAssetId) {
-    try {
+  try {
+    if (postType === "image" && body?.mediaAssetId) {
       await attachMedia(post.id, body.mediaAssetId, 0)
-    } catch (err) {
-      // Roll back the freshly-created post so we don't leave a ghost row that
-      // would later fail to publish (no asset, but post_type=image).
-      await deleteSocialPost(post.id).catch(() => {})
-      return NextResponse.json(
-        { error: `Failed to attach media asset: ${(err as Error).message}` },
-        { status: 500 },
-      )
+    } else if (postType === "carousel" && body?.mediaAssetIds) {
+      for (let i = 0; i < body.mediaAssetIds.length; i += 1) {
+        await attachMedia(post.id, body.mediaAssetIds[i], i)
+      }
     }
+  } catch (err) {
+    // Roll back the freshly-created post so we don't leave a ghost row that
+    // would later fail to publish (no asset, but post_type=image|carousel).
+    await deleteSocialPost(post.id).catch(() => {})
+    return NextResponse.json(
+      { error: `Failed to attach media asset: ${(err as Error).message}` },
+      { status: 500 },
+    )
   }
 
   return NextResponse.json({ id: post.id, approval_status: post.approval_status })
