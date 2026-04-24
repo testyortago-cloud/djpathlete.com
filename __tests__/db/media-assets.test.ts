@@ -5,6 +5,7 @@ import {
   getMediaAssetById,
   listMediaAssets,
   listAssetsWithPostCounts,
+  getAssetWithLinkedPosts,
   updateMediaAssetAiMetadata,
   deleteMediaAsset,
 } from "@/lib/db/media-assets"
@@ -243,5 +244,60 @@ describe("lib/db/media-assets", () => {
     } finally {
       await supabase.from("social_posts").delete().eq("id", post.data!.id)
     }
+  })
+
+  it("getAssetWithLinkedPosts returns the asset together with its linked posts", async () => {
+    const asset = await createMediaAsset({
+      kind: "image",
+      storage_path: "media-assets/detail-a.jpg",
+      public_url: "https://example.invalid/detail-a.jpg",
+      mime_type: "image/jpeg",
+      bytes: 1,
+      width: null, height: null, duration_ms: null,
+      derived_from_video_id: null, ai_alt_text: null, ai_analysis: null, created_by: null,
+    })
+    createdIds.push(asset.id)
+
+    const p1 = await supabase
+      .from("social_posts")
+      .insert({ platform: "instagram", content: "post one", approval_status: "draft", post_type: "image" })
+      .select()
+      .single()
+    const p2 = await supabase
+      .from("social_posts")
+      .insert({ platform: "facebook", content: "post two", approval_status: "scheduled", post_type: "image" })
+      .select()
+      .single()
+
+    try {
+      await supabase.from("social_post_media").insert({
+        social_post_id: p1.data!.id,
+        media_asset_id: asset.id,
+        position: 0,
+      })
+      await supabase.from("social_post_media").insert({
+        social_post_id: p2.data!.id,
+        media_asset_id: asset.id,
+        position: 0,
+      })
+
+      const result = await getAssetWithLinkedPosts(asset.id)
+      expect(result?.asset.id).toBe(asset.id)
+      expect(result?.posts.length).toBe(2)
+      const ids = result?.posts.map((p) => p.id).sort()
+      expect(ids).toEqual([p1.data!.id, p2.data!.id].sort())
+      expect(result?.posts[0]).toMatchObject({
+        platform: expect.any(String),
+        content: expect.any(String),
+        approval_status: expect.any(String),
+      })
+    } finally {
+      await supabase.from("social_posts").delete().in("id", [p1.data!.id, p2.data!.id])
+    }
+  })
+
+  it("getAssetWithLinkedPosts returns null when asset does not exist", async () => {
+    const result = await getAssetWithLinkedPosts("00000000-0000-0000-0000-000000000000")
+    expect(result).toBeNull()
   })
 })

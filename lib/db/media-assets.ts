@@ -106,3 +106,42 @@ export async function listAssetsWithPostCounts(
       return { ...asset, post_count: (social_post_media ?? []).length }
     })
 }
+
+export interface AssetLinkedPost {
+  id: string
+  platform: string
+  content: string
+  approval_status: string
+  post_type: string
+  scheduled_at: string | null
+  published_at: string | null
+}
+
+export interface AssetWithLinkedPosts {
+  asset: MediaAsset
+  posts: AssetLinkedPost[]
+}
+
+export async function getAssetWithLinkedPosts(
+  id: string,
+): Promise<AssetWithLinkedPosts | null> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("media_assets")
+    .select(
+      "*, social_post_media(social_posts(id, platform, content, approval_status, post_type, scheduled_at, published_at))",
+    )
+    .eq("id", id)
+    .maybeSingle()
+  if (error) throw error
+  if (!data) return null
+
+  const raw = data as MediaAsset & {
+    social_post_media?: Array<{ social_posts: AssetLinkedPost | null }>
+  }
+  const { social_post_media, ...asset } = raw
+  const posts: AssetLinkedPost[] = (social_post_media ?? [])
+    .map((row) => row.social_posts)
+    .filter((p): p is AssetLinkedPost => p !== null)
+  return { asset: asset as MediaAsset, posts }
+}
