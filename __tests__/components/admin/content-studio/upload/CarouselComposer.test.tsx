@@ -91,4 +91,23 @@ describe("CarouselComposer", () => {
     render(<CarouselComposer onChange={() => {}} minSlides={2} />)
     expect(screen.getByText(/at least 2 more slide/i)).toBeInTheDocument()
   })
+
+  it("renders a drag handle on each filled slot", async () => {
+    const { CarouselComposer } = await import("@/components/admin/content-studio/upload/CarouselComposer")
+    render(<CarouselComposer onChange={() => {}} />)
+    await uploadIntoSlot(0, "a.jpg", "asset-a")
+
+    // The grip handle renders as a button / icon with an accessible label
+    expect(screen.getByLabelText(/drag a\.jpg to reorder/i)).toBeInTheDocument()
+  })
+
+  it("wraps sortable content in DndContext (verifies the @dnd-kit integration is wired)", async () => {
+    const { CarouselComposer } = await import("@/components/admin/content-studio/upload/CarouselComposer")
+    const { container } = render(<CarouselComposer onChange={() => {}} />)
+    await uploadIntoSlot(0, "a.jpg", "asset-a")
+    // dnd-kit attaches data attributes on sortable items — presence of at least one proves the
+    // sortable wiring is in place. (Full drag simulation via @dnd-kit's DragTest utility is out
+    // of scope for a unit test.)
+    expect(container.querySelector("[aria-roledescription='sortable'], [data-rfd-draggable-id], [aria-describedby]")).toBeTruthy()
+  })
 })

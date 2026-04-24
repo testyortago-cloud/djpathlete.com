@@ -1,7 +1,24 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { ArrowDown, ArrowUp, Plus, X } from "lucide-react"
+import { ArrowDown, ArrowUp, GripVertical, Plus, X } from "lucide-react"
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core"
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 import { ImageUploader } from "@/components/admin/content-studio/upload/ImageUploader"
 
 interface Slot {
@@ -20,6 +37,93 @@ let slotSeq = 0
 function newSlot(): Slot {
   slotSeq += 1
   return { id: `slot-${slotSeq}`, assetId: null, fileName: null }
+}
+
+interface SortableSlotProps {
+  slot: Slot
+  index: number
+  totalSlots: number
+  onMoveUp: (index: number) => void
+  onMoveDown: (index: number) => void
+  onRemove: (id: string) => void
+  onUploaded: (id: string, assetId: string, fileName: string) => void
+}
+
+function SortableSlot({
+  slot,
+  index,
+  totalSlots,
+  onMoveUp,
+  onMoveDown,
+  onRemove,
+  onUploaded,
+}: SortableSlotProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: slot.id,
+  })
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="border border-border rounded p-2 bg-white"
+    >
+      {slot.assetId ? (
+        <div className="flex items-center gap-2 text-xs">
+          <button
+            type="button"
+            aria-label={`Drag ${slot.fileName ?? "slide"} to reorder`}
+            {...attributes}
+            {...listeners}
+            className="cursor-grab touch-none text-muted-foreground hover:text-primary p-1"
+          >
+            <GripVertical className="size-3" />
+          </button>
+          <span className="font-mono text-muted-foreground">{index + 1}.</span>
+          <span className="flex-1 truncate">{slot.fileName}</span>
+          <button
+            type="button"
+            aria-label="Move up"
+            disabled={index === 0}
+            onClick={() => onMoveUp(index)}
+            className="p-1 disabled:opacity-30"
+          >
+            <ArrowUp className="size-3" />
+          </button>
+          <button
+            type="button"
+            aria-label="Move down"
+            disabled={index === totalSlots - 1}
+            onClick={() => onMoveDown(index)}
+            className="p-1 disabled:opacity-30"
+          >
+            <ArrowDown className="size-3" />
+          </button>
+          <button
+            type="button"
+            aria-label="Remove"
+            onClick={() => onRemove(slot.id)}
+            className="p-1 text-error"
+          >
+            <X className="size-3" />
+          </button>
+        </div>
+      ) : (
+        <ImageUploader
+          onUploaded={(e) => {
+            const fileName = e.storagePath.split("/").pop() ?? "image"
+            onUploaded(slot.id, e.mediaAssetId, fileName)
+          }}
+        />
+      )}
+    </div>
+  )
 }
 
 export function CarouselComposer({
@@ -43,6 +147,26 @@ export function CarouselComposer({
       onChange(ids)
     }
   }, [slots, onChange])
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  )
+
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    setSlots((current) => {
+      const oldIndex = current.findIndex((s) => s.id === active.id)
+      const newIndex = current.findIndex((s) => s.id === over.id)
+      if (oldIndex < 0 || newIndex < 0) return current
+      return arrayMove(current, oldIndex, newIndex)
+    })
+  }, [])
 
   const addSlide = useCallback(() => {
     setSlots((s) => (s.length >= maxSlides ? s : [...s, newSlot()]))
@@ -81,50 +205,22 @@ export function CarouselComposer({
 
   return (
     <div className="space-y-2">
-      {slots.map((slot, index) => (
-        <div key={slot.id} className="border border-border rounded p-2">
-          {slot.assetId ? (
-            <div className="flex items-center gap-2 text-xs">
-              <span className="font-mono text-muted-foreground">{index + 1}.</span>
-              <span className="flex-1 truncate">{slot.fileName}</span>
-              <button
-                type="button"
-                aria-label="Move up"
-                disabled={index === 0}
-                onClick={() => moveUp(index)}
-                className="p-1 disabled:opacity-30"
-              >
-                <ArrowUp className="size-3" />
-              </button>
-              <button
-                type="button"
-                aria-label="Move down"
-                disabled={index === slots.length - 1}
-                onClick={() => moveDown(index)}
-                className="p-1 disabled:opacity-30"
-              >
-                <ArrowDown className="size-3" />
-              </button>
-              <button
-                type="button"
-                aria-label="Remove"
-                onClick={() => removeSlot(slot.id)}
-                className="p-1 text-error"
-              >
-                <X className="size-3" />
-              </button>
-            </div>
-          ) : (
-            <ImageUploader
-              onUploaded={(e) => {
-                // best-effort filename: derive from storage path
-                const fileName = e.storagePath.split("/").pop() ?? "image"
-                markUploaded(slot.id, e.mediaAssetId, fileName)
-              }}
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext items={slots.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+          {slots.map((slot, index) => (
+            <SortableSlot
+              key={slot.id}
+              slot={slot}
+              index={index}
+              totalSlots={slots.length}
+              onMoveUp={moveUp}
+              onMoveDown={moveDown}
+              onRemove={removeSlot}
+              onUploaded={markUploaded}
             />
-          )}
-        </div>
-      ))}
+          ))}
+        </SortableContext>
+      </DndContext>
 
       <button
         type="button"
