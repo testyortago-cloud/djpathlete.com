@@ -69,4 +69,38 @@ COMMENT ON TABLE media_assets IS
   'First-class media entity. Sources: direct upload (created_by set), video-derived (derived_from_video_id set), or AI-generated (ai_analysis.origin set). See spec 2026-04-24-content-studio-multimedia-design.md.';
 
 COMMENT ON TABLE social_post_media IS
-  'Join table linking social_posts to media_assets with ordering. position=0 is the primary asset (will be mirrored into social_posts.media_url via the trigger added in a later phase).';
+  'Join table linking social_posts to media_assets with ordering. position=0 is the primary asset, mirrored into social_posts.media_url via trg_social_post_media_mirror.';
+
+-- ──────────────────────────────────────────────────────────────────────────
+-- media_url mirror: keep social_posts.media_url equal to the public_url of
+-- the social_post_media row at position 0. Existing UI and publishing code
+-- reads media_url directly, so this keeps them working unchanged while the
+-- new DAL writes through social_post_media.
+-- ──────────────────────────────────────────────────────────────────────────
+
+CREATE OR REPLACE FUNCTION public.sync_social_post_media_url()
+RETURNS trigger AS $$
+DECLARE
+  target_post_id uuid := COALESCE(NEW.social_post_id, OLD.social_post_id);
+  new_media_url  text;
+BEGIN
+  SELECT ma.public_url
+    INTO new_media_url
+    FROM social_post_media spm
+    JOIN media_assets ma ON ma.id = spm.media_asset_id
+   WHERE spm.social_post_id = target_post_id
+     AND spm.position = 0;
+
+  UPDATE social_posts
+     SET media_url  = new_media_url,
+         updated_at = now()
+   WHERE id = target_post_id
+     AND media_url IS DISTINCT FROM new_media_url;
+
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_social_post_media_mirror
+  AFTER INSERT OR UPDATE OR DELETE ON social_post_media
+  FOR EACH ROW EXECUTE FUNCTION public.sync_social_post_media_url();

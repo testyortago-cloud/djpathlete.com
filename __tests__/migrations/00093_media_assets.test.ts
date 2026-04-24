@@ -235,4 +235,143 @@ describe("migration 00093 — media_assets + social_post_media + post_type", () 
       await supabase.from("media_assets").delete().eq("id", assetId)
     }
   })
+
+  it("mirrors media_url from social_post_media at position 0 on insert", async () => {
+    const asset = await supabase
+      .from("media_assets")
+      .insert({
+        kind: "image",
+        storage_path: "media-assets/mirror-1.jpg",
+        public_url: "https://example.invalid/mirror-1.jpg",
+        mime_type: "image/jpeg",
+        bytes: 10,
+      })
+      .select()
+      .single()
+    expect(asset.error).toBeNull()
+
+    const post = await supabase
+      .from("social_posts")
+      .insert({ platform: "instagram", content: "mirror test", approval_status: "draft", post_type: "image" })
+      .select()
+      .single()
+    expect(post.error).toBeNull()
+
+    try {
+      const join = await supabase.from("social_post_media").insert({
+        social_post_id: post.data!.id,
+        media_asset_id: asset.data!.id,
+        position: 0,
+      })
+      expect(join.error).toBeNull()
+
+      const after = await supabase
+        .from("social_posts")
+        .select("media_url")
+        .eq("id", post.data!.id)
+        .single()
+      expect(after.data?.media_url).toBe("https://example.invalid/mirror-1.jpg")
+    } finally {
+      await supabase.from("social_posts").delete().eq("id", post.data!.id)
+      await supabase.from("media_assets").delete().eq("id", asset.data!.id)
+    }
+  })
+
+  it("leaves media_url untouched when only non-zero-position media changes", async () => {
+    const a0 = await supabase
+      .from("media_assets")
+      .insert({
+        kind: "image",
+        storage_path: "media-assets/mirror-2a.jpg",
+        public_url: "https://example.invalid/mirror-2a.jpg",
+        mime_type: "image/jpeg",
+        bytes: 10,
+      })
+      .select()
+      .single()
+    const a1 = await supabase
+      .from("media_assets")
+      .insert({
+        kind: "image",
+        storage_path: "media-assets/mirror-2b.jpg",
+        public_url: "https://example.invalid/mirror-2b.jpg",
+        mime_type: "image/jpeg",
+        bytes: 10,
+      })
+      .select()
+      .single()
+
+    const post = await supabase
+      .from("social_posts")
+      .insert({ platform: "instagram", content: "nonzero", approval_status: "draft", post_type: "carousel" })
+      .select()
+      .single()
+
+    try {
+      await supabase.from("social_post_media").insert([
+        { social_post_id: post.data!.id, media_asset_id: a0.data!.id, position: 0 },
+        { social_post_id: post.data!.id, media_asset_id: a1.data!.id, position: 1 },
+      ])
+
+      const detach1 = await supabase
+        .from("social_post_media")
+        .delete()
+        .eq("social_post_id", post.data!.id)
+        .eq("position", 1)
+      expect(detach1.error).toBeNull()
+
+      const after = await supabase
+        .from("social_posts")
+        .select("media_url")
+        .eq("id", post.data!.id)
+        .single()
+      expect(after.data?.media_url).toBe("https://example.invalid/mirror-2a.jpg")
+    } finally {
+      await supabase.from("social_posts").delete().eq("id", post.data!.id)
+      await supabase.from("media_assets").delete().in("id", [a0.data!.id, a1.data!.id])
+    }
+  })
+
+  it("clears media_url when position 0 is detached and no other media exist", async () => {
+    const asset = await supabase
+      .from("media_assets")
+      .insert({
+        kind: "image",
+        storage_path: "media-assets/mirror-3.jpg",
+        public_url: "https://example.invalid/mirror-3.jpg",
+        mime_type: "image/jpeg",
+        bytes: 10,
+      })
+      .select()
+      .single()
+
+    const post = await supabase
+      .from("social_posts")
+      .insert({ platform: "instagram", content: "detach", approval_status: "draft", post_type: "image" })
+      .select()
+      .single()
+
+    try {
+      await supabase.from("social_post_media").insert({
+        social_post_id: post.data!.id,
+        media_asset_id: asset.data!.id,
+        position: 0,
+      })
+      await supabase
+        .from("social_post_media")
+        .delete()
+        .eq("social_post_id", post.data!.id)
+        .eq("position", 0)
+
+      const after = await supabase
+        .from("social_posts")
+        .select("media_url")
+        .eq("id", post.data!.id)
+        .single()
+      expect(after.data?.media_url).toBeNull()
+    } finally {
+      await supabase.from("social_posts").delete().eq("id", post.data!.id)
+      await supabase.from("media_assets").delete().eq("id", asset.data!.id)
+    }
+  })
 })
