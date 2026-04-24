@@ -9,6 +9,7 @@ const posts: PipelinePostRow[] = [
     platform: "instagram",
     content: "caption one",
     media_url: null,
+    post_type: "video",
     approval_status: "approved",
     scheduled_at: null,
     published_at: null,

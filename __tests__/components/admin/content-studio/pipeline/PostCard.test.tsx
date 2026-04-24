@@ -13,6 +13,7 @@ const post = (overrides: Partial<PipelinePostRow> = {}): PipelinePostRow => ({
   platform: "instagram",
   content: "Great caption body goes here for preview.",
   media_url: null,
+  post_type: "video",
   approval_status: "approved",
   scheduled_at: null,
   published_at: null,
