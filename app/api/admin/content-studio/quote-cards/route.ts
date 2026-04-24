@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { isContentStudioMultimediaEnabled } from "@/lib/content-studio/feature-flag"
 import { extractQuotesFromTranscript } from "@/lib/ai/quote-extraction"
-import { renderQuoteCard } from "@/lib/content-studio/quote-card-renderer"
+import { renderQuoteCard, renderQuoteCardJpeg } from "@/lib/content-studio/quote-card-renderer"
 import { getVideoUploadById } from "@/lib/db/video-uploads"
 import { getTranscriptByVideoId } from "@/lib/db/video-transcripts"
 import { getAdminStorage } from "@/lib/firebase-admin"
@@ -21,6 +21,13 @@ const DEFAULT_COUNT = 5
 const MIN_COUNT = 2
 const MAX_COUNT = 10
 const MIN_TRANSCRIPT_LENGTH = 50
+
+const SUPPORTED_PLATFORMS = ["facebook", "instagram", "linkedin"] as const
+type CarouselPlatform = (typeof SUPPORTED_PLATFORMS)[number]
+
+function isSupportedCarouselPlatform(p: unknown): p is CarouselPlatform {
+  return typeof p === "string" && (SUPPORTED_PLATFORMS as readonly string[]).includes(p)
+}
 
 export async function POST(request: NextRequest) {
   const session = await auth()
@@ -38,11 +45,26 @@ export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => null)) as {
     videoUploadId?: string
     count?: number
+    platform?: string
   } | null
 
   if (!body?.videoUploadId) {
     return NextResponse.json({ error: "videoUploadId is required" }, { status: 400 })
   }
+
+  // If body explicitly set platform to something unsupported, reject
+  if (body?.platform !== undefined && !isSupportedCarouselPlatform(body.platform)) {
+    return NextResponse.json(
+      {
+        error: `platform must be one of: ${SUPPORTED_PLATFORMS.join(", ")}`,
+      },
+      { status: 400 },
+    )
+  }
+
+  const platform: CarouselPlatform = isSupportedCarouselPlatform(body?.platform)
+    ? body!.platform
+    : "facebook"
 
   const count = Math.max(MIN_COUNT, Math.min(MAX_COUNT, body.count ?? DEFAULT_COUNT))
 
@@ -82,16 +104,19 @@ export async function POST(request: NextRequest) {
 
   for (let i = 0; i < quotes.length; i += 1) {
     const quote = quotes[i]
-    const png = await renderQuoteCard(quote)
-    const storagePath = `images/${userId}/${Date.now()}-quote-${i}.png`
-    await bucket.file(storagePath).save(png, { contentType: "image/png" })
+    const useJpeg = platform === "instagram"
+    const buffer = useJpeg ? await renderQuoteCardJpeg(quote) : await renderQuoteCard(quote)
+    const extension = useJpeg ? "jpg" : "png"
+    const mimeType = useJpeg ? "image/jpeg" : "image/png"
+    const storagePath = `images/${userId}/${Date.now()}-quote-${i}.${extension}`
+    await bucket.file(storagePath).save(buffer, { contentType: mimeType })
 
     const asset = await createMediaAsset({
       kind: "image",
       storage_path: storagePath,
       public_url: storagePath,
-      mime_type: "image/png",
-      bytes: png.length,
+      mime_type: mimeType,
+      bytes: buffer.length,
       width: 1080,
       height: 1080,
       duration_ms: null,
@@ -103,9 +128,9 @@ export async function POST(request: NextRequest) {
     mediaAssetIds.push(asset.id)
   }
 
-  // Create the draft FB carousel post + attach each asset.
+  // Create the draft carousel post + attach each asset.
   const post = await createSocialPost({
-    platform: "facebook",
+    platform,
     content: "",
     media_url: null,
     post_type: "carousel",

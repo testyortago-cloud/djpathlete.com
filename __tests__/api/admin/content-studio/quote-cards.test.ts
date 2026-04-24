@@ -4,6 +4,7 @@ import { NextRequest } from "next/server"
 const mockAuth = vi.fn()
 const mockExtractQuotes = vi.fn()
 const mockRenderCard = vi.fn()
+const mockRenderJpeg = vi.fn()
 const mockGetVideoUpload = vi.fn()
 const mockGetTranscript = vi.fn()
 const mockGetSignedUrl = vi.fn()
@@ -22,6 +23,7 @@ vi.mock("@/lib/ai/quote-extraction", () => ({
 }))
 vi.mock("@/lib/content-studio/quote-card-renderer", () => ({
   renderQuoteCard: (...args: unknown[]) => mockRenderCard(...args),
+  renderQuoteCardJpeg: (...args: unknown[]) => mockRenderJpeg(...args),
 }))
 vi.mock("@/lib/db/video-uploads", () => ({
   getVideoUploadById: (...args: unknown[]) => mockGetVideoUpload(...args),
@@ -62,13 +64,21 @@ describe("POST /api/admin/content-studio/quote-cards", () => {
       transcript_text:
         "A long transcript about power development and rotation that goes well past the fifty character minimum.",
     })
-    mockExtractQuotes.mockResolvedValue([
-      "Power is hip hinge plus speed.",
-      "Rotation is where control lives.",
-      "Train the pattern, not the muscle.",
-    ])
+    mockExtractQuotes.mockImplementation(async (_text: string, count: number) => {
+      const pool = [
+        "Power is hip hinge plus speed.",
+        "Rotation is where control lives.",
+        "Train the pattern, not the muscle.",
+        "Strength is a habit, not a mood.",
+        "Move first. Load second.",
+      ]
+      return pool.slice(0, Math.min(count ?? pool.length, pool.length))
+    })
     mockRenderCard.mockImplementation(async () =>
       Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0]),
+    )
+    mockRenderJpeg.mockImplementation(async () =>
+      Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0]),
     )
     mockStorageSave.mockResolvedValue(undefined)
     let assetCounter = 0
@@ -167,5 +177,56 @@ describe("POST /api/admin/content-studio/quote-cards", () => {
     const res = await call({ videoUploadId: "video-1", count: 3 })
     expect(res.status).toBe(500)
     expect(mockDeleteSocialPost).toHaveBeenCalledWith("post-1")
+  })
+
+  it("accepts platform=instagram, uses JPEG renderer, and creates an IG draft carousel", async () => {
+    const res = await call({ videoUploadId: "video-1", count: 3, platform: "instagram" })
+    expect(res.status).toBe(200)
+
+    // Renderer: JPEG variant called, PNG variant not called
+    expect(mockRenderJpeg).toHaveBeenCalledTimes(3)
+    expect(mockRenderCard).not.toHaveBeenCalled()
+
+    // Storage path ends in .jpg
+    expect(mockStorageSave).toHaveBeenCalledTimes(3)
+    const firstSaveArgs = mockStorageSave.mock.calls[0]
+    // sharp-based renderer returns a buffer; first positional arg to save() is the buffer
+    // second positional arg is options with contentType
+    expect((firstSaveArgs[1] as { contentType: string }).contentType).toBe("image/jpeg")
+
+    // Asset rows have image/jpeg mime_type
+    const firstAssetCall = mockCreateMediaAsset.mock.calls[0][0] as { mime_type: string }
+    expect(firstAssetCall.mime_type).toBe("image/jpeg")
+
+    // Draft post created with platform=instagram
+    const postCall = mockCreateSocialPost.mock.calls[0][0] as { platform: string; post_type: string }
+    expect(postCall.platform).toBe("instagram")
+    expect(postCall.post_type).toBe("carousel")
+  })
+
+  it("defaults to platform=facebook and uses PNG renderer", async () => {
+    const res = await call({ videoUploadId: "video-1", count: 2 })
+    expect(res.status).toBe(200)
+    expect(mockRenderCard).toHaveBeenCalledTimes(2)
+    expect(mockRenderJpeg).not.toHaveBeenCalled()
+    const firstAssetCall = mockCreateMediaAsset.mock.calls[0][0] as { mime_type: string }
+    expect(firstAssetCall.mime_type).toBe("image/png")
+    const postCall = mockCreateSocialPost.mock.calls[0][0] as { platform: string }
+    expect(postCall.platform).toBe("facebook")
+  })
+
+  it("accepts platform=linkedin, uses PNG renderer (LinkedIn accepts PNG carousels)", async () => {
+    const res = await call({ videoUploadId: "video-1", count: 2, platform: "linkedin" })
+    expect(res.status).toBe(200)
+    expect(mockRenderCard).toHaveBeenCalledTimes(2)
+    expect(mockRenderJpeg).not.toHaveBeenCalled()
+    const postCall = mockCreateSocialPost.mock.calls[0][0] as { platform: string }
+    expect(postCall.platform).toBe("linkedin")
+  })
+
+  it("rejects platform=youtube (not supported for carousels)", async () => {
+    const res = await call({ videoUploadId: "video-1", platform: "youtube" })
+    expect(res.status).toBe(400)
+    expect(mockCreateSocialPost).not.toHaveBeenCalled()
   })
 })
