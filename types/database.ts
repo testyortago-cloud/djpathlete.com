@@ -1126,6 +1126,36 @@ export interface Database {
 
 export type SocialPlatform = "facebook" | "instagram" | "tiktok" | "youtube" | "youtube_shorts" | "linkedin"
 
+export type PostType = "video" | "image" | "carousel" | "story" | "text"
+
+export type MediaAssetKind = "video" | "image"
+
+export interface MediaAsset {
+  id: string
+  kind: MediaAssetKind
+  storage_path: string
+  public_url: string
+  mime_type: string
+  width: number | null
+  height: number | null
+  duration_ms: number | null
+  bytes: number
+  derived_from_video_id: string | null
+  ai_alt_text: string | null
+  ai_analysis: Record<string, unknown> | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface SocialPostMediaRow {
+  social_post_id: string
+  media_asset_id: string
+  position: number
+  overlay_text: string | null
+  overlay_metadata: Record<string, unknown> | null
+}
+
 export type SocialApprovalStatus =
   | "draft"
   | "edited"
@@ -1150,6 +1180,7 @@ export interface SocialPost {
   platform: SocialPlatform
   content: string
   media_url: string | null
+  post_type: PostType
   approval_status: SocialApprovalStatus
   scheduled_at: string | null
   published_at: string | null
