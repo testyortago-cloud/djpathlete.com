@@ -79,7 +79,7 @@ export async function createEvent(input: CreateEventInput): Promise<Event> {
     start_date: input.start_date,
     end_date: input.type === "clinic" ? computeEndDate("clinic", input.start_date) : input.end_date,
     session_schedule: input.type === "camp" ? (input.session_schedule ?? null) : null,
-    price_cents: input.type === "camp" && input.price_dollars != null ? Math.round(input.price_dollars * 100) : null,
+    price_cents: input.price_dollars != null ? Math.round(input.price_dollars * 100) : null,
   }
   const { data, error } = await supabase.from("events").insert(base).select().single()
   if (error) throw error

@@ -28,6 +28,7 @@ const clinicEvent = eventBase
   .extend({
     type: z.literal("clinic"),
     start_date: z.string().datetime(),
+    price_dollars: z.number().nonnegative().max(10000).optional().nullable(),
   })
   .refine(ageRefine, { message: "age_max must be >= age_min", path: ["age_max"] })
 

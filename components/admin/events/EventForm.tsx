@@ -10,6 +10,7 @@ import {
   Info,
   MapPin,
   Target,
+  Trash2,
   Users,
   X,
 } from "lucide-react"
@@ -83,8 +84,32 @@ export function EventForm({ event }: EventFormProps) {
   const [heroImageUrl, setHeroImageUrl] = useState<string | null>(event?.hero_image_url ?? null)
 
   const [submitting, setSubmitting] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({})
   const [formError, setFormError] = useState<string | null>(null)
+
+  const canDelete = isEdit && (event?.signup_count ?? 0) === 0
+
+  async function handleDelete() {
+    if (!event) return
+    if (!confirm("Delete this event? This cannot be undone.")) return
+    setDeleting(true)
+    setFormError(null)
+    try {
+      const res = await fetch(`/api/admin/events/${event.id}`, { method: "DELETE" })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setFormError(data.error ?? "Failed to delete event")
+        setDeleting(false)
+        return
+      }
+      router.push("/admin/events")
+      router.refresh()
+    } catch (err) {
+      setFormError((err as Error).message)
+      setDeleting(false)
+    }
+  }
 
   function handleTitleBlur() {
     if (slugAutoFilled || !slug) {
@@ -133,8 +158,9 @@ export function EventForm({ event }: EventFormProps) {
     if (type === "camp") {
       payload.end_date = endDate ? new Date(endDate).toISOString() : undefined
       payload.session_schedule = sessionSchedule || null
-      payload.price_dollars = priceDollars === "" ? null : Number(priceDollars)
     }
+    // Price is optional for both clinics and camps.
+    payload.price_dollars = priceDollars === "" ? null : Number(priceDollars)
 
     try {
       const url = isEdit ? `/api/admin/events/${event!.id}` : "/api/admin/events"
@@ -391,28 +417,27 @@ export function EventForm({ event }: EventFormProps) {
         )}
       </Section>
 
-      {/* Pricing (camps only) */}
-      {type === "camp" && (
-        <Section
-          icon={DollarSign}
-          title="Pricing"
-          description="Price charged at signup — synced to Stripe automatically when you publish."
-        >
-          <div className="space-y-2 max-w-md">
-            <Label>Price (USD)</Label>
-            <Input
-              type="number"
-              step="0.01"
-              min={0}
-              value={priceDollars}
-              onChange={(e) => setPriceDollars(e.target.value === "" ? "" : Number(e.target.value))}
-            />
-            {event?.stripe_price_id && (
-              <p className="text-xs text-success">Synced with Stripe · {event.stripe_price_id.slice(-8)}</p>
-            )}
-          </div>
-        </Section>
-      )}
+      {/* Pricing — optional for clinics, optional for camps */}
+      <Section
+        icon={DollarSign}
+        title="Pricing"
+        description="Optional. Leave blank for a free event. Paid events sync to Stripe automatically when you publish."
+      >
+        <div className="space-y-2 max-w-md">
+          <Label>Price (USD)</Label>
+          <Input
+            type="number"
+            step="0.01"
+            min={0}
+            value={priceDollars}
+            onChange={(e) => setPriceDollars(e.target.value === "" ? "" : Number(e.target.value))}
+            placeholder="0.00 (free)"
+          />
+          {event?.stripe_price_id && (
+            <p className="text-xs text-success">Synced with Stripe · {event.stripe_price_id.slice(-8)}</p>
+          )}
+        </div>
+      </Section>
 
       {/* Hero image */}
       <Section icon={ImageIcon} title="Hero Image" description="Shown at the top of the public event page.">
@@ -421,6 +446,23 @@ export function EventForm({ event }: EventFormProps) {
 
       {/* Actions */}
       <div className="sticky bottom-0 -mx-4 sm:mx-0 bg-white/95 backdrop-blur-sm border border-border rounded-xl p-4 flex items-center justify-end gap-3 shadow-sm">
+        {isEdit && (
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => void handleDelete()}
+            disabled={submitting || deleting || !canDelete}
+            title={
+              canDelete
+                ? "Permanently delete this event"
+                : "Events with signups can't be deleted — use Cancel status instead"
+            }
+            className="mr-auto text-destructive hover:text-destructive hover:bg-destructive/5 disabled:opacity-50"
+          >
+            <Trash2 className="size-4 mr-1" />
+            {deleting ? "Deleting..." : "Delete"}
+          </Button>
+        )}
         <Button type="button" variant="ghost" onClick={() => router.push("/admin/events")} disabled={submitting}>
           Cancel
         </Button>

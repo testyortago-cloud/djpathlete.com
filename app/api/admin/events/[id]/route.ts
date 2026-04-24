@@ -59,10 +59,9 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
         merged.price_cents = price_dollars == null ? null : Math.round(price_dollars * 100)
       }
 
-      // Auto-resync on price change for already-synced camps.
+      // Auto-resync on price change for already-synced paid events (clinics + camps).
       if (
         priceChanged &&
-        current.type === "camp" &&
         current.stripe_product_id &&
         current.stripe_price_id &&
         merged.price_cents != null &&
@@ -86,9 +85,11 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
         }
       }
 
-      // Auto-sync on publish for camps with a price and no existing sync.
+      // Auto-sync on publish for paid events (clinics + camps) with no existing sync.
       const transitionToPublished = status === "published" && current.status !== "published"
-      if (transitionToPublished && current.type === "camp" && current.price_cents && !current.stripe_price_id) {
+      const priceOnPublish =
+        (typeof merged.price_cents === "number" ? merged.price_cents : current.price_cents) ?? 0
+      if (transitionToPublished && priceOnPublish > 0 && !current.stripe_price_id) {
         try {
           const eventForSync = {
             ...current,
@@ -106,8 +107,8 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
         }
       }
 
-      // Auto-archive Stripe product when cancelling a synced camp.
-      if (status === "cancelled" && current.type === "camp" && current.stripe_product_id) {
+      // Auto-archive Stripe product when cancelling a synced paid event (clinics + camps).
+      if (status === "cancelled" && current.stripe_product_id) {
         try {
           await stripe.products.update(current.stripe_product_id, { active: false })
         } catch (err) {
