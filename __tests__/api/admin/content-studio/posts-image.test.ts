@@ -67,14 +67,21 @@ describe("POST /api/admin/content-studio/posts — image path", () => {
     expect(mockCreate).not.toHaveBeenCalled()
   })
 
-  it("rejects image post on linkedin (deferred to Phase 1c)", async () => {
+  it("accepts image post on linkedin (enabled in Phase 1c)", async () => {
     const res = await call({
       platform: "linkedin",
       caption: "hello",
       postType: "image",
       mediaAssetId: "asset-1",
     })
-    expect(res.status).toBe(400)
+    expect(res.status).toBe(200)
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        platform: "linkedin",
+        post_type: "image",
+      }),
+    )
+    expect(mockAttach).toHaveBeenCalledWith("post-1", "asset-1", 0)
   })
 
   it("rejects image post on tiktok (deferred to Phase 1d)", async () => {

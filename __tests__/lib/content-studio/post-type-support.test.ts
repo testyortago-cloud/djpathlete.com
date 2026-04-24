@@ -22,12 +22,12 @@ describe("isPlatformPostTypeSupported", () => {
     expect(isPlatformPostTypeSupported("facebook", "text")).toBe(true)
   })
 
-  it("rejects linkedin + image (deferred to Phase 1c)", () => {
-    expect(isPlatformPostTypeSupported("linkedin", "image")).toBe(false)
+  it("accepts linkedin + image (new in Phase 1c)", () => {
+    expect(isPlatformPostTypeSupported("linkedin", "image")).toBe(true)
   })
 
-  it("accepts linkedin + video (existing)", () => {
-    expect(isPlatformPostTypeSupported("linkedin", "video")).toBe(true)
+  it("rejects linkedin + video (disabled in Phase 1c — legacy ARTICLE path removed)", () => {
+    expect(isPlatformPostTypeSupported("linkedin", "video")).toBe(false)
   })
 
   it("rejects tiktok + image (deferred to Phase 1d)", () => {

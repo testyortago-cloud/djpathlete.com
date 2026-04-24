@@ -8,7 +8,7 @@ import type { SocialPlatform, PostType } from "@/types/database"
 const SUPPORT: Record<SocialPlatform, Partial<Record<PostType, boolean>>> = {
   instagram: { video: true, image: true },
   facebook: { video: true, image: true, text: true },
-  linkedin: { video: true, text: true },
+  linkedin: { image: true, text: true },
   tiktok: { video: true },
   youtube: { video: true },
   youtube_shorts: { video: true },
