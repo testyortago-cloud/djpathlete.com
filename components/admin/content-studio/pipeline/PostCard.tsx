@@ -7,6 +7,7 @@ import type { PipelinePostRow } from "@/lib/db/social-posts"
 import { PLATFORM_ICONS } from "@/lib/social/platform-ui"
 import { accentStyle } from "@/lib/content-studio/video-accent"
 import { cn } from "@/lib/utils"
+import { PostTypeBadge } from "@/components/admin/content-studio/shared/PostTypeBadge"
 
 interface PostCardProps {
   post: PipelinePostRow
@@ -80,6 +81,7 @@ export function PostCard({ post, selected, onToggleSelected, sourceThumbnailUrl 
             <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-md bg-primary/10 ring-1 ring-primary/15">
               <Icon className="size-3.5 text-primary" />
             </span>
+            <PostTypeBadge postType={post.post_type} />
             {sourceThumbnailUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img

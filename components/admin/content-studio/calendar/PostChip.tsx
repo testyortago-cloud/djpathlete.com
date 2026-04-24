@@ -9,6 +9,7 @@ import type { CalendarChip } from "@/lib/content-studio/calendar-chips"
 import type { SocialPlatform, CalendarEntryType } from "@/types/database"
 import { PLATFORM_ICONS } from "@/lib/social/platform-ui"
 import { cn } from "@/lib/utils"
+import { PostTypeBadge } from "@/components/admin/content-studio/shared/PostTypeBadge"
 
 const ENTRY_ICONS: Record<CalendarEntryType, typeof FileText> = {
   social_post: Instagram,
@@ -99,6 +100,7 @@ export function PostChip({ chip }: PostChipProps) {
           <p className="text-xs font-semibold text-primary flex items-center gap-2">
             <Icon className="size-3.5" />
             {chip.platformOrType.replace("_", " ")}
+            {chip.kind === "post" && <PostTypeBadge postType={chip.raw.post_type} />}
             <span className="ml-auto text-[10px] uppercase tracking-wide text-muted-foreground">{chip.status}</span>
           </p>
           <p className="mt-2 text-sm text-primary line-clamp-4 break-words">
