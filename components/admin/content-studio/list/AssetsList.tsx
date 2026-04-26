@@ -2,10 +2,11 @@
 
 import { useMemo, useState } from "react"
 import Link from "next/link"
-import { FileImage, Film, Trash2 } from "lucide-react"
+import { FileImage, Film, Trash2, Upload } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import type { AssetWithPostCount } from "@/lib/db/media-assets"
+import { ImageUploadModal } from "@/components/admin/content-studio/upload/ImageUploadModal"
 
 type KindFilter = "all" | "image" | "video"
 type OriginFilter = "all" | "uploaded" | "video_derived" | "quote_card"
@@ -43,6 +44,7 @@ export function AssetsList({ assets, thumbnailUrls }: AssetsListProps) {
   const [kindFilter, setKindFilter] = useState<KindFilter>("all")
   const [originFilter, setOriginFilter] = useState<OriginFilter>("all")
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [uploadOpen, setUploadOpen] = useState(false)
 
   async function handleDelete(assetId: string) {
     if (!confirm("Delete this asset? This can't be undone.")) return
@@ -103,7 +105,16 @@ export function AssetsList({ assets, thumbnailUrls }: AssetsListProps) {
         <span className="ml-auto text-xs text-muted-foreground">
           {filtered.length} of {assets.length} assets
         </span>
+        <button
+          type="button"
+          onClick={() => setUploadOpen(true)}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+        >
+          <Upload className="size-3.5" /> Upload image
+        </button>
       </div>
+
+      <ImageUploadModal open={uploadOpen} onClose={() => setUploadOpen(false)} />
 
       {filtered.length === 0 ? (
         <p className="text-sm text-muted-foreground py-8 text-center">

@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { useState } from "react"
 import { useDraggable } from "@dnd-kit/core"
 import { FileText, Mail, Lightbulb, Instagram, AlertCircle, Zap, ExternalLink, Film } from "lucide-react"
@@ -10,6 +11,21 @@ import type { SocialPlatform, CalendarEntryType } from "@/types/database"
 import { PLATFORM_ICONS } from "@/lib/social/platform-ui"
 import { cn } from "@/lib/utils"
 import { PostTypeBadge } from "@/components/admin/content-studio/shared/PostTypeBadge"
+
+function destinationFor(chip: CalendarChip): string {
+  if (chip.kind === "post") return `/admin/content/post/${chip.id}`
+  const refId = chip.raw.reference_id
+  switch (chip.platformOrType) {
+    case "blog_post":
+      return refId ? `/admin/blog/${refId}/edit` : "/admin/blog"
+    case "newsletter":
+      return refId ? `/admin/newsletter/${refId}/edit` : "/admin/newsletter"
+    case "topic_suggestion":
+      return "/admin/topic-suggestions"
+    default:
+      return "/admin/content"
+  }
+}
 
 const ENTRY_ICONS: Record<CalendarEntryType, typeof FileText> = {
   social_post: Instagram,
@@ -34,6 +50,7 @@ interface PostChipProps {
 }
 
 export function PostChip({ chip }: PostChipProps) {
+  const router = useRouter()
   const [hovered, setHovered] = useState(false)
   const isLocked = chip.status === "published"
   const isFailed = chip.kind === "post" && chip.status === "failed"
@@ -48,7 +65,17 @@ export function PostChip({ chip }: PostChipProps) {
   const colorClasses =
     chip.kind === "post" ? PLATFORM_COLORS[chip.platformOrType] : "bg-accent/10 text-accent border-accent/30"
 
-  const drawerHref = chip.kind === "post" ? `/admin/content/post/${chip.id}` : "#"
+  const drawerHref = destinationFor(chip)
+
+  function handleClick(event: React.MouseEvent) {
+    // Don't navigate if the click originated inside the hover tooltip
+    // (which has its own Open/Retry buttons).
+    if ((event.target as HTMLElement).closest("[role='tooltip']")) return
+    if (isDragging) return
+    if (event.metaKey || event.ctrlKey || event.shiftKey) return // let default link-open modifiers work elsewhere
+    event.stopPropagation()
+    router.push(drawerHref)
+  }
 
   async function retry() {
     if (chip.kind !== "post") return
@@ -76,13 +103,21 @@ export function PostChip({ chip }: PostChipProps) {
       {...(isLocked ? {} : attributes)}
       {...(isLocked ? {} : listeners)}
       role="button"
+      tabIndex={0}
       aria-label={ariaLabel}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onClick={handleClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault()
+          router.push(drawerHref)
+        }
+      }}
       className={cn(
-        "relative rounded border px-1.5 py-1 text-[11px] truncate inline-flex items-center gap-1",
+        "relative rounded border px-1.5 py-1 text-[11px] truncate inline-flex items-center gap-1 cursor-pointer",
         colorClasses,
-        !isLocked && "cursor-grab active:cursor-grabbing",
+        !isLocked && "hover:brightness-95",
         isDragging && "opacity-40",
         isLocked && "opacity-70",
       )}

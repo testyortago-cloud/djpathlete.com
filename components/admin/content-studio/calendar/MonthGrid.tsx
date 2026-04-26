@@ -1,6 +1,7 @@
 "use client"
 
 import { useDroppable } from "@dnd-kit/core"
+import { useRouter, useSearchParams } from "next/navigation"
 import { PostChip } from "./PostChip"
 import { groupByDay, type CalendarChip, dayKey } from "@/lib/content-studio/calendar-chips"
 import { cn } from "@/lib/utils"
@@ -51,9 +52,18 @@ function DayCell({
   chips: CalendarChip[]
   onEmptyClick: (dayKey: string) => void
 }) {
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const key = dayKey(day)
   const { setNodeRef, isOver } = useDroppable({ id: `day-${key}`, data: { dayKey: key } })
   const today = isTodayUTC(day)
+
+  function openDayView() {
+    const params = new URLSearchParams(searchParams.toString())
+    params.set("view", "day")
+    params.set("anchor", key)
+    router.push(`?${params.toString()}`)
+  }
 
   return (
     <div
@@ -68,7 +78,7 @@ function DayCell({
       )}
       onClick={(e) => {
         if ((e.target as HTMLElement).closest("[role='button']")) return
-        if (chips.length === 0) onEmptyClick(key)
+        onEmptyClick(key)
       }}
     >
       <div className="flex items-center justify-between mb-1">
@@ -85,7 +95,18 @@ function DayCell({
         {chips.slice(0, 3).map((c) => (
           <PostChip key={`${c.kind}-${c.id}`} chip={c} />
         ))}
-        {chips.length > 3 && <span className="text-[10px] text-muted-foreground">+{chips.length - 3} more</span>}
+        {chips.length > 3 && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              openDayView()
+            }}
+            className="text-[10px] text-muted-foreground hover:text-primary hover:underline text-left"
+          >
+            +{chips.length - 3} more
+          </button>
+        )}
       </div>
     </div>
   )

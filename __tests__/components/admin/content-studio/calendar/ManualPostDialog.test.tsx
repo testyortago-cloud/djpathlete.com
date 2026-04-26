@@ -13,11 +13,46 @@ beforeEach(() => {
 })
 
 describe("<ManualPostDialog>", () => {
-  it("renders platform selector and caption textarea for the given day", () => {
+  it("renders platform checkboxes and caption textarea for the given day", () => {
     render(<ManualPostDialog dayKey="2026-04-20" onClose={vi.fn()} onCreated={vi.fn()} />)
     expect(screen.getByText(/2026-04-20/)).toBeInTheDocument()
-    expect(screen.getByLabelText(/Platform/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/Post to instagram/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/Post to facebook/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/Caption/i)).toBeInTheDocument()
+  })
+
+  it("creates one post per checked supported platform", async () => {
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(new Response(JSON.stringify({ id: "post-x" }), { status: 200 })),
+    )
+    render(<ManualPostDialog dayKey="2099-02-02" onClose={vi.fn()} onCreated={vi.fn()} />)
+    // instagram is pre-selected; add facebook
+    fireEvent.click(screen.getByLabelText(/Post to facebook/i))
+    fireEvent.click(screen.getByRole("button", { name: /create/i }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    const platforms = fetchMock.mock.calls.map(
+      (c: unknown[]) => JSON.parse((c[1] as { body: string }).body).platform,
+    )
+    expect(platforms).toEqual(expect.arrayContaining(["instagram", "facebook"]))
+  })
+
+  it("skips platforms that don't support the chosen post type", async () => {
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(new Response(JSON.stringify({ id: "post-y" }), { status: 200 })),
+    )
+    render(
+      <ManualPostDialog
+        dayKey="2099-03-03"
+        onClose={vi.fn()}
+        onCreated={vi.fn()}
+        multimediaEnabled
+      />,
+    )
+    // Switch to carousel — tiktok doesn't support it
+    fireEvent.change(screen.getByLabelText(/post type/i), { target: { value: "carousel" } })
+    // instagram stays selected, also tick tiktok (unsupported for carousel)
+    fireEvent.click(screen.getByLabelText(/Post to tiktok/i))
+    expect(screen.getByText(/tiktok.*skipped/i)).toBeInTheDocument()
   })
 
   it("submits to the manual-post API and calls onCreated", async () => {

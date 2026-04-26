@@ -137,11 +137,11 @@ export function AdminSidebar({ contentStudioEnabled = false }: AdminSidebarProps
   const pathname = usePathname()
   const navSections = getNavSections(contentStudioEnabled)
 
-  // Sections with a title are collapsible; auto-open if they contain the active route
+  // Sections with a title are collapsible; open by default
   const initialOpen = navSections.reduce(
     (acc, section) => {
       if (section.title) {
-        acc[section.title] = section.items.some((item) => pathname.startsWith(item.href))
+        acc[section.title] = true
       }
       return acc
     },

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { toast } from "sonner"
 import type { SocialPlatform, PostType } from "@/types/database"
 import { defaultPublishTimeForPlatform } from "@/lib/content-studio/calendar-defaults"
@@ -16,10 +16,29 @@ interface ManualPostDialogProps {
   multimediaEnabled?: boolean
 }
 
-const PLATFORMS: SocialPlatform[] = ["instagram", "tiktok", "facebook", "youtube", "youtube_shorts", "linkedin"]
+const PLATFORMS: SocialPlatform[] = [
+  "instagram",
+  "tiktok",
+  "facebook",
+  "youtube",
+  "youtube_shorts",
+  "linkedin",
+]
 
-export function ManualPostDialog({ dayKey, onClose, onCreated, multimediaEnabled = false }: ManualPostDialogProps) {
-  const [platform, setPlatform] = useState<SocialPlatform>("instagram")
+interface PostResult {
+  platform: SocialPlatform
+  ok: boolean
+  id?: string
+  error?: string
+}
+
+export function ManualPostDialog({
+  dayKey,
+  onClose,
+  onCreated,
+  multimediaEnabled = false,
+}: ManualPostDialogProps) {
+  const [selectedPlatforms, setSelectedPlatforms] = useState<SocialPlatform[]>(["instagram"])
   const [postType, setPostType] = useState<PostType>("video")
   const [caption, setCaption] = useState("")
   const [mediaAssetId, setMediaAssetId] = useState<string | null>(null)
@@ -28,18 +47,32 @@ export function ManualPostDialog({ dayKey, onClose, onCreated, multimediaEnabled
   const [sourceVideoId, setSourceVideoId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const canSubmit =
-    !busy &&
-    isPlatformPostTypeSupported(platform, postType) &&
-    ((postType !== "image" && postType !== "story") ||
-      (postType === "image" && mediaAssetId !== null) ||
-      (postType === "story" &&
-        ((storyMediaType === "image" && mediaAssetId !== null) ||
-          (storyMediaType === "video" && sourceVideoId !== null)))) &&
-    (postType !== "carousel" || mediaAssetIds.length >= 2)
+  const supportedSelected = useMemo(
+    () => selectedPlatforms.filter((p) => isPlatformPostTypeSupported(p, postType)),
+    [selectedPlatforms, postType],
+  )
+  const unsupportedSelected = useMemo(
+    () => selectedPlatforms.filter((p) => !isPlatformPostTypeSupported(p, postType)),
+    [selectedPlatforms, postType],
+  )
 
-  async function submit() {
-    setBusy(true)
+  const mediaReady =
+    (postType !== "image" && postType !== "story" && postType !== "carousel") ||
+    (postType === "image" && mediaAssetId !== null) ||
+    (postType === "carousel" && mediaAssetIds.length >= 2) ||
+    (postType === "story" &&
+      ((storyMediaType === "image" && mediaAssetId !== null) ||
+        (storyMediaType === "video" && sourceVideoId !== null)))
+
+  const canSubmit = !busy && supportedSelected.length > 0 && mediaReady
+
+  function togglePlatform(p: SocialPlatform) {
+    setSelectedPlatforms((prev) =>
+      prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p],
+    )
+  }
+
+  async function createOne(platform: SocialPlatform): Promise<PostResult> {
     try {
       const day = new Date(`${dayKey}T00:00:00Z`)
       const scheduled_at = defaultPublishTimeForPlatform(platform, day).toISOString()
@@ -60,20 +93,54 @@ export function ManualPostDialog({ dayKey, onClose, onCreated, multimediaEnabled
           mediaAssetIds: postType === "carousel" ? mediaAssetIds : undefined,
         }),
       })
-      if (!res.ok) throw new Error((await res.text()) || "Create failed")
+      if (!res.ok) {
+        const text = (await res.text()) || `HTTP ${res.status}`
+        return { platform, ok: false, error: text }
+      }
       const data = (await res.json()) as { id: string }
-      toast.success("Manual post scheduled")
-      onCreated(data.id)
+      return { platform, ok: true, id: data.id }
     } catch (err) {
-      toast.error((err as Error).message || "Create failed")
+      return { platform, ok: false, error: (err as Error).message || "Create failed" }
+    }
+  }
+
+  async function submit() {
+    if (supportedSelected.length === 0) return
+    setBusy(true)
+    try {
+      const results = await Promise.all(supportedSelected.map(createOne))
+      const successes = results.filter((r) => r.ok)
+      const failures = results.filter((r) => !r.ok)
+
+      if (successes.length > 0) {
+        toast.success(
+          successes.length === 1
+            ? `Post scheduled to ${successes[0].platform}`
+            : `Scheduled to ${successes.length} platforms`,
+        )
+      }
+      if (failures.length > 0) {
+        for (const f of failures) {
+          toast.error(`${f.platform}: ${f.error}`)
+        }
+      }
+      if (successes.length > 0) {
+        onCreated(successes[0].id as string)
+      }
     } finally {
       setBusy(false)
     }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div className="rounded-lg bg-white border border-border shadow-lg p-4 w-[28rem] max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      onClick={onClose}
+    >
+      <div
+        className="rounded-lg bg-white border border-border shadow-lg p-4 w-[32rem] max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
         <h3 className="font-heading text-sm text-primary mb-3">New manual post — {dayKey}</h3>
 
         {multimediaEnabled ? (
@@ -99,41 +166,62 @@ export function ManualPostDialog({ dayKey, onClose, onCreated, multimediaEnabled
           </label>
         ) : null}
 
-        <label className="block text-xs text-muted-foreground mb-3">
-          Platform
-          <select
-            aria-label="Platform"
-            value={platform}
-            onChange={(e) => setPlatform(e.target.value as SocialPlatform)}
-            className="mt-1 block w-full rounded border border-border px-2 py-1 text-sm"
-          >
-            {PLATFORMS.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
-        </label>
+        <fieldset className="mb-3">
+          <legend className="text-xs text-muted-foreground mb-1.5">
+            Platforms{" "}
+            <span className="text-muted-foreground/70">
+              ({supportedSelected.length} selected)
+            </span>
+          </legend>
+          <div className="grid grid-cols-2 gap-1.5">
+            {PLATFORMS.map((p) => {
+              const supported = isPlatformPostTypeSupported(p, postType)
+              const checked = selectedPlatforms.includes(p)
+              return (
+                <label
+                  key={p}
+                  className={`flex items-center gap-2 px-2 py-1.5 rounded border text-xs cursor-pointer transition-colors ${
+                    checked
+                      ? supported
+                        ? "border-primary bg-primary/5"
+                        : "border-warning/60 bg-warning/5"
+                      : "border-border hover:bg-surface/50"
+                  } ${!supported ? "opacity-60" : ""}`}
+                  title={supported ? "" : `${p} does not support ${postType} posts`}
+                >
+                  <input
+                    type="checkbox"
+                    aria-label={`Post to ${p}`}
+                    checked={checked}
+                    onChange={() => togglePlatform(p)}
+                    className="accent-primary"
+                  />
+                  <span className="capitalize">{p.replace(/_/g, " ")}</span>
+                  {checked && !supported ? (
+                    <span className="ml-auto text-[10px] text-warning">unsupported</span>
+                  ) : null}
+                </label>
+              )
+            })}
+          </div>
+          {unsupportedSelected.length > 0 ? (
+            <p className="mt-1.5 text-[11px] text-warning">
+              {unsupportedSelected.map((p) => p.replace(/_/g, " ")).join(", ")}{" "}
+              {unsupportedSelected.length === 1 ? "doesn't" : "don't"} support {postType} posts and
+              will be skipped.
+            </p>
+          ) : null}
+        </fieldset>
 
         {postType === "image" && multimediaEnabled ? (
           <div className="mb-3">
             <ImageUploader onUploaded={(e) => setMediaAssetId(e.mediaAssetId)} />
-            {!isPlatformPostTypeSupported(platform, "image") ? (
-              <p className="mt-2 text-xs text-error">
-                {platform} does not support image posts yet.
-              </p>
-            ) : null}
           </div>
         ) : null}
 
         {postType === "carousel" && multimediaEnabled ? (
           <div className="mb-3">
             <CarouselComposer onChange={setMediaAssetIds} />
-            {!isPlatformPostTypeSupported(platform, "carousel") ? (
-              <p className="mt-2 text-xs text-error">
-                {platform} does not support carousels yet.
-              </p>
-            ) : null}
           </div>
         ) : null}
 
@@ -160,11 +248,6 @@ export function ManualPostDialog({ dayKey, onClose, onCreated, multimediaEnabled
             ) : (
               <VideoUploader onUploaded={(id) => setSourceVideoId(id)} />
             )}
-            {!isPlatformPostTypeSupported(platform, "story") ? (
-              <p className="mt-2 text-xs text-error">
-                {platform} does not support stories.
-              </p>
-            ) : null}
           </div>
         ) : null}
 
@@ -200,7 +283,11 @@ export function ManualPostDialog({ dayKey, onClose, onCreated, multimediaEnabled
             disabled={!canSubmit}
             className="text-xs px-3 py-1.5 rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
           >
-            {busy ? "Creating..." : "Create"}
+            {busy
+              ? `Creating${supportedSelected.length > 1 ? ` (${supportedSelected.length})` : ""}…`
+              : supportedSelected.length > 1
+                ? `Create ${supportedSelected.length} posts`
+                : "Create"}
           </button>
         </div>
       </div>

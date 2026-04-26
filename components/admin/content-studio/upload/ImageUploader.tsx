@@ -1,10 +1,11 @@
 "use client"
 
 import { useState } from "react"
-import { Upload, X } from "lucide-react"
+import { FolderOpen, Upload, X } from "lucide-react"
 import { uploadImageFile } from "@/lib/firebase-client-upload"
+import { AssetPickerModal, type PickedAsset } from "./AssetPickerModal"
 
-const MAX_BYTES = 8 * 1024 * 1024
+const MAX_BYTES = 25 * 1024 * 1024
 
 export interface ImageUploadedEvent {
   mediaAssetId: string
@@ -13,12 +14,15 @@ export interface ImageUploadedEvent {
 
 interface ImageUploaderProps {
   onUploaded: (event: ImageUploadedEvent) => void
+  excludeIds?: string[]
 }
 
-export function ImageUploader({ onUploaded }: ImageUploaderProps) {
+export function ImageUploader({ onUploaded, excludeIds }: ImageUploaderProps) {
   const [percent, setPercent] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [fileName, setFileName] = useState<string | null>(null)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [source, setSource] = useState<"upload" | "library" | null>(null)
 
   async function handleFile(file: File) {
     setError(null)
@@ -31,6 +35,7 @@ export function ImageUploader({ onUploaded }: ImageUploaderProps) {
       return
     }
     setFileName(file.name)
+    setSource("upload")
     setPercent(0)
     try {
       const result = await uploadImageFile(file, {
@@ -49,20 +54,46 @@ export function ImageUploader({ onUploaded }: ImageUploaderProps) {
     if (file) handleFile(file)
   }
 
+  function handlePicked(asset: PickedAsset) {
+    setError(null)
+    setFileName(asset.filename)
+    setSource("library")
+    setPercent(100)
+    onUploaded({ mediaAssetId: asset.id, storagePath: asset.filename })
+  }
+
+  const filled = fileName !== null && percent === 100
+
   return (
-    <div className="space-y-3">
-      <label className="flex items-center gap-2 cursor-pointer">
-        <Upload className="size-4" />
-        <span className="text-sm">Photo</span>
-        <input
-          type="file"
-          accept="image/jpeg,image/png,image/webp"
-          className="hidden"
-          onChange={onChange}
-        />
-      </label>
-      {fileName ? <p className="text-xs text-muted-foreground">{fileName}</p> : null}
-      {percent !== null ? (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <label className="flex-1 inline-flex items-center gap-2 px-3 py-1.5 rounded border border-border bg-white hover:bg-surface/50 cursor-pointer text-sm">
+          <Upload className="size-3.5" />
+          <span className="text-sm">{filled && source === "upload" ? "Replace photo" : "Upload photo"}</span>
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="hidden"
+            onChange={onChange}
+            onClick={(e) => e.stopPropagation()}
+          />
+        </label>
+        <button
+          type="button"
+          onClick={() => setPickerOpen(true)}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-border text-sm bg-white hover:bg-surface/50"
+        >
+          <FolderOpen className="size-3.5" /> Library
+        </button>
+      </div>
+
+      {fileName ? (
+        <p className="text-xs text-muted-foreground">
+          {source === "library" ? "From library: " : ""}
+          {fileName}
+        </p>
+      ) : null}
+      {percent !== null && percent < 100 ? (
         <div className="h-1 w-full bg-muted rounded overflow-hidden">
           <div className="h-full bg-primary" style={{ width: `${percent}%` }} />
         </div>
@@ -72,6 +103,14 @@ export function ImageUploader({ onUploaded }: ImageUploaderProps) {
           <X className="size-3" /> {error}
         </p>
       ) : null}
+
+      <AssetPickerModal
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        onPick={handlePicked}
+        excludeIds={excludeIds}
+        title="Pick photo from library"
+      />
     </div>
   )
 }

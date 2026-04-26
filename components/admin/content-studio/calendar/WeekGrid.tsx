@@ -52,7 +52,7 @@ function DayCell({
       )}
       onClick={(e) => {
         if ((e.target as HTMLElement).closest("[role='button']")) return
-        if (chips.length === 0) onEmptyClick(key)
+        onEmptyClick(key)
       }}
     >
       <div className="flex items-center justify-between mb-2">

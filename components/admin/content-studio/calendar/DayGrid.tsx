@@ -36,7 +36,7 @@ function HourRow({
       )}
       onClick={(e) => {
         if ((e.target as HTMLElement).closest("[role='button']")) return
-        if (chips.length === 0) onEmptyDayClick(key.slice(0, 10))
+        onEmptyDayClick(key.slice(0, 10))
       }}
     >
       <div className="text-[11px] text-muted-foreground px-2 py-1.5">{String(hour).padStart(2, "0")}:00</div>
