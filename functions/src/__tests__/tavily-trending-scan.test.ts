@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest"
-import { buildRankingPrompt, nextMondayISO } from "../tavily-trending-scan.js"
+import {
+  buildRankingPrompt,
+  nextMondayISO,
+  TRENDING_QUERIES,
+} from "../tavily-trending-scan.js"
 
 describe("tavily-trending-scan helpers", () => {
   it("buildRankingPrompt embeds Tavily results as numbered entries", () => {
@@ -14,9 +18,27 @@ describe("tavily-trending-scan helpers", () => {
     expect(prompt).toMatch(/5\s*[-–]\s*10\s+topics?/i)
   })
 
+  it("buildRankingPrompt targets both coaching and sport science audiences", () => {
+    const prompt = buildRankingPrompt([
+      { title: "Sample", url: "https://x.example", content: "x" },
+    ]).toLowerCase()
+    expect(prompt).toContain("strength & conditioning")
+    expect(prompt).toContain("sport science")
+    expect(prompt).toContain("performance")
+  })
+
   it("buildRankingPrompt handles empty input gracefully", () => {
     const prompt = buildRankingPrompt([])
     expect(prompt.toLowerCase()).toContain("no search results")
+  })
+
+  it("TRENDING_QUERIES covers coaching, sport science, performance, and youth development", () => {
+    expect(TRENDING_QUERIES.length).toBeGreaterThanOrEqual(3)
+    const joined = TRENDING_QUERIES.join(" | ").toLowerCase()
+    expect(joined).toMatch(/strength|conditioning|coach/)
+    expect(joined).toContain("sport science")
+    expect(joined).toContain("performance")
+    expect(joined).toContain("youth")
   })
 
   it("nextMondayISO returns a Monday (day-of-week = 1) in YYYY-MM-DD format", () => {

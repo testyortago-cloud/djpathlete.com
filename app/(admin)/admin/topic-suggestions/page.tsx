@@ -15,7 +15,7 @@ export default async function TopicSuggestionsPage() {
         <h1 className="text-2xl font-semibold text-primary">Topic Suggestions</h1>
       </div>
       <p className="text-sm text-muted-foreground mb-6">
-        Weekly trending topics pulled from Tavily search and ranked for a strength &amp; conditioning audience. Click &quot;Draft blog&quot; to start a post pre-filled with the topic.
+        Weekly trending topics pulled from Tavily search and ranked for strength &amp; conditioning coaches and sport science / performance practitioners. Click &quot;Draft blog&quot; to start a post pre-filled with the topic.
       </p>
 
       <TopicSuggestionsList suggestions={suggestions} />

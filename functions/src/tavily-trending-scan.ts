@@ -14,6 +14,16 @@ export interface TavilySearchResult {
   content: string
 }
 
+export const TRENDING_QUERIES: readonly string[] = [
+  "strength and conditioning coaching trends this week",
+  "sport science research athletic performance",
+  "applied performance research athletes recovery",
+  "youth athlete development training research",
+] as const
+
+const MAX_RESULTS_PER_QUERY = 5
+const MAX_RESULTS_TO_RANK = 20
+
 export function buildRankingPrompt(results: TavilySearchResult[]): string {
   if (results.length === 0) {
     return [
@@ -34,7 +44,7 @@ export function buildRankingPrompt(results: TavilySearchResult[]): string {
     block,
     "",
     "# INSTRUCTIONS",
-    "Extract 5-10 topics relevant to a strength & conditioning coaching audience (youth athletes, injury recovery, strength training, nutrition for performance). Skip fitness fads and low-value clickbait. Rank by relevance (1 = most relevant).",
+    "Extract 5-10 topics relevant to a combined audience of strength & conditioning coaches and sport science / performance practitioners. In-scope: youth and adult athletes, injury recovery and rehab, strength and power training, sport science research, applied performance, biomechanics, recovery and sleep, nutrition for performance. Skip fitness fads and low-value clickbait — favor evidence-based, applied-research, and coaching-practice angles. Rank by relevance (1 = most relevant).",
   ].join("\n")
 }
 
@@ -57,7 +67,7 @@ const TrendingSchema = z.object({
   ),
 })
 
-const SYSTEM_PROMPT = `You are a content strategist for DJP Athlete. Given a list of Tavily search results about fitness/coaching trends, extract concrete blog topic ideas a strength & conditioning coach could write about this week. Output JSON: { topics: [{ title, summary, tavily_url, rank }] }. 5-10 topics max. Skip noise.`
+const SYSTEM_PROMPT = `You are a content strategist for DJP Athlete. Given search results about fitness coaching, sport science, and athletic performance, extract concrete blog topic ideas for an audience of strength & conditioning coaches AND sport science / performance practitioners. Output JSON: { topics: [{ title, summary, tavily_url, rank }] }. 5-10 topics max. Favor evidence-based, applied-research, and coaching-practice angles. Skip fitness fads and clickbait.`
 
 export async function handleTavilyTrendingScan(jobId: string): Promise<void> {
   const firestore = getFirestore()
@@ -74,18 +84,28 @@ export async function handleTavilyTrendingScan(jobId: string): Promise<void> {
   try {
     await jobRef.update({ status: "processing", updatedAt: FieldValue.serverTimestamp() })
 
-    const search = await tavilySearch({
-      query: "fitness coaching trends this week",
-      search_depth: "advanced",
-      include_answer: false,
-      max_results: 15,
-    })
+    const searches = await Promise.all(
+      TRENDING_QUERIES.map((query) =>
+        tavilySearch({
+          query,
+          search_depth: "advanced",
+          include_answer: false,
+          max_results: MAX_RESULTS_PER_QUERY,
+        }),
+      ),
+    )
 
-    const topicsFromTavily: TavilySearchResult[] = search.results.map((r) => ({
-      title: r.title,
-      url: r.url,
-      content: r.content,
-    }))
+    const seenUrls = new Set<string>()
+    const topicsFromTavily: TavilySearchResult[] = []
+    for (const search of searches) {
+      for (const r of search.results) {
+        if (seenUrls.has(r.url)) continue
+        seenUrls.add(r.url)
+        topicsFromTavily.push({ title: r.title, url: r.url, content: r.content })
+        if (topicsFromTavily.length >= MAX_RESULTS_TO_RANK) break
+      }
+      if (topicsFromTavily.length >= MAX_RESULTS_TO_RANK) break
+    }
 
     const userMessage = buildRankingPrompt(topicsFromTavily)
 
