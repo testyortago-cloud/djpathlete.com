@@ -5,6 +5,8 @@ import { toast } from "sonner"
 import { CheckCircle2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
+import { summarizeApiError, type FieldErrors } from "@/lib/errors/humanize"
 import {
   inquiryFormSchema,
   SERVICE_LABELS,
@@ -12,6 +14,18 @@ import {
   type InquiryFormData,
   type ServiceType,
 } from "@/lib/validators/inquiry"
+
+const INQUIRY_FIELD_LABELS: Record<string, string> = {
+  name: "Name",
+  email: "Email",
+  phone: "Phone",
+  service: "Service",
+  sport: "Sport",
+  experience: "Experience",
+  goals: "Goals",
+  injuries: "Injuries",
+  how_heard: "How heard",
+}
 
 const EXPERIENCE_OPTIONS = [
   { value: "beginner", label: "Less than 1 year" },
@@ -43,10 +57,14 @@ export function InquiryForm({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [errors, setErrors] = useState<Partial<Record<keyof InquiryFormData, string[]>>>({})
+  const [formError, setFormError] = useState<string | null>(null)
+  const [serverFieldErrors, setServerFieldErrors] = useState<FieldErrors>({})
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setErrors({})
+    setFormError(null)
+    setServerFieldErrors({})
 
     const formData = new FormData(e.currentTarget)
     const data = {
@@ -63,7 +81,10 @@ export function InquiryForm({
 
     const result = inquiryFormSchema.safeParse(data)
     if (!result.success) {
-      setErrors(result.error.flatten().fieldErrors)
+      const flat = result.error.flatten().fieldErrors
+      setErrors(flat)
+      setServerFieldErrors(flat as FieldErrors)
+      setFormError("Please fix the highlighted fields below.")
       return
     }
 
@@ -77,13 +98,25 @@ export function InquiryForm({
       })
 
       if (!response.ok) {
-        throw new Error("Failed to submit")
+        const body = await response.json().catch(() => ({}))
+        const { message, fieldErrors: fe } = summarizeApiError(
+          response,
+          body,
+          "We couldn't submit your application. Please try again.",
+        )
+        setFormError(message)
+        setServerFieldErrors(fe)
+        toast.error(message)
+        setIsSubmitting(false)
+        return
       }
 
       setIsSubmitted(true)
       toast.success("Application submitted!")
     } catch {
-      toast.error("Something went wrong. Please try again.")
+      const message = "We couldn't reach our server. Please check your connection and try again."
+      setFormError(message)
+      toast.error(message)
     } finally {
       setIsSubmitting(false)
     }
@@ -111,6 +144,7 @@ export function InquiryForm({
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
+        <FormErrorBanner message={formError} fieldErrors={serverFieldErrors} labels={INQUIRY_FIELD_LABELS} />
         {/* Name + Email */}
         <div className="grid sm:grid-cols-2 gap-5">
           <div className="space-y-2">

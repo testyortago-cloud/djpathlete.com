@@ -5,6 +5,8 @@ import { Calendar as CalendarIcon, X } from "lucide-react"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import type { SocialPost } from "@/types/database"
+import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
+import { summarizeApiError } from "@/lib/errors/humanize"
 
 interface SchedulePickerDialogProps {
   post: SocialPost
@@ -38,15 +40,21 @@ export function SchedulePickerDialog({ post, open, onOpenChange, onScheduled }: 
   const [date, setDate] = useState(initial.date)
   const [time, setTime] = useState(initial.time)
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   async function submit() {
+    setError(null)
     const scheduledAt = new Date(`${date}T${time}:00`)
     if (Number.isNaN(scheduledAt.getTime())) {
-      toast.error("Please enter a valid date and time")
+      const msg = "Please enter a valid date and time"
+      setError(msg)
+      toast.error(msg)
       return
     }
     if (scheduledAt.getTime() <= Date.now()) {
-      toast.error("Scheduled time must be in the future")
+      const msg = "Scheduled time must be in the future"
+      setError(msg)
+      toast.error(msg)
       return
     }
 
@@ -57,13 +65,22 @@ export function SchedulePickerDialog({ post, open, onOpenChange, onScheduled }: 
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ scheduled_at: scheduledAt.toISOString() }),
       })
-      if (!res.ok) throw new Error((await res.text()) || "Schedule failed")
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        const { message } = summarizeApiError(res, data, "Failed to schedule post")
+        setError(message)
+        toast.error(message)
+        setSaving(false)
+        return
+      }
       const data = (await res.json()) as Pick<SocialPost, "id" | "approval_status" | "scheduled_at">
       onScheduled({ ...post, approval_status: data.approval_status, scheduled_at: data.scheduled_at })
       toast.success(`Scheduled for ${scheduledAt.toLocaleString()}`)
       onOpenChange(false)
-    } catch (error) {
-      toast.error((error as Error).message || "Schedule failed")
+    } catch (e) {
+      const message = (e as Error).message || "We couldn't reach the server. Please try again."
+      setError(message)
+      toast.error(message)
     } finally {
       setSaving(false)
     }
@@ -80,6 +97,7 @@ export function SchedulePickerDialog({ post, open, onOpenChange, onScheduled }: 
         </DialogHeader>
 
         <div className="space-y-4 py-2">
+          <FormErrorBanner message={error} />
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-muted-foreground" htmlFor="schedule-date">

@@ -1,5 +1,7 @@
 "use client"
 import { useState } from "react"
+import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
+import { summarizeApiError } from "@/lib/errors/humanize"
 
 export function FreePdfForm({ productId }: { productId: string }) {
   const [submitting, setSubmitting] = useState(false)
@@ -11,20 +13,27 @@ export function FreePdfForm({ productId }: { productId: string }) {
     setSubmitting(true)
     setError(null)
     const f = new FormData(e.currentTarget)
-    const res = await fetch("/api/shop/leads", {
-      method: "POST",
-      body: JSON.stringify({
-        email: String(f.get("email") ?? ""),
-        product_id: productId,
-        website: String(f.get("website") ?? ""),
-      }),
-    })
-    setSubmitting(false)
-    if (!res.ok) {
-      setError("Something went wrong. Try again.")
-      return
+    try {
+      const res = await fetch("/api/shop/leads", {
+        method: "POST",
+        body: JSON.stringify({
+          email: String(f.get("email") ?? ""),
+          product_id: productId,
+          website: String(f.get("website") ?? ""),
+        }),
+      })
+      setSubmitting(false)
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        const { message } = summarizeApiError(res, data, "We couldn't send your download link. Please try again.")
+        setError(message)
+        return
+      }
+      setDone(true)
+    } catch {
+      setSubmitting(false)
+      setError("We couldn't reach the server. Please check your connection and try again.")
     }
-    setDone(true)
   }
 
   if (done) {
@@ -40,6 +49,7 @@ export function FreePdfForm({ productId }: { productId: string }) {
 
   return (
     <form onSubmit={onSubmit} className="space-y-3">
+      <FormErrorBanner message={error} />
       <label className="block">
         <span className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
           Email
@@ -63,7 +73,6 @@ export function FreePdfForm({ productId }: { productId: string }) {
       >
         {submitting ? "Sending\u2026" : "Get free download"}
       </button>
-      {error && <p className="text-sm text-destructive">{error}</p>}
     </form>
   )
 }

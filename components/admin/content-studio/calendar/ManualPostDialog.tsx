@@ -8,6 +8,8 @@ import { isPlatformPostTypeSupported } from "@/lib/content-studio/post-type-supp
 import { ImageUploader } from "@/components/admin/content-studio/upload/ImageUploader"
 import { CarouselComposer } from "@/components/admin/content-studio/upload/CarouselComposer"
 import { VideoUploader } from "@/components/admin/videos/VideoUploader"
+import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
+import { statusToFriendlyMessage } from "@/lib/errors/humanize"
 
 interface ManualPostDialogProps {
   dayKey: string
@@ -46,6 +48,7 @@ export function ManualPostDialog({
   const [storyMediaType, setStoryMediaType] = useState<"image" | "video">("image")
   const [sourceVideoId, setSourceVideoId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [perPlatformErrors, setPerPlatformErrors] = useState<Record<string, string>>({})
 
   const supportedSelected = useMemo(
     () => selectedPlatforms.filter((p) => isPlatformPostTypeSupported(p, postType)),
@@ -94,8 +97,9 @@ export function ManualPostDialog({
         }),
       })
       if (!res.ok) {
-        const text = (await res.text()) || `HTTP ${res.status}`
-        return { platform, ok: false, error: text }
+        const text = await res.text().catch(() => "")
+        const friendly = text || statusToFriendlyMessage(res.status, "Couldn't create the post")
+        return { platform, ok: false, error: friendly }
       }
       const data = (await res.json()) as { id: string }
       return { platform, ok: true, id: data.id }
@@ -107,6 +111,7 @@ export function ManualPostDialog({
   async function submit() {
     if (supportedSelected.length === 0) return
     setBusy(true)
+    setPerPlatformErrors({})
     try {
       const results = await Promise.all(supportedSelected.map(createOne))
       const successes = results.filter((r) => r.ok)
@@ -120,9 +125,12 @@ export function ManualPostDialog({
         )
       }
       if (failures.length > 0) {
+        const errMap: Record<string, string> = {}
         for (const f of failures) {
-          toast.error(`${f.platform}: ${f.error}`)
+          errMap[f.platform] = f.error ?? "Unknown error"
+          toast.error(`${f.platform.replace(/_/g, " ")}: ${f.error}`)
         }
+        setPerPlatformErrors(errMap)
       }
       if (successes.length > 0) {
         onCreated(successes[0].id as string)
@@ -131,6 +139,19 @@ export function ManualPostDialog({
       setBusy(false)
     }
   }
+
+  const platformLabels: Record<string, string> = {
+    instagram: "Instagram",
+    tiktok: "TikTok",
+    facebook: "Facebook",
+    youtube: "YouTube",
+    youtube_shorts: "YouTube Shorts",
+    linkedin: "LinkedIn",
+  }
+
+  const platformErrorList: Record<string, string[]> = Object.fromEntries(
+    Object.entries(perPlatformErrors).map(([k, v]) => [k, [v]]),
+  )
 
   return (
     <div
@@ -142,6 +163,16 @@ export function ManualPostDialog({
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="font-heading text-sm text-primary mb-3">New manual post — {dayKey}</h3>
+
+        {Object.keys(perPlatformErrors).length > 0 && (
+          <div className="mb-3">
+            <FormErrorBanner
+              fieldErrors={platformErrorList}
+              labels={platformLabels}
+              title="Some platforms couldn't be scheduled:"
+            />
+          </div>
+        )}
 
         {multimediaEnabled ? (
           <label className="block text-xs text-muted-foreground mb-3">

@@ -33,6 +33,8 @@ import { useFormTour } from "@/hooks/use-form-tour"
 import { FormTour } from "@/components/admin/FormTour"
 import { TourButton } from "@/components/admin/TourButton"
 import { getExerciseTourSteps } from "@/lib/tour-steps"
+import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
+import { humanizeFieldError, summarizeApiError, type FieldErrors } from "@/lib/errors/humanize"
 import type { Exercise, JointLoading } from "@/types/database"
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -223,6 +225,8 @@ export function ExerciseFormDialog({ open, onOpenChange, exercise: initialExerci
   const [direction, setDirection] = useState(1)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errors, setErrors] = useState<Partial<Record<keyof ExerciseFormData, string[]>>>({})
+  const [formError, setFormError] = useState<string | null>(null)
+  const [serverFieldErrors, setServerFieldErrors] = useState<FieldErrors>({})
 
   // Step 0: Basics
   const [name, setName] = useState(exercise?.name ?? "")
@@ -327,17 +331,21 @@ export function ExerciseFormDialog({ open, onOpenChange, exercise: initialExerci
     if (s === 0) {
       if (!name.trim()) {
         toast.error("Name is required")
+        setFormError("Name is required")
         return false
       }
       if (selectedCategories.length === 0) {
         toast.error("Select at least one category")
+        setFormError("Select at least one category")
         return false
       }
       if (!difficulty) {
         toast.error("Difficulty is required")
+        setFormError("Difficulty is required")
         return false
       }
     }
+    setFormError(null)
     return true
   }
 
@@ -429,6 +437,8 @@ export function ExerciseFormDialog({ open, onOpenChange, exercise: initialExerci
 
   async function handleSubmit() {
     setErrors({})
+    setFormError(null)
+    setServerFieldErrors({})
 
     const data = {
       name: name.trim(),
@@ -458,10 +468,28 @@ export function ExerciseFormDialog({ open, onOpenChange, exercise: initialExerci
 
     const result = exerciseFormSchema.safeParse(data)
     if (!result.success) {
-      setErrors(result.error.flatten().fieldErrors)
-      const fieldErrors = result.error.flatten().fieldErrors
-      const firstError = Object.values(fieldErrors).flat()[0]
-      if (firstError) toast.error(firstError)
+      const flat = result.error.flatten().fieldErrors
+      setErrors(flat)
+      setServerFieldErrors(flat as FieldErrors)
+      setFormError("Please fix the highlighted fields before saving.")
+      const firstField = Object.keys(flat)[0]
+      const firstMsg = firstField ? flat[firstField as keyof typeof flat]?.[0] : undefined
+      if (firstField && firstMsg) toast.error(humanizeFieldError(firstField, firstMsg))
+      // Jump to the earliest step with an error so the inline message is in view.
+      if (
+        flat.name ||
+        flat.category ||
+        flat.difficulty ||
+        flat.muscle_group ||
+        flat.equipment
+      ) {
+        setStep(0)
+      } else if (flat.description || flat.instructions || flat.video_url) {
+        setStep(1)
+      } else {
+        setStep(2)
+      }
+      scrollToTop()
       return
     }
 
@@ -478,8 +506,14 @@ export function ExerciseFormDialog({ open, onOpenChange, exercise: initialExerci
       })
 
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Request failed")
+        const errorData = await response.json().catch(() => ({}))
+        const fallback = isEditing ? "Failed to update exercise" : "Failed to create exercise"
+        const { message, fieldErrors: fe } = summarizeApiError(response, errorData, fallback)
+        setFormError(message)
+        setServerFieldErrors(fe)
+        toast.error(message)
+        scrollToTop()
+        return
       }
 
       const responseData = await response.json()
@@ -496,7 +530,9 @@ export function ExerciseFormDialog({ open, onOpenChange, exercise: initialExerci
       }
       router.refresh()
     } catch {
-      toast.error(isEditing ? "Failed to update exercise" : "Failed to create exercise")
+      const message = "We couldn't reach the server. Please check your connection and try again."
+      setFormError(message)
+      toast.error(message)
     } finally {
       setIsSubmitting(false)
     }
@@ -563,6 +599,8 @@ export function ExerciseFormDialog({ open, onOpenChange, exercise: initialExerci
             ))}
           </div>
         </div>
+
+        <FormErrorBanner message={formError} fieldErrors={serverFieldErrors} />
 
         {/* Step content */}
         <div className="min-h-0 sm:min-h-[280px]">

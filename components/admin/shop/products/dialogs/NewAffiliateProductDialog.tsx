@@ -15,6 +15,18 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ImageUpload } from "@/components/admin/shop/products/ImageUpload"
+import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
+import { summarizeApiError, type FieldErrors } from "@/lib/errors/humanize"
+
+const AFFILIATE_FIELD_LABELS: Record<string, string> = {
+  name: "Name",
+  slug: "Slug",
+  description: "Description",
+  thumbnail_url: "Thumbnail",
+  affiliate_url: "Amazon URL",
+  affiliate_asin: "ASIN",
+  affiliate_price_cents: "Reference price",
+}
 
 interface Props {
   open: boolean
@@ -25,16 +37,25 @@ export function NewAffiliateProductDialog({ open, onOpenChange }: Props) {
   const router = useRouter()
   const [submitting, setSubmitting] = useState(false)
   const [thumbnailUrl, setThumbnailUrl] = useState("")
+  const [formError, setFormError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
 
   function reset() {
     setSubmitting(false)
     setThumbnailUrl("")
+    setFormError(null)
+    setFieldErrors({})
   }
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
+    setFormError(null)
+    setFieldErrors({})
     if (!thumbnailUrl) {
-      toast.error("Thumbnail is required")
+      const msg = "Thumbnail is required"
+      setFormError(msg)
+      setFieldErrors({ thumbnail_url: ["Required"] })
+      toast.error(msg)
       return
     }
     setSubmitting(true)
@@ -51,22 +72,30 @@ export function NewAffiliateProductDialog({ open, onOpenChange }: Props) {
           ? Math.round(Number(form.get("affiliate_price_dollars")) * 100)
           : undefined,
     }
-    const res = await fetch("/api/admin/shop/products/affiliate", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    })
-    setSubmitting(false)
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}))
-      toast.error(
-        typeof err.error === "string" ? err.error : `Failed to create product (${res.status})`,
-      )
-      return
+    try {
+      const res = await fetch("/api/admin/shop/products/affiliate", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        const { message, fieldErrors: fe } = summarizeApiError(res, err, "Failed to create product")
+        setFormError(message)
+        setFieldErrors(fe)
+        toast.error(message)
+        setSubmitting(false)
+        return
+      }
+      toast.success("Affiliate product created")
+      reset()
+      onOpenChange(false)
+      router.refresh()
+    } catch {
+      const message = "We couldn't reach the server. Please try again."
+      setFormError(message)
+      toast.error(message)
+      setSubmitting(false)
     }
-    toast.success("Affiliate product created")
-    reset()
-    onOpenChange(false)
-    router.refresh()
   }
 
   return (
@@ -83,6 +112,7 @@ export function NewAffiliateProductDialog({ open, onOpenChange }: Props) {
         </DialogHeader>
 
         <form onSubmit={onSubmit} className="space-y-4" id="new-affiliate-form">
+          <FormErrorBanner message={formError} fieldErrors={fieldErrors} labels={AFFILIATE_FIELD_LABELS} />
           <div className="space-y-2">
             <Label htmlFor="af-name">Name</Label>
             <Input id="af-name" name="name" required />

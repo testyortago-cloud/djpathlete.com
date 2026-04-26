@@ -7,6 +7,8 @@ import { useRouter } from "next/navigation"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { useAiJob } from "@/hooks/use-ai-job"
 import { cn } from "@/lib/utils"
+import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
+import { summarizeApiError } from "@/lib/errors/humanize"
 
 interface GeneratedBlogData {
   title: string
@@ -61,6 +63,7 @@ export function BlogGenerateDialog({ open, onOpenChange, onGenerated, hasExistin
   const [urlInput, setUrlInput] = useState("")
   const [notes, setNotes] = useState("")
   const [refFiles, setRefFiles] = useState<{ name: string; content: string }[]>([])
+  const [startError, setStartError] = useState<string | null>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -128,6 +131,7 @@ export function BlogGenerateDialog({ open, onOpenChange, onGenerated, hasExistin
     setUrlInput("")
     setNotes("")
     setRefFiles([])
+    setStartError(null)
     aiJob.reset()
   }
 
@@ -260,6 +264,7 @@ export function BlogGenerateDialog({ open, onOpenChange, onGenerated, hasExistin
     }
 
     setSubmitting(true)
+    setStartError(null)
     try {
       const res = await fetch("/api/admin/blog/generate", {
         method: "POST",
@@ -281,14 +286,20 @@ export function BlogGenerateDialog({ open, onOpenChange, onGenerated, hasExistin
       })
 
       if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error ?? "Failed to start generation")
+        const data = await res.json().catch(() => ({}))
+        const { message } = summarizeApiError(res, data, "Failed to start generation")
+        setStartError(message)
+        toast.error(message)
+        setSubmitting(false)
+        return
       }
 
       const { jobId: id } = await res.json()
       setJobId(id)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to generate")
+      const message = err instanceof Error ? err.message : "We couldn't reach the server. Please try again."
+      setStartError(message)
+      toast.error(message)
       setSubmitting(false)
     }
   }
@@ -343,6 +354,8 @@ export function BlogGenerateDialog({ open, onOpenChange, onGenerated, hasExistin
             </div>
           </div>
         )}
+
+        <FormErrorBanner message={startError} />
 
         {/* Generating state */}
         {isGenerating ? (
@@ -678,15 +691,27 @@ export function BlogGenerateDialog({ open, onOpenChange, onGenerated, hasExistin
                   disabled={!selectedVideoId}
                   onClick={async () => {
                     if (!selectedVideoId) return
-                    const res = await fetch("/api/admin/blog-posts/generate-from-video", {
-                      method: "POST",
-                      headers: { "content-type": "application/json" },
-                      body: JSON.stringify({ video_upload_id: selectedVideoId, tone, length }),
-                    })
-                    if (res.ok) {
+                    setStartError(null)
+                    try {
+                      const res = await fetch("/api/admin/blog-posts/generate-from-video", {
+                        method: "POST",
+                        headers: { "content-type": "application/json" },
+                        body: JSON.stringify({ video_upload_id: selectedVideoId, tone, length }),
+                      })
+                      if (!res.ok) {
+                        const data = await res.json().catch(() => ({}))
+                        const { message } = summarizeApiError(res, data, "Failed to generate from video")
+                        setStartError(message)
+                        toast.error(message)
+                        return
+                      }
                       const body = (await res.json()) as { jobId: string; blog_post_id: string }
                       onOpenChange(false)
                       router.push(`/admin/blog/${body.blog_post_id}/edit`)
+                    } catch {
+                      const message = "We couldn't reach the server. Please try again."
+                      setStartError(message)
+                      toast.error(message)
                     }
                   }}
                   className={cn(

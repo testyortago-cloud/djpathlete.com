@@ -12,6 +12,8 @@ import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
 import { cn } from "@/lib/utils"
 import type { AssessmentResult, AssessmentQuestion, AbilityLevel } from "@/types/database"
+import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
+import { summarizeApiError, type FieldErrors } from "@/lib/errors/humanize"
 
 interface ReassessmentFormProps {
   previousResult: AssessmentResult
@@ -66,6 +68,8 @@ export function ReassessmentForm({ previousResult, programExercises, assessmentQ
 
   // Section 2: Movement Re-Screen answers
   const [movementAnswers, setMovementAnswers] = useState<Record<string, string>>({})
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [submitFieldErrors, setSubmitFieldErrors] = useState<FieldErrors>({})
 
   // Filter movement screen questions — only show for patterns where client was beginner or intermediate
   const filteredMovementQuestions = assessmentQuestions.filter((q) => {
@@ -121,8 +125,14 @@ export function ReassessmentForm({ previousResult, programExercises, assessmentQ
   }
 
   const handleSubmit = async () => {
+    setSubmitError(null)
+    setSubmitFieldErrors({})
+
     if (!overallFeeling) {
-      toast.error("Please select how the program felt overall.")
+      const msg = "Please select how the program felt overall."
+      setSubmitError(msg)
+      setSubmitFieldErrors({ overall_feeling: ["Required"] })
+      toast.error(msg)
       return
     }
 
@@ -145,8 +155,18 @@ export function ReassessmentForm({ previousResult, programExercises, assessmentQ
       })
 
       if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || "Failed to submit reassessment")
+        const data = await res.json().catch(() => ({}))
+        const { message, fieldErrors: fe } = summarizeApiError(
+          res,
+          data,
+          "We couldn't submit your reassessment. Please try again.",
+        )
+        setSubmitError(message)
+        setSubmitFieldErrors(fe)
+        toast.error(message)
+        setIsSubmitting(false)
+        setShowLoading(false)
+        return
       }
 
       toast.success("Reassessment complete! Your program is being updated.")
@@ -154,8 +174,10 @@ export function ReassessmentForm({ previousResult, programExercises, assessmentQ
       // Small delay to show the success message
       await new Promise((resolve) => setTimeout(resolve, 1500))
       router.push("/client/workouts")
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Something went wrong.")
+    } catch {
+      const message = "We couldn't reach the server. Please check your connection and try again."
+      setSubmitError(message)
+      toast.error(message)
       setIsSubmitting(false)
       setShowLoading(false)
     }
@@ -372,6 +394,16 @@ export function ReassessmentForm({ previousResult, programExercises, assessmentQ
           </motion.div>
         )}
       </AnimatePresence>
+
+      {(submitError || Object.keys(submitFieldErrors).length > 0) && (
+        <div className="mt-4">
+          <FormErrorBanner
+            message={submitError}
+            fieldErrors={submitFieldErrors}
+            labels={{ overall_feeling: "Overall feeling" }}
+          />
+        </div>
+      )}
 
       {/* Navigation */}
       <div className="flex items-center justify-between mt-8 pt-4 border-t border-border">

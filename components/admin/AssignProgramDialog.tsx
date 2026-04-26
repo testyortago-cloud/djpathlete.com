@@ -19,6 +19,14 @@ import { Badge } from "@/components/ui/badge"
 import { EditAssignmentDialog } from "@/components/admin/EditAssignmentDialog"
 import type { AssignmentDetail } from "@/components/admin/ProgramHeader"
 import type { User } from "@/types/database"
+import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
+import { summarizeApiError, type FieldErrors } from "@/lib/errors/humanize"
+
+const ASSIGN_FIELD_LABELS: Record<string, string> = {
+  user_ids: "Clients",
+  start_date: "Start date",
+  notes: "Notes",
+}
 
 interface AssignProgramDialogProps {
   open: boolean
@@ -51,6 +59,8 @@ export function AssignProgramDialog({
   const [notes, setNotes] = useState("")
   const [complimentary, setComplimentary] = useState(false)
   const [editingClient, setEditingClient] = useState<{ userId: string; name: string } | null>(null)
+  const [formError, setFormError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const isPaid = (priceCents ?? 0) > 0
 
   const assignedSet = useMemo(() => new Set(assignedUserIds), [assignedUserIds])
@@ -82,6 +92,8 @@ export function AssignProgramDialog({
       setNotes("")
       setComplimentary(false)
       setStartDate(new Date().toISOString().split("T")[0])
+      setFormError(null)
+      setFieldErrors({})
     }
     onOpenChange(o)
   }
@@ -90,6 +102,8 @@ export function AssignProgramDialog({
     e.preventDefault()
     if (selectedIds.size === 0) return
     setIsSubmitting(true)
+    setFormError(null)
+    setFieldErrors({})
 
     try {
       const response = await fetch(`/api/admin/programs/${programId}/assign`, {
@@ -104,8 +118,13 @@ export function AssignProgramDialog({
       })
 
       if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || "Failed to assign program")
+        const data = await response.json().catch(() => ({}))
+        const { message, fieldErrors: fe } = summarizeApiError(response, data, "Failed to assign program")
+        setFormError(message)
+        setFieldErrors(fe)
+        toast.error(message)
+        setIsSubmitting(false)
+        return
       }
 
       const data = await response.json()
@@ -121,7 +140,9 @@ export function AssignProgramDialog({
       handleClose(false)
       router.refresh()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to assign program")
+      const message = err instanceof Error ? err.message : "We couldn't reach the server. Please try again."
+      setFormError(message)
+      toast.error(message)
     } finally {
       setIsSubmitting(false)
     }
@@ -160,6 +181,7 @@ export function AssignProgramDialog({
           </DialogHeader>
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            <FormErrorBanner message={formError} fieldErrors={fieldErrors} labels={ASSIGN_FIELD_LABELS} />
             {/* Search */}
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />

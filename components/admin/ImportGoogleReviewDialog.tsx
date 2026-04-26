@@ -21,6 +21,15 @@ import { useFormTour } from "@/hooks/use-form-tour"
 import { FormTour } from "@/components/admin/FormTour"
 import { TourButton } from "@/components/admin/TourButton"
 import { IMPORT_REVIEW_TOUR_STEPS } from "@/lib/tour-steps"
+import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
+import { summarizeApiError, type FieldErrors } from "@/lib/errors/humanize"
+
+const REVIEW_FIELD_LABELS: Record<string, string> = {
+  reviewer_name: "Reviewer name",
+  rating: "Rating",
+  comment: "Comment",
+  review_date: "Review date",
+}
 
 interface ImportGoogleReviewDialogProps {
   open: boolean
@@ -34,10 +43,15 @@ export function ImportGoogleReviewDialog({ open, onOpenChange }: ImportGoogleRev
   const tour = useFormTour({ steps: IMPORT_REVIEW_TOUR_STEPS, scrollContainerRef: dialogRef })
   const [rating, setRating] = useState(5)
   const [bulkJson, setBulkJson] = useState("")
+  const [singleError, setSingleError] = useState<string | null>(null)
+  const [singleFieldErrors, setSingleFieldErrors] = useState<FieldErrors>({})
+  const [bulkError, setBulkError] = useState<string | null>(null)
 
   async function handleSingleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setIsSubmitting(true)
+    setSingleError(null)
+    setSingleFieldErrors({})
 
     const formData = new FormData(e.currentTarget)
     const body = {
@@ -55,8 +69,13 @@ export function ImportGoogleReviewDialog({ open, onOpenChange }: ImportGoogleRev
       })
 
       if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || "Failed to import review")
+        const data = await response.json().catch(() => ({}))
+        const { message, fieldErrors: fe } = summarizeApiError(response, data, "Failed to import review")
+        setSingleError(message)
+        setSingleFieldErrors(fe)
+        toast.error(message)
+        setIsSubmitting(false)
+        return
       }
 
       toast.success("Google review added")
@@ -64,7 +83,9 @@ export function ImportGoogleReviewDialog({ open, onOpenChange }: ImportGoogleRev
       setRating(5)
       router.refresh()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to import review")
+      const message = err instanceof Error ? err.message : "We couldn't reach the server. Please try again."
+      setSingleError(message)
+      toast.error(message)
     } finally {
       setIsSubmitting(false)
     }
@@ -73,18 +94,23 @@ export function ImportGoogleReviewDialog({ open, onOpenChange }: ImportGoogleRev
   async function handleBulkSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setIsSubmitting(true)
+    setBulkError(null)
 
     let reviews: unknown
     try {
       reviews = JSON.parse(bulkJson)
     } catch {
-      toast.error("Invalid JSON — check your formatting")
+      const msg = "Invalid JSON — check your formatting and try again"
+      setBulkError(msg)
+      toast.error(msg)
       setIsSubmitting(false)
       return
     }
 
     if (!Array.isArray(reviews) || reviews.length === 0) {
-      toast.error("JSON must be a non-empty array of reviews")
+      const msg = "JSON must be a non-empty array of reviews"
+      setBulkError(msg)
+      toast.error(msg)
       setIsSubmitting(false)
       return
     }
@@ -97,8 +123,12 @@ export function ImportGoogleReviewDialog({ open, onOpenChange }: ImportGoogleRev
       })
 
       if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || "Failed to import reviews")
+        const data = await response.json().catch(() => ({}))
+        const { message } = summarizeApiError(response, data, "Failed to import reviews")
+        setBulkError(message)
+        toast.error(message)
+        setIsSubmitting(false)
+        return
       }
 
       const data = await response.json()
@@ -107,7 +137,9 @@ export function ImportGoogleReviewDialog({ open, onOpenChange }: ImportGoogleRev
       setBulkJson("")
       router.refresh()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to import reviews")
+      const message = err instanceof Error ? err.message : "We couldn't reach the server. Please try again."
+      setBulkError(message)
+      toast.error(message)
     } finally {
       setIsSubmitting(false)
     }
@@ -145,6 +177,11 @@ export function ImportGoogleReviewDialog({ open, onOpenChange }: ImportGoogleRev
           {/* Single Review Tab */}
           <TabsContent value="single">
             <form onSubmit={handleSingleSubmit} className="space-y-4">
+              <FormErrorBanner
+                message={singleError}
+                fieldErrors={singleFieldErrors}
+                labels={REVIEW_FIELD_LABELS}
+              />
               <div className="space-y-2">
                 <Label htmlFor="reviewer_name">Reviewer Name *</Label>
                 <Input
@@ -201,6 +238,7 @@ export function ImportGoogleReviewDialog({ open, onOpenChange }: ImportGoogleRev
           {/* Bulk Import Tab */}
           <TabsContent value="bulk">
             <form onSubmit={handleBulkSubmit} className="space-y-4">
+              <FormErrorBanner message={bulkError} />
               <div className="space-y-2">
                 <Label htmlFor="bulk_json">JSON Array *</Label>
                 <Textarea

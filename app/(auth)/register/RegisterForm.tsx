@@ -8,6 +8,8 @@ import { Eye, EyeOff, ShieldCheck, ArrowLeft, ArrowRight } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
+import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
+import { summarizeApiError, type FieldErrors as ServerFieldErrors } from "@/lib/errors/humanize"
 
 interface FieldErrors {
   firstName?: string[]
@@ -20,6 +22,19 @@ interface FieldErrors {
   guardianName?: string[]
   guardianEmail?: string[]
   parentalConsent?: string[]
+}
+
+const REGISTER_FIELD_LABELS: Record<string, string> = {
+  firstName: "First name",
+  lastName: "Last name",
+  dateOfBirth: "Date of birth",
+  email: "Email",
+  password: "Password",
+  confirmPassword: "Confirm password",
+  termsAccepted: "Terms",
+  guardianName: "Guardian name",
+  guardianEmail: "Guardian email",
+  parentalConsent: "Parental consent",
 }
 
 function calculateAge(dateOfBirth: string): number {
@@ -118,22 +133,21 @@ export function RegisterForm() {
       const data = await res.json()
 
       if (!res.ok) {
-        if (data.details) {
-          const details = data.details as FieldErrors
-          setFieldErrors(details)
-          const step1Fields: (keyof FieldErrors)[] = [
-            "firstName",
-            "lastName",
-            "dateOfBirth",
-            "email",
-            "password",
-            "confirmPassword",
-          ]
-          if (needsStep2 && step1Fields.some((f) => details[f])) {
-            setStep(1)
-          }
+        const { message, fieldErrors: fe } = summarizeApiError(res, data, "Registration failed. Please try again.")
+        const details = fe as FieldErrors
+        setFieldErrors(details)
+        const step1Fields: (keyof FieldErrors)[] = [
+          "firstName",
+          "lastName",
+          "dateOfBirth",
+          "email",
+          "password",
+          "confirmPassword",
+        ]
+        if (needsStep2 && step1Fields.some((f) => details[f])) {
+          setStep(1)
         }
-        setError(data.error || "Registration failed. Please try again.")
+        setError(message)
         setIsLoading(false)
         return
       }
@@ -152,7 +166,7 @@ export function RegisterForm() {
       router.push("/client/questionnaire")
       router.refresh()
     } catch {
-      setError("An unexpected error occurred. Please try again.")
+      setError("We couldn't reach the server. Please check your connection and try again.")
       setIsLoading(false)
     }
   }
@@ -192,11 +206,13 @@ export function RegisterForm() {
         )}
       </div>
 
-      {error && (
-        <div className="mb-4 rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-          {error}
-        </div>
-      )}
+      <div className="mb-4">
+        <FormErrorBanner
+          message={error}
+          fieldErrors={fieldErrors as ServerFieldErrors}
+          labels={REGISTER_FIELD_LABELS}
+        />
+      </div>
 
       {/* ── Step 1: Account details (always shown on step 1) ── */}
       {step === 1 && (

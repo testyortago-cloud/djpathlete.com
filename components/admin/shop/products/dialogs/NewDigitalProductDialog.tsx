@@ -17,6 +17,19 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ImageUpload } from "@/components/admin/shop/products/ImageUpload"
+import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
+import { summarizeApiError, type FieldErrors } from "@/lib/errors/humanize"
+
+const PRODUCT_FIELD_LABELS: Record<string, string> = {
+  name: "Name",
+  slug: "Slug",
+  description: "Description",
+  thumbnail_url: "Thumbnail",
+  retail_price_cents: "Price",
+  digital_signed_url_ttl_seconds: "Signed URL TTL",
+  digital_access_days: "Access window",
+  digital_max_downloads: "Max downloads",
+}
 
 interface Props {
   open: boolean
@@ -37,6 +50,8 @@ export function NewDigitalProductDialog({ open, onOpenChange }: Props) {
   const [thumbnailUrl, setThumbnailUrl] = useState("")
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const [progressMessage, setProgressMessage] = useState("")
+  const [formError, setFormError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
 
   function reset() {
     setIsFree(false)
@@ -44,6 +59,8 @@ export function NewDigitalProductDialog({ open, onOpenChange }: Props) {
     setThumbnailUrl("")
     setPendingFiles([])
     setProgressMessage("")
+    setFormError(null)
+    setFieldErrors({})
   }
 
   function addFiles(fileList: FileList | null) {
@@ -105,6 +122,8 @@ export function NewDigitalProductDialog({ open, onOpenChange }: Props) {
     e.preventDefault()
     setSubmitting(true)
     setProgressMessage("Creating product…")
+    setFormError(null)
+    setFieldErrors({})
     const f = new FormData(e.currentTarget)
     const payload = {
       name: String(f.get("name") ?? ""),
@@ -127,11 +146,13 @@ export function NewDigitalProductDialog({ open, onOpenChange }: Props) {
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
-        const msg =
-          typeof err.error === "string"
-            ? err.error
-            : `Failed to create product (${res.status})`
-        throw new Error(msg)
+        const { message, fieldErrors: fe } = summarizeApiError(res, err, "Failed to create product")
+        setFormError(message)
+        setFieldErrors(fe)
+        toast.error(message)
+        setSubmitting(false)
+        setProgressMessage("")
+        return
       }
       const { product } = await res.json()
 
@@ -150,7 +171,9 @@ export function NewDigitalProductDialog({ open, onOpenChange }: Props) {
       onOpenChange(false)
       router.refresh()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed")
+      const message = err instanceof Error ? err.message : "We couldn't reach the server. Please try again."
+      setFormError(message)
+      toast.error(message)
     } finally {
       setSubmitting(false)
       setProgressMessage("")
@@ -174,6 +197,7 @@ export function NewDigitalProductDialog({ open, onOpenChange }: Props) {
         </DialogHeader>
 
         <form onSubmit={onSubmit} className="space-y-4" id="new-digital-form">
+          <FormErrorBanner message={formError} fieldErrors={fieldErrors} labels={PRODUCT_FIELD_LABELS} />
           <div className="space-y-2">
             <Label htmlFor="dg-name">Name</Label>
             <Input id="dg-name" name="name" required />

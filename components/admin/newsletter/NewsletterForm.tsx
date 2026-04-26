@@ -9,6 +9,14 @@ import { newsletterFormSchema } from "@/lib/validators/newsletter"
 import { BlogEditor } from "../blog/BlogEditor"
 import { NewsletterGenerateDialog } from "./NewsletterGenerateDialog"
 import type { Newsletter } from "@/types/database"
+import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
+import { humanizeFieldError, summarizeApiError, type FieldErrors } from "@/lib/errors/humanize"
+
+const NEWSLETTER_FIELD_LABELS: Record<string, string> = {
+  subject: "Subject",
+  preview_text: "Preview text",
+  content: "Content",
+}
 
 interface NewsletterFormProps {
   newsletter?: Newsletter
@@ -22,6 +30,8 @@ export function NewsletterForm({ newsletter, authorId }: NewsletterFormProps) {
   const [confirmSend, setConfirmSend] = useState(false)
   const [generateOpen, setGenerateOpen] = useState(false)
   const [editorKey, setEditorKey] = useState(0)
+  const [formError, setFormError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
 
   const [subject, setSubject] = useState(newsletter?.subject ?? "")
   const [previewText, setPreviewText] = useState(newsletter?.preview_text ?? "")
@@ -39,38 +49,40 @@ export function NewsletterForm({ newsletter, authorId }: NewsletterFormProps) {
   )
 
   async function handleSave() {
+    setFormError(null)
+    setFieldErrors({})
     const payload = buildPayload()
     const parsed = newsletterFormSchema.safeParse(payload)
     if (!parsed.success) {
-      toast.error(parsed.error.issues[0].message)
+      const flat = parsed.error.flatten().fieldErrors
+      setFieldErrors(flat as FieldErrors)
+      setFormError("Please fix the highlighted fields before saving.")
+      const firstEntry = Object.entries(flat).find(([, v]) => v && v.length > 0)
+      if (firstEntry) toast.error(humanizeFieldError(firstEntry[0], firstEntry[1]?.[0], NEWSLETTER_FIELD_LABELS))
       return
     }
 
     setSaving(true)
     try {
-      if (newsletter) {
-        const res = await fetch(`/api/admin/newsletter/${newsletter.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(parsed.data),
-        })
-        if (!res.ok) {
-          const data = await res.json()
-          throw new Error(data.error ?? "Failed to save")
-        }
-        toast.success("Newsletter saved!")
-      } else {
-        const res = await fetch("/api/admin/newsletter", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(parsed.data),
-        })
-        if (!res.ok) {
-          const data = await res.json()
-          throw new Error(data.error ?? "Failed to create")
-        }
-        toast.success("Draft saved!")
+      const url = newsletter ? `/api/admin/newsletter/${newsletter.id}` : "/api/admin/newsletter"
+      const method = newsletter ? "PATCH" : "POST"
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(parsed.data),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        const { message, fieldErrors: fe } = summarizeApiError(
+          res,
+          data,
+          newsletter ? "Failed to save newsletter" : "Failed to create newsletter",
+        )
+        setFormError(message)
+        setFieldErrors(fe)
+        throw new Error(message)
       }
+      toast.success(newsletter ? "Newsletter saved!" : "Draft saved!")
       router.push("/admin/newsletter")
       router.refresh()
     } catch (err) {
@@ -86,10 +98,16 @@ export function NewsletterForm({ newsletter, authorId }: NewsletterFormProps) {
       return
     }
 
+    setFormError(null)
+    setFieldErrors({})
     const payload = buildPayload()
     const parsed = newsletterFormSchema.safeParse(payload)
     if (!parsed.success) {
-      toast.error(parsed.error.issues[0].message)
+      const flat = parsed.error.flatten().fieldErrors
+      setFieldErrors(flat as FieldErrors)
+      setFormError("Please fix the highlighted fields before sending.")
+      const firstEntry = Object.entries(flat).find(([, v]) => v && v.length > 0)
+      if (firstEntry) toast.error(humanizeFieldError(firstEntry[0], firstEntry[1]?.[0], NEWSLETTER_FIELD_LABELS))
       return
     }
 
@@ -102,7 +120,13 @@ export function NewsletterForm({ newsletter, authorId }: NewsletterFormProps) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(parsed.data),
         })
-        if (!createRes.ok) throw new Error("Failed to create newsletter")
+        if (!createRes.ok) {
+          const data = await createRes.json().catch(() => ({}))
+          const { message, fieldErrors: fe } = summarizeApiError(createRes, data, "Failed to create newsletter")
+          setFormError(message)
+          setFieldErrors(fe)
+          throw new Error(message)
+        }
         const created = await createRes.json()
         newsletterId = created.id
       } else {
@@ -111,13 +135,21 @@ export function NewsletterForm({ newsletter, authorId }: NewsletterFormProps) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(parsed.data),
         })
-        if (!updateRes.ok) throw new Error("Failed to save newsletter")
+        if (!updateRes.ok) {
+          const data = await updateRes.json().catch(() => ({}))
+          const { message, fieldErrors: fe } = summarizeApiError(updateRes, data, "Failed to save newsletter")
+          setFormError(message)
+          setFieldErrors(fe)
+          throw new Error(message)
+        }
       }
 
       const sendRes = await fetch(`/api/admin/newsletter/${newsletterId}/send`, { method: "POST" })
       if (!sendRes.ok) {
-        const data = await sendRes.json()
-        throw new Error(data.error ?? "Failed to send")
+        const data = await sendRes.json().catch(() => ({}))
+        const { message } = summarizeApiError(sendRes, data, "Failed to send newsletter")
+        setFormError(message)
+        throw new Error(message)
       }
 
       toast.success("Newsletter is being sent to all subscribers!")
@@ -189,6 +221,12 @@ export function NewsletterForm({ newsletter, authorId }: NewsletterFormProps) {
           </div>
         )}
       </div>
+
+      {(formError || Object.keys(fieldErrors).length > 0) && (
+        <div className="mb-4">
+          <FormErrorBanner message={formError} fieldErrors={fieldErrors} labels={NEWSLETTER_FIELD_LABELS} />
+        </div>
+      )}
 
       {isSent && (
         <div className="rounded-lg border border-success/30 bg-success/5 p-4 mb-6">

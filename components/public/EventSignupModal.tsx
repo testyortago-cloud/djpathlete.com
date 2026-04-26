@@ -7,6 +7,18 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
+import { summarizeApiError, type FieldErrors } from "@/lib/errors/humanize"
+
+const SIGNUP_FIELD_LABELS: Record<string, string> = {
+  parent_name: "Parent name",
+  parent_email: "Parent email",
+  parent_phone: "Parent phone",
+  athlete_name: "Athlete name",
+  athlete_age: "Athlete age",
+  sport: "Sport",
+  notes: "Notes",
+}
 
 export interface EventSignupModalEvent {
   id: string
@@ -29,7 +41,7 @@ type Phase = "form" | "submitting" | "success" | "at_capacity"
 
 export function EventSignupModal({ event, open, onOpenChange, isWaitlist }: EventSignupModalProps) {
   const [phase, setPhase] = useState<Phase>("form")
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({})
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [formError, setFormError] = useState<string | null>(null)
   const [forcedWaitlist, setForcedWaitlist] = useState(false)
 
@@ -71,8 +83,15 @@ export function EventSignupModal({ event, open, onOpenChange, isWaitlist }: Even
         return
       }
       if (!res.ok) {
-        if (data.fieldErrors) setFieldErrors(data.fieldErrors)
-        setFormError(data.error ?? "Something went wrong")
+        const { message, fieldErrors: fe } = summarizeApiError(
+          res,
+          data,
+          waitlist || isWaitlist || forcedWaitlist
+            ? "We couldn't add you to the waitlist. Please try again."
+            : "We couldn't submit your signup. Please try again.",
+        )
+        setFieldErrors(fe)
+        setFormError(message)
         setPhase("form")
         return
       }
@@ -84,8 +103,8 @@ export function EventSignupModal({ event, open, onOpenChange, isWaitlist }: Even
       }
 
       setPhase("success")
-    } catch (err) {
-      setFormError((err as Error).message)
+    } catch {
+      setFormError("We couldn't reach our server. Please check your connection and try again.")
       setPhase("form")
     }
   }
@@ -155,7 +174,7 @@ export function EventSignupModal({ event, open, onOpenChange, isWaitlist }: Even
               className="absolute opacity-0 pointer-events-none h-0 w-0"
             />
 
-            {formError && <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{formError}</div>}
+            <FormErrorBanner message={formError} fieldErrors={fieldErrors} labels={SIGNUP_FIELD_LABELS} />
 
             <div className="grid gap-3 sm:grid-cols-2">
               <div>

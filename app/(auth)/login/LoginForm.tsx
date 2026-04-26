@@ -7,6 +7,7 @@ import Link from "next/link"
 import { Eye, EyeOff } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
 
 export function LoginForm() {
   const router = useRouter()
@@ -34,7 +35,9 @@ export function LoginForm() {
     setIsLoading(false)
 
     if (result?.error) {
-      setError("Invalid email or password.")
+      setError(
+        "We couldn't sign you in with those details. Double-check your email and password, or use “Forgot password” to reset it.",
+      )
       return
     }
 
@@ -68,11 +71,9 @@ export function LoginForm() {
         <p className="mt-2 text-sm text-muted-foreground">Log in to your DJP Athlete account</p>
       </div>
 
-      {error && (
-        <div className="mb-4 rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-          {error}
-        </div>
-      )}
+      <div className="mb-4">
+        <FormErrorBanner message={error} />
+      </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-2">

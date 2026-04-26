@@ -22,12 +22,24 @@ export function NewsletterForm() {
         body: JSON.stringify({ email }),
       })
 
-      if (!response.ok) throw new Error("Failed")
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        const message =
+          (typeof data?.error === "string" && data.error) ||
+          (response.status === 409
+            ? "That email is already subscribed."
+            : response.status >= 500
+              ? "Our server hit an error. Please try again in a moment."
+              : "We couldn't subscribe you. Please check your email and try again.")
+        toast.error(message)
+        setIsSubmitting(false)
+        return
+      }
 
       setSubmitted(true)
       toast.success("You're subscribed!")
     } catch {
-      toast.error("Something went wrong. Please try again.")
+      toast.error("We couldn't reach our server. Please check your connection and try again.")
     } finally {
       setIsSubmitting(false)
     }

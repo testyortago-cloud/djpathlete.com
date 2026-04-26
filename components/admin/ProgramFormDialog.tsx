@@ -25,6 +25,8 @@ import { useFormTour } from "@/hooks/use-form-tour"
 import { FormTour } from "@/components/admin/FormTour"
 import { TourButton } from "@/components/admin/TourButton"
 import { getProgramTourSteps } from "@/lib/tour-steps"
+import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
+import { humanizeFieldError, summarizeApiError, type FieldErrors } from "@/lib/errors/humanize"
 import type { Program } from "@/types/database"
 
 interface ProgramFormDialogProps {
@@ -130,6 +132,8 @@ export function ProgramFormDialog({ open, onOpenChange, program }: ProgramFormDi
   // Form state
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errors, setErrors] = useState<Partial<Record<keyof ProgramFormData, string[]>>>({})
+  const [formError, setFormError] = useState<string | null>(null)
+  const [serverFieldErrors, setServerFieldErrors] = useState<FieldErrors>({})
   const [name, setName] = useState(program?.name ?? "")
   const [description, setDescription] = useState(program?.description ?? "")
   const [selectedCategories, setSelectedCategories] = useState<string[]>(
@@ -269,6 +273,8 @@ export function ProgramFormDialog({ open, onOpenChange, program }: ProgramFormDi
   async function handleSubmit() {
     if (!validateStep(2)) return
     setErrors({})
+    setFormError(null)
+    setServerFieldErrors({})
 
     const priceCents = priceDollars && priceDollars !== "" ? Math.round(parseFloat(priceDollars) * 100) : null
 
@@ -292,10 +298,11 @@ export function ProgramFormDialog({ open, onOpenChange, program }: ProgramFormDi
     if (!result.success) {
       const fieldErrors = result.error.flatten().fieldErrors
       setErrors(fieldErrors)
-      const firstError = Object.entries(fieldErrors).find(([, v]) => v && v.length > 0)
-      if (firstError) {
-        const label = FIELD_LABELS[firstError[0]] ?? firstError[0]
-        toast.error(`${label}: ${firstError[1]?.[0]}`)
+      setServerFieldErrors(fieldErrors as FieldErrors)
+      setFormError("Please fix the highlighted fields before saving.")
+      const firstEntry = Object.entries(fieldErrors).find(([, v]) => v && v.length > 0)
+      if (firstEntry) {
+        toast.error(humanizeFieldError(firstEntry[0], firstEntry[1]?.[0], FIELD_LABELS))
       }
       return
     }
@@ -313,20 +320,19 @@ export function ProgramFormDialog({ open, onOpenChange, program }: ProgramFormDi
       })
 
       if (!response.ok) {
-        const errorData = await response.json()
-        if (errorData.details) {
-          const fieldErrors = errorData.details as Partial<Record<keyof ProgramFormData, string[]>>
-          setErrors(fieldErrors)
-          const firstError = Object.entries(fieldErrors).find(([, v]) => v && v.length > 0)
-          if (firstError) {
-            const label = FIELD_LABELS[firstError[0]] ?? firstError[0]
-            toast.error(`${label}: ${firstError[1]?.[0]}`)
-          } else {
-            toast.error(errorData.error || "Request failed")
-          }
-          return
+        const errorData = await response.json().catch(() => ({}))
+        const fallback = isEditing ? "Failed to update program" : "Failed to create program"
+        const { message, fieldErrors: fe } = summarizeApiError(response, errorData, fallback)
+        setErrors(fe as Partial<Record<keyof ProgramFormData, string[]>>)
+        setServerFieldErrors(fe)
+        setFormError(message)
+        const firstEntry = Object.entries(fe).find(([, v]) => v && v.length > 0)
+        if (firstEntry) {
+          toast.error(humanizeFieldError(firstEntry[0], firstEntry[1]?.[0], FIELD_LABELS))
+        } else {
+          toast.error(message)
         }
-        throw new Error(errorData.error || "Request failed")
+        return
       }
 
       const responseData = await response.json()
@@ -334,9 +340,12 @@ export function ProgramFormDialog({ open, onOpenChange, program }: ProgramFormDi
       setSavedProgramId(isEditing ? program.id : responseData.id)
       router.refresh()
     } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : isEditing ? "Failed to update program" : "Failed to create program",
-      )
+      const message =
+        err instanceof Error
+          ? err.message
+          : "We couldn't reach the server. Please check your connection and try again."
+      setFormError(message)
+      toast.error(message)
     } finally {
       setIsSubmitting(false)
     }
@@ -438,6 +447,8 @@ export function ProgramFormDialog({ open, onOpenChange, program }: ProgramFormDi
             ))}
           </div>
         </div>
+
+        <FormErrorBanner message={formError} fieldErrors={serverFieldErrors} labels={FIELD_LABELS} />
 
         {/* Step content */}
         <div className="min-h-[280px]">

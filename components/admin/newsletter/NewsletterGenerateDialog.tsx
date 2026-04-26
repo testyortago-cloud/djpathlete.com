@@ -7,6 +7,8 @@ import { useRouter } from "next/navigation"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { useAiJob } from "@/hooks/use-ai-job"
 import { cn } from "@/lib/utils"
+import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
+import { summarizeApiError } from "@/lib/errors/humanize"
 
 interface GeneratedNewsletterData {
   subject: string
@@ -49,6 +51,7 @@ export function NewsletterGenerateDialog({
   const [submitting, setSubmitting] = useState(false)
   const [confirmed, setConfirmed] = useState(false)
   const [elapsed, setElapsed] = useState(0)
+  const [startError, setStartError] = useState<string | null>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const router = useRouter()
 
@@ -112,6 +115,7 @@ export function NewsletterGenerateDialog({
     setSubmitting(false)
     setConfirmed(false)
     setElapsed(0)
+    setStartError(null)
     aiJob.reset()
   }
 
@@ -122,6 +126,7 @@ export function NewsletterGenerateDialog({
     }
 
     setSubmitting(true)
+    setStartError(null)
     try {
       const res = await fetch("/api/admin/newsletter/generate", {
         method: "POST",
@@ -130,14 +135,20 @@ export function NewsletterGenerateDialog({
       })
 
       if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error ?? "Failed to start generation")
+        const data = await res.json().catch(() => ({}))
+        const { message } = summarizeApiError(res, data, "Failed to start generation")
+        setStartError(message)
+        toast.error(message)
+        setSubmitting(false)
+        return
       }
 
       const { jobId: id } = await res.json()
       setJobId(id)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to generate")
+      const message = err instanceof Error ? err.message : "We couldn't reach the server. Please try again."
+      setStartError(message)
+      toast.error(message)
       setSubmitting(false)
     }
   }
@@ -194,6 +205,8 @@ export function NewsletterGenerateDialog({
             </div>
           </div>
         )}
+
+        <FormErrorBanner message={startError} />
 
         {/* Generating state */}
         {isGenerating ? (
@@ -349,14 +362,26 @@ export function NewsletterGenerateDialog({
                   disabled={!selectedBlogId}
                   onClick={async () => {
                     if (!selectedBlogId) return
-                    const res = await fetch("/api/admin/newsletter/generate-from-blog", {
-                      method: "POST",
-                      headers: { "content-type": "application/json" },
-                      body: JSON.stringify({ blog_post_id: selectedBlogId, tone, length }),
-                    })
-                    if (res.ok) {
+                    setStartError(null)
+                    try {
+                      const res = await fetch("/api/admin/newsletter/generate-from-blog", {
+                        method: "POST",
+                        headers: { "content-type": "application/json" },
+                        body: JSON.stringify({ blog_post_id: selectedBlogId, tone, length }),
+                      })
+                      if (!res.ok) {
+                        const data = await res.json().catch(() => ({}))
+                        const { message } = summarizeApiError(res, data, "Failed to generate from blog")
+                        setStartError(message)
+                        toast.error(message)
+                        return
+                      }
                       onOpenChange(false)
                       router.push("/admin/newsletter")
+                    } catch {
+                      const message = "We couldn't reach the server. Please try again."
+                      setStartError(message)
+                      toast.error(message)
                     }
                   }}
                   className={cn(

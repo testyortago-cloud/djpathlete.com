@@ -27,6 +27,8 @@ import {
   type TrainingTechniqueOption,
 } from "@/lib/validators/program-exercise"
 import { ExerciseLinker } from "@/components/admin/ExerciseLinker"
+import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
+import { humanizeFieldError, summarizeApiError, type FieldErrors } from "@/lib/errors/humanize"
 
 /** Find the next available group letter (A, B, C...) for the given day's exercises */
 function getNextGroupLetter(dayExercises: (ProgramExercise & { exercises: Exercise })[]) {
@@ -91,6 +93,8 @@ export function EditExerciseDialog({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [technique, setTechnique] = useState<TrainingTechniqueOption>("straight_set")
   const [linkedExerciseIds, setLinkedExerciseIds] = useState<string[]>([])
+  const [formError, setFormError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const tour = useFormTour({ steps: EDIT_EXERCISE_TOUR_STEPS, scrollContainerRef: dialogRef })
 
   const needsGrouping = GROUPED_TECHNIQUES.includes(technique)
@@ -120,6 +124,8 @@ export function EditExerciseDialog({
     e.preventDefault()
     if (!programExercise) return
     setIsSubmitting(true)
+    setFormError(null)
+    setFieldErrors({})
 
     const formData = new FormData(e.currentTarget)
 
@@ -159,17 +165,17 @@ export function EditExerciseDialog({
       })
 
       if (!response.ok) {
-        const data = await response.json()
-        if (data.details) {
-          const errorMessages = Object.entries(data.details)
-            .filter(([, v]) => Array.isArray(v) && (v as string[]).length > 0)
-            .map(([field, msgs]) => `${FIELD_LABELS[field] ?? field}: ${(msgs as string[])[0]}`)
-          if (errorMessages.length > 0) {
-            toast.error(errorMessages.join(". "))
-            return
-          }
+        const data = await response.json().catch(() => ({}))
+        const { message, fieldErrors: fe } = summarizeApiError(response, data, "Failed to update exercise")
+        setFormError(message)
+        setFieldErrors(fe)
+        const firstEntry = Object.entries(fe).find(([, v]) => v && v.length > 0)
+        if (firstEntry) {
+          toast.error(humanizeFieldError(firstEntry[0], firstEntry[1]?.[0], FIELD_LABELS))
+        } else {
+          toast.error(message)
         }
-        throw new Error(data.error || "Failed to update")
+        return
       }
 
       // Sync linked exercises' group_tag + technique
@@ -216,7 +222,9 @@ export function EditExerciseDialog({
       onOpenChange(false)
       router.refresh()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to update exercise")
+      const message = err instanceof Error ? err.message : "We couldn't reach the server. Please try again."
+      setFormError(message)
+      toast.error(message)
     } finally {
       setIsSubmitting(false)
     }
@@ -243,6 +251,7 @@ export function EditExerciseDialog({
           const catFields = getCategoryFields(programExercise.exercises.category as ExerciseCategory[])
           return (
             <form id="edit-exercise-form" onSubmit={handleSubmit} className="space-y-4 overflow-y-auto min-h-0 pr-1">
+              <FormErrorBanner message={formError} fieldErrors={fieldErrors} labels={FIELD_LABELS} />
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="edit-sets">Sets *</Label>

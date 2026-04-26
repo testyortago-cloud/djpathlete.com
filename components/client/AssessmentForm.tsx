@@ -25,6 +25,8 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import type { AssessmentQuestion, AssessmentSection, AbilityLevel, ComputedLevels } from "@/types/database"
+import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
+import { summarizeApiError, type FieldErrors } from "@/lib/errors/humanize"
 
 /* ─── Constants ──────────────────────────────────────────────────── */
 
@@ -108,6 +110,8 @@ export function AssessmentForm() {
   const [showResults, setShowResults] = useState(false)
   const [computedLevels, setComputedLevels] = useState<ComputedLevels | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [submitFieldErrors, setSubmitFieldErrors] = useState<FieldErrors>({})
 
   // Fetch questions
   useEffect(() => {
@@ -304,6 +308,8 @@ export function AssessmentForm() {
   const handleSubmit = async () => {
     if (!computedLevels) return
     setIsSubmitting(true)
+    setSubmitError(null)
+    setSubmitFieldErrors({})
 
     try {
       const res = await fetch("/api/assessment/submit", {
@@ -316,8 +322,17 @@ export function AssessmentForm() {
       })
 
       if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || "Failed to submit assessment")
+        const data = await res.json().catch(() => ({}))
+        const { message, fieldErrors: fe } = summarizeApiError(
+          res,
+          data,
+          "We couldn't submit your assessment. Please try again.",
+        )
+        setSubmitError(message)
+        setSubmitFieldErrors(fe)
+        toast.error(message)
+        setIsSubmitting(false)
+        return
       }
 
       toast.success("Assessment submitted successfully!")
@@ -327,8 +342,10 @@ export function AssessmentForm() {
       setTimeout(() => {
         router.push("/client/workouts")
       }, 3000)
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Something went wrong")
+    } catch {
+      const message = "We couldn't reach the server. Please check your connection and try again."
+      setSubmitError(message)
+      toast.error(message)
       setIsSubmitting(false)
     }
   }
@@ -465,6 +482,10 @@ export function AssessmentForm() {
           </motion.div>
         </AnimatePresence>
       </div>
+
+      {(submitError || Object.keys(submitFieldErrors).length > 0) && (
+        <FormErrorBanner message={submitError} fieldErrors={submitFieldErrors} />
+      )}
 
       {/* Navigation */}
       <div className="flex items-center justify-between">

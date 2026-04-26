@@ -14,8 +14,17 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
+import { summarizeApiError, type FieldErrors } from "@/lib/errors/humanize"
 
 import type { AssignmentPaymentStatus } from "@/types/database"
+
+const ASSIGNMENT_FIELD_LABELS: Record<string, string> = {
+  start_date: "Start date",
+  notes: "Notes",
+  payment_status: "Payment status",
+  expires_at: "Access expires",
+}
 
 const PAYMENT_STATUS_LABELS: Record<AssignmentPaymentStatus, string> = {
   not_required: "Not Required",
@@ -51,6 +60,8 @@ export function EditAssignmentDialog({
   const [notes, setNotes] = useState(currentNotes ?? "")
   const [paymentStatus, setPaymentStatus] = useState<AssignmentPaymentStatus>(currentPaymentStatus ?? "not_required")
   const [expiresAt, setExpiresAt] = useState(currentExpiresAt ? currentExpiresAt.slice(0, 10) : "")
+  const [formError, setFormError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
 
   function handleClose(o: boolean) {
     if (!o) {
@@ -58,6 +69,8 @@ export function EditAssignmentDialog({
       setNotes(currentNotes ?? "")
       setPaymentStatus(currentPaymentStatus ?? "not_required")
       setExpiresAt(currentExpiresAt ? currentExpiresAt.slice(0, 10) : "")
+      setFormError(null)
+      setFieldErrors({})
     }
     onOpenChange(o)
   }
@@ -65,6 +78,8 @@ export function EditAssignmentDialog({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setIsSubmitting(true)
+    setFormError(null)
+    setFieldErrors({})
 
     try {
       const res = await fetch(`/api/admin/assignments/${assignmentId}`, {
@@ -83,15 +98,22 @@ export function EditAssignmentDialog({
       })
 
       if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || "Failed to update assignment")
+        const data = await res.json().catch(() => ({}))
+        const { message, fieldErrors: fe } = summarizeApiError(res, data, "Failed to update assignment")
+        setFormError(message)
+        setFieldErrors(fe)
+        toast.error(message)
+        setIsSubmitting(false)
+        return
       }
 
       toast.success("Assignment updated successfully")
       handleClose(false)
       router.refresh()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to update assignment")
+      const message = err instanceof Error ? err.message : "We couldn't reach the server. Please try again."
+      setFormError(message)
+      toast.error(message)
     } finally {
       setIsSubmitting(false)
     }
@@ -112,6 +134,7 @@ export function EditAssignmentDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          <FormErrorBanner message={formError} fieldErrors={fieldErrors} labels={ASSIGNMENT_FIELD_LABELS} />
           <div className="space-y-2">
             <Label htmlFor="edit-start-date">Start Date *</Label>
             <Input

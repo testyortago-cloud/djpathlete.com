@@ -29,6 +29,8 @@ import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Progress } from "@/components/ui/progress"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
+import { summarizeApiError, type FieldErrors } from "@/lib/errors/humanize"
 import {
   FITNESS_GOALS,
   EXPERIENCE_LEVELS,
@@ -188,6 +190,8 @@ export function QuestionnaireForm({ initialProfile }: { initialProfile: ClientPr
   const [formData, setFormData] = useState<FormData>(() => buildInitialData(initialProfile))
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [direction, setDirection] = useState(1)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [submitFieldErrors, setSubmitFieldErrors] = useState<FieldErrors>({})
 
   const updateField = useCallback(<K extends keyof FormData>(field: K, value: FormData[K]) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
@@ -233,6 +237,8 @@ export function QuestionnaireForm({ initialProfile }: { initialProfile: ClientPr
 
   const handleSubmit = async () => {
     setIsSubmitting(true)
+    setSubmitError(null)
+    setSubmitFieldErrors({})
     try {
       const response = await fetch("/api/questionnaire", {
         method: "POST",
@@ -241,16 +247,26 @@ export function QuestionnaireForm({ initialProfile }: { initialProfile: ClientPr
       })
 
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Failed to save questionnaire")
+        const errorData = await response.json().catch(() => ({}))
+        const { message, fieldErrors: fe } = summarizeApiError(
+          response,
+          errorData,
+          "We couldn't save your assessment. Please try again.",
+        )
+        setSubmitError(message)
+        setSubmitFieldErrors(fe)
+        toast.error(message)
+        setIsSubmitting(false)
+        return
       }
 
       toast.success("Assessment saved! We'll notify you when a program that suits you is ready.")
       // Hard navigate so the server layout re-evaluates hasCompletedQuestionnaire
       window.location.href = "/client/dashboard"
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Something went wrong")
-    } finally {
+    } catch {
+      const message = "We couldn't reach the server. Please check your connection and try again."
+      setSubmitError(message)
+      toast.error(message)
       setIsSubmitting(false)
     }
   }
@@ -345,6 +361,10 @@ export function QuestionnaireForm({ initialProfile }: { initialProfile: ClientPr
           </motion.div>
         </AnimatePresence>
       </div>
+
+      {(submitError || Object.keys(submitFieldErrors).length > 0) && (
+        <FormErrorBanner message={submitError} fieldErrors={submitFieldErrors} />
+      )}
 
       {/* Navigation */}
       <div className="flex items-center justify-between">

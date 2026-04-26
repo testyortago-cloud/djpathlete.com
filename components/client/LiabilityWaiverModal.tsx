@@ -15,6 +15,8 @@ import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { ShieldCheck } from "lucide-react"
 import { renderLegalContent } from "@/lib/legal-content"
+import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
+import { summarizeApiError } from "@/lib/errors/humanize"
 
 interface LiabilityWaiverModalProps {
   programId: string
@@ -40,15 +42,16 @@ export function LiabilityWaiverModal({ programId, programName, waiverContent }: 
       })
 
       if (!res.ok) {
-        const data = await res.json()
-        setError(data.error || "Failed to accept waiver. Please try again.")
+        const data = await res.json().catch(() => ({}))
+        const { message } = summarizeApiError(res, data, "We couldn't record your acceptance. Please try again.")
+        setError(message)
         setIsSubmitting(false)
         return
       }
 
       router.refresh()
     } catch {
-      setError("An unexpected error occurred. Please try again.")
+      setError("We couldn't reach the server. Please check your connection and try again.")
       setIsSubmitting(false)
     }
   }
@@ -75,11 +78,7 @@ export function LiabilityWaiverModal({ programId, programName, waiverContent }: 
           <div dangerouslySetInnerHTML={{ __html: renderLegalContent(waiverContent) }} />
         </div>
 
-        {error && (
-          <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-            {error}
-          </div>
-        )}
+        <FormErrorBanner message={error} />
 
         <div className="flex items-start gap-3 pt-2">
           <Checkbox

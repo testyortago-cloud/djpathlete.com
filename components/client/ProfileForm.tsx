@@ -7,6 +7,22 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useWeightUnit } from "@/hooks/use-weight-unit"
 import type { ClientProfile, Gender, ExperienceLevel } from "@/types/database"
+import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
+import { summarizeApiError, type FieldErrors } from "@/lib/errors/humanize"
+
+const PROFILE_FIELD_LABELS: Record<string, string> = {
+  sport: "Sport",
+  position: "Position",
+  experience_level: "Experience level",
+  goals: "Goals",
+  injuries: "Injuries",
+  height_cm: "Height",
+  weight_kg: "Weight",
+  date_of_birth: "Date of birth",
+  gender: "Gender",
+  emergency_contact_name: "Emergency contact name",
+  emergency_contact_phone: "Emergency contact phone",
+}
 
 interface ProfileFormProps {
   profile: ClientProfile | null
@@ -27,12 +43,13 @@ const experienceLevelOptions: { value: ExperienceLevel; label: string }[] = [
 ]
 
 export function ProfileForm({ profile }: ProfileFormProps) {
-  const { unit, displayWeight, toKg, unitLabel } = useWeightUnit()
+  const { displayWeight, toKg, unitLabel } = useWeightUnit()
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<{
     type: "success" | "error"
     text: string
   } | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
 
   const [sport, setSport] = useState(profile?.sport ?? "")
   const [position, setPosition] = useState(profile?.position ?? "")
@@ -50,6 +67,7 @@ export function ProfileForm({ profile }: ProfileFormProps) {
     e.preventDefault()
     setSaving(true)
     setMessage(null)
+    setFieldErrors({})
 
     try {
       const body: Record<string, unknown> = {
@@ -73,15 +91,18 @@ export function ProfileForm({ profile }: ProfileFormProps) {
       })
 
       if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error ?? "Failed to update profile")
+        const data = await res.json().catch(() => ({}))
+        const { message, fieldErrors: fe } = summarizeApiError(res, data, "Failed to update profile")
+        setMessage({ type: "error", text: message })
+        setFieldErrors(fe)
+        return
       }
 
       setMessage({ type: "success", text: "Profile updated successfully." })
-    } catch (err) {
+    } catch {
       setMessage({
         type: "error",
-        text: err instanceof Error ? err.message : "Something went wrong.",
+        text: "We couldn't reach the server. Please check your connection and try again.",
       })
     } finally {
       setSaving(false)
@@ -236,14 +257,13 @@ export function ProfileForm({ profile }: ProfileFormProps) {
         </div>
 
         {/* Feedback message */}
-        {message && (
-          <div
-            className={`text-sm font-medium rounded-lg px-4 py-2 ${
-              message.type === "success" ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"
-            }`}
-          >
+        {message?.type === "success" && (
+          <div className="text-sm font-medium rounded-lg px-4 py-2 bg-success/10 text-success">
             {message.text}
           </div>
+        )}
+        {message?.type === "error" && (
+          <FormErrorBanner message={message.text} fieldErrors={fieldErrors} labels={PROFILE_FIELD_LABELS} />
         )}
 
         <div className="flex justify-end pt-2">

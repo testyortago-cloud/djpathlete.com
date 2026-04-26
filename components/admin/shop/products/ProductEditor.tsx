@@ -18,6 +18,8 @@ import { cn } from "@/lib/utils"
 import { ImageUpload } from "./ImageUpload"
 import type { ShopProduct } from "@/types/database"
 import Image from "next/image"
+import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
+import { summarizeApiError, type FieldErrors } from "@/lib/errors/humanize"
 
 interface ProductEditorProps {
   product: ShopProduct
@@ -30,6 +32,8 @@ export function ProductEditor({ product }: ProductEditorProps) {
     product.thumbnail_url_override,
   )
   const [saving, setSaving] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
 
   const editor = useEditor({
     extensions: [
@@ -48,6 +52,8 @@ export function ProductEditor({ product }: ProductEditorProps) {
 
   const handleSave = useCallback(async () => {
     setSaving(true)
+    setFormError(null)
+    setFieldErrors({})
     try {
       const body: Record<string, unknown> = {
         description: editor?.getHTML() ?? "",
@@ -66,12 +72,18 @@ export function ProductEditor({ product }: ProductEditorProps) {
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
-        throw new Error(data.error ?? `Save failed (${res.status})`)
+        const { message, fieldErrors: fe } = summarizeApiError(res, data, "Failed to save product")
+        setFormError(message)
+        setFieldErrors(fe)
+        toast.error(message)
+        return
       }
 
       toast.success("Product saved")
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to save product")
+    } catch {
+      const message = "We couldn't reach the server. Please try again."
+      setFormError(message)
+      toast.error(message)
     } finally {
       setSaving(false)
     }
@@ -82,6 +94,8 @@ export function ProductEditor({ product }: ProductEditorProps) {
   return (
     <div className="bg-white rounded-xl border border-border p-5 space-y-5">
       <h2 className="text-base font-heading text-primary">Product Details</h2>
+
+      <FormErrorBanner message={formError} fieldErrors={fieldErrors} />
 
       {/* Read-only fields */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

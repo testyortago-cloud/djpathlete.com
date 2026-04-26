@@ -10,6 +10,8 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Upload, Video, X, Loader2 } from "lucide-react"
 import { toast } from "sonner"
+import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
+import { summarizeApiError, type FieldErrors } from "@/lib/errors/humanize"
 
 interface FormReviewUploadFormProps {
   userId: string
@@ -28,6 +30,8 @@ export function FormReviewUploadForm({ userId }: FormReviewUploadFormProps) {
   const [uploading, setUploading] = useState(false)
   const [progress, setProgress] = useState(0)
   const [dragOver, setDragOver] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [submitFieldErrors, setSubmitFieldErrors] = useState<FieldErrors>({})
 
   async function validateVideo(videoFile: File): Promise<boolean> {
     // Size check
@@ -79,9 +83,17 @@ export function FormReviewUploadForm({ userId }: FormReviewUploadFormProps) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    setSubmitError(null)
+    setSubmitFieldErrors({})
 
     if (!file || !title.trim()) {
-      toast.error("Please fill in all required fields")
+      const fe: FieldErrors = {}
+      if (!title.trim()) fe.title = ["Required"]
+      if (!file) fe.video_path = ["Required"]
+      setSubmitFieldErrors(fe)
+      const msg = "Please fill in all required fields"
+      setSubmitError(msg)
+      toast.error(msg)
       return
     }
 
@@ -120,8 +132,12 @@ export function FormReviewUploadForm({ userId }: FormReviewUploadFormProps) {
       })
 
       if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || "Failed to create form review")
+        const data = await res.json().catch(() => ({}))
+        const { message, fieldErrors: fe } = summarizeApiError(res, data, "Failed to create form review")
+        setSubmitError(message)
+        setSubmitFieldErrors(fe)
+        toast.error(message)
+        return
       }
 
       toast.success("Form review submitted!")
@@ -129,7 +145,11 @@ export function FormReviewUploadForm({ userId }: FormReviewUploadFormProps) {
       router.refresh()
     } catch (err) {
       console.error("Upload error:", err)
-      toast.error(err instanceof Error ? err.message : "Upload failed")
+      const message = err instanceof Error
+        ? err.message
+        : "We couldn't upload your video. Please check your connection and try again."
+      setSubmitError(message)
+      toast.error(message)
     } finally {
       setUploading(false)
     }
@@ -137,6 +157,11 @@ export function FormReviewUploadForm({ userId }: FormReviewUploadFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      <FormErrorBanner
+        message={submitError}
+        fieldErrors={submitFieldErrors}
+        labels={{ title: "Title", video_path: "Video", notes: "Notes" }}
+      />
       {/* Title */}
       <div className="space-y-2">
         <Label htmlFor="title">Title *</Label>

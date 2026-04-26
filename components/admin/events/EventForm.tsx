@@ -3,7 +3,6 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import {
-  AlertCircle,
   CalendarRange,
   DollarSign,
   Image as ImageIcon,
@@ -20,6 +19,8 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { EventHeroImageUpload } from "@/components/admin/events/EventHeroImageUpload"
+import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
+import { humanizeFieldError, summarizeApiError, type FieldErrors } from "@/lib/errors/humanize"
 import type { Event, EventStatus, EventType } from "@/types/database"
 
 interface EventFormProps {
@@ -33,6 +34,13 @@ function slugify(s: string) {
     .replace(/^-+|-+$/g, "")
     .slice(0, 120)
 }
+
+const FIELD_LABELS: Record<string, string> = {
+  type: "Event type",
+  focus_areas: "Focus areas",
+}
+
+const humanizeError = (field: string, raw?: string) => humanizeFieldError(field, raw, FIELD_LABELS)
 
 interface SectionProps {
   icon: React.ComponentType<{ className?: string }>
@@ -85,7 +93,7 @@ export function EventForm({ event }: EventFormProps) {
 
   const [submitting, setSubmitting] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({})
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [formError, setFormError] = useState<string | null>(null)
 
   async function handleDelete() {
@@ -180,9 +188,13 @@ export function EventForm({ event }: EventFormProps) {
       })
       const data = await res.json()
       if (!res.ok) {
-        if (data.fieldErrors) setFieldErrors(data.fieldErrors)
-        setFormError(data.error ?? "Failed to save event")
+        const { message, fieldErrors: fe } = summarizeApiError(res, data, "Failed to save event")
+        setFieldErrors(fe)
+        setFormError(message)
         setSubmitting(false)
+        if (typeof window !== "undefined") {
+          window.scrollTo({ top: 0, behavior: "smooth" })
+        }
         return
       }
       router.push("/admin/events")
@@ -201,12 +213,7 @@ export function EventForm({ event }: EventFormProps) {
       }}
       className="space-y-6"
     >
-      {formError && (
-        <div className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
-          <AlertCircle className="size-4 mt-0.5 shrink-0" />
-          <span>{formError}</span>
-        </div>
-      )}
+      <FormErrorBanner message={formError} fieldErrors={fieldErrors} labels={FIELD_LABELS} />
 
       {/* Actions (sticky top — always in view while scrolling) */}
       <div className="sticky top-0 z-10 -mx-4 sm:mx-0 bg-white/95 backdrop-blur-sm border border-border rounded-xl p-4 flex items-center justify-end gap-3 shadow-sm">
@@ -296,11 +303,17 @@ export function EventForm({ event }: EventFormProps) {
             <Label>Summary</Label>
             <Input value={summary} onChange={(e) => setSummary(e.target.value)} required maxLength={300} />
             <p className="text-xs text-muted-foreground">One-line teaser (max 300 characters).</p>
+            {fieldErrors.summary && (
+              <p className="text-xs text-destructive">{humanizeError("summary", fieldErrors.summary[0])}</p>
+            )}
           </div>
 
           <div className="space-y-2">
             <Label>Description</Label>
             <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={6} required />
+            {fieldErrors.description && (
+              <p className="text-xs text-destructive">{humanizeError("description", fieldErrors.description[0])}</p>
+            )}
           </div>
         </div>
       </Section>
@@ -358,12 +371,22 @@ export function EventForm({ event }: EventFormProps) {
           <div className="space-y-2">
             <Label>Venue Name</Label>
             <Input value={locationName} onChange={(e) => setLocationName(e.target.value)} required />
+            {fieldErrors.location_name && (
+              <p className="text-xs text-destructive">
+                {humanizeError("location_name", fieldErrors.location_name[0])}
+              </p>
+            )}
           </div>
           <div className="space-y-2">
             <Label>
               Address <span className="text-muted-foreground font-normal">(optional)</span>
             </Label>
             <Input value={locationAddress} onChange={(e) => setLocationAddress(e.target.value)} />
+            {fieldErrors.location_address && (
+              <p className="text-xs text-destructive">
+                {humanizeError("location_address", fieldErrors.location_address[0])}
+              </p>
+            )}
           </div>
           <div className="space-y-2">
             <Label>
@@ -374,6 +397,11 @@ export function EventForm({ event }: EventFormProps) {
               onChange={(e) => setLocationMapUrl(e.target.value)}
               placeholder="https://maps.google.com/..."
             />
+            {fieldErrors.location_map_url && (
+              <p className="text-xs text-destructive">
+                {humanizeError("location_map_url", fieldErrors.location_map_url[0])}
+              </p>
+            )}
           </div>
         </div>
       </Section>
@@ -390,6 +418,9 @@ export function EventForm({ event }: EventFormProps) {
               onChange={(e) => setCapacity(Number(e.target.value))}
               required
             />
+            {fieldErrors.capacity && (
+              <p className="text-xs text-destructive">{humanizeError("capacity", fieldErrors.capacity[0])}</p>
+            )}
           </div>
           <div className="space-y-2">
             <Label>
@@ -402,6 +433,9 @@ export function EventForm({ event }: EventFormProps) {
               value={ageMin}
               onChange={(e) => setAgeMin(e.target.value === "" ? "" : Number(e.target.value))}
             />
+            {fieldErrors.age_min && (
+              <p className="text-xs text-destructive">{humanizeError("age_min", fieldErrors.age_min[0])}</p>
+            )}
           </div>
           <div className="space-y-2">
             <Label>
@@ -414,6 +448,9 @@ export function EventForm({ event }: EventFormProps) {
               value={ageMax}
               onChange={(e) => setAgeMax(e.target.value === "" ? "" : Number(e.target.value))}
             />
+            {fieldErrors.age_max && (
+              <p className="text-xs text-destructive">{humanizeError("age_max", fieldErrors.age_max[0])}</p>
+            )}
           </div>
         </div>
       </Section>
@@ -437,6 +474,9 @@ export function EventForm({ event }: EventFormProps) {
               onChange={(e) => setStartDate(e.target.value)}
               required
             />
+            {fieldErrors.start_date && (
+              <p className="text-xs text-destructive">{humanizeError("start_date", fieldErrors.start_date[0])}</p>
+            )}
           </div>
         ) : (
           <div className="space-y-4">
@@ -449,10 +489,20 @@ export function EventForm({ event }: EventFormProps) {
                   onChange={(e) => setStartDate(e.target.value)}
                   required
                 />
+                {fieldErrors.start_date && (
+                  <p className="text-xs text-destructive">
+                    {humanizeError("start_date", fieldErrors.start_date[0])}
+                  </p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label>End date</Label>
                 <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} required />
+                {fieldErrors.end_date && (
+                  <p className="text-xs text-destructive">
+                    {humanizeError("end_date", fieldErrors.end_date[0])}
+                  </p>
+                )}
               </div>
             </div>
             <div className="space-y-2">
@@ -463,6 +513,11 @@ export function EventForm({ event }: EventFormProps) {
                 placeholder="M–F, 9–11am"
               />
               <p className="text-xs text-muted-foreground">Free-text description of daily session times.</p>
+              {fieldErrors.session_schedule && (
+                <p className="text-xs text-destructive">
+                  {humanizeError("session_schedule", fieldErrors.session_schedule[0])}
+                </p>
+              )}
             </div>
           </div>
         )}
@@ -484,6 +539,11 @@ export function EventForm({ event }: EventFormProps) {
             onChange={(e) => setPriceDollars(e.target.value === "" ? "" : Number(e.target.value))}
             placeholder="0.00 (free)"
           />
+          {fieldErrors.price_dollars && (
+            <p className="text-xs text-destructive">
+              {humanizeError("price_dollars", fieldErrors.price_dollars[0])}
+            </p>
+          )}
           {event?.stripe_price_id && (
             <p className="text-xs text-success">Synced with Stripe · {event.stripe_price_id.slice(-8)}</p>
           )}

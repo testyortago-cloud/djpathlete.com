@@ -15,6 +15,19 @@ import { BlogGenerateDialog } from "./BlogGenerateDialog"
 import { ResearchPanel, type TavilyResearchBrief } from "./ResearchPanel"
 import { cn } from "@/lib/utils"
 import type { BlogPost } from "@/types/database"
+import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
+import { humanizeFieldError, summarizeApiError, type FieldErrors } from "@/lib/errors/humanize"
+
+const BLOG_FIELD_LABELS: Record<string, string> = {
+  title: "Title",
+  slug: "Slug",
+  excerpt: "Excerpt",
+  content: "Content",
+  category: "Category",
+  cover_image_url: "Cover image",
+  tags: "Tags",
+  meta_description: "Meta description",
+}
 
 interface BlogPostFormProps {
   post?: BlogPost
@@ -51,6 +64,8 @@ export function BlogPostForm({ post, authorId, initialPrompt }: BlogPostFormProp
   const [coverImageUrl, setCoverImageUrl] = useState<string | null>(post?.cover_image_url ?? null)
   const [tags, setTags] = useState(post?.tags?.join(", ") ?? "")
   const [metaDescription, setMetaDescription] = useState(post?.meta_description ?? "")
+  const [formError, setFormError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
 
   // Auto-slug from title unless manually edited
   useEffect(() => {
@@ -78,12 +93,19 @@ export function BlogPostForm({ post, authorId, initialPrompt }: BlogPostFormProp
   }, [title, slug, excerpt, content, category, coverImageUrl, tags, metaDescription])
 
   async function handleSave(publish: boolean) {
+    setFormError(null)
+    setFieldErrors({})
     const payload = buildPayload()
 
     const parsed = blogPostFormSchema.safeParse(payload)
     if (!parsed.success) {
-      const firstError = parsed.error.issues[0]
-      toast.error(firstError.message)
+      const flat = parsed.error.flatten().fieldErrors
+      setFieldErrors(flat as FieldErrors)
+      setFormError("Please fix the highlighted fields before saving.")
+      const firstEntry = Object.entries(flat).find(([, v]) => v && v.length > 0)
+      if (firstEntry) {
+        toast.error(humanizeFieldError(firstEntry[0], firstEntry[1]?.[0], BLOG_FIELD_LABELS))
+      }
       return
     }
 
@@ -104,8 +126,11 @@ export function BlogPostForm({ post, authorId, initialPrompt }: BlogPostFormProp
           body: JSON.stringify(parsed.data),
         })
         if (!res.ok) {
-          const data = await res.json()
-          throw new Error(data.error ?? "Failed to save")
+          const data = await res.json().catch(() => ({}))
+          const { message, fieldErrors: fe } = summarizeApiError(res, data, "Failed to save post")
+          setFormError(message)
+          setFieldErrors(fe)
+          throw new Error(message)
         }
 
         // Publish if requested
@@ -114,7 +139,10 @@ export function BlogPostForm({ post, authorId, initialPrompt }: BlogPostFormProp
             method: "POST",
           })
           if (!pubRes.ok) {
-            throw new Error("Failed to publish")
+            const data = await pubRes.json().catch(() => ({}))
+            const { message } = summarizeApiError(pubRes, data, "Failed to publish post")
+            setFormError(message)
+            throw new Error(message)
           }
           toast.success("Post published!")
         } else {
@@ -132,8 +160,11 @@ export function BlogPostForm({ post, authorId, initialPrompt }: BlogPostFormProp
           }),
         })
         if (!res.ok) {
-          const data = await res.json()
-          throw new Error(data.error ?? "Failed to create")
+          const data = await res.json().catch(() => ({}))
+          const { message, fieldErrors: fe } = summarizeApiError(res, data, "Failed to create post")
+          setFormError(message)
+          setFieldErrors(fe)
+          throw new Error(message)
         }
 
         const created = await res.json()
@@ -246,6 +277,12 @@ export function BlogPostForm({ post, authorId, initialPrompt }: BlogPostFormProp
           </button>
         </div>
       </div>
+
+      {(formError || Object.keys(fieldErrors).length > 0) && (
+        <div className="mb-4">
+          <FormErrorBanner message={formError} fieldErrors={fieldErrors} labels={BLOG_FIELD_LABELS} />
+        </div>
+      )}
 
       {/* Two column layout */}
       <div className="flex flex-col lg:flex-row">

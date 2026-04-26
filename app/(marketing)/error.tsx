@@ -3,7 +3,7 @@
 import { useEffect } from "react"
 import { ErrorState } from "@/components/shared/ErrorState"
 
-export default function RootError({
+export default function MarketingError({
   error,
   reset,
 }: {
@@ -11,15 +11,17 @@ export default function RootError({
   reset: () => void
 }) {
   useEffect(() => {
-    console.error("[root] Unhandled error:", error)
+    console.error("[marketing] Unhandled error:", error)
   }, [error])
 
   return (
     <ErrorState
       variant="error"
-      title="Something went wrong"
-      description="An unexpected error occurred. Please try again or return to the home page — your data is safe."
+      title="This page didn't load properly"
+      description="An unexpected error stopped this page from loading. Please try again, or head back to the homepage to continue browsing."
       onReset={reset}
+      homeHref="/"
+      homeLabel="Back to home"
       digest={error.digest}
     />
   )

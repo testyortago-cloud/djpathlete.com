@@ -10,6 +10,14 @@ import { Label } from "@/components/ui/label"
 import { LegalEditor } from "@/components/admin/LegalEditor"
 import { toast } from "sonner"
 import type { LegalDocument } from "@/types/database"
+import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
+import { summarizeApiError, type FieldErrors } from "@/lib/errors/humanize"
+
+const LEGAL_FIELD_LABELS: Record<string, string> = {
+  title: "Title",
+  content: "Content",
+  effective_date: "Effective date",
+}
 
 const TYPE_LABELS: Record<string, string> = {
   terms_of_service: "Terms of Service",
@@ -27,9 +35,13 @@ export function LegalDocumentEditor({ document: doc }: LegalDocumentEditorProps)
   const [content, setContent] = useState(doc.content)
   const [effectiveDate, setEffectiveDate] = useState(doc.effective_date)
   const [isSaving, setIsSaving] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
 
   async function handleSave() {
     setIsSaving(true)
+    setFormError(null)
+    setFieldErrors({})
     try {
       const res = await fetch(`/api/admin/legal/${doc.id}`, {
         method: "PATCH",
@@ -38,8 +50,11 @@ export function LegalDocumentEditor({ document: doc }: LegalDocumentEditorProps)
       })
 
       if (!res.ok) {
-        const data = await res.json()
-        toast.error(data.error || "Failed to save")
+        const data = await res.json().catch(() => ({}))
+        const { message, fieldErrors: fe } = summarizeApiError(res, data, "Failed to save document")
+        setFormError(message)
+        setFieldErrors(fe)
+        toast.error(message)
         setIsSaving(false)
         return
       }
@@ -47,7 +62,9 @@ export function LegalDocumentEditor({ document: doc }: LegalDocumentEditorProps)
       toast.success("Document saved successfully")
       router.refresh()
     } catch {
-      toast.error("Failed to save document")
+      const message = "We couldn't reach the server. Please try again."
+      setFormError(message)
+      toast.error(message)
     } finally {
       setIsSaving(false)
     }
@@ -101,6 +118,12 @@ export function LegalDocumentEditor({ document: doc }: LegalDocumentEditorProps)
           </Button>
         </div>
       </div>
+
+      {(formError || Object.keys(fieldErrors).length > 0) && (
+        <div className="mb-4">
+          <FormErrorBanner message={formError} fieldErrors={fieldErrors} labels={LEGAL_FIELD_LABELS} />
+        </div>
+      )}
 
       {/* Meta fields */}
       <div className="grid grid-cols-2 gap-4 mb-4">

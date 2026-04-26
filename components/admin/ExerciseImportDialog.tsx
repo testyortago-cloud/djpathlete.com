@@ -15,6 +15,8 @@ import {
 import { Button } from "@/components/ui/button"
 import { parseCsv } from "@/lib/csv-parser"
 import { exerciseFormSchema } from "@/lib/validators/exercise"
+import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
+import { summarizeApiError } from "@/lib/errors/humanize"
 
 interface ExerciseImportDialogProps {
   open: boolean
@@ -78,6 +80,7 @@ export function ExerciseImportDialog({ open, onOpenChange }: ExerciseImportDialo
   const [previewRows, setPreviewRows] = useState<PreviewRow[]>([])
   const [isImporting, setIsImporting] = useState(false)
   const [fileName, setFileName] = useState<string | null>(null)
+  const [importError, setImportError] = useState<string | null>(null)
 
   const validCount = previewRows.filter((r) => r.valid).length
 
@@ -114,6 +117,7 @@ export function ExerciseImportDialog({ open, onOpenChange }: ExerciseImportDialo
     if (validRows.length === 0) return
 
     setIsImporting(true)
+    setImportError(null)
     try {
       const response = await fetch("/api/admin/exercises/import", {
         method: "POST",
@@ -121,7 +125,14 @@ export function ExerciseImportDialog({ open, onOpenChange }: ExerciseImportDialo
         body: JSON.stringify({ rows: validRows }),
       })
 
-      if (!response.ok) throw new Error("Import failed")
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        const { message } = summarizeApiError(response, data, "Failed to import exercises")
+        setImportError(message)
+        toast.error(message)
+        setIsImporting(false)
+        return
+      }
 
       const result = await response.json()
       toast.success(`Imported ${result.imported} exercises`)
@@ -130,7 +141,9 @@ export function ExerciseImportDialog({ open, onOpenChange }: ExerciseImportDialo
       setFileName(null)
       router.refresh()
     } catch {
-      toast.error("Failed to import exercises")
+      const message = "We couldn't reach the server. Please try again."
+      setImportError(message)
+      toast.error(message)
     } finally {
       setIsImporting(false)
     }
@@ -140,6 +153,7 @@ export function ExerciseImportDialog({ open, onOpenChange }: ExerciseImportDialo
     if (!value) {
       setPreviewRows([])
       setFileName(null)
+      setImportError(null)
     }
     onOpenChange(value)
   }
@@ -157,6 +171,8 @@ export function ExerciseImportDialog({ open, onOpenChange }: ExerciseImportDialo
             by Claude. Use pipe (|) to separate multiple values.
           </DialogDescription>
         </DialogHeader>
+
+        <FormErrorBanner message={importError} />
 
         {previewRows.length === 0 ? (
           <div className="flex flex-col items-center gap-4 py-8">

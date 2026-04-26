@@ -5,6 +5,8 @@ import Link from "next/link"
 import { ArrowLeft, Mail } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
+import { summarizeApiError } from "@/lib/errors/humanize"
 
 export function ForgotPasswordForm() {
   const [isLoading, setIsLoading] = useState(false)
@@ -27,13 +29,16 @@ export function ForgotPasswordForm() {
       })
 
       if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || "Something went wrong")
+        const data = await response.json().catch(() => ({}))
+        const { message } = summarizeApiError(response, data, "We couldn't send that reset link. Please try again.")
+        setError(message)
+        setIsLoading(false)
+        return
       }
 
       setSubmitted(true)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.")
+    } catch {
+      setError("We couldn't reach the server. Please check your connection and try again.")
     } finally {
       setIsLoading(false)
     }
@@ -70,11 +75,9 @@ export function ForgotPasswordForm() {
         </p>
       </div>
 
-      {error && (
-        <div className="mb-4 rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-          {error}
-        </div>
-      )}
+      <div className="mb-4">
+        <FormErrorBanner message={error} />
+      </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-2">

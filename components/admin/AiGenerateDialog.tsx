@@ -69,6 +69,7 @@ import { getAiGenerateTourSteps } from "@/lib/tour-steps"
 import { AssignProgramDialog } from "@/components/admin/AssignProgramDialog"
 import { TemplateSelector } from "@/components/admin/TemplateSelector"
 import type { User, ClientProfile } from "@/types/database"
+import { summarizeApiError } from "@/lib/errors/humanize"
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -546,10 +547,11 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
         body: JSON.stringify(body),
       })
 
-      const data = await response.json()
+      const data = await response.json().catch(() => ({}))
 
       if (!response.ok) {
-        throw new Error(data.error || "Failed to generate program")
+        const { message } = summarizeApiError(response, data, "Failed to generate program")
+        throw new Error(message)
       }
 
       if (response.status === 202 && data.jobId) {

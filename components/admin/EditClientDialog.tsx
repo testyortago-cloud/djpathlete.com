@@ -19,6 +19,8 @@ import { FormTour } from "@/components/admin/FormTour"
 import { TourButton } from "@/components/admin/TourButton"
 import { AvatarUpload } from "@/components/shared/AvatarUpload"
 import { EDIT_CLIENT_TOUR_STEPS } from "@/lib/tour-steps"
+import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
+import { summarizeApiError, type FieldErrors } from "@/lib/errors/humanize"
 import type { User } from "@/types/database"
 
 interface EditClientDialogProps {
@@ -34,11 +36,15 @@ export function EditClientDialog({ open, onOpenChange, client }: EditClientDialo
   const router = useRouter()
   const dialogRef = useRef<HTMLDivElement>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const tour = useFormTour({ steps: EDIT_CLIENT_TOUR_STEPS, scrollContainerRef: dialogRef })
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setIsSubmitting(true)
+    setFormError(null)
+    setFieldErrors({})
 
     const formData = new FormData(e.currentTarget)
     const body = {
@@ -57,15 +63,22 @@ export function EditClientDialog({ open, onOpenChange, client }: EditClientDialo
       })
 
       if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || "Failed to update client")
+        const data = await response.json().catch(() => ({}))
+        const { message, fieldErrors: fe } = summarizeApiError(response, data, "Failed to update client")
+        setFormError(message)
+        setFieldErrors(fe)
+        toast.error(message)
+        setIsSubmitting(false)
+        return
       }
 
       toast.success("Client updated successfully")
       onOpenChange(false)
       router.refresh()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to update client")
+      const message = err instanceof Error ? err.message : "We couldn't reach the server. Please try again."
+      setFormError(message)
+      toast.error(message)
     } finally {
       setIsSubmitting(false)
     }
@@ -89,6 +102,7 @@ export function EditClientDialog({ open, onOpenChange, client }: EditClientDialo
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          <FormErrorBanner message={formError} fieldErrors={fieldErrors} />
           <AvatarUpload
             currentUrl={client.avatar_url}
             userId={client.id}
