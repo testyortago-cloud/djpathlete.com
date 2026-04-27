@@ -72,6 +72,7 @@ export async function createEvent(input: CreateEventInput): Promise<Event> {
     summary: input.summary,
     description: input.description,
     focus_areas: input.focus_areas,
+    audience: input.audience,
     location_name: input.location_name,
     location_address: input.location_address ?? null,
     location_map_url: input.location_map_url ?? null,

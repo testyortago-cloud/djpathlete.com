@@ -790,6 +790,7 @@ export interface Event {
   summary: string
   description: string
   focus_areas: string[]
+  audience: string[]
   start_date: string
   end_date: string | null
   session_schedule: string | null

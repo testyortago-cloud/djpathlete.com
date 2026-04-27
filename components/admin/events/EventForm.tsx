@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import {
   CalendarRange,
   DollarSign,
+  HeartHandshake,
   Image as ImageIcon,
   Info,
   MapPin,
@@ -38,6 +39,7 @@ function slugify(s: string) {
 const FIELD_LABELS: Record<string, string> = {
   type: "Event type",
   focus_areas: "Focus areas",
+  audience: "Who it's for",
 }
 
 const humanizeError = (field: string, raw?: string) => humanizeFieldError(field, raw, FIELD_LABELS)
@@ -76,6 +78,8 @@ export function EventForm({ event }: EventFormProps) {
   const [description, setDescription] = useState(event?.description ?? "")
   const [focusAreasInput, setFocusAreasInput] = useState("")
   const [focusAreas, setFocusAreas] = useState<string[]>(event?.focus_areas ?? [])
+  const [audienceInput, setAudienceInput] = useState("")
+  const [audience, setAudience] = useState<string[]>(event?.audience ?? [])
   const [locationName, setLocationName] = useState(event?.location_name ?? "")
   const [locationAddress, setLocationAddress] = useState(event?.location_address ?? "")
   const [locationMapUrl, setLocationMapUrl] = useState(event?.location_map_url ?? "")
@@ -149,6 +153,16 @@ export function EventForm({ event }: EventFormProps) {
     setFocusAreas(focusAreas.filter((x) => x !== v))
   }
 
+  function addAudience() {
+    const v = audienceInput.trim()
+    if (v && !audience.includes(v)) setAudience([...audience, v])
+    setAudienceInput("")
+  }
+
+  function removeAudience(v: string) {
+    setAudience(audience.filter((x) => x !== v))
+  }
+
   async function handleSubmit(submitStatus?: EventStatus) {
     setSubmitting(true)
     setFieldErrors({})
@@ -161,6 +175,7 @@ export function EventForm({ event }: EventFormProps) {
       summary,
       description,
       focus_areas: focusAreas,
+      audience: audience,
       location_name: locationName,
       location_address: locationAddress || null,
       location_map_url: locationMapUrl || null,
@@ -362,6 +377,57 @@ export function EventForm({ event }: EventFormProps) {
               Add
             </Button>
           </div>
+        </div>
+      </Section>
+
+      {/* Who it's for */}
+      <Section
+        icon={HeartHandshake}
+        title="Who it's for"
+        description="Bullet list shown on the public event page. Leave empty to fall back to the default copy."
+      >
+        <div className="space-y-3">
+          {audience.length > 0 && (
+            <ul className="space-y-2">
+              {audience.map((line) => (
+                <li
+                  key={line}
+                  className="flex items-start gap-2 rounded-lg border border-border bg-surface/40 px-3 py-2 text-sm text-foreground"
+                >
+                  <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-accent" />
+                  <span className="flex-1">{line}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeAudience(line)}
+                    className="rounded-full hover:bg-muted p-0.5 transition-colors text-muted-foreground hover:text-destructive"
+                    aria-label={`Remove ${line}`}
+                  >
+                    <X className="size-3.5" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="flex gap-2">
+            <Input
+              value={audienceInput}
+              onChange={(e) => setAudienceInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault()
+                  addAudience()
+                }
+              }}
+              placeholder="e.g. Field and court sport athletes aged 12–18 — press Enter to add"
+              maxLength={200}
+            />
+            <Button type="button" variant="outline" onClick={addAudience}>
+              Add
+            </Button>
+          </div>
+          {fieldErrors.audience && (
+            <p className="text-xs text-destructive">{humanizeError("audience", fieldErrors.audience[0])}</p>
+          )}
         </div>
       </Section>
 

@@ -123,7 +123,7 @@ export default async function CampDetailPage({
               <div>
                 <h2 className="font-heading text-2xl font-semibold text-foreground">Who it's for</h2>
                 <ul className="mt-4 space-y-2 text-muted-foreground">
-                  {CAMP_AUDIENCE.map((line) => (
+                  {(event.audience.length > 0 ? event.audience : CAMP_AUDIENCE).map((line) => (
                     <li key={line} className="flex items-start gap-2">
                       <span className="mt-1 h-2 w-2 flex-shrink-0 rounded-full bg-accent" />
                       <span>{line}</span>

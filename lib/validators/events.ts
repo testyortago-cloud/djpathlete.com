@@ -11,6 +11,7 @@ const eventBase = z.object({
   summary: z.string().min(1).max(300),
   description: z.string().min(1).max(5000),
   focus_areas: z.array(z.string().min(1).max(40)).default([]),
+  audience: z.array(z.string().min(1).max(200)).default([]),
   location_name: z.string().min(1).max(200),
   location_address: z.string().max(300).optional().nullable(),
   location_map_url: z.string().url().max(500).optional().nullable(),

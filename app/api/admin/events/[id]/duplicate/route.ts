@@ -26,6 +26,7 @@ export async function POST(_request: Request, ctx: { params: Promise<{ id: strin
       summary: source.summary,
       description: source.description,
       focus_areas: source.focus_areas,
+      audience: source.audience,
       location_name: source.location_name,
       location_address: source.location_address,
       location_map_url: source.location_map_url,
