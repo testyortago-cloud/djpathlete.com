@@ -18,8 +18,8 @@ const eventBase = z.object({
   capacity: z.number().int().min(1).max(500),
   hero_image_url: z.string().url().max(500).optional().nullable(),
   status: z.enum(EVENT_STATUSES).default("draft"),
-  age_min: z.number().int().min(6).max(21).optional().nullable(),
-  age_max: z.number().int().min(6).max(21).optional().nullable(),
+  age_min: z.number().int().nonnegative().optional().nullable(),
+  age_max: z.number().int().nonnegative().optional().nullable(),
 })
 
 const ageRefine = (d: { age_min?: number | null; age_max?: number | null }) =>

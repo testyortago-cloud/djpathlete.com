@@ -101,8 +101,31 @@ export function humanizeFieldError(field: string, raw?: string, labels?: Record<
   if (lower.includes("invalid uuid") || lower.includes("invalid id")) {
     return `${label} is not a valid identifier`
   }
-  if (lower.includes("expected number") || lower.includes("nan") || lower.includes("not a number")) {
+  // Type-mismatch only — "expected number, received string|nan|undefined" or
+  // "not a number". Plain "expected number to be <=N" (Zod v4 range error) is
+  // handled by the too_big / too_small branches below, NOT here.
+  if (
+    /expected\s+number,\s*received/.test(lower) ||
+    lower.includes("not a number") ||
+    /received\s+nan/.test(lower)
+  ) {
     return `${label} must be a number`
+  }
+  // Zod v4 range errors look like "Too big: expected number to be <=21" or
+  // "Too small: expected string to have length >=2". Capture the bound and
+  // the parsed-as type so we can phrase numbers vs strings differently.
+  const rangeMatch = msg.match(
+    /(too (?:big|small)).*?expected\s+(number|string|array|date)[^<>]*([<>]=?)\s*(-?\d+)/i,
+  )
+  if (rangeMatch) {
+    const [, kind, parsedAs, op, bound] = rangeMatch
+    const isUpper = op.startsWith("<")
+    if (parsedAs.toLowerCase() === "string") {
+      return isUpper
+        ? `${label} is too long (max ${bound} characters)`
+        : `${label} is too short (min ${bound} characters)`
+    }
+    return isUpper ? `${label} must be ${bound} or less` : `${label} must be ${bound} or more`
   }
   if (lower.includes("must contain at most")) {
     return `${label} is too long`

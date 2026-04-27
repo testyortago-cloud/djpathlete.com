@@ -494,8 +494,7 @@ export function EventForm({ event }: EventFormProps) {
             </Label>
             <Input
               type="number"
-              min={6}
-              max={21}
+              min={0}
               value={ageMin}
               onChange={(e) => setAgeMin(e.target.value === "" ? "" : Number(e.target.value))}
             />
@@ -509,8 +508,7 @@ export function EventForm({ event }: EventFormProps) {
             </Label>
             <Input
               type="number"
-              min={6}
-              max={21}
+              min={0}
               value={ageMax}
               onChange={(e) => setAgeMax(e.target.value === "" ? "" : Number(e.target.value))}
             />
