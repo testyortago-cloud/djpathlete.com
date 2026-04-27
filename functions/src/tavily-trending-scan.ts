@@ -14,11 +14,37 @@ export interface TavilySearchResult {
   content: string
 }
 
+// Science-leaning query set: each query targets a distinct sport-science
+// surface (academic freshness, methodology, monitoring, power/strength,
+// LTAD, applied/elite practice) and uses precise terminology that ranks
+// well against peer-reviewed and practitioner-research sources.
 export const TRENDING_QUERIES: readonly string[] = [
-  "strength and conditioning coaching trends this week",
-  "sport science research athletic performance",
-  "applied performance research athletes recovery",
-  "youth athlete development training research",
+  "peer-reviewed sport science research athletic performance 2026",
+  "velocity-based training force-velocity profiling strength research",
+  "athlete monitoring HRV acute chronic workload ratio research",
+  "plyometrics rate of force development eccentric overload meta-analysis",
+  "long-term athletic development youth LTAD coaching research",
+  "applied sport science elite athlete performance preparation case study",
+] as const
+
+// Hard-filter generalist fitness, lifestyle, and clickbait sources at the
+// Tavily layer so the LLM ranker sees a higher-signal candidate pool.
+export const EXCLUDED_DOMAINS: readonly string[] = [
+  "menshealth.com",
+  "womenshealth.com",
+  "healthline.com",
+  "livestrong.com",
+  "bodybuilding.com",
+  "muscleandfitness.com",
+  "shape.com",
+  "popsugar.com",
+  "self.com",
+  "verywellfit.com",
+  "eatthis.com",
+  "today.com",
+  "buzzfeed.com",
+  "yahoo.com",
+  "msn.com",
 ] as const
 
 const MAX_RESULTS_PER_QUERY = 5
@@ -44,7 +70,16 @@ export function buildRankingPrompt(results: TavilySearchResult[]): string {
     block,
     "",
     "# INSTRUCTIONS",
-    "Extract 5-10 topics relevant to a combined audience of strength & conditioning coaches and sport science / performance practitioners. In-scope: youth and adult athletes, injury recovery and rehab, strength and power training, sport science research, applied performance, biomechanics, recovery and sleep, nutrition for performance. Skip fitness fads and low-value clickbait — favor evidence-based, applied-research, and coaching-practice angles. Rank by relevance (1 = most relevant).",
+    "Extract 5-10 topics for a SCIENCE-BASED PERFORMANCE COACHING brand serving strength & conditioning coaches, sport science practitioners, and performance coaches working with athletes (youth, collegiate, semi-pro, professional, masters returning to sport).",
+    "",
+    "INCLUDE only topics that:",
+    "  • Reference peer-reviewed research, a meta-analysis, an applied sport-science finding, or evidence-based coaching methodology",
+    "  • Name a specific mechanism, methodology, or quantifiable outcome (e.g., RFD, HRV, ACWR, force-velocity profile, %1RM, defined protocol, % change, injury-rate delta)",
+    "  • Apply directly to athletic performance — not general-population fitness, weight loss, or aesthetics",
+    "",
+    "EXCLUDE: generic personal-training tips, gen-pop weight loss, bodybuilding aesthetics, fitness fads, influencer opinion without cited evidence, lifestyle/wellness clickbait, supplement marketing.",
+    "",
+    "Write each title the way a performance coach would — specific and mechanism-aware (e.g., \"Eccentric overload at 105% 1RM accelerates RFD recovery — JSCR findings for return-to-sprint windows\"). Rank 1 = strongest combination of (a) scientific rigor of source, (b) practical applicability for performance coaches, (c) novelty.",
   ].join("\n")
 }
 
@@ -67,7 +102,22 @@ const TrendingSchema = z.object({
   ),
 })
 
-const SYSTEM_PROMPT = `You are a content strategist for DJP Athlete. Given search results about fitness coaching, sport science, and athletic performance, extract concrete blog topic ideas for an audience of strength & conditioning coaches AND sport science / performance practitioners. Output JSON: { topics: [{ title, summary, tavily_url, rank }] }. 5-10 topics max. Favor evidence-based, applied-research, and coaching-practice angles. Skip fitness fads and clickbait.`
+const SYSTEM_PROMPT = `You are a research curator for DJP Athlete, a SCIENCE-BASED PERFORMANCE COACHING brand. Your audience is strength & conditioning coaches, sport scientists, and performance practitioners working with competitive athletes (youth through professional, plus masters returning to sport).
+
+From the supplied search results, extract 5-10 blog topic ideas that pass ALL of these gates:
+  1. Anchored in peer-reviewed research, meta-analysis, applied sport-science findings, or evidence-based coaching methodology — not opinion or marketing.
+  2. Names a specific mechanism, methodology, or quantifiable outcome (e.g., RFD %, HRV trend, ACWR threshold, force-velocity profile, %1RM, injury-rate delta, defined protocol).
+  3. Applies to athletic performance — not general-population fitness, weight loss, or bodybuilding aesthetics.
+
+Reject:
+  • Generic personal-training tips ("5 ways to…", "best beginner workouts")
+  • Gen-pop weight loss, bodybuilding aesthetics, fitness fads
+  • Influencer opinion without cited evidence
+  • Lifestyle / wellness clickbait, supplement marketing
+
+Output JSON: { topics: [{ title, summary, tavily_url, rank }] }.
+
+Title each topic the way a performance coach would: specific, mechanism-aware, actionable. Rank by (1) scientific rigor of source, (2) practical applicability for performance coaches, (3) novelty.`
 
 export async function handleTavilyTrendingScan(jobId: string): Promise<void> {
   const firestore = getFirestore()
@@ -91,6 +141,7 @@ export async function handleTavilyTrendingScan(jobId: string): Promise<void> {
           search_depth: "advanced",
           include_answer: false,
           max_results: MAX_RESULTS_PER_QUERY,
+          exclude_domains: [...EXCLUDED_DOMAINS],
         }),
       ),
     )
