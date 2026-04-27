@@ -5,7 +5,7 @@ import { getPublicPrograms } from "@/lib/db/programs"
 import { getAssignments } from "@/lib/db/assignments"
 import { PageHeader } from "@/components/shared/PageHeader"
 import { EmptyState } from "@/components/ui/empty-state"
-import { Clock, CalendarDays, ShoppingBag, CheckCircle2, ArrowRight, History } from "lucide-react"
+import { Clock, CalendarDays, ShoppingBag, CheckCircle2, ArrowRight, History, AlertCircle, RefreshCw } from "lucide-react"
 import { isAssignmentExpired } from "@/lib/utils"
 import type { Program, ProgramAssignment } from "@/types/database"
 
@@ -195,10 +195,14 @@ export default async function ClientProgramsPage() {
               const program = assignment.programs
               if (!program) return null
 
+              const isExpired = assignment.status === "active" && isAssignmentExpired(assignment.expires_at)
+              const isSubscription = program.payment_type === "subscription"
+
               return (
-                <div
+                <Link
                   key={assignment.id}
-                  className="bg-white rounded-xl border border-border p-4 sm:p-5 flex flex-col opacity-80"
+                  href={`/client/programs/${program.id}`}
+                  className="group bg-white rounded-xl border border-border p-4 sm:p-5 flex flex-col opacity-90 hover:opacity-100 hover:shadow-md transition-all"
                 >
                   <div className="flex flex-wrap items-center gap-1.5 mb-2">
                     {(Array.isArray(program.category) ? program.category : [program.category]).map((cat) => (
@@ -214,13 +218,20 @@ export default async function ClientProgramsPage() {
                     >
                       {DIFFICULTY_LABELS[program.difficulty] ?? program.difficulty}
                     </span>
-                    <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] sm:text-xs font-medium bg-muted text-muted-foreground ml-auto">
-                      <History className="size-3" />
-                      Completed
-                    </span>
+                    {isExpired ? (
+                      <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] sm:text-xs font-medium bg-warning/10 text-warning ml-auto">
+                        <AlertCircle className="size-3" />
+                        Expired
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] sm:text-xs font-medium bg-muted text-muted-foreground ml-auto">
+                        <History className="size-3" />
+                        Completed
+                      </span>
+                    )}
                   </div>
 
-                  <h3 className="font-semibold text-foreground text-sm sm:text-base leading-snug mb-1">
+                  <h3 className="font-semibold text-foreground text-sm sm:text-base leading-snug mb-1 group-hover:text-primary transition-colors">
                     {program.name}
                   </h3>
 
@@ -241,16 +252,23 @@ export default async function ClientProgramsPage() {
                         {program.sessions_per_week}x/wk
                       </span>
                     </div>
-                    <span className="text-xs sm:text-sm text-muted-foreground">
-                      Finished{" "}
-                      {new Date(assignment.updated_at).toLocaleDateString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                      })}
-                    </span>
+                    {isExpired ? (
+                      <span className="inline-flex items-center gap-1 text-xs sm:text-sm font-medium text-primary">
+                        <RefreshCw className="size-3 sm:size-3.5" />
+                        {isSubscription ? "Subscribe to continue" : "Re-purchase"}
+                      </span>
+                    ) : (
+                      <span className="text-xs sm:text-sm text-muted-foreground">
+                        Finished{" "}
+                        {new Date(assignment.updated_at).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        })}
+                      </span>
+                    )}
                   </div>
-                </div>
+                </Link>
               )
             })}
           </div>

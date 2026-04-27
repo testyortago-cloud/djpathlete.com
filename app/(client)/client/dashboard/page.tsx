@@ -10,7 +10,7 @@ import { PageHeader } from "@/components/shared/PageHeader"
 import { EmptyState } from "@/components/ui/empty-state"
 import { EmailVerificationBanner } from "@/components/client/EmailVerificationBanner"
 import { ReassessmentBanner } from "@/components/client/ReassessmentBanner"
-import { LayoutDashboard, Dumbbell, Activity, Flame, ClipboardList, Info } from "lucide-react"
+import { LayoutDashboard, Dumbbell, Activity, Flame, ClipboardList, AlertCircle, RefreshCw } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import Link from "next/link"
 import type { Program, ProgramAssignment } from "@/types/database"
@@ -37,6 +37,7 @@ export default async function ClientDashboardPage() {
   }
 
   let activeAssignments: AssignmentWithProgram[] = []
+  let expiredAssignments: AssignmentWithProgram[] = []
   let totalWorkouts = 0
   let currentStreak = 0
   let hasCompletedQuestionnaire = false
@@ -53,6 +54,9 @@ export default async function ClientDashboardPage() {
     const typedAssignments = assignments as AssignmentWithProgram[]
     activeAssignments = typedAssignments.filter(
       (a) => a.status === "active" && a.payment_status !== "pending" && !isAssignmentExpired(a.expires_at),
+    )
+    expiredAssignments = typedAssignments.filter(
+      (a) => a.status === "active" && a.payment_status !== "pending" && isAssignmentExpired(a.expires_at),
     )
     totalWorkouts = progress.length
     currentStreak = streak
@@ -91,6 +95,41 @@ export default async function ClientDashboardPage() {
       />
 
       {!emailVerified && <EmailVerificationBanner userId={userId} />}
+
+      {expiredAssignments.length > 0 && (
+        <div className="mb-6 space-y-2">
+          {expiredAssignments.map((a) => {
+            const program = a.programs
+            if (!program) return null
+            const isSubscription = program.payment_type === "subscription"
+            return (
+              <Link
+                key={a.id}
+                href={`/client/programs/${program.id}`}
+                className="flex items-start gap-3 rounded-xl border border-warning/30 bg-warning/5 p-4 hover:bg-warning/10 transition-colors"
+              >
+                <div className="flex items-center justify-center size-10 shrink-0 rounded-full bg-warning/20">
+                  <AlertCircle className="size-5 text-warning" strokeWidth={1.75} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-foreground text-sm">
+                    Your access to <span className="text-warning">{program.name}</span> has ended.
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {isSubscription
+                      ? "Subscribe to continue training and pick up where you left off."
+                      : "Re-purchase to continue training and pick up where you left off."}
+                  </p>
+                </div>
+                <span className="inline-flex items-center gap-1 text-sm font-medium text-primary shrink-0 self-center">
+                  <RefreshCw className="size-3.5" />
+                  {isSubscription ? "Subscribe" : "Renew"}
+                </span>
+              </Link>
+            )
+          })}
+        </div>
+      )}
 
       {completedAssignmentNeedingReassessment && (
         <ReassessmentBanner completedAssignmentId={completedAssignmentNeedingReassessment} />
