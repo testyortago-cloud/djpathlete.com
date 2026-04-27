@@ -283,7 +283,8 @@ export async function syncEventToStripe(event: Event): Promise<{ productId: stri
 }
 
 /**
- * Create a guest-friendly Stripe Checkout Session for a paid camp signup.
+ * Create a guest-friendly Stripe Checkout Session for a paid event signup
+ * (clinic or camp).
  * - mode: "payment" (one-shot, no subscription)
  * - customer_email pre-fills the parent's address
  * - metadata.type = "event_signup" so the webhook dispatcher routes to our handler
@@ -297,6 +298,7 @@ export async function createEventCheckoutSession(opts: {
   if (!opts.event.stripe_price_id) {
     throw new Error("Cannot create checkout: event has no stripe_price_id")
   }
+  const segment = opts.event.type === "clinic" ? "clinics" : "camps"
   return stripe.checkout.sessions.create({
     mode: "payment",
     payment_method_types: ["card"],
@@ -307,8 +309,8 @@ export async function createEventCheckoutSession(opts: {
       event_signup_id: opts.signup.id,
       event_id: opts.event.id,
     },
-    success_url: `${opts.baseUrl}/camps/${opts.event.slug}/success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${opts.baseUrl}/camps/${opts.event.slug}?checkout=cancelled`,
+    success_url: `${opts.baseUrl}/${segment}/${opts.event.slug}/success?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${opts.baseUrl}/${segment}/${opts.event.slug}?checkout=cancelled`,
   })
 }
 

@@ -32,11 +32,8 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
     if (!event || event.status !== "published") {
       return NextResponse.json({ error: "Event not available" }, { status: 404 })
     }
-    if (event.type !== "camp") {
-      return NextResponse.json({ error: "Only camps support paid checkout" }, { status: 400 })
-    }
     if (!event.stripe_price_id) {
-      return NextResponse.json({ error: "This camp is not yet available for booking" }, { status: 400 })
+      return NextResponse.json({ error: "This event is not yet available for booking" }, { status: 400 })
     }
 
     const pendingPaid = await countPendingPaidSignups(id)

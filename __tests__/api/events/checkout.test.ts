@@ -94,18 +94,36 @@ describe("POST /api/events/[id]/checkout", () => {
     expect(res.status).toBe(404)
   })
 
-  it("400 if event is not a camp", async () => {
-    getEventByIdMock.mockResolvedValueOnce({ ...publishedCamp, type: "clinic" })
+  it("400 if event has no stripe_price_id (regardless of type)", async () => {
+    getEventByIdMock.mockResolvedValueOnce({ ...publishedCamp, stripe_price_id: null })
     const { POST } = await import("@/app/api/events/[id]/checkout/route")
     const res = await POST(makeReq(validBody), ctx)
     expect(res.status).toBe(400)
   })
 
-  it("400 if camp has no stripe_price_id", async () => {
-    getEventByIdMock.mockResolvedValueOnce({ ...publishedCamp, stripe_price_id: null })
+  it("clinics with a stripe_price_id also support paid checkout", async () => {
+    getEventByIdMock.mockResolvedValueOnce({
+      ...publishedCamp,
+      type: "clinic",
+      end_date: null,
+      session_schedule: null,
+    })
+    countPendingPaidSignupsMock.mockResolvedValueOnce(0)
+    createSignupMock.mockResolvedValueOnce({ id: "sig-2", event_id: "evt-1" })
+    createEventCheckoutSessionMock.mockResolvedValueOnce({
+      id: "cs_test_clinic",
+      url: "https://checkout.stripe.com/cs_test_clinic",
+    })
     const { POST } = await import("@/app/api/events/[id]/checkout/route")
     const res = await POST(makeReq(validBody), ctx)
-    expect(res.status).toBe(400)
+    expect(res.status).toBe(200)
+    expect(createSignupMock).toHaveBeenCalledWith(
+      "evt-1",
+      expect.objectContaining({ parent_email: "a@x.com" }),
+      "paid",
+    )
+    const data = await res.json()
+    expect(data.sessionUrl).toBe("https://checkout.stripe.com/cs_test_clinic")
   })
 
   it("409 at_capacity when confirmed + pending paid >= capacity", async () => {

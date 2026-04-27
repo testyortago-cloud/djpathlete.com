@@ -35,17 +35,27 @@ interface EventSignupModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   isWaitlist?: boolean
+  /** Which path the user picked from the card. Defaults to "paid" when the
+   *  event has a stripe_price_id; otherwise "interest". */
+  intent?: "paid" | "interest"
 }
 
 type Phase = "form" | "submitting" | "success" | "at_capacity"
 
-export function EventSignupModal({ event, open, onOpenChange, isWaitlist }: EventSignupModalProps) {
+export function EventSignupModal({
+  event,
+  open,
+  onOpenChange,
+  isWaitlist,
+  intent = "paid",
+}: EventSignupModalProps) {
   const [phase, setPhase] = useState<Phase>("form")
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [formError, setFormError] = useState<string | null>(null)
   const [forcedWaitlist, setForcedWaitlist] = useState(false)
 
-  const isPaidFlow = event.type === "camp" && !!event.stripe_price_id && !isWaitlist && !forcedWaitlist
+  const isPaidFlow =
+    intent === "paid" && !!event.stripe_price_id && !isWaitlist && !forcedWaitlist
 
   async function submit(e: React.FormEvent<HTMLFormElement>, waitlist: boolean) {
     e.preventDefault()
@@ -121,7 +131,13 @@ export function EventSignupModal({ event, open, onOpenChange, isWaitlist }: Even
     <Dialog open={open} onOpenChange={(next) => (next ? onOpenChange(true) : resetAndClose())}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{isWaitlist || forcedWaitlist ? "Join the waitlist" : "Register your interest"}</DialogTitle>
+          <DialogTitle>
+            {isWaitlist || forcedWaitlist
+              ? "Join the waitlist"
+              : isPaidFlow
+                ? "Reserve your spot"
+                : "Register your interest"}
+          </DialogTitle>
           <DialogDescription>
             {isWaitlist || forcedWaitlist
               ? `${event.title} is currently full. Leave your details and we'll reach out if a spot opens.`
@@ -201,7 +217,7 @@ export function EventSignupModal({ event, open, onOpenChange, isWaitlist }: Even
               </div>
               <div>
                 <Label htmlFor="athlete_age">Athlete age</Label>
-                <Input id="athlete_age" name="athlete_age" type="number" min={6} max={21} required />
+                <Input id="athlete_age" name="athlete_age" type="number" min={0} required />
                 {fieldErrors.athlete_age && <p className="text-xs text-destructive">{fieldErrors.athlete_age[0]}</p>}
               </div>
             </div>
