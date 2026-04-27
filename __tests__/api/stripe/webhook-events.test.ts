@@ -8,8 +8,11 @@ const getEventByIdMock = vi.fn()
 const getSignupByPiMock = vi.fn()
 const updateSignupMock = vi.fn(async () => undefined)
 
+const refundsCreateMock = vi.fn(async () => ({ id: "re_test_1" }))
 vi.mock("@/lib/stripe", () => ({
   verifyWebhookSignature: (...a: unknown[]) => verifyMock(...a),
+  stripe: { refunds: { create: (...a: unknown[]) => refundsCreateMock(...(a as [])) } },
+  resolveSessionPaymentIntent: vi.fn(async () => null),
 }))
 vi.mock("@/lib/db/event-signups", () => ({
   getSignupById: (...a: unknown[]) => getSignupByIdMock(...a),
@@ -20,6 +23,7 @@ vi.mock("@/lib/db/event-signups", () => ({
 vi.mock("@/lib/db/events", () => ({ getEventById: (...a: unknown[]) => getEventByIdMock(...a) }))
 vi.mock("@/lib/email", () => ({
   sendEventSignupConfirmedEmail: vi.fn(async () => undefined),
+  sendEventSignupOverbookRefundEmail: vi.fn(async () => undefined),
   sendCoachPurchaseNotification: vi.fn(async () => undefined),
 }))
 vi.mock("@/lib/supabase", () => ({
@@ -71,8 +75,10 @@ describe("Stripe webhook — event_signup branches", () => {
     getEventByIdMock.mockReset()
     getSignupByPiMock.mockReset()
     updateSignupMock.mockClear()
-    const { sendEventSignupConfirmedEmail } = await import("@/lib/email")
+    refundsCreateMock.mockClear()
+    const { sendEventSignupConfirmedEmail, sendEventSignupOverbookRefundEmail } = await import("@/lib/email")
     vi.mocked(sendEventSignupConfirmedEmail).mockClear()
+    vi.mocked(sendEventSignupOverbookRefundEmail).mockClear()
   })
 
   it("checkout.session.completed with event_signup metadata confirms signup + sends email", async () => {
@@ -127,6 +133,45 @@ describe("Stripe webhook — event_signup branches", () => {
     const { sendEventSignupConfirmedEmail } = await import("@/lib/email")
     const res = await POST(makeReq())
     expect(res.status).toBe(200)
+    expect(sendEventSignupConfirmedEmail).not.toHaveBeenCalled()
+  })
+
+  it("at_capacity race after payment triggers refund + apology email + status=refunded", async () => {
+    verifyMock.mockReturnValueOnce({
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          metadata: { type: "event_signup", event_signup_id: "sig-loser", event_id: "evt-1" },
+          payment_intent: "pi_race_loser",
+          amount_total: 500,
+        },
+      },
+    })
+    confirmSignupMock.mockResolvedValueOnce({ ok: false, reason: "at_capacity" })
+    getSignupByIdMock.mockResolvedValueOnce({
+      id: "sig-loser",
+      parent_email: "a@x.com",
+      parent_name: "A",
+      athlete_name: "S",
+      status: "refunded",
+    })
+    getEventByIdMock.mockResolvedValueOnce({
+      id: "evt-1",
+      title: "Camp",
+      type: "camp",
+      slug: "c",
+      start_date: "",
+    })
+
+    const { POST } = await import("@/app/api/stripe/webhook/route")
+    const { sendEventSignupOverbookRefundEmail, sendEventSignupConfirmedEmail } = await import("@/lib/email")
+    const res = await POST(makeReq())
+    expect(res.status).toBe(200)
+    expect(refundsCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ payment_intent: "pi_race_loser" }),
+    )
+    expect(updateSignupMock).toHaveBeenCalled()
+    expect(sendEventSignupOverbookRefundEmail).toHaveBeenCalled()
     expect(sendEventSignupConfirmedEmail).not.toHaveBeenCalled()
   })
 

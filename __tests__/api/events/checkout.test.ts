@@ -2,14 +2,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 
 const getEventByIdMock = vi.fn()
 const createSignupMock = vi.fn()
-const countPendingPaidSignupsMock = vi.fn()
 const createEventCheckoutSessionMock = vi.fn()
 const updateSignupSessionMock = vi.fn(async () => undefined)
 
 vi.mock("@/lib/db/events", () => ({ getEventById: (...a: unknown[]) => getEventByIdMock(...a) }))
 vi.mock("@/lib/db/event-signups", () => ({
   createSignup: (...a: unknown[]) => createSignupMock(...a),
-  countPendingPaidSignups: (...a: unknown[]) => countPendingPaidSignupsMock(...a),
 }))
 vi.mock("@/lib/stripe", () => ({
   createEventCheckoutSession: (...a: unknown[]) => createEventCheckoutSessionMock(...a),
@@ -69,7 +67,6 @@ describe("POST /api/events/[id]/checkout", () => {
   beforeEach(() => {
     getEventByIdMock.mockReset()
     createSignupMock.mockReset()
-    countPendingPaidSignupsMock.mockReset()
     createEventCheckoutSessionMock.mockReset()
     updateSignupSessionMock.mockClear()
   })
@@ -108,7 +105,6 @@ describe("POST /api/events/[id]/checkout", () => {
       end_date: null,
       session_schedule: null,
     })
-    countPendingPaidSignupsMock.mockResolvedValueOnce(0)
     createSignupMock.mockResolvedValueOnce({ id: "sig-2", event_id: "evt-1" })
     createEventCheckoutSessionMock.mockResolvedValueOnce({
       id: "cs_test_clinic",
@@ -126,9 +122,8 @@ describe("POST /api/events/[id]/checkout", () => {
     expect(data.sessionUrl).toBe("https://checkout.stripe.com/cs_test_clinic")
   })
 
-  it("409 at_capacity when confirmed + pending paid >= capacity", async () => {
-    getEventByIdMock.mockResolvedValueOnce({ ...publishedCamp, signup_count: 9 })
-    countPendingPaidSignupsMock.mockResolvedValueOnce(1)
+  it("409 at_capacity when confirmed signup_count >= capacity (pending no longer counted)", async () => {
+    getEventByIdMock.mockResolvedValueOnce({ ...publishedCamp, signup_count: 10 })
     const { POST } = await import("@/app/api/events/[id]/checkout/route")
     const res = await POST(makeReq(validBody), ctx)
     expect(res.status).toBe(409)
@@ -136,9 +131,21 @@ describe("POST /api/events/[id]/checkout", () => {
     expect(data.error).toBe("at_capacity")
   })
 
+  it("does NOT block when only pending paid signups exist (post-payment reservation)", async () => {
+    // signup_count=9 means 9 confirmed; pending rows are not consulted.
+    getEventByIdMock.mockResolvedValueOnce({ ...publishedCamp, signup_count: 9 })
+    createSignupMock.mockResolvedValueOnce({ id: "sig-9", event_id: "evt-1" })
+    createEventCheckoutSessionMock.mockResolvedValueOnce({
+      id: "cs_test_pending_ok",
+      url: "https://checkout.stripe.com/cs_test_pending_ok",
+    })
+    const { POST } = await import("@/app/api/events/[id]/checkout/route")
+    const res = await POST(makeReq(validBody), ctx)
+    expect(res.status).toBe(200)
+  })
+
   it("happy path creates pending paid signup, stores session id, returns sessionUrl", async () => {
     getEventByIdMock.mockResolvedValueOnce(publishedCamp)
-    countPendingPaidSignupsMock.mockResolvedValueOnce(0)
     createSignupMock.mockResolvedValueOnce({ id: "sig-1", event_id: "evt-1" })
     createEventCheckoutSessionMock.mockResolvedValueOnce({
       id: "cs_test_xyz",
@@ -155,7 +162,6 @@ describe("POST /api/events/[id]/checkout", () => {
 
   it("502 when Stripe throws", async () => {
     getEventByIdMock.mockResolvedValueOnce(publishedCamp)
-    countPendingPaidSignupsMock.mockResolvedValueOnce(0)
     createSignupMock.mockResolvedValueOnce({ id: "sig-1", event_id: "evt-1" })
     createEventCheckoutSessionMock.mockRejectedValueOnce(new Error("stripe down"))
     const { POST } = await import("@/app/api/events/[id]/checkout/route")

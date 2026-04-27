@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { createEventSignupSchema } from "@/lib/validators/event-signups"
 import { getEventById } from "@/lib/db/events"
-import { countPendingPaidSignups, createSignup } from "@/lib/db/event-signups"
+import { createSignup } from "@/lib/db/event-signups"
 import { createEventCheckoutSession } from "@/lib/stripe"
 import { createServiceRoleClient } from "@/lib/supabase"
 
@@ -36,8 +36,12 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
       return NextResponse.json({ error: "This event is not yet available for booking" }, { status: 400 })
     }
 
-    const pendingPaid = await countPendingPaidSignups(id)
-    if (event.signup_count + pendingPaid >= event.capacity) {
+    // Capacity check uses confirmed signup_count only — slots are reserved
+    // post-payment via the confirm_event_signup RPC (atomic, locks the event
+    // row). If two checkouts race for the last slot, the loser's webhook
+    // gets at_capacity and triggers an automatic refund. See
+    // handleEventSignupCheckout in app/api/stripe/webhook/route.ts.
+    if (event.signup_count >= event.capacity) {
       return NextResponse.json({ error: "at_capacity" }, { status: 409 })
     }
 

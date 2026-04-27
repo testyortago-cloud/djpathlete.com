@@ -1862,6 +1862,55 @@ export async function sendEventSignupConfirmedEmail(signup: EventSignup, event: 
   })
 }
 
+export async function sendEventSignupOverbookRefundEmail(signup: EventSignup, event: Event) {
+  const eventUrl = `${getBaseUrl()}/${event.type === "clinic" ? "clinics" : "camps"}/${event.slug}`
+  const html = emailLayout(`
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td style="padding:48px 48px 52px;">
+          ${sectionLabel("Refund issued")}
+
+          <p style="margin:0 0 8px; font-family:'Lexend Exa', Georgia, serif; font-size:22px; color:#0E3F50;">
+            Hi ${signup.parent_name},
+          </p>
+
+          <p style="margin:0 0 20px; font-family:'Lexend Deca', sans-serif; font-size:15px; color:#5c5750; line-height:1.8;">
+            We're sorry — ${event.title} filled up at the exact moment your payment was clearing.
+            Two parents reached the last spot at the same time, and the system can only confirm one.
+          </p>
+
+          <p style="margin:0 0 28px; font-family:'Lexend Deca', sans-serif; font-size:15px; color:#5c5750; line-height:1.8;">
+            <strong>Your payment has been refunded in full.</strong> Refunds typically appear on your statement
+            within 5–10 business days, depending on your bank.
+          </p>
+
+          ${buildEventContextBlock(event)}
+
+          <div style="height:28px;"></div>
+
+          <p style="margin:0 0 28px; font-family:'Lexend Deca', sans-serif; font-size:15px; color:#5c5750; line-height:1.8;">
+            If you'd like to be added to the waitlist or hear about future sessions, reply to this email
+            and Darren will personally follow up.
+          </p>
+
+          ${ctaButton(eventUrl, "View other events")}
+
+          ${fallbackLink(eventUrl)}
+
+          ${junkFolderNote()}
+        </td>
+      </tr>
+    </table>
+  `)
+
+  await resend.emails.send({
+    from: FROM_EMAIL,
+    to: signup.parent_email,
+    subject: `Refunded — ${event.title} just filled up`,
+    html,
+  })
+}
+
 export async function sendAdminNewSignupEmail(signup: EventSignup, event: Event) {
   const adminUrl = `${getBaseUrl()}/admin/events/${event.id}`
   const html = emailLayout(`

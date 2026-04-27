@@ -116,51 +116,6 @@ describe("event-signups DAL", () => {
     if (!r2.ok) expect(r2.reason).toBe("at_capacity")
   })
 
-  it("countPendingPaidSignups counts only paid+pending within last hour", async () => {
-    const { countPendingPaidSignups } = await import("@/lib/db/event-signups")
-    const e = await createEvent({
-      type: "camp",
-      slug: `cap-window-${randomUUID()}`,
-      title: "T",
-      summary: "S",
-      description: "D",
-      focus_areas: [],
-      start_date: new Date(Date.now() + 86400000).toISOString(),
-      end_date: new Date(Date.now() + 7 * 86400000).toISOString(),
-      location_name: "L",
-      capacity: 10,
-      status: "draft",
-      price_dollars: 100,
-    })
-    extraEventIds.push(e.id)
-
-    // Recent paid pending — should count
-    await createSignup(
-      e.id,
-      {
-        parent_name: "A",
-        parent_email: "a@x.com",
-        athlete_name: "X",
-        athlete_age: 14,
-      },
-      "paid",
-    )
-    // Recent interest pending — should NOT count
-    await createSignup(
-      e.id,
-      {
-        parent_name: "B",
-        parent_email: "b@x.com",
-        athlete_name: "Y",
-        athlete_age: 14,
-      },
-      "interest",
-    )
-
-    const count = await countPendingPaidSignups(e.id)
-    expect(count).toBe(1)
-  })
-
   it("getEventSignupByStripeSessionId returns the matching signup", async () => {
     const { getEventSignupByStripeSessionId } = await import("@/lib/db/event-signups")
     const e = await createEvent({

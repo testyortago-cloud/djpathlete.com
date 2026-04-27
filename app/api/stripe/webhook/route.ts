@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import type Stripe from "stripe"
-import { verifyWebhookSignature, resolveSessionPaymentIntent } from "@/lib/stripe"
+import { verifyWebhookSignature, resolveSessionPaymentIntent, stripe } from "@/lib/stripe"
 import { createPayment, getPaymentByStripeId, updatePayment } from "@/lib/db/payments"
 import { createAssignment, getAssignmentByUserAndProgram, updateAssignment } from "@/lib/db/assignments"
 import { updateWeekAccess, createWeekAccessBulk } from "@/lib/db/week-access"
@@ -8,7 +8,11 @@ import { createSubscription, getSubscriptionByStripeId, updateSubscriptionByStri
 import { getUserById, getUserByEmail } from "@/lib/db/users"
 import { getProfileByUserId } from "@/lib/db/client-profiles"
 import { getProgramById } from "@/lib/db/programs"
-import { sendCoachPurchaseNotification, sendEventSignupConfirmedEmail } from "@/lib/email"
+import {
+  sendCoachPurchaseNotification,
+  sendEventSignupConfirmedEmail,
+  sendEventSignupOverbookRefundEmail,
+} from "@/lib/email"
 import { ghlCreateContact, ghlTriggerWorkflow } from "@/lib/ghl"
 import { confirmSignup, cancelSignup, getSignupById, getEventSignupByPaymentIntent } from "@/lib/db/event-signups"
 import { handleShopOrderCheckout } from "@/lib/shop/webhooks"
@@ -568,6 +572,14 @@ async function handleEventSignupCheckout(session: Stripe.Checkout.Session) {
 
   const result = await confirmSignup(signupId)
   if (!result.ok) {
+    if (result.reason === "at_capacity") {
+      // Race: someone else's confirm beat this one to the last slot. The
+      // customer has already paid Stripe, so we owe them an immediate refund
+      // and an apology. The signup row is left as 'pending' until the refund
+      // succeeds, then flipped to 'refunded'.
+      await handleEventSignupOverbook(session, signupId)
+      return
+    }
     if (result.reason !== "not_pending") {
       console.error(`[webhook event_signup] confirmSignup failed: ${result.reason} for signup ${signupId}`)
     }
@@ -593,6 +605,54 @@ async function handleEventSignupCheckout(session: Stripe.Checkout.Session) {
         await sendEventSignupConfirmedEmail(updated, ev)
       } catch (err) {
         console.error(`[webhook event_signup] email failed for signup ${signupId}`, err)
+      }
+    }
+  }
+}
+
+// ─── Event signup overbook (race-loss after payment) ─────────────────────────
+
+async function handleEventSignupOverbook(
+  session: Stripe.Checkout.Session,
+  signupId: string,
+) {
+  const paymentIntentId = typeof session.payment_intent === "string" ? session.payment_intent : null
+  if (!paymentIntentId) {
+    console.error(`[webhook event_signup overbook] no payment_intent on session for signup ${signupId}`)
+    return
+  }
+
+  try {
+    await stripe.refunds.create({
+      payment_intent: paymentIntentId,
+      reason: "requested_by_customer",
+      metadata: { reason_detail: "event_overbook_after_payment", event_signup_id: signupId },
+    })
+  } catch (err) {
+    console.error(`[webhook event_signup overbook] refund failed for ${signupId}`, err)
+    return
+  }
+
+  const supabase = createSupabaseServiceClient()
+  await supabase
+    .from("event_signups")
+    .update({
+      status: "refunded",
+      stripe_payment_intent_id: paymentIntentId,
+      amount_paid_cents: session.amount_total,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", signupId)
+
+  const signup = await getSignupById(signupId)
+  const eventId = session.metadata?.event_id
+  if (signup && eventId) {
+    const ev = await getEventByIdForSignup(eventId)
+    if (ev) {
+      try {
+        await sendEventSignupOverbookRefundEmail(signup, ev)
+      } catch (err) {
+        console.error(`[webhook event_signup overbook] email failed for ${signupId}`, err)
       }
     }
   }

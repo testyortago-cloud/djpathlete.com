@@ -69,20 +69,6 @@ export async function cancelSignup(id: string): Promise<CancelResult> {
   return data as CancelResult
 }
 
-export async function countPendingPaidSignups(eventId: string): Promise<number> {
-  const supabase = getClient()
-  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
-  const { count, error } = await supabase
-    .from("event_signups")
-    .select("id", { count: "exact", head: true })
-    .eq("event_id", eventId)
-    .eq("signup_type", "paid")
-    .eq("status", "pending")
-    .gte("created_at", oneHourAgo)
-  if (error) throw error
-  return count ?? 0
-}
-
 export async function getEventSignupByStripeSessionId(sessionId: string): Promise<EventSignup | null> {
   const supabase = getClient()
   const { data, error } = await supabase
