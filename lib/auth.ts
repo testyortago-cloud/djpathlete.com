@@ -46,11 +46,21 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       try {
         return await defaultDecode(params)
       } catch {
-        // Stale cookie encrypted with a previous secret — return null to
-        // force a fresh sign-in instead of crashing with JWTSessionError.
-        console.warn("[auth] Failed to decode JWT (secret may have changed), clearing session")
+        // Stale cookie encrypted with a previous secret, or a cookie copied
+        // across environments. Returning null tells NextAuth to clear the
+        // cookie and treat the request as unauthenticated.
         return null
       }
+    },
+  },
+  logger: {
+    error(error) {
+      // JWTSessionError is the user-recoverable case our jwt.decode override
+      // already handles (stale/invalid cookie -> session cleared -> user
+      // re-authenticates). Suppress it instead of polluting the dev console
+      // with a multi-frame stack trace on every refresh.
+      if (error?.name === "JWTSessionError") return
+      console.error(error)
     },
   },
   callbacks: {
