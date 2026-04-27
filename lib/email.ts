@@ -251,6 +251,21 @@ function fallbackLink(url: string) {
   </p>`
 }
 
+/** Friendly nudge to whitelist us so future emails don't get junked. */
+function junkFolderNote() {
+  return `
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:32px;">
+    <tr>
+      <td style="background-color:#fbf8f3; border-left:3px solid #C49B7A; padding:14px 18px; border-radius:4px;">
+        <p style="margin:0; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:12px; color:#5c5750; line-height:1.6;">
+          <strong style="color:#0E3F50;">Don't see our emails?</strong>
+          Check your spam or junk folder and mark this message as <em>not spam</em> so future updates land in your inbox.
+        </p>
+      </td>
+    </tr>
+  </table>`
+}
+
 /** Hero banner for email types that have one */
 function heroBanner(label: string, headline: string) {
   return `
@@ -1789,6 +1804,8 @@ export async function sendEventSignupReceivedEmail(signup: EventSignup, event: E
           ${ctaButton(eventUrl, "View event details")}
 
           ${fallbackLink(eventUrl)}
+
+          ${junkFolderNote()}
         </td>
       </tr>
     </table>
@@ -1830,6 +1847,8 @@ export async function sendEventSignupConfirmedEmail(signup: EventSignup, event: 
           ${ctaButton(eventUrl, "View event details")}
 
           ${fallbackLink(eventUrl)}
+
+          ${junkFolderNote()}
         </td>
       </tr>
     </table>
