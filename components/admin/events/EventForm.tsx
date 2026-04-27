@@ -384,7 +384,7 @@ export function EventForm({ event }: EventFormProps) {
       <Section
         icon={HeartHandshake}
         title="Who it's for"
-        description="Bullet list shown on the public event page. Leave empty to fall back to the default copy."
+        description="Bullet list shown on the public event page. Leave empty to hide the section entirely."
       >
         <div className="space-y-3">
           {audience.length > 0 && (

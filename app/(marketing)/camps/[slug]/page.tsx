@@ -28,12 +28,6 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   }
 }
 
-const CAMP_AUDIENCE = [
-  "Athletes aged 12–18 in an off-season or pre-season block",
-  "Players who want better physical preparation before competition ramps up",
-  "Parents and teams who value both training quality and measurable feedback",
-]
-
 export default async function CampDetailPage({
   params,
   searchParams,
@@ -120,17 +114,19 @@ export default async function CampDetailPage({
                 </div>
               )}
 
-              <div>
-                <h2 className="font-heading text-2xl font-semibold text-foreground">Who it's for</h2>
-                <ul className="mt-4 space-y-2 text-muted-foreground">
-                  {(event.audience.length > 0 ? event.audience : CAMP_AUDIENCE).map((line) => (
-                    <li key={line} className="flex items-start gap-2">
-                      <span className="mt-1 h-2 w-2 flex-shrink-0 rounded-full bg-accent" />
-                      <span>{line}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              {event.audience.length > 0 && (
+                <div>
+                  <h2 className="font-heading text-2xl font-semibold text-foreground">Who it's for</h2>
+                  <ul className="mt-4 space-y-2 text-muted-foreground">
+                    {event.audience.map((line) => (
+                      <li key={line} className="flex items-start gap-2">
+                        <span className="mt-1 h-2 w-2 flex-shrink-0 rounded-full bg-accent" />
+                        <span>{line}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               <div>
                 <h2 className="font-heading text-2xl font-semibold text-foreground">Location</h2>

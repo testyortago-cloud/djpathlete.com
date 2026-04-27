@@ -28,12 +28,6 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   }
 }
 
-const CLINIC_AUDIENCE = [
-  "Field and court sport athletes aged 12–18",
-  "Players who want sharper movement and more confidence in open play",
-  "Parents looking for better athletic development, not generic hard work",
-]
-
 export default async function ClinicDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
   const event = await getEventBySlug(slug)
@@ -89,17 +83,19 @@ export default async function ClinicDetailPage({ params }: { params: Promise<{ s
                 </div>
               )}
 
-              <div>
-                <h2 className="font-heading text-2xl font-semibold text-foreground">Who it's for</h2>
-                <ul className="mt-4 space-y-2 text-muted-foreground">
-                  {(event.audience.length > 0 ? event.audience : CLINIC_AUDIENCE).map((line) => (
-                    <li key={line} className="flex items-start gap-2">
-                      <span className="mt-1 h-2 w-2 flex-shrink-0 rounded-full bg-accent" />
-                      <span>{line}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              {event.audience.length > 0 && (
+                <div>
+                  <h2 className="font-heading text-2xl font-semibold text-foreground">Who it's for</h2>
+                  <ul className="mt-4 space-y-2 text-muted-foreground">
+                    {event.audience.map((line) => (
+                      <li key={line} className="flex items-start gap-2">
+                        <span className="mt-1 h-2 w-2 flex-shrink-0 rounded-full bg-accent" />
+                        <span>{line}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               <div>
                 <h2 className="font-heading text-2xl font-semibold text-foreground">Location</h2>
