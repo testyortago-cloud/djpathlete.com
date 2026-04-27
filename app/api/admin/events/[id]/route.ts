@@ -88,11 +88,16 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
         }
       }
 
-      // Auto-sync on publish for paid events (clinics + camps) with no existing sync.
-      const transitionToPublished = status === "published" && current.status !== "published"
-      const priceOnPublish =
+      // Auto-sync any save where the resulting state is "published + priced + unsynced".
+      // Covers both:
+      //   • initial publish transition (draft → published with price)
+      //   • recovery saves on already-published events that never synced
+      //     (e.g., price added after publish, or an earlier sync attempt was lost)
+      // syncEventToStripe is idempotent, so re-running it is safe.
+      const willBePublished = (status ?? current.status) === "published"
+      const priceAfterUpdate =
         (typeof merged.price_cents === "number" ? merged.price_cents : current.price_cents) ?? 0
-      if (transitionToPublished && priceOnPublish > 0 && !current.stripe_price_id) {
+      if (willBePublished && priceAfterUpdate > 0 && !current.stripe_price_id) {
         try {
           const eventForSync = {
             ...current,

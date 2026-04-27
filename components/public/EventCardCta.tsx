@@ -19,34 +19,74 @@ function formatPrice(cents: number) {
 
 export function EventCardCta({ event }: EventCardCtaProps) {
   const [open, setOpen] = useState(false)
+  const [intent, setIntent] = useState<"paid" | "interest">("paid")
   const isFull = event.signup_count >= event.capacity
-  const isCamp = event.type === "camp"
+  const isPriced = !!event.stripe_price_id
+  const eventLabel = event.type === "clinic" ? "clinic" : "camp"
 
-  if (isCamp && !isFull) {
-    if (!event.stripe_price_id) {
+  function openWith(next: "paid" | "interest") {
+    setIntent(next)
+    setOpen(true)
+  }
+
+  function cta() {
+    if (isFull) {
       return (
-        <Button disabled title="Pricing not yet configured" className="w-full">
-          Book — coming soon
+        <Button className="w-full" onClick={() => openWith("interest")}>
+          Full — join waitlist
         </Button>
       )
     }
-    const priceLabel = event.price_cents != null ? formatPrice(event.price_cents) : null
+    if (isPriced) {
+      const priceLabel = event.price_cents != null ? formatPrice(event.price_cents) : null
+      return (
+        <div className="space-y-2">
+          <Button className="w-full" onClick={() => openWith("paid")}>
+            {priceLabel ? `Reserve & pay — ${priceLabel}` : `Book ${eventLabel}`}
+          </Button>
+          <button
+            type="button"
+            onClick={() => openWith("interest")}
+            className="block w-full text-center text-xs text-muted-foreground hover:text-primary hover:underline"
+          >
+            Or express interest only
+          </button>
+        </div>
+      )
+    }
+    if (event.price_cents != null) {
+      return (
+        <div className="space-y-2">
+          <Button disabled title="Pricing not yet configured" className="w-full">
+            Book — coming soon
+          </Button>
+          <button
+            type="button"
+            onClick={() => openWith("interest")}
+            className="block w-full text-center text-xs text-muted-foreground hover:text-primary hover:underline"
+          >
+            Express interest meanwhile
+          </button>
+        </div>
+      )
+    }
     return (
-      <>
-        <Button className="w-full" onClick={() => setOpen(true)}>
-          {priceLabel ? `Book camp — ${priceLabel}` : "Book camp"}
-        </Button>
-        <EventSignupModal event={event} open={open} onOpenChange={setOpen} isWaitlist={false} />
-      </>
+      <Button className="w-full" onClick={() => openWith("interest")}>
+        Register your interest
+      </Button>
     )
   }
 
   return (
     <>
-      <Button className="w-full" onClick={() => setOpen(true)}>
-        {isFull ? "Full — join waitlist" : "Register your interest"}
-      </Button>
-      <EventSignupModal event={event} open={open} onOpenChange={setOpen} isWaitlist={isFull} />
+      {cta()}
+      <EventSignupModal
+        event={event}
+        open={open}
+        onOpenChange={setOpen}
+        isWaitlist={isFull}
+        intent={intent}
+      />
     </>
   )
 }
