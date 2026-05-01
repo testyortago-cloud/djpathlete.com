@@ -53,6 +53,10 @@ const mockSignup = {
   stripe_payment_intent_id: null,
   amount_paid_cents: null,
   user_id: null,
+  waiver_accepted_at: "2026-04-14T10:00:00.000Z",
+  waiver_document_id: "doc-waiver-1",
+  waiver_ip_address: null,
+  waiver_user_agent: null,
   created_at: "2026-04-14T10:00:00.000Z",
   updated_at: "2026-04-14T10:00:00.000Z",
 }

@@ -2,12 +2,16 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 
 const getEventByIdMock = vi.fn()
 const createSignupMock = vi.fn()
+const getActiveDocumentMock = vi.fn()
 const createEventCheckoutSessionMock = vi.fn()
 const updateSignupSessionMock = vi.fn(async () => undefined)
 
 vi.mock("@/lib/db/events", () => ({ getEventById: (...a: unknown[]) => getEventByIdMock(...a) }))
 vi.mock("@/lib/db/event-signups", () => ({
   createSignup: (...a: unknown[]) => createSignupMock(...a),
+}))
+vi.mock("@/lib/db/legal-documents", () => ({
+  getActiveDocument: (...a: unknown[]) => getActiveDocumentMock(...a),
 }))
 vi.mock("@/lib/stripe", () => ({
   createEventCheckoutSession: (...a: unknown[]) => createEventCheckoutSessionMock(...a),
@@ -61,12 +65,15 @@ const validBody = {
   parent_email: "a@x.com",
   athlete_name: "Sam",
   athlete_age: 14,
+  waiver_accepted: true,
 }
 
 describe("POST /api/events/[id]/checkout", () => {
   beforeEach(() => {
     getEventByIdMock.mockReset()
     createSignupMock.mockReset()
+    getActiveDocumentMock.mockReset()
+    getActiveDocumentMock.mockResolvedValue({ id: "doc-waiver-1" })
     createEventCheckoutSessionMock.mockReset()
     updateSignupSessionMock.mockClear()
   })
@@ -117,7 +124,9 @@ describe("POST /api/events/[id]/checkout", () => {
       "evt-1",
       expect.objectContaining({ parent_email: "a@x.com" }),
       "paid",
+      expect.objectContaining({ document_id: "doc-waiver-1" }),
     )
+    expect(createSignupMock.mock.calls[0][1]).not.toHaveProperty("waiver_accepted")
     const data = await res.json()
     expect(data.sessionUrl).toBe("https://checkout.stripe.com/cs_test_clinic")
   })
@@ -154,7 +163,12 @@ describe("POST /api/events/[id]/checkout", () => {
     const { POST } = await import("@/app/api/events/[id]/checkout/route")
     const res = await POST(makeReq(validBody), ctx)
     expect(res.status).toBe(200)
-    expect(createSignupMock).toHaveBeenCalledWith("evt-1", expect.objectContaining({ parent_email: "a@x.com" }), "paid")
+    expect(createSignupMock).toHaveBeenCalledWith(
+      "evt-1",
+      expect.objectContaining({ parent_email: "a@x.com" }),
+      "paid",
+      expect.objectContaining({ document_id: "doc-waiver-1" }),
+    )
     const data = await res.json()
     expect(data.sessionUrl).toBe("https://checkout.stripe.com/cs_test_xyz")
     expect(data.signupId).toBe("sig-1")

@@ -7,6 +7,8 @@ import { FadeIn } from "@/components/shared/FadeIn"
 import { EventDetailHero } from "@/components/public/EventDetailHero"
 import { EventSignupCard } from "@/components/public/EventSignupCard"
 import { getEventBySlug, getPublishedEvents } from "@/lib/db/events"
+import { getActiveDocument } from "@/lib/db/legal-documents"
+import { renderLegalContent } from "@/lib/legal-content"
 
 export const revalidate = 300
 
@@ -32,6 +34,9 @@ export default async function ClinicDetailPage({ params }: { params: Promise<{ s
   const { slug } = await params
   const event = await getEventBySlug(slug)
   if (!event || event.type !== "clinic" || event.status !== "published") notFound()
+
+  const waiverDoc = await getActiveDocument("liability_waiver")
+  const waiverContent = waiverDoc?.content ? renderLegalContent(waiverDoc.content) : null
 
   const eventSchema = {
     "@context": "https://schema.org",
@@ -120,7 +125,7 @@ export default async function ClinicDetailPage({ params }: { params: Promise<{ s
           </FadeIn>
 
           <aside>
-            <EventSignupCard event={event} />
+            <EventSignupCard event={event} waiverContent={waiverContent} />
           </aside>
         </div>
       </div>

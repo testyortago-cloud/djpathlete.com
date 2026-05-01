@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createEventSignupSchema } from "@/lib/validators/event-signups"
 import { getEventById } from "@/lib/db/events"
 import { createSignup } from "@/lib/db/event-signups"
+import { getActiveDocument } from "@/lib/db/legal-documents"
 import { sendEventSignupReceivedEmail, sendAdminNewSignupEmail } from "@/lib/email"
 
 export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -35,7 +36,16 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
       return NextResponse.json({ error: "at_capacity" }, { status: 409 })
     }
 
-    const signup = await createSignup(id, parsed.data, "interest")
+    const waiverDoc = await getActiveDocument("liability_waiver")
+    const ipAddress = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || null
+    const userAgent = request.headers.get("user-agent") || null
+    const { waiver_accepted: _waiver_accepted, ...signupInput } = parsed.data
+
+    const signup = await createSignup(id, signupInput, "interest", {
+      document_id: waiverDoc?.id ?? null,
+      ip_address: ipAddress,
+      user_agent: userAgent,
+    })
 
     const [receivedRes, adminRes] = await Promise.allSettled([
       sendEventSignupReceivedEmail(signup, event),

@@ -1,3 +1,4 @@
+import { Suspense } from "react"
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 import Link from "next/link"
@@ -6,7 +7,10 @@ import { JsonLd } from "@/components/shared/JsonLd"
 import { FadeIn } from "@/components/shared/FadeIn"
 import { EventDetailHero } from "@/components/public/EventDetailHero"
 import { EventSignupCard } from "@/components/public/EventSignupCard"
+import { CheckoutCancelledBanner } from "@/components/public/CheckoutCancelledBanner"
 import { getEventBySlug, getPublishedEvents } from "@/lib/db/events"
+import { getActiveDocument } from "@/lib/db/legal-documents"
+import { renderLegalContent } from "@/lib/legal-content"
 
 export const revalidate = 300
 
@@ -28,17 +32,13 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   }
 }
 
-export default async function CampDetailPage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ slug: string }>
-  searchParams: Promise<{ checkout?: string }>
-}) {
+export default async function CampDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
-  const { checkout } = await searchParams
   const event = await getEventBySlug(slug)
   if (!event || event.type !== "camp" || event.status !== "published") notFound()
+
+  const waiverDoc = await getActiveDocument("liability_waiver")
+  const waiverContent = waiverDoc?.content ? renderLegalContent(waiverDoc.content) : null
 
   const eventSchema = {
     "@context": "https://schema.org",
@@ -74,13 +74,9 @@ export default async function CampDetailPage({
       <JsonLd data={eventSchema} />
       <EventDetailHero event={event} />
 
-      {checkout === "cancelled" && (
-        <div className="border-b border-accent/30 bg-accent/10">
-          <div className="mx-auto max-w-7xl px-4 py-3 text-sm text-foreground md:px-6">
-            Checkout was cancelled — feel free to try again when you're ready.
-          </div>
-        </div>
-      )}
+      <Suspense fallback={null}>
+        <CheckoutCancelledBanner />
+      </Suspense>
 
       <div className="mx-auto max-w-7xl px-4 py-12 md:px-6 md:py-16 pb-32 lg:pb-16">
         <div className="grid gap-10 lg:grid-cols-[1fr_360px]">
@@ -151,7 +147,7 @@ export default async function CampDetailPage({
           </FadeIn>
 
           <aside>
-            <EventSignupCard event={event} />
+            <EventSignupCard event={event} waiverContent={waiverContent} />
           </aside>
         </div>
       </div>

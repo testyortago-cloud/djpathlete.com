@@ -826,6 +826,10 @@ export interface EventSignup {
   stripe_payment_intent_id: string | null
   amount_paid_cents: number | null
   user_id: string | null
+  waiver_accepted_at: string | null
+  waiver_document_id: string | null
+  waiver_ip_address: string | null
+  waiver_user_agent: string | null
   created_at: string
   updated_at: string
 }

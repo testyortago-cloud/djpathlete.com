@@ -8,6 +8,13 @@ export const createEventSignupSchema = z.object({
   athlete_age: z.number().int().min(6).max(21),
   sport: z.string().min(1).max(60).optional().nullable(),
   notes: z.string().max(1000).optional().nullable(),
+  // Parent/guardian must affirm they've read and agreed to the liability
+  // waiver before the signup is accepted. The active legal_documents row of
+  // type 'liability_waiver' is what they're agreeing to; the server records
+  // the document id and IP/UA at insert time.
+  waiver_accepted: z
+    .boolean()
+    .refine((v) => v === true, { message: "You must accept the liability waiver to sign up." }),
 })
 
 export type CreateSignupInput = z.infer<typeof createEventSignupSchema>

@@ -1,11 +1,13 @@
 "use client"
 
 import { useState } from "react"
-import { CheckCircle2 } from "lucide-react"
+import Link from "next/link"
+import { CheckCircle2, ShieldCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
 import { summarizeApiError, type FieldErrors } from "@/lib/errors/humanize"
@@ -18,6 +20,7 @@ const SIGNUP_FIELD_LABELS: Record<string, string> = {
   athlete_age: "Athlete age",
   sport: "Sport",
   notes: "Notes",
+  waiver_accepted: "Liability waiver",
 }
 
 export interface EventSignupModalEvent {
@@ -38,6 +41,10 @@ interface EventSignupModalProps {
   /** Which path the user picked from the card. Defaults to "paid" when the
    *  event has a stripe_price_id; otherwise "interest". */
   intent?: "paid" | "interest"
+  /** Pre-rendered HTML of the active liability waiver. When null, we fall
+   *  back to a short notice and still require the parent to acknowledge — the
+   *  server records the consent regardless of which document was shown. */
+  waiverContent: string | null
 }
 
 type Phase = "form" | "submitting" | "success" | "at_capacity"
@@ -48,14 +55,15 @@ export function EventSignupModal({
   onOpenChange,
   isWaitlist,
   intent = "paid",
+  waiverContent,
 }: EventSignupModalProps) {
   const [phase, setPhase] = useState<Phase>("form")
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [formError, setFormError] = useState<string | null>(null)
   const [forcedWaitlist, setForcedWaitlist] = useState(false)
+  const [waiverAccepted, setWaiverAccepted] = useState(false)
 
-  const isPaidFlow =
-    intent === "paid" && !!event.stripe_price_id && !isWaitlist && !forcedWaitlist
+  const isPaidFlow = intent === "paid" && !!event.stripe_price_id && !isWaitlist && !forcedWaitlist
 
   async function submit(e: React.FormEvent<HTMLFormElement>, waitlist: boolean) {
     e.preventDefault()
@@ -75,6 +83,7 @@ export function EventSignupModal({
       athlete_age: Number(form.get("athlete_age") ?? 0),
       sport: form.get("sport") ? String(form.get("sport")) : null,
       notes: form.get("notes") ? String(form.get("notes")) : null,
+      waiver_accepted: waiverAccepted,
     }
 
     const query = waitlist || isWaitlist || forcedWaitlist ? "?waitlist=true" : ""
@@ -124,6 +133,7 @@ export function EventSignupModal({
     setFieldErrors({})
     setFormError(null)
     setForcedWaitlist(false)
+    setWaiverAccepted(false)
     onOpenChange(false)
   }
 
@@ -232,11 +242,50 @@ export function EventSignupModal({
               <Textarea id="notes" name="notes" rows={3} maxLength={1000} />
             </div>
 
+            <div className="rounded-lg border border-border bg-muted/30 p-3">
+              <div className="mb-2 flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4 text-primary" />
+                <p className="text-sm font-medium">Liability Waiver & Disclaimer</p>
+              </div>
+              {waiverContent ? (
+                <div
+                  className="max-h-44 overflow-y-auto rounded-md border border-border bg-background p-3 text-xs leading-relaxed text-muted-foreground [&_h2]:mt-3 [&_h2]:font-heading [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:text-foreground [&_h3]:mt-2 [&_h3]:font-semibold [&_h3]:text-foreground [&_li]:list-disc [&_li]:ml-4 [&_p]:mt-2 [&_strong]:text-foreground"
+                  dangerouslySetInnerHTML={{ __html: waiverContent }}
+                />
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Participation in DJP Athlete clinics and camps involves inherent physical risk. The parent or legal
+                  guardian assumes responsibility for the athlete and confirms they are fit to participate. Read the
+                  full{" "}
+                  <Link href="/liability-waiver" target="_blank" className="text-primary underline">
+                    Liability Waiver & Disclaimer
+                  </Link>
+                  .
+                </p>
+              )}
+              <div className="mt-3 flex items-start gap-2">
+                <Checkbox
+                  id="waiver_accepted"
+                  checked={waiverAccepted}
+                  onCheckedChange={(v) => setWaiverAccepted(v === true)}
+                  className="mt-0.5"
+                  required
+                />
+                <Label htmlFor="waiver_accepted" className="text-xs leading-relaxed cursor-pointer">
+                  As parent or legal guardian, I have read, understood, and agree to the Liability Waiver & Disclaimer
+                  on behalf of the athlete named above.
+                </Label>
+              </div>
+              {fieldErrors.waiver_accepted && (
+                <p className="mt-1 text-xs text-destructive">{fieldErrors.waiver_accepted[0]}</p>
+              )}
+            </div>
+
             <div className="flex items-center justify-end gap-2 pt-2">
               <Button type="button" variant="outline" onClick={resetAndClose} disabled={phase === "submitting"}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={phase === "submitting"}>
+              <Button type="submit" disabled={phase === "submitting" || !waiverAccepted}>
                 {phase === "submitting"
                   ? "Submitting..."
                   : isWaitlist || forcedWaitlist

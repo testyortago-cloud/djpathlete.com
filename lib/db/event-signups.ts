@@ -2,6 +2,12 @@ import { createServiceRoleClient } from "@/lib/supabase"
 import type { EventSignup, SignupType } from "@/types/database"
 import type { CreateSignupInput } from "@/lib/validators/event-signups"
 
+// The DAL persists the athlete/parent fields plus waiver acceptance metadata.
+// `waiver_accepted` from the API schema is just a boolean affirmation — it
+// doesn't get persisted as-is; the server-side waiver document id, timestamp,
+// IP, and user agent are stored instead.
+export type CreateSignupDbInput = Omit<CreateSignupInput, "waiver_accepted">
+
 function getClient() {
   return createServiceRoleClient()
 }
@@ -37,15 +43,30 @@ export async function getSignupById(id: string): Promise<EventSignup | null> {
   return (data as EventSignup) ?? null
 }
 
+export interface WaiverAcceptance {
+  document_id: string | null
+  ip_address: string | null
+  user_agent: string | null
+}
+
 export async function createSignup(
   eventId: string,
-  input: CreateSignupInput,
+  input: CreateSignupDbInput,
   signupType: SignupType,
+  waiver?: WaiverAcceptance,
 ): Promise<EventSignup> {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("event_signups")
-    .insert({ event_id: eventId, signup_type: signupType, ...input })
+    .insert({
+      event_id: eventId,
+      signup_type: signupType,
+      ...input,
+      waiver_accepted_at: waiver ? new Date().toISOString() : null,
+      waiver_document_id: waiver?.document_id ?? null,
+      waiver_ip_address: waiver?.ip_address ?? null,
+      waiver_user_agent: waiver?.user_agent ?? null,
+    })
     .select()
     .single()
   if (error) throw error

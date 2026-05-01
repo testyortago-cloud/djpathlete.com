@@ -9,6 +9,8 @@ import { EventsComingSoonPanel } from "@/components/public/EventsComingSoonPanel
 import { InquiryForm } from "@/components/public/InquiryForm"
 import { getPublishedEvents } from "@/lib/db/events"
 import { EventCard } from "@/components/public/EventCard"
+import { getActiveDocument } from "@/lib/db/legal-documents"
+import { renderLegalContent } from "@/lib/legal-content"
 
 export const dynamic = "force-dynamic"
 
@@ -63,20 +65,21 @@ const ACTIONS: ActionDiagram[] = [
     diagram: (
       <svg viewBox="0 0 200 120" className="w-full h-full" aria-hidden>
         <defs>
-          <marker
-            id="ah1"
-            viewBox="0 0 10 10"
-            refX="5"
-            refY="5"
-            markerWidth="4.5"
-            markerHeight="4.5"
-            orient="auto"
-          >
+          <marker id="ah1" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="4.5" markerHeight="4.5" orient="auto">
             <path d="M 0 0 L 10 5 L 0 10 z" fill="oklch(0.70 0.08 60)" />
           </marker>
         </defs>
         {/* Ground line */}
-        <line x1="10" y1="102" x2="190" y2="102" stroke="currentColor" strokeOpacity="0.2" strokeWidth="1" strokeDasharray="2 3" />
+        <line
+          x1="10"
+          y1="102"
+          x2="190"
+          y2="102"
+          stroke="currentColor"
+          strokeOpacity="0.2"
+          strokeWidth="1"
+          strokeDasharray="2 3"
+        />
         {/* Starting line (two tick marks) */}
         <g stroke="currentColor" strokeOpacity="0.5" strokeWidth="2" strokeLinecap="round">
           <line x1="22" y1="95" x2="22" y2="108" />
@@ -118,7 +121,16 @@ const ACTIONS: ActionDiagram[] = [
     diagram: (
       <svg viewBox="0 0 200 120" className="w-full h-full" aria-hidden>
         {/* Ground line */}
-        <line x1="10" y1="102" x2="190" y2="102" stroke="currentColor" strokeOpacity="0.2" strokeWidth="1" strokeDasharray="2 3" />
+        <line
+          x1="10"
+          y1="102"
+          x2="190"
+          y2="102"
+          stroke="currentColor"
+          strokeOpacity="0.2"
+          strokeWidth="1"
+          strokeDasharray="2 3"
+        />
         {/* Incoming path (fading dashes) */}
         <path
           d="M 18 36 L 118 78"
@@ -160,20 +172,21 @@ const ACTIONS: ActionDiagram[] = [
     diagram: (
       <svg viewBox="0 0 200 120" className="w-full h-full" aria-hidden>
         <defs>
-          <marker
-            id="ah3"
-            viewBox="0 0 10 10"
-            refX="5"
-            refY="5"
-            markerWidth="4.5"
-            markerHeight="4.5"
-            orient="auto"
-          >
+          <marker id="ah3" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="4.5" markerHeight="4.5" orient="auto">
             <path d="M 0 0 L 10 5 L 0 10 z" fill="oklch(0.70 0.08 60)" />
           </marker>
         </defs>
         {/* Ground line */}
-        <line x1="10" y1="102" x2="190" y2="102" stroke="currentColor" strokeOpacity="0.2" strokeWidth="1" strokeDasharray="2 3" />
+        <line
+          x1="10"
+          y1="102"
+          x2="190"
+          y2="102"
+          stroke="currentColor"
+          strokeOpacity="0.2"
+          strokeWidth="1"
+          strokeDasharray="2 3"
+        />
         {/* Approach */}
         <path
           d="M 18 88 L 94 48"
@@ -194,11 +207,29 @@ const ACTIONS: ActionDiagram[] = [
             strokeWidth="1.8"
           />
           <rect x="94" y="40" width="12" height="3" fill="currentColor" fillOpacity="0.2" />
-          <ellipse cx="100" cy="55" rx="11" ry="3" fill="none" stroke="currentColor" strokeOpacity="0.35" strokeWidth="1" />
+          <ellipse
+            cx="100"
+            cy="55"
+            rx="11"
+            ry="3"
+            fill="none"
+            stroke="currentColor"
+            strokeOpacity="0.35"
+            strokeWidth="1"
+          />
         </g>
         {/* Plant foot marker */}
         <ellipse cx="92" cy="62" rx="5" ry="3" fill="oklch(0.70 0.08 60)" transform="rotate(-30, 92, 62)" />
-        <circle cx="92" cy="62" r="10" fill="none" stroke="oklch(0.70 0.08 60)" strokeWidth="1" strokeDasharray="2 3" strokeOpacity="0.6" />
+        <circle
+          cx="92"
+          cy="62"
+          r="10"
+          fill="none"
+          stroke="oklch(0.70 0.08 60)"
+          strokeWidth="1"
+          strokeDasharray="2 3"
+          strokeOpacity="0.6"
+        />
         {/* Exit cut */}
         <path
           d="M 100 64 L 178 104"
@@ -220,20 +251,21 @@ const ACTIONS: ActionDiagram[] = [
     diagram: (
       <svg viewBox="0 0 200 120" className="w-full h-full" aria-hidden>
         <defs>
-          <marker
-            id="ah4"
-            viewBox="0 0 10 10"
-            refX="5"
-            refY="5"
-            markerWidth="4.5"
-            markerHeight="4.5"
-            orient="auto"
-          >
+          <marker id="ah4" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="4.5" markerHeight="4.5" orient="auto">
             <path d="M 0 0 L 10 5 L 0 10 z" fill="oklch(0.70 0.08 60)" />
           </marker>
         </defs>
         {/* Ground line */}
-        <line x1="10" y1="108" x2="190" y2="108" stroke="currentColor" strokeOpacity="0.2" strokeWidth="1" strokeDasharray="2 3" />
+        <line
+          x1="10"
+          y1="108"
+          x2="190"
+          y2="108"
+          stroke="currentColor"
+          strokeOpacity="0.2"
+          strokeWidth="1"
+          strokeDasharray="2 3"
+        />
         {/* Central pivot cone */}
         <g>
           <polygon
@@ -244,7 +276,16 @@ const ACTIONS: ActionDiagram[] = [
             strokeWidth="1.8"
           />
           <rect x="93" y="50" width="14" height="3" fill="currentColor" fillOpacity="0.2" />
-          <ellipse cx="100" cy="67" rx="13" ry="3" fill="none" stroke="currentColor" strokeOpacity="0.35" strokeWidth="1" />
+          <ellipse
+            cx="100"
+            cy="67"
+            rx="13"
+            ry="3"
+            fill="none"
+            stroke="currentColor"
+            strokeOpacity="0.35"
+            strokeWidth="1"
+          />
         </g>
         {/* Rotation arc around cone */}
         <path
@@ -304,7 +345,11 @@ const WHO_ITS_FOR = [
 ]
 
 export default async function ClinicsPage() {
-  const events = await getPublishedEvents({ type: "clinic" })
+  const [events, waiverDoc] = await Promise.all([
+    getPublishedEvents({ type: "clinic" }),
+    getActiveDocument("liability_waiver"),
+  ])
+  const waiverContent = waiverDoc?.content ? renderLegalContent(waiverDoc.content) : null
   return (
     <>
       <JsonLd data={serviceSchema} />
@@ -331,16 +376,15 @@ export default async function ClinicsPage() {
               </div>
               <div className="space-y-5 text-base md:text-lg leading-8 text-muted-foreground">
                 <p>
-                  Darren has spent years working alongside elite athletes across football, rugby, athletics,
-                  and court sports. His understanding of agility isn't borrowed from textbooks — it comes from
-                  being in environments where movement decides outcomes, and from a genuine, deep study of how
-                  athletes accelerate, decelerate, and change direction under pressure. These clinics are built
-                  around that work.
+                  Darren has spent years working alongside elite athletes across football, rugby, athletics, and court
+                  sports. His understanding of agility isn't borrowed from textbooks — it comes from being in
+                  environments where movement decides outcomes, and from a genuine, deep study of how athletes
+                  accelerate, decelerate, and change direction under pressure. These clinics are built around that work.
                 </p>
                 <p>
-                  Athletes are coached through the actions that decide real moments in sport: starting,
-                  stopping, redirecting, and re-organising under pressure. Smaller group numbers mean better
-                  feedback, better reps, and a better standard of coaching throughout.
+                  Athletes are coached through the actions that decide real moments in sport: starting, stopping,
+                  redirecting, and re-organising under pressure. Smaller group numbers mean better feedback, better
+                  reps, and a better standard of coaching throughout.
                 </p>
               </div>
             </div>
@@ -374,8 +418,8 @@ export default async function ClinicsPage() {
                 <span className="italic font-normal text-accent">proper coaching behind it.</span>
               </h2>
               <p className="mt-5 text-primary-foreground/70 leading-7">
-                Built around the movement actions that show up again and again in competitive sport. Less
-                filler. More transfer.
+                Built around the movement actions that show up again and again in competitive sport. Less filler. More
+                transfer.
               </p>
             </div>
           </FadeIn>
@@ -389,17 +433,11 @@ export default async function ClinicsPage() {
                 >
                   {/* Faux chalkboard header strip */}
                   <div className="flex items-center justify-between px-5 pt-5">
-                    <span className="font-mono text-xl font-semibold tabular-nums text-accent">
-                      {a.n}
-                    </span>
-                    <span className="text-[10px] uppercase tracking-[0.25em] text-primary-foreground/50">
-                      {a.cue}
-                    </span>
+                    <span className="font-mono text-xl font-semibold tabular-nums text-accent">{a.n}</span>
+                    <span className="text-[10px] uppercase tracking-[0.25em] text-primary-foreground/50">{a.cue}</span>
                   </div>
                   {/* Diagram */}
-                  <div className="relative mx-5 mt-3 aspect-[5/3] text-primary-foreground/80">
-                    {a.diagram}
-                  </div>
+                  <div className="relative mx-5 mt-3 aspect-[5/3] text-primary-foreground/80">{a.diagram}</div>
                   <div className="px-5 pb-6 pt-2">
                     <h3 className="font-heading text-xl font-semibold tracking-tight">{a.title}</h3>
                     <p className="mt-2 text-sm leading-6 text-primary-foreground/65">{a.body}</p>
@@ -426,8 +464,8 @@ export default async function ClinicsPage() {
                   <span className="italic font-normal text-accent">Then challenge it.</span>
                 </h2>
                 <p className="mt-5 text-muted-foreground leading-7 max-w-md">
-                  A clear progression so quality comes before pressure. The session builds understanding,
-                  then asks athletes to use it.
+                  A clear progression so quality comes before pressure. The session builds understanding, then asks
+                  athletes to use it.
                 </p>
               </div>
 
@@ -445,9 +483,7 @@ export default async function ClinicsPage() {
                   {FLOW_STEPS.map((step) => (
                     <div key={step.n} className="relative text-center md:text-left">
                       <div className="relative mx-auto md:mx-0 flex size-16 items-center justify-center rounded-full bg-background border-2 border-primary shadow-sm">
-                        <span className="font-heading text-lg font-semibold text-primary tracking-wider">
-                          {step.n}
-                        </span>
+                        <span className="font-heading text-lg font-semibold text-primary tracking-wider">{step.n}</span>
                       </div>
                       <h3 className="mt-4 font-heading text-lg font-semibold text-primary tracking-tight">
                         {step.title}
@@ -471,16 +507,14 @@ export default async function ClinicsPage() {
               <h2 className="mt-4 font-heading text-3xl font-semibold tracking-tight md:text-5xl text-primary">
                 When and where
               </h2>
-              <p className="mt-4 text-muted-foreground leading-7">
-                Places are limited to 12 per session.
-              </p>
+              <p className="mt-4 text-muted-foreground leading-7">Places are limited to 12 per session.</p>
             </div>
           </div>
           <div className="mt-10">
             {events.length > 0 ? (
               <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
                 {events.map((event) => (
-                  <EventCard key={event.id} event={event} />
+                  <EventCard key={event.id} event={event} waiverContent={waiverContent} />
                 ))}
               </div>
             ) : (
@@ -496,8 +530,7 @@ export default async function ClinicsPage() {
           aria-hidden
           className="absolute inset-0 opacity-[0.05] pointer-events-none"
           style={{
-            background:
-              "repeating-linear-gradient(90deg, rgba(255,255,255,0.3) 0 1px, transparent 1px 60px)",
+            background: "repeating-linear-gradient(90deg, rgba(255,255,255,0.3) 0 1px, transparent 1px 60px)",
           }}
         />
         <div className="relative mx-auto max-w-7xl px-4 py-20 md:px-6 md:py-28">
@@ -505,18 +538,14 @@ export default async function ClinicsPage() {
             <FadeIn>
               <div className="text-[11px] uppercase tracking-[0.3em] text-accent">Who it's for</div>
               <h3 className="mt-4 font-heading text-4xl font-semibold tracking-tight leading-[1.03] md:text-5xl lg:text-6xl">
-                Athletes who want to look and{" "}
-                <span className="italic font-normal text-accent">feel</span> more effective in sport.
+                Athletes who want to look and <span className="italic font-normal text-accent">feel</span> more
+                effective in sport.
               </h3>
               <ul className="mt-10 divide-y divide-primary-foreground/10 border-y border-primary-foreground/10">
                 {WHO_ITS_FOR.map((item, i) => (
                   <li key={item} className="flex items-start gap-5 py-5">
-                    <span className="font-heading text-2xl tabular-nums text-accent pt-0.5 min-w-[3rem]">
-                      0{i + 1}
-                    </span>
-                    <span className="text-base md:text-lg leading-7 text-primary-foreground/85">
-                      {item}
-                    </span>
+                    <span className="font-heading text-2xl tabular-nums text-accent pt-0.5 min-w-[3rem]">0{i + 1}</span>
+                    <span className="text-base md:text-lg leading-7 text-primary-foreground/85">{item}</span>
                   </li>
                 ))}
               </ul>
@@ -538,8 +567,8 @@ export default async function ClinicsPage() {
                     <span className="italic font-normal text-accent">Better transfer.</span>
                   </p>
                   <p className="mt-6 leading-7 text-primary-foreground/75">
-                    Athletes leave with clearer movement understanding, sharper agility mechanics, and better
-                    confidence when the game becomes less predictable.
+                    Athletes leave with clearer movement understanding, sharper agility mechanics, and better confidence
+                    when the game becomes less predictable.
                   </p>
                   <Button asChild size="lg" className="mt-8 rounded-full bg-accent text-primary hover:bg-accent/90">
                     <Link href="#register-interest">

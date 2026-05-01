@@ -10,6 +10,7 @@ interface EventCardCtaProps {
     stripe_price_id: string | null
     price_cents: number | null
   }
+  waiverContent: string | null
 }
 
 function formatPrice(cents: number) {
@@ -17,7 +18,7 @@ function formatPrice(cents: number) {
   return dollars % 1 === 0 ? `$${dollars}` : `$${dollars.toFixed(2)}`
 }
 
-export function EventCardCta({ event }: EventCardCtaProps) {
+export function EventCardCta({ event, waiverContent }: EventCardCtaProps) {
   const [open, setOpen] = useState(false)
   const [intent, setIntent] = useState<"paid" | "interest">("paid")
   const isFull = event.signup_count >= event.capacity
@@ -86,6 +87,7 @@ export function EventCardCta({ event }: EventCardCtaProps) {
         onOpenChange={setOpen}
         isWaitlist={isFull}
         intent={intent}
+        waiverContent={waiverContent}
       />
     </>
   )

@@ -7,6 +7,10 @@ import type { Event } from "@/types/database"
 
 interface EventCardProps {
   event: Event
+  /** Pre-rendered HTML for the active liability waiver. Forwarded into the
+   *  signup modal so parents can review it before submitting. Null is
+   *  acceptable — the modal renders a short fallback notice. */
+  waiverContent: string | null
 }
 
 function formatPrice(cents: number | null) {
@@ -24,7 +28,7 @@ function formatDate(iso: string) {
   })
 }
 
-export function EventCard({ event }: EventCardProps) {
+export function EventCard({ event, waiverContent }: EventCardProps) {
   const isFull = event.signup_count >= event.capacity
   const spotsLeft = Math.max(0, event.capacity - event.signup_count)
   const lowSpots = !isFull && spotsLeft <= 2
@@ -86,7 +90,7 @@ export function EventCard({ event }: EventCardProps) {
 
         <div className="mt-6 flex-1" />
 
-        <EventCardCta event={event} />
+        <EventCardCta event={event} waiverContent={waiverContent} />
       </CardContent>
     </Card>
   )

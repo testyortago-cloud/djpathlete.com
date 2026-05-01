@@ -10,6 +10,10 @@ import type { Event } from "@/types/database"
 
 interface EventSignupCardProps {
   event: Event
+  /** Pre-rendered HTML for the active liability waiver, or null if no document
+   *  is configured. Shown inside the signup modal — parents must accept before
+   *  submitting either an interest, paid, or waitlist signup. */
+  waiverContent: string | null
 }
 
 function formatPrice(cents: number | null) {
@@ -27,7 +31,7 @@ function formatDate(iso: string) {
   })
 }
 
-export function EventSignupCard({ event }: EventSignupCardProps) {
+export function EventSignupCard({ event, waiverContent }: EventSignupCardProps) {
   const [open, setOpen] = useState(false)
   const [intent, setIntent] = useState<"paid" | "interest">("paid")
   const isFull = event.signup_count >= event.capacity
@@ -162,6 +166,7 @@ export function EventSignupCard({ event }: EventSignupCardProps) {
         onOpenChange={setOpen}
         isWaitlist={isFull}
         intent={intent}
+        waiverContent={waiverContent}
       />
     </>
   )
