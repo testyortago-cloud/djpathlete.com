@@ -78,20 +78,28 @@ export async function handleBlogImageGeneration(jobId: string): Promise<void> {
       qualifyingSections: qualifyingTitles,
     })
 
-    // Step 2: generate hero (must succeed) + inline (best-effort) in parallel
-    const heroPromise = (async () => {
-      const fal = await generateFalImage({
+    // Step 2: hero must succeed first. Run it alone so a hero failure short-circuits
+    // before we incur fal cost on inline images. Alt-text fallback uses `||` because
+    // generateAltText returns "" on parse failure (rather than throwing), so .catch
+    // alone wouldn't substitute the fallback.
+    let hero: { url: string; alt: string; width: number; height: number }
+    try {
+      const heroFal = await generateFalImage({
         model: HERO_MODEL,
         prompt: prompts.hero_prompt,
         ...HERO_DIMS,
       })
-      const upload = await transcodeAndUpload({ buffer: fal.buffer, slug, kind: "hero" })
-      const alt = await generateAltText(fal.buffer, fal.mime).catch(() =>
-        prompts.hero_prompt.slice(0, 120),
-      )
-      return { url: upload.url, alt, width: upload.width, height: upload.height }
-    })()
+      const heroUpload = await transcodeAndUpload({ buffer: heroFal.buffer, slug, kind: "hero" })
+      const heroAlt =
+        (await generateAltText(heroFal.buffer, heroFal.mime).catch(() => "")) ||
+        prompts.hero_prompt.slice(0, 120)
+      hero = { url: heroUpload.url, alt: heroAlt, width: heroUpload.width, height: heroUpload.height }
+    } catch (err) {
+      await failJob(`hero generation failed: ${(err as Error).message}`)
+      return
+    }
 
+    // Step 3: inline images run in parallel; per-image failure is logged but does not fail the job.
     const inlinePromises = prompts.inline_prompts.map(async (p, idx) => {
       const sectionIdx = idx + 1
       try {
@@ -106,9 +114,9 @@ export async function handleBlogImageGeneration(jobId: string): Promise<void> {
           kind: "inline",
           sectionIdx,
         })
-        const alt = await generateAltText(fal.buffer, fal.mime).catch(() =>
-          p.prompt.slice(0, 120),
-        )
+        const alt =
+          (await generateAltText(fal.buffer, fal.mime).catch(() => "")) ||
+          p.prompt.slice(0, 120)
         const record: InlineImageRecord = {
           url: upload.url,
           alt,
@@ -126,14 +134,6 @@ export async function handleBlogImageGeneration(jobId: string): Promise<void> {
         return { ok: false as const, error: (err as Error).message }
       }
     })
-
-    let hero: { url: string; alt: string; width: number; height: number }
-    try {
-      hero = await heroPromise
-    } catch (err) {
-      await failJob(`hero generation failed: ${(err as Error).message}`)
-      return
-    }
 
     const inlineResults = await Promise.all(inlinePromises)
     const successfulInline = inlineResults

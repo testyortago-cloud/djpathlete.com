@@ -100,4 +100,13 @@ describe("POST /api/admin/blog/generate-from-suggestion", () => {
       }),
     )
   })
+
+  it("500 when an unexpected error is thrown during processing", async () => {
+    mocks.auth.mockResolvedValueOnce({ user: { id: "u1", role: "admin" } })
+    mocks.getCalendarEntryById.mockRejectedValueOnce(new Error("Supabase exploded"))
+    const res = await POST(jsonRequest({ calendarId: "cal-1" }))
+    expect(res.status).toBe(500)
+    const body = await res.json()
+    expect(body.error).toMatch(/internal/i)
+  })
 })
