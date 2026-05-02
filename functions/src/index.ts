@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase-admin/app"
-import { onDocumentCreated } from "firebase-functions/v2/firestore"
+import { onDocumentCreated, onDocumentUpdated } from "firebase-functions/v2/firestore"
 import { onSchedule } from "firebase-functions/v2/scheduler"
 import { onRequest } from "firebase-functions/v2/https"
 import { defineSecret } from "firebase-functions/params"
@@ -16,6 +16,7 @@ const assemblyAiApiKey = defineSecret("ASSEMBLYAI_API_KEY")
 const appUrl = defineSecret("APP_URL")
 const tavilyApiKey = defineSecret("TAVILY_API_KEY")
 const internalCronToken = defineSecret("INTERNAL_CRON_TOKEN")
+const falKey = defineSecret("FAL_KEY")
 
 const allSecrets = [anthropicApiKey, supabaseUrl, supabaseServiceRoleKey]
 const sendSecrets = [supabaseUrl, supabaseServiceRoleKey, resendApiKey]
@@ -105,6 +106,45 @@ export const blogGeneration = onDocumentCreated(
 
     const { handleBlogGeneration } = await import("./blog-generation.js")
     await handleBlogGeneration(event.params.jobId)
+  },
+)
+
+// --- Blog Image Generation ---
+// Triggered when a new ai_jobs doc is created with type "blog_image_generation"
+// Generates hero + inline images via fal.ai, mirrors to Supabase Storage,
+// writes alt text, splices <img> tags into the post HTML.
+
+export const blogImageGeneration = onDocumentCreated(
+  {
+    document: "ai_jobs/{jobId}",
+    timeoutSeconds: 540,
+    memory: "1GiB",
+    region: "us-central1",
+    secrets: [anthropicApiKey, supabaseUrl, supabaseServiceRoleKey, falKey],
+  },
+  async (event) => {
+    const data = event.data?.data()
+    if (!data || data.type !== "blog_image_generation") return
+
+    const { handleBlogImageGeneration } = await import("./blog-image-generation.js")
+    await handleBlogImageGeneration(event.params.jobId)
+  },
+)
+
+// --- ai_jobs onUpdate listener ---
+// Watches all ai_jobs docs and fans out follow-up jobs on terminal-state
+// transitions (currently: blog_generation completed -> blog_image_generation).
+
+export const onAiJobCompleted = onDocumentUpdated(
+  {
+    document: "ai_jobs/{jobId}",
+    region: "us-central1",
+    timeoutSeconds: 60,
+    memory: "256MiB",
+  },
+  async (event) => {
+    const { handleAiJobCompleted } = await import("./on-ai-job-completed.js")
+    await handleAiJobCompleted(event)
   },
 )
 
