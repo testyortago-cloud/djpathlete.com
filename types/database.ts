@@ -115,6 +115,8 @@ export interface User {
   privacy_accepted_at: string | null
   created_at: string
   updated_at: string
+  marketing_consent_at: string | null
+  marketing_consent_source: string | null
 }
 
 export type TimeEfficiencyPreference = "supersets_circuits" | "shorter_rest" | "fewer_heavier" | "extend_session"
@@ -338,6 +340,10 @@ export interface Booking {
   ghl_appointment_id: string | null
   created_at: string
   updated_at: string
+  gclid: string | null
+  gbraid: string | null
+  wbraid: string | null
+  fbclid: string | null
 }
 
 export interface Payment {
@@ -352,6 +358,10 @@ export interface Payment {
   metadata: Record<string, unknown>
   created_at: string
   updated_at: string
+  gclid: string | null
+  gbraid: string | null
+  wbraid: string | null
+  fbclid: string | null
 }
 
 export interface Subscription {
@@ -832,6 +842,10 @@ export interface EventSignup {
   waiver_user_agent: string | null
   created_at: string
   updated_at: string
+  gclid: string | null
+  gbraid: string | null
+  wbraid: string | null
+  fbclid: string | null
 }
 
 // ---------- Shop (Printful POD) ----------
@@ -1330,4 +1344,35 @@ export interface UserPreferences {
   last_pipeline_filters: Record<string, unknown>
   pipeline_lanes_collapsed: Record<string, boolean>
   updated_at: string
+}
+
+export interface MarketingAttribution {
+  id: string
+  session_id: string
+  user_id: string | null
+  gclid: string | null
+  gbraid: string | null
+  wbraid: string | null
+  fbclid: string | null
+  utm_source: string | null
+  utm_medium: string | null
+  utm_campaign: string | null
+  utm_term: string | null
+  utm_content: string | null
+  landing_url: string | null
+  referrer: string | null
+  first_seen_at: string
+  last_seen_at: string
+  claimed_at: string | null
+  created_at: string
+}
+
+export interface MarketingConsentLog {
+  id: string
+  user_id: string
+  granted: boolean
+  source: string
+  ip_address: string | null
+  user_agent: string | null
+  created_at: string
 }
