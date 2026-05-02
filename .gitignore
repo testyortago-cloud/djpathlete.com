@@ -42,3 +42,6 @@ test-results/
 
 # vercel
 .vercel
+
+# git worktrees
+.worktrees/
