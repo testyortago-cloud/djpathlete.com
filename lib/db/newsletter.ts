@@ -1,4 +1,6 @@
 import { createServiceRoleClient } from "@/lib/supabase"
+import { getUnclaimedAttribution, claimAttribution } from "@/lib/db/marketing-attribution"
+import { setMarketingConsent } from "@/lib/db/marketing-consent"
 
 function getClient() {
   return createServiceRoleClient()
@@ -38,6 +40,10 @@ export interface Subscriber {
   source: string
   subscribed_at: string
   unsubscribed_at: string | null
+  gclid: string | null
+  gbraid: string | null
+  wbraid: string | null
+  fbclid: string | null
 }
 
 export async function getAllSubscribers(): Promise<Subscriber[]> {
@@ -78,4 +84,83 @@ export async function importSubscribers(
 
   skipped = emails.length - added
   return { added, skipped }
+}
+
+export interface AddSubscriberWithAttributionInput {
+  email: string
+  session_id: string | undefined
+  consent_marketing: boolean
+  ip_address: string | null
+  user_agent: string | null
+}
+
+export interface AddSubscriberWithAttributionResult {
+  subscriber_id: string
+}
+
+/**
+ * Add a newsletter subscriber and back-fill gclid + tracking params from the
+ * caller's djp_attr cookie session. If the session has an unclaimed attribution
+ * row we copy gclid/gbraid/wbraid/fbclid onto the subscriber row.
+ *
+ * Consent is recorded in the marketing_consent_log only if the subscriber has
+ * a corresponding users row (i.e., is also a registered user). Anonymous
+ * subscribers track consent via the consent_marketing boolean only — they
+ * promote to a fully-logged consent state when they create an account.
+ */
+export async function addSubscriberWithAttribution(
+  input: AddSubscriberWithAttributionInput,
+): Promise<AddSubscriberWithAttributionResult> {
+  const supabase = getClient()
+  const email = input.email.toLowerCase().trim()
+
+  let attribution = null
+  if (input.session_id) {
+    attribution = await getUnclaimedAttribution(input.session_id).catch(() => null)
+  }
+
+  const { data: subscriber, error } = await supabase
+    .from("newsletter_subscribers")
+    .upsert(
+      {
+        email,
+        source: "website",
+        unsubscribed_at: null,
+        gclid: attribution?.gclid ?? null,
+        gbraid: attribution?.gbraid ?? null,
+        wbraid: attribution?.wbraid ?? null,
+        fbclid: attribution?.fbclid ?? null,
+      },
+      { onConflict: "email" },
+    )
+    .select("id")
+    .single()
+  if (error) throw error
+  const subscriberId = (subscriber as { id: string }).id
+
+  // If this subscriber is also a registered user, log consent + claim attribution.
+  const { data: userRow } = await supabase
+    .from("users")
+    .select("id")
+    .eq("email", email)
+    .maybeSingle()
+
+  if (userRow) {
+    if (input.consent_marketing) {
+      await setMarketingConsent({
+        user_id: (userRow as { id: string }).id,
+        granted: true,
+        source: "newsletter_signup",
+        ip_address: input.ip_address,
+        user_agent: input.user_agent,
+      }).catch((e) => console.warn("[newsletter] consent log failed:", (e as Error).message))
+    }
+    if (attribution && !attribution.claimed_at) {
+      await claimAttribution(attribution.id, (userRow as { id: string }).id).catch((e) =>
+        console.warn("[newsletter] attribution claim failed:", (e as Error).message),
+      )
+    }
+  }
+
+  return { subscriber_id: subscriberId }
 }
