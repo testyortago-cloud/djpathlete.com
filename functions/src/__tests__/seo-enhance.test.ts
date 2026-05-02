@@ -51,6 +51,8 @@ describe("seo-enhance helpers", () => {
       content: "x".repeat(10000),
       tags: ["shoulder", "rehab"],
       category: "Recovery",
+      cover_image_url: null,
+      inline_images: [],
     })
     expect(prompt).toContain("Shoulder Rehab")
     expect(prompt).toContain("6-12 week framework")
@@ -58,5 +60,51 @@ describe("seo-enhance helpers", () => {
     expect(prompt).toContain("Recovery")
     // Content should be truncated to ~4000 chars
     expect(prompt.length).toBeLessThan(6500)
+  })
+})
+
+describe("buildSeoPrompt image fields", () => {
+  it("includes hero image line when cover_image_url provided", () => {
+    const prompt = buildSeoPrompt({
+      title: "Rotator Cuff Guide",
+      excerpt: "Heal faster.",
+      content: "Content here.",
+      tags: ["shoulder"],
+      category: null,
+      cover_image_url: "https://cdn.example.com/hero.jpg",
+      inline_images: [],
+    })
+    expect(prompt).toContain("Hero image URL: https://cdn.example.com/hero.jpg")
+  })
+
+  it("omits hero image line when cover_image_url is null", () => {
+    const prompt = buildSeoPrompt({
+      title: "Rotator Cuff Guide",
+      excerpt: "Heal faster.",
+      content: "Content here.",
+      tags: [],
+      category: null,
+      cover_image_url: null,
+      inline_images: [],
+    })
+    expect(prompt).not.toContain("Hero image URL:")
+  })
+
+  it("includes inline images block when inline_images provided", () => {
+    const prompt = buildSeoPrompt({
+      title: "Throwing Mechanics",
+      excerpt: "Mechanics overview.",
+      content: "Content here.",
+      tags: [],
+      category: null,
+      cover_image_url: null,
+      inline_images: [
+        { url: "https://cdn.example.com/inline1.jpg", alt: "Throwing position", width: 800, height: 600 },
+      ],
+    })
+    expect(prompt).toContain("Inline images:")
+    expect(prompt).toContain("https://cdn.example.com/inline1.jpg")
+    expect(prompt).toContain("800x600")
+    expect(prompt).toContain("Throwing position")
   })
 })
