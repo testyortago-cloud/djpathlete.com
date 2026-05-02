@@ -741,6 +741,14 @@ export interface BlogPost {
   tavily_research: Record<string, unknown> | null
   fact_check_status: FactCheckStatus | null
   fact_check_details: Record<string, unknown> | null
+  inline_images: Array<{
+    url: string
+    alt: string
+    prompt: string
+    section_h2: string
+    width: number
+    height: number
+  }>
 }
 
 export interface SeoMetadataInternalLink {
