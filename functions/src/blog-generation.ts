@@ -263,6 +263,7 @@ export async function handleBlogGeneration(jobId: string): Promise<void> {
     length?: string
     userId: string
     references?: UserReferences
+    sourceCalendarId?: string  // NEW
   }
 
   const startTime = Date.now()
@@ -340,9 +341,10 @@ Current date: ${new Date().toISOString().slice(0, 10)}${userRefBlock}${researchB
     const validatedContent = await validateUrls(result.content.content)
     const finalResult = { ...result.content, content: validatedContent }
 
+    const supabase = getSupabase()
+
     // Log generation (non-fatal)
     try {
-      const supabase = getSupabase()
       await supabase.from("ai_generation_log").insert({
         program_id: null,
         client_id: null,
@@ -376,9 +378,46 @@ Current date: ${new Date().toISOString().slice(0, 10)}${userRefBlock}${researchB
       /* non-fatal */
     }
 
+    // Step 4: Insert the blog_posts row directly so downstream listeners
+    // (blog_image_generation, seo_enhance) have a target. Author is the
+    // requesting userId; status is 'draft' until admin publishes.
+    const { data: insertedPost, error: insertErr } = await supabase
+      .from("blog_posts")
+      .insert({
+        title: finalResult.title,
+        slug: finalResult.slug,
+        excerpt: finalResult.excerpt,
+        content: finalResult.content,
+        category: finalResult.category,
+        cover_image_url: null,
+        status: "draft",
+        tags: finalResult.tags,
+        meta_description: finalResult.meta_description,
+        author_id: input.userId,
+      })
+      .select("id")
+      .single()
+    if (insertErr) {
+      throw new Error(`blog_posts insert failed: ${insertErr.message}`)
+    }
+    const blogPostId = (insertedPost as { id: string }).id
+
+    // Optionally link the source content_calendar row to the new blog post.
+    // status enum is 'planned' | 'in_progress' | 'published' | 'cancelled' (see migration 00077);
+    // we set 'in_progress' and populate reference_id with the new blog_post_id.
+    if (input.sourceCalendarId) {
+      await supabase
+        .from("content_calendar")
+        .update({
+          status: "in_progress",
+          reference_id: blogPostId,
+        })
+        .eq("id", input.sourceCalendarId)
+    }
+
     await jobRef.update({
       status: "completed",
-      result: finalResult,
+      result: { ...finalResult, blog_post_id: blogPostId },
       updatedAt: FieldValue.serverTimestamp(),
     })
   } catch (error) {
