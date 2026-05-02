@@ -5,6 +5,8 @@ import { createSignup } from "@/lib/db/event-signups"
 import { getActiveDocument } from "@/lib/db/legal-documents"
 import { createEventCheckoutSession } from "@/lib/stripe"
 import { createServiceRoleClient } from "@/lib/supabase"
+import { parseAttrCookie } from "@/lib/marketing/cookies"
+import { getUnclaimedAttribution } from "@/lib/db/marketing-attribution"
 
 function getBaseUrl() {
   return process.env.NEXTAUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
@@ -57,6 +59,13 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
       user_agent: userAgent,
     })
 
+    // Resolve visitor tracking params from djp_attr cookie
+    const attrSessionId = parseAttrCookie(request.headers.get("cookie"))
+    const attrRow = attrSessionId ? await getUnclaimedAttribution(attrSessionId).catch(() => null) : null
+    const tracking = attrRow
+      ? { gclid: attrRow.gclid, gbraid: attrRow.gbraid, wbraid: attrRow.wbraid, fbclid: attrRow.fbclid }
+      : undefined
+
     let session
     try {
       session = await createEventCheckoutSession({
@@ -64,6 +73,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
         signup,
         parentEmail: parsed.data.parent_email,
         baseUrl: getBaseUrl(),
+        tracking,
       })
     } catch (err) {
       console.error("[api/events/checkout] Stripe error", err)

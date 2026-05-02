@@ -6,6 +6,8 @@ import { getAssignmentByUserAndProgram } from "@/lib/db/assignments"
 import { getActiveSubscription } from "@/lib/db/subscriptions"
 import { isAssignmentExpired } from "@/lib/utils"
 import { createCheckoutSession, createSubscriptionCheckoutSession, getOrCreateStripeCustomer } from "@/lib/stripe"
+import { parseAttrCookie } from "@/lib/marketing/cookies"
+import { getUnclaimedAttribution } from "@/lib/db/marketing-attribution"
 
 export async function POST(request: Request) {
   try {
@@ -53,6 +55,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "You already own this program." }, { status: 409 })
     }
 
+    // Resolve visitor tracking params from djp_attr cookie
+    const sessionId = parseAttrCookie(request.headers.get("cookie"))
+    const attr = sessionId ? await getUnclaimedAttribution(sessionId).catch(() => null) : null
+    const tracking = attr
+      ? { gclid: attr.gclid, gbraid: attr.gbraid, wbraid: attr.wbraid, fbclid: attr.fbclid }
+      : undefined
+
     // For subscriptions, also check for active subscription
     if (program.payment_type === "subscription") {
       const activeSub = await getActiveSubscription(session.user.id, programId)
@@ -66,13 +75,13 @@ export async function POST(request: Request) {
       // Subscription checkout requires a Stripe Customer
       const customerId = await getOrCreateStripeCustomer(session.user.id, session.user.email!)
 
-      const checkoutSession = await createSubscriptionCheckoutSession(program, customerId, session.user.id, returnUrl)
+      const checkoutSession = await createSubscriptionCheckoutSession(program, customerId, session.user.id, returnUrl, tracking)
 
       return NextResponse.json({ url: checkoutSession.url })
     }
 
     // One-time payment (existing flow)
-    const checkoutSession = await createCheckoutSession(program, session.user.id, returnUrl)
+    const checkoutSession = await createCheckoutSession(program, session.user.id, returnUrl, tracking)
 
     return NextResponse.json({ url: checkoutSession.url })
   } catch (error) {
