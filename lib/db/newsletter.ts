@@ -50,7 +50,7 @@ export async function getAllSubscribers(): Promise<Subscriber[]> {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("newsletter_subscribers")
-    .select("id, email, source, subscribed_at, unsubscribed_at")
+    .select("id, email, source, subscribed_at, unsubscribed_at, gclid, gbraid, wbraid, fbclid")
     .order("subscribed_at", { ascending: false })
   if (error) throw error
   return (data ?? []) as Subscriber[]

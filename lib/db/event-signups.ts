@@ -49,11 +49,19 @@ export interface WaiverAcceptance {
   user_agent: string | null
 }
 
+export interface SignupTracking {
+  gclid: string | null
+  gbraid: string | null
+  wbraid: string | null
+  fbclid: string | null
+}
+
 export async function createSignup(
   eventId: string,
   input: CreateSignupDbInput,
   signupType: SignupType,
   waiver?: WaiverAcceptance,
+  tracking?: SignupTracking,
 ): Promise<EventSignup> {
   const supabase = getClient()
   const { data, error } = await supabase
@@ -66,6 +74,10 @@ export async function createSignup(
       waiver_document_id: waiver?.document_id ?? null,
       waiver_ip_address: waiver?.ip_address ?? null,
       waiver_user_agent: waiver?.user_agent ?? null,
+      gclid: tracking?.gclid ?? null,
+      gbraid: tracking?.gbraid ?? null,
+      wbraid: tracking?.wbraid ?? null,
+      fbclid: tracking?.fbclid ?? null,
     })
     .select()
     .single()

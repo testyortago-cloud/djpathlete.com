@@ -9,7 +9,7 @@ import { extractTrackingParamsFromUrl, hasAnyTrackingParam } from "@/lib/marketi
 
 const SESSION_COOKIES = ["authjs.session-token", "__Secure-authjs.session-token"]
 
-function redirectToLogin(req: NextRequest) {
+function redirectToLogin(req: NextRequest): NextResponse {
   const url = new URL("/login", req.url)
   url.searchParams.set("callbackUrl", req.nextUrl.pathname)
   const res = NextResponse.redirect(url)
@@ -64,15 +64,22 @@ export default auth((req) => {
   const isLoggedIn = !!req.auth
   const userRole = req.auth?.user?.role
 
+  // Resolve the auth-side response first; ALWAYS run captureAttribution on it
+  // before returning, so a user clicking an ad like
+  //   /client/dashboard?gclid=...&utm_source=google
+  // still gets their cookie + attribution row stamped on the redirect to /login.
   let res: NextResponse
 
   if (pathname.startsWith("/admin")) {
-    if (!isLoggedIn) return redirectToLogin(req)
-    if (userRole !== "admin") return NextResponse.redirect(new URL("/client/dashboard", req.url))
-    res = NextResponse.next()
+    if (!isLoggedIn) {
+      res = redirectToLogin(req)
+    } else if (userRole !== "admin") {
+      res = NextResponse.redirect(new URL("/client/dashboard", req.url))
+    } else {
+      res = NextResponse.next()
+    }
   } else if (pathname.startsWith("/client")) {
-    if (!isLoggedIn) return redirectToLogin(req)
-    res = NextResponse.next()
+    res = isLoggedIn ? NextResponse.next() : redirectToLogin(req)
   } else {
     res = NextResponse.next()
   }
