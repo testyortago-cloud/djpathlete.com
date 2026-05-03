@@ -95,3 +95,61 @@ export function spliceInlineImages(html: string, images: InlineImageInsert[]): s
   }
   return result
 }
+
+// ─── injectAnchorIds + extractH2Toc ────────────────────────────────────────
+
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/<[^>]+>/g, "")
+    .replace(/[^\w\s-]/g, "")
+    .trim()
+    .replace(/\s+/g, "-")
+}
+
+/**
+ * Adds `id="<slug>"` to every <h2> that doesn't already have an id.
+ * Slugifies the inner text. Dedupes by appending "-2", "-3", ... when
+ * multiple headings would share the same slug.
+ */
+export function injectAnchorIds(html: string): string {
+  const used = new Set<string>()
+  return html.replace(/<h2(\s[^>]*)?>([\s\S]*?)<\/h2>/g, (full, attrs, inner) => {
+    const existing = (attrs ?? "").match(/\sid\s*=\s*"[^"]*"/i)
+    if (existing) return full
+
+    const baseSlug = slugify(inner)
+    if (!baseSlug) return full
+    let slug = baseSlug
+    let n = 2
+    while (used.has(slug)) {
+      slug = `${baseSlug}-${n++}`
+    }
+    used.add(slug)
+    const newAttrs = attrs ? ` id="${slug}"${attrs}` : ` id="${slug}"`
+    return `<h2${newAttrs}>${inner}</h2>`
+  })
+}
+
+export interface TocEntry {
+  id: string
+  text: string
+}
+
+/**
+ * Extracts an ordered list of { id, text } from h2s that already have
+ * `id` attributes. Inline tags inside the heading are stripped.
+ */
+export function extractH2Toc(html: string): TocEntry[] {
+  const result: TocEntry[] = []
+  const regex = /<h2\s+([^>]*)>([\s\S]*?)<\/h2>/g
+  let m: RegExpExecArray | null
+  while ((m = regex.exec(html)) !== null) {
+    const idMatch = m[1].match(/\bid\s*=\s*"([^"]+)"/i)
+    if (!idMatch) continue
+    const text = m[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()
+    if (!text) continue
+    result.push({ id: idMatch[1], text })
+  }
+  return result
+}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { spliceInlineImages, findQualifyingSections, MIN_SECTION_WORDS } from "../html-splice.js"
+import { spliceInlineImages, findQualifyingSections, MIN_SECTION_WORDS, injectAnchorIds, extractH2Toc } from "../html-splice.js"
 
 describe("findQualifyingSections", () => {
   it("returns h2 sections whose following text is at least 150 words", () => {
@@ -91,5 +91,71 @@ describe("spliceInlineImages", () => {
     ])
     expect(out).toContain('alt="evil&quot;&lt;script&gt;"')
     expect(out).not.toContain('alt="evil"<script>"')
+  })
+})
+
+describe("injectAnchorIds", () => {
+  it("adds id attributes to h2s based on slugified text", () => {
+    const html = "<h2>Why Sleep Matters</h2><p>x</p><h2>How to Improve It</h2>"
+    const out = injectAnchorIds(html)
+    expect(out).toContain('<h2 id="why-sleep-matters">Why Sleep Matters</h2>')
+    expect(out).toContain('<h2 id="how-to-improve-it">How to Improve It</h2>')
+  })
+
+  it("preserves existing attributes on h2", () => {
+    const html = '<h2 class="foo">Section</h2>'
+    const out = injectAnchorIds(html)
+    expect(out).toContain('id="section"')
+    expect(out).toContain('class="foo"')
+  })
+
+  it("does not duplicate id when one already exists", () => {
+    const html = '<h2 id="custom-id">Section</h2>'
+    const out = injectAnchorIds(html)
+    expect(out).toBe(html)
+  })
+
+  it("strips inline tags from heading text when slugifying", () => {
+    const html = "<h2>The <em>real</em> answer</h2>"
+    const out = injectAnchorIds(html)
+    expect(out).toContain('id="the-real-answer"')
+  })
+
+  it("dedupes ids across multiple h2s with the same heading", () => {
+    const html = "<h2>FAQ</h2><p>x</p><h2>FAQ</h2>"
+    const out = injectAnchorIds(html)
+    expect(out).toContain('id="faq"')
+    expect(out).toContain('id="faq-2"')
+  })
+
+  it("leaves h3 and other tags untouched", () => {
+    const html = "<h2>A</h2><h3>B</h3>"
+    const out = injectAnchorIds(html)
+    expect(out).toContain('<h2 id="a">A</h2>')
+    expect(out).toContain("<h3>B</h3>")
+  })
+})
+
+describe("extractH2Toc", () => {
+  it("returns id+text pairs in document order", () => {
+    const html = '<h2 id="one">First</h2><p>x</p><h2 id="two">Second</h2>'
+    expect(extractH2Toc(html)).toEqual([
+      { id: "one", text: "First" },
+      { id: "two", text: "Second" },
+    ])
+  })
+
+  it("skips h2s without ids", () => {
+    const html = '<h2 id="one">First</h2><h2>NoId</h2>'
+    expect(extractH2Toc(html)).toEqual([{ id: "one", text: "First" }])
+  })
+
+  it("strips inline tags from text", () => {
+    const html = '<h2 id="x">Why <strong>this</strong> works</h2>'
+    expect(extractH2Toc(html)).toEqual([{ id: "x", text: "Why this works" }])
+  })
+
+  it("returns empty array when no h2s exist", () => {
+    expect(extractH2Toc("<p>just paragraphs</p>")).toEqual([])
   })
 })
