@@ -771,6 +771,19 @@ export interface FaqEntry {
   answer: string
 }
 
+export interface LeadMagnet {
+  id: string
+  slug: string
+  title: string
+  description: string
+  asset_url: string
+  category: BlogCategory | null
+  tags: string[]
+  active: boolean
+  created_at: string
+  updated_at: string
+}
+
 export interface SeoMetadataInternalLink {
   blog_post_id: string
   title: string
