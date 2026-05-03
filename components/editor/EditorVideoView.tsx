@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ArrowLeft } from "lucide-react"
@@ -11,6 +11,8 @@ import {
   type TeamVideoPlayerHandle,
 } from "@/components/shared/TeamVideoPlayer"
 import { CommentThread } from "@/components/shared/CommentThread"
+import { DrawingCanvas } from "@/components/shared/DrawingCanvas"
+import type { DrawingJson } from "@/types/database"
 import { uploadToSignedUrl } from "@/lib/firebase-client-upload"
 import type {
   TeamVideoSubmission,
@@ -30,6 +32,45 @@ export function EditorVideoView({ submission, version, comments, videoUrl }: Pro
   const playerRef = useRef<TeamVideoPlayerHandle>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
+
+  const overlayRef = useRef<HTMLDivElement | null>(null)
+  const [overlaySize, setOverlaySize] = useState({ width: 0, height: 0 })
+  const [currentTime, setCurrentTime] = useState(0)
+
+  useEffect(() => {
+    if (!overlayRef.current) return
+    const el = overlayRef.current
+    const ro = new ResizeObserver(() => {
+      setOverlaySize({ width: el.clientWidth, height: el.clientHeight })
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [videoUrl])
+
+  const VISIBILITY_WINDOW_S = 0.5
+  const visibleAnnotations = comments.filter(
+    (c) =>
+      c.status === "open" &&
+      c.timecode_seconds != null &&
+      c.annotation &&
+      Math.abs(currentTime - c.timecode_seconds) <= VISIBILITY_WINDOW_S,
+  )
+  const mergedView: DrawingJson = {
+    paths: visibleAnnotations.flatMap((c) => c.annotation?.paths ?? []),
+  }
+
+  function renderOverlay() {
+    if (overlaySize.width === 0 || overlaySize.height === 0) return null
+    if (visibleAnnotations.length === 0) return null
+    return (
+      <DrawingCanvas
+        mode="view"
+        width={overlaySize.width}
+        height={overlaySize.height}
+        drawing={mergedView}
+      />
+    )
+  }
 
   const canRevise = submission.status === "revision_requested"
 
@@ -102,6 +143,9 @@ export function EditorVideoView({ submission, version, comments, videoUrl }: Pro
               onMarkerClick={() => {
                 /* parent could scroll thread; v1 just seeks */
               }}
+              videoContainerRef={overlayRef}
+              onTimeUpdate={setCurrentTime}
+              renderOverlay={renderOverlay}
             />
           ) : (
             <div className="rounded-md border border-dashed bg-muted/40 p-12 text-center text-sm text-muted-foreground">
