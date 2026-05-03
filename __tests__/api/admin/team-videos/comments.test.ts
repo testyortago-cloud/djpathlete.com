@@ -150,6 +150,7 @@ describe("GET /api/admin/team-videos/[id]/comments", () => {
     expect(res.status).toBe(200)
     const json = await res.json()
     expect(json.comments).toHaveLength(1)
+    expect(json.comments[0].annotation).toBeNull()
   })
 
   it("returns comments with annotation field merged in", async () => {
