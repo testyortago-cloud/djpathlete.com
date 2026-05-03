@@ -7,7 +7,9 @@ import { getCalendarEntryById } from "@/lib/db/content-calendar"
 
 const requestSchema = z.object({
   calendarId: z.string().uuid().or(z.string().min(1)),
-  tone: z.enum(["professional", "conversational", "motivational"]).optional().default("professional"),
+  // Deprecated alias kept for one release.
+  tone: z.enum(["professional", "conversational", "motivational"]).optional(),
+  register: z.enum(["formal", "casual"]).optional(),
   length: z.enum(["short", "medium", "long"]).optional().default("medium"),
 })
 
@@ -35,7 +37,9 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       )
     }
-    const { calendarId, tone, length } = parsed.data
+    const { calendarId, tone, register, length } = parsed.data
+    const resolvedRegister: "formal" | "casual" =
+      register ?? (tone === "professional" ? "formal" : "casual")
 
     const entry = await getCalendarEntryById(calendarId)
     if (!entry || entry.entry_type !== "topic_suggestion") {
@@ -53,7 +57,7 @@ export async function POST(request: NextRequest) {
       status: "pending",
       input: {
         prompt: promptLines,
-        tone,
+        register: resolvedRegister,
         length,
         userId,
         sourceCalendarId: calendarId,

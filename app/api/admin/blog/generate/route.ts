@@ -26,7 +26,9 @@ const blogGenerateSchema = z.object({
     .string()
     .min(10, "Describe the blog post in at least 10 characters")
     .max(2000, "Prompt must be under 2000 characters"),
-  tone: z.enum(["professional", "conversational", "motivational"]).optional().default("professional"),
+  // `tone` is deprecated — kept for one release. Maps to register at handler time.
+  tone: z.enum(["professional", "conversational", "motivational"]).optional(),
+  register: z.enum(["formal", "casual"]).optional(),
   length: z.enum(["short", "medium", "long"]).optional().default("medium"),
   references: z
     .object({
@@ -73,7 +75,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { prompt, tone, length, references } = parsed.data
+    const { prompt, tone, register, length, references } = parsed.data
+
+    // Resolve register (new field wins over deprecated tone).
+    const resolvedRegister: "formal" | "casual" =
+      register ?? (tone === "professional" ? "formal" : "casual")
+    if (tone && !register) {
+      console.warn(`[/api/admin/blog/generate] deprecated 'tone' used (${tone}) — mapped to register=${resolvedRegister}`)
+    }
 
     const db = getAdminFirestore()
     const jobRef = db.collection("ai_jobs").doc()
@@ -81,7 +90,13 @@ export async function POST(request: NextRequest) {
     await jobRef.set({
       type: "blog_generation",
       status: "pending",
-      input: { prompt, tone, length, userId, ...(references ? { references } : {}) },
+      input: {
+        prompt,
+        register: resolvedRegister,
+        length,
+        userId,
+        ...(references ? { references } : {}),
+      },
       result: null,
       error: null,
       userId,

@@ -75,7 +75,7 @@ describe("POST /api/admin/blog/generate-from-suggestion", () => {
         status: "pending",
         input: expect.objectContaining({
           prompt: expect.stringContaining("RFD recovery"),
-          tone: "professional",
+          register: "formal",
           length: "medium",
           userId: "u1",
           sourceCalendarId: "cal-1",
@@ -96,7 +96,7 @@ describe("POST /api/admin/blog/generate-from-suggestion", () => {
     await POST(jsonRequest({ calendarId: "cal-1" }))
     expect(mocks.jobSet).toHaveBeenCalledWith(
       expect.objectContaining({
-        input: expect.objectContaining({ tone: "professional", length: "medium" }),
+        input: expect.objectContaining({ register: "casual", length: "medium" }),
       }),
     )
   })
