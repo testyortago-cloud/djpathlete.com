@@ -134,6 +134,68 @@ export interface TeamInvite {
 
 export type TeamInviteStatus = "pending" | "accepted" | "expired"
 
+// ====== Team video review (Plan 2) ======
+
+export type TeamVideoSubmissionStatus =
+  | "draft"
+  | "submitted"
+  | "in_review"
+  | "revision_requested"
+  | "approved"
+  | "locked"
+
+export type TeamVideoVersionStatus = "pending" | "uploaded" | "failed"
+
+export type TeamVideoCommentStatus = "open" | "resolved"
+
+export interface TeamVideoSubmission {
+  id: string
+  title: string
+  description: string | null
+  submitted_by: string
+  status: TeamVideoSubmissionStatus
+  current_version_id: string | null
+  approved_at: string | null
+  approved_by: string | null
+  locked_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface TeamVideoVersion {
+  id: string
+  submission_id: string
+  version_number: number
+  storage_path: string
+  original_filename: string
+  duration_seconds: number | null
+  size_bytes: number | null
+  mime_type: string | null
+  status: TeamVideoVersionStatus
+  uploaded_at: string | null
+  created_at: string
+}
+
+export interface TeamVideoComment {
+  id: string
+  version_id: string
+  author_id: string
+  timecode_seconds: number | null
+  comment_text: string
+  status: TeamVideoCommentStatus
+  resolved_at: string | null
+  resolved_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface TeamVideoAnnotation {
+  id: string
+  comment_id: string
+  drawing_json: unknown // typed in Plan 3
+  created_at: string
+}
+
 export type TimeEfficiencyPreference = "supersets_circuits" | "shorter_rest" | "fewer_heavier" | "extend_session"
 export type TrainingTechnique =
   | "straight_set"
