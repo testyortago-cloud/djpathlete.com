@@ -1956,3 +1956,55 @@ export async function sendAdminNewSignupEmail(signup: EventSignup, event: Event)
     html,
   })
 }
+
+export async function sendTeamInviteEmail(params: {
+  to: string
+  inviteUrl: string
+  inviterName: string
+  expiresAt: string // ISO string
+}) {
+  const { to, inviteUrl, inviterName, expiresAt } = params
+  const expiresFormatted = new Date(expiresAt).toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  })
+
+  const body = `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td style="padding:48px 48px 32px;">
+          <h2 style="margin:0 0 16px; font-family:'Lexend Exa', Georgia, serif; font-size:22px; color:#0E3F50; font-weight:600;">
+            You've been invited to the DJP Athlete team
+          </h2>
+          <p style="margin:0 0 24px; font-family:'Lexend Deca', Helvetica, Arial, sans-serif; font-size:15px; line-height:1.6; color:#333;">
+            ${inviterName} has invited you to collaborate as a video editor on DJP Athlete.
+            Click the button below to set your password and access your editor workspace.
+          </p>
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+            <tr>
+              <td style="background-color:#0E3F50; border-radius:2px;">
+                <a href="${inviteUrl}"
+                   style="display:inline-block; padding:14px 28px; font-family:'Lexend Exa', Georgia, serif; font-size:13px; color:#ffffff; text-decoration:none; letter-spacing:2px; text-transform:uppercase;">
+                  Accept Invitation
+                </a>
+              </td>
+            </tr>
+          </table>
+          <p style="margin:24px 0 0; font-family:'Lexend Deca', Helvetica, Arial, sans-serif; font-size:13px; color:#777;">
+            This invitation expires on <strong>${expiresFormatted}</strong>.
+            If you weren't expecting this email, you can safely ignore it.
+          </p>
+        </td>
+      </tr>
+    </table>
+  `
+
+  return resend.emails.send({
+    from: FROM_EMAIL,
+    to,
+    cc: ADMIN_CC,
+    subject: `${inviterName} invited you to the DJP Athlete team`,
+    html: emailLayout(body),
+  })
+}
