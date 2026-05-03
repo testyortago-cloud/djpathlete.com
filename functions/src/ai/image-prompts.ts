@@ -15,14 +15,32 @@ export const imagePromptsSchema = z.object({
 
 export type ImagePromptsResult = z.infer<typeof imagePromptsSchema>
 
+// Brand treatment fed into every prompt so heroes have a consistent DJP look
+// instead of looking like a different stock-photo studio per post.
+//
+// Future upgrade: a LoRA fine-tune of fal's flux model on DJP photography
+// would lock the look harder than text instructions can. Documented for when
+// publishing volume justifies the training run. Until then, this string is
+// the cheap version.
+export const BRAND_TREATMENT = `
+DJP visual treatment (apply to every prompt, with extra emphasis on the hero):
+- Slightly desaturated color, warm-leaning skin tones. NOT punchy oversaturated stock.
+- Natural daylight or true gym/stadium light only. No HDR fakery, no moody-fantasy lighting, no flash.
+- Shallow depth of field — subject crisp, background gently blurred. Helps it read as documentary, not advertising.
+- Behind-the-scenes coaching aesthetic. Show coaching context (a coach near the athlete, equipment in frame, real flooring) when sensible — not influencer poses.
+- Realistic athletic body types. No glossy fitness-model archetypes.
+- Frame the subject doing the thing, mid-action when possible. No static smiles into the camera.
+- Negative space on one side of the frame for hero shots so it composes well as a 1200×630 OG card.`.trim()
+
 const SYSTEM_PROMPT = `You write image prompts for a science-based athletic-performance blog by Darren Paul (DJP Athlete). Your prompts are sent to a text-to-image model.
 
 Style requirements (apply to every prompt):
 - Photorealistic. Real people, real gyms, real outdoor settings. No illustrations, no 3D renders, no AI-art tropes.
 - No text overlays. No logos. No watermarks. No company branding.
 - Performance-coaching aesthetic — strength training, sprinting, jumping, mobility, recovery, sport-specific drills. Adults unless the post is about youth development.
-- Lighting: natural daylight, gym fluorescent, or stadium light. No moody fantasy lighting.
 - Composition: medium-wide. Subject is identifiable but not portrait-style.
+
+${BRAND_TREATMENT}
 
 Output JSON shape (strict):
 {
@@ -34,8 +52,8 @@ Output JSON shape (strict):
 }
 
 Rules:
-- The hero prompt should evoke the post's overall theme.
-- Each inline prompt must reference the specific section's content, not just the post topic.
+- The hero prompt should evoke the post's overall theme AND visibly carry the DJP visual treatment above (desaturation, shallow DOF, documentary feel).
+- Each inline prompt must reference the specific section's content, not just the post topic. Inline prompts can lean lighter on the brand treatment than the hero (the hero is the OG card; inline images don't need to match it perfectly).
 - Use the EXACT h2 text supplied in the user message — do not paraphrase or generate new section names.
 - If fewer qualifying sections are provided, emit fewer inline_prompts. Never invent sections.
 

@@ -5,7 +5,7 @@ vi.mock("../anthropic.js", () => ({
   MODEL_SONNET: "claude-sonnet-test",
 }))
 
-import { extractImagePrompts } from "../image-prompts.js"
+import { extractImagePrompts, BRAND_TREATMENT } from "../image-prompts.js"
 import * as anthropic from "../anthropic.js"
 
 const mockCallAgent = vi.mocked(anthropic.callAgent)
@@ -49,6 +49,13 @@ describe("extractImagePrompts", () => {
         qualifyingSections: [],
       }),
     ).rejects.toThrow("Claude failed")
+  })
+
+  it("BRAND_TREATMENT is exported and contains DJP visual fingerprints", () => {
+    expect(BRAND_TREATMENT).toContain("DJP visual treatment")
+    expect(BRAND_TREATMENT.toLowerCase()).toContain("desaturated")
+    expect(BRAND_TREATMENT.toLowerCase()).toContain("depth of field")
+    expect(BRAND_TREATMENT.toLowerCase()).toContain("documentary")
   })
 
   it("filters inline_prompts to only those matching qualifyingSections", async () => {
