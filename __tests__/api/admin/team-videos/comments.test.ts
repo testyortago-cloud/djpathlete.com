@@ -12,11 +12,16 @@ vi.mock("@/lib/db/team-video-comments", () => ({
   createComment: vi.fn(),
   listCommentsForVersion: vi.fn(),
 }))
+vi.mock("@/lib/db/team-video-annotations", () => ({
+  createAnnotationForComment: vi.fn(),
+  listAnnotationsForCommentIds: vi.fn().mockResolvedValue(new Map()),
+}))
 
 import { auth } from "@/lib/auth"
 import { getSubmissionById, setSubmissionStatus } from "@/lib/db/team-video-submissions"
 import { getCurrentVersion } from "@/lib/db/team-video-versions"
 import { createComment, listCommentsForVersion } from "@/lib/db/team-video-comments"
+import { createAnnotationForComment } from "@/lib/db/team-video-annotations"
 import { POST, GET } from "@/app/api/admin/team-videos/[id]/comments/route"
 
 beforeEach(() => vi.clearAllMocks())
@@ -83,6 +88,46 @@ describe("POST /api/admin/team-videos/[id]/comments", () => {
     const res = await POST(post({ timecodeSeconds: 10, commentText: "Note" }), { params })
     expect(res.status).toBe(201)
     expect(setSubmissionStatus).not.toHaveBeenCalled()
+  })
+
+  it("creates annotation when annotation payload is included", async () => {
+    ;(auth as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      user: { id: "admin1", role: "admin" },
+    })
+    ;(getSubmissionById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "sub1", status: "in_review",
+    })
+    ;(getCurrentVersion as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "v1" })
+    ;(createComment as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "c1" })
+
+    const drawing = {
+      paths: [{ tool: "arrow", color: "#FF3B30", width: 3,
+                points: [[0.1, 0.1], [0.9, 0.9]] }],
+    }
+    const res = await POST(
+      post({ timecodeSeconds: 10, commentText: "Note", annotation: drawing }),
+      { params },
+    )
+    expect(res.status).toBe(201)
+    expect(createAnnotationForComment).toHaveBeenCalledWith("c1", drawing)
+  })
+
+  it("does NOT create annotation when payload is absent", async () => {
+    ;(auth as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      user: { id: "admin1", role: "admin" },
+    })
+    ;(getSubmissionById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "sub1", status: "in_review",
+    })
+    ;(getCurrentVersion as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "v1" })
+    ;(createComment as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "c2" })
+
+    const res = await POST(
+      post({ timecodeSeconds: 10, commentText: "No drawing" }),
+      { params },
+    )
+    expect(res.status).toBe(201)
+    expect(createAnnotationForComment).not.toHaveBeenCalled()
   })
 })
 

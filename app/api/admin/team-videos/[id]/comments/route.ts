@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { getSubmissionById, setSubmissionStatus } from "@/lib/db/team-video-submissions"
 import { getCurrentVersion } from "@/lib/db/team-video-versions"
 import { createComment, listCommentsForVersion } from "@/lib/db/team-video-comments"
+import { createAnnotationForComment, listAnnotationsForCommentIds } from "@/lib/db/team-video-annotations"
 import { createCommentSchema } from "@/lib/validators/team-video"
 
 export async function POST(
@@ -40,6 +41,16 @@ export async function POST(
     timecodeSeconds: parsed.data.timecodeSeconds,
     commentText: parsed.data.commentText,
   })
+
+  // Persist annotation drawing alongside the comment, if provided.
+  if (parsed.data.annotation) {
+    try {
+      await createAnnotationForComment(comment.id, parsed.data.annotation)
+    } catch (err) {
+      console.error("[comment-annotation] failed to persist:", err)
+      // Don't fail the comment create — the text comment still exists and is useful.
+    }
+  }
 
   // First comment on a "submitted" record bumps it to "in_review"
   if (submission.status === "submitted") {
