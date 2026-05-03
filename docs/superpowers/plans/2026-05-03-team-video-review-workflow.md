@@ -67,7 +67,7 @@
 - `components/admin/team-videos/CommentEditor.tsx`
 
 **Shared (used by both editor + admin):**
-- `components/shared/VideoPlayer.tsx` — `<video>` + custom controls + timeline + comment markers
+- `components/shared/TeamVideoPlayer.tsx` — `<video>` + custom controls + timeline + comment markers (a `VideoPlayer` already exists at `components/shared/VideoPlayer.tsx` for performance assessments + form reviews; new component lives at a distinct path)
 - `components/shared/CommentThread.tsx` — comment list with resolve toggle (admin-only writes via prop)
 
 **Sidebar navigation:**
@@ -2417,7 +2417,7 @@ import { useRouter } from "next/navigation"
 import { ArrowLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
-import { VideoPlayer, type VideoPlayerHandle } from "@/components/shared/VideoPlayer"
+import { TeamVideoPlayer, type TeamVideoPlayerHandle } from "@/components/shared/TeamVideoPlayer"
 import { CommentThread } from "@/components/shared/CommentThread"
 import { uploadToSignedUrl } from "@/lib/firebase-client-upload"
 import type { TeamVideoSubmission, TeamVideoVersion, TeamVideoComment } from "@/types/database"
@@ -2431,7 +2431,7 @@ interface Props {
 
 export function EditorVideoView({ submission, version, comments, videoUrl }: Props) {
   const router = useRouter()
-  const playerRef = useRef<VideoPlayerHandle>(null)
+  const playerRef = useRef<TeamVideoPlayerHandle>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
 
@@ -2495,7 +2495,7 @@ export function EditorVideoView({ submission, version, comments, videoUrl }: Pro
       <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
         <div>
           {videoUrl ? (
-            <VideoPlayer
+            <TeamVideoPlayer
               ref={playerRef}
               src={videoUrl}
               comments={comments}
@@ -3576,7 +3576,7 @@ import { useRouter } from "next/navigation"
 import { ArrowLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
-import { VideoPlayer, type VideoPlayerHandle } from "@/components/shared/VideoPlayer"
+import { TeamVideoPlayer, type TeamVideoPlayerHandle } from "@/components/shared/TeamVideoPlayer"
 import { CommentThread } from "@/components/shared/CommentThread"
 import { StatusActions } from "./StatusActions"
 import { CommentEditor } from "./CommentEditor"
@@ -3591,7 +3591,7 @@ interface Props {
 
 export function ReviewSurface({ submission, version, comments, videoUrl }: Props) {
   const router = useRouter()
-  const playerRef = useRef<VideoPlayerHandle>(null)
+  const playerRef = useRef<TeamVideoPlayerHandle>(null)
 
   async function resolveComment(commentId: string) {
     const res = await fetch(
@@ -3637,7 +3637,7 @@ export function ReviewSurface({ submission, version, comments, videoUrl }: Props
       <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
         <div className="space-y-4">
           {videoUrl ? (
-            <VideoPlayer ref={playerRef} src={videoUrl} comments={comments} />
+            <TeamVideoPlayer ref={playerRef} src={videoUrl} comments={comments} />
           ) : (
             <div className="rounded-md border border-dashed bg-muted/40 p-12 text-center text-sm text-muted-foreground">
               {version ? "Video upload not finalized." : "No video uploaded yet."}
