@@ -15,13 +15,13 @@ import { uploadToSignedUrl } from "@/lib/firebase-client-upload"
 import type {
   TeamVideoSubmission,
   TeamVideoVersion,
-  TeamVideoComment,
+  TeamVideoCommentWithAnnotation,
 } from "@/types/database"
 
 interface Props {
   submission: TeamVideoSubmission
   version: TeamVideoVersion | null
-  comments: TeamVideoComment[]
+  comments: TeamVideoCommentWithAnnotation[]
   videoUrl: string | null
 }
 

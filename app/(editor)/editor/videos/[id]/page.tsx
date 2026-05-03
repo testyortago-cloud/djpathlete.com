@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { getSubmissionById } from "@/lib/db/team-video-submissions"
 import { getCurrentVersion } from "@/lib/db/team-video-versions"
 import { listCommentsForVersion } from "@/lib/db/team-video-comments"
+import { listAnnotationsForCommentIds } from "@/lib/db/team-video-annotations"
 import { createReadUrl } from "@/lib/storage/team-videos"
 import { EditorVideoView } from "@/components/editor/EditorVideoView"
 
@@ -26,7 +27,12 @@ export default async function EditorVideoPage({ params }: Props) {
   }
 
   const version = await getCurrentVersion(submission.id)
-  const comments = version ? await listCommentsForVersion(version.id) : []
+  const rawComments = version ? await listCommentsForVersion(version.id) : []
+  const annotationMap = await listAnnotationsForCommentIds(rawComments.map((c) => c.id))
+  const comments = rawComments.map((c) => ({
+    ...c,
+    annotation: annotationMap.get(c.id) ?? null,
+  }))
   const videoUrl =
     version && version.status === "uploaded" ? await createReadUrl(version.storage_path) : null
 
