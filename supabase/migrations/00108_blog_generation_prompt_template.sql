@@ -1,4 +1,4 @@
--- supabase/migrations/00103_blog_generation_prompt_template.sql
+-- supabase/migrations/00108_blog_generation_prompt_template.sql
 -- Phase 1 of blog-generation-quality rollout.
 -- Adds the blog_generation prompt_templates row that holds OUTPUT/STRUCTURE
 -- rules for the blog generator. Voice/persona stays in the existing

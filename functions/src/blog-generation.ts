@@ -324,7 +324,7 @@ Current date: ${new Date().toISOString().slice(0, 10)}${userRefBlock}${researchB
         input_params: {
           feature: "blog_generation",
           prompt: input.prompt,
-          tone: input.tone,
+          register,
           length: input.length,
           research_papers: researchMeta.papers,
           research_source: researchMeta.source,
