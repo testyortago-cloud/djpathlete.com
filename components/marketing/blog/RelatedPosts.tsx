@@ -1,5 +1,6 @@
 import Link from "next/link"
 import NextImage from "next/image"
+import { ArrowUpRight } from "lucide-react"
 import type { BlogPost, SeoMetadata, SeoMetadataInternalLink } from "@/types/database"
 import { getRelatedPostsByCategory } from "@/lib/db/blog-posts"
 
@@ -27,41 +28,69 @@ export async function RelatedPosts({ post }: RelatedPostsProps) {
   if (items.length === 0) return null
 
   return (
-    <section className="py-16 lg:py-20 px-4 sm:px-8">
-      <div className="max-w-5xl mx-auto">
-        <header className="mb-8">
-          <p className="text-[11px] font-mono uppercase tracking-[0.18em] text-accent">─ Keep reading</p>
-          <h2 className="mt-1 text-2xl sm:text-3xl font-heading font-semibold text-primary">More from DJP Athlete</h2>
-        </header>
-        <div className="grid gap-6 md:grid-cols-3">
-          {items.map((item) => (
-            <Link
-              key={item.slug}
-              href={`/blog/${item.slug}`}
-              className="group block rounded-xl border border-border bg-white overflow-hidden hover:border-foreground/30 transition-colors"
+    <section className="djp-paper border-t border-border/70 py-20 lg:py-24 px-4 sm:px-8">
+      <div className="max-w-6xl mx-auto">
+        <header className="grid lg:grid-cols-12 gap-6 mb-12 items-end">
+          <div className="lg:col-span-7">
+            <p className="djp-eyebrow">─ Continue reading</p>
+            <h2
+              className="mt-4 font-heading font-semibold text-primary tracking-[-0.015em] leading-[1.05]"
+              style={{ fontSize: "clamp(1.875rem, 3.6vw, 2.625rem)" }}
             >
-              {item.cover_image_url && (
-                <div className="relative aspect-[16/9] bg-surface">
-                  <NextImage
-                    src={item.cover_image_url}
-                    alt={item.title}
-                    fill
-                    className="object-cover"
-                    sizes="(max-width: 768px) 100vw, 33vw"
-                  />
+              More from the journal.
+            </h2>
+          </div>
+          <div className="lg:col-span-5 lg:text-right">
+            <Link
+              href="/blog"
+              className="djp-issue-no text-[10.5px] uppercase tracking-[0.22em] text-primary hover:text-accent transition-colors inline-flex items-center gap-1.5"
+            >
+              Browse all articles <ArrowUpRight className="size-3.5" />
+            </Link>
+          </div>
+        </header>
+
+        <ol className="grid gap-8 md:grid-cols-3">
+          {items.map((item, idx) => (
+            <li key={item.slug} className="relative">
+              <Link href={`/blog/${item.slug}`} className="group block h-full">
+                <div className="flex items-baseline gap-3 mb-4">
+                  <span className="djp-issue-no text-[11px] text-accent tabular-nums">
+                    №{String(idx + 1).padStart(2, "0")}
+                  </span>
+                  <span className="flex-1 h-px bg-border/70" />
                 </div>
-              )}
-              <div className="p-4">
-                <h3 className="font-heading text-primary text-base leading-snug group-hover:underline underline-offset-4">
+
+                {item.cover_image_url && (
+                  <div className="relative aspect-[4/3] bg-muted overflow-hidden mb-5">
+                    <NextImage
+                      src={item.cover_image_url}
+                      alt={item.title}
+                      fill
+                      className="object-cover transition-transform duration-700 group-hover:scale-[1.04]"
+                      sizes="(max-width: 768px) 100vw, 33vw"
+                    />
+                    <div className="absolute inset-0 ring-1 ring-inset ring-foreground/5" />
+                  </div>
+                )}
+                <h3
+                  className="font-heading font-semibold text-primary leading-[1.15] tracking-[-0.01em] group-hover:text-primary/80 transition-colors"
+                  style={{ fontSize: "clamp(1.125rem, 1.8vw, 1.375rem)" }}
+                >
                   {item.title}
                 </h3>
                 {item.excerpt && (
-                  <p className="mt-2 text-sm text-muted-foreground line-clamp-2">{item.excerpt}</p>
+                  <p className="mt-3 text-sm text-muted-foreground leading-relaxed line-clamp-3">
+                    {item.excerpt}
+                  </p>
                 )}
-              </div>
-            </Link>
+                <span className="mt-4 inline-flex items-center gap-1.5 text-xs djp-issue-no uppercase tracking-[0.22em] text-primary group-hover:text-accent transition-colors">
+                  Read <ArrowUpRight className="size-3" />
+                </span>
+              </Link>
+            </li>
           ))}
-        </div>
+        </ol>
       </div>
     </section>
   )

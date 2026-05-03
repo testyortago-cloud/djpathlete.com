@@ -15,22 +15,32 @@ export function BlogFaqSection({ entries }: BlogFaqSectionProps) {
   if (entries.length === 0) return null
 
   return (
-    <section className="djp-faq py-16 lg:py-20 px-4 sm:px-8 bg-surface">
+    <section className="djp-faq djp-paper-deep djp-grain border-t border-border/70 py-20 lg:py-24 px-4 sm:px-8">
       <div className="max-w-3xl mx-auto">
-        <h2 className="text-2xl sm:text-3xl font-heading font-semibold text-primary tracking-tight mb-6">
-          Frequently Asked Questions
+        <p className="djp-eyebrow">─ Frequently asked</p>
+        <h2
+          className="mt-5 font-heading font-semibold text-primary tracking-[-0.015em] leading-[1.05]"
+          style={{ fontSize: "clamp(1.875rem, 3.6vw, 2.625rem)" }}
+        >
+          Questions, answered.
         </h2>
-        <ul className="space-y-3">
+
+        <ul className="mt-10 divide-y divide-border/70 border-y border-border/70">
           {entries.map((entry, idx) => (
-            <li
-              key={idx}
-              className="rounded-lg border border-border bg-white"
-            >
+            <li key={idx}>
               <details className="group">
-                <summary className="cursor-pointer list-none flex items-start justify-between gap-4 p-4 sm:p-5">
-                  <span className="font-heading text-primary text-base sm:text-lg leading-snug">
-                    {entry.question}
-                  </span>
+                <summary className="cursor-pointer list-none flex items-start justify-between gap-6 py-5 sm:py-6">
+                  <div className="flex items-start gap-5 min-w-0">
+                    <span
+                      aria-hidden
+                      className="djp-issue-no text-[11px] text-accent pt-1 tabular-nums"
+                    >
+                      {String(idx + 1).padStart(2, "0")}
+                    </span>
+                    <span className="font-heading text-primary text-base sm:text-lg leading-snug">
+                      {entry.question}
+                    </span>
+                  </div>
                   <span
                     aria-hidden
                     className="shrink-0 text-2xl text-muted-foreground leading-none transition-transform group-open:rotate-45 mt-0.5"
@@ -38,7 +48,7 @@ export function BlogFaqSection({ entries }: BlogFaqSectionProps) {
                     +
                   </span>
                 </summary>
-                <div className="px-4 pb-4 sm:px-5 sm:pb-5 text-muted-foreground leading-relaxed text-sm sm:text-base">
+                <div className="pl-12 pr-6 pb-6 text-muted-foreground leading-relaxed text-base">
                   {entry.answer}
                 </div>
               </details>

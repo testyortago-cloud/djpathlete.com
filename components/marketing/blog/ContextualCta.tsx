@@ -1,6 +1,5 @@
 import Link from "next/link"
-import { ArrowRight } from "lucide-react"
-import { FadeIn } from "@/components/shared/FadeIn"
+import { ArrowUpRight } from "lucide-react"
 import { findRelevantProgram } from "@/lib/blog/program-catalog"
 import type { BlogPost } from "@/types/database"
 
@@ -21,57 +20,58 @@ export function ContextualCta({ post }: ContextualCtaProps) {
     primary_keyword: post.primary_keyword,
   })
 
-  if (program) {
-    return (
-      <section className="py-16 lg:py-24 px-4 sm:px-8">
-        <FadeIn>
-          <div className="max-w-3xl mx-auto text-center">
-            <div className="flex items-center justify-center gap-3 mb-4">
-              <div className="h-px w-8 bg-accent" />
-              <p className="text-sm font-medium text-accent uppercase tracking-widest">{program.name}</p>
-              <div className="h-px w-8 bg-accent" />
-            </div>
-            <h2 className="text-2xl sm:text-3xl font-heading font-semibold text-primary tracking-tight mb-4">
-              Ready to put this into a program?
-            </h2>
-            <p className="text-lg text-muted-foreground mb-8">{program.pitch}</p>
-            <Link
-              href={program.url}
-              className="group inline-flex items-center gap-2 bg-primary text-primary-foreground px-8 py-4 rounded-full text-sm font-semibold hover:bg-primary/90 transition-all hover:shadow-md"
-            >
-              Explore {program.name}
-              <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
-            </Link>
-          </div>
-        </FadeIn>
-      </section>
-    )
-  }
+  const headline = program ? "Ready to put this into a program?" : "Ready to take your performance seriously?"
+  const eyebrow = program ? `─ ${program.name}` : "─ Work with us"
+  const body = program
+    ? program.pitch
+    : "If this article resonated, imagine what a coaching relationship built around your specific data, sport, and constraints could achieve."
+  const cta = program ? `Explore ${program.name}` : "Book a free consultation"
+  const href = program ? program.url : "/contact"
 
   return (
-    <section className="py-16 lg:py-24 px-4 sm:px-8">
-      <FadeIn>
-        <div className="max-w-3xl mx-auto text-center">
-          <div className="flex items-center justify-center gap-3 mb-4">
-            <div className="h-px w-8 bg-accent" />
-            <p className="text-sm font-medium text-accent uppercase tracking-widest">Work With Us</p>
-            <div className="h-px w-8 bg-accent" />
+    <section className="relative bg-primary text-primary-foreground overflow-hidden px-4 sm:px-8 py-20 lg:py-28">
+      <div
+        aria-hidden
+        className="absolute inset-0 opacity-[0.07] pointer-events-none"
+        style={{
+          backgroundImage:
+            "radial-gradient(circle at 15% 20%, rgba(196,155,122,0.7), transparent 38%), radial-gradient(circle at 85% 75%, rgba(196,155,122,0.45), transparent 45%)",
+        }}
+      />
+      <div
+        aria-hidden
+        className="absolute inset-x-0 top-0 h-px"
+        style={{
+          background:
+            "linear-gradient(90deg, transparent, rgba(196,155,122,0.6), transparent)",
+        }}
+      />
+
+      <div className="max-w-5xl mx-auto relative">
+        <div className="grid lg:grid-cols-12 gap-10 items-end">
+          <div className="lg:col-span-7">
+            <p className="djp-eyebrow text-accent">{eyebrow}</p>
+            <h2
+              className="mt-4 font-heading font-semibold tracking-[-0.02em] leading-[1.02]"
+              style={{ fontSize: "clamp(2rem, 4.4vw, 3.25rem)" }}
+            >
+              {headline}
+            </h2>
           </div>
-          <h2 className="text-2xl sm:text-3xl font-heading font-semibold text-primary tracking-tight mb-4">
-            Ready to take your performance seriously?
-          </h2>
-          <p className="text-lg text-muted-foreground mb-8">
-            If this resonated, imagine what a coaching relationship built around your specific needs could achieve.
-          </p>
-          <Link
-            href="/contact"
-            className="group inline-flex items-center gap-2 bg-primary text-primary-foreground px-8 py-4 rounded-full text-sm font-semibold hover:bg-primary/90 transition-all hover:shadow-md"
-          >
-            Book Free Consultation
-            <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
-          </Link>
+          <div className="lg:col-span-5 lg:pl-8 lg:border-l lg:border-white/15">
+            <p className="text-base lg:text-[17px] leading-relaxed text-primary-foreground/85">
+              {body}
+            </p>
+            <Link
+              href={href}
+              className="group mt-7 inline-flex items-center gap-2 bg-accent text-accent-foreground px-7 py-3.5 rounded-full text-sm font-semibold hover:bg-accent/90 transition-all"
+            >
+              {cta}
+              <ArrowUpRight className="size-4 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+            </Link>
+          </div>
         </div>
-      </FadeIn>
+      </div>
     </section>
   )
 }
