@@ -177,5 +177,48 @@ describe("voice-context", () => {
       })
       expect(out).not.toContain("# SEO TARGET")
     })
+
+    it("renders CONTENT ANGLE block when contentAngle is provided", () => {
+      const out = composeBlogSystemPrompt({
+        voiceProfile: "v",
+        blogStructure: "s",
+        programsBlock: "p",
+        register: "casual",
+        contentAngle: {
+          mainstream: "Most blogs say static stretching prevents injury.",
+          counterframe: "Static stretching before lifting reduces force output for up to 30 minutes.",
+        },
+      })
+      expect(out).toContain("# CONTENT ANGLE")
+      expect(out).toContain("Mainstream framing: Most blogs say static stretching")
+      expect(out).toContain("DJP counter-frame: Static stretching before lifting")
+    })
+
+    it("omits CONTENT ANGLE when contentAngle is undefined", () => {
+      const out = composeBlogSystemPrompt({
+        voiceProfile: "v",
+        blogStructure: "s",
+        programsBlock: "p",
+        register: "casual",
+      })
+      expect(out).not.toContain("# CONTENT ANGLE")
+    })
+
+    it("places CONTENT ANGLE between PROGRAMS and SEO TARGET", () => {
+      const out = composeBlogSystemPrompt({
+        voiceProfile: "v",
+        blogStructure: "s",
+        programsBlock: "p",
+        register: "casual",
+        seoTarget: { primary_keyword: "k", secondary_keywords: [], search_intent: null },
+        contentAngle: { mainstream: "MAINSTREAM_LINE_TEXT", counterframe: "COUNTERFRAME_LINE_TEXT" },
+      })
+      const programsIdx = out.indexOf("PROGRAMS")
+      const angleIdx = out.indexOf("# CONTENT ANGLE")
+      const seoIdx = out.indexOf("# SEO TARGET")
+      expect(programsIdx).toBeGreaterThan(-1)
+      expect(angleIdx).toBeGreaterThan(programsIdx)
+      expect(seoIdx).toBeGreaterThan(angleIdx)
+    })
   })
 })

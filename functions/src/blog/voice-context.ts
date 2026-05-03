@@ -29,12 +29,18 @@ export interface VoiceContext {
   usedFallback: { voice: boolean; structure: boolean }
 }
 
+export interface ContentAngle {
+  mainstream: string
+  counterframe: string
+}
+
 export interface ComposeArgs {
   voiceProfile: string
   blogStructure: string
   programsBlock: string
   register: Register
   seoTarget?: SeoTarget
+  contentAngle?: ContentAngle
 }
 
 // ─── Fallbacks ──────────────────────────────────────────────────────────────
@@ -162,6 +168,17 @@ function formatSeoTargetBlock(target: SeoTarget | undefined): string {
   return lines.join("\n")
 }
 
+function formatContentAngleBlock(angle: ContentAngle | undefined): string {
+  if (!angle || !angle.mainstream || !angle.counterframe) return ""
+  return [
+    "# CONTENT ANGLE",
+    `Mainstream framing: ${angle.mainstream}`,
+    `DJP counter-frame: ${angle.counterframe}`,
+    "",
+    "Lead the post with the counter-frame. Acknowledge the mainstream view briefly to differentiate, then prove your case.",
+  ].join("\n")
+}
+
 export function composeBlogSystemPrompt(args: ComposeArgs): string {
   const registerBlock =
     args.register === "formal"
@@ -169,13 +186,18 @@ export function composeBlogSystemPrompt(args: ComposeArgs): string {
       : "# REGISTER\nCasual. Use contractions. Conversational asides allowed. Address the reader directly. Default."
 
   const seoBlock = formatSeoTargetBlock(args.seoTarget)
+  const angleBlock = formatContentAngleBlock(args.contentAngle)
 
   const sections: string[] = [
     "# VOICE",
     args.voiceProfile,
     "",
+    "# PROGRAMS",
     args.programsBlock,
   ]
+  if (angleBlock) {
+    sections.push("", angleBlock)
+  }
   if (seoBlock) {
     sections.push("", seoBlock)
   }
