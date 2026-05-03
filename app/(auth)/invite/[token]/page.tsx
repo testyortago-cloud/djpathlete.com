@@ -12,12 +12,38 @@ export default async function InviteClaimPage({ params }: Props) {
   const { token } = await params
   const invite = await getInviteByToken(token)
 
-  if (!invite || inviteStatus(invite) !== "pending") {
+  if (!invite) {
     return (
       <div className="mx-auto max-w-md space-y-4 p-8 text-center">
         <h1 className="font-heading text-xl text-primary">Invitation unavailable</h1>
         <p className="font-body text-sm text-muted-foreground">
           This invite link is no longer valid. Ask Darren to send a new one.
+        </p>
+        <Link href="/login" className="text-sm underline">Return to login</Link>
+      </div>
+    )
+  }
+
+  const status = inviteStatus(invite)
+
+  if (status === "accepted") {
+    return (
+      <div className="mx-auto max-w-md space-y-4 p-8 text-center">
+        <h1 className="font-heading text-xl text-primary">You've already accepted this invite</h1>
+        <p className="font-body text-sm text-muted-foreground">
+          Your account is set up. Sign in to access your editor workspace.
+        </p>
+        <Link href="/login" className="text-sm underline">Go to sign in</Link>
+      </div>
+    )
+  }
+
+  if (status === "expired") {
+    return (
+      <div className="mx-auto max-w-md space-y-4 p-8 text-center">
+        <h1 className="font-heading text-xl text-primary">This invitation has expired</h1>
+        <p className="font-body text-sm text-muted-foreground">
+          Ask Darren to send a new invite link.
         </p>
         <Link href="/login" className="text-sm underline">Return to login</Link>
       </div>
