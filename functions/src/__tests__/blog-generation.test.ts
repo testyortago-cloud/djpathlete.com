@@ -1,13 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
-const { mockCallAgent, mockGetFirestore, mockGetSupabase, mockFetchResearchPapers } = vi.hoisted(() => {
-  return {
-    mockCallAgent: vi.fn(),
-    mockGetFirestore: vi.fn(),
-    mockGetSupabase: vi.fn(),
-    mockFetchResearchPapers: vi.fn().mockResolvedValue({ papers: [], source: "none", duration_ms: 0 }),
-  }
-})
+const { mockCallAgent, mockGetFirestore, mockGetSupabase, mockFetchResearchPapers, mockLoadVoiceContext } = vi.hoisted(
+  () => {
+    return {
+      mockCallAgent: vi.fn(),
+      mockGetFirestore: vi.fn(),
+      mockGetSupabase: vi.fn(),
+      mockFetchResearchPapers: vi.fn().mockResolvedValue({ papers: [], source: "none", duration_ms: 0 }),
+      mockLoadVoiceContext: vi.fn().mockResolvedValue({
+        voiceProfile: "TEST_VOICE",
+        blogStructure: "TEST_STRUCTURE",
+        fewShots: [],
+        usedFallback: { voice: false, structure: false },
+      }),
+    }
+  },
+)
 
 vi.mock("../ai/anthropic.js", () => ({
   callAgent: mockCallAgent,
@@ -22,6 +30,11 @@ vi.mock("../lib/research.js", () => ({
   fetchResearchPapers: mockFetchResearchPapers,
   formatResearchForPrompt: () => "",
 }))
+vi.mock("../blog/voice-context.js", () => ({
+  loadVoiceContext: mockLoadVoiceContext,
+  composeBlogSystemPrompt: vi.fn(() => "COMPOSED_PROMPT"),
+  formatFewShotsForUserMessage: vi.fn(() => ""),
+}))
 
 import { handleBlogGeneration } from "../blog-generation.js"
 
@@ -33,6 +46,14 @@ describe("handleBlogGeneration — insert flow", () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+
+    // Restore mockLoadVoiceContext default after vi.clearAllMocks() wipes it.
+    mockLoadVoiceContext.mockResolvedValue({
+      voiceProfile: "TEST_VOICE",
+      blogStructure: "TEST_STRUCTURE",
+      fewShots: [],
+      usedFallback: { voice: false, structure: false },
+    })
 
     jobUpdate = vi.fn().mockResolvedValue(undefined)
     blogInsertSelectSingle = vi.fn().mockResolvedValue({ data: { id: "post-123" }, error: null })
@@ -50,7 +71,7 @@ describe("handleBlogGeneration — insert flow", () => {
                 status: "pending",
                 input: {
                   prompt: "Test prompt",
-                  tone: "professional",
+                  register: "casual",
                   length: "medium",
                   userId: "user-1",
                   sourceCalendarId: "cal-1",
@@ -97,6 +118,31 @@ describe("handleBlogGeneration — insert flow", () => {
     await handleBlogGeneration("job-1")
     expect(calendarUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ status: "in_progress", reference_id: "post-123" }),
+    )
+  })
+
+  it("loads voice context and uses the composed prompt as the system message", async () => {
+    // Reuse the same fixtures the existing happy-path test uses (the beforeEach
+    // sets up everything we need). Trigger one run, then check our mocks.
+    mockCallAgent.mockResolvedValue({
+      content: {
+        title: "T",
+        slug: "t",
+        excerpt: "e",
+        content: "<p>c</p>",
+        category: "Performance",
+        tags: ["a"],
+        meta_description: "m",
+      },
+      tokens_used: 100,
+    })
+    await handleBlogGeneration("job-1")
+    expect(mockLoadVoiceContext).toHaveBeenCalledTimes(1)
+    expect(mockCallAgent).toHaveBeenCalledWith(
+      "COMPOSED_PROMPT",
+      expect.any(String),
+      expect.anything(),
+      expect.anything(),
     )
   })
 })

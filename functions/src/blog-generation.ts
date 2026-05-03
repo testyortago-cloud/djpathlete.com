@@ -3,62 +3,13 @@ import { z } from "zod"
 import { callAgent, MODEL_SONNET } from "./ai/anthropic.js"
 import { getSupabase } from "./lib/supabase.js"
 import { fetchResearchPapers, formatResearchForPrompt } from "./lib/research.js"
-
-// ─── System Prompt ───────────────────────────────────────────────────────────
-
-const BLOG_GENERATION_PROMPT = `You are an expert content writer for DJP Athlete, a fitness coaching platform run by Darren Paul, a strength & conditioning coach with 20+ years of experience working with athletes at every level.
-
-Your writing style:
-- Professional but approachable — you're a real coach sharing real expertise
-- Evidence-based — reference training principles, sports science concepts
-- Practical — give readers actionable takeaways they can use immediately
-- Engaging — use clear structure with headings, short paragraphs, and varied formatting
-- No fluff, no fads — just what works
-
-Sources and references (MANDATORY):
-- The author may provide their own research material (crawled web pages, notes, uploaded documents). When present, these are your PRIMARY sources — cite from them first and extract key findings, data, and conclusions.
-- Auto-discovered research papers may also be provided. Use them to supplement the author's references or as the main source when no author references exist.
-- You MUST cite from provided sources using their exact URLs.
-- Do NOT invent, guess, or fabricate any DOI links, PubMed URLs, or research paper URLs that were not provided to you.
-- You may ALSO cite well-known organization pages you are confident exist (e.g., WHO fact sheets, NSCA position statements, ACSM guidelines).
-- You MUST include at least 3-4 inline <a href="..."> source references per post, placed naturally where claims are made.
-- The link text should describe what the source says — NEVER just an organization name or "click here".
-- ALWAYS include a "References" or "Further Reading" section at the end with the full title of each cited paper as the link text.
-- IMPORTANT: All URLs will be automatically validated after generation. Any link that returns a 404 will be removed.
-- Example: <p>A <a href="https://doi.org/10.1519/JSC.0000000000004234">2022 systematic review in the Journal of Strength and Conditioning Research</a> confirmed that progressive overload is essential for long-term strength gains.</p>
-
-Content structure:
-- Start with a compelling hook or observation (no heading needed for the intro)
-- Use <h2> for major sections and <h3> for subsections
-- Mix paragraph text with bullet lists and blockquotes for variety
-- End with a practical takeaway or call to reflection
-
-HTML rules — ONLY use these elements:
-<h2>, <h3>, <p>, <ul>, <ol>, <li>, <blockquote>, <strong>, <em>, <u>, <a href="...">
-Do NOT use <h1> (the title serves that purpose).
-Do NOT use inline styles, classes, or <br> tags.
-Use separate <p> tags for each paragraph.
-
-Length guidelines:
-- "short": ~500 words, 3-4 sections
-- "medium": ~1000 words, 5-6 sections
-- "long": ~1500 words, 7-8 sections
-
-Tone guidelines:
-- "professional": Authoritative, data-driven, coach-to-client educational tone
-- "conversational": Friendly, relatable, first-person "I've seen this with my athletes..." style
-- "motivational": Inspiring, empowering, encouraging action and commitment
-
-You must output a JSON object with these fields:
-- title: Compelling, SEO-friendly blog title (max 200 chars)
-- slug: URL-friendly lowercase with hyphens only (max 200 chars)
-- excerpt: Engaging summary that makes readers want to click (10-500 chars)
-- content: Full blog post body as semantic HTML using ONLY the allowed elements above
-- category: One of "Performance", "Recovery", "Coaching", or "Youth Development"
-- tags: Array of 3-5 lowercase keyword tags
-- meta_description: SEO meta description — AIM FOR 140-150 CHARACTERS (hard limit 160). Do NOT exceed 150.
-
-Output ONLY the JSON object, no additional text.`
+import {
+  loadVoiceContext,
+  composeBlogSystemPrompt,
+  formatFewShotsForUserMessage,
+  type Register,
+} from "./blog/voice-context.js"
+import { formatProgramsForPrompt } from "./blog/program-catalog.js"
 
 // ─── URL Validation ─────────────────────────────────────────────────────────
 
@@ -259,16 +210,38 @@ export async function handleBlogGeneration(jobId: string): Promise<void> {
 
   const input = job.input as {
     prompt: string
-    tone?: string
+    tone?: string        // deprecated alias
+    register?: Register  // new
     length?: string
     userId: string
     references?: UserReferences
-    sourceCalendarId?: string  // NEW
+    sourceCalendarId?: string
   }
+
+  // Map deprecated `tone` to `register` for one release.
+  const register: Register = ((): Register => {
+    if (input.register === "formal" || input.register === "casual") return input.register
+    if (input.tone === "professional") return "formal"
+    return "casual"
+  })()
 
   const startTime = Date.now()
 
   try {
+    // Step 0: Load brand voice + structural rules from prompt_templates.
+    const supabase = getSupabase()
+    const voice = await loadVoiceContext(supabase)
+    const programsBlock = formatProgramsForPrompt()
+    const systemPrompt = composeBlogSystemPrompt({
+      voiceProfile: voice.voiceProfile,
+      blogStructure: voice.blogStructure,
+      programsBlock,
+      register,
+    })
+    console.log(
+      `[blog-generation] voice_profile_loaded=${!voice.usedFallback.voice} structure_loaded=${!voice.usedFallback.structure} few_shots=${voice.fewShots.length} register=${register}`,
+    )
+
     // Step 1a: Process user-provided references (crawl URLs, format notes/files)
     let userRefBlock = ""
     let userRefMeta = { urls_crawled: 0, has_notes: false, files: 0 }
@@ -323,13 +296,13 @@ export async function handleBlogGeneration(jobId: string): Promise<void> {
 
     // Step 2: Generate the blog post with all reference context
     // User references come first (primary), auto-research follows (supplementary)
+    const fewShotBlock = formatFewShotsForUserMessage(voice.fewShots)
     const userMessage = `Write a blog post about: ${input.prompt}
 
-Tone: ${input.tone ?? "professional"}
-Target length: ${input.length ?? "medium"}
-Current date: ${new Date().toISOString().slice(0, 10)}${userRefBlock}${researchBlock}`
+Length: ${input.length ?? "medium"}
+Current date: ${new Date().toISOString().slice(0, 10)}${userRefBlock}${researchBlock}${fewShotBlock}`
 
-    const result = await callAgent(BLOG_GENERATION_PROMPT, userMessage, blogResultSchema, { model: MODEL_SONNET })
+    const result = await callAgent(systemPrompt, userMessage, blogResultSchema, { model: MODEL_SONNET })
 
     // Check cancellation after AI call
     if (await isJobCancelled(jobRef)) {
@@ -340,8 +313,6 @@ Current date: ${new Date().toISOString().slice(0, 10)}${userRefBlock}${researchB
     // Step 3: Validate all URLs in the generated content — remove any 404s
     const validatedContent = await validateUrls(result.content.content)
     const finalResult = { ...result.content, content: validatedContent }
-
-    const supabase = getSupabase()
 
     // Log generation (non-fatal)
     try {
