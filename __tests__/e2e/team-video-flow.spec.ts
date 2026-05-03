@@ -58,6 +58,28 @@ test.describe("Team video review flow", () => {
     await adminPage.goto(`/admin/team-videos/${submissionId}`)
     await expect(adminPage.getByRole("heading", { level: 1 })).toBeVisible()
 
+    // Optional: enable drawing mode and create one annotated comment.
+    // Skipped if the "Draw on frame" button isn't visible (e.g., the player
+    // hasn't loaded video metadata yet — Playwright will retry up to default timeout).
+    const drawButton = adminPage.getByRole("button", { name: /draw on frame/i })
+    if (await drawButton.isVisible({ timeout: 5000 }).catch(() => false)) {
+      await drawButton.click()
+      // Click the red color (it's the default but click anyway to assert it's wired)
+      await adminPage.getByLabel(/red color/i).click()
+      // Drag across the video container to draw something
+      const videoBox = await adminPage.locator("video").first().boundingBox()
+      if (videoBox) {
+        await adminPage.mouse.move(videoBox.x + 50, videoBox.y + 50)
+        await adminPage.mouse.down()
+        await adminPage.mouse.move(videoBox.x + 200, videoBox.y + 200, { steps: 10 })
+        await adminPage.mouse.up()
+      }
+      // Type a comment text and submit
+      await adminPage.getByPlaceholder(/comment at current time/i).fill("E2E annotated note")
+      await adminPage.getByRole("button", { name: /^add comment$/i }).click()
+      await expect(adminPage.getByText("E2E annotated note")).toBeVisible()
+    }
+
     await adminPage.getByRole("button", { name: /^approve$/i }).click()
     await expect(adminPage.getByText(/Submission approved/i)).toBeVisible()
 
