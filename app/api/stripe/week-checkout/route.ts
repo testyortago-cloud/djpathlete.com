@@ -5,6 +5,8 @@ import { getWeekAccess } from "@/lib/db/week-access"
 import { getAssignmentById } from "@/lib/db/assignments"
 import { getProgramById } from "@/lib/db/programs"
 import { createWeekCheckoutSession } from "@/lib/stripe"
+import { parseAttrCookie } from "@/lib/marketing/cookies"
+import { getUnclaimedAttribution } from "@/lib/db/marketing-attribution"
 
 export async function POST(request: Request) {
   try {
@@ -47,6 +49,13 @@ export async function POST(request: Request) {
 
     const program = await getProgramById(assignment.program_id)
 
+    // Resolve visitor tracking params from djp_attr cookie
+    const sessionId = parseAttrCookie(request.headers.get("cookie"))
+    const attr = sessionId ? await getUnclaimedAttribution(sessionId).catch(() => null) : null
+    const tracking = attr
+      ? { gclid: attr.gclid, gbraid: attr.gbraid, wbraid: attr.wbraid, fbclid: attr.fbclid }
+      : undefined
+
     const checkoutSession = await createWeekCheckoutSession({
       programName: program.name,
       weekNumber,
@@ -54,6 +63,7 @@ export async function POST(request: Request) {
       userId: session.user.id,
       assignmentId,
       weekAccessId: weekAccess.id,
+      tracking,
     })
 
     return NextResponse.json({ url: checkoutSession.url })

@@ -5,6 +5,8 @@ import { createSignup } from "@/lib/db/event-signups"
 import { getActiveDocument } from "@/lib/db/legal-documents"
 import { createEventCheckoutSession } from "@/lib/stripe"
 import { createServiceRoleClient } from "@/lib/supabase"
+import { parseAttrCookie } from "@/lib/marketing/cookies"
+import { getUnclaimedAttribution } from "@/lib/db/marketing-attribution"
 
 function getBaseUrl() {
   return process.env.NEXTAUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
@@ -51,11 +53,26 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
     const userAgent = request.headers.get("user-agent") || null
     const { waiver_accepted: _waiver_accepted, ...signupInput } = parsed.data
 
-    const signup = await createSignup(id, signupInput, "paid", {
-      document_id: waiverDoc?.id ?? null,
-      ip_address: ipAddress,
-      user_agent: userAgent,
-    })
+    // Resolve visitor tracking params from djp_attr cookie BEFORE creating the
+    // signup row so gclid is persisted on event_signups (not just on the
+    // downstream payments row from the Stripe webhook).
+    const attrSessionId = parseAttrCookie(request.headers.get("cookie"))
+    const attrRow = attrSessionId ? await getUnclaimedAttribution(attrSessionId).catch(() => null) : null
+    const tracking = attrRow
+      ? { gclid: attrRow.gclid, gbraid: attrRow.gbraid, wbraid: attrRow.wbraid, fbclid: attrRow.fbclid }
+      : undefined
+
+    const signup = await createSignup(
+      id,
+      signupInput,
+      "paid",
+      {
+        document_id: waiverDoc?.id ?? null,
+        ip_address: ipAddress,
+        user_agent: userAgent,
+      },
+      tracking,
+    )
 
     let session
     try {
@@ -64,6 +81,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
         signup,
         parentEmail: parsed.data.parent_email,
         baseUrl: getBaseUrl(),
+        tracking,
       })
     } catch (err) {
       console.error("[api/events/checkout] Stripe error", err)

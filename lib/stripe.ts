@@ -13,9 +13,33 @@ function getBaseUrl() {
   )
 }
 
+// ─── Shared tracking params type ─────────────────────────────────────────────
+
+interface CheckoutTrackingParams {
+  gclid?: string | null
+  gbraid?: string | null
+  wbraid?: string | null
+  fbclid?: string | null
+}
+
+function buildTrackingMetadata(tracking?: CheckoutTrackingParams): Record<string, string> {
+  if (!tracking) return {}
+  return {
+    gclid:  tracking.gclid  ?? "",
+    gbraid: tracking.gbraid ?? "",
+    wbraid: tracking.wbraid ?? "",
+    fbclid: tracking.fbclid ?? "",
+  }
+}
+
 // ─── Existing: One-time checkout (unchanged) ─────────────────────────────────
 
-export async function createCheckoutSession(program: Program, userId: string, returnUrl?: string) {
+export async function createCheckoutSession(
+  program: Program,
+  userId: string,
+  returnUrl?: string,
+  tracking?: CheckoutTrackingParams,
+) {
   const baseUrl = getBaseUrl()
   const successUrl = `${baseUrl}${returnUrl ?? "/programs/success"}?session_id={CHECKOUT_SESSION_ID}`
   const cancelUrl = `${baseUrl}/client/programs/${program.id}`
@@ -38,6 +62,7 @@ export async function createCheckoutSession(program: Program, userId: string, re
     metadata: {
       programId: program.id,
       userId,
+      ...buildTrackingMetadata(tracking),
     },
     success_url: successUrl,
     cancel_url: cancelUrl,
@@ -138,6 +163,7 @@ export async function createSubscriptionCheckoutSession(
   customerId: string,
   userId: string,
   returnUrl?: string,
+  tracking?: CheckoutTrackingParams,
 ) {
   const baseUrl = getBaseUrl()
   const successUrl = `${baseUrl}${returnUrl ?? "/programs/success"}?session_id={CHECKOUT_SESSION_ID}`
@@ -159,6 +185,7 @@ export async function createSubscriptionCheckoutSession(
     metadata: {
       programId: program.id,
       userId,
+      ...buildTrackingMetadata(tracking),
     },
     subscription_data: {
       metadata: {
@@ -183,6 +210,7 @@ export async function createWeekCheckoutSession(opts: {
   assignmentId: string
   weekAccessId: string
   returnUrl?: string
+  tracking?: CheckoutTrackingParams
 }) {
   const baseUrl = getBaseUrl()
   const successUrl = `${baseUrl}${opts.returnUrl ?? "/client/workouts"}?week_paid=${opts.weekNumber}`
@@ -209,6 +237,7 @@ export async function createWeekCheckoutSession(opts: {
       assignmentId: opts.assignmentId,
       weekNumber: String(opts.weekNumber),
       userId: opts.userId,
+      ...buildTrackingMetadata(opts.tracking),
     },
     success_url: successUrl,
     cancel_url: cancelUrl,
@@ -294,6 +323,7 @@ export async function createEventCheckoutSession(opts: {
   signup: EventSignup
   parentEmail: string
   baseUrl: string
+  tracking?: CheckoutTrackingParams
 }): Promise<Stripe.Checkout.Session> {
   if (!opts.event.stripe_price_id) {
     throw new Error("Cannot create checkout: event has no stripe_price_id")
@@ -308,6 +338,7 @@ export async function createEventCheckoutSession(opts: {
       type: "event_signup",
       event_signup_id: opts.signup.id,
       event_id: opts.event.id,
+      ...buildTrackingMetadata(opts.tracking),
     },
     success_url: `${opts.baseUrl}/${segment}/${opts.event.slug}/success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${opts.baseUrl}/${segment}/${opts.event.slug}?checkout=cancelled`,

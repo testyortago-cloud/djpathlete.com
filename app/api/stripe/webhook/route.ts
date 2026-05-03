@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import type Stripe from "stripe"
 import { verifyWebhookSignature, resolveSessionPaymentIntent, stripe } from "@/lib/stripe"
 import { createPayment, getPaymentByStripeId, updatePayment } from "@/lib/db/payments"
+import { findAttributionByEmail } from "@/lib/db/marketing-attribution"
 import { createAssignment, getAssignmentByUserAndProgram, updateAssignment } from "@/lib/db/assignments"
 import { updateWeekAccess, createWeekAccessBulk } from "@/lib/db/week-access"
 import { createSubscription, getSubscriptionByStripeId, updateSubscriptionByStripeId } from "@/lib/db/subscriptions"
@@ -120,6 +121,38 @@ async function tryResolveUserIdFromEmail(email: string | null | undefined): Prom
   }
 }
 
+// ─── Tracking params resolver ────────────────────────────────────────────────
+
+interface TrackingValues {
+  gclid: string | null
+  gbraid: string | null
+  wbraid: string | null
+  fbclid: string | null
+}
+
+async function resolveTrackingParams(
+  sessionMetadata: Record<string, string>,
+  customerEmail: string | null | undefined,
+): Promise<TrackingValues> {
+  // Use || (not ??) so empty strings from Stripe metadata are treated as missing
+  let gclid  = sessionMetadata.gclid  || null
+  let gbraid = sessionMetadata.gbraid || null
+  let wbraid = sessionMetadata.wbraid || null
+  let fbclid = sessionMetadata.fbclid || null
+
+  if (!gclid && customerEmail) {
+    const attr = await findAttributionByEmail(customerEmail).catch(() => null)
+    if (attr) {
+      gclid  = attr.gclid
+      gbraid = gbraid || attr.gbraid
+      wbraid = wbraid || attr.wbraid
+      fbclid = fbclid || attr.fbclid
+    }
+  }
+
+  return { gclid, gbraid, wbraid, fbclid }
+}
+
 // ─── One-time payment (existing logic, extracted) ────────────────────────────
 
 async function handleOneTimeCheckout(session: Stripe.Checkout.Session) {
@@ -134,7 +167,9 @@ async function handleOneTimeCheckout(session: Stripe.Checkout.Session) {
   if (!programId || !userId) {
     const existing = await getPaymentByStripeId(stripePaymentId)
     if (existing) return
-    const resolvedUserId = await tryResolveUserIdFromEmail(session.customer_details?.email)
+    const customerEmail = session.customer_details?.email
+    const resolvedUserId = await tryResolveUserIdFromEmail(customerEmail)
+    const tracking = await resolveTrackingParams(session.metadata ?? {}, customerEmail)
     await createPayment({
       user_id: resolvedUserId,
       stripe_payment_id: stripePaymentId,
@@ -146,8 +181,9 @@ async function handleOneTimeCheckout(session: Stripe.Checkout.Session) {
       metadata: {
         source: "external",
         sessionId: session.id,
-        customerEmail: session.customer_details?.email ?? null,
+        customerEmail: customerEmail ?? null,
       },
+      ...tracking,
     })
     return
   }
@@ -156,6 +192,7 @@ async function handleOneTimeCheckout(session: Stripe.Checkout.Session) {
   const existing = await getPaymentByStripeId(stripePaymentId)
   if (existing) return
 
+  const tracking = await resolveTrackingParams(session.metadata ?? {}, session.customer_details?.email)
   await createPayment({
     user_id: userId,
     stripe_payment_id: stripePaymentId,
@@ -165,6 +202,7 @@ async function handleOneTimeCheckout(session: Stripe.Checkout.Session) {
     status: "succeeded",
     description: `Program purchase`,
     metadata: { programId },
+    ...tracking,
   })
 
   // Check for existing pending assignment (admin-assigned, awaiting payment)
@@ -231,6 +269,7 @@ async function handleWeekAccessCheckout(session: Stripe.Checkout.Session) {
   })
 
   // Record payment
+  const weekTracking = await resolveTrackingParams(session.metadata ?? {}, session.customer_details?.email)
   await createPayment({
     user_id: userId,
     stripe_payment_id: stripePaymentId,
@@ -244,6 +283,7 @@ async function handleWeekAccessCheckout(session: Stripe.Checkout.Session) {
       assignmentId: session.metadata?.assignmentId,
       weekNumber: session.metadata?.weekNumber,
     },
+    ...weekTracking,
   })
 }
 
@@ -285,6 +325,7 @@ async function handleSubscriptionCheckout(session: Stripe.Checkout.Session) {
     if (stripePaymentId) {
       const existingPayment = await getPaymentByStripeId(stripePaymentId)
       if (!existingPayment) {
+        const extTracking = await resolveTrackingParams(session.metadata ?? {}, session.customer_details?.email)
         await createPayment({
           user_id: resolvedUserId,
           stripe_payment_id: stripePaymentId,
@@ -298,6 +339,7 @@ async function handleSubscriptionCheckout(session: Stripe.Checkout.Session) {
             sessionId: session.id,
             subscriptionId: stripeSubscriptionId,
           },
+          ...extTracking,
         })
       }
     }
@@ -371,6 +413,7 @@ async function handleSubscriptionCheckout(session: Stripe.Checkout.Session) {
   if (stripePaymentId) {
     const existingPayment = await getPaymentByStripeId(stripePaymentId)
     if (!existingPayment) {
+      const subTracking = await resolveTrackingParams(session.metadata ?? {}, session.customer_details?.email)
       await createPayment({
         user_id: userId,
         stripe_payment_id: stripePaymentId,
@@ -380,6 +423,7 @@ async function handleSubscriptionCheckout(session: Stripe.Checkout.Session) {
         status: "succeeded",
         description: `Subscription: ${program.name}`,
         metadata: { programId, subscriptionId: stripeSubscriptionId },
+        ...subTracking,
       })
     }
   }
@@ -419,6 +463,12 @@ async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
         status: "succeeded",
         description: `Subscription renewal`,
         metadata: { programId: sub.program_id, subscriptionId },
+        // Recurring invoice renewals don't have a checkout session; gclid was
+        // captured on the original subscription checkout.
+        gclid: null,
+        gbraid: null,
+        wbraid: null,
+        fbclid: null,
       })
     }
   }

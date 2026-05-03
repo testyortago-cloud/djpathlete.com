@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { createServiceRoleClient } from "@/lib/supabase"
+import { findAttributionByEmail } from "@/lib/db/marketing-attribution"
 
 /**
  * Webhook endpoint for GoHighLevel appointment bookings.
@@ -34,6 +35,10 @@ const bookingSchema = z.object({
   ghl_contact_id: z.string().nullable().optional(),
   ghl_appointment_id: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
+  gclid: z.string().max(200).nullable().optional(),
+  gbraid: z.string().max(200).nullable().optional(),
+  wbraid: z.string().max(200).nullable().optional(),
+  fbclid: z.string().max(200).nullable().optional(),
 })
 
 export async function POST(request: Request) {
@@ -76,6 +81,10 @@ export async function POST(request: Request) {
       ghl_appointment_id:
         raw.ghl_appointment_id ?? raw.ghlAppointmentId ?? raw.appointmentId ?? raw.appointment_id ?? raw.id ?? null,
       notes: raw.notes ?? raw.appointmentNotes ?? raw.appointment_notes ?? null,
+      gclid:  raw.gclid  ?? raw.gcl_id ?? null,
+      gbraid: raw.gbraid ?? null,
+      wbraid: raw.wbraid ?? null,
+      fbclid: raw.fbclid ?? null,
     }
 
     // Map GHL statuses to our schema
@@ -104,6 +113,22 @@ export async function POST(request: Request) {
 
     const supabase = createServiceRoleClient()
     const data = result.data
+
+    let gclid = data.gclid ?? null
+    let gbraid = data.gbraid ?? null
+    let wbraid = data.wbraid ?? null
+    let fbclid = data.fbclid ?? null
+
+    // Email-match fallback if no gclid in payload
+    if (!gclid) {
+      const attr = await findAttributionByEmail(data.contact_email).catch(() => null)
+      if (attr) {
+        gclid = attr.gclid
+        gbraid ||= attr.gbraid
+        wbraid ||= attr.wbraid
+        fbclid ||= attr.fbclid
+      }
+    }
 
     // Upsert by ghl_appointment_id if present (so status updates don't create duplicates)
     if (data.ghl_appointment_id) {
@@ -141,6 +166,10 @@ export async function POST(request: Request) {
       notes: data.notes ?? null,
       ghl_contact_id: data.ghl_contact_id ?? null,
       ghl_appointment_id: data.ghl_appointment_id ?? null,
+      gclid,
+      gbraid,
+      wbraid,
+      fbclid,
     })
 
     if (error) throw error

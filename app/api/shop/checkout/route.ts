@@ -7,6 +7,8 @@ import { getProductById } from "@/lib/db/shop-products"
 import { createOrder, updateOrder } from "@/lib/db/shop-orders"
 import { stripe } from "@/lib/stripe"
 import type { ShopOrderItem } from "@/types/database"
+import { parseAttrCookie } from "@/lib/marketing/cookies"
+import { getUnclaimedAttribution } from "@/lib/db/marketing-attribution"
 
 export async function POST(request: Request) {
   if (!isShopEnabled()) return NextResponse.json({ error: "Not found" }, { status: 404 })
@@ -66,6 +68,10 @@ export async function POST(request: Request) {
   const containsPod = orderItems.some((i) => i.product_type === "pod")
   const hasPodShipping = containsPod && shipping_cents > 0
 
+  // Resolve visitor tracking params from djp_attr cookie
+  const shopAttrSessionId = parseAttrCookie(request.headers.get("cookie"))
+  const shopAttr = shopAttrSessionId ? await getUnclaimedAttribution(shopAttrSessionId).catch(() => null) : null
+
   const origin = new URL(request.url).origin
   const stripeSession = await stripe.checkout.sessions.create({
     mode: "payment",
@@ -105,6 +111,10 @@ export async function POST(request: Request) {
       order_number: order.order_number,
       contains_digital: containsDigital ? "true" : "false",
       contains_pod: containsPod ? "true" : "false",
+      gclid:  shopAttr?.gclid  ?? "",
+      gbraid: shopAttr?.gbraid ?? "",
+      wbraid: shopAttr?.wbraid ?? "",
+      fbclid: shopAttr?.fbclid ?? "",
     },
     success_url: `${origin}/shop/orders/${order.order_number}/thank-you?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${origin}/shop/cart`,
