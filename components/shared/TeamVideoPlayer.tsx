@@ -127,16 +127,24 @@ export const TeamVideoPlayer = forwardRef<TeamVideoPlayerHandle, Props>(function
     }
     const onPlay = () => setPlaying(true)
     const onPause = () => setPlaying(false)
+    const onError = () => {
+      // Suppress overlay when video fails to load — no point measuring an empty frame.
+      setVideoSize({ width: 0, height: 0 })
+    }
     v.addEventListener("timeupdate", onTimeUpdateHandler)
     v.addEventListener("loadedmetadata", onLoadedMeta)
     v.addEventListener("play", onPlay)
     v.addEventListener("pause", onPause)
+    v.addEventListener("error", onError)
     return () => {
       v.removeEventListener("timeupdate", onTimeUpdateHandler)
       v.removeEventListener("loadedmetadata", onLoadedMeta)
       v.removeEventListener("play", onPlay)
       v.removeEventListener("pause", onPause)
+      v.removeEventListener("error", onError)
     }
+  // recompute and setX are stable across renders (refs + useState setters);
+  // only onTimeUpdate is an external callback whose identity matters.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onTimeUpdate])
 
@@ -149,6 +157,8 @@ export const TeamVideoPlayer = forwardRef<TeamVideoPlayerHandle, Props>(function
     // Initial measurement
     recompute()
     return () => ro.disconnect()
+  // recompute closes over refs/setters only — stable across renders.
+  // Re-attach the observer when src changes (new video, new layout cycle).
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [src])
 
