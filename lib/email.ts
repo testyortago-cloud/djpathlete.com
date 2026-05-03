@@ -2000,11 +2000,15 @@ export async function sendTeamInviteEmail(params: {
     </table>
   `
 
-  return resend.emails.send({
+  const { error } = await resend.emails.send({
     from: FROM_EMAIL,
     to,
     cc: ADMIN_CC,
     subject: `${inviterName} invited you to the DJP Athlete team`,
     html: emailLayout(body),
   })
+  if (error) {
+    console.error("Failed to send team invite email:", error)
+    throw new Error("Failed to send email")
+  }
 }
