@@ -155,6 +155,7 @@ export function DrawingCanvas(props: Props) {
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
+        onPointerLeave={onPointerUp}
       >
         <Layer>
           {drawing.paths.map((p, i) => renderPath(p, i, width, height))}

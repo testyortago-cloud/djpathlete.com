@@ -5,18 +5,25 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "sonner"
+import type { DrawingJson } from "@/types/database"
 
 interface Props {
   submissionId: string
   /** Returns the current player time (seconds) when called, or null for general comment. */
   getCurrentTimecode: () => number | null
   onCreated: () => void
+  /** Optional drawing payload. When non-null, posted alongside the comment. */
+  drawing?: DrawingJson | null
+  /** Called after a successful POST so the parent can clear its drawing state. */
+  onAfterSubmit?: () => void
 }
 
 export function CommentEditor({
   submissionId,
   getCurrentTimecode,
   onCreated,
+  drawing,
+  onAfterSubmit,
 }: Props) {
   const router = useRouter()
   const [text, setText] = useState("")
@@ -29,12 +36,19 @@ export function CommentEditor({
     setSubmitting(true)
     try {
       const timecodeSeconds = general ? null : getCurrentTimecode()
+      const body: Record<string, unknown> = {
+        timecodeSeconds,
+        commentText: text.trim(),
+      }
+      if (drawing && drawing.paths.length > 0 && timecodeSeconds != null) {
+        body.annotation = drawing
+      }
       const res = await fetch(
         `/api/admin/team-videos/${submissionId}/comments`,
         {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ timecodeSeconds, commentText: text.trim() }),
+          body: JSON.stringify(body),
         },
       )
       if (!res.ok) {
@@ -43,6 +57,7 @@ export function CommentEditor({
       }
       setText("")
       onCreated()
+      onAfterSubmit?.()
       router.refresh()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Comment failed")
