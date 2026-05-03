@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ArrowLeft } from "lucide-react"
@@ -12,7 +12,7 @@ import {
 } from "@/components/shared/TeamVideoPlayer"
 import { CommentThread } from "@/components/shared/CommentThread"
 import { DrawingCanvas } from "@/components/shared/DrawingCanvas"
-import type { DrawingJson } from "@/types/database"
+import { useVisibleAnnotations } from "@/hooks/useVideoOverlay"
 import { uploadToSignedUrl } from "@/lib/firebase-client-upload"
 import type {
   TeamVideoSubmission,
@@ -32,41 +32,20 @@ export function EditorVideoView({ submission, version, comments, videoUrl }: Pro
   const playerRef = useRef<TeamVideoPlayerHandle>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
-
-  const overlayRef = useRef<HTMLDivElement | null>(null)
-  const [overlaySize, setOverlaySize] = useState({ width: 0, height: 0 })
   const [currentTime, setCurrentTime] = useState(0)
 
-  useEffect(() => {
-    if (!overlayRef.current) return
-    const el = overlayRef.current
-    const ro = new ResizeObserver(() => {
-      setOverlaySize({ width: el.clientWidth, height: el.clientHeight })
-    })
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [videoUrl])
-
-  const VISIBILITY_WINDOW_S = 0.5
-  const visibleAnnotations = comments.filter(
-    (c) =>
-      c.status === "open" &&
-      c.timecode_seconds != null &&
-      c.annotation &&
-      Math.abs(currentTime - c.timecode_seconds) <= VISIBILITY_WINDOW_S,
+  const { visible: visibleAnnotations, merged: mergedView } = useVisibleAnnotations(
+    comments,
+    currentTime,
   )
-  const mergedView: DrawingJson = {
-    paths: visibleAnnotations.flatMap((c) => c.annotation?.paths ?? []),
-  }
 
-  function renderOverlay() {
-    if (overlaySize.width === 0 || overlaySize.height === 0) return null
+  function renderOverlay({ width, height }: { width: number; height: number }) {
     if (visibleAnnotations.length === 0) return null
     return (
       <DrawingCanvas
         mode="view"
-        width={overlaySize.width}
-        height={overlaySize.height}
+        width={width}
+        height={height}
         drawing={mergedView}
       />
     )
@@ -143,7 +122,6 @@ export function EditorVideoView({ submission, version, comments, videoUrl }: Pro
               onMarkerClick={() => {
                 /* parent could scroll thread; v1 just seeks */
               }}
-              videoContainerRef={overlayRef}
               onTimeUpdate={setCurrentTime}
               renderOverlay={renderOverlay}
             />

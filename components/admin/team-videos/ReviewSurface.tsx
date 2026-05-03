@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, Brush } from "lucide-react"
@@ -15,6 +15,7 @@ import { DrawingCanvas } from "@/components/shared/DrawingCanvas"
 import { StatusActions } from "./StatusActions"
 import { CommentEditor } from "./CommentEditor"
 import { DrawingToolbar } from "./DrawingToolbar"
+import { useVisibleAnnotations } from "@/hooks/useVideoOverlay"
 import type {
   TeamVideoSubmission,
   TeamVideoVersion,
@@ -22,8 +23,6 @@ import type {
   DrawingJson,
   DrawingTool,
 } from "@/types/database"
-
-const VISIBILITY_WINDOW_S = 0.5
 
 interface Props {
   submission: TeamVideoSubmission
@@ -35,9 +34,6 @@ interface Props {
 export function ReviewSurface({ submission, version, comments, videoUrl }: Props) {
   const router = useRouter()
   const playerRef = useRef<TeamVideoPlayerHandle>(null)
-  // overlayRef points to the inner video-frame container via videoContainerRef prop on TeamVideoPlayer
-  const overlayRef = useRef<HTMLDivElement | null>(null)
-  const [overlaySize, setOverlaySize] = useState({ width: 0, height: 0 })
   const [currentTime, setCurrentTime] = useState(0)
 
   // Drawing-mode state
@@ -47,28 +43,10 @@ export function ReviewSurface({ submission, version, comments, videoUrl }: Props
   const [strokeWidth, setStrokeWidth] = useState(3)
   const [draftDrawing, setDraftDrawing] = useState<DrawingJson>({ paths: [] })
 
-  // Track the rendered video size so the canvas matches it pixel-for-pixel
-  useEffect(() => {
-    if (!overlayRef.current) return
-    const el = overlayRef.current
-    const ro = new ResizeObserver(() => {
-      setOverlaySize({ width: el.clientWidth, height: el.clientHeight })
-    })
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [videoUrl])
-
-  // Visible annotations: open + timecoded + within window
-  const visibleAnnotations = comments.filter(
-    (c) =>
-      c.status === "open" &&
-      c.timecode_seconds != null &&
-      c.annotation != null &&
-      Math.abs(currentTime - c.timecode_seconds!) <= VISIBILITY_WINDOW_S,
+  const { visible: visibleAnnotations, merged: mergedView } = useVisibleAnnotations(
+    comments,
+    currentTime,
   )
-  const mergedView: DrawingJson = {
-    paths: visibleAnnotations.flatMap((c) => c.annotation?.paths ?? []),
-  }
 
   function startDrawing() {
     playerRef.current?.pause()
@@ -115,16 +93,15 @@ export function ReviewSurface({ submission, version, comments, videoUrl }: Props
     }
   }
 
-  function renderOverlay() {
-    if (overlaySize.width === 0 || overlaySize.height === 0) return null
+  function renderOverlay({ width, height }: { width: number; height: number }) {
     return (
-      <div className="absolute inset-0">
+      <>
         {/* Read-only annotations from existing visible comments */}
         {!drawingMode && visibleAnnotations.length > 0 && (
           <DrawingCanvas
             mode="view"
-            width={overlaySize.width}
-            height={overlaySize.height}
+            width={width}
+            height={height}
             drawing={mergedView}
           />
         )}
@@ -132,8 +109,8 @@ export function ReviewSurface({ submission, version, comments, videoUrl }: Props
         {drawingMode && (
           <DrawingCanvas
             mode="edit"
-            width={overlaySize.width}
-            height={overlaySize.height}
+            width={width}
+            height={height}
             tool={tool}
             color={color}
             strokeWidth={strokeWidth}
@@ -141,7 +118,7 @@ export function ReviewSurface({ submission, version, comments, videoUrl }: Props
             onChange={setDraftDrawing}
           />
         )}
-      </div>
+      </>
     )
   }
 
@@ -179,7 +156,6 @@ export function ReviewSurface({ submission, version, comments, videoUrl }: Props
               comments={comments}
               onTimeUpdate={setCurrentTime}
               renderOverlay={renderOverlay}
-              videoContainerRef={overlayRef}
             />
           ) : (
             <div className="rounded-md border border-dashed bg-muted/40 p-12 text-center text-sm text-muted-foreground">

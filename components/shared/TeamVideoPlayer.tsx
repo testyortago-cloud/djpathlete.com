@@ -24,15 +24,18 @@ interface Props {
   onMarkerClick?: (commentId: string, timecodeSeconds: number) => void
   /** Called on every `timeupdate` event with the current playback position (seconds). */
   onTimeUpdate?: (currentSeconds: number) => void
-  /** Optional render-prop for content that should overlay the <video> element. */
-  renderOverlay?: () => React.ReactNode
   /**
-   * Ref attached to the inner video-frame container (the div wrapping <video> and the
-   * renderOverlay slot). Use this when the parent needs to measure the video frame
-   * for overlay sizing — it excludes the controls bar, so ResizeObserver reports the
-   * correct dimensions for the drawable area.
+   * Optional render-prop for content that should overlay the visible video area.
+   * Receives `{ width, height }` — the pixel dimensions of the actual rendered video
+   * rect (after letterbox / pillarbox computation). The overlay div is already
+   * positioned and sized to match this rect, so consumers should fill it completely
+   * (e.g. a Konva Stage sized to width × height).
+   *
+   * Note: the overlay wrapper has `pointer-events-none` so clicks fall through to
+   * the video element. Override `pointer-events-auto` inside the overlay when you
+   * need to capture input (e.g. a drawing canvas in edit mode).
    */
-  videoContainerRef?: React.RefObject<HTMLDivElement | null>
+  renderOverlay?: (rect: { width: number; height: number }) => React.ReactNode
 }
 
 function fmtTime(s: number): string {
@@ -43,12 +46,15 @@ function fmtTime(s: number): string {
 }
 
 export const TeamVideoPlayer = forwardRef<TeamVideoPlayerHandle, Props>(function TeamVideoPlayer(
-  { src, comments, onMarkerClick, onTimeUpdate, renderOverlay, videoContainerRef }, ref,
+  { src, comments, onMarkerClick, onTimeUpdate, renderOverlay }, ref,
 ) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  const videoFrameRef = useRef<HTMLDivElement | null>(null)
   const [playing, setPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 })
+  const [videoSize, setVideoSize] = useState({ width: 0, height: 0 })
 
   useImperativeHandle(ref, () => ({
     seek(t) {
@@ -83,6 +89,31 @@ export const TeamVideoPlayer = forwardRef<TeamVideoPlayerHandle, Props>(function
     v.currentTime = Math.max(0, Math.min(duration * ratio, duration))
   }
 
+  // Compute the actual rendered video rect inside the 16:9 container.
+  // Re-runs whenever the container resizes OR the video metadata (intrinsic size) loads.
+  function recompute() {
+    const c = videoFrameRef.current
+    const v = videoRef.current
+    if (!c) return
+    const cw = c.clientWidth
+    const ch = c.clientHeight
+    setContainerSize({ width: cw, height: ch })
+    if (!v || !v.videoWidth || !v.videoHeight) {
+      // Metadata not yet loaded — best-effort fallback: treat as full container
+      setVideoSize({ width: cw, height: ch })
+      return
+    }
+    const containerAspect = cw / ch
+    const videoAspect = v.videoWidth / v.videoHeight
+    if (videoAspect >= containerAspect) {
+      // Video wider than container: fills width, letterboxed top/bottom
+      setVideoSize({ width: cw, height: cw / videoAspect })
+    } else {
+      // Video taller than container: fills height, pillarboxed left/right
+      setVideoSize({ width: ch * videoAspect, height: ch })
+    }
+  }
+
   useEffect(() => {
     const v = videoRef.current
     if (!v) return
@@ -90,7 +121,10 @@ export const TeamVideoPlayer = forwardRef<TeamVideoPlayerHandle, Props>(function
       setCurrentTime(v.currentTime)
       onTimeUpdate?.(v.currentTime)
     }
-    const onLoadedMeta = () => setDuration(v.duration)
+    const onLoadedMeta = () => {
+      setDuration(v.duration)
+      recompute()
+    }
     const onPlay = () => setPlaying(true)
     const onPause = () => setPlaying(false)
     v.addEventListener("timeupdate", onTimeUpdateHandler)
@@ -103,14 +137,27 @@ export const TeamVideoPlayer = forwardRef<TeamVideoPlayerHandle, Props>(function
       v.removeEventListener("play", onPlay)
       v.removeEventListener("pause", onPause)
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onTimeUpdate])
+
+  // ResizeObserver on the video-frame container so recompute fires on layout changes
+  useEffect(() => {
+    const c = videoFrameRef.current
+    if (!c) return
+    const ro = new ResizeObserver(recompute)
+    ro.observe(c)
+    // Initial measurement
+    recompute()
+    return () => ro.disconnect()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [src])
 
   const timecodedComments = comments.filter((c) => c.timecode_seconds != null && c.status === "open")
   const progressPct = duration ? (currentTime / duration) * 100 : 0
 
   return (
     <div className="space-y-2">
-      <div ref={videoContainerRef} className="relative overflow-hidden rounded-md bg-black">
+      <div ref={videoFrameRef} className="relative overflow-hidden rounded-md bg-black">
         <video
           ref={videoRef}
           src={src}
@@ -118,9 +165,17 @@ export const TeamVideoPlayer = forwardRef<TeamVideoPlayerHandle, Props>(function
           preload="metadata"
           controls={false}
         />
-        {renderOverlay && (
-          <div className="pointer-events-none absolute inset-0">
-            {renderOverlay()}
+        {renderOverlay && videoSize.width > 0 && (
+          <div
+            className="pointer-events-none absolute"
+            style={{
+              left: (containerSize.width - videoSize.width) / 2,
+              top: (containerSize.height - videoSize.height) / 2,
+              width: videoSize.width,
+              height: videoSize.height,
+            }}
+          >
+            {renderOverlay({ width: videoSize.width, height: videoSize.height })}
           </div>
         )}
       </div>
