@@ -2,19 +2,11 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { createInvite, listInvites } from "@/lib/db/team-invites"
 import { sendTeamInviteEmail } from "@/lib/email"
+import { isPgUniqueViolation } from "@/lib/supabase-errors"
 import { sendInviteSchema } from "@/lib/validators/team-invite"
 
 function getBaseUrl() {
   return process.env.NEXTAUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
-}
-
-function isPgUniqueViolation(err: unknown): boolean {
-  return (
-    typeof err === "object" &&
-    err !== null &&
-    "code" in err &&
-    (err as { code?: string }).code === "23505"
-  )
 }
 
 export async function POST(request: Request) {
@@ -83,6 +75,11 @@ export async function GET() {
   if (session.user.role !== "admin") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
-  const invites = await listInvites()
-  return NextResponse.json({ invites })
+  try {
+    const invites = await listInvites()
+    return NextResponse.json({ invites })
+  } catch (err) {
+    console.error("[invite-list] failed:", err)
+    return NextResponse.json({ error: "Failed to load invites" }, { status: 500 })
+  }
 }
