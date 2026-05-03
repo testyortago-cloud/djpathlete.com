@@ -3,11 +3,8 @@ import { auth } from "@/lib/auth"
 import { createInvite, listInvites } from "@/lib/db/team-invites"
 import { sendTeamInviteEmail } from "@/lib/email"
 import { isPgUniqueViolation } from "@/lib/supabase-errors"
+import { getBaseUrl } from "@/lib/url"
 import { sendInviteSchema } from "@/lib/validators/team-invite"
-
-function getBaseUrl() {
-  return process.env.NEXTAUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
-}
 
 export async function POST(request: Request) {
   const session = await auth()

@@ -2,10 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { getInviteById, rotateInviteToken } from "@/lib/db/team-invites"
 import { sendTeamInviteEmail } from "@/lib/email"
-
-function getBaseUrl() {
-  return process.env.NEXTAUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
-}
+import { getBaseUrl } from "@/lib/url"
 
 export async function POST(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await auth()
@@ -19,6 +16,9 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
     return NextResponse.json({ error: "Invite already accepted" }, { status: 409 })
   }
 
+  // rotateInviteToken cannot trip idx_team_invites_unique_pending_email:
+  // the 409 guard above ensures used_at was already NULL, so this row
+  // was already in the partial-index set before the UPDATE.
   const { token, expiresAt } = await rotateInviteToken(id)
   const inviteUrl = `${getBaseUrl()}/invite/${token}`
   try {
