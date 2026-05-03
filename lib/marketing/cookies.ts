@@ -1,5 +1,3 @@
-import { randomBytes } from "node:crypto"
-
 export const ATTR_COOKIE_NAME = "djp_attr"
 export const ATTR_COOKIE_MAX_AGE = 60 * 60 * 24 * 365 // 1 year in seconds
 
@@ -24,9 +22,25 @@ export function parseAttrCookie(cookieHeader: string | undefined | null): string
 }
 
 /**
+ * base64url-encode a Uint8Array using only globals available in both the
+ * Edge runtime and Node.js (no `Buffer`, no `node:crypto`).
+ */
+function bytesToBase64Url(bytes: Uint8Array): string {
+  let binary = ""
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")
+}
+
+/**
  * Generate a URL-safe session id (~22 chars). Uses 16 random bytes (128 bits
  * of entropy) which is plenty for a non-security-bearing identifier.
+ *
+ * Uses Web Crypto API (`crypto.getRandomValues`) instead of `node:crypto` so
+ * the helper works in Next.js middleware (Edge runtime) AND in API routes /
+ * tests (Node runtime). `crypto` is a global in both environments.
  */
 export function generateSessionId(): string {
-  return randomBytes(16).toString("base64url")
+  const bytes = new Uint8Array(16)
+  crypto.getRandomValues(bytes)
+  return bytesToBase64Url(bytes)
 }

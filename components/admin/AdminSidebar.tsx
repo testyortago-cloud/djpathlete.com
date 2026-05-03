@@ -35,6 +35,7 @@ import {
   TrendingUp,
   Layers,
   PlayCircle,
+  Target,
 } from "lucide-react"
 import { signOut } from "next-auth/react"
 import { cn } from "@/lib/utils"
@@ -114,6 +115,10 @@ function getNavSections(contentStudioOn: boolean): NavSection[] {
         { label: "Analytics", href: "/admin/analytics", icon: BarChart3 },
         { label: "Reviews", href: "/admin/reviews", icon: Star },
       ],
+    },
+    {
+      title: "Ads",
+      items: [{ label: "Google Ads", href: "/admin/ads", icon: Target }],
     },
     {
       title: "Shop",
