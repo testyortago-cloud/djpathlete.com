@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   jobDoc: vi.fn(),
   jobCollection: vi.fn(),
   getAdminFirestore: vi.fn(),
+  proposePrimaryKeyword: vi.fn().mockResolvedValue("youth pitching velocity"),
 }))
 mocks.jobDoc.mockImplementation(() => ({ set: mocks.jobSet, id: "new-job-id" }))
 mocks.jobCollection.mockImplementation(() => ({ doc: mocks.jobDoc }))
@@ -19,6 +20,9 @@ vi.mock("@/lib/db/content-calendar", () => ({
 }))
 vi.mock("@/lib/firebase-admin", () => ({ getAdminFirestore: mocks.getAdminFirestore }))
 vi.mock("firebase-admin/firestore", () => ({ FieldValue: { serverTimestamp: () => "TS" } }))
+vi.mock("@/lib/blog/keyword-proposal", () => ({
+  proposePrimaryKeyword: mocks.proposePrimaryKeyword,
+}))
 
 import { POST } from "@/app/api/admin/blog/generate-from-suggestion/route"
 
@@ -37,6 +41,7 @@ describe("POST /api/admin/blog/generate-from-suggestion", () => {
     mocks.jobDoc.mockImplementation(() => ({ set: mocks.jobSet, id: "new-job-id" }))
     mocks.jobCollection.mockImplementation(() => ({ doc: mocks.jobDoc }))
     mocks.getAdminFirestore.mockImplementation(() => ({ collection: mocks.jobCollection }))
+    mocks.proposePrimaryKeyword.mockResolvedValue("youth pitching velocity")
   })
 
   it("403 when not admin", async () => {
@@ -77,6 +82,7 @@ describe("POST /api/admin/blog/generate-from-suggestion", () => {
           prompt: expect.stringContaining("RFD recovery"),
           register: "formal",
           length: "medium",
+          primary_keyword: "youth pitching velocity",
           userId: "u1",
           sourceCalendarId: "cal-1",
           references: { urls: ["https://example.com/study"] },
@@ -108,5 +114,22 @@ describe("POST /api/admin/blog/generate-from-suggestion", () => {
     expect(res.status).toBe(500)
     const body = await res.json()
     expect(body.error).toMatch(/internal/i)
+  })
+
+  it("calls proposePrimaryKeyword once per request", async () => {
+    mocks.auth.mockResolvedValue({ user: { id: "user-1", role: "admin" } })
+    mocks.getCalendarEntryById.mockResolvedValue({
+      id: "cal-1",
+      entry_type: "topic_suggestion",
+      title: "Topic title",
+      metadata: { summary: "summary" },
+    })
+    const res = await POST(jsonRequest({ calendarId: "cal-1" }))
+    expect(res.status).toBe(202)
+    expect(mocks.proposePrimaryKeyword).toHaveBeenCalledTimes(1)
+    expect(mocks.proposePrimaryKeyword).toHaveBeenCalledWith({
+      title: "Topic title",
+      summary: "summary",
+    })
   })
 })

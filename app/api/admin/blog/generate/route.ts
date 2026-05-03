@@ -46,6 +46,10 @@ const blogGenerateSchema = z.object({
         .default([]),
     })
     .optional(),
+  primary_keyword: z.string().min(2).max(120, "Primary keyword must be under 120 characters"),
+  secondary_keywords: z.array(z.string().min(1).max(120)).max(5).optional().default([]),
+  search_intent: z.enum(["informational", "commercial", "transactional"]).optional(),
+  target_word_count: z.number().int().min(200).max(5000).optional(),
 })
 
 export async function POST(request: NextRequest) {
@@ -75,7 +79,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { prompt, tone, register, length, references } = parsed.data
+    const { prompt, tone, register, length, references, primary_keyword, secondary_keywords, search_intent, target_word_count } = parsed.data
 
     // Resolve register (new field wins over deprecated tone).
     const resolvedRegister: "formal" | "casual" =
@@ -94,6 +98,10 @@ export async function POST(request: NextRequest) {
         prompt,
         register: resolvedRegister,
         length,
+        primary_keyword,
+        secondary_keywords,
+        ...(search_intent ? { search_intent } : {}),
+        ...(target_word_count ? { target_word_count } : {}),
         userId,
         ...(references ? { references } : {}),
       },
