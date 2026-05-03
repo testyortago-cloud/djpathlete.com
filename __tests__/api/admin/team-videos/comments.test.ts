@@ -112,6 +112,33 @@ describe("POST /api/admin/team-videos/[id]/comments", () => {
     expect(createAnnotationForComment).toHaveBeenCalledWith("c1", drawing)
   })
 
+  it("returns 201 with annotationError when annotation persist throws", async () => {
+    ;(auth as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      user: { id: "admin1", role: "admin" },
+    })
+    ;(getSubmissionById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "sub1", status: "in_review",
+    })
+    ;(getCurrentVersion as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "v1" })
+    ;(createComment as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "c1" })
+    ;(createAnnotationForComment as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("db down"),
+    )
+
+    const drawing = {
+      paths: [{ tool: "arrow", color: "#FF3B30", width: 3,
+                points: [[0.1, 0.1], [0.9, 0.9]] }],
+    }
+    const res = await POST(
+      post({ timecodeSeconds: 10, commentText: "Note", annotation: drawing }),
+      { params },
+    )
+    expect(res.status).toBe(201)
+    const json = await res.json()
+    expect(json.comment).toBeDefined()
+    expect(json.annotationError).toBe("db down")
+  })
+
   it("does NOT create annotation when payload is absent", async () => {
     ;(auth as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       user: { id: "admin1", role: "admin" },

@@ -55,6 +55,10 @@ export function CommentEditor({
         const j = await res.json().catch(() => ({}))
         throw new Error(j.error ?? "Comment failed")
       }
+      const result = await res.json().catch(() => ({}))
+      if (result.annotationError) {
+        toast.warning(`Comment posted, but drawing could not be saved: ${result.annotationError}`)
+      }
       setText("")
       onCreated()
       onAfterSubmit?.()

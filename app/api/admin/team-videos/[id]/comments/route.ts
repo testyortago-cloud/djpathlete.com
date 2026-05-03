@@ -43,12 +43,13 @@ export async function POST(
   })
 
   // Persist annotation drawing alongside the comment, if provided.
+  let annotationError: string | undefined
   if (parsed.data.annotation) {
     try {
       await createAnnotationForComment(comment.id, parsed.data.annotation)
     } catch (err) {
       console.error("[comment-annotation] failed to persist:", err)
-      // Don't fail the comment create — the text comment still exists and is useful.
+      annotationError = err instanceof Error ? err.message : "Failed to save drawing"
     }
   }
 
@@ -57,7 +58,7 @@ export async function POST(
     await setSubmissionStatus(submission.id, "in_review")
   }
 
-  return NextResponse.json({ comment }, { status: 201 })
+  return NextResponse.json({ comment, annotationError }, { status: 201 })
 }
 
 export async function GET(
