@@ -1,7 +1,7 @@
 "use client"
 
 import dynamic from "next/dynamic"
-import { useEffect, useRef, useState } from "react"
+import { useRef, useState } from "react"
 import type { KonvaEventObject } from "konva/lib/Node"
 import type { DrawingJson, DrawingPath, DrawingTool } from "@/types/database"
 
@@ -138,11 +138,8 @@ export function DrawingCanvas(props: Props) {
       paths: [...drawingRef.current.paths, draftPath],
     }
     setDraftPath(null)
-    if (mode === "edit") props.onChange(next)
+    props.onChange(next)
   }
-
-  // Re-render when window resizes or container size changes (parent passes new w/h)
-  useEffect(() => { /* width/height props drive reflow */ }, [width, height])
 
   return (
     <div

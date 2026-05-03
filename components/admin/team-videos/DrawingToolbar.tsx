@@ -1,7 +1,7 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
-import { Pencil, ArrowUpRight, Square, X } from "lucide-react"
+import { Pencil, ArrowUpRight, Square, X, type LucideIcon } from "lucide-react"
 import type { DrawingTool } from "@/types/database"
 
 const COLORS = [
@@ -11,7 +11,7 @@ const COLORS = [
   { name: "black",  hex: "#000000" },
 ] as const
 
-const TOOL_BUTTONS: Array<{ tool: DrawingTool; label: string; Icon: typeof Pencil }> = [
+const TOOL_BUTTONS: Array<{ tool: DrawingTool; label: string; Icon: LucideIcon }> = [
   { tool: "pen",       label: "Pen",       Icon: Pencil },
   { tool: "arrow",     label: "Arrow",     Icon: ArrowUpRight },
   { tool: "rectangle", label: "Rectangle", Icon: Square },
