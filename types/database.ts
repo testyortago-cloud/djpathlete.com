@@ -762,6 +762,13 @@ export interface BlogPost {
   primary_keyword: string | null
   secondary_keywords: string[]
   search_intent: "informational" | "commercial" | "transactional" | null
+  faq: FaqEntry[]
+  subcategory: string | null
+}
+
+export interface FaqEntry {
+  question: string
+  answer: string
 }
 
 export interface SeoMetadataInternalLink {

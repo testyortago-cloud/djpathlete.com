@@ -11,6 +11,11 @@ export const inlineImageSchema = z.object({
   height: z.number().int().positive(),
 })
 
+export const faqEntrySchema = z.object({
+  question: z.string().min(5).max(200),
+  answer: z.string().min(20).max(800),
+})
+
 export const blogPostFormSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters").max(200, "Title must be under 200 characters"),
   slug: z
@@ -54,7 +59,15 @@ export const blogPostFormSchema = z.object({
     .nullable()
     .optional()
     .transform((v) => v || null),
+  faq: z.array(faqEntrySchema).max(5).optional().default([]),
+  subcategory: z
+    .string()
+    .max(80, "Subcategory must be under 80 characters")
+    .nullable()
+    .optional()
+    .transform((v) => v || null),
 })
 
 export type BlogPostFormData = z.infer<typeof blogPostFormSchema>
 export type InlineImage = z.infer<typeof inlineImageSchema>
+export type FaqEntry = z.infer<typeof faqEntrySchema>
