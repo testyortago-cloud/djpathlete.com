@@ -2,14 +2,16 @@ import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 import Link from "next/link"
 import NextImage from "next/image"
-import { ArrowLeft, ArrowRight } from "lucide-react"
+import { ArrowLeft } from "lucide-react"
 import { JsonLd } from "@/components/shared/JsonLd"
-import { FadeIn } from "@/components/shared/FadeIn"
 import { getPublishedBlogPostBySlug } from "@/lib/db/blog-posts"
 import { DJP_AUTHOR_PERSON } from "@/lib/brand/author"
 import { TableOfContents } from "@/components/marketing/blog/TableOfContents"
 import { BlogFaqSection } from "@/components/marketing/blog/BlogFaqSection"
 import { RelatedPosts } from "@/components/marketing/blog/RelatedPosts"
+import { ContextualCta } from "@/components/marketing/blog/ContextualCta"
+import { InlinePostNewsletterCapture } from "@/components/marketing/blog/InlinePostNewsletterCapture"
+import { LeadMagnetBlock } from "@/components/marketing/blog/LeadMagnetBlock"
 import type { BlogCategory, FaqEntry } from "@/types/database"
 
 // Revalidate every 60 seconds so edits appear without redeploying
@@ -107,6 +109,17 @@ export default async function BlogPostPage({ params }: Props) {
   const showToc = tocEntries.length >= 2 && wordCount >= 800
   const faqEntries = ((post.faq as FaqEntry[] | null) ?? []) as FaqEntry[]
 
+  const splitAtSecondH2 = (input: string): { before: string; after: string } | null => {
+    const firstH2End = input.indexOf("</h2>")
+    if (firstH2End === -1) return null
+    const secondH2Start = input.indexOf("<h2", firstH2End + 5)
+    if (secondH2Start === -1) return null
+    return { before: input.slice(0, secondH2Start), after: input.slice(secondH2Start) }
+  }
+
+  const splitContent = splitAtSecondH2(html)
+  const showInlineCapture = splitContent !== null
+
   return (
     <>
       <JsonLd data={jsonLdData} />
@@ -156,6 +169,13 @@ export default async function BlogPostPage({ params }: Props) {
         </section>
       )}
 
+      {/* Lead magnet block — renders only when an active magnet matches */}
+      <section className="px-4 sm:px-8 -mt-4 lg:-mt-6">
+        <div className="max-w-3xl mx-auto">
+          <LeadMagnetBlock post={post} />
+        </div>
+      </section>
+
       {/* Article Body + ToC */}
       <section className="py-16 lg:py-24 px-4 sm:px-8 bg-surface">
         <div className="max-w-5xl mx-auto lg:grid lg:grid-cols-[16rem_minmax(0,1fr)] lg:gap-12">
@@ -163,10 +183,17 @@ export default async function BlogPostPage({ params }: Props) {
             {showToc && <TableOfContents entries={tocEntries} />}
           </div>
           <div className="max-w-3xl mx-auto lg:mx-0">
-            <article
-              className="prose prose-lg max-w-none text-muted-foreground prose-headings:font-heading prose-headings:text-primary prose-a:text-primary prose-strong:text-foreground prose-img:rounded-xl prose-h2:scroll-mt-24"
-              dangerouslySetInnerHTML={{ __html: post.content }}
-            />
+            <article className="prose prose-lg max-w-none text-muted-foreground prose-headings:font-heading prose-headings:text-primary prose-a:text-primary prose-strong:text-foreground prose-img:rounded-xl prose-h2:scroll-mt-24">
+              {showInlineCapture && splitContent ? (
+                <>
+                  <div dangerouslySetInnerHTML={{ __html: splitContent.before }} />
+                  <InlinePostNewsletterCapture />
+                  <div dangerouslySetInnerHTML={{ __html: splitContent.after }} />
+                </>
+              ) : (
+                <div dangerouslySetInnerHTML={{ __html: html }} />
+              )}
+            </article>
           </div>
         </div>
       </section>
@@ -193,31 +220,7 @@ export default async function BlogPostPage({ params }: Props) {
       {/* Related posts */}
       <RelatedPosts post={post} />
 
-      {/* CTA */}
-      <section className="py-16 lg:py-24 px-4 sm:px-8">
-        <FadeIn>
-          <div className="max-w-3xl mx-auto text-center">
-            <div className="flex items-center justify-center gap-3 mb-4">
-              <div className="h-px w-8 bg-accent" />
-              <p className="text-sm font-medium text-accent uppercase tracking-widest">Work With Us</p>
-              <div className="h-px w-8 bg-accent" />
-            </div>
-            <h2 className="text-2xl sm:text-3xl font-heading font-semibold text-primary tracking-tight mb-4">
-              Ready to take your performance seriously?
-            </h2>
-            <p className="text-lg text-muted-foreground mb-8">
-              If this resonated, imagine what a coaching relationship built around your specific needs could achieve.
-            </p>
-            <Link
-              href="/contact"
-              className="group inline-flex items-center gap-2 bg-primary text-primary-foreground px-8 py-4 rounded-full text-sm font-semibold hover:bg-primary/90 transition-all hover:shadow-md"
-            >
-              Book Free Consultation
-              <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
-            </Link>
-          </div>
-        </FadeIn>
-      </section>
+      <ContextualCta post={post} />
     </>
   )
 }
