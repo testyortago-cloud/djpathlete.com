@@ -6,7 +6,10 @@ import { ArrowLeft, ArrowRight } from "lucide-react"
 import { JsonLd } from "@/components/shared/JsonLd"
 import { FadeIn } from "@/components/shared/FadeIn"
 import { getPublishedBlogPostBySlug } from "@/lib/db/blog-posts"
-import type { BlogCategory } from "@/types/database"
+import { DJP_AUTHOR_PERSON } from "@/lib/brand/author"
+import { TableOfContents } from "@/components/marketing/blog/TableOfContents"
+import { BlogFaqSection } from "@/components/marketing/blog/BlogFaqSection"
+import type { BlogCategory, FaqEntry } from "@/types/database"
 
 // Revalidate every 60 seconds so edits appear without redeploying
 export const revalidate = 60
@@ -72,11 +75,7 @@ export default async function BlogPostPage({ params }: Props) {
     description: post.meta_description ?? post.excerpt,
     datePublished: post.published_at ?? post.created_at,
     url: `https://djpathlete.com/blog/${post.slug}`,
-    author: {
-      "@type": "Person",
-      name: "Darren J Paul",
-      url: "https://djpathlete.com/about",
-    },
+    author: DJP_AUTHOR_PERSON,
     publisher: {
       "@type": "Organization",
       name: "DJP Athlete",
@@ -86,8 +85,26 @@ export default async function BlogPostPage({ params }: Props) {
     ...(post.cover_image_url && { image: post.cover_image_url }),
   }
 
-  const storedJsonLd = (post.seo_metadata as { json_ld?: Record<string, unknown> } | null)?.json_ld
-  const jsonLdData = storedJsonLd && Object.keys(storedJsonLd).length > 0 ? storedJsonLd : blogPostSchema
+  const storedJsonLd = (post.seo_metadata as { json_ld?: Record<string, unknown> | Record<string, unknown>[] } | null)
+    ?.json_ld
+  const jsonLdData = (() => {
+    if (Array.isArray(storedJsonLd) && storedJsonLd.length > 0) return storedJsonLd
+    if (storedJsonLd && !Array.isArray(storedJsonLd) && Object.keys(storedJsonLd).length > 0) return storedJsonLd
+    return blogPostSchema
+  })()
+
+  const html = post.content as string
+  const tocEntries: { id: string; text: string }[] = []
+  const h2Regex = /<h2\s+[^>]*\bid\s*=\s*"([^"]+)"[^>]*>([\s\S]*?)<\/h2>/g
+  let h2Match: RegExpExecArray | null
+  while ((h2Match = h2Regex.exec(html)) !== null) {
+    const text = h2Match[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()
+    if (text) tocEntries.push({ id: h2Match[1], text })
+  }
+
+  const wordCount = html.replace(/<[^>]+>/g, " ").trim().split(/\s+/).length
+  const showToc = tocEntries.length >= 2 && wordCount >= 800
+  const faqEntries = ((post.faq as FaqEntry[] | null) ?? []) as FaqEntry[]
 
   return (
     <>
@@ -138,15 +155,23 @@ export default async function BlogPostPage({ params }: Props) {
         </section>
       )}
 
-      {/* Article Body */}
+      {/* Article Body + ToC */}
       <section className="py-16 lg:py-24 px-4 sm:px-8 bg-surface">
-        <div className="max-w-3xl mx-auto">
-          <article
-            className="prose prose-lg max-w-none text-muted-foreground prose-headings:font-heading prose-headings:text-primary prose-a:text-primary prose-strong:text-foreground prose-img:rounded-xl"
-            dangerouslySetInnerHTML={{ __html: post.content }}
-          />
+        <div className="max-w-5xl mx-auto lg:grid lg:grid-cols-[16rem_minmax(0,1fr)] lg:gap-12">
+          <div className="lg:block">
+            {showToc && <TableOfContents entries={tocEntries} />}
+          </div>
+          <div className="max-w-3xl mx-auto lg:mx-0">
+            <article
+              className="prose prose-lg max-w-none text-muted-foreground prose-headings:font-heading prose-headings:text-primary prose-a:text-primary prose-strong:text-foreground prose-img:rounded-xl prose-h2:scroll-mt-24"
+              dangerouslySetInnerHTML={{ __html: post.content }}
+            />
+          </div>
         </div>
       </section>
+
+      {/* FAQ */}
+      <BlogFaqSection entries={faqEntries} />
 
       {/* Tags */}
       {post.tags && post.tags.length > 0 && (
