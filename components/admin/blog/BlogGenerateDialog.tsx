@@ -29,10 +29,9 @@ interface BlogGenerateDialogProps {
   initialPrompt?: string
 }
 
-const tones = [
-  { value: "professional", label: "Professional" },
-  { value: "conversational", label: "Conversational" },
-  { value: "motivational", label: "Motivational" },
+const registers = [
+  { value: "formal", label: "Formal", desc: "Tightened, citation-heavy" },
+  { value: "casual", label: "Casual", desc: "Conversational, default" },
 ] as const
 
 const lengths = [
@@ -52,7 +51,7 @@ export function BlogGenerateDialog({ open, onOpenChange, onGenerated, hasExistin
   useEffect(() => {
     if (initialPrompt) setPrompt(initialPrompt)
   }, [initialPrompt])
-  const [tone, setTone] = useState<"professional" | "conversational" | "motivational">("professional")
+  const [register, setRegister] = useState<"formal" | "casual">("casual")
   const [length, setLength] = useState<"short" | "medium" | "long">("medium")
   const [jobId, setJobId] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -120,7 +119,7 @@ export function BlogGenerateDialog({ open, onOpenChange, onGenerated, hasExistin
     setVideos([])
     setSelectedVideoId(null)
     setPrompt("")
-    setTone("professional")
+    setRegister("casual")
     setLength("medium")
     setJobId(null)
     setSubmitting(false)
@@ -271,7 +270,7 @@ export function BlogGenerateDialog({ open, onOpenChange, onGenerated, hasExistin
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           prompt,
-          tone,
+          register,
           length,
           ...(hasReferences
             ? {
@@ -603,24 +602,32 @@ export function BlogGenerateDialog({ open, onOpenChange, onGenerated, hasExistin
               </>
             )}
 
-            {/* Tone — shared between both modes */}
+            {/* Register — shared between both modes */}
             <div>
-              <label className="block text-sm font-semibold text-foreground mb-2">Tone</label>
-              <div className="grid grid-cols-3 gap-0 rounded-lg border border-border overflow-hidden">
-                {tones.map((t, idx) => (
+              <label className="block text-sm font-semibold text-foreground mb-2">Register</label>
+              <div className="grid grid-cols-2 gap-0 rounded-lg border border-border overflow-hidden">
+                {registers.map((r, idx) => (
                   <button
-                    key={t.value}
+                    key={r.value}
                     type="button"
-                    onClick={() => setTone(t.value)}
+                    onClick={() => setRegister(r.value)}
                     className={cn(
                       "px-3 py-2.5 text-sm font-medium transition-all",
-                      idx < tones.length - 1 && "border-r border-border",
-                      tone === t.value
+                      idx < registers.length - 1 && "border-r border-border",
+                      register === r.value
                         ? "bg-primary/10 text-primary"
                         : "bg-white text-muted-foreground hover:bg-surface hover:text-foreground",
                     )}
                   >
-                    {t.label}
+                    {r.label}
+                    <span
+                      className={cn(
+                        "block text-[11px] font-normal mt-0.5",
+                        register === r.value ? "text-primary/70" : "text-muted-foreground",
+                      )}
+                    >
+                      {r.desc}
+                    </span>
                   </button>
                 ))}
               </div>
@@ -696,7 +703,8 @@ export function BlogGenerateDialog({ open, onOpenChange, onGenerated, hasExistin
                       const res = await fetch("/api/admin/blog-posts/generate-from-video", {
                         method: "POST",
                         headers: { "content-type": "application/json" },
-                        body: JSON.stringify({ video_upload_id: selectedVideoId, tone, length }),
+                        // register is sent for Phase 1 consistency; the from-video route currently ignores it
+                        body: JSON.stringify({ video_upload_id: selectedVideoId, register, length }),
                       })
                       if (!res.ok) {
                         const data = await res.json().catch(() => ({}))
