@@ -2012,3 +2012,153 @@ export async function sendTeamInviteEmail(params: {
     throw new Error("Failed to send email")
   }
 }
+
+// ===== Team video review notifications =====
+
+export async function sendVideoUploadedEmail(params: {
+  to: string
+  editorName: string
+  submissionTitle: string
+  reviewUrl: string
+}) {
+  const { to, editorName, submissionTitle, reviewUrl } = params
+  const body = `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr><td style="padding:48px 48px 32px;">
+        <h2 style="margin:0 0 16px; font-family:'Lexend Exa', Georgia, serif; font-size:22px; color:#0E3F50; font-weight:600;">
+          New video for review
+        </h2>
+        <p style="margin:0 0 24px; font-family:'Lexend Deca', Helvetica, Arial, sans-serif; font-size:15px; line-height:1.6; color:#333;">
+          ${editorName} just submitted <strong>${submissionTitle}</strong> for your review.
+        </p>
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+          <tr><td style="background-color:#0E3F50; border-radius:2px;">
+            <a href="${reviewUrl}"
+               style="display:inline-block; padding:14px 28px; font-family:'Lexend Exa', Georgia, serif; font-size:13px; color:#ffffff; text-decoration:none; letter-spacing:2px; text-transform:uppercase;">
+              Open Review
+            </a>
+          </td></tr>
+        </table>
+      </td></tr>
+    </table>
+  `
+  const { error } = await resend.emails.send({
+    from: FROM_EMAIL, to, subject: `New video to review: ${submissionTitle}`,
+    html: emailLayout(body),
+  })
+  if (error) {
+    console.error("Failed to send video uploaded email:", error)
+    throw new Error("Failed to send email")
+  }
+}
+
+export async function sendVideoRevisionRequestedEmail(params: {
+  to: string
+  submissionTitle: string
+  openCommentCount: number
+  reviewUrl: string
+}) {
+  const { to, submissionTitle, openCommentCount, reviewUrl } = params
+  const body = `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr><td style="padding:48px 48px 32px;">
+        <h2 style="margin:0 0 16px; font-family:'Lexend Exa', Georgia, serif; font-size:22px; color:#0E3F50; font-weight:600;">
+          Darren has feedback
+        </h2>
+        <p style="margin:0 0 24px; font-family:'Lexend Deca', Helvetica, Arial, sans-serif; font-size:15px; line-height:1.6; color:#333;">
+          Darren left ${openCommentCount} ${openCommentCount === 1 ? "comment" : "comments"} on
+          <strong>${submissionTitle}</strong>. Open the review to see what to address.
+        </p>
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+          <tr><td style="background-color:#0E3F50; border-radius:2px;">
+            <a href="${reviewUrl}"
+               style="display:inline-block; padding:14px 28px; font-family:'Lexend Exa', Georgia, serif; font-size:13px; color:#ffffff; text-decoration:none; letter-spacing:2px; text-transform:uppercase;">
+              View Feedback
+            </a>
+          </td></tr>
+        </table>
+      </td></tr>
+    </table>
+  `
+  const { error } = await resend.emails.send({
+    from: FROM_EMAIL, to, subject: `Darren has feedback on ${submissionTitle}`,
+    html: emailLayout(body),
+  })
+  if (error) {
+    console.error("Failed to send revision-requested email:", error)
+    throw new Error("Failed to send email")
+  }
+}
+
+export async function sendVideoApprovedEmail(params: {
+  to: string
+  submissionTitle: string
+  reviewUrl: string
+}) {
+  const { to, submissionTitle, reviewUrl } = params
+  const body = `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr><td style="padding:48px 48px 32px;">
+        <h2 style="margin:0 0 16px; font-family:'Lexend Exa', Georgia, serif; font-size:22px; color:#0E3F50; font-weight:600;">
+          Approved
+        </h2>
+        <p style="margin:0 0 24px; font-family:'Lexend Deca', Helvetica, Arial, sans-serif; font-size:15px; line-height:1.6; color:#333;">
+          Darren approved <strong>${submissionTitle}</strong>.
+        </p>
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+          <tr><td style="background-color:#0E3F50; border-radius:2px;">
+            <a href="${reviewUrl}"
+               style="display:inline-block; padding:14px 28px; font-family:'Lexend Exa', Georgia, serif; font-size:13px; color:#ffffff; text-decoration:none; letter-spacing:2px; text-transform:uppercase;">
+              View Submission
+            </a>
+          </td></tr>
+        </table>
+      </td></tr>
+    </table>
+  `
+  const { error } = await resend.emails.send({
+    from: FROM_EMAIL, to, subject: `Darren approved ${submissionTitle}`,
+    html: emailLayout(body),
+  })
+  if (error) {
+    console.error("Failed to send approved email:", error)
+    throw new Error("Failed to send email")
+  }
+}
+
+export async function sendVideoReopenedEmail(params: {
+  to: string
+  submissionTitle: string
+  reviewUrl: string
+}) {
+  const { to, submissionTitle, reviewUrl } = params
+  const body = `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr><td style="padding:48px 48px 32px;">
+        <h2 style="margin:0 0 16px; font-family:'Lexend Exa', Georgia, serif; font-size:22px; color:#0E3F50; font-weight:600;">
+          Submission reopened
+        </h2>
+        <p style="margin:0 0 24px; font-family:'Lexend Deca', Helvetica, Arial, sans-serif; font-size:15px; line-height:1.6; color:#333;">
+          Darren reopened <strong>${submissionTitle}</strong> for revision. Check the comments
+          and upload a new version when ready.
+        </p>
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+          <tr><td style="background-color:#0E3F50; border-radius:2px;">
+            <a href="${reviewUrl}"
+               style="display:inline-block; padding:14px 28px; font-family:'Lexend Exa', Georgia, serif; font-size:13px; color:#ffffff; text-decoration:none; letter-spacing:2px; text-transform:uppercase;">
+              Open Submission
+            </a>
+          </td></tr>
+        </table>
+      </td></tr>
+    </table>
+  `
+  const { error } = await resend.emails.send({
+    from: FROM_EMAIL, to, subject: `Darren reopened ${submissionTitle}`,
+    html: emailLayout(body),
+  })
+  if (error) {
+    console.error("Failed to send reopened email:", error)
+    throw new Error("Failed to send email")
+  }
+}
