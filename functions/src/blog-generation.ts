@@ -231,6 +231,7 @@ export async function handleBlogGeneration(jobId: string): Promise<void> {
     secondary_keywords?: string[]
     search_intent?: "informational" | "commercial" | "transactional"
     target_word_count?: number
+    content_angle?: { mainstream: string; counterframe: string }
     userId: string
     references?: UserReferences
     sourceCalendarId?: string
@@ -268,9 +269,10 @@ export async function handleBlogGeneration(jobId: string): Promise<void> {
       programsBlock,
       register,
       seoTarget,
+      contentAngle: input.content_angle,
     })
     console.log(
-      `[blog-generation] voice_profile_loaded=${!voice.usedFallback.voice} structure_loaded=${!voice.usedFallback.structure} few_shots=${voice.fewShots.length} register=${register} primary_keyword=${seoTarget?.primary_keyword ?? "(none)"} target_words=${targetWordCount}`,
+      `[blog-generation] voice_profile_loaded=${!voice.usedFallback.voice} structure_loaded=${!voice.usedFallback.structure} few_shots=${voice.fewShots.length} register=${register} primary_keyword=${seoTarget?.primary_keyword ?? "(none)"} target_words=${targetWordCount} content_angle=${input.content_angle ? "yes" : "no"}`,
     )
 
     // Step 1a: Process user-provided references (crawl URLs, format notes/files)
