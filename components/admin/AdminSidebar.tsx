@@ -36,6 +36,7 @@ import {
   Layers,
   PlayCircle,
   Target,
+  Users2,
 } from "lucide-react"
 import { signOut } from "next-auth/react"
 import { cn } from "@/lib/utils"
@@ -126,6 +127,10 @@ function getNavSections(contentStudioOn: boolean): NavSection[] {
         { label: "Products", href: "/admin/shop/products", icon: ShoppingBag },
         { label: "Orders", href: "/admin/shop/orders", icon: Package },
       ],
+    },
+    {
+      title: "Team",
+      items: [{ label: "Team", href: "/admin/team", icon: Users2 }],
     },
     {
       title: "Legal",
