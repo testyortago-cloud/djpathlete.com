@@ -104,6 +104,24 @@ const SeoSchema = z.object({
 
 const SYSTEM_PROMPT = `You are an SEO specialist generating structured metadata for a fitness/coaching blog. Output strict JSON matching the schema. Do not fabricate facts — use only what the blog post provides.`
 
+export function buildFaqPageJsonLd(
+  faqEntries: Array<{ question: string; answer: string }>,
+): Record<string, unknown> | null {
+  if (faqEntries.length === 0) return null
+  return {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: faqEntries.map((f) => ({
+      "@type": "Question",
+      name: f.question,
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: f.answer,
+      },
+    })),
+  }
+}
+
 export async function handleSeoEnhance(jobId: string): Promise<void> {
   const firestore = getFirestore()
   const jobRef = firestore.collection("ai_jobs").doc(jobId)
@@ -136,7 +154,7 @@ export async function handleSeoEnhance(jobId: string): Promise<void> {
 
     const { data: postRow, error: postErr } = await supabase
       .from("blog_posts")
-      .select("id, title, slug, excerpt, content, tags, category, published_at, cover_image_url, inline_images")
+      .select("id, title, slug, excerpt, content, tags, category, published_at, cover_image_url, inline_images, faq")
       .eq("id", input.blog_post_id)
       .single()
     if (postErr || !postRow) {
@@ -189,11 +207,17 @@ export async function handleSeoEnhance(jobId: string): Promise<void> {
       })),
     )
 
+    const faqEntries = (postRow.faq as Array<{ question: string; answer: string }> | null) ?? []
+    const faqPageJsonLd = buildFaqPageJsonLd(faqEntries)
+
+    const jsonLdDocs: Record<string, unknown>[] = [seoResult.content.json_ld as Record<string, unknown>]
+    if (faqPageJsonLd) jsonLdDocs.push(faqPageJsonLd)
+
     const seoMetadata = {
       meta_title: seoResult.content.meta_title,
       meta_description: seoResult.content.meta_description,
       keywords: seoResult.content.keywords,
-      json_ld: seoResult.content.json_ld,
+      json_ld: jsonLdDocs,
       internal_link_suggestions: suggestions,
       generated_at: new Date().toISOString(),
     }

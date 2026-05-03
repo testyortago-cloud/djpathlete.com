@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { scoreInternalLinks, buildSeoPrompt } from "../seo-enhance.js"
+import { scoreInternalLinks, buildSeoPrompt, buildFaqPageJsonLd } from "../seo-enhance.js"
 
 describe("seo-enhance helpers", () => {
   const target = {
@@ -60,6 +60,35 @@ describe("seo-enhance helpers", () => {
     expect(prompt).toContain("Recovery")
     // Content should be truncated to ~4000 chars
     expect(prompt.length).toBeLessThan(6500)
+  })
+})
+
+describe("buildFaqPageJsonLd", () => {
+  it("returns null when faq entries array is empty", () => {
+    expect(buildFaqPageJsonLd([])).toBeNull()
+  })
+
+  it("emits FAQPage JSON-LD alongside BlogPosting when faq is populated", () => {
+    const entries = [
+      { question: "What is the Comeback Code?", answer: "A 12-week return-to-sport program." },
+      { question: "Who is it for?", answer: "Athletes recovering from shoulder injuries." },
+    ]
+    const result = buildFaqPageJsonLd(entries)
+    expect(result).not.toBeNull()
+    expect(result!["@context"]).toBe("https://schema.org")
+    expect(result!["@type"]).toBe("FAQPage")
+    const mainEntity = result!.mainEntity as unknown[]
+    expect(mainEntity).toHaveLength(2)
+    expect(mainEntity[0]).toEqual({
+      "@type": "Question",
+      name: "What is the Comeback Code?",
+      acceptedAnswer: { "@type": "Answer", text: "A 12-week return-to-sport program." },
+    })
+    expect(mainEntity[1]).toEqual({
+      "@type": "Question",
+      name: "Who is it for?",
+      acceptedAnswer: { "@type": "Answer", text: "Athletes recovering from shoulder injuries." },
+    })
   })
 })
 
