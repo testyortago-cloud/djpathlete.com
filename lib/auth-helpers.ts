@@ -20,7 +20,8 @@ export async function requireAdmin() {
     redirect("/login")
   }
   if (session.user.role !== "admin") {
-    redirect("/client/dashboard")
+    const home = session.user.role === "editor" ? "/editor" : "/client/dashboard"
+    redirect(home)
   }
   return session
 }
