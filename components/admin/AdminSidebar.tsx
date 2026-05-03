@@ -42,6 +42,10 @@ import { signOut } from "next-auth/react"
 import { cn } from "@/lib/utils"
 import type { LucideIcon } from "lucide-react"
 
+function isHrefActive(pathname: string, href: string): boolean {
+  return pathname === href || pathname.startsWith(href + "/")
+}
+
 interface NavItem {
   label: string
   href: string
@@ -191,7 +195,7 @@ export function AdminSidebar({ contentStudioEnabled = false }: AdminSidebarProps
       <nav className="flex-1 overflow-y-auto sidebar-scroll px-3 py-2 space-y-1">
         {navSections.map((section) => {
           const isOpen = !section.title || openSections[section.title]
-          const hasActiveChild = section.items.some((item) => pathname.startsWith(item.href))
+          const hasActiveChild = section.items.some((item) => isHrefActive(pathname, item.href))
 
           return (
             <div key={section.title || "top"}>
@@ -216,7 +220,7 @@ export function AdminSidebar({ contentStudioEnabled = false }: AdminSidebarProps
                 )}
               >
                 {section.items.map((item) => {
-                  const isActive = pathname.startsWith(item.href)
+                  const isActive = isHrefActive(pathname, item.href)
                   const Icon = item.icon
                   return (
                     <Link
@@ -246,7 +250,7 @@ export function AdminSidebar({ contentStudioEnabled = false }: AdminSidebarProps
           href="/admin/settings"
           className={cn(
             "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
-            pathname.startsWith("/admin/settings")
+            isHrefActive(pathname, "/admin/settings")
               ? "bg-accent text-accent-foreground"
               : "text-white/70 hover:text-white hover:bg-white/10",
           )}

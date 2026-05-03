@@ -32,6 +32,10 @@ import { signOut } from "next-auth/react"
 import { cn } from "@/lib/utils"
 import type { LucideIcon } from "lucide-react"
 
+function isHrefActive(pathname: string, href: string): boolean {
+  return pathname === href || pathname.startsWith(href + "/")
+}
+
 interface NavItem {
   label: string
   href: string
@@ -148,7 +152,7 @@ export function AdminMobileSidebar({ open, onClose }: AdminMobileSidebarProps) {
               )}
               <div className="space-y-0.5">
                 {section.items.map((item) => {
-                  const isActive = pathname.startsWith(item.href)
+                  const isActive = isHrefActive(pathname, item.href)
                   const Icon = item.icon
                   return (
                     <Link
@@ -179,7 +183,7 @@ export function AdminMobileSidebar({ open, onClose }: AdminMobileSidebarProps) {
             onClick={onClose}
             className={cn(
               "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
-              pathname.startsWith("/admin/settings")
+              isHrefActive(pathname, "/admin/settings")
                 ? "bg-accent text-accent-foreground"
                 : "text-white/70 hover:text-white hover:bg-white/10",
             )}
