@@ -192,7 +192,6 @@ export function composeBlogSystemPrompt(args: ComposeArgs): string {
     "# VOICE",
     args.voiceProfile,
     "",
-    "# PROGRAMS",
     args.programsBlock,
   ]
   if (angleBlock) {

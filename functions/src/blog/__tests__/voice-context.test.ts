@@ -204,16 +204,16 @@ describe("voice-context", () => {
       expect(out).not.toContain("# CONTENT ANGLE")
     })
 
-    it("places CONTENT ANGLE between PROGRAMS and SEO TARGET", () => {
+    it("places CONTENT ANGLE between programsBlock and SEO TARGET", () => {
       const out = composeBlogSystemPrompt({
         voiceProfile: "v",
         blogStructure: "s",
-        programsBlock: "p",
+        programsBlock: "PROGRAMS_BLOCK_SENTINEL",
         register: "casual",
         seoTarget: { primary_keyword: "k", secondary_keywords: [], search_intent: null },
         contentAngle: { mainstream: "MAINSTREAM_LINE_TEXT", counterframe: "COUNTERFRAME_LINE_TEXT" },
       })
-      const programsIdx = out.indexOf("PROGRAMS")
+      const programsIdx = out.indexOf("PROGRAMS_BLOCK_SENTINEL")
       const angleIdx = out.indexOf("# CONTENT ANGLE")
       const seoIdx = out.indexOf("# SEO TARGET")
       expect(programsIdx).toBeGreaterThan(-1)
