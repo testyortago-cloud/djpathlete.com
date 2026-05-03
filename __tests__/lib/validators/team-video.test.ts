@@ -139,6 +139,14 @@ describe("createCommentSchema with annotation", () => {
     })
     expect(r.success).toBe(false)
   })
+  it("rejects annotation when timecodeSeconds is null (general comment)", () => {
+    const r = createCommentSchema.safeParse({
+      timecodeSeconds: null, commentText: "x",
+      annotation: { paths: [{ tool: "pen", color: "#000000", width: 2,
+                              points: [[0, 0], [1, 1]] }] },
+    })
+    expect(r.success).toBe(false)
+  })
 })
 
 describe("statusTransitionSchema", () => {

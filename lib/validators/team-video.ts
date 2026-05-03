@@ -61,7 +61,10 @@ export const createCommentSchema = z.object({
   timecodeSeconds: z.number().min(0).nullable(),
   commentText: z.string().trim().min(1, "Comment cannot be empty").max(2000),
   annotation: drawingJsonSchema.optional(),
-})
+}).refine(
+  (d) => !d.annotation || d.timecodeSeconds != null,
+  { message: "annotation requires a timecode", path: ["annotation"] },
+)
 
 export type CreateCommentInput = z.infer<typeof createCommentSchema>
 
