@@ -69,6 +69,26 @@ export async function createDraftForVideo(params: {
   return { id: (data as { id: string }).id }
 }
 
+export async function getRelatedPostsByCategory(args: {
+  category: string
+  excludeId: string
+  limit?: number
+}): Promise<Array<Pick<BlogPost, "id" | "title" | "slug" | "excerpt" | "category" | "cover_image_url" | "published_at">>> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("blog_posts")
+    .select("id, title, slug, excerpt, category, cover_image_url, published_at")
+    .eq("status", "published")
+    .eq("category", args.category)
+    .neq("id", args.excludeId)
+    .order("published_at", { ascending: false })
+    .limit(args.limit ?? 3)
+  if (error) throw error
+  return data as Array<
+    Pick<BlogPost, "id" | "title" | "slug" | "excerpt" | "category" | "cover_image_url" | "published_at">
+  >
+}
+
 export async function getPublishedBlogPostBySlug(slug: string): Promise<BlogPost | null> {
   const supabase = getClient()
   const { data, error } = await supabase
