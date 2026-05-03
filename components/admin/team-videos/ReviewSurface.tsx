@@ -174,15 +174,14 @@ export function ReviewSurface({ submission, version, comments, videoUrl }: Props
       <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
         <div className="space-y-4">
           {videoUrl ? (
-            <div ref={overlayRef} className="relative">
-              <TeamVideoPlayer
-                ref={playerRef}
-                src={videoUrl}
-                comments={comments}
-                onTimeUpdate={setCurrentTime}
-                renderOverlay={renderOverlay}
-              />
-            </div>
+            <TeamVideoPlayer
+              ref={playerRef}
+              src={videoUrl}
+              comments={comments}
+              onTimeUpdate={setCurrentTime}
+              renderOverlay={renderOverlay}
+              videoContainerRef={overlayRef}
+            />
           ) : (
             <div className="rounded-md border border-dashed bg-muted/40 p-12 text-center text-sm text-muted-foreground">
               {version ? "Video upload not finalized." : "No video uploaded yet."}
@@ -227,7 +226,7 @@ export function ReviewSurface({ submission, version, comments, videoUrl }: Props
               getCurrentTimecode={() =>
                 playerRef.current?.getCurrentTime() ?? null
               }
-              onCreated={() => router.refresh()}
+              onCreated={() => {}}
               drawing={drawingMode ? draftDrawing : null}
               onAfterSubmit={cancelDrawing}
             />

@@ -26,6 +26,13 @@ interface Props {
   onTimeUpdate?: (currentSeconds: number) => void
   /** Optional render-prop for content that should overlay the <video> element. */
   renderOverlay?: () => React.ReactNode
+  /**
+   * Ref attached to the inner video-frame container (the div wrapping <video> and the
+   * renderOverlay slot). Use this when the parent needs to measure the video frame
+   * for overlay sizing — it excludes the controls bar, so ResizeObserver reports the
+   * correct dimensions for the drawable area.
+   */
+  videoContainerRef?: React.RefObject<HTMLDivElement | null>
 }
 
 function fmtTime(s: number): string {
@@ -36,7 +43,7 @@ function fmtTime(s: number): string {
 }
 
 export const TeamVideoPlayer = forwardRef<TeamVideoPlayerHandle, Props>(function TeamVideoPlayer(
-  { src, comments, onMarkerClick, onTimeUpdate, renderOverlay }, ref,
+  { src, comments, onMarkerClick, onTimeUpdate, renderOverlay, videoContainerRef }, ref,
 ) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const [playing, setPlaying] = useState(false)
@@ -103,7 +110,7 @@ export const TeamVideoPlayer = forwardRef<TeamVideoPlayerHandle, Props>(function
 
   return (
     <div className="space-y-2">
-      <div className="relative overflow-hidden rounded-md bg-black">
+      <div ref={videoContainerRef} className="relative overflow-hidden rounded-md bg-black">
         <video
           ref={videoRef}
           src={src}
