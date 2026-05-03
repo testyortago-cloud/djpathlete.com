@@ -114,6 +114,27 @@ describe("drawingJsonSchema", () => {
     const r = drawingJsonSchema.safeParse({ paths: [] })
     expect(r.success).toBe(false)
   })
+  it("rejects arrow with more than 2 points", () => {
+    const r = drawingJsonSchema.safeParse({
+      paths: [{ tool: "arrow", color: "#FF3B30", width: 3,
+                points: [[0, 0], [0.5, 0.5], [1, 1]] }],
+    })
+    expect(r.success).toBe(false)
+  })
+  it("rejects rectangle with more than 2 points", () => {
+    const r = drawingJsonSchema.safeParse({
+      paths: [{ tool: "rectangle", color: "#FF3B30", width: 3,
+                points: [[0, 0], [0.5, 0.5], [1, 1]] }],
+    })
+    expect(r.success).toBe(false)
+  })
+  it("accepts pen with many points", () => {
+    const r = drawingJsonSchema.safeParse({
+      paths: [{ tool: "pen", color: "#000000", width: 2,
+                points: [[0, 0], [0.25, 0.25], [0.5, 0.5], [0.75, 0.75], [1, 1]] }],
+    })
+    expect(r.success).toBe(true)
+  })
 })
 
 describe("createCommentSchema with annotation", () => {

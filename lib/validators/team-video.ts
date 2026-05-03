@@ -16,14 +16,27 @@ const ALLOWED_DRAWING_COLORS = [
   "#000000", // black
 ] as const
 
-const drawingPathSchema = z.object({
-  tool: z.enum(["pen", "arrow", "rectangle"]),
-  color: z.enum(ALLOWED_DRAWING_COLORS),
-  width: z.number().int().min(2).max(8),
-  points: z
-    .array(z.tuple([z.number().min(0).max(1), z.number().min(0).max(1)]))
-    .min(2),
-})
+const drawingPathSchema = z
+  .object({
+    tool: z.enum(["pen", "arrow", "rectangle"]),
+    color: z.enum(ALLOWED_DRAWING_COLORS),
+    width: z.number().int().min(2).max(8),
+    points: z
+      .array(z.tuple([z.number().min(0).max(1), z.number().min(0).max(1)]))
+      .min(2),
+  })
+  .superRefine((path, ctx) => {
+    if (
+      (path.tool === "arrow" || path.tool === "rectangle") &&
+      path.points.length !== 2
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `${path.tool} requires exactly 2 points, got ${path.points.length}`,
+        path: ["points"],
+      })
+    }
+  })
 
 export const drawingJsonSchema = z.object({
   paths: z.array(drawingPathSchema).min(1, "At least one path required").max(50),
