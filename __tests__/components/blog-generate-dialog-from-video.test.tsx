@@ -67,6 +67,8 @@ describe("BlogGenerateDialog — From video tab", () => {
     render(<BlogGenerateDialog open={true} onOpenChange={vi.fn()} onGenerated={vi.fn()} />)
     fireEvent.click(screen.getByRole("tab", { name: /from video/i }))
     await screen.findByText(/shoulder rehab/i)
+    // Fill in required primary keyword before submission
+    fireEvent.change(screen.getByPlaceholderText(/youth pitching velocity/i), { target: { value: "shoulder rehab exercises" } })
     fireEvent.click(screen.getByText(/shoulder rehab/i))
     fireEvent.click(screen.getByRole("button", { name: /generate from video/i }))
 

@@ -34,6 +34,12 @@ const registers = [
   { value: "casual", label: "Casual", desc: "Conversational, default" },
 ] as const
 
+const intents = [
+  { value: "informational", label: "Informational" },
+  { value: "commercial", label: "Commercial" },
+  { value: "transactional", label: "Transactional" },
+] as const
+
 const lengths = [
   { value: "short", label: "Short", desc: "~500 words" },
   { value: "medium", label: "Medium", desc: "~1000 words" },
@@ -53,6 +59,10 @@ export function BlogGenerateDialog({ open, onOpenChange, onGenerated, hasExistin
   }, [initialPrompt])
   const [register, setRegister] = useState<"formal" | "casual">("casual")
   const [length, setLength] = useState<"short" | "medium" | "long">("medium")
+  const [primaryKeyword, setPrimaryKeyword] = useState("")
+  const [secondaryKeywords, setSecondaryKeywords] = useState<string[]>([])
+  const [secondaryKeywordInput, setSecondaryKeywordInput] = useState("")
+  const [searchIntent, setSearchIntent] = useState<"informational" | "commercial" | "transactional">("informational")
   const [jobId, setJobId] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [confirmed, setConfirmed] = useState(false)
@@ -131,7 +141,26 @@ export function BlogGenerateDialog({ open, onOpenChange, onGenerated, hasExistin
     setNotes("")
     setRefFiles([])
     setStartError(null)
+    setPrimaryKeyword("")
+    setSecondaryKeywords([])
+    setSecondaryKeywordInput("")
+    setSearchIntent("informational")
     aiJob.reset()
+  }
+
+  function handleAddSecondaryKeyword() {
+    const trimmed = secondaryKeywordInput.trim().toLowerCase()
+    if (!trimmed) return
+    if (secondaryKeywords.length >= 5) {
+      toast.error("Maximum 5 secondary keywords")
+      return
+    }
+    if (secondaryKeywords.includes(trimmed)) {
+      toast.error("Already added")
+      return
+    }
+    setSecondaryKeywords((prev) => [...prev, trimmed])
+    setSecondaryKeywordInput("")
   }
 
   function handleAddUrl() {
@@ -272,6 +301,9 @@ export function BlogGenerateDialog({ open, onOpenChange, onGenerated, hasExistin
           prompt,
           register,
           length,
+          primary_keyword: primaryKeyword.trim(),
+          secondary_keywords: secondaryKeywords,
+          search_intent: searchIntent,
           ...(hasReferences
             ? {
                 references: {
@@ -602,6 +634,101 @@ export function BlogGenerateDialog({ open, onOpenChange, onGenerated, hasExistin
               </>
             )}
 
+            {/* SEO targets — shared between both modes */}
+            <div className="space-y-3 border border-border rounded-lg p-3 bg-surface/30">
+              <p className="text-xs font-semibold text-foreground uppercase tracking-wider">SEO targets</p>
+
+              {/* Primary keyword (required) */}
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-1">
+                  Primary keyword <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={primaryKeyword}
+                  onChange={(e) => setPrimaryKeyword(e.target.value)}
+                  placeholder="e.g., youth pitching velocity"
+                  className="w-full px-2.5 py-1.5 rounded-md border border-border bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                />
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  2-6 word noun phrase. Will be enforced in the title, intro, one h2, and the conclusion.
+                </p>
+              </div>
+
+              {/* Secondary keywords */}
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-1">
+                  Secondary keywords <span className="text-muted-foreground">(optional, max 5)</span>
+                </label>
+                <div className="flex gap-1.5">
+                  <input
+                    type="text"
+                    value={secondaryKeywordInput}
+                    onChange={(e) => setSecondaryKeywordInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault()
+                        handleAddSecondaryKeyword()
+                      }
+                    }}
+                    placeholder="add and press Enter"
+                    className="flex-1 px-2.5 py-1.5 rounded-md border border-border bg-white text-xs focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddSecondaryKeyword}
+                    disabled={!secondaryKeywordInput.trim() || secondaryKeywords.length >= 5}
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-border text-xs font-medium hover:bg-surface transition-colors disabled:opacity-40"
+                  >
+                    Add
+                  </button>
+                </div>
+                {secondaryKeywords.length > 0 && (
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {secondaryKeywords.map((kw, idx) => (
+                      <span
+                        key={idx}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-border text-xs"
+                      >
+                        {kw}
+                        <button
+                          type="button"
+                          onClick={() => setSecondaryKeywords((prev) => prev.filter((_, i) => i !== idx))}
+                          className="text-muted-foreground hover:text-red-500"
+                          aria-label={`Remove ${kw}`}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Search intent */}
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-1">Search intent</label>
+                <div className="grid grid-cols-3 gap-0 rounded-md border border-border overflow-hidden">
+                  {intents.map((i, idx) => (
+                    <button
+                      key={i.value}
+                      type="button"
+                      onClick={() => setSearchIntent(i.value)}
+                      className={cn(
+                        "px-2 py-1.5 text-xs font-medium transition-all",
+                        idx < intents.length - 1 && "border-r border-border",
+                        searchIntent === i.value
+                          ? "bg-primary/10 text-primary"
+                          : "bg-white text-muted-foreground hover:bg-surface hover:text-foreground",
+                      )}
+                    >
+                      {i.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
             {/* Register — shared between both modes */}
             <div>
               <label className="block text-sm font-semibold text-foreground mb-2">Register</label>
@@ -695,7 +822,7 @@ export function BlogGenerateDialog({ open, onOpenChange, onGenerated, hasExistin
 
                 <button
                   type="button"
-                  disabled={!selectedVideoId}
+                  disabled={!selectedVideoId || primaryKeyword.trim().length < 2}
                   onClick={async () => {
                     if (!selectedVideoId) return
                     setStartError(null)
@@ -704,7 +831,14 @@ export function BlogGenerateDialog({ open, onOpenChange, onGenerated, hasExistin
                         method: "POST",
                         headers: { "content-type": "application/json" },
                         // register is sent for Phase 1 consistency; the from-video route currently ignores it
-                        body: JSON.stringify({ video_upload_id: selectedVideoId, register, length }),
+                        body: JSON.stringify({
+                          video_upload_id: selectedVideoId,
+                          register,
+                          length,
+                          primary_keyword: primaryKeyword.trim(),
+                          secondary_keywords: secondaryKeywords,
+                          search_intent: searchIntent,
+                        }),
                       })
                       if (!res.ok) {
                         const data = await res.json().catch(() => ({}))
@@ -737,7 +871,7 @@ export function BlogGenerateDialog({ open, onOpenChange, onGenerated, hasExistin
               <button
                 type="button"
                 onClick={handleGenerate}
-                disabled={prompt.length < 10 || submitting}
+                disabled={prompt.length < 10 || primaryKeyword.trim().length < 2 || submitting}
                 className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-all disabled:opacity-40 disabled:cursor-not-allowed mt-1"
               >
                 {submitting ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
