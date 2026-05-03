@@ -51,7 +51,7 @@ export function InviteClaimForm({ token, email }: { token: string; email: string
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
       {serverError && (
-        <div className="rounded border border-error/40 bg-error/10 px-3 py-2 text-sm text-error">
+        <div role="alert" className="rounded border border-error/40 bg-error/10 px-3 py-2 text-sm text-error">
           {serverError}
         </div>
       )}

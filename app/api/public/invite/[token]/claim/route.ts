@@ -3,6 +3,7 @@ import { hash } from "bcryptjs"
 import { getInviteByToken, inviteStatus, markInviteUsed } from "@/lib/db/team-invites"
 import { getUserByEmail, createUser } from "@/lib/db/users"
 import { claimInviteSchema } from "@/lib/validators/team-invite"
+import { isPgUniqueViolation } from "@/lib/supabase-errors"
 
 export async function POST(
   request: Request,
@@ -44,13 +45,24 @@ export async function POST(
   }
 
   const password_hash = await hash(parsed.data.password, 12)
-  const user = await createUser({
-    email: invite.email,
-    password_hash,
-    first_name: parsed.data.firstName,
-    last_name: parsed.data.lastName,
-    role: invite.role, // 'editor'
-  })
+  let user
+  try {
+    user = await createUser({
+      email: invite.email,
+      password_hash,
+      first_name: parsed.data.firstName,
+      last_name: parsed.data.lastName,
+      role: invite.role, // 'editor'
+    })
+  } catch (err) {
+    if (isPgUniqueViolation(err)) {
+      return NextResponse.json(
+        { error: "An account with this email already exists. Please sign in instead." },
+        { status: 409 },
+      )
+    }
+    throw err
+  }
 
   await markInviteUsed(invite.id)
 
