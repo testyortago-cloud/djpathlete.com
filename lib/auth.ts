@@ -3,6 +3,7 @@ import Credentials from "next-auth/providers/credentials"
 import { compare } from "bcryptjs"
 import { createServiceRoleClient } from "@/lib/supabase"
 import { decode as defaultDecode } from "next-auth/jwt"
+import type { UserRole } from "@/types/database"
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
@@ -68,7 +69,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       // On initial sign-in, set id and role from the authorize() return
       if (user) {
         token.id = user.id as string
-        token.role = user.role as "admin" | "client"
+        token.role = user.role as UserRole
       }
 
       // On session update or subsequent requests, refresh from DB
@@ -81,7 +82,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             .eq("id", token.id)
             .single()
           if (data) {
-            token.role = data.role as "admin" | "client"
+            token.role = data.role as UserRole
             token.name = `${data.first_name} ${data.last_name}`
             token.email = data.email
           }

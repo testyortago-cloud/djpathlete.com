@@ -1,4 +1,4 @@
-export type UserRole = "admin" | "client"
+export type UserRole = "admin" | "client" | "editor"
 export type UserStatus = "active" | "inactive" | "suspended"
 export type ExerciseCategory =
   | "strength"
@@ -118,6 +118,21 @@ export interface User {
   marketing_consent_at: string | null
   marketing_consent_source: string | null
 }
+
+export type TeamInviteRole = "editor"
+
+export interface TeamInvite {
+  id: string
+  email: string
+  role: TeamInviteRole
+  token: string
+  invited_by: string | null
+  expires_at: string
+  used_at: string | null
+  created_at: string
+}
+
+export type TeamInviteStatus = "pending" | "accepted" | "expired" | "revoked"
 
 export type TimeEfficiencyPreference = "supersets_circuits" | "shorter_rest" | "fewer_heavier" | "extend_session"
 export type TrainingTechnique =
