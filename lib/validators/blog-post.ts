@@ -2,6 +2,15 @@ import { z } from "zod"
 
 export const BLOG_CATEGORIES = ["Performance", "Recovery", "Coaching", "Youth Development"] as const
 
+export const inlineImageSchema = z.object({
+  url: z.string().url(),
+  alt: z.string().max(180),
+  prompt: z.string(),
+  section_h2: z.string(),
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+})
+
 export const blogPostFormSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters").max(200, "Title must be under 200 characters"),
   slug: z
@@ -28,6 +37,8 @@ export const blogPostFormSchema = z.object({
     .nullable()
     .optional()
     .transform((v) => v || null),
+  inline_images: z.array(inlineImageSchema).optional().default([]),
 })
 
 export type BlogPostFormData = z.infer<typeof blogPostFormSchema>
+export type InlineImage = z.infer<typeof inlineImageSchema>

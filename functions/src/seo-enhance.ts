@@ -65,23 +65,31 @@ interface BuildSeoPromptParams {
   content: string
   tags: string[]
   category: string | null
+  cover_image_url: string | null
+  inline_images: Array<{ url: string; alt: string; width: number; height: number }>
 }
 
 export function buildSeoPrompt(p: BuildSeoPromptParams): string {
   const tagLine = p.tags.length > 0 ? `Tags: ${p.tags.join(", ")}` : ""
   const catLine = p.category ? `Category: ${p.category}` : ""
+  const heroLine = p.cover_image_url ? `Hero image URL: ${p.cover_image_url}` : ""
+  const inlineLines = p.inline_images.length
+    ? "Inline images:\n" + p.inline_images.map((i) => `  - ${i.url} (${i.width}x${i.height}, alt: ${i.alt})`).join("\n")
+    : ""
   return [
     "# BLOG POST",
     `Title: ${p.title}`,
     `Excerpt: ${p.excerpt}`,
     tagLine,
     catLine,
+    heroLine,
+    inlineLines,
     "",
     "# CONTENT (first 4000 chars)",
     p.content.slice(0, 4000),
     "",
     "# INSTRUCTIONS",
-    "Generate SEO metadata for this post. Output a JSON object with: meta_title (<=60 chars), meta_description (<=155 chars), keywords (5-10 lowercase), json_ld (schema.org Article object with at least @context, @type, headline, description, author { @type: Person, name: 'Darren Paul' }, datePublished).",
+    "Generate SEO metadata for this post. Output a JSON object with: meta_title (<=60 chars), meta_description (<=155 chars), keywords (5-10 lowercase), json_ld (schema.org Article object with at least @context, @type, headline, description, author { @type: Person, name: 'Darren Paul' }, datePublished, AND an `image` field — if a hero URL is provided above, use it; if inline images are provided, include them as an array of ImageObject with url, width, height, caption=alt).",
   ]
     .filter(Boolean)
     .join("\n")
@@ -128,7 +136,7 @@ export async function handleSeoEnhance(jobId: string): Promise<void> {
 
     const { data: postRow, error: postErr } = await supabase
       .from("blog_posts")
-      .select("id, title, slug, excerpt, content, tags, category, published_at")
+      .select("id, title, slug, excerpt, content, tags, category, published_at, cover_image_url, inline_images")
       .eq("id", input.blog_post_id)
       .single()
     if (postErr || !postRow) {
@@ -142,6 +150,13 @@ export async function handleSeoEnhance(jobId: string): Promise<void> {
       content: (postRow.content as string) ?? "",
       tags: (postRow.tags as string[]) ?? [],
       category: (postRow.category as string | null) ?? null,
+      cover_image_url: (postRow.cover_image_url as string | null) ?? null,
+      inline_images: ((postRow.inline_images as unknown) as Array<{
+        url: string
+        alt: string
+        width: number
+        height: number
+      }>) ?? [],
     })
 
     const seoResult = await callAgent(SYSTEM_PROMPT, seoPrompt, SeoSchema, { model: MODEL_SONNET })

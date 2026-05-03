@@ -62,9 +62,10 @@ interface TopicCardProps {
   entry: ContentCalendarEntry
   isHero: boolean
   draftBlog: (entry: ContentCalendarEntry) => void
+  generatePost: (entry: ContentCalendarEntry) => Promise<void>
 }
 
-function TopicCard({ entry, isHero, draftBlog }: TopicCardProps) {
+function TopicCard({ entry, isHero, draftBlog, generatePost }: TopicCardProps) {
   const [expanded, setExpanded] = useState(false)
   const meta = metadataOf(entry)
   const host = hostFromUrl(meta.tavily_url)
@@ -176,6 +177,15 @@ function TopicCard({ entry, isHero, draftBlog }: TopicCardProps) {
           <Sparkles className="size-3.5" />
           Draft blog
         </button>
+        <button
+          type="button"
+          onClick={() => generatePost(entry)}
+          className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md bg-accent text-white hover:bg-accent/90 transition-colors"
+          title="Generate full post + images via AI"
+        >
+          <Sparkles className="size-3.5" />
+          Generate post
+        </button>
         {meta.tavily_url && (
           <a
             href={meta.tavily_url}
@@ -227,6 +237,26 @@ export function TopicSuggestionsList({ suggestions }: TopicSuggestionsListProps)
     const meta = metadataOf(entry)
     const promptLines = [entry.title, meta.summary].filter(Boolean).join("\n\n")
     router.push(`/admin/blog/new?prompt=${encodeURIComponent(promptLines)}`)
+  }
+
+  async function generatePost(entry: ContentCalendarEntry) {
+    try {
+      const res = await fetch("/api/admin/blog/generate-from-suggestion", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ calendarId: entry.id }),
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        alert(`Failed to enqueue: ${json.error ?? res.status}`)
+        return
+      }
+      // Optimistic UX: send admin to the blog list; the post will appear as a draft when generation completes.
+      router.push("/admin/blog?just_queued=1")
+      router.refresh()
+    } catch (err) {
+      alert(`Network error: ${(err as Error).message}`)
+    }
   }
 
   if (suggestions.length === 0) {
@@ -290,6 +320,7 @@ export function TopicSuggestionsList({ suggestions }: TopicSuggestionsListProps)
                 entry={t}
                 isHero={false}
                 draftBlog={draftBlog}
+                generatePost={generatePost}
               />
             ))}
           </div>
@@ -324,6 +355,7 @@ export function TopicSuggestionsList({ suggestions }: TopicSuggestionsListProps)
                 entry={t}
                 isHero={idx === 0}
                 draftBlog={draftBlog}
+                generatePost={generatePost}
               />
             ))}
           </div>
@@ -364,6 +396,7 @@ export function TopicSuggestionsList({ suggestions }: TopicSuggestionsListProps)
                         entry={t}
                         isHero={false}
                         draftBlog={draftBlog}
+                        generatePost={generatePost}
                       />
                     ))}
                   </div>
