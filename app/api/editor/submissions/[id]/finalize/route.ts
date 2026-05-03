@@ -8,6 +8,10 @@ import {
   finalizeVersion,
   getCurrentVersion,
 } from "@/lib/db/team-video-versions"
+import { sendVideoUploadedEmail } from "@/lib/email"
+import { getBaseUrl } from "@/lib/url"
+import { createServiceRoleClient } from "@/lib/supabase"
+import type { User } from "@/types/database"
 
 export async function POST(
   _request: Request,
@@ -36,7 +40,28 @@ export async function POST(
   await finalizeVersion(version.id)
   await setSubmissionStatus(submission.id, "submitted")
 
-  // TODO(Task 22): send "new video uploaded" email to admin
+  try {
+    const supabase = createServiceRoleClient()
+    const { data: admins } = await supabase
+      .from("users")
+      .select("email, first_name")
+      .eq("role", "admin")
+    if (admins && admins.length > 0) {
+      const editorName = session.user.name ?? "Your editor"
+      await Promise.all(
+        (admins as Array<Pick<User, "email" | "first_name">>).map((a) =>
+          sendVideoUploadedEmail({
+            to: a.email,
+            editorName,
+            submissionTitle: submission.title,
+            reviewUrl: `${getBaseUrl()}/admin/team-videos/${submission.id}`,
+          }),
+        ),
+      )
+    }
+  } catch (err) {
+    console.error("[finalize-email] failed:", err)
+  }
 
   return NextResponse.json({ ok: true })
 }

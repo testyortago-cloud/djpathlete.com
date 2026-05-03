@@ -4,6 +4,15 @@ import {
   getSubmissionById, setSubmissionStatus, approveSubmission, reopenSubmission,
 } from "@/lib/db/team-video-submissions"
 import { statusTransitionSchema } from "@/lib/validators/team-video"
+import {
+  sendVideoApprovedEmail,
+  sendVideoReopenedEmail,
+  sendVideoRevisionRequestedEmail,
+} from "@/lib/email"
+import { getBaseUrl } from "@/lib/url"
+import { getUserById } from "@/lib/db/users"
+import { getCurrentVersion } from "@/lib/db/team-video-versions"
+import { countOpenCommentsForVersion } from "@/lib/db/team-video-comments"
 
 export async function POST(
   request: Request,
@@ -32,7 +41,16 @@ export async function POST(
         return NextResponse.json({ error: "Submission is locked" }, { status: 409 })
       }
       await approveSubmission(submission.id, session.user.id)
-      // TODO(Task 22): send "approved" email to editor
+      try {
+        const editor = await getUserById(submission.submitted_by)
+        if (editor?.email) {
+          await sendVideoApprovedEmail({
+            to: editor.email,
+            submissionTitle: submission.title,
+            reviewUrl: `${getBaseUrl()}/editor/videos/${submission.id}`,
+          })
+        }
+      } catch (err) { console.error("[approve-email] failed:", err) }
       return NextResponse.json({ ok: true })
 
     case "request_revision":
@@ -43,7 +61,19 @@ export async function POST(
         )
       }
       await setSubmissionStatus(submission.id, "revision_requested")
-      // TODO(Task 22): send "revision requested" email to editor
+      try {
+        const editor = await getUserById(submission.submitted_by)
+        const version = await getCurrentVersion(submission.id)
+        const openCount = version ? await countOpenCommentsForVersion(version.id) : 0
+        if (editor?.email) {
+          await sendVideoRevisionRequestedEmail({
+            to: editor.email,
+            submissionTitle: submission.title,
+            openCommentCount: openCount,
+            reviewUrl: `${getBaseUrl()}/editor/videos/${submission.id}`,
+          })
+        }
+      } catch (err) { console.error("[revision-email] failed:", err) }
       return NextResponse.json({ ok: true })
 
     case "reopen":
@@ -54,7 +84,16 @@ export async function POST(
         )
       }
       await reopenSubmission(submission.id)
-      // TODO(Task 22): send "reopened" email to editor
+      try {
+        const editor = await getUserById(submission.submitted_by)
+        if (editor?.email) {
+          await sendVideoReopenedEmail({
+            to: editor.email,
+            submissionTitle: submission.title,
+            reviewUrl: `${getBaseUrl()}/editor/videos/${submission.id}`,
+          })
+        }
+      } catch (err) { console.error("[reopen-email] failed:", err) }
       return NextResponse.json({ ok: true })
   }
 }

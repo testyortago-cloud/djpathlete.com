@@ -7,6 +7,15 @@ vi.mock("@/lib/db/team-video-submissions", () => ({
   approveSubmission: vi.fn(),
   reopenSubmission: vi.fn(),
 }))
+vi.mock("@/lib/db/users", () => ({ getUserById: vi.fn().mockResolvedValue(null) }))
+vi.mock("@/lib/db/team-video-versions", () => ({ getCurrentVersion: vi.fn().mockResolvedValue(null) }))
+vi.mock("@/lib/db/team-video-comments", () => ({ countOpenCommentsForVersion: vi.fn().mockResolvedValue(0) }))
+vi.mock("@/lib/email", () => ({
+  sendVideoApprovedEmail: vi.fn(),
+  sendVideoReopenedEmail: vi.fn(),
+  sendVideoRevisionRequestedEmail: vi.fn(),
+}))
+vi.mock("@/lib/url", () => ({ getBaseUrl: () => "http://localhost:3050" }))
 
 import { auth } from "@/lib/auth"
 import {
