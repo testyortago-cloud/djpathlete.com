@@ -759,6 +759,9 @@ export interface BlogPost {
     width: number
     height: number
   }>
+  primary_keyword: string | null
+  secondary_keywords: string[]
+  search_intent: "informational" | "commercial" | "transactional" | null
 }
 
 export interface SeoMetadataInternalLink {

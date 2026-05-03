@@ -38,6 +38,22 @@ export const blogPostFormSchema = z.object({
     .optional()
     .transform((v) => v || null),
   inline_images: z.array(inlineImageSchema).optional().default([]),
+  primary_keyword: z
+    .string()
+    .max(120, "Primary keyword must be under 120 characters")
+    .nullable()
+    .optional()
+    .transform((v) => v || null),
+  secondary_keywords: z
+    .array(z.string().max(120))
+    .max(5, "At most 5 secondary keywords")
+    .optional()
+    .default([]),
+  search_intent: z
+    .enum(["informational", "commercial", "transactional"])
+    .nullable()
+    .optional()
+    .transform((v) => v || null),
 })
 
 export type BlogPostFormData = z.infer<typeof blogPostFormSchema>
