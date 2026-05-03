@@ -59,7 +59,7 @@ export function LoginForm() {
           : "/client/dashboard"
 
     // If there's a safe relative callback URL, honour it (with role guards)
-    if (callbackUrl && callbackUrl.startsWith("/")) {
+    if (callbackUrl && callbackUrl.startsWith("/") && !callbackUrl.startsWith("//")) {
       const isAdminRoute = callbackUrl.startsWith("/admin")
       const isEditorRoute = callbackUrl.startsWith("/editor")
       if (isAdminRoute && role !== "admin") {
