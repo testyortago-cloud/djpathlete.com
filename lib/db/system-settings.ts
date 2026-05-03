@@ -40,3 +40,21 @@ export async function setSetting(key: string, value: unknown, updatedBy: string 
 export async function isAutomationPaused(): Promise<boolean> {
   return getSetting<boolean>("automation_paused", false)
 }
+
+/**
+ * Combined per-job gate: true when the cron should be SKIPPED — either
+ * because automation is globally paused OR the per-job toggle is off.
+ *
+ * Pass the system_settings key (e.g. "cron_voice_drift_enabled") and the
+ * default value when no row exists. Existing crons should default to true
+ * (preserves always-on behavior); opt-in crons default to false.
+ */
+export async function isCronSkipped(args: {
+  enabledKey: string
+  defaultEnabled: boolean
+}): Promise<{ skipped: true; reason: "paused" | "disabled" } | { skipped: false }> {
+  if (await isAutomationPaused()) return { skipped: true, reason: "paused" }
+  const enabled = await getSetting<boolean>(args.enabledKey, args.defaultEnabled)
+  if (!enabled) return { skipped: true, reason: "disabled" }
+  return { skipped: false }
+}

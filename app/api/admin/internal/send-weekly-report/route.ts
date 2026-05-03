@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { resend, FROM_EMAIL } from "@/lib/resend"
 import { buildWeeklyReport } from "@/lib/analytics/weekly-report"
-import { isAutomationPaused } from "@/lib/db/system-settings"
+import { isCronSkipped } from "@/lib/db/system-settings"
 
 const BodySchema = z
   .object({
@@ -37,8 +37,13 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    if (await isAutomationPaused()) {
-      return NextResponse.json({ ok: true, paused: true }, { status: 200 })
+    const gate = await isCronSkipped({
+      enabledKey: "cron_weekly_report_enabled",
+      defaultEnabled: true,
+    })
+    if (gate.skipped) {
+      console.log(`[send-weekly-report] skipped — ${gate.reason}`)
+      return NextResponse.json({ ok: true, paused: true, reason: gate.reason }, { status: 200 })
     }
 
     const rangeEnd = rangeEndIso ? new Date(rangeEndIso) : undefined

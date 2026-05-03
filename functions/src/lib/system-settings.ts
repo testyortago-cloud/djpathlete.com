@@ -28,3 +28,18 @@ export async function getSetting<T>(key: string, fallback: T, supabase?: Supabas
 export async function isAutomationPaused(supabase?: SupabaseClient): Promise<boolean> {
   return getSetting<boolean>("automation_paused", false, supabase)
 }
+
+/**
+ * Combined per-job gate: returns { skipped: true, reason } when the cron
+ * should be skipped — either because automation is globally paused OR the
+ * per-job toggle is off.
+ */
+export async function isCronSkipped(
+  args: { enabledKey: string; defaultEnabled: boolean },
+  supabase?: SupabaseClient,
+): Promise<{ skipped: true; reason: "paused" | "disabled" } | { skipped: false }> {
+  if (await isAutomationPaused(supabase)) return { skipped: true, reason: "paused" }
+  const enabled = await getSetting<boolean>(args.enabledKey, args.defaultEnabled, supabase)
+  if (!enabled) return { skipped: true, reason: "disabled" }
+  return { skipped: false }
+}

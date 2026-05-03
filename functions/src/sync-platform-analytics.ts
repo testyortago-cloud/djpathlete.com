@@ -8,7 +8,7 @@
 // can be imported and unit-tested as a pure function.
 
 import { getSupabase } from "./lib/supabase.js"
-import { isAutomationPaused } from "./lib/system-settings.js"
+import { isCronSkipped } from "./lib/system-settings.js"
 
 const POSTS_PER_RUN_LIMIT = 500
 
@@ -60,7 +60,12 @@ export async function runSyncPlatformAnalytics(options: RunSyncOptions = {}): Pr
     throw new Error("APP_URL is not configured")
   }
 
-  if (await isAutomationPaused(supabase)) {
+  const gate = await isCronSkipped(
+    { enabledKey: "cron_analytics_sync_enabled", defaultEnabled: true },
+    supabase,
+  )
+  if (gate.skipped) {
+    console.log(`[sync-platform-analytics] skipped — ${gate.reason}`)
     return { synced: 0, skipped: 0, failed: 0, paused: true }
   }
 

@@ -12,7 +12,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { FieldValue } from "firebase-admin/firestore"
 import { createServiceRoleClient } from "@/lib/supabase"
 import { getAdminFirestore } from "@/lib/firebase-admin"
-import { getSetting, isAutomationPaused } from "@/lib/db/system-settings"
+import { isCronSkipped } from "@/lib/db/system-settings"
 import { proposePrimaryKeyword } from "@/lib/blog/keyword-proposal"
 import { extractContentAngle } from "@/lib/blog/content-angle"
 import type { ContentCalendarEntry } from "@/types/database"
@@ -36,17 +36,15 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    // ── Gate 1: global pause ──────────────────────────────────────────────
-    if (await isAutomationPaused()) {
-      console.log("[auto-blog] skipped — automation_paused is true")
-      return NextResponse.json({ skipped: "automation_paused" }, { status: 200 })
-    }
-
-    // ── Gate 2: per-job toggle (default false; opt-in) ────────────────────
-    const enabled = await getSetting<boolean>("cron_auto_blog_enabled", false)
-    if (!enabled) {
-      console.log("[auto-blog] skipped — cron_auto_blog_enabled is false")
-      return NextResponse.json({ skipped: "cron_auto_blog_enabled" }, { status: 200 })
+    // Combined gate: skip if globally paused OR per-job toggle is off
+    // (default false for this cron — opt-in).
+    const gate = await isCronSkipped({
+      enabledKey: "cron_auto_blog_enabled",
+      defaultEnabled: false,
+    })
+    if (gate.skipped) {
+      console.log(`[auto-blog] skipped — ${gate.reason}`)
+      return NextResponse.json({ skipped: gate.reason }, { status: 200 })
     }
 
     // ── Pick the best unused topic suggestion ─────────────────────────────

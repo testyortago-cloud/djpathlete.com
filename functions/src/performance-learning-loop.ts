@@ -10,7 +10,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { getSupabase } from "./lib/supabase.js"
-import { isAutomationPaused } from "./lib/system-settings.js"
+import { isCronSkipped } from "./lib/system-settings.js"
 
 const PLATFORMS = ["facebook", "instagram", "tiktok", "youtube", "youtube_shorts", "linkedin"] as const
 export type LearningLoopPlatform = (typeof PLATFORMS)[number]
@@ -78,7 +78,12 @@ export async function runPerformanceLearningLoop(
     errors: 0,
   }
 
-  if (await isAutomationPaused(supabase)) {
+  const gate = await isCronSkipped(
+    { enabledKey: "cron_performance_loop_enabled", defaultEnabled: true },
+    supabase,
+  )
+  if (gate.skipped) {
+    console.log(`[performance-learning-loop] skipped — ${gate.reason}`)
     return { ...result, paused: true }
   }
 

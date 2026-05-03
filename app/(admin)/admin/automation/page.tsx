@@ -4,18 +4,17 @@ import { CRON_CATALOG } from "@/lib/cron-catalog"
 import { PauseToggle } from "@/components/admin/automation/PauseToggle"
 import { RunNowButton } from "@/components/admin/automation/RunNowButton"
 import { CronEnabledToggle } from "@/components/admin/automation/CronEnabledToggle"
+import { RunAllButton } from "@/components/admin/automation/RunAllButton"
 
 export const metadata = { title: "Automation" }
 
 export default async function AutomationPage() {
   const paused = await getSetting<boolean>("automation_paused", false)
 
-  // Resolve enabled state for any cron with an enabledKey. Crons without one
-  // are always-on (subject to the global pause).
+  // Resolve enabled state for every cron, using each job's defaultEnabled as
+  // the fallback when no system_settings row exists yet.
   const enabledStates = await Promise.all(
-    CRON_CATALOG.map(async (job) =>
-      job.enabledKey ? await getSetting<boolean>(job.enabledKey, false) : null,
-    ),
+    CRON_CATALOG.map((job) => getSetting<boolean>(job.enabledKey, job.defaultEnabled)),
   )
 
   return (
@@ -31,9 +30,12 @@ export default async function AutomationPage() {
       <PauseToggle initialPaused={paused} />
 
       <div className="rounded-xl border border-border bg-white overflow-hidden">
-        <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
-          <Clock className="size-4 text-primary" />
-          <h2 className="text-lg font-semibold text-primary">Automated tasks</h2>
+        <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border">
+          <div className="flex items-center gap-2">
+            <Clock className="size-4 text-primary" />
+            <h2 className="text-lg font-semibold text-primary">Automated tasks</h2>
+          </div>
+          <RunAllButton />
         </div>
 
         <div className="divide-y divide-border">
@@ -49,13 +51,11 @@ export default async function AutomationPage() {
                   </p>
                 </div>
                 <div className="shrink-0 flex items-center gap-3">
-                  {job.enabledKey && (
-                    <CronEnabledToggle
-                      enabledKey={job.enabledKey}
-                      initialEnabled={jobEnabled ?? false}
-                      label={job.label}
-                    />
-                  )}
+                  <CronEnabledToggle
+                    enabledKey={job.enabledKey}
+                    initialEnabled={jobEnabled}
+                    label={job.label}
+                  />
                   <RunNowButton jobName={job.name} label={job.label} />
                 </div>
               </div>

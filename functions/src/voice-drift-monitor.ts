@@ -11,7 +11,7 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import { callAgent, MODEL_SONNET } from "./ai/anthropic.js"
 import { voiceDriftAssessmentSchema, type VoiceDriftAssessment } from "./ai/schemas.js"
 import { getSupabase } from "./lib/supabase.js"
-import { isAutomationPaused } from "./lib/system-settings.js"
+import { isCronSkipped } from "./lib/system-settings.js"
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
 const GLOBAL_LIMIT = 20
@@ -61,7 +61,12 @@ export async function runVoiceDriftMonitor(
     errors: 0,
   }
 
-  if (await isAutomationPaused(supabase)) {
+  const gate = await isCronSkipped(
+    { enabledKey: "cron_voice_drift_enabled", defaultEnabled: true },
+    supabase,
+  )
+  if (gate.skipped) {
+    console.log(`[voice-drift-monitor] skipped — ${gate.reason}`)
     return { ...counters, paused: true }
   }
 

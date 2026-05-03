@@ -22,11 +22,18 @@ export interface CronJob {
   firebaseFunction: string
   phase: string
   /**
-   * When set, this cron job has a per-job enabled toggle in addition to the
-   * global automation_paused kill switch. The value is the system_settings
-   * key that holds the boolean. Default value is false (opt-in).
+   * The system_settings key that holds the on/off boolean for this cron's
+   * per-job toggle. Independent from the global automation_paused kill
+   * switch — the cron skips when EITHER global pause is on OR this toggle
+   * is off.
    */
-  enabledKey?: string
+  enabledKey: string
+  /**
+   * Default value when no system_settings row exists for enabledKey yet.
+   * Existing crons default to true (preserves their always-on behavior);
+   * new opt-in crons (like auto-blog) default to false.
+   */
+  defaultEnabled: boolean
 }
 
 export const CRON_CATALOG: readonly CronJob[] = [
@@ -40,6 +47,8 @@ export const CRON_CATALOG: readonly CronJob[] = [
     humanSchedule: "Every night at 3:00 AM UTC",
     firebaseFunction: "syncPlatformAnalytics",
     phase: "5a",
+    enabledKey: "cron_analytics_sync_enabled",
+    defaultEnabled: true,
   },
   {
     name: "performance-learning-loop",
@@ -51,6 +60,8 @@ export const CRON_CATALOG: readonly CronJob[] = [
     humanSchedule: "Every Monday at 3:00 AM Central",
     firebaseFunction: "performanceLearningLoop",
     phase: "5f",
+    enabledKey: "cron_performance_loop_enabled",
+    defaultEnabled: true,
   },
   {
     name: "voice-drift-monitor",
@@ -62,6 +73,8 @@ export const CRON_CATALOG: readonly CronJob[] = [
     humanSchedule: "Every Monday at 4:00 AM Central",
     firebaseFunction: "voiceDriftMonitor",
     phase: "5e",
+    enabledKey: "cron_voice_drift_enabled",
+    defaultEnabled: true,
   },
   {
     name: "send-daily-pulse",
@@ -73,6 +86,8 @@ export const CRON_CATALOG: readonly CronJob[] = [
     humanSchedule: "Weekday mornings at 7:00 AM Central",
     firebaseFunction: "sendDailyPulse",
     phase: "5d",
+    enabledKey: "cron_daily_pulse_enabled",
+    defaultEnabled: true,
   },
   {
     name: "send-weekly-content-report",
@@ -84,6 +99,8 @@ export const CRON_CATALOG: readonly CronJob[] = [
     humanSchedule: "Every Friday at 5:00 PM Central",
     firebaseFunction: "sendWeeklyContentReport",
     phase: "5c",
+    enabledKey: "cron_weekly_report_enabled",
+    defaultEnabled: true,
   },
   {
     name: "auto-blog-generation",
@@ -96,5 +113,6 @@ export const CRON_CATALOG: readonly CronJob[] = [
     firebaseFunction: "(handled by Next.js route + ai_jobs doc trigger)",
     phase: "blog-quality",
     enabledKey: "cron_auto_blog_enabled",
+    defaultEnabled: false,
   },
 ] as const
