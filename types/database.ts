@@ -132,7 +132,7 @@ export interface TeamInvite {
   created_at: string
 }
 
-export type TeamInviteStatus = "pending" | "accepted" | "expired" | "revoked"
+export type TeamInviteStatus = "pending" | "accepted" | "expired"
 
 export type TimeEfficiencyPreference = "supersets_circuits" | "shorter_rest" | "fewer_heavier" | "extend_session"
 export type TrainingTechnique =
