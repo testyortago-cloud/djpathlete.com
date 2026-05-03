@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft, Save, Send, Loader2, Sparkles, Search } from "lucide-react"
 import { toast } from "sonner"
-import { blogPostFormSchema, BLOG_CATEGORIES } from "@/lib/validators/blog-post"
+import { blogPostFormSchema, BLOG_CATEGORIES, type FaqEntry } from "@/lib/validators/blog-post"
 import { BlogEditor } from "./BlogEditor"
 import type { FactCheckStatus } from "./FactCheckBanner"
 import type { FactCheckDetails } from "./FactCheckSidebar"
@@ -64,6 +64,8 @@ export function BlogPostForm({ post, authorId, initialPrompt }: BlogPostFormProp
   const [coverImageUrl, setCoverImageUrl] = useState<string | null>(post?.cover_image_url ?? null)
   const [tags, setTags] = useState(post?.tags?.join(", ") ?? "")
   const [metaDescription, setMetaDescription] = useState(post?.meta_description ?? "")
+  const [subcategory, setSubcategory] = useState(post?.subcategory ?? "")
+  const [faqEntries, setFaqEntries] = useState<FaqEntry[]>(post?.faq ?? [])
   const [formError, setFormError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
 
@@ -89,8 +91,23 @@ export function BlogPostForm({ post, authorId, initialPrompt }: BlogPostFormProp
       cover_image_url: coverImageUrl,
       tags: tagsArray,
       meta_description: metaDescription || null,
+      subcategory: subcategory.trim() || null,
+      faq: faqEntries,
     }
-  }, [title, slug, excerpt, content, category, coverImageUrl, tags, metaDescription])
+  }, [title, slug, excerpt, content, category, coverImageUrl, tags, metaDescription, subcategory, faqEntries])
+
+  function addFaqEntry() {
+    if (faqEntries.length >= 5) return
+    setFaqEntries((prev) => [...prev, { question: "", answer: "" }])
+  }
+
+  function removeFaqEntry(idx: number) {
+    setFaqEntries((prev) => prev.filter((_, i) => i !== idx))
+  }
+
+  function updateFaqEntry(idx: number, field: keyof FaqEntry, value: string) {
+    setFaqEntries((prev) => prev.map((entry, i) => (i === idx ? { ...entry, [field]: value } : entry)))
+  }
 
   async function handleSave(publish: boolean) {
     setFormError(null)
@@ -395,6 +412,76 @@ export function BlogPostForm({ post, authorId, initialPrompt }: BlogPostFormProp
                   className="w-full px-3 py-2 rounded-lg border border-border bg-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                 />
                 <p className="text-xs text-muted-foreground mt-1">{metaDescription.length}/160</p>
+              </div>
+
+              {/* Subcategory */}
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">
+                  Subcategory <span className="text-muted-foreground text-xs">(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={subcategory}
+                  onChange={(e) => setSubcategory(e.target.value)}
+                  placeholder="e.g., Nutrition, Mindset, Injury Prevention"
+                  className="w-full px-3 py-2 rounded-md border border-border bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  maxLength={80}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Free-text topical sub-classification. Complements the 4-value Category.
+                </p>
+              </div>
+
+              {/* FAQ Editor */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="block text-sm font-medium text-foreground">
+                    FAQ <span className="text-muted-foreground text-xs">(3–5 entries recommended)</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={addFaqEntry}
+                    disabled={faqEntries.length >= 5}
+                    className="text-xs font-medium px-2 py-1 rounded-md border border-border hover:bg-surface disabled:opacity-40"
+                  >
+                    + Add entry
+                  </button>
+                </div>
+                {faqEntries.map((entry, idx) => (
+                  <div key={idx} className="rounded-lg border border-border bg-white p-3 space-y-2">
+                    <div className="flex items-start gap-2">
+                      <input
+                        type="text"
+                        value={entry.question}
+                        onChange={(e) => updateFaqEntry(idx, "question", e.target.value)}
+                        placeholder="Question"
+                        className="flex-1 px-2.5 py-1.5 rounded-md border border-border bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                        maxLength={200}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeFaqEntry(idx)}
+                        aria-label={`Remove FAQ ${idx + 1}`}
+                        className="text-muted-foreground hover:text-red-500 px-2 py-1.5"
+                      >
+                        ×
+                      </button>
+                    </div>
+                    <textarea
+                      value={entry.answer}
+                      onChange={(e) => updateFaqEntry(idx, "answer", e.target.value)}
+                      placeholder="Answer (1-3 sentences)"
+                      rows={3}
+                      maxLength={800}
+                      className="w-full px-2.5 py-1.5 rounded-md border border-border bg-white text-sm resize-y focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    />
+                  </div>
+                ))}
+                {faqEntries.length === 0 && (
+                  <p className="text-xs text-muted-foreground italic">
+                    No FAQ entries yet — click &quot;+ Add entry&quot; to start.
+                  </p>
+                )}
               </div>
 
               {/* Status info */}
