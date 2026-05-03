@@ -92,7 +92,7 @@ export const CRON_CATALOG: readonly CronJob[] = [
       "Every Tuesday and Thursday morning, picks the highest-ranked unused topic from your topic suggestions, runs keyword + content-angle research, and queues an AI blog draft. The draft lands in your blog list — review and publish when ready. OFF by default; flip the toggle to enable.",
     schedule: "0 13 * * 2,4",
     timezone: "UTC",
-    humanSchedule: "Every Tuesday and Thursday at 7:00 AM Central (13:00 UTC)",
+    humanSchedule: "Every Tuesday and Thursday at 8:00 AM EST / 9:00 AM EDT (13:00 UTC)",
     firebaseFunction: "(handled by Next.js route + ai_jobs doc trigger)",
     phase: "blog-quality",
     enabledKey: "cron_auto_blog_enabled",
