@@ -9,6 +9,12 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 
 export type Register = "formal" | "casual"
 
+export interface SeoTarget {
+  primary_keyword: string
+  secondary_keywords: string[]
+  search_intent: "informational" | "commercial" | "transactional" | null
+}
+
 export interface BlogFewShotExample {
   prompt?: string
   title: string
@@ -28,6 +34,7 @@ export interface ComposeArgs {
   blogStructure: string
   programsBlock: string
   register: Register
+  seoTarget?: SeoTarget
 }
 
 // ─── Fallbacks ──────────────────────────────────────────────────────────────
@@ -133,22 +140,47 @@ export async function loadVoiceContext(supabase: SupabaseClient): Promise<VoiceC
 
 // ─── System prompt composer ─────────────────────────────────────────────────
 
+function formatSeoTargetBlock(target: SeoTarget | undefined): string {
+  if (!target || !target.primary_keyword) return ""
+  const lines = [
+    "# SEO TARGET",
+    `Primary keyword: ${target.primary_keyword}`,
+  ]
+  if (target.secondary_keywords.length > 0) {
+    lines.push(`Secondary keywords: ${target.secondary_keywords.join(", ")}`)
+  }
+  if (target.search_intent) {
+    lines.push(`Search intent: ${target.search_intent}`)
+  }
+  lines.push("")
+  lines.push("Rules:")
+  lines.push("- Primary keyword MUST appear in: title (within first 60 chars), the first 100 words of intro, exactly one h2, and the conclusion.")
+  lines.push("- Secondary keywords distributed across body sections — no stuffing.")
+  lines.push("- Title formula: pick numbered list, how-to, vs/comparison, year-stamped, or contrarian-take based on intent.")
+  lines.push("- Title length: 50-60 chars.")
+  lines.push("- Excerpt length: 140-180 chars and MUST include the primary keyword.")
+  return lines.join("\n")
+}
+
 export function composeBlogSystemPrompt(args: ComposeArgs): string {
   const registerBlock =
     args.register === "formal"
       ? "# REGISTER\nFormal. Tighten contractions. Lean on data and citations. Fewer first-person interjections."
       : "# REGISTER\nCasual. Use contractions. Conversational asides allowed. Address the reader directly. Default."
 
-  return [
+  const seoBlock = formatSeoTargetBlock(args.seoTarget)
+
+  const sections: string[] = [
     "# VOICE",
     args.voiceProfile,
     "",
     args.programsBlock,
-    "",
-    registerBlock,
-    "",
-    args.blogStructure,
-  ].join("\n")
+  ]
+  if (seoBlock) {
+    sections.push("", seoBlock)
+  }
+  sections.push("", registerBlock, "", args.blogStructure)
+  return sections.join("\n")
 }
 
 // ─── Few-shot formatter for user message ────────────────────────────────────

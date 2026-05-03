@@ -138,5 +138,44 @@ describe("voice-context", () => {
       })
       expect(out.toLowerCase()).toContain("formal")
     })
+
+    it("renders SEO TARGET block when seoTarget is provided", () => {
+      const out = composeBlogSystemPrompt({
+        voiceProfile: "v",
+        blogStructure: "s",
+        programsBlock: "p",
+        register: "casual",
+        seoTarget: {
+          primary_keyword: "youth pitching velocity",
+          secondary_keywords: ["arm care", "long toss"],
+          search_intent: "informational",
+        },
+      })
+      expect(out).toContain("# SEO TARGET")
+      expect(out).toContain("Primary keyword: youth pitching velocity")
+      expect(out).toContain("Secondary keywords: arm care, long toss")
+      expect(out).toContain("Search intent: informational")
+    })
+
+    it("omits the SEO TARGET block when seoTarget is undefined", () => {
+      const out = composeBlogSystemPrompt({
+        voiceProfile: "v",
+        blogStructure: "s",
+        programsBlock: "p",
+        register: "casual",
+      })
+      expect(out).not.toContain("# SEO TARGET")
+    })
+
+    it("omits the SEO TARGET block when seoTarget has no primary_keyword", () => {
+      const out = composeBlogSystemPrompt({
+        voiceProfile: "v",
+        blogStructure: "s",
+        programsBlock: "p",
+        register: "casual",
+        seoTarget: { primary_keyword: "", secondary_keywords: [], search_intent: null },
+      })
+      expect(out).not.toContain("# SEO TARGET")
+    })
   })
 })
