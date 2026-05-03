@@ -17,6 +17,7 @@ import {
   buildExpansionPrompt,
 } from "./blog/length-verifier.js"
 import { formatProgramsForPrompt } from "./blog/program-catalog.js"
+import { injectAnchorIds } from "./lib/html-splice.js"
 
 // ─── URL Validation ─────────────────────────────────────────────────────────
 
@@ -186,6 +187,11 @@ function capMetaDescription(s: string): string {
   return s.slice(0, 157).trimEnd() + "…"
 }
 
+const faqEntrySchema = z.object({
+  question: z.string().min(5).max(200),
+  answer: z.string().min(20).max(800),
+})
+
 const blogResultSchema = z.object({
   title: z.string().min(20).max(120),
   slug: z.string().min(3).max(200),
@@ -194,6 +200,7 @@ const blogResultSchema = z.object({
   category: z.enum(["Performance", "Recovery", "Coaching", "Youth Development"]),
   tags: z.array(z.string()),
   meta_description: z.string().transform(capMetaDescription),
+  faq: z.array(faqEntrySchema).max(5).optional().default([]),
 })
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
@@ -368,7 +375,8 @@ Current date: ${new Date().toISOString().slice(0, 10)}${userRefBlock}${researchB
 
     // Step 3: Validate all URLs in the generated content — remove any 404s
     const validatedContent = await validateUrls(finalContent.content)
-    const finalResult = { ...finalContent, content: validatedContent }
+    const contentWithAnchors = injectAnchorIds(validatedContent)
+    const finalResult = { ...finalContent, content: contentWithAnchors }
 
     // Log generation (non-fatal)
     try {
@@ -424,6 +432,7 @@ Current date: ${new Date().toISOString().slice(0, 10)}${userRefBlock}${researchB
         primary_keyword: seoTarget?.primary_keyword ?? null,
         secondary_keywords: seoTarget?.secondary_keywords ?? [],
         search_intent: seoTarget?.search_intent ?? null,
+        faq: finalResult.faq ?? [],
       })
       .select("id")
       .single()

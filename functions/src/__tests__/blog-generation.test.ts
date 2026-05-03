@@ -242,4 +242,37 @@ describe("handleBlogGeneration — insert flow", () => {
     await handleBlogGeneration("job-1")
     expect(mockCallAgent).toHaveBeenCalledTimes(2)
   })
+
+  it("injects anchor ids on h2s and persists faq from the AI response", async () => {
+    mockIsTooShort.mockReturnValue(false)
+    mockCountWords.mockReturnValue(1000)
+    mockCallAgent.mockReset()
+    mockCallAgent.mockResolvedValue({
+      content: {
+        title: "T",
+        slug: "t",
+        excerpt: "e",
+        content: "<h2>First Section</h2><p>x</p><h2>Second Section</h2>",
+        category: "Performance",
+        tags: ["a"],
+        meta_description: "m",
+        faq: [
+          { question: "How long does it take?", answer: "It takes about 8 weeks to see results." },
+          { question: "Is it safe for youth?", answer: "Yes — when supervised by a qualified coach." },
+          { question: "Do I need equipment?", answer: "Bodyweight is enough for the first 4 weeks." },
+        ],
+      },
+      tokens_used: 100,
+    })
+    await handleBlogGeneration("job-1")
+
+    expect(blogInsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringContaining('<h2 id="first-section">'),
+        faq: expect.arrayContaining([
+          expect.objectContaining({ question: "How long does it take?" }),
+        ]),
+      }),
+    )
+  })
 })
