@@ -9,6 +9,7 @@ import { getPublishedBlogPostBySlug } from "@/lib/db/blog-posts"
 import { DJP_AUTHOR_PERSON } from "@/lib/brand/author"
 import { TableOfContents } from "@/components/marketing/blog/TableOfContents"
 import { BlogFaqSection } from "@/components/marketing/blog/BlogFaqSection"
+import { RelatedPosts } from "@/components/marketing/blog/RelatedPosts"
 import type { BlogCategory, FaqEntry } from "@/types/database"
 
 // Revalidate every 60 seconds so edits appear without redeploying
@@ -188,6 +189,9 @@ export default async function BlogPostPage({ params }: Props) {
           </div>
         </section>
       )}
+
+      {/* Related posts */}
+      <RelatedPosts post={post} />
 
       {/* CTA */}
       <section className="py-16 lg:py-24 px-4 sm:px-8">
