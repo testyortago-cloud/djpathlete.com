@@ -189,11 +189,29 @@ export interface TeamVideoComment {
   updated_at: string
 }
 
+export type DrawingTool = "pen" | "arrow" | "rectangle"
+
+export interface DrawingPath {
+  tool: DrawingTool
+  color: string                       // hex like "#FF3B30"
+  width: number                       // stroke width px (2-8)
+  points: Array<[number, number]>     // normalized 0-1 coords
+}
+
+export interface DrawingJson {
+  paths: DrawingPath[]
+}
+
 export interface TeamVideoAnnotation {
   id: string
   comment_id: string
-  drawing_json: unknown // typed in Plan 3
+  drawing_json: DrawingJson
   created_at: string
+}
+
+/** API response shape: a comment plus its (optional) annotation drawing. */
+export interface TeamVideoCommentWithAnnotation extends TeamVideoComment {
+  annotation: DrawingJson | null
 }
 
 export type TimeEfficiencyPreference = "supersets_circuits" | "shorter_rest" | "fewer_heavier" | "extend_session"
