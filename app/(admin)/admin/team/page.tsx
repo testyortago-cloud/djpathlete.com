@@ -1,15 +1,11 @@
-import { auth } from "@/lib/auth"
-import { redirect } from "next/navigation"
+import { requireAdmin } from "@/lib/auth-helpers"
 import { listInvites } from "@/lib/db/team-invites"
 import { InviteList } from "@/components/admin/team/InviteList"
 
 export const metadata = { title: "Team" }
 
 export default async function TeamPage() {
-  const session = await auth()
-  if (!session?.user || session.user.role !== "admin") {
-    redirect("/login")
-  }
+  await requireAdmin()
   const invites = await listInvites()
   return (
     <div className="space-y-6 p-6">

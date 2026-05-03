@@ -1,6 +1,8 @@
 import { randomBytes } from "node:crypto"
 import { createServiceRoleClient } from "@/lib/supabase"
-import type { TeamInvite, TeamInviteRole, TeamInviteStatus } from "@/types/database"
+import type { TeamInvite, TeamInviteRole } from "@/types/database"
+
+export { inviteStatus } from "@/lib/team-invites/status"
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000
 
@@ -100,10 +102,3 @@ export async function rotateInviteToken(id: string): Promise<{ token: string; ex
   return { token, expiresAt }
 }
 
-export function inviteStatus(invite: TeamInvite): TeamInviteStatus {
-  if (invite.used_at) return "accepted"
-  const now = Date.now()
-  const expires = new Date(invite.expires_at).getTime()
-  if (expires <= now) return "expired"
-  return "pending"
-}

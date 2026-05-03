@@ -4,7 +4,7 @@ import { useState, useTransition } from "react"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import { InviteFormDialog } from "./InviteFormDialog"
-import { inviteStatus } from "@/lib/db/team-invites"
+import { inviteStatus } from "@/lib/team-invites/status"
 import type { TeamInvite, TeamInviteStatus } from "@/types/database"
 
 const STATUS_STYLES: Record<TeamInviteStatus, string> = {
@@ -30,8 +30,8 @@ export function InviteList({ initialInvites }: { initialInvites: TeamInvite[] })
     startTransition(async () => {
       const res = await fetch(`/api/admin/team/invites/${id}/revoke`, { method: "POST" })
       if (res.ok) {
+        await refresh()
         toast.success("Invite revoked")
-        refresh()
       } else toast.error("Failed to revoke invite")
     })
   }
@@ -40,8 +40,8 @@ export function InviteList({ initialInvites }: { initialInvites: TeamInvite[] })
     startTransition(async () => {
       const res = await fetch(`/api/admin/team/invites/${id}/resend`, { method: "POST" })
       if (res.ok) {
+        await refresh()
         toast.success("Invite re-sent")
-        refresh()
       } else toast.error("Failed to resend invite")
     })
   }
@@ -83,7 +83,7 @@ export function InviteList({ initialInvites }: { initialInvites: TeamInvite[] })
                     </span>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">
-                    {new Date(inv.created_at).toLocaleDateString()}
+                    {new Date(inv.created_at).toLocaleDateString("en-US")}
                   </td>
                   <td className="px-4 py-3 text-right space-x-2">
                     {status === "pending" && (
