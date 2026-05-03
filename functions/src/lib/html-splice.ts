@@ -153,3 +153,96 @@ export function extractH2Toc(html: string): TocEntry[] {
   }
   return result
 }
+
+// ─── spliceInternalLinks ───────────────────────────────────────────────────
+
+const MAX_INTERNAL_LINKS_PER_POST = 3
+
+export interface InternalLinkInsert {
+  slug: string
+  anchor_text: string
+  section_h2: string
+}
+
+/**
+ * Wraps the FIRST occurrence of `anchor_text` (case-insensitive, word-bounded)
+ * inside the section identified by `section_h2` with `<a href="/blog/{slug}">`.
+ *
+ * Rules:
+ * - Caps at MAX_INTERNAL_LINKS_PER_POST inserts; subsequent inserts are dropped.
+ * - Skips silently when section_h2 is not found.
+ * - Skips silently when anchor_text is not found in the section.
+ * - Skips when anchor_text is already inside an <a> tag (no nesting).
+ * - Matches case-insensitively but preserves the original casing in the link text.
+ * - Section header text is matched after stripping inline tags.
+ */
+export function spliceInternalLinks(html: string, inserts: InternalLinkInsert[]): string {
+  if (inserts.length === 0) return html
+
+  let result = html
+  let applied = 0
+
+  for (const insert of inserts) {
+    if (applied >= MAX_INTERNAL_LINKS_PER_POST) break
+
+    const sectionBounds = findSectionBounds(result, insert.section_h2)
+    if (!sectionBounds) continue
+
+    const { contentStart, contentEnd } = sectionBounds
+    const sectionHtml = result.slice(contentStart, contentEnd)
+
+    const escaped = escapeRegex(insert.anchor_text)
+    const matchRegex = new RegExp(`\\b${escaped}\\b`, "i")
+    const match = matchRegex.exec(sectionHtml)
+    if (!match) continue
+
+    const matchStart = match.index
+    const matchEnd = matchStart + match[0].length
+
+    if (isInsideAnchor(sectionHtml, matchStart)) continue
+
+    const matchedText = sectionHtml.slice(matchStart, matchEnd)
+    const wrapped = `<a href="/blog/${insert.slug}">${matchedText}</a>`
+    const newSectionHtml =
+      sectionHtml.slice(0, matchStart) + wrapped + sectionHtml.slice(matchEnd)
+
+    result = result.slice(0, contentStart) + newSectionHtml + result.slice(contentEnd)
+    applied++
+  }
+
+  return result
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
+interface SectionBounds {
+  contentStart: number
+  contentEnd: number
+}
+
+function findSectionBounds(html: string, sectionH2Text: string): SectionBounds | null {
+  const target = sectionH2Text.replace(/\s+/g, " ").trim().toLowerCase()
+  const h2Regex = /<h2(?:\s[^>]*)?>([\s\S]*?)<\/h2>/g
+  let m: RegExpExecArray | null
+  while ((m = h2Regex.exec(html)) !== null) {
+    const stripped = m[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().toLowerCase()
+    if (stripped === target) {
+      const contentStart = m.index + m[0].length
+      const nextH2 = html.indexOf("<h2", contentStart)
+      const contentEnd = nextH2 === -1 ? html.length : nextH2
+      return { contentStart, contentEnd }
+    }
+  }
+  return null
+}
+
+function isInsideAnchor(html: string, position: number): boolean {
+  const before = html.slice(0, position).toLowerCase()
+  const lastOpen = before.lastIndexOf("<a")
+  const lastClose = before.lastIndexOf("</a>")
+  if (lastOpen === -1) return false
+  if (lastClose === -1) return true
+  return lastOpen > lastClose
+}

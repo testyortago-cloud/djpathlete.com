@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { spliceInlineImages, findQualifyingSections, MIN_SECTION_WORDS, injectAnchorIds, extractH2Toc } from "../html-splice.js"
+import { spliceInlineImages, findQualifyingSections, MIN_SECTION_WORDS, injectAnchorIds, extractH2Toc, spliceInternalLinks } from "../html-splice.js"
 
 describe("findQualifyingSections", () => {
   it("returns h2 sections whose following text is at least 150 words", () => {
@@ -157,5 +157,92 @@ describe("extractH2Toc", () => {
 
   it("returns empty array when no h2s exist", () => {
     expect(extractH2Toc("<p>just paragraphs</p>")).toEqual([])
+  })
+})
+
+describe("spliceInternalLinks", () => {
+  it("wraps the first occurrence of anchor_text inside the named section in an <a>", () => {
+    const html = '<h2 id="recovery">Recovery basics</h2><p>You need rest days for recovery.</p><h2 id="loading">Progressive loading</h2><p>Add weight gradually.</p>'
+    const out = spliceInternalLinks(html, [
+      { slug: "comeback-code", anchor_text: "rest days", section_h2: "Recovery basics" },
+    ])
+    expect(out).toContain('<a href="/blog/comeback-code">rest days</a>')
+    expect(out).toContain('<h2 id="recovery">Recovery basics</h2>')
+  })
+
+  it("only wraps the FIRST occurrence in the section", () => {
+    const html = '<h2>Recovery</h2><p>rest days are good. Take more rest days.</p>'
+    const out = spliceInternalLinks(html, [
+      { slug: "x", anchor_text: "rest days", section_h2: "Recovery" },
+    ])
+    const matches = out.match(/<a href="\/blog\/x">/g)
+    expect(matches?.length).toBe(1)
+  })
+
+  it("matches case-insensitively but preserves original casing in the link text", () => {
+    const html = "<h2>Section</h2><p>Use Progressive Overload daily.</p>"
+    const out = spliceInternalLinks(html, [
+      { slug: "x", anchor_text: "progressive overload", section_h2: "Section" },
+    ])
+    expect(out).toContain('<a href="/blog/x">Progressive Overload</a>')
+  })
+
+  it("skips silently when anchor_text is not found in the section", () => {
+    const html = "<h2>Section</h2><p>nothing matches.</p>"
+    const out = spliceInternalLinks(html, [
+      { slug: "x", anchor_text: "missing phrase", section_h2: "Section" },
+    ])
+    expect(out).toBe(html)
+  })
+
+  it("skips silently when section_h2 is not found", () => {
+    const html = "<h2>Other</h2><p>rest days here.</p>"
+    const out = spliceInternalLinks(html, [
+      { slug: "x", anchor_text: "rest days", section_h2: "Recovery basics" },
+    ])
+    expect(out).toBe(html)
+  })
+
+  it("does not nest links — skips when anchor_text is already inside an <a>", () => {
+    const html = '<h2>Section</h2><p>Read about <a href="/external">rest days</a>.</p>'
+    const out = spliceInternalLinks(html, [
+      { slug: "x", anchor_text: "rest days", section_h2: "Section" },
+    ])
+    expect(out).toBe(html)
+  })
+
+  it("respects word boundaries — does not match inside larger words", () => {
+    const html = "<h2>Section</h2><p>Trains hard but rest days work.</p>"
+    const out = spliceInternalLinks(html, [
+      { slug: "x", anchor_text: "rest", section_h2: "Section" },
+    ])
+    expect(out).toContain('<a href="/blog/x">rest</a>')
+    expect(out).not.toContain('<a href="/blog/x">est</a>')
+  })
+
+  it("caps at 3 inserts even when more are provided", () => {
+    const html = `<h2>A</h2><p>alpha here</p><h2>B</h2><p>beta here</p><h2>C</h2><p>gamma here</p><h2>D</h2><p>delta here</p>`
+    const out = spliceInternalLinks(html, [
+      { slug: "a", anchor_text: "alpha", section_h2: "A" },
+      { slug: "b", anchor_text: "beta", section_h2: "B" },
+      { slug: "c", anchor_text: "gamma", section_h2: "C" },
+      { slug: "d", anchor_text: "delta", section_h2: "D" },
+    ])
+    const matches = out.match(/<a href="\/blog\//g)
+    expect(matches?.length).toBe(3)
+    expect(out).not.toContain('href="/blog/d"')
+  })
+
+  it("handles empty inserts list", () => {
+    const html = "<h2>Section</h2><p>x</p>"
+    expect(spliceInternalLinks(html, [])).toBe(html)
+  })
+
+  it("handles section text with inline tags by stripping them for matching", () => {
+    const html = '<h2 id="x">Recovery <em>basics</em></h2><p>Get rest days.</p>'
+    const out = spliceInternalLinks(html, [
+      { slug: "y", anchor_text: "rest days", section_h2: "Recovery basics" },
+    ])
+    expect(out).toContain('<a href="/blog/y">rest days</a>')
   })
 })
