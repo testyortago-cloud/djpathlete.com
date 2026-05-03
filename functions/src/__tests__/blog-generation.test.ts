@@ -1,21 +1,31 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
-const { mockCallAgent, mockGetFirestore, mockGetSupabase, mockFetchResearchPapers, mockLoadVoiceContext } = vi.hoisted(
-  () => {
-    return {
-      mockCallAgent: vi.fn(),
-      mockGetFirestore: vi.fn(),
-      mockGetSupabase: vi.fn(),
-      mockFetchResearchPapers: vi.fn().mockResolvedValue({ papers: [], source: "none", duration_ms: 0 }),
-      mockLoadVoiceContext: vi.fn().mockResolvedValue({
-        voiceProfile: "TEST_VOICE",
-        blogStructure: "TEST_STRUCTURE",
-        fewShots: [],
-        usedFallback: { voice: false, structure: false },
-      }),
-    }
-  },
-)
+const {
+  mockCallAgent,
+  mockGetFirestore,
+  mockGetSupabase,
+  mockFetchResearchPapers,
+  mockLoadVoiceContext,
+  mockComposeBlogSystemPrompt,
+  mockCountWords,
+  mockIsTooShort,
+} = vi.hoisted(() => {
+  return {
+    mockCallAgent: vi.fn(),
+    mockGetFirestore: vi.fn(),
+    mockGetSupabase: vi.fn(),
+    mockFetchResearchPapers: vi.fn().mockResolvedValue({ papers: [], source: "none", duration_ms: 0 }),
+    mockLoadVoiceContext: vi.fn().mockResolvedValue({
+      voiceProfile: "TEST_VOICE",
+      blogStructure: "TEST_STRUCTURE",
+      fewShots: [],
+      usedFallback: { voice: false, structure: false },
+    }),
+    mockComposeBlogSystemPrompt: vi.fn(() => "COMPOSED_PROMPT"),
+    mockCountWords: vi.fn(() => 1000),
+    mockIsTooShort: vi.fn(() => false),
+  }
+})
 
 vi.mock("../ai/anthropic.js", () => ({
   callAgent: mockCallAgent,
@@ -32,8 +42,16 @@ vi.mock("../lib/research.js", () => ({
 }))
 vi.mock("../blog/voice-context.js", () => ({
   loadVoiceContext: mockLoadVoiceContext,
-  composeBlogSystemPrompt: vi.fn(() => "COMPOSED_PROMPT"),
+  composeBlogSystemPrompt: mockComposeBlogSystemPrompt,
   formatFewShotsForUserMessage: vi.fn(() => ""),
+}))
+
+vi.mock("../blog/length-verifier.js", () => ({
+  countWords: mockCountWords,
+  isTooShort: mockIsTooShort,
+  resolveTargetWordCount: vi.fn(() => 1000),
+  buildExpansionPrompt: vi.fn(() => "EXPANSION_PROMPT"),
+  LENGTH_PRESETS: { short: 500, medium: 1000, long: 1500 },
 }))
 
 import { handleBlogGeneration } from "../blog-generation.js"
@@ -47,13 +65,16 @@ describe("handleBlogGeneration — insert flow", () => {
   beforeEach(() => {
     vi.clearAllMocks()
 
-    // Restore mockLoadVoiceContext default after vi.clearAllMocks() wipes it.
+    // Restore mock defaults after vi.clearAllMocks() wipes them.
     mockLoadVoiceContext.mockResolvedValue({
       voiceProfile: "TEST_VOICE",
       blogStructure: "TEST_STRUCTURE",
       fewShots: [],
       usedFallback: { voice: false, structure: false },
     })
+    mockComposeBlogSystemPrompt.mockReturnValue("COMPOSED_PROMPT")
+    mockCountWords.mockReturnValue(1000)
+    mockIsTooShort.mockReturnValue(false)
 
     jobUpdate = vi.fn().mockResolvedValue(undefined)
     blogInsertSelectSingle = vi.fn().mockResolvedValue({ data: { id: "post-123" }, error: null })
@@ -73,6 +94,9 @@ describe("handleBlogGeneration — insert flow", () => {
                   prompt: "Test prompt",
                   register: "casual",
                   length: "medium",
+                  primary_keyword: "youth pitching velocity",
+                  secondary_keywords: ["arm care"],
+                  search_intent: "informational",
                   userId: "user-1",
                   sourceCalendarId: "cal-1",
                 },
@@ -110,6 +134,13 @@ describe("handleBlogGeneration — insert flow", () => {
     await handleBlogGeneration("job-1")
     expect(blogInsert).toHaveBeenCalledTimes(1)
     expect(blogInsertSelectSingle).toHaveBeenCalled()
+    expect(blogInsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        primary_keyword: "youth pitching velocity",
+        secondary_keywords: ["arm care"],
+        search_intent: "informational",
+      }),
+    )
     const completedCall = jobUpdate.mock.calls.find((c) => c[0]?.status === "completed")
     expect(completedCall?.[0]?.result?.blog_post_id).toBe("post-123")
   })
@@ -144,5 +175,71 @@ describe("handleBlogGeneration — insert flow", () => {
       expect.anything(),
       expect.anything(),
     )
+  })
+
+  it("does NOT re-prompt when first pass meets target word count", async () => {
+    mockCountWords.mockReturnValue(1000)
+    mockIsTooShort.mockReturnValue(false)
+    mockCallAgent.mockResolvedValue({
+      content: {
+        title: "T",
+        slug: "t",
+        excerpt: "e",
+        content: "<p>1000-word draft</p>",
+        category: "Performance",
+        tags: ["a"],
+        meta_description: "m",
+      },
+      tokens_used: 100,
+    })
+    await handleBlogGeneration("job-1")
+    expect(mockCallAgent).toHaveBeenCalledTimes(1)
+  })
+
+  it("runs ONE expansion re-prompt when first pass is too short", async () => {
+    mockIsTooShort.mockReturnValueOnce(true)
+    mockCountWords
+      .mockReturnValueOnce(600)
+      .mockReturnValueOnce(1100)
+
+    const baseDraft = {
+      title: "T",
+      slug: "t",
+      excerpt: "e",
+      content: "<p>short</p>",
+      category: "Performance" as const,
+      tags: ["a"],
+      meta_description: "m",
+    }
+
+    mockCallAgent
+      .mockResolvedValueOnce({ content: baseDraft, tokens_used: 100 })
+      .mockResolvedValueOnce({
+        content: { ...baseDraft, content: "<p>expanded much longer draft</p>" },
+        tokens_used: 200,
+      })
+
+    await handleBlogGeneration("job-1")
+    expect(mockCallAgent).toHaveBeenCalledTimes(2)
+    expect(mockCallAgent).toHaveBeenNthCalledWith(2, "COMPOSED_PROMPT", "EXPANSION_PROMPT", expect.anything(), expect.anything())
+  })
+
+  it("does NOT re-prompt twice even if expansion still too short", async () => {
+    mockIsTooShort.mockReturnValue(true)
+    mockCountWords.mockReturnValue(700)
+    mockCallAgent.mockResolvedValue({
+      content: {
+        title: "T",
+        slug: "t",
+        excerpt: "e",
+        content: "<p>still short</p>",
+        category: "Performance",
+        tags: ["a"],
+        meta_description: "m",
+      },
+      tokens_used: 100,
+    })
+    await handleBlogGeneration("job-1")
+    expect(mockCallAgent).toHaveBeenCalledTimes(2)
   })
 })

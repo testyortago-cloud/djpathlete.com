@@ -8,7 +8,14 @@ import {
   composeBlogSystemPrompt,
   formatFewShotsForUserMessage,
   type Register,
+  type SeoTarget,
 } from "./blog/voice-context.js"
+import {
+  countWords,
+  isTooShort,
+  resolveTargetWordCount,
+  buildExpansionPrompt,
+} from "./blog/length-verifier.js"
 import { formatProgramsForPrompt } from "./blog/program-catalog.js"
 
 // ─── URL Validation ─────────────────────────────────────────────────────────
@@ -180,9 +187,9 @@ function capMetaDescription(s: string): string {
 }
 
 const blogResultSchema = z.object({
-  title: z.string(),
-  slug: z.string(),
-  excerpt: z.string(),
+  title: z.string().min(20).max(120),
+  slug: z.string().min(3).max(200),
+  excerpt: z.string().min(80).max(280),
   content: z.string(),
   category: z.enum(["Performance", "Recovery", "Coaching", "Youth Development"]),
   tags: z.array(z.string()),
@@ -213,6 +220,10 @@ export async function handleBlogGeneration(jobId: string): Promise<void> {
     tone?: string        // deprecated alias
     register?: Register  // new
     length?: string
+    primary_keyword?: string
+    secondary_keywords?: string[]
+    search_intent?: "informational" | "commercial" | "transactional"
+    target_word_count?: number
     userId: string
     references?: UserReferences
     sourceCalendarId?: string
@@ -224,6 +235,18 @@ export async function handleBlogGeneration(jobId: string): Promise<void> {
     if (input.tone === "professional") return "formal"
     return "casual"
   })()
+
+  const seoTarget: SeoTarget | undefined = input.primary_keyword
+    ? {
+        primary_keyword: input.primary_keyword,
+        secondary_keywords: input.secondary_keywords ?? [],
+        search_intent: input.search_intent ?? null,
+      }
+    : undefined
+  const targetWordCount = resolveTargetWordCount({
+    target_word_count: input.target_word_count,
+    length: input.length,
+  })
 
   const startTime = Date.now()
 
@@ -237,9 +260,10 @@ export async function handleBlogGeneration(jobId: string): Promise<void> {
       blogStructure: voice.blogStructure,
       programsBlock,
       register,
+      seoTarget,
     })
     console.log(
-      `[blog-generation] voice_profile_loaded=${!voice.usedFallback.voice} structure_loaded=${!voice.usedFallback.structure} few_shots=${voice.fewShots.length} register=${register}`,
+      `[blog-generation] voice_profile_loaded=${!voice.usedFallback.voice} structure_loaded=${!voice.usedFallback.structure} few_shots=${voice.fewShots.length} register=${register} primary_keyword=${seoTarget?.primary_keyword ?? "(none)"} target_words=${targetWordCount}`,
     )
 
     // Step 1a: Process user-provided references (crawl URLs, format notes/files)
@@ -304,6 +328,38 @@ Current date: ${new Date().toISOString().slice(0, 10)}${userRefBlock}${researchB
 
     const result = await callAgent(systemPrompt, userMessage, blogResultSchema, { model: MODEL_SONNET })
 
+    // Length verification: if first pass is too short, run ONE expansion re-prompt.
+    let finalContent = result.content
+    let totalTokens = result.tokens_used
+
+    const initialWordCount = countWords(finalContent.content)
+    if (isTooShort(initialWordCount, targetWordCount)) {
+      console.log(
+        `[blog-generation] First pass too short (${initialWordCount}/${targetWordCount}); running one expansion re-prompt`,
+      )
+      const h2Matches = finalContent.content.matchAll(/<h2[^>]*>([\s\S]*?)<\/h2>/gi)
+      const h2List = Array.from(h2Matches).map((m) => m[1].replace(/<[^>]+>/g, "").trim())
+
+      const expansionUserMessage = buildExpansionPrompt({
+        currentHtml: finalContent.content,
+        actualWordCount: initialWordCount,
+        targetWordCount,
+        h2List,
+      })
+
+      try {
+        const expanded = await callAgent(systemPrompt, expansionUserMessage, blogResultSchema, { model: MODEL_SONNET })
+        finalContent = expanded.content
+        totalTokens += expanded.tokens_used
+        const expandedWordCount = countWords(finalContent.content)
+        console.log(
+          `[blog-generation] After expansion: ${expandedWordCount} words (was ${initialWordCount}, target ${targetWordCount})`,
+        )
+      } catch (err) {
+        console.warn(`[blog-generation] Expansion re-prompt failed, keeping first-pass draft: ${(err as Error).message}`)
+      }
+    }
+
     // Check cancellation after AI call
     if (await isJobCancelled(jobRef)) {
       console.log(`[blog-generation] Job ${jobId} cancelled after AI call`)
@@ -311,8 +367,8 @@ Current date: ${new Date().toISOString().slice(0, 10)}${userRefBlock}${researchB
     }
 
     // Step 3: Validate all URLs in the generated content — remove any 404s
-    const validatedContent = await validateUrls(result.content.content)
-    const finalResult = { ...result.content, content: validatedContent }
+    const validatedContent = await validateUrls(finalContent.content)
+    const finalResult = { ...finalContent, content: validatedContent }
 
     // Log generation (non-fatal)
     try {
@@ -336,10 +392,10 @@ Current date: ${new Date().toISOString().slice(0, 10)}${userRefBlock}${researchB
           user_refs_files: userRefMeta.files,
           user_refs_file_names: (input.references?.file_contents ?? []).map((f) => f.name),
         },
-        output_summary: `Generated blog: ${result.content.title}`,
+        output_summary: `Generated blog: ${finalResult.title}`,
         error_message: null,
         model_used: MODEL_SONNET,
-        tokens_used: result.tokens_used,
+        tokens_used: totalTokens,
         duration_ms: Date.now() - startTime,
         completed_at: new Date().toISOString(),
         current_step: 0,
@@ -365,6 +421,9 @@ Current date: ${new Date().toISOString().slice(0, 10)}${userRefBlock}${researchB
         tags: finalResult.tags,
         meta_description: finalResult.meta_description,
         author_id: input.userId,
+        primary_keyword: seoTarget?.primary_keyword ?? null,
+        secondary_keywords: seoTarget?.secondary_keywords ?? [],
+        search_intent: seoTarget?.search_intent ?? null,
       })
       .select("id")
       .single()
