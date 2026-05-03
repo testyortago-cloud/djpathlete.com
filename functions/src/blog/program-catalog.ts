@@ -20,7 +20,7 @@ export const PROGRAMS: DjpProgram[] = [
   {
     slug: "comeback-code",
     name: "Comeback Code",
-    url: "https://djpathlete.com/programs/comeback-code",
+    url: "https://www.darrenjpaul.com/programs/comeback-code",
     pitch: "Structured return-to-performance program for athletes coming back from injury, layoff, or chronic limitation.",
     match_tags: [
       "recovery",
@@ -45,7 +45,7 @@ export const PROGRAMS: DjpProgram[] = [
   {
     slug: "rotational-reboot",
     name: "Rotational Reboot",
-    url: "https://djpathlete.com/programs/rotational-reboot",
+    url: "https://www.darrenjpaul.com/programs/rotational-reboot",
     pitch: "Rotational power and movement program for pitchers, golfers, throwers, and racquet-sport athletes.",
     match_tags: [
       "rotational",
