@@ -1,6 +1,5 @@
 "use client"
 
-import { useState } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { Button } from "@/components/ui/button"
@@ -20,32 +19,26 @@ interface Props {
 }
 
 export function InviteFormDialog({ open, onOpenChange, onCreated }: Props) {
-  const [submitting, setSubmitting] = useState(false)
-  const { register, handleSubmit, formState: { errors }, reset } = useForm<SendInviteInput>({
+  const { register, handleSubmit, formState: { errors, isSubmitting }, reset } = useForm<SendInviteInput>({
     resolver: zodResolver(sendInviteSchema),
     defaultValues: { email: "", role: "editor" },
   })
 
   async function onSubmit(data: SendInviteInput) {
-    setSubmitting(true)
-    try {
-      const res = await fetch("/api/admin/team/invites", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(data),
-      })
-      if (!res.ok) {
-        const json = await res.json().catch(() => ({}))
-        toast.error(json.error ?? "Failed to send invite")
-        return
-      }
-      toast.success(`Invite sent to ${data.email}`)
-      reset()
-      onCreated()
-      onOpenChange(false)
-    } finally {
-      setSubmitting(false)
+    const res = await fetch("/api/admin/team/invites", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}))
+      toast.error(json.error ?? "Failed to send invite")
+      return
     }
+    toast.success(`Invite sent to ${data.email}`)
+    reset()
+    onCreated()
+    onOpenChange(false)
   }
 
   return (
@@ -61,8 +54,15 @@ export function InviteFormDialog({ open, onOpenChange, onCreated }: Props) {
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" autoComplete="off" {...register("email")} />
-            {errors.email && <p className="text-xs text-error">{errors.email.message}</p>}
+            <Input
+              id="email"
+              type="email"
+              autoComplete="off"
+              aria-invalid={!!errors.email}
+              aria-describedby={errors.email ? "email-error" : undefined}
+              {...register("email")}
+            />
+            {errors.email && <p id="email-error" className="text-xs text-error">{errors.email.message}</p>}
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="role">Role</Label>
@@ -73,8 +73,8 @@ export function InviteFormDialog({ open, onOpenChange, onCreated }: Props) {
           </div>
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button type="submit" disabled={submitting}>
-              {submitting ? "Sending..." : "Send invite"}
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? "Sending..." : "Send invite"}
             </Button>
           </DialogFooter>
         </form>
