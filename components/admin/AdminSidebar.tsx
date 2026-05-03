@@ -129,6 +129,10 @@ function getNavSections(contentStudioOn: boolean): NavSection[] {
       ],
     },
     {
+      title: "Team Videos",
+      items: [{ label: "Team Videos", href: "/admin/team-videos", icon: Video }],
+    },
+    {
       title: "Team",
       items: [{ label: "Team", href: "/admin/team", icon: Users2 }],
     },
