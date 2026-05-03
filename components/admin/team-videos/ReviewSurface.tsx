@@ -35,7 +35,7 @@ interface Props {
 export function ReviewSurface({ submission, version, comments, videoUrl }: Props) {
   const router = useRouter()
   const playerRef = useRef<TeamVideoPlayerHandle>(null)
-  // overlayRef points only to the outer relative wrapper — single placement per recommendation
+  // overlayRef points to the inner video-frame container via videoContainerRef prop on TeamVideoPlayer
   const overlayRef = useRef<HTMLDivElement | null>(null)
   const [overlaySize, setOverlaySize] = useState({ width: 0, height: 0 })
   const [currentTime, setCurrentTime] = useState(0)
@@ -117,7 +117,6 @@ export function ReviewSurface({ submission, version, comments, videoUrl }: Props
 
   function renderOverlay() {
     if (overlaySize.width === 0 || overlaySize.height === 0) return null
-    // No ref here — overlayRef stays on the outer wrapper only
     return (
       <div className="absolute inset-0">
         {/* Read-only annotations from existing visible comments */}
