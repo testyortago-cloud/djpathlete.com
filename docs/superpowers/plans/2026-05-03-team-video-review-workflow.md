@@ -4,9 +4,9 @@
 
 **Goal:** Ship the full editor video submission + admin review workflow with timecoded text comments, status transitions (draft → submitted → in_review → revision_requested / approved → locked), and manual handoff to Content Studio. On-frame drawing annotations are deferred to Plan 3.
 
-**Architecture:** Editor uploads videos directly to Supabase Storage via signed upload URLs (no traffic through Next.js). Submissions and versions are tracked in `team_video_*` tables; comments are timecoded and admin-write-only. Darren reviews in `/admin/team-videos`, transitions status via API, and explicitly hands approved videos to Content Studio (no auto-publish). Notifications via Resend on every status transition.
+**Architecture:** Editor uploads videos directly to **Firebase Storage** via Firebase v4 signed upload URLs (no traffic through Next.js — same pattern Content Studio's `/api/admin/videos` already uses). Submissions and versions are tracked in `team_video_*` tables (Supabase Postgres); comments are timecoded and admin-write-only. Darren reviews in `/admin/team-videos`, transitions status via API, and explicitly hands approved videos to Content Studio (no auto-publish — `video_uploads.storage_path` is backend-agnostic, so the Firebase path slots in directly). Notifications via Resend on every status transition.
 
-**Tech Stack:** Next.js 16 App Router · Supabase Postgres + Storage · NextAuth v5 (Credentials) · Zod · React Hook Form · Resend · Vitest + Playwright · shadcn/ui · Lucide
+**Tech Stack:** Next.js 16 App Router · Supabase Postgres · **Firebase Storage** (existing default bucket) · NextAuth v5 (Credentials) · Zod · React Hook Form · Resend · Vitest + Playwright · shadcn/ui · Lucide
 
 **Spec:** [docs/superpowers/specs/2026-05-03-team-invites-and-video-review-design.md](docs/superpowers/specs/2026-05-03-team-invites-and-video-review-design.md)
 
@@ -20,7 +20,8 @@
 
 **New migrations:**
 - `supabase/migrations/00115_team_video_tables.sql` — submissions, versions, comments, annotations + RLS
-- `supabase/migrations/00116_team_video_storage_bucket.sql` — private bucket + policies
+
+**Storage:** Uses the existing Firebase Storage default bucket (`process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`). No new bucket — files live under the path prefix `team-videos/{submission_id}/v{version_number}/{filename}`, mirroring the convention `app/api/admin/videos/route.ts` already uses (`videos/{userId}/...`). No DDL needed for storage.
 
 **New types:**
 - `types/database.ts` — append `TeamVideoSubmissionStatus`, `TeamVideoVersionStatus`, `TeamVideoCommentStatus`, plus interfaces `TeamVideoSubmission`, `TeamVideoVersion`, `TeamVideoComment`, `TeamVideoAnnotation`
@@ -32,7 +33,7 @@
 
 **New helpers:**
 - `lib/validators/team-video.ts` — Zod schemas
-- `lib/storage/team-videos.ts` — signed upload URL + signed read URL helpers
+- `lib/storage/team-videos.ts` — Firebase signed upload URL + signed read URL helpers (built on existing `lib/firebase-admin.ts` exports)
 - `lib/email.ts` (modify) — append 4 email functions
 - `lib/team-videos/badge-count.ts` — count of `submitted` submissions for sidebar badge
 
@@ -247,68 +248,59 @@ git commit -m "feat(db): team_video_* tables for editor video review workflow"
 
 ---
 
-## Task 2: Storage Bucket
+## Task 2: Firebase Storage Namespace Verification
+
+No DDL or new infrastructure — the existing Firebase Storage default bucket
+(`process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`) is reused with a
+`team-videos/` path prefix, matching the convention in
+`app/api/admin/videos/route.ts:47` (`videos/{userId}/{ts}-{filename}`).
+This task verifies the env vars are set and writes a tiny constants module
+so Task 8 has a single source for the bucket prefix.
 
 **Files:**
-- Create: `supabase/migrations/00116_team_video_storage_bucket.sql`
+- Create: `lib/storage/team-videos-config.ts`
 
-- [ ] **Step 1: Write the bucket migration**
+- [ ] **Step 1: Verify env vars are present**
 
-Create `supabase/migrations/00116_team_video_storage_bucket.sql`:
+Open `.env.local` and confirm these exist (do NOT modify them — values are
+already wired for other Firebase usage in the project):
 
-```sql
--- Private storage bucket for team video submissions.
--- Files are uploaded via signed URLs (server creates them) and read via
--- signed URLs only — never public. Service-role manages all writes.
+- `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` — the default bucket name (e.g., `djpathlete.appspot.com`)
+- `FIREBASE_SERVICE_ACCOUNT_KEY` — JSON service-account credentials used by `lib/firebase-admin.ts`
 
-INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-VALUES (
-  'team-video-submissions',
-  'team-video-submissions',
-  false,                        -- private
-  5368709120,                   -- 5 GB per file
-  ARRAY[
-    'video/mp4',
-    'video/quicktime',
-    'video/webm',
-    'video/x-matroska'
-  ]
-)
-ON CONFLICT (id) DO NOTHING;
+If either is missing, STOP and report — there's no Firebase Storage to write to.
 
--- No public-read policy: all reads happen through server-issued signed URLs.
--- No client-side write policy: all uploads happen through server-issued
--- signed upload URLs (createSignedUploadUrl). Service-role bypasses RLS.
+- [ ] **Step 2: Create the constants module**
 
--- Admins can read all objects (defense-in-depth; in practice signed URLs are used)
-CREATE POLICY "Admins read team-video-submissions"
-  ON storage.objects FOR SELECT
-  USING (
-    bucket_id = 'team-video-submissions'
-    AND EXISTS (SELECT 1 FROM public.users u WHERE u.id = auth.uid() AND u.role = 'admin')
-  );
+Create `lib/storage/team-videos-config.ts`:
+
+```ts
+/**
+ * Team video Firebase Storage path conventions.
+ *
+ * All team-video files live under a single namespace prefix in the project's
+ * default Firebase Storage bucket. Reusing the default bucket (vs. spinning
+ * up a dedicated one) matches Content Studio's existing video pattern at
+ * app/api/admin/videos/route.ts.
+ *
+ * Path shape: team-videos/<submissionId>/v<versionNumber>/<safeFilename>
+ */
+
+export const TEAM_VIDEO_PATH_PREFIX = "team-videos"
+
+export const TEAM_VIDEO_UPLOAD_URL_TTL_MS = 15 * 60 * 1000  // 15 min for the editor to PUT
+export const TEAM_VIDEO_READ_URL_TTL_MS = 60 * 60 * 1000    // 1 hour for the player to stream
 ```
 
-- [ ] **Step 2: Apply via MCP**
+- [ ] **Step 3: Typecheck**
 
-Use `mcp__supabase__apply_migration` with `name: "team_video_storage_bucket"`.
-
-Expected: success.
-
-- [ ] **Step 3: Verify bucket exists**
-
-```sql
-SELECT id, public, file_size_limit FROM storage.buckets
-WHERE id = 'team-video-submissions';
-```
-
-Expected: 1 row, `public = false`, `file_size_limit = 5368709120`.
+Run: `npx tsc --noEmit 2>&1 | grep -c "error TS"` → should still be 134.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add supabase/migrations/00116_team_video_storage_bucket.sql
-git commit -m "feat(storage): private team-video-submissions bucket (5GB, video MIME)"
+git add lib/storage/team-videos-config.ts
+git commit -m "feat(storage): team-videos Firebase namespace constants"
 ```
 
 ---
@@ -1217,69 +1209,90 @@ git commit -m "feat(db): team video comments DAL"
 
 ---
 
-## Task 8: Storage Helpers
+## Task 8: Firebase Storage Helpers
 
 **Files:**
 - Create: `lib/storage/team-videos.ts`
+
+This wraps the existing `lib/firebase-admin.ts` exports for the team-video
+use case. We get a writable v4 signed URL (client PUTs directly), a read
+URL for streaming, and a delete helper. The path-builder lives here so the
+API routes (Tasks 9, 10) don't need to know the bucket layout.
 
 - [ ] **Step 1: Implement the storage helpers**
 
 Create `lib/storage/team-videos.ts`:
 
 ```ts
-import { createServiceRoleClient } from "@/lib/supabase"
+import { getAdminStorage } from "@/lib/firebase-admin"
+import {
+  TEAM_VIDEO_PATH_PREFIX,
+  TEAM_VIDEO_UPLOAD_URL_TTL_MS,
+  TEAM_VIDEO_READ_URL_TTL_MS,
+} from "./team-videos-config"
 
-const BUCKET = "team-video-submissions"
-
-/** Build the storage path for a version: <submissionId>/v<n>/<filename> */
+/** Build the storage path for a version: team-videos/<submissionId>/v<n>/<safeFilename> */
 export function buildVersionPath(
   submissionId: string,
   versionNumber: number,
   filename: string,
 ): string {
-  // Sanitize filename: keep alphanumerics, dot, dash, underscore.
-  const safe = filename.replace(/[^A-Za-z0-9._-]/g, "_")
-  return `${submissionId}/v${versionNumber}/${safe}`
+  // Sanitize: alphanumerics, dot, dash, underscore. Cap at 120 chars to mirror
+  // the convention in app/api/admin/videos/route.ts:sanitizeFilename.
+  const safe = filename.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 120)
+  return `${TEAM_VIDEO_PATH_PREFIX}/${submissionId}/v${versionNumber}/${safe}`
 }
 
 /**
- * Create a signed upload URL for the editor's browser to PUT the file directly
- * to Supabase Storage. The token is single-use and expires after a short window.
+ * Create a Firebase v4 signed URL the editor's browser can PUT to directly.
+ * Returns just the URL + the path we built — Firebase's v4 signed URLs are
+ * self-contained (no separate token needed, unlike Supabase Storage).
  */
-export async function createUploadUrl(path: string): Promise<{
-  signedUrl: string
-  token: string
-  path: string
-}> {
-  const supabase = createServiceRoleClient()
-  const { data, error } = await supabase.storage
-    .from(BUCKET)
-    .createSignedUploadUrl(path)
-  if (error || !data) throw new Error(`Upload URL failed: ${error?.message}`)
-  return { signedUrl: data.signedUrl, token: data.token, path }
+export async function createUploadUrl(input: {
+  storagePath: string
+  contentType: string
+}): Promise<{ uploadUrl: string; storagePath: string; expiresInSeconds: number }> {
+  const bucket = getAdminStorage().bucket()
+  const file = bucket.file(input.storagePath)
+  const [uploadUrl] = await file.getSignedUrl({
+    version: "v4",
+    action: "write",
+    expires: Date.now() + TEAM_VIDEO_UPLOAD_URL_TTL_MS,
+    contentType: input.contentType,
+  })
+  return {
+    uploadUrl,
+    storagePath: input.storagePath,
+    expiresInSeconds: Math.floor(TEAM_VIDEO_UPLOAD_URL_TTL_MS / 1000),
+  }
 }
 
 /**
- * Create a signed read URL for streaming the video back to the browser.
- * Used by the player. Expires after the given seconds.
+ * Create a v4 signed read URL for streaming the video back to the browser.
+ * Used by VideoPlayer. Expires after TEAM_VIDEO_READ_URL_TTL_MS by default.
  */
-export async function createReadUrl(path: string, expiresInSeconds = 3600): Promise<string> {
-  const supabase = createServiceRoleClient()
-  const { data, error } = await supabase.storage
-    .from(BUCKET)
-    .createSignedUrl(path, expiresInSeconds)
-  if (error || !data) throw new Error(`Read URL failed: ${error?.message}`)
-  return data.signedUrl
+export async function createReadUrl(
+  storagePath: string,
+  expiresInMs = TEAM_VIDEO_READ_URL_TTL_MS,
+): Promise<string> {
+  const bucket = getAdminStorage().bucket()
+  const file = bucket.file(storagePath)
+  const [url] = await file.getSignedUrl({
+    version: "v4",
+    action: "read",
+    expires: Date.now() + expiresInMs,
+  })
+  return url
 }
 
 /**
- * Delete a video from storage. Used when a version row is hard-deleted
- * (rare — versioning normally keeps history).
+ * Delete a video from storage. Used rarely — versioning normally keeps history,
+ * but ON DELETE CASCADE on team_video_versions will leave Firebase orphans
+ * that can be cleaned up out-of-band if needed.
  */
-export async function deleteVideo(path: string): Promise<void> {
-  const supabase = createServiceRoleClient()
-  const { error } = await supabase.storage.from(BUCKET).remove([path])
-  if (error) throw error
+export async function deleteVideo(storagePath: string): Promise<void> {
+  const bucket = getAdminStorage().bucket()
+  await bucket.file(storagePath).delete({ ignoreNotFound: true })
 }
 ```
 
@@ -1289,13 +1302,13 @@ Run: `npx tsc --noEmit 2>&1 | grep -c "error TS"` → still 134.
 
 - [ ] **Step 3: Smoke check (optional)**
 
-The MCP tooling can verify the bucket exists; runtime smoke test happens via the upload page in Task 13. Skip explicit smoke check here.
+Runtime smoke test happens via the upload page in Task 13. Skip explicit smoke check here.
 
 - [ ] **Step 4: Commit**
 
 ```bash
 git add lib/storage/team-videos.ts
-git commit -m "feat(storage): signed upload/read URL helpers for team videos"
+git commit -m "feat(storage): Firebase signed upload/read URL helpers for team videos"
 ```
 
 ---
@@ -1325,7 +1338,7 @@ vi.mock("@/lib/db/team-video-versions", () => ({
   nextVersionNumber: vi.fn(),
 }))
 vi.mock("@/lib/storage/team-videos", () => ({
-  buildVersionPath: vi.fn((sid, n, fn) => `${sid}/v${n}/${fn}`),
+  buildVersionPath: vi.fn((sid, n, fn) => `team-videos/${sid}/v${n}/${fn}`),
   createUploadUrl: vi.fn(),
 }))
 
@@ -1387,9 +1400,9 @@ describe("POST /api/editor/submissions", () => {
       id: "v1", submission_id: "sub1", version_number: 1, storage_path: "sub1/v1/squat.mp4",
     })
     ;(createUploadUrl as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-      signedUrl: "https://storage.example/upload",
-      token: "tok-abc",
-      path: "sub1/v1/squat.mp4",
+      uploadUrl: "https://storage.googleapis.com/bucket/team-videos/sub1/v1/squat.mp4?...sig",
+      storagePath: "team-videos/sub1/v1/squat.mp4",
+      expiresInSeconds: 900,
     })
 
     const res = await POST(post(validBody))
@@ -1397,8 +1410,8 @@ describe("POST /api/editor/submissions", () => {
     const json = await res.json()
     expect(json.submission.id).toBe("sub1")
     expect(json.version.id).toBe("v1")
-    expect(json.upload.signedUrl).toBe("https://storage.example/upload")
-    expect(json.upload.token).toBe("tok-abc")
+    expect(json.upload.uploadUrl).toMatch(/^https:\/\/storage\.googleapis\.com/)
+    expect(json.upload.storagePath).toBe("team-videos/sub1/v1/squat.mp4")
     expect(setCurrentVersion).toHaveBeenCalledWith("sub1", "v1")
   })
 })
@@ -1465,13 +1478,20 @@ export async function POST(request: Request) {
 
   await setCurrentVersion(submission.id, version.id)
 
-  const upload = await createUploadUrl(storagePath)
+  const upload = await createUploadUrl({
+    storagePath,
+    contentType: parsed.data.mimeType,
+  })
 
   return NextResponse.json(
     {
       submission,
       version,
-      upload: { signedUrl: upload.signedUrl, token: upload.token, path: upload.path },
+      upload: {
+        uploadUrl: upload.uploadUrl,
+        storagePath: upload.storagePath,
+        expiresInSeconds: upload.expiresInSeconds,
+      },
     },
     { status: 201 },
   )
@@ -1487,7 +1507,7 @@ Expected: 4/4 PASS.
 
 ```bash
 git add app/api/editor/submissions/route.ts __tests__/api/editor/submissions.test.ts
-git commit -m "feat(api): editor creates submission, gets signed upload URL"
+git commit -m "feat(api): editor creates submission, gets Firebase signed upload URL"
 ```
 
 ---
@@ -1565,7 +1585,10 @@ export async function POST(
 
   await setCurrentVersion(submission.id, version.id)
 
-  const upload = await createUploadUrl(storagePath)
+  const upload = await createUploadUrl({
+    storagePath,
+    contentType: parsed.data.mimeType,
+  })
 
   return NextResponse.json({ version, upload }, { status: 201 })
 }
@@ -2011,17 +2034,13 @@ Create `components/editor/UploadDropzone.tsx`:
 
 import { useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import { createClient } from "@supabase/supabase-js"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "sonner"
 import { UploadCloud } from "lucide-react"
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-const BUCKET = "team-video-submissions"
+import { uploadToSignedUrl } from "@/lib/firebase-client-upload"
 
 export function UploadDropzone() {
   const router = useRouter()
@@ -2065,15 +2084,9 @@ export function UploadDropzone() {
       }
       const { submission, upload } = await createRes.json()
 
-      // 2. Upload file directly to Supabase Storage with the signed token
-      const browserClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
-      const { error: uploadErr } = await browserClient.storage
-        .from(BUCKET)
-        .uploadToSignedUrl(upload.path, upload.token, file, {
-          contentType: file.type,
-        })
-      if (uploadErr) throw new Error(`Upload failed: ${uploadErr.message}`)
-      setProgress(100)
+      // 2. Upload file directly to Firebase Storage via the v4 signed URL.
+      // uploadToSignedUrl uses XHR under the hood so we can show real progress.
+      await uploadToSignedUrl(upload.uploadUrl, file, (e) => setProgress(e.percent))
 
       // 3. Finalize
       const finRes = await fetch(`/api/editor/submissions/${submission.id}/finalize`, {
@@ -2401,17 +2414,13 @@ Create `components/editor/EditorVideoView.tsx`:
 import { useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { createClient } from "@supabase/supabase-js"
 import { ArrowLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import { VideoPlayer, type VideoPlayerHandle } from "@/components/shared/VideoPlayer"
 import { CommentThread } from "@/components/shared/CommentThread"
+import { uploadToSignedUrl } from "@/lib/firebase-client-upload"
 import type { TeamVideoSubmission, TeamVideoVersion, TeamVideoComment } from "@/types/database"
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-const BUCKET = "team-video-submissions"
 
 interface Props {
   submission: TeamVideoSubmission
@@ -2444,11 +2453,8 @@ export function EditorVideoView({ submission, version, comments, videoUrl }: Pro
       }
       const { upload } = await verRes.json()
 
-      const browserClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
-      const { error: uploadErr } = await browserClient.storage
-        .from(BUCKET)
-        .uploadToSignedUrl(upload.path, upload.token, file, { contentType: file.type })
-      if (uploadErr) throw new Error(`Upload failed: ${uploadErr.message}`)
+      // Upload to Firebase Storage via the v4 signed URL.
+      await uploadToSignedUrl(upload.uploadUrl, file)
 
       const finRes = await fetch(`/api/editor/submissions/${submission.id}/finalize`, {
         method: "POST",
