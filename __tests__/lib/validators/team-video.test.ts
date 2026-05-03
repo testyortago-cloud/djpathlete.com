@@ -4,6 +4,7 @@ import {
   createVersionSchema,
   createCommentSchema,
   statusTransitionSchema,
+  drawingJsonSchema,
 } from "@/lib/validators/team-video"
 
 describe("createSubmissionSchema", () => {
@@ -77,6 +78,64 @@ describe("createCommentSchema", () => {
   it("rejects negative timecode", () => {
     const r = createCommentSchema.safeParse({
       timecodeSeconds: -1, commentText: "x",
+    })
+    expect(r.success).toBe(false)
+  })
+})
+
+describe("drawingJsonSchema", () => {
+  const goodPath = {
+    tool: "arrow", color: "#FF3B30", width: 3,
+    points: [[0.1, 0.1], [0.9, 0.9]],
+  }
+  it("accepts a valid drawing", () => {
+    const r = drawingJsonSchema.safeParse({ paths: [goodPath] })
+    expect(r.success).toBe(true)
+  })
+  it("rejects unknown color", () => {
+    const r = drawingJsonSchema.safeParse({
+      paths: [{ ...goodPath, color: "#123456" }],
+    })
+    expect(r.success).toBe(false)
+  })
+  it("rejects coords > 1", () => {
+    const r = drawingJsonSchema.safeParse({
+      paths: [{ ...goodPath, points: [[0, 0], [1.5, 0.5]] }],
+    })
+    expect(r.success).toBe(false)
+  })
+  it("rejects single-point path", () => {
+    const r = drawingJsonSchema.safeParse({
+      paths: [{ ...goodPath, points: [[0.5, 0.5]] }],
+    })
+    expect(r.success).toBe(false)
+  })
+  it("rejects empty paths array", () => {
+    const r = drawingJsonSchema.safeParse({ paths: [] })
+    expect(r.success).toBe(false)
+  })
+})
+
+describe("createCommentSchema with annotation", () => {
+  it("accepts a comment without annotation (backwards compat)", () => {
+    const r = createCommentSchema.safeParse({
+      timecodeSeconds: 1, commentText: "x",
+    })
+    expect(r.success).toBe(true)
+  })
+  it("accepts a comment with valid annotation", () => {
+    const r = createCommentSchema.safeParse({
+      timecodeSeconds: 1, commentText: "x",
+      annotation: { paths: [{ tool: "pen", color: "#000000", width: 2,
+                              points: [[0, 0], [1, 1]] }] },
+    })
+    expect(r.success).toBe(true)
+  })
+  it("rejects a comment with invalid annotation", () => {
+    const r = createCommentSchema.safeParse({
+      timecodeSeconds: 1, commentText: "x",
+      annotation: { paths: [{ tool: "scribble", color: "#000000", width: 2,
+                               points: [[0, 0], [1, 1]] }] },
     })
     expect(r.success).toBe(false)
   })

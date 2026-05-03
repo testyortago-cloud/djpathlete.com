@@ -9,6 +9,28 @@ const ALLOWED_VIDEO_MIME = [
 
 const MAX_VIDEO_BYTES = 5 * 1024 * 1024 * 1024 // 5 GB
 
+const ALLOWED_DRAWING_COLORS = [
+  "#FF3B30", // red
+  "#FFCC00", // yellow
+  "#34C759", // green
+  "#000000", // black
+] as const
+
+const drawingPathSchema = z.object({
+  tool: z.enum(["pen", "arrow", "rectangle"]),
+  color: z.enum(ALLOWED_DRAWING_COLORS),
+  width: z.number().int().min(2).max(8),
+  points: z
+    .array(z.tuple([z.number().min(0).max(1), z.number().min(0).max(1)]))
+    .min(2),
+})
+
+export const drawingJsonSchema = z.object({
+  paths: z.array(drawingPathSchema).min(1, "At least one path required").max(50),
+})
+
+export type DrawingJsonInput = z.infer<typeof drawingJsonSchema>
+
 export const createSubmissionSchema = z.object({
   title: z.string().trim().min(1, "Title is required").max(200),
   description: z.string().trim().max(2000).optional(),
@@ -38,6 +60,7 @@ export type CreateVersionInput = z.infer<typeof createVersionSchema>
 export const createCommentSchema = z.object({
   timecodeSeconds: z.number().min(0).nullable(),
   commentText: z.string().trim().min(1, "Comment cannot be empty").max(2000),
+  annotation: drawingJsonSchema.optional(),
 })
 
 export type CreateCommentInput = z.infer<typeof createCommentSchema>
