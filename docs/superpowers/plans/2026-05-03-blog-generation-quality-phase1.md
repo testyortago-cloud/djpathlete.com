@@ -21,7 +21,7 @@
 - `functions/src/blog/__tests__/program-catalog.test.ts`
 
 ### New files (Next.js side)
-- `supabase/migrations/00103_blog_generation_prompt_template.sql` — seed `blog_generation` row in `prompt_templates`
+- `supabase/migrations/00108_blog_generation_prompt_template.sql` — seed `blog_generation` row in `prompt_templates`
 
 ### Modified files
 - `functions/src/blog-generation.ts` — call `loadVoiceContext`, switch on `register` instead of `tone`, inject program catalog, shrink the hardcoded fallback to a structural skeleton
@@ -39,12 +39,12 @@
 ## Task 1: Migration — seed `blog_generation` prompt_templates row
 
 **Files:**
-- Create: `supabase/migrations/00103_blog_generation_prompt_template.sql`
+- Create: `supabase/migrations/00108_blog_generation_prompt_template.sql`
 
 - [ ] **Step 1: Create the migration file**
 
 ```sql
--- supabase/migrations/00103_blog_generation_prompt_template.sql
+-- supabase/migrations/00108_blog_generation_prompt_template.sql
 -- Phase 1 of blog-generation-quality rollout.
 -- Adds the blog_generation prompt_templates row that holds OUTPUT/STRUCTURE
 -- rules for the blog generator. Voice/persona stays in the existing
@@ -114,7 +114,7 @@ Expected: one row, `prompt_len` between 1500 and 2500.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add supabase/migrations/00103_blog_generation_prompt_template.sql
+git add supabase/migrations/00108_blog_generation_prompt_template.sql
 git commit -m "feat(blog): seed blog_generation prompt_templates row (phase 1)"
 ```
 
@@ -1101,7 +1101,7 @@ Expected: server up on port 3050.
 
 - [ ] **Step 2: Apply migration to the live Supabase project**
 
-If using cloud Supabase only: open Studio → SQL editor → paste the contents of `supabase/migrations/00103_blog_generation_prompt_template.sql` and run.
+If using cloud Supabase only: open Studio → SQL editor → paste the contents of `supabase/migrations/00108_blog_generation_prompt_template.sql` and run.
 Verify the row exists:
 
 ```sql
