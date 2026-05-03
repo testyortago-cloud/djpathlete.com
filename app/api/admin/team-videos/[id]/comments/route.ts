@@ -76,5 +76,10 @@ export async function GET(
   if (!version) return NextResponse.json({ comments: [] })
 
   const comments = await listCommentsForVersion(version.id)
-  return NextResponse.json({ comments })
+  const annotationMap = await listAnnotationsForCommentIds(comments.map((c) => c.id))
+  const merged = comments.map((c) => ({
+    ...c,
+    annotation: annotationMap.get(c.id) ?? null,
+  }))
+  return NextResponse.json({ comments: merged })
 }

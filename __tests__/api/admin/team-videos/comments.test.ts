@@ -21,7 +21,7 @@ import { auth } from "@/lib/auth"
 import { getSubmissionById, setSubmissionStatus } from "@/lib/db/team-video-submissions"
 import { getCurrentVersion } from "@/lib/db/team-video-versions"
 import { createComment, listCommentsForVersion } from "@/lib/db/team-video-comments"
-import { createAnnotationForComment } from "@/lib/db/team-video-annotations"
+import { createAnnotationForComment, listAnnotationsForCommentIds } from "@/lib/db/team-video-annotations"
 import { POST, GET } from "@/app/api/admin/team-videos/[id]/comments/route"
 
 beforeEach(() => vi.clearAllMocks())
@@ -150,5 +150,28 @@ describe("GET /api/admin/team-videos/[id]/comments", () => {
     expect(res.status).toBe(200)
     const json = await res.json()
     expect(json.comments).toHaveLength(1)
+  })
+
+  it("returns comments with annotation field merged in", async () => {
+    ;(auth as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      user: { id: "admin1", role: "admin" },
+    })
+    ;(getSubmissionById as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "sub1" })
+    ;(getCurrentVersion as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "v1" })
+    ;(listCommentsForVersion as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: "c1", timecode_seconds: 10, comment_text: "with drawing" },
+      { id: "c2", timecode_seconds: null, comment_text: "general, no drawing" },
+    ])
+    const drawing = { paths: [{ tool: "pen", color: "#000000", width: 2,
+                                points: [[0, 0], [1, 1]] }] }
+    ;(listAnnotationsForCommentIds as ReturnType<typeof vi.fn>).mockResolvedValue(
+      new Map([["c1", drawing]]),
+    )
+    const res = await GET(new Request("http://x"), { params })
+    expect(res.status).toBe(200)
+    const json = await res.json()
+    expect(json.comments).toHaveLength(2)
+    expect(json.comments[0].annotation).toEqual(drawing)
+    expect(json.comments[1].annotation).toBeNull()
   })
 })
