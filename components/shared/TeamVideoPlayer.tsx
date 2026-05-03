@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useImperativeHandle, useRef, useState, forwardRef } from "react"
+import React, { useEffect, useImperativeHandle, useRef, useState, forwardRef } from "react"
 import { Play, Pause } from "lucide-react"
 import type { TeamVideoComment } from "@/types/database"
 
@@ -22,6 +22,10 @@ interface Props {
   comments: TeamVideoComment[]
   /** Called when a marker is clicked. Parent typically scrolls comment thread to it. */
   onMarkerClick?: (commentId: string, timecodeSeconds: number) => void
+  /** Called on every `timeupdate` event with the current playback position (seconds). */
+  onTimeUpdate?: (currentSeconds: number) => void
+  /** Optional render-prop for content that should overlay the <video> element. */
+  renderOverlay?: () => React.ReactNode
 }
 
 function fmtTime(s: number): string {
@@ -32,7 +36,7 @@ function fmtTime(s: number): string {
 }
 
 export const TeamVideoPlayer = forwardRef<TeamVideoPlayerHandle, Props>(function TeamVideoPlayer(
-  { src, comments, onMarkerClick }, ref,
+  { src, comments, onMarkerClick, onTimeUpdate, renderOverlay }, ref,
 ) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const [playing, setPlaying] = useState(false)
@@ -75,28 +79,31 @@ export const TeamVideoPlayer = forwardRef<TeamVideoPlayerHandle, Props>(function
   useEffect(() => {
     const v = videoRef.current
     if (!v) return
-    const onTimeUpdate = () => setCurrentTime(v.currentTime)
+    const onTimeUpdateHandler = () => {
+      setCurrentTime(v.currentTime)
+      onTimeUpdate?.(v.currentTime)
+    }
     const onLoadedMeta = () => setDuration(v.duration)
     const onPlay = () => setPlaying(true)
     const onPause = () => setPlaying(false)
-    v.addEventListener("timeupdate", onTimeUpdate)
+    v.addEventListener("timeupdate", onTimeUpdateHandler)
     v.addEventListener("loadedmetadata", onLoadedMeta)
     v.addEventListener("play", onPlay)
     v.addEventListener("pause", onPause)
     return () => {
-      v.removeEventListener("timeupdate", onTimeUpdate)
+      v.removeEventListener("timeupdate", onTimeUpdateHandler)
       v.removeEventListener("loadedmetadata", onLoadedMeta)
       v.removeEventListener("play", onPlay)
       v.removeEventListener("pause", onPause)
     }
-  }, [])
+  }, [onTimeUpdate])
 
   const timecodedComments = comments.filter((c) => c.timecode_seconds != null && c.status === "open")
   const progressPct = duration ? (currentTime / duration) * 100 : 0
 
   return (
     <div className="space-y-2">
-      <div className="overflow-hidden rounded-md bg-black">
+      <div className="relative overflow-hidden rounded-md bg-black">
         <video
           ref={videoRef}
           src={src}
@@ -104,6 +111,11 @@ export const TeamVideoPlayer = forwardRef<TeamVideoPlayerHandle, Props>(function
           preload="metadata"
           controls={false}
         />
+        {renderOverlay && (
+          <div className="pointer-events-none absolute inset-0">
+            {renderOverlay()}
+          </div>
+        )}
       </div>
 
       <div className="flex items-center gap-3">
