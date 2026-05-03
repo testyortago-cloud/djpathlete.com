@@ -7,6 +7,8 @@ import { FieldValue, getFirestore } from "firebase-admin/firestore"
 import { z } from "zod"
 import { callAgent, MODEL_SONNET } from "./ai/anthropic.js"
 import { getSupabase } from "./lib/supabase.js"
+import { getAnchorsForSuggestions } from "./blog/internal-link-anchors.js"
+import { spliceInternalLinks } from "./lib/html-splice.js"
 
 export interface SeoEnhanceInput {
   blog_post_id: string
@@ -207,6 +209,23 @@ export async function handleSeoEnhance(jobId: string): Promise<void> {
       })),
     )
 
+    // Phase 4: ask Claude to pick a 2-5 word anchor + h2 section per suggestion,
+    // then splice into the post body. Capped at 3 links by both helpers.
+    const anchors = await getAnchorsForSuggestions({
+      targetPost: {
+        title: postRow.title as string,
+        content: (postRow.content as string) ?? "",
+      },
+      suggestions: suggestions.slice(0, 5).map((s) => ({ slug: s.slug, title: s.title })),
+    })
+    const splicedContent =
+      anchors.length > 0
+        ? spliceInternalLinks((postRow.content as string) ?? "", anchors)
+        : null
+    console.log(
+      `[seo-enhance] internal_link_anchors=${anchors.length} content_spliced=${splicedContent !== null}`,
+    )
+
     const faqEntries = (postRow.faq as Array<{ question: string; answer: string }> | null) ?? []
     const faqPageJsonLd = buildFaqPageJsonLd(faqEntries)
 
@@ -222,9 +241,13 @@ export async function handleSeoEnhance(jobId: string): Promise<void> {
       generated_at: new Date().toISOString(),
     }
 
+    const updatePayload: Record<string, unknown> = { seo_metadata: seoMetadata }
+    if (splicedContent !== null) {
+      updatePayload.content = splicedContent
+    }
     const { error: updateErr } = await supabase
       .from("blog_posts")
-      .update({ seo_metadata: seoMetadata })
+      .update(updatePayload)
       .eq("id", input.blog_post_id)
     if (updateErr) {
       await failJob(`seo_metadata update failed: ${updateErr.message}`)
@@ -236,6 +259,7 @@ export async function handleSeoEnhance(jobId: string): Promise<void> {
       result: {
         blog_post_id: input.blog_post_id,
         suggestions_count: suggestions.length,
+        internal_links_spliced: anchors.length,
       },
       updatedAt: FieldValue.serverTimestamp(),
     })
