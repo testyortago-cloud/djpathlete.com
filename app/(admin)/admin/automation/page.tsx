@@ -3,11 +3,20 @@ import { getSetting } from "@/lib/db/system-settings"
 import { CRON_CATALOG } from "@/lib/cron-catalog"
 import { PauseToggle } from "@/components/admin/automation/PauseToggle"
 import { RunNowButton } from "@/components/admin/automation/RunNowButton"
+import { CronEnabledToggle } from "@/components/admin/automation/CronEnabledToggle"
 
 export const metadata = { title: "Automation" }
 
 export default async function AutomationPage() {
   const paused = await getSetting<boolean>("automation_paused", false)
+
+  // Resolve enabled state for any cron with an enabledKey. Crons without one
+  // are always-on (subject to the global pause).
+  const enabledStates = await Promise.all(
+    CRON_CATALOG.map(async (job) =>
+      job.enabledKey ? await getSetting<boolean>(job.enabledKey, false) : null,
+    ),
+  )
 
   return (
     <div className="space-y-6">
@@ -28,20 +37,30 @@ export default async function AutomationPage() {
         </div>
 
         <div className="divide-y divide-border">
-          {CRON_CATALOG.map((job) => (
-            <div key={job.name} className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 p-4">
-              <div className="flex-1 min-w-0">
-                <h3 className="font-medium text-primary">{job.label}</h3>
-                <p className="text-sm text-muted-foreground mt-1">{job.description}</p>
-                <p className="text-xs text-muted-foreground mt-2">
-                  <span className="font-medium text-primary">When it runs:</span> {job.humanSchedule}
-                </p>
+          {CRON_CATALOG.map((job, idx) => {
+            const jobEnabled = enabledStates[idx]
+            return (
+              <div key={job.name} className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 p-4">
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-medium text-primary">{job.label}</h3>
+                  <p className="text-sm text-muted-foreground mt-1">{job.description}</p>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    <span className="font-medium text-primary">When it runs:</span> {job.humanSchedule}
+                  </p>
+                </div>
+                <div className="shrink-0 flex items-center gap-3">
+                  {job.enabledKey && (
+                    <CronEnabledToggle
+                      enabledKey={job.enabledKey}
+                      initialEnabled={jobEnabled ?? false}
+                      label={job.label}
+                    />
+                  )}
+                  <RunNowButton jobName={job.name} label={job.label} />
+                </div>
               </div>
-              <div className="shrink-0">
-                <RunNowButton jobName={job.name} label={job.label} />
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </div>
 

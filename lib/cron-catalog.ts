@@ -10,6 +10,7 @@ export type CronJobName =
   | "send-daily-pulse"
   | "voice-drift-monitor"
   | "performance-learning-loop"
+  | "auto-blog-generation"
 
 export interface CronJob {
   name: CronJobName
@@ -20,6 +21,12 @@ export interface CronJob {
   humanSchedule: string
   firebaseFunction: string
   phase: string
+  /**
+   * When set, this cron job has a per-job enabled toggle in addition to the
+   * global automation_paused kill switch. The value is the system_settings
+   * key that holds the boolean. Default value is false (opt-in).
+   */
+  enabledKey?: string
 }
 
 export const CRON_CATALOG: readonly CronJob[] = [
@@ -77,5 +84,17 @@ export const CRON_CATALOG: readonly CronJob[] = [
     humanSchedule: "Every Friday at 5:00 PM Central",
     firebaseFunction: "sendWeeklyContentReport",
     phase: "5c",
+  },
+  {
+    name: "auto-blog-generation",
+    label: "Auto-generate blog post (Tue/Thu)",
+    description:
+      "Every Tuesday and Thursday morning, picks the highest-ranked unused topic from your topic suggestions, runs keyword + content-angle research, and queues an AI blog draft. The draft lands in your blog list — review and publish when ready. OFF by default; flip the toggle to enable.",
+    schedule: "0 13 * * 2,4",
+    timezone: "UTC",
+    humanSchedule: "Every Tuesday and Thursday at 7:00 AM Central (13:00 UTC)",
+    firebaseFunction: "(handled by Next.js route + ai_jobs doc trigger)",
+    phase: "blog-quality",
+    enabledKey: "cron_auto_blog_enabled",
   },
 ] as const

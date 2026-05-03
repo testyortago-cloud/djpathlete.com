@@ -1,0 +1,42 @@
+name: Auto-Generate Blog Post
+
+on:
+  # Tuesday + Thursday at 13:00 UTC = 7 AM Central (winter) / 8 AM Central (summer)
+  schedule:
+    - cron: "0 13 * * 2,4"
+  workflow_dispatch: {}
+
+concurrency:
+  group: auto-blog-cron
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: POST /api/admin/internal/auto-blog
+        env:
+          CRON_AUTO_BLOG_TARGET_URL: ${{ secrets.CRON_AUTO_BLOG_TARGET_URL }}
+          INTERNAL_CRON_TOKEN: ${{ secrets.INTERNAL_CRON_TOKEN }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: |
+          if [ -z "$CRON_AUTO_BLOG_TARGET_URL" ] || [ -z "$INTERNAL_CRON_TOKEN" ]; then
+            echo "::error::Missing CRON_AUTO_BLOG_TARGET_URL or INTERNAL_CRON_TOKEN repository secret"
+            exit 1
+          fi
+          bypass_header=()
+          if [ -n "$VERCEL_AUTOMATION_BYPASS_SECRET" ]; then
+            bypass_header=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
+          fi
+          status=$(curl -sS -o response.json -w "%{http_code}" \
+            -X POST "$CRON_AUTO_BLOG_TARGET_URL" \
+            -H "Authorization: Bearer $INTERNAL_CRON_TOKEN" \
+            -H "Content-Type: application/json" \
+            "${bypass_header[@]}" \
+            --max-time 120)
+          echo "HTTP $status"
+          cat response.json || true
+          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+            exit 1
+          fi
