@@ -74,12 +74,28 @@ export default auth((req) => {
     if (!isLoggedIn) {
       res = redirectToLogin(req)
     } else if (userRole !== "admin") {
+      // Editors and clients sent to their own home
+      const home = userRole === "editor" ? "/editor" : "/client/dashboard"
+      res = NextResponse.redirect(new URL(home, req.url))
+    } else {
+      res = NextResponse.next()
+    }
+  } else if (pathname.startsWith("/editor")) {
+    if (!isLoggedIn) {
+      res = redirectToLogin(req)
+    } else if (userRole !== "editor" && userRole !== "admin") {
       res = NextResponse.redirect(new URL("/client/dashboard", req.url))
     } else {
       res = NextResponse.next()
     }
   } else if (pathname.startsWith("/client")) {
-    res = isLoggedIn ? NextResponse.next() : redirectToLogin(req)
+    if (!isLoggedIn) {
+      res = redirectToLogin(req)
+    } else if (userRole === "editor") {
+      res = NextResponse.redirect(new URL("/editor", req.url))
+    } else {
+      res = NextResponse.next()
+    }
   } else {
     res = NextResponse.next()
   }

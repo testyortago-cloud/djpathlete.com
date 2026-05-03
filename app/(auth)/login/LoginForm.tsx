@@ -50,17 +50,29 @@ export function LoginForm() {
     const sessionData = await sessionRes.json()
     const role = sessionData?.user?.role
 
-    // If there's a callback URL, honour it (with role guard for admin routes)
-    if (callbackUrl) {
+    // Resolve the role-default home for this user
+    const roleHome =
+      role === "admin"
+        ? "/admin/dashboard"
+        : role === "editor"
+          ? "/editor"
+          : "/client/dashboard"
+
+    // If there's a safe relative callback URL, honour it (with role guards)
+    if (callbackUrl && callbackUrl.startsWith("/")) {
       const isAdminRoute = callbackUrl.startsWith("/admin")
+      const isEditorRoute = callbackUrl.startsWith("/editor")
       if (isAdminRoute && role !== "admin") {
-        // Non-admin tried to reach an admin route — send to client dashboard
-        router.push("/client/dashboard")
+        // Non-admin tried to reach an admin route — send to their own home
+        router.push(roleHome)
+      } else if (isEditorRoute && role !== "editor" && role !== "admin") {
+        // Non-editor/admin tried to reach an editor route — send to their own home
+        router.push(roleHome)
       } else {
         router.push(callbackUrl)
       }
     } else {
-      router.push(role === "admin" ? "/admin/dashboard" : "/client/dashboard")
+      router.push(roleHome)
     }
   }
 
