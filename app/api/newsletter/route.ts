@@ -7,6 +7,7 @@ import { parseAttrCookie } from "@/lib/marketing/cookies"
 const newsletterSchema = z.object({
   email: z.string().email("Invalid email address"),
   consent_marketing: z.boolean().optional().default(false),
+  source: z.string().max(60).optional(),
 })
 
 export async function POST(request: NextRequest) {
@@ -34,8 +35,8 @@ export async function POST(request: NextRequest) {
     // Fire-and-forget GHL sync
     ghlCreateContact({
       email: result.data.email,
-      tags: ["newsletter"],
-      source: "website-newsletter",
+      tags: ["newsletter", ...(result.data.source ? [result.data.source] : [])],
+      source: result.data.source ?? "website-newsletter",
     }).catch((error) => console.error("[Newsletter] GHL contact creation failed:", error))
 
     return NextResponse.json({ success: true })
