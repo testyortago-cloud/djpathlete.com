@@ -2,6 +2,7 @@ import { notFound } from "next/navigation"
 import { requireAdmin } from "@/lib/auth-helpers"
 import { getBlogPostById } from "@/lib/db/blog-posts"
 import { BlogPostForm } from "@/components/admin/blog/BlogPostForm"
+import { BlogPostImageWatcher } from "@/components/admin/blog/BlogPostImageWatcher"
 import type { BlogPost } from "@/types/database"
 
 interface Props {
@@ -24,6 +25,7 @@ export default async function EditBlogPostPage({ params }: Props) {
   return (
     <div>
       <h1 className="text-2xl font-semibold text-primary mb-6">Edit Blog Post</h1>
+      <BlogPostImageWatcher postId={post.id} hasCoverImage={Boolean(post.cover_image_url)} />
       <BlogPostForm post={post} authorId={session.user!.id!} />
     </div>
   )

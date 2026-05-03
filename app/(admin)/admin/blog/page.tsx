@@ -1,7 +1,8 @@
+import { Suspense } from "react"
 import { FileText, Send, Clock, Sparkles } from "lucide-react"
 import { getBlogPosts } from "@/lib/db/blog-posts"
-import { BlogPostList } from "@/components/admin/blog/BlogPostList"
 import { BlogPageTabs } from "@/components/admin/blog/BlogPageTabs"
+import { BlogJobTracker } from "@/components/admin/blog/BlogJobTracker"
 import type { BlogPost } from "@/types/database"
 
 export const metadata = { title: "Blog" }
@@ -16,6 +17,10 @@ export default async function BlogPage() {
   return (
     <div>
       <h1 className="text-2xl font-semibold text-primary mb-6">Blog</h1>
+
+      <Suspense fallback={null}>
+        <BlogJobTracker />
+      </Suspense>
 
       {/* Summary Stats */}
       <div className="grid grid-cols-3 gap-3 sm:gap-4 mb-6">

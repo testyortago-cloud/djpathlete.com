@@ -61,11 +61,10 @@ function rankLabel(rank: number | undefined): string {
 interface TopicCardProps {
   entry: ContentCalendarEntry
   isHero: boolean
-  draftBlog: (entry: ContentCalendarEntry) => void
   generatePost: (entry: ContentCalendarEntry) => Promise<void>
 }
 
-function TopicCard({ entry, isHero, draftBlog, generatePost }: TopicCardProps) {
+function TopicCard({ entry, isHero, generatePost }: TopicCardProps) {
   const [expanded, setExpanded] = useState(false)
   const meta = metadataOf(entry)
   const host = hostFromUrl(meta.tavily_url)
@@ -171,20 +170,12 @@ function TopicCard({ entry, isHero, draftBlog, generatePost }: TopicCardProps) {
       >
         <button
           type="button"
-          onClick={() => draftBlog(entry)}
-          className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md bg-primary text-white hover:bg-primary/90 transition-colors"
-        >
-          <Sparkles className="size-3.5" />
-          Draft blog
-        </button>
-        <button
-          type="button"
           onClick={() => generatePost(entry)}
-          className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md bg-accent text-white hover:bg-accent/90 transition-colors"
-          title="Generate full post + images via AI"
+          className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md bg-primary text-white hover:bg-primary/90 transition-colors"
+          title="Generate a full draft blog post with cover image"
         >
           <Sparkles className="size-3.5" />
-          Generate post
+          Generate draft
         </button>
         {meta.tavily_url && (
           <a
@@ -233,12 +224,6 @@ export function TopicSuggestionsList({ suggestions }: TopicSuggestionsListProps)
     return Array.from(byDate.entries()).sort(([a], [b]) => (a < b ? 1 : -1))
   }, [filtered])
 
-  function draftBlog(entry: ContentCalendarEntry) {
-    const meta = metadataOf(entry)
-    const promptLines = [entry.title, meta.summary].filter(Boolean).join("\n\n")
-    router.push(`/admin/blog/new?prompt=${encodeURIComponent(promptLines)}`)
-  }
-
   async function generatePost(entry: ContentCalendarEntry) {
     try {
       const res = await fetch("/api/admin/blog/generate-from-suggestion", {
@@ -251,9 +236,8 @@ export function TopicSuggestionsList({ suggestions }: TopicSuggestionsListProps)
         alert(`Failed to enqueue: ${json.error ?? res.status}`)
         return
       }
-      // Optimistic UX: send admin to the blog list; the post will appear as a draft when generation completes.
-      router.push("/admin/blog?just_queued=1")
-      router.refresh()
+      const { jobId } = (await res.json()) as { jobId: string }
+      router.push(`/admin/blog?just_queued=${encodeURIComponent(jobId)}`)
     } catch (err) {
       alert(`Network error: ${(err as Error).message}`)
     }
@@ -319,7 +303,6 @@ export function TopicSuggestionsList({ suggestions }: TopicSuggestionsListProps)
                 key={t.id}
                 entry={t}
                 isHero={false}
-                draftBlog={draftBlog}
                 generatePost={generatePost}
               />
             ))}
@@ -354,7 +337,6 @@ export function TopicSuggestionsList({ suggestions }: TopicSuggestionsListProps)
                 key={t.id}
                 entry={t}
                 isHero={idx === 0}
-                draftBlog={draftBlog}
                 generatePost={generatePost}
               />
             ))}
@@ -395,7 +377,6 @@ export function TopicSuggestionsList({ suggestions }: TopicSuggestionsListProps)
                         key={t.id}
                         entry={t}
                         isHero={false}
-                        draftBlog={draftBlog}
                         generatePost={generatePost}
                       />
                     ))}
