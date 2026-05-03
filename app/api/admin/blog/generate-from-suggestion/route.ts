@@ -5,6 +5,7 @@ import { getAdminFirestore } from "@/lib/firebase-admin"
 import { FieldValue } from "firebase-admin/firestore"
 import { getCalendarEntryById } from "@/lib/db/content-calendar"
 import { proposePrimaryKeyword } from "@/lib/blog/keyword-proposal"
+import { extractContentAngle } from "@/lib/blog/content-angle"
 
 const requestSchema = z.object({
   calendarId: z.string().uuid().or(z.string().min(1)),
@@ -51,11 +52,13 @@ export async function POST(request: NextRequest) {
     const promptLines = [entry.title, meta.summary].filter(Boolean).join("\n\n")
     const referenceUrls = meta.tavily_url ? [meta.tavily_url] : []
 
-    const proposedKeyword = await proposePrimaryKeyword({
-      title: entry.title,
-      summary: meta.summary,
-    })
-    console.log(`[generate-from-suggestion] Proposed keyword: "${proposedKeyword}" for "${entry.title}"`)
+    const [proposedKeyword, contentAngle] = await Promise.all([
+      proposePrimaryKeyword({ title: entry.title, summary: meta.summary }),
+      extractContentAngle({ title: entry.title, summary: meta.summary }),
+    ])
+    console.log(
+      `[generate-from-suggestion] keyword="${proposedKeyword}" angle=${contentAngle ? "yes" : "no"} for "${entry.title}"`,
+    )
 
     const db = getAdminFirestore()
     const jobRef = db.collection("ai_jobs").doc()
@@ -67,6 +70,7 @@ export async function POST(request: NextRequest) {
         register: resolvedRegister,
         length,
         primary_keyword: proposedKeyword,
+        ...(contentAngle ? { content_angle: contentAngle } : {}),
         userId,
         sourceCalendarId: calendarId,
         ...(referenceUrls.length ? { references: { urls: referenceUrls } } : {}),

@@ -9,6 +9,10 @@ const mocks = vi.hoisted(() => ({
   jobCollection: vi.fn(),
   getAdminFirestore: vi.fn(),
   proposePrimaryKeyword: vi.fn().mockResolvedValue("youth pitching velocity"),
+  extractContentAngle: vi.fn().mockResolvedValue({
+    mainstream: "Most blogs say X.",
+    counterframe: "Actually Y.",
+  }),
 }))
 mocks.jobDoc.mockImplementation(() => ({ set: mocks.jobSet, id: "new-job-id" }))
 mocks.jobCollection.mockImplementation(() => ({ doc: mocks.jobDoc }))
@@ -22,6 +26,9 @@ vi.mock("@/lib/firebase-admin", () => ({ getAdminFirestore: mocks.getAdminFirest
 vi.mock("firebase-admin/firestore", () => ({ FieldValue: { serverTimestamp: () => "TS" } }))
 vi.mock("@/lib/blog/keyword-proposal", () => ({
   proposePrimaryKeyword: mocks.proposePrimaryKeyword,
+}))
+vi.mock("@/lib/blog/content-angle", () => ({
+  extractContentAngle: mocks.extractContentAngle,
 }))
 
 import { POST } from "@/app/api/admin/blog/generate-from-suggestion/route"
@@ -42,6 +49,10 @@ describe("POST /api/admin/blog/generate-from-suggestion", () => {
     mocks.jobCollection.mockImplementation(() => ({ doc: mocks.jobDoc }))
     mocks.getAdminFirestore.mockImplementation(() => ({ collection: mocks.jobCollection }))
     mocks.proposePrimaryKeyword.mockResolvedValue("youth pitching velocity")
+    mocks.extractContentAngle.mockResolvedValue({
+      mainstream: "Most blogs say X.",
+      counterframe: "Actually Y.",
+    })
   })
 
   it("403 when not admin", async () => {
@@ -83,6 +94,7 @@ describe("POST /api/admin/blog/generate-from-suggestion", () => {
           register: "formal",
           length: "medium",
           primary_keyword: "youth pitching velocity",
+          content_angle: { mainstream: "Most blogs say X.", counterframe: "Actually Y." },
           userId: "u1",
           sourceCalendarId: "cal-1",
           references: { urls: ["https://example.com/study"] },
@@ -131,5 +143,37 @@ describe("POST /api/admin/blog/generate-from-suggestion", () => {
       title: "Topic title",
       summary: "summary",
     })
+  })
+
+  it("calls both proposePrimaryKeyword and extractContentAngle once each", async () => {
+    mocks.auth.mockResolvedValue({ user: { id: "user-1", role: "admin" } })
+    mocks.getCalendarEntryById.mockResolvedValue({
+      id: "cal-1",
+      entry_type: "topic_suggestion",
+      title: "Topic title",
+      metadata: { summary: "summary" },
+    })
+    const res = await POST(jsonRequest({ calendarId: "cal-1" }))
+    expect(res.status).toBe(202)
+    expect(mocks.proposePrimaryKeyword).toHaveBeenCalledTimes(1)
+    expect(mocks.extractContentAngle).toHaveBeenCalledTimes(1)
+  })
+
+  it("omits content_angle from job input when extractContentAngle returns null", async () => {
+    mocks.auth.mockResolvedValue({ user: { id: "user-1", role: "admin" } })
+    mocks.getCalendarEntryById.mockResolvedValue({
+      id: "cal-1",
+      entry_type: "topic_suggestion",
+      title: "Topic title",
+      metadata: { summary: "summary" },
+    })
+    mocks.extractContentAngle.mockResolvedValue(null)
+    const res = await POST(jsonRequest({ calendarId: "cal-1" }))
+    expect(res.status).toBe(202)
+    expect(mocks.jobSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: expect.not.objectContaining({ content_angle: expect.anything() }),
+      }),
+    )
   })
 })
