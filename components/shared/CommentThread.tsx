@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { CheckCircle2, RotateCw, MessageSquare, MapPin, Pencil, ArrowUpRight, Square } from "lucide-react"
+import { CheckCircle2, RotateCw, MessageSquare, MapPin, Pencil, ArrowUpRight, Square, Trash2 } from "lucide-react"
 import type { TeamVideoCommentWithAnnotation, DrawingPath } from "@/types/database"
 
 function fmtTime(s: number | null): string {
@@ -40,6 +40,8 @@ interface Props {
   onResolve?: (commentId: string) => void
   onReopen?: (commentId: string) => void
   onJumpTo?: (timecodeSeconds: number) => void
+  /** When provided, a Trash button appears on each row. Two-click confirm. */
+  onDelete?: (commentId: string) => void
 }
 
 export function CommentThread({
@@ -48,8 +50,23 @@ export function CommentThread({
   onResolve,
   onReopen,
   onJumpTo,
+  onDelete,
 }: Props) {
   const [showResolved, setShowResolved] = useState(false)
+  // Tracks which comment is in the "are you sure?" intermediate state.
+  // Click trash once → enter confirm state for that id; click again → delete.
+  // Clicking elsewhere or on a different trash exits confirm.
+  const [confirmingId, setConfirmingId] = useState<string | null>(null)
+
+  function handleDeleteClick(e: React.MouseEvent, commentId: string) {
+    e.stopPropagation()
+    if (confirmingId === commentId) {
+      onDelete?.(commentId)
+      setConfirmingId(null)
+    } else {
+      setConfirmingId(commentId)
+    }
+  }
   const open = comments.filter((c) => c.status === "open")
   const resolved = comments.filter((c) => c.status === "resolved")
 
@@ -112,18 +129,33 @@ export function CommentThread({
                   <p className="text-sm">{c.comment_text}</p>
                 </div>
                 {canWrite && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onResolve?.(c.id)
-                    }}
-                    aria-label="Resolve comment"
-                  >
-                    <CheckCircle2 className="size-4" />
-                  </Button>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onResolve?.(c.id)
+                      }}
+                      aria-label="Resolve comment"
+                      title="Resolve"
+                    >
+                      <CheckCircle2 className="size-4" />
+                    </Button>
+                    {onDelete && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={confirmingId === c.id ? "destructive" : "ghost"}
+                        onClick={(e) => handleDeleteClick(e, c.id)}
+                        aria-label={confirmingId === c.id ? "Confirm delete comment" : "Delete comment"}
+                        title={confirmingId === c.id ? "Click again to confirm" : "Delete"}
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    )}
+                  </div>
                 )}
               </div>
             </li>
@@ -152,15 +184,30 @@ export function CommentThread({
                       <p className="text-sm line-through">{c.comment_text}</p>
                     </div>
                     {canWrite && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => onReopen?.(c.id)}
-                        aria-label="Reopen comment"
-                      >
-                        <RotateCw className="size-4" />
-                      </Button>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => onReopen?.(c.id)}
+                          aria-label="Reopen comment"
+                          title="Reopen"
+                        >
+                          <RotateCw className="size-4" />
+                        </Button>
+                        {onDelete && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={confirmingId === c.id ? "destructive" : "ghost"}
+                            onClick={(e) => handleDeleteClick(e, c.id)}
+                            aria-label={confirmingId === c.id ? "Confirm delete comment" : "Delete comment"}
+                            title={confirmingId === c.id ? "Click again to confirm" : "Delete"}
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        )}
+                      </div>
                     )}
                   </div>
                 </li>

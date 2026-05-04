@@ -66,6 +66,17 @@ export async function resolveComment(id: string, adminId: string): Promise<void>
   if (error) throw error
 }
 
+export async function deleteComment(id: string): Promise<void> {
+  const supabase = getClient()
+  // team_video_annotations.comment_id has ON DELETE CASCADE so the
+  // associated annotation row is removed automatically.
+  const { error } = await supabase
+    .from("team_video_comments")
+    .delete()
+    .eq("id", id)
+  if (error) throw error
+}
+
 export async function reopenComment(id: string): Promise<void> {
   const supabase = getClient()
   const { error } = await supabase

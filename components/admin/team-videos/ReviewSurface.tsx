@@ -161,6 +161,19 @@ export function ReviewSurface({ submission, version, comments, videoUrl }: Props
     }
   }
 
+  async function deleteComment(commentId: string) {
+    const res = await fetch(
+      `/api/admin/team-videos/${submission.id}/comments/${commentId}`,
+      { method: "DELETE" },
+    )
+    if (res.ok) {
+      toast.success("Comment deleted")
+      router.refresh()
+    } else {
+      toast.error("Failed to delete comment")
+    }
+  }
+
   function renderOverlay({ width, height }: { width: number; height: number }) {
     // Anchor for the floating Loom-style popover: the first vertex of the
     // last path the user drew. For pins that's the pin itself; for arrows
@@ -314,6 +327,7 @@ export function ReviewSurface({ submission, version, comments, videoUrl }: Props
             canWrite={true}
             onResolve={resolveComment}
             onReopen={reopenComment}
+            onDelete={deleteComment}
             onJumpTo={(t) => playerRef.current?.seek(t)}
           />
         </aside>
