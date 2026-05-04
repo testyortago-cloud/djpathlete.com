@@ -587,6 +587,41 @@ export const syncGoogleAds = onSchedule(
   },
 )
 
+// ─── Pipeline Weekly Funnel Report (Tue 13:00 UTC = 06:00 PT) ────────────────
+// Plan 1.5f. Visit → signup → booking → payment funnel digest, with delta
+// vs prior week, top campaigns by revenue, and a Claude insights paragraph.
+// Sent to COACH_EMAIL via Resend.
+
+export const sendWeeklyPipelineReport = onSchedule(
+  {
+    schedule: "0 13 * * 2",
+    timeZone: "UTC",
+    timeoutSeconds: 120,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [internalCronToken, appUrl],
+  },
+  async () => {
+    const baseUrl = process.env.APP_URL
+    const token = process.env.INTERNAL_CRON_TOKEN
+    if (!baseUrl || !token) {
+      console.error("[sendWeeklyPipelineReport] APP_URL or INTERNAL_CRON_TOKEN missing — abort")
+      return
+    }
+    try {
+      const res = await fetch(`${baseUrl}/api/admin/internal/ads/weekly-pipeline-report`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: "{}",
+      })
+      const body = await res.json().catch(() => ({}))
+      console.log("[sendWeeklyPipelineReport]", res.status, body)
+    } catch (err) {
+      console.error("[sendWeeklyPipelineReport] failed:", err)
+    }
+  },
+)
+
 // ─── Google Ads Customer Match Audience Sync (Daily 07:00 UTC) ───────────────
 // Walks each active google_ads_user_lists row, computes desired membership
 // from local source tables (bookers, subscribers), hashes emails, and pushes
