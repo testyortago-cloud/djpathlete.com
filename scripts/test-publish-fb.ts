@@ -25,7 +25,6 @@ async function main() {
   const result = await plugin.publish({
     content: caption,
     mediaUrl: null,
-    mediaUrls: null,
     postType: "text",
     scheduledAt: null,
   })
