@@ -1,16 +1,16 @@
 "use client"
 
-import dynamic from "next/dynamic"
+// IMPORTANT: this component MUST be loaded by its consumers via
+// `next/dynamic` with `{ ssr: false }`. react-konva uses canvas APIs
+// that don't exist on the server. Per-primitive dynamic imports
+// (Stage, Layer, ...) blow up on Next 16's `'default' in module` check
+// because react-konva's class instances mishandle the `in` operator.
+// Lifting `ssr: false` up to the consumer is the supported pattern.
+
 import { useRef, useState } from "react"
+import { Stage, Layer, Line, Arrow, Rect } from "react-konva"
 import type { KonvaEventObject } from "konva/lib/Node"
 import type { DrawingJson, DrawingPath, DrawingTool } from "@/types/database"
-
-// react-konva is canvas-only — disable SSR to avoid hydration issues.
-const Stage = dynamic(() => import("react-konva").then((m) => m.Stage), { ssr: false })
-const Layer = dynamic(() => import("react-konva").then((m) => m.Layer), { ssr: false })
-const Line = dynamic(() => import("react-konva").then((m) => m.Line), { ssr: false })
-const Arrow = dynamic(() => import("react-konva").then((m) => m.Arrow), { ssr: false })
-const Rect = dynamic(() => import("react-konva").then((m) => m.Rect), { ssr: false })
 
 interface ViewProps {
   mode: "view"

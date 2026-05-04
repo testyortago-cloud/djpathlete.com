@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react"
 import Link from "next/link"
+import dynamic from "next/dynamic"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, Brush } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -11,7 +12,11 @@ import {
   type TeamVideoPlayerHandle,
 } from "@/components/shared/TeamVideoPlayer"
 import { CommentThread } from "@/components/shared/CommentThread"
-import { DrawingCanvas } from "@/components/shared/DrawingCanvas"
+// react-konva is canvas-only — load DrawingCanvas client-side only.
+const DrawingCanvas = dynamic(
+  () => import("@/components/shared/DrawingCanvas").then((m) => m.DrawingCanvas),
+  { ssr: false },
+)
 import { StatusActions } from "./StatusActions"
 import { CommentEditor } from "./CommentEditor"
 import { DrawingToolbar } from "./DrawingToolbar"
