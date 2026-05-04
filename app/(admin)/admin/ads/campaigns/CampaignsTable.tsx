@@ -1,4 +1,5 @@
 import type { GoogleAdsCampaign } from "@/types/database"
+import { AutomationModeSelector } from "./AutomationModeSelector"
 
 export interface CampaignWithMetrics extends GoogleAdsCampaign {
   cost_micros_7d: number
@@ -23,12 +24,6 @@ const STATUS_CLASSES: Record<GoogleAdsCampaign["status"], string> = {
   ENABLED: "bg-success/10 text-success",
   PAUSED: "bg-warning/15 text-warning",
   REMOVED: "bg-muted/40 text-muted-foreground",
-}
-
-const MODE_LABEL: Record<GoogleAdsCampaign["automation_mode"], string> = {
-  auto_pilot: "Auto-pilot",
-  co_pilot: "Co-pilot",
-  advisory: "Advisory",
 }
 
 export function CampaignsTable({ campaigns }: { campaigns: CampaignWithMetrics[] }) {
@@ -73,7 +68,13 @@ export function CampaignsTable({ campaigns }: { campaigns: CampaignWithMetrics[]
                   {c.status}
                 </span>
               </td>
-              <td className="p-3 text-xs">{MODE_LABEL[c.automation_mode]}</td>
+              <td className="p-3">
+                <AutomationModeSelector
+                  campaignId={c.id}
+                  initialMode={c.automation_mode}
+                  locked={c.type === "PERFORMANCE_MAX"}
+                />
+              </td>
               <td className="p-3 text-right font-mono text-xs">
                 {fmtCurrencyMicros(c.cost_micros_7d)}
               </td>

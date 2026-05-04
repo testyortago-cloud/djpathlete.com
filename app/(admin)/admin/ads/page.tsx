@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { Target, ShieldCheck, Construction, Settings, BarChart3 } from "lucide-react"
+import { Target, ShieldCheck, Construction, Settings, BarChart3, Sparkles } from "lucide-react"
 
 export const metadata = { title: "Google Ads" }
 
@@ -31,8 +31,10 @@ const PHASES: PhaseRow[] = [
   {
     id: "1.2",
     title: "AI recommendations engine",
-    status: "pending",
-    description: "Claude proposes negative keywords, bid adjustments, ad copy variants from synced campaign data.",
+    status: "in_progress",
+    description:
+      "Claude scores each campaign after the nightly sync and proposes negative keywords, bid changes, keyword pauses, ad variants. Approval queue is live; apply path lands with Plan 1.3.",
+    href: "/admin/ads/recommendations",
   },
   {
     id: "1.3",
@@ -146,6 +148,22 @@ export default function AdsHomePage() {
               <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
                 Live mirror of your Google Ads campaigns with last-7-day spend / clicks /
                 conversions. Manual "Sync now" button + nightly 06:00 UTC schedule.
+              </p>
+            </div>
+          </Link>
+
+          <Link
+            href="/admin/ads/recommendations"
+            className="group flex items-start gap-4 rounded-xl border border-border bg-card p-5 transition-colors hover:border-accent/60"
+          >
+            <div className="size-10 rounded-lg bg-accent/10 text-accent flex items-center justify-center shrink-0">
+              <Sparkles className="size-5" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-heading text-primary text-sm leading-snug">Recommendations</p>
+              <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                AI-generated optimizations sorted by confidence. Approve to queue for the apply
+                path (Plan 1.3); reject to dismiss. Auto-generated after each nightly sync.
               </p>
             </div>
           </Link>

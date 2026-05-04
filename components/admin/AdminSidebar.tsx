@@ -126,6 +126,7 @@ function getNavSections(contentStudioOn: boolean): NavSection[] {
       items: [
         { label: "Google Ads", href: "/admin/ads", icon: Target },
         { label: "Campaigns", href: "/admin/ads/campaigns", icon: BarChart3 },
+        { label: "Recommendations", href: "/admin/ads/recommendations", icon: Sparkles },
         { label: "Settings", href: "/admin/ads/settings", icon: Settings },
       ],
     },
