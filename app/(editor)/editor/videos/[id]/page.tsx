@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation"
 import { auth } from "@/lib/auth"
 import { getSubmissionById } from "@/lib/db/team-video-submissions"
 import { getCurrentVersion, listVersionsForSubmission } from "@/lib/db/team-video-versions"
-import { listCommentsForVersion } from "@/lib/db/team-video-comments"
+import { listAuthorsForIds, listCommentsForVersion } from "@/lib/db/team-video-comments"
 import { listAnnotationsForCommentIds } from "@/lib/db/team-video-annotations"
 import { createReadUrl, createDownloadUrl } from "@/lib/storage/team-videos"
 import { EditorVideoView } from "@/components/editor/EditorVideoView"
@@ -29,10 +29,14 @@ export default async function EditorVideoPage({ params }: Props) {
 
   const version = await getCurrentVersion(submission.id)
   const rawComments = version ? await listCommentsForVersion(version.id) : []
-  const annotationMap = await listAnnotationsForCommentIds(rawComments.map((c) => c.id))
+  const [annotationMap, authorMap] = await Promise.all([
+    listAnnotationsForCommentIds(rawComments.map((c) => c.id)),
+    listAuthorsForIds(rawComments.map((c) => c.author_id)),
+  ])
   const comments = rawComments.map((c) => ({
     ...c,
     annotation: annotationMap.get(c.id) ?? null,
+    author: authorMap.get(c.author_id) ?? null,
   }))
 
   // Pre-fetch signed read URLs for every uploaded version so the user can

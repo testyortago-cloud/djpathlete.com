@@ -11,6 +11,11 @@ vi.mock("@/lib/db/team-video-versions", () => ({
 vi.mock("@/lib/db/team-video-comments", () => ({
   createComment: vi.fn(),
   listCommentsForVersion: vi.fn(),
+  // Threading: route now joins author info via this helper.
+  // Default to empty so existing test assertions keep working.
+  listAuthorsForIds: vi.fn().mockResolvedValue(new Map()),
+  // Reply validation: route may call getCommentById to confirm the parent.
+  getCommentById: vi.fn(),
 }))
 vi.mock("@/lib/db/team-video-annotations", () => ({
   createAnnotationForComment: vi.fn(),
@@ -72,6 +77,7 @@ describe("POST /api/admin/team-videos/[id]/comments", () => {
     expect(res.status).toBe(201)
     expect(createComment).toHaveBeenCalledWith({
       versionId: "v1", authorId: "admin1", timecodeSeconds: 42, commentText: "Tighten",
+      parentId: null,
     })
     expect(setSubmissionStatus).toHaveBeenCalledWith("sub1", "in_review")
   })

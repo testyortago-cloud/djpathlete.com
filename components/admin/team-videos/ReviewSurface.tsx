@@ -161,6 +161,30 @@ export function ReviewSurface({ submission, version, comments, videoUrl }: Props
     }
   }
 
+  async function replyToComment(input: { parentId: string; commentText: string }) {
+    const res = await fetch(
+      `/api/admin/team-videos/${submission.id}/comments`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          // Replies have no timecode of their own — they inherit the parent's.
+          // The validator accepts null timecode + no annotation, which fits.
+          timecodeSeconds: null,
+          commentText: input.commentText,
+          parentId: input.parentId,
+        }),
+      },
+    )
+    if (res.ok) {
+      toast.success("Reply posted")
+      router.refresh()
+    } else {
+      const j = await res.json().catch(() => ({}))
+      throw new Error(j.error ?? "Failed to post reply")
+    }
+  }
+
   async function deleteComment(commentId: string) {
     const res = await fetch(
       `/api/admin/team-videos/${submission.id}/comments/${commentId}`,
@@ -328,6 +352,7 @@ export function ReviewSurface({ submission, version, comments, videoUrl }: Props
             onResolve={resolveComment}
             onReopen={reopenComment}
             onDelete={deleteComment}
+            onReply={replyToComment}
             onJumpTo={(t) => playerRef.current?.seek(t)}
           />
         </aside>

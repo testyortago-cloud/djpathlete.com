@@ -180,6 +180,8 @@ export interface TeamVideoComment {
   id: string
   version_id: string
   author_id: string
+  /** Null on top-level comments; references another comment.id on replies. */
+  parent_id: string | null
   timecode_seconds: number | null
   comment_text: string
   status: TeamVideoCommentStatus
@@ -187,6 +189,16 @@ export interface TeamVideoComment {
   resolved_by: string | null
   created_at: string
   updated_at: string
+}
+
+/**
+ * Author info denormalized via JOIN at read time. Surfaces who wrote each
+ * comment + their role (admin / editor) so the UI can show a name + badge.
+ */
+export interface CommentAuthor {
+  id: string
+  name: string
+  role: UserRole
 }
 
 export type DrawingTool = "pen" | "arrow" | "rectangle" | "pin"
@@ -209,9 +221,11 @@ export interface TeamVideoAnnotation {
   created_at: string
 }
 
-/** API response shape: a comment plus its (optional) annotation drawing. */
+/** API response shape: a comment plus its (optional) annotation drawing
+ *  and its author's denormalized name + role. */
 export interface TeamVideoCommentWithAnnotation extends TeamVideoComment {
   annotation: DrawingJson | null
+  author: CommentAuthor | null
 }
 
 export type TimeEfficiencyPreference = "supersets_circuits" | "shorter_rest" | "fewer_heavier" | "extend_session"

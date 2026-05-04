@@ -1,5 +1,5 @@
 import { createServiceRoleClient } from "@/lib/supabase"
-import type { TeamVideoComment } from "@/types/database"
+import type { CommentAuthor, TeamVideoComment, UserRole } from "@/types/database"
 
 function getClient() {
   return createServiceRoleClient()
@@ -10,6 +10,8 @@ export async function createComment(input: {
   authorId: string
   timecodeSeconds: number | null
   commentText: string
+  /** When set, this comment is a reply to that parent. */
+  parentId?: string | null
 }): Promise<TeamVideoComment> {
   const supabase = getClient()
   const { data, error } = await supabase
@@ -20,6 +22,7 @@ export async function createComment(input: {
       timecode_seconds: input.timecodeSeconds,
       comment_text: input.commentText,
       status: "open",
+      parent_id: input.parentId ?? null,
     })
     .select()
     .single()
@@ -37,6 +40,32 @@ export async function listCommentsForVersion(versionId: string): Promise<TeamVid
     .order("created_at", { ascending: true })
   if (error) throw error
   return (data ?? []) as TeamVideoComment[]
+}
+
+/**
+ * Bulk-fetch author info (name + role) for a set of user ids. Returns a Map
+ * keyed by user id. Empty input → empty map (no DB call).
+ */
+export async function listAuthorsForIds(userIds: string[]): Promise<Map<string, CommentAuthor>> {
+  if (userIds.length === 0) return new Map()
+  const supabase = getClient()
+  const unique = Array.from(new Set(userIds))
+  const { data, error } = await supabase
+    .from("users")
+    .select("id, first_name, last_name, role")
+    .in("id", unique)
+  if (error) throw error
+  const map = new Map<string, CommentAuthor>()
+  for (const row of (data ?? []) as Array<{
+    id: string
+    first_name: string
+    last_name: string
+    role: UserRole
+  }>) {
+    const name = `${row.first_name} ${row.last_name}`.trim() || "Unknown"
+    map.set(row.id, { id: row.id, name, role: row.role })
+  }
+  return map
 }
 
 export async function getCommentById(id: string): Promise<TeamVideoComment | null> {

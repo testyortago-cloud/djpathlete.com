@@ -89,10 +89,20 @@ export const createCommentSchema = z.object({
   timecodeSeconds: z.number().min(0).nullable(),
   commentText: z.string().trim().min(1, "Comment cannot be empty").max(2000),
   annotation: drawingJsonSchema.optional(),
-}).refine(
-  (d) => !d.annotation || d.timecodeSeconds != null,
-  { message: "annotation requires a timecode", path: ["annotation"] },
-)
+  /** When set, this is a reply to that parent comment id. */
+  parentId: z.string().uuid().nullable().optional(),
+})
+  .refine(
+    (d) => !d.annotation || d.timecodeSeconds != null,
+    { message: "annotation requires a timecode", path: ["annotation"] },
+  )
+  .refine(
+    (d) => !d.parentId || !d.annotation,
+    {
+      message: "replies cannot carry their own annotation — pin lives on the parent",
+      path: ["annotation"],
+    },
+  )
 
 export type CreateCommentInput = z.infer<typeof createCommentSchema>
 

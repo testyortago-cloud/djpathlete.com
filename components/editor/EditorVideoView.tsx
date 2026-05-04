@@ -3,8 +3,11 @@
 import { useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import dynamic from "next/dynamic"
-import { ArrowLeft } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { ArrowLeft, Send } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Textarea } from "@/components/ui/textarea"
+import { toast } from "sonner"
 import {
   TeamVideoPlayer,
   type TeamVideoPlayerHandle,
@@ -45,8 +48,11 @@ export function EditorVideoView({
   videoUrl,
   versions,
 }: Props) {
+  const router = useRouter()
   const playerRef = useRef<TeamVideoPlayerHandle>(null)
   const [currentTime, setCurrentTime] = useState(0)
+  const [newCommentText, setNewCommentText] = useState("")
+  const [postingTopLevel, setPostingTopLevel] = useState(false)
 
   // Which version is the player currently showing? Defaults to current.
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(
@@ -90,6 +96,48 @@ export function EditorVideoView({
   }
 
   const canRevise = submission.status === "revision_requested"
+
+  async function postEditorComment(input: {
+    parentId?: string
+    commentText: string
+    timecodeSeconds?: number | null
+  }) {
+    const res = await fetch(
+      `/api/editor/submissions/${submission.id}/comments`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          timecodeSeconds: input.timecodeSeconds ?? null,
+          commentText: input.commentText,
+          parentId: input.parentId ?? null,
+        }),
+      },
+    )
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}))
+      throw new Error(j.error ?? "Failed to post comment")
+    }
+    router.refresh()
+  }
+
+  async function submitTopLevel() {
+    if (!newCommentText.trim() || !viewingCurrent) return
+    setPostingTopLevel(true)
+    try {
+      const t = playerRef.current?.getCurrentTime() ?? null
+      await postEditorComment({
+        commentText: newCommentText.trim(),
+        timecodeSeconds: t != null ? Math.max(0, t) : null,
+      })
+      setNewCommentText("")
+      toast.success("Comment posted")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to post comment")
+    } finally {
+      setPostingTopLevel(false)
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -157,16 +205,56 @@ export function EditorVideoView({
           />
         </div>
 
-        <aside>
+        <aside className="space-y-3">
           <CommentThread
             comments={visibleComments}
             canWrite={false}
             onJumpTo={(t) => playerRef.current?.seek(t)}
+            onReply={
+              viewingCurrent
+                ? async ({ parentId, commentText }) => {
+                    await postEditorComment({ parentId, commentText })
+                    toast.success("Reply posted")
+                  }
+                : undefined
+            }
           />
           {!viewingCurrent && (
-            <p className="mt-3 font-mono text-[10px] tracking-[0.18em] uppercase text-muted-foreground">
+            <p className="font-mono text-[10px] tracking-[0.18em] uppercase text-muted-foreground">
               Comments shown only on the current cut.
             </p>
+          )}
+          {viewingCurrent && (
+            <div className="rounded-md border bg-card p-3 space-y-2">
+              <Textarea
+                value={newCommentText}
+                onChange={(e) => setNewCommentText(e.target.value)}
+                rows={2}
+                placeholder="Reply to Darren or add a note…"
+                disabled={postingTopLevel}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                    e.preventDefault()
+                    void submitTopLevel()
+                  }
+                }}
+                className="text-sm"
+              />
+              <div className="flex items-center justify-between">
+                <p className="font-mono text-[9px] tracking-widest uppercase text-muted-foreground">
+                  Posts at current player time
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={submitTopLevel}
+                  disabled={postingTopLevel || !newCommentText.trim()}
+                >
+                  <Send className="mr-1 size-3.5" />
+                  {postingTopLevel ? "Posting…" : "Comment"}
+                </Button>
+              </div>
+            </div>
           )}
         </aside>
       </div>

@@ -2,7 +2,12 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { getSubmissionById, setSubmissionStatus } from "@/lib/db/team-video-submissions"
 import { getCurrentVersion } from "@/lib/db/team-video-versions"
-import { createComment, listCommentsForVersion } from "@/lib/db/team-video-comments"
+import {
+  createComment,
+  getCommentById,
+  listAuthorsForIds,
+  listCommentsForVersion,
+} from "@/lib/db/team-video-comments"
 import { createAnnotationForComment, listAnnotationsForCommentIds } from "@/lib/db/team-video-annotations"
 import { createCommentSchema } from "@/lib/validators/team-video"
 
@@ -35,11 +40,27 @@ export async function POST(
     )
   }
 
+  // If this is a reply, validate the parent: must exist, belong to the
+  // same version, and itself be a top-level comment (no nested replies).
+  if (parsed.data.parentId) {
+    const parent = await getCommentById(parsed.data.parentId)
+    if (!parent || parent.version_id !== version.id) {
+      return NextResponse.json({ error: "Parent comment not found" }, { status: 404 })
+    }
+    if (parent.parent_id != null) {
+      return NextResponse.json(
+        { error: "Cannot reply to a reply — only one level of nesting is supported" },
+        { status: 400 },
+      )
+    }
+  }
+
   const comment = await createComment({
     versionId: version.id,
     authorId: session.user.id,
     timecodeSeconds: parsed.data.timecodeSeconds,
     commentText: parsed.data.commentText,
+    parentId: parsed.data.parentId ?? null,
   })
 
   // Persist annotation drawing alongside the comment, if provided.
@@ -77,10 +98,14 @@ export async function GET(
   if (!version) return NextResponse.json({ comments: [] })
 
   const comments = await listCommentsForVersion(version.id)
-  const annotationMap = await listAnnotationsForCommentIds(comments.map((c) => c.id))
+  const [annotationMap, authorMap] = await Promise.all([
+    listAnnotationsForCommentIds(comments.map((c) => c.id)),
+    listAuthorsForIds(comments.map((c) => c.author_id)),
+  ])
   const merged = comments.map((c) => ({
     ...c,
     annotation: annotationMap.get(c.id) ?? null,
+    author: authorMap.get(c.author_id) ?? null,
   }))
   return NextResponse.json({ comments: merged })
 }
