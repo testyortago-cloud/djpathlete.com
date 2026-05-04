@@ -1799,3 +1799,38 @@ export interface GoogleAdsUserListMember {
   email_normalized: string
   added_at: string
 }
+
+// ─────────────────────────────────────────────────────────────────
+// Google Ads — Phase 1.5g (AI Ads Agent — strategist memos)
+// ─────────────────────────────────────────────────────────────────
+
+export type GoogleAdsAgentMemoSource = "scheduled" | "manual"
+
+export interface GoogleAdsAgentRecommendedAction {
+  priority: "high" | "medium" | "low"
+  title: string
+  reasoning: string
+  link: string | null
+}
+
+export interface GoogleAdsAgentMemoSections {
+  executive_summary: string
+  whats_working: string[]
+  whats_not: string[]
+  recommended_actions: GoogleAdsAgentRecommendedAction[]
+  watch_list: string
+}
+
+export interface GoogleAdsAgentMemo {
+  id: string
+  week_of: string
+  subject: string
+  sections: GoogleAdsAgentMemoSections
+  source: GoogleAdsAgentMemoSource
+  triggered_by: string | null
+  tokens_used: number
+  email_sent_at: string | null
+  email_recipient: string | null
+  created_at: string
+  updated_at: string
+}
