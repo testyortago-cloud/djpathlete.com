@@ -587,6 +587,41 @@ export const syncGoogleAds = onSchedule(
   },
 )
 
+// ─── Google Ads Weekly Report (Monday 13:00 UTC = 06:00 PT) ──────────────────
+// Posts to the Next.js internal route, which builds the digest (totals + top
+// campaigns + worst keywords + pending recs + Claude insights paragraph) and
+// sends via Resend to COACH_EMAIL. Plan 1.4.
+
+export const sendWeeklyAdsReport = onSchedule(
+  {
+    schedule: "0 13 * * 1",
+    timeZone: "UTC",
+    timeoutSeconds: 120,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [internalCronToken, appUrl],
+  },
+  async () => {
+    const baseUrl = process.env.APP_URL
+    const token = process.env.INTERNAL_CRON_TOKEN
+    if (!baseUrl || !token) {
+      console.error("[sendWeeklyAdsReport] APP_URL or INTERNAL_CRON_TOKEN missing — abort")
+      return
+    }
+    try {
+      const res = await fetch(`${baseUrl}/api/admin/internal/ads/weekly-report`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: "{}",
+      })
+      const body = await res.json().catch(() => ({}))
+      console.log("[sendWeeklyAdsReport]", res.status, body)
+    } catch (err) {
+      console.error("[sendWeeklyAdsReport] failed:", err)
+    }
+  },
+)
+
 // ─── Google Ads Sync — manual trigger ────────────────────────────────────────
 // Admin "Sync now" button enqueues an ai_jobs doc with type "google_ads_sync";
 // this handler picks it up and runs the same pure orchestrator. The Firestore
