@@ -2,9 +2,14 @@ import Link from "next/link"
 import { listUserLists } from "@/lib/db/google-ads-user-lists"
 import { listGoogleAdsAccounts } from "@/lib/db/google-ads-accounts"
 import { previewAudienceSizes } from "@/lib/ads/audiences"
+import { listGa4Audiences } from "@/lib/db/google-ads-ga4-audiences"
 import { UserListForm } from "./UserListForm"
 import { SyncAudiencesButton } from "./SyncAudiencesButton"
-import type { GoogleAdsAudienceType, GoogleAdsUserList } from "@/types/database"
+import type {
+  GoogleAdsAudienceType,
+  GoogleAdsGa4Audience,
+  GoogleAdsUserList,
+} from "@/types/database"
 
 export const metadata = { title: "Google Ads — Audiences" }
 export const dynamic = "force-dynamic"
@@ -28,10 +33,11 @@ function relativeTime(iso: string | null): string {
 }
 
 export default async function AudiencesPage() {
-  const [lists, accounts, sizes] = await Promise.all([
+  const [lists, accounts, sizes, ga4Audiences] = await Promise.all([
     listUserLists(),
     listGoogleAdsAccounts(),
     previewAudienceSizes(),
+    listGa4Audiences(),
   ])
 
   const customerIds = accounts.filter((a) => a.is_active).map((a) => a.customer_id)
@@ -140,6 +146,8 @@ export default async function AudiencesPage() {
         </div>
       </section>
 
+      <Ga4AudiencesSection audiences={ga4Audiences} tokenSet={tokenSet} />
+
       <p className="text-xs text-muted-foreground">
         Hashing: SHA-256 of <code className="font-mono">trim().toLowerCase()</code>. The
         normalized email is stored locally for diffing only — never uploaded. See{" "}
@@ -158,5 +166,129 @@ function CountTile({ label, value, tone }: { label: string; value: number; tone:
       <p className="text-[11px] font-mono uppercase tracking-wider opacity-80">{label}</p>
       <p className="text-2xl font-heading mt-1">{value.toLocaleString()}</p>
     </div>
+  )
+}
+
+const GA4_TYPE_TONE: Record<string, string> = {
+  REMARKETING: "bg-accent/10 text-accent",
+  RULE_BASED: "bg-success/10 text-success",
+  LOGICAL: "bg-primary/10 text-primary",
+  SIMILAR: "bg-muted/40 text-muted-foreground",
+  LOOKALIKE: "bg-muted/40 text-muted-foreground",
+  EXTERNAL_REMARKETING: "bg-warning/15 text-warning",
+  UNKNOWN: "bg-muted/40 text-muted-foreground",
+}
+
+function Ga4AudiencesSection({
+  audiences,
+  tokenSet,
+}: {
+  audiences: GoogleAdsGa4Audience[]
+  tokenSet: boolean
+}) {
+  return (
+    <section>
+      <div className="flex items-baseline justify-between mb-3">
+        <h2 className="text-[11px] font-mono uppercase tracking-[0.18em] text-muted-foreground">
+          ─ GA4 / Remarketing audiences (read-only)
+        </h2>
+        <span className="text-[11px] font-mono text-muted-foreground">
+          {audiences.length} list{audiences.length === 1 ? "" : "s"} cached
+        </span>
+      </div>
+
+      {audiences.length === 0 ? (
+        <div className="border border-dashed border-border rounded-xl p-6 bg-card text-sm text-muted-foreground space-y-3">
+          <p>
+            No remarketing audiences cached yet. These flow in via the GA4 ↔ Google Ads link —
+            we can't create them via API; they're configured once in the Google Ads UI.
+          </p>
+          <div className="rounded-lg bg-surface border border-border/60 p-4 space-y-2">
+            <p className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
+              Setup (one-time, ~10 min)
+            </p>
+            <ol className="list-decimal list-inside space-y-1 text-xs">
+              <li>
+                In Google Ads: <span className="font-mono">Tools → Setup → Linked accounts → Google Analytics (GA4)</span>
+                . Link your GA4 property if not already.
+              </li>
+              <li>
+                In Google Ads: <span className="font-mono">Tools → Shared library → Audience manager → +New audience → Website visitors</span>
+                . Create lists like &ldquo;Booking-page viewers&rdquo;, &ldquo;Programs-page
+                viewers&rdquo;, &ldquo;Newsletter signup completers&rdquo;.
+              </li>
+              <li>
+                In GA4: <span className="font-mono">Admin → Audiences → +New audience</span> for
+                segments like &ldquo;Engaged readers&rdquo;, &ldquo;Cart abandoners&rdquo;. Toggle
+                &ldquo;Share with Google Ads&rdquo; on each.
+              </li>
+              <li>
+                Wait 24–48h for GA4 audiences to propagate, then click <strong>Sync now</strong>{" "}
+                above to refresh this list.
+              </li>
+            </ol>
+          </div>
+          {!tokenSet ? (
+            <p className="text-[11px] text-warning">
+              The sync also requires <code className="font-mono">GOOGLE_ADS_DEVELOPER_TOKEN</code> —
+              once that lands and audiences are configured, this section will populate.
+            </p>
+          ) : null}
+        </div>
+      ) : (
+        <div className="border border-border rounded-xl bg-card overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-surface text-xs font-mono uppercase tracking-wider text-muted-foreground">
+              <tr>
+                <th className="text-left p-3">Audience</th>
+                <th className="text-left p-3 w-32">Type</th>
+                <th className="text-left p-3 w-32">Status</th>
+                <th className="text-right p-3 w-28">Display size</th>
+                <th className="text-right p-3 w-28">Search size</th>
+                <th className="text-right p-3 w-24">Lifespan</th>
+              </tr>
+            </thead>
+            <tbody>
+              {audiences.map((a) => (
+                <tr key={a.id} className="border-t border-border/60 align-top">
+                  <td className="p-3">
+                    <p className="font-medium text-primary leading-snug">{a.name}</p>
+                    {a.description ? (
+                      <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
+                        {a.description.slice(0, 200)}
+                      </p>
+                    ) : null}
+                    <p className="text-[11px] text-muted-foreground font-mono mt-1">
+                      {a.customer_id} · {a.user_list_id}
+                    </p>
+                  </td>
+                  <td className="p-3">
+                    <span
+                      className={`inline-block px-2 py-0.5 rounded text-[11px] font-mono uppercase tracking-wider ${GA4_TYPE_TONE[a.list_type] ?? GA4_TYPE_TONE.UNKNOWN}`}
+                    >
+                      {a.list_type}
+                    </span>
+                  </td>
+                  <td className="p-3 text-xs font-mono text-muted-foreground">
+                    {a.membership_status ?? "—"}
+                  </td>
+                  <td className="p-3 text-right font-mono text-xs">
+                    {a.size_for_display != null ? a.size_for_display.toLocaleString() : "—"}
+                  </td>
+                  <td className="p-3 text-right font-mono text-xs">
+                    {a.size_for_search != null ? a.size_for_search.toLocaleString() : "—"}
+                  </td>
+                  <td className="p-3 text-right font-mono text-xs">
+                    {a.membership_life_span_days != null
+                      ? `${a.membership_life_span_days}d`
+                      : "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
   )
 }

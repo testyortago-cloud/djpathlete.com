@@ -79,8 +79,10 @@ const PHASES: PhaseRow[] = [
   {
     id: "1.5e",
     title: "GA4 remarketing audience import",
-    status: "pending",
-    description: "Site visitors / blog readers / program-page viewers / abandoned-checkout — imported via the existing GA4 link.",
+    status: "in_progress",
+    description:
+      "Read-only cache of non-Customer-Match user lists (REMARKETING / RULE_BASED / LOGICAL / SIMILAR / LOOKALIKE). The link itself is configured in the Google Ads UI; /admin/ads/audiences now shows a one-time setup checklist plus refreshing list sizes.",
+    href: "/admin/ads/audiences",
   },
   {
     id: "1.5f",

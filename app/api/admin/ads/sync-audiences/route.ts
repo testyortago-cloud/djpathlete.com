@@ -6,6 +6,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { syncCustomerMatchAudiences } from "@/lib/ads/audiences"
+import { syncGa4Audiences } from "@/lib/ads/ga4-audiences"
 
 export async function POST() {
   const session = await auth()
@@ -14,7 +15,13 @@ export async function POST() {
   }
   try {
     const result = await syncCustomerMatchAudiences()
-    return NextResponse.json({ ok: true, ...result })
+    let ga4: Awaited<ReturnType<typeof syncGa4Audiences>> | null = null
+    try {
+      ga4 = await syncGa4Audiences()
+    } catch (gaErr) {
+      console.error("[sync-audiences:admin] GA4 audience pull failed:", gaErr)
+    }
+    return NextResponse.json({ ok: true, ...result, ga4 })
   } catch (error) {
     return NextResponse.json(
       { error: (error as Error).message ?? "sync failed" },

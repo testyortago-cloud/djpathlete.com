@@ -9,6 +9,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { syncCustomerMatchAudiences } from "@/lib/ads/audiences"
+import { syncGa4Audiences } from "@/lib/ads/ga4-audiences"
 
 export async function POST(request: NextRequest) {
   const authHeader = request.headers.get("authorization")
@@ -19,7 +20,17 @@ export async function POST(request: NextRequest) {
 
   try {
     const result = await syncCustomerMatchAudiences()
-    return NextResponse.json({ ok: true, ...result })
+    // Plan 1.5e — refresh the GA4 / remarketing audience cache in the same
+    // pass so the admin's audiences page shows current sizes for every list.
+    // Soft-fail isolated from Customer Match: a GA4-pull error doesn't void
+    // the Customer Match push that just succeeded.
+    let ga4: Awaited<ReturnType<typeof syncGa4Audiences>> | null = null
+    try {
+      ga4 = await syncGa4Audiences()
+    } catch (gaErr) {
+      console.error("[sync-audiences] GA4 audience pull failed:", gaErr)
+    }
+    return NextResponse.json({ ok: true, ...result, ga4 })
   } catch (error) {
     console.error("[sync-audiences] failed:", error)
     return NextResponse.json(
