@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { Target, ShieldCheck, Construction, Settings } from "lucide-react"
+import { Target, ShieldCheck, Construction, Settings, BarChart3 } from "lucide-react"
 
 export const metadata = { title: "Google Ads" }
 
@@ -25,8 +25,8 @@ const PHASES: PhaseRow[] = [
     title: "OAuth + nightly campaign sync",
     status: "in_progress",
     description:
-      "OAuth connect/disconnect shipped — works against Google Ads test accounts now and flips to live the moment the Developer Token lands. Nightly campaign / ad-group / keyword / ad / metrics sync still pending.",
-    href: "/admin/ads/settings",
+      "OAuth + sync orchestrator shipped. Nightly Cloud Function mirrors campaigns / ad_groups / keywords / ads / 7-day metrics / search terms into Supabase. Flips fully live the moment the Developer Token lands.",
+    href: "/admin/ads/campaigns",
   },
   {
     id: "1.2",
@@ -135,6 +135,22 @@ export default function AdsHomePage() {
           </Link>
 
           <Link
+            href="/admin/ads/campaigns"
+            className="group flex items-start gap-4 rounded-xl border border-border bg-card p-5 transition-colors hover:border-accent/60"
+          >
+            <div className="size-10 rounded-lg bg-accent/10 text-accent flex items-center justify-center shrink-0">
+              <BarChart3 className="size-5" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-heading text-primary text-sm leading-snug">Campaigns</p>
+              <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                Live mirror of your Google Ads campaigns with last-7-day spend / clicks /
+                conversions. Manual "Sync now" button + nightly 06:00 UTC schedule.
+              </p>
+            </div>
+          </Link>
+
+          <Link
             href="/admin/ads/settings"
             className="group flex items-start gap-4 rounded-xl border border-border bg-card p-5 transition-colors hover:border-accent/60"
           >
@@ -158,11 +174,11 @@ export default function AdsHomePage() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="font-heading text-primary/70 text-sm leading-snug">
-                Campaigns dashboard, recommendations queue, AI agent
+                Recommendations queue, AI ad copy, AI agent
               </p>
               <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                Coming after Phase 1.1 sync work lands. Apply for the Google Ads Developer Token
-                to unblock the live cutover.
+                Coming with Plans 1.2 / 1.4 / 1.5g. Apply for the Google Ads Developer Token to
+                unblock the live cutover.
               </p>
             </div>
           </div>
