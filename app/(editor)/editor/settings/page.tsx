@@ -23,7 +23,7 @@ export default async function EditorSettingsPage() {
   const initials = `${user.first_name.charAt(0)}${user.last_name.charAt(0)}`.toUpperCase() || "E"
 
   return (
-    <div className="mx-auto max-w-3xl space-y-8">
+    <div className="space-y-8">
       <header className="border-b border-border pb-4 space-y-1">
         <p className="font-mono text-[10px] tracking-[0.22em] uppercase text-muted-foreground">
           Account · Settings

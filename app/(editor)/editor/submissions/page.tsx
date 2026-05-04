@@ -15,7 +15,7 @@ export default async function EditorSubmissionsPage() {
   const submissions = await listSubmissionsForEditor(session.user.id)
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="space-y-6">
       <header className="flex items-end justify-between gap-4 border-b border-border pb-4">
         <div className="space-y-1">
           <p className="font-mono text-[10px] tracking-[0.22em] uppercase text-muted-foreground">

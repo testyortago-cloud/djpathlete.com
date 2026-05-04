@@ -67,7 +67,7 @@ export default async function EditorDashboardPage() {
   })
 
   return (
-    <div className="mx-auto max-w-5xl space-y-8">
+    <div className="space-y-8">
       {/* Greeting + slate */}
       <header className="flex items-end justify-between gap-4 border-b border-border pb-4">
         <div className="space-y-1">

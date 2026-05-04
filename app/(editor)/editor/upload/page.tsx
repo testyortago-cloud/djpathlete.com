@@ -4,7 +4,7 @@ export const metadata = { title: "Upload Video" }
 
 export default function EditorUploadPage() {
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="space-y-6">
       <header className="border-b border-border pb-4 space-y-1">
         <p className="font-mono text-[10px] tracking-[0.22em] uppercase text-muted-foreground">
           Workshop · New upload
