@@ -17,6 +17,19 @@ const appUrl = defineSecret("APP_URL")
 const tavilyApiKey = defineSecret("TAVILY_API_KEY")
 const internalCronToken = defineSecret("INTERNAL_CRON_TOKEN")
 const falKey = defineSecret("FAL_KEY")
+const googleAdsDeveloperToken = defineSecret("GOOGLE_ADS_DEVELOPER_TOKEN")
+const googleAdsClientId = defineSecret("GOOGLE_ADS_CLIENT_ID")
+const googleAdsClientSecret = defineSecret("GOOGLE_ADS_CLIENT_SECRET")
+const googleAdsLoginCustomerId = defineSecret("GOOGLE_ADS_LOGIN_CUSTOMER_ID")
+
+const googleAdsSecrets = [
+  supabaseUrl,
+  supabaseServiceRoleKey,
+  googleAdsDeveloperToken,
+  googleAdsClientId,
+  googleAdsClientSecret,
+  googleAdsLoginCustomerId,
+]
 
 const allSecrets = [anthropicApiKey, supabaseUrl, supabaseServiceRoleKey]
 const sendSecrets = [supabaseUrl, supabaseServiceRoleKey, resendApiKey]
@@ -546,6 +559,52 @@ export const performanceLearningLoop = onSchedule(
 // Next.js /api/admin/automation/trigger route. Dispatches to the same pure
 // runners the scheduled functions use. All secrets included so any runner
 // can fire here.
+
+// ─── Google Ads Sync (Nightly 06:00 UTC) ─────────────────────────────────────
+// Walks each active row in google_ads_accounts and mirrors its campaigns,
+// ad_groups, keywords, ads, daily metrics (last 7 days), and search terms
+// into Supabase. UPSERT-driven; safe to re-run. The 7-day rewrite window
+// catches Google Ads' attribution lag without re-fetching the full account.
+// Plan 1.2 hooks recommendation generation in after this completes.
+
+export const syncGoogleAds = onSchedule(
+  {
+    schedule: "0 6 * * *",
+    timeZone: "UTC",
+    timeoutSeconds: 540,
+    memory: "512MiB",
+    region: "us-central1",
+    secrets: googleAdsSecrets,
+  },
+  async () => {
+    const { runSyncGoogleAds } = await import("./sync-google-ads.js")
+    const result = await runSyncGoogleAds()
+    console.log("[syncGoogleAds]", result)
+  },
+)
+
+// ─── Google Ads Sync — manual trigger ────────────────────────────────────────
+// Admin "Sync now" button enqueues an ai_jobs doc with type "google_ads_sync";
+// this handler picks it up and runs the same pure orchestrator. The Firestore
+// doc surface lets the admin UI poll for completion later if needed.
+
+export const googleAdsManualSync = onDocumentCreated(
+  {
+    document: "ai_jobs/{jobId}",
+    timeoutSeconds: 540,
+    memory: "512MiB",
+    region: "us-central1",
+    secrets: googleAdsSecrets,
+  },
+  async (event) => {
+    const data = event.data?.data()
+    if (!data || data.type !== "google_ads_sync") return
+
+    const { runSyncGoogleAds } = await import("./sync-google-ads.js")
+    const result = await runSyncGoogleAds()
+    console.log("[googleAdsManualSync]", event.params.jobId, result)
+  },
+)
 
 export const runJob = onRequest(
   {
