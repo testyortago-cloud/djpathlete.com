@@ -18,12 +18,13 @@ const ALLOWED_DRAWING_COLORS = [
 
 const drawingPathSchema = z
   .object({
-    tool: z.enum(["pen", "arrow", "rectangle"]),
+    tool: z.enum(["pen", "arrow", "rectangle", "pin"]),
     color: z.enum(ALLOWED_DRAWING_COLORS),
     width: z.number().int().min(2).max(8),
     points: z
       .array(z.tuple([z.number().min(0).max(1), z.number().min(0).max(1)]))
-      .min(2),
+      .min(1)
+      .max(500),
   })
   .superRefine((path, ctx) => {
     if (
@@ -33,6 +34,20 @@ const drawingPathSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: `${path.tool} requires exactly 2 points, got ${path.points.length}`,
+        path: ["points"],
+      })
+    }
+    if (path.tool === "pin" && path.points.length !== 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `pin requires exactly 1 point, got ${path.points.length}`,
+        path: ["points"],
+      })
+    }
+    if (path.tool === "pen" && path.points.length < 2) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `pen requires at least 2 points, got ${path.points.length}`,
         path: ["points"],
       })
     }

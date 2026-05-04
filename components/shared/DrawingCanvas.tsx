@@ -8,7 +8,7 @@
 // Lifting `ssr: false` up to the consumer is the supported pattern.
 
 import { useRef, useState } from "react"
-import { Stage, Layer, Line, Arrow, Rect } from "react-konva"
+import { Stage, Layer, Line, Arrow, Rect, Circle, Group } from "react-konva"
 import type { KonvaEventObject } from "konva/lib/Node"
 import type { DrawingJson, DrawingPath, DrawingTool } from "@/types/database"
 
@@ -74,6 +74,21 @@ function renderPath(path: DrawingPath, idx: number, w: number, h: number) {
   if (path.tool === "arrow") {
     return <Arrow {...common} fill={path.color} points={flat} />
   }
+  if (path.tool === "pin") {
+    // Loom-style numbered drop-pin (1 point). Radius scales with stroke width.
+    const [x, y] = [flat[0], flat[1]]
+    const r = Math.max(10, path.width * 2.5)
+    return (
+      <Group key={idx} x={x} y={y}>
+        {/* Soft drop shadow */}
+        <Circle radius={r + 2} fill="rgba(0,0,0,0.35)" y={1.5} />
+        {/* Filled badge */}
+        <Circle radius={r} fill={path.color} stroke="#ffffff" strokeWidth={2} />
+        {/* Inner dot for sharper read */}
+        <Circle radius={Math.max(2, r * 0.25)} fill="#ffffff" />
+      </Group>
+    )
+  }
   // rectangle: 2 points → x/y/width/height
   const [x1, y1] = [flat[0], flat[1]]
   const [x2, y2] = [flat[2], flat[3]]
@@ -110,6 +125,19 @@ export function DrawingCanvas(props: Props) {
     if (mode !== "edit") return
     const xy = pointerXY(e)
     if (!xy) return
+
+    // Pin is a single-click placement — no drag, no draft phase.
+    if (props.tool === "pin") {
+      const pinPath: DrawingPath = {
+        tool: "pin",
+        color: props.color,
+        width: props.strokeWidth,
+        points: [xy],
+      }
+      props.onChange({ paths: [...drawingRef.current.paths, pinPath] })
+      return
+    }
+
     setDraftPath({
       tool: props.tool,
       color: props.color,

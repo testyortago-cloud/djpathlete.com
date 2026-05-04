@@ -189,7 +189,7 @@ export interface TeamVideoComment {
   updated_at: string
 }
 
-export type DrawingTool = "pen" | "arrow" | "rectangle"
+export type DrawingTool = "pen" | "arrow" | "rectangle" | "pin"
 
 export interface DrawingPath {
   tool: DrawingTool

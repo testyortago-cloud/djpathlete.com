@@ -135,6 +135,24 @@ describe("drawingJsonSchema", () => {
     })
     expect(r.success).toBe(true)
   })
+  it("accepts pin with exactly 1 point", () => {
+    const r = drawingJsonSchema.safeParse({
+      paths: [{ tool: "pin", color: "#FF3B30", width: 4, points: [[0.42, 0.66]] }],
+    })
+    expect(r.success).toBe(true)
+  })
+  it("rejects pin with 0 points", () => {
+    const r = drawingJsonSchema.safeParse({
+      paths: [{ tool: "pin", color: "#FF3B30", width: 4, points: [] }],
+    })
+    expect(r.success).toBe(false)
+  })
+  it("rejects pin with more than 1 point", () => {
+    const r = drawingJsonSchema.safeParse({
+      paths: [{ tool: "pin", color: "#FF3B30", width: 4, points: [[0.1, 0.1], [0.9, 0.9]] }],
+    })
+    expect(r.success).toBe(false)
+  })
 })
 
 describe("createCommentSchema with annotation", () => {

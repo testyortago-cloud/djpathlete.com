@@ -43,7 +43,7 @@ export function ReviewSurface({ submission, version, comments, videoUrl }: Props
 
   // Drawing-mode state
   const [drawingMode, setDrawingMode] = useState(false)
-  const [tool, setTool] = useState<DrawingTool>("arrow")
+  const [tool, setTool] = useState<DrawingTool>("pin")
   const [color, setColor] = useState("#FF3B30")
   const [strokeWidth, setStrokeWidth] = useState(3)
   const [draftDrawing, setDraftDrawing] = useState<DrawingJson>({ paths: [] })
