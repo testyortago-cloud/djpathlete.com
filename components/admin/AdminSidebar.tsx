@@ -123,7 +123,10 @@ function getNavSections(contentStudioOn: boolean): NavSection[] {
     },
     {
       title: "Ads",
-      items: [{ label: "Google Ads", href: "/admin/ads", icon: Target }],
+      items: [
+        { label: "Google Ads", href: "/admin/ads", icon: Target },
+        { label: "Settings", href: "/admin/ads/settings", icon: Settings },
+      ],
     },
     {
       title: "Shop",

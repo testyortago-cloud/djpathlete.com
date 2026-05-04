@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { Target, ShieldCheck, Construction } from "lucide-react"
+import { Target, ShieldCheck, Construction, Settings } from "lucide-react"
 
 export const metadata = { title: "Google Ads" }
 
@@ -23,9 +23,10 @@ const PHASES: PhaseRow[] = [
   {
     id: "1.1",
     title: "OAuth + nightly campaign sync",
-    status: "blocked",
+    status: "in_progress",
     description:
-      "Connect Google Ads via OAuth, mirror campaigns/ad_groups/keywords/ads/metrics nightly into Supabase. Blocked on Darren's Developer Token (1–2 week approval).",
+      "OAuth connect/disconnect shipped — works against Google Ads test accounts now and flips to live the moment the Developer Token lands. Nightly campaign / ad-group / keyword / ad / metrics sync still pending.",
+    href: "/admin/ads/settings",
   },
   {
     id: "1.2",
@@ -133,6 +134,24 @@ export default function AdsHomePage() {
             </div>
           </Link>
 
+          <Link
+            href="/admin/ads/settings"
+            className="group flex items-start gap-4 rounded-xl border border-border bg-card p-5 transition-colors hover:border-accent/60"
+          >
+            <div className="size-10 rounded-lg bg-accent/10 text-accent flex items-center justify-center shrink-0">
+              <Settings className="size-5" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-heading text-primary text-sm leading-snug">
+                Google Ads — Connect
+              </p>
+              <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                OAuth hand-off into your Google Ads account. Required before nightly sync, AI
+                recommendations, and the AI Ads Agent come online.
+              </p>
+            </div>
+          </Link>
+
           <div className="flex items-start gap-4 rounded-xl border border-dashed border-border/60 bg-surface/30 p-5">
             <div className="size-10 rounded-lg bg-muted/40 text-muted-foreground flex items-center justify-center shrink-0">
               <Construction className="size-5" />
@@ -142,8 +161,8 @@ export default function AdsHomePage() {
                 Campaigns dashboard, recommendations queue, AI agent
               </p>
               <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                Coming after Phase 1.1 (OAuth + sync) lands. Apply for the Google Ads Developer
-                Token to unblock.
+                Coming after Phase 1.1 sync work lands. Apply for the Google Ads Developer Token
+                to unblock the live cutover.
               </p>
             </div>
           </div>

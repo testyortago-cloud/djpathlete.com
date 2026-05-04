@@ -24,6 +24,12 @@ const PLUGIN_META: Record<SocialPlatform, PluginMeta> = {
 
 const DISPLAY_ORDER: SocialPlatform[] = ["facebook", "instagram", "tiktok", "youtube", "youtube_shorts", "linkedin"]
 
+const SOCIAL_PLUGINS = new Set<SocialPlatform>(DISPLAY_ORDER)
+type SocialPluginConnection = PlatformConnection & { plugin_name: SocialPlatform }
+function isSocialConnection(c: PlatformConnection): c is SocialPluginConnection {
+  return SOCIAL_PLUGINS.has(c.plugin_name as SocialPlatform)
+}
+
 // Platforms that drive their own OAuth flow. Paired platforms (youtube_shorts,
 // instagram) ride on the same OAuth grant as their parent — they show a
 // "Shares X" badge instead of their own buttons.
@@ -43,7 +49,7 @@ function PlatformActions({
   connection,
   label,
 }: {
-  connection: PlatformConnection
+  connection: SocialPluginConnection
   label: string
 }) {
   const oauth = OAUTH_PRIMARY[connection.plugin_name]
@@ -140,12 +146,16 @@ function statusBadge(status: PlatformConnection["status"]) {
 export default async function PlatformConnectionsPage() {
   const connections = (await listPlatformConnections()) as PlatformConnection[]
 
-  const byPlugin = new Map<SocialPlatform, PlatformConnection>()
+  // Filter to social plugins only — non-social plugins (e.g. google_ads) have
+  // their own settings surface at /admin/ads/settings.
+  const byPlugin = new Map<SocialPlatform, SocialPluginConnection>()
   for (const c of connections) {
-    byPlugin.set(c.plugin_name, c)
+    if (isSocialConnection(c)) byPlugin.set(c.plugin_name, c)
   }
 
-  const ordered = DISPLAY_ORDER.map((name) => byPlugin.get(name)).filter((c): c is PlatformConnection => Boolean(c))
+  const ordered = DISPLAY_ORDER.map((name) => byPlugin.get(name)).filter(
+    (c): c is SocialPluginConnection => Boolean(c),
+  )
 
   return (
     <div>

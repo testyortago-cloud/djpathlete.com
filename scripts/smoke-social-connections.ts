@@ -76,7 +76,20 @@ async function main() {
   console.log("Fetching platform_connections rows (decrypted via fn_list_platform_connections)...\n")
   const rows = await listPlatformConnections()
   const byPlatform = new Map<SocialPlatform, PlatformConnection>()
-  for (const r of rows) byPlatform.set(r.plugin_name, r)
+  const SOCIAL_PLATFORMS: SocialPlatform[] = [
+    "facebook",
+    "instagram",
+    "tiktok",
+    "youtube",
+    "youtube_shorts",
+    "linkedin",
+  ]
+  const socialSet = new Set<string>(SOCIAL_PLATFORMS)
+  for (const r of rows) {
+    if (socialSet.has(r.plugin_name)) {
+      byPlatform.set(r.plugin_name as SocialPlatform, r)
+    }
+  }
 
   console.log("=".repeat(84))
   console.log(

@@ -16,10 +16,18 @@ describe("platform-connections DAL", () => {
   beforeAll(resetFacebookToDefault)
   afterAll(resetFacebookToDefault)
 
-  it("lists all 6 seeded plugins", async () => {
+  it("lists all seeded plugins (6 social + google_ads)", async () => {
     const all = await listPlatformConnections()
     const names = all.map((c) => c.plugin_name).sort()
-    expect(names).toEqual(["facebook", "instagram", "linkedin", "tiktok", "youtube", "youtube_shorts"])
+    expect(names).toEqual([
+      "facebook",
+      "google_ads",
+      "instagram",
+      "linkedin",
+      "tiktok",
+      "youtube",
+      "youtube_shorts",
+    ])
   })
 
   it("getPlatformConnection returns one connection by name", async () => {
