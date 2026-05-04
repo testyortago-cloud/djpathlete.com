@@ -1,5 +1,20 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Keep gRPC-based Google SDKs unbundled on the server. Webpack bundling
+  // produces duplicate copies of @grpc/grpc-js, which breaks internal
+  // `instanceof ChannelCredentials` checks and surfaces in production as
+  // "Channel credentials must be a ChannelCredentials object" when calling
+  // google-ads-api on Vercel.
+  serverExternalPackages: [
+    "google-ads-api",
+    "google-ads-node",
+    "google-gax",
+    "@grpc/grpc-js",
+    "@grpc/proto-loader",
+    "@google-analytics/data",
+    "@google-cloud/firestore",
+    "firebase-admin",
+  ],
   experimental: {
     optimizePackageImports: ["lucide-react"],
     staleTimes: {
