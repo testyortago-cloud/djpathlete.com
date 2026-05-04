@@ -62,16 +62,18 @@ const PHASES: PhaseRow[] = [
   {
     id: "1.5c",
     title: "Booking conversion uploads",
-    status: "pending",
+    status: "in_progress",
     description:
-      "Real-time offline conversion upload on booking creation, with gclid + admin-configurable initial value.",
+      "Booking webhooks enqueue offline click conversions; the every-15-min worker drains them to Google Ads. Admin configures the conversion action ID + default value at /admin/ads/conversions. Lit up live the moment the Developer Token lands.",
+    href: "/admin/ads/conversions",
   },
   {
     id: "1.5d",
     title: "Stripe value attribution",
-    status: "pending",
+    status: "in_progress",
     description:
-      "When a booking turns into a paid Stripe charge, restate the conversion value to actual revenue so smart bidding learns true LTV.",
+      "Stripe checkout completes → RESTATE adjustment matches the booking's click conversion to actual paid value. Smart bidding learns true LTV instead of the placeholder. Adjustments queue on the same worker as click uploads.",
+    href: "/admin/ads/conversions",
   },
   {
     id: "1.5e",
