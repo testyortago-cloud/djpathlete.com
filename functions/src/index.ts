@@ -29,6 +29,10 @@ const googleAdsSecrets = [
   googleAdsClientId,
   googleAdsClientSecret,
   googleAdsLoginCustomerId,
+  // Plan 1.2: orchestrator POSTs the AI recommendations trigger after each
+  // account's sync completes. Needs INTERNAL_CRON_TOKEN + APP_URL.
+  internalCronToken,
+  appUrl,
 ]
 
 const allSecrets = [anthropicApiKey, supabaseUrl, supabaseServiceRoleKey]
