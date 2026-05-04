@@ -61,7 +61,10 @@ function formatDate(iso: string | null): string {
 export function VersionHistoryList({ versions, selectedId, onSelect }: Props) {
   const [bulkDownloading, setBulkDownloading] = useState(false)
 
-  if (versions.length <= 1) return null
+  // Show whenever any version exists — the download button matters even
+  // for a single version (the most common state). The list still acts as
+  // history once a 2nd version lands.
+  if (versions.length === 0) return null
 
   // Newest first feels right when scanning history.
   const sorted = [...versions].sort((a, b) => b.version_number - a.version_number)
@@ -97,12 +100,12 @@ export function VersionHistoryList({ versions, selectedId, onSelect }: Props) {
             id="version-history-heading"
             className="font-heading text-sm font-medium text-primary"
           >
-            Version history
+            {versions.length === 1 ? "Source file" : "Version history"}
           </h3>
         </div>
         <div className="flex items-center gap-3">
           <span className="font-mono text-[10px] tracking-[0.18em] uppercase text-muted-foreground">
-            {versions.length} versions
+            {versions.length} {versions.length === 1 ? "version" : "versions"}
           </span>
           {downloadable.length > 1 && (
             <Button
