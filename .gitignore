@@ -35,6 +35,11 @@ next-env.d.ts
 coverage/
 playwright-report/
 test-results/
+.playwright-out/
+
+# local artifacts (screenshots, exercise templates, etc.)
+Screenshot*.png
+*.xlsx
 
 # claude code
 .claude/
