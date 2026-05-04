@@ -47,3 +47,23 @@ export async function deletePromptTemplate(id: string): Promise<void> {
   const { error } = await supabase.from("prompt_templates").delete().eq("id", id)
   if (error) throw error
 }
+
+/**
+ * Fetches the most-recently-updated prompt for a given category. Returns
+ * null if no row exists yet (callers should fall back gracefully so a
+ * fresh-install database doesn't break AI flows).
+ */
+export async function getLatestPromptByCategory(
+  category: string,
+): Promise<PromptTemplate | null> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("prompt_templates")
+    .select("*")
+    .eq("category", category)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  return (data ?? null) as PromptTemplate | null
+}
