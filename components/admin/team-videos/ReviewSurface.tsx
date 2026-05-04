@@ -20,6 +20,7 @@ const DrawingCanvas = dynamic(
 import { StatusActions } from "./StatusActions"
 import { CommentEditor } from "./CommentEditor"
 import { DrawingToolbar } from "./DrawingToolbar"
+import { PinCommentPopover } from "./PinCommentPopover"
 import { useVisibleAnnotations } from "@/hooks/useVideoOverlay"
 import type {
   TeamVideoSubmission,
@@ -99,6 +100,14 @@ export function ReviewSurface({ submission, version, comments, videoUrl }: Props
   }
 
   function renderOverlay({ width, height }: { width: number; height: number }) {
+    // Anchor for the floating Loom-style popover: the first vertex of the
+    // last path the user drew. For pins that's the pin itself; for arrows
+    // / rectangles it's the start point; for pen strokes it's the start.
+    const lastPath = draftDrawing.paths[draftDrawing.paths.length - 1]
+    const anchor = lastPath
+      ? { x: lastPath.points[0][0], y: lastPath.points[0][1] }
+      : null
+
     return (
       <>
         {/* Read-only annotations from existing visible comments */}
@@ -121,6 +130,21 @@ export function ReviewSurface({ submission, version, comments, videoUrl }: Props
             strokeWidth={strokeWidth}
             drawing={draftDrawing}
             onChange={setDraftDrawing}
+          />
+        )}
+        {/* Inline Loom-style comment composer, anchored to the last mark */}
+        {drawingMode && anchor && (
+          <PinCommentPopover
+            submissionId={submission.id}
+            containerWidth={width}
+            containerHeight={height}
+            anchor={anchor}
+            drawing={draftDrawing}
+            getCurrentTimecode={() =>
+              playerRef.current?.getCurrentTime() ?? null
+            }
+            onSubmitted={cancelDrawing}
+            onCancel={cancelDrawing}
           />
         )}
       </>
@@ -193,22 +217,26 @@ export function ReviewSurface({ submission, version, comments, videoUrl }: Props
                   <Brush className="mr-1 size-4" /> Draw on frame
                 </Button>
               ) : (
-                <p className="text-xs text-muted-foreground">
-                  Draw on the video, then add a comment to save the drawing with it.
+                <p className="font-mono text-[10px] tracking-[0.18em] uppercase text-muted-foreground">
+                  {draftDrawing.paths.length === 0
+                    ? "Drop a pin or draw on the frame to add a comment."
+                    : "Type your comment in the popover next to your mark."}
                 </p>
               )}
             </div>
           )}
 
-          {videoUrl && (
+          {/* While drawing, the inline popover IS the composer; hide the */}
+          {/* bottom editor to avoid two competing inputs. */}
+          {videoUrl && !drawingMode && (
             <CommentEditor
               submissionId={submission.id}
               getCurrentTimecode={() =>
                 playerRef.current?.getCurrentTime() ?? null
               }
               onCreated={() => {}}
-              drawing={drawingMode ? draftDrawing : null}
-              onAfterSubmit={cancelDrawing}
+              drawing={null}
+              onAfterSubmit={() => {}}
             />
           )}
         </div>
