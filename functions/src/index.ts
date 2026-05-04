@@ -587,6 +587,42 @@ export const syncGoogleAds = onSchedule(
   },
 )
 
+// ─── AI Ads Agent — Strategist Memo (Wed 13:00 UTC = 06:00 PT) ───────────────
+// Plan 1.5g v1. Builds a structured weekly strategist memo from the full
+// account snapshot (campaigns, recs, conversions, audiences, pipeline) and
+// emails it to COACH_EMAIL. Memo also persists to google_ads_agent_memos
+// for the in-app archive at /admin/ads/agent.
+
+export const runAgentStrategist = onSchedule(
+  {
+    schedule: "0 13 * * 3",
+    timeZone: "UTC",
+    timeoutSeconds: 540,
+    memory: "512MiB",
+    region: "us-central1",
+    secrets: [internalCronToken, appUrl],
+  },
+  async () => {
+    const baseUrl = process.env.APP_URL
+    const token = process.env.INTERNAL_CRON_TOKEN
+    if (!baseUrl || !token) {
+      console.error("[runAgentStrategist] APP_URL or INTERNAL_CRON_TOKEN missing — abort")
+      return
+    }
+    try {
+      const res = await fetch(`${baseUrl}/api/admin/internal/ads/agent-strategist`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: "{}",
+      })
+      const body = await res.json().catch(() => ({}))
+      console.log("[runAgentStrategist]", res.status, body)
+    } catch (err) {
+      console.error("[runAgentStrategist] failed:", err)
+    }
+  },
+)
+
 // ─── Pipeline Weekly Funnel Report (Tue 13:00 UTC = 06:00 PT) ────────────────
 // Plan 1.5f. Visit → signup → booking → payment funnel digest, with delta
 // vs prior week, top campaigns by revenue, and a Claude insights paragraph.
