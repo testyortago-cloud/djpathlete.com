@@ -1,6 +1,7 @@
 import { createServiceRoleClient } from "@/lib/supabase"
 import { listGoogleAdsAccounts } from "@/lib/db/google-ads-accounts"
 import { ConnectGoogleAdsButton } from "./ConnectGoogleAdsButton"
+import { RediscoverAccountsButton } from "./RediscoverAccountsButton"
 import type { GoogleAdsAccount } from "@/types/database"
 
 export const metadata = { title: "Google Ads — Settings" }
@@ -28,9 +29,8 @@ export default async function GoogleAdsSettingsPage({ searchParams }: PageProps)
       <div>
         <h1 className="text-2xl font-heading text-primary">Google Ads — Settings</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Connect your Google Ads account to enable nightly campaign sync, AI recommendations
-          (Plan 1.2), and the AI Ads Agent (Plan 1.5g). Until your Developer Token is approved,
-          this connection works against Google Ads test accounts only.
+          OAuth status, connected customer accounts, and last-sync state. Reconnect here if the
+          refresh token ever rotates.
         </p>
       </div>
 
@@ -43,8 +43,8 @@ export default async function GoogleAdsSettingsPage({ searchParams }: PageProps)
         <div className="border border-success/40 bg-success/5 text-success rounded-lg p-4 text-sm">
           Connected.
           {activeAccounts.length === 0
-            ? " No accounts discovered yet — set GOOGLE_ADS_DEVELOPER_TOKEN and reconnect."
-            : " Nightly sync runs at 06:00 UTC; you can also trigger one manually below (coming with Plan 1.1 sync work)."}
+            ? " No accounts discovered yet — verify GOOGLE_ADS_LOGIN_CUSTOMER_ID is correct and reconnect."
+            : " Nightly sync runs at 06:00 UTC; trigger one manually from /admin/ads/campaigns."}
         </div>
       ) : null}
 
@@ -60,6 +60,20 @@ export default async function GoogleAdsSettingsPage({ searchParams }: PageProps)
           </div>
           <ConnectGoogleAdsButton isConnected={isConnected} />
         </div>
+        {isConnected ? (
+          <div className="flex items-start justify-between gap-4 pt-4 border-t border-border/60">
+            <div>
+              <p className="text-sm text-primary">Re-discover accounts</p>
+              <p className="text-xs text-muted-foreground mt-1 max-w-xl">
+                Re-runs <code className="font-mono">listAccessibleCustomers</code> against the
+                stored refresh token and upserts each Customer ID. Use this if the OAuth
+                handshake completed before <code className="font-mono">GOOGLE_ADS_DEVELOPER_TOKEN</code>{" "}
+                was set, or after the dev token rotates. No consent screen.
+              </p>
+            </div>
+            <RediscoverAccountsButton />
+          </div>
+        ) : null}
       </div>
 
       {activeAccounts.length > 0 ? (

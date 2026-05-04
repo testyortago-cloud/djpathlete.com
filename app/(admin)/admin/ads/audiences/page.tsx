@@ -20,7 +20,7 @@ const AUDIENCE_DESCRIPTIONS: Record<GoogleAdsAudienceType, string> = {
   subscribers:
     "Active newsletter subscribers (unsubscribed_at IS NULL). Use to layer a warmer audience over existing campaigns or build lookalike seeds.",
   icp:
-    "Manually-curated ICP list. Phase 1.5b ships the schema slot; Plan 1.5g (AI Agent) will populate this from richer signals (e.g. paid clients filtered by sport/level).",
+    "Manually-curated ICP list (e.g. paid clients filtered by sport/level). Schema slot is reserved for richer signals from the AI Agent; populate manually for now via SQL or seed script.",
 }
 
 function relativeTime(iso: string | null): string {

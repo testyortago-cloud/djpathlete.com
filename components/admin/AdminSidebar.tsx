@@ -37,6 +37,7 @@ import {
   PlayCircle,
   Target,
   Users2,
+  LineChart,
 } from "lucide-react"
 import { signOut } from "next-auth/react"
 import { cn } from "@/lib/utils"
@@ -145,6 +146,7 @@ function getNavSections(contentStudioOn: boolean): NavSection[] {
         { label: "Recommendations", href: "/admin/ads/recommendations", icon: Sparkles },
         { label: "Conversions", href: "/admin/ads/conversions", icon: TrendingUp },
         { label: "Audiences", href: "/admin/ads/audiences", icon: Users },
+        { label: "GA4 Overview", href: "/admin/ads/ga4-overview", icon: LineChart },
         { label: "Automation Log", href: "/admin/ads/automation-log", icon: ClipboardCheck },
         { label: "Settings", href: "/admin/ads/settings", icon: Settings },
       ],

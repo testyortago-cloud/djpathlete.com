@@ -20,9 +20,10 @@ export default async function RecommendationsPage() {
         <div>
           <h1 className="text-2xl font-heading text-primary">Recommendations</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            AI-generated optimizations sorted by confidence. Approve to queue for application
-            (Plan 1.3 wires the Google Ads write-back); reject to dismiss. Rows expire 14 days
-            after generation if untouched.
+            AI-generated optimizations sorted by confidence. Approve to apply directly to Google
+            Ads via the automation worker; reject to dismiss. Auto-pilot also applies negative
+            keywords with confidence ≥ 0.8 after each nightly sync. Rows expire 14 days after
+            generation if untouched.
           </p>
         </div>
       </div>

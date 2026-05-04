@@ -60,10 +60,9 @@ export default async function ConversionsPage() {
       <div>
         <h1 className="text-2xl font-heading text-primary">Conversions</h1>
         <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
-          Phase 1.5c uploads offline conversions to Google Ads when a booking is created. Phase
-          1.5d restates that conversion's value to actual revenue when the prospect's Stripe
-          payment lands. Worker runs every 15 minutes; pending rows wait on the Developer Token if
-          it's not configured yet.
+          Booking webhooks enqueue offline click conversions; Stripe payment success enqueues a
+          RESTATE adjustment that lifts the conversion value to actual revenue. The worker drains
+          the queue every 15 minutes — Smart Bidding learns true LTV instead of a placeholder.
         </p>
       </div>
 
