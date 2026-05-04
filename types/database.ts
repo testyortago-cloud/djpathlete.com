@@ -1663,3 +1663,61 @@ export interface GoogleAdsSearchTerm {
   matched_keyword_id: string | null
   last_synced_at: string
 }
+
+// ─────────────────────────────────────────────────────────────────
+// Google Ads — Phase 1.2 (recommendations + audit log)
+// ─────────────────────────────────────────────────────────────────
+
+export type GoogleAdsRecommendationType =
+  | "add_negative_keyword"
+  | "adjust_bid"
+  | "pause_keyword"
+  | "add_keyword"
+  | "add_ad_variant"
+  | "pause_ad"
+
+export type GoogleAdsRecommendationScope = "campaign" | "ad_group" | "keyword" | "ad"
+
+export type GoogleAdsRecommendationStatus =
+  | "pending"
+  | "approved"
+  | "applied"
+  | "rejected"
+  | "auto_applied"
+  | "failed"
+  | "expired"
+
+export interface GoogleAdsRecommendation {
+  id: string
+  customer_id: string
+  scope_type: GoogleAdsRecommendationScope
+  scope_id: string
+  recommendation_type: GoogleAdsRecommendationType
+  payload: Record<string, unknown>
+  reasoning: string
+  confidence: number
+  status: GoogleAdsRecommendationStatus
+  created_by_ai: boolean
+  approved_by: string | null
+  approved_at: string | null
+  applied_at: string | null
+  failure_reason: string | null
+  expires_at: string
+  created_at: string
+  updated_at: string
+}
+
+export type GoogleAdsAutomationLogResult = "success" | "failure" | "partial"
+
+export interface GoogleAdsAutomationLog {
+  id: string
+  recommendation_id: string | null
+  customer_id: string
+  mode: string
+  actor: string
+  api_request: Record<string, unknown>
+  api_response: Record<string, unknown> | null
+  result_status: GoogleAdsAutomationLogResult
+  error_message: string | null
+  created_at: string
+}
