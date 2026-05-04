@@ -47,8 +47,10 @@ const PHASES: PhaseRow[] = [
   {
     id: "1.4",
     title: "AI ad copy + weekly performance report",
-    status: "pending",
-    description: "Brand-voiced ad copy generation; Monday email digest of campaign performance.",
+    status: "in_progress",
+    description:
+      "Brand-voiced RSA generator (per ad group, headlines + descriptions, validated against Google's character limits) and Monday 13:00 UTC email digest with totals, top campaigns, worst keywords, pending recs, and a Claude-written insights paragraph.",
+    href: "/admin/ads/recommendations",
   },
   {
     id: "1.5b",

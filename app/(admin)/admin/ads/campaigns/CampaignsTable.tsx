@@ -1,5 +1,6 @@
 import type { GoogleAdsCampaign } from "@/types/database"
 import { AutomationModeSelector } from "./AutomationModeSelector"
+import { GenerateCopyButton } from "./GenerateCopyButton"
 
 export interface CampaignWithMetrics extends GoogleAdsCampaign {
   cost_micros_7d: number
@@ -51,6 +52,7 @@ export function CampaignsTable({ campaigns }: { campaigns: CampaignWithMetrics[]
             <th className="text-right p-3 w-28">Spend (7d)</th>
             <th className="text-right p-3 w-24">Clicks</th>
             <th className="text-right p-3 w-28">Conversions</th>
+            <th className="text-right p-3 w-28">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -81,6 +83,9 @@ export function CampaignsTable({ campaigns }: { campaigns: CampaignWithMetrics[]
               <td className="p-3 text-right font-mono text-xs">{fmtNumber(c.clicks_7d)}</td>
               <td className="p-3 text-right font-mono text-xs">
                 {c.conversions_7d > 0 ? c.conversions_7d.toFixed(1) : "—"}
+              </td>
+              <td className="p-3 text-right">
+                <GenerateCopyButton campaignId={c.id} disabled={c.type === "PERFORMANCE_MAX"} />
               </td>
             </tr>
           ))}
