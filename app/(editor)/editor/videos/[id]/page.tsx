@@ -4,7 +4,7 @@ import { getSubmissionById } from "@/lib/db/team-video-submissions"
 import { getCurrentVersion, listVersionsForSubmission } from "@/lib/db/team-video-versions"
 import { listCommentsForVersion } from "@/lib/db/team-video-comments"
 import { listAnnotationsForCommentIds } from "@/lib/db/team-video-annotations"
-import { createReadUrl } from "@/lib/storage/team-videos"
+import { createReadUrl, createDownloadUrl } from "@/lib/storage/team-videos"
 import { EditorVideoView } from "@/components/editor/EditorVideoView"
 import type { VersionRow } from "@/components/editor/VersionHistoryList"
 
@@ -36,15 +36,21 @@ export default async function EditorVideoPage({ params }: Props) {
   }))
 
   // Pre-fetch signed read URLs for every uploaded version so the user can
-  // swap between cuts without an extra round-trip. URLs expire (~1h) but
-  // any longer review session triggers a refresh anyway.
+  // swap between cuts without an extra round-trip. Two URLs per version:
+  // one for inline streaming, one with Content-Disposition: attachment for
+  // the download buttons. URLs expire (~1h) — long review sessions refresh.
   const allVersions = await listVersionsForSubmission(submission.id)
   const versions: VersionRow[] = await Promise.all(
-    allVersions.map(async (v) => ({
-      ...v,
-      signedUrl:
-        v.status === "uploaded" ? await createReadUrl(v.storage_path) : null,
-    })),
+    allVersions.map(async (v) => {
+      if (v.status !== "uploaded") {
+        return { ...v, signedUrl: null, signedDownloadUrl: null }
+      }
+      const [signedUrl, signedDownloadUrl] = await Promise.all([
+        createReadUrl(v.storage_path),
+        createDownloadUrl(v.storage_path, v.original_filename),
+      ])
+      return { ...v, signedUrl, signedDownloadUrl }
+    }),
   )
 
   const currentVersionUrl =

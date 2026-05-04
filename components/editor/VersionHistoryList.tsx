@@ -1,11 +1,32 @@
 "use client"
 
-import { Layers, CircleCheck, Clock } from "lucide-react"
+import { useState } from "react"
+import { Layers, CircleCheck, Clock, Download, Archive } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { toast } from "sonner"
 import type { TeamVideoVersion } from "@/types/database"
 
 export interface VersionRow extends TeamVideoVersion {
-  /** Pre-fetched signed read URL, or null if the version isn't uploaded yet. */
+  /** Pre-fetched signed read URL for streaming/playing. Null if not uploaded. */
   signedUrl: string | null
+  /** Pre-fetched signed read URL with Content-Disposition: attachment.
+   *  Hitting it triggers a download instead of inline playback. */
+  signedDownloadUrl: string | null
+}
+
+/** Programmatically click a hidden anchor to start a download. */
+function triggerDownload(url: string, filename: string) {
+  const a = document.createElement("a")
+  a.href = url
+  // For cross-origin URLs the `download` attr is a hint only; the URL's
+  // Content-Disposition: attachment header (set by createDownloadUrl) is
+  // what actually forces the download.
+  a.download = filename
+  a.rel = "noopener"
+  a.style.display = "none"
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
 }
 
 interface Props {
@@ -38,17 +59,38 @@ function formatDate(iso: string | null): string {
 }
 
 export function VersionHistoryList({ versions, selectedId, onSelect }: Props) {
+  const [bulkDownloading, setBulkDownloading] = useState(false)
+
   if (versions.length <= 1) return null
 
   // Newest first feels right when scanning history.
   const sorted = [...versions].sort((a, b) => b.version_number - a.version_number)
+  const downloadable = sorted.filter((v) => v.signedDownloadUrl != null)
+
+  async function downloadAll() {
+    if (bulkDownloading || downloadable.length === 0) return
+    setBulkDownloading(true)
+    toast.message(`Downloading ${downloadable.length} versions…`)
+    try {
+      for (let i = 0; i < downloadable.length; i++) {
+        const v = downloadable[i]
+        triggerDownload(v.signedDownloadUrl!, v.original_filename)
+        // 400ms gap so Chrome doesn't treat them as a popup-style burst.
+        if (i < downloadable.length - 1) {
+          await new Promise((r) => setTimeout(r, 400))
+        }
+      }
+    } finally {
+      setBulkDownloading(false)
+    }
+  }
 
   return (
     <section
       aria-labelledby="version-history-heading"
       className="rounded-md border bg-card overflow-hidden"
     >
-      <header className="flex items-center justify-between border-b border-border px-4 py-2.5">
+      <header className="flex items-center justify-between gap-3 border-b border-border px-4 py-2.5">
         <div className="flex items-center gap-2">
           <Layers className="size-4 text-primary" strokeWidth={1.5} />
           <h3
@@ -58,70 +100,105 @@ export function VersionHistoryList({ versions, selectedId, onSelect }: Props) {
             Version history
           </h3>
         </div>
-        <span className="font-mono text-[10px] tracking-[0.18em] uppercase text-muted-foreground">
-          {versions.length} versions
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="font-mono text-[10px] tracking-[0.18em] uppercase text-muted-foreground">
+            {versions.length} versions
+          </span>
+          {downloadable.length > 1 && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={downloadAll}
+              disabled={bulkDownloading}
+              title={`Download all ${downloadable.length} ready cuts`}
+            >
+              <Archive className="mr-1.5 size-3.5" strokeWidth={1.5} />
+              {bulkDownloading ? "Starting…" : "Download all"}
+            </Button>
+          )}
+        </div>
       </header>
 
       <ul role="list" className="divide-y divide-border">
         {sorted.map((v) => {
           const isSelected = v.id === selectedId
           const isUploaded = v.status === "uploaded" && v.signedUrl != null
+          const canDownload = v.signedDownloadUrl != null
           return (
-            <li key={v.id}>
+            <li
+              key={v.id}
+              className={`group flex items-center gap-3 px-4 py-3 transition-colors ${
+                isSelected
+                  ? "bg-primary/5"
+                  : isUploaded
+                    ? "hover:bg-muted/40"
+                    : "opacity-60"
+              }`}
+            >
+              {/* Version number plate */}
+              <div
+                className={`flex size-9 shrink-0 items-center justify-center rounded-md font-mono text-xs font-medium tabular-nums ${
+                  isSelected
+                    ? "bg-accent text-accent-foreground"
+                    : "bg-primary/10 text-primary"
+                }`}
+              >
+                v{v.version_number}
+              </div>
+
+              {/* Click target — fills the remaining row width and triggers select */}
               <button
                 type="button"
                 onClick={() => isUploaded && onSelect(v.id)}
                 disabled={!isUploaded}
                 aria-current={isSelected ? "true" : undefined}
                 aria-label={`View version ${v.version_number}`}
-                className={`flex w-full items-center gap-3 px-4 py-3 text-left transition-colors disabled:cursor-not-allowed ${
-                  isSelected
-                    ? "bg-primary/5"
-                    : isUploaded
-                      ? "hover:bg-muted/40"
-                      : "opacity-60"
-                }`}
+                className="min-w-0 flex-1 text-left disabled:cursor-not-allowed"
               >
-                {/* Version number plate */}
-                <div
-                  className={`flex size-9 shrink-0 items-center justify-center rounded-md font-mono text-xs font-medium tabular-nums ${
-                    isSelected
-                      ? "bg-accent text-accent-foreground"
-                      : "bg-primary/10 text-primary"
-                  }`}
-                >
-                  v{v.version_number}
-                </div>
-
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <p className="truncate text-sm font-medium text-primary" title={v.original_filename}>
-                      {v.original_filename}
-                    </p>
-                    {isSelected && (
-                      <span className="font-mono text-[9px] tracking-widest uppercase text-accent">
-                        viewing
-                      </span>
-                    )}
-                  </div>
-                  <p className="font-mono text-[11px] text-muted-foreground tabular-nums">
-                    {formatDate(v.uploaded_at)} · {formatBytes(v.size_bytes)}
+                <div className="flex items-center gap-2">
+                  <p className="truncate text-sm font-medium text-primary" title={v.original_filename}>
+                    {v.original_filename}
                   </p>
-                </div>
-
-                <span
-                  className="inline-flex items-center gap-1 font-mono text-[10px] tracking-wide uppercase text-muted-foreground"
-                  title={isUploaded ? "Ready to play" : "Awaiting finalize"}
-                >
-                  {isUploaded ? (
-                    <CircleCheck className="size-3 text-success" strokeWidth={1.5} />
-                  ) : (
-                    <Clock className="size-3" strokeWidth={1.5} />
+                  {isSelected && (
+                    <span className="font-mono text-[9px] tracking-widest uppercase text-accent">
+                      viewing
+                    </span>
                   )}
-                  {isUploaded ? "ready" : "pending"}
-                </span>
+                </div>
+                <p className="font-mono text-[11px] text-muted-foreground tabular-nums">
+                  {formatDate(v.uploaded_at)} · {formatBytes(v.size_bytes)}
+                </p>
               </button>
+
+              {/* Status pill */}
+              <span
+                className="inline-flex items-center gap-1 font-mono text-[10px] tracking-wide uppercase text-muted-foreground shrink-0"
+                title={isUploaded ? "Ready to play" : "Awaiting finalize"}
+              >
+                {isUploaded ? (
+                  <CircleCheck className="size-3 text-success" strokeWidth={1.5} />
+                ) : (
+                  <Clock className="size-3" strokeWidth={1.5} />
+                )}
+                {isUploaded ? "ready" : "pending"}
+              </span>
+
+              {/* Per-row download */}
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() =>
+                  canDownload &&
+                  triggerDownload(v.signedDownloadUrl!, v.original_filename)
+                }
+                disabled={!canDownload}
+                aria-label={`Download version ${v.version_number}`}
+                title={canDownload ? "Download this cut" : "Not yet uploaded"}
+              >
+                <Download className="size-4" strokeWidth={1.5} />
+              </Button>
             </li>
           )
         })}

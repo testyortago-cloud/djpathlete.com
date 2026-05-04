@@ -60,6 +60,29 @@ export async function createReadUrl(
 }
 
 /**
+ * Create a v4 signed read URL that forces the browser to download the file
+ * (instead of streaming it inline) by setting Content-Disposition: attachment
+ * via the responseDisposition query param. Use for the "Download" buttons.
+ */
+export async function createDownloadUrl(
+  storagePath: string,
+  filename: string,
+  expiresInMs = TEAM_VIDEO_READ_URL_TTL_MS,
+): Promise<string> {
+  const bucket = getAdminStorage().bucket()
+  const file = bucket.file(storagePath)
+  // Quote/escape the filename so semicolons or quotes don't break the header.
+  const safe = filename.replace(/[\\"]/g, "_")
+  const [url] = await file.getSignedUrl({
+    version: "v4",
+    action: "read",
+    expires: Date.now() + expiresInMs,
+    responseDisposition: `attachment; filename="${safe}"`,
+  })
+  return url
+}
+
+/**
  * Delete a video from storage. Used rarely — versioning normally keeps history,
  * but ON DELETE CASCADE on team_video_versions will leave Firebase orphans
  * that can be cleaned up out-of-band if needed.
