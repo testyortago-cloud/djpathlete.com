@@ -60,7 +60,7 @@ export default async function PipelinePage({ searchParams }: PageProps) {
   const rates = computeRates(funnel.totals)
 
   return (
-    <div className="space-y-6 max-w-5xl">
+    <div className="space-y-6">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-heading text-primary">Pipeline</h1>

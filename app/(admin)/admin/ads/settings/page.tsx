@@ -24,7 +24,7 @@ export default async function GoogleAdsSettingsPage({ searchParams }: PageProps)
   const activeAccounts = accounts.filter((a) => a.is_active)
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-heading text-primary">Google Ads — Settings</h1>
         <p className="text-sm text-muted-foreground mt-1">
