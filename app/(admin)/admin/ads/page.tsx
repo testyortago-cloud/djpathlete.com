@@ -55,9 +55,10 @@ const PHASES: PhaseRow[] = [
   {
     id: "1.5b",
     title: "Customer Match audience sync",
-    status: "pending",
+    status: "in_progress",
     description:
-      "Three hashed-email lists (ICP / Bookers / Subscribers) pushed daily to Google Ads as lookalike seeds and exclusion targeting layers.",
+      "Bookers + Subscribers hashed and pushed daily to Google Ads via OfflineUserDataJob. Delta-only — local mirror tracks what's been pushed so subsequent runs send only changes. ICP list deferred to Plan 1.5g (AI Agent will populate from richer signals).",
+    href: "/admin/ads/audiences",
   },
   {
     id: "1.5c",

@@ -128,6 +128,7 @@ function getNavSections(contentStudioOn: boolean): NavSection[] {
         { label: "Campaigns", href: "/admin/ads/campaigns", icon: BarChart3 },
         { label: "Recommendations", href: "/admin/ads/recommendations", icon: Sparkles },
         { label: "Conversions", href: "/admin/ads/conversions", icon: TrendingUp },
+        { label: "Audiences", href: "/admin/ads/audiences", icon: Users },
         { label: "Automation Log", href: "/admin/ads/automation-log", icon: ClipboardCheck },
         { label: "Settings", href: "/admin/ads/settings", icon: Settings },
       ],
