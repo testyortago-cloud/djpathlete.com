@@ -43,6 +43,7 @@
     "firebase": "^12.10.0",
     "firebase-admin": "^13.7.0",
     "framer-motion": "^12.4.10",
+    "google-ads-api": "^17.1.0",
     "konva": "^10.3.0",
     "lucide-react": "^0.542.0",
     "mammoth": "^1.12.0",
