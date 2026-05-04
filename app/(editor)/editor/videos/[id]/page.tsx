@@ -1,11 +1,12 @@
 import { notFound, redirect } from "next/navigation"
 import { auth } from "@/lib/auth"
 import { getSubmissionById } from "@/lib/db/team-video-submissions"
-import { getCurrentVersion } from "@/lib/db/team-video-versions"
+import { getCurrentVersion, listVersionsForSubmission } from "@/lib/db/team-video-versions"
 import { listCommentsForVersion } from "@/lib/db/team-video-comments"
 import { listAnnotationsForCommentIds } from "@/lib/db/team-video-annotations"
 import { createReadUrl } from "@/lib/storage/team-videos"
 import { EditorVideoView } from "@/components/editor/EditorVideoView"
+import type { VersionRow } from "@/components/editor/VersionHistoryList"
 
 interface Props {
   params: Promise<{ id: string }>
@@ -33,15 +34,31 @@ export default async function EditorVideoPage({ params }: Props) {
     ...c,
     annotation: annotationMap.get(c.id) ?? null,
   }))
-  const videoUrl =
-    version && version.status === "uploaded" ? await createReadUrl(version.storage_path) : null
+
+  // Pre-fetch signed read URLs for every uploaded version so the user can
+  // swap between cuts without an extra round-trip. URLs expire (~1h) but
+  // any longer review session triggers a refresh anyway.
+  const allVersions = await listVersionsForSubmission(submission.id)
+  const versions: VersionRow[] = await Promise.all(
+    allVersions.map(async (v) => ({
+      ...v,
+      signedUrl:
+        v.status === "uploaded" ? await createReadUrl(v.storage_path) : null,
+    })),
+  )
+
+  const currentVersionUrl =
+    version?.status === "uploaded"
+      ? versions.find((v) => v.id === version.id)?.signedUrl ?? null
+      : null
 
   return (
     <EditorVideoView
       submission={submission}
       version={version}
       comments={comments}
-      videoUrl={videoUrl}
+      videoUrl={currentVersionUrl}
+      versions={versions}
     />
   )
 }

@@ -1,12 +1,10 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import dynamic from "next/dynamic"
-import { useRouter } from "next/navigation"
 import { ArrowLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { toast } from "sonner"
 import {
   TeamVideoPlayer,
   type TeamVideoPlayerHandle,
@@ -18,7 +16,11 @@ const DrawingCanvas = dynamic(
   { ssr: false },
 )
 import { useVisibleAnnotations } from "@/hooks/useVideoOverlay"
-import { uploadToSignedUrl } from "@/lib/firebase-client-upload"
+import { RevisionUploadZone } from "@/components/editor/RevisionUploadZone"
+import {
+  VersionHistoryList,
+  type VersionRow,
+} from "@/components/editor/VersionHistoryList"
 import type {
   TeamVideoSubmission,
   TeamVideoVersion,
@@ -27,20 +29,51 @@ import type {
 
 interface Props {
   submission: TeamVideoSubmission
+  /** Current (latest) version on the submission. */
   version: TeamVideoVersion | null
   comments: TeamVideoCommentWithAnnotation[]
+  /** Signed read URL for the *current* version, or null. */
   videoUrl: string | null
+  /** All versions on the submission, with pre-fetched signed URLs. */
+  versions: VersionRow[]
 }
 
-export function EditorVideoView({ submission, version, comments, videoUrl }: Props) {
-  const router = useRouter()
+export function EditorVideoView({
+  submission,
+  version,
+  comments,
+  videoUrl,
+  versions,
+}: Props) {
   const playerRef = useRef<TeamVideoPlayerHandle>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const [uploading, setUploading] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
 
+  // Which version is the player currently showing? Defaults to current.
+  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(
+    version?.id ?? null,
+  )
+
+  // Resolve the playable URL from the selected version's signed URL,
+  // falling back to the prop-supplied current-version URL for the default state.
+  const selectedSignedUrl = useMemo(() => {
+    if (!selectedVersionId) return videoUrl
+    const v = versions.find((x) => x.id === selectedVersionId)
+    return v?.signedUrl ?? videoUrl
+  }, [selectedVersionId, versions, videoUrl])
+
+  const selectedVersion = useMemo(
+    () => versions.find((v) => v.id === selectedVersionId) ?? version,
+    [selectedVersionId, versions, version],
+  )
+
+  // Comments are only meaningful for the LATEST version. When viewing an
+  // older version, suppress the overlay/thread to avoid implying these
+  // comments belong to that older cut.
+  const viewingCurrent = selectedVersionId === version?.id
+  const visibleComments = viewingCurrent ? comments : []
+
   const { visible: visibleAnnotations, merged: mergedView } = useVisibleAnnotations(
-    comments,
+    visibleComments,
     currentTime,
   )
 
@@ -58,72 +91,46 @@ export function EditorVideoView({ submission, version, comments, videoUrl }: Pro
 
   const canRevise = submission.status === "revision_requested"
 
-  async function handleRevisionUpload(file: File) {
-    setUploading(true)
-    try {
-      const verRes = await fetch(`/api/editor/submissions/${submission.id}/versions`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          filename: file.name,
-          mimeType: file.type,
-          sizeBytes: file.size,
-        }),
-      })
-      if (!verRes.ok) {
-        const json = await verRes.json().catch(() => ({}))
-        throw new Error(json.error ?? "Failed to create version")
-      }
-      const { upload } = await verRes.json()
-
-      // Upload to Firebase Storage via the v4 signed URL.
-      await uploadToSignedUrl(upload.uploadUrl, file)
-
-      const finRes = await fetch(`/api/editor/submissions/${submission.id}/finalize`, {
-        method: "POST",
-      })
-      if (!finRes.ok) {
-        const json = await finRes.json().catch(() => ({}))
-        throw new Error(json.error ?? "Finalize failed")
-      }
-      toast.success("New version submitted")
-      router.refresh()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Upload failed")
-    } finally {
-      setUploading(false)
-    }
-  }
-
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <Button asChild variant="ghost" size="sm">
-          <Link href="/editor">
+          <Link href="/editor/submissions">
             <ArrowLeft className="mr-1 size-4" /> Back
           </Link>
         </Button>
       </div>
 
-      <header>
+      <header className="space-y-1">
+        <p className="font-mono text-[10px] tracking-[0.22em] uppercase text-muted-foreground">
+          Submission
+        </p>
         <h2 className="font-heading text-2xl text-primary">{submission.title}</h2>
         {submission.description && (
-          <p className="font-body text-sm text-muted-foreground">{submission.description}</p>
+          <p className="font-body text-sm text-muted-foreground">
+            {submission.description}
+          </p>
         )}
-        {version && (
-          <p className="mt-1 font-mono text-xs text-muted-foreground">
-            Version {version.version_number} &middot; status: {submission.status}
+        {selectedVersion && (
+          <p className="font-mono text-xs text-muted-foreground">
+            Version {selectedVersion.version_number} &middot; status:{" "}
+            {submission.status}
+            {!viewingCurrent && (
+              <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                Older cut · history view
+              </span>
+            )}
           </p>
         )}
       </header>
 
       <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
-        <div>
-          {videoUrl ? (
+        <div className="space-y-4">
+          {selectedSignedUrl ? (
             <TeamVideoPlayer
               ref={playerRef}
-              src={videoUrl}
-              comments={comments}
+              src={selectedSignedUrl}
+              comments={visibleComments}
               onMarkerClick={() => {
                 /* parent could scroll thread; v1 just seeks */
               }}
@@ -136,41 +143,31 @@ export function EditorVideoView({ submission, version, comments, videoUrl }: Pro
             </div>
           )}
 
-          {canRevise && (
-            <div className="mt-4 rounded-md border border-warning/40 bg-warning/10 p-4">
-              <p className="text-sm font-medium text-warning">Darren requested a revision.</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Upload a new version to address the open comments.
-              </p>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="video/mp4,video/quicktime,video/webm,video/x-matroska"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0]
-                  if (f) handleRevisionUpload(f)
-                }}
-              />
-              <Button
-                type="button"
-                size="sm"
-                className="mt-3"
-                disabled={uploading}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                {uploading ? "Uploading..." : "Upload new version"}
-              </Button>
-            </div>
+          {canRevise && viewingCurrent && (
+            <RevisionUploadZone submissionId={submission.id} />
           )}
+
+          <VersionHistoryList
+            versions={versions}
+            selectedId={selectedVersionId}
+            onSelect={(id) => {
+              setSelectedVersionId(id)
+              setCurrentTime(0)
+            }}
+          />
         </div>
 
         <aside>
           <CommentThread
-            comments={comments}
+            comments={visibleComments}
             canWrite={false}
             onJumpTo={(t) => playerRef.current?.seek(t)}
           />
+          {!viewingCurrent && (
+            <p className="mt-3 font-mono text-[10px] tracking-[0.18em] uppercase text-muted-foreground">
+              Comments shown only on the current cut.
+            </p>
+          )}
         </aside>
       </div>
     </div>
