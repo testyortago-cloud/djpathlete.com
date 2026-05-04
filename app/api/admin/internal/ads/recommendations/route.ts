@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { runRecommendationsForCustomer } from "@/lib/ads/recommendations"
+import { runAutoPilotApply } from "@/lib/ads/apply"
 import { expireStaleRecommendations } from "@/lib/db/google-ads-recommendations"
 
 export async function POST(request: NextRequest) {
@@ -28,7 +29,11 @@ export async function POST(request: NextRequest) {
   try {
     const expired = await expireStaleRecommendations()
     const result = await runRecommendationsForCustomer(body.customer_id)
-    return NextResponse.json({ ok: true, expired, ...result })
+    // Plan 1.3: after fresh recs land, scan for auto_pilot-eligible ones and
+    // apply them. Only negative keywords with confidence ≥ 0.8 in auto_pilot
+    // campaigns; capped at 10/run to bound damage.
+    const autoPilot = await runAutoPilotApply(body.customer_id)
+    return NextResponse.json({ ok: true, expired, ...result, auto_pilot: autoPilot })
   } catch (error) {
     console.error("[ads/recommendations] failed:", error)
     return NextResponse.json(
