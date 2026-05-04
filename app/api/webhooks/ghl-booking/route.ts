@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 import { createServiceRoleClient } from "@/lib/supabase"
 import { findAttributionByEmail } from "@/lib/db/marketing-attribution"
+import { enqueueBookingConversion } from "@/lib/ads/conversions"
 
 /**
  * Webhook endpoint for GoHighLevel appointment bookings.
@@ -155,24 +156,46 @@ export async function POST(request: Request) {
     }
 
     // Insert new booking
-    const { error } = await supabase.from("bookings").insert({
-      contact_name: data.contact_name,
-      contact_email: data.contact_email,
-      contact_phone: data.contact_phone ?? null,
-      booking_date: data.booking_date,
-      duration_minutes: data.duration_minutes,
-      status: data.status,
-      source: "ghl",
-      notes: data.notes ?? null,
-      ghl_contact_id: data.ghl_contact_id ?? null,
-      ghl_appointment_id: data.ghl_appointment_id ?? null,
-      gclid,
-      gbraid,
-      wbraid,
-      fbclid,
-    })
+    const { data: insertedBooking, error } = await supabase
+      .from("bookings")
+      .insert({
+        contact_name: data.contact_name,
+        contact_email: data.contact_email,
+        contact_phone: data.contact_phone ?? null,
+        booking_date: data.booking_date,
+        duration_minutes: data.duration_minutes,
+        status: data.status,
+        source: "ghl",
+        notes: data.notes ?? null,
+        ghl_contact_id: data.ghl_contact_id ?? null,
+        ghl_appointment_id: data.ghl_appointment_id ?? null,
+        gclid,
+        gbraid,
+        wbraid,
+        fbclid,
+      })
+      .select("id")
+      .single()
 
     if (error) throw error
+
+    // Phase 1.5c — enqueue an offline conversion upload to Google Ads.
+    // No-ops silently when there's no gclid/gbraid/wbraid OR no active
+    // 'booking_created' conversion action configured. Wrapped in try/catch
+    // so a Google Ads enqueue failure can't break the booking webhook.
+    if (insertedBooking?.id) {
+      try {
+        await enqueueBookingConversion({
+          booking_id: insertedBooking.id,
+          booking_date: data.booking_date,
+          gclid,
+          gbraid,
+          wbraid,
+        })
+      } catch (enqueueErr) {
+        console.error("[ghl-booking-webhook] enqueueBookingConversion failed:", enqueueErr)
+      }
+    }
 
     // Notify admins
     const { data: admins } = await supabase.from("users").select("id").eq("role", "admin")

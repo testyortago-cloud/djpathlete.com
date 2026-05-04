@@ -19,6 +19,30 @@ import { confirmSignup, cancelSignup, getSignupById, getEventSignupByPaymentInte
 import { handleShopOrderCheckout } from "@/lib/shop/webhooks"
 import { getEventById as getEventByIdForSignup } from "@/lib/db/events"
 import { createServiceRoleClient as createSupabaseServiceClient } from "@/lib/supabase"
+import { enqueuePaymentValueAdjustmentByEmail } from "@/lib/ads/conversions"
+
+/**
+ * Plan 1.5d — fires after a booking-relevant Stripe payment so the matching
+ * Google Ads click conversion gets RESTATED to the actual paid value. Email
+ * resolves booking → click conversion. Wrapped in try/catch so a Google Ads
+ * enqueue failure can't break the Stripe webhook (which would cause Stripe
+ * to retry the whole webhook unnecessarily).
+ */
+async function tryEnqueueAdsValueAdjustment(session: Stripe.Checkout.Session): Promise<void> {
+  const email = session.customer_details?.email
+  const amount = session.amount_total ?? 0
+  if (!email || amount <= 0) return
+  try {
+    await enqueuePaymentValueAdjustmentByEmail({
+      email,
+      paid_value_micros: amount * 10_000, // Stripe cents → micros (× 10_000)
+      paid_at: new Date().toISOString(),
+      currency: (session.currency ?? "usd").toUpperCase(),
+    })
+  } catch (err) {
+    console.error("[stripe-webhook] enqueue Google Ads value adjustment failed:", err)
+  }
+}
 
 export async function POST(request: Request) {
   const body = await request.text()
@@ -53,6 +77,7 @@ export async function POST(request: Request) {
         // Per-week payment
         if (session.metadata?.type === "week_access") {
           await handleWeekAccessCheckout(session)
+          await tryEnqueueAdsValueAdjustment(session)
           break
         }
 
@@ -61,6 +86,10 @@ export async function POST(request: Request) {
         } else {
           await handleOneTimeCheckout(session)
         }
+        // Both branches above are booking-relevant funnels (program /
+        // coaching purchase). Shop and event_signup cases bail earlier and
+        // skip this hook because they aren't tied to a booking outcome.
+        await tryEnqueueAdsValueAdjustment(session)
         break
       }
 
