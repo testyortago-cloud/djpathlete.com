@@ -1558,3 +1558,108 @@ export interface GoogleAdsAccount {
   created_at: string
   updated_at: string
 }
+
+export interface GoogleAdsCampaign {
+  id: string
+  customer_id: string
+  campaign_id: string
+  name: string
+  type: GoogleAdsCampaignType
+  status: GoogleAdsResourceStatus
+  bidding_strategy: string | null
+  budget_micros: number | null
+  start_date: string | null
+  end_date: string | null
+  automation_mode: GoogleAdsAutomationMode
+  raw_data: Record<string, unknown> | null
+  last_synced_at: string
+  created_at: string
+  updated_at: string
+}
+
+export interface GoogleAdsAdGroup {
+  id: string
+  campaign_id: string
+  ad_group_id: string
+  name: string
+  status: GoogleAdsResourceStatus
+  type: string | null
+  cpc_bid_micros: number | null
+  raw_data: Record<string, unknown> | null
+  last_synced_at: string
+  created_at: string
+  updated_at: string
+}
+
+export interface GoogleAdsKeyword {
+  id: string
+  ad_group_id: string
+  criterion_id: string
+  text: string
+  match_type: GoogleAdsKeywordMatchType
+  status: GoogleAdsResourceStatus
+  cpc_bid_micros: number | null
+  raw_data: Record<string, unknown> | null
+  last_synced_at: string
+  created_at: string
+}
+
+export interface GoogleAdsNegativeKeyword {
+  id: string
+  customer_id: string
+  scope_type: "campaign" | "ad_group"
+  scope_id: string
+  criterion_id: string
+  text: string
+  match_type: GoogleAdsKeywordMatchType
+  raw_data: Record<string, unknown> | null
+  last_synced_at: string
+  created_at: string
+}
+
+export interface GoogleAdsAd {
+  id: string
+  ad_group_id: string
+  ad_id: string
+  type: string
+  status: GoogleAdsResourceStatus
+  headlines: Array<{ text: string }>
+  descriptions: Array<{ text: string }>
+  final_urls: string[]
+  raw_data: Record<string, unknown> | null
+  last_synced_at: string
+  created_at: string
+}
+
+export interface GoogleAdsDailyMetric {
+  id: string
+  customer_id: string
+  campaign_id: string
+  ad_group_id: string | null
+  keyword_criterion_id: string | null
+  date: string
+  impressions: number
+  clicks: number
+  cost_micros: number
+  conversions: number
+  conversion_value: number
+  ctr: number
+  avg_cpc_micros: number
+  raw_data: Record<string, unknown> | null
+  last_synced_at: string
+}
+
+export interface GoogleAdsSearchTerm {
+  id: string
+  customer_id: string
+  campaign_id: string
+  ad_group_id: string
+  search_term: string
+  date: string
+  impressions: number
+  clicks: number
+  cost_micros: number
+  conversions: number
+  matched_keyword_id: string | null
+  last_synced_at: string
+}
