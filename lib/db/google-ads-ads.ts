@@ -51,3 +51,33 @@ export async function listAdsForAdGroup(adGroupId: string): Promise<GoogleAdsAd[
   if (error) throw error
   return (data ?? []) as GoogleAdsAd[]
 }
+
+/**
+ * Resolves an ad_id back to the parent ad_group_id (external) within a
+ * specific customer. Used by the apply path to construct mutation resource
+ * paths: customers/{customer_id}/adGroupAds/{ad_group_id}~{ad_id}.
+ */
+export async function resolveAdExternalIds(
+  customerId: string,
+  adId: string,
+): Promise<{ ad_group_id_external: string; ad_id: string } | null> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("google_ads_ads")
+    .select(
+      "ad_id, ad_group:google_ads_ad_groups!inner(ad_group_id, campaign:google_ads_campaigns!inner(customer_id))",
+    )
+    .eq("ad_id", adId)
+    .eq("ad_group.campaign.customer_id", customerId)
+    .maybeSingle()
+  if (error) throw error
+  if (!data) return null
+  const adGroup = (data as unknown as {
+    ad_id: string
+    ad_group: { ad_group_id: string }
+  }).ad_group
+  return {
+    ad_group_id_external: adGroup.ad_group_id,
+    ad_id: (data as { ad_id: string }).ad_id,
+  }
+}

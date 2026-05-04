@@ -55,6 +55,38 @@ export async function listKeywordsForAdGroup(adGroupId: string): Promise<GoogleA
   return (data ?? []) as GoogleAdsKeyword[]
 }
 
+/**
+ * Resolves a Google Ads criterion_id back to the external IDs needed to build
+ * a mutation resource path: customers/{customer_id}/adGroupCriteria/{ad_group_id_external}~{criterion_id}.
+ * Returns null if the keyword isn't in our mirror (likely sync lag).
+ */
+export async function resolveKeywordExternalIds(
+  customerId: string,
+  criterionId: string,
+): Promise<{ ad_group_id_external: string; criterion_id: string; cpc_bid_micros: number | null } | null> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("google_ads_keywords")
+    .select(
+      "criterion_id, cpc_bid_micros, ad_group:google_ads_ad_groups!inner(ad_group_id, campaign:google_ads_campaigns!inner(customer_id))",
+    )
+    .eq("criterion_id", criterionId)
+    .eq("ad_group.campaign.customer_id", customerId)
+    .maybeSingle()
+  if (error) throw error
+  if (!data) return null
+  const adGroup = (data as unknown as {
+    criterion_id: string
+    cpc_bid_micros: number | null
+    ad_group: { ad_group_id: string }
+  }).ad_group
+  return {
+    ad_group_id_external: adGroup.ad_group_id,
+    criterion_id: (data as { criterion_id: string }).criterion_id,
+    cpc_bid_micros: (data as { cpc_bid_micros: number | null }).cpc_bid_micros,
+  }
+}
+
 export interface UpsertNegativeKeywordInput {
   customer_id: string
   scope_type: "campaign" | "ad_group"

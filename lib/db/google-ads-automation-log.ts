@@ -54,3 +54,16 @@ export async function listAutomationLogForRecommendation(
   if (error) throw error
   return (data ?? []) as GoogleAdsAutomationLog[]
 }
+
+export async function listRecentAutomationLog(
+  limit: number = 50,
+): Promise<GoogleAdsAutomationLog[]> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("google_ads_automation_log")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(limit)
+  if (error) throw error
+  return (data ?? []) as GoogleAdsAutomationLog[]
+}

@@ -29,6 +29,30 @@ export async function listAdGroupsForCampaign(
   return (data ?? []) as GoogleAdsAdGroup[]
 }
 
+/**
+ * Resolves an external ad_group_id to its row, scoped to a specific customer
+ * (so a malicious or stale rec can't affect the wrong account).
+ */
+export async function resolveAdGroupByExternalId(
+  customerId: string,
+  externalAdGroupId: string,
+): Promise<GoogleAdsAdGroup | null> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("google_ads_ad_groups")
+    .select(
+      "*, campaign:google_ads_campaigns!inner(customer_id)",
+    )
+    .eq("ad_group_id", externalAdGroupId)
+    .eq("campaign.customer_id", customerId)
+    .maybeSingle()
+  if (error) throw error
+  if (!data) return null
+  // Strip the joined campaign before returning the AdGroup row
+  const { campaign: _campaign, ...rest } = data as Record<string, unknown>
+  return rest as unknown as GoogleAdsAdGroup
+}
+
 export async function upsertAdGroup(input: UpsertAdGroupInput): Promise<GoogleAdsAdGroup> {
   const supabase = getClient()
   const { data, error } = await supabase
