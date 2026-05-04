@@ -1721,3 +1721,53 @@ export interface GoogleAdsAutomationLog {
   error_message: string | null
   created_at: string
 }
+
+// ─────────────────────────────────────────────────────────────────
+// Google Ads — Phase 1.5c + 1.5d (offline conversions + value adjustments)
+// ─────────────────────────────────────────────────────────────────
+
+export type GoogleAdsConversionTrigger = "booking_created" | "payment_succeeded"
+
+export interface GoogleAdsConversionAction {
+  id: string
+  customer_id: string
+  conversion_action_id: string
+  name: string
+  trigger_type: GoogleAdsConversionTrigger
+  default_value_micros: number
+  default_currency: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export type GoogleAdsConversionUploadType = "click" | "adjustment"
+export type GoogleAdsConversionAdjustmentType = "RESTATE" | "RETRACT"
+export type GoogleAdsConversionSourceTable = "bookings" | "payments" | "event_signups"
+export type GoogleAdsConversionUploadStatus = "pending" | "uploaded" | "failed" | "skipped"
+
+export interface GoogleAdsConversionUpload {
+  id: string
+  customer_id: string
+  conversion_action_id: string
+  upload_type: GoogleAdsConversionUploadType
+  source_table: GoogleAdsConversionSourceTable
+  source_id: string
+  gclid: string | null
+  gbraid: string | null
+  wbraid: string | null
+  conversion_time: string
+  value_micros: number
+  currency: string
+  adjustment_type: GoogleAdsConversionAdjustmentType | null
+  related_upload_id: string | null
+  status: GoogleAdsConversionUploadStatus
+  attempts: number
+  last_attempt_at: string | null
+  uploaded_at: string | null
+  api_request: Record<string, unknown> | null
+  api_response: Record<string, unknown> | null
+  error_message: string | null
+  created_at: string
+  updated_at: string
+}
