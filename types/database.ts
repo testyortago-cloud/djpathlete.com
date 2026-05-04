@@ -1287,6 +1287,12 @@ export interface Database {
 
 export type SocialPlatform = "facebook" | "instagram" | "tiktok" | "youtube" | "youtube_shorts" | "linkedin"
 
+/**
+ * platform_connections.plugin_name supports social platforms plus ad/marketing
+ * platforms (Google Ads, etc.) which don't fit the SocialPlatform semantics.
+ */
+export type PlatformPluginName = SocialPlatform | "google_ads"
+
 export type PostType = "video" | "image" | "carousel" | "story" | "text"
 
 export type MediaAssetKind = "video" | "image"
@@ -1433,7 +1439,7 @@ export interface SocialAnalytics {
 
 export interface PlatformConnection {
   id: string
-  plugin_name: SocialPlatform
+  plugin_name: PlatformPluginName
   status: PlatformConnectionStatus
   credentials: Record<string, unknown>
   account_handle: string | null
@@ -1517,4 +1523,38 @@ export interface MarketingConsentLog {
   ip_address: string | null
   user_agent: string | null
   created_at: string
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Google Ads — Phase 1.1 (read-only mirror; OAuth slice)
+// ─────────────────────────────────────────────────────────────────
+
+export type GoogleAdsAutomationMode = "auto_pilot" | "co_pilot" | "advisory"
+export type GoogleAdsResourceStatus = "ENABLED" | "PAUSED" | "REMOVED"
+export type GoogleAdsCampaignType =
+  | "SEARCH"
+  | "VIDEO"
+  | "PERFORMANCE_MAX"
+  | "DISPLAY"
+  | "SHOPPING"
+  | "DEMAND_GEN"
+  | "LOCAL_SERVICES"
+  | "APP"
+  | "HOTEL"
+  | "SMART"
+  | "UNKNOWN"
+export type GoogleAdsKeywordMatchType = "EXACT" | "PHRASE" | "BROAD"
+
+export interface GoogleAdsAccount {
+  customer_id: string
+  manager_customer_id: string | null
+  descriptive_name: string | null
+  currency_code: string | null
+  time_zone: string | null
+  is_active: boolean
+  connected_at: string | null
+  last_synced_at: string | null
+  last_error: string | null
+  created_at: string
+  updated_at: string
 }

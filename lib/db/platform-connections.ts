@@ -1,6 +1,6 @@
 // lib/db/platform-connections.ts
 import { createServiceRoleClient } from "@/lib/supabase"
-import type { PlatformConnection, SocialPlatform } from "@/types/database"
+import type { PlatformConnection, PlatformPluginName } from "@/types/database"
 
 function getClient() {
   return createServiceRoleClient()
@@ -14,7 +14,7 @@ export async function listPlatformConnections(): Promise<PlatformConnection[]> {
 }
 
 export async function getPlatformConnection(
-  pluginName: SocialPlatform,
+  pluginName: PlatformPluginName,
 ): Promise<PlatformConnection | null> {
   const supabase = getClient()
   const { data, error } = await supabase.rpc("fn_get_platform_connection", {
@@ -32,7 +32,7 @@ export interface ConnectPayload {
 }
 
 export async function connectPlatform(
-  pluginName: SocialPlatform,
+  pluginName: PlatformPluginName,
   payload: ConnectPayload,
 ): Promise<PlatformConnection> {
   const supabase = getClient()
@@ -48,7 +48,7 @@ export async function connectPlatform(
   return rows[0]
 }
 
-export async function pausePlatform(pluginName: SocialPlatform): Promise<PlatformConnection> {
+export async function pausePlatform(pluginName: PlatformPluginName): Promise<PlatformConnection> {
   const supabase = getClient()
   const { error } = await supabase
     .from("platform_connections")
@@ -61,7 +61,7 @@ export async function pausePlatform(pluginName: SocialPlatform): Promise<Platfor
 }
 
 export async function disconnectPlatform(
-  pluginName: SocialPlatform,
+  pluginName: PlatformPluginName,
 ): Promise<PlatformConnection> {
   const supabase = getClient()
   const { data, error } = await supabase.rpc("fn_disconnect_platform", {
@@ -74,7 +74,7 @@ export async function disconnectPlatform(
 }
 
 export async function setConnectionError(
-  pluginName: SocialPlatform,
+  pluginName: PlatformPluginName,
   errorMessage: string,
 ): Promise<PlatformConnection> {
   const supabase = getClient()
