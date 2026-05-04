@@ -1771,3 +1771,31 @@ export interface GoogleAdsConversionUpload {
   created_at: string
   updated_at: string
 }
+
+// ─────────────────────────────────────────────────────────────────
+// Google Ads — Phase 1.5b (Customer Match audience sync)
+// ─────────────────────────────────────────────────────────────────
+
+export type GoogleAdsAudienceType = "bookers" | "subscribers" | "icp"
+
+export interface GoogleAdsUserList {
+  id: string
+  customer_id: string
+  user_list_id: string
+  name: string
+  audience_type: GoogleAdsAudienceType
+  is_active: boolean
+  last_synced_at: string | null
+  last_error: string | null
+  member_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface GoogleAdsUserListMember {
+  id: string
+  user_list_id: string
+  email_hash: string
+  email_normalized: string
+  added_at: string
+}
