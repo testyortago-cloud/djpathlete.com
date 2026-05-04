@@ -93,9 +93,10 @@ const PHASES: PhaseRow[] = [
   {
     id: "1.5g",
     title: "AI Ads Agent",
-    status: "pending",
+    status: "in_progress",
     description:
-      "Senior-marketer agent with three modes: weekly strategist (memo + queue), interactive co-pilot chat, per-campaign auto-apply. Drives the brand toward business_goals targets.",
+      "v1 shipped: Wednesday strategist memo (executive summary, what's working / not, prioritized actions, watch list) + ad-hoc 'Ask the agent' Q&A grounded in the live account snapshot. Tool-use chat with multi-turn DB queries deferred to v2.",
+    href: "/admin/ads/agent",
   },
 ]
 
