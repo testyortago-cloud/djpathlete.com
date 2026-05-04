@@ -200,7 +200,7 @@ export const TeamVideoPlayer = forwardRef<TeamVideoPlayerHandle, Props>(function
           {playing ? <Pause className="size-4" /> : <Play className="size-4" />}
         </button>
 
-        <div className="relative flex-1">
+        <div className="group relative flex-1 py-2">
           <div
             role="slider"
             tabIndex={0}
@@ -209,11 +209,18 @@ export const TeamVideoPlayer = forwardRef<TeamVideoPlayerHandle, Props>(function
             aria-valuemax={Math.floor(duration)}
             aria-valuenow={Math.floor(currentTime)}
             onClick={onScrubberClick}
-            className="relative h-2 cursor-pointer rounded-full bg-muted"
+            className="relative h-2 cursor-pointer overflow-visible rounded-full bg-primary/15 ring-1 ring-inset ring-primary/10 transition-all group-hover:h-2.5"
           >
+            {/* Filled progress */}
             <div
               className="absolute left-0 top-0 h-full rounded-full bg-primary"
               style={{ width: `${progressPct}%` }}
+            />
+            {/* Playhead knob — appears on hover so it doesn't crowd the markers at rest */}
+            <div
+              aria-hidden
+              className="absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary opacity-0 ring-2 ring-background shadow transition-opacity group-hover:opacity-100"
+              style={{ left: `${progressPct}%` }}
             />
             {timecodedComments.map((c) => {
               const left = duration ? ((c.timecode_seconds ?? 0) / duration) * 100 : 0
@@ -229,7 +236,7 @@ export const TeamVideoPlayer = forwardRef<TeamVideoPlayerHandle, Props>(function
                   }}
                   title={c.comment_text.slice(0, 60)}
                   aria-label={`Comment at ${fmtTime(c.timecode_seconds ?? 0)}`}
-                  className="absolute -top-1 size-4 -translate-x-1/2 rounded-full border-2 border-white bg-accent shadow"
+                  className="absolute -top-1 size-4 -translate-x-1/2 rounded-full border-2 border-background bg-accent shadow hover:scale-110 transition-transform"
                   style={{ left: `${left}%` }}
                 />
               )
