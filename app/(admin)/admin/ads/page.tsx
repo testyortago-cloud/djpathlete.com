@@ -39,8 +39,10 @@ const PHASES: PhaseRow[] = [
   {
     id: "1.3",
     title: "Apply path + automation modes",
-    status: "pending",
-    description: "Auto-pilot / Co-pilot / Advisory per campaign; write recommendations back to Google Ads via API.",
+    status: "in_progress",
+    description:
+      "Approve in the queue triggers a Google Ads mutation; auto-pilot auto-applies negative-keyword recs with confidence ≥ 0.8 (capped at 10/run). Every attempt writes an automation_log row with the request, response, and result.",
+    href: "/admin/ads/automation-log",
   },
   {
     id: "1.4",

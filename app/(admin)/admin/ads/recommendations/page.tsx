@@ -9,8 +9,8 @@ export const metadata = { title: "Google Ads — Recommendations" }
 export const dynamic = "force-dynamic"
 
 export default async function RecommendationsPage() {
-  const [pending, counts] = await Promise.all([
-    listRecommendations({ status: "pending", limit: 100 }),
+  const [actionable, counts] = await Promise.all([
+    listRecommendations({ status: ["pending", "failed"], limit: 100 }),
     getRecommendationStatusCounts(),
   ])
 
@@ -27,17 +27,18 @@ export default async function RecommendationsPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <CountTile label="Pending" value={counts.pending} tone="bg-accent/10 text-accent" />
-        <CountTile label="Approved" value={counts.approved} tone="bg-warning/15 text-warning" />
-        <CountTile label="Applied" value={counts.applied + counts.auto_applied} tone="bg-success/10 text-success" />
+        <CountTile label="Failed" value={counts.failed} tone="bg-error/10 text-error" />
+        <CountTile label="Applied" value={counts.applied} tone="bg-success/10 text-success" />
+        <CountTile label="Auto-applied" value={counts.auto_applied} tone="bg-success/10 text-success" />
         <CountTile label="Rejected" value={counts.rejected} tone="bg-muted/40 text-muted-foreground" />
       </div>
 
-      {pending.length === 0 ? (
+      {actionable.length === 0 ? (
         <div className="border border-dashed border-border rounded-xl p-8 text-center bg-card">
           <p className="text-sm text-muted-foreground">
-            No pending recommendations.{" "}
+            No pending or failed recommendations.{" "}
             <Link href="/admin/ads/campaigns" className="underline hover:text-accent">
               Trigger a sync
             </Link>{" "}
@@ -46,7 +47,7 @@ export default async function RecommendationsPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {pending.map((rec) => (
+          {actionable.map((rec) => (
             <RecommendationCard key={rec.id} rec={rec} />
           ))}
         </div>

@@ -50,20 +50,61 @@ function payloadSummary(
   }
 }
 
-export function RecommendationCard({ rec }: { rec: GoogleAdsRecommendation }) {
-  const [pending, setPending] = useState<"approve" | "reject" | null>(null)
-  const [resolved, setResolved] = useState<"approved" | "rejected" | null>(null)
+type Action = "approve" | "reject" | "apply"
+type ResolvedState = "applied" | "auto_applied" | "rejected" | "failed"
 
-  async function act(action: "approve" | "reject") {
+const RESOLVED_LABEL: Record<ResolvedState, { text: string; tone: string }> = {
+  applied: { text: "Applied to Google Ads.", tone: "border-success/40 bg-success/5 text-success" },
+  auto_applied: {
+    text: "Auto-applied (auto-pilot, confidence ≥ 0.8).",
+    tone: "border-success/40 bg-success/5 text-success",
+  },
+  rejected: { text: "Rejected.", tone: "border-border/60 bg-muted/20 text-muted-foreground" },
+  failed: {
+    text: "Apply failed — see automation log.",
+    tone: "border-error/40 bg-error/5 text-error",
+  },
+}
+
+export function RecommendationCard({ rec }: { rec: GoogleAdsRecommendation }) {
+  const [pending, setPending] = useState<Action | null>(null)
+  const [resolved, setResolved] = useState<ResolvedState | null>(null)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const isFailed = rec.status === "failed"
+
+  async function act(action: Action) {
     if (pending) return
     setPending(action)
+    setErrorMessage(null)
     try {
       const res = await fetch(`/api/admin/ads/recommendations/${rec.id}/${action}`, {
         method: "POST",
       })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      toast.success(action === "approve" ? "Approved." : "Rejected.")
-      setResolved(action === "approve" ? "approved" : "rejected")
+      const body = (await res.json().catch(() => ({}))) as {
+        ok?: boolean
+        result?: { status?: ResolvedState; error?: string }
+        error?: string
+      }
+      if (!res.ok) {
+        throw new Error(body.error ?? `HTTP ${res.status}`)
+      }
+
+      if (action === "reject") {
+        setResolved("rejected")
+        toast.success("Rejected.")
+        return
+      }
+
+      // approve or apply: result.status tells us whether the apply succeeded
+      const status = body.result?.status
+      if (status === "applied" || status === "auto_applied") {
+        setResolved(status)
+        toast.success("Applied to Google Ads.")
+      } else if (status === "failed") {
+        setResolved("failed")
+        setErrorMessage(body.result?.error ?? "Unknown failure")
+        toast.error(`Apply failed: ${body.result?.error ?? "see log"}`)
+      }
     } catch (err) {
       toast.error(`${action} failed: ${(err as Error).message}`)
     } finally {
@@ -72,15 +113,21 @@ export function RecommendationCard({ rec }: { rec: GoogleAdsRecommendation }) {
   }
 
   if (resolved) {
+    const meta = RESOLVED_LABEL[resolved]
     return (
-      <div className="border border-border/60 bg-muted/20 rounded-xl p-5 text-sm text-muted-foreground">
-        Recommendation {resolved}.
+      <div className={`border ${meta.tone} rounded-xl p-5 text-sm`}>
+        <p>{meta.text}</p>
+        {errorMessage ? (
+          <p className="text-[11px] font-mono mt-2 leading-snug opacity-80">{errorMessage}</p>
+        ) : null}
       </div>
     )
   }
 
   return (
-    <div className="border border-border bg-card rounded-xl p-5 space-y-3">
+    <div
+      className={`border bg-card rounded-xl p-5 space-y-3 ${isFailed ? "border-error/40" : "border-border"}`}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
           <span
@@ -99,27 +146,42 @@ export function RecommendationCard({ rec }: { rec: GoogleAdsRecommendation }) {
 
       <p className="text-sm text-primary leading-relaxed">{rec.reasoning}</p>
 
+      {isFailed && rec.failure_reason ? (
+        <div className="border border-error/40 bg-error/5 rounded-md p-3 text-xs text-error leading-snug">
+          <span className="font-mono uppercase tracking-wider">Last failure:</span>{" "}
+          {rec.failure_reason.slice(0, 280)}
+        </div>
+      ) : null}
+
       <div className="flex items-center justify-between pt-2 border-t border-border/40">
         <p className="text-[11px] font-mono text-muted-foreground">
           {rec.scope_type} · {rec.scope_id} · expires{" "}
           {new Date(rec.expires_at).toLocaleDateString()}
         </p>
         <div className="flex items-center gap-2">
+          {!isFailed ? (
+            <button
+              type="button"
+              onClick={() => act("reject")}
+              disabled={Boolean(pending)}
+              className="text-xs px-3 py-1.5 rounded-md border border-border text-muted-foreground hover:text-error hover:border-error/50 disabled:opacity-50 transition-colors"
+            >
+              {pending === "reject" ? "Rejecting..." : "Reject"}
+            </button>
+          ) : null}
           <button
             type="button"
-            onClick={() => act("reject")}
-            disabled={Boolean(pending)}
-            className="text-xs px-3 py-1.5 rounded-md border border-border text-muted-foreground hover:text-error hover:border-error/50 disabled:opacity-50 transition-colors"
-          >
-            {pending === "reject" ? "Rejecting..." : "Reject"}
-          </button>
-          <button
-            type="button"
-            onClick={() => act("approve")}
+            onClick={() => act(isFailed ? "apply" : "approve")}
             disabled={Boolean(pending)}
             className="text-xs px-3 py-1.5 rounded-md bg-accent text-white hover:bg-accent/90 disabled:opacity-50 transition-colors"
           >
-            {pending === "approve" ? "Approving..." : "Approve"}
+            {pending === "approve" || pending === "apply"
+              ? isFailed
+                ? "Retrying..."
+                : "Applying..."
+              : isFailed
+                ? "Retry apply"
+                : "Approve & apply"}
           </button>
         </div>
       </div>
