@@ -587,6 +587,43 @@ export const syncGoogleAds = onSchedule(
   },
 )
 
+// ─── Google Ads Customer Match Audience Sync (Daily 07:00 UTC) ───────────────
+// Walks each active google_ads_user_lists row, computes desired membership
+// from local source tables (bookers, subscribers), hashes emails, and pushes
+// the delta to Google Ads via OfflineUserDataJob. Plan 1.5b. Idempotent —
+// the local mirror tracks what we've pushed so subsequent runs only send
+// changes.
+
+export const syncCustomerMatchAudiences = onSchedule(
+  {
+    schedule: "0 7 * * *",
+    timeZone: "UTC",
+    timeoutSeconds: 540,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [internalCronToken, appUrl],
+  },
+  async () => {
+    const baseUrl = process.env.APP_URL
+    const token = process.env.INTERNAL_CRON_TOKEN
+    if (!baseUrl || !token) {
+      console.error("[syncCustomerMatchAudiences] APP_URL or INTERNAL_CRON_TOKEN missing — abort")
+      return
+    }
+    try {
+      const res = await fetch(`${baseUrl}/api/admin/internal/ads/sync-audiences`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: "{}",
+      })
+      const body = await res.json().catch(() => ({}))
+      console.log("[syncCustomerMatchAudiences]", res.status, body)
+    } catch (err) {
+      console.error("[syncCustomerMatchAudiences] failed:", err)
+    }
+  },
+)
+
 // ─── Google Ads Conversions Worker (every 15 min) ────────────────────────────
 // Drains the durable pending-conversions queue. Click conversions enqueued
 // from booking webhooks + value adjustments enqueued from Stripe webhooks.
