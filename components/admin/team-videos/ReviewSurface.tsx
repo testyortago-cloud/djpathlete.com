@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import dynamic from "next/dynamic"
 import { useRouter } from "next/navigation"
@@ -21,6 +21,10 @@ import { StatusActions } from "./StatusActions"
 import { CommentEditor } from "./CommentEditor"
 import { DrawingToolbar } from "./DrawingToolbar"
 import { PinCommentPopover } from "./PinCommentPopover"
+import {
+  VersionHistoryList,
+  type VersionRow,
+} from "@/components/editor/VersionHistoryList"
 import { useVisibleAnnotations } from "@/hooks/useVideoOverlay"
 import type {
   TeamVideoSubmission,
@@ -35,13 +39,35 @@ interface Props {
   submission: TeamVideoSubmission
   version: TeamVideoVersion | null
   comments: TeamVideoCommentWithAnnotation[]
+  /** Signed read URL for the *current* version, null if not uploaded. */
   videoUrl: string | null
+  /** All versions on the submission, with pre-fetched stream + download URLs. */
+  versions: VersionRow[]
 }
 
-export function ReviewSurface({ submission, version, comments, videoUrl }: Props) {
+export function ReviewSurface({
+  submission,
+  version,
+  comments,
+  videoUrl,
+  versions,
+}: Props) {
   const router = useRouter()
   const playerRef = useRef<TeamVideoPlayerHandle>(null)
   const [currentTime, setCurrentTime] = useState(0)
+
+  // Which version is the player currently showing? Defaults to current.
+  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(
+    version?.id ?? null,
+  )
+  const selectedSignedUrl = useMemo(() => {
+    if (!selectedVersionId) return videoUrl
+    const v = versions.find((x) => x.id === selectedVersionId)
+    return v?.signedUrl ?? videoUrl
+  }, [selectedVersionId, versions, videoUrl])
+  const viewingCurrent = selectedVersionId === version?.id
+  // Comments belong to the *current* cut only — suppress when viewing history.
+  const visibleComments = viewingCurrent ? comments : []
 
   // Drawing-mode state
   const [drawingMode, setDrawingMode] = useState(false)
@@ -53,7 +79,7 @@ export function ReviewSurface({ submission, version, comments, videoUrl }: Props
   const [redoStack, setRedoStack] = useState<DrawingPath[]>([])
 
   const { visible: visibleAnnotations, merged: mergedView } = useVisibleAnnotations(
-    comments,
+    visibleComments,
     currentTime,
   )
 
@@ -268,20 +294,36 @@ export function ReviewSurface({ submission, version, comments, videoUrl }: Props
           )}
           {version && (
             <p className="mt-1 font-mono text-xs text-muted-foreground">
-              Version {version.version_number} &middot; status: {submission.status}
+              Version{" "}
+              {versions.find((v) => v.id === selectedVersionId)?.version_number ??
+                version.version_number}
+              {" "}&middot; status: {submission.status}
+              {!viewingCurrent && (
+                <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                  Older cut · history view
+                </span>
+              )}
             </p>
           )}
         </div>
         <StatusActions submission={submission} />
       </header>
 
+      {!viewingCurrent && (
+        <div className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2">
+          <p className="font-mono text-[10px] tracking-[0.18em] uppercase text-warning">
+            Viewing an older cut · drawing & commenting are disabled. Switch back to the latest version to leave new feedback.
+          </p>
+        </div>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
         <div className="space-y-4">
-          {videoUrl ? (
+          {selectedSignedUrl ? (
             <TeamVideoPlayer
               ref={playerRef}
-              src={videoUrl}
-              comments={comments}
+              src={selectedSignedUrl}
+              comments={visibleComments}
               onTimeUpdate={setCurrentTime}
               renderOverlay={renderOverlay}
             />
@@ -291,7 +333,7 @@ export function ReviewSurface({ submission, version, comments, videoUrl }: Props
             </div>
           )}
 
-          {videoUrl && (
+          {selectedSignedUrl && viewingCurrent && (
             <DrawingToolbar
               active={drawingMode}
               tool={tool}
@@ -309,7 +351,7 @@ export function ReviewSurface({ submission, version, comments, videoUrl }: Props
             />
           )}
 
-          {videoUrl && (
+          {selectedSignedUrl && viewingCurrent && (
             <div className="flex items-center gap-2">
               {!drawingMode ? (
                 <Button
@@ -332,7 +374,7 @@ export function ReviewSurface({ submission, version, comments, videoUrl }: Props
 
           {/* While drawing, the inline popover IS the composer; hide the */}
           {/* bottom editor to avoid two competing inputs. */}
-          {videoUrl && !drawingMode && (
+          {selectedSignedUrl && viewingCurrent && !drawingMode && (
             <CommentEditor
               submissionId={submission.id}
               getCurrentTimecode={() =>
@@ -343,18 +385,34 @@ export function ReviewSurface({ submission, version, comments, videoUrl }: Props
               onAfterSubmit={() => {}}
             />
           )}
+
+          <VersionHistoryList
+            versions={versions}
+            selectedId={selectedVersionId}
+            onSelect={(id) => {
+              setSelectedVersionId(id)
+              setCurrentTime(0)
+              // Exit drawing mode if active when swapping versions.
+              if (drawingMode) cancelDrawing()
+            }}
+          />
         </div>
 
         <aside>
           <CommentThread
-            comments={comments}
-            canWrite={true}
-            onResolve={resolveComment}
-            onReopen={reopenComment}
-            onDelete={deleteComment}
-            onReply={replyToComment}
+            comments={visibleComments}
+            canWrite={viewingCurrent}
+            onResolve={viewingCurrent ? resolveComment : undefined}
+            onReopen={viewingCurrent ? reopenComment : undefined}
+            onDelete={viewingCurrent ? deleteComment : undefined}
+            onReply={viewingCurrent ? replyToComment : undefined}
             onJumpTo={(t) => playerRef.current?.seek(t)}
           />
+          {!viewingCurrent && (
+            <p className="mt-3 font-mono text-[10px] tracking-[0.18em] uppercase text-muted-foreground">
+              Comments shown only on the current cut.
+            </p>
+          )}
         </aside>
       </div>
     </div>
