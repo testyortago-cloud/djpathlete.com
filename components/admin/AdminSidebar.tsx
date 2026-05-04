@@ -42,8 +42,22 @@ import { signOut } from "next-auth/react"
 import { cn } from "@/lib/utils"
 import type { LucideIcon } from "lucide-react"
 
-function isHrefActive(pathname: string, href: string): boolean {
+function isHrefMatch(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(href + "/")
+}
+
+/**
+ * Returns the most-specific (longest) href among `candidates` that's a prefix
+ * of (or equal to) the current pathname. Prevents the parent + child both
+ * highlighting at /admin/ads/campaigns — only "Campaigns" wins, not "Google Ads".
+ */
+function findActiveHref(pathname: string, candidates: string[]): string | null {
+  let best: string | null = null
+  for (const href of candidates) {
+    if (!isHrefMatch(pathname, href)) continue
+    if (best === null || href.length > best.length) best = href
+  }
+  return best
 }
 
 interface NavItem {
@@ -181,6 +195,12 @@ export function AdminSidebar({ contentStudioEnabled = false }: AdminSidebarProps
     setOpenSections((prev) => ({ ...prev, [title]: !prev[title] }))
   }
 
+  // Compute the single winning active href across all items so a parent
+  // route (e.g. /admin/ads) doesn't co-highlight with a child (e.g.
+  // /admin/ads/campaigns). Falls back to null when nothing matches.
+  const allHrefs = navSections.flatMap((s) => s.items.map((i) => i.href))
+  const activeHref = findActiveHref(pathname, allHrefs)
+
   return (
     <aside className="hidden lg:flex lg:flex-col w-64 bg-primary text-primary-foreground fixed top-0 left-0 h-screen z-30">
       {/* Logo */}
@@ -204,7 +224,7 @@ export function AdminSidebar({ contentStudioEnabled = false }: AdminSidebarProps
       <nav className="flex-1 overflow-y-auto sidebar-scroll px-3 py-2 space-y-1">
         {navSections.map((section) => {
           const isOpen = !section.title || openSections[section.title]
-          const hasActiveChild = section.items.some((item) => isHrefActive(pathname, item.href))
+          const hasActiveChild = section.items.some((item) => item.href === activeHref)
 
           return (
             <div key={section.title || "top"}>
@@ -229,7 +249,7 @@ export function AdminSidebar({ contentStudioEnabled = false }: AdminSidebarProps
                 )}
               >
                 {section.items.map((item) => {
-                  const isActive = isHrefActive(pathname, item.href)
+                  const isActive = item.href === activeHref
                   const Icon = item.icon
                   return (
                     <Link
@@ -259,7 +279,7 @@ export function AdminSidebar({ contentStudioEnabled = false }: AdminSidebarProps
           href="/admin/settings"
           className={cn(
             "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
-            isHrefActive(pathname, "/admin/settings")
+            isHrefMatch(pathname, "/admin/settings")
               ? "bg-accent text-accent-foreground"
               : "text-white/70 hover:text-white hover:bg-white/10",
           )}
