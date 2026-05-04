@@ -3,7 +3,34 @@ import { getPreferences } from "@/lib/db/notification-preferences"
 import { getActiveSubscribers } from "@/lib/db/newsletter"
 import type { Event, EventSignup } from "@/types/database"
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+const _resendClient = new Resend(process.env.RESEND_API_KEY)
+
+// Wrap the SDK so every callsite short-circuits when the API key is missing.
+// Protects production if the env ever drifts and prevents tests from hitting
+// the live API even when they forget to mock the `resend` module.
+//
+// Both `emails.send` (single) and `batch.send` (bulk newsletter) are wrapped
+// so the same env-key guard applies uniformly.
+const resend = {
+  emails: {
+    send: (async (args: Parameters<typeof _resendClient.emails.send>[0]) => {
+      if (!process.env.RESEND_API_KEY) {
+        console.warn(`[email] RESEND_API_KEY not set — skipping "${args.subject}"`)
+        return { data: null, error: null }
+      }
+      return _resendClient.emails.send(args)
+    }) as typeof _resendClient.emails.send,
+  },
+  batch: {
+    send: (async (args: Parameters<typeof _resendClient.batch.send>[0]) => {
+      if (!process.env.RESEND_API_KEY) {
+        console.warn(`[email] RESEND_API_KEY not set — skipping batch of ${Array.isArray(args) ? args.length : 0}`)
+        return { data: null, error: null }
+      }
+      return _resendClient.batch.send(args)
+    }) as typeof _resendClient.batch.send,
+  },
+}
 
 const FROM_EMAIL = process.env.RESEND_FROM_EMAIL ?? "DJP Athlete <noreply@darrenjpaul.com>"
 
