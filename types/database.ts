@@ -1834,3 +1834,33 @@ export interface GoogleAdsAgentMemo {
   created_at: string
   updated_at: string
 }
+
+// ─────────────────────────────────────────────────────────────────
+// Google Ads — Phase 1.5e (GA4 / remarketing audience visibility)
+// ─────────────────────────────────────────────────────────────────
+
+export type GoogleAdsGa4ListType =
+  | "REMARKETING"
+  | "RULE_BASED"
+  | "LOGICAL"
+  | "SIMILAR"
+  | "LOOKALIKE"
+  | "EXTERNAL_REMARKETING"
+  | "UNKNOWN"
+
+export interface GoogleAdsGa4Audience {
+  id: string
+  customer_id: string
+  user_list_id: string
+  name: string
+  description: string | null
+  list_type: GoogleAdsGa4ListType
+  membership_status: string | null
+  size_for_search: number | null
+  size_for_display: number | null
+  membership_life_span_days: number | null
+  raw_data: Record<string, unknown> | null
+  last_synced_at: string
+  created_at: string
+  updated_at: string
+}
