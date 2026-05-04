@@ -85,8 +85,10 @@ const PHASES: PhaseRow[] = [
   {
     id: "1.5f",
     title: "Pipeline dashboard + weekly funnel report",
-    status: "pending",
-    description: "Visit → newsletter → booking → payment funnel by campaign; cost-per-stage + revenue-per-stage views.",
+    status: "shipped",
+    description:
+      "Live funnel at /admin/ads/pipeline (visits → signups → bookings → payments → revenue) by campaign and source. Tuesday 13:00 UTC email digest with deltas, top campaigns by revenue, and a Claude insights paragraph.",
+    href: "/admin/ads/pipeline",
   },
   {
     id: "1.5g",
