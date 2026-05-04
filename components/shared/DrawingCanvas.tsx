@@ -61,21 +61,22 @@ function flatten(points: Array<[number, number]>, w: number, h: number): number[
 
 function renderPath(path: DrawingPath, idx: number, w: number, h: number) {
   const flat = flatten(path.points, w, h)
+  // Common visual props — `key` is intentionally NOT here, React 19 forbids
+  // spreading a `key` and the dev warning is fatal in strict mode.
   const common = {
-    key: idx,
     stroke: path.color,
     strokeWidth: path.width,
     lineCap: "round" as const,
     lineJoin: "round" as const,
   }
   if (path.tool === "pen") {
-    return <Line {...common} points={flat} />
+    return <Line key={idx} {...common} points={flat} />
   }
   if (path.tool === "arrow") {
-    return <Arrow {...common} fill={path.color} points={flat} />
+    return <Arrow key={idx} {...common} fill={path.color} points={flat} />
   }
   if (path.tool === "pin") {
-    // Loom-style numbered drop-pin (1 point). Radius scales with stroke width.
+    // Loom-style drop-pin (1 point). Radius scales with stroke width.
     const [x, y] = [flat[0], flat[1]]
     const r = Math.max(10, path.width * 2.5)
     return (
@@ -94,6 +95,7 @@ function renderPath(path: DrawingPath, idx: number, w: number, h: number) {
   const [x2, y2] = [flat[2], flat[3]]
   return (
     <Rect
+      key={idx}
       {...common}
       x={Math.min(x1, x2)}
       y={Math.min(y1, y2)}

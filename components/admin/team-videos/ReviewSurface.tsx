@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import dynamic from "next/dynamic"
 import { useRouter } from "next/navigation"
@@ -27,6 +27,7 @@ import type {
   TeamVideoVersion,
   TeamVideoCommentWithAnnotation,
   DrawingJson,
+  DrawingPath,
   DrawingTool,
 } from "@/types/database"
 
@@ -48,6 +49,8 @@ export function ReviewSurface({ submission, version, comments, videoUrl }: Props
   const [color, setColor] = useState("#FF3B30")
   const [strokeWidth, setStrokeWidth] = useState(3)
   const [draftDrawing, setDraftDrawing] = useState<DrawingJson>({ paths: [] })
+  // Stack of paths the user has undone — top of stack = most recent undo.
+  const [redoStack, setRedoStack] = useState<DrawingPath[]>([])
 
   const { visible: visibleAnnotations, merged: mergedView } = useVisibleAnnotations(
     comments,
@@ -57,13 +60,72 @@ export function ReviewSurface({ submission, version, comments, videoUrl }: Props
   function startDrawing() {
     playerRef.current?.pause()
     setDraftDrawing({ paths: [] })
+    setRedoStack([])
     setDrawingMode(true)
   }
 
   function cancelDrawing() {
     setDraftDrawing({ paths: [] })
+    setRedoStack([])
     setDrawingMode(false)
   }
+
+  /**
+   * Wrap canvas onChange so any newly-added path invalidates the redo stack
+   * (forking the timeline). Pure replacement (same length or shorter) leaves
+   * redo intact — but the canvas only ever appends, so this branch never runs.
+   */
+  function handleDraftChange(next: DrawingJson) {
+    setDraftDrawing(next)
+    setRedoStack([])
+  }
+
+  function undoLast() {
+    if (draftDrawing.paths.length === 0) return
+    const last = draftDrawing.paths[draftDrawing.paths.length - 1]
+    setDraftDrawing({ paths: draftDrawing.paths.slice(0, -1) })
+    setRedoStack((s) => [...s, last])
+  }
+
+  function redoLast() {
+    if (redoStack.length === 0) return
+    const next = redoStack[redoStack.length - 1]
+    setRedoStack((s) => s.slice(0, -1))
+    setDraftDrawing((d) => ({ paths: [...d.paths, next] }))
+  }
+
+  function clearAll() {
+    if (draftDrawing.paths.length === 0) return
+    setDraftDrawing({ paths: [] })
+    setRedoStack([])
+  }
+
+  // ⌘Z / ⌘⇧Z shortcuts — only active while drawing, only when not typing
+  useEffect(() => {
+    if (!drawingMode) return
+    function onKey(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null
+      // Skip if focus is in any text input — let the browser handle native undo
+      if (
+        target &&
+        (target.tagName === "TEXTAREA" ||
+          target.tagName === "INPUT" ||
+          target.isContentEditable)
+      ) {
+        return
+      }
+      const mod = e.metaKey || e.ctrlKey
+      if (!mod) return
+      if (e.key.toLowerCase() === "z") {
+        e.preventDefault()
+        if (e.shiftKey) redoLast()
+        else undoLast()
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drawingMode, draftDrawing, redoStack])
 
   async function resolveComment(commentId: string) {
     const res = await fetch(
@@ -129,7 +191,7 @@ export function ReviewSurface({ submission, version, comments, videoUrl }: Props
             color={color}
             strokeWidth={strokeWidth}
             drawing={draftDrawing}
-            onChange={setDraftDrawing}
+            onChange={handleDraftChange}
           />
         )}
         {/* Inline Loom-style comment composer, anchored to the last mark */}
@@ -198,9 +260,14 @@ export function ReviewSurface({ submission, version, comments, videoUrl }: Props
               tool={tool}
               color={color}
               strokeWidth={strokeWidth}
+              canUndo={draftDrawing.paths.length > 0}
+              canRedo={redoStack.length > 0}
               onToolChange={setTool}
               onColorChange={setColor}
               onStrokeWidthChange={setStrokeWidth}
+              onUndo={undoLast}
+              onRedo={redoLast}
+              onClear={clearAll}
               onCancel={cancelDrawing}
             />
           )}

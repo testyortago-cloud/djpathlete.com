@@ -1,7 +1,17 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
-import { Pencil, ArrowUpRight, Square, X, MapPin, type LucideIcon } from "lucide-react"
+import {
+  Pencil,
+  ArrowUpRight,
+  Square,
+  X,
+  MapPin,
+  Undo2,
+  Redo2,
+  Trash2,
+  type LucideIcon,
+} from "lucide-react"
 import type { DrawingTool } from "@/types/database"
 
 const COLORS = [
@@ -23,15 +33,23 @@ interface Props {
   tool: DrawingTool
   color: string
   strokeWidth: number
+  /** True iff there is at least one path that can be popped via undo. */
+  canUndo: boolean
+  /** True iff a previously-undone path can be re-added. */
+  canRedo: boolean
   onToolChange: (tool: DrawingTool) => void
   onColorChange: (hex: string) => void
   onStrokeWidthChange: (px: number) => void
+  onUndo: () => void
+  onRedo: () => void
+  onClear: () => void
   onCancel: () => void
 }
 
 export function DrawingToolbar({
-  active, tool, color, strokeWidth,
-  onToolChange, onColorChange, onStrokeWidthChange, onCancel,
+  active, tool, color, strokeWidth, canUndo, canRedo,
+  onToolChange, onColorChange, onStrokeWidthChange,
+  onUndo, onRedo, onClear, onCancel,
 }: Props) {
   if (!active) return null
   return (
@@ -84,6 +102,44 @@ export function DrawingToolbar({
         />
         <span className="w-4 text-right tabular-nums">{strokeWidth}</span>
       </label>
+
+      <div className="mx-2 h-6 w-px bg-border" aria-hidden />
+
+      <div className="flex items-center gap-1">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={onUndo}
+          disabled={!canUndo}
+          aria-label="Undo (⌘Z)"
+          title="Undo (⌘Z)"
+        >
+          <Undo2 className="size-4" />
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={onRedo}
+          disabled={!canRedo}
+          aria-label="Redo (⌘⇧Z)"
+          title="Redo (⌘⇧Z)"
+        >
+          <Redo2 className="size-4" />
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={onClear}
+          disabled={!canUndo}
+          aria-label="Clear all marks"
+          title="Clear all marks"
+        >
+          <Trash2 className="size-4" />
+        </Button>
+      </div>
 
       <div className="ml-auto">
         <Button type="button" size="sm" variant="ghost" onClick={onCancel} aria-label="Cancel drawing">
