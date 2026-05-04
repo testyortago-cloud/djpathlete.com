@@ -43,6 +43,34 @@ export async function listCommentsForVersion(versionId: string): Promise<TeamVid
 }
 
 /**
+ * List EVERY comment on a submission, across all of its versions, ordered the
+ * same way as the per-version list. Used so the comment thread keeps prior
+ * cuts' notes visible after a new version is uploaded — matches the Frame.io /
+ * Loom expectation where the conversation is one continuous record.
+ *
+ * Two queries (versions → comments) instead of a JOIN-by-FK so the call
+ * doesn't depend on PostgREST embedding being configured for this relation.
+ */
+export async function listCommentsForSubmission(submissionId: string): Promise<TeamVideoComment[]> {
+  const supabase = getClient()
+  const { data: vRows, error: vErr } = await supabase
+    .from("team_video_versions")
+    .select("id")
+    .eq("submission_id", submissionId)
+  if (vErr) throw vErr
+  const versionIds = (vRows ?? []).map((v) => (v as { id: string }).id)
+  if (versionIds.length === 0) return []
+  const { data, error } = await supabase
+    .from("team_video_comments")
+    .select("*")
+    .in("version_id", versionIds)
+    .order("timecode_seconds", { ascending: true, nullsFirst: false })
+    .order("created_at", { ascending: true })
+  if (error) throw error
+  return (data ?? []) as TeamVideoComment[]
+}
+
+/**
  * Bulk-fetch author info (name + role) for a set of user ids. Returns a Map
  * keyed by user id. Empty input → empty map (no DB call).
  */

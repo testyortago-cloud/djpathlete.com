@@ -71,15 +71,19 @@ export function EditorVideoView({
     () => versions.find((v) => v.id === selectedVersionId) ?? version,
     [selectedVersionId, versions, version],
   )
-
-  // Comments are only meaningful for the LATEST version. When viewing an
-  // older version, suppress the overlay/thread to avoid implying these
-  // comments belong to that older cut.
   const viewingCurrent = selectedVersionId === version?.id
-  const visibleComments = viewingCurrent ? comments : []
+  const selectedVersionNumber = selectedVersion?.version_number ?? null
+
+  // Player overlay/markers only render comments tied to the SELECTED version
+  // (a v1 pin would land on the wrong v2 frame). The thread separately
+  // shows ALL comments — that's the persistent conversation across cuts.
+  const playerComments = useMemo(
+    () => comments.filter((c) => c.version_id === selectedVersionId),
+    [comments, selectedVersionId],
+  )
 
   const { visible: visibleAnnotations, merged: mergedView } = useVisibleAnnotations(
-    visibleComments,
+    playerComments,
     currentTime,
   )
 
@@ -178,7 +182,7 @@ export function EditorVideoView({
             <TeamVideoPlayer
               ref={playerRef}
               src={selectedSignedUrl}
-              comments={visibleComments}
+              comments={playerComments}
               onMarkerClick={() => {
                 /* parent could scroll thread; v1 just seeks */
               }}
@@ -207,7 +211,7 @@ export function EditorVideoView({
 
         <aside className="space-y-3">
           <CommentThread
-            comments={visibleComments}
+            comments={comments}
             canWrite={false}
             onJumpTo={(t) => playerRef.current?.seek(t)}
             onReply={
@@ -218,12 +222,15 @@ export function EditorVideoView({
                   }
                 : undefined
             }
+            currentVersionNumber={selectedVersionNumber}
+            onJumpToVersion={({ versionNumber, timecodeSeconds }) => {
+              const target = versions.find((v) => v.version_number === versionNumber)
+              if (!target) return
+              setSelectedVersionId(target.id)
+              setCurrentTime(0)
+              setTimeout(() => playerRef.current?.seek(timecodeSeconds), 50)
+            }}
           />
-          {!viewingCurrent && (
-            <p className="font-mono text-[10px] tracking-[0.18em] uppercase text-muted-foreground">
-              Comments shown only on the current cut.
-            </p>
-          )}
           {viewingCurrent && (
             <div className="rounded-md border bg-card p-3 space-y-2">
               <Textarea

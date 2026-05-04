@@ -2,7 +2,7 @@ import { notFound } from "next/navigation"
 import { requireAdmin } from "@/lib/auth-helpers"
 import { getSubmissionById } from "@/lib/db/team-video-submissions"
 import { getCurrentVersion, listVersionsForSubmission } from "@/lib/db/team-video-versions"
-import { listAuthorsForIds, listCommentsForVersion } from "@/lib/db/team-video-comments"
+import { listAuthorsForIds, listCommentsForSubmission } from "@/lib/db/team-video-comments"
 import { listAnnotationsForCommentIds } from "@/lib/db/team-video-annotations"
 import { createReadUrl, createDownloadUrl } from "@/lib/storage/team-videos"
 import { ReviewSurface } from "@/components/admin/team-videos/ReviewSurface"
@@ -21,21 +21,25 @@ export default async function TeamVideoReviewPage({ params }: Props) {
   if (!submission) notFound()
 
   const version = await getCurrentVersion(submission.id)
-  const rawComments = version ? await listCommentsForVersion(version.id) : []
+  // All-versions comment list — keeps prior cuts' notes visible after a new
+  // version is uploaded (Frame.io / Loom-style continuous thread).
+  const rawComments = await listCommentsForSubmission(submission.id)
   const [annotationMap, authorMap] = await Promise.all([
     listAnnotationsForCommentIds(rawComments.map((c) => c.id)),
     listAuthorsForIds(rawComments.map((c) => c.author_id)),
   ])
-  const comments = rawComments.map((c) => ({
-    ...c,
-    annotation: annotationMap.get(c.id) ?? null,
-    author: authorMap.get(c.author_id) ?? null,
-  }))
 
   // Pre-fetch stream + download signed URLs for every uploaded version so the
   // admin can swap cuts and download originals without extra round-trips.
   // Same pattern as the editor page; ~1h TTL on signed URLs.
   const allVersions = await listVersionsForSubmission(submission.id)
+  const versionNumberById = new Map(allVersions.map((v) => [v.id, v.version_number]))
+  const comments = rawComments.map((c) => ({
+    ...c,
+    annotation: annotationMap.get(c.id) ?? null,
+    author: authorMap.get(c.author_id) ?? null,
+    version_number: versionNumberById.get(c.version_id) ?? null,
+  }))
   const versions: VersionRow[] = await Promise.all(
     allVersions.map(async (v) => {
       if (v.status !== "uploaded") {

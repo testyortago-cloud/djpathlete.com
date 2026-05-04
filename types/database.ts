@@ -221,11 +221,13 @@ export interface TeamVideoAnnotation {
   created_at: string
 }
 
-/** API response shape: a comment plus its (optional) annotation drawing
- *  and its author's denormalized name + role. */
+/** API response shape: a comment plus its (optional) annotation drawing,
+ *  its author's denormalized name + role, and the version_number it belongs
+ *  to (so the thread can show "v1" / "v2" badges across cuts). */
 export interface TeamVideoCommentWithAnnotation extends TeamVideoComment {
   annotation: DrawingJson | null
   author: CommentAuthor | null
+  version_number: number | null
 }
 
 export type TimeEfficiencyPreference = "supersets_circuits" | "shorter_rest" | "fewer_heavier" | "extend_session"

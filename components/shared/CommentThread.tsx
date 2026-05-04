@@ -59,6 +59,11 @@ interface Props {
   onDelete?: (commentId: string) => void
   /** When provided, a Reply composer can be opened on each top-level comment. */
   onReply?: (input: { parentId: string; commentText: string }) => Promise<void> | void
+  /** Currently displayed version's number — used to dim cross-version comments. */
+  currentVersionNumber?: number | null
+  /** When provided, clicking a comment from a different version switches the
+   *  player to that version (and seeks). Falls back to onJumpTo otherwise. */
+  onJumpToVersion?: (input: { versionNumber: number; timecodeSeconds: number }) => void
 }
 
 export function CommentThread({
@@ -69,6 +74,8 @@ export function CommentThread({
   onJumpTo,
   onDelete,
   onReply,
+  currentVersionNumber,
+  onJumpToVersion,
 }: Props) {
   const [showResolved, setShowResolved] = useState(false)
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
@@ -132,7 +139,9 @@ export function CommentThread({
               canWrite={canWrite}
               confirmingId={confirmingId}
               canReply={Boolean(onReply)}
+              currentVersionNumber={currentVersionNumber ?? null}
               onJumpTo={onJumpTo}
+              onJumpToVersion={onJumpToVersion}
               onResolve={onResolve}
               onDeleteClick={onDelete ? handleDeleteClick : undefined}
               onReplyOpen={() => setReplyingTo(c.id)}
@@ -189,7 +198,9 @@ function CommentRow({
   canWrite,
   confirmingId,
   canReply,
+  currentVersionNumber,
   onJumpTo,
+  onJumpToVersion,
   onResolve,
   onDeleteClick,
   onReplyOpen,
@@ -204,7 +215,9 @@ function CommentRow({
   /** True iff the parent supplied an onReply handler. Drives whether to
    *  render the Reply button at all. */
   canReply: boolean
+  currentVersionNumber: number | null
   onJumpTo?: (t: number) => void
+  onJumpToVersion?: (input: { versionNumber: number; timecodeSeconds: number }) => void
   onResolve?: (id: string) => void
   onDeleteClick?: (e: React.MouseEvent, id: string) => void
   onReplyOpen: () => void
@@ -215,15 +228,29 @@ function CommentRow({
   const annotation = c.annotation ? summariseDrawing(c.annotation.paths) : null
   const ToolIcon = annotation ? TOOL_ICON[annotation.tool] : null
   const hasTime = c.timecode_seconds != null
+  const isOtherVersion =
+    currentVersionNumber != null &&
+    c.version_number != null &&
+    c.version_number !== currentVersionNumber
+
+  function handleClick() {
+    if (!hasTime) return
+    if (isOtherVersion && c.version_number != null && onJumpToVersion) {
+      onJumpToVersion({
+        versionNumber: c.version_number,
+        timecodeSeconds: c.timecode_seconds!,
+      })
+      return
+    }
+    onJumpTo?.(c.timecode_seconds!)
+  }
 
   return (
     <li
       className={`rounded-md border bg-card transition-colors ${
         hasTime ? "cursor-pointer hover:bg-muted/40" : ""
-      }`}
-      onClick={() => {
-        if (hasTime) onJumpTo?.(c.timecode_seconds!)
-      }}
+      } ${isOtherVersion ? "opacity-75" : ""}`}
+      onClick={handleClick}
     >
       <div className="p-3">
         <div className="flex items-start justify-between gap-2">
@@ -402,6 +429,14 @@ function CommentHeader({
       >
         {fmtTime(c.timecode_seconds)}
       </span>
+      {c.version_number != null && (
+        <span
+          className="rounded-md bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] tabular-nums tracking-wide text-primary"
+          title={`Posted on version ${c.version_number}`}
+        >
+          v{c.version_number}
+        </span>
+      )}
       {c.author && <AuthorBadge author={c.author} />}
       {annotation && ToolIcon && (
         <span
