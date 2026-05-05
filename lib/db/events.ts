@@ -56,15 +56,20 @@ export async function getEventBySlug(slug: string): Promise<Event | null> {
   return (data as Event) ?? null
 }
 
-function computeEndDate(type: EventType, startIso: string, inputEnd?: string | null): string | null {
-  if (type === "clinic") {
-    return new Date(new Date(startIso).getTime() + 2 * 3600 * 1000).toISOString()
-  }
-  return inputEnd ?? null
+function autoEndDate(startIso: string): string {
+  return new Date(new Date(startIso).getTime() + 2 * 3600 * 1000).toISOString()
 }
 
 export async function createEvent(input: CreateEventInput): Promise<Event> {
   const supabase = getClient()
+
+  // Clinics may pass an explicit end_date now; fall back to start + 2h.
+  // Camps always carry an end_date through the validator.
+  const endDate =
+    input.type === "clinic"
+      ? (input.end_date ?? autoEndDate(input.start_date))
+      : input.end_date
+
   const base = {
     type: input.type,
     slug: input.slug,
@@ -82,7 +87,7 @@ export async function createEvent(input: CreateEventInput): Promise<Event> {
     age_min: input.age_min ?? null,
     age_max: input.age_max ?? null,
     start_date: input.start_date,
-    end_date: input.type === "clinic" ? computeEndDate("clinic", input.start_date) : input.end_date,
+    end_date: endDate,
     session_schedule: input.type === "camp" ? (input.session_schedule ?? null) : null,
     price_cents: input.price_dollars != null ? Math.round(input.price_dollars * 100) : null,
   }
@@ -101,13 +106,23 @@ export async function updateEvent(id: string, input: UpdateEventInput): Promise<
       updates[key] = value
     }
   }
-  // If start_date changed for a clinic, recompute end_date.
-  if (updates.start_date && !("end_date" in updates)) {
+
+  // For clinics: derive end_date from start whenever the form left it blank
+  // (null) or only changed start_date. The form sends end_date: null to mean
+  // "drop my custom override and re-derive from start + 2h".
+  const startChanged = "start_date" in updates
+  const endCleared = "end_date" in updates && updates.end_date == null
+  if (startChanged || endCleared) {
     const existing = await getEventById(id)
     if (existing?.type === "clinic") {
-      updates.end_date = computeEndDate("clinic", updates.start_date as string)
+      const noEndProvided = !("end_date" in updates) || updates.end_date == null
+      if (noEndProvided) {
+        const startIso = (updates.start_date as string | undefined) ?? existing.start_date
+        updates.end_date = autoEndDate(startIso)
+      }
     }
   }
+
   const { data, error } = await supabase.from("events").update(updates).eq("id", id).select().single()
   if (error) throw error
   return data as Event

@@ -29,6 +29,8 @@ const clinicEvent = eventBase
   .extend({
     type: z.literal("clinic"),
     start_date: z.string().datetime(),
+    // Optional override. When blank, the DAL auto-sets end_date = start + 2h.
+    end_date: z.string().datetime().optional().nullable(),
     price_dollars: z.number().nonnegative().max(10000).optional().nullable(),
   })
   .refine(ageRefine, { message: "age_max must be >= age_min", path: ["age_max"] })

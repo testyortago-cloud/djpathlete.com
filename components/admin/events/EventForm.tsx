@@ -87,7 +87,14 @@ export function EventForm({ event }: EventFormProps) {
   const [ageMin, setAgeMin] = useState<number | "">(event?.age_min ?? "")
   const [ageMax, setAgeMax] = useState<number | "">(event?.age_max ?? "")
   const [startDate, setStartDate] = useState(event?.start_date?.slice(0, 16) ?? "")
-  const [endDate, setEndDate] = useState(event?.end_date?.slice(0, 10) ?? "")
+  // Clinics edit end as datetime-local (slice 16); camps edit end as date (slice 10).
+  const [endDate, setEndDate] = useState(
+    event?.end_date
+      ? event.type === "clinic"
+        ? event.end_date.slice(0, 16)
+        : event.end_date.slice(0, 10)
+      : "",
+  )
   const [sessionSchedule, setSessionSchedule] = useState(event?.session_schedule ?? "")
   const [priceDollars, setPriceDollars] = useState<number | "">(
     event?.price_cents != null ? event.price_cents / 100 : "",
@@ -198,6 +205,9 @@ export function EventForm({ event }: EventFormProps) {
     if (type === "camp") {
       payload.end_date = endDate ? toIsoWallClockUtc(endDate) : undefined
       payload.session_schedule = sessionSchedule || null
+    } else if (type === "clinic") {
+      // null tells the DAL to drop any custom override and re-derive start + 2h.
+      payload.end_date = endDate ? toIsoWallClockUtc(endDate) : null
     }
     // Price is optional for both clinics and camps.
     payload.price_dollars = priceDollars === "" ? null : Number(priceDollars)
@@ -534,22 +544,38 @@ export function EventForm({ event }: EventFormProps) {
         title="Schedule"
         description={
           type === "clinic"
-            ? "Clinics are single-session — end time auto-sets to start + 2 hours."
+            ? "Set start time. Leave end blank to auto-set to start + 2 hours."
             : "Camps run across a date range with repeating sessions."
         }
       >
         {type === "clinic" ? (
-          <div className="space-y-2 max-w-md">
-            <Label>Start (date + time)</Label>
-            <Input
-              type="datetime-local"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              required
-            />
-            {fieldErrors.start_date && (
-              <p className="text-xs text-destructive">{humanizeError("start_date", fieldErrors.start_date[0])}</p>
-            )}
+          <div className="grid gap-4 md:grid-cols-2 max-w-2xl">
+            <div className="space-y-2">
+              <Label>Start (date + time)</Label>
+              <Input
+                type="datetime-local"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                required
+              />
+              {fieldErrors.start_date && (
+                <p className="text-xs text-destructive">{humanizeError("start_date", fieldErrors.start_date[0])}</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label>
+                End (date + time) <span className="text-muted-foreground font-normal">(optional)</span>
+              </Label>
+              <Input
+                type="datetime-local"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">Leave blank to auto-set to start + 2 hours.</p>
+              {fieldErrors.end_date && (
+                <p className="text-xs text-destructive">{humanizeError("end_date", fieldErrors.end_date[0])}</p>
+              )}
+            </div>
           </div>
         ) : (
           <div className="space-y-4">
