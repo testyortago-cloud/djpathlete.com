@@ -1,4 +1,4 @@
-import type { Metadata } from "next"
+﻿import type { Metadata } from "next"
 import { Mail, Phone, MapPin } from "lucide-react"
 import { JsonLd } from "@/components/shared/JsonLd"
 import { FadeIn } from "@/components/shared/FadeIn"
@@ -8,6 +8,7 @@ export const metadata: Metadata = {
   title: "Contact",
   description:
     "Get in touch with DJP Athlete. Book a free consultation, ask questions about our coaching programs, or reach out for general inquiries.",
+  alternates: { canonical: "/contact" },
   openGraph: {
     title: "Contact | DJP Athlete",
     description:
@@ -27,12 +28,12 @@ const contactPageSchema = {
   "@type": "ContactPage",
   name: "Contact DJP Athlete",
   description: "Contact page for DJP Athlete coaching services. Book a consultation or send us a message.",
-  url: "https://djpathlete.com/contact",
+  url: "https://www.darrenjpaul.com/contact",
   mainEntity: {
     "@type": "Organization",
     name: "DJP Athlete",
     email: "info@darrenjpaul.com",
-    url: "https://djpathlete.com",
+    url: "https://www.darrenjpaul.com",
   },
 }
 

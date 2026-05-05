@@ -1,4 +1,4 @@
-import type { Metadata } from "next"
+﻿import type { Metadata } from "next"
 import Image from "next/image"
 import { Award, GraduationCap, Heart, Target, Trophy, Users, ArrowRight } from "lucide-react"
 import Link from "next/link"
@@ -9,6 +9,7 @@ export const metadata: Metadata = {
   title: "About",
   description:
     "Meet the coach behind DJP Athlete. Learn about our training philosophy, credentials, and commitment to helping athletes at every level reach their full potential.",
+  alternates: { canonical: "/about" },
   openGraph: {
     title: "About | DJP Athlete",
     description:
@@ -31,11 +32,11 @@ const personSchema = {
   worksFor: {
     "@type": "Organization",
     name: "DJP Athlete",
-    url: "https://djpathlete.com",
+    url: "https://www.darrenjpaul.com",
   },
   description:
     "Elite sports coach and founder of DJP Athlete, specializing in personalized athletic performance training.",
-  url: "https://djpathlete.com/about",
+  url: "https://www.darrenjpaul.com/about",
 }
 
 const credentials = [
@@ -81,9 +82,10 @@ export default function AboutPage() {
                   <Image
                     src="/images/professionalheadshot.jpg"
                     alt="Darren J Paul"
-                    fill
-                    className="object-cover object-top"
+                    width={1067}
+                    height={1600}
                     sizes="(max-width: 1024px) 100vw, 40vw"
+                    className="h-full w-full object-cover object-top"
                   />
                 </div>
                 {/* Decorative accent */}

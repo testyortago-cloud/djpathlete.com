@@ -1,4 +1,4 @@
-import type { Metadata } from "next"
+﻿import type { Metadata } from "next"
 import { Star } from "lucide-react"
 import { JsonLd } from "@/components/shared/JsonLd"
 import { getTestimonials } from "@/lib/db/testimonials"
@@ -7,6 +7,7 @@ export const metadata: Metadata = {
   title: "Testimonials",
   description:
     "Read what athletes are saying about DJP Athlete. Real stories from real clients — from youth sports to professional competition.",
+  alternates: { canonical: "/testimonials" },
   openGraph: {
     title: "Testimonials | DJP Athlete",
     description: "Read what athletes are saying about DJP Athlete. Real stories from real clients.",
@@ -42,7 +43,7 @@ export default async function TestimonialsPage() {
     "@context": "https://schema.org",
     "@type": "Organization",
     name: "DJP Athlete",
-    url: "https://djpathlete.com",
+    url: "https://www.darrenjpaul.com",
     aggregateRating:
       testimonials.length > 0
         ? {

@@ -1,4 +1,4 @@
-import type { Metadata } from "next"
+﻿import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 import Link from "next/link"
 import { ExternalLink } from "lucide-react"
@@ -25,6 +25,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   return {
     title: event.title,
     description: event.summary,
+    alternates: { canonical: `/clinics/${event.slug}` },
     openGraph: { title: event.title, description: event.summary, images },
     twitter: { card: "summary_large_image", title: event.title, description: event.summary },
   }
@@ -53,7 +54,7 @@ export default async function ClinicDetailPage({ params }: { params: Promise<{ s
     organizer: {
       "@type": "Organization",
       name: "DJP Athlete",
-      url: "https://djpathlete.com",
+      url: "https://www.darrenjpaul.com",
     },
     image: event.hero_image_url ? [event.hero_image_url] : undefined,
   }

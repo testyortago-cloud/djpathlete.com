@@ -1,4 +1,4 @@
-import type { Metadata } from "next"
+﻿import type { Metadata } from "next"
 import { ArrowUpRight } from "lucide-react"
 import { JsonLd } from "@/components/shared/JsonLd"
 import { FadeIn } from "@/components/shared/FadeIn"
@@ -18,6 +18,7 @@ export const metadata: Metadata = {
   title: "Agility Clinics",
   description:
     "2-hour agility coaching clinics for athletes aged 10–18. Acceleration, deceleration, change of direction, and rotation — coached in small groups of 8–12 for serious feedback.",
+  alternates: { canonical: "/clinics" },
   openGraph: {
     title: "Agility Clinics | DJP Athlete",
     description:
@@ -38,12 +39,12 @@ const serviceSchema = {
   provider: {
     "@type": "Person",
     name: "Darren J Paul",
-    worksFor: { "@type": "Organization", name: "DJP Athlete", url: "https://djpathlete.com" },
+    worksFor: { "@type": "Organization", name: "DJP Athlete", url: "https://www.darrenjpaul.com" },
   },
   serviceType: "Youth Agility Clinic",
   description:
     "2-hour agility coaching clinics for youth athletes aged 10–18, focused on acceleration, deceleration, change of direction, and rotation, in groups of 8–12.",
-  url: "https://djpathlete.com/clinics",
+  url: "https://www.darrenjpaul.com/clinics",
   audience: { "@type": "Audience", audienceType: "Youth Athletes, 10–18" },
 }
 

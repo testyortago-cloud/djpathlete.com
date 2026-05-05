@@ -13,7 +13,7 @@ export const metadata: Metadata = {
   title: "The Performance Journal — Coaching, Training & Recovery",
   description:
     "Performance writing from Darren J Paul. Two decades coaching elite athletes, distilled into practical articles on training, recovery, and the long game.",
-  alternates: { canonical: "https://www.darrenjpaul.com/blog" },
+  alternates: { canonical: "/blog" },
   openGraph: {
     title: "The Performance Journal | DJP Athlete",
     description:

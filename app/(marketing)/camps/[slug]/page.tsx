@@ -1,4 +1,4 @@
-import { Suspense } from "react"
+﻿import { Suspense } from "react"
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 import Link from "next/link"
@@ -27,6 +27,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   return {
     title: event.title,
     description: event.summary,
+    alternates: { canonical: `/camps/${event.slug}` },
     openGraph: { title: event.title, description: event.summary, images },
     twitter: { card: "summary_large_image", title: event.title, description: event.summary },
   }
@@ -64,7 +65,7 @@ export default async function CampDetailPage({ params }: { params: Promise<{ slu
     organizer: {
       "@type": "Organization",
       name: "DJP Athlete",
-      url: "https://djpathlete.com",
+      url: "https://www.darrenjpaul.com",
     },
     image: event.hero_image_url ? [event.hero_image_url] : undefined,
   }

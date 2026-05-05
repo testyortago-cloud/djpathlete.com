@@ -1,4 +1,4 @@
-import type { Metadata } from "next"
+﻿import type { Metadata } from "next"
 import Link from "next/link"
 import Image from "next/image"
 import { ArrowRight, Dumbbell, Activity, Monitor, Mail, ChevronRight } from "lucide-react"
@@ -16,6 +16,7 @@ export const metadata: Metadata = {
   title: "DJP Athlete | Elite Performance Coaching",
   description:
     "Elite performance coaching by Darren J Paul. In-person training, online coaching, and return-to-performance assessment for serious athletes.",
+  alternates: { canonical: "/" },
   openGraph: {
     title: "DJP Athlete | Elite Performance Coaching",
     description:
@@ -34,8 +35,8 @@ const organizationSchema = {
   "@context": "https://schema.org",
   "@type": "Organization",
   name: "DJP Athlete",
-  url: "https://djpathlete.com",
-  logo: "https://djpathlete.com/og-image.png",
+  url: "https://www.darrenjpaul.com",
+  logo: "https://www.darrenjpaul.com/og-image.png",
   description:
     "DJP Athlete provides elite performance coaching by Darren J Paul. In-person training, online coaching, and return-to-performance assessment for serious athletes.",
   sameAs: [
@@ -50,7 +51,7 @@ const webSiteSchema = {
   "@context": "https://schema.org",
   "@type": "WebSite",
   name: "DJP Athlete",
-  url: "https://djpathlete.com",
+  url: "https://www.darrenjpaul.com",
 }
 
 const services = [
@@ -139,10 +140,11 @@ export default async function HomePage() {
           <Image
             src="/images/professionalheadshot.jpg"
             alt="Darren J Paul — Performance Coach"
-            fill
-            className="object-cover object-top"
+            width={1067}
+            height={1600}
             priority
             sizes="(max-width: 1024px) 100vw, 45vw"
+            className="absolute inset-0 h-full w-full object-cover object-top"
           />
           {/* Gradient fade from image into content area */}
           <div className="absolute inset-y-0 right-0 w-2/3 bg-gradient-to-r from-transparent to-primary hidden lg:block" />
@@ -219,9 +221,10 @@ export default async function HomePage() {
                   <Image
                     src="/images/professionalheadshot.jpg"
                     alt="Darren J Paul"
-                    fill
-                    className="object-cover object-top"
+                    width={1067}
+                    height={1600}
                     sizes="(max-width: 1024px) 100vw, 40vw"
+                    className="h-full w-full object-cover object-top"
                   />
                 </div>
                 {/* Decorative accent block */}

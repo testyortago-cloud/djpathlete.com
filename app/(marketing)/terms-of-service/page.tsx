@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   title: "Terms of Service",
   description:
     "Read the DJP Athlete Terms of Service. Understand your rights and responsibilities when using our athletic training platform.",
+  alternates: { canonical: "/terms-of-service" },
   openGraph: {
     title: "Terms of Service | DJP Athlete",
     description: "Read the DJP Athlete Terms of Service for our athletic training platform.",

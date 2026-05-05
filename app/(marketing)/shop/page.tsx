@@ -20,6 +20,7 @@ export const metadata: Metadata = {
   title: "Shop | DJP Athlete",
   description:
     "Shop DJP Athlete performance apparel and training gear. Compression wear, training tops, and branded athletic clothing.",
+  alternates: { canonical: "/shop" },
   openGraph: {
     title: "Shop | DJP Athlete",
     description: "Shop DJP Athlete performance apparel and training gear.",

@@ -1,4 +1,4 @@
-import type { Metadata } from "next"
+﻿import type { Metadata } from "next"
 import { Search, ClipboardList, Activity, Video, TrendingUp, ArrowRight, Quote } from "lucide-react"
 import Link from "next/link"
 import { JsonLd } from "@/components/shared/JsonLd"
@@ -8,6 +8,7 @@ export const metadata: Metadata = {
   title: "Coaching Philosophy",
   description:
     "The Grey Zone — Darren J Paul's Five Pillar Framework for athletic performance. Most training lives in black and white. Performance happens in the grey.",
+  alternates: { canonical: "/philosophy" },
   openGraph: {
     title: "Coaching Philosophy | DJP Athlete",
     description:
@@ -28,7 +29,7 @@ const philosophySchema = {
   name: "Coaching Philosophy — The Grey Zone",
   description:
     "The Grey Zone Five Pillar Framework by Darren J Paul. A systems-based coaching philosophy for athletic performance.",
-  url: "https://djpathlete.com/philosophy",
+  url: "https://www.darrenjpaul.com/philosophy",
   author: {
     "@type": "Person",
     name: "Darren J Paul",
@@ -36,7 +37,7 @@ const philosophySchema = {
     worksFor: {
       "@type": "Organization",
       name: "DJP Athlete",
-      url: "https://djpathlete.com",
+      url: "https://www.darrenjpaul.com",
     },
   },
 }

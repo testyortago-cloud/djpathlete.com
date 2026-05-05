@@ -4,6 +4,7 @@ import { Lexend_Exa, Lexend_Deca, JetBrains_Mono } from "next/font/google"
 import { SessionProvider } from "@/components/providers/SessionProvider"
 import { Toaster } from "@/components/ui/sonner"
 import { GoogleAnalytics } from "@/components/shared/GoogleAnalytics"
+import { SITE_URL } from "@/lib/constants"
 import "./globals.css"
 
 const lexendExa = Lexend_Exa({
@@ -25,7 +26,7 @@ const jetbrainsMono = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://djpathlete.com"),
+  metadataBase: new URL(SITE_URL),
   title: {
     default: "DJP Athlete - Elite Sports Coaching & Athletic Performance",
     template: "%s | DJP Athlete",
@@ -81,12 +82,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <head>
+      <body className={`${lexendDeca.variable} ${lexendExa.variable} ${jetbrainsMono.variable} font-body antialiased`}>
         <noscript>
           <style>{`[style*="opacity: 0"] { opacity: 1 !important; transform: none !important; }`}</style>
         </noscript>
-      </head>
-      <body className={`${lexendDeca.variable} ${lexendExa.variable} ${jetbrainsMono.variable} font-body antialiased`}>
         <SessionProvider>
           {children}
           <Toaster />

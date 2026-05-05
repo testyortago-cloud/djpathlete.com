@@ -5,6 +5,7 @@ import { renderLegalContent } from "@/lib/legal-content"
 export const metadata: Metadata = {
   title: "Privacy Policy",
   description: "Read the DJP Athlete Privacy Policy. Learn how we collect, use, and protect your personal information.",
+  alternates: { canonical: "/privacy-policy" },
   openGraph: {
     title: "Privacy Policy | DJP Athlete",
     description: "Read the DJP Athlete Privacy Policy. Learn how we protect your personal information.",

@@ -1,4 +1,4 @@
-import type { Metadata } from "next"
+﻿import type { Metadata } from "next"
 import { ArrowUpRight } from "lucide-react"
 import Link from "next/link"
 import { JsonLd } from "@/components/shared/JsonLd"
@@ -18,6 +18,7 @@ export const metadata: Metadata = {
   title: "Soccer Performance Camps",
   description:
     "2-week off-season and pre-season soccer performance camps. Built for college, semi-pro, and professional players — and emerging talent aged 14–17 on the way up.",
+  alternates: { canonical: "/camps" },
   openGraph: {
     title: "Soccer Performance Camps | DJP Athlete",
     description:
@@ -38,12 +39,12 @@ const serviceSchema = {
   provider: {
     "@type": "Person",
     name: "Darren J Paul",
-    worksFor: { "@type": "Organization", name: "DJP Athlete", url: "https://djpathlete.com" },
+    worksFor: { "@type": "Organization", name: "DJP Athlete", url: "https://www.darrenjpaul.com" },
   },
   serviceType: "Soccer Performance Camp · Off-Season / Pre-Season",
   description:
     "2-week intensive soccer performance camps for college, semi-pro, and professional players, plus emerging talent aged 14–17.",
-  url: "https://djpathlete.com/camps",
+  url: "https://www.darrenjpaul.com/camps",
   audience: {
     "@type": "Audience",
     audienceType: "Soccer players — college, semi-pro, professional, and emerging talent aged 14–17",

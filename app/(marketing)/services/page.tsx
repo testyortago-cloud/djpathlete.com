@@ -1,4 +1,4 @@
-import type { Metadata } from "next"
+﻿import type { Metadata } from "next"
 import { ClipboardList, BarChart3, Video, Dumbbell, Heart, ArrowRight, CheckCircle } from "lucide-react"
 import Link from "next/link"
 import { JsonLd } from "@/components/shared/JsonLd"
@@ -8,6 +8,7 @@ export const metadata: Metadata = {
   title: "Services",
   description:
     "Explore DJP Athlete's coaching services: personalized training plans, performance tracking, video analysis, strength & conditioning, and recovery programs.",
+  alternates: { canonical: "/services" },
   openGraph: {
     title: "Services | DJP Athlete",
     description:
@@ -28,13 +29,13 @@ const serviceSchema = {
   provider: {
     "@type": "Organization",
     name: "DJP Athlete",
-    url: "https://djpathlete.com",
+    url: "https://www.darrenjpaul.com",
   },
   serviceType: "Athletic Performance Coaching",
   areaServed: "Worldwide",
   description:
     "Elite sports coaching services including personalized training plans, performance tracking, video analysis, strength & conditioning, and recovery programs.",
-  url: "https://djpathlete.com/services",
+  url: "https://www.darrenjpaul.com/services",
   hasOfferCatalog: {
     "@type": "OfferCatalog",
     name: "Coaching Plans",

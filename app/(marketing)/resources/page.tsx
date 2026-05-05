@@ -1,4 +1,4 @@
-import type { Metadata } from "next"
+﻿import type { Metadata } from "next"
 import { Database, Shield, GraduationCap, RotateCcw, Users, ArrowRight } from "lucide-react"
 import Link from "next/link"
 import { JsonLd } from "@/components/shared/JsonLd"
@@ -8,6 +8,7 @@ export const metadata: Metadata = {
   title: "Resources",
   description:
     "Performance resources from DJP Athlete — databases, frameworks, workshops, and development programs for serious athletes and coaches.",
+  alternates: { canonical: "/resources" },
   openGraph: {
     title: "Resources | DJP Athlete",
     description:
@@ -28,11 +29,11 @@ const resourcesSchema = {
   name: "Resources",
   description:
     "Performance resources from DJP Athlete — databases, frameworks, workshops, and development programs for serious athletes and coaches.",
-  url: "https://djpathlete.com/resources",
+  url: "https://www.darrenjpaul.com/resources",
   provider: {
     "@type": "Organization",
     name: "DJP Athlete",
-    url: "https://djpathlete.com",
+    url: "https://www.darrenjpaul.com",
   },
 }
 

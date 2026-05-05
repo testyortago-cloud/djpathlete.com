@@ -1,4 +1,4 @@
-import type { Metadata } from "next"
+﻿import type { Metadata } from "next"
 import Link from "next/link"
 import {
   ArrowRight,
@@ -19,6 +19,7 @@ export const metadata: Metadata = {
   title: "Online Coaching",
   description:
     "More than remote training. A complete, coach-led online performance system for serious athletes. Individualized programming, video feedback, and direct coaching access.",
+  alternates: { canonical: "/online" },
   openGraph: {
     title: "Online Coaching | DJP Athlete",
     description:
@@ -42,13 +43,13 @@ const serviceSchema = {
     worksFor: {
       "@type": "Organization",
       name: "DJP Athlete",
-      url: "https://djpathlete.com",
+      url: "https://www.darrenjpaul.com",
     },
   },
   serviceType: "Online Athletic Performance Coaching",
   description:
     "A complete, coach-led online performance system for serious athletes. Individualized programming, video feedback, and direct coaching access.",
-  url: "https://djpathlete.com/online",
+  url: "https://www.darrenjpaul.com/online",
 }
 
 const failures: { n: string; headline: string; detail: string }[] = [

@@ -1,4 +1,4 @@
-import type { Metadata } from "next"
+﻿import type { Metadata } from "next"
 import { JsonLd } from "@/components/shared/JsonLd"
 import { WaitlistForm } from "./WaitlistForm"
 
@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   title: "Education",
   description:
     "A new standard for performance. A structured system for operating when certainty disappears. Coming soon from DJP Athlete.",
+  alternates: { canonical: "/education" },
   openGraph: {
     title: "Education | DJP Athlete",
     description:
@@ -25,11 +26,11 @@ const educationSchema = {
   "@type": "WebPage",
   name: "Education — DJP Athlete",
   description: "A new standard for performance. A structured system for operating when certainty disappears.",
-  url: "https://djpathlete.com/education",
+  url: "https://www.darrenjpaul.com/education",
   publisher: {
     "@type": "Organization",
     name: "DJP Athlete",
-    url: "https://djpathlete.com",
+    url: "https://www.darrenjpaul.com",
   },
 }
 

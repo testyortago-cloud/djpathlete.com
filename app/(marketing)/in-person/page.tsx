@@ -1,4 +1,4 @@
-import type { Metadata } from "next"
+﻿import type { Metadata } from "next"
 import {
   ArrowRight,
   Trophy,
@@ -21,6 +21,7 @@ export const metadata: Metadata = {
   title: "In-Person Coaching",
   description:
     "Advanced assessment-led performance coaching by Darren J Paul. Individualized programming for competitive athletes, elite youth, and return-to-performance athletes.",
+  alternates: { canonical: "/in-person" },
   openGraph: {
     title: "In-Person Coaching | DJP Athlete",
     description:
@@ -44,13 +45,13 @@ const serviceSchema = {
     worksFor: {
       "@type": "Organization",
       name: "DJP Athlete",
-      url: "https://djpathlete.com",
+      url: "https://www.darrenjpaul.com",
     },
   },
   serviceType: "In-Person Athletic Performance Coaching",
   description:
     "Advanced assessment-led performance coaching. Individualized programming for competitive athletes, elite youth, and return-to-performance athletes.",
-  url: "https://djpathlete.com/in-person",
+  url: "https://www.darrenjpaul.com/in-person",
 }
 
 const athleteTypes = [
@@ -249,9 +250,10 @@ export default function InPersonPage() {
                 <Image
                   src="/images/gym-training-01.jpg"
                   alt="Yortago Athletic performance training facility"
-                  fill
-                  className="object-cover transition-transform duration-500 group-hover:scale-105"
+                  width={2000}
+                  height={1333}
                   sizes="(max-width: 768px) 100vw, 60vw"
+                  className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                 />
               </div>
               {/* Portrait — right, spans both rows */}
@@ -259,9 +261,10 @@ export default function InPersonPage() {
                 <Image
                   src="/images/gym-training-02.jpg"
                   alt="Athletic coaching session at Yortago Athletic"
-                  fill
-                  className="object-cover transition-transform duration-500 group-hover:scale-105"
+                  width={1333}
+                  height={2000}
                   sizes="(max-width: 768px) 100vw, 40vw"
+                  className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                 />
               </div>
               {/* Landscape — bottom left */}
@@ -269,9 +272,10 @@ export default function InPersonPage() {
                 <Image
                   src="/images/gym-training-03.jpg"
                   alt="High-performance training environment"
-                  fill
-                  className="object-cover transition-transform duration-500 group-hover:scale-105"
+                  width={2000}
+                  height={1333}
                   sizes="(max-width: 768px) 100vw, 60vw"
+                  className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                 />
               </div>
             </div>

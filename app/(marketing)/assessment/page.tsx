@@ -1,4 +1,4 @@
-import type { Metadata } from "next"
+﻿import type { Metadata } from "next"
 import Link from "next/link"
 import { ArrowRight, Dumbbell, Activity, Target, Zap, Brain, BarChart3 } from "lucide-react"
 import { JsonLd } from "@/components/shared/JsonLd"
@@ -10,6 +10,7 @@ export const metadata: Metadata = {
   title: "Assessment & Return to Performance",
   description:
     "Performance-based assessment for athletes beyond rehab. Close the gap between medical clearance and true competitive readiness.",
+  alternates: { canonical: "/assessment" },
   openGraph: {
     title: "Assessment & Return to Performance | DJP Athlete",
     description:
@@ -27,12 +28,12 @@ export const metadata: Metadata = {
 const assessmentSchema = {
   "@context": "https://schema.org",
   "@type": "Service",
-  provider: { "@type": "Organization", name: "DJP Athlete", url: "https://djpathlete.com" },
+  provider: { "@type": "Organization", name: "DJP Athlete", url: "https://www.darrenjpaul.com" },
   serviceType: "Return to Performance Assessment",
   areaServed: "Worldwide",
   description:
     "Performance-based assessment process designed to evaluate readiness for high-level sport after the conclusion of clinical care.",
-  url: "https://djpathlete.com/assessment",
+  url: "https://www.darrenjpaul.com/assessment",
 }
 
 const traditionalProblems = [
