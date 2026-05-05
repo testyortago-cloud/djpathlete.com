@@ -35,6 +35,23 @@ function formatDate(dateString: string): string {
   })
 }
 
+// Guest event signups (parent pays without a user account) and external
+// checkouts have user_id = null. Show the athlete/parent metadata instead of
+// a raw user_id fragment so the table is human-readable.
+function resolveGuestPaymentLabel(p: PaymentWithUser): { name: string; email: string | null; badge: string | null } {
+  const meta = (p.metadata ?? {}) as Record<string, unknown>
+  const athleteName = typeof meta.athlete_name === "string" ? meta.athlete_name : null
+  const parentEmail = typeof meta.parent_email === "string" ? meta.parent_email : null
+  const customerEmail = typeof meta.customerEmail === "string" ? meta.customerEmail : null
+
+  if (meta.type === "event_signup" && athleteName) {
+    return { name: `${athleteName}'s parent`, email: parentEmail, badge: "Event signup" }
+  }
+  if (parentEmail) return { name: parentEmail, email: null, badge: "Event signup" }
+  if (customerEmail) return { name: customerEmail, email: null, badge: "External" }
+  return { name: p.user_id ? `${p.user_id.slice(0, 8)}…` : "—", email: null, badge: "External" }
+}
+
 export function PaymentList({ payments }: PaymentListProps) {
   const [search, setSearch] = useState("")
   const [page, setPage] = useState(1)
@@ -54,9 +71,14 @@ export function PaymentList({ payments }: PaymentListProps) {
     const q = search.toLowerCase()
     const userName = p.users ? `${p.users.first_name} ${p.users.last_name}`.toLowerCase() : ""
     const email = p.users?.email.toLowerCase() ?? ""
+    const guest = !p.users ? resolveGuestPaymentLabel(p) : null
+    const guestName = guest?.name.toLowerCase() ?? ""
+    const guestEmail = guest?.email?.toLowerCase() ?? ""
     return (
       userName.includes(q) ||
       email.includes(q) ||
+      guestName.includes(q) ||
+      guestEmail.includes(q) ||
       (p.description?.toLowerCase().includes(q) ?? false) ||
       (p.stripe_payment_id?.toLowerCase().includes(q) ?? false)
     )
@@ -158,14 +180,22 @@ export function PaymentList({ payments }: PaymentListProps) {
                         <p className="text-xs text-muted-foreground">{payment.users.email}</p>
                       </div>
                     ) : (
-                      <div className="flex items-center gap-2">
-                        <span className="text-muted-foreground">{payment.user_id ? `${payment.user_id.slice(0, 8)}...` : "—"}</span>
-                        {payment.user_id === null && (
-                          <span className="inline-block rounded-full bg-accent/15 px-2 py-0.5 text-xs font-medium text-accent">
-                            External
-                          </span>
-                        )}
-                      </div>
+                      (() => {
+                        const guest = resolveGuestPaymentLabel(payment)
+                        return (
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <p className="font-medium text-foreground">{guest.name}</p>
+                              {guest.badge && (
+                                <span className="inline-block rounded-full bg-accent/15 px-2 py-0.5 text-xs font-medium text-accent">
+                                  {guest.badge}
+                                </span>
+                              )}
+                            </div>
+                            {guest.email && <p className="text-xs text-muted-foreground">{guest.email}</p>}
+                          </div>
+                        )
+                      })()
                     )}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">{payment.description ?? "—"}</td>

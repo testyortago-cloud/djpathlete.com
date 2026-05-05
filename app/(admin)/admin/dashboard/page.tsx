@@ -23,6 +23,23 @@ function getMonthLabel(date: Date): string {
   return date.toLocaleDateString("en-US", { month: "short", year: "numeric" })
 }
 
+// Guest event signups (parent pays without a user account) and external Stripe
+// checkouts have payments.user_id = null. Pull a meaningful label from
+// metadata so the activity feed doesn't read "Unknown made a payment of …".
+function resolvePaymentDisplayName(p: {
+  users: { first_name: string; last_name: string } | null
+  metadata: Record<string, unknown>
+}): string {
+  if (p.users) return `${p.users.first_name} ${p.users.last_name}`
+  const meta = p.metadata ?? {}
+  if (meta.type === "event_signup" && typeof meta.athlete_name === "string" && meta.athlete_name.trim().length > 0) {
+    return `${meta.athlete_name}'s parent`
+  }
+  if (typeof meta.parent_email === "string" && meta.parent_email.length > 0) return meta.parent_email
+  if (typeof meta.customerEmail === "string" && meta.customerEmail.length > 0) return meta.customerEmail
+  return "Guest"
+}
+
 export default async function DashboardPage() {
   const session = await requireAdmin()
   const adminName = session.user?.name ?? "Admin"
@@ -125,7 +142,7 @@ export default async function DashboardPage() {
 
   // Recent payments
   for (const p of payments.slice(0, 15)) {
-    const name = p.users ? `${p.users.first_name} ${p.users.last_name}` : "Unknown"
+    const name = resolvePaymentDisplayName(p)
     feedItems.push({
       id: `pay-${p.id}`,
       type: "payment",
