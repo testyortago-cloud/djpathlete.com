@@ -25,7 +25,7 @@ const CLIENT_SECRET = process.env.GOOGLE_OAUTH_CLIENT_SECRET
 const SERVICE_ACCOUNT_EMAIL =
   process.env.GA4_SERVICE_ACCOUNT_EMAIL ??
   "ga4-430@darrenjpaulcom.iam.gserviceaccount.com"
-const PROPERTY_ID = process.env.GA4_PROPERTY_ID ?? "526467504"
+const PROPERTY_ID = process.env.GA4_PROPERTY_ID ?? "391581052"
 
 if (!CLIENT_ID || !CLIENT_SECRET) {
   console.error(
