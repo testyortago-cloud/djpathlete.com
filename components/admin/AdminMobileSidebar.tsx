@@ -36,6 +36,21 @@ function isHrefActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(href + "/")
 }
 
+/**
+ * Returns the most-specific (longest) href among `candidates` that's a prefix
+ * of (or equal to) the current pathname. Prevents the parent + child both
+ * highlighting at /admin/settings/ai-policy — only "AI Policy" wins, not the
+ * bottom "Settings" link.
+ */
+function findActiveHref(pathname: string, candidates: string[]): string | null {
+  let best: string | null = null
+  for (const href of candidates) {
+    if (!isHrefActive(pathname, href)) continue
+    if (best === null || href.length > best.length) best = href
+  }
+  return best
+}
+
 interface NavItem {
   label: string
   href: string
@@ -113,6 +128,8 @@ interface AdminMobileSidebarProps {
 
 export function AdminMobileSidebar({ open, onClose }: AdminMobileSidebarProps) {
   const pathname = usePathname()
+  const allHrefs = [...navSections.flatMap((s) => s.items.map((i) => i.href)), "/admin/settings"]
+  const activeHref = findActiveHref(pathname, allHrefs)
 
   if (!open) return null
 
@@ -152,7 +169,7 @@ export function AdminMobileSidebar({ open, onClose }: AdminMobileSidebarProps) {
               )}
               <div className="space-y-0.5">
                 {section.items.map((item) => {
-                  const isActive = isHrefActive(pathname, item.href)
+                  const isActive = item.href === activeHref
                   const Icon = item.icon
                   return (
                     <Link
@@ -183,7 +200,7 @@ export function AdminMobileSidebar({ open, onClose }: AdminMobileSidebarProps) {
             onClick={onClose}
             className={cn(
               "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
-              isHrefActive(pathname, "/admin/settings")
+              activeHref === "/admin/settings"
                 ? "bg-accent text-accent-foreground"
                 : "text-white/70 hover:text-white hover:bg-white/10",
             )}

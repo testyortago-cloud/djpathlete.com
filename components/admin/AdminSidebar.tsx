@@ -198,10 +198,11 @@ export function AdminSidebar({ contentStudioEnabled = false }: AdminSidebarProps
     setOpenSections((prev) => ({ ...prev, [title]: !prev[title] }))
   }
 
-  // Compute the single winning active href across all items so a parent
-  // route (e.g. /admin/ads) doesn't co-highlight with a child (e.g.
-  // /admin/ads/campaigns). Falls back to null when nothing matches.
-  const allHrefs = navSections.flatMap((s) => s.items.map((i) => i.href))
+  // Compute the single winning active href across all items + the bottom
+  // Settings link, so a parent route (e.g. /admin/settings) doesn't
+  // co-highlight with a child (e.g. /admin/settings/ai-policy). Falls back
+  // to null when nothing matches.
+  const allHrefs = [...navSections.flatMap((s) => s.items.map((i) => i.href)), "/admin/settings"]
   const activeHref = findActiveHref(pathname, allHrefs)
 
   return (
@@ -282,7 +283,7 @@ export function AdminSidebar({ contentStudioEnabled = false }: AdminSidebarProps
           href="/admin/settings"
           className={cn(
             "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
-            isHrefMatch(pathname, "/admin/settings")
+            activeHref === "/admin/settings"
               ? "bg-accent text-accent-foreground"
               : "text-white/70 hover:text-white hover:bg-white/10",
           )}
