@@ -3,6 +3,16 @@
 // generates one platform-specific social caption for each of the 6 platforms
 // (facebook, instagram, tiktok, youtube, youtube_shorts, linkedin) and
 // persists them as social_posts + social_captions rows in Supabase.
+//
+// Each caption goes through a 2-pass pipeline:
+//   1. Writer agent  — drafts a caption from the transcript using a
+//      platform-specific writer prompt + the brand voice profile.
+//   2. Reviewer agent — reviews the draft against the platform rules and
+//      returns a publication-ready revision plus a 1-10 quality score and
+//      change notes. The revised caption is what gets persisted.
+//
+// The reviewer is a generic global prompt; the platform's writer rules are
+// injected into the user message so one prompt covers all 6 platforms.
 
 import { FieldValue, getFirestore } from "firebase-admin/firestore"
 import { z } from "zod"
@@ -17,6 +27,14 @@ const captionSchema = z.object({
   hashtags: z.array(z.string()).default([]),
 })
 type Caption = z.infer<typeof captionSchema>
+
+const reviewedCaptionSchema = z.object({
+  revised_caption_text: z.string().min(1),
+  revised_hashtags: z.array(z.string()).default([]),
+  score: z.number().min(1).max(10),
+  notes: z.string().default(""),
+})
+type ReviewedCaption = z.infer<typeof reviewedCaptionSchema>
 
 export interface SocialFanoutInput {
   videoUploadId: string
@@ -39,6 +57,32 @@ export function buildUserMessage(input: BuildUserMessageInput): string {
     "---",
     "",
     "Generate the caption according to the platform style above. Return JSON only.",
+  ].join("\n")
+}
+
+export interface BuildReviewMessageInput {
+  platform: SocialPlatform
+  writerRules: string
+  draft: Caption
+}
+
+export function buildReviewMessage(input: BuildReviewMessageInput): string {
+  return [
+    `Platform: ${input.platform}`,
+    "",
+    "Writer rules the draft was supposed to follow:",
+    "---",
+    input.writerRules,
+    "---",
+    "",
+    "DRAFT caption_text:",
+    "---",
+    input.draft.caption_text,
+    "---",
+    "",
+    `DRAFT hashtags: ${input.draft.hashtags.join(", ") || "(none)"}`,
+    "",
+    "Review the draft against the rules above. Return your revision as JSON.",
   ].join("\n")
 }
 
@@ -89,11 +133,11 @@ export async function handleSocialFanout(jobId: string): Promise<void> {
       .maybeSingle()
     const videoTitle = video?.title ?? video?.original_filename ?? null
 
-    // 3. Load voice profile + per-platform caption prompts
+    // 3. Load voice profile + per-platform writer prompts + reviewer prompt
     const { data: prompts, error: pErr } = await supabase
       .from("prompt_templates")
       .select("scope, category, prompt")
-      .in("category", ["voice_profile", "social_caption"])
+      .in("category", ["voice_profile", "social_caption", "social_caption_reviewer"])
     if (pErr || !prompts) {
       await failJob(`Could not load prompt templates: ${pErr?.message ?? "unknown"}`)
       return
@@ -104,34 +148,67 @@ export async function handleSocialFanout(jobId: string): Promise<void> {
       await failJob("No voice_profile prompt_template row found")
       return
     }
+    const reviewerPrompt = prompts.find((p) => p.category === "social_caption_reviewer")?.prompt
+    if (!reviewerPrompt) {
+      await failJob("No social_caption_reviewer prompt_template row found")
+      return
+    }
     const byPlatform = new Map<string, string>()
     for (const p of prompts) {
       if (p.category === "social_caption") byPlatform.set(p.scope, p.prompt)
     }
 
-    // 4. Generate 6 captions in parallel. New captions always start in the
-    // "draft" (Needs Review) state regardless of platform connection status —
-    // the user reviews each one and clicks Approve, at which point the
-    // approve route flips to "approved" (connected) or "awaiting_connection".
+    // 4. For each platform: writer pass → reviewer pass. Run platforms in
+    //    parallel; within a platform the two passes are sequential (reviewer
+    //    needs the writer's draft). Captions start in "draft" state regardless
+    //    of platform connection — the user reviews and approves/schedules.
     const results = await Promise.allSettled(
       PLATFORMS.map(async (platform) => {
         const platformPrompt = byPlatform.get(platform)
         if (!platformPrompt) throw new Error(`No social_caption prompt seeded for scope=${platform}`)
 
-        const systemPrompt = `${voiceProfile}\n\n---\n\n${platformPrompt}`
-        const userMessage = buildUserMessage({
+        // ── Writer pass ────────────────────────────────────────────────
+        const writerSystem = `${voiceProfile}\n\n---\n\n${platformPrompt}`
+        const writerUserMessage = buildUserMessage({
           transcript: transcript.transcript_text,
           platform,
           videoTitle,
         })
 
-        const result = await callAgent<Caption>(systemPrompt, userMessage, captionSchema, {
+        const writer = await callAgent<Caption>(writerSystem, writerUserMessage, captionSchema, {
           model: MODEL_SONNET,
           maxTokens: 2000,
           cacheSystemPrompt: true,
         })
 
-        return { platform, caption: result.content }
+        // ── Reviewer pass ──────────────────────────────────────────────
+        const reviewerUserMessage = buildReviewMessage({
+          platform,
+          writerRules: platformPrompt,
+          draft: writer.content,
+        })
+
+        const reviewed = await callAgent<ReviewedCaption>(
+          reviewerPrompt,
+          reviewerUserMessage,
+          reviewedCaptionSchema,
+          {
+            model: MODEL_SONNET,
+            maxTokens: 2000,
+            cacheSystemPrompt: true,
+          },
+        )
+
+        console.log(
+          `[social-fanout] ${platform} reviewer score=${reviewed.content.score} notes=${reviewed.content.notes}`,
+        )
+
+        const finalCaption: Caption = {
+          caption_text: reviewed.content.revised_caption_text,
+          hashtags: reviewed.content.revised_hashtags,
+        }
+
+        return { platform, caption: finalCaption }
       }),
     )
 
