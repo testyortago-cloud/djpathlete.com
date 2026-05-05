@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { getSubmissionById, lockSubmission } from "@/lib/db/team-video-submissions"
 import { getCurrentVersion } from "@/lib/db/team-video-versions"
 import { createVideoUpload } from "@/lib/db/video-uploads"
+import { createAiJob } from "@/lib/ai-jobs"
 
 export async function POST(
   _request: Request,
@@ -41,6 +42,24 @@ export async function POST(
   })
 
   await lockSubmission(submission.id)
+
+  // Auto-kick the transcription pipeline so promoted team videos don't sit
+  // in the Uploaded column waiting for a manual click. The on-ai-job-completed
+  // Firebase handler then chains transcription → social_fanout, so the
+  // promoted video lands in the studio with 6 draft captions ready to review.
+  // A queue failure here is non-fatal: the studio still has the video row,
+  // and the admin can click Transcribe manually as a fallback.
+  try {
+    await createAiJob({
+      type: "video_transcription",
+      userId: session.user.id,
+      input: { videoUploadId: videoUpload.id },
+    })
+  } catch (err) {
+    console.error(
+      `[send-to-content-studio] Failed to auto-queue transcription for video ${videoUpload.id}: ${(err as Error).message}`,
+    )
+  }
 
   return NextResponse.json({ videoUpload }, { status: 201 })
 }

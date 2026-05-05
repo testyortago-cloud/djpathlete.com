@@ -83,4 +83,66 @@ describe("handleAiJobCompleted", () => {
     await handleAiJobCompleted(event as never)
     expect(mocks.set).not.toHaveBeenCalled()
   })
+
+  it("enqueues social_fanout when video_transcription flips to completed", async () => {
+    const event = makeEvent(
+      { type: "video_transcription", status: "processing" },
+      {
+        type: "video_transcription",
+        status: "completed",
+        result: { videoUploadId: "vid-789", transcriptId: "tr-1" },
+        userId: "user-2",
+      },
+    )
+    await handleAiJobCompleted(event as never)
+
+    expect(mocks.set).toHaveBeenCalledTimes(1)
+    expect(mocks.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "social_fanout",
+        status: "pending",
+        input: { videoUploadId: "vid-789" },
+        userId: "user-2",
+      }),
+    )
+  })
+
+  it("enqueues social_fanout when video_vision flips to completed", async () => {
+    const event = makeEvent(
+      { type: "video_vision", status: "processing" },
+      {
+        type: "video_vision",
+        status: "completed",
+        result: { videoUploadId: "vid-vis-1", source: "vision" },
+        userId: "user-3",
+      },
+    )
+    await handleAiJobCompleted(event as never)
+
+    expect(mocks.set).toHaveBeenCalledTimes(1)
+    expect(mocks.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "social_fanout",
+        input: { videoUploadId: "vid-vis-1" },
+        userId: "user-3",
+      }),
+    )
+  })
+
+  it("does NOT chain when video_transcription completes with a fallbackJobId (vision handoff)", async () => {
+    // Webhook sets the original transcription job to completed with
+    // result.fallbackJobId (no videoUploadId) when AssemblyAI fails or
+    // returns empty speech. The vision job will fire its own completion.
+    const event = makeEvent(
+      { type: "video_transcription", status: "processing" },
+      {
+        type: "video_transcription",
+        status: "completed",
+        result: { fallbackJobId: "vision-job-1", reason: "no speech" },
+        userId: "user-4",
+      },
+    )
+    await handleAiJobCompleted(event as never)
+    expect(mocks.set).not.toHaveBeenCalled()
+  })
 })
