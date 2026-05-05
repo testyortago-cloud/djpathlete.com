@@ -4,13 +4,20 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
-import type { TeamVideoSubmission } from "@/types/database"
+import type { TeamVideoSubmission, VideoUpload } from "@/types/database"
+import {
+  generateVideoThumbnailFromUrl,
+  uploadThumbnailFor,
+} from "@/lib/firebase-client-thumbnail"
 
 interface Props {
   submission: TeamVideoSubmission
+  /** Signed read URL for the current version, used to grab a thumbnail frame
+   *  in the browser when promoting to Content Studio. */
+  videoUrl: string | null
 }
 
-export function StatusActions({ submission }: Props) {
+export function StatusActions({ submission, videoUrl }: Props) {
   const router = useRouter()
   const [busy, setBusy] = useState<
     null | "request_revision" | "approve" | "reopen" | "send"
@@ -56,7 +63,20 @@ export function StatusActions({ submission }: Props) {
         const j = await res.json().catch(() => ({}))
         throw new Error(j.error ?? "Handoff failed")
       }
+      const { videoUpload } = (await res.json()) as { videoUpload?: VideoUpload }
       toast.success("Sent to Content Studio")
+
+      // Best-effort thumbnail — same browser-canvas pattern as the regular
+      // Content Studio uploader. A failure here (no CORS, unsupported codec,
+      // tainted canvas) leaves thumbnail_path null and the kanban falls back
+      // to the generic Film icon — same as before this fix.
+      if (videoUpload?.id && videoUrl) {
+        void (async () => {
+          const blob = await generateVideoThumbnailFromUrl(videoUrl)
+          if (blob) await uploadThumbnailFor(videoUpload.id, blob)
+        })()
+      }
+
       router.push("/admin/content?tab=videos")
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Handoff failed")

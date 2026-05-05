@@ -315,7 +315,7 @@ export function ReviewSurface({
             </p>
           )}
         </div>
-        <StatusActions submission={submission} />
+        <StatusActions submission={submission} videoUrl={videoUrl} />
       </header>
 
       {!viewingCurrent && (

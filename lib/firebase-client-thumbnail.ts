@@ -7,22 +7,26 @@ const THUMB_MAX_WIDTH = 480
 const THUMB_JPEG_QUALITY = 0.75
 const SEEK_TARGET_SECONDS = 1.0
 
-/**
- * Render a single frame from a video File to a JPEG Blob.
- * Resolves null if the browser cannot load the video (e.g. unsupported codec).
- */
-export function generateVideoThumbnail(file: File): Promise<Blob | null> {
+type ThumbnailSource =
+  | { kind: "file"; file: File }
+  | { kind: "url"; url: string }
+
+function captureFrame(source: ThumbnailSource): Promise<Blob | null> {
   return new Promise((resolve) => {
-    const url = URL.createObjectURL(file)
+    const objectUrl = source.kind === "file" ? URL.createObjectURL(source.file) : null
     const video = document.createElement("video")
     video.preload = "metadata"
     video.muted = true
     video.playsInline = true
-    video.src = url
+    // crossOrigin is only meaningful for remote URLs. Required so canvas reads
+    // aren't tainted; depends on the bucket having CORS configured. If CORS is
+    // missing, the video element will fail to load and we silently bail.
+    if (source.kind === "url") video.crossOrigin = "anonymous"
+    video.src = source.kind === "file" ? objectUrl! : source.url
 
     let settled = false
     const cleanup = () => {
-      URL.revokeObjectURL(url)
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
       video.removeAttribute("src")
       video.load()
     }
@@ -68,6 +72,24 @@ export function generateVideoThumbnail(file: File): Promise<Blob | null> {
     // Safety timeout — some browsers never fire "seeked" on odd codecs.
     setTimeout(() => finish(null), 15_000)
   })
+}
+
+/**
+ * Render a single frame from a video File to a JPEG Blob.
+ * Resolves null if the browser cannot load the video (e.g. unsupported codec).
+ */
+export function generateVideoThumbnail(file: File): Promise<Blob | null> {
+  return captureFrame({ kind: "file", file })
+}
+
+/**
+ * Render a single frame from a remote video URL (e.g. Firebase Storage signed URL).
+ * Resolves null if the browser cannot load the video, the URL has no CORS
+ * headers, or canvas reads taint. Used by paths where no File is available
+ * (e.g. promoting a team-video submission to Content Studio).
+ */
+export function generateVideoThumbnailFromUrl(url: string): Promise<Blob | null> {
+  return captureFrame({ kind: "url", url })
 }
 
 /**
