@@ -1,5 +1,6 @@
 import {
   ga4IsConfigured,
+  getGa4ServiceAccountEmail,
   getOverviewMetrics,
   getTrafficByChannel,
   getTopPages,
@@ -53,6 +54,8 @@ export default async function Ga4OverviewPage() {
           Last 28 days. Reports are read-only mirrors of GA4 — no data is stored locally.
         </p>
       </header>
+
+      <WiringCheck configured={configured} fetchOk={!fetchError} />
 
       {!configured ? <SetupChecklist /> : null}
 
@@ -228,6 +231,77 @@ function Tile({
   )
 }
 
+function WiringCheck({ configured, fetchOk }: { configured: boolean; fetchOk: boolean }) {
+  const propertyId = process.env.GA4_PROPERTY_ID ?? null
+  const measurementId = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID ?? null
+  const serviceAccount = getGa4ServiceAccountEmail()
+
+  const rows: Array<{ label: string; value: string | null; ok: boolean; hint?: string }> = [
+    {
+      label: "Server property",
+      value: propertyId,
+      ok: Boolean(propertyId),
+      hint: "GA4_PROPERTY_ID — used by the Data API",
+    },
+    {
+      label: "Client tag",
+      value: measurementId,
+      ok: Boolean(measurementId && measurementId.startsWith("G-")),
+      hint: "NEXT_PUBLIC_GA_MEASUREMENT_ID — injected on every page",
+    },
+    {
+      label: "Service account",
+      value: serviceAccount,
+      ok: Boolean(serviceAccount),
+      hint: "Must be Viewer on the property in GA4 Admin",
+    },
+    {
+      label: "Data API live",
+      value: configured && fetchOk ? "OK" : configured ? "Auth/permission error" : "Not configured",
+      ok: configured && fetchOk,
+      hint: "Latest report fetch result",
+    },
+  ]
+
+  return (
+    <section>
+      <h2 className="text-[11px] font-mono uppercase tracking-[0.18em] text-muted-foreground mb-3">
+        ─ Wiring check
+      </h2>
+      <div className="border border-border rounded-xl bg-card overflow-hidden">
+        <table className="w-full text-sm">
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.label} className="border-t border-border/60 first:border-t-0">
+                <td className="p-3 w-44 align-top">
+                  <p className="font-medium text-primary">{r.label}</p>
+                  {r.hint ? (
+                    <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">{r.hint}</p>
+                  ) : null}
+                </td>
+                <td className="p-3 align-top">
+                  <code className="font-mono text-xs break-all">{r.value ?? "—"}</code>
+                </td>
+                <td className="p-3 w-24 text-right align-top">
+                  <span
+                    className={`inline-block px-2 py-0.5 rounded text-[11px] font-mono uppercase tracking-wider ${
+                      r.ok
+                        ? "bg-success/10 text-success"
+                        : "bg-error/10 text-error"
+                    }`}
+                  >
+                    {r.ok ? "OK" : "Check"}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )
+}
+
 function SetupChecklist() {
   return (
     <div className="border border-warning/40 bg-warning/5 text-warning rounded-lg p-4 text-sm space-y-3">
@@ -242,11 +316,11 @@ function SetupChecklist() {
         </li>
         <li>
           GA4 → Admin → Property access management → add the service-account email as{" "}
-          <strong>Viewer</strong> on property <code className="font-mono">526467504</code>.
+          <strong>Viewer</strong> on property <code className="font-mono">391581052</code>.
         </li>
         <li>
           Set envs:
-          <pre className="mt-1 p-2 rounded bg-card text-foreground font-mono text-[11px] whitespace-pre-wrap">{`GA4_PROPERTY_ID=526467504
+          <pre className="mt-1 p-2 rounded bg-card text-foreground font-mono text-[11px] whitespace-pre-wrap">{`GA4_PROPERTY_ID=391581052
 GA4_SERVICE_ACCOUNT_JSON=<base64 of the JSON key>`}</pre>
           (base64 keeps it on one line for Vercel envs.)
         </li>

@@ -23,6 +23,18 @@ export function ga4IsConfigured(): boolean {
   return Boolean(process.env.GA4_PROPERTY_ID && process.env.GA4_SERVICE_ACCOUNT_JSON)
 }
 
+export function getGa4ServiceAccountEmail(): string | null {
+  const raw = process.env.GA4_SERVICE_ACCOUNT_JSON
+  if (!raw) return null
+  try {
+    const json = raw.trim().startsWith("{") ? raw : Buffer.from(raw, "base64").toString("utf8")
+    const parsed = JSON.parse(json) as { client_email?: string }
+    return parsed.client_email ?? null
+  } catch {
+    return null
+  }
+}
+
 function getClient(): BetaAnalyticsDataClient {
   if (!ga4IsConfigured()) throw new Ga4NotConfiguredError()
   if (cachedClient) return cachedClient
