@@ -1,13 +1,15 @@
-import { describe, expect, it, beforeEach } from "vitest"
+import { describe, expect, it, beforeEach, afterAll } from "vitest"
 import {
   recordAffiliateClick,
   countClicksForProduct,
   countClicksForProductSince,
 } from "@/lib/db/shop-affiliate-clicks"
 import { createServiceRoleClient } from "@/lib/supabase"
+import { TestCleanup } from "../../_helpers/cleanup"
 
 describe("shop-affiliate-clicks DAL", () => {
   let productId: string
+  const cleanup = new TestCleanup()
 
   beforeEach(async () => {
     const supabase = createServiceRoleClient()
@@ -24,6 +26,11 @@ describe("shop-affiliate-clicks DAL", () => {
       .select("id")
       .single()
     productId = data!.id
+    cleanup.trackProduct(productId)
+  })
+
+  afterAll(async () => {
+    await cleanup.run()
   })
 
   it("records a click and counts it", async () => {

@@ -1,8 +1,15 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, afterAll } from "vitest"
 import { createDigitalProduct } from "@/lib/db/shop-products"
 import { listVariantsForProduct } from "@/lib/db/shop-variants"
+import { TestCleanup } from "../../_helpers/cleanup"
+
+const cleanup = new TestCleanup()
 
 describe("createDigitalProduct", () => {
+  afterAll(async () => {
+    await cleanup.run()
+  })
+
   it("creates product + single variant for paid", async () => {
     const product = await createDigitalProduct({
       name: "Paid Digital " + Date.now(),
@@ -15,6 +22,7 @@ describe("createDigitalProduct", () => {
       digital_access_days: 90,
       digital_max_downloads: 10,
     })
+    cleanup.trackProduct(product.id)
     expect(product.product_type).toBe("digital")
     expect(product.digital_is_free).toBe(false)
     const variants = await listVariantsForProduct(product.id)
@@ -31,6 +39,7 @@ describe("createDigitalProduct", () => {
       digital_is_free: true,
       digital_signed_url_ttl_seconds: 900,
     })
+    cleanup.trackProduct(product.id)
     expect(product.digital_is_free).toBe(true)
     const variants = await listVariantsForProduct(product.id)
     expect(variants.length).toBe(0)

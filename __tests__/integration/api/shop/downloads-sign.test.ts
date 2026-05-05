@@ -1,10 +1,13 @@
-import { describe, expect, it, vi } from "vitest"
+import { describe, expect, it, vi, afterAll } from "vitest"
 import { POST } from "@/app/api/shop/downloads/sign/route"
 import { createServiceRoleClient } from "@/lib/supabase"
+import { TestCleanup } from "../../_helpers/cleanup"
 
 vi.mock("@/lib/shop/downloads", () => ({
   generateSignedDownloadUrl: vi.fn().mockResolvedValue("https://signed.example/x"),
 }))
+
+const cleanup = new TestCleanup()
 
 async function seedFullOrderWithDownload() {
   const supabase = createServiceRoleClient()
@@ -20,6 +23,7 @@ async function seedFullOrderWithDownload() {
     })
     .select("id")
     .single()
+  cleanup.trackProduct(product!.id)
   const { data: file } = await supabase
     .from("shop_product_files")
     .insert({
@@ -47,6 +51,7 @@ async function seedFullOrderWithDownload() {
     })
     .select("id, order_number, customer_email")
     .single()
+  cleanup.trackOrder(order!.id)
   const { data: download } = await supabase
     .from("shop_order_downloads")
     .insert({
@@ -62,6 +67,9 @@ async function seedFullOrderWithDownload() {
 }
 
 describe("POST /api/shop/downloads/sign", () => {
+  afterAll(async () => {
+    await cleanup.run()
+  })
   it("returns signed URL on valid email match", async () => {
     const { order, downloadId } = await seedFullOrderWithDownload()
     const req = new Request("http://x/api/shop/downloads/sign", {

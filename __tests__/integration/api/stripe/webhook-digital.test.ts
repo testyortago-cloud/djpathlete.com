@@ -1,6 +1,9 @@
-import { describe, expect, it, vi } from "vitest"
+import { describe, expect, it, vi, afterAll } from "vitest"
 import { POST } from "@/app/api/stripe/webhook/route"
 import { createServiceRoleClient } from "@/lib/supabase"
+import { TestCleanup } from "../../_helpers/cleanup"
+
+const cleanup = new TestCleanup()
 
 vi.mock("@/lib/shop/emails", async () => {
   const actual = await vi.importActual<object>("@/lib/shop/emails")
@@ -71,6 +74,7 @@ async function seedPaidDigitalOrder() {
     thumbnail_url: "https://x/i.jpg", product_type: "digital",
     digital_signed_url_ttl_seconds: 900, is_active: true,
   }).select("id").single()
+  cleanup.trackProduct(product!.id)
   const { data: variant } = await supabase.from("shop_product_variants").insert({
     product_id: product!.id, sku: `d-${suffix}`, name: "Default",
     retail_price_cents: 4900, printful_cost_cents: 0,
@@ -91,10 +95,15 @@ async function seedPaidDigitalOrder() {
       quantity: 1, unit_price_cents: 4900, printful_variant_id: null,
     }],
   }).select("id, order_number, stripe_session_id").single()
+  cleanup.trackOrder(order!.id)
   return { orderId: order!.id, sessionId: order!.stripe_session_id!, fileId: file!.id }
 }
 
 describe("stripe webhook — digital-only order", () => {
+  afterAll(async () => {
+    await cleanup.run()
+  })
+
   it("creates download rows and sets fulfilled_digital", async () => {
     const { orderId, sessionId } = await seedPaidDigitalOrder()
     const event = {

@@ -1,9 +1,11 @@
-import { describe, expect, it, beforeAll } from "vitest"
+import { describe, expect, it, beforeAll, afterAll } from "vitest"
 import { GET } from "@/app/(marketing)/shop/go/[productId]/route"
 import { createServiceRoleClient } from "@/lib/supabase"
+import { TestCleanup } from "../../_helpers/cleanup"
 
 describe("GET /shop/go/[productId]", () => {
   let productId: string
+  const cleanup = new TestCleanup()
 
   beforeAll(async () => {
     process.env.AMAZON_ASSOCIATES_TAG = "djp-20"
@@ -23,6 +25,11 @@ describe("GET /shop/go/[productId]", () => {
       .select("id")
       .single()
     productId = data!.id
+    cleanup.trackProduct(productId)
+  })
+
+  afterAll(async () => {
+    await cleanup.run()
   })
 
   it("302-redirects with tag appended", async () => {

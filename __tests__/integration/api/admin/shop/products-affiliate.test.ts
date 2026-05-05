@@ -1,11 +1,18 @@
-import { describe, expect, it, vi } from "vitest"
+import { describe, expect, it, vi, afterAll } from "vitest"
 import { POST } from "@/app/api/admin/shop/products/affiliate/route"
+import { TestCleanup } from "../../../_helpers/cleanup"
 
 vi.mock("@/lib/auth-helpers", () => ({
   requireAdmin: vi.fn().mockResolvedValue({ id: "u1", role: "admin" }),
 }))
 
+const cleanup = new TestCleanup()
+
 describe("POST /api/admin/shop/products/affiliate", () => {
+  afterAll(async () => {
+    await cleanup.run()
+  })
+
   it("creates affiliate product on valid payload", async () => {
     const req = new Request("http://x/api/admin/shop/products/affiliate", {
       method: "POST",
@@ -21,6 +28,7 @@ describe("POST /api/admin/shop/products/affiliate", () => {
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.product.product_type).toBe("affiliate")
+    cleanup.trackProduct(body.product.id)
   })
 
   it("rejects non-amazon url", async () => {

@@ -1,13 +1,15 @@
-import { describe, expect, it, beforeAll } from "vitest"
+import { describe, expect, it, beforeAll, afterAll } from "vitest"
 import {
   attachFileToProduct,
   listFilesForProduct,
   deleteProductFile,
 } from "@/lib/db/shop-product-files"
 import { createServiceRoleClient } from "@/lib/supabase"
+import { TestCleanup } from "../../_helpers/cleanup"
 
 describe("shop-product-files DAL", () => {
   let productId: string
+  const cleanup = new TestCleanup()
 
   beforeAll(async () => {
     const supabase = createServiceRoleClient()
@@ -23,6 +25,11 @@ describe("shop-product-files DAL", () => {
       .select("id")
       .single()
     productId = data!.id
+    cleanup.trackProduct(productId)
+  })
+
+  afterAll(async () => {
+    await cleanup.run()
   })
 
   it("attaches + lists + deletes a file", async () => {

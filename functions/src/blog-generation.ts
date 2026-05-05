@@ -48,7 +48,7 @@ async function validateUrls(html: string): Promise<string> {
           signal: controller.signal,
           redirect: "follow",
           headers: {
-            "User-Agent": "Mozilla/5.0 (compatible; DJPAthlete-Bot/1.0; +https://djpathlete.com)",
+            "User-Agent": "Mozilla/5.0 (compatible; DJPAthlete-Bot/1.0; +https://www.darrenjpaul.com)",
           },
         })
         clearTimeout(timeout)
@@ -107,7 +107,7 @@ async function crawlUrl(url: string): Promise<string> {
       signal: controller.signal,
       redirect: "follow",
       headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; DJPAthlete-Bot/1.0; +https://djpathlete.com)",
+        "User-Agent": "Mozilla/5.0 (compatible; DJPAthlete-Bot/1.0; +https://www.darrenjpaul.com)",
       },
     })
     clearTimeout(timeout)

@@ -1,5 +1,6 @@
-import { describe, expect, it, vi } from "vitest"
+import { describe, expect, it, vi, afterAll } from "vitest"
 import { createServiceRoleClient } from "@/lib/supabase"
+import { TestCleanup } from "../../_helpers/cleanup"
 
 vi.mock("@/lib/printful", () => {
   class PrintfulError extends Error {
@@ -14,6 +15,8 @@ vi.mock("@/lib/printful", () => {
     getShippingRates: vi.fn().mockResolvedValue([{ name: "Standard", rate: "9.99", currency: "USD" }]),
   }
 })
+
+const cleanup = new TestCleanup()
 
 async function seedMixed() {
   const supabase = createServiceRoleClient()
@@ -31,6 +34,7 @@ async function seedMixed() {
     })
     .select("id")
     .single()
+  cleanup.trackProduct(podProduct!.id)
   const { data: podVariant } = await supabase
     .from("shop_product_variants")
     .insert({
@@ -60,6 +64,7 @@ async function seedMixed() {
     })
     .select("id")
     .single()
+  cleanup.trackProduct(digProduct!.id)
   const { data: digVariant } = await supabase
     .from("shop_product_variants")
     .insert({
@@ -90,6 +95,10 @@ const ADDRESS = {
 }
 
 describe("POST /api/shop/quote (mixed cart)", () => {
+  afterAll(async () => {
+    await cleanup.run()
+  })
+
   it("quotes shipping only for POD lines", async () => {
     process.env.SHOP_ENABLED = "true"
     const { POST } = await import("@/app/api/shop/quote/route")

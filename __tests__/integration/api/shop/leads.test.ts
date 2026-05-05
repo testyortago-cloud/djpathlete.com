@@ -1,6 +1,7 @@
-import { describe, expect, it, vi, beforeAll } from "vitest"
+import { describe, expect, it, vi, beforeAll, afterAll } from "vitest"
 import { POST } from "@/app/api/shop/leads/route"
 import { createServiceRoleClient } from "@/lib/supabase"
+import { TestCleanup } from "../../_helpers/cleanup"
 
 vi.mock("@/lib/shop/resend-audience", () => ({
   addContactToAudience: vi.fn().mockResolvedValue("contact_mock"),
@@ -15,6 +16,8 @@ vi.mock("@/lib/shop/emails", async () => {
 
 describe("POST /api/shop/leads", () => {
   let productId: string
+  const cleanup = new TestCleanup()
+
   beforeAll(async () => {
     const supabase = createServiceRoleClient()
     const { data } = await supabase
@@ -31,6 +34,7 @@ describe("POST /api/shop/leads", () => {
       .select("id")
       .single()
     productId = data!.id
+    cleanup.trackProduct(productId)
     await supabase.from("shop_product_files").insert({
       product_id: productId,
       file_name: "x.pdf",
@@ -39,6 +43,10 @@ describe("POST /api/shop/leads", () => {
       file_size_bytes: 100,
       mime_type: "application/pdf",
     })
+  })
+
+  afterAll(async () => {
+    await cleanup.run()
   })
 
   it("creates lead + calls Resend + sends email", async () => {

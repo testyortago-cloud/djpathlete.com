@@ -1,10 +1,17 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, afterAll } from "vitest"
 import {
   createAffiliateProduct,
   listProductsByType,
 } from "@/lib/db/shop-products"
+import { TestCleanup } from "../../_helpers/cleanup"
+
+const cleanup = new TestCleanup()
 
 describe("createAffiliateProduct", () => {
+  afterAll(async () => {
+    await cleanup.run()
+  })
+
   it("creates with product_type='affiliate'", async () => {
     const product = await createAffiliateProduct({
       name: "Test Aff " + Date.now(),
@@ -15,6 +22,7 @@ describe("createAffiliateProduct", () => {
       affiliate_asin: "B000XXXXXX",
       affiliate_price_cents: 1999,
     })
+    cleanup.trackProduct(product.id)
     expect(product.product_type).toBe("affiliate")
     expect(product.affiliate_url).toContain("amazon.com")
     expect(product.is_active).toBe(false)

@@ -11,6 +11,7 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:integration": "vitest run",
     "test:e2e": "playwright test",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

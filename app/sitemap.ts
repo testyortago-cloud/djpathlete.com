@@ -1,8 +1,9 @@
 import type { MetadataRoute } from "next"
 import { getPublishedBlogPosts } from "@/lib/db/blog-posts"
 import { getPublishedEvents } from "@/lib/db/events"
+import { SITE_URL } from "@/lib/constants"
 
-const BASE_URL = "https://djpathlete.com"
+const BASE_URL = SITE_URL
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // Static pages

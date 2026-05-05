@@ -1,3 +1,10 @@
+/**
+ * Canonical production origin. Used for sitemap, robots, metadataBase,
+ * JSON-LD `url` fields, OG/Twitter URLs, email links, and bot User-Agents.
+ * Always include the protocol and `www` so all signals are consistent.
+ */
+export const SITE_URL = "https://www.darrenjpaul.com"
+
 export type NavLink = {
   label: string
   href: string

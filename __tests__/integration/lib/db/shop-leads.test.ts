@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeAll } from "vitest"
+import { describe, expect, it, beforeAll, afterAll } from "vitest"
 import {
   upsertLead,
   markLeadSynced,
@@ -7,9 +7,12 @@ import {
   countLeadsForProduct,
 } from "@/lib/db/shop-leads"
 import { createServiceRoleClient } from "@/lib/supabase"
+import { TestCleanup } from "../../_helpers/cleanup"
 
 describe("shop-leads DAL", () => {
   let productId: string
+  const cleanup = new TestCleanup()
+
   beforeAll(async () => {
     const supabase = createServiceRoleClient()
     const { data } = await supabase
@@ -25,6 +28,11 @@ describe("shop-leads DAL", () => {
       .select("id")
       .single()
     productId = data!.id
+    cleanup.trackProduct(productId)
+  })
+
+  afterAll(async () => {
+    await cleanup.run()
   })
 
   it("upserts a lead and re-upserts without duplicating", async () => {

@@ -288,7 +288,7 @@ async function fetchWithTimeout(url: string, timeoutMs = FETCH_TIMEOUT_MS): Prom
     const res = await fetch(url, {
       signal: controller.signal,
       headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; DJPAthlete-Bot/1.0; +https://djpathlete.com)",
+        "User-Agent": "Mozilla/5.0 (compatible; DJPAthlete-Bot/1.0; +https://www.darrenjpaul.com)",
       },
     })
     return res

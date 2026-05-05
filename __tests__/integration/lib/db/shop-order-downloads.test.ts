@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, afterAll } from "vitest"
 import {
   createOrderDownload,
   consumeDownload,
@@ -7,6 +7,9 @@ import {
   extendDownloadAccess,
 } from "@/lib/db/shop-order-downloads"
 import { createServiceRoleClient } from "@/lib/supabase"
+import { TestCleanup } from "../../_helpers/cleanup"
+
+const cleanup = new TestCleanup()
 
 async function seed() {
   const supabase = createServiceRoleClient()
@@ -21,6 +24,7 @@ async function seed() {
     })
     .select("id")
     .single()
+  cleanup.trackProduct(product!.id)
   const { data: file } = await supabase
     .from("shop_product_files")
     .insert({
@@ -48,10 +52,14 @@ async function seed() {
     })
     .select("id")
     .single()
+  cleanup.trackOrder(order!.id)
   return { productId: product!.id, fileId: file!.id, orderId: order!.id }
 }
 
 describe("shop-order-downloads DAL", () => {
+  afterAll(async () => {
+    await cleanup.run()
+  })
   it("creates then lists a download", async () => {
     const { productId, fileId, orderId } = await seed()
     const d = await createOrderDownload({
