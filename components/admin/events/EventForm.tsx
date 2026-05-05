@@ -168,6 +168,15 @@ export function EventForm({ event }: EventFormProps) {
     setFieldErrors({})
     setFormError(null)
 
+    // Treat the admin's wall-clock entry as UTC so the displayed time survives
+    // any timezone difference between admin browser, server, and viewers. The
+    // public surfaces format with timeZone: "UTC" to match.
+    const toIsoWallClockUtc = (s: string): string => {
+      if (s.length === 10) return `${s}T00:00:00.000Z` // date-only
+      if (s.length === 16) return `${s}:00.000Z` // datetime-local "YYYY-MM-DDTHH:MM"
+      return `${s}.000Z`
+    }
+
     const payload: Record<string, unknown> = {
       type,
       title,
@@ -184,10 +193,10 @@ export function EventForm({ event }: EventFormProps) {
       status: submitStatus ?? status,
       age_min: ageMin === "" ? null : Number(ageMin),
       age_max: ageMax === "" ? null : Number(ageMax),
-      start_date: startDate ? new Date(startDate).toISOString() : undefined,
+      start_date: startDate ? toIsoWallClockUtc(startDate) : undefined,
     }
     if (type === "camp") {
-      payload.end_date = endDate ? new Date(endDate).toISOString() : undefined
+      payload.end_date = endDate ? toIsoWallClockUtc(endDate) : undefined
       payload.session_schedule = sessionSchedule || null
     }
     // Price is optional for both clinics and camps.

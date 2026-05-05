@@ -12,6 +12,7 @@ function formatDateLong(iso: string) {
     month: "long",
     day: "numeric",
     year: "numeric",
+    timeZone: "UTC",
   })
 }
 
@@ -19,6 +20,7 @@ function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString("en-US", {
     hour: "numeric",
     minute: "2-digit",
+    timeZone: "UTC",
   })
 }
 
@@ -34,16 +36,18 @@ function formatEventWhen(event: Event) {
   if (event.end_date) {
     const start = new Date(event.start_date)
     const end = new Date(event.end_date)
-    const sameYear = start.getFullYear() === end.getFullYear()
+    const sameYear = start.getUTCFullYear() === end.getUTCFullYear()
     const startLabel = start.toLocaleDateString("en-US", {
       month: "long",
       day: "numeric",
+      timeZone: "UTC",
       ...(sameYear ? {} : { year: "numeric" }),
     })
     const endLabel = end.toLocaleDateString("en-US", {
       month: "long",
       day: "numeric",
       year: "numeric",
+      timeZone: "UTC",
     })
     return `${startLabel} – ${endLabel}`
   }
