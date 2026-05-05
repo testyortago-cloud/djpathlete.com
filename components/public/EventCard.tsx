@@ -37,7 +37,12 @@ function formatTime(iso: string) {
 
 function formatEventWhen(event: Event) {
   if (event.type === "clinic") {
-    return `${formatDate(event.start_date)} · ${formatTime(event.start_date)}`
+    const datePart = formatDate(event.start_date)
+    const startTime = formatTime(event.start_date)
+    if (event.end_date) {
+      return `${datePart} · ${startTime} – ${formatTime(event.end_date)}`
+    }
+    return `${datePart} · ${startTime}`
   }
   if (event.end_date) {
     const start = new Date(event.start_date)
