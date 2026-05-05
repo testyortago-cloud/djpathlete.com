@@ -43,6 +43,16 @@ export interface ConnectResult {
   error?: string
 }
 
+/**
+ * Result of a native-platform schedule attempt. `supported: false` means the
+ * plugin (or this specific post type) doesn't support delegating scheduling
+ * to the platform — the caller should fall back to the DB-cron path.
+ */
+export type ScheduleOnPlatformResult =
+  | { supported: false; reason: string }
+  | { supported: true; success: true; platform_post_id: string }
+  | { supported: true; success: false; error: string }
+
 export interface PublishPlugin {
   name: SocialPlatform
   displayName: string
@@ -51,4 +61,21 @@ export interface PublishPlugin {
   fetchAnalytics(platformPostId: string): Promise<AnalyticsResult>
   disconnect(): Promise<void>
   getSetupInstructions(): Promise<string>
+  /**
+   * Optional: schedule the post natively on the platform with the platform's
+   * own scheduler (e.g. Facebook `scheduled_publish_time`). Plugins that
+   * implement this skip our DB-cron entirely — the post sits on the
+   * platform's queue and the platform publishes it itself.
+   *
+   * `scheduledAt` is required (must be a future ISO datetime).
+   */
+  scheduleOnPlatform?(
+    input: PublishInput & { scheduledAt: string },
+  ): Promise<ScheduleOnPlatformResult>
+  /**
+   * Optional: cancel a previously-scheduled post on the platform (counterpart
+   * to scheduleOnPlatform). Only called when a row has platform_post_id set
+   * and the user clicks Unschedule.
+   */
+  unscheduleOnPlatform?(platformPostId: string): Promise<{ success: boolean; error?: string }>
 }

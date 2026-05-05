@@ -3,11 +3,23 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 const authMock = vi.fn()
 const getSocialPostByIdMock = vi.fn()
 const updateSocialPostMock = vi.fn()
+const listPlatformConnectionsMock = vi.fn()
+const bootstrapPluginsMock = vi.fn()
+const registryGetMock = vi.fn()
 
 vi.mock("@/lib/auth", () => ({ auth: () => authMock() }))
 vi.mock("@/lib/db/social-posts", () => ({
   getSocialPostById: (id: string) => getSocialPostByIdMock(id),
   updateSocialPost: (id: string, u: unknown) => updateSocialPostMock(id, u),
+}))
+vi.mock("@/lib/db/platform-connections", () => ({
+  listPlatformConnections: () => listPlatformConnectionsMock(),
+}))
+vi.mock("@/lib/social/bootstrap", () => ({
+  bootstrapPlugins: (conns: unknown) => bootstrapPluginsMock(conns),
+}))
+vi.mock("@/lib/social/registry", () => ({
+  pluginRegistry: { get: (name: string) => registryGetMock(name) },
 }))
 
 import { POST } from "@/app/api/admin/social/posts/[id]/unschedule/route"
@@ -21,6 +33,7 @@ describe("POST /api/admin/social/posts/:id/unschedule", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     authMock.mockResolvedValue({ user: { id: "a", role: "admin" } })
+    listPlatformConnectionsMock.mockResolvedValue([])
   })
 
   it("returns 401 when not admin", async () => {
@@ -41,14 +54,60 @@ describe("POST /api/admin/social/posts/:id/unschedule", () => {
     expect(res.status).toBe(409)
   })
 
-  it("flips scheduled → approved and clears scheduled_at", async () => {
-    getSocialPostByIdMock.mockResolvedValue({ id: "p1", approval_status: "scheduled" })
+  it("DB-only path: flips scheduled → approved and clears scheduled_at when no platform_post_id", async () => {
+    getSocialPostByIdMock.mockResolvedValue({
+      id: "p1",
+      approval_status: "scheduled",
+      platform: "instagram",
+      platform_post_id: null,
+    })
     updateSocialPostMock.mockResolvedValue({ id: "p1", approval_status: "approved", scheduled_at: null })
+
     const res = await call("p1")
     expect(res.status).toBe(200)
     expect(updateSocialPostMock).toHaveBeenCalledWith("p1", {
       approval_status: "approved",
       scheduled_at: null,
+      platform_post_id: null,
     })
+  })
+
+  it("native path: calls plugin.unscheduleOnPlatform when platform_post_id is set", async () => {
+    getSocialPostByIdMock.mockResolvedValue({
+      id: "p1",
+      approval_status: "scheduled",
+      platform: "facebook",
+      platform_post_id: "FB_123",
+    })
+    const unscheduleOnPlatform = vi.fn().mockResolvedValue({ success: true })
+    registryGetMock.mockReturnValue({ name: "facebook", unscheduleOnPlatform })
+    updateSocialPostMock.mockResolvedValue({ id: "p1", approval_status: "approved", scheduled_at: null })
+
+    const res = await call("p1")
+    expect(res.status).toBe(200)
+    expect(unscheduleOnPlatform).toHaveBeenCalledWith("FB_123")
+    expect(updateSocialPostMock).toHaveBeenCalledWith("p1", {
+      approval_status: "approved",
+      scheduled_at: null,
+      platform_post_id: null,
+    })
+  })
+
+  it("native path: returns 502 and does not clear DB when platform delete fails", async () => {
+    getSocialPostByIdMock.mockResolvedValue({
+      id: "p1",
+      approval_status: "scheduled",
+      platform: "facebook",
+      platform_post_id: "FB_123",
+    })
+    registryGetMock.mockReturnValue({
+      name: "facebook",
+      unscheduleOnPlatform: vi.fn().mockResolvedValue({ success: false, error: "Page token expired" }),
+    })
+
+    const res = await call("p1")
+    expect(res.status).toBe(502)
+    expect(await res.text()).toContain("Page token expired")
+    expect(updateSocialPostMock).not.toHaveBeenCalled()
   })
 })

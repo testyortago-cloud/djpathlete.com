@@ -9,6 +9,7 @@ import { listPlatformConnections } from "@/lib/db/platform-connections"
 import { pluginRegistry } from "@/lib/social/registry"
 import { bootstrapPlugins } from "@/lib/social/bootstrap"
 import { resolveMediaUrl } from "@/lib/social/resolve-media-url"
+import type { PublishInput } from "@/lib/social/plugins/types"
 import type { SocialPost } from "@/types/database"
 
 export interface RunScheduledPublishOptions {
@@ -30,7 +31,12 @@ export async function runScheduledPublish(
   const scheduledPosts = await listSocialPosts({ approval_status: "scheduled" })
   const due = scheduledPosts.filter((p) => {
     if (!p.scheduled_at) return false
-    return new Date(p.scheduled_at).getTime() <= now.getTime()
+    if (new Date(p.scheduled_at).getTime() > now.getTime()) return false
+    // Posts that already have platform_post_id were scheduled natively on
+    // the platform (e.g. Facebook scheduled_publish_time). The platform owns
+    // their delivery — we must not re-publish or we'd double-post.
+    if (p.platform_post_id) return false
+    return true
   })
 
   if (due.length === 0) {
@@ -56,26 +62,24 @@ export async function runScheduledPublish(
   return { considered: scheduledPosts.length, published, failed }
 }
 
-async function publishOnePost(post: SocialPost): Promise<"published" | "failed"> {
-  const plugin = pluginRegistry.get(post.platform)
-  if (!plugin) {
-    await updateSocialPost(post.id, {
-      approval_status: "failed",
-      rejection_notes: `No plugin registered for platform "${post.platform}" — connect the platform and retry.`,
-    })
-    return "failed"
-  }
-
+/**
+ * Resolves a SocialPost row into the PublishInput shape plugins consume.
+ * Handles carousel-vs-single media, signed URLs, and post-type. Returned
+ * `error` is set if the post can't be turned into a publishable input
+ * (e.g. carousel with no media); callers should mark the row as failed.
+ *
+ * Shared between the publish-due cron and the /schedule route, which both
+ * need to hand a SocialPost to a plugin (for live publish or native schedule).
+ */
+export async function buildPluginInput(
+  post: SocialPost,
+): Promise<{ input: PublishInput } | { error: string }> {
   let mediaUrls: string[] | undefined
 
   if (post.post_type === "carousel") {
     const full = await getSocialPostWithMedia(post.id)
     if (!full || full.media.length === 0) {
-      await updateSocialPost(post.id, {
-        approval_status: "failed",
-        rejection_notes: "Carousel post has no attached media",
-      })
-      return "failed"
+      return { error: "Carousel post has no attached media" }
     }
     const resolved: string[] = []
     for (const slide of full.media) {
@@ -84,11 +88,7 @@ async function publishOnePost(post: SocialPost): Promise<"published" | "failed">
         media_url: slide.asset?.public_url ?? null,
       })
       if (!url) {
-        await updateSocialPost(post.id, {
-          approval_status: "failed",
-          rejection_notes: `Failed to resolve URL for carousel slide at position ${slide.position}`,
-        })
-        return "failed"
+        return { error: `Failed to resolve URL for carousel slide at position ${slide.position}` }
       }
       resolved.push(url)
     }
@@ -102,13 +102,37 @@ async function publishOnePost(post: SocialPost): Promise<"published" | "failed">
       media_url: post.media_url,
     }))
 
-  const publishResult = await plugin.publish({
-    content: post.content,
-    mediaUrl,
-    mediaUrls,
-    postType: post.post_type,
-    scheduledAt: null,
-  })
+  return {
+    input: {
+      content: post.content,
+      mediaUrl,
+      mediaUrls,
+      postType: post.post_type,
+      scheduledAt: null,
+    },
+  }
+}
+
+async function publishOnePost(post: SocialPost): Promise<"published" | "failed"> {
+  const plugin = pluginRegistry.get(post.platform)
+  if (!plugin) {
+    await updateSocialPost(post.id, {
+      approval_status: "failed",
+      rejection_notes: `No plugin registered for platform "${post.platform}" — connect the platform and retry.`,
+    })
+    return "failed"
+  }
+
+  const built = await buildPluginInput(post)
+  if ("error" in built) {
+    await updateSocialPost(post.id, {
+      approval_status: "failed",
+      rejection_notes: built.error,
+    })
+    return "failed"
+  }
+
+  const publishResult = await plugin.publish(built.input)
 
   if (!publishResult.success) {
     await updateSocialPost(post.id, {

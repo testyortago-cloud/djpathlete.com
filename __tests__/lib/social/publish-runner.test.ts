@@ -242,6 +242,35 @@ describe("runScheduledPublish", () => {
     )
   })
 
+  it("skips scheduled posts that already have a platform_post_id (delegated to platform)", async () => {
+    const now = new Date("2026-05-01T12:00:00Z")
+    listSocialPostsMock.mockResolvedValue([
+      {
+        id: "fb-native-1",
+        platform: "facebook",
+        content: "x",
+        media_url: null,
+        source_video_id: null,
+        approval_status: "scheduled",
+        scheduled_at: "2026-05-01T11:55:00Z",
+        published_at: null,
+        rejection_notes: null,
+        platform_post_id: "FB_999",
+        created_by: null,
+        created_at: "",
+        updated_at: "",
+      },
+    ])
+    listPlatformConnectionsMock.mockResolvedValue([])
+    const publishPluginMock = vi.fn()
+    registryGetMock.mockReturnValue({ publish: publishPluginMock })
+
+    const result = await runScheduledPublish({ now })
+    expect(result).toEqual({ considered: 1, published: 0, failed: 0 })
+    expect(publishPluginMock).not.toHaveBeenCalled()
+    expect(updateSocialPostMock).not.toHaveBeenCalled()
+  })
+
   it("skips scheduled posts whose scheduled_at is still in the future", async () => {
     const now = new Date("2026-05-01T12:00:00Z")
     listSocialPostsMock.mockResolvedValue([

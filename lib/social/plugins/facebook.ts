@@ -2,7 +2,14 @@
 // Facebook Page publishing via Meta Graph API.
 // Docs: https://developers.facebook.com/docs/graph-api/reference/v22.0/page/feed
 
-import type { PublishPlugin, PublishInput, PublishResult, AnalyticsResult, ConnectResult } from "./types"
+import type {
+  PublishPlugin,
+  PublishInput,
+  PublishResult,
+  AnalyticsResult,
+  ConnectResult,
+  ScheduleOnPlatformResult,
+} from "./types"
 import { fetchJson, buildQueryString } from "./shared/fetch-helpers"
 
 const GRAPH_API_VERSION = "v22.0"
@@ -106,6 +113,50 @@ export function createFacebookPlugin(credentials: FacebookCredentials): PublishP
       }
 
       return { success: true, platform_post_id: response.data.id }
+    },
+
+    /**
+     * Delegate scheduling to Facebook itself via `scheduled_publish_time`.
+     * The post sits in Meta Business Suite's scheduled queue until the time
+     * arrives, at which point Facebook publishes it automatically.
+     *
+     * Limits: scheduled_publish_time must be 10 min – 75 days in the future.
+     * Stories don't support native scheduling — caller falls back to cron.
+     */
+    async scheduleOnPlatform(
+      input: PublishInput & { scheduledAt: string },
+    ): Promise<ScheduleOnPlatformResult> {
+      if (input.postType === "story") {
+        return { supported: false, reason: "Facebook stories cannot be scheduled natively" }
+      }
+
+      // Reuse the existing publish() — it already honors scheduledAt for
+      // /photos, /videos, /feed, and the carousel /feed path.
+      const result = await this.publish(input)
+      if (!result.success) {
+        return { supported: true, success: false, error: result.error ?? "Schedule failed" }
+      }
+      if (!result.platform_post_id) {
+        return { supported: true, success: false, error: "No platform_post_id returned by Facebook" }
+      }
+      return { supported: true, success: true, platform_post_id: result.platform_post_id }
+    },
+
+    /**
+     * Cancel a previously-scheduled post by deleting it. FB allows DELETE on
+     * the unpublished post until scheduled_publish_time arrives.
+     */
+    async unscheduleOnPlatform(platformPostId: string) {
+      const url = new URL(`${GRAPH_API_BASE}/${platformPostId}`)
+      url.searchParams.set("access_token", access_token)
+      const response = await fetchJson<{ success?: boolean; error?: { message: string } }>(
+        url.toString(),
+        { method: "DELETE" },
+      )
+      if (!response.ok) {
+        return { success: false, error: extractFbError(response.errorText) }
+      }
+      return { success: true }
     },
 
     async fetchAnalytics(platformPostId: string): Promise<AnalyticsResult> {
