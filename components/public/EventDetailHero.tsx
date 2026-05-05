@@ -15,6 +15,36 @@ function formatDateLong(iso: string) {
   })
 }
 
+function formatTime(iso: string) {
+  return new Date(iso).toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  })
+}
+
+function formatEventWhen(event: Event) {
+  if (event.type === "clinic") {
+    return `${formatDateLong(event.start_date)} · ${formatTime(event.start_date)}`
+  }
+  if (event.end_date) {
+    const start = new Date(event.start_date)
+    const end = new Date(event.end_date)
+    const sameYear = start.getFullYear() === end.getFullYear()
+    const startLabel = start.toLocaleDateString("en-US", {
+      month: "long",
+      day: "numeric",
+      ...(sameYear ? {} : { year: "numeric" }),
+    })
+    const endLabel = end.toLocaleDateString("en-US", {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    })
+    return `${startLabel} – ${endLabel}`
+  }
+  return formatDateLong(event.start_date)
+}
+
 function formatDuration(event: Event) {
   if (event.type === "clinic") return "2-hour clinic"
   if (event.end_date) {
@@ -60,7 +90,7 @@ export function EventDetailHero({ event }: EventDetailHeroProps) {
 
         <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-primary-foreground/85 md:text-base">
           <span className="inline-flex items-center gap-2">
-            <CalendarDays className="h-4 w-4" /> {formatDateLong(event.start_date)}
+            <CalendarDays className="h-4 w-4" /> {formatEventWhen(event)}
           </span>
           <span className="inline-flex items-center gap-2">
             <MapPin className="h-4 w-4" /> {event.location_name}

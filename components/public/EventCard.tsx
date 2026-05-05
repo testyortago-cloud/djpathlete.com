@@ -28,6 +28,36 @@ function formatDate(iso: string) {
   })
 }
 
+function formatTime(iso: string) {
+  return new Date(iso).toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  })
+}
+
+function formatEventWhen(event: Event) {
+  if (event.type === "clinic") {
+    return `${formatDate(event.start_date)} · ${formatTime(event.start_date)}`
+  }
+  if (event.end_date) {
+    const start = new Date(event.start_date)
+    const end = new Date(event.end_date)
+    const sameYear = start.getFullYear() === end.getFullYear()
+    const startLabel = start.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      ...(sameYear ? {} : { year: "numeric" }),
+    })
+    const endLabel = end.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    })
+    return `${startLabel} – ${endLabel}`
+  }
+  return formatDate(event.start_date)
+}
+
 export function EventCard({ event, waiverContent }: EventCardProps) {
   const isFull = event.signup_count >= event.capacity
   const spotsLeft = Math.max(0, event.capacity - event.signup_count)
@@ -62,7 +92,7 @@ export function EventCard({ event, waiverContent }: EventCardProps) {
         <div className="mt-3 space-y-1 text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
             <CalendarDays className="h-4 w-4" />
-            <span>{formatDate(event.start_date)}</span>
+            <span>{formatEventWhen(event)}</span>
           </div>
           <div className="flex items-center gap-2">
             <MapPin className="h-4 w-4" />
