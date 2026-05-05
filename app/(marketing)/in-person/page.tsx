@@ -18,21 +18,21 @@ import { LocalVideoBackground } from "@/components/public/LocalVideoBackground"
 import { InquiryForm } from "@/components/public/InquiryForm"
 
 export const metadata: Metadata = {
-  title: "In-Person Coaching",
+  title: "In-Person Sports Performance Training",
   description:
-    "Advanced assessment-led performance coaching by Darren J Paul. Individualized programming for competitive athletes, elite youth, and return-to-performance athletes.",
+    "In-person sports performance training and performance coaching for athletes. Strength and conditioning training for athletes — and young athletes — with sports performance coach Darren J Paul.",
   alternates: { canonical: "/in-person" },
   openGraph: {
-    title: "In-Person Coaching | DJP Athlete",
+    title: "In-Person Sports Performance Training | DJP Athlete",
     description:
-      "Advanced assessment-led performance coaching by Darren J Paul. Individualized programming for competitive athletes, elite youth, and return-to-performance athletes.",
+      "In-person sports performance training. Strength and conditioning training for athletes and young athletes — assessment-led, individualized, and coach-led.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "In-Person Coaching | DJP Athlete",
+    title: "In-Person Sports Performance Training | DJP Athlete",
     description:
-      "Advanced assessment-led performance coaching by Darren J Paul. Individualized programming for competitive athletes, elite youth, and return-to-performance athletes.",
+      "In-person sports performance training. Strength and conditioning training for athletes and young athletes — assessment-led, individualized.",
   },
 }
 

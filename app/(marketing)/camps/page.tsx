@@ -15,21 +15,21 @@ import { renderLegalContent } from "@/lib/legal-content"
 export const dynamic = "force-dynamic"
 
 export const metadata: Metadata = {
-  title: "Soccer Performance Camps",
+  title: "High-Performance Soccer Camps",
   description:
-    "2-week off-season and pre-season soccer performance camps. Built for college, semi-pro, and professional players — and emerging talent aged 14–17 on the way up.",
+    "High-performance soccer camps for college, semi-pro, and professional players, plus emerging talent aged 14–17. Elite soccer performance training across 2-week off-season and pre-season blocks.",
   alternates: { canonical: "/camps" },
   openGraph: {
-    title: "Soccer Performance Camps | DJP Athlete",
+    title: "High-Performance Soccer Camps | DJP Athlete",
     description:
-      "2-week intensive soccer performance camps for high-performing and emerging talent. Train at the level the game demands.",
+      "High-performance soccer camps and elite soccer performance training. 2-week intensive blocks for college, semi-pro, professional, and emerging talent.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Soccer Performance Camps | DJP Athlete",
+    title: "High-Performance Soccer Camps | DJP Athlete",
     description:
-      "2-week intensive soccer performance camps for high-performing and emerging talent. Train at the level the game demands.",
+      "High-performance soccer camps and elite soccer performance training for high-performing and emerging talent.",
   },
 }
 

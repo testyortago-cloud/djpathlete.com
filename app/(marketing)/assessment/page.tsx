@@ -7,21 +7,21 @@ import { InquiryForm } from "@/components/public/InquiryForm"
 import { Button } from "@/components/ui/button"
 
 export const metadata: Metadata = {
-  title: "Assessment & Return to Performance",
+  title: "Athlete Assessments — Return to Performance",
   description:
-    "Performance-based assessment for athletes beyond rehab. Close the gap between medical clearance and true competitive readiness.",
+    "Athlete assessments built for performance, not just clearance. Athletic performance assessment, return to sport assessment, and assessment of athletic injuries — bridging clinical care and competitive readiness.",
   alternates: { canonical: "/assessment" },
   openGraph: {
-    title: "Assessment & Return to Performance | DJP Athlete",
+    title: "Athlete Assessments — Return to Performance | DJP Athlete",
     description:
-      "Performance-based assessment for athletes beyond rehab. Close the gap between medical clearance and true competitive readiness.",
+      "Athlete assessments and athletic performance assessment for athletes beyond rehab. Return to sport assessment that closes the gap between clearance and competition.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Assessment & Return to Performance | DJP Athlete",
+    title: "Athlete Assessments — Return to Performance | DJP Athlete",
     description:
-      "Performance-based assessment for athletes beyond rehab. Close the gap between medical clearance and true competitive readiness.",
+      "Athlete assessments and return to sport assessment for athletes beyond rehab — bridging clinical care and competition.",
   },
 }
 

@@ -15,21 +15,21 @@ import { renderLegalContent } from "@/lib/legal-content"
 export const dynamic = "force-dynamic"
 
 export const metadata: Metadata = {
-  title: "Agility Clinics",
+  title: "Speed and Agility Training Clinics",
   description:
-    "2-hour agility coaching clinics for athletes aged 10–18. Acceleration, deceleration, change of direction, and rotation — coached in small groups of 8–12 for serious feedback.",
+    "Speed and agility training for athletes aged 10–18. Agility drills for athletes and a structured speed and agility training program — coached in small groups of 8–12 for real feedback and transfer to sport.",
   alternates: { canonical: "/clinics" },
   openGraph: {
-    title: "Agility Clinics | DJP Athlete",
+    title: "Speed and Agility Training Clinics | DJP Athlete",
     description:
-      "2-hour agility coaching clinics for athletes aged 10–18. Small groups, proper coaching, real transfer to sport.",
+      "Speed and agility training for athletes aged 10–18. Agility training for athletes in small groups with a sports agility coach — real feedback, real transfer to sport.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Agility Clinics | DJP Athlete",
+    title: "Speed and Agility Training Clinics | DJP Athlete",
     description:
-      "2-hour agility coaching clinics for athletes aged 10–18. Small groups, proper coaching, real transfer to sport.",
+      "Speed and agility training for athletes aged 10–18. Small groups, proper coaching, real transfer to sport.",
   },
 }
 

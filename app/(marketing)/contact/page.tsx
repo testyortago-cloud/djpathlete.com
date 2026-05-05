@@ -7,19 +7,19 @@ import { ContactForm } from "./ContactForm"
 export const metadata: Metadata = {
   title: "Contact",
   description:
-    "Get in touch with DJP Athlete. Book a free consultation, ask questions about our coaching programs, or reach out for general inquiries.",
+    "Contact DJP Athlete for sports performance training and sports performance coach inquiries. Book a free consultation or send a message about our coaching programs.",
   alternates: { canonical: "/contact" },
   openGraph: {
     title: "Contact | DJP Athlete",
     description:
-      "Get in touch with DJP Athlete. Book a free consultation or ask questions about our coaching programs.",
+      "Contact DJP Athlete for sports performance training and coaching inquiries. Book a free consultation with sports performance coach Darren J Paul.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
     title: "Contact | DJP Athlete",
     description:
-      "Get in touch with DJP Athlete. Book a free consultation or ask questions about our coaching programs.",
+      "Contact DJP Athlete for sports performance training and coaching inquiries. Book a free consultation.",
   },
 }
 

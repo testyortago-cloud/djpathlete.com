@@ -16,21 +16,21 @@ import { InquiryForm } from "@/components/public/InquiryForm"
 import { Button } from "@/components/ui/button"
 
 export const metadata: Metadata = {
-  title: "Online Coaching",
+  title: "Online Sports Performance Training",
   description:
-    "More than remote training. A complete, coach-led online performance system for serious athletes. Individualized programming, video feedback, and direct coaching access.",
+    "Online sports performance training for serious athletes. Online sports training programs with an online personal trainer for athletes — individualized, coach-led, with video feedback.",
   alternates: { canonical: "/online" },
   openGraph: {
-    title: "Online Coaching | DJP Athlete",
+    title: "Online Sports Performance Training | DJP Athlete",
     description:
-      "More than remote training. A complete, coach-led online performance system for serious athletes. Individualized programming, video feedback, and direct coaching access.",
+      "Online sports performance training. Online sports training programs with an online personal trainer for athletes — individualized, coach-led, with video feedback.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Online Coaching | DJP Athlete",
+    title: "Online Sports Performance Training | DJP Athlete",
     description:
-      "More than remote training. A complete, coach-led online performance system for serious athletes. Individualized programming, video feedback, and direct coaching access.",
+      "Online sports performance training. Online sports training programs with individualized, coach-led programming and video feedback.",
   },
 }
 

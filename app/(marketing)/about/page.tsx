@@ -6,21 +6,21 @@ import { JsonLd } from "@/components/shared/JsonLd"
 import { FadeIn } from "@/components/shared/FadeIn"
 
 export const metadata: Metadata = {
-  title: "About",
+  title: "Darren J Paul — Athletic Performance Coach",
   description:
-    "Meet the coach behind DJP Athlete. Learn about our training philosophy, credentials, and commitment to helping athletes at every level reach their full potential.",
+    "Meet Darren J Paul — athletic performance coach and sports performance coach behind DJP Athlete. Two decades coaching elite athletes across football, rugby, athletics, and court sports.",
   alternates: { canonical: "/about" },
   openGraph: {
-    title: "About | DJP Athlete",
+    title: "Darren J Paul — Athletic Performance Coach | DJP Athlete",
     description:
-      "Meet the coach behind DJP Athlete. Learn about our training philosophy and commitment to athlete development.",
+      "Meet Darren J Paul — athletic performance coach and sports performance coach behind DJP Athlete. Two decades coaching elite athletes across multiple sports.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "About | DJP Athlete",
+    title: "Darren J Paul — Athletic Performance Coach | DJP Athlete",
     description:
-      "Meet the coach behind DJP Athlete. Learn about our training philosophy and commitment to athlete development.",
+      "Meet Darren J Paul — athletic performance coach and sports performance coach behind DJP Athlete. Two decades coaching elite athletes.",
   },
 }
 

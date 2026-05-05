@@ -13,21 +13,21 @@ import { getFeaturedTestimonials } from "@/lib/db/testimonials"
 export const revalidate = 3600 // revalidate every hour
 
 export const metadata: Metadata = {
-  title: "DJP Athlete | Elite Performance Coaching",
+  title: { absolute: "Sports Performance Coaching for Elite Athletes | DJP Athlete" },
   description:
-    "Elite performance coaching by Darren J Paul. In-person training, online coaching, and return-to-performance assessment for serious athletes.",
+    "Sports performance coaching by Darren J Paul. Elite athlete coaching, sports performance training, and return-to-performance assessment for athletes competing at the highest level.",
   alternates: { canonical: "/" },
   openGraph: {
-    title: "DJP Athlete | Elite Performance Coaching",
+    title: "Sports Performance Coaching for Elite Athletes | DJP Athlete",
     description:
-      "Elite performance coaching by Darren J Paul. In-person training, online coaching, and return-to-performance assessment for serious athletes.",
+      "Sports performance coaching by Darren J Paul. Elite athlete coaching, sports performance training, and return-to-performance assessment for serious athletes.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "DJP Athlete | Elite Performance Coaching",
+    title: "Sports Performance Coaching for Elite Athletes | DJP Athlete",
     description:
-      "Elite performance coaching by Darren J Paul. In-person training, online coaching, and return-to-performance assessment for serious athletes.",
+      "Sports performance coaching by Darren J Paul. Elite athlete coaching, sports performance training, and return-to-performance assessment for serious athletes.",
   },
 }
 
