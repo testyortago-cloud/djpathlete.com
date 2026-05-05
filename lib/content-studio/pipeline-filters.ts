@@ -112,8 +112,14 @@ export function applyFilters<P extends SocialPost>(
     filters.from !== null ||
     filters.to !== null
 
+  const videosWithAnyPost = new Set(posts.map((p) => p.source_video_id).filter((id): id is string => !!id))
   const allowedVideoIds = new Set(filteredPosts.map((p) => p.source_video_id).filter((id): id is string => !!id))
-  const filteredVideos = hasPostScopedFilter ? videos.filter((v) => allowedVideoIds.has(v.id)) : videos
+  // Pre-generation videos (uploaded/transcribing/transcribed with zero posts)
+  // should always pass through — post-scoped filters can't possibly match them.
+  // Videos that already have posts must match the filter via at least one post.
+  const filteredVideos = hasPostScopedFilter
+    ? videos.filter((v) => !videosWithAnyPost.has(v.id) || allowedVideoIds.has(v.id))
+    : videos
 
   return { videos: filteredVideos, posts: filteredPosts }
 }

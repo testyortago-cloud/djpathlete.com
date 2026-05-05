@@ -179,6 +179,22 @@ describe("applyFilters", () => {
     expect(filtered.map((v) => v.id)).toEqual(["v2"])
   })
 
+  it("keeps pre-generation videos (zero posts) visible even when post-scoped filters are active", () => {
+    const preGenVideos: VideoUpload[] = [
+      ...videos,
+      video("v3-uploaded", { status: "uploaded" }),
+      video("v4-transcribed-no-posts", { status: "transcribed" }),
+    ]
+    const { videos: filtered } = applyFilters(preGenVideos, posts, {
+      platforms: ["tiktok"],
+      statuses: [],
+      from: null,
+      to: null,
+      sourceVideoId: null,
+    })
+    expect(filtered.map((v) => v.id).sort()).toEqual(["v2", "v3-uploaded", "v4-transcribed-no-posts"])
+  })
+
   it("when no filters are set, returns everything", () => {
     const out = applyFilters(videos, posts, {
       platforms: [],
