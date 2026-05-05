@@ -29,10 +29,12 @@ const assessmentSchema = {
   "@context": "https://schema.org",
   "@type": "Service",
   provider: { "@type": "Organization", name: "DJP Athlete", url: "https://www.darrenjpaul.com" },
-  serviceType: "Return to Performance Assessment",
+  serviceType: "Athlete Assessments — Return to Sport Assessment",
   areaServed: "Worldwide",
   description:
-    "Performance-based assessment process designed to evaluate readiness for high-level sport after the conclusion of clinical care.",
+    "Athlete assessments built for performance, not just clearance. Athletic performance assessment, return to sport assessment, and assessment of athletic injuries — a sports performance assessment process that evaluates readiness for high-level sport after the conclusion of clinical care, contrasting traditional vs performance-based assessment.",
+  keywords:
+    "athlete assessments, athletic performance assessment, sports performance assessment, return to sport assessment, assessment of athletic injuries, traditional vs performance based assessment",
   url: "https://www.darrenjpaul.com/assessment",
 }
 

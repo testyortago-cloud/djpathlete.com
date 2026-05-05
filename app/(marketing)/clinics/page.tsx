@@ -41,9 +41,11 @@ const serviceSchema = {
     name: "Darren J Paul",
     worksFor: { "@type": "Organization", name: "DJP Athlete", url: "https://www.darrenjpaul.com" },
   },
-  serviceType: "Youth Agility Clinic",
+  serviceType: "Speed and Agility Training — Youth Agility Clinic",
   description:
-    "2-hour agility coaching clinics for youth athletes aged 10–18, focused on acceleration, deceleration, change of direction, and rotation, in groups of 8–12.",
+    "Speed and agility training for athletes aged 10–18. A structured speed and agility training program covering agility drills for athletes, sports agility training, and youth speed and agility training — coached in groups of 8–12 with focus on acceleration, deceleration, change of direction, and rotation.",
+  keywords:
+    "speed and agility training, agility drills for athletes, speed and agility training program, agility training for athletes, speed and agility training near me, speed and agility training for youth, youth speed and agility training, sports agility training",
   url: "https://www.darrenjpaul.com/clinics",
   audience: { "@type": "Audience", audienceType: "Youth Athletes, 10–18" },
 }

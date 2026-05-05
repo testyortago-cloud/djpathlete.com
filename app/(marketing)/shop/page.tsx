@@ -37,13 +37,15 @@ export const metadata: Metadata = {
 const shopSchema = {
   "@context": "https://schema.org",
   "@type": "WebPage",
-  name: "Shop — DJP Athlete",
-  description: "Shop DJP Athlete performance apparel and training gear.",
-  url: "https://djpathlete.com/shop",
+  name: "Athletic Performance Apparel — DJP Athlete",
+  description:
+    "Athletic performance apparel and training gear from DJP Athlete. Compression wear, training tops, and branded athletic clothing built for serious athletes.",
+  keywords: "athletic performance apparel, performance apparel, training gear, compression wear, athletic clothing",
+  url: "https://www.darrenjpaul.com/shop",
   publisher: {
     "@type": "Organization",
     name: "DJP Athlete",
-    url: "https://djpathlete.com",
+    url: "https://www.darrenjpaul.com",
   },
 }
 

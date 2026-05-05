@@ -41,9 +41,11 @@ const serviceSchema = {
     name: "Darren J Paul",
     worksFor: { "@type": "Organization", name: "DJP Athlete", url: "https://www.darrenjpaul.com" },
   },
-  serviceType: "Soccer Performance Camp · Off-Season / Pre-Season",
+  serviceType: "High-Performance Soccer Camps · Off-Season / Pre-Season",
   description:
-    "2-week intensive soccer performance camps for college, semi-pro, and professional players, plus emerging talent aged 14–17.",
+    "High-performance soccer camps and elite soccer performance training. 2-week intensive sports performance camps and soccer performance training blocks for college, semi-pro, and professional players, plus emerging talent aged 14–17.",
+  keywords:
+    "high-performance soccer camps, elite soccer performance, soccer performance training, soccer camps, sports performance camps",
   url: "https://www.darrenjpaul.com/camps",
   audience: {
     "@type": "Audience",

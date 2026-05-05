@@ -48,9 +48,11 @@ const serviceSchema = {
       url: "https://www.darrenjpaul.com",
     },
   },
-  serviceType: "In-Person Athletic Performance Coaching",
+  serviceType: "In-Person Sports Performance Training",
   description:
-    "Advanced assessment-led performance coaching. Individualized programming for competitive athletes, elite youth, and return-to-performance athletes.",
+    "In-person sports performance training and performance coaching for athletes. Strength and conditioning training for athletes — including young athletes — with a sports performance coach. Individualized programming for competitive athletes, elite youth, and return-to-performance athletes.",
+  keywords:
+    "in-person sports performance training, sports performance training, performance coaching for athletes, strength and conditioning training for athletes, strength and conditioning training for young athletes, sports performance coach",
   url: "https://www.darrenjpaul.com/in-person",
 }
 

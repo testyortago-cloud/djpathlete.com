@@ -27,7 +27,9 @@ const contactPageSchema = {
   "@context": "https://schema.org",
   "@type": "ContactPage",
   name: "Contact DJP Athlete",
-  description: "Contact page for DJP Athlete coaching services. Book a consultation or send us a message.",
+  description:
+    "Contact DJP Athlete for sports performance training and sports performance coach inquiries. Book a consultation or send us a message about coaching programs.",
+  keywords: "contact, sports performance training, sports performance coach",
   url: "https://www.darrenjpaul.com/contact",
   mainEntity: {
     "@type": "Organization",

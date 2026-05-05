@@ -46,9 +46,11 @@ const serviceSchema = {
       url: "https://www.darrenjpaul.com",
     },
   },
-  serviceType: "Online Athletic Performance Coaching",
+  serviceType: "Online Sports Performance Training",
   description:
-    "A complete, coach-led online performance system for serious athletes. Individualized programming, video feedback, and direct coaching access.",
+    "Online sports performance training for serious athletes. Online sports training programs led by an online personal trainer for athletes — sports performance coach support, sports training online, individualized programming, video feedback, and direct coaching access.",
+  keywords:
+    "online sports performance training, sports training online, online sports training programs, online personal trainer for athletes, sports performance coach, sports performance training",
   url: "https://www.darrenjpaul.com/online",
 }
 

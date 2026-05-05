@@ -28,14 +28,22 @@ const personSchema = {
   "@context": "https://schema.org",
   "@type": "Person",
   name: "Darren Paul",
-  jobTitle: "Head Coach & Founder",
+  alternateName: "Darren J Paul",
+  jobTitle: "Athletic Performance Coach",
   worksFor: {
     "@type": "Organization",
     name: "DJP Athlete",
     url: "https://www.darrenjpaul.com",
   },
   description:
-    "Elite sports coach and founder of DJP Athlete, specializing in personalized athletic performance training.",
+    "Darren J Paul — athletic performance coach and sports performance coach behind DJP Athlete. Two decades coaching elite athletes across football, rugby, athletics, and court sports.",
+  knowsAbout: [
+    "athletic performance coach",
+    "sports performance coach",
+    "sports performance training",
+    "strength and conditioning",
+    "return to sport assessment",
+  ],
   url: "https://www.darrenjpaul.com/about",
 }
 

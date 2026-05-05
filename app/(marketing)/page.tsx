@@ -38,7 +38,9 @@ const organizationSchema = {
   url: "https://www.darrenjpaul.com",
   logo: "https://www.darrenjpaul.com/og-image.png",
   description:
-    "DJP Athlete provides elite performance coaching by Darren J Paul. In-person training, online coaching, and return-to-performance assessment for serious athletes.",
+    "DJP Athlete provides sports performance coaching by Darren J Paul. Elite athlete coaching, elite sports performance training, athletic performance coach services, and performance coaching for athletes — in-person training, online coaching, and return-to-performance assessment for serious athletes.",
+  keywords:
+    "sports performance coaching, elite athlete coaching, elite sports performance training, elite sports coaching, athletic performance coach, sports performance training, performance coaching for athletes",
   sameAs: [
     "https://www.linkedin.com/in/darren-paul-phd-b022a213b",
     "https://www.instagram.com/darrenjpaul/",
