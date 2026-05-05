@@ -41,11 +41,16 @@ describe("<PostsTabRow>", () => {
   it("when expanded, shows the edit textarea and action buttons", () => {
     render(<PostsTabRow post={makePost()} isExpanded={true} onToggle={vi.fn()} onMutate={vi.fn()} />)
     expect(screen.getByRole("textbox", { name: /caption/i })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: /approve/i })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: /schedule/i })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /^schedule$/i })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /publish now/i })).toBeInTheDocument()
   })
 
-  it("for failed posts, surfaces the rejection note", () => {
+  it("does not render a standalone Approve button (consolidated into Schedule)", () => {
+    render(<PostsTabRow post={makePost()} isExpanded={true} onToggle={vi.fn()} onMutate={vi.fn()} />)
+    expect(screen.queryByRole("button", { name: /^approve$/i })).not.toBeInTheDocument()
+  })
+
+  it("for failed posts, surfaces the rejection note and a Retry now button", () => {
     render(
       <PostsTabRow
         post={makePost({ approval_status: "failed", rejection_notes: "Facebook API 403" })}
@@ -55,10 +60,10 @@ describe("<PostsTabRow>", () => {
       />,
     )
     expect(screen.getByText(/Facebook API 403/)).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /retry now/i })).toBeInTheDocument()
   })
 
-  it("published posts lock the edit UI and hide approve/schedule", () => {
+  it("published posts lock the edit UI and hide schedule/publish-now", () => {
     render(
       <PostsTabRow
         post={makePost({ approval_status: "published", published_at: "2026-04-16T08:00:00Z" })}
@@ -67,13 +72,13 @@ describe("<PostsTabRow>", () => {
         onMutate={vi.fn()}
       />,
     )
-    expect(screen.queryByRole("button", { name: /approve/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: /schedule/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /^schedule$/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /publish now/i })).not.toBeInTheDocument()
     // "Published [timestamp]" appears in the row footer when the post is published
     expect(screen.getByText(/Published\s+\d/)).toBeInTheDocument()
   })
 
-  it("hides Save caption button for Story posts", () => {
+  it("hides Save caption and Schedule buttons for Story posts", () => {
     render(
       <PostsTabRow
         post={makePost({ post_type: "story", approval_status: "draft" })}
@@ -83,18 +88,7 @@ describe("<PostsTabRow>", () => {
       />,
     )
     expect(screen.queryByRole("button", { name: /save caption/i })).not.toBeInTheDocument()
-  })
-
-  it("hides Approve button for Story posts", () => {
-    render(
-      <PostsTabRow
-        post={makePost({ post_type: "story", approval_status: "draft" })}
-        isExpanded={true}
-        onToggle={vi.fn()}
-        onMutate={vi.fn()}
-      />,
-    )
-    expect(screen.queryByRole("button", { name: /^approve$/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /^schedule$/i })).not.toBeInTheDocument()
   })
 
   it("shows Publish now button for draft Story posts", () => {

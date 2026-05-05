@@ -1,11 +1,23 @@
 // app/api/admin/social/posts/[id]/schedule/route.ts
-// POST { scheduled_at: ISO datetime } — schedules an approved post for
-// automatic publishing. Vercel Cron's /publish-due handler picks up rows
-// where approval_status="scheduled" AND scheduled_at <= now().
+// POST { scheduled_at: ISO datetime } — schedules a post for automatic
+// publishing. Auto-approves the post first if needed, so the coach only has
+// to answer "when?" instead of stepping through a draft → approved → scheduled
+// state machine. Vercel Cron's /publish-due handler picks up rows where
+// approval_status="scheduled" AND scheduled_at <= now().
 
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { getSocialPostById, updateSocialPost } from "@/lib/db/social-posts"
+import { listPlatformConnections } from "@/lib/db/platform-connections"
+
+const SCHEDULABLE_STATUSES = new Set([
+  "draft",
+  "edited",
+  "approved",
+  "scheduled",
+  "awaiting_connection",
+  "failed",
+])
 
 export async function POST(
   request: NextRequest,
@@ -35,9 +47,21 @@ export async function POST(
   if (!post) {
     return NextResponse.json({ error: "Social post not found" }, { status: 404 })
   }
-  if (post.approval_status !== "approved" && post.approval_status !== "scheduled") {
+
+  if (!SCHEDULABLE_STATUSES.has(post.approval_status)) {
     return NextResponse.json(
-      { error: `Only approved posts can be scheduled (current status: ${post.approval_status})` },
+      { error: `Cannot schedule a ${post.approval_status} post` },
+      { status: 409 },
+    )
+  }
+
+  const connections = await listPlatformConnections()
+  const connected = new Set(
+    connections.filter((c) => c.status === "connected").map((c) => c.plugin_name),
+  )
+  if (!connected.has(post.platform)) {
+    return NextResponse.json(
+      { error: `Connect ${post.platform} first to schedule this post` },
       { status: 409 },
     )
   }

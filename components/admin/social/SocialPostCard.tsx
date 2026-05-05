@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Check, X, Pencil, Calendar, CalendarX, Zap, AlertCircle } from "lucide-react"
+import { X, Pencil, Calendar, CalendarX, Zap, AlertCircle } from "lucide-react"
 import { toast } from "sonner"
 import { SchedulePickerDialog } from "./SchedulePickerDialog"
 import type { SocialPost } from "@/types/database"
@@ -16,7 +16,7 @@ interface SocialPostCardProps {
   onToggleSelected?: (id: string, selected: boolean) => void
 }
 
-type BusyAction = "approve" | "reject" | "save" | "unschedule" | "publishNow" | null
+type BusyAction = "reject" | "save" | "unschedule" | "publishNow" | null
 
 export function SocialPostCard({
   post,
@@ -30,23 +30,6 @@ export function SocialPostCard({
   const [draftContent, setDraftContent] = useState(post.content)
   const [busy, setBusy] = useState<BusyAction>(null)
   const Icon = PLATFORM_ICONS[post.platform]
-
-  async function approve() {
-    setBusy("approve")
-    try {
-      const res = await fetch(`/api/admin/social/posts/${post.id}/approve`, { method: "POST" })
-      if (!res.ok) throw new Error(await res.text())
-      const { approval_status } = (await res.json()) as { approval_status: SocialPost["approval_status"] }
-      onUpdate({ ...post, approval_status })
-      toast.success(
-        approval_status === "awaiting_connection" ? "Approved — waiting for platform connection" : "Approved",
-      )
-    } catch (error) {
-      toast.error((error as Error).message || "Approve failed")
-    } finally {
-      setBusy(null)
-    }
-  }
 
   async function reject() {
     setBusy("reject")
@@ -125,10 +108,12 @@ export function SocialPostCard({
     }
   }
 
-  const canSchedule = post.approval_status === "approved" || post.approval_status === "scheduled"
-  const canUnschedule = post.approval_status === "scheduled"
-  const canPublishNow = post.approval_status === "approved" || post.approval_status === "failed"
-  const showFailedBanner = post.approval_status === "failed" && post.rejection_notes
+  const isPublished = post.approval_status === "published"
+  const isRejected = post.approval_status === "rejected"
+  const isScheduled = post.approval_status === "scheduled"
+  const isFailed = post.approval_status === "failed"
+  const showActions = !isPublished && !isRejected
+  const showFailedBanner = isFailed && post.rejection_notes
 
   return (
     <>
@@ -201,27 +186,30 @@ export function SocialPostCard({
                 Cancel
               </button>
             </>
-          ) : (
+          ) : showActions ? (
             <>
               <button
                 type="button"
-                onClick={approve}
-                disabled={busy !== null || post.approval_status === "published"}
+                onClick={() => setScheduleOpen(true)}
+                disabled={busy !== null}
+                className="text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-60 inline-flex items-center gap-1"
+              >
+                <Calendar className="size-3" /> {isScheduled ? "Reschedule" : "Schedule"}
+              </button>
+              <button
+                type="button"
+                onClick={publishNow}
+                disabled={busy !== null}
                 className="text-xs px-3 py-1.5 rounded-md bg-success/10 text-success hover:bg-success/20 disabled:opacity-60 inline-flex items-center gap-1"
               >
-                <Check className="size-3" /> {busy === "approve" ? "Approving..." : "Approve"}
+                <Zap className="size-3" />{" "}
+                {busy === "publishNow"
+                  ? "Queueing..."
+                  : isFailed
+                    ? "Retry now"
+                    : "Publish now"}
               </button>
-              {canSchedule && (
-                <button
-                  type="button"
-                  onClick={() => setScheduleOpen(true)}
-                  disabled={busy !== null}
-                  className="text-xs px-3 py-1.5 rounded-md bg-accent/10 text-accent hover:bg-accent/20 inline-flex items-center gap-1"
-                >
-                  <Calendar className="size-3" /> {post.scheduled_at ? "Reschedule" : "Schedule"}
-                </button>
-              )}
-              {canUnschedule && (
+              {isScheduled && (
                 <button
                   type="button"
                   onClick={unschedule}
@@ -231,29 +219,6 @@ export function SocialPostCard({
                   <CalendarX className="size-3" /> {busy === "unschedule" ? "Unscheduling..." : "Unschedule"}
                 </button>
               )}
-              {canPublishNow && (
-                <button
-                  type="button"
-                  onClick={publishNow}
-                  disabled={busy !== null}
-                  className="text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-60 inline-flex items-center gap-1"
-                >
-                  <Zap className="size-3" />{" "}
-                  {busy === "publishNow"
-                    ? "Queueing..."
-                    : post.approval_status === "failed"
-                      ? "Retry now"
-                      : "Publish now"}
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={reject}
-                disabled={busy !== null || post.approval_status === "rejected"}
-                className="text-xs px-3 py-1.5 rounded-md bg-error/10 text-error hover:bg-error/20 disabled:opacity-60 inline-flex items-center gap-1"
-              >
-                <X className="size-3" /> Reject
-              </button>
               <button
                 type="button"
                 onClick={() => setEditing(true)}
@@ -262,8 +227,16 @@ export function SocialPostCard({
               >
                 <Pencil className="size-3" /> Edit
               </button>
+              <button
+                type="button"
+                onClick={reject}
+                disabled={busy !== null}
+                className="text-xs px-3 py-1.5 rounded-md bg-error/10 text-error hover:bg-error/20 disabled:opacity-60 inline-flex items-center gap-1 ml-auto"
+              >
+                <X className="size-3" /> Reject
+              </button>
             </>
-          )}
+          ) : null}
         </div>
       </div>
 

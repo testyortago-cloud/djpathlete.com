@@ -1,12 +1,23 @@
 // app/api/admin/social/posts/[id]/publish-now/route.ts
-// POST — transitions approved OR failed posts into "scheduled" with
-// scheduled_at set to a past timestamp, so the publish-due cron picks it
-// up on the next cycle (≤5 min). Also clears rejection_notes so any stale
-// failure reason disappears from the UI.
+// POST — queues a post for the next publish cycle (≤5 min) by setting
+// scheduled_at to a past timestamp. Auto-approves drafts so the coach
+// can publish in one click; checks platform connection so we don't queue
+// a post we can't actually deliver. Stories follow a lightweight pipeline
+// where draft posts are always allowed (umbrella spec §5.6).
 
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { getSocialPostById, updateSocialPost } from "@/lib/db/social-posts"
+import { listPlatformConnections } from "@/lib/db/platform-connections"
+
+const PUBLISHABLE_STATUSES = new Set([
+  "draft",
+  "edited",
+  "approved",
+  "scheduled",
+  "awaiting_connection",
+  "failed",
+])
 
 export async function POST(
   _request: NextRequest,
@@ -23,21 +34,26 @@ export async function POST(
     return NextResponse.json({ error: "Social post not found" }, { status: 404 })
   }
 
-  // Stories follow a lightweight pipeline (umbrella spec §5.6) — draft → published
-  // skipping the approved gate. Non-story posts still require approval first.
-  const isStoryDraftBypass =
-    post.approval_status === "draft" && post.post_type === "story"
-  const allowed =
-    post.approval_status === "approved" ||
-    post.approval_status === "failed" ||
-    isStoryDraftBypass
-  if (!allowed) {
+  if (!PUBLISHABLE_STATUSES.has(post.approval_status)) {
     return NextResponse.json(
-      {
-        error: `Publish Now only works for approved, failed, or draft-Story posts (current status: ${post.approval_status})`,
-      },
+      { error: `Cannot publish a ${post.approval_status} post` },
       { status: 409 },
     )
+  }
+
+  // Stories skip the platform-connection check because the lightweight
+  // story pipeline (draft → published) is exempt from the connection gate.
+  if (post.post_type !== "story") {
+    const connections = await listPlatformConnections()
+    const connected = new Set(
+      connections.filter((c) => c.status === "connected").map((c) => c.plugin_name),
+    )
+    if (!connected.has(post.platform)) {
+      return NextResponse.json(
+        { error: `Connect ${post.platform} first to publish this post` },
+        { status: 409 },
+      )
+    }
   }
 
   const scheduledAt = new Date(Date.now() - 1000).toISOString()

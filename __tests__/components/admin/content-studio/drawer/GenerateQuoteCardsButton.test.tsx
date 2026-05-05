@@ -1,5 +1,5 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react"
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest"
 
 const mockPush = vi.fn()
 vi.mock("next/navigation", () => ({
@@ -11,6 +11,20 @@ const mockToastError = vi.fn()
 vi.mock("sonner", () => ({
   toast: { success: mockToastSuccess, error: mockToastError },
 }))
+
+// Radix Dropdown relies on Pointer Events APIs that jsdom doesn't ship.
+// Without these stubs, opening the menu via fireEvent.click hangs.
+beforeAll(() => {
+  if (!Element.prototype.hasPointerCapture) {
+    Element.prototype.hasPointerCapture = () => false
+  }
+  if (!Element.prototype.releasePointerCapture) {
+    Element.prototype.releasePointerCapture = () => {}
+  }
+  if (!Element.prototype.scrollIntoView) {
+    Element.prototype.scrollIntoView = () => {}
+  }
+})
 
 describe("GenerateQuoteCardsButton", () => {
   beforeEach(() => {
@@ -33,10 +47,10 @@ describe("GenerateQuoteCardsButton", () => {
     return mod.GenerateQuoteCardsButton
   }
 
-  it("renders the button with a label that mentions quote cards", async () => {
+  it("renders a single trigger button labeled 'Make post from transcript'", async () => {
     const Comp = await importComp()
     render(<Comp videoUploadId="video-1" hasTranscript />)
-    const btn = screen.getByRole("button", { name: /quote/i })
+    const btn = screen.getByRole("button", { name: /make post from transcript/i })
     expect(btn).toBeInTheDocument()
     expect(btn).not.toBeDisabled()
   })
@@ -44,14 +58,37 @@ describe("GenerateQuoteCardsButton", () => {
   it("is disabled when hasTranscript is false", async () => {
     const Comp = await importComp()
     render(<Comp videoUploadId="video-1" hasTranscript={false} />)
-    const btn = screen.getByRole("button", { name: /quote/i })
+    const btn = screen.getByRole("button", { name: /make post from transcript/i })
     expect(btn).toBeDisabled()
   })
 
-  it("POSTs to the endpoint, shows success toast, and navigates to the new post on success", async () => {
+  // Radix DropdownMenu opens on pointerdown, then a keyboard navigation
+  // step focuses the first item; Enter on that item invokes onSelect.
+  // fireEvent.click alone doesn't open Radix menus in jsdom, so we drive
+  // the trigger with pointerDown + keyDown(Enter).
+  function openAndSelect(trigger: HTMLElement, itemNameMatcher: RegExp) {
+    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false })
+    fireEvent.pointerUp(trigger, { button: 0 })
+    fireEvent.click(trigger)
+    return screen.findByRole("menuitem", { name: itemNameMatcher })
+  }
+
+  it("opens a menu with one item per platform", async () => {
     const Comp = await importComp()
     render(<Comp videoUploadId="video-1" hasTranscript />)
-    fireEvent.click(screen.getByRole("button", { name: /quote/i }))
+    const trigger = screen.getByRole("button", { name: /make post from transcript/i })
+    await openAndSelect(trigger, /quote carousel.+instagram/i)
+
+    expect(screen.getByRole("menuitem", { name: /quote carousel.+facebook/i })).toBeInTheDocument()
+    expect(screen.getByRole("menuitem", { name: /quote carousel.+linkedin/i })).toBeInTheDocument()
+  })
+
+  it("POSTs the chosen platform, shows success toast, and navigates to the new post", async () => {
+    const Comp = await importComp()
+    render(<Comp videoUploadId="video-1" hasTranscript />)
+    const trigger = screen.getByRole("button", { name: /make post from transcript/i })
+    const item = await openAndSelect(trigger, /quote carousel.+instagram/i)
+    fireEvent.click(item)
 
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/admin/content/post/post-1"))
     expect(fetch).toHaveBeenCalledWith(
@@ -63,6 +100,7 @@ describe("GenerateQuoteCardsButton", () => {
     )
     const body = JSON.parse(((fetch as ReturnType<typeof vi.fn>).mock.calls[0][1] as RequestInit).body as string)
     expect(body.videoUploadId).toBe("video-1")
+    expect(body.platform).toBe("instagram")
     expect(mockToastSuccess).toHaveBeenCalled()
     expect(mockToastError).not.toHaveBeenCalled()
   })
@@ -76,55 +114,12 @@ describe("GenerateQuoteCardsButton", () => {
     )
     const Comp = await importComp()
     render(<Comp videoUploadId="video-1" hasTranscript />)
-    fireEvent.click(screen.getByRole("button", { name: /quote/i }))
+    const trigger = screen.getByRole("button", { name: /make post from transcript/i })
+    const item = await openAndSelect(trigger, /quote carousel.+facebook/i)
+    fireEvent.click(item)
 
     await waitFor(() => expect(mockToastError).toHaveBeenCalled())
     expect(mockPush).not.toHaveBeenCalled()
     expect(mockToastSuccess).not.toHaveBeenCalled()
-  })
-
-  it("disables the button while the request is in flight", async () => {
-    let resolveFetch: (value: Response) => void = () => {}
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(
-        () =>
-          new Promise<Response>((resolve) => {
-            resolveFetch = resolve
-          }),
-      ),
-    )
-    const Comp = await importComp()
-    render(<Comp videoUploadId="video-1" hasTranscript />)
-    const btn = screen.getByRole("button", { name: /quote/i })
-    fireEvent.click(btn)
-    // After click, button should be disabled until fetch resolves
-    await waitFor(() => expect(btn).toBeDisabled())
-    resolveFetch(
-      new Response(JSON.stringify({ postId: "post-1", mediaAssetIds: [] }), { status: 200 }),
-    )
-    await waitFor(() => expect(mockPush).toHaveBeenCalled())
-  })
-
-  it("sends platform=instagram in the POST body when platform='instagram'", async () => {
-    const Comp = await importComp()
-    render(<Comp videoUploadId="video-1" hasTranscript platform="instagram" />)
-    fireEvent.click(screen.getByRole("button", { name: /ig quote carousel/i }))
-
-    await waitFor(() => expect(mockPush).toHaveBeenCalled())
-    const body = JSON.parse(((fetch as ReturnType<typeof vi.fn>).mock.calls[0][1] as RequestInit).body as string)
-    expect(body.platform).toBe("instagram")
-  })
-
-  it("defaults to platform=facebook and labels the button accordingly", async () => {
-    const Comp = await importComp()
-    render(<Comp videoUploadId="video-1" hasTranscript />)
-    expect(screen.getByRole("button", { name: /fb quote carousel/i })).toBeInTheDocument()
-  })
-
-  it("renders a LinkedIn-labeled button when platform='linkedin'", async () => {
-    const Comp = await importComp()
-    render(<Comp videoUploadId="video-1" hasTranscript platform="linkedin" />)
-    expect(screen.getByRole("button", { name: /linkedin carousel/i })).toBeInTheDocument()
   })
 })
