@@ -642,6 +642,43 @@ async function syncAndNotify(session: Stripe.Checkout.Session, programId: string
 
 // ─── Event signup checkout ────────────────────────────────────────────────────
 
+async function recordEventSignupPayment(
+  session: Stripe.Checkout.Session,
+  signupId: string,
+  signup: { user_id: string | null; parent_email: string; athlete_name: string } | null,
+  status: "succeeded" | "refunded",
+) {
+  const stripePaymentId = typeof session.payment_intent === "string" ? session.payment_intent : null
+  const amount = session.amount_total ?? 0
+  if (!stripePaymentId || amount <= 0) return
+
+  const existing = await getPaymentByStripeId(stripePaymentId)
+  if (existing) return
+
+  const customerEmail = session.customer_details?.email ?? signup?.parent_email ?? null
+  const tracking = await resolveTrackingParams(session.metadata ?? {}, customerEmail)
+  const resolvedUserId =
+    signup?.user_id ?? (customerEmail ? await tryResolveUserIdFromEmail(customerEmail) : null)
+
+  await createPayment({
+    user_id: resolvedUserId,
+    stripe_payment_id: stripePaymentId,
+    stripe_customer_id: (session.customer as string) ?? null,
+    amount_cents: amount,
+    currency: session.currency ?? "usd",
+    status,
+    description: "Event signup",
+    metadata: {
+      type: "event_signup",
+      event_id: session.metadata?.event_id ?? null,
+      event_signup_id: signupId,
+      parent_email: signup?.parent_email ?? null,
+      athlete_name: signup?.athlete_name ?? null,
+    },
+    ...tracking,
+  })
+}
+
 async function handleEventSignupCheckout(session: Stripe.Checkout.Session) {
   const signupId = session.metadata?.event_signup_id
   if (!signupId) {
@@ -676,6 +713,16 @@ async function handleEventSignupCheckout(session: Stripe.Checkout.Session) {
     .eq("id", signupId)
 
   const updated = await getSignupById(signupId)
+
+  // Record the payment so event revenue surfaces on /admin/dashboard
+  // (totalRevenue, revenue trend, monthly chart, activity feed). Without this
+  // the payments table only sees program/coaching/shop checkouts.
+  try {
+    await recordEventSignupPayment(session, signupId, updated, "succeeded")
+  } catch (err) {
+    console.error(`[webhook event_signup] payment record failed for signup ${signupId}`, err)
+  }
+
   const eventId = session.metadata?.event_id
   if (updated && eventId) {
     const ev = await getEventByIdForSignup(eventId)
@@ -724,6 +771,16 @@ async function handleEventSignupOverbook(
     .eq("id", signupId)
 
   const signup = await getSignupById(signupId)
+
+  // Record the payment as refunded so the dashboard still has accurate history
+  // (the customer was charged then immediately refunded — net zero revenue).
+  // Done before the email so a slow Resend call can't mask the data write.
+  try {
+    await recordEventSignupPayment(session, signupId, signup, "refunded")
+  } catch (err) {
+    console.error(`[webhook event_signup overbook] payment record failed for ${signupId}`, err)
+  }
+
   const eventId = session.metadata?.event_id
   if (signup && eventId) {
     const ev = await getEventByIdForSignup(eventId)
