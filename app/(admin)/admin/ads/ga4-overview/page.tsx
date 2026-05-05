@@ -316,11 +316,11 @@ function SetupChecklist() {
         </li>
         <li>
           GA4 → Admin → Property access management → add the service-account email as{" "}
-          <strong>Viewer</strong> on property <code className="font-mono">391581052</code>.
+          <strong>Viewer</strong> on property <code className="font-mono">533252977</code>.
         </li>
         <li>
           Set envs:
-          <pre className="mt-1 p-2 rounded bg-card text-foreground font-mono text-[11px] whitespace-pre-wrap">{`GA4_PROPERTY_ID=391581052
+          <pre className="mt-1 p-2 rounded bg-card text-foreground font-mono text-[11px] whitespace-pre-wrap">{`GA4_PROPERTY_ID=533252977
 GA4_SERVICE_ACCOUNT_JSON=<base64 of the JSON key>`}</pre>
           (base64 keeps it on one line for Vercel envs.)
         </li>
