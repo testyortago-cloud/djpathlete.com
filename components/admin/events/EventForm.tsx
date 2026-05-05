@@ -271,7 +271,7 @@ export function EventForm({ event }: EventFormProps) {
             </Button>
           </>
         ) : (
-          <Button type="submit" disabled={submitting}>
+          <Button type="button" onClick={() => void handleSubmit()} disabled={submitting}>
             {submitting ? "Saving..." : "Save changes"}
           </Button>
         )}
@@ -655,7 +655,7 @@ export function EventForm({ event }: EventFormProps) {
             </Button>
           </>
         ) : (
-          <Button type="submit" disabled={submitting}>
+          <Button type="button" onClick={() => void handleSubmit()} disabled={submitting}>
             {submitting ? "Saving..." : "Save changes"}
           </Button>
         )}
