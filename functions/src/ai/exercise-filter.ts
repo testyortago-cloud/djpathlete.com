@@ -440,6 +440,8 @@ export async function semanticFilterExercises(
       poolActive: isPool,
       coachUsage: options?.coachUsage,
       clientUsage: options?.clientUsage,
+      excludeIds: options?.excludeIds,
+      mmrLambda: options?.mmrLambda,
     })
   }
 
@@ -469,12 +471,13 @@ export async function semanticFilterExercises(
 
   const lambda = options?.mmrLambda
   if (lambda !== undefined && lambda < 1.0 && filtered.length > MIN_EXERCISES) {
+    // Synthetic relevance score: in the semantic path, true scores live in the
+    // embedding distance, so we use a constant and let MMR balance against
+    // diversity using the usage-penalty signal.
     const baseScore = 50
-    const coachUsageMap = options?.coachUsage ?? new Map<string, number>()
-    const clientUsageMap = options?.clientUsage ?? new Map<string, number>()
     const scoredFiltered = filtered.map((e) => ({
       exercise: e,
-      score: applyUsagePenalty(baseScore, e.id, coachUsageMap, clientUsageMap),
+      score: applyUsagePenalty(baseScore, e.id, coachUsage, clientUsage),
     }))
     filtered = diversifyByMMR(scoredFiltered, filtered.length, lambda)
   }

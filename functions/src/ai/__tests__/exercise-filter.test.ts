@@ -1,6 +1,19 @@
-import { describe, it, expect } from "vitest"
-import { applyUsagePenalty, scoreAndFilterExercises, diversifyByMMR } from "../exercise-filter.js"
+import { describe, it, expect, vi } from "vitest"
+import { applyUsagePenalty, scoreAndFilterExercises, diversifyByMMR, semanticFilterExercises } from "../exercise-filter.js"
 import type { CompressedExercise, ProgramSkeleton, ProfileAnalysis } from "../types.js"
+
+// Stub out Supabase and embeddings so semanticFilterExercises can run in unit tests.
+// The RPC returns empty results, which drops matchedIds below minRequired and
+// triggers the scoreAndFilter fallback — which is exactly the path we're testing.
+vi.mock("../../lib/supabase.js", () => ({
+  getSupabase: vi.fn(() => ({
+    rpc: vi.fn().mockResolvedValue({ data: [], error: null }),
+  })),
+}))
+vi.mock("../embeddings.js", () => ({
+  slotToText: vi.fn(() => "stub text"),
+  embedText: vi.fn().mockResolvedValue([0.1, 0.2, 0.3]),
+}))
 
 function ex(id: string, overrides: Partial<CompressedExercise> = {}): CompressedExercise {
   return {
@@ -100,6 +113,22 @@ describe("semanticFilterExercises with excludeIds (pattern-balance honors exclud
     expect(result.find((e) => e.id === "ex-0")).toBeUndefined()
     expect(result.find((e) => e.id === "ex-5")).toBeUndefined()
     expect(result.find((e) => e.id === "ex-10")).toBeUndefined()
+  })
+})
+
+describe("semanticFilterExercises fallback preserves excludeIds", () => {
+  it("excludeIds passed through when fallback to scoreAndFilter triggers", async () => {
+    // Force the fallback by passing few exercises. The semantic path bails out and
+    // delegates to scoreAndFilter, which must still respect excludeIds.
+    const exercises = [
+      ex("keep-1", { movement_pattern: "push", primary_muscles: ["chest"] }),
+      ex("keep-2", { movement_pattern: "pull", primary_muscles: ["lats"] }),
+      ex("drop-me", { movement_pattern: "push", primary_muscles: ["chest"] }),
+    ]
+    const result = await semanticFilterExercises(exercises, SKELETON, [], ANALYSIS, {
+      excludeIds: new Set(["drop-me"]),
+    })
+    expect(result.find((e) => e.id === "drop-me")).toBeUndefined()
   })
 })
 
