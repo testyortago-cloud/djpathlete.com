@@ -789,6 +789,112 @@ export const googleAdsManualSync = onDocumentCreated(
   },
 )
 
+// ─── Auto-Generate Blog Post (Tue/Thu 13:00 UTC) ─────────────────────────────
+// Replaces .github/workflows/auto-blog-cron.yml. Hits the Next.js
+// /api/admin/internal/auto-blog route, which enqueues a blog_generation
+// ai_job (subject to automation_paused + cron_auto_blog_enabled gates).
+// 13:00 UTC = 7 AM Central (winter) / 8 AM Central (summer).
+
+export const autoBlogCron = onSchedule(
+  {
+    schedule: "0 13 * * 2,4",
+    timeZone: "UTC",
+    timeoutSeconds: 120,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [internalCronToken, appUrl],
+  },
+  async () => {
+    const baseUrl = process.env.APP_URL
+    const token = process.env.INTERNAL_CRON_TOKEN
+    if (!baseUrl || !token) {
+      console.error("[autoBlogCron] APP_URL or INTERNAL_CRON_TOKEN missing — abort")
+      return
+    }
+    try {
+      const res = await fetch(`${baseUrl}/api/admin/internal/auto-blog`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: "{}",
+      })
+      const body = await res.json().catch(() => ({}))
+      console.log("[autoBlogCron]", res.status, body)
+    } catch (err) {
+      console.error("[autoBlogCron] failed:", err)
+    }
+  },
+)
+
+// ─── Publish Due Posts (every 5 min) ─────────────────────────────────────────
+// Replaces .github/workflows/publish-due-cron.yml. Triggers the publish-due
+// route which promotes any social_post rows whose scheduled_at <= now from
+// "scheduled" to "published".
+
+export const publishDuePostsCron = onSchedule(
+  {
+    schedule: "*/5 * * * *",
+    timeZone: "UTC",
+    timeoutSeconds: 120,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [internalCronToken, appUrl],
+  },
+  async () => {
+    const baseUrl = process.env.APP_URL
+    const token = process.env.INTERNAL_CRON_TOKEN
+    if (!baseUrl || !token) {
+      console.error("[publishDuePostsCron] APP_URL or INTERNAL_CRON_TOKEN missing — abort")
+      return
+    }
+    try {
+      const res = await fetch(`${baseUrl}/api/admin/internal/publish-due`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: "{}",
+      })
+      const body = await res.json().catch(() => ({}))
+      console.log("[publishDuePostsCron]", res.status, body)
+    } catch (err) {
+      console.error("[publishDuePostsCron] failed:", err)
+    }
+  },
+)
+
+// ─── Tavily Trending Cron (Mon 06:00 UTC) ────────────────────────────────────
+// Replaces .github/workflows/tavily-trending-cron.yml. POSTs to the Next.js
+// /api/admin/internal/tavily-trending route, which enqueues a
+// tavily_trending_scan ai_job (handled by tavilyTrendingScan above).
+
+export const tavilyTrendingCron = onSchedule(
+  {
+    schedule: "0 6 * * 1",
+    timeZone: "UTC",
+    timeoutSeconds: 120,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [internalCronToken, appUrl],
+  },
+  async () => {
+    const baseUrl = process.env.APP_URL
+    const token = process.env.INTERNAL_CRON_TOKEN
+    if (!baseUrl || !token) {
+      console.error("[tavilyTrendingCron] APP_URL or INTERNAL_CRON_TOKEN missing — abort")
+      return
+    }
+    try {
+      const res = await fetch(`${baseUrl}/api/admin/internal/tavily-trending`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: "{}",
+      })
+      const body = await res.json().catch(() => ({}))
+      console.log("[tavilyTrendingCron]", res.status, body)
+    } catch (err) {
+      console.error("[tavilyTrendingCron] failed:", err)
+    }
+  },
+)
+
 export const runJob = onRequest(
   {
     region: "us-central1",
