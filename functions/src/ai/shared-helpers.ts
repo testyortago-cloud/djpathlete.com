@@ -138,6 +138,28 @@ export function createCancellationChecker(firebaseJobId: string | undefined) {
   }
 }
 
+// ─── Exclude-ID Set Building ───────────────────────────────────────────────
+
+import type { PriorWeekContext } from "./dedup-verify.js"
+
+/**
+ * Compute the exercise IDs to physically remove from the candidate library
+ * for a generation. Filters the context's excluded set down to variety roles
+ * actually being generated. Anchor roles (warm_up/cool_down) are never excluded.
+ */
+export function buildExcludeIdSet(
+  priorContext: PriorWeekContext,
+  slotRolesInScope: Set<string>,
+): Set<string> {
+  const out = new Set<string>()
+  for (const [groupKey, ids] of priorContext.used_accessory_exercises) {
+    const role = groupKey.split("|")[0]
+    if (!slotRolesInScope.has(role)) continue
+    for (const id of ids) out.add(id)
+  }
+  return out
+}
+
 // ─── Slot Lookup Building ──────────────────────────────────────────────────
 
 import type { ExerciseSlot, ProgramWeek } from "./types.js"
@@ -156,6 +178,7 @@ interface SlotDetails {
   tempo: string | null
   group_tag: string | null
   technique: ExerciseSlot["technique"]
+  role: ExerciseSlot["role"]
 }
 
 export function buildSlotLookups(weeks: ProgramWeek[]) {
@@ -178,6 +201,7 @@ export function buildSlotLookups(weeks: ProgramWeek[]) {
           tempo: slot.tempo,
           group_tag: slot.group_tag,
           technique: slot.technique ?? "straight_set",
+          role: slot.role,
         })
       })
     }
@@ -227,6 +251,7 @@ export function buildExerciseRows(
         tempo: details.tempo,
         group_tag: details.group_tag,
         technique: VALID_TECHNIQUES.has(details.technique ?? "") ? details.technique : "straight_set",
+        slot_role: details.role,
       }
     })
     .filter((r) => r !== null) as Record<string, unknown>[]
