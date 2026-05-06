@@ -28,6 +28,8 @@ export interface PriorWeekContext {
   anchor_exercises: Map<string, string>
   used_accessory_exercises: Map<string, Set<string>>
   exercise_week_map: Map<string, number[]>
+  /** Flat set of exercise IDs in variety (non-anchor) roles — for hard candidate pruning. */
+  excluded_exercise_ids: Set<string>
   prompt_text: string
 }
 
@@ -160,10 +162,16 @@ export function buildPriorContextFromExistingExercises(
     lines.push("")
   }
 
+  const excluded_exercise_ids = new Set<string>()
+  for (const idSet of used_accessory_exercises.values()) {
+    for (const id of idSet) excluded_exercise_ids.add(id)
+  }
+
   return {
     anchor_exercises,
     used_accessory_exercises,
     exercise_week_map,
+    excluded_exercise_ids,
     prompt_text: lines.join("\n"),
   }
 }
@@ -275,10 +283,16 @@ export function buildPriorWeekContext(priorWeeks: WeekAssignment[], allWeeks: Pr
     lines.push("")
   }
 
+  const excluded_exercise_ids = new Set<string>()
+  for (const idSet of used_accessory_exercises.values()) {
+    for (const id of idSet) excluded_exercise_ids.add(id)
+  }
+
   return {
     anchor_exercises,
     used_accessory_exercises,
     exercise_week_map,
+    excluded_exercise_ids,
     prompt_text: lines.join("\n"),
   }
 }
