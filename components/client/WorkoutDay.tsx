@@ -343,6 +343,18 @@ function ExerciseCard({
       totalReps.length > 0 ? Math.round(totalReps.reduce((a, b) => a + b, 0) / totalReps.length) : fallbackReps
     const lastSetRpe = setDetails[setDetails.length - 1]?.rpe ?? null
 
+    // RPE gate — require at least one set's RPE for non-bodyweight exercises
+    const isBodyweight = exercise.is_bodyweight ?? false
+    const filledSets = setRows.filter((r) => parseInt(r.reps, 10) > 0)
+    const hasAnyRpe = filledSets.some((r) => r.rpe != null && r.rpe >= 1 && r.rpe <= 10)
+
+    if (!isBodyweight && filledSets.length > 0 && !hasAnyRpe) {
+      toast.error(
+        "Add an RPE on at least one set before completing — even a single number helps the AI plan your next session.",
+      )
+      return
+    }
+
     setSubmitting(true)
     try {
       const res = await fetch("/api/client/workouts/log", {
@@ -642,6 +654,11 @@ function ExerciseCard({
                             {fields.showRpe && (
                               <th style={{ width: 56 }} className="text-left font-medium">
                                 RPE
+                                {!exercise.is_bodyweight && (
+                                  <span className="block text-[9px] font-normal text-muted-foreground normal-case tracking-normal leading-tight mt-0.5">
+                                    required
+                                  </span>
+                                )}
                               </th>
                             )}
                             <th style={{ width: 28 }} />
