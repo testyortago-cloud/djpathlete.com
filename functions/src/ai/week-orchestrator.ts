@@ -1,12 +1,14 @@
 import type { CompressedExercise, ExerciseSlot, ProgramWeek, ExerciseAssignment, ValidationResult } from "./types.js"
 import { callAgent, MODEL_OPUS, MODEL_SONNET } from "./anthropic.js"
 import { scoreAndFilterExercises, semanticFilterExercises, filterByInjuredJoints } from "./exercise-filter.js"
-import { programSkeletonSchema, exerciseAssignmentSchema } from "./schemas.js"
-import { EXERCISE_SELECTOR_PROMPT } from "./prompts.js"
+import { profileAnalysisSchema, programSkeletonSchema, exerciseAssignmentSchema } from "./schemas.js"
+import { EXERCISE_SELECTOR_PROMPT, WEEK_PROFILE_ANALYZER_PROMPT } from "./prompts.js"
 import { validateProgram } from "./validate.js"
 import { formatExerciseLibrary, filterByDifficultyLevel, filterByProgressionPhase } from "./exercise-context.js"
 import { getExercisesForAI } from "./program-chat-tools.js"
 import { buildPriorContextFromExistingExercises, verifyWeekAgainstExisting } from "./dedup-verify.js"
+import { getCoachPolicyFromFn, formatCoachPolicyAsInstructions } from "./coach-policy.js"
+import { getCoachRecentUsageFromFn, getClientRecentUsageFromFn, recordUsageFromFn } from "./usage-history.js"
 import { getSupabase } from "../lib/supabase.js"
 import {
   getProgramById,
@@ -21,7 +23,9 @@ import {
   createCancellationChecker,
   buildSlotLookups,
   buildExerciseRows,
+  buildExcludeIdSet,
 } from "./shared-helpers.js"
+import type { ProfileAnalysis } from "./types.js"
 import { z } from "zod"
 
 const MAX_RETRIES = 2
@@ -292,11 +296,22 @@ export async function generateWeekSync(
 
   await updateJobProgress("fetching_context", 1, "Loading program data & client logs")
 
-  const [program, existingExercises, fullLibrary] = await Promise.all([
+  const [program, existingExercises, fullLibrary, coachPolicy, coachUsage, clientUsage] = await Promise.all([
     getProgramById(request.program_id),
     getProgramExercises(request.program_id),
     getExercisesForAI(),
+    getCoachPolicyFromFn(requestedBy).catch((e) => {
+      console.warn("[week-orchestrator] coach policy fetch failed:", e instanceof Error ? e.message : e)
+      return null
+    }),
+    getCoachRecentUsageFromFn(requestedBy, 60).catch(() => new Map<string, number>()),
+    request.client_id
+      ? getClientRecentUsageFromFn(request.client_id, 90).catch(() => new Map<string, number>())
+      : Promise.resolve(new Map<string, number>()),
   ])
+  console.log(
+    `[week-orchestrator] policy: ${coachPolicy ? "loaded" : "none"}, coach usage: ${coachUsage.size}, client usage: ${clientUsage.size}`,
+  )
 
   // If pool exercise IDs are provided, restrict the exercise library to only those
   const poolIds = request.pool_exercise_ids
@@ -548,40 +563,75 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
         : "advanced"
   const ceilingScore = newWeekNumber <= 2 ? 4 : 6
 
-  // Build a mock ProfileAnalysis for filtering.
-  // Difficulty_ceiling now reflects the actual client level — mirrors the
-  // main orchestrator's Agent 1 output so beginners don't get advanced
-  // exercises via the weekly-regeneration path.
-  const mockAnalysis = {
-    recommended_split: program.split_type,
-    recommended_periodization: program.periodization,
-    volume_targets: [],
-    exercise_constraints: [],
-    session_structure: {
-      warm_up_minutes: 5,
-      main_work_minutes: 45,
-      cool_down_minutes: 5,
-      total_exercises: 6,
-      compound_count: 3,
-      isolation_count: 3,
-    },
-    training_age_category: clientDifficultyLevel as "novice" | "intermediate" | "advanced" | "elite",
-    technique_plan: [
-      {
-        week_number: newWeekNumber,
-        allowed_techniques: ["straight_set" as const],
-        default_technique: "straight_set" as const,
-        notes: "",
+  // ── Step 2.5: Real Agent 1 (Profile Analyzer, week-scoped) ───────────────
+  const policyInstructions = formatCoachPolicyAsInstructions(coachPolicy)
+  const combinedInstructions = [request.admin_instructions, policyInstructions].filter(Boolean).join("\n\n")
+  const coachInstructionsSectionForAnalyzer = buildCoachInstructionsSection(combinedInstructions)
+
+  const analyzerMessage = `## Client Profile
+${profileContext}
+
+## Program Summary
+${JSON.stringify(programSummary)}
+
+## Prior Weeks Focus Summary
+${weekFocusSummary.length > 0 ? JSON.stringify(weekFocusSummary) : "No prior weeks."}
+
+## Target Week
+${newWeekNumber}${coachInstructionsSectionForAnalyzer}
+
+Output the JSON for this single target week. technique_plan and difficulty_ceiling MUST contain exactly one entry with week_number=${newWeekNumber}.`
+
+  let analysis: ProfileAnalysis
+  try {
+    const analyzerResult = await callAgent<ProfileAnalysis>(
+      WEEK_PROFILE_ANALYZER_PROMPT,
+      analyzerMessage,
+      profileAnalysisSchema,
+      { model: MODEL_SONNET, cacheSystemPrompt: true },
+    )
+    tokenUsage.architect += analyzerResult.tokens_used // reuse architect bucket; no schema change
+    analysis = analyzerResult.content
+    if (analysis.technique_plan[0]) analysis.technique_plan[0].week_number = newWeekNumber
+    if (analysis.difficulty_ceiling[0]) analysis.difficulty_ceiling[0].week_number = newWeekNumber
+    console.log(
+      `[week-orchestrator] Agent 1 (week-scoped) — techniques: ${analysis.technique_plan[0]?.allowed_techniques.join(",")}; ceiling: ${analysis.difficulty_ceiling[0]?.max_tier}/${analysis.difficulty_ceiling[0]?.max_score}`,
+    )
+  } catch (e) {
+    console.warn(
+      `[week-orchestrator] Agent 1 failed, falling back to mock analysis: ${e instanceof Error ? e.message : e}`,
+    )
+    analysis = {
+      recommended_split: program.split_type,
+      recommended_periodization: program.periodization,
+      volume_targets: [{ muscle_group: "full_body", sets_per_week: 12, priority: "medium" }],
+      exercise_constraints: [],
+      session_structure: {
+        warm_up_minutes: 5,
+        main_work_minutes: 45,
+        cool_down_minutes: 5,
+        total_exercises: 6,
+        compound_count: 3,
+        isolation_count: 3,
       },
-    ],
-    difficulty_ceiling: [
-      {
-        week_number: newWeekNumber,
-        max_tier: ceilingTier,
-        max_score: ceilingScore,
-      },
-    ],
-    notes: "",
+      training_age_category: clientDifficultyLevel as ProfileAnalysis["training_age_category"],
+      technique_plan: [
+        {
+          week_number: newWeekNumber,
+          allowed_techniques: ["straight_set"],
+          default_technique: "straight_set",
+          notes: "fallback",
+        },
+      ],
+      difficulty_ceiling: [
+        {
+          week_number: newWeekNumber,
+          max_tier: ceilingTier,
+          max_score: ceilingScore,
+        },
+      ],
+      notes: "fallback",
+    } as ProfileAnalysis
   }
 
   // Apply hard-exclusion difficulty filter + earned-progression filter for this week.
@@ -600,28 +650,17 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
     console.log(`[week-orchestrator] Joint injury filter: removed high-load exercises on: ${injuredJoints.join(", ")}`)
   }
 
-  const poolActive = !!poolIds && poolIds.length > 0
-  let filtered: CompressedExercise[]
-  try {
-    filtered = await semanticFilterExercises(exercisesForSelection, skeleton, availableEquipment, mockAnalysis, {
-      poolActive,
-    })
-  } catch {
-    filtered = scoreAndFilterExercises(exercisesForSelection, skeleton, availableEquipment, mockAnalysis, {
-      poolActive,
-    })
-  }
-  const exerciseLibrary = formatExerciseLibrary(filtered)
-
   // Build dedup context from ALL existing program exercises (not just last 2 weeks)
   const priorExercisesForDedup = existingExercises.map((pe: Record<string, unknown>) => {
     const ex = pe.exercises as { name?: string; movement_pattern?: string; primary_muscles?: string[] } | undefined
-    // Infer role from order_index: 0 = warm_up, 1-2 = compounds, rest = accessory/isolation
     const orderIdx = pe.order_index as number
-    let inferredRole = "accessory"
-    if (orderIdx === 0) inferredRole = "warm_up"
-    else if (orderIdx <= 2) inferredRole = "primary_compound"
-    // Build slot group for dedup matching
+    // Prefer DB-stored slot_role; fall back to inference for legacy rows.
+    let inferredRole = (pe.slot_role as string | null) ?? null
+    if (!inferredRole) {
+      if (orderIdx === 0) inferredRole = "warm_up"
+      else if (orderIdx <= 2) inferredRole = "primary_compound"
+      else inferredRole = "accessory"
+    }
     const slotGroup = `${inferredRole}|${ex?.movement_pattern ?? "unknown"}|${(ex?.primary_muscles ?? []).sort().join(",")}`
     return {
       exercise_id: pe.exercise_id as string,
@@ -636,6 +675,40 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
   console.log(
     `[week-orchestrator] Dedup context: ${priorContext.anchor_exercises.size} anchors, ${priorContext.used_accessory_exercises.size} accessory groups, ${priorContext.exercise_week_map.size} total unique exercises`,
   )
+
+  const VARIETY_ROLES = new Set<string>([
+    "primary_compound",
+    "secondary_compound",
+    "accessory",
+    "isolation",
+    "power",
+    "conditioning",
+    "activation",
+    "testing",
+  ])
+  const excludeIds = buildExcludeIdSet(priorContext, VARIETY_ROLES)
+  console.log(`[week-orchestrator] excludeIds: ${excludeIds.size} ids hard-pruned from candidate library`)
+
+  const poolActive = !!poolIds && poolIds.length > 0
+  let filtered: CompressedExercise[]
+  try {
+    filtered = await semanticFilterExercises(exercisesForSelection, skeleton, availableEquipment, analysis, {
+      poolActive,
+      coachUsage,
+      clientUsage,
+      excludeIds,
+      mmrLambda: 0.7,
+    })
+  } catch {
+    filtered = scoreAndFilterExercises(exercisesForSelection, skeleton, availableEquipment, analysis, {
+      poolActive,
+      coachUsage,
+      clientUsage,
+      excludeIds,
+      mmrLambda: 0.7,
+    })
+  }
+  const exerciseLibrary = formatExerciseLibrary(filtered)
 
   const constraintsContext = JSON.stringify({
     available_equipment: availableEquipment,
@@ -729,6 +802,29 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
   const exerciseRows = buildExerciseRows(assignment.assignments, slotLookup, slotDetailsLookup, request.program_id)
 
   await bulkAddExercisesToProgram(exerciseRows)
+
+  // Fire-and-forget usage recording — never blocks response
+  if (request.client_id !== undefined) {
+    const usageRows = assignment.assignments
+      .map((a) => {
+        const loc = slotLookup.get(a.slot_id)
+        if (!loc) return null
+        return {
+          exercise_id: a.exercise_id,
+          week_number: loc.week_number,
+          day_number: loc.day_of_week,
+        }
+      })
+      .filter((r): r is { exercise_id: string; week_number: number; day_number: number } => r !== null)
+    recordUsageFromFn({
+      coach_id: requestedBy,
+      client_id: request.client_id ?? null,
+      program_id: request.program_id,
+      rows: usageRows,
+    }).catch((e) =>
+      console.warn("[week-orchestrator] recordUsage failed (non-blocking):", e instanceof Error ? e.message : e),
+    )
+  }
 
   // Only bump duration_weeks and total_weeks when appending a new week (not filling a blank or single day)
   if (!isFillingBlank && !isSingleDay) {
