@@ -30,6 +30,19 @@ import { z } from "zod"
 
 const MAX_RETRIES = 2
 
+// ─── Module-scope constants ──────────────────────────────────────────────────
+
+const VARIETY_ROLES = new Set<string>([
+  "primary_compound",
+  "secondary_compound",
+  "accessory",
+  "isolation",
+  "power",
+  "conditioning",
+  "activation",
+  "testing",
+])
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export interface WeekGenerationRequest {
@@ -601,9 +614,9 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
     console.warn(
       `[week-orchestrator] Agent 1 failed, falling back to mock analysis: ${e instanceof Error ? e.message : e}`,
     )
-    analysis = {
-      recommended_split: program.split_type,
-      recommended_periodization: program.periodization,
+    const fallback: ProfileAnalysis = {
+      recommended_split: program.split_type as ProfileAnalysis["recommended_split"],
+      recommended_periodization: program.periodization as ProfileAnalysis["recommended_periodization"],
       volume_targets: [{ muscle_group: "full_body", sets_per_week: 12, priority: "medium" }],
       exercise_constraints: [],
       session_structure: {
@@ -631,7 +644,8 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
         },
       ],
       notes: "fallback",
-    } as ProfileAnalysis
+    }
+    analysis = fallback
   }
 
   // Apply hard-exclusion difficulty filter + earned-progression filter for this week.
@@ -676,16 +690,6 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
     `[week-orchestrator] Dedup context: ${priorContext.anchor_exercises.size} anchors, ${priorContext.used_accessory_exercises.size} accessory groups, ${priorContext.exercise_week_map.size} total unique exercises`,
   )
 
-  const VARIETY_ROLES = new Set<string>([
-    "primary_compound",
-    "secondary_compound",
-    "accessory",
-    "isolation",
-    "power",
-    "conditioning",
-    "activation",
-    "testing",
-  ])
   const excludeIds = buildExcludeIdSet(priorContext, VARIETY_ROLES)
   console.log(`[week-orchestrator] excludeIds: ${excludeIds.size} ids hard-pruned from candidate library`)
 
