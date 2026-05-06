@@ -34,6 +34,10 @@ export interface FilterOptions {
   poolActive?: boolean
   coachUsage?: UsageRecencyMap
   clientUsage?: UsageRecencyMap
+  /** Exercise IDs to physically remove from the candidate set (hard prune). */
+  excludeIds?: Set<string>
+  /** MMR balance: 1.0 = pure relevance, 0.0 = pure diversity. Default 0.7. */
+  mmrLambda?: number
 }
 
 // ─── Related movement patterns ──────────────────────────────────────────────
@@ -337,13 +341,27 @@ export function scoreAndFilterExercises(
     return (exerciseMaxScores.get(b.id) ?? 0) - (exerciseMaxScores.get(a.id) ?? 0)
   })
 
-  const cutoff = Math.min(maxExercises, sorted.length)
-  let filtered = sorted.slice(0, cutoff)
-  // When pool is active, never fall back to unfiltered — use whatever the pool has
-  if (!isPool && filtered.length < MIN_EXERCISES) filtered = exercises
+  // Hard-prune excluded IDs (used for cross-week dedup defense in depth)
+  const excludeIds = options?.excludeIds
+  const sortedAfterExclude = excludeIds && excludeIds.size > 0 ? sorted.filter((e) => !excludeIds.has(e.id)) : sorted
 
-  // Ensure pattern balance
-  filtered = ensurePatternBalance(filtered, exercises, skeleton, equipment, difficulty, { poolActive: isPool })
+  const cutoff = Math.min(maxExercises, sortedAfterExclude.length)
+  let filtered = sortedAfterExclude.slice(0, cutoff)
+  // When pool is active, never fall back to unfiltered — use whatever the pool has.
+  // Fall back to the exclude-pruned set so excludeIds is always respected.
+  if (!isPool && filtered.length < MIN_EXERCISES) filtered = sortedAfterExclude
+
+  const lambda = options?.mmrLambda
+  if (lambda !== undefined && lambda < 1.0 && filtered.length > MIN_EXERCISES) {
+    const scoredFiltered = filtered.map((e) => ({
+      exercise: e,
+      score: exerciseMaxScores.get(e.id) ?? 0,
+    }))
+    filtered = diversifyByMMR(scoredFiltered, filtered.length, lambda)
+  }
+
+  // Ensure pattern balance — pass the exclude-pruned set so balance top-ups never re-introduce excluded exercises
+  filtered = ensurePatternBalance(filtered, sortedAfterExclude, skeleton, equipment, difficulty, { poolActive: isPool })
 
   console.log(
     `[scoreAndFilter] ${exercises.length} → ${filtered.length} exercises (max: ${maxExercises})${isPool ? " [pool]" : ""}`,
@@ -427,6 +445,12 @@ export async function semanticFilterExercises(
 
   let filtered = exercises.filter((ex) => matchedIds.has(ex.id))
 
+  if (options?.excludeIds && options.excludeIds.size > 0) {
+    const before = filtered.length
+    filtered = filtered.filter((e) => !options.excludeIds!.has(e.id))
+    console.log(`[semanticFilter] excludeIds removed ${before - filtered.length} exercises`)
+  }
+
   const coachUsage = options?.coachUsage ?? new Map<string, number>()
   const clientUsage = options?.clientUsage ?? new Map<string, number>()
   if (coachUsage.size > 0 || clientUsage.size > 0) {
@@ -443,9 +467,96 @@ export async function semanticFilterExercises(
 
   if (filtered.length > maxExercises) filtered = filtered.slice(0, maxExercises)
 
+  const lambda = options?.mmrLambda
+  if (lambda !== undefined && lambda < 1.0 && filtered.length > MIN_EXERCISES) {
+    const baseScore = 50
+    const coachUsageMap = options?.coachUsage ?? new Map<string, number>()
+    const clientUsageMap = options?.clientUsage ?? new Map<string, number>()
+    const scoredFiltered = filtered.map((e) => ({
+      exercise: e,
+      score: applyUsagePenalty(baseScore, e.id, coachUsageMap, clientUsageMap),
+    }))
+    filtered = diversifyByMMR(scoredFiltered, filtered.length, lambda)
+  }
+
   // Ensure pattern balance — when pool active, only pulls from pool exercises
   filtered = ensurePatternBalance(filtered, exercises, skeleton, equipment, difficulty, { poolActive: isPool })
 
   console.log(`[semanticFilter] Final: ${filtered.length} exercises (max: ${maxExercises})${isPool ? " [pool]" : ""}`)
   return filtered
+}
+
+// ─── MMR diversification ────────────────────────────────────────────────────
+
+interface MMRSimVector {
+  movement_pattern: string
+  primary: Set<string>
+  equipment: Set<string>
+  intent: Set<string>
+}
+
+function vectorize(ex: CompressedExercise): MMRSimVector {
+  return {
+    movement_pattern: ex.movement_pattern ?? "",
+    primary: new Set(ex.primary_muscles.map((m) => m.toLowerCase())),
+    equipment: new Set(ex.equipment_required.map((e) => e.toLowerCase())),
+    intent: new Set(ex.training_intent ?? []),
+  }
+}
+
+function jaccardSet(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 && b.size === 0) return 0
+  let inter = 0
+  for (const v of a) if (b.has(v)) inter++
+  const union = a.size + b.size - inter
+  return union === 0 ? 0 : inter / union
+}
+
+function mmrSimilarity(a: MMRSimVector, b: MMRSimVector): number {
+  const patternMatch = a.movement_pattern && a.movement_pattern === b.movement_pattern ? 1 : 0
+  return (
+    0.4 * patternMatch +
+    0.3 * jaccardSet(a.primary, b.primary) +
+    0.2 * jaccardSet(a.equipment, b.equipment) +
+    0.1 * jaccardSet(a.intent, b.intent)
+  )
+}
+
+/**
+ * Maximal Marginal Relevance: pick top-k items balancing score (relevance) and
+ * diversity from already-selected items. lambda in [0,1]; 1.0 = pure score,
+ * 0.0 = pure diversity. Default 0.7.
+ */
+export function diversifyByMMR(
+  scored: Array<{ exercise: CompressedExercise; score: number }>,
+  k: number,
+  lambda = 0.7,
+): CompressedExercise[] {
+  if (scored.length <= k) return scored.map((s) => s.exercise)
+  const remaining = [...scored]
+  const selected: Array<{ exercise: CompressedExercise; vec: MMRSimVector }> = []
+  // Normalize scores to [0,1] for fair combination with similarity.
+  const maxScore = Math.max(...remaining.map((s) => s.score), 1)
+  while (selected.length < k && remaining.length > 0) {
+    let bestIdx = 0
+    let bestVal = -Infinity
+    for (let i = 0; i < remaining.length; i++) {
+      const cand = remaining[i]
+      const candVec = vectorize(cand.exercise)
+      const rel = cand.score / maxScore
+      let maxSim = 0
+      for (const sel of selected) {
+        const sim = mmrSimilarity(candVec, sel.vec)
+        if (sim > maxSim) maxSim = sim
+      }
+      const mmr = lambda * rel - (1 - lambda) * maxSim
+      if (mmr > bestVal) {
+        bestVal = mmr
+        bestIdx = i
+      }
+    }
+    const pick = remaining.splice(bestIdx, 1)[0]
+    selected.push({ exercise: pick.exercise, vec: vectorize(pick.exercise) })
+  }
+  return selected.map((s) => s.exercise)
 }
