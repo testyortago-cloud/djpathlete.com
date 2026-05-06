@@ -421,7 +421,8 @@ Rules:
    - Reduce to 3-4 slots total
    - Focus: "active recovery and mobility"
    - All RPE targets at 3-4 (should feel restorative, not challenging)
-   - Use cool_down role for mobility/stretching work`
+   - Use cool_down role for mobility/stretching work
+27. NULL METRIC HANDLING: If the user message includes performance logs with null weight_kg or null rpe on completed exercises, do NOT treat those as "the client crushed it" or "the client struggled" — treat them as no-signal. Keep the prescribed sets/reps/RPE targets identical to the prior prescription rather than auto-progressing.`
 
 // ─── Agent 3: Exercise Selector ──────────────────────────────────────────────
 
@@ -620,5 +621,6 @@ CRITICAL RULES:
 8. session_structure should reflect the program's prior weeks' shape (look at how many exercises, how many compounds vs accessories prior weeks used) — do NOT redesign the session shape, only confirm it.
 9. volume_targets and exercise_constraints should reflect THIS week's intent (deload? progression? same as prior?). When in doubt, mirror prior weeks.
 10. Output ONLY the JSON object, no additional text or explanation.
+11. NULL METRIC HANDLING (autoregulation guard): When the recent performance logs show a completed exercise where weight_kg or rpe is null, treat that exercise as "completed without effort signal" — DO NOT use it to argue for progressive overload. For these exercises in the next week, keep the load/intensity prescription the same as the most recent prescribed value (no auto-bump). When more than half of recent logs lack rpe, prefer conservative volume_targets and add a note "log_quality: low" in \`notes\`.
 
 The program structure is fixed. Your job is to set the technique and difficulty constraints for this one week, in keeping with the program's trajectory and the coach's preferences.`

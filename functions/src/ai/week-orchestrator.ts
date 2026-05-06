@@ -163,7 +163,8 @@ function buildArchitectPrompt(mode: "week" | "day"): string {
    - If the coach says "make this a deload day", set intensity_modifier to "low/deload" and reduce slot count.
    - If the coach specifies session structure (e.g., "start with plyometrics"), arrange slots accordingly.
 7. Use the slot_id format: "w{week_number}d{day_of_week}s{slot_index}".
-8. Output ONLY the JSON object, no additional text.`
+8. NULL METRIC HANDLING: When the recent performance logs show completed exercises with null rpe or null weight_kg, do NOT use them as a progression signal. Repeat the prior week's load/intensity prescription verbatim for those exercises. Only auto-progress where rpe was actually logged.
+9. Output ONLY the JSON object, no additional text.`
     : `Rules:
 1. MATCH the existing program structure: same split type, same number of training days per week, same day_of_week values.
 2. PROGRESS appropriately based on the client's logged performance:
@@ -184,7 +185,8 @@ function buildArchitectPrompt(mode: "week" | "day"): string {
 6. Session time budget: keep the same number of exercises per day as previous weeks unless the coach says otherwise.
 7. Use the same slot_id format: "w{week_number}d{day_of_week}s{slot_index}".
 8. Review the FULL PROGRAM PROGRESSION summary — understand the arc of the entire program (what muscles were emphasized each week, how themes evolved) before designing this week.
-9. Output ONLY the JSON object, no additional text.`
+9. NULL METRIC HANDLING: When the recent performance logs show completed exercises with null rpe or null weight_kg, do NOT use them as a progression signal. Repeat the prior week's load/intensity prescription verbatim for those exercises. Only auto-progress where rpe was actually logged. Do NOT add new accessory volume justified by "the client tolerated last week well" if last week has no rpe.
+10. Output ONLY the JSON object, no additional text.`
 
   return `You are a performance system architect designing ${entity} an ongoing training program. You have access to the full program history (week-by-week progression summary + detailed recent weeks) and the client's actual training logs.
 
