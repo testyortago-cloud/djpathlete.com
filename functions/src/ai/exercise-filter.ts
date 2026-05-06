@@ -479,8 +479,13 @@ export async function semanticFilterExercises(
     filtered = diversifyByMMR(scoredFiltered, filtered.length, lambda)
   }
 
-  // Ensure pattern balance — when pool active, only pulls from pool exercises
-  filtered = ensurePatternBalance(filtered, exercises, skeleton, equipment, difficulty, { poolActive: isPool })
+  // Ensure pattern balance — when pool active, only pulls from pool exercises.
+  // Build balancePool so excludeIds are never re-introduced via pattern-balance backfill.
+  const balancePool =
+    options?.excludeIds && options.excludeIds.size > 0
+      ? exercises.filter((e) => !options.excludeIds!.has(e.id))
+      : exercises
+  filtered = ensurePatternBalance(filtered, balancePool, skeleton, equipment, difficulty, { poolActive: isPool })
 
   console.log(`[semanticFilter] Final: ${filtered.length} exercises (max: ${maxExercises})${isPool ? " [pool]" : ""}`)
   return filtered
