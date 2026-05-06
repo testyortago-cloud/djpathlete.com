@@ -226,6 +226,21 @@ ${rules}`
 
 const weekSkeletonSchema = programSkeletonSchema
 
+// ─── Log Quality Helper ──────────────────────────────────────────────────────
+
+/**
+ * Compute the fraction of recent logs that have rpe recorded.
+ * Used to decide whether the AI should autoregulate or fall back to fixed progression.
+ * Returns 1.0 when there are no logs (no signal to lose).
+ */
+export function computeRpeLogQuality(
+  logs: Array<{ rpe?: number | null; weight_kg?: number | null }>,
+): { quality: number; sample_size: number } {
+  if (logs.length === 0) return { quality: 1.0, sample_size: 0 }
+  const withRpe = logs.filter((l) => l.rpe != null && l.rpe >= 1 && l.rpe <= 10).length
+  return { quality: withRpe / logs.length, sample_size: logs.length }
+}
+
 // ─── Week Focus Summary Builder ─────────────────────────────────────────────
 
 /**
@@ -368,6 +383,14 @@ export async function generateWeekSync(
   // Get unique exercise IDs from the program for progress lookup
   const programExerciseIds = [...new Set(existingExercises.map((pe: { exercise_id: string }) => pe.exercise_id))]
   const recentProgress = request.client_id ? await getRecentProgress(request.client_id, programExerciseIds) : []
+
+  const logQuality = computeRpeLogQuality(
+    recentProgress as Array<{ rpe?: number | null; weight_kg?: number | null }>,
+  )
+  const lowQuality = logQuality.sample_size > 0 && logQuality.quality < 0.5
+  console.log(
+    `[week-orchestrator] log quality: ${(logQuality.quality * 100).toFixed(0)}% (n=${logQuality.sample_size})${lowQuality ? " — LOW: skip autoregulation" : ""}`,
+  )
 
   // Build compact summary of ALL weeks (focus/theme only) for full progression context
   const weekFocusSummary = buildWeekFocusSummary(existingExercises)
@@ -591,6 +614,13 @@ ${JSON.stringify(programSummary)}
 
 ## Prior Weeks Focus Summary
 ${weekFocusSummary.length > 0 ? JSON.stringify(weekFocusSummary) : "No prior weeks."}
+
+## Log Quality
+${
+  lowQuality
+    ? `LOW (${(logQuality.quality * 100).toFixed(0)}% of ${logQuality.sample_size} recent logs include RPE). Do NOT autoregulate based on this data — keep prescriptions matching the prior week. Use fixed progression only (e.g., +small linear bumps based on weeks elapsed, not RPE).`
+    : `OK (${(logQuality.quality * 100).toFixed(0)}% of ${logQuality.sample_size} recent logs include RPE).`
+}
 
 ## Target Week
 ${newWeekNumber}${coachInstructionsSectionForAnalyzer}
@@ -829,6 +859,36 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
       rows: usageRows,
     }).catch((e) =>
       console.warn("[week-orchestrator] recordUsage failed (non-blocking):", e instanceof Error ? e.message : e),
+    )
+  }
+
+  // Stamp log quality into ai_generation_params for coach visibility — non-blocking
+  try {
+    const supabase = getSupabase()
+    const { data: existing } = await supabase
+      .from("programs")
+      .select("ai_generation_params")
+      .eq("id", request.program_id)
+      .single()
+    const params = (existing?.ai_generation_params as Record<string, unknown>) ?? {}
+    const log_quality_history = Array.isArray(params.log_quality_history)
+      ? (params.log_quality_history as Array<unknown>)
+      : []
+    log_quality_history.push({
+      week_number: newWeekNumber,
+      quality: logQuality.quality,
+      sample_size: logQuality.sample_size,
+      autoregulated: !lowQuality,
+      generated_at: new Date().toISOString(),
+    })
+    await supabase
+      .from("programs")
+      .update({ ai_generation_params: { ...params, log_quality_history } })
+      .eq("id", request.program_id)
+  } catch (e) {
+    console.warn(
+      "[week-orchestrator] log_quality stamp failed (non-blocking):",
+      e instanceof Error ? e.message : e,
     )
   }
 
