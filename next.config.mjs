@@ -50,7 +50,7 @@ const nextConfig = {
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
-      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.google-analytics.com https://www.googletagmanager.com https://api.stripe.com",
+      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.google-analytics.com https://www.googletagmanager.com https://api.stripe.com https://storage.googleapis.com https://*.firebasestorage.app",
       "frame-src 'self' https://js.stripe.com https://hooks.stripe.com",
       "media-src 'self' blob: https:",
       "worker-src 'self' blob:",
