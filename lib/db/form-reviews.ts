@@ -90,6 +90,17 @@ export async function createFormReviewMessage(message: Omit<FormReviewMessage, "
   return data
 }
 
+export async function listFormReviewsByStatus(status: FormReviewStatus) {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("form_reviews")
+    .select("id, created_at, status")
+    .eq("status", status)
+    .order("created_at", { ascending: true })
+  if (error) throw error
+  return (data ?? []) as Array<{ id: string; created_at: string; status: FormReviewStatus }>
+}
+
 // ---------------------------------------------------------------------------
 // Counts (for admin badge)
 // ---------------------------------------------------------------------------

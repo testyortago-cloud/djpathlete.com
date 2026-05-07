@@ -166,6 +166,27 @@ export async function getAllProgress(limit?: number) {
   return data as (ExerciseProgress & { exercises: { name: string } | null })[]
 }
 
+/**
+ * Returns clients whose most recent exercise_progress is older than `since`,
+ * limited to clients with at least one prior log (cold leads excluded).
+ * Uses the clients_without_log_since RPC for performance.
+ */
+export async function listClientsWithoutLogSince(
+  since: Date,
+): Promise<Array<{ id: string; first_name: string | null; last_name: string | null; days_since_last_log: number }>> {
+  const supabase = getClient()
+  const { data, error } = await supabase.rpc("clients_without_log_since", {
+    p_since: since.toISOString(),
+  })
+  if (error) throw error
+  return (data ?? []) as Array<{
+    id: string
+    first_name: string | null
+    last_name: string | null
+    days_since_last_log: number
+  }>
+}
+
 export async function logProgress(progress: Omit<ExerciseProgress, "id" | "created_at">) {
   const supabase = getClient()
   const { data, error } = await supabase.from("exercise_progress").insert(progress).select().single()
