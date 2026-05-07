@@ -123,3 +123,14 @@ export async function getEventSignupByPaymentIntent(piId: string): Promise<Event
   if (error) throw error
   return (data as EventSignup) ?? null
 }
+
+export async function listSignupsCreatedSince(since: Date): Promise<EventSignup[]> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("event_signups")
+    .select("*")
+    .gte("created_at", since.toISOString())
+    .order("created_at", { ascending: false })
+  if (error) throw error
+  return (data ?? []) as EventSignup[]
+}

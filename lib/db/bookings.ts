@@ -70,3 +70,15 @@ export async function getBookingStats() {
     noShow: noShow.count ?? 0,
   }
 }
+
+export async function getBookingsInRange(from: Date, to: Date): Promise<Booking[]> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("bookings")
+    .select("*")
+    .gte("booking_date", from.toISOString())
+    .lt("booking_date", to.toISOString())
+    .order("booking_date", { ascending: true })
+  if (error) throw error
+  return (data ?? []) as Booking[]
+}
