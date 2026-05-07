@@ -76,3 +76,28 @@ export async function updateSubscriptionByStripeId(
   if (error) throw error
   return data as Subscription
 }
+
+export async function listSubscriptionsChangedInRange(
+  from: Date,
+  to: Date,
+): Promise<{ created: number; cancelled: number }> {
+  const supabase = getClient()
+  const fromIso = from.toISOString()
+  const toIso = to.toISOString()
+  const [createdRes, cancelledRes] = await Promise.all([
+    supabase
+      .from("subscriptions")
+      .select("id", { head: true, count: "exact" })
+      .gte("created_at", fromIso)
+      .lt("created_at", toIso),
+    supabase
+      .from("subscriptions")
+      .select("id", { head: true, count: "exact" })
+      .not("canceled_at", "is", null)
+      .gte("canceled_at", fromIso)
+      .lt("canceled_at", toIso),
+  ])
+  if (createdRes.error) throw createdRes.error
+  if (cancelledRes.error) throw cancelledRes.error
+  return { created: createdRes.count ?? 0, cancelled: cancelledRes.count ?? 0 }
+}

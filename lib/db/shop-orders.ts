@@ -207,6 +207,23 @@ const REVENUE_STATUSES: ShopOrderStatus[] = [
   "fulfilled_digital",
 ]
 
+const REVENUE_STATUSES_FOR_RANGE: ShopOrderStatus[] = [
+  "paid", "draft", "confirmed", "in_production", "shipped", "fulfilled_digital",
+]
+
+export async function listOrdersInRange(from: Date, to: Date): Promise<ShopOrder[]> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("shop_orders")
+    .select("*")
+    .in("status", REVENUE_STATUSES_FOR_RANGE)
+    .gte("created_at", from.toISOString())
+    .lt("created_at", to.toISOString())
+    .order("created_at", { ascending: false })
+  if (error) throw error
+  return (data ?? []) as ShopOrder[]
+}
+
 export async function getOrderStats(): Promise<OrderStats> {
   const supabase = getClient()
   const todayStart = new Date()

@@ -92,6 +92,39 @@ export interface CampaignMetricsRollup {
  * Aggregation runs against the campaign-grain rows only (ad_group_id IS NULL
  * AND keyword_criterion_id IS NULL) to avoid double-counting.
  */
+export interface AdsTotals {
+  cost_micros: number
+  conversions: number
+  clicks: number
+  impressions: number
+}
+
+export async function getDailyTotalsInRange(from: Date, to: Date): Promise<AdsTotals> {
+  const supabase = getClient()
+  const fromYmd = from.toISOString().slice(0, 10)
+  const toYmd = to.toISOString().slice(0, 10)
+  const { data, error } = await supabase
+    .from("google_ads_daily_metrics")
+    .select("cost_micros, conversions, clicks, impressions")
+    .is("ad_group_id", null)
+    .is("keyword_criterion_id", null)
+    .gte("date", fromYmd)
+    .lt("date", toYmd)
+  if (error) throw error
+  const rows = (data ?? []) as Array<{
+    cost_micros: number; conversions: number; clicks: number; impressions: number
+  }>
+  return rows.reduce<AdsTotals>(
+    (acc, r) => ({
+      cost_micros: acc.cost_micros + Number(r.cost_micros ?? 0),
+      conversions: acc.conversions + Number(r.conversions ?? 0),
+      clicks: acc.clicks + Number(r.clicks ?? 0),
+      impressions: acc.impressions + Number(r.impressions ?? 0),
+    }),
+    { cost_micros: 0, conversions: 0, clicks: 0, impressions: 0 },
+  )
+}
+
 export async function getCampaignRollup(
   customerId: string,
   fromDate: string,
