@@ -13,7 +13,7 @@ interface Options { range: DateRange }
 export async function buildWeeklyOpsHealth(opts: Options): Promise<WeeklyOpsHealthPayload | null> {
   const { range } = opts
   const [allLogs, voiceFlags] = await Promise.all([
-    getGenerationLogs(),
+    getGenerationLogs({ since: range.from }),
     listRecentVoiceDriftFlags({ since: range.from }),
   ])
 

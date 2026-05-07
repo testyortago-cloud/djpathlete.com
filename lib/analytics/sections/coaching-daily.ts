@@ -44,8 +44,7 @@ export async function buildDailyCoaching(opts: Options): Promise<DailyCoachingPa
   const lowRpeLogFlags = recentLogs.filter((p) => {
     const completedMs = p.completed_at ? new Date(p.completed_at).getTime() : 0
     if (completedMs < yesterdayMs) return false
-    const rpe = (p as unknown as { rpe?: number | null }).rpe ?? null
-    return rpe == null || rpe < LOW_RPE_THRESHOLD
+    return p.rpe == null || p.rpe < LOW_RPE_THRESHOLD
   }).length
 
   const voiceDriftFlags = voiceFlags.length

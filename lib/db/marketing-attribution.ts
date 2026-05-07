@@ -128,7 +128,7 @@ export async function countByAttributionSourceInRange(
   from: Date,
   to: Date,
 ): Promise<Array<{ source: string; count: number }>> {
-  const supabase = createServiceRoleClient()
+  const supabase = getClient()
   const { data, error } = await supabase
     .from("marketing_attribution")
     .select("utm_source")

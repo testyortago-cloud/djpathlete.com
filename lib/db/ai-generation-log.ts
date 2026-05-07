@@ -23,6 +23,7 @@ export interface GenerationLogFilters {
   status?: AiGenerationStatus
   client_id?: string
   requested_by?: string
+  since?: Date
 }
 
 export async function getGenerationLogById(id: string) {
@@ -44,6 +45,9 @@ export async function getGenerationLogs(filters?: GenerationLogFilters) {
   }
   if (filters?.requested_by) {
     query = query.eq("requested_by", filters.requested_by)
+  }
+  if (filters?.since) {
+    query = query.gte("created_at", filters.since.toISOString())
   }
 
   const { data, error } = await query.order("created_at", { ascending: false })

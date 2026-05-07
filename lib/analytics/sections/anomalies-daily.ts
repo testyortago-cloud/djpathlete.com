@@ -32,7 +32,7 @@ export async function buildDailyAnomalies(opts: Options): Promise<DailyAnomalies
 
   const [adsBaseline, recentLogs] = await Promise.all([
     getDailyTotalsInRange(baselineFrom, baselineTo),
-    getGenerationLogs(),
+    getGenerationLogs({ since: last24hFrom }),
   ])
 
   const flags: DailyAnomalyFlag[] = []
