@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 
 const buildWeeklyReportMock = vi.fn()
 const resendSendMock = vi.fn()
+const isCronSkippedMock = vi.fn()
 
 vi.mock("@/lib/analytics/weekly-report", () => ({
   buildWeeklyReport: (opts: unknown) => buildWeeklyReportMock(opts),
@@ -14,6 +15,9 @@ vi.mock("@/lib/resend", () => ({
     },
   },
   FROM_EMAIL: "DJP Athlete <noreply@test>",
+}))
+vi.mock("@/lib/db/system-settings", () => ({
+  isCronSkipped: (args: unknown) => isCronSkippedMock(args),
 }))
 
 import { POST } from "@/app/api/admin/internal/send-weekly-report/route"
@@ -35,13 +39,21 @@ describe("POST /api/admin/internal/send-weekly-report", () => {
     process.env.INTERNAL_CRON_TOKEN = TOKEN
     process.env.RESEND_API_KEY = "re_test"
     process.env.COACH_EMAIL = "coach@example.com"
+    isCronSkippedMock.mockResolvedValue({ skipped: false })
     buildWeeklyReportMock.mockResolvedValue({
-      subject: "Weekly Content Report — Week of Apr 14",
+      subject: "Weekly Review — Week of Apr 14",
       html: "<html>...</html>",
       rangeStart: new Date("2026-04-14T00:00:00Z"),
       rangeEnd: new Date("2026-04-21T00:00:00Z"),
-      social: {},
-      content: {},
+      payload: {
+        rangeStart: new Date("2026-04-14T00:00:00Z"),
+        rangeEnd: new Date("2026-04-21T00:00:00Z"),
+        topOfMind: [{ text: "Quiet week across the board.", positive: null }],
+        coaching: null, revenue: null, funnel: null,
+        social: {} as any, content: {} as any,
+        opsHealth: null,
+        dashboardUrl: "http://localhost:3050/admin/analytics?tab=social",
+      },
     })
   })
 
@@ -66,7 +78,7 @@ describe("POST /api/admin/internal/send-weekly-report", () => {
     expect(resendSendMock).toHaveBeenCalledWith({
       from: "DJP Athlete <noreply@test>",
       to: "coach@example.com",
-      subject: "Weekly Content Report — Week of Apr 14",
+      subject: "Weekly Review — Week of Apr 14",
       html: "<html>...</html>",
     })
   })

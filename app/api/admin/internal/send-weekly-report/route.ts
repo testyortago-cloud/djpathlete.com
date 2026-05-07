@@ -58,6 +58,11 @@ export async function POST(request: NextRequest) {
           html: report.html,
           rangeStart: report.rangeStart.toISOString(),
           rangeEnd: report.rangeEnd.toISOString(),
+          payload: {
+            ...report.payload,
+            rangeStart: report.payload.rangeStart.toISOString(),
+            rangeEnd: report.payload.rangeEnd.toISOString(),
+          },
         },
         { status: 200 },
       )
