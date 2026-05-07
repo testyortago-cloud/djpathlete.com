@@ -123,3 +123,24 @@ export async function findAttributionByEmail(
   if (error) throw error
   return (data as MarketingAttribution | null) ?? null
 }
+
+export async function countByAttributionSourceInRange(
+  from: Date,
+  to: Date,
+): Promise<Array<{ source: string; count: number }>> {
+  const supabase = createServiceRoleClient()
+  const { data, error } = await supabase
+    .from("marketing_attribution")
+    .select("utm_source")
+    .gte("created_at", from.toISOString())
+    .lt("created_at", to.toISOString())
+  if (error) throw error
+  const counts = new Map<string, number>()
+  for (const r of (data ?? []) as Array<{ utm_source: string | null }>) {
+    const src = r.utm_source ?? "direct"
+    counts.set(src, (counts.get(src) ?? 0) + 1)
+  }
+  return Array.from(counts, ([source, count]) => ({ source, count })).sort(
+    (a, b) => b.count - a.count,
+  )
+}

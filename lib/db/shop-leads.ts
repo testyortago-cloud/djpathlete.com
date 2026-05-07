@@ -97,3 +97,14 @@ export async function getLead(id: string): Promise<ShopLead | null> {
   }
   return data as ShopLead
 }
+
+export async function countLeadsInRange(from: Date, to: Date): Promise<number> {
+  const supabase = getClient()
+  const { count, error } = await supabase
+    .from("shop_leads")
+    .select("id", { head: true, count: "exact" })
+    .gte("created_at", from.toISOString())
+    .lt("created_at", to.toISOString())
+  if (error) throw error
+  return count ?? 0
+}
