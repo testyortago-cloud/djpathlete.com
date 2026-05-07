@@ -68,6 +68,34 @@ export async function getClientPrograms(userId: string) {
   return (data ?? []).map((row) => (row as unknown as { programs: Program }).programs).filter(Boolean)
 }
 
+/**
+ * Program completion rate = assignments with status='completed' / all assignments
+ * with `created_at` falling in the range, expressed as a 0-100 integer.
+ */
+export async function getProgramCompletionRate(from: Date, to: Date): Promise<number> {
+  const supabase = getClient()
+  const fromIso = from.toISOString()
+  const toIso = to.toISOString()
+  const [completedRes, totalRes] = await Promise.all([
+    supabase
+      .from("program_assignments")
+      .select("id", { head: true, count: "exact" })
+      .eq("status", "completed")
+      .gte("created_at", fromIso)
+      .lt("created_at", toIso),
+    supabase
+      .from("program_assignments")
+      .select("id", { head: true, count: "exact" })
+      .gte("created_at", fromIso)
+      .lt("created_at", toIso),
+  ])
+  if (completedRes.error) throw completedRes.error
+  if (totalRes.error) throw totalRes.error
+  const total = totalRes.count ?? 0
+  if (total === 0) return 0
+  return Math.round(((completedRes.count ?? 0) / total) * 100)
+}
+
 export async function deleteProgram(id: string) {
   const supabase = getClient()
 

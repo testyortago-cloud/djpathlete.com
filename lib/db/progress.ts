@@ -187,6 +187,29 @@ export async function listClientsWithoutLogSince(
   }>
 }
 
+export async function countSessionsInRange(from: Date, to: Date): Promise<number> {
+  const supabase = getClient()
+  const { count, error } = await supabase
+    .from("exercise_progress")
+    .select("id", { head: true, count: "exact" })
+    .gte("completed_at", from.toISOString())
+    .lt("completed_at", to.toISOString())
+  if (error) throw error
+  return count ?? 0
+}
+
+export async function countActiveClientsInRange(from: Date, to: Date): Promise<number> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("exercise_progress")
+    .select("user_id")
+    .gte("completed_at", from.toISOString())
+    .lt("completed_at", to.toISOString())
+  if (error) throw error
+  const uniq = new Set((data ?? []).map((r) => (r as { user_id: string }).user_id))
+  return uniq.size
+}
+
 export async function logProgress(progress: Omit<ExerciseProgress, "id" | "created_at">) {
   const supabase = getClient()
   const { data, error } = await supabase.from("exercise_progress").insert(progress).select().single()
