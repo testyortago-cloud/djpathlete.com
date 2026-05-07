@@ -30,13 +30,13 @@ describe("buildDailyBookings", () => {
     getBookingsInRangeMock.mockResolvedValue([
       {
         booking_date: "2026-05-07T15:00:00Z",
-        client_name: "Sarah K.",
-        booking_type: "Strategy call",
+        contact_name: "Sarah K.",
+        duration_minutes: 30,
       },
       {
         booking_date: "2026-05-07T14:00:00Z",
-        client_name: "Jordan M.",
-        booking_type: "Form review",
+        contact_name: "Jordan M.",
+        duration_minutes: 60,
       },
     ])
     listSignupsCreatedSinceMock.mockResolvedValue([{ id: "s1" }, { id: "s2" }])
@@ -46,6 +46,7 @@ describe("buildDailyBookings", () => {
     expect(result).not.toBeNull()
     expect(result!.callsToday).toHaveLength(2)
     expect(result!.callsToday[0].clientName).toBe("Jordan M.") // 14:00 first
+    expect(result!.callsToday[0].type).toBe("60 min")
     expect(result!.callsToday[1].clientName).toBe("Sarah K.")
     expect(result!.newSignupsOvernight).toBe(2)
   })

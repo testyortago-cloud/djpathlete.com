@@ -40,14 +40,14 @@ export async function buildDailyBookings(opts: Options): Promise<DailyBookingsPa
   const callsToday = bookings
     .slice()
     .sort((a, b) => {
-      const aDate = new Date(a.booking_date as unknown as string).getTime()
-      const bDate = new Date(b.booking_date as unknown as string).getTime()
+      const aDate = new Date(a.booking_date).getTime()
+      const bDate = new Date(b.booking_date).getTime()
       return aDate - bDate
     })
     .map((b) => ({
-      time: fmtTime(b.booking_date as unknown as string),
-      clientName: ((b as unknown as { client_name?: string }).client_name ?? "Client").trim(),
-      type: ((b as unknown as { booking_type?: string }).booking_type ?? "Session").trim(),
+      time: fmtTime(b.booking_date),
+      clientName: b.contact_name.trim(),
+      type: `${b.duration_minutes} min`,
     }))
 
   const newSignupsOvernight = signups.length
