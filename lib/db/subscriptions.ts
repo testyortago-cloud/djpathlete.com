@@ -101,3 +101,39 @@ export async function listSubscriptionsChangedInRange(
   if (cancelledRes.error) throw cancelledRes.error
   return { created: createdRes.count ?? 0, cancelled: cancelledRes.count ?? 0 }
 }
+
+export async function countRenewalsInRange(from: Date, to: Date): Promise<number> {
+  const supabase = getClient()
+  const { count, error } = await supabase
+    .from("subscriptions")
+    .select("id", { head: true, count: "exact" })
+    .eq("status", "active")
+    .gte("current_period_start", from.toISOString())
+    .lt("current_period_start", to.toISOString())
+  if (error) throw error
+  return count ?? 0
+}
+
+/**
+ * Approximate MRR from active subscriptions. Joins to programs to read
+ * price_cents + billing_interval. Annual prices are normalised to monthly.
+ * Snapshot at "now" — not historical. Used for the weekly review headline.
+ */
+export async function getMrrCents(): Promise<number> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("subscriptions")
+    .select("programs(price_cents, billing_interval)")
+    .in("status", ["active", "trialing", "past_due"])
+  if (error) throw error
+  let total = 0
+  for (const r of (data ?? []) as unknown as Array<{
+    programs: { price_cents: number | null; billing_interval: string | null } | null
+  }>) {
+    const p = r.programs
+    if (!p || p.price_cents == null) continue
+    if (p.billing_interval === "year") total += Math.round(p.price_cents / 12)
+    else total += p.price_cents
+  }
+  return total
+}
