@@ -108,6 +108,30 @@ export interface AddSubscriberWithAttributionResult {
  * subscribers track consent via the consent_marketing boolean only — they
  * promote to a fully-logged consent state when they create an account.
  */
+export async function getSubscriberDeltaInRange(
+  from: Date, to: Date,
+): Promise<{ added: number; removed: number }> {
+  const supabase = getClient()
+  const fromIso = from.toISOString()
+  const toIso = to.toISOString()
+  const [addedRes, removedRes] = await Promise.all([
+    supabase
+      .from("newsletter_subscribers")
+      .select("id", { head: true, count: "exact" })
+      .gte("subscribed_at", fromIso)
+      .lt("subscribed_at", toIso),
+    supabase
+      .from("newsletter_subscribers")
+      .select("id", { head: true, count: "exact" })
+      .not("unsubscribed_at", "is", null)
+      .gte("unsubscribed_at", fromIso)
+      .lt("unsubscribed_at", toIso),
+  ])
+  if (addedRes.error) throw addedRes.error
+  if (removedRes.error) throw removedRes.error
+  return { added: addedRes.count ?? 0, removed: removedRes.count ?? 0 }
+}
+
 export async function addSubscriberWithAttribution(
   input: AddSubscriberWithAttributionInput,
 ): Promise<AddSubscriberWithAttributionResult> {

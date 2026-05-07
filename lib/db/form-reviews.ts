@@ -90,6 +90,38 @@ export async function createFormReviewMessage(message: Omit<FormReviewMessage, "
   return data
 }
 
+export async function listFormReviewsByStatus(status: FormReviewStatus) {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("form_reviews")
+    .select("id, created_at, status")
+    .eq("status", status)
+    .order("created_at", { ascending: true })
+  if (error) throw error
+  return (data ?? []) as Array<{ id: string; created_at: string; status: FormReviewStatus }>
+}
+
+export async function getDeliveredFormReviewStats(
+  from: Date,
+  to: Date,
+): Promise<{ count: number; avgResponseHours: number }> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("form_reviews")
+    .select("created_at, updated_at, status")
+    .eq("status", "reviewed")
+    .gte("updated_at", from.toISOString())
+    .lt("updated_at", to.toISOString())
+  if (error) throw error
+  const rows = (data ?? []) as Array<{ created_at: string; updated_at: string }>
+  if (rows.length === 0) return { count: 0, avgResponseHours: 0 }
+  const totalHours = rows.reduce((sum, r) => {
+    const dt = new Date(r.updated_at).getTime() - new Date(r.created_at).getTime()
+    return sum + dt / (3600 * 1000)
+  }, 0)
+  return { count: rows.length, avgResponseHours: Math.round(totalHours / rows.length) }
+}
+
 // ---------------------------------------------------------------------------
 // Counts (for admin badge)
 // ---------------------------------------------------------------------------

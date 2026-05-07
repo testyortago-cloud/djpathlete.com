@@ -30,18 +30,24 @@ function makeRequest(body: unknown, authHeader = AUTH): Request {
 }
 
 const basePulse = {
-  subject: "Daily Pulse — Tue, Apr 21",
+  subject: "Daily Brief — Tue, Apr 21",
   html: "<html>...</html>",
   referenceDate: new Date("2026-04-21T07:00:00Z"),
   isMondayEdition: false,
-  pipeline: {
-    awaitingReview: 2,
-    readyToPublish: 1,
-    scheduledToday: 0,
-    videosAwaitingTranscription: 3,
-    blogsInDraft: 1,
+  payload: {
+    referenceDate: new Date("2026-04-21T07:00:00Z"),
+    isMondayEdition: false,
+    bookings: null,
+    coaching: null,
+    pipeline: {
+      awaitingReview: 2, readyToPublish: 1, scheduledToday: 0,
+      videosAwaitingTranscription: 3, blogsInDraft: 1,
+    },
+    revenueFunnel: null,
+    anomalies: null,
+    trendingTopics: [],
+    dashboardUrl: "http://localhost:3050/admin/content",
   },
-  trendingTopics: [],
 }
 
 describe("POST /api/admin/internal/send-daily-pulse", () => {
@@ -75,7 +81,7 @@ describe("POST /api/admin/internal/send-daily-pulse", () => {
     expect(resendSendMock).toHaveBeenCalledWith({
       from: "DJP Athlete <noreply@test>",
       to: "coach@example.com",
-      subject: "Daily Pulse — Tue, Apr 21",
+      subject: "Daily Brief — Tue, Apr 21",
       html: "<html>...</html>",
     })
   })
@@ -92,7 +98,7 @@ describe("POST /api/admin/internal/send-daily-pulse", () => {
     const body = await res.json()
     expect(body.dryRun).toBe(true)
     expect(body.html).toContain("<html")
-    expect(body.pipeline.awaitingReview).toBe(2)
+    expect(body.payload.pipeline.awaitingReview).toBe(2)
     expect(resendSendMock).not.toHaveBeenCalled()
   })
 

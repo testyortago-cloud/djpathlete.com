@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest"
 import { renderToStaticMarkup } from "react-dom/server"
 import { WeeklyContentReport } from "@/components/emails/WeeklyContentReport"
+import type { WeeklyReviewPayload } from "@/types/coach-emails"
 import type { SocialMetrics, ContentMetrics } from "@/types/analytics"
 
 const baseSocial: SocialMetrics = {
@@ -59,16 +60,22 @@ const baseContent: ContentMetrics = {
   ],
 }
 
-function render(overrides: Partial<Parameters<typeof WeeklyContentReport>[0]> = {}): string {
+const basePayload: WeeklyReviewPayload = {
+  rangeStart: new Date("2026-04-14T00:00:00Z"),
+  rangeEnd: new Date("2026-04-21T00:00:00Z"),
+  topOfMind: [{ text: "Quiet week across the board.", positive: null }],
+  coaching: null,
+  revenue: null,
+  funnel: null,
+  social: baseSocial,
+  content: baseContent,
+  opsHealth: null,
+  dashboardUrl: "https://app.local/admin/analytics?tab=social",
+}
+
+function render(payloadOverrides: Partial<WeeklyReviewPayload> = {}): string {
   return renderToStaticMarkup(
-    <WeeklyContentReport
-      social={baseSocial}
-      content={baseContent}
-      rangeStart={new Date("2026-04-14T00:00:00Z")}
-      rangeEnd={new Date("2026-04-21T00:00:00Z")}
-      dashboardUrl="https://app.local/admin/analytics?tab=social"
-      {...overrides}
-    />,
+    <WeeklyContentReport payload={{ ...basePayload, ...payloadOverrides }} />,
   )
 }
 
@@ -135,5 +142,69 @@ describe("<WeeklyContentReport />", () => {
   it("formats the week heading with the rangeStart date", () => {
     const html = render()
     expect(html).toContain("Week of Apr")
+  })
+
+  it("always renders top of mind bullets", () => {
+    const html = render()
+    expect(html).toContain("Quiet week across the board")
+  })
+
+  it("renders coaching section when coaching payload is provided", () => {
+    const html = render({
+      coaching: {
+        activeClients: { current: 12, previous: 10 },
+        sessionsCompleted: { current: 45, previous: 40 },
+        programCompletionRatePct: { current: 78, previous: 72 },
+        formReviewsDelivered: { current: 5, previous: 3 },
+        avgFormReviewResponseHours: { current: 6, previous: 8 },
+        silentClients: 2,
+      },
+    })
+    expect(html).toContain("Coaching")
+    expect(html).toContain("Active clients")
+    expect(html).toContain("gone silent")
+  })
+
+  it("omits coaching section when coaching is null", () => {
+    const html = render({ coaching: null })
+    expect(html).not.toContain("Active clients")
+  })
+
+  it("renders revenue section when revenue payload is provided", () => {
+    const html = render({
+      revenue: {
+        mrrCents: { current: 250000, previous: 230000 },
+        newSubs: { current: 3, previous: 2 },
+        cancelledSubs: { current: 1, previous: 0 },
+        renewedSubs: { current: 20, previous: 18 },
+        shopRevenueCents: { current: 50000, previous: 45000 },
+        refundsCents: { current: 0, previous: 0 },
+      },
+    })
+    expect(html).toContain("Revenue")
+    expect(html).toContain("MRR")
+  })
+
+  it("omits revenue section when revenue is null", () => {
+    const html = render({ revenue: null })
+    expect(html).not.toContain("MRR")
+  })
+
+  it("renders opsHealth section when provided", () => {
+    const html = render({
+      opsHealth: {
+        aiTokenSpendUsd: 12.5,
+        generationFailureRatePct: 3.2,
+        voiceDriftFlagCount: 1,
+        cronSkipCount: 0,
+      },
+    })
+    expect(html).toContain("Ops health")
+    expect(html).toContain("12.50")
+  })
+
+  it("omits opsHealth section when null", () => {
+    const html = render({ opsHealth: null })
+    expect(html).not.toContain("Ops health")
   })
 })

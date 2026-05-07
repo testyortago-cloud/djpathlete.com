@@ -207,6 +207,38 @@ const REVENUE_STATUSES: ShopOrderStatus[] = [
   "fulfilled_digital",
 ]
 
+const REVENUE_STATUSES_FOR_RANGE: ShopOrderStatus[] = [
+  "paid", "draft", "confirmed", "in_production", "shipped", "fulfilled_digital",
+]
+
+export async function listOrdersInRange(from: Date, to: Date): Promise<ShopOrder[]> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("shop_orders")
+    .select("*")
+    .in("status", REVENUE_STATUSES_FOR_RANGE)
+    .gte("created_at", from.toISOString())
+    .lt("created_at", to.toISOString())
+    .order("created_at", { ascending: false })
+  if (error) throw error
+  return (data ?? []) as ShopOrder[]
+}
+
+export async function sumRefundsInRange(from: Date, to: Date): Promise<number> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("shop_orders")
+    .select("refund_amount_cents")
+    .eq("status", "refunded")
+    .not("refund_amount_cents", "is", null)
+    .gte("updated_at", from.toISOString())
+    .lt("updated_at", to.toISOString())
+  if (error) throw error
+  return ((data ?? []) as Array<{ refund_amount_cents: number | null }>).reduce(
+    (sum, r) => sum + (r.refund_amount_cents ?? 0), 0,
+  )
+}
+
 export async function getOrderStats(): Promise<OrderStats> {
   const supabase = getClient()
   const todayStart = new Date()

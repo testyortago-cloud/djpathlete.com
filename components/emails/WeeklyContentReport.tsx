@@ -1,12 +1,5 @@
-import type { SocialMetrics, ContentMetrics } from "@/types/analytics"
-
-interface Props {
-  social: SocialMetrics
-  content: ContentMetrics
-  rangeStart: Date
-  rangeEnd: Date
-  dashboardUrl: string
-}
+import { Section } from "./_shared/Section"
+import type { WeeklyReviewPayload } from "@/types/coach-emails"
 
 const BRAND = {
   primary: "#0E3F50",
@@ -32,6 +25,14 @@ function fmtDateShort(d: Date): string {
 
 function fmtWeekOf(d: Date): string {
   return `Week of ${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
+}
+
+function fmtDollars(cents: number): string {
+  return `$${(cents / 100).toFixed(0)}`
+}
+
+function fmtDollarsExact(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`
 }
 
 function pctChange(current: number, previous: number): { label: string; color: string } | null {
@@ -103,25 +104,61 @@ function Stat({
   )
 }
 
-function SectionHeading({ children }: { children: string }) {
+function DeltaRow({
+  label,
+  current,
+  previous,
+  formatter = String,
+}: {
+  label: string
+  current: number
+  previous: number
+  formatter?: (n: number) => string
+}) {
+  const trend = pctChange(current, previous)
   return (
-    <h2
-      style={{
-        margin: "0 0 16px",
-        fontFamily: "'Lexend Exa', Georgia, serif",
-        fontSize: "14px",
-        color: BRAND.primary,
-        textTransform: "uppercase",
-        letterSpacing: "2px",
-        fontWeight: 600,
-      }}
-    >
-      {children}
-    </h2>
+    <tr>
+      <td
+        style={{
+          padding: "8px 0",
+          borderBottom: `1px solid ${BRAND.border}`,
+          fontFamily: "'Lexend Deca', -apple-system, sans-serif",
+          fontSize: "13px",
+          color: BRAND.textMuted,
+        }}
+      >
+        {label}
+      </td>
+      <td
+        align="right"
+        style={{
+          padding: "8px 0",
+          borderBottom: `1px solid ${BRAND.border}`,
+          fontFamily: "'Lexend Deca', -apple-system, sans-serif",
+          fontSize: "13px",
+          color: BRAND.primary,
+          fontWeight: 600,
+          whiteSpace: "nowrap",
+        }}
+      >
+        {formatter(current)}
+        {trend && (
+          <span style={{ marginLeft: "8px", fontWeight: 400, fontSize: "11px", color: trend.color }}>
+            {trend.label}
+          </span>
+        )}
+      </td>
+    </tr>
   )
 }
 
-export function WeeklyContentReport({ social, content, rangeStart, rangeEnd, dashboardUrl }: Props) {
+interface Props {
+  payload: WeeklyReviewPayload
+}
+
+export function WeeklyContentReport({ payload }: Props) {
+  const { rangeStart, rangeEnd, topOfMind, coaching, revenue, funnel, social, content, opsHealth, dashboardUrl } = payload
+
   const oneLineSummary = `${social.publishedPosts} ${social.publishedPosts === 1 ? "post" : "posts"} published · ${fmtNumber(social.totalEngagement)} engagement · ${content.blogsPublished} ${content.blogsPublished === 1 ? "blog" : "blogs"} shipped`
 
   const flaggedBlogs = content.blogsByFactCheckStatus.filter((row) => row.label === "Flagged" || row.label === "Failed")
@@ -131,7 +168,7 @@ export function WeeklyContentReport({ social, content, rangeStart, rangeEnd, das
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Weekly Content Report — DJP Athlete</title>
+        <title>Weekly Review — DJP Athlete</title>
       </head>
       <body style={{ margin: 0, padding: 0, backgroundColor: BRAND.neutral }}>
         <table
@@ -186,7 +223,7 @@ export function WeeklyContentReport({ social, content, rangeStart, rangeEnd, das
                                     textTransform: "uppercase",
                                   }}
                                 >
-                                  Weekly Content Report
+                                  Weekly Review
                                 </p>
                                 <h1
                                   style={{
@@ -234,232 +271,452 @@ export function WeeklyContentReport({ social, content, rangeStart, rangeEnd, das
                       </td>
                     </tr>
 
-                    {/* Social KPIs */}
-                    <tr>
-                      <td style={{ padding: "20px 48px 8px" }}>
-                        <SectionHeading>Social at a glance</SectionHeading>
-                        <table
-                          role="presentation"
-                          width="100%"
-                          cellPadding={0}
-                          cellSpacing={0}
-                          border={0}
-                          style={{ border: `1px solid ${BRAND.border}`, borderCollapse: "collapse" }}
-                        >
+                    {/* Top of mind (always renders) */}
+                    <Section title="Top of mind">
+                      <ul
+                        style={{
+                          margin: 0,
+                          paddingLeft: "18px",
+                          fontFamily: "'Lexend Deca', -apple-system, sans-serif",
+                          fontSize: "14px",
+                          color: BRAND.textPrimary,
+                          lineHeight: 1.8,
+                        }}
+                      >
+                        {topOfMind.map((bullet, i) => (
+                          <li
+                            key={i}
+                            style={{
+                              color:
+                                bullet.positive === true
+                                  ? BRAND.success
+                                  : bullet.positive === false
+                                    ? BRAND.error
+                                    : BRAND.textPrimary,
+                            }}
+                          >
+                            {bullet.text}
+                          </li>
+                        ))}
+                      </ul>
+                    </Section>
+
+                    {/* Coaching (conditional) */}
+                    {coaching && (
+                      <Section title="Coaching">
+                        <table role="presentation" width="100%" cellPadding={0} cellSpacing={0} border={0}>
                           <tbody>
-                            <tr>
-                              <Stat
-                                label="Posts created"
-                                value={fmtNumber(social.totalPosts)}
-                                trend={pctChange(social.totalPosts, social.previousTotalPosts)}
-                              />
-                              <Stat
-                                label="Posts published"
-                                value={fmtNumber(social.publishedPosts)}
-                                trend={pctChange(social.publishedPosts, social.previousPublishedPosts)}
-                              />
-                            </tr>
-                            <tr style={{ borderTop: `1px solid ${BRAND.border}` }}>
-                              <Stat label="Impressions" value={fmtNumber(social.totalImpressions)} trend={null} />
-                              <Stat label="Engagement" value={fmtNumber(social.totalEngagement)} trend={null} />
-                            </tr>
+                            <DeltaRow
+                              label="Active clients"
+                              current={coaching.activeClients.current}
+                              previous={coaching.activeClients.previous}
+                            />
+                            <DeltaRow
+                              label="Sessions completed"
+                              current={coaching.sessionsCompleted.current}
+                              previous={coaching.sessionsCompleted.previous}
+                            />
+                            <DeltaRow
+                              label="Program completion rate"
+                              current={coaching.programCompletionRatePct.current}
+                              previous={coaching.programCompletionRatePct.previous}
+                              formatter={(n) => `${n}%`}
+                            />
+                            <DeltaRow
+                              label="Form reviews delivered"
+                              current={coaching.formReviewsDelivered.current}
+                              previous={coaching.formReviewsDelivered.previous}
+                            />
+                            <DeltaRow
+                              label="Avg review response time"
+                              current={coaching.avgFormReviewResponseHours.current}
+                              previous={coaching.avgFormReviewResponseHours.previous}
+                              formatter={(n) => `${n}h`}
+                            />
+                            {coaching.silentClients > 0 && (
+                              <tr>
+                                <td
+                                  colSpan={2}
+                                  style={{
+                                    padding: "8px 0",
+                                    fontFamily: "'Lexend Deca', -apple-system, sans-serif",
+                                    fontSize: "13px",
+                                    color: BRAND.error,
+                                  }}
+                                >
+                                  {coaching.silentClients} client{coaching.silentClients === 1 ? "" : "s"} gone silent (14+ days without a log)
+                                </td>
+                              </tr>
+                            )}
                           </tbody>
                         </table>
-                      </td>
-                    </tr>
+                      </Section>
+                    )}
+
+                    {/* Revenue (conditional) */}
+                    {revenue && (
+                      <Section title="Revenue">
+                        <table role="presentation" width="100%" cellPadding={0} cellSpacing={0} border={0}>
+                          <tbody>
+                            <DeltaRow
+                              label="MRR"
+                              current={revenue.mrrCents.current}
+                              previous={revenue.mrrCents.previous}
+                              formatter={fmtDollars}
+                            />
+                            <DeltaRow
+                              label="New subscriptions"
+                              current={revenue.newSubs.current}
+                              previous={revenue.newSubs.previous}
+                            />
+                            <DeltaRow
+                              label="Cancelled subscriptions"
+                              current={revenue.cancelledSubs.current}
+                              previous={revenue.cancelledSubs.previous}
+                            />
+                            <DeltaRow
+                              label="Renewals"
+                              current={revenue.renewedSubs.current}
+                              previous={revenue.renewedSubs.previous}
+                            />
+                            <DeltaRow
+                              label="Shop revenue"
+                              current={revenue.shopRevenueCents.current}
+                              previous={revenue.shopRevenueCents.previous}
+                              formatter={fmtDollars}
+                            />
+                            <DeltaRow
+                              label="Refunds"
+                              current={revenue.refundsCents.current}
+                              previous={revenue.refundsCents.previous}
+                              formatter={fmtDollars}
+                            />
+                          </tbody>
+                        </table>
+                      </Section>
+                    )}
+
+                    {/* Lead funnel (conditional) */}
+                    {funnel && (
+                      <Section title="Lead funnel">
+                        <table role="presentation" width="100%" cellPadding={0} cellSpacing={0} border={0}>
+                          <tbody>
+                            <DeltaRow
+                              label="Newsletter net new"
+                              current={funnel.newsletterNetDelta.current}
+                              previous={funnel.newsletterNetDelta.previous}
+                            />
+                            <DeltaRow
+                              label="Shop leads"
+                              current={funnel.shopLeads.current}
+                              previous={funnel.shopLeads.previous}
+                            />
+                            <DeltaRow
+                              label="Ad spend"
+                              current={funnel.adSpendCents.current}
+                              previous={funnel.adSpendCents.previous}
+                              formatter={fmtDollarsExact}
+                            />
+                            <DeltaRow
+                              label="Ad conversions"
+                              current={funnel.adConversions.current}
+                              previous={funnel.adConversions.previous}
+                            />
+                            <DeltaRow
+                              label="Ad CPL"
+                              current={funnel.adCplCents.current}
+                              previous={funnel.adCplCents.previous}
+                              formatter={fmtDollarsExact}
+                            />
+                            {funnel.topCampaign && (
+                              <tr>
+                                <td
+                                  colSpan={2}
+                                  style={{
+                                    padding: "8px 0",
+                                    fontFamily: "'Lexend Deca', -apple-system, sans-serif",
+                                    fontSize: "13px",
+                                    color: BRAND.textMuted,
+                                    fontStyle: "italic",
+                                  }}
+                                >
+                                  Top campaign: {funnel.topCampaign.name} — {funnel.topCampaign.conversions} conv · {fmtDollarsExact(funnel.topCampaign.cpl)} CPL
+                                </td>
+                              </tr>
+                            )}
+                            {funnel.attributionBySource.length > 0 && (
+                              <tr>
+                                <td
+                                  colSpan={2}
+                                  style={{
+                                    padding: "8px 0 0",
+                                    fontFamily: "'Lexend Deca', -apple-system, sans-serif",
+                                    fontSize: "13px",
+                                    color: BRAND.textMuted,
+                                  }}
+                                >
+                                  By source:{" "}
+                                  {funnel.attributionBySource
+                                    .map((s) => `${s.source} (${s.count})`)
+                                    .join(" · ")}
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </Section>
+                    )}
+
+                    {/* Content performance (always renders — existing social/blog/newsletter blocks) */}
+                    <Section title="Social at a glance">
+                      <table
+                        role="presentation"
+                        width="100%"
+                        cellPadding={0}
+                        cellSpacing={0}
+                        border={0}
+                        style={{ border: `1px solid ${BRAND.border}`, borderCollapse: "collapse" }}
+                      >
+                        <tbody>
+                          <tr>
+                            <Stat
+                              label="Posts created"
+                              value={fmtNumber(social.totalPosts)}
+                              trend={pctChange(social.totalPosts, social.previousTotalPosts)}
+                            />
+                            <Stat
+                              label="Posts published"
+                              value={fmtNumber(social.publishedPosts)}
+                              trend={pctChange(social.publishedPosts, social.previousPublishedPosts)}
+                            />
+                          </tr>
+                          <tr style={{ borderTop: `1px solid ${BRAND.border}` }}>
+                            <Stat label="Impressions" value={fmtNumber(social.totalImpressions)} trend={null} />
+                            <Stat label="Engagement" value={fmtNumber(social.totalEngagement)} trend={null} />
+                          </tr>
+                        </tbody>
+                      </table>
+                    </Section>
 
                     {/* Top posts */}
-                    <tr>
-                      <td style={{ padding: "28px 48px 8px" }}>
-                        <SectionHeading>Top posts by engagement</SectionHeading>
-                        {social.topPostsByEngagement.length === 0 ? (
-                          <p
-                            style={{
-                              margin: 0,
-                              fontFamily: "'Lexend Deca', -apple-system, sans-serif",
-                              fontSize: "13px",
-                              color: BRAND.textMuted,
-                              fontStyle: "italic",
-                            }}
-                          >
-                            No engagement data this week yet.
-                          </p>
-                        ) : (
-                          <table role="presentation" width="100%" cellPadding={0} cellSpacing={0} border={0}>
-                            <tbody>
-                              {social.topPostsByEngagement.slice(0, 5).map((post) => (
-                                <tr key={post.social_post_id}>
-                                  <td
-                                    style={{
-                                      padding: "10px 0",
-                                      borderBottom: `1px solid ${BRAND.border}`,
-                                      fontFamily: "'Lexend Deca', -apple-system, sans-serif",
-                                      fontSize: "13px",
-                                      color: BRAND.textPrimary,
-                                    }}
-                                  >
-                                    <span
-                                      style={{
-                                        display: "inline-block",
-                                        marginRight: "8px",
-                                        fontSize: "11px",
-                                        color: BRAND.accent,
-                                        textTransform: "uppercase",
-                                        letterSpacing: "1px",
-                                      }}
-                                    >
-                                      {post.platform}
-                                    </span>
-                                    {post.content_preview}
-                                  </td>
-                                  <td
-                                    align="right"
-                                    style={{
-                                      padding: "10px 0",
-                                      borderBottom: `1px solid ${BRAND.border}`,
-                                      fontFamily: "'Lexend Deca', -apple-system, sans-serif",
-                                      fontSize: "13px",
-                                      color: BRAND.primary,
-                                      fontWeight: 600,
-                                      whiteSpace: "nowrap",
-                                    }}
-                                  >
-                                    {fmtNumber(post.engagement)}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        )}
-                      </td>
-                    </tr>
-
-                    {/* Platform breakdown */}
-                    <tr>
-                      <td style={{ padding: "28px 48px 8px" }}>
-                        <SectionHeading>Platform breakdown</SectionHeading>
-                        {social.postsByPlatform.length === 0 ? (
-                          <p
-                            style={{
-                              margin: 0,
-                              fontFamily: "'Lexend Deca', -apple-system, sans-serif",
-                              fontSize: "13px",
-                              color: BRAND.textMuted,
-                              fontStyle: "italic",
-                            }}
-                          >
-                            No posts published this week.
-                          </p>
-                        ) : (
-                          <table role="presentation" width="100%" cellPadding={0} cellSpacing={0} border={0}>
-                            <tbody>
-                              {social.postsByPlatform.map((row) => (
-                                <tr key={row.label}>
-                                  <td
-                                    style={{
-                                      padding: "6px 0",
-                                      fontFamily: "'Lexend Deca', -apple-system, sans-serif",
-                                      fontSize: "13px",
-                                      color: BRAND.textPrimary,
-                                    }}
-                                  >
-                                    {row.label}
-                                  </td>
-                                  <td
-                                    align="right"
-                                    style={{
-                                      padding: "6px 0",
-                                      fontFamily: "'Lexend Deca', -apple-system, sans-serif",
-                                      fontSize: "13px",
-                                      color: BRAND.primary,
-                                      fontWeight: 600,
-                                    }}
-                                  >
-                                    {row.count}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        )}
-                      </td>
-                    </tr>
-
-                    {/* Content shipped */}
-                    <tr>
-                      <td style={{ padding: "28px 48px 8px" }}>
-                        <SectionHeading>Content shipped</SectionHeading>
+                    <Section title="Top posts by engagement">
+                      {social.topPostsByEngagement.length === 0 ? (
                         <p
                           style={{
-                            margin: "0 0 12px",
+                            margin: 0,
+                            fontFamily: "'Lexend Deca', -apple-system, sans-serif",
+                            fontSize: "13px",
+                            color: BRAND.textMuted,
+                            fontStyle: "italic",
+                          }}
+                        >
+                          No engagement data this week yet.
+                        </p>
+                      ) : (
+                        <table role="presentation" width="100%" cellPadding={0} cellSpacing={0} border={0}>
+                          <tbody>
+                            {social.topPostsByEngagement.slice(0, 5).map((post) => (
+                              <tr key={post.social_post_id}>
+                                <td
+                                  style={{
+                                    padding: "10px 0",
+                                    borderBottom: `1px solid ${BRAND.border}`,
+                                    fontFamily: "'Lexend Deca', -apple-system, sans-serif",
+                                    fontSize: "13px",
+                                    color: BRAND.textPrimary,
+                                  }}
+                                >
+                                  <span
+                                    style={{
+                                      display: "inline-block",
+                                      marginRight: "8px",
+                                      fontSize: "11px",
+                                      color: BRAND.accent,
+                                      textTransform: "uppercase",
+                                      letterSpacing: "1px",
+                                    }}
+                                  >
+                                    {post.platform}
+                                  </span>
+                                  {post.content_preview}
+                                </td>
+                                <td
+                                  align="right"
+                                  style={{
+                                    padding: "10px 0",
+                                    borderBottom: `1px solid ${BRAND.border}`,
+                                    fontFamily: "'Lexend Deca', -apple-system, sans-serif",
+                                    fontSize: "13px",
+                                    color: BRAND.primary,
+                                    fontWeight: 600,
+                                    whiteSpace: "nowrap",
+                                  }}
+                                >
+                                  {fmtNumber(post.engagement)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </Section>
+
+                    {/* Platform breakdown */}
+                    <Section title="Platform breakdown">
+                      {social.postsByPlatform.length === 0 ? (
+                        <p
+                          style={{
+                            margin: 0,
+                            fontFamily: "'Lexend Deca', -apple-system, sans-serif",
+                            fontSize: "13px",
+                            color: BRAND.textMuted,
+                            fontStyle: "italic",
+                          }}
+                        >
+                          No posts published this week.
+                        </p>
+                      ) : (
+                        <table role="presentation" width="100%" cellPadding={0} cellSpacing={0} border={0}>
+                          <tbody>
+                            {social.postsByPlatform.map((row) => (
+                              <tr key={row.label}>
+                                <td
+                                  style={{
+                                    padding: "6px 0",
+                                    fontFamily: "'Lexend Deca', -apple-system, sans-serif",
+                                    fontSize: "13px",
+                                    color: BRAND.textPrimary,
+                                  }}
+                                >
+                                  {row.label}
+                                </td>
+                                <td
+                                  align="right"
+                                  style={{
+                                    padding: "6px 0",
+                                    fontFamily: "'Lexend Deca', -apple-system, sans-serif",
+                                    fontSize: "13px",
+                                    color: BRAND.primary,
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  {row.count}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </Section>
+
+                    {/* Content shipped */}
+                    <Section title="Content shipped">
+                      <p
+                        style={{
+                          margin: "0 0 12px",
+                          fontFamily: "'Lexend Deca', -apple-system, sans-serif",
+                          fontSize: "13px",
+                          color: BRAND.textPrimary,
+                        }}
+                      >
+                        <strong>{content.blogsPublished}</strong>{" "}
+                        {content.blogsPublished === 1 ? "blog" : "blogs"} published ·{" "}
+                        <strong>{content.newslettersSent}</strong>{" "}
+                        {content.newslettersSent === 1 ? "newsletter" : "newsletters"} sent ·{" "}
+                        <strong>{fmtNumber(content.activeSubscribers)}</strong> active subscribers
+                      </p>
+                      {content.recentPublishes.length > 0 && (
+                        <ul
+                          style={{
+                            margin: 0,
+                            padding: "0 0 0 18px",
                             fontFamily: "'Lexend Deca', -apple-system, sans-serif",
                             fontSize: "13px",
                             color: BRAND.textPrimary,
+                            lineHeight: 1.7,
                           }}
                         >
-                          <strong>{content.blogsPublished}</strong> {content.blogsPublished === 1 ? "blog" : "blogs"}{" "}
-                          published · <strong>{content.newslettersSent}</strong>{" "}
-                          {content.newslettersSent === 1 ? "newsletter" : "newsletters"} sent ·{" "}
-                          <strong>{fmtNumber(content.activeSubscribers)}</strong> active subscribers
-                        </p>
-                        {content.recentPublishes.length > 0 && (
-                          <ul
-                            style={{
-                              margin: 0,
-                              padding: "0 0 0 18px",
-                              fontFamily: "'Lexend Deca', -apple-system, sans-serif",
-                              fontSize: "13px",
-                              color: BRAND.textPrimary,
-                              lineHeight: 1.7,
-                            }}
-                          >
-                            {content.recentPublishes.slice(0, 5).map((blog) => (
-                              <li key={blog.id}>
-                                {blog.title} <span style={{ color: BRAND.textMuted }}>· {blog.category}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </td>
-                    </tr>
+                          {content.recentPublishes.slice(0, 5).map((blog) => (
+                            <li key={blog.id}>
+                              {blog.title}{" "}
+                              <span style={{ color: BRAND.textMuted }}>· {blog.category}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </Section>
 
                     {/* Fact-check flags */}
                     {flaggedBlogs.length > 0 && (
-                      <tr>
-                        <td style={{ padding: "28px 48px 8px" }}>
-                          <SectionHeading>Fact-check needs attention</SectionHeading>
-                          <table role="presentation" width="100%" cellPadding={0} cellSpacing={0} border={0}>
-                            <tbody>
-                              {flaggedBlogs.map((row) => (
-                                <tr key={row.label}>
-                                  <td
-                                    style={{
-                                      padding: "6px 0",
-                                      fontFamily: "'Lexend Deca', -apple-system, sans-serif",
-                                      fontSize: "13px",
-                                      color: BRAND.error,
-                                    }}
-                                  >
-                                    {row.label}
-                                  </td>
-                                  <td
-                                    align="right"
-                                    style={{
-                                      padding: "6px 0",
-                                      fontFamily: "'Lexend Deca', -apple-system, sans-serif",
-                                      fontSize: "13px",
-                                      color: BRAND.error,
-                                      fontWeight: 600,
-                                    }}
-                                  >
-                                    {row.count}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </td>
-                      </tr>
+                      <Section title="Fact-check needs attention">
+                        <table role="presentation" width="100%" cellPadding={0} cellSpacing={0} border={0}>
+                          <tbody>
+                            {flaggedBlogs.map((row) => (
+                              <tr key={row.label}>
+                                <td
+                                  style={{
+                                    padding: "6px 0",
+                                    fontFamily: "'Lexend Deca', -apple-system, sans-serif",
+                                    fontSize: "13px",
+                                    color: BRAND.error,
+                                  }}
+                                >
+                                  {row.label}
+                                </td>
+                                <td
+                                  align="right"
+                                  style={{
+                                    padding: "6px 0",
+                                    fontFamily: "'Lexend Deca', -apple-system, sans-serif",
+                                    fontSize: "13px",
+                                    color: BRAND.error,
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  {row.count}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </Section>
+                    )}
+
+                    {/* Ops health (conditional) */}
+                    {opsHealth && (
+                      <Section title="Ops health">
+                        <ul
+                          style={{
+                            margin: 0,
+                            paddingLeft: "18px",
+                            fontFamily: "'Lexend Deca', -apple-system, sans-serif",
+                            fontSize: "13px",
+                            color: BRAND.error,
+                            lineHeight: 1.8,
+                          }}
+                        >
+                          {opsHealth.aiTokenSpendUsd != null && (
+                            <li>
+                              AI token spend: ${opsHealth.aiTokenSpendUsd.toFixed(2)} (above expected band)
+                            </li>
+                          )}
+                          {opsHealth.generationFailureRatePct != null && (
+                            <li>
+                              Generation failure rate: {opsHealth.generationFailureRatePct.toFixed(1)}%
+                            </li>
+                          )}
+                          {opsHealth.voiceDriftFlagCount > 0 && (
+                            <li style={{ color: BRAND.textPrimary }}>
+                              {opsHealth.voiceDriftFlagCount} voice-drift flag{opsHealth.voiceDriftFlagCount === 1 ? "" : "s"} this week
+                            </li>
+                          )}
+                          {opsHealth.cronSkipCount > 0 && (
+                            <li style={{ color: BRAND.textPrimary }}>
+                              {opsHealth.cronSkipCount} cron skip{opsHealth.cronSkipCount === 1 ? "" : "s"} this week
+                            </li>
+                          )}
+                        </ul>
+                      </Section>
                     )}
 
                     {/* CTA */}
