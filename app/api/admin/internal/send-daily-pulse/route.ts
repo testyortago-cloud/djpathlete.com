@@ -58,8 +58,11 @@ export async function POST(request: NextRequest) {
           subject: pulse.subject,
           html: pulse.html,
           isMondayEdition: pulse.isMondayEdition,
-          pipeline: pulse.pipeline,
-          trendingTopicsCount: pulse.trendingTopics.length,
+          payload: {
+            // Strip Date objects so JSON works
+            ...pulse.payload,
+            referenceDate: pulse.payload.referenceDate.toISOString(),
+          },
         },
         { status: 200 },
       )
