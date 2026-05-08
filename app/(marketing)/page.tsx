@@ -7,6 +7,7 @@ import { FadeIn } from "@/components/shared/FadeIn"
 import { HeroContent } from "@/components/public/HeroContent"
 import { AnimatedStats } from "@/components/public/AnimatedStats"
 import { TestimonialCarousel } from "@/components/public/TestimonialCarousel"
+import { GoogleReviewThemes } from "@/components/public/GoogleReviewThemes"
 import { NewsletterForm } from "@/components/public/NewsletterForm"
 import { GoogleReviewsBadge } from "@/components/public/GoogleReviewsBadge"
 import { TrustStrip } from "@/components/public/TrustStrip"
@@ -332,6 +333,9 @@ export default async function HomePage() {
           </FadeIn>
         </div>
       </section>
+
+      {/* ─── Google review themes — customer-validated keywords ─── */}
+      <GoogleReviewThemes className="bg-surface" />
 
       {/* ─── CTA Section ─── */}
       <section className="py-20 lg:py-32 px-4 sm:px-8 bg-surface">

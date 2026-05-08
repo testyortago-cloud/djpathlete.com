@@ -90,8 +90,19 @@ const CREDENTIALS = [
  * Topics Darren is publicly knowledgeable about. These map to entities
  * Google can recognize. Each phrase should be naturally referenced in
  * page copy too — schema and visible content must match.
+ *
+ * The first 5 entries are customer-validated themes from the GBP review
+ * topic clusters (Google's own NLP extraction). Reinforcing these in
+ * schema binds the entity graph to customer language.
  */
 const KNOWS_ABOUT = [
+  // Customer-validated topics from GBP review themes
+  "injury prevention",
+  "personalized programming",
+  "tailored workouts",
+  "knowledge of anatomy",
+  "tennis performance",
+  // Methodology and service categories
   "sports performance coaching",
   "return to sport assessment",
   "strength and conditioning",

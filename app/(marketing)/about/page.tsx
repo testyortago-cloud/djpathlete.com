@@ -5,26 +5,27 @@ import Link from "next/link"
 import { JsonLd } from "@/components/shared/JsonLd"
 import { FadeIn } from "@/components/shared/FadeIn"
 import { GoogleReviewsSection } from "@/components/public/GoogleReviewsSection"
+import { GoogleReviewThemes } from "@/components/public/GoogleReviewThemes"
 import { getGoogleBusinessProfile } from "@/lib/google-places"
 import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 import { DJP_PERSON_FULL } from "@/lib/brand/author"
 
 export const metadata: Metadata = {
-  title: "Darren J Paul, PhD — Sports Performance Coach Tampa Bay",
+  title: "Darren J Paul — Athletic Performance Coach",
   description:
-    "Sports performance coach Darren J Paul, PhD — two decades coaching WTA tennis pros, pickleball pros, and serious athletes across 15+ sports. Based in Zephyrhills, Florida (Tampa Bay area).",
+    "Meet Darren J Paul — athletic performance coach and sports performance coach behind DJP Athlete. Two decades coaching elite and youth athletes in Tampa Bay, FL.",
   alternates: { canonical: "/about" },
   openGraph: {
-    title: "Darren J Paul, PhD — Sports Performance Coach Tampa Bay | DJP Athlete",
+    title: "Darren J Paul — Athletic Performance Coach | DJP Athlete",
     description:
-      "Sports performance coach Darren J Paul, PhD — two decades coaching WTA tennis pros, pickleball pros, and serious athletes across 15+ sports. Based in Zephyrhills, Florida.",
+      "Meet Darren J Paul — athletic performance coach and sports performance coach behind DJP Athlete. Two decades coaching elite and youth athletes in Tampa Bay, FL.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Darren J Paul, PhD — Sports Performance Coach Tampa Bay | DJP Athlete",
+    title: "Darren J Paul — Athletic Performance Coach | DJP Athlete",
     description:
-      "Sports performance coach with PhD — two decades coaching WTA pros, pickleball pros, and serious athletes. Based in Tampa Bay, Florida.",
+      "Meet Darren J Paul — athletic performance coach behind DJP Athlete. Two decades coaching elite and youth athletes in Tampa Bay, FL.",
   },
 }
 
@@ -113,10 +114,10 @@ export default async function AboutPage() {
                   <p className="text-sm font-medium text-accent uppercase tracking-widest">Meet Your Coach</p>
                 </div>
                 <h1 className="text-3xl sm:text-4xl lg:text-5xl font-heading font-semibold text-primary tracking-tight mb-3">
-                  Darren J Paul, PhD
+                  About Darren J Paul
                 </h1>
                 <p className="text-base font-medium text-accent uppercase tracking-widest mb-6">
-                  Sports Performance Coach · CSCS · NASM · USAW Level 2
+                  PhD · Sports Performance Coach · CSCS · NASM · USAW Level 2
                 </p>
                 <p className="text-lg text-muted-foreground leading-relaxed mb-4">
                   Performance strategist, coach, and researcher. Two decades inside high-performance environments.
@@ -177,6 +178,9 @@ export default async function AboutPage() {
 
       {/* Google Reviews — renders only when GOOGLE_PLACES_API_KEY + GOOGLE_BUSINESS_PLACE_ID are set */}
       <GoogleReviewsSection />
+
+      {/* Google-extracted review themes — customer-validated keyword chips */}
+      <GoogleReviewThemes className="bg-surface" />
 
       {/* Philosophy Section */}
       <section className="py-16 lg:py-24 px-4 sm:px-8">
