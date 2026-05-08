@@ -13,6 +13,8 @@ import { JsonLd } from "@/components/shared/JsonLd"
 import { FadeIn } from "@/components/shared/FadeIn"
 import { FAQSection } from "@/components/FAQSection"
 import { InquiryForm } from "@/components/public/InquiryForm"
+import { SemanticAnswerBlock } from "@/components/public/SemanticAnswerBlock"
+import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 import { Button } from "@/components/ui/button"
 
 export const metadata: Metadata = {
@@ -49,8 +51,6 @@ const serviceSchema = {
   serviceType: "Online Sports Performance Training",
   description:
     "Online sports performance training for serious athletes. Online sports training programs led by an online personal trainer for athletes — sports performance coach support, sports training online, individualized programming, video feedback, and direct coaching access.",
-  keywords:
-    "online sports performance training, sports training online, online sports training programs, online personal trainer for athletes, sports performance coach, sports performance training",
   url: "https://www.darrenjpaul.com/online",
 }
 
@@ -148,6 +148,19 @@ const onlineFAQs = [
   },
 ]
 
+const onlineFAQSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: onlineFAQs.map((faq) => ({
+    "@type": "Question",
+    name: faq.question,
+    acceptedAnswer: {
+      "@type": "Answer",
+      text: faq.answer,
+    },
+  })),
+}
+
 /* Coaching-note feed — reads as a coach's working notes, not a log. */
 const coachNotes: { time: string; note: string; by: "athlete" | "coach" }[] = [
   { time: "Mon 07:04", note: "Upper contrast session logged · 42 min", by: "athlete" },
@@ -161,6 +174,14 @@ export default function OnlinePage() {
   return (
     <>
       <JsonLd data={serviceSchema} />
+      <JsonLd data={onlineFAQSchema} />
+      <BreadcrumbSchema
+        items={[
+          { name: "Home", url: "/" },
+          { name: "Services", url: "/services" },
+          { name: "Online Coaching", url: "/online" },
+        ]}
+      />
 
       {/* ===================== HERO · PERFORMANCE FLOOR ===================== */}
       <section className="relative overflow-hidden bg-primary text-primary-foreground">
@@ -428,6 +449,13 @@ export default function OnlinePage() {
           </div>
         </div>
       </section>
+
+      {/* ===================== SEMANTIC ANSWER BLOCK (AEO) ===================== */}
+      <SemanticAnswerBlock
+        eyebrow="What this is"
+        question="What is online sports performance coaching?"
+        answer="Online sports performance coaching is a coach-supervised remote training system for serious athletes. Every program is built from a remote movement, force, and load assessment, then adjusted weekly through video review, daily wellness data, and direct messaging with the coach — Darren J Paul, PhD (CSCS, NASM, USA Weightlifting Level 2). It is the same diagnostic-driven methodology used in person at our Zephyrhills, Florida facility, adapted for athletes training across the country and on tour. Athletes leave with measurable gains in strength, speed, power, and capacity — and a system that adjusts to travel, competition, and in-season demand. Entry is selective and application-only; we accept athletes we can genuinely help."
+      />
 
       {/* ===================== WHY MOST FAIL · EDITORIAL LIST ===================== */}
       <section className="py-24 lg:py-32 px-4 sm:px-8 bg-background">

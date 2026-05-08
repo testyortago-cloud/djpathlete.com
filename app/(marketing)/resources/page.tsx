@@ -5,21 +5,21 @@ import { JsonLd } from "@/components/shared/JsonLd"
 import { FadeIn } from "@/components/shared/FadeIn"
 
 export const metadata: Metadata = {
-  title: "Resources",
+  title: "Sports Performance Resources for Athletes & Coaches",
   description:
-    "Performance resources from DJP Athlete — databases, frameworks, workshops, and development programs for serious athletes and coaches.",
+    "Sports performance resources from Darren J Paul, PhD — exercise databases, coaching frameworks, workshops, and athlete development programs. For serious athletes and the coaches working with them.",
   alternates: { canonical: "/resources" },
   openGraph: {
-    title: "Resources | DJP Athlete",
+    title: "Sports Performance Resources for Athletes & Coaches | DJP Athlete",
     description:
-      "Performance resources from DJP Athlete — databases, frameworks, workshops, and development programs for serious athletes and coaches.",
+      "Exercise databases, coaching frameworks, workshops, and athlete development programs from Darren J Paul, PhD. For serious athletes and their coaches.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Resources | DJP Athlete",
+    title: "Sports Performance Resources for Athletes & Coaches | DJP Athlete",
     description:
-      "Performance resources from DJP Athlete — databases, frameworks, workshops, and development programs for serious athletes and coaches.",
+      "Exercise databases, coaching frameworks, workshops, and athlete development programs. From Darren J Paul, PhD.",
   },
 }
 

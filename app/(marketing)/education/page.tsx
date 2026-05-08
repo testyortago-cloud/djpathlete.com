@@ -3,21 +3,21 @@ import { JsonLd } from "@/components/shared/JsonLd"
 import { WaitlistForm } from "./WaitlistForm"
 
 export const metadata: Metadata = {
-  title: "Education",
+  title: "Sports Performance Education for Coaches & Athletes",
   description:
-    "A new standard for performance. A structured system for operating when certainty disappears. Coming soon from DJP Athlete.",
+    "Sports performance education from Darren J Paul, PhD. A structured system for operating when certainty disappears — coaching frameworks, programming methodology, and decision-making for high-performance environments. Coming soon.",
   alternates: { canonical: "/education" },
   openGraph: {
-    title: "Education | DJP Athlete",
+    title: "Sports Performance Education for Coaches & Athletes | DJP Athlete",
     description:
-      "A new standard for performance. A structured system for operating when certainty disappears. Coming soon from DJP Athlete.",
+      "Sports performance education from Darren J Paul, PhD. Coaching frameworks, programming methodology, and decision-making for high-performance environments. Coming soon.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Education | DJP Athlete",
+    title: "Sports Performance Education for Coaches & Athletes | DJP Athlete",
     description:
-      "A new standard for performance. A structured system for operating when certainty disappears. Coming soon from DJP Athlete.",
+      "Coaching frameworks, programming methodology, and decision-making for high-performance environments. From Darren J Paul, PhD. Coming soon.",
   },
 }
 

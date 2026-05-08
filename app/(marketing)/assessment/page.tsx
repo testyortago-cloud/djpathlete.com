@@ -4,24 +4,26 @@ import { ArrowRight, Dumbbell, Activity, Target, Zap, Brain, BarChart3 } from "l
 import { JsonLd } from "@/components/shared/JsonLd"
 import { FadeIn } from "@/components/shared/FadeIn"
 import { InquiryForm } from "@/components/public/InquiryForm"
+import { SemanticAnswerBlock } from "@/components/public/SemanticAnswerBlock"
+import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 import { Button } from "@/components/ui/button"
 
 export const metadata: Metadata = {
-  title: "Athlete Assessments — Return to Performance",
+  title: "Return-to-Sport Assessment & Performance Testing",
   description:
-    "Athlete assessments built for performance, not just clearance. Athletic performance assessment, return to sport assessment, and assessment of athletic injuries — bridging clinical care and competitive readiness.",
+    "Criterion-based return-to-sport assessment in Tampa Bay, FL. Force-platform testing, limb symmetry, and reactive control for athletes who are cleared but not yet ready to compete.",
   alternates: { canonical: "/assessment" },
   openGraph: {
-    title: "Athlete Assessments — Return to Performance | DJP Athlete",
+    title: "Return-to-Sport Assessment & Performance Testing | DJP Athlete",
     description:
-      "Athlete assessments and athletic performance assessment for athletes beyond rehab. Return to sport assessment that closes the gap between clearance and competition.",
+      "Criterion-based return-to-sport assessment in Tampa Bay, FL. Force-platform testing, limb symmetry, and reactive control for athletes who are cleared but not yet match-fit.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Athlete Assessments — Return to Performance | DJP Athlete",
+    title: "Return-to-Sport Assessment & Performance Testing | DJP Athlete",
     description:
-      "Athlete assessments and return to sport assessment for athletes beyond rehab — bridging clinical care and competition.",
+      "Criterion-based return-to-sport testing in Tampa Bay, FL. For athletes who are cleared but not yet ready to compete.",
   },
 }
 
@@ -33,9 +35,60 @@ const assessmentSchema = {
   areaServed: "Worldwide",
   description:
     "Athlete assessments built for performance, not just clearance. Athletic performance assessment, return to sport assessment, and assessment of athletic injuries — a sports performance assessment process that evaluates readiness for high-level sport after the conclusion of clinical care, contrasting traditional vs performance-based assessment.",
-  keywords:
-    "athlete assessments, athletic performance assessment, sports performance assessment, return to sport assessment, assessment of athletic injuries, traditional vs performance based assessment",
   url: "https://www.darrenjpaul.com/assessment",
+}
+
+// HowTo schema — the 4-step return-to-performance assessment process.
+// AI Overviews favor step-extraction patterns for "how does X work" queries.
+const assessmentHowToSchema = {
+  "@context": "https://schema.org",
+  "@type": "HowTo",
+  name: "How a Return-to-Performance Assessment Works",
+  description:
+    "A four-step return-to-performance assessment that bridges medical clearance and competition readiness for athletes recovering from injury.",
+  totalTime: "P1D",
+  estimatedCost: { "@type": "MonetaryAmount", currency: "USD" },
+  supply: [
+    { "@type": "HowToSupply", name: "Recent medical clearance documentation" },
+    { "@type": "HowToSupply", name: "Training history (12 months)" },
+    { "@type": "HowToSupply", name: "Sport schedule and competition demands" },
+  ],
+  tool: [
+    { "@type": "HowToTool", name: "Force platform" },
+    { "@type": "HowToTool", name: "Motion capture" },
+    { "@type": "HowToTool", name: "Speed timing gates" },
+    { "@type": "HowToTool", name: "Reactive testing equipment" },
+  ],
+  step: [
+    {
+      "@type": "HowToStep",
+      position: 1,
+      name: "Intake & history review",
+      text: "We review the athlete's injury history, surgical or rehab notes, current medical clearance status, sport-specific demands, and competition timeline. Findings shape which instruments are prioritized in the assessment battery.",
+      url: "https://www.darrenjpaul.com/assessment#step-1",
+    },
+    {
+      "@type": "HowToStep",
+      position: 2,
+      name: "Instrumented assessment battery",
+      text: "On-site testing across force production, asymmetry under load, movement quality, speed and deceleration, reactive response, and power output. Each instrument is selected based on the athlete's sport and injury context. Captured: force-platform metrics, motion-capture joint kinematics, speed splits, reactive latency, and rate-of-force-development data.",
+      url: "https://www.darrenjpaul.com/assessment#step-2",
+    },
+    {
+      "@type": "HowToStep",
+      position: 3,
+      name: "Performance profile & risk gap analysis",
+      text: "Test data is interpreted against sport-specific competition demands and the athlete's developmental stage. Output is a written performance profile naming asymmetries, capacity gaps, and risk areas — distinct from clinical clearance criteria.",
+      url: "https://www.darrenjpaul.com/assessment#step-3",
+    },
+    {
+      "@type": "HowToStep",
+      position: 4,
+      name: "Return progression & readiness plan",
+      text: "A staged return-to-performance plan is built from the performance profile, with measurable milestones the athlete must clear before progressing to the next phase. Plan delivered in writing for use by the athlete, their physiotherapist, and team performance staff.",
+      url: "https://www.darrenjpaul.com/assessment#step-4",
+    },
+  ],
 }
 
 const traditionalProblems = [
@@ -122,6 +175,14 @@ export default function AssessmentPage() {
   return (
     <>
       <JsonLd data={assessmentSchema} />
+      <JsonLd data={assessmentHowToSchema} />
+      <BreadcrumbSchema
+        items={[
+          { name: "Home", url: "/" },
+          { name: "Services", url: "/services" },
+          { name: "Return-to-Performance Assessment", url: "/assessment" },
+        ]}
+      />
 
       {/* ===================== HERO · CLINICAL BLUEPRINT ===================== */}
       <section className="relative overflow-hidden bg-surface text-primary">
@@ -458,6 +519,13 @@ export default function AssessmentPage() {
           </div>
         </div>
       </section>
+
+      {/* ===================== SEMANTIC ANSWER BLOCK (AEO) ===================== */}
+      <SemanticAnswerBlock
+        eyebrow="Quick answer"
+        question="What is return-to-performance assessment?"
+        answer="Return-to-performance assessment is criterion-based testing that bridges medical clearance and competition readiness — the answer to every cleared athlete's question, &lsquo;I&rsquo;m cleared, but am I ready?&rsquo; Distinct from clinical rehab, return-to-performance ends only when objective testing confirms it: force-platform output, limb-symmetry index above 90%, single-leg hop performance, reactive control, and psychological readiness. Most ACL athletes need 9–12 months post-surgery to reach this point, and research shows fewer than half pass standard symmetry thresholds at the typical 6-month clearance window. We work alongside your physiotherapist, surgeon, and team staff — additive to clinical care, never a replacement. Conducted at our Zephyrhills, Florida facility by Darren J Paul, PhD (CSCS, NASM, USA Weightlifting Level 2)."
+      />
 
       {/* ===================== EDITORIAL · THE PROBLEM ===================== */}
       <section className="relative py-24 lg:py-32 px-4 sm:px-8 bg-background">

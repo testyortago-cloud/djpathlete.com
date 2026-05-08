@@ -15,21 +15,21 @@ import { renderLegalContent } from "@/lib/legal-content"
 export const dynamic = "force-dynamic"
 
 export const metadata: Metadata = {
-  title: "High-Performance Soccer Camps",
+  title: "High-Performance Soccer Camps in Tampa Bay, FL",
   description:
-    "High-performance soccer camps for college, semi-pro, and professional players, plus emerging talent aged 14–17. Elite soccer performance training across 2-week off-season and pre-season blocks.",
+    "Elite soccer performance camps in Zephyrhills, FL (Tampa Bay area) for college, semi-pro, and professional players, plus emerging talent aged 14–17. 2-week intensive off-season and pre-season blocks.",
   alternates: { canonical: "/camps" },
   openGraph: {
-    title: "High-Performance Soccer Camps | DJP Athlete",
+    title: "High-Performance Soccer Camps in Tampa Bay, FL | DJP Athlete",
     description:
-      "High-performance soccer camps and elite soccer performance training. 2-week intensive blocks for college, semi-pro, professional, and emerging talent.",
+      "Elite soccer performance camps in Zephyrhills, FL. 2-week intensive off-season and pre-season blocks for college, semi-pro, professional players, and emerging talent aged 14–17.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "High-Performance Soccer Camps | DJP Athlete",
+    title: "High-Performance Soccer Camps in Tampa Bay, FL | DJP Athlete",
     description:
-      "High-performance soccer camps and elite soccer performance training for high-performing and emerging talent.",
+      "Elite soccer performance camps for college, semi-pro, professional, and emerging talent in Zephyrhills, FL.",
   },
 }
 
@@ -44,8 +44,6 @@ const serviceSchema = {
   serviceType: "High-Performance Soccer Camps · Off-Season / Pre-Season",
   description:
     "High-performance soccer camps and elite soccer performance training. 2-week intensive sports performance camps and soccer performance training blocks for college, semi-pro, and professional players, plus emerging talent aged 14–17.",
-  keywords:
-    "high-performance soccer camps, elite soccer performance, soccer performance training, soccer camps, sports performance camps",
   url: "https://www.darrenjpaul.com/camps",
   audience: {
     "@type": "Audience",

@@ -17,20 +17,20 @@ import { ShopFilterBar, type ShopCategory, type ShopSort } from "./ShopFilterBar
 export const dynamic = "force-dynamic"
 
 export const metadata: Metadata = {
-  title: "Athletic Performance Apparel",
+  title: "Athletic Performance Apparel & Training Gear",
   description:
-    "Athletic performance apparel and training gear from DJP Athlete. Compression wear, training tops, and branded athletic clothing built for serious athletes.",
+    "Athletic performance apparel and training gear from Darren J Paul Sports Performance. Compression wear, training tops, and branded athletic clothing built for serious athletes.",
   alternates: { canonical: "/shop" },
   openGraph: {
-    title: "Athletic Performance Apparel | DJP Athlete",
+    title: "Athletic Performance Apparel & Training Gear | DJP Athlete",
     description:
-      "Athletic performance apparel and training gear from DJP Athlete. Compression wear, training tops, and branded athletic clothing.",
+      "Athletic performance apparel and training gear from Darren J Paul Sports Performance. Compression wear, training tops, and branded athletic clothing.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Athletic Performance Apparel | DJP Athlete",
-    description: "Athletic performance apparel and training gear from DJP Athlete.",
+    title: "Athletic Performance Apparel & Training Gear | DJP Athlete",
+    description: "Athletic performance apparel and training gear from Darren J Paul Sports Performance.",
   },
 }
 
@@ -40,7 +40,6 @@ const shopSchema = {
   name: "Athletic Performance Apparel — DJP Athlete",
   description:
     "Athletic performance apparel and training gear from DJP Athlete. Compression wear, training tops, and branded athletic clothing built for serious athletes.",
-  keywords: "athletic performance apparel, performance apparel, training gear, compression wear, athletic clothing",
   url: "https://www.darrenjpaul.com/shop",
   publisher: {
     "@type": "Organization",

@@ -15,21 +15,21 @@ import { renderLegalContent } from "@/lib/legal-content"
 export const dynamic = "force-dynamic"
 
 export const metadata: Metadata = {
-  title: "Speed and Agility Training Clinics",
+  title: "Speed & Agility Training Clinics in Tampa Bay, FL",
   description:
-    "Speed and agility training for athletes aged 10–18. Agility drills for athletes and a structured speed and agility training program — coached in small groups of 8–12 for real feedback and transfer to sport.",
+    "Speed and agility training clinics for athletes aged 10–18 in Zephyrhills, FL (Tampa Bay area). Small groups of 8–12, structured progression, and real coaching — not generic cone drills.",
   alternates: { canonical: "/clinics" },
   openGraph: {
-    title: "Speed and Agility Training Clinics | DJP Athlete",
+    title: "Speed & Agility Training Clinics in Tampa Bay, FL | DJP Athlete",
     description:
-      "Speed and agility training for athletes aged 10–18. Agility training for athletes in small groups with a sports agility coach — real feedback, real transfer to sport.",
+      "Speed and agility training clinics for athletes aged 10–18. Small groups, structured progression, and real coaching at our Zephyrhills, FL facility.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Speed and Agility Training Clinics | DJP Athlete",
+    title: "Speed & Agility Training Clinics in Tampa Bay, FL | DJP Athlete",
     description:
-      "Speed and agility training for athletes aged 10–18. Small groups, proper coaching, real transfer to sport.",
+      "Speed and agility training for athletes aged 10–18 in Zephyrhills, FL. Small groups, structured progression, real coaching.",
   },
 }
 
@@ -44,8 +44,6 @@ const serviceSchema = {
   serviceType: "Speed and Agility Training — Youth Agility Clinic",
   description:
     "Speed and agility training for athletes aged 10–18. A structured speed and agility training program covering agility drills for athletes, sports agility training, and youth speed and agility training — coached in groups of 8–12 with focus on acceleration, deceleration, change of direction, and rotation.",
-  keywords:
-    "speed and agility training, agility drills for athletes, speed and agility training program, agility training for athletes, speed and agility training near me, speed and agility training for youth, youth speed and agility training, sports agility training",
   url: "https://www.darrenjpaul.com/clinics",
   audience: { "@type": "Audience", audienceType: "Youth Athletes, 10–18" },
 }
@@ -59,6 +57,14 @@ type ActionDiagram = {
   diagram: React.ReactNode
 }
 
+// Action-phase diagrams.
+// Unified telemetry/biomechanics-lab aesthetic — no stick figures.
+// Each plot reads as motion-as-data: dot-grid baseline, primary-color
+// schematic, accent-color dynamic vector, mono-font micro-annotation.
+// Designed to pair with the pit-wall pattern on /online and the
+// Five Pillar diagnostic vocabulary throughout the brand.
+const ACCENT = "oklch(0.70 0.08 60)"
+
 const ACTIONS: ActionDiagram[] = [
   {
     n: "01",
@@ -68,51 +74,73 @@ const ACTIONS: ActionDiagram[] = [
     diagram: (
       <svg viewBox="0 0 200 120" className="w-full h-full" aria-hidden>
         <defs>
-          <marker id="ah1" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="4.5" markerHeight="4.5" orient="auto">
-            <path d="M 0 0 L 10 5 L 0 10 z" fill="oklch(0.70 0.08 60)" />
+          <pattern id="dot-grid-01" width="10" height="10" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="0.5" fill="currentColor" fillOpacity="0.18" />
+          </pattern>
+          <linearGradient id="vel-01" x1="0%" y1="100%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor={ACCENT} stopOpacity="0.15" />
+            <stop offset="60%" stopColor={ACCENT} stopOpacity="0.85" />
+            <stop offset="100%" stopColor={ACCENT} stopOpacity="1" />
+          </linearGradient>
+          <marker id="ah-01" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill={ACCENT} />
           </marker>
+          <radialGradient id="halo-01" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor={ACCENT} stopOpacity="0.5" />
+            <stop offset="100%" stopColor={ACCENT} stopOpacity="0" />
+          </radialGradient>
         </defs>
-        {/* Ground line */}
-        <line
-          x1="10"
-          y1="102"
-          x2="190"
-          y2="102"
-          stroke="currentColor"
-          strokeOpacity="0.2"
-          strokeWidth="1"
-          strokeDasharray="2 3"
-        />
-        {/* Starting line (two tick marks) */}
-        <g stroke="currentColor" strokeOpacity="0.5" strokeWidth="2" strokeLinecap="round">
-          <line x1="22" y1="95" x2="22" y2="108" />
-          <line x1="28" y1="95" x2="28" y2="108" />
+
+        <rect width="200" height="120" fill="url(#dot-grid-01)" />
+
+        {/* baseline */}
+        <line x1="14" y1="100" x2="186" y2="100" stroke="currentColor" strokeOpacity="0.22" strokeWidth="1" strokeDasharray="2 3" />
+
+        {/* launch zone — starting block schematic */}
+        <g stroke="currentColor" strokeOpacity="0.55" strokeWidth="1" strokeLinecap="square">
+          <line x1="22" y1="92" x2="22" y2="100" />
+          <line x1="28" y1="88" x2="28" y2="100" />
+          <line x1="34" y1="92" x2="34" y2="100" />
         </g>
-        {/* Sprinter in drive phase */}
-        <g stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none">
-          <circle cx="44" cy="66" r="5" fill="currentColor" stroke="none" />
-          <line x1="46" y1="70" x2="54" y2="88" />
-          <line x1="50" y1="76" x2="60" y2="70" />
-          <line x1="50" y1="78" x2="42" y2="86" />
-          <line x1="54" y1="88" x2="64" y2="100" />
-          <line x1="54" y1="88" x2="44" y2="100" />
+        <line x1="20" y1="100" x2="36" y2="100" stroke={ACCENT} strokeOpacity="0.9" strokeWidth="1.5" strokeLinecap="round" />
+
+        {/* impulse halo at launch point */}
+        <circle cx="34" cy="98" r="14" fill="url(#halo-01)" />
+        <circle cx="34" cy="98" r="3" fill={ACCENT} />
+
+        {/* force-production dots — vertical impulse stack */}
+        <g fill={ACCENT}>
+          <circle cx="44" cy="92" r="1.5" opacity="0.95" />
+          <circle cx="44" cy="84" r="1.5" opacity="0.8" />
+          <circle cx="44" cy="76" r="1.5" opacity="0.6" />
+          <circle cx="44" cy="68" r="1.5" opacity="0.4" />
+          <circle cx="44" cy="60" r="1.5" opacity="0.22" />
         </g>
-        {/* Track cones getting smaller (perspective) */}
-        <g stroke="oklch(0.70 0.08 60)" strokeWidth="1.2" fill="oklch(0.70 0.08 60 / 0.4)">
-          <polygon points="92,66 86,78 98,78" />
-          <polygon points="122,52 117,62 127,62" />
-          <polygon points="150,40 146,48 154,48" />
+
+        {/* velocity step bars — short → long */}
+        <g stroke={ACCENT} strokeWidth="2" strokeLinecap="round">
+          <line x1="56" y1="92" x2="64" y2="92" opacity="0.4" />
+          <line x1="68" y1="84" x2="86" y2="84" opacity="0.62" />
+          <line x1="90" y1="74" x2="118" y2="74" opacity="0.85" />
         </g>
-        {/* Burst arrow */}
+
+        {/* main projection arc */}
         <path
-          d="M 68 70 L 178 22"
+          d="M 34 98 Q 110 88 178 24"
           fill="none"
-          stroke="oklch(0.70 0.08 60)"
-          strokeWidth="2.5"
-          strokeDasharray="8 5"
+          stroke="url(#vel-01)"
+          strokeWidth="2.6"
           strokeLinecap="round"
-          markerEnd="url(#ah1)"
+          markerEnd="url(#ah-01)"
         />
+
+        {/* telemetry label */}
+        <g fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace" fontSize="6" fill="currentColor" fillOpacity="0.55" letterSpacing="0.15em">
+          <text x="138" y="14">V → V&#x2092;&#x2090;&#x2093;</text>
+        </g>
+        <g fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace" fontSize="5.5" fill="currentColor" fillOpacity="0.4" letterSpacing="0.1em">
+          <text x="22" y="114">t&#x2080;</text>
+        </g>
       </svg>
     ),
   },
@@ -123,46 +151,66 @@ const ACTIONS: ActionDiagram[] = [
     body: "Learning to brake with control so the next action is cleaner, quicker, and more usable.",
     diagram: (
       <svg viewBox="0 0 200 120" className="w-full h-full" aria-hidden>
-        {/* Ground line */}
-        <line
-          x1="10"
-          y1="102"
-          x2="190"
-          y2="102"
-          stroke="currentColor"
-          strokeOpacity="0.2"
-          strokeWidth="1"
-          strokeDasharray="2 3"
-        />
-        {/* Incoming path (fading dashes) */}
-        <path
-          d="M 18 36 L 118 78"
-          fill="none"
-          stroke="currentColor"
-          strokeOpacity="0.5"
-          strokeWidth="2"
-          strokeDasharray="10 6"
-          strokeLinecap="round"
-        />
-        {/* Brake hash marks */}
-        <g stroke="oklch(0.70 0.08 60)" strokeWidth="2.5" strokeLinecap="round">
-          <line x1="72" y1="62" x2="86" y2="54" />
-          <line x1="85" y1="70" x2="99" y2="62" />
-          <line x1="98" y1="78" x2="112" y2="70" />
+        <defs>
+          <pattern id="dot-grid-02" width="10" height="10" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="0.5" fill="currentColor" fillOpacity="0.18" />
+          </pattern>
+          <linearGradient id="vel-02" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="currentColor" stopOpacity="0.65" />
+            <stop offset="100%" stopColor="currentColor" stopOpacity="0.2" />
+          </linearGradient>
+          <radialGradient id="halo-02" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor={ACCENT} stopOpacity="0.45" />
+            <stop offset="100%" stopColor={ACCENT} stopOpacity="0" />
+          </radialGradient>
+        </defs>
+
+        <rect width="200" height="120" fill="url(#dot-grid-02)" />
+
+        {/* baseline */}
+        <line x1="14" y1="100" x2="186" y2="100" stroke="currentColor" strokeOpacity="0.22" strokeWidth="1" strokeDasharray="2 3" />
+
+        {/* incoming velocity — long dashes that compress (deceleration profile) */}
+        <g stroke="url(#vel-02)" strokeWidth="2.4" strokeLinecap="round" fill="none">
+          <line x1="20" y1="44" x2="46" y2="52" />
+          <line x1="50" y1="53" x2="72" y2="60" />
+          <line x1="76" y1="61" x2="92" y2="66" />
+          <line x1="96" y1="67" x2="106" y2="70" />
+          <line x1="110" y1="71" x2="116" y2="72" />
         </g>
-        {/* Athlete braking — torso back, front leg planted */}
-        <g stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none">
-          <circle cx="128" cy="54" r="5" fill="currentColor" stroke="none" />
-          <line x1="128" y1="58" x2="134" y2="82" />
-          <line x1="130" y1="66" x2="120" y2="60" />
-          <line x1="132" y1="72" x2="144" y2="68" />
-          <line x1="134" y1="82" x2="144" y2="100" />
-          <line x1="134" y1="82" x2="124" y2="100" />
+
+        {/* brake zone — eccentric load corridor */}
+        <g>
+          <rect x="120" y="58" width="44" height="34" fill={ACCENT} fillOpacity="0.06" stroke={ACCENT} strokeOpacity="0.55" strokeWidth="1" strokeDasharray="3 3" />
+          <line x1="120" y1="58" x2="164" y2="92" stroke={ACCENT} strokeOpacity="0.18" strokeWidth="0.6" />
+          <line x1="120" y1="92" x2="164" y2="58" stroke={ACCENT} strokeOpacity="0.18" strokeWidth="0.6" />
         </g>
-        {/* Cone at brake target */}
-        <g stroke="oklch(0.70 0.08 60)" strokeWidth="1.5" fill="oklch(0.70 0.08 60 / 0.5)">
-          <polygon points="170,78 162,98 178,98" />
-          <ellipse cx="170" cy="100" rx="8" ry="2" fill="none" strokeOpacity="0.6" strokeWidth="1" />
+
+        {/* eccentric force bars (vertical) — load is greatest at brake */}
+        <g stroke={ACCENT} strokeWidth="2.2" strokeLinecap="round">
+          <line x1="128" y1="74" x2="128" y2="58" opacity="0.5" />
+          <line x1="138" y1="78" x2="138" y2="50" opacity="0.75" />
+          <line x1="148" y1="80" x2="148" y2="46" opacity="0.92" />
+          <line x1="158" y1="80" x2="158" y2="50" opacity="0.7" />
+        </g>
+
+        {/* impact halo at hold point */}
+        <circle cx="162" cy="78" r="14" fill="url(#halo-02)" />
+
+        {/* control point — concentric stop indicator */}
+        <g>
+          <circle cx="162" cy="78" r="9" fill="none" stroke={ACCENT} strokeOpacity="0.4" strokeWidth="1" />
+          <circle cx="162" cy="78" r="5" fill="none" stroke={ACCENT} strokeWidth="1.5" />
+          <circle cx="162" cy="78" r="2" fill={ACCENT} />
+        </g>
+
+        {/* telemetry labels */}
+        <g fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace" fontSize="6" fill="currentColor" fillOpacity="0.55" letterSpacing="0.15em">
+          <text x="20" y="34">V&#x2080;</text>
+          <text x="156" y="40">V → 0</text>
+        </g>
+        <g fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace" fontSize="5.5" fill="currentColor" fillOpacity="0.4" letterSpacing="0.12em">
+          <text x="124" y="108">BRAKE · LOAD · HOLD</text>
         </g>
       </svg>
     ),
@@ -175,74 +223,80 @@ const ACTIONS: ActionDiagram[] = [
     diagram: (
       <svg viewBox="0 0 200 120" className="w-full h-full" aria-hidden>
         <defs>
-          <marker id="ah3" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="4.5" markerHeight="4.5" orient="auto">
-            <path d="M 0 0 L 10 5 L 0 10 z" fill="oklch(0.70 0.08 60)" />
+          <pattern id="dot-grid-03" width="10" height="10" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="0.5" fill="currentColor" fillOpacity="0.18" />
+          </pattern>
+          <marker id="ah-03" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill={ACCENT} />
           </marker>
+          <radialGradient id="halo-03" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor={ACCENT} stopOpacity="0.5" />
+            <stop offset="100%" stopColor={ACCENT} stopOpacity="0" />
+          </radialGradient>
         </defs>
-        {/* Ground line */}
-        <line
-          x1="10"
-          y1="102"
-          x2="190"
-          y2="102"
-          stroke="currentColor"
-          strokeOpacity="0.2"
-          strokeWidth="1"
-          strokeDasharray="2 3"
-        />
-        {/* Approach */}
+
+        <rect width="200" height="120" fill="url(#dot-grid-03)" />
+
+        {/* baseline */}
+        <line x1="14" y1="100" x2="186" y2="100" stroke="currentColor" strokeOpacity="0.22" strokeWidth="1" strokeDasharray="2 3" />
+
+        {/* approach vector */}
         <path
-          d="M 18 88 L 94 48"
+          d="M 22 84 L 90 50"
           fill="none"
           stroke="currentColor"
           strokeOpacity="0.55"
           strokeWidth="2"
-          strokeDasharray="8 5"
+          strokeDasharray="6 4"
           strokeLinecap="round"
         />
-        {/* Cone at cut point */}
-        <g>
-          <polygon
-            points="100,32 90,54 110,54"
-            fill="oklch(0.70 0.08 60 / 0.55)"
-            stroke="currentColor"
-            strokeOpacity="0.8"
-            strokeWidth="1.8"
-          />
-          <rect x="94" y="40" width="12" height="3" fill="currentColor" fillOpacity="0.2" />
-          <ellipse
-            cx="100"
-            cy="55"
-            rx="11"
-            ry="3"
-            fill="none"
-            stroke="currentColor"
-            strokeOpacity="0.35"
-            strokeWidth="1"
-          />
+        {/* approach tick — distance ladder */}
+        <g stroke="currentColor" strokeOpacity="0.35" strokeWidth="1" strokeLinecap="round">
+          <line x1="35" y1="79" x2="38" y2="73" />
+          <line x1="55" y1="69" x2="58" y2="63" />
+          <line x1="75" y1="59" x2="78" y2="53" />
         </g>
-        {/* Plant foot marker */}
-        <ellipse cx="92" cy="62" rx="5" ry="3" fill="oklch(0.70 0.08 60)" transform="rotate(-30, 92, 62)" />
-        <circle
-          cx="92"
-          cy="62"
-          r="10"
+
+        {/* plant point — bullseye / pressure target */}
+        <circle cx="100" cy="48" r="22" fill="url(#halo-03)" />
+        <g>
+          <circle cx="100" cy="48" r="14" fill="none" stroke={ACCENT} strokeOpacity="0.3" strokeWidth="0.8" strokeDasharray="2 3" />
+          <circle cx="100" cy="48" r="9" fill="none" stroke={ACCENT} strokeOpacity="0.55" strokeWidth="1" />
+          <circle cx="100" cy="48" r="5" fill="none" stroke={ACCENT} strokeWidth="1.6" />
+          <circle cx="100" cy="48" r="2" fill={ACCENT} />
+        </g>
+        {/* foot-angle indicator at plant */}
+        <line x1="100" y1="48" x2="86" y2="38" stroke={ACCENT} strokeWidth="1.6" strokeLinecap="round" />
+
+        {/* angle arc between incoming and outgoing vectors */}
+        <path
+          d="M 84 38 A 18 18 0 0 0 116 64"
           fill="none"
-          stroke="oklch(0.70 0.08 60)"
+          stroke="currentColor"
+          strokeOpacity="0.45"
           strokeWidth="1"
           strokeDasharray="2 3"
-          strokeOpacity="0.6"
         />
-        {/* Exit cut */}
+
+        {/* outgoing redirect */}
         <path
-          d="M 100 64 L 178 104"
+          d="M 100 56 L 178 100"
           fill="none"
-          stroke="oklch(0.70 0.08 60)"
-          strokeWidth="2.5"
-          strokeDasharray="8 5"
+          stroke={ACCENT}
+          strokeWidth="2.6"
+          strokeDasharray="8 4"
           strokeLinecap="round"
-          markerEnd="url(#ah3)"
+          markerEnd="url(#ah-03)"
         />
+
+        {/* telemetry labels */}
+        <g fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace" fontSize="6" fill="currentColor" fillOpacity="0.55" letterSpacing="0.15em">
+          <text x="14" y="40">V&#x1D62;&#x2099;</text>
+          <text x="156" y="84">V&#x2092;&#x1D64;&#x209C;</text>
+        </g>
+        <g fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace" fontSize="5.5" fill="currentColor" fillOpacity="0.4" letterSpacing="0.12em">
+          <text x="118" y="34">&#x0394;&#x03B8; ≈ 110°</text>
+        </g>
       </svg>
     ),
   },
@@ -254,64 +308,76 @@ const ACTIONS: ActionDiagram[] = [
     diagram: (
       <svg viewBox="0 0 200 120" className="w-full h-full" aria-hidden>
         <defs>
-          <marker id="ah4" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="4.5" markerHeight="4.5" orient="auto">
-            <path d="M 0 0 L 10 5 L 0 10 z" fill="oklch(0.70 0.08 60)" />
+          <pattern id="dot-grid-04" width="10" height="10" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="0.5" fill="currentColor" fillOpacity="0.18" />
+          </pattern>
+          <marker id="ah-04" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill={ACCENT} />
           </marker>
+          <radialGradient id="halo-04" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor={ACCENT} stopOpacity="0.4" />
+            <stop offset="100%" stopColor={ACCENT} stopOpacity="0" />
+          </radialGradient>
         </defs>
-        {/* Ground line */}
-        <line
-          x1="10"
-          y1="108"
-          x2="190"
-          y2="108"
-          stroke="currentColor"
-          strokeOpacity="0.2"
-          strokeWidth="1"
-          strokeDasharray="2 3"
-        />
-        {/* Central pivot cone */}
-        <g>
-          <polygon
-            points="100,40 88,66 112,66"
-            fill="oklch(0.70 0.08 60 / 0.5)"
-            stroke="currentColor"
-            strokeOpacity="0.8"
-            strokeWidth="1.8"
-          />
-          <rect x="93" y="50" width="14" height="3" fill="currentColor" fillOpacity="0.2" />
-          <ellipse
-            cx="100"
-            cy="67"
-            rx="13"
-            ry="3"
-            fill="none"
-            stroke="currentColor"
-            strokeOpacity="0.35"
-            strokeWidth="1"
-          />
+
+        <rect width="200" height="120" fill="url(#dot-grid-04)" />
+
+        {/* baseline */}
+        <line x1="14" y1="108" x2="186" y2="108" stroke="currentColor" strokeOpacity="0.22" strokeWidth="1" strokeDasharray="2 3" />
+
+        {/* axis halo */}
+        <circle cx="100" cy="60" r="44" fill="url(#halo-04)" />
+
+        {/* outer reference rings */}
+        <g fill="none" stroke="currentColor" strokeOpacity="0.18" strokeWidth="0.8" strokeDasharray="2 3">
+          <circle cx="100" cy="60" r="40" />
+          <circle cx="100" cy="60" r="28" />
         </g>
-        {/* Rotation arc around cone */}
+
+        {/* axis crosshair */}
+        <g stroke={ACCENT} strokeWidth="1.4" strokeLinecap="round">
+          <line x1="92" y1="60" x2="108" y2="60" />
+          <line x1="100" y1="52" x2="100" y2="68" />
+        </g>
+        <circle cx="100" cy="60" r="2.5" fill={ACCENT} />
+
+        {/* radial centripetal indicators */}
+        <g stroke={ACCENT} strokeWidth="1" strokeLinecap="round" strokeOpacity="0.4">
+          <line x1="100" y1="32" x2="100" y2="38" />
+          <line x1="124" y1="44" x2="120" y2="48" />
+          <line x1="128" y1="60" x2="122" y2="60" />
+          <line x1="124" y1="76" x2="120" y2="72" />
+          <line x1="100" y1="88" x2="100" y2="82" />
+          <line x1="76" y1="76" x2="80" y2="72" />
+          <line x1="72" y1="60" x2="78" y2="60" />
+          <line x1="76" y1="44" x2="80" y2="48" />
+        </g>
+
+        {/* rotation arc with arrowhead */}
         <path
-          d="M 100 22 A 38 38 0 1 0 138 60"
+          d="M 132 36 A 36 36 0 1 1 64 60"
           fill="none"
-          stroke="oklch(0.70 0.08 60)"
-          strokeWidth="2.5"
+          stroke={ACCENT}
+          strokeWidth="2.6"
           strokeDasharray="6 4"
           strokeLinecap="round"
-          markerEnd="url(#ah4)"
+          markerEnd="url(#ah-04)"
         />
-        {/* Footprints tracing the rotation */}
-        <g fill="currentColor" fillOpacity="0.4">
-          <ellipse cx="138" cy="28" rx="2.5" ry="4" transform="rotate(35, 138, 28)" />
-          <ellipse cx="155" cy="58" rx="2.5" ry="4" transform="rotate(85, 155, 58)" />
-          <ellipse cx="146" cy="86" rx="2.5" ry="4" transform="rotate(135, 146, 86)" />
+
+        {/* footprint trace — rotating foot angles around the arc */}
+        <g fill={ACCENT}>
+          <ellipse cx="132" cy="36" rx="2.5" ry="3.8" transform="rotate(40, 132, 36)" opacity="0.95" />
+          <ellipse cx="138" cy="60" rx="2.5" ry="3.8" transform="rotate(90, 138, 60)" opacity="0.7" />
+          <ellipse cx="124" cy="84" rx="2.5" ry="3.8" transform="rotate(140, 124, 84)" opacity="0.5" />
+          <ellipse cx="92" cy="92" rx="2.5" ry="3.8" transform="rotate(190, 92, 92)" opacity="0.32" />
         </g>
-        {/* Athlete outside arc (body marker) */}
-        <g stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" fill="none">
-          <circle cx="62" cy="50" r="4" fill="currentColor" stroke="none" />
-          <line x1="62" y1="54" x2="62" y2="72" />
-          <line x1="62" y1="60" x2="54" y2="68" />
-          <line x1="62" y1="60" x2="70" y2="64" />
+
+        {/* telemetry label */}
+        <g fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace" fontSize="6" fill="currentColor" fillOpacity="0.55" letterSpacing="0.15em">
+          <text x="46" y="28">&#x03C9; · 360°</text>
+        </g>
+        <g fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace" fontSize="5.5" fill="currentColor" fillOpacity="0.4" letterSpacing="0.12em">
+          <text x="78" y="118">PIVOT · AXIS</text>
         </g>
       </svg>
     ),

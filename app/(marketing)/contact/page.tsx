@@ -5,21 +5,21 @@ import { FadeIn } from "@/components/shared/FadeIn"
 import { ContactForm } from "./ContactForm"
 
 export const metadata: Metadata = {
-  title: "Contact",
+  title: "Contact Darren J Paul — Book a Consultation",
   description:
-    "Contact DJP Athlete for sports performance training and sports performance coach inquiries. Book a free consultation or send a message about our coaching programs.",
+    "Contact Darren J Paul Sports Performance in Zephyrhills, FL. Book a free consultation about in-person, online, or return-to-performance coaching.",
   alternates: { canonical: "/contact" },
   openGraph: {
-    title: "Contact | DJP Athlete",
+    title: "Contact Darren J Paul — Book a Consultation | DJP Athlete",
     description:
-      "Contact DJP Athlete for sports performance training and coaching inquiries. Book a free consultation with sports performance coach Darren J Paul.",
+      "Contact Darren J Paul Sports Performance in Zephyrhills, FL. Book a free consultation about in-person, online, or return-to-performance coaching.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Contact | DJP Athlete",
+    title: "Contact Darren J Paul — Book a Consultation | DJP Athlete",
     description:
-      "Contact DJP Athlete for sports performance training and coaching inquiries. Book a free consultation.",
+      "Contact Darren J Paul Sports Performance in Zephyrhills, FL. Book a free consultation.",
   },
 }
 
@@ -29,7 +29,6 @@ const contactPageSchema = {
   name: "Contact DJP Athlete",
   description:
     "Contact DJP Athlete for sports performance training and sports performance coach inquiries. Book a consultation or send us a message about coaching programs.",
-  keywords: "contact, sports performance training, sports performance coach",
   url: "https://www.darrenjpaul.com/contact",
   mainEntity: {
     "@type": "Organization",

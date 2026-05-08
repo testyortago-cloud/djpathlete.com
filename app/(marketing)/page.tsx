@@ -8,45 +8,73 @@ import { HeroContent } from "@/components/public/HeroContent"
 import { AnimatedStats } from "@/components/public/AnimatedStats"
 import { TestimonialCarousel } from "@/components/public/TestimonialCarousel"
 import { NewsletterForm } from "@/components/public/NewsletterForm"
+import { GoogleReviewsBadge } from "@/components/public/GoogleReviewsBadge"
+import { TrustStrip } from "@/components/public/TrustStrip"
 import { getFeaturedTestimonials } from "@/lib/db/testimonials"
+import { BUSINESS_INFO, GOOGLE_MAPS_URL, postalAddressSchema } from "@/lib/business-info"
 
 export const revalidate = 3600 // revalidate every hour
 
 export const metadata: Metadata = {
   title: { absolute: "Sports Performance Coaching for Elite Athletes | DJP Athlete" },
   description:
-    "Sports performance coaching by Darren J Paul. Elite athlete coaching, sports performance training, and return-to-performance assessment for athletes competing at the highest level.",
+    "Sports performance coaching by Darren J Paul, PhD. In-person training (Tampa Bay, FL), online coaching, and return-to-performance assessment for serious athletes.",
   alternates: { canonical: "/" },
   openGraph: {
     title: "Sports Performance Coaching for Elite Athletes | DJP Athlete",
     description:
-      "Sports performance coaching by Darren J Paul. Elite athlete coaching, sports performance training, and return-to-performance assessment for serious athletes.",
+      "Sports performance coaching by Darren J Paul, PhD. In-person training (Tampa Bay, FL), online coaching, and return-to-performance assessment for serious athletes.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
     title: "Sports Performance Coaching for Elite Athletes | DJP Athlete",
     description:
-      "Sports performance coaching by Darren J Paul. Elite athlete coaching, sports performance training, and return-to-performance assessment for serious athletes.",
+      "Sports performance coaching by Darren J Paul, PhD. In-person (Tampa Bay), online, and return-to-performance assessment for serious athletes.",
   },
 }
+
+const SAME_AS = [
+  "https://www.linkedin.com/in/darren-paul-phd-b022a213b",
+  "https://www.instagram.com/darrenjpaul/",
+  "https://www.tiktok.com/@darrenpaul_coach",
+  "https://www.facebook.com/share/1BwzDFUg66/?mibextid=wwXIfr",
+]
 
 const organizationSchema = {
   "@context": "https://schema.org",
   "@type": "Organization",
-  name: "DJP Athlete",
+  name: BUSINESS_INFO.brand,
+  legalName: BUSINESS_INFO.legalName,
   url: "https://www.darrenjpaul.com",
   logo: "https://www.darrenjpaul.com/og-image.png",
   description:
     "DJP Athlete provides sports performance coaching by Darren J Paul. Elite athlete coaching, elite sports performance training, athletic performance coach services, and performance coaching for athletes — in-person training, online coaching, and return-to-performance assessment for serious athletes.",
-  keywords:
-    "sports performance coaching, elite athlete coaching, elite sports performance training, elite sports coaching, athletic performance coach, sports performance training, performance coaching for athletes",
-  sameAs: [
-    "https://www.linkedin.com/in/darren-paul-phd-b022a213b",
-    "https://www.instagram.com/darrenjpaul/",
-    "https://www.tiktok.com/@darrenpaul_coach",
-    "https://www.facebook.com/share/1BwzDFUg66/?mibextid=wwXIfr",
-  ],
+  address: postalAddressSchema,
+  areaServed: BUSINESS_INFO.serviceAreas.map((name) => ({ "@type": "Place", name })),
+  sameAs: SAME_AS,
+}
+
+// LocalBusiness — drives Google Business Profile / Map Pack visibility for local searches
+// like "sports performance coach Zephyrhills" or "athletic performance coach Tampa".
+const localBusinessSchema = {
+  "@context": "https://schema.org",
+  "@type": "SportsActivityLocation",
+  "@id": "https://www.darrenjpaul.com/#localbusiness",
+  name: BUSINESS_INFO.legalName,
+  alternateName: BUSINESS_INFO.brand,
+  url: "https://www.darrenjpaul.com",
+  image: "https://www.darrenjpaul.com/og-image.png",
+  address: postalAddressSchema,
+  hasMap: GOOGLE_MAPS_URL,
+  identifier: {
+    "@type": "PropertyValue",
+    propertyID: "googlePlaceId",
+    value: BUSINESS_INFO.googlePlaceId,
+  },
+  priceRange: "$$$",
+  areaServed: BUSINESS_INFO.serviceAreas.map((name) => ({ "@type": "Place", name })),
+  sameAs: [...SAME_AS, GOOGLE_MAPS_URL],
 }
 
 const webSiteSchema = {
@@ -129,6 +157,7 @@ export default async function HomePage() {
   return (
     <>
       <JsonLd data={organizationSchema} />
+      <JsonLd data={localBusinessSchema} />
       <JsonLd data={webSiteSchema} />
 
       {/* ─── Hero Section ─── */}
@@ -281,15 +310,21 @@ export default async function HomePage() {
       {/* ─── Testimonials Section (Carousel) ─── */}
       <section className="py-20 lg:py-32 px-4 sm:px-8">
         <div className="max-w-6xl mx-auto">
-          <FadeIn className="text-center mb-16">
+          <FadeIn className="text-center mb-10">
             <div className="flex items-center justify-center gap-3 mb-4">
               <div className="h-px w-8 bg-accent" />
               <p className="text-sm font-medium text-accent uppercase tracking-widest">Testimonials</p>
               <div className="h-px w-8 bg-accent" />
             </div>
-            <h2 className="text-3xl sm:text-4xl font-heading font-semibold text-primary tracking-tight">
+            <h2 className="text-3xl sm:text-4xl font-heading font-semibold text-primary tracking-tight mb-8">
               Trusted by elite athletes.
             </h2>
+
+            {/* E-E-A-T trust block: Google Reviews badge + credentials strip */}
+            <div className="flex flex-col items-center gap-6">
+              <GoogleReviewsBadge />
+              <TrustStrip variant="compact" />
+            </div>
           </FadeIn>
 
           <FadeIn delay={0.1}>

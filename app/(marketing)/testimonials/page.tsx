@@ -4,19 +4,21 @@ import { JsonLd } from "@/components/shared/JsonLd"
 import { getTestimonials } from "@/lib/db/testimonials"
 
 export const metadata: Metadata = {
-  title: "Testimonials",
+  title: "Athlete Testimonials & Reviews",
   description:
-    "Read what athletes are saying about DJP Athlete. Real stories from real clients — from youth sports to professional competition.",
+    "Reviews and testimonials from athletes coached by Darren J Paul — including WTA professionals, pro pickleball players, and serious amateurs across 15+ sports.",
   alternates: { canonical: "/testimonials" },
   openGraph: {
-    title: "Testimonials | DJP Athlete",
-    description: "Read what athletes are saying about DJP Athlete. Real stories from real clients.",
+    title: "Athlete Testimonials & Reviews | DJP Athlete",
+    description:
+      "Reviews from athletes coached by Darren J Paul — WTA professionals, pro pickleball players, and serious amateurs across 15+ sports.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Testimonials | DJP Athlete",
-    description: "Read what athletes are saying about DJP Athlete. Real stories from real clients.",
+    title: "Athlete Testimonials & Reviews | DJP Athlete",
+    description:
+      "Reviews from athletes coached by Darren J Paul — WTA pros, pickleball pros, and serious amateurs across 15+ sports.",
   },
 }
 

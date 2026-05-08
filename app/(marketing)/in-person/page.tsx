@@ -16,23 +16,25 @@ import { JsonLd } from "@/components/shared/JsonLd"
 import { FadeIn } from "@/components/shared/FadeIn"
 import { LocalVideoBackground } from "@/components/public/LocalVideoBackground"
 import { InquiryForm } from "@/components/public/InquiryForm"
+import { SemanticAnswerBlock } from "@/components/public/SemanticAnswerBlock"
+import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 
 export const metadata: Metadata = {
-  title: "In-Person Sports Performance Training",
+  title: "In-Person Sports Performance Training in Tampa Bay, FL",
   description:
-    "In-person sports performance training and performance coaching for athletes. Strength and conditioning training for athletes — and young athletes — with sports performance coach Darren J Paul.",
+    "In-person sports performance coaching at our Zephyrhills, FL facility (Tampa Bay area). Assessment-led strength and conditioning for serious athletes — competitive, return-to-performance, and elite youth.",
   alternates: { canonical: "/in-person" },
   openGraph: {
-    title: "In-Person Sports Performance Training | DJP Athlete",
+    title: "In-Person Sports Performance Training in Tampa Bay, FL | DJP Athlete",
     description:
-      "In-person sports performance training. Strength and conditioning training for athletes and young athletes — assessment-led, individualized, and coach-led.",
+      "Coach-led performance training at our Zephyrhills, FL facility. Assessment-driven strength and conditioning for competitive athletes, return-to-performance, and elite youth.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "In-Person Sports Performance Training | DJP Athlete",
+    title: "In-Person Sports Performance Training in Tampa Bay, FL | DJP Athlete",
     description:
-      "In-person sports performance training. Strength and conditioning training for athletes and young athletes — assessment-led, individualized.",
+      "Coach-led performance training at our Zephyrhills, FL facility. Assessment-driven strength and conditioning for serious athletes.",
   },
 }
 
@@ -51,8 +53,6 @@ const serviceSchema = {
   serviceType: "In-Person Sports Performance Training",
   description:
     "In-person sports performance training and performance coaching for athletes. Strength and conditioning training for athletes — including young athletes — with a sports performance coach. Individualized programming for competitive athletes, elite youth, and return-to-performance athletes.",
-  keywords:
-    "in-person sports performance training, sports performance training, performance coaching for athletes, strength and conditioning training for athletes, strength and conditioning training for young athletes, sports performance coach",
   url: "https://www.darrenjpaul.com/in-person",
 }
 
@@ -116,6 +116,13 @@ export default function InPersonPage() {
   return (
     <>
       <JsonLd data={serviceSchema} />
+      <BreadcrumbSchema
+        items={[
+          { name: "Home", url: "/" },
+          { name: "Services", url: "/services" },
+          { name: "In-Person Coaching", url: "/in-person" },
+        ]}
+      />
 
       {/* Hero — Video Background */}
       <section className="relative min-h-[70vh] flex items-center justify-center bg-primary overflow-hidden">
@@ -147,6 +154,13 @@ export default function InPersonPage() {
           </a>
         </div>
       </section>
+
+      {/* Semantic Answer Block (AEO) */}
+      <SemanticAnswerBlock
+        eyebrow="What this is"
+        question="What is in-person sports performance training in Tampa Bay?"
+        answer="In-person sports performance training is a coach-led, assessment-driven program delivered at Darren J Paul Sports Performance, 6585 Simons Rd, Zephyrhills, FL — in the Tampa Bay area. Each athlete starts with a comprehensive performance assessment covering movement quality, force production, asymmetry, load tolerance, and sport-specific demand. From there, programming is individualized — never templated — and adjusted continuously as wellness markers and performance data evolve. The facility serves competitive athletes, elite youth, return-to-performance athletes, and high-performing professionals across Tampa, Wesley Chapel, Lakeland, and the wider Tampa Bay region. Coaching is delivered by Darren J Paul, PhD (CSCS, NASM, USA Weightlifting Level 2) — two decades of high-performance experience across 15+ sports."
+      />
 
       {/* Who This Is For */}
       <section className="py-16 lg:py-24 px-4 sm:px-8 bg-surface">

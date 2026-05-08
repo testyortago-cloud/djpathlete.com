@@ -10,6 +10,7 @@ import { TableOfContents } from "@/components/marketing/blog/TableOfContents"
 import { BlogFaqSection } from "@/components/marketing/blog/BlogFaqSection"
 import { RelatedPosts } from "@/components/marketing/blog/RelatedPosts"
 import { ContextualCta } from "@/components/marketing/blog/ContextualCta"
+import { AuthorCard } from "@/components/shared/AuthorCard"
 import { InlinePostNewsletterCapture } from "@/components/marketing/blog/InlinePostNewsletterCapture"
 import { LeadMagnetBlock } from "@/components/marketing/blog/LeadMagnetBlock"
 import type { BlogCategory, FaqEntry } from "@/types/database"
@@ -88,23 +89,47 @@ export default async function BlogPostPage({ params }: Props) {
     headline: post.title,
     description: post.meta_description ?? post.excerpt,
     datePublished: post.published_at ?? post.created_at,
+    dateModified: post.updated_at ?? post.published_at ?? post.created_at,
     url: `https://www.darrenjpaul.com/blog/${post.slug}`,
+    mainEntityOfPage: {
+      "@type": "WebPage",
+      "@id": `https://www.darrenjpaul.com/blog/${post.slug}`,
+    },
     author: DJP_AUTHOR_PERSON,
     publisher: {
       "@type": "Organization",
       name: "DJP Athlete",
       url: "https://www.darrenjpaul.com",
+      logo: {
+        "@type": "ImageObject",
+        url: "https://www.darrenjpaul.com/og-image.png",
+      },
     },
     articleSection: post.category,
     ...(post.cover_image_url && { image: post.cover_image_url }),
   }
 
-  const storedJsonLd = (post.seo_metadata as { json_ld?: Record<string, unknown> | Record<string, unknown>[] } | null)
+  // Canonical BlogPosting schema is ALWAYS rendered (correct author, publisher,
+  // dateModified, mainEntityOfPage, canonical URL). Any DB-stored auxiliary schemas
+  // (FAQPage, HowTo, Article extensions) stack on top — but Article-type entries
+  // are filtered out so the canonical version is always the authoritative source
+  // for AI assistants attributing the post.
+  const ARTICLE_TYPES = new Set(["BlogPosting", "Article", "NewsArticle", "TechArticle", "ScholarlyArticle"])
+
+  const isArticleType = (entry: unknown): boolean => {
+    if (!entry || typeof entry !== "object") return false
+    const t = (entry as { "@type"?: string | string[] })["@type"]
+    if (!t) return false
+    if (Array.isArray(t)) return t.some((x) => ARTICLE_TYPES.has(x))
+    return ARTICLE_TYPES.has(t)
+  }
+
+  const rawStored = (post.seo_metadata as { json_ld?: Record<string, unknown> | Record<string, unknown>[] } | null)
     ?.json_ld
-  const jsonLdData = (() => {
-    if (Array.isArray(storedJsonLd) && storedJsonLd.length > 0) return storedJsonLd
-    if (storedJsonLd && !Array.isArray(storedJsonLd) && Object.keys(storedJsonLd).length > 0) return storedJsonLd
-    return blogPostSchema
+  const storedAuxiliarySchemas: Record<string, unknown>[] = (() => {
+    if (!rawStored) return []
+    const arr = Array.isArray(rawStored) ? rawStored : [rawStored]
+    return arr.filter((entry) => entry && typeof entry === "object" && !isArticleType(entry))
   })()
 
   // Auto-add `id` slugs to any <h2> that lacks one, so the TOC anchor links
@@ -179,7 +204,12 @@ export default async function BlogPostPage({ params }: Props) {
 
   return (
     <>
-      <JsonLd data={jsonLdData} />
+      {/* Canonical Article schema — always emitted, authoritative for AI citation */}
+      <JsonLd data={blogPostSchema} />
+      {/* Auxiliary schemas from DB (FAQPage, HowTo, etc.) — stacked, not overriding */}
+      {storedAuxiliarySchemas.map((schema, i) => (
+        <JsonLd key={`aux-${i}`} data={schema} />
+      ))}
 
       {/* Scroll-driven reading progress (CSS-only). */}
       <div className="djp-progress" aria-hidden>
@@ -382,6 +412,17 @@ export default async function BlogPostPage({ params }: Props) {
 
       {/* ─────────── FAQ ─────────── */}
       <BlogFaqSection entries={faqEntries} />
+
+      {/* ─────────── Author bio (E-E-A-T) ─────────── */}
+      <section className="djp-paper px-4 sm:px-8 pt-4 pb-16 lg:pb-20">
+        <div className="max-w-3xl mx-auto">
+          <AuthorCard
+            variant="full"
+            publishedDate={post.published_at ?? post.created_at}
+            updatedDate={post.updated_at}
+          />
+        </div>
+      </section>
 
       {/* ─────────── Related ─────────── */}
       <RelatedPosts post={post} />

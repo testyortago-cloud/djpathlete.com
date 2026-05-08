@@ -4,6 +4,10 @@ import { Award, GraduationCap, Heart, Target, Trophy, Users, ArrowRight } from "
 import Link from "next/link"
 import { JsonLd } from "@/components/shared/JsonLd"
 import { FadeIn } from "@/components/shared/FadeIn"
+import { GoogleReviewsSection } from "@/components/public/GoogleReviewsSection"
+import { getGoogleBusinessProfile } from "@/lib/google-places"
+import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
+import { DJP_PERSON_FULL } from "@/lib/brand/author"
 
 export const metadata: Metadata = {
   title: "Darren J Paul — Athletic Performance Coach",
@@ -24,35 +28,15 @@ export const metadata: Metadata = {
   },
 }
 
-const personSchema = {
-  "@context": "https://schema.org",
-  "@type": "Person",
-  name: "Darren Paul",
-  alternateName: "Darren J Paul",
-  jobTitle: "Athletic Performance Coach",
-  worksFor: {
-    "@type": "Organization",
-    name: "DJP Athlete",
-    url: "https://www.darrenjpaul.com",
-  },
-  description:
-    "Darren J Paul — athletic performance coach and sports performance coach behind DJP Athlete. Two decades coaching elite athletes across football, rugby, athletics, and court sports.",
-  knowsAbout: [
-    "athletic performance coach",
-    "sports performance coach",
-    "sports performance training",
-    "strength and conditioning",
-    "return to sport assessment",
-  ],
-  url: "https://www.darrenjpaul.com/about",
-}
+const basePersonSchema = DJP_PERSON_FULL
 
 const credentials = [
-  { icon: GraduationCap, title: "Certified Strength & Conditioning Specialist (CSCS)" },
+  { icon: GraduationCap, title: "Doctor of Philosophy (PhD)" },
+  { icon: GraduationCap, title: "B.S. in Exercise Science & Kinesiology" },
+  { icon: Award, title: "Certified Strength & Conditioning Specialist (CSCS)" },
   { icon: Award, title: "NASM Certified Personal Trainer" },
   { icon: Trophy, title: "USA Weightlifting Level 2 Coach" },
-  { icon: GraduationCap, title: "B.S. in Exercise Science & Kinesiology" },
-  { icon: Trophy, title: "10+ Years Coaching Experience" },
+  { icon: Trophy, title: "Two Decades of High-Performance Experience" },
 ]
 
 const values = [
@@ -74,10 +58,30 @@ const values = [
   },
 ]
 
-export default function AboutPage() {
+export default async function AboutPage() {
+  const gbp = await getGoogleBusinessProfile()
+  const personSchema =
+    gbp && gbp.userRatingCount > 0
+      ? {
+          ...basePersonSchema,
+          aggregateRating: {
+            "@type": "AggregateRating",
+            ratingValue: gbp.rating.toFixed(1),
+            reviewCount: gbp.userRatingCount,
+            bestRating: 5,
+          },
+        }
+      : basePersonSchema
+
   return (
     <>
       <JsonLd data={personSchema} />
+      <BreadcrumbSchema
+        items={[
+          { name: "Home", url: "/" },
+          { name: "About", url: "/about" },
+        ]}
+      />
 
       {/* Hero Section */}
       <section className="pt-32 pb-16 lg:pt-40 lg:pb-24 px-4 sm:px-8">
@@ -108,17 +112,22 @@ export default function AboutPage() {
                   <div className="h-px w-12 bg-accent" />
                   <p className="text-sm font-medium text-accent uppercase tracking-widest">Meet Your Coach</p>
                 </div>
-                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-heading font-semibold text-primary tracking-tight mb-6">
-                  Darren Paul
+                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-heading font-semibold text-primary tracking-tight mb-3">
+                  Darren J Paul, PhD
                 </h1>
+                <p className="text-base font-medium text-accent uppercase tracking-widest mb-6">
+                  Sports Performance Coach · CSCS · NASM · USAW Level 2
+                </p>
                 <p className="text-lg text-muted-foreground leading-relaxed mb-4">
-                  With over a decade of experience coaching athletes from youth sports through professional competition,
-                  I founded DJP Athlete to make elite-level coaching accessible to everyone.
+                  Performance strategist, coach, and researcher. Two decades inside high-performance environments.
+                  500+ athletes coached across 15+ sports and 3 continents — including WTA professional tennis players
+                  and pro pickleball players.
                 </p>
                 <p className="text-lg text-muted-foreground leading-relaxed">
-                  My approach combines science-backed training methods with individualized attention — because the best
-                  program is one that is built specifically for you. Whether you are chasing a scholarship, preparing
-                  for competition, or simply want to move and feel better, I am here to help you get there.
+                  I think in systems, not exercises. I look for patterns, not shortcuts. Every program is built from
+                  diagnostic data and adjusted in real time. The methodology I&apos;ve developed — the Grey Zone and the
+                  Five Pillar Framework — is delivered in person at our Zephyrhills, FL facility and remotely to athletes
+                  worldwide.
                 </p>
               </div>
             </FadeIn>
@@ -165,6 +174,9 @@ export default function AboutPage() {
           </div>
         </div>
       </section>
+
+      {/* Google Reviews — renders only when GOOGLE_PLACES_API_KEY + GOOGLE_BUSINESS_PLACE_ID are set */}
+      <GoogleReviewsSection />
 
       {/* Philosophy Section */}
       <section className="py-16 lg:py-24 px-4 sm:px-8">

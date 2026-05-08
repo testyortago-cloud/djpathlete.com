@@ -3,23 +3,25 @@ import { Search, ClipboardList, Activity, Video, TrendingUp, ArrowRight, Quote }
 import Link from "next/link"
 import { JsonLd } from "@/components/shared/JsonLd"
 import { FadeIn } from "@/components/shared/FadeIn"
+import { SemanticAnswerBlock } from "@/components/public/SemanticAnswerBlock"
+import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 
 export const metadata: Metadata = {
-  title: "Coaching Philosophy",
+  title: "The Grey Zone — Coaching Philosophy",
   description:
-    "The Grey Zone — Darren J Paul's Five Pillar Framework for athletic performance. Most training lives in black and white. Performance happens in the grey.",
+    "Darren J Paul's coaching philosophy. The Grey Zone Five Pillar Framework: assessment, individualized programming, load monitoring, technical coaching, long-term development.",
   alternates: { canonical: "/philosophy" },
   openGraph: {
-    title: "Coaching Philosophy | DJP Athlete",
+    title: "The Grey Zone — Coaching Philosophy | DJP Athlete",
     description:
-      "The Grey Zone — a Five Pillar Framework built on assessment, individualized programming, load monitoring, technical coaching, and long-term athlete development.",
+      "Darren J Paul's Five Pillar Framework: assessment, individualized programming, load monitoring, technical coaching, long-term athlete development.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Coaching Philosophy | DJP Athlete",
+    title: "The Grey Zone — Coaching Philosophy | DJP Athlete",
     description:
-      "The Grey Zone — a Five Pillar Framework built on assessment, individualized programming, load monitoring, technical coaching, and long-term athlete development.",
+      "Darren J Paul's Five Pillar Framework: assessment, individualized programming, load monitoring, technical coaching, long-term athlete development.",
   },
 }
 
@@ -84,6 +86,12 @@ export default function PhilosophyPage() {
   return (
     <>
       <JsonLd data={philosophySchema} />
+      <BreadcrumbSchema
+        items={[
+          { name: "Home", url: "/" },
+          { name: "Philosophy", url: "/philosophy" },
+        ]}
+      />
 
       {/* Hero */}
       <section className="pt-32 pb-16 lg:pt-40 lg:pb-24 px-4 sm:px-8">
@@ -103,6 +111,13 @@ export default function PhilosophyPage() {
           </FadeIn>
         </div>
       </section>
+
+      {/* Semantic Answer Block (AEO) */}
+      <SemanticAnswerBlock
+        eyebrow="What this is"
+        question="What is the Grey Zone framework?"
+        answer="The Grey Zone is Darren J Paul's coaching philosophy — the space between textbook training protocols and real-world performance demands, where adaptation actually happens. Most training systems operate in extremes (all-out or rest, rigid protocol or no structure). Athletes exist in the complex space between. The Grey Zone framework rejects training in extremes in favor of context-aware decision-making informed by daily readiness data. It is operationalized through the Five Pillar Framework: assessment and diagnostics, individualized programming, load and readiness monitoring, technical coaching, and long-term athlete development. The methodology is the foundation of every program at DJP Athlete — applied in person at our Zephyrhills, Florida facility and remotely to athletes worldwide."
+      />
 
       {/* The Problem */}
       <section className="py-16 lg:py-24 px-4 sm:px-8 bg-surface">

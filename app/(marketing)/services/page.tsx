@@ -5,21 +5,21 @@ import { JsonLd } from "@/components/shared/JsonLd"
 import { PricingSection } from "@/components/PricingSection"
 
 export const metadata: Metadata = {
-  title: "Services",
+  title: "Sports Performance Coaching Services",
   description:
-    "Explore DJP Athlete's coaching services: personalized training plans, performance tracking, video analysis, strength & conditioning, and recovery programs.",
+    "Sports performance coaching services for serious athletes — in-person training, online coaching, and return-to-performance assessment. Diagnostic-driven, individualized.",
   alternates: { canonical: "/services" },
   openGraph: {
-    title: "Services | DJP Athlete",
+    title: "Sports Performance Coaching Services | DJP Athlete",
     description:
-      "Personalized training plans, video analysis, strength & conditioning, and more. Explore the full range of DJP Athlete coaching services.",
+      "Sports performance coaching services for serious athletes — in-person training, online coaching, and return-to-performance assessment. Diagnostic-driven, individualized.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Services | DJP Athlete",
+    title: "Sports Performance Coaching Services | DJP Athlete",
     description:
-      "Personalized training plans, video analysis, strength & conditioning, and more. Explore the full range of DJP Athlete coaching services.",
+      "In-person training, online coaching, and return-to-performance assessment for serious athletes. Diagnostic-driven, individualized, coach-supervised.",
   },
 }
 
