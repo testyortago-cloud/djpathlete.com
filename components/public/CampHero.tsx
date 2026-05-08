@@ -61,15 +61,21 @@ export function CampHero() {
             </div>
           </div>
 
-          {/* Headline — huge poster typography */}
+          {/* Headline — keyword-rich H1 + branded H2 */}
           <h1
-            className="mt-10 font-heading font-semibold tracking-tight leading-[0.88] text-primary"
-            style={{ fontSize: "clamp(2.5rem, 9vw, 8.5rem)" }}
+            className="mt-10 font-heading font-semibold tracking-tight leading-[1.02] text-primary"
+            style={{ fontSize: "clamp(2rem, 5vw, 4rem)" }}
+          >
+            High-Performance Soccer Camps for Athletes
+          </h1>
+          <h2
+            className="mt-4 font-heading font-semibold tracking-tight leading-[0.92] text-primary"
+            style={{ fontSize: "clamp(2rem, 7vw, 6rem)" }}
           >
             TRAIN AT THE LEVEL
             <br />
             THE GAME <span className="italic font-normal text-accent">DEMANDS.</span>
-          </h1>
+          </h2>
 
           {/* Two-column lede */}
           <div className="mt-10 grid gap-10 md:grid-cols-[1.3fr_1fr] md:gap-16 max-w-5xl">

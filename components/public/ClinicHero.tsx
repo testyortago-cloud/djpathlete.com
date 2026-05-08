@@ -266,13 +266,16 @@ export function ClinicHero() {
               Agility Clinic · Ages 10–18 · 8–12 Athletes
             </div>
 
-            <h1 className="mt-7 font-heading text-[40px] leading-[0.95] tracking-tight font-semibold sm:text-6xl md:text-7xl lg:text-[92px]">
+            <h1 className="mt-7 font-heading text-[36px] leading-[1.02] tracking-tight font-semibold sm:text-5xl md:text-6xl">
+              Speed and Agility Training Clinics for Athletes
+            </h1>
+            <p className="mt-5 font-heading text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-semibold tracking-tight leading-[0.95]">
               Move faster.
               <br />
               React sooner.
               <br />
               <span className="text-accent italic font-normal">Do it when it actually matters.</span>
-            </h1>
+            </p>
 
             <p className="mt-7 max-w-xl text-base leading-7 text-primary-foreground/80 md:text-lg md:leading-8">
               A focused 2-hour session on the movements that change outcomes in real sport — starting,

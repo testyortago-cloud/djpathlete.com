@@ -18,21 +18,21 @@ import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 import { Button } from "@/components/ui/button"
 
 export const metadata: Metadata = {
-  title: "Online Sports Performance Coach for Serious Athletes",
+  title: "Online Sports Performance Training",
   description:
-    "Online sports performance coach for serious athletes. Application-only, coach-led programming with weekly video review and direct messaging — same diagnostic methodology used in person at our Tampa Bay facility.",
+    "Online sports performance training programs with an online personal trainer for serious athletes — individualized, coach-led, with video feedback. By Darren J Paul, PhD (Tampa Bay, FL).",
   alternates: { canonical: "/online" },
   openGraph: {
-    title: "Online Sports Performance Coach for Serious Athletes | DJP Athlete",
+    title: "Online Sports Performance Training | DJP Athlete",
     description:
-      "Online sports performance coach for serious athletes. Application-only, coach-led programming with weekly video review — same diagnostic methodology as our Tampa Bay in-person work.",
+      "Online sports performance training programs with an online personal trainer for serious athletes — individualized, coach-led, with video feedback. By Darren J Paul, PhD.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Online Sports Performance Coach for Serious Athletes | DJP Athlete",
+    title: "Online Sports Performance Training | DJP Athlete",
     description:
-      "Online performance coach. Application-only, coach-led programming with weekly video review by Darren J Paul, PhD.",
+      "Online sports performance training with an online personal trainer for serious athletes — individualized, coach-led, with video feedback.",
   },
 }
 
@@ -213,11 +213,13 @@ export default function OnlinePage() {
                   <span>Online coaching</span>
                 </div>
 
-                <h1 className="mt-6 font-heading text-[40px] leading-[0.95] tracking-tight font-semibold sm:text-6xl md:text-7xl lg:text-[88px]">
-                  Remote by <span className="italic font-normal text-accent">design.</span>
-                  <br />
-                  Not by <span className="italic font-normal text-accent">default.</span>
+                <h1 className="mt-6 font-heading text-[40px] leading-[0.95] tracking-tight font-semibold sm:text-5xl md:text-6xl lg:text-7xl">
+                  Online Sports Performance Training for Athletes
                 </h1>
+                <p className="mt-4 font-heading text-2xl sm:text-3xl md:text-4xl font-semibold tracking-tight text-primary-foreground/85">
+                  Remote by <span className="italic font-normal text-accent">design.</span>{" "}
+                  Not by <span className="italic font-normal text-accent">default.</span>
+                </p>
 
                 <p className="mt-7 max-w-xl text-base leading-7 text-primary-foreground/75 md:text-lg md:leading-8">
                   A coach-led online performance system for serious athletes. Programmed, monitored, and

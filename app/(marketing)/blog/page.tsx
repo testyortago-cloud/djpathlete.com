@@ -10,21 +10,21 @@ import type { BlogCategory, BlogPost } from "@/types/database"
 export const revalidate = 60
 
 export const metadata: Metadata = {
-  title: "The Performance Journal — Coaching, Training & Recovery",
+  title: "Sports Performance Journal",
   description:
-    "Performance writing from Darren J Paul. Two decades coaching elite athletes, distilled into practical articles on training, recovery, and the long game.",
+    "Sports performance journals from Darren J Paul. Two decades coaching elite athletes, distilled into articles on training, recovery, and the long game.",
   alternates: { canonical: "/blog" },
   openGraph: {
-    title: "The Performance Journal | DJP Athlete",
+    title: "Sports Performance Journal | DJP Athlete",
     description:
-      "Performance writing from Darren J Paul. Practical articles on coaching, training, and recovery for serious athletes.",
+      "Sports performance journals from Darren J Paul. Two decades coaching elite athletes, distilled into articles on training, recovery, and the long game.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "The Performance Journal | DJP Athlete",
+    title: "Sports Performance Journal | DJP Athlete",
     description:
-      "Performance writing from Darren J Paul. Practical articles on coaching, training, and recovery.",
+      "Sports performance journals from Darren J Paul — articles on training, recovery, and the long game.",
   },
 }
 
@@ -129,13 +129,18 @@ export default async function BlogPage() {
             <div className="lg:col-span-8">
               <p className="djp-eyebrow">The Performance Journal</p>
               <h1
-                className="mt-6 font-heading font-semibold text-primary tracking-[-0.02em] leading-[0.95]"
-                style={{ fontSize: "clamp(2.5rem, 6.8vw, 5.75rem)" }}
+                className="mt-6 font-heading font-semibold text-primary tracking-[-0.02em] leading-[1.02]"
+                style={{ fontSize: "clamp(2rem, 5.5vw, 4.5rem)" }}
               >
-                Performance<span className="text-accent">.</span>
-                <br />
-                Journal<span className="text-accent">.</span>
+                Sports Performance Journals
               </h1>
+              <p
+                className="mt-4 font-heading font-semibold text-primary/85 tracking-[-0.02em] leading-[0.95]"
+                style={{ fontSize: "clamp(2rem, 6vw, 5rem)" }}
+              >
+                Performance<span className="text-accent">.</span>{" "}
+                Journal<span className="text-accent">.</span>
+              </p>
             </div>
             <div className="lg:col-span-4 lg:pl-8 lg:border-l lg:border-border/70">
               <p className="text-base lg:text-[17px] leading-relaxed text-muted-foreground">

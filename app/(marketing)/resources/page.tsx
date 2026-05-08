@@ -5,21 +5,21 @@ import { JsonLd } from "@/components/shared/JsonLd"
 import { FadeIn } from "@/components/shared/FadeIn"
 
 export const metadata: Metadata = {
-  title: "Sports Performance Resources for Athletes & Coaches",
+  title: "Sports Training Resources",
   description:
-    "Sports performance resources from Darren J Paul, PhD — exercise databases, coaching frameworks, workshops, and athlete development programs. For serious athletes and the coaches working with them.",
+    "Sports training resources from DJP Athlete — databases, frameworks, workshops, and development programs for serious athletes and coaches.",
   alternates: { canonical: "/resources" },
   openGraph: {
-    title: "Sports Performance Resources for Athletes & Coaches | DJP Athlete",
+    title: "Sports Training Resources | DJP Athlete",
     description:
-      "Exercise databases, coaching frameworks, workshops, and athlete development programs from Darren J Paul, PhD. For serious athletes and their coaches.",
+      "Sports training resources from DJP Athlete — databases, frameworks, workshops, and development programs for serious athletes and coaches.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Sports Performance Resources for Athletes & Coaches | DJP Athlete",
+    title: "Sports Training Resources | DJP Athlete",
     description:
-      "Exercise databases, coaching frameworks, workshops, and athlete development programs. From Darren J Paul, PhD.",
+      "Sports training resources — databases, frameworks, workshops, and development programs for serious athletes and coaches.",
   },
 }
 
@@ -84,10 +84,13 @@ export default function ResourcesPage() {
               <p className="text-sm font-medium text-accent uppercase tracking-widest">Resources</p>
               <div className="h-px w-8 bg-accent" />
             </div>
-            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-heading font-semibold text-primary tracking-tight mb-6">
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-heading font-semibold text-primary tracking-tight mb-4">
+              Sports Training Resources
+            </h1>
+            <h2 className="text-xl sm:text-2xl lg:text-3xl font-heading font-semibold text-primary/85 tracking-tight mb-6">
               Tools, frameworks, and programs
               <br className="hidden sm:block" /> built from two decades of high-performance experience.
-            </h1>
+            </h2>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
               Each resource has been developed through years of working with elite athletes and coaches. Explore what is
               available and what is on the way.

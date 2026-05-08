@@ -15,21 +15,21 @@ import { renderLegalContent } from "@/lib/legal-content"
 export const dynamic = "force-dynamic"
 
 export const metadata: Metadata = {
-  title: "High-Performance Soccer Camps in Tampa Bay, FL",
+  title: "High-Performance Soccer Camps",
   description:
-    "Elite soccer performance camps in Zephyrhills, FL (Tampa Bay area) for college, semi-pro, and professional players, plus emerging talent aged 14–17. 2-week intensive off-season and pre-season blocks.",
+    "High-performance soccer camps for college, semi-pro, and professional players, aged 14–17. Elite training across 2-week off-season and pre-season blocks in Tampa Bay, FL.",
   alternates: { canonical: "/camps" },
   openGraph: {
-    title: "High-Performance Soccer Camps in Tampa Bay, FL | DJP Athlete",
+    title: "High-Performance Soccer Camps | DJP Athlete",
     description:
-      "Elite soccer performance camps in Zephyrhills, FL. 2-week intensive off-season and pre-season blocks for college, semi-pro, professional players, and emerging talent aged 14–17.",
+      "High-performance soccer camps for college, semi-pro, and professional players, aged 14–17. Elite training across 2-week off-season and pre-season blocks in Tampa Bay, FL.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "High-Performance Soccer Camps in Tampa Bay, FL | DJP Athlete",
+    title: "High-Performance Soccer Camps | DJP Athlete",
     description:
-      "Elite soccer performance camps for college, semi-pro, professional, and emerging talent in Zephyrhills, FL.",
+      "Elite soccer performance camps for college, semi-pro, professional, and emerging talent in Tampa Bay, FL.",
   },
 }
 

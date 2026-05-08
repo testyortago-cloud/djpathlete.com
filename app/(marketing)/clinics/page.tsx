@@ -15,21 +15,21 @@ import { renderLegalContent } from "@/lib/legal-content"
 export const dynamic = "force-dynamic"
 
 export const metadata: Metadata = {
-  title: "Speed & Agility Training Clinics in Tampa Bay, FL",
+  title: "Speed and Agility Training Clinics",
   description:
-    "Speed and agility training clinics for athletes aged 10–18 in Zephyrhills, FL (Tampa Bay area). Small groups of 8–12, structured progression, and real coaching — not generic cone drills.",
+    "Speed and agility training for athletes aged 10–18 in Tampa Bay, FL. Agility drills for athletes and a structured training program — coached in small groups of 8–12.",
   alternates: { canonical: "/clinics" },
   openGraph: {
-    title: "Speed & Agility Training Clinics in Tampa Bay, FL | DJP Athlete",
+    title: "Speed and Agility Training Clinics | DJP Athlete",
     description:
-      "Speed and agility training clinics for athletes aged 10–18. Small groups, structured progression, and real coaching at our Zephyrhills, FL facility.",
+      "Speed and agility training for athletes aged 10–18 in Tampa Bay, FL. Agility drills and a structured training program — coached in small groups of 8–12.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Speed & Agility Training Clinics in Tampa Bay, FL | DJP Athlete",
+    title: "Speed and Agility Training Clinics | DJP Athlete",
     description:
-      "Speed and agility training for athletes aged 10–18 in Zephyrhills, FL. Small groups, structured progression, real coaching.",
+      "Speed and agility training for athletes aged 10–18 in Tampa Bay, FL. Small groups, structured progression, real coaching.",
   },
 }
 

@@ -9,21 +9,21 @@ import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 import { Button } from "@/components/ui/button"
 
 export const metadata: Metadata = {
-  title: "Return-to-Sport Assessment Tampa Bay — Performance Testing",
+  title: "Athlete Assessments — Return to Performance",
   description:
-    "Criterion-based return-to-sport assessment in Tampa Bay, FL. Force-platform testing, limb symmetry, and reactive control for athletes who are cleared but not yet ready to compete.",
+    "Athlete assessments built for performance, not just clearance. Athletic performance assessment, return to sport assessment, and assessment of injuries — Tampa Bay, FL.",
   alternates: { canonical: "/assessment" },
   openGraph: {
-    title: "Return-to-Sport Assessment Tampa Bay — Performance Testing | DJP Athlete",
+    title: "Athlete Assessments — Return to Performance | DJP Athlete",
     description:
-      "Criterion-based return-to-sport assessment in Tampa Bay, FL. Force-platform testing, limb symmetry, and reactive control for athletes who are cleared but not yet match-fit.",
+      "Athlete assessments built for performance, not just clearance. Athletic performance assessment, return to sport assessment, and assessment of injuries — Tampa Bay, FL.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Return-to-Sport Assessment Tampa Bay — Performance Testing | DJP Athlete",
+    title: "Athlete Assessments — Return to Performance | DJP Athlete",
     description:
-      "Criterion-based return-to-sport testing in Tampa Bay, FL. For athletes who are cleared but not yet ready to compete.",
+      "Athlete assessments built for performance, not just clearance. Return to sport assessment in Tampa Bay, FL.",
   },
 }
 
@@ -217,13 +217,12 @@ export default function AssessmentPage() {
                   Return to Performance
                 </div>
 
-                <h1 className="mt-6 font-heading text-[42px] leading-[0.98] tracking-tight sm:text-6xl md:text-7xl font-semibold text-primary">
-                  Cleared
-                  <br />
-                  is not the same
-                  <br />
-                  as <span className="italic font-normal text-accent">ready.</span>
+                <h1 className="mt-6 font-heading text-[40px] leading-[1.02] tracking-tight sm:text-5xl md:text-6xl font-semibold text-primary">
+                  Athlete Assessments for Return-to-Performance
                 </h1>
+                <p className="mt-4 font-heading text-2xl sm:text-4xl md:text-5xl font-semibold tracking-tight text-primary/85 leading-[1.05]">
+                  Cleared is not the same as <span className="italic font-normal text-accent">ready.</span>
+                </p>
 
                 <p className="mt-8 max-w-lg text-base leading-7 md:text-lg md:leading-8 text-muted-foreground">
                   Medical clearance is a starting line, not a finish. Competition exposes a different

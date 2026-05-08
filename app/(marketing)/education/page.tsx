@@ -3,21 +3,21 @@ import { JsonLd } from "@/components/shared/JsonLd"
 import { WaitlistForm } from "./WaitlistForm"
 
 export const metadata: Metadata = {
-  title: "Sports Performance Education for Coaches & Athletes",
+  title: "Sports Education",
   description:
-    "Sports performance education from Darren J Paul, PhD. A structured system for operating when certainty disappears — coaching frameworks, programming methodology, and decision-making for high-performance environments. Coming soon.",
+    "Sports education from DJP Athlete to help athletes and coaches understand performance, readiness, and smarter training decisions.",
   alternates: { canonical: "/education" },
   openGraph: {
-    title: "Sports Performance Education for Coaches & Athletes | DJP Athlete",
+    title: "Sports Education | DJP Athlete",
     description:
-      "Sports performance education from Darren J Paul, PhD. Coaching frameworks, programming methodology, and decision-making for high-performance environments. Coming soon.",
+      "Sports education from DJP Athlete to help athletes and coaches understand performance, readiness, and smarter training decisions.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Sports Performance Education for Coaches & Athletes | DJP Athlete",
+    title: "Sports Education | DJP Athlete",
     description:
-      "Coaching frameworks, programming methodology, and decision-making for high-performance environments. From Darren J Paul, PhD. Coming soon.",
+      "Sports education from DJP Athlete — helping athletes and coaches understand performance, readiness, and smarter training decisions.",
   },
 }
 
@@ -50,10 +50,13 @@ export default function EducationPage() {
           </div>
 
           {/* Headline */}
-          <h1 className="text-3xl sm:text-4xl lg:text-5xl xl:text-6xl font-heading font-semibold text-primary-foreground tracking-tight mb-10">
+          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-heading font-semibold text-primary-foreground tracking-tight mb-4">
+            Sports Education for Athletes and Coaches
+          </h1>
+          <p className="text-2xl sm:text-3xl lg:text-4xl xl:text-5xl font-heading font-semibold text-primary-foreground/85 tracking-tight mb-10">
             A New Standard
             <br className="hidden sm:block" /> for Performance
-          </h1>
+          </p>
 
           {/* Body copy */}
           <div className="space-y-6 mb-14">

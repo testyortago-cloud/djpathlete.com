@@ -196,11 +196,14 @@ export default async function ShopPage({
                 </span>
               </div>
 
-              <h1 className="mt-6 font-heading text-5xl font-semibold leading-[0.95] tracking-tight sm:text-6xl lg:text-[88px]">
+              <h1 className="mt-6 font-heading text-3xl font-semibold leading-[1.05] tracking-tight sm:text-4xl lg:text-5xl">
+                Athletic Performance Apparel and Performance Gear.
+              </h1>
+              <p className="mt-4 font-heading text-5xl font-semibold leading-[0.95] tracking-tight sm:text-6xl lg:text-[88px]">
                 Performance
                 <br />
                 <span className="italic text-accent">Gear.</span>
-              </h1>
+              </p>
 
               <p className="mt-6 max-w-xl font-body text-base text-primary-foreground/75 sm:text-lg">
                 Worn in the gym, on the pitch, and after the session ends. Every
