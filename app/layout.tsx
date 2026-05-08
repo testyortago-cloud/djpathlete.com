@@ -28,27 +28,15 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "DJP Athlete - Elite Sports Coaching & Athletic Performance",
+    default: "DJP Athlete — Elite Sports Performance Coaching",
     template: "%s | DJP Athlete",
   },
   description:
-    "DJP Athlete provides elite sports coaching and athletic performance training. Personalized training plans, performance tracking, video analysis, and nutrition guidance — built for athletes at every level.",
-  keywords: [
-    "sports coaching",
-    "athletic performance",
-    "personal training",
-    "performance tracking",
-    "video analysis",
-    "nutrition coaching",
-    "strength and conditioning",
-    "youth athletics",
-    "sports training programs",
-    "elite coaching",
-  ],
+    "Elite sports performance coaching by Darren J Paul, PhD. Assessment-led, individualized programming for serious athletes — in-person, online, and return-to-performance.",
   openGraph: {
-    title: "DJP Athlete - Elite Sports Coaching & Athletic Performance",
+    title: "DJP Athlete — Elite Sports Performance Coaching",
     description:
-      "Personalized coaching and performance training for athletes at every level. Training plans, video analysis, and nutrition guidance in one platform.",
+      "Elite sports performance coaching by Darren J Paul, PhD. Assessment-led, individualized programming for serious athletes — in-person, online, and return-to-performance.",
     type: "website",
     siteName: "DJP Athlete",
     locale: "en_US",
@@ -57,15 +45,15 @@ export const metadata: Metadata = {
         url: "/og-image.png",
         width: 1200,
         height: 630,
-        alt: "DJP Athlete — Elite Sports Coaching & Athletic Performance",
+        alt: "DJP Athlete — Elite Sports Performance Coaching",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "DJP Athlete - Elite Sports Coaching & Athletic Performance",
+    title: "DJP Athlete — Elite Sports Performance Coaching",
     description:
-      "Personalized coaching and performance training for athletes at every level. Training plans, video analysis, and nutrition guidance in one platform.",
+      "Elite sports performance coaching by Darren J Paul, PhD. Assessment-led, individualized programming for serious athletes.",
     images: ["/og-image.png"],
   },
   icons: {

@@ -3,7 +3,9 @@
 import { motion } from "framer-motion"
 import Link from "next/link"
 import Image from "next/image"
+import { MapPin } from "lucide-react"
 import { FOOTER_SECTIONS, SOCIAL_LINKS } from "@/lib/constants"
+import { BUSINESS_INFO, GOOGLE_MAPS_URL } from "@/lib/business-info"
 
 /* Inline social SVGs — avoids lucide-react barrel import which triggers
    a Turbopack HMR bug with the removed Twitter icon module. */
@@ -127,6 +129,25 @@ export const Footer = ({
               />
               <p className="text-sm leading-5 text-muted-foreground max-w-xs mt-2">{tagline}</p>
             </div>
+
+            {/* NAP — surfaces address for local SEO + GBP citation consistency */}
+            <a
+              href={GOOGLE_MAPS_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-4 inline-flex items-start gap-2 text-sm text-muted-foreground hover:text-primary transition-colors"
+              aria-label="View on Google Maps"
+            >
+              <MapPin className="size-4 mt-0.5 shrink-0" />
+              <address className="not-italic leading-5">
+                <span className="font-medium text-foreground">{BUSINESS_INFO.legalName}</span>
+                <br />
+                {BUSINESS_INFO.address.streetAddress}
+                <br />
+                {BUSINESS_INFO.address.addressLocality}, {BUSINESS_INFO.address.addressRegion}{" "}
+                {BUSINESS_INFO.address.postalCode}
+              </address>
+            </a>
 
             {/* Social Links */}
             <div className="flex items-center gap-3 mt-6">
