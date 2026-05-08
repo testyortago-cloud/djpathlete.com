@@ -7,19 +7,19 @@ import { SemanticAnswerBlock } from "@/components/public/SemanticAnswerBlock"
 import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 
 export const metadata: Metadata = {
-  title: "The Grey Zone — Coaching Philosophy",
+  title: "The Grey Zone — Darren J Paul's Coaching Philosophy",
   description:
     "Darren J Paul's coaching philosophy. The Grey Zone Five Pillar Framework: assessment, individualized programming, load monitoring, technical coaching, long-term development.",
   alternates: { canonical: "/philosophy" },
   openGraph: {
-    title: "The Grey Zone — Coaching Philosophy | DJP Athlete",
+    title: "The Grey Zone — Darren J Paul's Coaching Philosophy | DJP Athlete",
     description:
       "Darren J Paul's Five Pillar Framework: assessment, individualized programming, load monitoring, technical coaching, long-term athlete development.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "The Grey Zone — Coaching Philosophy | DJP Athlete",
+    title: "The Grey Zone — Darren J Paul's Coaching Philosophy | DJP Athlete",
     description:
       "Darren J Paul's Five Pillar Framework: assessment, individualized programming, load monitoring, technical coaching, long-term athlete development.",
   },

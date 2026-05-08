@@ -20,21 +20,21 @@ import { SemanticAnswerBlock } from "@/components/public/SemanticAnswerBlock"
 import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 
 export const metadata: Metadata = {
-  title: "In-Person Sports Performance Training in Tampa Bay, FL",
+  title: "Sports Performance Training Tampa Bay — In-Person Coach",
   description:
-    "In-person sports performance coaching at our Zephyrhills, FL facility (Tampa Bay area). Assessment-led strength and conditioning for serious athletes — competitive, return-to-performance, and elite youth.",
+    "Sports performance coach in Tampa Bay, FL. Assessment-led strength and conditioning at our Zephyrhills facility for competitive athletes, return-to-performance, and elite youth — by Darren J Paul, PhD.",
   alternates: { canonical: "/in-person" },
   openGraph: {
-    title: "In-Person Sports Performance Training in Tampa Bay, FL | DJP Athlete",
+    title: "Sports Performance Training Tampa Bay — In-Person Coach | DJP Athlete",
     description:
-      "Coach-led performance training at our Zephyrhills, FL facility. Assessment-driven strength and conditioning for competitive athletes, return-to-performance, and elite youth.",
+      "Sports performance coach in Tampa Bay, FL. Assessment-led strength and conditioning for competitive athletes, return-to-performance, and elite youth — by Darren J Paul, PhD.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "In-Person Sports Performance Training in Tampa Bay, FL | DJP Athlete",
+    title: "Sports Performance Training Tampa Bay — In-Person Coach | DJP Athlete",
     description:
-      "Coach-led performance training at our Zephyrhills, FL facility. Assessment-driven strength and conditioning for serious athletes.",
+      "Sports performance coach in Tampa Bay, FL. Assessment-led strength and conditioning by Darren J Paul, PhD.",
   },
 }
 

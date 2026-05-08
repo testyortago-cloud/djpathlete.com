@@ -5,21 +5,21 @@ import { JsonLd } from "@/components/shared/JsonLd"
 import { PricingSection } from "@/components/PricingSection"
 
 export const metadata: Metadata = {
-  title: "Sports Performance Coaching Services",
+  title: "Sports Performance Coaching Tampa Bay — Services & Pricing",
   description:
-    "Sports performance coaching services for serious athletes — in-person training, online coaching, and return-to-performance assessment. Diagnostic-driven, individualized.",
+    "Sports performance coaching services in Tampa Bay, FL — in-person training, online coaching, and return-to-performance assessment. Diagnostic-driven, individualized, by Darren J Paul, PhD.",
   alternates: { canonical: "/services" },
   openGraph: {
-    title: "Sports Performance Coaching Services | DJP Athlete",
+    title: "Sports Performance Coaching Tampa Bay — Services & Pricing | DJP Athlete",
     description:
-      "Sports performance coaching services for serious athletes — in-person training, online coaching, and return-to-performance assessment. Diagnostic-driven, individualized.",
+      "Sports performance coaching services in Tampa Bay, FL — in-person, online, and return-to-performance assessment. Diagnostic-driven, individualized, by Darren J Paul, PhD.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Sports Performance Coaching Services | DJP Athlete",
+    title: "Sports Performance Coaching Tampa Bay — Services & Pricing | DJP Athlete",
     description:
-      "In-person training, online coaching, and return-to-performance assessment for serious athletes. Diagnostic-driven, individualized, coach-supervised.",
+      "In-person training, online coaching, and return-to-performance assessment in Tampa Bay, FL. By Darren J Paul, PhD.",
   },
 }
 

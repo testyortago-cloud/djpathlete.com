@@ -10,21 +10,21 @@ import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 import { DJP_PERSON_FULL } from "@/lib/brand/author"
 
 export const metadata: Metadata = {
-  title: "Darren J Paul — Athletic Performance Coach",
+  title: "Darren J Paul, PhD — Sports Performance Coach Tampa Bay",
   description:
-    "Meet Darren J Paul — athletic performance coach and sports performance coach behind DJP Athlete. Two decades coaching elite athletes across football, rugby, athletics, and court sports.",
+    "Sports performance coach Darren J Paul, PhD — two decades coaching WTA tennis pros, pickleball pros, and serious athletes across 15+ sports. Based in Zephyrhills, Florida (Tampa Bay area).",
   alternates: { canonical: "/about" },
   openGraph: {
-    title: "Darren J Paul — Athletic Performance Coach | DJP Athlete",
+    title: "Darren J Paul, PhD — Sports Performance Coach Tampa Bay | DJP Athlete",
     description:
-      "Meet Darren J Paul — athletic performance coach and sports performance coach behind DJP Athlete. Two decades coaching elite athletes across multiple sports.",
+      "Sports performance coach Darren J Paul, PhD — two decades coaching WTA tennis pros, pickleball pros, and serious athletes across 15+ sports. Based in Zephyrhills, Florida.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Darren J Paul — Athletic Performance Coach | DJP Athlete",
+    title: "Darren J Paul, PhD — Sports Performance Coach Tampa Bay | DJP Athlete",
     description:
-      "Meet Darren J Paul — athletic performance coach and sports performance coach behind DJP Athlete. Two decades coaching elite athletes.",
+      "Sports performance coach with PhD — two decades coaching WTA pros, pickleball pros, and serious athletes. Based in Tampa Bay, Florida.",
   },
 }
 

@@ -18,21 +18,21 @@ import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 import { Button } from "@/components/ui/button"
 
 export const metadata: Metadata = {
-  title: "Online Sports Performance Training",
+  title: "Online Sports Performance Coach for Serious Athletes",
   description:
-    "Online sports performance training for serious athletes. Online sports training programs with an online personal trainer for athletes — individualized, coach-led, with video feedback.",
+    "Online sports performance coach for serious athletes. Application-only, coach-led programming with weekly video review and direct messaging — same diagnostic methodology used in person at our Tampa Bay facility.",
   alternates: { canonical: "/online" },
   openGraph: {
-    title: "Online Sports Performance Training | DJP Athlete",
+    title: "Online Sports Performance Coach for Serious Athletes | DJP Athlete",
     description:
-      "Online sports performance training. Online sports training programs with an online personal trainer for athletes — individualized, coach-led, with video feedback.",
+      "Online sports performance coach for serious athletes. Application-only, coach-led programming with weekly video review — same diagnostic methodology as our Tampa Bay in-person work.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Online Sports Performance Training | DJP Athlete",
+    title: "Online Sports Performance Coach for Serious Athletes | DJP Athlete",
     description:
-      "Online sports performance training. Online sports training programs with individualized, coach-led programming and video feedback.",
+      "Online performance coach. Application-only, coach-led programming with weekly video review by Darren J Paul, PhD.",
   },
 }
 

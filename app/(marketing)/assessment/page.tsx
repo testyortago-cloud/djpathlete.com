@@ -9,19 +9,19 @@ import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 import { Button } from "@/components/ui/button"
 
 export const metadata: Metadata = {
-  title: "Return-to-Sport Assessment & Performance Testing",
+  title: "Return-to-Sport Assessment Tampa Bay — Performance Testing",
   description:
     "Criterion-based return-to-sport assessment in Tampa Bay, FL. Force-platform testing, limb symmetry, and reactive control for athletes who are cleared but not yet ready to compete.",
   alternates: { canonical: "/assessment" },
   openGraph: {
-    title: "Return-to-Sport Assessment & Performance Testing | DJP Athlete",
+    title: "Return-to-Sport Assessment Tampa Bay — Performance Testing | DJP Athlete",
     description:
       "Criterion-based return-to-sport assessment in Tampa Bay, FL. Force-platform testing, limb symmetry, and reactive control for athletes who are cleared but not yet match-fit.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Return-to-Sport Assessment & Performance Testing | DJP Athlete",
+    title: "Return-to-Sport Assessment Tampa Bay — Performance Testing | DJP Athlete",
     description:
       "Criterion-based return-to-sport testing in Tampa Bay, FL. For athletes who are cleared but not yet ready to compete.",
   },
