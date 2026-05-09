@@ -67,6 +67,7 @@ type AssignmentWithProgram = ProgramAssignment & {
 
 const STATUS_COLORS: Record<string, string> = {
   active: "bg-success/10 text-success",
+  lead: "bg-accent/15 text-accent",
   inactive: "bg-muted text-muted-foreground",
   suspended: "bg-destructive/10 text-destructive",
   paused: "bg-warning/10 text-warning",

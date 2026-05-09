@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { Pencil, Trash2, Loader2 } from "lucide-react"
+import { Pencil, Trash2, Loader2, Send } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import {
@@ -27,6 +27,24 @@ export function ClientDetailHeader({ client }: ClientDetailHeaderProps) {
   const router = useRouter()
   const [editOpen, setEditOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isSendingInvite, setIsSendingInvite] = useState(false)
+
+  async function handleSendInvite() {
+    setIsSendingInvite(true)
+    try {
+      const res = await fetch(`/api/admin/clients/${client.id}/send-invite`, { method: "POST" })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(data.error || "Failed to send invite")
+        return
+      }
+      toast.success(`Invite sent to ${client.email}`)
+    } catch {
+      toast.error("An unexpected error occurred")
+    } finally {
+      setIsSendingInvite(false)
+    }
+  }
 
   async function handleDelete() {
     setIsDeleting(true)
@@ -54,6 +72,26 @@ export function ClientDetailHeader({ client }: ClientDetailHeaderProps) {
   return (
     <>
       <div className="flex items-center gap-2">
+        {client.status === "lead" && (
+          <Button
+            size="sm"
+            onClick={handleSendInvite}
+            disabled={isSendingInvite}
+            className="bg-accent text-accent-foreground hover:bg-accent/90"
+          >
+            {isSendingInvite ? (
+              <>
+                <Loader2 className="size-3.5 animate-spin" />
+                Sending...
+              </>
+            ) : (
+              <>
+                <Send className="size-3.5" />
+                Send Invite
+              </>
+            )}
+          </Button>
+        )}
         <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
           <Pencil className="size-3.5" />
           Edit

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 import { hash } from "bcryptjs"
 import { validatePasswordResetToken, markTokenUsed } from "@/lib/db/password-reset-tokens"
-import { updateUser } from "@/lib/db/users"
+import { updateUser, getUserById } from "@/lib/db/users"
 
 const resetPasswordSchema = z.object({
   token: z.string().min(1),
@@ -29,7 +29,18 @@ export async function POST(request: Request) {
     }
 
     const passwordHash = await hash(password, 12)
-    await updateUser(tokenData.user_id, { password_hash: passwordHash })
+
+    // If this token was issued to a lead (admin-sent invite), upgrade them to active
+    // on first password set so they become a real client account.
+    const updates: Record<string, unknown> = { password_hash: passwordHash }
+    try {
+      const user = await getUserById(tokenData.user_id)
+      if (user.status === "lead") updates.status = "active"
+    } catch {
+      // If we can't load the user, fall through with just the password update.
+    }
+
+    await updateUser(tokenData.user_id, updates)
     await markTokenUsed(token)
 
     return NextResponse.json({ success: true })

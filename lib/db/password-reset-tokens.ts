@@ -5,10 +5,10 @@ function getClient() {
   return createServiceRoleClient()
 }
 
-export async function createPasswordResetToken(userId: string) {
+export async function createPasswordResetToken(userId: string, expiresInHours = 1) {
   const supabase = getClient()
   const token = randomBytes(32).toString("hex")
-  const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString() // 1 hour
+  const expiresAt = new Date(Date.now() + expiresInHours * 60 * 60 * 1000).toISOString()
 
   // Invalidate any existing unused tokens for this user
   await supabase.from("password_reset_tokens").delete().eq("user_id", userId).is("used_at", null)

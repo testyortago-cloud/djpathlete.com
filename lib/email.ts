@@ -362,6 +362,48 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string, first
   }
 }
 
+export async function sendLeadInviteEmail(to: string, inviteUrl: string, firstName: string) {
+  const html = emailLayout(`
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td style="padding:48px 48px 52px;">
+
+          ${sectionLabel("Account Invitation")}
+
+          <p style="margin:0 0 8px; font-family:'Lexend Exa', Georgia, 'Times New Roman', serif; font-size:22px; font-weight:400; color:#0E3F50;">
+            Hi ${firstName},
+          </p>
+
+          <p style="margin:0 0 32px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:15px; color:#5c5750; line-height:1.8;">
+            Thanks for reaching out about training with DJP Athlete. We&rsquo;ve set up an account for you &mdash; click the button below to choose a password and finish signing up.
+          </p>
+
+          ${ctaButton(inviteUrl, "Set My Password")}
+
+          <p style="margin:32px 0 0; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:13px; color:#a09b94; line-height:1.7;">
+            This link expires in <strong style="color:#5c5750;">7 days</strong>. If you didn&rsquo;t request this, you can safely ignore the email.
+          </p>
+
+          ${fallbackLink(inviteUrl)}
+
+        </td>
+      </tr>
+    </table>
+  `)
+
+  const { error } = await resend.emails.send({
+    from: FROM_EMAIL,
+    to,
+    subject: "Finish setting up your DJP Athlete account",
+    html,
+  })
+
+  if (error) {
+    console.error("Failed to send lead invite email:", error)
+    throw new Error("Failed to send email")
+  }
+}
+
 export async function sendVerificationEmail(to: string, verifyUrl: string, firstName: string) {
   const html = emailLayout(`
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">

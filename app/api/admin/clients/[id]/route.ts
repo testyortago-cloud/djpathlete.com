@@ -9,7 +9,7 @@ const editClientSchema = z.object({
   lastName: z.string().min(1, "Last name is required").max(50),
   email: z.string().email("Invalid email address"),
   phone: z.string().optional().nullable(),
-  status: z.enum(["active", "inactive", "suspended"]).optional(),
+  status: z.enum(["active", "inactive", "suspended", "lead"]).optional(),
 })
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
