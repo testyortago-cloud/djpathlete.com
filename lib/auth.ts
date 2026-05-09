@@ -24,6 +24,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const { data: user, error } = await supabase.from("users").select("*").eq("email", email).single()
 
         if (error || !user) return null
+        // Lead-status users (created from the contact form) have no password_hash yet —
+        // they must register before they can log in.
+        if (!user.password_hash) return null
 
         const isValid = await compare(password, user.password_hash)
         if (!isValid) return null

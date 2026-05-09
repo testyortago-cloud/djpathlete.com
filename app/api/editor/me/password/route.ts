@@ -53,6 +53,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Account not found" }, { status: 404 })
   }
 
+  if (!user.password_hash) {
+    return NextResponse.json({ error: "Account has no password set" }, { status: 400 })
+  }
   const ok = await compare(parsed.data.currentPassword, user.password_hash)
   if (!ok) {
     return NextResponse.json(

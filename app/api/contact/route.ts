@@ -20,6 +20,39 @@ export async function POST(request: Request) {
 
     const supabase = createServiceRoleClient()
 
+    // Auto-create the submitter as a lead in the Clients list (if they don't already exist).
+    // password_hash is null until they actually register; status='lead' distinguishes them
+    // from real clients in the admin UI.
+    const nameParts = name.trim().split(/\s+/)
+    const firstName = nameParts[0] || name.trim()
+    const lastName = nameParts.slice(1).join(" ")
+
+    let leadUserId: string | null = null
+    const { data: existingUser } = await supabase.from("users").select("id").eq("email", email).maybeSingle()
+
+    if (existingUser) {
+      leadUserId = existingUser.id
+    } else {
+      const { data: newLead, error: leadError } = await supabase
+        .from("users")
+        .insert({
+          email,
+          first_name: firstName,
+          last_name: lastName,
+          role: "client",
+          status: "lead",
+          email_verified: false,
+        })
+        .select("id")
+        .single()
+
+      if (leadError) {
+        console.error("Failed to create lead user from contact form:", leadError)
+      } else {
+        leadUserId = newLead?.id ?? null
+      }
+    }
+
     // Find all admin users to notify
     const { data: admins, error: adminsError } = await supabase.from("users").select("id").eq("role", "admin")
 
@@ -36,7 +69,7 @@ export async function POST(request: Request) {
         title: "New Contact Form Submission",
         message: `From: ${name} (${email})\nSubject: ${subject}\n\n${message}`,
         is_read: false,
-        link: null,
+        link: leadUserId ? `/admin/clients/${leadUserId}` : null,
       }))
 
       const { error: insertError } = await supabase.from("notifications").insert(notifications)

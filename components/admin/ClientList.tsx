@@ -12,6 +12,8 @@ function getStatusClasses(status: UserStatus): string {
   switch (status) {
     case "active":
       return "bg-success/10 text-success"
+    case "lead":
+      return "bg-accent/15 text-accent"
     case "inactive":
       return "bg-muted text-muted-foreground"
     case "suspended":
@@ -81,6 +83,7 @@ export function ClientList({ users }: { users: User[] }) {
           >
             <option value="all">All Status</option>
             <option value="active">Active</option>
+            <option value="lead">Lead</option>
             <option value="inactive">Inactive</option>
             <option value="suspended">Suspended</option>
           </select>

@@ -1,5 +1,5 @@
 export type UserRole = "admin" | "client" | "editor"
-export type UserStatus = "active" | "inactive" | "suspended"
+export type UserStatus = "active" | "inactive" | "suspended" | "lead"
 export type ExerciseCategory =
   | "strength"
   | "speed"
@@ -102,7 +102,7 @@ export interface InjuryDetail {
 export interface User {
   id: string
   email: string
-  password_hash: string
+  password_hash: string | null
   first_name: string
   last_name: string
   role: UserRole

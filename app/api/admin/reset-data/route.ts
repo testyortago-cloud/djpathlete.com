@@ -26,7 +26,7 @@ export async function POST(request: Request) {
       .eq("id", session.user.id)
       .single()
 
-    if (userError || !admin) {
+    if (userError || !admin || !admin.password_hash) {
       return NextResponse.json({ error: "Failed to verify identity." }, { status: 500 })
     }
 

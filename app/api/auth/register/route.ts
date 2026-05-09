@@ -26,34 +26,41 @@ export async function POST(request: Request) {
     const age = calculateAge(dateOfBirth)
     const isMinor = age < 18
 
-    // Check if email already exists
-    const { data: existingUser } = await supabase.from("users").select("id").eq("email", email).single()
+    // Check if email already exists. A lead-status user (created from the contact form)
+    // can be upgraded to a real account on registration; any other existing user is a conflict.
+    const { data: existingUser } = await supabase
+      .from("users")
+      .select("id, status, password_hash")
+      .eq("email", email)
+      .maybeSingle()
 
-    if (existingUser) {
+    if (existingUser && (existingUser.status !== "lead" || existingUser.password_hash)) {
       return NextResponse.json({ error: "An account with this email already exists." }, { status: 409 })
     }
 
     // Hash password
     const password_hash = await hash(password, 12)
 
-    // Create user
+    // Create or upgrade user
     const now = new Date().toISOString()
-    const { data: user, error: userError } = await supabase
-      .from("users")
-      .insert({
-        email,
-        password_hash,
-        first_name: firstName,
-        last_name: lastName,
-        role: "client" as const,
-        status: "active" as const,
-        avatar_url: null,
-        phone: null,
-        terms_accepted_at: now,
-        privacy_accepted_at: now,
-      })
-      .select()
-      .single()
+    const userPayload = {
+      email,
+      password_hash,
+      first_name: firstName,
+      last_name: lastName,
+      role: "client" as const,
+      status: "active" as const,
+      avatar_url: null,
+      phone: null,
+      terms_accepted_at: now,
+      privacy_accepted_at: now,
+    }
+
+    const userQuery = existingUser
+      ? supabase.from("users").update(userPayload).eq("id", existingUser.id).select().single()
+      : supabase.from("users").insert(userPayload).select().single()
+
+    const { data: user, error: userError } = await userQuery
 
     if (userError || !user) {
       console.error("Failed to create user:", userError)
