@@ -41,24 +41,28 @@ export async function POST(request: Request) {
     // Hash password
     const password_hash = await hash(password, 12)
 
-    // Create or upgrade user
+    // Create or upgrade user. When upgrading a lead, preserve fields the lead-creation
+    // flow may have populated (phone, avatar_url) — registration doesn't collect those,
+    // so don't blank them.
     const now = new Date().toISOString()
-    const userPayload = {
+    const baseFields = {
       email,
       password_hash,
       first_name: firstName,
       last_name: lastName,
       role: "client" as const,
       status: "active" as const,
-      avatar_url: null,
-      phone: null,
       terms_accepted_at: now,
       privacy_accepted_at: now,
     }
 
     const userQuery = existingUser
-      ? supabase.from("users").update(userPayload).eq("id", existingUser.id).select().single()
-      : supabase.from("users").insert(userPayload).select().single()
+      ? supabase.from("users").update(baseFields).eq("id", existingUser.id).select().single()
+      : supabase
+          .from("users")
+          .insert({ ...baseFields, avatar_url: null, phone: null })
+          .select()
+          .single()
 
     const { data: user, error: userError } = await userQuery
 
