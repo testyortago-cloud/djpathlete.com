@@ -51,7 +51,7 @@ const nextConfig = {
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
       "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.google-analytics.com https://www.googletagmanager.com https://api.stripe.com https://storage.googleapis.com https://*.firebasestorage.app",
-      "frame-src 'self' https://js.stripe.com https://hooks.stripe.com",
+      "frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://www.youtube.com https://www.youtube-nocookie.com",
       "media-src 'self' blob: https:",
       "worker-src 'self' blob:",
       "frame-ancestors 'self'",
