@@ -21,6 +21,46 @@ export async function POST(request: Request) {
 
     const supabase = createServiceRoleClient()
 
+    // Auto-create the inquiry submitter as a lead in the Clients list
+    // (same pattern as /api/contact). If they already exist, backfill phone if missing.
+    const nameParts = name.trim().split(/\s+/)
+    const firstName = nameParts[0] || name.trim()
+    const lastName = nameParts.slice(1).join(" ")
+
+    let leadUserId: string | null = null
+    const { data: existingUser } = await supabase
+      .from("users")
+      .select("id, phone")
+      .eq("email", email)
+      .maybeSingle()
+
+    if (existingUser) {
+      leadUserId = existingUser.id
+      if (phone && !existingUser.phone) {
+        await supabase.from("users").update({ phone }).eq("id", existingUser.id)
+      }
+    } else {
+      const { data: newLead, error: leadError } = await supabase
+        .from("users")
+        .insert({
+          email,
+          first_name: firstName,
+          last_name: lastName,
+          phone,
+          role: "client",
+          status: "lead",
+          email_verified: false,
+        })
+        .select("id")
+        .single()
+
+      if (leadError) {
+        console.error("Failed to create lead user from inquiry:", leadError)
+      } else {
+        leadUserId = newLead?.id ?? null
+      }
+    }
+
     // Notify all admins
     const { data: admins } = await supabase.from("users").select("id").eq("role", "admin")
 
@@ -44,7 +84,7 @@ export async function POST(request: Request) {
         title: `New ${serviceLabel} Application`,
         message: details,
         is_read: false,
-        link: null,
+        link: leadUserId ? `/admin/clients/${leadUserId}` : null,
       }))
 
       const { error: insertError } = await supabase.from("notifications").insert(notifications)
