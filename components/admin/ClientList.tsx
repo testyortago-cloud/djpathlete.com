@@ -2,8 +2,11 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { Search, ChevronLeft, ChevronRight } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { Search, ChevronLeft, ChevronRight, Send, Pencil, Loader2 } from "lucide-react"
+import { toast } from "sonner"
 import { Input } from "@/components/ui/input"
+import { EditClientDialog } from "@/components/admin/EditClientDialog"
 import type { User, UserStatus } from "@/types/database"
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50]
@@ -24,11 +27,31 @@ function getStatusClasses(status: UserStatus): string {
 }
 
 export function ClientList({ users }: { users: User[] }) {
+  const router = useRouter()
   const [search, setSearch] = useState("")
   const [roleFilter, setRoleFilter] = useState<string>("all")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(10)
+  const [sendingInviteId, setSendingInviteId] = useState<string | null>(null)
+  const [editingClient, setEditingClient] = useState<User | null>(null)
+
+  async function handleSendInvite(client: User) {
+    setSendingInviteId(client.id)
+    try {
+      const res = await fetch(`/api/admin/clients/${client.id}/send-invite`, { method: "POST" })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(data.error || "Failed to send invite")
+        return
+      }
+      toast.success(`Invite sent to ${client.email}`)
+    } catch {
+      toast.error("An unexpected error occurred")
+    } finally {
+      setSendingInviteId(null)
+    }
+  }
 
   const filtered = users.filter((c) => {
     const matchesSearch =
@@ -100,6 +123,7 @@ export function ClientList({ users }: { users: User[] }) {
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Role</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Joined</th>
+              <th className="text-right px-4 py-3 font-medium text-muted-foreground">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -127,11 +151,39 @@ export function ClientList({ users }: { users: User[] }) {
                   </span>
                 </td>
                 <td className="px-4 py-3 text-muted-foreground">{new Date(client.created_at).toLocaleDateString()}</td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center justify-end gap-1.5">
+                    {client.status === "lead" && (
+                      <button
+                        type="button"
+                        onClick={() => handleSendInvite(client)}
+                        disabled={sendingInviteId === client.id}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-accent text-accent-foreground hover:bg-accent/90 disabled:opacity-50 px-2.5 py-1 text-xs font-medium transition-colors"
+                        title="Send registration invite"
+                      >
+                        {sendingInviteId === client.id ? (
+                          <Loader2 className="size-3 animate-spin" />
+                        ) : (
+                          <Send className="size-3" />
+                        )}
+                        Invite
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setEditingClient(client)}
+                      className="inline-flex items-center justify-center rounded-lg border border-border bg-white hover:bg-surface size-7 transition-colors"
+                      title="Edit client"
+                    >
+                      <Pencil className="size-3.5 text-muted-foreground" />
+                    </button>
+                  </div>
+                </td>
               </tr>
             ))}
             {paginated.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-12 text-center text-muted-foreground">
+                <td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">
                   No clients found matching your filters.
                 </td>
               </tr>
@@ -180,6 +232,19 @@ export function ClientList({ users }: { users: User[] }) {
           </button>
         </div>
       </div>
+
+      {editingClient && (
+        <EditClientDialog
+          open={!!editingClient}
+          onOpenChange={(o) => {
+            if (!o) {
+              setEditingClient(null)
+              router.refresh()
+            }
+          }}
+          client={editingClient}
+        />
+      )}
     </div>
   )
 }
