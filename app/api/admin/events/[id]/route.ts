@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { updateEventSchema } from "@/lib/validators/events"
 import { updateEvent, deleteEvent, getEventById, ALLOWED_STATUS_TRANSITIONS } from "@/lib/db/events"
 import { syncEventToStripe, archiveAndCreateNewPrice, stripe } from "@/lib/stripe"
+import { submitUrlToIndexNow } from "@/lib/indexnow"
 
 async function requireAdmin() {
   const session = await auth()
@@ -129,6 +130,15 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
       }
 
       const updated = await updateEvent(id, merged)
+
+      // Ping IndexNow for published clinic/camp pages so search engines
+      // re-crawl. Fire-and-forget — never block the save.
+      if (updated.status === "published" && updated.slug && (updated.type === "clinic" || updated.type === "camp")) {
+        submitUrlToIndexNow(`/${updated.type}s/${updated.slug}`).catch((err) =>
+          console.error("[Events] IndexNow submit failed:", err),
+        )
+      }
+
       return NextResponse.json({ event: updated })
     } catch (err) {
       const msg = (err as Error).message

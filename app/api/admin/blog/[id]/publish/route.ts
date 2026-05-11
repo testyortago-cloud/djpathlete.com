@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { getBlogPostById, updateBlogPost } from "@/lib/db/blog-posts"
 import { createAiJob } from "@/lib/ai-jobs"
+import { submitUrlToIndexNow } from "@/lib/indexnow"
 
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -32,6 +33,13 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
       userId: session.user.id,
       input: { blog_post_id: id },
     }).catch((err) => console.error("[Blog] seo_enhance queue failed:", err))
+
+    // Ping IndexNow so Bing/Yandex re-crawl this post immediately. Fire-and-forget.
+    if (updated.slug) {
+      submitUrlToIndexNow(`/blog/${updated.slug}`).catch((err) =>
+        console.error("[Blog] IndexNow submit failed:", err),
+      )
+    }
 
     return NextResponse.json(updated)
   } catch (error) {

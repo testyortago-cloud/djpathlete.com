@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { getBlogPostById, updateBlogPost, deleteBlogPost, isSlugTaken } from "@/lib/db/blog-posts"
 import { blogPostFormSchema } from "@/lib/validators/blog-post"
 import { deleteBlogImage } from "@/lib/blog-storage"
+import { submitUrlToIndexNow } from "@/lib/indexnow"
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -43,6 +44,15 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
 
     const post = await updateBlogPost(id, parsed.data)
+
+    // If the post is published, ping IndexNow so search engines re-crawl the
+    // updated content. Fire-and-forget — never block the save on this.
+    if (post.status === "published" && post.slug) {
+      submitUrlToIndexNow(`/blog/${post.slug}`).catch((err) =>
+        console.error("[Blog] IndexNow submit failed:", err),
+      )
+    }
+
     return NextResponse.json(post)
   } catch (error) {
     console.error("Blog PATCH error:", error)
