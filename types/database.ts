@@ -1291,7 +1291,7 @@ export type SocialPlatform = "facebook" | "instagram" | "tiktok" | "youtube" | "
  * platform_connections.plugin_name supports social platforms plus ad/marketing
  * platforms (Google Ads, etc.) which don't fit the SocialPlatform semantics.
  */
-export type PlatformPluginName = SocialPlatform | "google_ads"
+export type PlatformPluginName = SocialPlatform | "google_ads" | "gmail"
 
 export type PostType = "video" | "image" | "carousel" | "story" | "text"
 

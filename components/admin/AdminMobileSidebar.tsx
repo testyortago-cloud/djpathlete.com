@@ -22,6 +22,7 @@ import {
   Video,
   ClipboardCheck,
   CalendarCheck,
+  Inbox,
   Settings,
   LogOut,
   ShoppingBag,
@@ -97,6 +98,7 @@ const navSections: NavSection[] = [
   {
     title: "Business",
     items: [
+      { label: "Inbox", href: "/admin/inbox", icon: Inbox },
       { label: "Bookings", href: "/admin/bookings", icon: CalendarCheck },
       { label: "Events", href: "/admin/events", icon: CalendarDays },
       { label: "Payments", href: "/admin/payments", icon: CreditCard },

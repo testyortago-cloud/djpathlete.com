@@ -23,6 +23,7 @@ import {
   Video,
   ClipboardCheck,
   CalendarCheck,
+  Inbox,
   Scale,
   ChevronDown,
   Settings,
@@ -129,6 +130,7 @@ function getNavSections(contentStudioOn: boolean): NavSection[] {
     {
       title: "Business",
       items: [
+        { label: "Inbox", href: "/admin/inbox", icon: Inbox },
         { label: "Bookings", href: "/admin/bookings", icon: CalendarCheck },
         { label: "Events", href: "/admin/events", icon: CalendarDays },
         { label: "Payments", href: "/admin/payments", icon: CreditCard },
