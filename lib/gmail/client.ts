@@ -212,7 +212,7 @@ export async function modifyThreadLabels(
   }
 }
 
-export interface SendReplyInput {
+export interface SendMessageInput {
   accessToken: string
   fromEmail: string
   fromName?: string
@@ -220,24 +220,27 @@ export interface SendReplyInput {
   cc?: string
   subject: string
   bodyText: string
-  threadId: string
-  inReplyTo: string | null
-  references: string | null
+  // Reply context. Omit all three to send a brand-new conversation.
+  threadId?: string
+  inReplyTo?: string | null
+  references?: string | null
 }
 
-export async function sendReply(input: SendReplyInput): Promise<{ id: string; threadId: string }> {
+export async function sendMessage(input: SendMessageInput): Promise<{ id: string; threadId: string }> {
   const raw = buildRfc822Message({
     from: input.fromName ? `${input.fromName} <${input.fromEmail}>` : input.fromEmail,
     to: input.to,
     cc: input.cc,
     subject: input.subject,
     bodyText: input.bodyText,
-    inReplyTo: input.inReplyTo,
-    references: input.references,
+    inReplyTo: input.inReplyTo ?? null,
+    references: input.references ?? null,
   })
+  const body: { raw: string; threadId?: string } = { raw }
+  if (input.threadId) body.threadId = input.threadId
   const res = await gmailFetch(input.accessToken, "/messages/send", {
     method: "POST",
-    body: JSON.stringify({ raw, threadId: input.threadId }),
+    body: JSON.stringify(body),
   })
   if (!res.ok) {
     const text = await res.text().catch(() => "")

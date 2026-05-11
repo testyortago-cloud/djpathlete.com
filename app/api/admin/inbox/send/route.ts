@@ -1,9 +1,10 @@
 // app/api/admin/inbox/send/route.ts
-// Sends a reply on the connected Gmail mailbox. The client posts threadId +
-// the body text; the server fetches the thread on the fly to derive the
-// reply target (To header), Subject ("Re: ..."), and threading headers
-// (In-Reply-To / References) so Gmail keeps the message in the same
-// conversation.
+// Sends mail on the connected Gmail mailbox. Two modes:
+//   • Reply: client posts { threadId, body } — server fetches the thread to
+//     derive To, "Re: …" subject, and In-Reply-To / References so Gmail keeps
+//     the message in the same conversation.
+//   • Compose: client posts { to, subject, body } (no threadId) — server
+//     sends a brand-new message.
 
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
@@ -13,16 +14,20 @@ import {
   decodeMessage,
   getAccessTokenForConnection,
   getThread,
-  sendReply,
+  sendMessage,
 } from "@/lib/gmail/client"
 
-const sendSchema = z.object({
-  threadId: z.string().min(1),
-  body: z.string().min(1).max(50_000),
-  // Optional override — defaults to the original sender of the last message.
-  to: z.string().email().optional(),
-  cc: z.string().optional(),
-})
+const sendSchema = z
+  .object({
+    threadId: z.string().min(1).optional(),
+    body: z.string().min(1).max(50_000),
+    to: z.string().email().optional(),
+    subject: z.string().min(1).max(998).optional(),
+    cc: z.string().optional(),
+  })
+  .refine((v) => v.threadId || (v.to && v.subject), {
+    message: "Either threadId (reply) or to + subject (compose) is required",
+  })
 
 function ensureReplyPrefix(subject: string): string {
   return /^re:\s/i.test(subject) ? subject : `Re: ${subject}`
@@ -64,6 +69,24 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Connected mailbox has no email address" }, { status: 500 })
   }
 
+  // Compose path: no threadId, caller supplied to + subject directly.
+  if (!payload.threadId) {
+    try {
+      const sent = await sendMessage({
+        accessToken,
+        fromEmail: emailAddress,
+        to: payload.to!,
+        cc: payload.cc,
+        subject: payload.subject!,
+        bodyText: payload.body,
+      })
+      return NextResponse.json({ success: true, message: sent })
+    } catch (err) {
+      return NextResponse.json({ error: (err as Error).message }, { status: 502 })
+    }
+  }
+
+  // Reply path: derive To / Subject / threading headers from the thread.
   let lastMessage
   try {
     const thread = await getThread(accessToken, payload.threadId)
@@ -93,7 +116,7 @@ export async function POST(request: NextRequest) {
     : lastMessage.messageId
 
   try {
-    const sent = await sendReply({
+    const sent = await sendMessage({
       accessToken,
       fromEmail: emailAddress,
       to: replyTo,

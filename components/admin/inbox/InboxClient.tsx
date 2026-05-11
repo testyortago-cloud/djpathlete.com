@@ -11,6 +11,7 @@ import {
   CornerDownLeft,
   Unplug,
   X,
+  PenSquare,
 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -80,6 +81,8 @@ export function InboxClient({ connectedEmail }: InboxClientProps) {
 
   const [reply, setReply] = useState("")
   const [sending, setSending] = useState(false)
+
+  const [composeOpen, setComposeOpen] = useState(false)
 
   // Surface the OAuth callback flash messages.
   useEffect(() => {
@@ -191,6 +194,10 @@ export function InboxClient({ connectedEmail }: InboxClientProps) {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button size="sm" onClick={() => setComposeOpen(true)}>
+            <PenSquare className="size-3.5" />
+            Compose
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -333,6 +340,131 @@ export function InboxClient({ connectedEmail }: InboxClientProps) {
               }}
             />
           ) : null}
+        </div>
+      </div>
+
+      {composeOpen ? (
+        <ComposeDialog
+          fromEmail={connectedEmail}
+          onClose={() => setComposeOpen(false)}
+          onSent={() => {
+            setComposeOpen(false)
+            void loadThreads(appliedQuery)
+          }}
+        />
+      ) : null}
+    </div>
+  )
+}
+
+function ComposeDialog({
+  fromEmail,
+  onClose,
+  onSent,
+}: {
+  fromEmail: string
+  onClose: () => void
+  onSent: () => void
+}) {
+  const [to, setTo] = useState("")
+  const [cc, setCc] = useState("")
+  const [subject, setSubject] = useState("")
+  const [body, setBody] = useState("")
+  const [sending, setSending] = useState(false)
+
+  const canSend = to.trim() && subject.trim() && body.trim() && !sending
+
+  const handleSend = async () => {
+    if (!canSend) return
+    setSending(true)
+    try {
+      const res = await fetch("/api/admin/inbox/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: to.trim(),
+          cc: cc.trim() || undefined,
+          subject: subject.trim(),
+          body: body.trim(),
+        }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error ?? `HTTP ${res.status}`)
+      }
+      toast.success("Message sent")
+      onSent()
+    } catch (err) {
+      toast.error(`Send failed: ${(err as Error).message}`)
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center"
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-2xl overflow-hidden rounded-xl border border-border bg-white shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-border px-5 py-3">
+          <div className="flex items-center gap-2">
+            <PenSquare className="size-4 text-primary" />
+            <h2 className="text-sm font-semibold text-primary">New message</h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-muted-foreground hover:text-primary"
+            aria-label="Close compose"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <div className="space-y-3 px-5 py-4">
+          <div className="text-xs text-muted-foreground">
+            From <span className="font-mono">{fromEmail || "—"}</span>
+          </div>
+          <Input
+            type="email"
+            placeholder="To"
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+            autoFocus
+          />
+          <Input
+            placeholder="Cc (optional)"
+            value={cc}
+            onChange={(e) => setCc(e.target.value)}
+          />
+          <Input
+            placeholder="Subject"
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
+          />
+          <Textarea
+            placeholder="Write your message…"
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            rows={10}
+            className="resize-y"
+          />
+        </div>
+
+        <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
+          <Button variant="outline" size="sm" onClick={onClose} disabled={sending}>
+            Cancel
+          </Button>
+          <Button size="sm" onClick={() => void handleSend()} disabled={!canSend} className="gap-1.5">
+            {sending ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
+            Send
+          </Button>
         </div>
       </div>
     </div>
