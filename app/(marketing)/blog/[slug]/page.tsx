@@ -4,6 +4,7 @@ import Link from "next/link"
 import NextImage from "next/image"
 import { ArrowLeft, ArrowUpRight } from "lucide-react"
 import { JsonLd } from "@/components/shared/JsonLd"
+import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 import { buildFaqPageSchema } from "@/lib/seo/build-faq-page-schema"
 import { getPublishedBlogPostBySlug } from "@/lib/db/blog-posts"
 import { DJP_AUTHOR_PERSON } from "@/lib/brand/author"
@@ -217,6 +218,14 @@ export default async function BlogPostPage({ params }: Props) {
       {/* Canonical Article schema — always emitted, authoritative for AI citation */}
       <JsonLd data={blogPostSchema} />
       {faqPageSchema && <JsonLd data={faqPageSchema} />}
+      <BreadcrumbSchema
+        items={[
+          { name: "Home", url: "/" },
+          { name: "Blog", url: "/blog" },
+          { name: post.category, url: `/blog#${post.category.toLowerCase().replace(/\s+/g, "-")}` },
+          { name: post.title, url: `/blog/${post.slug}` },
+        ]}
+      />
       {/* Auxiliary schemas from DB (FAQPage, HowTo, etc.) — stacked, not overriding */}
       {storedAuxiliarySchemas.map((schema, i) => (
         <JsonLd key={`aux-${i}`} data={schema} />
