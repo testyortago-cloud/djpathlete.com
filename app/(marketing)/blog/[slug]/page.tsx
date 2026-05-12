@@ -115,22 +115,32 @@ export default async function BlogPostPage({ params }: Props) {
   // (FAQPage, HowTo, Article extensions) stack on top — but Article-type entries
   // are filtered out so the canonical version is always the authoritative source
   // for AI assistants attributing the post.
+  const faqEntries = ((post.faq as FaqEntry[] | null) ?? []) as FaqEntry[]
+  const faqPageSchema = buildFaqPageSchema(faqEntries)
+
   const ARTICLE_TYPES = new Set(["BlogPosting", "Article", "NewsArticle", "TechArticle", "ScholarlyArticle"])
 
-  const isArticleType = (entry: unknown): boolean => {
+  const hasType = (entry: unknown, predicate: (t: string) => boolean): boolean => {
     if (!entry || typeof entry !== "object") return false
     const t = (entry as { "@type"?: string | string[] })["@type"]
     if (!t) return false
-    if (Array.isArray(t)) return t.some((x) => ARTICLE_TYPES.has(x))
-    return ARTICLE_TYPES.has(t)
+    if (Array.isArray(t)) return t.some(predicate)
+    return predicate(t)
   }
+  const isArticleType = (entry: unknown) => hasType(entry, (t) => ARTICLE_TYPES.has(t))
+  const isFaqPageType = (entry: unknown) => hasType(entry, (t) => t === "FAQPage")
 
   const rawStored = (post.seo_metadata as { json_ld?: Record<string, unknown> | Record<string, unknown>[] } | null)
     ?.json_ld
   const storedAuxiliarySchemas: Record<string, unknown>[] = (() => {
     if (!rawStored) return []
     const arr = Array.isArray(rawStored) ? rawStored : [rawStored]
-    return arr.filter((entry) => entry && typeof entry === "object" && !isArticleType(entry))
+    return arr.filter((entry) => {
+      if (!entry || typeof entry !== "object") return false
+      if (isArticleType(entry)) return false
+      if (faqPageSchema && isFaqPageType(entry)) return false
+      return true
+    })
   })()
 
   // Auto-add `id` slugs to any <h2> that lacks one, so the TOC anchor links
@@ -177,8 +187,6 @@ export default async function BlogPostPage({ params }: Props) {
   const wordCount = html.replace(/<[^>]+>/g, " ").trim().split(/\s+/).filter(Boolean).length
   const readMinutes = Math.max(1, Math.round(wordCount / 220))
   const showToc = tocEntries.length >= 2 && wordCount >= 600
-  const faqEntries = ((post.faq as FaqEntry[] | null) ?? []) as FaqEntry[]
-  const faqPageSchema = buildFaqPageSchema(faqEntries)
 
   const splitAtSecondH2 = (input: string): { before: string; after: string } | null => {
     const firstH2End = input.indexOf("</h2>")
