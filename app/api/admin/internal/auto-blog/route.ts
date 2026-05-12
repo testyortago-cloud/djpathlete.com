@@ -24,7 +24,10 @@ interface TopicMetadata {
   source?: string
 }
 
-const SYSTEM_USER_ID = "__cron__"
+// blog_posts.author_id is uuid NOT NULL, so cron-generated posts must be
+// attributed to a real admin. There is exactly one admin (Darren) — use
+// that UUID rather than a sentinel string.
+const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000001"
 
 export async function POST(request: NextRequest) {
   // ── Auth ────────────────────────────────────────────────────────────────
