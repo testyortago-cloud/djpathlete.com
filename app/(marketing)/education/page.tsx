@@ -1,5 +1,6 @@
 ﻿import type { Metadata } from "next"
 import { JsonLd } from "@/components/shared/JsonLd"
+import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 import { WaitlistForm } from "./WaitlistForm"
 
 export const metadata: Metadata = {
@@ -38,6 +39,12 @@ export default function EducationPage() {
   return (
     <>
       <JsonLd data={educationSchema} />
+      <BreadcrumbSchema
+        items={[
+          { name: "Home", url: "/" },
+          { name: "Education", url: "/education" },
+        ]}
+      />
 
       {/* Full-page dark hero */}
       <section className="min-h-screen flex items-center justify-center bg-primary px-4 sm:px-8">

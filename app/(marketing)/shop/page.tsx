@@ -1,6 +1,8 @@
 import type { Metadata } from "next"
 import { Truck, RotateCcw, Leaf, ShieldCheck } from "lucide-react"
 import { JsonLd } from "@/components/shared/JsonLd"
+import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
+import { SITE_URL } from "@/lib/constants"
 import {
   isShopEnabled,
   isShopAffiliateEnabled,
@@ -79,10 +81,20 @@ export default async function ShopPage({
 }: {
   searchParams: Promise<{ category?: string; sort?: string }>
 }) {
+  const shopBreadcrumb = (
+    <BreadcrumbSchema
+      items={[
+        { name: "Home", url: "/" },
+        { name: "Shop", url: "/shop" },
+      ]}
+    />
+  )
+
   if (!isShopEnabled()) {
     return (
       <>
         <JsonLd data={shopSchema} />
+        {shopBreadcrumb}
         <ComingSoon />
       </>
     )
@@ -161,9 +173,58 @@ export default async function ShopPage({
 
   const totalStyles = allWithDetails.length
 
+  // ItemList of the products actually shown — eligible for Google's product
+  // list rich result. Price comes from the cheapest variant (or the affiliate /
+  // digital price); free digital downloads list at 0.00.
+  const productListSchema =
+    productsWithDetails.length > 0
+      ? {
+          "@context": "https://schema.org",
+          "@type": "ItemList",
+          name: "DJP Athlete shop — athletic performance apparel & gear",
+          numberOfItems: productsWithDetails.length,
+          itemListElement: productsWithDetails.map(({ product, minPriceCents }, i) => {
+            const url = `${SITE_URL}/shop/${product.slug}`
+            const priceCents =
+              minPriceCents ??
+              (product.digital_is_free ? 0 : product.affiliate_price_cents) ??
+              null
+            return {
+              "@type": "ListItem",
+              position: i + 1,
+              item: {
+                "@type": "Product",
+                name: product.name,
+                url,
+                image: product.thumbnail_url_override ?? product.thumbnail_url,
+                ...(product.product_type === "pod"
+                  ? { brand: { "@type": "Brand", name: "DJP Athlete" } }
+                  : {}),
+                ...(priceCents != null
+                  ? {
+                      offers: {
+                        "@type": "Offer",
+                        price: (priceCents / 100).toFixed(2),
+                        priceCurrency: "USD",
+                        availability: "https://schema.org/InStock",
+                        url:
+                          product.product_type === "affiliate"
+                            ? `${SITE_URL}/shop/go/${product.id}`
+                            : url,
+                      },
+                    }
+                  : {}),
+              },
+            }
+          }),
+        }
+      : null
+
   return (
     <>
       <JsonLd data={shopSchema} />
+      {shopBreadcrumb}
+      {productListSchema && <JsonLd data={productListSchema} />}
 
       {/* Editorial hero */}
       <section className="relative overflow-hidden bg-primary text-primary-foreground">

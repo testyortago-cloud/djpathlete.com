@@ -1,6 +1,7 @@
 ﻿import type { Metadata } from "next"
 import { Star } from "lucide-react"
 import { JsonLd } from "@/components/shared/JsonLd"
+import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 import { getTestimonials } from "@/lib/db/testimonials"
 
 export const metadata: Metadata = {
@@ -70,6 +71,12 @@ export default async function TestimonialsPage() {
   return (
     <>
       <JsonLd data={reviewSchema} />
+      <BreadcrumbSchema
+        items={[
+          { name: "Home", url: "/" },
+          { name: "Testimonials", url: "/testimonials" },
+        ]}
+      />
 
       {/* Hero */}
       <section className="pt-32 pb-16 lg:pt-40 lg:pb-20 px-4 sm:px-8">

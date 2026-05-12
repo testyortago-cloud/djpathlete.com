@@ -1,6 +1,7 @@
 ﻿import type { Metadata } from "next"
 import { Mail, Phone, MapPin } from "lucide-react"
 import { JsonLd } from "@/components/shared/JsonLd"
+import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 import { FadeIn } from "@/components/shared/FadeIn"
 import { ContactForm } from "./ContactForm"
 
@@ -63,6 +64,12 @@ export default function ContactPage() {
   return (
     <>
       <JsonLd data={contactPageSchema} />
+      <BreadcrumbSchema
+        items={[
+          { name: "Home", url: "/" },
+          { name: "Contact", url: "/contact" },
+        ]}
+      />
 
       {/* Hero */}
       <section className="pt-32 pb-16 lg:pt-40 lg:pb-20 px-4 sm:px-8">

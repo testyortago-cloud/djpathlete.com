@@ -14,9 +14,35 @@ import { VariantPicker } from "@/components/public/shop/VariantPicker"
 import { ProductCard } from "@/components/public/shop/ProductCard"
 import { FreePdfForm } from "@/components/public/shop/FreePdfForm"
 import { DigitalAddToCartButton } from "@/components/public/shop/DigitalAddToCartButton"
+import { JsonLd } from "@/components/shared/JsonLd"
+import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
+import { SITE_URL } from "@/lib/constants"
 
 interface Props {
   params: Promise<{ slug: string }>
+}
+
+const productUrl = (slug: string) => `${SITE_URL}/shop/${slug}`
+
+/** HTML description → plain text for schema fields. */
+const stripHtml = (html: string) =>
+  html
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&[a-z]+;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+
+/** Breadcrumb trail shared by every product page: Home → Shop → Product. */
+function ShopBreadcrumb({ slug, name }: { slug: string; name: string }) {
+  return (
+    <BreadcrumbSchema
+      items={[
+        { name: "Home", url: "/" },
+        { name: "Shop", url: "/shop" },
+        { name, url: `/shop/${slug}` },
+      ]}
+    />
+  )
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
@@ -59,8 +85,30 @@ export default async function ProductDetailPage({ params }: Props) {
     const digitalVariants = await listVariantsForProduct(product.id)
     const files = await listFilesForProduct(product.id)
     const defaultVariant = digitalVariants[0] ?? null
+    const digitalProductSchema = {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      name: product.name,
+      description: stripHtml(product.description) || `${product.name} — DJP Athlete digital resource.`,
+      image: product.thumbnail_url_override ?? product.thumbnail_url,
+      brand: { "@type": "Brand", name: "DJP Athlete" },
+      url: productUrl(product.slug),
+      ...(defaultVariant?.sku ? { sku: defaultVariant.sku } : {}),
+      offers: {
+        "@type": "Offer",
+        price: product.digital_is_free
+          ? "0.00"
+          : ((defaultVariant?.retail_price_cents ?? 0) / 100).toFixed(2),
+        priceCurrency: "USD",
+        availability: "https://schema.org/InStock",
+        url: productUrl(product.slug),
+        seller: { "@type": "Organization", name: "DJP Athlete", url: SITE_URL },
+      },
+    }
     return (
       <article className="mx-auto max-w-5xl px-4 py-12 pt-24 sm:pt-28 lg:pt-32">
+        <JsonLd data={digitalProductSchema} />
+        <ShopBreadcrumb slug={product.slug} name={product.name} />
         <div className="grid grid-cols-1 gap-10 md:grid-cols-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -107,8 +155,31 @@ export default async function ProductDetailPage({ params }: Props) {
   }
 
   if (product.product_type === "affiliate") {
+    const affiliateProductSchema = {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      name: product.name,
+      description: stripHtml(product.description) || `${product.name} — recommended by DJP Athlete.`,
+      image: product.thumbnail_url_override ?? product.thumbnail_url,
+      url: productUrl(product.slug),
+      ...(product.affiliate_asin ? { sku: product.affiliate_asin } : {}),
+      ...(product.affiliate_price_cents != null
+        ? {
+            offers: {
+              "@type": "Offer",
+              price: (product.affiliate_price_cents / 100).toFixed(2),
+              priceCurrency: "USD",
+              availability: "https://schema.org/InStock",
+              url: `${SITE_URL}/shop/go/${product.id}`,
+              seller: { "@type": "Organization", name: "Amazon" },
+            },
+          }
+        : {}),
+    }
     return (
       <article className="mx-auto max-w-5xl px-4 py-12 pt-24 sm:pt-28 lg:pt-32">
+        <JsonLd data={affiliateProductSchema} />
+        <ShopBreadcrumb slug={product.slug} name={product.name} />
         <div className="grid grid-cols-1 gap-10 md:grid-cols-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -148,6 +219,54 @@ export default async function ProductDetailPage({ params }: Props) {
 
   if (variants.length === 0) notFound()
 
+  // Product rich-result schema (price/availability snippet in Google).
+  const prices = variants.map((v) => v.retail_price_cents)
+  const lowPrice = Math.min(...prices)
+  const highPrice = Math.max(...prices)
+  const anyAvailable = variants.some((v) => v.is_available)
+  const availability = anyAvailable
+    ? "https://schema.org/InStock"
+    : "https://schema.org/OutOfStock"
+  const productImages = Array.from(
+    new Set(
+      [
+        product.thumbnail_url_override ?? product.thumbnail_url,
+        ...variants.flatMap((v) => [v.mockup_url_override, v.mockup_url, ...(v.mockup_urls ?? [])]),
+      ].filter((u): u is string => Boolean(u)),
+    ),
+  ).slice(0, 6)
+  const physicalProductSchema = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: product.name,
+    description: stripHtml(product.description) || `${product.name} — DJP Athlete performance gear.`,
+    image: productImages,
+    brand: { "@type": "Brand", name: "DJP Athlete" },
+    url: productUrl(product.slug),
+    ...(variants[0]?.sku ? { sku: variants[0].sku } : {}),
+    offers:
+      variants.length > 1
+        ? {
+            "@type": "AggregateOffer",
+            priceCurrency: "USD",
+            lowPrice: (lowPrice / 100).toFixed(2),
+            highPrice: (highPrice / 100).toFixed(2),
+            offerCount: variants.length,
+            availability,
+            url: productUrl(product.slug),
+            itemCondition: "https://schema.org/NewCondition",
+          }
+        : {
+            "@type": "Offer",
+            price: (lowPrice / 100).toFixed(2),
+            priceCurrency: "USD",
+            availability,
+            url: productUrl(product.slug),
+            itemCondition: "https://schema.org/NewCondition",
+            seller: { "@type": "Organization", name: "DJP Athlete", url: SITE_URL },
+          },
+  }
+
   // Related products (exclude current)
   const allActive = await listActiveProducts()
   const relatedRaw = allActive.filter((p) => p.id !== product.id).slice(0, 4)
@@ -164,6 +283,8 @@ export default async function ProductDetailPage({ params }: Props) {
 
   return (
     <div className="bg-background pb-20 pt-24 sm:pt-28 lg:pt-32">
+      <JsonLd data={physicalProductSchema} />
+      <ShopBreadcrumb slug={product.slug} name={product.name} />
       {/* Breadcrumb */}
       <nav
         aria-label="Breadcrumb"

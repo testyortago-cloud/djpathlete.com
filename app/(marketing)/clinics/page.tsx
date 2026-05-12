@@ -1,6 +1,7 @@
 ﻿import type { Metadata } from "next"
 import { ArrowUpRight } from "lucide-react"
 import { JsonLd } from "@/components/shared/JsonLd"
+import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 import { FadeIn } from "@/components/shared/FadeIn"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
@@ -8,6 +9,7 @@ import { ClinicHero } from "@/components/public/ClinicHero"
 import { EventsComingSoonPanel } from "@/components/public/EventsComingSoonPanel"
 import { InquiryForm } from "@/components/public/InquiryForm"
 import { getPublishedEvents } from "@/lib/db/events"
+import { buildEventListSchema } from "@/lib/seo/build-event-list-schema"
 import { EventCard } from "@/components/public/EventCard"
 import { getActiveDocument } from "@/lib/db/legal-documents"
 import { renderLegalContent } from "@/lib/legal-content"
@@ -419,9 +421,17 @@ export default async function ClinicsPage() {
     getActiveDocument("liability_waiver"),
   ])
   const waiverContent = waiverDoc?.content ? renderLegalContent(waiverDoc.content) : null
+  const eventListSchema = buildEventListSchema(events, "clinic")
   return (
     <>
       <JsonLd data={serviceSchema} />
+      {eventListSchema && <JsonLd data={eventListSchema} />}
+      <BreadcrumbSchema
+        items={[
+          { name: "Home", url: "/" },
+          { name: "Speed & Agility Clinics", url: "/clinics" },
+        ]}
+      />
 
       <ClinicHero />
 

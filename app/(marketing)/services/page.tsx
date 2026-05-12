@@ -2,6 +2,7 @@
 import { ClipboardList, BarChart3, Video, Dumbbell, Heart, ArrowRight, CheckCircle } from "lucide-react"
 import Link from "next/link"
 import { JsonLd } from "@/components/shared/JsonLd"
+import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 import { PricingSection } from "@/components/PricingSection"
 
 export const metadata: Metadata = {
@@ -143,6 +144,12 @@ export default function ServicesPage() {
   return (
     <>
       <JsonLd data={serviceSchema} />
+      <BreadcrumbSchema
+        items={[
+          { name: "Home", url: "/" },
+          { name: "Services", url: "/services" },
+        ]}
+      />
 
       {/* Hero */}
       <section className="pt-32 pb-16 lg:pt-40 lg:pb-24 px-4 sm:px-8">

@@ -3,6 +3,7 @@ import Link from "next/link"
 import NextImage from "next/image"
 import { ArrowUpRight } from "lucide-react"
 import { JsonLd } from "@/components/shared/JsonLd"
+import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 import { getPublishedBlogPosts } from "@/lib/db/blog-posts"
 import type { BlogCategory, BlogPost } from "@/types/database"
 
@@ -105,6 +106,12 @@ export default async function BlogPage() {
   return (
     <>
       <JsonLd data={blogSchema} />
+      <BreadcrumbSchema
+        items={[
+          { name: "Home", url: "/" },
+          { name: "Journal", url: "/blog" },
+        ]}
+      />
 
       {/* ─────────── Issue masthead ─────────── */}
       <header className="djp-paper-deep djp-grain border-b border-border/70 pt-32 pb-12 lg:pt-36 lg:pb-16 px-4 sm:px-8">

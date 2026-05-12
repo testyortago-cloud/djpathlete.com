@@ -1,16 +1,20 @@
-﻿import { Suspense } from "react"
+import { Suspense } from "react"
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 import Link from "next/link"
-import { ExternalLink } from "lucide-react"
+import { ExternalLink, ChevronRight } from "lucide-react"
 import { JsonLd } from "@/components/shared/JsonLd"
 import { FadeIn } from "@/components/shared/FadeIn"
 import { EventDetailHero } from "@/components/public/EventDetailHero"
 import { EventSignupCard } from "@/components/public/EventSignupCard"
+import { SemanticAnswerBlock } from "@/components/public/SemanticAnswerBlock"
+import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 import { CheckoutCancelledBanner } from "@/components/public/CheckoutCancelledBanner"
 import { getEventBySlug, getPublishedEvents } from "@/lib/db/events"
 import { getActiveDocument } from "@/lib/db/legal-documents"
 import { renderLegalContent } from "@/lib/legal-content"
+import { SITE_URL } from "@/lib/constants"
+import { DJP_AUTHOR_PERSON } from "@/lib/brand/author"
 
 export const revalidate = 300
 
@@ -28,9 +32,17 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     title: event.title,
     description: event.summary,
     alternates: { canonical: `/camps/${event.slug}` },
-    openGraph: { title: event.title, description: event.summary, images },
+    openGraph: { title: event.title, description: event.summary, images, type: "website" },
     twitter: { card: "summary_large_image", title: event.title, description: event.summary },
   }
+}
+
+/** Age range as a human phrase, e.g. "8–16". Falls back to a sensible default. */
+function ageLabel(min: number | null, max: number | null): string {
+  if (min && max) return `${min}–${max}`
+  if (min) return `${min}+`
+  if (max) return `up to ${max}`
+  return "8–16"
 }
 
 export default async function CampDetailPage({ params }: { params: Promise<{ slug: string }> }) {
@@ -41,43 +53,137 @@ export default async function CampDetailPage({ params }: { params: Promise<{ slu
   const waiverDoc = await getActiveDocument("liability_waiver")
   const waiverContent = waiverDoc?.content ? renderLegalContent(waiverDoc.content) : null
 
+  const pageUrl = `${SITE_URL}/camps/${event.slug}`
+  const spotsLeft = Math.max(0, event.capacity - event.signup_count)
+  const priceUsd = event.price_cents != null ? (event.price_cents / 100).toFixed(2) : undefined
+  const ages = ageLabel(event.age_min, event.age_max)
+  // Only published camps render here (others 404), so the event is scheduled.
+  const eventStatusUrl = "https://schema.org/EventScheduled"
+  const availabilityUrl = spotsLeft > 0 ? "https://schema.org/InStock" : "https://schema.org/SoldOut"
+
+  // Rich SportsEvent schema — eligible for Google's event rich results / Maps
+  // events, and gives AI assistants structured facts (when, where, price, ages).
   const eventSchema = {
     "@context": "https://schema.org",
-    "@type": "Event",
+    "@type": "SportsEvent",
     name: event.title,
-    description: event.summary,
+    description: event.summary || event.description.slice(0, 300),
+    url: pageUrl,
     startDate: event.start_date,
-    endDate: event.end_date,
+    endDate: event.end_date ?? undefined,
+    eventStatus: eventStatusUrl,
+    eventAttendanceMode: "https://schema.org/OfflineEventAttendanceMode",
+    isAccessibleForFree: false,
+    maximumAttendeeCapacity: event.capacity,
+    remainingAttendeeCapacity: spotsLeft,
     location: {
       "@type": "Place",
       name: event.location_name,
-      address: event.location_address ?? undefined,
+      address: {
+        "@type": "PostalAddress",
+        streetAddress: event.location_address ?? event.location_name,
+        addressRegion: "FL",
+        addressCountry: "US",
+      },
+      ...(event.location_map_url && { hasMap: event.location_map_url }),
     },
-    offers:
-      event.price_cents != null
-        ? {
-            "@type": "Offer",
-            price: (event.price_cents / 100).toFixed(2),
-            priceCurrency: "USD",
-            availability: "https://schema.org/PreOrder",
-          }
-        : undefined,
     organizer: {
       "@type": "Organization",
       name: "DJP Athlete",
       url: "https://www.darrenjpaul.com",
     },
+    performer: DJP_AUTHOR_PERSON,
     image: event.hero_image_url ? [event.hero_image_url] : undefined,
+    ...(priceUsd && {
+      offers: {
+        "@type": "Offer",
+        price: priceUsd,
+        priceCurrency: "USD",
+        availability: availabilityUrl,
+        url: pageUrl,
+        validFrom: event.created_at,
+      },
+    }),
+    audience: {
+      "@type": "PeopleAudience",
+      audienceType: `Youth soccer players aged ${ages}`,
+      ...(event.age_min && { suggestedMinAge: event.age_min }),
+      ...(event.age_max && { suggestedMaxAge: event.age_max }),
+    },
+  }
+
+  // Parent-facing FAQs for a youth soccer camp — these match what parents type
+  // into Google / AI assistants. Partly dynamic from the event record.
+  const campFaqs = [
+    {
+      question: "What age is this soccer camp for?",
+      answer: `This camp is built for youth soccer players aged ${ages}. Coaching is calibrated to where each player is developmentally — the same standards apply across the group, scaled appropriately.`,
+    },
+    {
+      question: "Is the camp right for competitive players or beginners?",
+      answer:
+        "Both, within reason. The camp is designed for players who already train and play organized soccer and want to raise their physical and technical ceiling — it's not an introduction to the sport. Sessions are grouped so a developing player and a more advanced one each get appropriately challenged work.",
+    },
+    {
+      question: "What should my child bring?",
+      answer:
+        "Soccer cleats and turf/training shoes, shin guards, a ball if they have one (extras provided), a full water bottle, and weather-appropriate athletic clothing. For outdoor sessions, sunscreen and a hat are a good idea. Everything else is provided.",
+    },
+    {
+      question: "What gets developed at the camp?",
+      answer:
+        event.focus_areas.length > 0
+          ? `The camp develops ${event.focus_areas.join(", ").toLowerCase()} — the qualities that show up in real matches: moving well, holding up physically over 90 minutes, and executing technique under fatigue and pressure. Structured progression, not random drills.`
+          : "Speed, agility, acceleration, change of direction, conditioning, and technical execution under pressure — the qualities that decide real matches. Structured progression: purposeful movement prep, technical and tactical work, conditioning, then competitive play so it transfers to game day.",
+    },
+    ...(event.session_schedule
+      ? [
+          {
+            question: "How are the camp sessions structured?",
+            answer: `${event.session_schedule} Each session follows a deliberate arc — movement prep, technical and physical work, then competitive play — so the work transfers to match day rather than staying on the training ground.`,
+          },
+        ]
+      : []),
+    {
+      question: "Who runs the camp?",
+      answer:
+        "Darren J Paul, PhD — a sports performance coach with two decades inside high-performance environments, having coached 500+ athletes across 15+ sports including WTA professionals. Certifications: CSCS (NSCA), NASM-CPT, USA Weightlifting Level 2 Coach.",
+    },
+  ]
+
+  const faqSchema = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: campFaqs.map((f) => ({
+      "@type": "Question",
+      name: f.question,
+      acceptedAnswer: { "@type": "Answer", text: f.answer },
+    })),
   }
 
   return (
     <>
       <JsonLd data={eventSchema} />
+      <JsonLd data={faqSchema} />
+      <BreadcrumbSchema
+        items={[
+          { name: "Home", url: "/" },
+          { name: "Soccer Camps", url: "/camps" },
+          { name: event.title, url: `/camps/${event.slug}` },
+        ]}
+      />
       <EventDetailHero event={event} />
 
       <Suspense fallback={null}>
         <CheckoutCancelledBanner />
       </Suspense>
+
+      {/* AEO answer block — extractable definition for "what is a high-performance soccer camp" */}
+      <SemanticAnswerBlock
+        eyebrow="About this camp"
+        question="What is a high-performance soccer camp?"
+        answer={`A high-performance soccer camp develops the physical and technical qualities that decide real matches — speed, acceleration, change of direction, conditioning, and executing technique under fatigue and pressure — rather than running generic drills. This camp runs for youth players aged ${ages}, coached by Darren J Paul, PhD (CSCS, NASM, USA Weightlifting Level 2), who has coached 500+ athletes across 15+ sports including WTA professionals. Sessions follow a deliberate arc: purposeful movement prep, technical and tactical work, conditioning, then competitive play, so the gains transfer to game day. Players are grouped so each one gets appropriately challenged work — a developing player and a more advanced one both leave better. It's proper athletic development for soccer, calibrated to where the player is right now, with a safety-first, age-appropriate progression. Held in the Tampa Bay area at ${event.location_name}.`}
+      />
 
       <div className="mx-auto max-w-7xl px-4 py-12 md:px-6 md:py-16 pb-32 lg:pb-16">
         <div className="grid gap-10 lg:grid-cols-[1fr_360px]">
@@ -143,6 +249,25 @@ export default async function CampDetailPage({ params }: { params: Promise<{ slu
                     </Link>
                   )}
                 </div>
+              </div>
+
+              {/* Visible FAQ — mirrors the FAQPage schema so the answers are
+                  crawlable text, not schema-only. */}
+              <div>
+                <h2 className="font-heading text-2xl font-semibold text-foreground">
+                  Parent questions, answered
+                </h2>
+                <dl className="mt-4 divide-y divide-border rounded-xl border border-border">
+                  {campFaqs.map((f) => (
+                    <div key={f.question} className="p-4 md:p-5">
+                      <dt className="flex items-start gap-2 font-medium text-foreground">
+                        <ChevronRight className="mt-1 h-4 w-4 flex-shrink-0 text-accent" />
+                        <span>{f.question}</span>
+                      </dt>
+                      <dd className="mt-2 pl-6 text-muted-foreground">{f.answer}</dd>
+                    </div>
+                  ))}
+                </dl>
               </div>
             </article>
           </FadeIn>

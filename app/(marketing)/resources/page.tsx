@@ -2,6 +2,7 @@
 import { Database, Shield, GraduationCap, RotateCcw, Users, ArrowRight } from "lucide-react"
 import Link from "next/link"
 import { JsonLd } from "@/components/shared/JsonLd"
+import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 import { FadeIn } from "@/components/shared/FadeIn"
 
 export const metadata: Metadata = {
@@ -74,6 +75,12 @@ export default function ResourcesPage() {
   return (
     <>
       <JsonLd data={resourcesSchema} />
+      <BreadcrumbSchema
+        items={[
+          { name: "Home", url: "/" },
+          { name: "Resources", url: "/resources" },
+        ]}
+      />
 
       {/* Hero */}
       <section className="pt-32 pb-16 lg:pt-40 lg:pb-24 px-4 sm:px-8">
