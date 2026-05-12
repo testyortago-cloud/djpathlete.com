@@ -209,7 +209,7 @@ function formatSeoTargetBlock(target: SeoTarget | undefined): string {
   lines.push("")
   lines.push("Rules:")
   lines.push("- Primary keyword MUST appear in: title (within first 60 chars), the first 100 words of intro, exactly one h2, and the conclusion.")
-  lines.push("- Secondary keywords distributed across body sections — no stuffing.")
+  lines.push("- Secondary keywords distributed across body sections, no stuffing.")
   lines.push("- Title formula: pick numbered list, how-to, vs/comparison, year-stamped, or contrarian-take based on intent.")
   lines.push("- Title length: 50-60 chars.")
   lines.push("- Excerpt length: 140-180 chars and MUST include the primary keyword.")
@@ -260,7 +260,7 @@ export function composeBlogSystemPrompt(args: ComposeArgs): string {
 
 export function formatFewShotsForUserMessage(examples: BlogFewShotExample[]): string {
   if (examples.length === 0) return ""
-  const lines: string[] = ["", "# REFERENCE EXAMPLES (output style only — do not copy content)"]
+  const lines: string[] = ["", "# REFERENCE EXAMPLES (output style only, do not copy content)"]
   examples.slice(0, 3).forEach((ex, idx) => {
     lines.push("")
     lines.push(`[Example ${idx + 1}]`)
