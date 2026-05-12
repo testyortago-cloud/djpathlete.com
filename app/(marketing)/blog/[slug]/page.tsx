@@ -4,6 +4,7 @@ import Link from "next/link"
 import NextImage from "next/image"
 import { ArrowLeft, ArrowUpRight } from "lucide-react"
 import { JsonLd } from "@/components/shared/JsonLd"
+import { buildFaqPageSchema } from "@/lib/seo/build-faq-page-schema"
 import { getPublishedBlogPostBySlug } from "@/lib/db/blog-posts"
 import { DJP_AUTHOR_PERSON } from "@/lib/brand/author"
 import { TableOfContents } from "@/components/marketing/blog/TableOfContents"
@@ -177,6 +178,7 @@ export default async function BlogPostPage({ params }: Props) {
   const readMinutes = Math.max(1, Math.round(wordCount / 220))
   const showToc = tocEntries.length >= 2 && wordCount >= 600
   const faqEntries = ((post.faq as FaqEntry[] | null) ?? []) as FaqEntry[]
+  const faqPageSchema = buildFaqPageSchema(faqEntries)
 
   const splitAtSecondH2 = (input: string): { before: string; after: string } | null => {
     const firstH2End = input.indexOf("</h2>")
@@ -206,6 +208,7 @@ export default async function BlogPostPage({ params }: Props) {
     <>
       {/* Canonical Article schema — always emitted, authoritative for AI citation */}
       <JsonLd data={blogPostSchema} />
+      {faqPageSchema && <JsonLd data={faqPageSchema} />}
       {/* Auxiliary schemas from DB (FAQPage, HowTo, etc.) — stacked, not overriding */}
       {storedAuxiliarySchemas.map((schema, i) => (
         <JsonLd key={`aux-${i}`} data={schema} />
