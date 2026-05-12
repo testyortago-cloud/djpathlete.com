@@ -3,6 +3,8 @@ import { Star, ExternalLink } from "lucide-react"
 import { JsonLd } from "@/components/shared/JsonLd"
 import { FadeIn } from "@/components/shared/FadeIn"
 import { getGoogleBusinessProfile } from "@/lib/google-places"
+import { BUSINESS_INFO, GOOGLE_MAPS_URL, postalAddressSchema } from "@/lib/business-info"
+import { SITE_URL } from "@/lib/constants"
 
 const MAX_DISPLAYED = 6
 
@@ -46,16 +48,27 @@ export async function GoogleReviewsSection() {
   const reviews = profile.reviews.slice(0, MAX_DISPLAYED)
   const formattedRating = profile.rating.toFixed(1)
 
+  // Review snippet markup must hang off an allowed parent type. `Person` is NOT
+  // allowed (Google: "Invalid object type for field <parent_node>") — attach
+  // the rating + reviews to the business as an Organization / LocalBusiness.
+  // Same @id as the homepage LocalBusiness node so the entity merges.
   const reviewSchema = {
     "@context": "https://schema.org",
-    "@type": "Person",
-    name: "Darren J Paul",
-    url: "https://www.darrenjpaul.com/about",
+    "@type": "SportsActivityLocation",
+    "@id": `${SITE_URL}/#localbusiness`,
+    name: BUSINESS_INFO.legalName,
+    alternateName: BUSINESS_INFO.brand,
+    url: SITE_URL,
+    image: `${SITE_URL}/og-image.png`,
+    address: postalAddressSchema,
+    hasMap: GOOGLE_MAPS_URL,
+    ...(profile.googleMapsUri ? { sameAs: profile.googleMapsUri } : {}),
     aggregateRating: {
       "@type": "AggregateRating",
       ratingValue: formattedRating,
       reviewCount: profile.userRatingCount,
       bestRating: 5,
+      worstRating: 1,
     },
     review: reviews.map((r) => ({
       "@type": "Review",
@@ -65,6 +78,7 @@ export async function GoogleReviewsSection() {
         "@type": "Rating",
         ratingValue: r.rating,
         bestRating: 5,
+        worstRating: 1,
       },
       reviewBody: r.text,
     })),

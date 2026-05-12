@@ -6,7 +6,6 @@ import { JsonLd } from "@/components/shared/JsonLd"
 import { FadeIn } from "@/components/shared/FadeIn"
 import { GoogleReviewsSection } from "@/components/public/GoogleReviewsSection"
 import { GoogleReviewThemes } from "@/components/public/GoogleReviewThemes"
-import { getGoogleBusinessProfile } from "@/lib/google-places"
 import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 import { DJP_PERSON_FULL } from "@/lib/brand/author"
 
@@ -29,7 +28,12 @@ export const metadata: Metadata = {
   },
 }
 
-const basePersonSchema = DJP_PERSON_FULL
+// Person schema for E-E-A-T. Note: `aggregateRating` / `review` must NOT be
+// attached to a Person — Google does not allow `Person` as a review-snippet
+// parent ("Invalid object type for field <parent_node>"). The Google Business
+// Profile rating + reviews are emitted on an `Organization` node by
+// <GoogleReviewsSection /> instead.
+const personSchema = DJP_PERSON_FULL
 
 const credentials = [
   { icon: GraduationCap, title: "Doctor of Philosophy (PhD)" },
@@ -59,21 +63,7 @@ const values = [
   },
 ]
 
-export default async function AboutPage() {
-  const gbp = await getGoogleBusinessProfile()
-  const personSchema =
-    gbp && gbp.userRatingCount > 0
-      ? {
-          ...basePersonSchema,
-          aggregateRating: {
-            "@type": "AggregateRating",
-            ratingValue: gbp.rating.toFixed(1),
-            reviewCount: gbp.userRatingCount,
-            bestRating: 5,
-          },
-        }
-      : basePersonSchema
-
+export default function AboutPage() {
   return (
     <>
       <JsonLd data={personSchema} />
