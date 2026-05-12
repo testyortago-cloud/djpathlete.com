@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { revalidatePath } from "next/cache"
 import { auth } from "@/lib/auth"
 import { getBlogPostById, updateBlogPost } from "@/lib/db/blog-posts"
 import { createAiJob } from "@/lib/ai-jobs"
@@ -40,6 +41,11 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
         console.error("[Blog] IndexNow submit failed:", err),
       )
     }
+
+    // Invalidate the ISR cache so the new post appears on /blog immediately
+    // instead of waiting up to revalidate=60s after the next visitor request.
+    revalidatePath("/blog")
+    if (updated.slug) revalidatePath(`/blog/${updated.slug}`)
 
     return NextResponse.json(updated)
   } catch (error) {

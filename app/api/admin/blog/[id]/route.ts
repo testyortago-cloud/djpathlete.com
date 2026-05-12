@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { revalidatePath } from "next/cache"
 import { auth } from "@/lib/auth"
 import { getBlogPostById, updateBlogPost, deleteBlogPost, isSlugTaken } from "@/lib/db/blog-posts"
 import { blogPostFormSchema } from "@/lib/validators/blog-post"
@@ -53,6 +54,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       )
     }
 
+    // Invalidate ISR caches so edits (including slug changes / unpublishing)
+    // appear immediately on the marketing pages.
+    revalidatePath("/blog")
+    if (post.slug) revalidatePath(`/blog/${post.slug}`)
+
     return NextResponse.json(post)
   } catch (error) {
     console.error("Blog PATCH error:", error)
@@ -69,9 +75,13 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
 
     const { id } = await params
 
+    // Capture the slug before deletion so we can invalidate its detail page.
+    let deletedSlug: string | null = null
+
     // Clean up cover image if present
     try {
       const post = await getBlogPostById(id)
+      deletedSlug = post.slug ?? null
       if (post.cover_image_url) {
         const url = new URL(post.cover_image_url)
         const pathMatch = url.pathname.match(/blog-images\/(.+)$/)
@@ -84,6 +94,11 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
     }
 
     await deleteBlogPost(id)
+
+    // Drop the deleted post from /blog and its detail page immediately.
+    revalidatePath("/blog")
+    if (deletedSlug) revalidatePath(`/blog/${deletedSlug}`)
+
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("Blog DELETE error:", error)
