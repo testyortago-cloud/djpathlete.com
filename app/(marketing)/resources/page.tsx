@@ -38,36 +38,46 @@ const resourcesSchema = {
   },
 }
 
-const resources = [
+type ResourceStatus = "available" | "coming-soon"
+
+const resources: {
+  icon: typeof Database
+  title: string
+  description: string
+  status: ResourceStatus
+  href?: string
+}[] = [
   {
     icon: Database,
     title: "Performance Database",
     description: "A comprehensive collection of performance metrics, benchmarks, and testing protocols.",
-    status: "coming-soon" as const,
+    status: "coming-soon",
   },
   {
     icon: Shield,
     title: "Comeback Code",
     description: "A structured framework for athletes returning from injury to full competitive readiness.",
-    status: "coming-soon" as const,
+    status: "coming-soon",
   },
   {
     icon: GraduationCap,
     title: "Workshop Clinic",
     description: "Hands-on clinical workshops for coaches, practitioners, and performance staff.",
-    status: "coming-soon" as const,
+    status: "coming-soon",
   },
   {
     icon: RotateCcw,
     title: "Rotational Reboot",
-    description: "A specialized program addressing rotational power development for racket and throwing sports.",
-    status: "coming-soon" as const,
+    description:
+      "A 6-week rotational power program for tennis, golf, baseball, lacrosse, hockey and soccer athletes — core-led, structured progression, built by Darren J Paul, PhD.",
+    status: "available",
+    href: "/programs/rotational-reboot",
   },
   {
     icon: Users,
     title: "Youth Athlete Transition",
     description: "Evidence-based developmental pathways for young athletes progressing through competitive stages.",
-    status: "coming-soon" as const,
+    status: "coming-soon",
   },
 ]
 
@@ -175,7 +185,7 @@ function ResourceCard({ resource }: { resource: (typeof resources)[number] }) {
           </span>
         ) : (
           <Link
-            href="#"
+            href={resource.href ?? "#"}
             className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:text-primary/80 transition-colors"
           >
             Learn More

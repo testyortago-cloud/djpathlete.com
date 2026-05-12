@@ -58,7 +58,8 @@ export const FOOTER_SECTIONS = [
     title: "Resources",
     links: [
       { label: "Blog", href: "/blog" },
-      { label: "Workshop Clinic", href: "/resources" },
+      { label: "Rotational Reboot", href: "/programs/rotational-reboot" },
+      { label: "Resource Library", href: "/resources" },
     ],
   },
   {
