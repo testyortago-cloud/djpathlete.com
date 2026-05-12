@@ -13,8 +13,15 @@ const generateWeekSchema = z.object({
   target_week_number: z.number().int().min(1).optional(),
   /** When set, AI generates exercises for this single day only (1=Monday … 7=Sunday) */
   target_day_of_week: z.number().int().min(1).max(7).optional(),
-  /** When set, AI restricts exercise selection to these exercise IDs only */
+  /** When set, AI biases exercise selection toward these exercise IDs (Exercise Pool) */
   pool_exercise_ids: z.array(z.string().uuid()).max(100).optional(),
+  /**
+   * How the Exercise Pool is enforced:
+   * - "preferred" (default) → strong bias + prompt guidance, AI may pick
+   *   outside the pool when no pool exercise fits a slot.
+   * - "strict" → hard restriction, AI may ONLY pick from the pool.
+   */
+  pool_mode: z.enum(["preferred", "strict"]).optional(),
   /** When set, AI ignores the client profile and relies on coach instructions */
   ignore_profile: z.boolean().optional(),
 })
@@ -65,6 +72,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           target_week_number: result.data.target_week_number ?? null,
           target_day_of_week: result.data.target_day_of_week ?? null,
           pool_exercise_ids: result.data.pool_exercise_ids ?? null,
+          pool_mode: result.data.pool_mode ?? "preferred",
           ignore_profile: result.data.ignore_profile ?? false,
         },
         requestedBy: session.user.id,

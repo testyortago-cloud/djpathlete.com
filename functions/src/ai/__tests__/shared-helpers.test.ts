@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest"
-import { buildExcludeIdSet, buildExerciseRows, buildSlotLookups } from "../shared-helpers.js"
+import {
+  applyPoolFilter,
+  buildExcludeIdSet,
+  buildExerciseRows,
+  buildPoolNote,
+  buildSlotLookups,
+} from "../shared-helpers.js"
 import type { PriorWeekContext } from "../dedup-verify.js"
 import type { ProgramWeek } from "../types.js"
 
@@ -39,6 +45,44 @@ describe("buildExcludeIdSet", () => {
     const ctx = ctxWith({ "primary_compound|squat|quads": ["ex-1"] })
     const out = buildExcludeIdSet(ctx, new Set(["warm_up"]))
     expect(out.size).toBe(0)
+  })
+})
+
+describe("applyPoolFilter pool modes", () => {
+  const lib = [{ id: "a" }, { id: "b" }, { id: "c" }, { id: "d" }]
+
+  it("returns the full library in preferred mode (default) when a pool is set", () => {
+    const out = applyPoolFilter(lib, ["a", "b"], "test", "preferred")
+    expect(out).toHaveLength(4)
+    expect(out.map((e) => e.id)).toEqual(["a", "b", "c", "d"])
+  })
+
+  it("hard-filters to the pool in strict mode", () => {
+    const out = applyPoolFilter(lib, ["a", "b"], "test", "strict")
+    expect(out.map((e) => e.id).sort()).toEqual(["a", "b"])
+  })
+
+  it("returns the full library when no pool ids are provided", () => {
+    expect(applyPoolFilter(lib, undefined, "test", "preferred")).toEqual(lib)
+    expect(applyPoolFilter(lib, [], "test", "strict")).toEqual(lib)
+  })
+})
+
+describe("buildPoolNote mode-aware language", () => {
+  it("emits 'MUST select ONLY' language in strict mode", () => {
+    const note = buildPoolNote(["a", "b"], 2, "strict")
+    expect(note).toMatch(/MUST select from these exercises ONLY/i)
+  })
+
+  it("emits 'STRONGLY PREFERRED' language in preferred mode", () => {
+    const note = buildPoolNote(["a", "b"], 100, "preferred", 2)
+    expect(note).toMatch(/STRONGLY PREFERRED/i)
+    expect(note).toMatch(/curated an Exercise Pool of 2/i)
+  })
+
+  it("returns empty string when no pool ids are set", () => {
+    expect(buildPoolNote(undefined, 0, "preferred")).toBe("")
+    expect(buildPoolNote([], 0, "strict")).toBe("")
   })
 })
 

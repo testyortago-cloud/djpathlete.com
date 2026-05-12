@@ -518,3 +518,89 @@ export function verifyWeekAgainstExisting(
       : `${repeatedVarietyCount}/${varietySlotCount} accessory/isolation repeated (${(repetition_score * 100).toFixed(0)}%) — FAIL. ${errorCount} same-slot-type repetitions.`,
   }
 }
+
+// ─── Verify Within-Week Duplicates ──────────────────────────────────────────
+
+export interface WithinWeekDuplicateIssue {
+  exercise_id: string
+  exercise_name: string
+  slot_ids: string[]
+  days: number[]
+  severity: "error"
+  message: string
+}
+
+export interface WithinWeekVerificationResult {
+  pass: boolean
+  issues: WithinWeekDuplicateIssue[]
+  summary: string
+}
+
+/**
+ * Verify that the new week's assignments contain no exercise_id used more
+ * than once — within a single day OR across multiple days of the same week.
+ *
+ * The selector prompt forbids both, but it's only text guidance; without
+ * programmatic verification the AI sometimes ignores it. Any duplicate is
+ * surfaced as an error so the retry loop can fix it.
+ *
+ * Warm-up / cool-down slots are exempt — those legitimately repeat (e.g.,
+ * the same activation drill across days).
+ */
+export function verifyWithinWeekDuplicates(
+  newAssignments: AssignedExercise[],
+  newWeekSkeleton: ProgramWeek,
+): WithinWeekVerificationResult {
+  // Group assignments by exercise_id with the slots/days where they appear
+  type Hit = { slot_id: string; day_of_week: number; role: string }
+  const byExercise = new Map<string, { name: string; hits: Hit[] }>()
+
+  // Build a quick lookup of day_of_week for each slot in the new week
+  const slotDay = new Map<string, number>()
+  for (const day of newWeekSkeleton.days) {
+    for (const slot of day.slots) {
+      slotDay.set(slot.slot_id, day.day_of_week)
+    }
+  }
+
+  for (const a of newAssignments) {
+    const slot = getSlotDetails(a.slot_id, [newWeekSkeleton])
+    if (!slot) continue
+    // Anchor roles (warm-up, cool-down) may legitimately repeat
+    if (ANCHOR_ROLES.has(slot.role)) continue
+
+    const day = slotDay.get(a.slot_id) ?? -1
+    const bucket = byExercise.get(a.exercise_id) ?? { name: a.exercise_name, hits: [] }
+    bucket.hits.push({ slot_id: a.slot_id, day_of_week: day, role: slot.role })
+    byExercise.set(a.exercise_id, bucket)
+  }
+
+  const issues: WithinWeekDuplicateIssue[] = []
+  for (const [exerciseId, { name, hits }] of byExercise) {
+    if (hits.length < 2) continue
+    const days = Array.from(new Set(hits.map((h) => h.day_of_week))).sort((a, b) => a - b)
+    const sameDayCount = hits.length - days.length // hits beyond first per day
+    const message =
+      sameDayCount > 0
+        ? `${name} appears ${hits.length}× in week ${newWeekSkeleton.week_number} (multiple times on the same day). Pick DIFFERENT exercises for each working slot — no exercise_id may appear more than once per day or per week (warm-up / cool-down excepted).`
+        : `${name} appears ${hits.length}× in week ${newWeekSkeleton.week_number} (across days ${days.join(", ")}). The selector rules forbid the same exercise_id appearing on multiple working slots in the same week — pick a DIFFERENT exercise that trains the same movement pattern and muscles for each slot (e.g., vary equipment, stance, or angle).`
+
+    issues.push({
+      exercise_id: exerciseId,
+      exercise_name: name,
+      slot_ids: hits.map((h) => h.slot_id),
+      days,
+      severity: "error",
+      message,
+    })
+  }
+
+  const pass = issues.length === 0
+  return {
+    pass,
+    issues,
+    summary: pass
+      ? `No within-week duplicates — PASS`
+      : `${issues.length} within-week duplicate exercise${issues.length === 1 ? "" : "s"} found — FAIL`,
+  }
+}

@@ -6,6 +6,8 @@ import type { UsageRecencyMap } from "./usage-history.js"
 const COACH_USAGE_PENALTY = 30
 const CLIENT_USAGE_PENALTY = 50
 const DIVERSITY_BOOST = 10
+/** Boost applied in "preferred" pool mode to exercises in the coach-curated pool. */
+const POOL_PREFERENCE_BOOST = 40
 
 /**
  * Apply usage-history penalties and a diversity boost to a base score.
@@ -31,11 +33,19 @@ export function applyUsagePenalty(
 }
 
 export interface FilterOptions {
+  /** True in strict pool mode — library has already been hard-filtered to the pool. */
   poolActive?: boolean
   coachUsage?: UsageRecencyMap
   clientUsage?: UsageRecencyMap
   /** Exercise IDs to physically remove from the candidate set (hard prune). */
   excludeIds?: Set<string>
+  /**
+   * Exercise IDs the coach has marked as preferred (the Exercise Pool in
+   * "preferred" mode). These are NOT a hard restriction — they receive a
+   * scoring boost so the pool is prioritized while leaving the rest of the
+   * library available as fallback.
+   */
+  preferredIds?: Set<string>
   /** MMR balance: 1.0 = pure relevance, 0.0 = pure diversity. Default 0.7. */
   mmrLambda?: number
 }
@@ -337,6 +347,15 @@ export function scoreAndFilterExercises(
     }
   }
 
+  // Preferred pool boost — bias toward coach-curated exercises without
+  // hard-restricting the library (preferred mode).
+  const preferredIds = options?.preferredIds
+  if (preferredIds && preferredIds.size > 0) {
+    for (const [id, score] of exerciseMaxScores) {
+      if (preferredIds.has(id)) exerciseMaxScores.set(id, score + POOL_PREFERENCE_BOOST)
+    }
+  }
+
   const sorted = [...exercises].sort((a, b) => {
     return (exerciseMaxScores.get(b.id) ?? 0) - (exerciseMaxScores.get(a.id) ?? 0)
   })
@@ -441,6 +460,7 @@ export async function semanticFilterExercises(
       coachUsage: options?.coachUsage,
       clientUsage: options?.clientUsage,
       excludeIds: options?.excludeIds,
+      preferredIds: options?.preferredIds,
       mmrLambda: options?.mmrLambda,
     })
   }
@@ -455,16 +475,33 @@ export async function semanticFilterExercises(
 
   const coachUsage = options?.coachUsage ?? new Map<string, number>()
   const clientUsage = options?.clientUsage ?? new Map<string, number>()
-  if (coachUsage.size > 0 || clientUsage.size > 0) {
-    const scored = filtered.map((ex) => ({
-      ex,
-      score: applyUsagePenalty(50, ex.id, coachUsage, clientUsage),
-    }))
+  const preferredIds = options?.preferredIds
+  const hasPreferred = preferredIds && preferredIds.size > 0
+  if (coachUsage.size > 0 || clientUsage.size > 0 || hasPreferred) {
+    const scored = filtered.map((ex) => {
+      let score = applyUsagePenalty(50, ex.id, coachUsage, clientUsage)
+      if (hasPreferred && preferredIds!.has(ex.id)) score += POOL_PREFERENCE_BOOST
+      return { ex, score }
+    })
     scored.sort((a, b) => b.score - a.score)
     filtered = scored.map((s) => s.ex)
     console.log(
-      `[semanticFilter] Applied usage-aware re-ranking (coach: ${coachUsage.size}, client: ${clientUsage.size})`,
+      `[semanticFilter] Applied usage-aware re-ranking (coach: ${coachUsage.size}, client: ${clientUsage.size}${
+        hasPreferred ? `, pool preferred: ${preferredIds!.size}` : ""
+      })`,
     )
+  }
+
+  // Inject any missing preferred-pool exercises into the candidate set —
+  // semantic search may have ranked them out, but in preferred mode we want
+  // the AI to see them. They go to the front of the list.
+  if (hasPreferred) {
+    const inFiltered = new Set(filtered.map((e) => e.id))
+    const missingPreferred = exercises.filter((e) => preferredIds!.has(e.id) && !inFiltered.has(e.id))
+    if (missingPreferred.length > 0) {
+      console.log(`[semanticFilter] Injecting ${missingPreferred.length} preferred-pool exercises missed by embeddings`)
+      filtered = [...missingPreferred, ...filtered]
+    }
   }
 
   if (filtered.length > maxExercises) filtered = filtered.slice(0, maxExercises)
@@ -477,7 +514,9 @@ export async function semanticFilterExercises(
     const baseScore = 50
     const scoredFiltered = filtered.map((e) => ({
       exercise: e,
-      score: applyUsagePenalty(baseScore, e.id, coachUsage, clientUsage),
+      score:
+        applyUsagePenalty(baseScore, e.id, coachUsage, clientUsage) +
+        (hasPreferred && preferredIds!.has(e.id) ? POOL_PREFERENCE_BOOST : 0),
     }))
     filtered = diversifyByMMR(scoredFiltered, filtered.length, lambda)
   }

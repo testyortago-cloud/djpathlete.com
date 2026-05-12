@@ -77,6 +77,8 @@ export interface AiGenerationRequest {
   additional_instructions?: string
   equipment_override?: string[]
   pool_exercise_ids?: string[]
+  /** How the Exercise Pool is enforced: "preferred" (bias, default) or "strict" (hard restrict) */
+  pool_mode?: "preferred" | "strict"
   ignore_profile?: boolean
   is_public?: boolean
   price_cents?: number
@@ -403,10 +405,14 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     const analysis = agent1Result.content
     const allCompressed = allExercises // already compressed from getExercisesForAI
 
-    // Apply exercise pool filter first — restricts to coach-curated exercises
+    // Apply exercise pool filter — preferred (default) biases without hard
+    // restricting; strict mode keeps the legacy "only this pool" behavior.
     const poolIds = request.pool_exercise_ids
-    const poolActive = !!poolIds && poolIds.length > 0
-    const poolFiltered = applyPoolFilter(allCompressed, poolIds, "orchestrator")
+    const poolMode = request.pool_mode ?? "preferred"
+    const poolActive = !!poolIds && poolIds.length > 0 && poolMode === "strict"
+    const preferredIds =
+      poolIds && poolIds.length > 0 && poolMode === "preferred" ? new Set(poolIds) : undefined
+    const poolFiltered = applyPoolFilter(allCompressed, poolIds, "orchestrator", poolMode)
 
     // Filter by text difficulty level (beginner/intermediate/advanced) to prevent
     // advanced exercises from reaching beginners. Skip when profile is ignored so
@@ -519,15 +525,17 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
         poolActive,
         coachUsage,
         clientUsage,
+        preferredIds,
       })
     } catch {
       filtered = scoreAndFilterExercises(compressed, skeleton, availableEquipment, analysis, {
         poolActive,
         coachUsage,
         clientUsage,
+        preferredIds,
       })
     }
-    const poolNote = buildPoolNote(poolIds, filtered.length)
+    const poolNote = buildPoolNote(poolIds, filtered.length, poolMode, poolIds?.length)
 
     // Check cancellation before Agent 3
     if (await checkCancelled()) {

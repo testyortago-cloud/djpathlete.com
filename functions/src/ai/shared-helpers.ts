@@ -85,24 +85,57 @@ export function buildCoachInstructionsSection(instructions: string | undefined):
 The coach is the authority. Their instructions reflect knowledge of the athlete that may not be in the profile. When in doubt, follow the coach's intent over any algorithmic default.`
 }
 
-// ─── Exercise Pool Note ────────────────────────────────────────────────────
+// ─── Exercise Pool ─────────────────────────────────────────────────────────
 
-export function buildPoolNote(poolIds: string[] | undefined, filteredCount: number): string {
+export type PoolMode = "preferred" | "strict"
+
+/**
+ * Build the system note describing how the AI should treat the Exercise Pool.
+ * - "strict"    → pool is the only allowed library (hard restriction)
+ * - "preferred" → pool is a strong guideline; AI may reach outside when no
+ *                 pool exercise fits a slot. This is the default.
+ */
+export function buildPoolNote(
+  poolIds: string[] | undefined,
+  filteredCount: number,
+  mode: PoolMode = "preferred",
+  poolCount?: number,
+): string {
   if (!poolIds || poolIds.length === 0) return ""
-  return `\n\nNOTE: The exercise library has been pre-filtered to a coach-curated Exercise Pool of ${filteredCount} exercises. You MUST select from these exercises ONLY. If a slot cannot be perfectly matched, pick the closest available exercise from the pool. Do NOT reference exercises outside this list.`
+  if (mode === "strict") {
+    return `\n\nNOTE: The exercise library has been pre-filtered to a coach-curated Exercise Pool of ${filteredCount} exercises. You MUST select from these exercises ONLY. If a slot cannot be perfectly matched, pick the closest available exercise from the pool. Do NOT reference exercises outside this list.`
+  }
+  // Preferred (guideline) mode
+  const total = poolCount ?? poolIds.length
+  return `\n\nNOTE: The coach has curated an Exercise Pool of ${total} preferred exercises. These are STRONGLY PREFERRED — fill every slot from this pool when a pool exercise reasonably matches the slot's movement_pattern, target_muscles, and role. You MAY pick an exercise from outside the pool ONLY when no pool exercise is a sensible fit for the slot — in that case, add a substitution_note explaining why no pool option fit. AIM to use as many DIFFERENT pool exercises as possible across the week — do not duplicate pool exercises while ignoring others that fit.`
 }
 
-// ─── Pool Filtering ────────────────────────────────────────────────────────
-
+/**
+ * Apply the Exercise Pool to the candidate library.
+ * - "strict"    → physically filter the library down to the pool.
+ * - "preferred" → return the full library unchanged. Pool IDs are surfaced as
+ *                 a scoring boost (see FilterOptions.preferredIds) and as
+ *                 prompt guidance, but candidates outside the pool remain
+ *                 available as fallback. This is the default.
+ */
 export function applyPoolFilter<T extends { id: string }>(
   fullLibrary: T[],
   poolIds: string[] | undefined,
   logPrefix: string,
+  mode: PoolMode = "preferred",
 ): T[] {
   if (!poolIds || poolIds.length === 0) return fullLibrary
+  if (mode === "preferred") {
+    console.log(
+      `[${logPrefix}] Exercise Pool active in PREFERRED mode — biasing toward ${poolIds.length} pool exercises (full library of ${fullLibrary.length} remains available as fallback)`,
+    )
+    return fullLibrary
+  }
   const poolSet = new Set(poolIds)
   const filtered = fullLibrary.filter((e) => poolSet.has(e.id))
-  console.log(`[${logPrefix}] Exercise Pool active — using ${filtered.length}/${fullLibrary.length} exercises`)
+  console.log(
+    `[${logPrefix}] Exercise Pool active in STRICT mode — using ${filtered.length}/${fullLibrary.length} exercises`,
+  )
   return filtered
 }
 

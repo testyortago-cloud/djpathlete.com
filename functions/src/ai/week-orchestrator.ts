@@ -6,7 +6,11 @@ import { EXERCISE_SELECTOR_PROMPT, WEEK_PROFILE_ANALYZER_PROMPT } from "./prompt
 import { validateProgram } from "./validate.js"
 import { formatExerciseLibrary, filterByDifficultyLevel, filterByProgressionPhase } from "./exercise-context.js"
 import { getExercisesForAI } from "./program-chat-tools.js"
-import { buildPriorContextFromExistingExercises, verifyWeekAgainstExisting } from "./dedup-verify.js"
+import {
+  buildPriorContextFromExistingExercises,
+  verifyWeekAgainstExisting,
+  verifyWithinWeekDuplicates,
+} from "./dedup-verify.js"
 import { getCoachPolicyFromFn, formatCoachPolicyAsInstructions } from "./coach-policy.js"
 import { getCoachRecentUsageFromFn, getClientRecentUsageFromFn, recordUsageFromFn } from "./usage-history.js"
 import { getSupabase } from "../lib/supabase.js"
@@ -54,8 +58,15 @@ export interface WeekGenerationRequest {
   target_week_number?: number
   /** When set, generate exercises for this single day only (1=Monday … 7=Sunday) */
   target_day_of_week?: number
-  /** When set, restrict exercise selection to only these exercise IDs (from Exercise Pool) */
+  /** When set, the AI biases selection toward this coach-curated pool (see pool_mode for hard vs soft) */
   pool_exercise_ids?: string[]
+  /**
+   * How the Exercise Pool is treated:
+   * - "preferred" (default) → strong bias + prompt guidance, but AI may pull
+   *   from the full library when no pool exercise fits a slot
+   * - "strict" → hard restriction: AI may ONLY pick from the pool
+   */
+  pool_mode?: "preferred" | "strict"
   /** When set, ignore the client profile and rely on coach instructions */
   ignore_profile?: boolean
 }
@@ -343,9 +354,14 @@ export async function generateWeekSync(
     `[week-orchestrator] policy: ${coachPolicy ? "loaded" : "none"}, coach usage: ${coachUsage.size}, client usage: ${clientUsage.size}`,
   )
 
-  // If pool exercise IDs are provided, restrict the exercise library to only those
+  // Exercise Pool — preferred (default) biases the AI toward the coach's
+  // curated set without hard-restricting the library; strict only allows
+  // exercises in the pool.
   const poolIds = request.pool_exercise_ids
-  const allExercises = applyPoolFilter(fullLibrary, poolIds, "week-orchestrator")
+  const poolMode = request.pool_mode ?? "preferred"
+  const allExercises = applyPoolFilter(fullLibrary, poolIds, "week-orchestrator", poolMode)
+  const preferredIds =
+    poolIds && poolIds.length > 0 && poolMode === "preferred" ? new Set(poolIds) : undefined
 
   // Client data is optional — programs without assignments can still use AI generation
   // Skip profile fetch when coach has opted to ignore it
@@ -725,7 +741,8 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
   const excludeIds = buildExcludeIdSet(priorContext, VARIETY_ROLES)
   console.log(`[week-orchestrator] excludeIds: ${excludeIds.size} ids hard-pruned from candidate library`)
 
-  const poolActive = !!poolIds && poolIds.length > 0
+  // poolActive only when STRICT — preferred mode keeps the full library available
+  const poolActive = !!poolIds && poolIds.length > 0 && poolMode === "strict"
   let filtered: CompressedExercise[]
   try {
     filtered = await semanticFilterExercises(exercisesForSelection, skeleton, availableEquipment, analysis, {
@@ -733,6 +750,7 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
       coachUsage,
       clientUsage,
       excludeIds,
+      preferredIds,
       mmrLambda: 0.7,
     })
   } catch {
@@ -741,6 +759,7 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
       coachUsage,
       clientUsage,
       excludeIds,
+      preferredIds,
       mmrLambda: 0.7,
     })
   }
@@ -757,19 +776,31 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     let feedbackSection = ""
     if (attempt > 0 && assignment) {
-      // Verify the previous attempt's dedup compliance
+      // Verify the previous attempt's dedup compliance against prior weeks
       const dedupResult = verifyWeekAgainstExisting(assignment.assignments, skeleton.weeks[0], priorContext)
-      if (!dedupResult.pass) {
-        const repetitionIssues = dedupResult.issues
-          .filter((i) => i.severity === "error")
-          .map((i) => `- ${i.message}`)
-          .join("\n")
-        feedbackSection = `\n\nEXERCISE REPETITION DETECTED — you MUST choose DIFFERENT exercises:\n${repetitionIssues}\n\nSelect alternative exercises from the library that STILL MATCH the slot's movement_pattern, target_muscles, and role — but use a different exercise_id. Do NOT pick random exercises just to avoid repetition. Vary by equipment (dumbbell→cable→machine), angle, or stance while keeping the same training purpose.`
+      const withinResult = verifyWithinWeekDuplicates(assignment.assignments, skeleton.weeks[0])
+
+      const crossWeekIssues = dedupResult.issues
+        .filter((i) => i.severity === "error")
+        .map((i) => `- ${i.message}`)
+      const withinWeekIssues = withinResult.issues.map((i) => `- ${i.message}`)
+
+      const sections: string[] = []
+      if (withinWeekIssues.length > 0) {
+        sections.push(
+          `WITHIN-WEEK DUPLICATES DETECTED — the same exercise was used multiple times in the SAME week:\n${withinWeekIssues.join("\n")}\n\nEvery working slot must have a UNIQUE exercise_id. Replace duplicates with DIFFERENT exercises that still match each slot's movement_pattern, target_muscles, and role — vary by equipment (dumbbell→cable→machine), stance (bilateral→unilateral), angle, or training intent.`,
+        )
       }
+      if (crossWeekIssues.length > 0) {
+        sections.push(
+          `CROSS-WEEK REPETITION DETECTED — you MUST choose DIFFERENT exercises than prior weeks:\n${crossWeekIssues.join("\n")}\n\nSelect alternatives from the library that STILL MATCH the slot's movement_pattern, target_muscles, and role — but use a different exercise_id. Do NOT pick random exercises just to avoid repetition. Vary by equipment (dumbbell→cable→machine), angle, or stance while keeping the same training purpose.`,
+        )
+      }
+      if (sections.length > 0) feedbackSection = `\n\n${sections.join("\n\n")}`
     }
 
     const coachInstructionsSection = buildCoachInstructionsSection(request.admin_instructions)
-    const poolNote = buildPoolNote(poolIds, filtered.length)
+    const poolNote = buildPoolNote(poolIds, filtered.length, poolMode, poolIds?.length)
 
     const selectorMessage = `Program Skeleton (Week ${newWeekNumber}):\n${JSON.stringify(skeleton)}\n\nConstraints:\n${constraintsContext}\n\nExercise Library (${filtered.length} exercises):\n${exerciseLibrary}\n\n${priorContext.prompt_text}${coachInstructionsSection}${poolNote}\n\nIMPORTANT: EVERY working exercise (compounds, accessories, isolations) MUST be DIFFERENT from prior weeks. Use the AVOID list above — do NOT reuse any exercise_id from that list. For compound slots, pick a DIFFERENT exercise that trains the SAME movement pattern and muscles. WARM-UP and COOL-DOWN slots may stay consistent.${feedbackSection}`
 
@@ -792,16 +823,19 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
         console.warn(`[week-orchestrator] Stripped ${strippedCount} hallucinated exercise IDs`)
       }
 
-      // Verify dedup compliance
+      // Verify dedup compliance — both cross-week AND within-week duplicates
       const dedupResult = verifyWeekAgainstExisting(assignment.assignments, skeleton.weeks[0], priorContext)
-      console.log(`[week-orchestrator] Dedup verification: ${dedupResult.summary}`)
+      const withinResult = verifyWithinWeekDuplicates(assignment.assignments, skeleton.weeks[0])
+      console.log(
+        `[week-orchestrator] Dedup verification: ${dedupResult.summary} | ${withinResult.summary}`,
+      )
 
-      if (dedupResult.pass) break
+      if (dedupResult.pass && withinResult.pass) break
 
       // If dedup fails but no retries left, accept the result with a warning
       if (attempt === MAX_RETRIES) {
         console.warn(
-          `[week-orchestrator] Dedup still failing after ${MAX_RETRIES + 1} attempts — accepting with repetition warnings`,
+          `[week-orchestrator] Dedup still failing after ${MAX_RETRIES + 1} attempts — accepting with repetition warnings (within-week: ${withinResult.issues.length}, cross-week errors: ${dedupResult.issues.filter((i) => i.severity === "error").length})`,
         )
         break
       }

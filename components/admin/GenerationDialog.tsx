@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
 import { useAiJob } from "@/hooks/use-ai-job"
 import { TemplateSelector } from "@/components/admin/TemplateSelector"
 
@@ -59,6 +60,7 @@ export function GenerationDialog(props: GenerationDialogProps) {
   const [jobId, setJobId] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [usePool, setUsePool] = useState(true)
+  const [strictPool, setStrictPool] = useState(false)
 
   const { status, result, error, reset } = useAiJob(jobId)
 
@@ -132,7 +134,10 @@ export function GenerationDialog(props: GenerationDialogProps) {
         ...(props.assignmentId && { assignment_id: props.assignmentId }),
         ...(props.clientId && { client_id: props.clientId }),
         admin_instructions: instructions || undefined,
-        ...(hasPool && usePool && { pool_exercise_ids: poolExerciseIds }),
+        ...(hasPool && usePool && {
+          pool_exercise_ids: poolExerciseIds,
+          pool_mode: strictPool ? "strict" : "preferred",
+        }),
       }
 
       if (isWeek) {
@@ -270,43 +275,65 @@ export function GenerationDialog(props: GenerationDialogProps) {
         {!isGenerating && !isComplete && !isFailed && (
           <div className="space-y-4">
             {hasPool && (
-              <button
-                type="button"
-                className={`w-full flex items-center gap-2.5 rounded-lg border-2 px-3 py-2.5 text-left transition-colors ${
-                  usePool ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/30"
-                }`}
-                onClick={() => setUsePool(!usePool)}
-              >
-                <div
-                  className={`flex items-center justify-center size-5 rounded border-2 transition-colors ${
-                    usePool ? "border-primary bg-primary" : "border-muted-foreground/30"
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  className={`w-full flex items-center gap-2.5 rounded-lg border-2 px-3 py-2.5 text-left transition-colors ${
+                    usePool ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/30"
                   }`}
+                  onClick={() => setUsePool(!usePool)}
                 >
-                  {usePool && (
-                    <svg
-                      className="size-3 text-white"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={3}
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <Layers className="size-3.5 text-primary" />
-                    <span className="text-sm font-medium">Use Exercise Pool</span>
-                    <span className="text-[10px] font-medium bg-primary/10 text-primary rounded-full px-1.5 py-0.5">
-                      {poolExerciseIds.length}
-                    </span>
+                  <div
+                    className={`flex items-center justify-center size-5 rounded border-2 transition-colors ${
+                      usePool ? "border-primary bg-primary" : "border-muted-foreground/30"
+                    }`}
+                  >
+                    {usePool && (
+                      <svg
+                        className="size-3 text-white"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={3}
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
                   </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    AI will select from your curated exercises only
-                  </p>
-                </div>
-              </button>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <Layers className="size-3.5 text-primary" />
+                      <span className="text-sm font-medium">Use Exercise Pool</span>
+                      <span className="text-[10px] font-medium bg-primary/10 text-primary rounded-full px-1.5 py-0.5">
+                        {poolExerciseIds.length}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {strictPool
+                        ? "AI will select from your curated exercises only"
+                        : "AI will strongly prefer your pool, filling gaps from the library when needed"}
+                    </p>
+                  </div>
+                </button>
+                {usePool && (
+                  <div className="flex items-center justify-between rounded-lg border p-3 ml-6">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="gen-strict-pool" className="text-sm font-medium cursor-pointer">
+                        Strict pool
+                      </Label>
+                      <p className="text-[11px] text-muted-foreground">
+                        Hard restrict to pool exercises only (no library fallback)
+                      </p>
+                    </div>
+                    <Switch
+                      id="gen-strict-pool"
+                      checked={strictPool}
+                      onCheckedChange={setStrictPool}
+                      disabled={isSubmitting}
+                    />
+                  </div>
+                )}
+              </div>
             )}
 
             <div className="space-y-2">
