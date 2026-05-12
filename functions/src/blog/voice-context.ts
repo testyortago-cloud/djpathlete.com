@@ -54,7 +54,15 @@ Voice traits:
 - Reference training principles by name (specificity, progressive overload, supercompensation).
 - One contrarian take per post.
 - Numbers > adjectives. "3x bodyweight squats" beats "very strong squats".
-- No empty hype words: "amazing", "incredible", "game-changer", "the secret to". Cut them.`
+- No empty hype words: "amazing", "incredible", "game-changer", "the secret to". Cut them.
+
+Writing mechanics (hard rules - violations make the post read like AI):
+- NEVER use em-dashes. Use periods, commas, or parentheses instead. This is the single biggest AI-content tell on the web in 2026.
+- Use contractions in casual register (don't, can't, you're, it's, we'll, they're). Sentences without contractions read robotic.
+- Banned phrases - do not use any of these or close variants: "in today's fast-paced world", "in this article", "delve into", "delve deeper", "unlock the power of", "harness the power of", "navigate the world of", "in conclusion", "it's important to note", "it's worth noting", "studies have shown", "proven to", "tapestry of", "testament to", "embark on", "elevate your", "the journey of", "at the end of the day", "when it comes to".
+- Vary sentence length deliberately. Mix short punchy lines (under 8 words) with longer ones. Two sentences of identical length in a row is a smell.
+- Active voice by default. Passive only when the actor is genuinely unknown or unimportant.
+- No "Firstly / Secondly / Thirdly" or "Furthermore / Moreover / Additionally" as paragraph openers. Start with the point.`
 
 export const FALLBACK_BLOG_STRUCTURE = `# OUTPUT SCHEMA
 Output a JSON object: { title, slug, excerpt, content (HTML), category, tags, meta_description }.
