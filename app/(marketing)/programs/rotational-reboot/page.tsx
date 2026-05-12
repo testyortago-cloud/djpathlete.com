@@ -26,13 +26,13 @@ const PRICE = "79.00"
 const REGULAR_PRICE = "249.00"
 
 export const metadata: Metadata = {
-  // Layout template appends " | DJP Athlete" — keep brand out of the title here.
-  title: "Rotational Reboot — 6-Week Rotational Power Training Program",
+  // Layout template appends " | DJP Athlete", so keep the brand out of the title here.
+  title: "Rotational Reboot: 6-Week Rotational Power Training Program",
   description:
-    "Rotational Reboot is a 6-week, 4-sessions-per-week rotational power training program for athletes in rotational sports — tennis, golf, baseball, lacrosse, hockey, soccer. Core-led progression, beginner to moderate, built by Darren J Paul, PhD. $79 (usually $249).",
+    "Rotational Reboot is a 6-week, 4-sessions-per-week rotational power training program for athletes in rotational sports like tennis, golf, baseball, lacrosse, hockey and soccer. Core-led progression, beginner to moderate, built by Darren J Paul, PhD. $79 (usually $249).",
   alternates: { canonical: "/programs/rotational-reboot" },
   openGraph: {
-    title: "Rotational Reboot — 6-Week Rotational Power Training Program | DJP Athlete",
+    title: "Rotational Reboot: 6-Week Rotational Power Training Program | DJP Athlete",
     description:
       "A 6-week rotational power program for tennis, golf, baseball, lacrosse, hockey and soccer athletes. Core-led, structured progression, by Darren J Paul, PhD. $79.",
     type: "website",
@@ -40,7 +40,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Rotational Reboot — 6-Week Rotational Power Training Program | DJP Athlete",
+    title: "Rotational Reboot: 6-Week Rotational Power Training Program | DJP Athlete",
     description:
       "A 6-week rotational power program for rotational-sport athletes. Core-led, structured progression, by Darren J Paul, PhD. $79 (usually $249).",
   },
@@ -65,35 +65,35 @@ const SPORTS = [
 
 const WEEKS = [
   {
-    n: "Weeks 1–2",
+    n: "Weeks 1 to 2",
     label: "Re-pattern",
     body: "Rebuild the foundation: anti-rotation control, rib-cage and pelvis positioning, and clean rotational mechanics at low intensity. You earn the right to produce power before you chase it.",
   },
   {
-    n: "Weeks 3–4",
+    n: "Weeks 3 to 4",
     label: "Build",
     body: "Load the pattern: heavier anti-rotation work, controlled rotational strength, and the first low-volume power exposures. Intensity climbs from beginner toward moderate.",
   },
   {
-    n: "Weeks 5–6",
+    n: "Weeks 5 to 6",
     label: "Express",
-    body: "Turn strength into speed: rotational power, throws, and faster, more sport-like expression — still inside a controlled, moderate-intensity ceiling. You finish moving better and producing more.",
+    body: "Turn strength into speed: rotational power, throws, and faster, more sport-like expression, still inside a controlled, moderate-intensity ceiling. You finish moving better and producing more.",
   },
 ]
 
 const INSIDE = [
-  "24 sessions — 6 weeks, 4 sessions per week — laid out day by day",
+  "24 sessions (6 weeks, 4 sessions per week) laid out day by day",
   "A core-led build (~70% rotational core and trunk, ~30% legs and arms support work)",
-  "A clear beginner → moderate intensity progression, week over week",
+  "A clear beginner to moderate intensity progression, week over week",
   "Every exercise mapped to a coaching cue and a demonstration from the DJP video library",
-  "Warm-up and movement-prep sequences built into each session — no guesswork",
+  "Warm-up and movement-prep sequences built into each session, so there's no guesswork",
   "Regressions and progressions so the work fits where you actually are right now",
-  "Trains on a full gym or a basic home setup — minimal equipment required",
+  "Trains on a full gym or a basic home setup, with minimal equipment required",
   "Built and programmed by Darren J Paul, PhD (CSCS, NASM, USA Weightlifting Level 2)",
 ]
 
 const WHO = [
-  "Athletes in rotational sports — tennis, golf, baseball, lacrosse, hockey, soccer and more",
+  "Athletes in rotational sports like tennis, golf, baseball, lacrosse, hockey and soccer",
   "Players who feel their racket-, club- or stick-speed has plateaued",
   "Athletes who are 'strong in the gym' but don't feel it transfer to rotation on the field",
   "Off-season and pre-season athletes who want a structured block, not random workouts",
@@ -104,42 +104,42 @@ const FAQS = [
   {
     question: "What is the Rotational Reboot program?",
     answer:
-      "Rotational Reboot is a 6-week training program — 4 sessions per week, 24 sessions total — built to develop rotational power for athletes in rotational sports like tennis, golf, baseball, lacrosse, hockey and soccer. It's core-led (roughly 70% rotational core and trunk work, 30% supporting legs and arms) and runs a deliberate progression from beginner to moderate intensity, so you build control before speed. It was designed and programmed by Darren J Paul, PhD (CSCS, NASM, USA Weightlifting Level 2).",
+      "Rotational Reboot is a 6-week training program of 4 sessions per week (24 sessions in total) built to develop rotational power for athletes in rotational sports like tennis, golf, baseball, lacrosse, hockey and soccer. It's core-led (roughly 70% rotational core and trunk work, 30% supporting legs and arms) and runs a deliberate progression from beginner to moderate intensity, so you build control before speed. It was designed and programmed by Darren J Paul, PhD (CSCS, NASM, USA Weightlifting Level 2).",
   },
   {
     question: "What sports is it for?",
     answer:
-      "Any sport where performance comes from rotating the body through the core and hips into the limbs — tennis, golf, baseball, softball, lacrosse, ice and field hockey, soccer, cricket, throwing events, boxing and MMA, volleyball, squash and padel. If your sport rewards a faster, better-sequenced rotation, this program is built for you.",
+      "Any sport where performance comes from rotating the body through the core and hips into the limbs: tennis, golf, baseball, softball, lacrosse, ice and field hockey, soccer, cricket, throwing events, boxing and MMA, volleyball, squash and padel. If your sport rewards a faster, better-sequenced rotation, this program is built for you.",
   },
   {
     question: "Do I need a gym?",
     answer:
-      "A full gym makes it easiest, but the program is written to run on a basic home setup too — most sessions need only a band or cable, a medicine ball, and a single dumbbell or kettlebell. Every exercise comes with a regression so you can scale it to your equipment without losing the point of the session.",
+      "A full gym makes it easiest, but the program is written to run on a basic home setup too. Most sessions need only a band or cable, a medicine ball, and a single dumbbell or kettlebell. Every exercise comes with a regression so you can scale it to your equipment without losing the point of the session.",
   },
   {
     question: "How much time does it take each week?",
     answer:
-      "Four sessions a week, typically 40–55 minutes each, for six weeks. The sessions are built to be efficient — purposeful warm-up, the main rotational work, then supporting strength — so you're not living in the gym.",
+      "Four sessions a week, typically 40 to 55 minutes each, for six weeks. The sessions are built to be efficient (purposeful warm-up, the main rotational work, then supporting strength), so you're not living in the gym.",
   },
   {
     question: "Is it suitable for beginners?",
     answer:
-      "Yes. The program starts at a beginner intensity and progresses to moderate over the six weeks — it never assumes you're already an advanced lifter. If you're more experienced, the built-in progressions let you load it appropriately. What it is not is a return-from-injury rehab plan; if you're working back from an injury, talk to Darren first.",
+      "Yes. The program starts at a beginner intensity and progresses to moderate over the six weeks; it never assumes you're already an advanced lifter. If you're more experienced, the built-in progressions let you load it appropriately. What it is not is a return-from-injury rehab plan; if you're working back from an injury, talk to Darren first.",
   },
   {
     question: "How is this different from a generic strength program?",
     answer:
-      "Generic programs train the body in straight lines — push, pull, squat, hinge — and hope rotation shows up on its own. Rotational Reboot is built the other way round: it puts the core and the rotational pattern at the center, sequences anti-rotation control before rotational power, and progresses load and speed deliberately. It's the way rotational athletes are coached in high-performance environments, written down as a plan you can follow.",
+      "Generic programs train the body in straight lines (push, pull, squat, hinge) and hope rotation shows up on its own. Rotational Reboot is built the other way round: it puts the core and the rotational pattern at the center, sequences anti-rotation control before rotational power, and progresses load and speed deliberately. It's the way rotational athletes are coached in high-performance environments, written down as a plan you can follow.",
   },
   {
     question: "How much is it?",
     answer:
-      "$79 — usually $249. One payment, lifetime access to the full 6-week program and every session, cue and demonstration inside it.",
+      "$79, usually $249. One payment, lifetime access to the full 6-week program and every session, cue and demonstration inside it.",
   },
   {
     question: "Who built it?",
     answer:
-      "Darren J Paul, PhD — a sports performance coach with two decades inside high-performance environments, having coached 500+ athletes across 15+ sports including WTA professionals. Certifications: CSCS (NSCA), NASM-CPT, USA Weightlifting Level 2 Coach.",
+      "Darren J Paul, PhD, is a sports performance coach with two decades inside high-performance environments, having coached 500+ athletes across 15+ sports including WTA professionals. Certifications: CSCS (NSCA), NASM-CPT, USA Weightlifting Level 2 Coach.",
   },
 ]
 
@@ -148,7 +148,7 @@ const FAQS = [
 const productSchema = {
   "@context": "https://schema.org",
   "@type": "Product",
-  name: "Rotational Reboot — 6-Week Rotational Power Training Program",
+  name: "Rotational Reboot: 6-Week Rotational Power Training Program",
   description:
     "A 6-week, 4-sessions-per-week rotational power training program for athletes in rotational sports (tennis, golf, baseball, lacrosse, hockey, soccer). Core-led, beginner-to-moderate progression. Designed by Darren J Paul, PhD (CSCS, NASM, USA Weightlifting Level 2).",
   url: PAGE_URL,
@@ -158,7 +158,7 @@ const productSchema = {
   audience: {
     "@type": "PeopleAudience",
     audienceType:
-      "Athletes in rotational sports — tennis, golf, baseball, softball, lacrosse, hockey, soccer, throwing events",
+      "Athletes in rotational sports like tennis, golf, baseball, softball, lacrosse, hockey, soccer, and throwing events",
   },
   offers: {
     "@type": "Offer",
@@ -173,7 +173,7 @@ const productSchema = {
 const courseSchema = {
   "@context": "https://schema.org",
   "@type": "Course",
-  name: "Rotational Reboot — 6-Week Rotational Power Training Program",
+  name: "Rotational Reboot: 6-Week Rotational Power Training Program",
   description:
     "A structured 6-week rotational power training program for rotational-sport athletes. Four sessions per week, core-led, with a deliberate beginner-to-moderate intensity progression.",
   url: PAGE_URL,
@@ -246,16 +246,16 @@ export default function RotationalRebootPage() {
               well-sequenced rotation.
             </p>
             <p className="mt-6 max-w-2xl text-base leading-7 text-primary-foreground/70 sm:text-lg">
-              Tennis, golf, baseball, lacrosse, hockey, soccer — if performance comes from rotating
-              the body through your core and hips into the racket, club, stick, bat or ball, this is
-              the block built for it. Core-led, deliberately progressed from beginner to moderate
-              intensity, programmed by Darren J Paul, PhD.
+              In tennis, golf, baseball, lacrosse, hockey and soccer, performance comes from rotating
+              the body through your core and hips into the racket, club, stick, bat or ball. This is
+              the block built for exactly that: core-led, deliberately progressed from beginner to
+              moderate intensity, programmed by Darren J Paul, PhD.
             </p>
 
             <div className="mt-9 flex flex-col gap-4 sm:flex-row sm:items-center">
               <Button asChild size="lg" className="rounded-full bg-accent text-primary hover:bg-accent/90">
                 <Link href="#get-the-program">
-                  Get the program — ${PRICE.replace(".00", "")}
+                  Get the program · ${PRICE.replace(".00", "")}
                   <ArrowRight className="ml-1.5 size-4" />
                 </Link>
               </Button>
@@ -274,7 +274,7 @@ export default function RotationalRebootPage() {
                 { k: "Length", v: "6 weeks" },
                 { k: "Per week", v: "4 sessions" },
                 { k: "Focus", v: "~70% core" },
-                { k: "Intensity", v: "Beginner → moderate" },
+                { k: "Intensity", v: "Beginner to moderate" },
               ].map((s) => (
                 <div key={s.k}>
                   <dt className="font-mono text-[10px] uppercase tracking-[0.22em] text-primary-foreground/50">
@@ -292,7 +292,7 @@ export default function RotationalRebootPage() {
       <SemanticAnswerBlock
         eyebrow="What this is"
         question="What is the Rotational Reboot program?"
-        answer="Rotational Reboot is a 6-week training program — 4 sessions per week, 24 sessions in total — built to develop rotational power for athletes in rotational sports such as tennis, golf, baseball, lacrosse, hockey and soccer. It is core-led: roughly 70% of the work targets the rotational core and trunk, with the remaining 30% supporting legs and arms. The program runs a deliberate progression from beginner to moderate intensity, so athletes earn rotational control before chasing rotational speed. Every session is laid out day by day, every exercise is mapped to a coaching cue and a video demonstration, and the work scales to a full gym or a basic home setup. It was designed and programmed by Darren J Paul, PhD (CSCS, NASM, USA Weightlifting Level 2), who has coached 500+ athletes across 15+ sports including WTA professionals. Price: $79 (usually $249), one payment, lifetime access."
+        answer="Rotational Reboot is a 6-week training program of 4 sessions per week (24 sessions in total) built to develop rotational power for athletes in rotational sports such as tennis, golf, baseball, lacrosse, hockey and soccer. It is core-led: roughly 70% of the work targets the rotational core and trunk, with the remaining 30% supporting legs and arms. The program runs a deliberate progression from beginner to moderate intensity, so athletes earn rotational control before chasing rotational speed. Every session is laid out day by day, every exercise is mapped to a coaching cue and a video demonstration, and the work scales to a full gym or a basic home setup. It was designed and programmed by Darren J Paul, PhD (CSCS, NASM, USA Weightlifting Level 2), who has coached 500+ athletes across 15+ sports including WTA professionals. Price: $79 (usually $249), one payment, lifetime access."
       />
 
       {/* ───────────────── Who it's for ───────────────── */}
@@ -305,11 +305,11 @@ export default function RotationalRebootPage() {
                 <span className="font-mono text-[11px] uppercase tracking-[0.28em] text-accent">Who it's for</span>
               </div>
               <h2 className="mt-4 font-heading text-3xl font-semibold tracking-tight text-primary sm:text-4xl">
-                Built for rotational sport — professional and aspiring.
+                Built for rotational sport, professional and aspiring.
               </h2>
               <p className="mt-5 max-w-md leading-7 text-muted-foreground">
                 If your sport rewards a faster, better-sequenced turn, your training should be built
-                around rotation — not have it bolted on at the end.
+                around rotation, not have it bolted on at the end.
               </p>
               <ul className="mt-8 flex flex-wrap gap-2">
                 {SPORTS.map((s) => (
@@ -347,7 +347,7 @@ export default function RotationalRebootPage() {
                 Control first. Strength next. Speed last.
               </h2>
               <p className="mt-5 leading-7 text-muted-foreground">
-                Six weeks, three phases. Each one earns the next — you build the pattern before you
+                Six weeks, three phases. Each one earns the next: you build the pattern before you
                 load it, and load it before you ask it to move fast.
               </p>
             </div>
@@ -382,7 +382,7 @@ export default function RotationalRebootPage() {
                 <span className="font-mono text-[11px] uppercase tracking-[0.28em] text-accent">What's inside</span>
               </div>
               <h2 className="mt-4 font-heading text-3xl font-semibold tracking-tight text-primary sm:text-4xl">
-                Everything laid out — no guesswork.
+                Everything laid out. No guesswork.
               </h2>
               <ul className="mt-8 space-y-3">
                 {INSIDE.map((line) => (
@@ -401,13 +401,13 @@ export default function RotationalRebootPage() {
                 <span className="font-mono text-[11px] uppercase tracking-[0.28em] text-accent">Why it works</span>
               </div>
               <p className="mt-5 leading-7 text-primary-foreground/80">
-                Power in rotational sport isn&apos;t made in your arms — it&apos;s made in the floor,
+                Power in rotational sport isn&apos;t made in your arms. It&apos;s made in the floor,
                 routed through your hips and trunk, and delivered late. Most programs train the body
                 in straight lines and hope rotation turns up on its own. It usually doesn&apos;t.
               </p>
               <p className="mt-4 leading-7 text-primary-foreground/80">
                 Rotational Reboot puts the core and the rotational pattern at the center. It builds
-                anti-rotation control first, then rotational strength, then speed — the same order
+                anti-rotation control first, then rotational strength, then speed: the same order
                 rotational athletes are coached in high-performance settings, written down as a plan
                 you can actually run.
               </p>
@@ -416,7 +416,7 @@ export default function RotationalRebootPage() {
                 the pattern, you load the pattern, then you let it fly.&rdquo;
               </blockquote>
               <p className="mt-3 font-mono text-[11px] uppercase tracking-[0.22em] text-primary-foreground/55">
-                — Darren J Paul, PhD
+                Darren J Paul, PhD
               </p>
             </div>
           </div>
@@ -472,14 +472,14 @@ export default function RotationalRebootPage() {
                 <div className="h-px w-8 bg-accent" />
               </div>
               <h2 className="mt-4 font-heading text-3xl font-semibold tracking-tight sm:text-4xl">
-                Rotational Reboot — ${PRICE.replace(".00", "")}
+                Rotational Reboot · ${PRICE.replace(".00", "")}
                 <span className="ml-3 align-middle font-heading text-xl text-primary-foreground/40 line-through">
                   ${REGULAR_PRICE.replace(".00", "")}
                 </span>
               </h2>
               <p className="mx-auto mt-4 max-w-xl leading-7 text-primary-foreground/75">
                 One payment, lifetime access to the full 6-week program. Leave your details and we&apos;ll
-                send you everything you need to start — including the secure payment link and your
+                send you everything you need to start, including the secure payment link and your
                 access.
               </p>
             </div>
