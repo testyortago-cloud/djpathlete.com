@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { Sparkles, Loader2, CheckCircle2, XCircle, Layers } from "lucide-react"
@@ -75,6 +75,55 @@ export function GenerationDialog(props: GenerationDialogProps) {
   const weekLabel = isWeek ? (props.targetWeekNumber ?? props.currentWeekCount + 1) : props.weekNumber
   const dayName = !isWeek ? DAY_NAMES[props.dayOfWeek - 1] : null
   const entityLabel = isWeek ? `Week ${weekLabel}` : dayName!
+
+  // Elapsed timer — shown during generation so the user sees forward motion
+  const [elapsedSec, setElapsedSec] = useState(0)
+  useEffect(() => {
+    if (!isGenerating) {
+      setElapsedSec(0)
+      return
+    }
+    const interval = setInterval(() => setElapsedSec((s) => s + 1), 1000)
+    return () => clearInterval(interval)
+  }, [isGenerating])
+
+  // Auto-fire on completion: refresh parent data + close dialog, even if the
+  // user never clicks "View Week". The Sonner toast is the persistent confirmation.
+  const completionFiredRef = useRef(false)
+  useEffect(() => {
+    if (jobId === null) completionFiredRef.current = false
+  }, [jobId])
+
+  useEffect(() => {
+    if (status !== "completed" || completionFiredRef.current) return
+    completionFiredRef.current = true
+
+    const r = result as { new_week_number?: number; exercises_added?: number } | null
+    const exerciseCount = r?.exercises_added ?? 0
+
+    if (isWeek) {
+      const newWeekNumber = r?.new_week_number ?? weekLabel
+      ;(props as WeekModeProps).onGenerated(newWeekNumber)
+    } else {
+      ;(props as DayModeProps).onGenerated()
+    }
+    router.refresh()
+
+    const successMsg = isWeek
+      ? `Week ${r?.new_week_number ?? weekLabel} ready — ${exerciseCount} exercises added`
+      : `${dayName} filled — ${exerciseCount} exercises added`
+
+    const t = setTimeout(() => {
+      toast.success(successMsg)
+      setJobId(null)
+      setInstructions("")
+      reset()
+      onOpenChange(false)
+    }, 1800)
+
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status])
 
   async function handleSubmit() {
     setIsSubmitting(true)
@@ -151,15 +200,21 @@ export function GenerationDialog(props: GenerationDialogProps) {
     onOpenChange(false)
   }
 
+  function formatElapsed(seconds: number): string {
+    const m = Math.floor(seconds / 60)
+    const s = (seconds % 60).toString().padStart(2, "0")
+    return `${m}:${s}`
+  }
+
   function getProgressMessage(): string {
-    if (status === "pending") return "Queued..."
-    if (status === "processing") return `Generating ${entityLabel}...`
+    if (status === "pending") return "Warming up the AI worker..."
+    if (status === "processing") return `Generating ${entityLabel}... ${formatElapsed(elapsedSec)}`
     if (status === "completed") {
       const r = result as { new_week_number?: number; exercises_added?: number } | null
       if (isWeek) {
-        return `Week ${r?.new_week_number ?? weekLabel} generated with ${r?.exercises_added ?? 0} exercises!`
+        return `Week ${r?.new_week_number ?? weekLabel} ready — ${r?.exercises_added ?? 0} exercises added`
       }
-      return `${dayName} generated with ${r?.exercises_added ?? 0} exercises!`
+      return `${dayName} filled — ${r?.exercises_added ?? 0} exercises added`
     }
     if (status === "failed") return error ?? "Generation failed"
     return ""
@@ -284,6 +339,11 @@ export function GenerationDialog(props: GenerationDialogProps) {
             {isComplete && <CheckCircle2 className="size-8 text-success" />}
             {isFailed && <XCircle className="size-8 text-destructive" />}
             <p className="text-sm text-center text-muted-foreground">{getProgressMessage()}</p>
+            {isGenerating && (
+              <p className="text-xs text-center text-muted-foreground/70">
+                Usually takes 1–2 minutes. You can keep this tab open or come back later.
+              </p>
+            )}
           </div>
         )}
 
