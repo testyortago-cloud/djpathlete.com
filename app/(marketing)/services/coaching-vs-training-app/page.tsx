@@ -8,21 +8,21 @@ import { SemanticAnswerBlock } from "@/components/public/SemanticAnswerBlock"
 import { TrustStrip } from "@/components/public/TrustStrip"
 
 export const metadata: Metadata = {
-  title: "Performance Coaching vs Training Apps — Honest Comparison",
+  title: "Sports Performance Coaching vs Training Apps",
   description:
-    "Coach-supervised sports performance coaching vs subscription training apps (Future, TrainHeroic, Whoop Coach). What you actually get, how decisions are made, and which fits which athlete.",
+    "Sports performance coaching vs subscription training apps (Future, TrainHeroic, Whoop Coach): what you get, how decisions are made, and which fits which athlete.",
   alternates: { canonical: "/services/coaching-vs-training-app" },
   openGraph: {
-    title: "Performance Coaching vs Training Apps — Honest Comparison | DJP Athlete",
+    title: "Sports Performance Coaching vs Training Apps | DJP Athlete",
     description:
-      "Coach-supervised performance coaching vs subscription training apps — what each delivers, how decisions are made, and which fits which athlete.",
+      "Coach-supervised performance coaching vs subscription training apps: what each delivers, how decisions are made, and which fits which athlete.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Performance Coaching vs Training Apps — Honest Comparison | DJP Athlete",
+    title: "Sports Performance Coaching vs Training Apps | DJP Athlete",
     description:
-      "Coach-supervised coaching vs subscription training apps — what each delivers and which fits which athlete.",
+      "Coach-supervised coaching vs subscription training apps: what each delivers and which fits which athlete.",
   },
 }
 

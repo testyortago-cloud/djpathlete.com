@@ -8,6 +8,7 @@ import { HeroContent } from "@/components/public/HeroContent"
 import { AnimatedStats } from "@/components/public/AnimatedStats"
 import { TestimonialCarousel } from "@/components/public/TestimonialCarousel"
 import { GoogleReviewThemes } from "@/components/public/GoogleReviewThemes"
+import { SemanticAnswerBlock } from "@/components/public/SemanticAnswerBlock"
 import { NewsletterForm } from "@/components/public/NewsletterForm"
 import { GoogleReviewsBadge } from "@/components/public/GoogleReviewsBadge"
 import { TrustStrip } from "@/components/public/TrustStrip"
@@ -48,7 +49,7 @@ const organizationSchema = {
   name: BUSINESS_INFO.brand,
   legalName: BUSINESS_INFO.legalName,
   url: "https://www.darrenjpaul.com",
-  logo: "https://www.darrenjpaul.com/og-image.png",
+  logo: "https://www.darrenjpaul.com/logos/logo-dark.png",
   description:
     "DJP Athlete provides sports performance coaching by Darren J Paul. Elite athlete coaching, elite sports performance training, athletic performance coach services, and performance coaching for athletes — in-person training, online coaching, and return-to-performance assessment for serious athletes.",
   address: postalAddressSchema,
@@ -65,7 +66,7 @@ const localBusinessSchema = {
   name: BUSINESS_INFO.legalName,
   alternateName: BUSINESS_INFO.brand,
   url: "https://www.darrenjpaul.com",
-  image: "https://www.darrenjpaul.com/og-image.png",
+  image: "https://www.darrenjpaul.com/images/gym-training-01.jpg",
   address: postalAddressSchema,
   hasMap: GOOGLE_MAPS_URL,
   identifier: {
@@ -197,6 +198,13 @@ export default async function HomePage() {
 
       {/* ─── Stats Bar (Animated Counter) ─── */}
       <AnimatedStats stats={stats} />
+
+      {/* ─── AEO answer block — extractable "what is sports performance coaching" ─── */}
+      <SemanticAnswerBlock
+        eyebrow="In short"
+        question="What is sports performance coaching?"
+        answer="Sports performance coaching is the structured development of how an athlete moves, produces force, and recovers, built around a specific sport rather than general fitness. Unlike a personal trainer, a sports performance coach starts with diagnostics (testing speed, strength, power, movement quality and readiness), then designs an individualized program, monitors training load, coaches technique, and adjusts in real time as the athlete adapts. At DJP Athlete, this is delivered by Darren J Paul, PhD (CSCS, NASM, USA Weightlifting Level 2), who has coached 500+ athletes across 15+ sports including WTA professionals. Three formats are available: in-person training at the Zephyrhills, Florida facility in the Tampa Bay area; online coaching with individualized programming and video feedback for athletes anywhere; and return-to-performance assessment for athletes coming back from injury. Every decision is diagnostic-driven and individualized: systems over exercises, patterns over shortcuts."
+      />
 
       {/* ─── Services Section ─── */}
       <section className="py-20 lg:py-32 px-4 sm:px-8">

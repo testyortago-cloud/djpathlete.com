@@ -20,19 +20,19 @@ import { SemanticAnswerBlock } from "@/components/public/SemanticAnswerBlock"
 import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 
 export const metadata: Metadata = {
-  title: "Sports Performance Training Tampa Bay — In-Person Coach",
+  title: "In-Person Sports Performance Training, Tampa Bay",
   description:
-    "Sports performance coach in Tampa Bay, FL. Assessment-led strength and conditioning at our Zephyrhills facility for competitive athletes, return-to-performance, and elite youth — by Darren J Paul, PhD.",
+    "Sports performance coach in Tampa Bay, FL. Assessment-led strength and conditioning for competitive athletes and return-to-performance, by Darren J Paul, PhD.",
   alternates: { canonical: "/in-person" },
   openGraph: {
-    title: "Sports Performance Training Tampa Bay — In-Person Coach | DJP Athlete",
+    title: "In-Person Sports Performance Training, Tampa Bay | DJP Athlete",
     description:
-      "Sports performance coach in Tampa Bay, FL. Assessment-led strength and conditioning for competitive athletes, return-to-performance, and elite youth — by Darren J Paul, PhD.",
+      "Sports performance coach in Tampa Bay, FL. Assessment-led strength and conditioning for competitive athletes and return-to-performance, by Darren J Paul, PhD.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Sports Performance Training Tampa Bay — In-Person Coach | DJP Athlete",
+    title: "In-Person Sports Performance Training, Tampa Bay | DJP Athlete",
     description:
       "Sports performance coach in Tampa Bay, FL. Assessment-led strength and conditioning by Darren J Paul, PhD.",
   },
@@ -137,13 +137,15 @@ export default function InPersonPage() {
             <p className="text-sm font-medium text-accent uppercase tracking-widest">In-Person Coaching</p>
             <div className="h-px w-8 bg-accent" />
           </div>
-          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-heading font-semibold text-white tracking-tight mb-6">
-            High Performance Development.
-            <br className="hidden sm:block" /> Delivered Precisely.
+          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-heading font-semibold text-white tracking-tight mb-4">
+            In-Person Sports Performance Training in Tampa Bay
           </h1>
+          <p className="text-xl text-white/90 font-heading font-medium max-w-2xl mx-auto leading-snug mb-4">
+            High performance development. Delivered precisely.
+          </p>
           <p className="text-lg text-white/80 max-w-2xl mx-auto leading-relaxed mb-8">
             Assessment-led, individually designed coaching for athletes who demand more than effort. This is structured
-            performance development — built on science, guided by experience, and measured by results.
+            performance development: built on science, guided by experience, and measured by results.
           </p>
           <a
             href="#apply"
@@ -391,6 +393,20 @@ export default function InPersonPage() {
               </div>
             </div>
           </FadeIn>
+        </div>
+      </section>
+
+      {/* Internal link — route searchers to the format comparison */}
+      <section className="py-10 px-4 sm:px-8 border-t border-border">
+        <div className="max-w-3xl mx-auto text-center text-muted-foreground">
+          Not sure whether in-person or remote coaching fits your situation?{" "}
+          <Link
+            href="/services/online-vs-in-person"
+            className="font-medium text-primary underline underline-offset-4 hover:text-accent"
+          >
+            See online vs in-person coaching, compared
+          </Link>
+          .
         </div>
       </section>
 

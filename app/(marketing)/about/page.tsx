@@ -6,6 +6,7 @@ import { JsonLd } from "@/components/shared/JsonLd"
 import { FadeIn } from "@/components/shared/FadeIn"
 import { GoogleReviewsSection } from "@/components/public/GoogleReviewsSection"
 import { GoogleReviewThemes } from "@/components/public/GoogleReviewThemes"
+import { SemanticAnswerBlock } from "@/components/public/SemanticAnswerBlock"
 import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 import { DJP_PERSON_FULL } from "@/lib/brand/author"
 
@@ -125,6 +126,13 @@ export default function AboutPage() {
           </div>
         </div>
       </section>
+
+      {/* AEO answer block — extractable "who is Darren J Paul" entity definition */}
+      <SemanticAnswerBlock
+        eyebrow="In short"
+        question="Who is Darren J Paul?"
+        answer="Darren J Paul, PhD, is a sports performance coach and the founder of DJP Athlete, based in Zephyrhills, Florida (Tampa Bay area). He has spent two decades inside high-performance environments and has coached 500+ athletes across 15+ sports and three continents, including WTA professional tennis players and professional pickleball players. His certifications include CSCS (NSCA), NASM-CPT and USA Weightlifting Level 2 Coach, alongside a PhD and a degree in exercise science. He is the author of the Grey Zone coaching philosophy and the Five Pillar Framework (assessment, individualized programming, load monitoring, technical coaching and long-term development), which he delivers through in-person training at his Tampa Bay facility and online coaching for athletes worldwide, plus return-to-performance assessments for athletes coming back from injury. His approach is diagnostic-driven and individualized: systems over exercises, patterns over shortcuts."
+      />
 
       {/* Credentials Section */}
       <section className="py-16 lg:py-24 px-4 sm:px-8 bg-surface">

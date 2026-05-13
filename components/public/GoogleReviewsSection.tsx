@@ -59,7 +59,7 @@ export async function GoogleReviewsSection() {
     name: BUSINESS_INFO.legalName,
     alternateName: BUSINESS_INFO.brand,
     url: SITE_URL,
-    image: `${SITE_URL}/og-image.png`,
+    image: `${SITE_URL}/images/gym-training-01.jpg`,
     address: postalAddressSchema,
     hasMap: GOOGLE_MAPS_URL,
     ...(profile.googleMapsUri ? { sameAs: profile.googleMapsUri } : {}),

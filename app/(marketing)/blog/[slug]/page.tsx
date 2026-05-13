@@ -57,21 +57,31 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     return { title: "Post Not Found" }
   }
 
+  // Prefer the SEO-optimized meta_title / meta_description produced by the
+  // post-publish `seo_enhance` job; fall back to the post's own title/excerpt.
+  // The root layout appends " | DJP Athlete", so strip any brand suffix the
+  // generator may have included to avoid doubling it.
+  const seoMeta =
+    (post.seo_metadata as { meta_title?: string | null; meta_description?: string | null } | null) ?? {}
+  const metaTitle = (seoMeta.meta_title || post.title).replace(/\s*\|\s*DJP Athlete\s*$/i, "").trim() || post.title
+  const metaDescription = seoMeta.meta_description || post.meta_description || post.excerpt
+
   return {
-    title: post.title,
-    description: post.meta_description ?? post.excerpt,
+    title: metaTitle,
+    description: metaDescription,
     alternates: { canonical: `https://www.darrenjpaul.com/blog/${post.slug}` },
     openGraph: {
-      title: `${post.title} | DJP Athlete`,
-      description: post.meta_description ?? post.excerpt,
+      title: `${metaTitle} | DJP Athlete`,
+      description: metaDescription,
       type: "article",
       publishedTime: post.published_at ?? post.created_at,
+      modifiedTime: post.updated_at ?? post.published_at ?? post.created_at,
       ...(post.cover_image_url && { images: [post.cover_image_url] }),
     },
     twitter: {
       card: "summary_large_image",
-      title: `${post.title} | DJP Athlete`,
-      description: post.meta_description ?? post.excerpt,
+      title: `${metaTitle} | DJP Athlete`,
+      description: metaDescription,
       ...(post.cover_image_url && { images: [post.cover_image_url] }),
     },
   }
@@ -104,7 +114,7 @@ export default async function BlogPostPage({ params }: Props) {
       url: "https://www.darrenjpaul.com",
       logo: {
         "@type": "ImageObject",
-        url: "https://www.darrenjpaul.com/og-image.png",
+        url: "https://www.darrenjpaul.com/logos/logo-dark.png",
       },
     },
     articleSection: post.category,

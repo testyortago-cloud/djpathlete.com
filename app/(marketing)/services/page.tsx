@@ -6,19 +6,19 @@ import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 import { PricingSection } from "@/components/PricingSection"
 
 export const metadata: Metadata = {
-  title: "Sports Performance Coaching Tampa Bay — Services & Pricing",
+  title: "Sports Performance Coaching Services in Tampa Bay",
   description:
-    "Sports performance coaching services in Tampa Bay, FL — in-person training, online coaching, and return-to-performance assessment. Diagnostic-driven, individualized, by Darren J Paul, PhD.",
+    "Sports performance coaching services in Tampa Bay, FL: in-person training, online coaching, and return-to-performance assessment. By Darren J Paul, PhD.",
   alternates: { canonical: "/services" },
   openGraph: {
-    title: "Sports Performance Coaching Tampa Bay — Services & Pricing | DJP Athlete",
+    title: "Sports Performance Coaching Services in Tampa Bay | DJP Athlete",
     description:
-      "Sports performance coaching services in Tampa Bay, FL — in-person, online, and return-to-performance assessment. Diagnostic-driven, individualized, by Darren J Paul, PhD.",
+      "Sports performance coaching services in Tampa Bay, FL: in-person training, online coaching, and return-to-performance assessment. By Darren J Paul, PhD.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Sports Performance Coaching Tampa Bay — Services & Pricing | DJP Athlete",
+    title: "Sports Performance Coaching Services in Tampa Bay | DJP Athlete",
     description:
       "In-person training, online coaching, and return-to-performance assessment in Tampa Bay, FL. By Darren J Paul, PhD.",
   },
@@ -159,14 +159,36 @@ export default function ServicesPage() {
             <p className="text-sm font-medium text-accent uppercase tracking-widest">What We Offer</p>
             <div className="h-px w-8 bg-accent" />
           </div>
-          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-heading font-semibold text-primary tracking-tight mb-6">
-            Coaching services built for
-            <br className="hidden sm:block" /> serious athletes.
+          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-heading font-semibold text-primary tracking-tight mb-4">
+            Sports Performance Coaching Services &amp; Pricing
           </h1>
+          <p className="text-xl text-primary/85 font-heading font-medium max-w-2xl mx-auto leading-snug mb-4">
+            Coaching services built for serious athletes.
+          </p>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-            From personalized training plans to video analysis and recovery programming — everything you need to train
+            In-person training, online coaching, and return-to-performance assessment: everything you need to train
             smarter, recover faster, and perform at your best.
           </p>
+        </div>
+      </section>
+
+      {/* Internal links — route searchers to the comparison pages */}
+      <section className="px-4 sm:px-8 pb-4">
+        <div className="max-w-3xl mx-auto text-center text-sm text-muted-foreground">
+          Comparing options?{" "}
+          <Link
+            href="/services/online-vs-in-person"
+            className="font-medium text-primary underline underline-offset-4 hover:text-accent"
+          >
+            Online vs in-person coaching
+          </Link>{" "}
+          ·{" "}
+          <Link
+            href="/services/coaching-vs-training-app"
+            className="font-medium text-primary underline underline-offset-4 hover:text-accent"
+          >
+            Coaching vs a training app
+          </Link>
         </div>
       </section>
 

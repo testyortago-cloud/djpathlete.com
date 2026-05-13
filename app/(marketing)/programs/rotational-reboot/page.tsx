@@ -27,22 +27,22 @@ const REGULAR_PRICE = "249.00"
 
 export const metadata: Metadata = {
   // Layout template appends " | DJP Athlete", so keep the brand out of the title here.
-  title: "Rotational Reboot: 6-Week Rotational Power Training Program",
+  title: "Rotational Reboot: 6-Week Rotational Power Program",
   description:
-    "Rotational Reboot is a 6-week, 4-sessions-per-week rotational power training program for athletes in rotational sports like tennis, golf, baseball, lacrosse, hockey and soccer. Core-led progression, beginner to moderate, built by Darren J Paul, PhD. $79 (usually $249).",
+    "A 6-week rotational power program for athletes in rotational sports (tennis, golf, baseball, lacrosse, hockey). Core-led, beginner to moderate, by Darren J Paul, PhD. $79, usually $249.",
   alternates: { canonical: "/programs/rotational-reboot" },
   openGraph: {
-    title: "Rotational Reboot: 6-Week Rotational Power Training Program | DJP Athlete",
+    title: "Rotational Reboot: 6-Week Rotational Power Program | DJP Athlete",
     description:
-      "A 6-week rotational power program for tennis, golf, baseball, lacrosse, hockey and soccer athletes. Core-led, structured progression, by Darren J Paul, PhD. $79.",
+      "A 6-week rotational power program for tennis, golf, baseball, lacrosse and hockey athletes. Core-led, by Darren J Paul, PhD. $79.",
     type: "website",
     url: PAGE_URL,
   },
   twitter: {
     card: "summary_large_image",
-    title: "Rotational Reboot: 6-Week Rotational Power Training Program | DJP Athlete",
+    title: "Rotational Reboot: 6-Week Rotational Power Program | DJP Athlete",
     description:
-      "A 6-week rotational power program for rotational-sport athletes. Core-led, structured progression, by Darren J Paul, PhD. $79 (usually $249).",
+      "A 6-week rotational power program for rotational-sport athletes. Core-led, by Darren J Paul, PhD. $79, usually $249.",
   },
 }
 

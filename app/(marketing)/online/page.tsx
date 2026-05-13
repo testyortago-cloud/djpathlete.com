@@ -20,19 +20,19 @@ import { Button } from "@/components/ui/button"
 export const metadata: Metadata = {
   title: "Online Sports Performance Training",
   description:
-    "Online sports performance training programs with an online personal trainer for serious athletes — individualized, coach-led, with video feedback. By Darren J Paul, PhD (Tampa Bay, FL).",
+    "Online sports performance training programs for serious athletes: individualized, coach-led, with video feedback. By Darren J Paul, PhD (Tampa Bay, FL).",
   alternates: { canonical: "/online" },
   openGraph: {
     title: "Online Sports Performance Training | DJP Athlete",
     description:
-      "Online sports performance training programs with an online personal trainer for serious athletes — individualized, coach-led, with video feedback. By Darren J Paul, PhD.",
+      "Online sports performance training programs for serious athletes: individualized, coach-led, with video feedback. By Darren J Paul, PhD.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
     title: "Online Sports Performance Training | DJP Athlete",
     description:
-      "Online sports performance training with an online personal trainer for serious athletes — individualized, coach-led, with video feedback.",
+      "Online sports performance training for serious athletes: individualized, coach-led, with video feedback. By Darren J Paul, PhD.",
   },
 }
 
@@ -627,6 +627,26 @@ export default function OnlinePage() {
       </section>
 
       <FAQSection title="Online Coaching FAQ" faqs={onlineFAQs} />
+
+      {/* Internal links — help searchers (and crawlers) reach the comparison pages */}
+      <section className="py-12 px-4 sm:px-8 border-t border-border">
+        <div className="max-w-3xl mx-auto text-center text-muted-foreground">
+          Still deciding?{" "}
+          <Link
+            href="/services/online-vs-in-person"
+            className="font-medium text-primary underline underline-offset-4 hover:text-accent"
+          >
+            Online vs in-person coaching, compared
+          </Link>{" "}
+          ·{" "}
+          <Link
+            href="/services/coaching-vs-training-app"
+            className="font-medium text-primary underline underline-offset-4 hover:text-accent"
+          >
+            Coaching vs a training app
+          </Link>
+        </div>
+      </section>
     </>
   )
 }

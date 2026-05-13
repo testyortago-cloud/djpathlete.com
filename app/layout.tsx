@@ -42,9 +42,7 @@ export const metadata: Metadata = {
     locale: "en_US",
     images: [
       {
-        url: "/og-image.png",
-        width: 1200,
-        height: 630,
+        url: "/images/gym-training-01.jpg",
         alt: "DJP Athlete — Elite Sports Performance Coaching",
       },
     ],
@@ -54,10 +52,10 @@ export const metadata: Metadata = {
     title: "DJP Athlete — Elite Sports Performance Coaching",
     description:
       "Elite sports performance coaching by Darren J Paul, PhD. Assessment-led, individualized programming for serious athletes.",
-    images: ["/og-image.png"],
+    images: ["/images/gym-training-01.jpg"],
   },
   icons: {
-    icon: "/favicon.ico",
+    icon: "/apple-icon.png",
     apple: "/apple-icon.png",
   },
   manifest: "/manifest.json",

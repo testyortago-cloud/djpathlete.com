@@ -27,14 +27,20 @@ export function HeroContent() {
             {/* Headline */}
             <motion.h1
               {...item(0.4)}
-              className="text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-heading font-bold text-primary-foreground tracking-tight leading-[1.08] mb-8"
+              className="text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-heading font-bold text-primary-foreground tracking-tight leading-[1.08] mb-6"
             >
-              Elite Performance
+              Sports Performance Coaching
               <br />
-              Is Not Trained.
-              <br />
-              <span className="text-accent">It Is Engineered.</span>
+              for <span className="text-accent">Elite Athletes.</span>
             </motion.h1>
+
+            {/* Impact line */}
+            <motion.p
+              {...item(0.5)}
+              className="text-xl sm:text-2xl font-heading font-semibold text-primary-foreground leading-snug mb-6 max-w-xl"
+            >
+              Elite performance is not trained. It is <span className="text-accent">engineered.</span>
+            </motion.p>
 
             {/* Sub copy */}
             <motion.p
