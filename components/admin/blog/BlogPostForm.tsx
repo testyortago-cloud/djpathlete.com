@@ -14,6 +14,7 @@ import { CoverImageUpload } from "./CoverImageUpload"
 import { BlogGenerateDialog } from "./BlogGenerateDialog"
 import { ResearchPanel, type TavilyResearchBrief } from "./ResearchPanel"
 import { RefreshPostButton } from "./RefreshPostButton"
+import { SweepInboundLinksButton } from "./SweepInboundLinksButton"
 import { cn } from "@/lib/utils"
 import type { BlogPost } from "@/types/database"
 import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
@@ -245,11 +246,14 @@ export function BlogPostForm({ post, authorId, initialPrompt }: BlogPostFormProp
         </Link>
         <div className="flex items-center gap-2">
           {post?.id && (
-            <RefreshPostButton
-              postId={post.id}
-              postTitle={post.title}
-              refreshCount={post.refresh_count}
-            />
+            <>
+              <RefreshPostButton
+                postId={post.id}
+                postTitle={post.title}
+                refreshCount={post.refresh_count}
+              />
+              <SweepInboundLinksButton postId={post.id} postTitle={post.title} />
+            </>
           )}
           <button
             type="button"
