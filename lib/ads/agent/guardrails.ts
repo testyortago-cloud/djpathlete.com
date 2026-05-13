@@ -196,3 +196,60 @@ export function applyGuardrailsBatch(
   }
   return results
 }
+
+// ── Soft guardrails ─────────────────────────────────────────────
+
+export type Significance = "sig" | "underpowered" | "insufficient_data"
+
+type SignificanceInput =
+  | {
+      kind: "proportion"
+      before: { successes: number; trials: number }
+      after: { successes: number; trials: number }
+    }
+  | {
+      kind: "mean"
+      before: { sum: number; sumSq: number; n: number }
+      after: { sum: number; sumSq: number; n: number }
+    }
+
+export function computeSignificance(input: SignificanceInput): Significance {
+  if (input.kind === "proportion") {
+    const { before, after } = input
+    if (before.trials < T.SIG_MIN_SAMPLE || after.trials < T.SIG_MIN_SAMPLE) {
+      return "insufficient_data"
+    }
+    const p1 = before.successes / before.trials
+    const p2 = after.successes / after.trials
+    const pooled = (before.successes + after.successes) / (before.trials + after.trials)
+    const se = Math.sqrt(pooled * (1 - pooled) * (1 / before.trials + 1 / after.trials))
+    if (se === 0) return "underpowered"
+    const z = Math.abs(p2 - p1) / se
+    return z >= T.SIG_Z_THRESHOLD ? "sig" : "underpowered"
+  }
+  // Means: Welch's t-test
+  const { before, after } = input
+  if (before.n < T.SIG_MIN_SAMPLE || after.n < T.SIG_MIN_SAMPLE) {
+    return "insufficient_data"
+  }
+  const m1 = before.sum / before.n
+  const m2 = after.sum / after.n
+  const v1 = (before.sumSq - before.sum * m1) / Math.max(1, before.n - 1)
+  const v2 = (after.sumSq - after.sum * m2) / Math.max(1, after.n - 1)
+  const se = Math.sqrt(v1 / before.n + v2 / after.n)
+  if (se === 0) return "underpowered"
+  const t = Math.abs(m2 - m1) / se
+  return t >= T.SIG_Z_THRESHOLD ? "sig" : "underpowered"
+}
+
+export function computeAuditConfidence(input: {
+  dataVolumeOk: boolean
+  significance: Significance
+  priorSimilarSucceeded: boolean
+}): "low" | "medium" | "high" {
+  const sigOk = input.significance === "sig"
+  const score = [input.dataVolumeOk, sigOk, input.priorSimilarSucceeded].filter(Boolean).length
+  if (score === 3) return "high"
+  if (score === 2) return "medium"
+  return "low"
+}

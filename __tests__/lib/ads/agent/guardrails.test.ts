@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest"
-import { applyGuardrails, applyGuardrailsBatch } from "@/lib/ads/agent/guardrails"
+import {
+  applyGuardrails,
+  applyGuardrailsBatch,
+  computeSignificance,
+  computeAuditConfidence,
+} from "@/lib/ads/agent/guardrails"
 import type { AdsAction, AdsSignals } from "@/lib/ads/agent/types"
 
 const makeAction = (overrides: Partial<AdsAction> = {}): AdsAction => ({
@@ -264,5 +269,58 @@ describe("guardrails — new-campaign caps (memo-level batch)", () => {
     expect(results[0].kind).toBe("pass")
     expect(results[1].kind).toBe("reject")
     if (results[1].kind === "reject") expect(results[1].reason).toMatch(/total.*spend.*cap/i)
+  })
+})
+
+describe("soft guardrails — significance", () => {
+  it("flags sig when proportion delta passes z=1.96 with adequate sample", () => {
+    // CTR before: 50/1000 = 5%; after: 100/1000 = 10%; z ≈ 4.0 — clearly sig.
+    expect(computeSignificance({
+      kind: "proportion",
+      before: { successes: 50, trials: 1000 },
+      after: { successes: 100, trials: 1000 },
+    })).toBe("sig")
+  })
+
+  it("flags underpowered when sample is large but delta is tiny", () => {
+    expect(computeSignificance({
+      kind: "proportion",
+      before: { successes: 100, trials: 1000 },
+      after: { successes: 102, trials: 1000 },
+    })).toBe("underpowered")
+  })
+
+  it("flags insufficient_data when either side < SIG_MIN_SAMPLE", () => {
+    expect(computeSignificance({
+      kind: "proportion",
+      before: { successes: 5, trials: 50 },
+      after: { successes: 10, trials: 50 },
+    })).toBe("insufficient_data")
+  })
+})
+
+describe("soft guardrails — audit confidence", () => {
+  it("high when data passes AND sig AND prior similar action succeeded", () => {
+    expect(computeAuditConfidence({
+      dataVolumeOk: true,
+      significance: "sig",
+      priorSimilarSucceeded: true,
+    })).toBe("high")
+  })
+
+  it("medium when 2 of 3 are true", () => {
+    expect(computeAuditConfidence({
+      dataVolumeOk: true,
+      significance: "sig",
+      priorSimilarSucceeded: false,
+    })).toBe("medium")
+  })
+
+  it("low when 0 or 1 are true", () => {
+    expect(computeAuditConfidence({
+      dataVolumeOk: false,
+      significance: "underpowered",
+      priorSimilarSucceeded: false,
+    })).toBe("low")
   })
 })
