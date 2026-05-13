@@ -2021,3 +2021,37 @@ export interface DailyReadiness {
   created_at: string
   updated_at: string
 }
+
+export type BodyRegion =
+  | "head" | "neck" | "shoulder" | "elbow" | "wrist" | "hand"
+  | "chest" | "upper_back" | "lower_back" | "hip" | "glute"
+  | "hamstring" | "quad" | "knee" | "calf" | "ankle" | "foot" | "other"
+
+export type InjurySide = "left" | "right" | "bilateral" | "n_a"
+export type InjurySeverity = "minor" | "moderate" | "severe"
+export type InjuryStatus = "active" | "recovering" | "resolved"
+
+export interface RehabMilestone {
+  name: string
+  target_date: string | null
+  completed_date: string | null
+  notes: string | null
+}
+
+export interface Injury {
+  id: string
+  client_user_id: string
+  body_region: BodyRegion
+  side: InjurySide
+  injury_type: string
+  severity: InjurySeverity
+  mechanism: string | null
+  description: string | null
+  date_occurred: string
+  date_resolved: string | null
+  days_lost: number
+  status: InjuryStatus
+  rehab_milestones: RehabMilestone[]
+  created_at: string
+  updated_at: string
+}
