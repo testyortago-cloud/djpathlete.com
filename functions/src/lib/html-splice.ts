@@ -217,6 +217,42 @@ function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
 
+// ─── spliceFirstAnchor ─────────────────────────────────────────────────────
+// Body-wide first-occurrence link splice. Used by internal_link_sweep (Phase 3)
+// where we want to insert a single inbound link anywhere in the candidate's
+// body — not scoped to a specific <h2> section like spliceInternalLinks.
+
+/**
+ * Wraps the FIRST occurrence of `anchor` (case-insensitive, word-bounded) in
+ * `html` with `<a href="/blog/{slug}">`. Skips occurrences that are already
+ * inside an existing `<a>` tag.
+ *
+ * Returns the html unchanged when:
+ * - anchor is empty or whitespace-only
+ * - anchor is not found
+ * - the only occurrence(s) are all inside existing <a> tags
+ */
+export function spliceFirstAnchor(html: string, slug: string, anchor: string): string {
+  const trimmed = anchor.trim()
+  if (!trimmed) return html
+
+  const escaped = escapeRegex(trimmed)
+  const regex = new RegExp(`\\b${escaped}\\b`, "gi")
+
+  let match: RegExpExecArray | null
+  while ((match = regex.exec(html)) !== null) {
+    const matchStart = match.index
+    if (isInsideAnchor(html, matchStart)) continue
+
+    const matchEnd = matchStart + match[0].length
+    const matchedText = html.slice(matchStart, matchEnd)
+    const wrapped = `<a href="/blog/${slug}">${matchedText}</a>`
+    return html.slice(0, matchStart) + wrapped + html.slice(matchEnd)
+  }
+
+  return html
+}
+
 interface SectionBounds {
   contentStart: number
   contentEnd: number
