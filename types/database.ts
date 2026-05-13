@@ -1892,3 +1892,70 @@ export interface GscQueryDailyRow {
   position: number     // 1.0–~50.0
   ingested_at: string  // ISO string
 }
+
+// ─── SEO Agent — Phase 4 ───────────────────────────────────────────────────
+
+export type SeoAgentToolName =
+  | "queue_new_post"
+  | "queue_refresh"
+  | "queue_internal_link_sweep"
+  | "flag_for_human"
+
+export interface SeoAgentMemoAction {
+  rank: 1 | 2
+  tool: SeoAgentToolName
+  args: Record<string, unknown>
+  executed: boolean
+  execution_target_id: string | null
+  complementary_to_rank_1?: string
+}
+
+export interface SeoAgentMemoOutcomeMetric {
+  action_index: 0 | 1
+  executed: boolean
+  target_id: string | null
+  clicks_before?: number | null
+  clicks_after?: number | null
+  position_before?: number | null
+  position_after?: number | null
+  acknowledged?: boolean
+}
+
+export interface SeoAgentSignalsSummary {
+  gsc_28d: {
+    total_clicks: number
+    total_impressions: number
+    avg_position: number
+    top_winnable: Array<{ query: string; avg_position: number; impressions_28d: number; clicks_28d: number }>
+    top_decayed: Array<{ slug: string; position_drop: number; clicks_28d: number; avg_position_recent: number }>
+  }
+  inventory: {
+    total_posts: number
+    oldest_post_age_days: number
+    never_refreshed_count: number
+  }
+  recent_tavily: Array<{ title: string; score: number; created_at: string }>
+  orphan_post_ids: string[]
+  last_8_memos_outcomes: Array<{
+    run_date: string
+    tool: SeoAgentToolName
+    outcome_status: SeoAgentMemo["outcome_status"]
+    outcome_summary?: string
+  }>
+  /** Convenience field; the agent stores this in the memo for auditing.
+   *  Used by the handler's warm-up gate (skip when < 28). */
+  gsc_distinct_dates: number
+}
+
+export interface SeoAgentMemo {
+  id: string
+  run_date: string         // YYYY-MM-DD
+  ai_job_id: string
+  signals_summary: SeoAgentSignalsSummary
+  rationale: string
+  actions: SeoAgentMemoAction[]
+  outcome_status: "pending" | "measured" | "rolled_back"
+  outcome_metrics: SeoAgentMemoOutcomeMetric[] | null
+  created_at: string       // ISO string
+  measured_at: string | null
+}
