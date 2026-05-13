@@ -138,10 +138,12 @@ export async function executeFlagForHuman(
     .from("notifications")
     .insert({
       user_id: adminId,
-      type: "seo_agent_flag",
-      title: `[${args.urgency}] ${args.issue}`,
-      body: args.context,
-      href: "/admin/seo-agent/memos",
+      // Map urgency → notifications.type (constrained to info/success/warning/error).
+      // 'high' → warning (most-attention category), 'medium'/'low' → info.
+      type: args.urgency === "high" ? "warning" : "info",
+      title: `SEO Agent: ${args.issue}`,
+      message: args.context,
+      link: "/admin/seo-agent/memos",
       is_read: false,
     })
     .select("id")
