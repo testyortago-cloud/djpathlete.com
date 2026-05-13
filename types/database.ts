@@ -2177,3 +2177,38 @@ export interface RiskFlag {
   acknowledged_at: string | null
   acknowledged_by: string | null
 }
+
+// ============================================
+// Visualization & Engagement (added 2026-05-14)
+// ============================================
+
+export type GoalMetricKind = "test" | "readiness" | "weekly_load"
+export type GoalDirection = "higher" | "lower"
+export type GoalStatus = "active" | "achieved" | "missed" | "archived"
+
+export interface AthleteGoal {
+  id: string
+  client_user_id: string
+  metric_kind: GoalMetricKind
+  test_type: string | null
+  target_value: number
+  target_unit: string
+  direction: GoalDirection
+  start_value: number | null
+  deadline: string | null
+  status: GoalStatus
+  achieved_at: string | null
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type BadgeTier = "bronze" | "silver" | "gold"
+
+export interface Badge {
+  id: string
+  name: string
+  description: string
+  icon: string
+  tier: BadgeTier
+}
