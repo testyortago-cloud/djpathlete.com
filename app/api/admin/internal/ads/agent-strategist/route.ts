@@ -48,6 +48,20 @@ export async function POST(request: NextRequest) {
   try {
     const memo = await buildStrategistMemo({ source: "scheduled" })
 
+    // Preflight short-circuit — memo row was still written (with empty
+    // sections + outcome_status=preflight_failed) so the dashboard can show
+    // the failure narrative, but we don't email a "memo skipped" notice.
+    if (memo.outcome_status === "preflight_failed") {
+      return NextResponse.json({
+        ok: true,
+        memoId: memo.id,
+        preflightFailed: true,
+        reasons: memo.sections?.executive_summary
+          ? [memo.sections.executive_summary]
+          : [],
+      })
+    }
+
     const baseUrl =
       process.env.NEXTAUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3050"
     const dashboardUrl = `${baseUrl}/admin/ads/agent/${memo.id}`
