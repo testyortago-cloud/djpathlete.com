@@ -994,6 +994,42 @@ export const seoAgentCron = onSchedule(
   },
 )
 
+// ─── SEO Outcome Tracker (Daily 04:00 UTC) ──────────────────────────────────
+// Calls /api/admin/internal/outcome-tracker which backfills outcome_metrics
+// for seo_agent_memos older than 14 days, closing the agent's learning loop.
+// Subject to automation_paused + cron_outcome_tracker_enabled gates inside
+// the route (defaults to false — opt-in once Phase 5 is deployed).
+
+export const outcomeTrackerCron = onSchedule(
+  {
+    schedule: "0 4 * * *",
+    timeZone: "UTC",
+    timeoutSeconds: 120,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [internalCronToken, appUrl],
+  },
+  async () => {
+    const baseUrl = process.env.APP_URL
+    const token = process.env.INTERNAL_CRON_TOKEN
+    if (!baseUrl || !token) {
+      console.error("[outcomeTrackerCron] APP_URL or INTERNAL_CRON_TOKEN missing — abort")
+      return
+    }
+    try {
+      const res = await fetch(`${baseUrl}/api/admin/internal/outcome-tracker`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: "{}",
+      })
+      const body = await res.json().catch(() => ({}))
+      console.log("[outcomeTrackerCron]", res.status, body)
+    } catch (err) {
+      console.error("[outcomeTrackerCron] failed:", err)
+    }
+  },
+)
+
 // ─── GSC Nightly Sync (03:00 UTC daily) ──────────────────────────────────────
 // POSTs to the Next.js /api/admin/internal/gsc-sync route. Subject to
 // automation_paused + cron_gsc_sync_enabled gates inside the route
