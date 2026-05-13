@@ -184,7 +184,14 @@ describe("POST /api/admin/internal/outcome-tracker", () => {
     const res = await call()
     expect(res.status).toBe(200)
     expect(resolveLinkSweepOutcome).toHaveBeenCalledTimes(1)
+    expect(resolveLinkSweepOutcome).toHaveBeenCalledWith(
+      "ai-2",
+      "2026-04-29",
+      expect.anything(),
+      expect.anything(),
+    )
     expect(resolveFlagOutcome).toHaveBeenCalledTimes(1)
+    expect(resolveFlagOutcome).toHaveBeenCalledWith("notif-1", expect.anything())
   })
 
   it("skips resolution for actions with executed=false, records as { executed: false }", async () => {
