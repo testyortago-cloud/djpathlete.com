@@ -7,7 +7,6 @@ import { NextRequest, NextResponse } from "next/server"
 import { exchangeCodeForTokens, verifyState } from "@/lib/gsc/oauth"
 import { upsertGscProperty } from "@/lib/db/gsc-properties"
 import { setSetting } from "@/lib/db/system-settings"
-import { SITE_URL } from "@/lib/constants"
 
 interface GscState {
   userId: string
@@ -15,12 +14,11 @@ interface GscState {
   kind: "gsc"
 }
 
-// Read at call time so tests can override via process.env.NEXT_PUBLIC_SITE_URL
-function siteUrl(): string {
-  return process.env.NEXT_PUBLIC_SITE_URL ?? SITE_URL
-}
-
 export async function GET(req: NextRequest) {
+  // Origin from the request — matches whatever origin the /authorize route
+  // used to send Google. Localhost in dev, prod in prod.
+  const origin = req.nextUrl.origin
+  const siteUrl = (): string => origin
   const code = req.nextUrl.searchParams.get("code")
   const state = req.nextUrl.searchParams.get("state")
 

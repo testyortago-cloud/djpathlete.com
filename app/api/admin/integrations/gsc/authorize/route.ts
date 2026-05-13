@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { buildAuthorizationUrl, signState } from "@/lib/gsc/oauth"
-import { SITE_URL } from "@/lib/constants"
 
-export async function GET(_req: NextRequest) {
+export async function GET(req: NextRequest) {
   const session = await auth()
   if (!session?.user || session.user.role !== "admin") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
@@ -22,9 +21,12 @@ export async function GET(_req: NextRequest) {
     { userId: session.user.id, ts: Date.now(), kind: "gsc" },
     secret,
   )
+  // redirect_uri derived from the request's origin so it matches localhost in
+  // dev and production in prod — same OAuth client can serve both as long as
+  // both origins are whitelisted in Google Cloud Console.
   const url = buildAuthorizationUrl({
     client_id: clientId,
-    redirect_uri: `${SITE_URL}/api/admin/integrations/gsc/callback`,
+    redirect_uri: `${req.nextUrl.origin}/api/admin/integrations/gsc/callback`,
     state,
   })
   return NextResponse.redirect(url, { status: 302 })
