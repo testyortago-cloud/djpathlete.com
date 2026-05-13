@@ -26,7 +26,13 @@ import type {
   GoogleAdsRecommendationScope,
   GoogleAdsRecommendationType,
 } from "@/types/database"
-import type { AdsAction, AdsActionTool } from "./types"
+import type {
+  AdsAction,
+  AdsActionTool,
+  GuardrailResult,
+  GoogleAdsAgentMemoAction,
+  GoogleAdsAgentMemoGuardrailRejection,
+} from "./types"
 
 export interface ExecuteAdsActionOptions {
   memo_id: string
@@ -205,4 +211,96 @@ export async function executeAdsAction(
     .single()
   if (error) throw error
   return { recommendation_id: (data as { id: string }).id }
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Batch wrapper — runs each (guardrail, originalAction) pair through
+// executeAdsAction, building the memo's `actions` + `guardrail_rejections`
+// arrays. Rejections never touch the recommendations table. Throws
+// from executeAdsAction become `status: "failed"` rows on the memo
+// (not rejections — rejections are guardrail-decided only).
+// Each pair is processed independently; a single failure never blocks
+// the rest of the batch.
+// ─────────────────────────────────────────────────────────────────
+
+export interface PreExecutionPair {
+  guardrail: GuardrailResult
+  originalAction: AdsAction
+}
+
+export interface ExecuteAdsActionsResult {
+  actions: GoogleAdsAgentMemoAction[]
+  rejections: GoogleAdsAgentMemoGuardrailRejection[]
+}
+
+export async function executeAdsActions(
+  pairs: PreExecutionPair[],
+  ctx: { memo_id: string; customer_id: string },
+): Promise<ExecuteAdsActionsResult> {
+  const actions: GoogleAdsAgentMemoAction[] = []
+  const rejections: GoogleAdsAgentMemoGuardrailRejection[] = []
+
+  for (const { guardrail, originalAction } of pairs) {
+    if (guardrail.kind === "reject") {
+      rejections.push({
+        rank: originalAction.rank,
+        tool: originalAction.tool,
+        reason: guardrail.reason,
+      })
+      actions.push({
+        rank: originalAction.rank,
+        tool: originalAction.tool,
+        args: originalAction.args,
+        rationale: originalAction.rationale,
+        expected_metric: originalAction.expected_metric,
+        expected_direction: originalAction.expected_direction,
+        confidence: originalAction.confidence,
+        audit_confidence: "low",
+        significance: "insufficient_data",
+        supporting_signals: originalAction.supporting_signals,
+        status: "rejected_by_guardrails",
+        recommendation_id: null,
+        applied_at: null,
+        clamped: false,
+      })
+      continue
+    }
+    try {
+      const { recommendation_id } = await executeAdsAction(guardrail.action, ctx)
+      actions.push({
+        rank: guardrail.action.rank,
+        tool: guardrail.action.tool,
+        args: guardrail.action.args,
+        rationale: guardrail.action.rationale,
+        expected_metric: guardrail.action.expected_metric,
+        expected_direction: guardrail.action.expected_direction,
+        confidence: guardrail.action.confidence,
+        audit_confidence: guardrail.annotations.audit_confidence,
+        significance: guardrail.annotations.significance,
+        supporting_signals: guardrail.action.supporting_signals,
+        status: "queued",
+        recommendation_id,
+        applied_at: null,
+        clamped: guardrail.annotations.clamped,
+      })
+    } catch {
+      actions.push({
+        rank: guardrail.action.rank,
+        tool: guardrail.action.tool,
+        args: guardrail.action.args,
+        rationale: guardrail.action.rationale,
+        expected_metric: guardrail.action.expected_metric,
+        expected_direction: guardrail.action.expected_direction,
+        confidence: guardrail.action.confidence,
+        audit_confidence: guardrail.annotations.audit_confidence,
+        significance: guardrail.annotations.significance,
+        supporting_signals: guardrail.action.supporting_signals,
+        status: "failed",
+        recommendation_id: null,
+        applied_at: null,
+        clamped: guardrail.annotations.clamped,
+      })
+    }
+  }
+  return { actions, rejections }
 }

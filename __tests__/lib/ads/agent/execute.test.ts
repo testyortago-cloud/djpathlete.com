@@ -17,8 +17,13 @@ vi.mock("@/lib/supabase", () => ({
   }),
 }))
 
-import { executeAdsAction } from "@/lib/ads/agent/execute"
-import type { AdsAction, AdsActionTool } from "@/lib/ads/agent/types"
+import { executeAdsAction, executeAdsActions, type PreExecutionPair } from "@/lib/ads/agent/execute"
+import type {
+  AdsAction,
+  AdsActionTool,
+  GuardrailResult,
+  GuardrailAnnotations,
+} from "@/lib/ads/agent/types"
 
 const makeAction = (overrides: Partial<AdsAction> & { tool: AdsActionTool }): AdsAction => ({
   rank: 1,
@@ -255,5 +260,103 @@ describe("executeAdsAction — full 11-tool catalog", () => {
         { memo_id: "memo-1", customer_id: "cust-1" },
       ),
     ).rejects.toThrow(/keyword_id/)
+  })
+})
+
+const makePass = (
+  action: AdsAction,
+  annotations: Partial<GuardrailAnnotations> = {},
+): GuardrailResult => ({
+  kind: "pass",
+  action,
+  annotations: {
+    significance: "insufficient_data",
+    audit_confidence: "low",
+    seasonality_flag: false,
+    clamped: false,
+    ...annotations,
+  },
+})
+
+const makeReject = (reason: string): GuardrailResult => ({ kind: "reject", reason })
+
+describe("executeAdsActions (batch)", () => {
+  beforeEach(() => {
+    inserted.length = 0
+  })
+
+  it("persists only passing actions to the recommendations queue", async () => {
+    const a1 = makeAction({
+      tool: "propose_new_keywords",
+      args: { ad_group_id: "ag1", keywords: [{ text: "x", match_type: "exact" }] },
+    })
+    const a2 = makeAction({
+      rank: 2,
+      tool: "propose_negative_keywords",
+      args: {
+        campaign_id: "c1",
+        negatives: [{ text: "DJP Athlete reviews", match_type: "phrase", scope: "campaign" }],
+      },
+    })
+    const a3 = makeAction({
+      rank: 3,
+      tool: "propose_campaign_pause",
+      args: { campaign_id: "c1", reason: "underperforming" },
+    })
+    const pairs: PreExecutionPair[] = [
+      { originalAction: a1, guardrail: makePass(a1, { significance: "sig", audit_confidence: "high" }) },
+      { originalAction: a2, guardrail: makeReject("Brand allowlist hit.") },
+      { originalAction: a3, guardrail: makePass(a3, { significance: "underpowered", audit_confidence: "medium" }) },
+    ]
+    const out = await executeAdsActions(pairs, { memo_id: "memo-1", customer_id: "cust-1" })
+    expect(inserted).toHaveLength(2)
+    expect(out.actions).toHaveLength(3)
+    expect(out.actions.map((a) => a.status)).toEqual(["queued", "rejected_by_guardrails", "queued"])
+    expect(out.rejections).toEqual([
+      { rank: 2, tool: "propose_negative_keywords", reason: "Brand allowlist hit." },
+    ])
+  })
+
+  it("carries guardrail annotations onto queued actions", async () => {
+    const a = makeAction({
+      tool: "propose_budget_shift",
+      args: { from_campaign_id: "c1", to_campaign_id: "c1", delta_pct: 50 },
+    })
+    const pairs: PreExecutionPair[] = [
+      { originalAction: a, guardrail: makePass(a, { significance: "sig", audit_confidence: "high", clamped: true }) },
+    ]
+    const out = await executeAdsActions(pairs, { memo_id: "memo-1", customer_id: "cust-1" })
+    expect(out.actions[0].audit_confidence).toBe("high")
+    expect(out.actions[0].significance).toBe("sig")
+    expect(out.actions[0].clamped).toBe(true)
+    expect(out.actions[0].recommendation_id).toBe("rec-1")
+  })
+
+  it("marks an action as failed if executeAdsAction throws (e.g. missing scope_id)", async () => {
+    const bad = makeAction({ tool: "propose_new_keywords", args: {} }) // missing ad_group_id
+    const pairs: PreExecutionPair[] = [
+      { originalAction: bad, guardrail: makePass(bad) },
+    ]
+    const out = await executeAdsActions(pairs, { memo_id: "memo-1", customer_id: "cust-1" })
+    expect(out.actions).toHaveLength(1)
+    expect(out.actions[0].status).toBe("failed")
+    expect(out.actions[0].recommendation_id).toBeNull()
+    expect(out.rejections).toHaveLength(0) // guardrail-rejections only; throws are not rejections
+  })
+
+  it("processes each pair independently — a thrown action does not block others", async () => {
+    const bad = makeAction({ rank: 1, tool: "propose_new_keywords", args: {} })
+    const good = makeAction({
+      rank: 2,
+      tool: "propose_negative_keywords",
+      args: { campaign_id: "c1", negatives: [{ text: "x", match_type: "phrase", scope: "campaign" }] },
+    })
+    const pairs: PreExecutionPair[] = [
+      { originalAction: bad, guardrail: makePass(bad) },
+      { originalAction: good, guardrail: makePass(good) },
+    ]
+    const out = await executeAdsActions(pairs, { memo_id: "memo-1", customer_id: "cust-1" })
+    expect(out.actions.map((a) => a.status)).toEqual(["failed", "queued"])
+    expect(inserted).toHaveLength(1) // only the good one reached the table
   })
 })
