@@ -3,6 +3,7 @@ import { getPublishedBlogPosts } from "@/lib/db/blog-posts"
 import { getPublishedEvents } from "@/lib/db/events"
 import { listActiveProducts } from "@/lib/db/shop-products"
 import { SITE_URL } from "@/lib/constants"
+import { SPORTS } from "@/lib/data/sports"
 
 const BASE_URL = SITE_URL
 
@@ -41,6 +42,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
     // Programs
     { url: `${BASE_URL}/programs/rotational-reboot`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+
+    // Sports hub + sport-specific landing pages
+    { url: `${BASE_URL}/sports`, lastModified: now, changeFrequency: "monthly", priority: 0.8 },
+    ...SPORTS.map((s) => ({
+      url: `${BASE_URL}/sports/${s.slug}`,
+      lastModified: now,
+      changeFrequency: "monthly" as const,
+      priority: 0.8,
+    })),
 
     // Auth (low priority but discoverable)
     { url: `${BASE_URL}/login`, lastModified: now, changeFrequency: "yearly", priority: 0.3 },
