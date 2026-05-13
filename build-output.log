@@ -1,0 +1,460 @@
+
+> djpathlete@0.1.0 build
+> next build
+
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+ ⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
+ We detected multiple lockfiles and selected the directory of C:\Users\tayaw\package-lock.json as the root directory.
+ To silence this warning, set `turbopack.root` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+   See https://nextjs.org/docs/app/api-reference/config/next-config-js/turbopack#root-directory for more information.
+ Detected additional lockfiles: 
+   * C:\Users\tayaw\Desktop\Darren Paul Projects\djpathlete\package-lock.json
+
+   ▲ Next.js 16.0.10 (Turbopack)
+   - Environments: .env.local
+   - Experiments (use with caution):
+     · optimizePackageImports
+     · staleTimes
+
+   Creating an optimized production build ...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+ ✓ Compiled successfully in 31.0s
+   Running TypeScript ...
+   Collecting page data using 21 workers ...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+   Generating static pages using 21 workers (0/251) ...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+   Generating static pages using 21 workers (62/251) 
+   Generating static pages using 21 workers (125/251) 
+   Generating static pages using 21 workers (188/251) 
+ ✓ Generating static pages using 21 workers (251/251) in 15.6s
+   Finalizing page optimization ...
+
+Route (app)                                                                   Revalidate  Expire
+┌ ○ /                                                                                 1h      1y
+├ ○ /_not-found
+├ ○ /about                                                                            6h      1y
+├ ƒ /account/preferences
+├ ƒ /admin/ads
+├ ƒ /admin/ads/agent
+├ ƒ /admin/ads/agent/[id]
+├ ƒ /admin/ads/audiences
+├ ƒ /admin/ads/automation-log
+├ ƒ /admin/ads/campaigns
+├ ƒ /admin/ads/consent
+├ ƒ /admin/ads/conversions
+├ ƒ /admin/ads/ga4-overview
+├ ƒ /admin/ads/pipeline
+├ ƒ /admin/ads/recommendations
+├ ƒ /admin/ads/settings
+├ ƒ /admin/ai-assistant
+├ ƒ /admin/ai-insights
+├ ƒ /admin/ai-templates
+├ ƒ /admin/ai-usage
+├ ƒ /admin/analytics
+├ ƒ /admin/automation
+├ ƒ /admin/blog
+├ ƒ /admin/blog/[id]/edit
+├ ƒ /admin/blog/new
+├ ƒ /admin/bookings
+├ ƒ /admin/calendar
+├ ƒ /admin/clients
+├ ƒ /admin/clients/[id]
+├ ƒ /admin/clients/[id]/assessments
+├ ƒ /admin/content
+├ ƒ /admin/content/[videoId]
+├ ƒ /admin/content/assets/[id]
+├ ƒ /admin/content/post/[postId]
+├ ƒ /admin/dashboard
+├ ƒ /admin/events
+├ ƒ /admin/events/[id]
+├ ƒ /admin/events/new
+├ ƒ /admin/exercises
+├ ƒ /admin/form-reviews
+├ ƒ /admin/form-reviews/[id]
+├ ƒ /admin/inbox
+├ ƒ /admin/integrations/gsc
+├ ƒ /admin/lead-magnets
+├ ƒ /admin/legal
+├ ƒ /admin/legal/[id]
+├ ƒ /admin/newsletter
+├ ƒ /admin/newsletter/[id]/edit
+├ ƒ /admin/newsletter/new
+├ ƒ /admin/newsletter/subscribers
+├ ƒ /admin/payments
+├ ƒ /admin/performance-assessments
+├ ƒ /admin/performance-assessments/[id]
+├ ƒ /admin/performance-assessments/new
+├ ƒ /admin/platform-connections
+├ ƒ /admin/programs
+├ ƒ /admin/programs/[id]
+├ ƒ /admin/reviews
+├ ƒ /admin/settings
+├ ƒ /admin/settings/ai-policy
+├ ƒ /admin/shop/leads
+├ ƒ /admin/shop/orders
+├ ƒ /admin/shop/orders/[id]
+├ ƒ /admin/shop/products
+├ ƒ /admin/social
+├ ƒ /admin/team
+├ ƒ /admin/team-videos
+├ ƒ /admin/team-videos/[id]
+├ ƒ /admin/testimonials
+├ ƒ /admin/topic-suggestions
+├ ƒ /admin/videos
+├ ƒ /api/account
+├ ƒ /api/account/preferences/marketing-consent
+├ ƒ /api/admin/ads/agent/ask
+├ ƒ /api/admin/ads/agent/run-strategist
+├ ƒ /api/admin/ads/campaigns/[id]/automation-mode
+├ ƒ /api/admin/ads/campaigns/[id]/generate-copy
+├ ƒ /api/admin/ads/conversion-actions
+├ ƒ /api/admin/ads/recommendations/[id]/apply
+├ ƒ /api/admin/ads/recommendations/[id]/approve
+├ ƒ /api/admin/ads/recommendations/[id]/reject
+├ ƒ /api/admin/ads/rediscover-accounts
+├ ƒ /api/admin/ads/sync
+├ ƒ /api/admin/ads/sync-audiences
+├ ƒ /api/admin/ads/user-lists
+├ ƒ /api/admin/ai-chat
+├ ƒ /api/admin/ai-policy
+├ ƒ /api/admin/ai-templates
+├ ƒ /api/admin/ai-templates/[id]
+├ ƒ /api/admin/ai-templates/enhance
+├ ƒ /api/admin/ai/feedback
+├ ƒ /api/admin/ai/insights
+├ ƒ /api/admin/ai/usage
+├ ƒ /api/admin/ai/voice-drift
+├ ƒ /api/admin/assignments/[id]
+├ ƒ /api/admin/automation/pause
+├ ƒ /api/admin/automation/run-all
+├ ƒ /api/admin/automation/toggle-cron
+├ ƒ /api/admin/automation/trigger
+├ ƒ /api/admin/blog
+├ ƒ /api/admin/blog-posts/[id]/research
+├ ƒ /api/admin/blog-posts/generate-from-video
+├ ƒ /api/admin/blog/[id]
+├ ƒ /api/admin/blog/[id]/publish
+├ ƒ /api/admin/blog/generate
+├ ƒ /api/admin/blog/generate-from-suggestion
+├ ƒ /api/admin/blog/generations
+├ ƒ /api/admin/bookings
+├ ƒ /api/admin/clients
+├ ƒ /api/admin/clients/[id]
+├ ƒ /api/admin/clients/[id]/progress
+├ ƒ /api/admin/clients/[id]/send-invite
+├ ƒ /api/admin/content-studio/posts
+├ ƒ /api/admin/content-studio/posts/[id]/status
+├ ƒ /api/admin/content-studio/preferences
+├ ƒ /api/admin/content-studio/quote-cards
+├ ƒ /api/admin/content-studio/search
+├ ƒ /api/admin/content/research
+├ ƒ /api/admin/events
+├ ƒ /api/admin/events/[id]
+├ ƒ /api/admin/events/[id]/duplicate
+├ ƒ /api/admin/events/[id]/signups/[signupId]
+├ ƒ /api/admin/exercise-relationships
+├ ƒ /api/admin/exercise-relationships/[id]
+├ ƒ /api/admin/exercises
+├ ƒ /api/admin/exercises/[id]
+├ ƒ /api/admin/exercises/ai-metadata
+├ ƒ /api/admin/exercises/bulk
+├ ƒ /api/admin/exercises/embed
+├ ƒ /api/admin/exercises/import
+├ ƒ /api/admin/exercises/pool
+├ ƒ /api/admin/form-reviews
+├ ƒ /api/admin/form-reviews/[id]
+├ ƒ /api/admin/form-reviews/[id]/messages
+├ ƒ /api/admin/google-reviews
+├ ƒ /api/admin/google-reviews/[id]
+├ ƒ /api/admin/inbox/send
+├ ƒ /api/admin/inbox/threads
+├ ƒ /api/admin/inbox/threads/[id]
+├ ƒ /api/admin/indexnow/bulk
+├ ƒ /api/admin/integrations/gsc/authorize
+├ ƒ /api/admin/integrations/gsc/callback
+├ ƒ /api/admin/integrations/gsc/disconnect
+├ ƒ /api/admin/internal/ads/agent-strategist
+├ ƒ /api/admin/internal/ads/process-conversions
+├ ƒ /api/admin/internal/ads/recommendations
+├ ƒ /api/admin/internal/ads/sync-audiences
+├ ƒ /api/admin/internal/ads/weekly-pipeline-report
+├ ƒ /api/admin/internal/ads/weekly-report
+├ ƒ /api/admin/internal/auto-blog
+├ ƒ /api/admin/internal/gsc-sync
+├ ƒ /api/admin/internal/publish-due
+├ ƒ /api/admin/internal/send-daily-pulse
+├ ƒ /api/admin/internal/send-weekly-report
+├ ƒ /api/admin/internal/sync-post-analytics
+├ ƒ /api/admin/internal/tavily-trending
+├ ƒ /api/admin/lead-magnets
+├ ƒ /api/admin/lead-magnets/[id]
+├ ƒ /api/admin/legal
+├ ƒ /api/admin/legal/[id]
+├ ƒ /api/admin/media-assets
+├ ƒ /api/admin/media-assets/[id]
+├ ƒ /api/admin/media-assets/upload-url
+├ ƒ /api/admin/newsletter
+├ ƒ /api/admin/newsletter/[id]
+├ ƒ /api/admin/newsletter/[id]/send
+├ ƒ /api/admin/newsletter/generate
+├ ƒ /api/admin/newsletter/generate-from-blog
+├ ƒ /api/admin/newsletter/subscribers
+├ ƒ /api/admin/newsletter/subscribers/[id]
+├ ƒ /api/admin/newsletter/subscribers/sync-ghl
+├ ƒ /api/admin/performance-assessments
+├ ƒ /api/admin/performance-assessments/[id]
+├ ƒ /api/admin/performance-assessments/[id]/exercises/[exerciseId]
+├ ƒ /api/admin/performance-assessments/[id]/exercises/[exerciseId]/messages
+├ ƒ /api/admin/platform-connections/facebook/callback
+├ ƒ /api/admin/platform-connections/facebook/connect
+├ ƒ /api/admin/platform-connections/facebook/disconnect
+├ ƒ /api/admin/platform-connections/linkedin/callback
+├ ƒ /api/admin/platform-connections/linkedin/connect
+├ ƒ /api/admin/platform-connections/linkedin/disconnect
+├ ƒ /api/admin/platform-connections/tiktok/callback
+├ ƒ /api/admin/platform-connections/tiktok/connect
+├ ƒ /api/admin/platform-connections/tiktok/disconnect
+├ ƒ /api/admin/platform-connections/youtube/callback
+├ ƒ /api/admin/platform-connections/youtube/connect
+├ ƒ /api/admin/platform-connections/youtube/disconnect
+├ ƒ /api/admin/programs
+├ ƒ /api/admin/programs/[id]
+├ ƒ /api/admin/programs/[id]/add-week
+├ ƒ /api/admin/programs/[id]/assign
+├ ƒ /api/admin/programs/[id]/clear-day
+├ ƒ /api/admin/programs/[id]/delete-week
+├ ƒ /api/admin/programs/[id]/duplicate-week
+├ ƒ /api/admin/programs/[id]/exercises
+├ ƒ /api/admin/programs/[id]/exercises/[exerciseId]
+├ ƒ /api/admin/programs/[id]/feedback
+├ ƒ /api/admin/programs/[id]/generate-week
+├ ƒ /api/admin/programs/[id]/week-access
+├ ƒ /api/admin/programs/generate
+├ ƒ /api/admin/programs/generate-chat
+├ ƒ /api/admin/programs/generate/cancel
+├ ƒ /api/admin/programs/generate/status
+├ ƒ /api/admin/questionnaires
+├ ƒ /api/admin/questionnaires/[userId]
+├ ƒ /api/admin/reset-data
+├ ƒ /api/admin/reviews/[id]
+├ ƒ /api/admin/shop/downloads/[id]/extend
+├ ƒ /api/admin/shop/downloads/[id]/max
+├ ƒ /api/admin/shop/downloads/[id]/revoke
+├ ƒ /api/admin/shop/leads/[id]/retry
+├ ƒ /api/admin/shop/leads/export
+├ ƒ /api/admin/shop/orders/[id]/cancel
+├ ƒ /api/admin/shop/orders/[id]/confirm
+├ ƒ /api/admin/shop/orders/[id]/notes
+├ ƒ /api/admin/shop/orders/[id]/refund
+├ ƒ /api/admin/shop/products/[id]
+├ ƒ /api/admin/shop/products/[id]/files
+├ ƒ /api/admin/shop/products/[id]/files/[fileId]
+├ ƒ /api/admin/shop/products/affiliate
+├ ƒ /api/admin/shop/products/digital
+├ ƒ /api/admin/shop/variants/[id]
+├ ƒ /api/admin/social/fanout
+├ ƒ /api/admin/social/posts/[id]
+├ ƒ /api/admin/social/posts/[id]/approve
+├ ƒ /api/admin/social/posts/[id]/publish-now
+├ ƒ /api/admin/social/posts/[id]/reject
+├ ƒ /api/admin/social/posts/[id]/schedule
+├ ƒ /api/admin/social/posts/[id]/unschedule
+├ ƒ /api/admin/team-videos/[id]/comments
+├ ƒ /api/admin/team-videos/[id]/comments/[commentId]
+├ ƒ /api/admin/team-videos/[id]/comments/[commentId]/resolve
+├ ƒ /api/admin/team-videos/[id]/send-to-content-studio
+├ ƒ /api/admin/team-videos/[id]/status
+├ ƒ /api/admin/team/invites
+├ ƒ /api/admin/team/invites/[id]/resend
+├ ƒ /api/admin/team/invites/[id]/revoke
+├ ƒ /api/admin/testimonials
+├ ƒ /api/admin/testimonials/[id]
+├ ƒ /api/admin/tracked-exercises
+├ ƒ /api/admin/tracked-exercises/[id]
+├ ƒ /api/admin/users
+├ ƒ /api/admin/videos
+├ ƒ /api/admin/videos/[id]
+├ ƒ /api/admin/videos/[id]/thumbnail
+├ ƒ /api/admin/videos/transcribe
+├ ƒ /api/ai-jobs/[id]
+├ ƒ /api/assessment/questions
+├ ƒ /api/assessment/reassess
+├ ƒ /api/assessment/submit
+├ ƒ /api/auth/[...nextauth]
+├ ƒ /api/auth/forgot-password
+├ ƒ /api/auth/register
+├ ƒ /api/auth/resend-verification
+├ ƒ /api/auth/reset-password
+├ ƒ /api/auth/verify-email
+├ ƒ /api/client/achievements
+├ ƒ /api/client/achievements/[id]/celebrate
+├ ƒ /api/client/ai-feedback
+├ ƒ /api/client/exercises/search
+├ ƒ /api/client/form-reviews
+├ ƒ /api/client/form-reviews/[id]
+├ ƒ /api/client/form-reviews/[id]/messages
+├ ƒ /api/client/payments
+├ ƒ /api/client/performance-assessments
+├ ƒ /api/client/performance-assessments/[id]
+├ ƒ /api/client/performance-assessments/[id]/exercises/[exerciseId]
+├ ƒ /api/client/performance-assessments/[id]/exercises/[exerciseId]/messages
+├ ƒ /api/client/performance-assessments/results
+├ ƒ /api/client/profile
+├ ƒ /api/client/tracked-exercises
+├ ƒ /api/client/workout-logs
+├ ƒ /api/client/workouts/ai-coach
+├ ƒ /api/client/workouts/alternatives
+├ ƒ /api/client/workouts/complete-week
+├ ƒ /api/client/workouts/log
+├ ƒ /api/consents/waiver
+├ ƒ /api/contact
+├ ƒ /api/editor/me/password
+├ ƒ /api/editor/submissions
+├ ƒ /api/editor/submissions/[id]/comments
+├ ƒ /api/editor/submissions/[id]/finalize
+├ ƒ /api/editor/submissions/[id]/versions
+├ ƒ /api/events/[id]/checkout
+├ ƒ /api/events/[id]/signup
+├ ƒ /api/ghl/contact
+├ ƒ /api/ghl/webhook
+├ ƒ /api/inquiry
+├ ƒ /api/integrations/gmail/callback
+├ ƒ /api/integrations/gmail/connect
+├ ƒ /api/integrations/gmail/disconnect
+├ ƒ /api/integrations/google-ads/callback
+├ ƒ /api/integrations/google-ads/connect
+├ ƒ /api/integrations/google-ads/disconnect
+├ ƒ /api/newsletter
+├ ƒ /api/newsletter/unsubscribe
+├ ƒ /api/notification-preferences
+├ ƒ /api/notifications
+├ ƒ /api/public/attribution/track
+├ ƒ /api/public/invite/[token]/claim
+├ ƒ /api/questionnaire
+├ ƒ /api/shop/cart-items
+├ ƒ /api/shop/checkout
+├ ƒ /api/shop/downloads/sign
+├ ƒ /api/shop/leads
+├ ƒ /api/shop/orders/[orderNumber]/lookup
+├ ƒ /api/shop/quote
+├ ƒ /api/shop/sync
+├ ƒ /api/shop/webhooks/printful
+├ ƒ /api/stripe/billing-portal
+├ ƒ /api/stripe/checkout
+├ ƒ /api/stripe/webhook
+├ ƒ /api/stripe/week-checkout
+├ ƒ /api/upload/avatar
+├ ƒ /api/upload/blog-image
+├ ƒ /api/upload/event-image
+├ ƒ /api/upload/extract-text
+├ ƒ /api/uploads/shop
+├ ƒ /api/uploads/shop-pdf
+├ ƒ /api/webhooks/assemblyai
+├ ƒ /api/webhooks/ghl-booking
+├ ƒ /api/webhooks/ghl-review
+├ ○ /assessment
+├ ○ /blog                                                                             1m      1y
+├ ƒ /blog/[slug]
+├ ƒ /camps
+├ ● /camps/[slug]
+├ ƒ /camps/[slug]/success
+├ ƒ /client/achievements
+├ ƒ /client/assessment
+├ ƒ /client/dashboard
+├ ƒ /client/form-reviews
+├ ƒ /client/form-reviews/[id]
+├ ƒ /client/form-reviews/new
+├ ƒ /client/payments
+├ ƒ /client/performance-assessments
+├ ƒ /client/performance-assessments/[id]
+├ ƒ /client/profile
+├ ƒ /client/programs
+├ ƒ /client/programs/[id]
+├ ƒ /client/programs/success
+├ ƒ /client/progress
+├ ƒ /client/questionnaire
+├ ƒ /client/reassessment
+├ ƒ /client/settings
+├ ƒ /client/workouts
+├ ƒ /clinics
+├ ● /clinics/[slug]                                                                   5m      1y
+│ └ /clinics/youth-agility-performance-training-clinic                                5m      1y
+├ ƒ /clinics/[slug]/success
+├ ○ /coming-soon
+├ ○ /contact
+├ ƒ /editor
+├ ƒ /editor/dashboard
+├ ƒ /editor/settings
+├ ƒ /editor/submissions
+├ ƒ /editor/upload
+├ ƒ /editor/videos/[id]
+├ ○ /education
+├ ○ /faq
+├ ○ /forgot-password
+├ ○ /glossary
+├ ○ /in-person
+├ ƒ /invite/[token]
+├ ○ /login
+├ ○ /online
+├ ○ /philosophy
+├ ○ /privacy-policy
+├ ○ /programs/rotational-reboot
+├ ○ /register
+├ ○ /reset-password
+├ ○ /resources
+├ ○ /robots.txt
+├ ○ /services
+├ ○ /services/coaching-vs-training-app
+├ ○ /services/online-vs-in-person
+├ ƒ /shop
+├ ƒ /shop/[slug]
+├ ○ /shop/cart
+├ ○ /shop/checkout
+├ ƒ /shop/go/[productId]
+├ ƒ /shop/orders/[orderNumber]
+├ ƒ /shop/orders/[orderNumber]/downloads
+├ ƒ /shop/orders/[orderNumber]/thank-you
+├ ○ /sitemap.xml
+├ ○ /terms-of-service
+├ ○ /testimonials
+├ ○ /unsubscribe
+└ ○ /verify-email
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+●  (SSG)      prerendered as static HTML (uses generateStaticParams)
+ƒ  (Dynamic)  server-rendered on demand
+

@@ -1677,8 +1677,26 @@ export type GoogleAdsRecommendationType =
   | "add_keyword"
   | "add_ad_variant"
   | "pause_ad"
+  // Phase 1.6+ — added by migration 00131 to support the full 11-tool ads-agent
+  // catalog. Cross-campaign and account-scope actions all land in the same
+  // queue with these recommendation_type values.
+  | "budget_shift"
+  | "audience_expansion"
+  | "new_campaign"
+  | "campaign_pause"
+  | "campaign_split"
+  | "match_type_change"
+  | "bid_strategy_review"
+  | "flag"
 
-export type GoogleAdsRecommendationScope = "campaign" | "ad_group" | "keyword" | "ad"
+export type GoogleAdsRecommendationScope =
+  | "campaign"
+  | "ad_group"
+  | "keyword"
+  | "ad"
+  // 'account' added by migration 00131 for actions that aren't bound to an
+  // existing entity (new_campaign, flag_for_human).
+  | "account"
 
 export type GoogleAdsRecommendationStatus =
   | "pending"
@@ -1705,6 +1723,11 @@ export interface GoogleAdsRecommendation {
   applied_at: string | null
   failure_reason: string | null
   expires_at: string
+  // memo_id / source added by migration 00131 so the ads-agent can write back
+  // a top-level back-reference + provenance tag (other callers may leave these
+  // null, which is why both columns are nullable in the DB).
+  memo_id: string | null
+  source: string | null
   created_at: string
   updated_at: string
 }

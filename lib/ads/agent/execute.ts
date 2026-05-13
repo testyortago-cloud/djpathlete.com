@@ -1,26 +1,31 @@
 // lib/ads/agent/execute.ts
-// Per-tool handlers for within-campaign actions. Every accepted action becomes
-// a row in google_ads_recommendations with status='pending' and the agent's
-// memo back-reference stored inside `payload` (the table has no top-level
-// memo_id / source columns — see migration 00116). Human approval via the
-// existing recommendations queue is required before changes propagate to
-// Google Ads.
+// Per-tool handlers for the full 11-tool ads-agent catalog. Every accepted
+// action becomes a row in google_ads_recommendations with status='pending'.
+// Human approval via the existing recommendations queue is required before
+// changes propagate to Google Ads.
 //
-// IMPORTANT — schema reality check
-// The existing google_ads_recommendations CHECK constraint accepts only:
+// Schema reality check (post-migration 00131)
+// -------------------------------------------
+// The CHECK constraint now accepts all 14 recommendation_type values:
 //   add_negative_keyword | adjust_bid | pause_keyword | add_keyword
-//   | add_ad_variant | pause_ad
-// Three of the agent's within-campaign tools map cleanly:
-//   propose_new_keywords        -> add_keyword
-//   propose_negative_keywords   -> add_negative_keyword
-//   propose_ad_copy_test        -> add_ad_variant
-// The remaining tools (budget_shift, audience_expansion, the cross-campaign
-// proposals, flag_for_human) have no slot in the current CHECK. They throw a
-// typed error so callers can route them to a follow-up sink (or to a future
-// schema migration that extends recommendation_type).
+//   | add_ad_variant | pause_ad             (existing — manual UI + sync)
+//   | budget_shift | audience_expansion | new_campaign | campaign_pause
+//   | campaign_split | match_type_change | bid_strategy_review | flag
+//                                          (added for the ads agent)
+//
+// scope_type accepts 5 values:
+//   campaign | ad_group | keyword | ad | account
+//   ('account' is for actions not bound to an existing entity, i.e.
+//    new_campaign and flag_for_human.)
+//
+// memo_id (uuid) and source (text) are now top-level columns; we set them
+// directly instead of stuffing them inside `payload`.
 
 import { createServiceRoleClient } from "@/lib/supabase"
-import type { GoogleAdsRecommendationScope } from "@/types/database"
+import type {
+  GoogleAdsRecommendationScope,
+  GoogleAdsRecommendationType,
+} from "@/types/database"
 import type { AdsAction, AdsActionTool } from "./types"
 
 export interface ExecuteAdsActionOptions {
@@ -33,39 +38,121 @@ export interface ExecuteAdsActionResult {
 }
 
 interface ToolMapping {
-  recommendation_type:
-    | "add_negative_keyword"
-    | "adjust_bid"
-    | "pause_keyword"
-    | "add_keyword"
-    | "add_ad_variant"
-    | "pause_ad"
-  resolveScope: (args: Record<string, unknown>) => {
+  recommendation_type: GoogleAdsRecommendationType
+  resolveScope: (
+    args: Record<string, unknown>,
+    tool: AdsActionTool,
+  ) => {
     scope_type: GoogleAdsRecommendationScope
     scope_id: string
   }
 }
 
-const TOOL_MAPPINGS: Partial<Record<AdsActionTool, ToolMapping>> = {
+/**
+ * Sentinel scope_ids for actions that aren't bound to an existing entity.
+ * They satisfy the NOT NULL constraint while signalling "no real entity" to
+ * downstream apply / UI code.
+ */
+const SCOPE_ID_NEW_CAMPAIGN = "__new_campaign__"
+const SCOPE_ID_ACCOUNT = "__account__"
+
+/**
+ * Reads a string field off `args` and throws a clear, tool-named error if it
+ * is missing or empty. The thrown message intentionally mentions the field
+ * name so callers can see which arg the tool forgot.
+ */
+function requireArg(
+  args: Record<string, unknown>,
+  field: string,
+  tool: AdsActionTool,
+): string {
+  const value = args[field]
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(`${tool} requires args.${field}`)
+  }
+  return value
+}
+
+const TOOL_MAPPINGS: Record<AdsActionTool, ToolMapping> = {
   propose_new_keywords: {
     recommendation_type: "add_keyword",
-    resolveScope: (args) => ({
+    resolveScope: (args, tool) => ({
       scope_type: "ad_group",
-      scope_id: String(args.ad_group_id ?? args.campaign_id ?? ""),
+      scope_id: requireArg(args, "ad_group_id", tool),
     }),
   },
   propose_negative_keywords: {
     recommendation_type: "add_negative_keyword",
-    resolveScope: (args) => ({
+    resolveScope: (args, tool) => ({
       scope_type: "campaign",
-      scope_id: String(args.campaign_id ?? ""),
+      scope_id: requireArg(args, "campaign_id", tool),
     }),
   },
   propose_ad_copy_test: {
     recommendation_type: "add_ad_variant",
-    resolveScope: (args) => ({
+    resolveScope: (args, tool) => ({
       scope_type: "ad_group",
-      scope_id: String(args.ad_group_id ?? ""),
+      scope_id: requireArg(args, "ad_group_id", tool),
+    }),
+  },
+  propose_budget_shift: {
+    recommendation_type: "budget_shift",
+    // Pin to the *destination* campaign — that's where the increased spend
+    // lands and where the impact will be observed.
+    resolveScope: (args, tool) => ({
+      scope_type: "campaign",
+      scope_id: requireArg(args, "to_campaign_id", tool),
+    }),
+  },
+  propose_audience_expansion: {
+    recommendation_type: "audience_expansion",
+    resolveScope: (args, tool) => ({
+      scope_type: "campaign",
+      scope_id: requireArg(args, "campaign_id", tool),
+    }),
+  },
+  propose_new_campaign: {
+    recommendation_type: "new_campaign",
+    // No existing entity yet — scope to the account with a sentinel id.
+    resolveScope: () => ({
+      scope_type: "account",
+      scope_id: SCOPE_ID_NEW_CAMPAIGN,
+    }),
+  },
+  propose_campaign_pause: {
+    recommendation_type: "campaign_pause",
+    resolveScope: (args, tool) => ({
+      scope_type: "campaign",
+      scope_id: requireArg(args, "campaign_id", tool),
+    }),
+  },
+  propose_campaign_split: {
+    recommendation_type: "campaign_split",
+    resolveScope: (args, tool) => ({
+      scope_type: "campaign",
+      scope_id: requireArg(args, "campaign_id", tool),
+    }),
+  },
+  propose_match_type_change: {
+    recommendation_type: "match_type_change",
+    resolveScope: (args, tool) => ({
+      scope_type: "keyword",
+      scope_id: requireArg(args, "keyword_id", tool),
+    }),
+  },
+  propose_bid_strategy_review: {
+    recommendation_type: "bid_strategy_review",
+    resolveScope: (args, tool) => ({
+      scope_type: "campaign",
+      scope_id: requireArg(args, "campaign_id", tool),
+    }),
+  },
+  flag_for_human: {
+    recommendation_type: "flag",
+    // Account-level signal — no required args.
+    resolveScope: () => ({
+      scope_type: "account",
+      scope_id: SCOPE_ID_ACCOUNT,
     }),
   },
 }
@@ -82,33 +169,21 @@ export async function executeAdsAction(
 ): Promise<ExecuteAdsActionResult> {
   const mapping = TOOL_MAPPINGS[action.tool]
   if (!mapping) {
-    throw new Error(
-      `executeAdsAction: no recommendation_type mapping for tool '${action.tool}'. ` +
-        `The google_ads_recommendations CHECK constraint only accepts ` +
-        `add_negative_keyword | adjust_bid | pause_keyword | add_keyword | ` +
-        `add_ad_variant | pause_ad. Extend the constraint via a follow-up ` +
-        `migration before routing this tool through the recommendations queue.`,
-    )
+    // AdsActionTool is a closed union, so this branch is unreachable at the
+    // type level; we keep it as a runtime safety net in case the union grows.
+    throw new Error(`executeAdsAction: unknown tool '${action.tool}'`)
   }
 
-  const { scope_type, scope_id } = mapping.resolveScope(action.args)
-  if (!scope_id) {
-    throw new Error(
-      `executeAdsAction: tool '${action.tool}' produced an empty scope_id from ` +
-        `args; cannot satisfy google_ads_recommendations.scope_id NOT NULL.`,
-    )
-  }
+  const { scope_type, scope_id } = mapping.resolveScope(action.args, action.tool)
 
   const row = {
     customer_id: opts.customer_id,
     scope_type,
     scope_id,
     recommendation_type: mapping.recommendation_type,
+    memo_id: opts.memo_id,
+    source: "ads_agent",
     payload: {
-      // memo back-reference + provenance live in payload because the table
-      // has no top-level memo_id or source columns.
-      memo_id: opts.memo_id,
-      source: "ads_agent",
       tool: action.tool,
       args: action.args,
       expected_metric: action.expected_metric,

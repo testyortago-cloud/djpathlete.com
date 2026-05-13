@@ -1,10 +1,5 @@
 import { createServiceRoleClient } from "@/lib/supabase"
-import type {
-  PerformanceTest,
-  PerformanceTestPR,
-  TestType,
-  BestMethod,
-} from "@/types/database"
+import type { PerformanceTest, PerformanceTestPR, TestType, BestMethod } from "@/types/database"
 
 function getClient() {
   return createServiceRoleClient()
@@ -21,10 +16,7 @@ export function computePctChange(current: number, prev: number | null): number |
   return ((current - prev) / prev) * 100
 }
 
-export async function listByUser(
-  clientUserId: string,
-  opts: { testType?: TestType; from?: string; to?: string } = {},
-) {
+export async function listByUser(clientUserId: string, opts: { testType?: TestType; from?: string; to?: string } = {}) {
   const supabase = getClient()
   let q = supabase.from("performance_tests").select("*").eq("client_user_id", clientUserId)
   if (opts.testType) q = q.eq("test_type", opts.testType)
@@ -37,11 +29,7 @@ export async function listByUser(
 
 export async function getById(id: string) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("performance_tests")
-    .select("*")
-    .eq("id", id)
-    .single()
+  const { data, error } = await supabase.from("performance_tests").select("*").eq("id", id).single()
   if (error) return null
   return data as PerformanceTest
 }
@@ -148,19 +136,13 @@ async function recomputeDownstream(clientUserId: string, testType: TestType, fro
     const prevValue = earlier.length > 0 ? earlier[0].result_value : null
     const is_pr = computeIsPr(row.result_value, row.best_method as BestMethod, priorValues)
     const pct_change_from_prev = computePctChange(row.result_value, prevValue)
-    await supabase
-      .from("performance_tests")
-      .update({ is_pr, pct_change_from_prev })
-      .eq("id", row.id)
+    await supabase.from("performance_tests").update({ is_pr, pct_change_from_prev }).eq("id", row.id)
   }
 }
 
 export async function getPRsByUser(clientUserId: string) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("performance_test_pr_view")
-    .select("*")
-    .eq("client_user_id", clientUserId)
+  const { data, error } = await supabase.from("performance_test_pr_view").select("*").eq("client_user_id", clientUserId)
   if (error) throw error
   return data as PerformanceTestPR[]
 }

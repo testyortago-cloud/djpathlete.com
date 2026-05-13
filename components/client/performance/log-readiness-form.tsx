@@ -10,11 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  READINESS_FIELDS,
-  readinessFormSchema,
-  type ReadinessFormData,
-} from "@/lib/validators/daily-readiness"
+import { READINESS_FIELDS, readinessFormSchema, type ReadinessFormData } from "@/lib/validators/daily-readiness"
 
 export function LogReadinessForm({ initial }: { initial?: Partial<ReadinessFormData> }) {
   const router = useRouter()
@@ -117,10 +113,7 @@ export function LogReadinessForm({ initial }: { initial?: Partial<ReadinessFormD
 
       <div className="grid gap-2">
         <Label>Notes</Label>
-        <Textarea
-          rows={3}
-          {...form.register("notes", { setValueAs: (v) => (v === "" ? null : v) })}
-        />
+        <Textarea rows={3} {...form.register("notes", { setValueAs: (v) => (v === "" ? null : v) })} />
       </div>
 
       <Button type="submit" disabled={submitting} className="w-full">

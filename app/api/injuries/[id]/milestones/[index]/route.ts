@@ -8,10 +8,7 @@ const patchSchema = z.object({
   notes: z.string().max(1000).nullable().optional(),
 })
 
-export async function PATCH(
-  req: Request,
-  { params }: { params: Promise<{ id: string; index: string }> },
-) {
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string; index: string }> }) {
   const session = await auth()
   if (!session?.user?.id) return NextResponse.json({ error: "unauthorized" }, { status: 401 })
   const { id, index } = await params
@@ -29,11 +26,6 @@ export async function PATCH(
   if (session.user.role !== "admin" && existing.client_user_id !== session.user.id) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 })
   }
-  const injury = await completeMilestone(
-    id,
-    idx,
-    parsed.data.completed_date,
-    parsed.data.notes ?? undefined,
-  )
+  const injury = await completeMilestone(id, idx, parsed.data.completed_date, parsed.data.notes ?? undefined)
   return NextResponse.json({ injury })
 }

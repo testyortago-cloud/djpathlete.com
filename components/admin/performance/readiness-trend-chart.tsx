@@ -1,28 +1,13 @@
 "use client"
 
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  ReferenceLine,
-  CartesianGrid,
-} from "recharts"
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, CartesianGrid } from "recharts"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
-export function ReadinessTrendChart({
-  data,
-}: {
-  data: { date: string; readiness_score: number }[]
-}) {
+export function ReadinessTrendChart({ data }: { data: { date: string; readiness_score: number }[] }) {
   if (data.length === 0) {
     return (
       <Card>
-        <CardContent className="text-muted-foreground py-12 text-center">
-          No readiness data in this range.
-        </CardContent>
+        <CardContent className="text-muted-foreground py-12 text-center">No readiness data in this range.</CardContent>
       </Card>
     )
   }
@@ -41,13 +26,7 @@ export function ReadinessTrendChart({
               <Tooltip />
               <ReferenceLine y={70} stroke="var(--success)" strokeDasharray="3 3" />
               <ReferenceLine y={40} stroke="var(--error)" strokeDasharray="3 3" />
-              <Line
-                type="monotone"
-                dataKey="readiness_score"
-                stroke="var(--primary)"
-                strokeWidth={2}
-                dot
-              />
+              <Line type="monotone" dataKey="readiness_score" stroke="var(--primary)" strokeWidth={2} dot />
             </LineChart>
           </ResponsiveContainer>
         </div>

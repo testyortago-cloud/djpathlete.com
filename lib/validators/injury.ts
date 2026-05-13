@@ -1,15 +1,45 @@
 import { z } from "zod"
 
 export const BODY_REGIONS = [
-  "head","neck","shoulder","elbow","wrist","hand","chest","upper_back","lower_back",
-  "hip","glute","hamstring","quad","knee","calf","ankle","foot","other",
+  "head",
+  "neck",
+  "shoulder",
+  "elbow",
+  "wrist",
+  "hand",
+  "chest",
+  "upper_back",
+  "lower_back",
+  "hip",
+  "glute",
+  "hamstring",
+  "quad",
+  "knee",
+  "calf",
+  "ankle",
+  "foot",
+  "other",
 ] as const
 
 export const BODY_REGION_LABELS: Record<(typeof BODY_REGIONS)[number], string> = {
-  head: "Head", neck: "Neck", shoulder: "Shoulder", elbow: "Elbow", wrist: "Wrist",
-  hand: "Hand", chest: "Chest", upper_back: "Upper Back", lower_back: "Lower Back",
-  hip: "Hip", glute: "Glute", hamstring: "Hamstring", quad: "Quad", knee: "Knee",
-  calf: "Calf", ankle: "Ankle", foot: "Foot", other: "Other",
+  head: "Head",
+  neck: "Neck",
+  shoulder: "Shoulder",
+  elbow: "Elbow",
+  wrist: "Wrist",
+  hand: "Hand",
+  chest: "Chest",
+  upper_back: "Upper Back",
+  lower_back: "Lower Back",
+  hip: "Hip",
+  glute: "Glute",
+  hamstring: "Hamstring",
+  quad: "Quad",
+  knee: "Knee",
+  calf: "Calf",
+  ankle: "Ankle",
+  foot: "Foot",
+  other: "Other",
 }
 
 export const INJURY_SIDES = ["left", "right", "bilateral", "n_a"] as const

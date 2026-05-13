@@ -17,10 +17,7 @@ export async function getByUserAndDate(clientUserId: string, date: string) {
   return data as DailyReadiness
 }
 
-export async function listByUser(
-  clientUserId: string,
-  opts: { from?: string; to?: string } = {},
-) {
+export async function listByUser(clientUserId: string, opts: { from?: string; to?: string } = {}) {
   const supabase = getClient()
   let q = supabase.from("daily_readiness").select("*").eq("client_user_id", clientUserId)
   if (opts.from) q = q.gte("date", opts.from)
@@ -38,10 +35,7 @@ export async function upsert(
   const supabase = getClient()
   const { data, error } = await supabase
     .from("daily_readiness")
-    .upsert(
-      { client_user_id: clientUserId, date, ...payload },
-      { onConflict: "client_user_id,date" },
-    )
+    .upsert({ client_user_id: clientUserId, date, ...payload }, { onConflict: "client_user_id,date" })
     .select()
     .single()
   if (error) throw error

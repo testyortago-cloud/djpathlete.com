@@ -1,11 +1,23 @@
 import { z } from "zod"
 
 export const TEST_TYPES = [
-  "drop_jump","cmj","squat_jump","broad_jump",
-  "sprint_10m","sprint_20m","sprint_40m","sprint_5_10_5","t_test","beep_test",
+  "drop_jump",
+  "cmj",
+  "squat_jump",
+  "broad_jump",
+  "sprint_10m",
+  "sprint_20m",
+  "sprint_40m",
+  "sprint_5_10_5",
+  "t_test",
+  "beep_test",
   "sit_reach",
-  "bench_press_1rm","back_squat_1rm","deadlift_1rm",
-  "pull_up_max","push_up_max","plank_hold",
+  "bench_press_1rm",
+  "back_squat_1rm",
+  "deadlift_1rm",
+  "pull_up_max",
+  "push_up_max",
+  "plank_hold",
   "custom",
 ] as const
 

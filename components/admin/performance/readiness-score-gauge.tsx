@@ -17,9 +17,7 @@ export function ReadinessScoreGauge({ readiness }: { readiness: DailyReadiness |
         <CardHeader>
           <CardTitle>Readiness</CardTitle>
         </CardHeader>
-        <CardContent className="text-muted-foreground py-12 text-center">
-          No check-in today
-        </CardContent>
+        <CardContent className="text-muted-foreground py-12 text-center">No check-in today</CardContent>
       </Card>
     )
   }
@@ -49,8 +47,7 @@ export function ReadinessScoreGauge({ readiness }: { readiness: DailyReadiness |
           </div>
         </div>
         <p className="text-muted-foreground mt-4 text-center text-xs">
-          Sleep {readiness.sleep_quality}/5 · Sore {readiness.soreness_overall}/5 · Fatigue{" "}
-          {readiness.fatigue}/5
+          Sleep {readiness.sleep_quality}/5 · Sore {readiness.soreness_overall}/5 · Fatigue {readiness.fatigue}/5
         </p>
       </CardContent>
     </Card>

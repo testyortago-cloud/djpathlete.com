@@ -50,9 +50,7 @@ export function InjuryRehabMilestoneList({ injury }: { injury: Injury }) {
 
   return (
     <div className="space-y-4">
-      {injury.rehab_milestones.length === 0 && (
-        <p className="text-muted-foreground text-sm">No milestones yet.</p>
-      )}
+      {injury.rehab_milestones.length === 0 && <p className="text-muted-foreground text-sm">No milestones yet.</p>}
       <ul className="space-y-2">
         {injury.rehab_milestones.map((m, idx) => (
           <li key={idx} className="flex items-center gap-3 rounded border p-3">
@@ -71,17 +69,8 @@ export function InjuryRehabMilestoneList({ injury }: { injury: Injury }) {
       </ul>
 
       <div className="flex gap-2 border-t pt-4">
-        <Input
-          placeholder="Milestone name"
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-        />
-        <Input
-          type="date"
-          value={newTarget}
-          onChange={(e) => setNewTarget(e.target.value)}
-          className="max-w-[180px]"
-        />
+        <Input placeholder="Milestone name" value={newName} onChange={(e) => setNewName(e.target.value)} />
+        <Input type="date" value={newTarget} onChange={(e) => setNewTarget(e.target.value)} className="max-w-[180px]" />
         <Button onClick={addMilestone}>Add</Button>
       </div>
     </div>

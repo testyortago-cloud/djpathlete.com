@@ -5,24 +5,12 @@ import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { toast } from "sonner"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   TEST_TYPES,
   TEST_TYPE_LABELS,
@@ -89,9 +77,7 @@ export function LogTestDialog({
       const res = await fetch("/api/performance-tests", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(
-          clientUserId ? { ...values, client_user_id: clientUserId } : values,
-        ),
+        body: JSON.stringify(clientUserId ? { ...values, client_user_id: clientUserId } : values),
       })
       if (!res.ok) throw new Error("Save failed")
       const data = await res.json()
@@ -115,10 +101,7 @@ export function LogTestDialog({
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
           <div className="grid gap-2">
             <Label>Test type</Label>
-            <Select
-              value={form.watch("test_type")}
-              onValueChange={onChangeTestType as (v: string) => void}
-            >
+            <Select value={form.watch("test_type")} onValueChange={onChangeTestType as (v: string) => void}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -141,10 +124,7 @@ export function LogTestDialog({
 
           <div className="grid gap-2">
             <Label>Trial values (optional, comma-separated)</Label>
-            <Input
-              placeholder="e.g. 38.2, 38.5, 37.9"
-              onChange={(e) => onTrialsChange(e.target.value)}
-            />
+            <Input placeholder="e.g. 38.2, 38.5, 37.9" onChange={(e) => onTrialsChange(e.target.value)} />
             {trials && trials.length > 0 && (
               <p className="text-muted-foreground text-xs">
                 Best ({method}) = {Number(reduceTrials(trials, method).toFixed(3))}
@@ -155,11 +135,7 @@ export function LogTestDialog({
           <div className="grid grid-cols-2 gap-4">
             <div className="grid gap-2">
               <Label>Result</Label>
-              <Input
-                type="number"
-                step="0.001"
-                {...form.register("result_value", { valueAsNumber: true })}
-              />
+              <Input type="number" step="0.001" {...form.register("result_value", { valueAsNumber: true })} />
             </div>
             <div className="grid gap-2">
               <Label>Unit</Label>
@@ -186,10 +162,7 @@ export function LogTestDialog({
 
           <div className="grid gap-2">
             <Label>Notes</Label>
-            <Textarea
-              rows={2}
-              {...form.register("notes", { setValueAs: (v) => (v === "" ? null : v) })}
-            />
+            <Textarea rows={2} {...form.register("notes", { setValueAs: (v) => (v === "" ? null : v) })} />
           </div>
 
           <Button type="submit" disabled={submitting} className="w-full">

@@ -10,9 +10,7 @@ export function MyPerformanceTests({ tests }: { tests: PerformanceTest[] }) {
   if (tests.length === 0) {
     return (
       <Card>
-        <CardContent className="text-muted-foreground py-12 text-center">
-          No tests logged yet.
-        </CardContent>
+        <CardContent className="text-muted-foreground py-12 text-center">No tests logged yet.</CardContent>
       </Card>
     )
   }
@@ -27,17 +25,12 @@ export function MyPerformanceTests({ tests }: { tests: PerformanceTest[] }) {
       {Object.entries(byType).map(([key, list]) => {
         const sample = list[0]
         const label =
-          sample.test_type === "custom"
-            ? (sample.custom_name ?? "Custom")
-            : TEST_TYPE_LABELS[sample.test_type]
+          sample.test_type === "custom" ? (sample.custom_name ?? "Custom") : TEST_TYPE_LABELS[sample.test_type]
         return (
           <Card key={key}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0">
               <CardTitle className="text-base">
-                <Link
-                  href={`/client/performance/${sample.test_type}`}
-                  className="hover:underline"
-                >
+                <Link href={`/client/performance/${sample.test_type}`} className="hover:underline">
                   {label}
                 </Link>
               </CardTitle>
@@ -46,9 +39,7 @@ export function MyPerformanceTests({ tests }: { tests: PerformanceTest[] }) {
             <CardContent>
               <p className="font-heading text-2xl font-bold">
                 {sample.result_value}{" "}
-                <span className="text-muted-foreground text-sm font-normal">
-                  {sample.result_unit}
-                </span>{" "}
+                <span className="text-muted-foreground text-sm font-normal">{sample.result_unit}</span>{" "}
                 {sample.is_pr && <Badge className="bg-accent ml-2">PR</Badge>}
               </p>
               <p className="text-muted-foreground text-xs">latest: {sample.test_date}</p>

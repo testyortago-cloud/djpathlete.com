@@ -19,10 +19,7 @@ export function PRsShelfCard({ prs }: { prs: PerformanceTestPR[] }) {
                   {p.test_type === "custom" ? p.custom_name : TEST_TYPE_LABELS[p.test_type]}
                 </p>
                 <p className="font-heading text-lg font-bold">
-                  {p.result_value}{" "}
-                  <span className="text-muted-foreground text-xs font-normal">
-                    {p.result_unit}
-                  </span>
+                  {p.result_value} <span className="text-muted-foreground text-xs font-normal">{p.result_unit}</span>
                 </p>
                 <p className="text-muted-foreground text-xs">{p.test_date}</p>
               </li>

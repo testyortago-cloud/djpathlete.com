@@ -11,6 +11,15 @@ const TYPE_LABEL: Record<GoogleAdsRecommendationType, string> = {
   add_keyword: "Add keyword",
   add_ad_variant: "Add ad variant",
   pause_ad: "Pause ad",
+  // Phase 1.6+ — agent-only types (advisory; no apply path yet).
+  budget_shift: "Budget shift",
+  audience_expansion: "Audience expansion",
+  new_campaign: "New campaign",
+  campaign_pause: "Pause campaign",
+  campaign_split: "Split campaign",
+  match_type_change: "Match type change",
+  bid_strategy_review: "Bid strategy review",
+  flag: "Flag for human review",
 }
 
 const TYPE_TONE: Record<GoogleAdsRecommendationType, string> = {
@@ -20,6 +29,15 @@ const TYPE_TONE: Record<GoogleAdsRecommendationType, string> = {
   add_keyword: "bg-success/15 text-success",
   add_ad_variant: "bg-accent/15 text-accent",
   pause_ad: "bg-error/10 text-error",
+  // Agent-only types — neutral tone until they have an apply path.
+  budget_shift: "bg-accent/15 text-accent",
+  audience_expansion: "bg-accent/15 text-accent",
+  new_campaign: "bg-success/15 text-success",
+  campaign_pause: "bg-error/10 text-error",
+  campaign_split: "bg-accent/15 text-accent",
+  match_type_change: "bg-accent/15 text-accent",
+  bid_strategy_review: "bg-warning/15 text-warning",
+  flag: "bg-warning/15 text-warning",
 }
 
 function payloadSummary(
@@ -47,6 +65,16 @@ function payloadSummary(
     }
     case "pause_ad":
       return `ad ${payload.ad_id}`
+    // Agent-only types (advisory; show the tool tag until rich summaries land).
+    case "budget_shift":
+    case "audience_expansion":
+    case "new_campaign":
+    case "campaign_pause":
+    case "campaign_split":
+    case "match_type_change":
+    case "bid_strategy_review":
+    case "flag":
+      return String(payload.tool ?? type)
   }
 }
 

@@ -15,9 +15,7 @@ export async function POST(req: Request) {
 
   const { date, ...rest } = parsed.data
   const targetUserId =
-    session.user.role === "admin" && body.client_user_id
-      ? (body.client_user_id as string)
-      : session.user.id
+    session.user.role === "admin" && body.client_user_id ? (body.client_user_id as string) : session.user.id
 
   const result = await upsert(targetUserId, date, rest)
   return NextResponse.json({ readiness: result })

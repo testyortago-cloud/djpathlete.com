@@ -16,10 +16,7 @@ export function PerformanceTestCard({
   history: PerformanceTest[]
   clientUserId: string
 }) {
-  const label =
-    latest.test_type === "custom"
-      ? (latest.custom_name ?? "Custom")
-      : TEST_TYPE_LABELS[latest.test_type]
+  const label = latest.test_type === "custom" ? (latest.custom_name ?? "Custom") : TEST_TYPE_LABELS[latest.test_type]
   const trendData = [...history].reverse().map((t) => ({ value: t.result_value }))
   return (
     <Card>
@@ -36,13 +33,10 @@ export function PerformanceTestCard({
       </CardHeader>
       <CardContent>
         <p className="font-heading text-2xl font-bold">
-          {latest.result_value}{" "}
-          <span className="text-muted-foreground text-sm font-normal">{latest.result_unit}</span>
+          {latest.result_value} <span className="text-muted-foreground text-sm font-normal">{latest.result_unit}</span>
         </p>
         {latest.pct_change_from_prev !== null && (
-          <p
-            className={`text-xs ${latest.pct_change_from_prev > 0 ? "text-success" : "text-error"}`}
-          >
+          <p className={`text-xs ${latest.pct_change_from_prev > 0 ? "text-success" : "text-error"}`}>
             {latest.pct_change_from_prev > 0 ? "+" : ""}
             {latest.pct_change_from_prev.toFixed(1)}% vs prev
           </p>
@@ -52,13 +46,7 @@ export function PerformanceTestCard({
           <div className="mt-3 h-12">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={trendData}>
-                <Line
-                  type="monotone"
-                  dataKey="value"
-                  stroke="var(--primary)"
-                  strokeWidth={2}
-                  dot={false}
-                />
+                <Line type="monotone" dataKey="value" stroke="var(--primary)" strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>

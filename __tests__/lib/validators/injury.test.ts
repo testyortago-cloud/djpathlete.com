@@ -1,10 +1,5 @@
 import { describe, it, expect } from "vitest"
-import {
-  injuryFormSchema,
-  rehabMilestoneSchema,
-  BODY_REGIONS,
-  BODY_REGION_LABELS,
-} from "@/lib/validators/injury"
+import { injuryFormSchema, rehabMilestoneSchema, BODY_REGIONS, BODY_REGION_LABELS } from "@/lib/validators/injury"
 
 describe("injuryFormSchema", () => {
   const valid = {
@@ -25,15 +20,11 @@ describe("injuryFormSchema", () => {
   })
 
   it("rejects invalid body_region", () => {
-    expect(
-      injuryFormSchema.safeParse({ ...valid, body_region: "spleen" }).success,
-    ).toBe(false)
+    expect(injuryFormSchema.safeParse({ ...valid, body_region: "spleen" }).success).toBe(false)
   })
 
   it("rejects resolved status without date_resolved", () => {
-    expect(
-      injuryFormSchema.safeParse({ ...valid, status: "resolved", date_resolved: null }).success,
-    ).toBe(false)
+    expect(injuryFormSchema.safeParse({ ...valid, status: "resolved", date_resolved: null }).success).toBe(false)
   })
 
   it("BODY_REGIONS has labels for every key", () => {

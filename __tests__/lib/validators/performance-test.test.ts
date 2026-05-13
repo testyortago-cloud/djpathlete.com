@@ -26,10 +26,9 @@ describe("performanceTestFormSchema", () => {
   })
 
   it("rejects test_type=custom without custom_name", () => {
-    expect(
-      performanceTestFormSchema.safeParse({ ...valid, test_type: "custom", custom_name: null })
-        .success,
-    ).toBe(false)
+    expect(performanceTestFormSchema.safeParse({ ...valid, test_type: "custom", custom_name: null }).success).toBe(
+      false,
+    )
   })
 
   it("TEST_TYPE_DEFAULTS provides unit + best_method for every test_type", () => {

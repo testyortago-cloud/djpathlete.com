@@ -77,6 +77,15 @@ const REC_TYPE_LABEL: Record<GoogleAdsRecommendationType, string> = {
   add_keyword: "Add keyword",
   add_ad_variant: "New ad variant",
   pause_ad: "Pause ad",
+  // Phase 1.6+ — agent-only types (advisory; no apply path yet).
+  budget_shift: "Budget shift",
+  audience_expansion: "Audience exp.",
+  new_campaign: "New campaign",
+  campaign_pause: "Pause campaign",
+  campaign_split: "Split campaign",
+  match_type_change: "Match type",
+  bid_strategy_review: "Bid strategy",
+  flag: "Flag for review",
 }
 
 function recSummary(rec: GoogleAdsRecommendation): string {
@@ -99,6 +108,16 @@ function recSummary(rec: GoogleAdsRecommendation): string {
     }
     case "pause_ad":
       return `ad ${String(p.ad_id ?? "?")}`
+    // Agent-only types (advisory; no rich summary yet — show the tool tag).
+    case "budget_shift":
+    case "audience_expansion":
+    case "new_campaign":
+    case "campaign_pause":
+    case "campaign_split":
+    case "match_type_change":
+    case "bid_strategy_review":
+    case "flag":
+      return String(p.tool ?? rec.recommendation_type)
   }
 }
 

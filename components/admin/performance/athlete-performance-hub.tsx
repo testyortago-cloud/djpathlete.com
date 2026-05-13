@@ -3,12 +3,7 @@
 import Link from "next/link"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
-import type {
-  DailyReadiness,
-  Injury,
-  PerformanceTest,
-  PerformanceTestPR,
-} from "@/types/database"
+import type { DailyReadiness, Injury, PerformanceTest, PerformanceTestPR } from "@/types/database"
 import { ReadinessScoreGauge } from "./readiness-score-gauge"
 import { ReadinessTrendChart } from "./readiness-trend-chart"
 import { ActiveInjuriesCard } from "./active-injuries-card"
@@ -48,16 +43,10 @@ export function AthletePerformanceHub({
         <h1 className="font-heading text-3xl font-bold">Performance</h1>
         <div className="flex gap-2">
           <Button asChild variant="outline">
-            <Link
-              href={`/admin/clients/${clientUserId}/performance/injuries/new`}
-            >
-              + Report injury
-            </Link>
+            <Link href={`/admin/clients/${clientUserId}/performance/injuries/new`}>+ Report injury</Link>
           </Button>
           <Button asChild>
-            <Link href={`/admin/clients/${clientUserId}/performance/log-test`}>
-              + Log test
-            </Link>
+            <Link href={`/admin/clients/${clientUserId}/performance/log-test`}>+ Log test</Link>
           </Button>
         </div>
       </div>
@@ -65,24 +54,16 @@ export function AthletePerformanceHub({
       <Tabs defaultValue={tab}>
         <TabsList>
           <TabsTrigger value="overview" asChild>
-            <Link href={`/admin/clients/${clientUserId}/performance?tab=overview`}>
-              Overview
-            </Link>
+            <Link href={`/admin/clients/${clientUserId}/performance?tab=overview`}>Overview</Link>
           </TabsTrigger>
           <TabsTrigger value="readiness" asChild>
-            <Link href={`/admin/clients/${clientUserId}/performance?tab=readiness`}>
-              Readiness
-            </Link>
+            <Link href={`/admin/clients/${clientUserId}/performance?tab=readiness`}>Readiness</Link>
           </TabsTrigger>
           <TabsTrigger value="injuries" asChild>
-            <Link href={`/admin/clients/${clientUserId}/performance?tab=injuries`}>
-              Injuries
-            </Link>
+            <Link href={`/admin/clients/${clientUserId}/performance?tab=injuries`}>Injuries</Link>
           </TabsTrigger>
           <TabsTrigger value="tests" asChild>
-            <Link href={`/admin/clients/${clientUserId}/performance?tab=tests`}>
-              Tests
-            </Link>
+            <Link href={`/admin/clients/${clientUserId}/performance?tab=tests`}>Tests</Link>
           </TabsTrigger>
         </TabsList>
 
@@ -93,9 +74,7 @@ export function AthletePerformanceHub({
           {recentTests[0] && (
             <PerformanceTestCard
               latest={recentTests[0]}
-              history={recentTests
-                .filter((t) => t.test_type === recentTests[0].test_type)
-                .slice(0, 10)}
+              history={recentTests.filter((t) => t.test_type === recentTests[0].test_type).slice(0, 10)}
               clientUserId={clientUserId}
             />
           )}
@@ -111,12 +90,7 @@ export function AthletePerformanceHub({
 
         <TabsContent value="tests" className="mt-6 grid gap-4 md:grid-cols-2">
           {Object.entries(grouped).map(([key, list]) => (
-            <PerformanceTestCard
-              key={key}
-              latest={list[0]}
-              history={list}
-              clientUserId={clientUserId}
-            />
+            <PerformanceTestCard key={key} latest={list[0]} history={list} clientUserId={clientUserId} />
           ))}
         </TabsContent>
       </Tabs>

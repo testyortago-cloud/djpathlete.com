@@ -40,9 +40,7 @@ describe("injuries DAL", () => {
   it("addMilestone appends to rehab_milestones array", async () => {
     const existing = {
       id: "i1",
-      rehab_milestones: [
-        { name: "ROM", target_date: null, completed_date: null, notes: null },
-      ],
+      rehab_milestones: [{ name: "ROM", target_date: null, completed_date: null, notes: null }],
     }
     supabaseMock.from.mockReturnValueOnce({
       select: () => ({

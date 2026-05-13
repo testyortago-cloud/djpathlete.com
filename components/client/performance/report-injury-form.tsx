@@ -9,13 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   BODY_REGIONS,
   BODY_REGION_LABELS,
@@ -51,17 +45,11 @@ export function ReportInjuryForm({ clientUserId }: { clientUserId?: string }) {
       const res = await fetch("/api/injuries", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(
-          clientUserId ? { ...values, client_user_id: clientUserId } : values,
-        ),
+        body: JSON.stringify(clientUserId ? { ...values, client_user_id: clientUserId } : values),
       })
       if (!res.ok) throw new Error("Save failed")
       toast.success("Injury reported")
-      router.push(
-        clientUserId
-          ? `/admin/clients/${clientUserId}/performance?tab=injuries`
-          : "/client/injuries",
-      )
+      router.push(clientUserId ? `/admin/clients/${clientUserId}/performance?tab=injuries` : "/client/injuries")
       router.refresh()
     } catch (e) {
       toast.error((e as Error).message)
@@ -77,9 +65,7 @@ export function ReportInjuryForm({ clientUserId }: { clientUserId?: string }) {
           <Label>Body region</Label>
           <Select
             value={form.watch("body_region")}
-            onValueChange={(v) =>
-              form.setValue("body_region", v as InjuryFormData["body_region"])
-            }
+            onValueChange={(v) => form.setValue("body_region", v as InjuryFormData["body_region"])}
           >
             <SelectTrigger>
               <SelectValue />
@@ -95,10 +81,7 @@ export function ReportInjuryForm({ clientUserId }: { clientUserId?: string }) {
         </div>
         <div className="grid gap-2">
           <Label>Side</Label>
-          <Select
-            value={form.watch("side")}
-            onValueChange={(v) => form.setValue("side", v as InjuryFormData["side"])}
-          >
+          <Select value={form.watch("side")} onValueChange={(v) => form.setValue("side", v as InjuryFormData["side"])}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
@@ -123,9 +106,7 @@ export function ReportInjuryForm({ clientUserId }: { clientUserId?: string }) {
           <Label>Severity</Label>
           <Select
             value={form.watch("severity")}
-            onValueChange={(v) =>
-              form.setValue("severity", v as InjuryFormData["severity"])
-            }
+            onValueChange={(v) => form.setValue("severity", v as InjuryFormData["severity"])}
           >
             <SelectTrigger>
               <SelectValue />
@@ -156,10 +137,7 @@ export function ReportInjuryForm({ clientUserId }: { clientUserId?: string }) {
 
       <div className="grid gap-2">
         <Label>Description</Label>
-        <Textarea
-          rows={3}
-          {...form.register("description", { setValueAs: (v) => (v === "" ? null : v) })}
-        />
+        <Textarea rows={3} {...form.register("description", { setValueAs: (v) => (v === "" ? null : v) })} />
       </div>
 
       <Button type="submit" disabled={submitting} className="w-full">

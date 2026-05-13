@@ -12,9 +12,7 @@ const VARIANT_CLASSES: Record<Variant, string> = {
 
 export function StatusPill({ status, label }: { status: string; label?: string }) {
   const variant = (
-    ["active", "recovering", "resolved", "pr", "neutral"].includes(status)
-      ? status
-      : "neutral"
+    ["active", "recovering", "resolved", "pr", "neutral"].includes(status) ? status : "neutral"
   ) as Variant
   return (
     <span

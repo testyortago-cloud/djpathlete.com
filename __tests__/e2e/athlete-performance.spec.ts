@@ -40,10 +40,7 @@ test.describe("Athlete Performance", () => {
   })
 
   test("admin can view performance hub for client", async ({ page }) => {
-    test.skip(
-      !ADMIN_EMAIL || !ADMIN_PASSWORD || !CLIENT_USER_ID,
-      "E2E admin creds or client id not set",
-    )
+    test.skip(!ADMIN_EMAIL || !ADMIN_PASSWORD || !CLIENT_USER_ID, "E2E admin creds or client id not set")
     await signIn(page, ADMIN_EMAIL!, ADMIN_PASSWORD!)
     await page.goto(`/admin/clients/${CLIENT_USER_ID}/performance`)
     await expect(page.getByRole("heading", { name: /performance/i })).toBeVisible()

@@ -5,10 +5,7 @@ function getClient() {
   return createServiceRoleClient()
 }
 
-export async function listByUser(
-  clientUserId: string,
-  opts: { status?: InjuryStatus } = {},
-) {
+export async function listByUser(clientUserId: string, opts: { status?: InjuryStatus } = {}) {
   const supabase = getClient()
   let q = supabase.from("injuries").select("*").eq("client_user_id", clientUserId)
   if (opts.status) q = q.eq("status", opts.status)
@@ -55,12 +52,7 @@ export async function update(
   patch: Partial<Omit<Injury, "id" | "client_user_id" | "days_lost" | "created_at" | "updated_at">>,
 ) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("injuries")
-    .update(patch)
-    .eq("id", id)
-    .select()
-    .single()
+  const { data, error } = await supabase.from("injuries").update(patch).eq("id", id).select().single()
   if (error) throw error
   return data as Injury
 }
@@ -92,12 +84,7 @@ export async function addMilestone(id: string, milestone: RehabMilestone) {
   return data as Injury
 }
 
-export async function completeMilestone(
-  id: string,
-  index: number,
-  completedDate: string,
-  notes?: string,
-) {
+export async function completeMilestone(id: string, index: number, completedDate: string, notes?: string) {
   const existing = await getById(id)
   if (!existing) throw new Error("injury not found")
   const next = existing.rehab_milestones.map((m, i) =>

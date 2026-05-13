@@ -3,10 +3,7 @@ import { auth } from "@/lib/auth"
 import { getTestHistory } from "@/lib/db/performance-tests"
 import { TEST_TYPES } from "@/lib/validators/performance-test"
 
-export async function GET(
-  _req: Request,
-  { params }: { params: Promise<{ id: string; testType: string }> },
-) {
+export async function GET(_req: Request, { params }: { params: Promise<{ id: string; testType: string }> }) {
   const session = await auth()
   if (!session?.user?.id) return NextResponse.json({ error: "unauthorized" }, { status: 401 })
   const { id, testType } = await params
