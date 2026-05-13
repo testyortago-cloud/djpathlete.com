@@ -1823,6 +1823,35 @@ export interface GoogleAdsAgentMemoSections {
   watch_list: string
 }
 
+export type GoogleAdsAgentMemoOutcomeStatus =
+  | "pending"
+  | "measured"
+  | "rolled_back"
+  | "preflight_failed"
+
+export interface GoogleAdsAgentMemoAction {
+  rank: number
+  tool: string
+  args: Record<string, unknown>
+  rationale: string
+  expected_metric: "CTR" | "CVR" | "CAC" | "ROAS" | "spend_efficiency" | "impression_share"
+  expected_direction: "increase" | "decrease"
+  confidence: "low" | "medium" | "high"
+  audit_confidence: "low" | "medium" | "high"
+  significance: "sig" | "underpowered" | "insufficient_data"
+  supporting_signals: string[]
+  status: "queued" | "applied" | "failed" | "rejected_by_guardrails"
+  recommendation_id: string | null
+  applied_at: string | null
+  clamped: boolean
+}
+
+export interface GoogleAdsAgentMemoGuardrailRejection {
+  rank: number
+  tool: string
+  reason: string
+}
+
 export interface GoogleAdsAgentMemo {
   id: string
   week_of: string
@@ -1833,6 +1862,11 @@ export interface GoogleAdsAgentMemo {
   tokens_used: number
   email_sent_at: string | null
   email_recipient: string | null
+  signals_summary: Record<string, unknown> | null
+  actions: GoogleAdsAgentMemoAction[]
+  guardrail_rejections: GoogleAdsAgentMemoGuardrailRejection[]
+  outcome_status: GoogleAdsAgentMemoOutcomeStatus
+  outcome_metrics: Record<string, unknown> | null
   created_at: string
   updated_at: string
 }

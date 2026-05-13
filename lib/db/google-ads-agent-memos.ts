@@ -6,6 +6,9 @@ import type {
   GoogleAdsAgentMemo,
   GoogleAdsAgentMemoSections,
   GoogleAdsAgentMemoSource,
+  GoogleAdsAgentMemoAction,
+  GoogleAdsAgentMemoGuardrailRejection,
+  GoogleAdsAgentMemoOutcomeStatus,
 } from "@/types/database"
 
 function getClient() {
@@ -77,4 +80,45 @@ export async function setAgentMemoEmailSent(
     })
     .eq("id", id)
   if (error) throw error
+}
+
+export interface UpdateAgentMemoLifecycleInput {
+  signals_summary: Record<string, unknown> | null
+  actions: GoogleAdsAgentMemoAction[]
+  guardrail_rejections: GoogleAdsAgentMemoGuardrailRejection[]
+  outcome_status: GoogleAdsAgentMemoOutcomeStatus
+  outcome_metrics?: Record<string, unknown> | null
+}
+
+export async function updateAgentMemoLifecycle(
+  id: string,
+  input: UpdateAgentMemoLifecycleInput,
+): Promise<void> {
+  const supabase = getClient()
+  const { error } = await supabase
+    .from("google_ads_agent_memos")
+    .update({
+      signals_summary: input.signals_summary,
+      actions: input.actions,
+      guardrail_rejections: input.guardrail_rejections,
+      outcome_status: input.outcome_status,
+      outcome_metrics: input.outcome_metrics ?? null,
+    })
+    .eq("id", id)
+  if (error) throw error
+}
+
+export async function listMemosPendingOutcomes(
+  olderThanDays: number = 14,
+): Promise<GoogleAdsAgentMemo[]> {
+  const supabase = getClient()
+  const cutoff = new Date(Date.now() - olderThanDays * 86_400_000).toISOString()
+  const { data, error } = await supabase
+    .from("google_ads_agent_memos")
+    .select("*")
+    .eq("outcome_status", "pending")
+    .lt("created_at", cutoff)
+    .order("created_at", { ascending: true })
+  if (error) throw error
+  return (data ?? []) as GoogleAdsAgentMemo[]
 }
