@@ -5,11 +5,7 @@ function getClient() {
   return createServiceRoleClient()
 }
 
-export async function getByUserAndDateAndType(
-  clientUserId: string,
-  date: string,
-  sessionType: SessionType,
-) {
+export async function getByUserAndDateAndType(clientUserId: string, date: string, sessionType: SessionType) {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("training_sessions")
@@ -38,29 +34,19 @@ export async function listByUser(
 
 export async function getById(id: string) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("training_sessions")
-    .select("*")
-    .eq("id", id)
-    .single()
+  const { data, error } = await supabase.from("training_sessions").select("*").eq("id", id).single()
   if (error) return null
   return data as TrainingSession
 }
 
 export async function upsert(
   clientUserId: string,
-  payload: Omit<
-    TrainingSession,
-    "id" | "client_user_id" | "session_load" | "created_at" | "updated_at"
-  >,
+  payload: Omit<TrainingSession, "id" | "client_user_id" | "session_load" | "created_at" | "updated_at">,
 ) {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("training_sessions")
-    .upsert(
-      { client_user_id: clientUserId, ...payload },
-      { onConflict: "client_user_id,date,session_type" },
-    )
+    .upsert({ client_user_id: clientUserId, ...payload }, { onConflict: "client_user_id,date,session_type" })
     .select()
     .single()
   if (error) throw error
@@ -69,20 +55,10 @@ export async function upsert(
 
 export async function update(
   id: string,
-  patch: Partial<
-    Omit<
-      TrainingSession,
-      "id" | "client_user_id" | "session_load" | "created_at" | "updated_at"
-    >
-  >,
+  patch: Partial<Omit<TrainingSession, "id" | "client_user_id" | "session_load" | "created_at" | "updated_at">>,
 ) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("training_sessions")
-    .update(patch)
-    .eq("id", id)
-    .select()
-    .single()
+  const { data, error } = await supabase.from("training_sessions").update(patch).eq("id", id).select().single()
   if (error) throw error
   return data as TrainingSession
 }

@@ -44,9 +44,7 @@ export function RiskFlagsList({ flags }: { flags: RiskFlag[] }) {
   if (flags.length === 0) {
     return (
       <Card>
-        <CardContent className="text-muted-foreground py-12 text-center">
-          No risk flags.
-        </CardContent>
+        <CardContent className="text-muted-foreground py-12 text-center">No risk flags.</CardContent>
       </Card>
     )
   }
@@ -59,9 +57,7 @@ export function RiskFlagsList({ flags }: { flags: RiskFlag[] }) {
             <li key={f.id} className="flex items-start justify-between gap-4 p-4">
               <div className="flex-1">
                 <div className="mb-1 flex items-center gap-2">
-                  <span
-                    className={`rounded px-2 py-0.5 text-xs font-bold ${SEVERITY_BG[f.severity]}`}
-                  >
+                  <span className={`rounded px-2 py-0.5 text-xs font-bold ${SEVERITY_BG[f.severity]}`}>
                     {SEVERITY_LABEL[f.severity]}
                   </span>
                   <span className="text-muted-foreground text-xs">
@@ -80,12 +76,7 @@ export function RiskFlagsList({ flags }: { flags: RiskFlag[] }) {
                   >
                     Ack
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={busy === f.id}
-                    onClick={() => actOn(f.id, "dismiss")}
-                  >
+                  <Button size="sm" variant="outline" disabled={busy === f.id} onClick={() => actOn(f.id, "dismiss")}>
                     Dismiss
                   </Button>
                 </div>

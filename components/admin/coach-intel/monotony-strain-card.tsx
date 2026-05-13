@@ -1,19 +1,9 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { MONOTONY_HIGH } from "@/lib/coach-intel/thresholds"
 
-export function MonotonyStrainCard({
-  monotony,
-  strain,
-}: {
-  monotony: number | null
-  strain: number | null
-}) {
+export function MonotonyStrainCard({ monotony, strain }: { monotony: number | null; strain: number | null }) {
   const colorClass =
-    monotony === null
-      ? "text-muted-foreground"
-      : monotony > MONOTONY_HIGH
-        ? "text-error"
-        : "text-success"
+    monotony === null ? "text-muted-foreground" : monotony > MONOTONY_HIGH ? "text-error" : "text-success"
   return (
     <Card>
       <CardHeader>
@@ -29,9 +19,7 @@ export function MonotonyStrainCard({
         </div>
         <div>
           <p className="text-muted-foreground text-xs">Strain</p>
-          <p className="font-heading text-3xl font-bold">
-            {strain !== null ? Math.round(strain) : "—"}
-          </p>
+          <p className="font-heading text-3xl font-bold">{strain !== null ? Math.round(strain) : "—"}</p>
           <p className="text-muted-foreground text-xs">load × monotony</p>
         </div>
       </CardContent>

@@ -1,14 +1,6 @@
 "use client"
 
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  CartesianGrid,
-} from "recharts"
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { SESSION_TYPE_LABELS } from "@/lib/validators/training-session"
 import type { TrainingSession } from "@/types/database"
@@ -17,9 +9,7 @@ export function MyTrainingHistory({ sessions }: { sessions: TrainingSession[] })
   if (sessions.length === 0) {
     return (
       <Card>
-        <CardContent className="text-muted-foreground py-12 text-center">
-          No training sessions logged yet.
-        </CardContent>
+        <CardContent className="text-muted-foreground py-12 text-center">No training sessions logged yet.</CardContent>
       </Card>
     )
   }

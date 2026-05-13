@@ -29,10 +29,7 @@ export async function getOpenByUser(clientUserId: string) {
   return listByUser(clientUserId, { status: "open" })
 }
 
-export async function getCountByUser(
-  clientUserId: string,
-  status: RiskFlagStatus = "open",
-) {
+export async function getCountByUser(clientUserId: string, status: RiskFlagStatus = "open") {
   const supabase = getClient()
   const { count, error } = await supabase
     .from("risk_flags")

@@ -1,13 +1,6 @@
 import { z } from "zod"
 
-export const SESSION_TYPES = [
-  "gym",
-  "sport",
-  "field",
-  "conditioning",
-  "mobility",
-  "other",
-] as const
+export const SESSION_TYPES = ["gym", "sport", "field", "conditioning", "mobility", "other"] as const
 
 export const SESSION_TYPE_LABELS: Record<(typeof SESSION_TYPES)[number], string> = {
   gym: "Gym",

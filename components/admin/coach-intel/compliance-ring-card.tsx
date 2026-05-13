@@ -12,8 +12,7 @@ export function ComplianceRingCard({
   completedCount: number
   pct: number
 }) {
-  const color =
-    pct >= 80 ? "var(--success)" : pct >= 60 ? "var(--warning)" : "var(--error)"
+  const color = pct >= 80 ? "var(--success)" : pct >= 60 ? "var(--warning)" : "var(--error)"
   return (
     <Card>
       <CardHeader>

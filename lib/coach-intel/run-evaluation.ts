@@ -4,13 +4,7 @@ import { createIfNew, closeStaleByType } from "@/lib/db/risk-flags"
 import { evaluateRules } from "./evaluate-rules"
 import type { RiskFlag, RiskFlagType } from "@/types/database"
 
-const ALL_FLAG_TYPES: RiskFlagType[] = [
-  "load_spike",
-  "fatigue",
-  "overtraining",
-  "high_strain",
-  "rpe_creep",
-]
+const ALL_FLAG_TYPES: RiskFlagType[] = ["load_spike", "fatigue", "overtraining", "high_strain", "rpe_creep"]
 
 function addDays(iso: string, days: number): string {
   const d = new Date(iso + "T00:00:00Z")
@@ -23,10 +17,7 @@ export interface RunEvaluationResult {
   closedTypes: RiskFlagType[]
 }
 
-export async function runEvaluation(
-  clientUserId: string,
-  asOf: string,
-): Promise<RunEvaluationResult> {
+export async function runEvaluation(clientUserId: string, asOf: string): Promise<RunEvaluationResult> {
   const from = addDays(asOf, -35)
 
   const [sessions, readiness] = await Promise.all([

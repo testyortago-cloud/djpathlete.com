@@ -30,10 +30,7 @@ describe("runEvaluation", () => {
 
     const result = await runEvaluation("u1", "2026-05-13")
 
-    expect(rfDal.createIfNew).toHaveBeenCalledWith(
-      "u1",
-      expect.objectContaining({ flag_type: "rpe_creep" }),
-    )
+    expect(rfDal.createIfNew).toHaveBeenCalledWith("u1", expect.objectContaining({ flag_type: "rpe_creep" }))
     expect(result.created.length).toBeGreaterThan(0)
   })
 

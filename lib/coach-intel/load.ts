@@ -25,11 +25,7 @@ function dateRange(from: string, to: string): string[] {
   return out
 }
 
-export function dailyLoads(
-  sessions: SessionInput[],
-  from: string,
-  to: string,
-): DailyLoad[] {
+export function dailyLoads(sessions: SessionInput[], from: string, to: string): DailyLoad[] {
   const sums = new Map<string, number>()
   for (const s of sessions) {
     if (s.date >= from && s.date <= to) {
@@ -39,10 +35,7 @@ export function dailyLoads(
   return dateRange(from, to).map((d) => ({ date: d, load: sums.get(d) ?? 0 }))
 }
 
-export function rollingAverage(
-  daily: DailyLoad[],
-  windowDays: number,
-): RollingPoint[] {
+export function rollingAverage(daily: DailyLoad[], windowDays: number): RollingPoint[] {
   return daily.map((_, i) => {
     const start = Math.max(0, i - windowDays + 1)
     const slice = daily.slice(start, i + 1)

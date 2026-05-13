@@ -1,11 +1,5 @@
 import { describe, it, expect } from "vitest"
-import {
-  dailyLoads,
-  rollingAverage,
-  acuteLoad,
-  chronicLoad,
-  acwr,
-} from "@/lib/coach-intel/load"
+import { dailyLoads, rollingAverage, acuteLoad, chronicLoad, acwr } from "@/lib/coach-intel/load"
 
 const sessions = [
   { date: "2026-05-10", session_load: 200 },

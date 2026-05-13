@@ -9,12 +9,7 @@ export function WeekOverWeekCard({
   previous: { totalLoad: number }
   deltaPct: number | null
 }) {
-  const colorClass =
-    deltaPct === null
-      ? "text-muted-foreground"
-      : deltaPct > 0
-        ? "text-success"
-        : "text-error"
+  const colorClass = deltaPct === null ? "text-muted-foreground" : deltaPct > 0 ? "text-success" : "text-error"
   return (
     <Card>
       <CardHeader>
@@ -32,9 +27,7 @@ export function WeekOverWeekCard({
         <div className="col-span-2">
           <p className="text-muted-foreground text-xs">Δ</p>
           <p className={`font-heading text-2xl font-bold ${colorClass}`}>
-            {deltaPct !== null
-              ? `${deltaPct > 0 ? "+" : ""}${deltaPct.toFixed(1)}%`
-              : "—"}
+            {deltaPct !== null ? `${deltaPct > 0 ? "+" : ""}${deltaPct.toFixed(1)}%` : "—"}
           </p>
         </div>
       </CardContent>

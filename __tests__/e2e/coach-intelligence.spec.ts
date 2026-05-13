@@ -24,10 +24,7 @@ test.describe("Coach Intelligence", () => {
   })
 
   test("admin sees Load and Alerts tabs on the hub", async ({ page }) => {
-    test.skip(
-      !ADMIN_EMAIL || !ADMIN_PASSWORD || !CLIENT_USER_ID,
-      "E2E admin creds or client id not set",
-    )
+    test.skip(!ADMIN_EMAIL || !ADMIN_PASSWORD || !CLIENT_USER_ID, "E2E admin creds or client id not set")
     await signIn(page, ADMIN_EMAIL!, ADMIN_PASSWORD!)
     await page.goto(`/admin/clients/${CLIENT_USER_ID}/performance`)
     await expect(page.getByRole("tab", { name: /load/i })).toBeVisible()

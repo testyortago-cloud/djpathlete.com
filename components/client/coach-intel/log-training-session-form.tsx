@@ -10,13 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   SESSION_TYPES,
   SESSION_TYPE_LABELS,
@@ -54,9 +48,7 @@ export function LogTrainingSessionForm({
       const res = await fetch("/api/training-sessions", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(
-          clientUserId ? { ...values, client_user_id: clientUserId } : values,
-        ),
+        body: JSON.stringify(clientUserId ? { ...values, client_user_id: clientUserId } : values),
       })
       if (!res.ok) throw new Error("Save failed")
       toast.success("Session logged")
@@ -79,9 +71,7 @@ export function LogTrainingSessionForm({
           <Label>Session type</Label>
           <Select
             value={form.watch("session_type")}
-            onValueChange={(v) =>
-              form.setValue("session_type", v as TrainingSessionFormData["session_type"])
-            }
+            onValueChange={(v) => form.setValue("session_type", v as TrainingSessionFormData["session_type"])}
           >
             <SelectTrigger>
               <SelectValue />
@@ -112,19 +102,12 @@ export function LogTrainingSessionForm({
 
       <div className="grid gap-2">
         <Label>Duration (minutes)</Label>
-        <Input
-          type="number"
-          step="1"
-          {...form.register("duration_min", { valueAsNumber: true })}
-        />
+        <Input type="number" step="1" {...form.register("duration_min", { valueAsNumber: true })} />
       </div>
 
       <div className="grid gap-2">
         <Label>Notes</Label>
-        <Textarea
-          rows={3}
-          {...form.register("notes", { setValueAs: (v) => (v === "" ? null : v) })}
-        />
+        <Textarea rows={3} {...form.register("notes", { setValueAs: (v) => (v === "" ? null : v) })} />
       </div>
 
       <Button type="submit" disabled={submitting} className="w-full">

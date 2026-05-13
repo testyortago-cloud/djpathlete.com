@@ -1,21 +1,8 @@
 "use client"
 
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  CartesianGrid,
-  ReferenceArea,
-} from "recharts"
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceArea } from "recharts"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import {
-  ACWR_SWEET_SPOT_LOW,
-  ACWR_SWEET_SPOT_HIGH,
-  ACWR_DANGER,
-} from "@/lib/coach-intel/thresholds"
+import { ACWR_SWEET_SPOT_LOW, ACWR_SWEET_SPOT_HIGH, ACWR_DANGER } from "@/lib/coach-intel/thresholds"
 
 export function ACWRChart({
   acute,
@@ -47,20 +34,8 @@ export function ACWRChart({
                 fill="var(--success)"
                 fillOpacity={0.08}
               />
-              <ReferenceArea
-                y1={ACWR_DANGER}
-                y2={2.5}
-                fill="var(--error)"
-                fillOpacity={0.08}
-              />
-              <Line
-                type="monotone"
-                dataKey="acwr"
-                stroke="var(--primary)"
-                strokeWidth={2}
-                dot
-                connectNulls
-              />
+              <ReferenceArea y1={ACWR_DANGER} y2={2.5} fill="var(--error)" fillOpacity={0.08} />
+              <Line type="monotone" dataKey="acwr" stroke="var(--primary)" strokeWidth={2} dot connectNulls />
             </LineChart>
           </ResponsiveContainer>
         </div>
