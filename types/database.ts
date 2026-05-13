@@ -1997,3 +1997,27 @@ export interface SeoAgentMemo {
   created_at: string       // ISO string
   measured_at: string | null
 }
+
+// ============================================
+// Athlete Performance Core (added 2026-05-13)
+// ============================================
+
+export interface DailyReadiness {
+  id: string
+  client_user_id: string
+  date: string // YYYY-MM-DD
+  sleep_hours: number | null
+  sleep_quality: number // 1-5
+  soreness_overall: number // 1-5
+  soreness_by_region: Record<string, number> // body_region key -> 1-5
+  fatigue: number // 1-5
+  mood: number // 1-5
+  stress: number // 1-5
+  hydration: number // 1-5
+  resting_hr: number | null
+  hrv_ms: number | null
+  notes: string | null
+  readiness_score: number // 0-100, generated
+  created_at: string
+  updated_at: string
+}
