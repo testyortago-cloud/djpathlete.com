@@ -148,6 +148,28 @@ export const blogRefresh = onDocumentCreated(
   },
 )
 
+// ─── Internal Link Sweep ────────────────────────────────────────────────────
+// Triggered when a new ai_jobs doc is created with type "internal_link_sweep"
+// For a target post, iterates candidate posts, asks Claude per-candidate for
+// a natural anchor, splices up to 2 successful inbound link insertions.
+
+export const internalLinkSweep = onDocumentCreated(
+  {
+    document: "ai_jobs/{jobId}",
+    timeoutSeconds: 540,
+    memory: "1GiB",
+    region: "us-central1",
+    secrets: allSecrets,
+  },
+  async (event) => {
+    const data = event.data?.data()
+    if (!data || data.type !== "internal_link_sweep") return
+
+    const { handleInternalLinkSweep } = await import("./internal-link-sweep.js")
+    await handleInternalLinkSweep(event.params.jobId)
+  },
+)
+
 // --- Blog Image Generation ---
 // Triggered when a new ai_jobs doc is created with type "blog_image_generation"
 // Generates hero + inline images via fal.ai, mirrors to Supabase Storage,
