@@ -23,6 +23,7 @@ import { MonotonyStrainCard } from "@/components/admin/coach-intel/monotony-stra
 import { WeekOverWeekCard } from "@/components/admin/coach-intel/week-over-week-card"
 import { RiskFlagsCard } from "@/components/admin/coach-intel/risk-flags-card"
 import { RiskFlagsList } from "@/components/admin/coach-intel/risk-flags-list"
+import { BodyMapDisplay } from "@/components/shared/body-map/body-map-display"
 
 export interface CoachIntelSummary {
   acuteLoad: number
@@ -180,7 +181,8 @@ export function AthletePerformanceHub({
           <RiskFlagsList flags={coachIntel.openFlags} />
         </TabsContent>
 
-        <TabsContent value="injuries" className="mt-6">
+        <TabsContent value="injuries" className="mt-6 space-y-6">
+          <BodyMapDisplay injuries={allInjuries} clientUserId={clientUserId} />
           <InjuryTimelineList injuries={allInjuries} clientUserId={clientUserId} />
         </TabsContent>
 

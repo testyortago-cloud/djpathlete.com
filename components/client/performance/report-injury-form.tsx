@@ -10,10 +10,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { BodyMapPicker } from "@/components/shared/body-map/body-map-picker"
 import {
-  BODY_REGIONS,
-  BODY_REGION_LABELS,
-  INJURY_SIDES,
   INJURY_SEVERITIES,
   injuryFormSchema,
   type InjuryFormData,
@@ -60,40 +58,18 @@ export function ReportInjuryForm({ clientUserId }: { clientUserId?: string }) {
 
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-      <div className="grid grid-cols-2 gap-4">
-        <div className="grid gap-2">
-          <Label>Body region</Label>
-          <Select
-            value={form.watch("body_region")}
-            onValueChange={(v) => form.setValue("body_region", v as InjuryFormData["body_region"])}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {BODY_REGIONS.map((r) => (
-                <SelectItem key={r} value={r}>
-                  {BODY_REGION_LABELS[r]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="grid gap-2">
-          <Label>Side</Label>
-          <Select value={form.watch("side")} onValueChange={(v) => form.setValue("side", v as InjuryFormData["side"])}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {INJURY_SIDES.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {s}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+      <div className="grid gap-2">
+        <Label>Body region</Label>
+        <BodyMapPicker
+          value={{
+            region: form.watch("body_region") ?? null,
+            side: form.watch("side"),
+          }}
+          onChange={({ region, side }) => {
+            if (region) form.setValue("body_region", region)
+            form.setValue("side", side)
+          }}
+        />
       </div>
 
       <div className="grid gap-2">
