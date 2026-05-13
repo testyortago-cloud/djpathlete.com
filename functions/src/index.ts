@@ -170,6 +170,27 @@ export const internalLinkSweep = onDocumentCreated(
   },
 )
 
+// ─── SEO Agent Run ──────────────────────────────────────────────────────────
+// Triggered when a new ai_jobs doc is created with type "seo_agent_run".
+// Runs the four-step orchestration (gather → reason → execute → remember).
+
+export const seoAgent = onDocumentCreated(
+  {
+    document: "ai_jobs/{jobId}",
+    timeoutSeconds: 540,
+    memory: "1GiB",
+    region: "us-central1",
+    secrets: allSecrets,
+  },
+  async (event) => {
+    const data = event.data?.data()
+    if (!data || data.type !== "seo_agent_run") return
+
+    const { handleSeoAgent } = await import("./seo-agent.js")
+    await handleSeoAgent(event.params.jobId)
+  },
+)
+
 // --- Blog Image Generation ---
 // Triggered when a new ai_jobs doc is created with type "blog_image_generation"
 // Generates hero + inline images via fal.ai, mirrors to Supabase Storage,
@@ -935,6 +956,40 @@ export const tavilyTrendingCron = onSchedule(
       console.log("[tavilyTrendingCron]", res.status, body)
     } catch (err) {
       console.error("[tavilyTrendingCron] failed:", err)
+    }
+  },
+)
+
+// ─── SEO Agent Weekly (Sun 14:00 UTC) ───────────────────────────────────────
+// Calls /api/admin/internal/seo-agent which enqueues a seo_agent_run ai_job.
+// Subject to automation_paused + cron_seo_agent_enabled gates inside the route.
+
+export const seoAgentCron = onSchedule(
+  {
+    schedule: "0 14 * * 0",
+    timeZone: "UTC",
+    timeoutSeconds: 120,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [internalCronToken, appUrl],
+  },
+  async () => {
+    const baseUrl = process.env.APP_URL
+    const token = process.env.INTERNAL_CRON_TOKEN
+    if (!baseUrl || !token) {
+      console.error("[seoAgentCron] APP_URL or INTERNAL_CRON_TOKEN missing — abort")
+      return
+    }
+    try {
+      const res = await fetch(`${baseUrl}/api/admin/internal/seo-agent`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: "{}",
+      })
+      const body = await res.json().catch(() => ({}))
+      console.log("[seoAgentCron]", res.status, body)
+    } catch (err) {
+      console.error("[seoAgentCron] failed:", err)
     }
   },
 )
