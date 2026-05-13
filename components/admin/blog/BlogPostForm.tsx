@@ -13,6 +13,7 @@ import type { SeoMetadata } from "@/types/database"
 import { CoverImageUpload } from "./CoverImageUpload"
 import { BlogGenerateDialog } from "./BlogGenerateDialog"
 import { ResearchPanel, type TavilyResearchBrief } from "./ResearchPanel"
+import { RefreshPostButton } from "./RefreshPostButton"
 import { cn } from "@/lib/utils"
 import type { BlogPost } from "@/types/database"
 import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
@@ -243,6 +244,13 @@ export function BlogPostForm({ post, authorId, initialPrompt }: BlogPostFormProp
           Back to Blog
         </Link>
         <div className="flex items-center gap-2">
+          {post?.id && (
+            <RefreshPostButton
+              postId={post.id}
+              postTitle={post.title}
+              refreshCount={post.refresh_count}
+            />
+          )}
           <button
             type="button"
             onClick={() => setGenerateOpen(true)}
