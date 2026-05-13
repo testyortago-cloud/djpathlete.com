@@ -10,6 +10,7 @@ import type {
   AdsDerivedSignals,
   AdsLearningLayer,
   AdsRawInputs,
+  AdsSignals,
   PreflightResult,
 } from "./types"
 
@@ -218,4 +219,40 @@ export function deriveLearningLayer(
     prior_actions_that_worked,
     prior_actions_that_failed,
   }
+}
+
+export interface GatherAdsSignalsDeps extends RawInputDeps {
+  fetchPreflightInput: () => Promise<PreflightInput>
+  fetchCampaignToLandingPageMap: () => Promise<Record<string, string>>
+}
+
+export async function gatherAdsSignals(deps: GatherAdsSignalsDeps): Promise<AdsSignals> {
+  const generated_at = new Date().toISOString()
+  const preflightInput = await deps.fetchPreflightInput()
+  const preflight = await runPreflight(preflightInput)
+  if (!preflight.ok) {
+    return {
+      generated_at,
+      preflight,
+      raw: null,
+      derived: null,
+      learning: null,
+      gaps: ["Preflight failed; raw, derived, and learning skipped."],
+    }
+  }
+  const gaps: string[] = []
+  let raw: AdsRawInputs | null = null
+  try {
+    raw = await gatherRawInputs(deps)
+  } catch (e) {
+    gaps.push(`Raw input gather failed: ${(e as Error).message}`)
+  }
+  let derived = null
+  let learning = null
+  if (raw) {
+    const map = await deps.fetchCampaignToLandingPageMap().catch(() => ({}))
+    derived = deriveCrossChannelSignals(raw, map)
+    learning = deriveLearningLayer(raw)
+  }
+  return { generated_at, preflight, raw, derived, learning, gaps }
 }
