@@ -2055,3 +2055,44 @@ export interface Injury {
   created_at: string
   updated_at: string
 }
+
+export type TestType =
+  | "drop_jump" | "cmj" | "squat_jump" | "broad_jump"
+  | "sprint_10m" | "sprint_20m" | "sprint_40m" | "sprint_5_10_5" | "t_test" | "beep_test"
+  | "sit_reach"
+  | "bench_press_1rm" | "back_squat_1rm" | "deadlift_1rm"
+  | "pull_up_max" | "push_up_max" | "plank_hold"
+  | "custom"
+
+export type BestMethod = "highest" | "lowest" | "mean" | "median"
+
+export interface PerformanceTest {
+  id: string
+  client_user_id: string
+  created_by: string
+  test_type: TestType
+  custom_name: string | null
+  result_value: number
+  result_unit: string
+  trial_values: number[] | null
+  best_method: BestMethod
+  test_date: string
+  body_weight_kg: number | null
+  notes: string | null
+  video_url: string | null
+  is_pr: boolean
+  pct_change_from_prev: number | null
+  created_at: string
+  updated_at: string
+}
+
+export interface PerformanceTestPR {
+  client_user_id: string
+  test_type: TestType
+  custom_name: string | null
+  result_value: number
+  result_unit: string
+  test_date: string
+  test_id: string
+  best_method: BestMethod
+}
