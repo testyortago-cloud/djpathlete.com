@@ -1,7 +1,13 @@
 // POST /api/admin/internal/gsc-sync
-// Hit nightly by the gscSyncCron Firebase scheduled function. Pulls 3 days
-// of GSC data (yesterday, 2 days ago, 3 days ago) and upserts them into
-// gsc_query_daily. Guarded by INTERNAL_CRON_TOKEN + isCronSkipped.
+// Hit nightly by the gscSyncCron Firebase scheduled function. Pulls a
+// 7-day rolling window of GSC data and upserts into gsc_query_daily.
+// Guarded by INTERNAL_CRON_TOKEN + isCronSkipped.
+//
+// Why 7 days? GSC has a 2-4 day reporting lag: data for "yesterday" is
+// usually empty and finalized only after ~3 days. A 7-day window
+// (a) catches data as it gets finalized, and (b) re-fetches partial days
+// to pick up Google's retroactive corrections. Idempotent via the
+// composite (date, query, page) PK on gsc_query_daily.
 
 import { NextRequest, NextResponse } from "next/server"
 import { isCronSkipped, setSetting } from "@/lib/db/system-settings"
@@ -10,7 +16,7 @@ import { upsertGscRows } from "@/lib/db/gsc-query-daily"
 import { searchAnalyticsQuery, OAuthBrokenError } from "@/lib/gsc/client"
 
 const GSC_ROW_LIMIT = 25000
-const SYNC_WINDOW_DAYS = 3
+const SYNC_WINDOW_DAYS = 7
 
 function isoDateNDaysAgo(n: number): string {
   const d = new Date()
