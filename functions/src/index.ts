@@ -126,6 +126,28 @@ export const blogGeneration = onDocumentCreated(
   },
 )
 
+// ─── Blog Refresh ───────────────────────────────────────────────────────────
+// Triggered when a new ai_jobs doc is created with type "blog_refresh"
+// Loads existing blog_posts row, regenerates with iteration context, UPDATEs
+// the row in place, forces status="draft" for coach review.
+
+export const blogRefresh = onDocumentCreated(
+  {
+    document: "ai_jobs/{jobId}",
+    timeoutSeconds: 540,
+    memory: "1GiB",
+    region: "us-central1",
+    secrets: allSecrets,
+  },
+  async (event) => {
+    const data = event.data?.data()
+    if (!data || data.type !== "blog_refresh") return
+
+    const { handleBlogRefresh } = await import("./blog-refresh.js")
+    await handleBlogRefresh(event.params.jobId)
+  },
+)
+
 // --- Blog Image Generation ---
 // Triggered when a new ai_jobs doc is created with type "blog_image_generation"
 // Generates hero + inline images via fal.ai, mirrors to Supabase Storage,
