@@ -47,10 +47,32 @@ function checkDataVolume(action: AdsAction, signals: AdsSignals): string | null 
   return null
 }
 
+function clampBudgetShift(action: AdsAction): { action: AdsAction; clamped: boolean } {
+  if (action.tool !== "propose_budget_shift") return { action, clamped: false }
+  const args = { ...action.args } as Record<string, unknown>
+  const raw = args.delta_pct
+  if (typeof raw !== "number") return { action, clamped: false }
+  const max = T.MAX_BUDGET_SHIFT_PCT
+  const clampedVal = Math.max(-max, Math.min(max, raw))
+  args.delta_pct = clampedVal
+  return { action: { ...action, args }, clamped: clampedVal !== raw }
+}
+
+function checkPauseProtection(action: AdsAction, signals: AdsSignals): string | null {
+  if (action.tool !== "propose_campaign_pause") return null
+  const campaign = findCampaign(signals, actionCampaignId(action))
+  if (!campaign) return null
+  const conv7d = campaign.last_7d_conversions ?? 0
+  if (conv7d >= T.PAUSE_PROTECTION_MIN_CONVERSIONS) {
+    return `Campaign ${campaign.id} drove ${conv7d} conversion(s) in last 7 days — pause-protected.`
+  }
+  return null
+}
+
 const HARD_RULES: Array<(a: AdsAction, s: AdsSignals) => string | null> = [
   checkCampaignAge,
   checkDataVolume,
-  // Additional hard rules added in later tasks
+  checkPauseProtection,
 ]
 
 function defaultAnnotations(): GuardrailAnnotations {
@@ -63,9 +85,14 @@ function defaultAnnotations(): GuardrailAnnotations {
 }
 
 export function applyGuardrails(action: AdsAction, signals: AdsSignals): GuardrailResult {
+  const { action: clampedAction, clamped } = clampBudgetShift(action)
   for (const rule of HARD_RULES) {
-    const reason = rule(action, signals)
+    const reason = rule(clampedAction, signals)
     if (reason) return { kind: "reject", reason }
   }
-  return { kind: "pass", action, annotations: defaultAnnotations() }
+  return {
+    kind: "pass",
+    action: clampedAction,
+    annotations: { ...defaultAnnotations(), clamped },
+  }
 }

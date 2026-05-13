@@ -95,3 +95,65 @@ describe("guardrails — data volume", () => {
     if (result.kind === "reject") expect(result.reason).toMatch(/insufficient.+conversion/i)
   })
 })
+
+describe("guardrails — budget clamp", () => {
+  it("clamps a 50% budget shift to ±20%", () => {
+    const action = makeAction({
+      tool: "propose_budget_shift",
+      args: { from_campaign_id: "c1", to_campaign_id: "c1", delta_pct: 50 },
+    })
+    const result = applyGuardrails(action, makeSignals())
+    expect(result.kind).toBe("pass")
+    if (result.kind === "pass") {
+      expect(result.action.args.delta_pct).toBe(20)
+      expect(result.annotations.clamped).toBe(true)
+    }
+  })
+
+  it("clamps a -75% budget shift to -20%", () => {
+    const action = makeAction({
+      tool: "propose_budget_shift",
+      args: { from_campaign_id: "c1", to_campaign_id: "c1", delta_pct: -75 },
+    })
+    const result = applyGuardrails(action, makeSignals())
+    if (result.kind === "pass") {
+      expect(result.action.args.delta_pct).toBe(-20)
+      expect(result.annotations.clamped).toBe(true)
+    }
+  })
+
+  it("leaves a 10% budget shift unchanged", () => {
+    const action = makeAction({
+      tool: "propose_budget_shift",
+      args: { from_campaign_id: "c1", to_campaign_id: "c1", delta_pct: 10 },
+    })
+    const result = applyGuardrails(action, makeSignals())
+    if (result.kind === "pass") {
+      expect(result.action.args.delta_pct).toBe(10)
+      expect(result.annotations.clamped).toBe(false)
+    }
+  })
+})
+
+describe("guardrails — pause protection", () => {
+  it("rejects propose_campaign_pause if campaign drove ≥1 conversion in last 7 days", () => {
+    const signals = makeSignals()
+    signals.raw!.campaigns[0].last_7d_conversions = 2
+    const result = applyGuardrails(
+      makeAction({ tool: "propose_campaign_pause", args: { campaign_id: "c1", reason: "x" } }),
+      signals,
+    )
+    expect(result.kind).toBe("reject")
+    if (result.kind === "reject") expect(result.reason).toMatch(/conversion.+last 7 days/i)
+  })
+
+  it("allows propose_campaign_pause if campaign drove 0 conversions in last 7 days", () => {
+    const signals = makeSignals()
+    signals.raw!.campaigns[0].last_7d_conversions = 0
+    const result = applyGuardrails(
+      makeAction({ tool: "propose_campaign_pause", args: { campaign_id: "c1", reason: "x" } }),
+      signals,
+    )
+    expect(result.kind).toBe("pass")
+  })
+})
