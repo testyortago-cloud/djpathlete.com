@@ -234,8 +234,10 @@ export async function gatherOrphanPostIds(supabase: SupabaseClient): Promise<str
   const orphans: string[] = []
   for (const row of rows) {
     const needle = `/blog/${row.slug}`
-    // Strip out self-references by removing this row's own content.
-    const otherContent = combinedContent.replace(row.content ?? "", "")
+    // split/join globally removes ALL occurrences of this post's content. Safer
+    // than .replace() (first-match only) when posts share identical content blocks.
+    const ownContent = row.content ?? ""
+    const otherContent = ownContent ? combinedContent.split(ownContent).join("") : combinedContent
     if (!otherContent.includes(needle)) {
       orphans.push(row.id)
     }
