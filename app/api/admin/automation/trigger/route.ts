@@ -23,6 +23,7 @@ const BodySchema = z.object({
 // Map: catalog job name → internal route path.
 const VERCEL_ROUTE_JOBS: Record<string, string> = {
   "auto-blog-generation": "/api/admin/internal/auto-blog",
+  "gsc-nightly-sync":     "/api/admin/internal/gsc-sync",
 }
 
 function getRunJobUrl(): string | null {

@@ -11,6 +11,7 @@ export type CronJobName =
   | "voice-drift-monitor"
   | "performance-learning-loop"
   | "auto-blog-generation"
+  | "gsc-nightly-sync"
 
 export interface CronJob {
   name: CronJobName
@@ -113,6 +114,19 @@ export const CRON_CATALOG: readonly CronJob[] = [
     firebaseFunction: "(handled by Next.js route + ai_jobs doc trigger)",
     phase: "blog-quality",
     enabledKey: "cron_auto_blog_enabled",
+    defaultEnabled: false,
+  },
+  {
+    name: "gsc-nightly-sync",
+    label: "Sync Google Search Console nightly",
+    description:
+      "Every night, pulls the last three days of search performance from Google Search Console — queries, pages, impressions, clicks, and average position — so the SEO agent has fresh data to reason over.",
+    schedule: "0 3 * * *",
+    timezone: "UTC",
+    humanSchedule: "Every night at 3:00 AM UTC",
+    firebaseFunction: "gscSyncCron",
+    phase: "seo-agent-1",
+    enabledKey: "cron_gsc_sync_enabled",
     defaultEnabled: false,
   },
 ] as const
