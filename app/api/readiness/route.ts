@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { readinessFormSchema } from "@/lib/validators/daily-readiness"
 import { upsert } from "@/lib/db/daily-readiness"
+import { runEvaluation } from "@/lib/coach-intel/run-evaluation"
 
 export async function POST(req: Request) {
   const session = await auth()
@@ -18,5 +19,12 @@ export async function POST(req: Request) {
     session.user.role === "admin" && body.client_user_id ? (body.client_user_id as string) : session.user.id
 
   const result = await upsert(targetUserId, date, rest)
+
+  try {
+    await runEvaluation(targetUserId, date)
+  } catch (e) {
+    console.error("[readiness] runEvaluation failed", e)
+  }
+
   return NextResponse.json({ readiness: result })
 }
