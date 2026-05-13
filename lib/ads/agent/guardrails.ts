@@ -98,12 +98,46 @@ function checkMatchTypeDirection(action: AdsAction): string | null {
   return null
 }
 
+function checkNewCampaignBudget(action: AdsAction): string | null {
+  if (action.tool !== "propose_new_campaign") return null
+  const args = action.args as { initial_daily_budget?: number }
+  const budget = args.initial_daily_budget ?? 0
+  if (budget > T.NEW_CAMPAIGN_MAX_DAILY_BUDGET) {
+    return `New campaign $${budget} exceeds max new-campaign daily budget $${T.NEW_CAMPAIGN_MAX_DAILY_BUDGET}.`
+  }
+  return null
+}
+
+interface BatchState {
+  newCampaignsProposed: number
+  newDailySpendUsd: number
+}
+
+function newDailySpendFromAction(action: AdsAction, signals: AdsSignals): number {
+  if (action.tool === "propose_new_campaign") {
+    const args = action.args as { initial_daily_budget?: number }
+    return args.initial_daily_budget ?? 0
+  }
+  if (action.tool === "propose_budget_shift") {
+    const args = action.args as { from_campaign_id?: string; to_campaign_id?: string; delta_pct?: number }
+    if (args.from_campaign_id === args.to_campaign_id) {
+      const campaign = findCampaign(signals, args.to_campaign_id)
+      if (!campaign) return 0
+      const delta = (args.delta_pct ?? 0) / 100
+      return Math.max(0, campaign.daily_budget_usd * delta)
+    }
+    return 0
+  }
+  return 0
+}
+
 const HARD_RULES: Array<(a: AdsAction, s: AdsSignals) => string | null> = [
   checkCampaignAge,
   checkDataVolume,
   checkPauseProtection,
   checkBrandAllowlist,
   checkMatchTypeDirection,
+  checkNewCampaignBudget,
 ]
 
 function defaultAnnotations(): GuardrailAnnotations {
@@ -126,4 +160,39 @@ export function applyGuardrails(action: AdsAction, signals: AdsSignals): Guardra
     action: clampedAction,
     annotations: { ...defaultAnnotations(), clamped },
   }
+}
+
+export function applyGuardrailsBatch(
+  actions: AdsAction[],
+  signals: AdsSignals,
+): GuardrailResult[] {
+  const state: BatchState = { newCampaignsProposed: 0, newDailySpendUsd: 0 }
+  const results: GuardrailResult[] = []
+  for (const action of actions) {
+    if (action.tool === "propose_new_campaign") {
+      if (state.newCampaignsProposed >= 1) {
+        results.push({
+          kind: "reject",
+          reason: `Already proposed 1 new campaign in this memo; cap is 1.`,
+        })
+        continue
+      }
+    }
+    const incremental = newDailySpendFromAction(action, signals)
+    if (state.newDailySpendUsd + incremental > T.MAX_NEW_DAILY_SPEND_PER_MEMO) {
+      results.push({
+        kind: "reject",
+        reason: `Total new daily spend cap exceeded: $${(state.newDailySpendUsd + incremental).toFixed(2)} > $${T.MAX_NEW_DAILY_SPEND_PER_MEMO}.`,
+      })
+      continue
+    }
+
+    const single = applyGuardrails(action, signals)
+    results.push(single)
+    if (single.kind === "pass") {
+      if (action.tool === "propose_new_campaign") state.newCampaignsProposed += 1
+      state.newDailySpendUsd += incremental
+    }
+  }
+  return results
 }

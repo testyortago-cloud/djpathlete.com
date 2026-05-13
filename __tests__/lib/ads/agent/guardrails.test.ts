@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { applyGuardrails } from "@/lib/ads/agent/guardrails"
+import { applyGuardrails, applyGuardrailsBatch } from "@/lib/ads/agent/guardrails"
 import type { AdsAction, AdsSignals } from "@/lib/ads/agent/types"
 
 const makeAction = (overrides: Partial<AdsAction> = {}): AdsAction => ({
@@ -218,5 +218,51 @@ describe("guardrails — match-type direction", () => {
       args: { ad_group_id: "ag1", keyword_id: "kw1", from_match_type: "phrase", to_match_type: "broad" },
     })
     expect(applyGuardrails(action, makeSignals()).kind).toBe("reject")
+  })
+})
+
+describe("guardrails — new-campaign caps (memo-level batch)", () => {
+  it("rejects more than 1 propose_new_campaign per memo", () => {
+    const a1 = makeAction({
+      tool: "propose_new_campaign",
+      args: { name: "C1", type: "search", initial_daily_budget: 20, target_keywords: ["a"], landing_page_url: "/x", conversion_action_ids: ["ca1"] },
+    })
+    const a2 = makeAction({
+      rank: 2,
+      tool: "propose_new_campaign",
+      args: { name: "C2", type: "search", initial_daily_budget: 20, target_keywords: ["b"], landing_page_url: "/y", conversion_action_ids: ["ca1"] },
+    })
+    const results = applyGuardrailsBatch([a1, a2], makeSignals())
+    expect(results[0].kind).toBe("pass")
+    expect(results[1].kind).toBe("reject")
+    if (results[1].kind === "reject") expect(results[1].reason).toMatch(/already proposed.*new campaign/i)
+  })
+
+  it("rejects propose_new_campaign exceeding NEW_CAMPAIGN_MAX_DAILY_BUDGET", () => {
+    const a = makeAction({
+      tool: "propose_new_campaign",
+      args: { name: "Big", type: "search", initial_daily_budget: 100, target_keywords: ["a"], landing_page_url: "/x", conversion_action_ids: ["ca1"] },
+    })
+    const results = applyGuardrailsBatch([a], makeSignals())
+    expect(results[0].kind).toBe("reject")
+    if (results[0].kind === "reject") expect(results[0].reason).toMatch(/exceeds.*daily budget/i)
+  })
+
+  it("rejects when total NEW daily spend across actions > MAX_NEW_DAILY_SPEND_PER_MEMO", () => {
+    const newCampaign = makeAction({
+      tool: "propose_new_campaign",
+      args: { name: "NewC", type: "search", initial_daily_budget: 30, target_keywords: ["a"], landing_page_url: "/x", conversion_action_ids: ["ca1"] },
+    })
+    const shift1 = makeAction({
+      rank: 2,
+      tool: "propose_budget_shift",
+      args: { from_campaign_id: "c1", to_campaign_id: "c1", delta_pct: 20 }, // applies to a 400-budget campaign → $80 new
+    })
+    const signals = makeSignals()
+    signals.raw!.campaigns[0].daily_budget_usd = 400
+    const results = applyGuardrailsBatch([newCampaign, shift1], signals)
+    expect(results[0].kind).toBe("pass")
+    expect(results[1].kind).toBe("reject")
+    if (results[1].kind === "reject") expect(results[1].reason).toMatch(/total.*spend.*cap/i)
   })
 })
