@@ -80,6 +80,12 @@ describe("getValidAccessToken", () => {
       scope: "x",
     })
     expect(await getValidAccessToken()).toBe("first-ever")
+    expect(refreshAccessTokenLib).toHaveBeenCalledWith({
+      refresh_token: "rt",
+      client_id: "cid",
+      client_secret: "secret",
+    })
+    expect(updateAccessToken).toHaveBeenCalled()
   })
 })
 
