@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { trainingSessionFormSchema } from "@/lib/validators/training-session"
 import { upsert, listByUser } from "@/lib/db/training-sessions"
 import { runEvaluation } from "@/lib/coach-intel/run-evaluation"
+import { checkGoals } from "@/lib/coach-intel/check-goals"
 
 export async function GET(req: Request) {
   const session = await auth()
@@ -33,6 +34,16 @@ export async function POST(req: Request) {
     await runEvaluation(clientUserId, parsed.data.date)
   } catch (e) {
     console.error("[training-sessions] runEvaluation failed", e)
+  }
+
+  try {
+    const today = new Date().toISOString().slice(0, 10)
+    const from = new Date(Date.now() - 6 * 86_400_000).toISOString().slice(0, 10)
+    const sessions = await listByUser(clientUserId, { from, to: today })
+    const weeklyLoad = sessions.reduce((a, s) => a + s.session_load, 0)
+    await checkGoals(clientUserId, { weeklyLoad })
+  } catch (e) {
+    console.error("[training-sessions] checkGoals failed", e)
   }
 
   return NextResponse.json({ session: result })

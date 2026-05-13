@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { performanceTestFormSchema } from "@/lib/validators/performance-test"
 import { create, listByUser } from "@/lib/db/performance-tests"
+import { checkGoals } from "@/lib/coach-intel/check-goals"
 import type { TestType } from "@/types/database"
 
 export async function GET(req: Request) {
@@ -28,5 +29,15 @@ export async function POST(req: Request) {
   const clientUserId =
     session.user.role === "admin" && body.client_user_id ? (body.client_user_id as string) : session.user.id
   const test = await create(clientUserId, parsed.data, session.user.id)
+
+  try {
+    await checkGoals(clientUserId, {
+      testType: test.test_type,
+      testValue: test.result_value,
+    })
+  } catch (e) {
+    console.error("[performance-tests] checkGoals failed", e)
+  }
+
   return NextResponse.json({ test })
 }

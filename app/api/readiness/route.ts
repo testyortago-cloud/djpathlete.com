@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { readinessFormSchema } from "@/lib/validators/daily-readiness"
 import { upsert } from "@/lib/db/daily-readiness"
 import { runEvaluation } from "@/lib/coach-intel/run-evaluation"
+import { checkGoals } from "@/lib/coach-intel/check-goals"
 
 export async function POST(req: Request) {
   const session = await auth()
@@ -24,6 +25,12 @@ export async function POST(req: Request) {
     await runEvaluation(targetUserId, date)
   } catch (e) {
     console.error("[readiness] runEvaluation failed", e)
+  }
+
+  try {
+    await checkGoals(targetUserId, { readinessScore: result.readiness_score })
+  } catch (e) {
+    console.error("[readiness] checkGoals failed", e)
   }
 
   return NextResponse.json({ readiness: result })
