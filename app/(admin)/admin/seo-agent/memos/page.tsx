@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation"
 import { auth } from "@/lib/auth"
 import { listMemos } from "@/lib/db/seo-agent-memos"
-import type { SeoAgentMemo, SeoAgentMemoAction } from "@/types/database"
+import type { SeoAgentMemo, SeoAgentMemoAction, SeoAgentMemoOutcomeMetric } from "@/types/database"
 
 export const dynamic = "force-dynamic"
 
@@ -12,7 +12,51 @@ const TOOL_LABELS: Record<string, string> = {
   flag_for_human: "Human flag",
 }
 
-function ActionRow({ action }: { action: SeoAgentMemoAction }) {
+function MetricRow({ metric }: { metric: SeoAgentMemoOutcomeMetric }) {
+  if (metric.error) {
+    return (
+      <p className="mt-2 text-xs text-error">
+        Resolution failed: {metric.error}
+      </p>
+    )
+  }
+  if (metric.note) {
+    return (
+      <p className="mt-2 text-xs text-muted-foreground italic">{metric.note}</p>
+    )
+  }
+  const cells: Array<[string, string]> = []
+  if (typeof metric.clicks_before === "number") {
+    cells.push(["Clicks", `${metric.clicks_before} → ${metric.clicks_after ?? "?"}`])
+  }
+  if (typeof metric.position_before === "number" || typeof metric.position_after === "number") {
+    const before = typeof metric.position_before === "number" ? metric.position_before.toFixed(1) : "—"
+    const after = typeof metric.position_after === "number" ? metric.position_after.toFixed(1) : "—"
+    cells.push(["Position", `${before} → ${after}`])
+  }
+  if (typeof metric.acknowledged === "boolean") {
+    cells.push(["Acknowledged", metric.acknowledged ? "yes" : "no"])
+  }
+  if (cells.length === 0) return null
+  return (
+    <dl className="mt-2 grid grid-cols-2 gap-2 text-xs">
+      {cells.map(([label, value]) => (
+        <div key={label}>
+          <dt className="text-muted-foreground">{label}</dt>
+          <dd className="font-mono">{value}</dd>
+        </div>
+      ))}
+    </dl>
+  )
+}
+
+function ActionRow({
+  action,
+  metric,
+}: {
+  action: SeoAgentMemoAction
+  metric?: SeoAgentMemoOutcomeMetric
+}) {
   const label = TOOL_LABELS[action.tool] ?? action.tool
   return (
     <div className="rounded-md border bg-surface p-3 text-sm">
@@ -42,6 +86,7 @@ function ActionRow({ action }: { action: SeoAgentMemoAction }) {
           Target id: <code>{action.execution_target_id}</code>
         </p>
       )}
+      {metric && <MetricRow metric={metric} />}
     </div>
   )
 }
@@ -52,7 +97,15 @@ function MemoCard({ memo }: { memo: SeoAgentMemo }) {
       <header className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
         <h2 className="font-heading text-xl text-primary">{memo.run_date}</h2>
         <div className="flex items-center gap-2 text-xs">
-          <span className="rounded bg-muted px-2 py-0.5 text-muted-foreground">
+          <span
+            className={
+              memo.outcome_status === "measured"
+                ? "rounded bg-success/20 px-2 py-0.5 text-success"
+                : memo.outcome_status === "rolled_back"
+                ? "rounded bg-warning/20 px-2 py-0.5 text-warning"
+                : "rounded bg-muted px-2 py-0.5 text-muted-foreground"
+            }
+          >
             {memo.outcome_status}
           </span>
           <span className="text-muted-foreground">job:</span>
@@ -63,9 +116,10 @@ function MemoCard({ memo }: { memo: SeoAgentMemo }) {
       <p className="text-sm leading-relaxed">{memo.rationale}</p>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {memo.actions.map((a, i) => (
-          <ActionRow key={i} action={a} />
-        ))}
+        {memo.actions.map((a, i) => {
+          const metric = memo.outcome_metrics?.find((m) => m.action_index === i)
+          return <ActionRow key={i} action={a} metric={metric} />
+        })}
       </div>
 
       <details className="text-xs">
