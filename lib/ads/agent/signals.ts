@@ -6,7 +6,7 @@
 // 3. Learning layer (added in Task 11)
 
 import * as T from "./thresholds"
-import type { PreflightResult } from "./types"
+import type { AdsRawInputs, PreflightResult } from "./types"
 
 const HOURS = 3_600_000
 
@@ -57,4 +57,51 @@ export async function runPreflight(input: PreflightInput): Promise<PreflightResu
   }
 
   return { ok: reasons.length === 0, reasons }
+}
+
+export interface RawInputDeps {
+  fetchCampaigns: () => Promise<AdsRawInputs["campaigns"]>
+  fetchSearchTermsTopSpend: () => Promise<AdsRawInputs["search_terms_top_spend"]>
+  fetchSearchTermsTopConversions: () => Promise<AdsRawInputs["search_terms_top_conversions"]>
+  fetchPendingRecommendations: () => Promise<AdsRawInputs["pending_recommendations"]>
+  fetchConversionActions: () => Promise<AdsRawInputs["conversion_actions"]>
+  fetchGa4: () => Promise<AdsRawInputs["ga4"]>
+  fetchGscOrganicTop10: () => Promise<AdsRawInputs["gsc_organic_top10"]>
+  fetchPipeline: () => Promise<AdsRawInputs["pipeline"]>
+  fetchPriorMemos: () => Promise<AdsRawInputs["prior_memos"]>
+}
+
+export async function gatherRawInputs(deps: RawInputDeps): Promise<AdsRawInputs> {
+  const [
+    campaigns,
+    search_terms_top_spend,
+    search_terms_top_conversions,
+    pending_recommendations,
+    conversion_actions,
+    ga4,
+    gsc_organic_top10,
+    pipeline,
+    prior_memos,
+  ] = await Promise.all([
+    deps.fetchCampaigns(),
+    deps.fetchSearchTermsTopSpend(),
+    deps.fetchSearchTermsTopConversions(),
+    deps.fetchPendingRecommendations(),
+    deps.fetchConversionActions(),
+    deps.fetchGa4(),
+    deps.fetchGscOrganicTop10(),
+    deps.fetchPipeline(),
+    deps.fetchPriorMemos(),
+  ])
+  return {
+    campaigns,
+    search_terms_top_spend,
+    search_terms_top_conversions,
+    pending_recommendations,
+    conversion_actions,
+    ga4,
+    gsc_organic_top10,
+    pipeline,
+    prior_memos,
+  }
 }
