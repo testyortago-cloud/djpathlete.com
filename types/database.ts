@@ -1919,6 +1919,10 @@ export interface SeoAgentMemoOutcomeMetric {
   position_before?: number | null
   position_after?: number | null
   acknowledged?: boolean
+  /** Set when resolution failed mid-way (e.g., target row deleted, Firestore unreachable). */
+  error?: string
+  /** Diagnostic note for unusual outcomes (e.g., topic_suggestion never picked up by auto-blog). */
+  note?: string
 }
 
 export interface SeoAgentSignalsSummary {
