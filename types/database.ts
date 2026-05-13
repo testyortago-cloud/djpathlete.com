@@ -2119,3 +2119,61 @@ export interface PerformanceTestPR {
   test_id: string
   best_method: BestMethod
 }
+
+// ============================================
+// Coach Intelligence (added 2026-05-13)
+// ============================================
+
+export type SessionType = "gym" | "sport" | "field" | "conditioning" | "mobility" | "other"
+
+export interface TrainingSession {
+  id: string
+  client_user_id: string
+  date: string // YYYY-MM-DD
+  session_type: SessionType
+  rpe: number // 1-10
+  duration_min: number
+  session_load: number // generated = rpe * duration_min
+  notes: string | null
+  program_assignment_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type RiskFlagType =
+  | "load_spike"
+  | "fatigue"
+  | "overtraining"
+  | "high_strain"
+  | "rpe_creep"
+
+export type RiskFlagSeverity = "low" | "medium" | "high"
+export type RiskFlagStatus = "open" | "acknowledged" | "dismissed"
+
+export interface RiskFlagEvidence {
+  asOf?: string
+  acwr?: number
+  acuteLoad?: number
+  chronicLoad?: number
+  monotony?: number
+  strain?: number
+  weeklyLoad?: number
+  prevWeeklyLoad?: number
+  deltaPct?: number
+  recentReadinessScores?: { date: string; readiness_score: number }[]
+  recentRpes?: { date: string; rpe: number }[]
+}
+
+export interface RiskFlag {
+  id: string
+  client_user_id: string
+  flag_type: RiskFlagType
+  severity: RiskFlagSeverity
+  message: string
+  evidence: RiskFlagEvidence
+  status: RiskFlagStatus
+  triggered_at: string
+  created_at: string
+  acknowledged_at: string | null
+  acknowledged_by: string | null
+}
