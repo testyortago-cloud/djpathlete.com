@@ -111,7 +111,7 @@ describe("exchangeCodeForTokens", () => {
 
 describe("refreshAccessToken", () => {
   it("POSTs refresh_token grant and returns new access token", async () => {
-    vi.spyOn(global, "fetch").mockResolvedValueOnce(
+    const mockFetch = vi.spyOn(global, "fetch").mockResolvedValueOnce(
       new Response(
         JSON.stringify({ access_token: "at-2", expires_in: 3599, token_type: "Bearer", scope: "x" }),
         { status: 200 },
@@ -124,6 +124,22 @@ describe("refreshAccessToken", () => {
     })
     expect(out.access_token).toBe("at-2")
     expect(out.expires_in).toBe(3599)
+    const [url, init] = mockFetch.mock.calls[0]
+    expect(url).toBe("https://oauth2.googleapis.com/token")
+    expect((init as RequestInit).method).toBe("POST")
+    const body = (init as RequestInit).body as string
+    expect(body).toContain("refresh_token=rt-1")
+    expect(body).toContain("grant_type=refresh_token")
+    mockFetch.mockRestore()
+  })
+
+  it("throws on non-2xx response", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValueOnce(
+      new Response("invalid_grant", { status: 400 }),
+    )
+    await expect(
+      refreshAccessToken({ refresh_token: "rt-1", client_id: "c", client_secret: "s" }),
+    ).rejects.toThrow(/HTTP 400/)
     vi.restoreAllMocks()
   })
 })
