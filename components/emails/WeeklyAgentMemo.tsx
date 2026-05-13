@@ -4,6 +4,8 @@
 // what's not, recommended actions, watch list) into a brand-styled email.
 
 import type {
+  GoogleAdsAgentMemoAction,
+  GoogleAdsAgentMemoGuardrailRejection,
   GoogleAdsAgentMemoSections,
   GoogleAdsAgentRecommendedAction,
 } from "@/types/database"
@@ -14,6 +16,8 @@ interface Props {
   sections: GoogleAdsAgentMemoSections
   dashboardUrl: string
   baseUrl: string
+  actions?: GoogleAdsAgentMemoAction[]
+  rejections?: GoogleAdsAgentMemoGuardrailRejection[]
 }
 
 const BRAND = {
@@ -33,6 +37,40 @@ const PRIORITY_TONE: Record<GoogleAdsAgentRecommendedAction["priority"], string>
   high: BRAND.error,
   medium: BRAND.warning,
   low: BRAND.textMuted,
+}
+
+const CONFIDENCE_TONE: Record<GoogleAdsAgentMemoAction["confidence"], string> = {
+  high: BRAND.success,
+  medium: BRAND.warning,
+  low: BRAND.textMuted,
+}
+
+function ConfidenceChip({
+  label,
+  level,
+}: {
+  label: string
+  level: GoogleAdsAgentMemoAction["confidence"]
+}) {
+  const tone = CONFIDENCE_TONE[level]
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        padding: "1px 6px",
+        borderRadius: "4px",
+        fontSize: "10px",
+        fontWeight: 600,
+        textTransform: "uppercase",
+        letterSpacing: "0.5px",
+        backgroundColor: tone + "1A",
+        color: tone,
+        marginRight: "6px",
+      }}
+    >
+      {label}: {level}
+    </span>
+  )
 }
 
 function fmtWeekOf(iso: string): string {
@@ -56,7 +94,17 @@ function SectionHeader({ children }: { children: React.ReactNode }) {
   )
 }
 
-export function WeeklyAgentMemo({ subject, weekOf, sections, dashboardUrl, baseUrl }: Props) {
+export function WeeklyAgentMemo({
+  subject,
+  weekOf,
+  sections,
+  dashboardUrl,
+  baseUrl,
+  actions,
+  rejections,
+}: Props) {
+  const queuedActions = (actions ?? []).filter((a) => a.status === "queued")
+  const rejectedActions = rejections ?? []
   return (
     <html>
       <body
@@ -235,6 +283,122 @@ export function WeeklyAgentMemo({ subject, weekOf, sections, dashboardUrl, baseU
                               ))}
                             </tbody>
                           </table>
+                        </td>
+                      </tr>
+                    )}
+
+                    {queuedActions.length > 0 && (
+                      <tr>
+                        <td style={{ padding: "20px 32px", borderBottom: `1px solid ${BRAND.border}` }}>
+                          <SectionHeader>Actions in queue</SectionHeader>
+                          {queuedActions.map((a) => (
+                            <div
+                              key={a.rank}
+                              style={{
+                                marginTop: "10px",
+                                padding: "10px 12px",
+                                border: `1px solid ${BRAND.border}`,
+                                borderRadius: "8px",
+                                backgroundColor: "#fafafa",
+                              }}
+                            >
+                              <strong style={{ fontSize: "13px", color: BRAND.textPrimary }}>
+                                {a.tool.replace(/_/g, " ")}
+                              </strong>
+                              <div style={{ marginTop: "6px" }}>
+                                <ConfidenceChip label="model" level={a.confidence} />
+                                <ConfidenceChip label="audit" level={a.audit_confidence} />
+                                <span
+                                  style={{
+                                    display: "inline-block",
+                                    padding: "1px 6px",
+                                    borderRadius: "4px",
+                                    fontSize: "10px",
+                                    fontWeight: 600,
+                                    textTransform: "uppercase",
+                                    letterSpacing: "0.5px",
+                                    backgroundColor: BRAND.neutral,
+                                    color: BRAND.textMuted,
+                                    marginRight: "6px",
+                                  }}
+                                >
+                                  {a.significance.replace(/_/g, " ")}
+                                </span>
+                                {a.clamped && (
+                                  <span
+                                    style={{
+                                      display: "inline-block",
+                                      padding: "1px 6px",
+                                      borderRadius: "4px",
+                                      fontSize: "10px",
+                                      fontWeight: 600,
+                                      textTransform: "uppercase",
+                                      letterSpacing: "0.5px",
+                                      backgroundColor: BRAND.warning + "1A",
+                                      color: BRAND.warning,
+                                    }}
+                                  >
+                                    clamped ±20%
+                                  </span>
+                                )}
+                              </div>
+                              <p
+                                style={{
+                                  margin: "8px 0 0",
+                                  fontSize: "12px",
+                                  lineHeight: "18px",
+                                  color: BRAND.textPrimary,
+                                }}
+                              >
+                                {a.rationale}
+                              </p>
+                            </div>
+                          ))}
+                        </td>
+                      </tr>
+                    )}
+
+                    {rejectedActions.length > 0 && (
+                      <tr>
+                        <td style={{ padding: "20px 32px", borderBottom: `1px solid ${BRAND.border}` }}>
+                          <SectionHeader>Actions rejected by guardrails</SectionHeader>
+                          <p
+                            style={{
+                              margin: "10px 0 0",
+                              fontSize: "12px",
+                              lineHeight: "18px",
+                              color: BRAND.textMuted,
+                              fontStyle: "italic",
+                            }}
+                          >
+                            Transparency: these proposals never reached the queue.
+                          </p>
+                          {rejectedActions.map((r, i) => (
+                            <div
+                              key={i}
+                              style={{
+                                marginTop: "10px",
+                                padding: "10px 12px",
+                                border: `1px solid ${BRAND.border}`,
+                                borderRadius: "8px",
+                                backgroundColor: "#fafafa",
+                              }}
+                            >
+                              <strong style={{ fontSize: "13px", color: BRAND.textPrimary }}>
+                                {r.tool.replace(/_/g, " ")}
+                              </strong>
+                              <p
+                                style={{
+                                  margin: "4px 0 0",
+                                  fontSize: "12px",
+                                  lineHeight: "18px",
+                                  color: BRAND.textMuted,
+                                }}
+                              >
+                                {r.reason}
+                              </p>
+                            </div>
+                          ))}
                         </td>
                       </tr>
                     )}

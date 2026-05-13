@@ -72,6 +72,8 @@ export async function POST(request: NextRequest) {
         sections: memo.sections,
         dashboardUrl,
         baseUrl,
+        actions: memo.actions,
+        rejections: memo.guardrail_rejections,
       }),
     )
 
