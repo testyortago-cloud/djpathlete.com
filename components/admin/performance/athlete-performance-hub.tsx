@@ -138,6 +138,11 @@ export function AthletePerformanceHub({
               Alerts ({coachIntel.openFlags.length})
             </Link>
           </TabsTrigger>
+          <TabsTrigger value="profile" asChild>
+            <Link href={`/admin/clients/${clientUserId}/performance?tab=profile`}>
+              Profile
+            </Link>
+          </TabsTrigger>
           <TabsTrigger value="injuries" asChild>
             <Link href={`/admin/clients/${clientUserId}/performance?tab=injuries`}>
               Injuries
