@@ -56,7 +56,7 @@ function DesktopDropdown({ item, useLight, pathname }: { item: NavGroup; useLigh
   return (
     <div className="relative" onMouseEnter={handleEnter} onMouseLeave={handleLeave}>
       <button
-        className={`flex items-center gap-1 px-3 py-2 rounded-md text-sm transition-colors ${
+        className={`flex items-center gap-1 px-2.5 py-2 rounded-md text-sm transition-colors ${
           isActive
             ? useLight
               ? "text-white font-medium"
@@ -99,7 +99,9 @@ function DesktopDropdown({ item, useLight, pathname }: { item: NavGroup; useLigh
 
               <div className="p-2">
                 {item.children?.map((child, i) => {
-                  const Icon = DROPDOWN_ICONS[child.label]
+                  // Prefer the icon attached to the NavLink (e.g. sport icons);
+                  // fall back to the legacy label-based map for older entries.
+                  const Icon = child.icon ?? DROPDOWN_ICONS[child.label]
                   const childActive = pathname === child.href || pathname.startsWith(child.href + "/")
 
                   return (
@@ -187,7 +189,7 @@ function MobileDropdown({ item, pathname, onNavigate }: { item: NavGroup; pathna
           >
             <div className="ml-3 pl-3 py-1 border-l-2 border-primary/10 space-y-0.5">
               {item.children?.map((child, i) => {
-                const Icon = DROPDOWN_ICONS[child.label]
+                const Icon = child.icon ?? DROPDOWN_ICONS[child.label]
                 const childActive = pathname === child.href || pathname.startsWith(child.href + "/")
                 return (
                   <motion.div
@@ -235,9 +237,11 @@ export function SiteNavbar() {
   const pathname = usePathname()
 
   // Pages with dark hero backgrounds where nav text should be white.
-  // Exact matches first, then prefix matches for routes with sub-pages (e.g. /clinics/[slug]).
+  // Exact matches first, then prefix matches for routes with sub-pages.
+  // Keep in sync with the actual hero `bg-*` of each page — a mismatch
+  // produces dark-on-dark nav text (the symptom that hid Sports for a while).
   const darkHeroExact = ["/", "/in-person", "/education", "/shop"]
-  const darkHeroPrefixes = ["/clinics", "/online"]
+  const darkHeroPrefixes = ["/clinics", "/online", "/sports", "/programs"]
   const isDarkHero =
     darkHeroExact.includes(pathname) ||
     darkHeroPrefixes.some((p) => pathname === p || pathname.startsWith(p + "/"))
@@ -268,7 +272,9 @@ export function SiteNavbar() {
       <motion.div
         className="w-full"
         animate={{
-          maxWidth: isScrolled ? 1000 : 10000,
+          // Wider scrolled max-width — the nav now has 6 top-level items (was 5)
+          // and Sports + Education + Resources + Blog + Shop needs the room.
+          maxWidth: isScrolled ? 1280 : 10000,
           borderRadius: isScrolled ? 100 : 0,
           backgroundColor: isScrolled ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0)",
           boxShadow: isScrolled
@@ -307,7 +313,7 @@ export function SiteNavbar() {
             </Link>
 
             {/* Desktop Navigation */}
-            <div className="hidden xl:flex items-center gap-1">
+            <div className="hidden xl:flex items-center gap-0.5 2xl:gap-1">
               {NAV_ITEMS.map((item) => {
                 if (item.children) {
                   return <DesktopDropdown key={item.label} item={item} useLight={useLight} pathname={pathname} />
@@ -318,7 +324,7 @@ export function SiteNavbar() {
                   <Link
                     key={item.label}
                     href={item.href!}
-                    className={`px-3 py-2 rounded-md text-sm transition-colors ${
+                    className={`px-2.5 py-2 rounded-md text-sm transition-colors ${
                       isActive
                         ? useLight
                           ? "text-white font-medium"
