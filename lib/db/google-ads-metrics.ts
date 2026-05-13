@@ -125,6 +125,57 @@ export async function getDailyTotalsInRange(from: Date, to: Date): Promise<AdsTo
   )
 }
 
+/**
+ * Window of campaign-grain metrics around a pivot date. Used by the ads
+ * agent outcome tracker (Task 20) to compute before/after deltas of an
+ * applied action. Pulls campaign-grain rows only (ad_group_id IS NULL AND
+ * keyword_criterion_id IS NULL) so multiple grains do not double-count.
+ *
+ * Returns zeros for either side when no rows exist in that half-window —
+ * `measureActionOutcome` will downgrade to `significance: 'insufficient_data'`.
+ */
+export async function getCampaignWindow(
+  campaign_id: string,
+  applied: Date,
+  windowDays: number,
+): Promise<{
+  before: { clicks: number; conversions: number; cost_usd: number }
+  after: { clicks: number; conversions: number; cost_usd: number }
+}> {
+  const supabase = getClient()
+  const from = new Date(applied.getTime() - windowDays * 86_400_000)
+  const to = new Date(applied.getTime() + windowDays * 86_400_000)
+  const fromYmd = from.toISOString().slice(0, 10)
+  const toYmd = to.toISOString().slice(0, 10)
+  const appliedYmd = applied.toISOString().slice(0, 10)
+
+  const { data, error } = await supabase
+    .from("google_ads_daily_metrics")
+    .select("date, clicks, conversions, cost_micros")
+    .eq("campaign_id", campaign_id)
+    .is("ad_group_id", null)
+    .is("keyword_criterion_id", null)
+    .gte("date", fromYmd)
+    .lte("date", toYmd)
+  if (error) throw error
+
+  const rows = (data ?? []) as Array<{
+    date: string
+    clicks: number
+    conversions: number
+    cost_micros: number
+  }>
+  const before = { clicks: 0, conversions: 0, cost_usd: 0 }
+  const after = { clicks: 0, conversions: 0, cost_usd: 0 }
+  for (const r of rows) {
+    const bucket = r.date < appliedYmd ? before : after
+    bucket.clicks += Number(r.clicks ?? 0)
+    bucket.conversions += Number(r.conversions ?? 0)
+    bucket.cost_usd += Number(r.cost_micros ?? 0) / 1_000_000
+  }
+  return { before, after }
+}
+
 export async function getCampaignRollup(
   customerId: string,
   fromDate: string,

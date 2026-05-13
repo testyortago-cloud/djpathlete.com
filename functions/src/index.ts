@@ -1032,6 +1032,46 @@ export const outcomeTrackerCron = onSchedule(
   },
 )
 
+// ─── Ads Agent Outcome Tracker (Daily 04:30 UTC) ─────────────────────────────
+// Calls /api/admin/internal/ads/outcome-tracker which, for each
+// google_ads_agent_memos row with outcome_status='pending' and created_at
+// older than 14 days, measures per-action before/after deltas, tags
+// attribution as clean or ambiguous, persists outcome_metrics, and flips
+// outcome_status to 'measured' once any action is measurable (or all are
+// past the 30-day expiry window). Closes the ads-agent learning loop.
+// Staggered to 04:30 UTC so it doesn't collide with the SEO
+// outcomeTrackerCron at 04:15.
+
+export const adsOutcomeTrackerCron = onSchedule(
+  {
+    schedule: "30 4 * * *",
+    timeZone: "UTC",
+    timeoutSeconds: 300,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [internalCronToken, appUrl],
+  },
+  async () => {
+    const baseUrl = process.env.APP_URL
+    const token = process.env.INTERNAL_CRON_TOKEN
+    if (!baseUrl || !token) {
+      console.error("[adsOutcomeTrackerCron] APP_URL or INTERNAL_CRON_TOKEN missing — abort")
+      return
+    }
+    try {
+      const res = await fetch(`${baseUrl}/api/admin/internal/ads/outcome-tracker`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: "{}",
+      })
+      const body = await res.json().catch(() => ({}))
+      console.log("[adsOutcomeTrackerCron]", res.status, body)
+    } catch (err) {
+      console.error("[adsOutcomeTrackerCron] failed:", err)
+    }
+  },
+)
+
 // ─── GSC Nightly Sync (03:00 UTC daily) ──────────────────────────────────────
 // POSTs to the Next.js /api/admin/internal/gsc-sync route. Subject to
 // automation_paused + cron_gsc_sync_enabled gates inside the route
