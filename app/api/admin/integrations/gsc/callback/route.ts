@@ -46,13 +46,17 @@ export async function GET(req: NextRequest) {
     )
   }
 
+  const callbackRedirectUri = `${siteUrl()}/api/admin/integrations/gsc/callback`
+  console.log(
+    `[gsc-callback] exchanging code: redirect_uri=${JSON.stringify(callbackRedirectUri)} code_prefix=${code.slice(0, 12)}… code_len=${code.length} client_id_suffix=…${clientId.slice(-8)} secret_len=${clientSecret.length}`,
+  )
   let tokens
   try {
     tokens = await exchangeCodeForTokens({
       code,
       client_id: clientId,
       client_secret: clientSecret,
-      redirect_uri: `${siteUrl()}/api/admin/integrations/gsc/callback`,
+      redirect_uri: callbackRedirectUri,
     })
   } catch (err) {
     console.error("[gsc-callback] code exchange failed:", err)

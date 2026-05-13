@@ -24,9 +24,13 @@ export async function GET(req: NextRequest) {
   // redirect_uri derived from the request's origin so it matches localhost in
   // dev and production in prod — same OAuth client can serve both as long as
   // both origins are whitelisted in Google Cloud Console.
+  const redirectUri = `${req.nextUrl.origin}/api/admin/integrations/gsc/callback`
+  console.log(
+    `[gsc-authorize] redirect_uri=${JSON.stringify(redirectUri)} client_id_suffix=…${clientId.slice(-8)}`,
+  )
   const url = buildAuthorizationUrl({
     client_id: clientId,
-    redirect_uri: `${req.nextUrl.origin}/api/admin/integrations/gsc/callback`,
+    redirect_uri: redirectUri,
     state,
   })
   return NextResponse.redirect(url, { status: 302 })
