@@ -875,6 +875,8 @@ export interface BlogPost {
   search_intent: "informational" | "commercial" | "transactional" | null
   faq: FaqEntry[]
   subcategory: string | null
+  last_refreshed_at: string | null
+  refresh_count: number
 }
 
 export interface FaqEntry {
@@ -1863,4 +1865,30 @@ export interface GoogleAdsGa4Audience {
   last_synced_at: string
   created_at: string
   updated_at: string
+}
+
+// ─────────────────────────────────────────────────────────────────
+// SEO Agent — Phase 1 (migrations create_gsc_properties + create_gsc_query_daily)
+// ─────────────────────────────────────────────────────────────────
+
+export interface GscProperty {
+  id: string
+  site_url: string
+  refresh_token: string
+  access_token: string | null
+  access_token_expires: string | null  // ISO string
+  connected_by_user_id: string
+  created_at: string
+  updated_at: string
+}
+
+export interface GscQueryDailyRow {
+  date: string         // YYYY-MM-DD
+  query: string
+  page: string
+  impressions: number
+  clicks: number
+  ctr: number          // 0–1
+  position: number     // 1.0–~50.0
+  ingested_at: string  // ISO string
 }
