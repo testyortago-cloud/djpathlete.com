@@ -157,3 +157,66 @@ describe("guardrails — pause protection", () => {
     expect(result.kind).toBe("pass")
   })
 })
+
+describe("guardrails — brand allowlist", () => {
+  it("rejects negative-keyword action containing a brand term (case-insensitive)", () => {
+    const action = makeAction({
+      tool: "propose_negative_keywords",
+      args: {
+        campaign_id: "c1",
+        negatives: [{ text: "DJP Athlete reviews", match_type: "phrase", scope: "campaign" }],
+      },
+    })
+    const result = applyGuardrails(action, makeSignals())
+    expect(result.kind).toBe("reject")
+    if (result.kind === "reject") expect(result.reason).toMatch(/brand/i)
+  })
+
+  it("allows negative-keyword action with no brand-term overlap", () => {
+    const action = makeAction({
+      tool: "propose_negative_keywords",
+      args: {
+        campaign_id: "c1",
+        negatives: [{ text: "free download", match_type: "phrase", scope: "campaign" }],
+      },
+    })
+    const result = applyGuardrails(action, makeSignals())
+    expect(result.kind).toBe("pass")
+  })
+})
+
+describe("guardrails — match-type direction", () => {
+  it("allows broad → phrase tightening", () => {
+    const action = makeAction({
+      tool: "propose_match_type_change",
+      args: { ad_group_id: "ag1", keyword_id: "kw1", from_match_type: "broad", to_match_type: "phrase" },
+    })
+    expect(applyGuardrails(action, makeSignals()).kind).toBe("pass")
+  })
+
+  it("allows phrase → exact tightening", () => {
+    const action = makeAction({
+      tool: "propose_match_type_change",
+      args: { ad_group_id: "ag1", keyword_id: "kw1", from_match_type: "phrase", to_match_type: "exact" },
+    })
+    expect(applyGuardrails(action, makeSignals()).kind).toBe("pass")
+  })
+
+  it("rejects exact → phrase loosening", () => {
+    const action = makeAction({
+      tool: "propose_match_type_change",
+      args: { ad_group_id: "ag1", keyword_id: "kw1", from_match_type: "exact", to_match_type: "phrase" },
+    })
+    const result = applyGuardrails(action, makeSignals())
+    expect(result.kind).toBe("reject")
+    if (result.kind === "reject") expect(result.reason).toMatch(/loosen/i)
+  })
+
+  it("rejects phrase → broad loosening", () => {
+    const action = makeAction({
+      tool: "propose_match_type_change",
+      args: { ad_group_id: "ag1", keyword_id: "kw1", from_match_type: "phrase", to_match_type: "broad" },
+    })
+    expect(applyGuardrails(action, makeSignals()).kind).toBe("reject")
+  })
+})

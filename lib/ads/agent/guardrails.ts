@@ -69,10 +69,41 @@ function checkPauseProtection(action: AdsAction, signals: AdsSignals): string | 
   return null
 }
 
+function checkBrandAllowlist(action: AdsAction): string | null {
+  if (action.tool !== "propose_negative_keywords") return null
+  const args = action.args as { negatives?: Array<{ text: string }> }
+  const negatives = args.negatives ?? []
+  for (const n of negatives) {
+    const txt = n.text.toLowerCase()
+    if (T.BRAND_TERM_ALLOWLIST.some((brand) => txt.includes(brand.toLowerCase()))) {
+      return `Negative keyword "${n.text}" overlaps protected brand term.`
+    }
+  }
+  return null
+}
+
+const MATCH_TYPE_RANK: Record<string, number> = { broad: 3, phrase: 2, exact: 1 }
+
+function checkMatchTypeDirection(action: AdsAction): string | null {
+  if (action.tool !== "propose_match_type_change") return null
+  const args = action.args as { from_match_type?: string; to_match_type?: string }
+  const from = args.from_match_type ?? ""
+  const to = args.to_match_type ?? ""
+  const fromRank = MATCH_TYPE_RANK[from]
+  const toRank = MATCH_TYPE_RANK[to]
+  if (fromRank == null || toRank == null) return `Unknown match type: ${from} → ${to}.`
+  if (toRank > fromRank) {
+    return `Match-type loosening (${from} → ${to}) not allowed in v1; tightening only.`
+  }
+  return null
+}
+
 const HARD_RULES: Array<(a: AdsAction, s: AdsSignals) => string | null> = [
   checkCampaignAge,
   checkDataVolume,
   checkPauseProtection,
+  checkBrandAllowlist,
+  checkMatchTypeDirection,
 ]
 
 function defaultAnnotations(): GuardrailAnnotations {
