@@ -106,8 +106,14 @@ export async function resolveNewPostOutcome(
     return { executed: true, target_id: p.id, note: "post_not_yet_published" }
   }
 
-  const startDate = isoDateOffset(p.published_at, 7)
-  const endDate = isoDateOffset(p.published_at, 21)
+  // Window: [+1, +12] after publish.
+  // Rationale: outcome tracker fires at memo + 14d; auto-blog typically publishes
+  // on memo + 2d (next Tuesday). So at first measurement, publish_date + 12d is
+  // the most recent full day with GSC data. Earlier specs called for [+7, +21]
+  // but that window extends beyond the 14-day measurement cutoff and produces
+  // a systematic under-count on the only measurement we ever take per memo.
+  const startDate = isoDateOffset(p.published_at, 1)
+  const endDate = isoDateOffset(p.published_at, 12)
   const window = await gscDeltaForPage(supabase, pageUrlForSlug(p.slug), startDate, endDate)
   return {
     executed: true,
