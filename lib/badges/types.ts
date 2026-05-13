@@ -1,8 +1,4 @@
-import type {
-  Badge,
-  PerformanceTest,
-  DailyReadiness,
-} from "@/types/database"
+import type { Badge, PerformanceTest, DailyReadiness } from "@/types/database"
 import type { DailyLoad } from "@/lib/coach-intel/load"
 
 export interface BadgeInput {

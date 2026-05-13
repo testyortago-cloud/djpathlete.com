@@ -18,9 +18,7 @@ describe("athleteGoalFormSchema", () => {
   })
 
   it("rejects metric_kind='test' without test_type", () => {
-    expect(
-      athleteGoalFormSchema.safeParse({ ...valid, test_type: null }).success,
-    ).toBe(false)
+    expect(athleteGoalFormSchema.safeParse({ ...valid, test_type: null }).success).toBe(false)
   })
 
   it("rejects direction='lower' for non-test metric", () => {

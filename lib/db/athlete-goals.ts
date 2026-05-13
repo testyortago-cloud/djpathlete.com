@@ -24,21 +24,14 @@ export async function getActive(clientUserId: string) {
 
 export async function getById(id: string) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("athlete_goals")
-    .select("*")
-    .eq("id", id)
-    .single()
+  const { data, error } = await supabase.from("athlete_goals").select("*").eq("id", id).single()
   if (error) return null
   return data as AthleteGoal
 }
 
 export async function create(
   clientUserId: string,
-  payload: Omit<
-    AthleteGoal,
-    "id" | "client_user_id" | "status" | "achieved_at" | "created_at" | "updated_at"
-  >,
+  payload: Omit<AthleteGoal, "id" | "client_user_id" | "status" | "achieved_at" | "created_at" | "updated_at">,
 ) {
   const supabase = getClient()
   const { data, error } = await supabase
@@ -60,12 +53,7 @@ export async function update(
   patch: Partial<Omit<AthleteGoal, "id" | "client_user_id" | "created_at" | "updated_at">>,
 ) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("athlete_goals")
-    .update(patch)
-    .eq("id", id)
-    .select()
-    .single()
+  const { data, error } = await supabase.from("athlete_goals").update(patch).eq("id", id).select().single()
   if (error) throw error
   return data as AthleteGoal
 }

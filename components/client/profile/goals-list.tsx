@@ -42,9 +42,7 @@ export function GoalsList({ goals }: { goals: AthleteGoal[] }) {
   if (goals.length === 0) {
     return (
       <Card>
-        <CardContent className="text-muted-foreground py-12 text-center">
-          No goals yet.
-        </CardContent>
+        <CardContent className="text-muted-foreground py-12 text-center">No goals yet.</CardContent>
       </Card>
     )
   }
@@ -64,29 +62,15 @@ export function GoalsList({ goals }: { goals: AthleteGoal[] }) {
                   </p>
                 </div>
                 <StatusPill
-                  status={
-                    g.status === "achieved"
-                      ? "resolved"
-                      : g.status === "active"
-                        ? "active"
-                        : "neutral"
-                  }
+                  status={g.status === "achieved" ? "resolved" : g.status === "active" ? "active" : "neutral"}
                   label={g.status}
                 />
               </div>
               <div className="bg-muted mt-3 h-2 overflow-hidden rounded-full">
-                <div
-                  className="bg-primary h-full transition-all"
-                  style={{ width: `${progressPct(g)}%` }}
-                />
+                <div className="bg-primary h-full transition-all" style={{ width: `${progressPct(g)}%` }} />
               </div>
               {g.status === "active" && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="mt-2"
-                  onClick={() => archive(g.id)}
-                >
+                <Button size="sm" variant="ghost" className="mt-2" onClick={() => archive(g.id)}>
                   Archive
                 </Button>
               )}

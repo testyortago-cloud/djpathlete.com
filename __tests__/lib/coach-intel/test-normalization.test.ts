@@ -27,12 +27,6 @@ describe("normalize", () => {
     expect(normalize("bench_press_1rm", 80)).toBeNull()
   })
   it("RADAR_CATEGORIES covers all 5 axes", () => {
-    expect(Object.keys(RADAR_CATEGORIES)).toEqual([
-      "Speed",
-      "Power",
-      "Strength",
-      "Endurance",
-      "Mobility",
-    ])
+    expect(Object.keys(RADAR_CATEGORIES)).toEqual(["Speed", "Power", "Strength", "Endurance", "Mobility"])
   })
 })

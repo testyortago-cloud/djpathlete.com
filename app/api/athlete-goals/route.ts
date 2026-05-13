@@ -24,9 +24,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "validation", issues: parsed.error.issues }, { status: 400 })
   }
   const clientUserId =
-    session.user.role === "admin" && body.client_user_id
-      ? (body.client_user_id as string)
-      : session.user.id
+    session.user.role === "admin" && body.client_user_id ? (body.client_user_id as string) : session.user.id
   const goal = await create(clientUserId, parsed.data)
   return NextResponse.json({ goal })
 }

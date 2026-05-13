@@ -46,10 +46,7 @@ export function TrainingStreakHeatmap({ sessions }: { sessions: TrainingSession[
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <svg
-          viewBox={`0 0 ${cols * (cellSize + gap)} ${rows * (cellSize + gap)}`}
-          className="w-full max-w-md"
-        >
+        <svg viewBox={`0 0 ${cols * (cellSize + gap)} ${rows * (cellSize + gap)}`} className="w-full max-w-md">
           {daily.map((d, i) => {
             const col = Math.floor(i / 7)
             const row = i % 7

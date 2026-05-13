@@ -10,13 +10,7 @@ export interface BodyMapValue {
   side: InjurySide
 }
 
-export function BodyMapPicker({
-  value,
-  onChange,
-}: {
-  value: BodyMapValue
-  onChange: (v: BodyMapValue) => void
-}) {
+export function BodyMapPicker({ value, onChange }: { value: BodyMapValue; onChange: (v: BodyMapValue) => void }) {
   const [hover, setHover] = useState<BodyMapRegion | null>(null)
   const selected = value.region
   const selectedSide = value.side
@@ -26,9 +20,7 @@ export function BodyMapPicker({
       <div className="bg-card rounded-lg border p-2">
         <BodyMapSVG
           classForRegion={(r) =>
-            r.region === selected && (r.side === selectedSide || selectedSide === "n_a")
-              ? "!fill-primary"
-              : ""
+            r.region === selected && (r.side === selectedSide || selectedSide === "n_a") ? "!fill-primary" : ""
           }
           onClick={(r) => onChange({ region: r.region, side: r.side })}
           onHover={setHover}

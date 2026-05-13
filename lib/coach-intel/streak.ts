@@ -22,9 +22,7 @@ export function longestStreak(daily: DailyLoad[]): number {
   for (const d of sorted) {
     const isConsecutive =
       prevDate !== null &&
-      new Date(d.date + "T00:00:00Z").getTime() -
-        new Date(prevDate + "T00:00:00Z").getTime() ===
-        86_400_000
+      new Date(d.date + "T00:00:00Z").getTime() - new Date(prevDate + "T00:00:00Z").getTime() === 86_400_000
     if (d.load > 0) {
       run = isConsecutive ? run + 1 : 1
       longest = Math.max(longest, run)

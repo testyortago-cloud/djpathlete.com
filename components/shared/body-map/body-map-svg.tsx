@@ -13,8 +13,7 @@ export interface BodyMapSVGProps {
   className?: string
 }
 
-const DEFAULT_CLS =
-  "fill-muted stroke-border stroke-1 hover:fill-primary/40 cursor-pointer transition-colors"
+const DEFAULT_CLS = "fill-muted stroke-border stroke-1 hover:fill-primary/40 cursor-pointer transition-colors"
 
 export function BodyMapSVG({ classForRegion, onClick, onHover, className }: BodyMapSVGProps) {
   const cls = (r: BodyMapRegion) => cn(DEFAULT_CLS, classForRegion?.(r))

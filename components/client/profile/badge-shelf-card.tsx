@@ -30,9 +30,7 @@ export function BadgeShelfCard({ badges }: { badges: Badge[] }) {
           <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {badges.map((b) => {
               const Icon =
-                (Icons as unknown as Record<string, React.ComponentType<{ className?: string }>>)[
-                  b.icon
-                ] ?? Icons.Award
+                (Icons as unknown as Record<string, React.ComponentType<{ className?: string }>>)[b.icon] ?? Icons.Award
               return (
                 <li
                   key={b.id}

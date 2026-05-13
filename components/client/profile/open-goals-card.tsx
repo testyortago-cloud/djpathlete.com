@@ -4,13 +4,7 @@ import { GOAL_METRIC_KIND_LABELS } from "@/lib/validators/athlete-goal"
 import { TEST_TYPE_LABELS } from "@/lib/validators/performance-test"
 import type { AthleteGoal, TestType } from "@/types/database"
 
-export function OpenGoalsCard({
-  goals,
-  goalsHref,
-}: {
-  goals: AthleteGoal[]
-  goalsHref: string
-}) {
+export function OpenGoalsCard({ goals, goalsHref }: { goals: AthleteGoal[]; goalsHref: string }) {
   return (
     <Card>
       <CardHeader>
@@ -34,11 +28,8 @@ export function OpenGoalsCard({
               return (
                 <li key={g.id} className="text-sm">
                   <Link href={goalsHref} className="hover:underline">
-                    {label}: <span className="font-semibold">{g.target_value}</span>{" "}
-                    {g.target_unit}
-                    {g.deadline ? (
-                      <span className="text-muted-foreground"> · by {g.deadline}</span>
-                    ) : null}
+                    {label}: <span className="font-semibold">{g.target_value}</span> {g.target_unit}
+                    {g.deadline ? <span className="text-muted-foreground"> · by {g.deadline}</span> : null}
                   </Link>
                 </li>
               )

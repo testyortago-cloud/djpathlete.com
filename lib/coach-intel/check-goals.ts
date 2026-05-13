@@ -12,9 +12,7 @@ function isSatisfied(goal: AthleteGoal, ctx: GoalContext): boolean {
   if (goal.metric_kind === "test") {
     if (!ctx.testType || ctx.testValue === undefined) return false
     if (goal.test_type !== ctx.testType) return false
-    return goal.direction === "higher"
-      ? ctx.testValue >= goal.target_value
-      : ctx.testValue <= goal.target_value
+    return goal.direction === "higher" ? ctx.testValue >= goal.target_value : ctx.testValue <= goal.target_value
   }
   if (goal.metric_kind === "readiness") {
     if (ctx.readinessScore === undefined) return false

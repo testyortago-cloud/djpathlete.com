@@ -25,11 +25,7 @@ describe("checkGoals", () => {
       id: "g1",
       status: "achieved",
     })
-    const r = await checkGoals(
-      "u1",
-      { testType: "drop_jump", testValue: 42 },
-      "2026-05-14",
-    )
+    const r = await checkGoals("u1", { testType: "drop_jump", testValue: 42 }, "2026-05-14")
     expect(r).toHaveLength(1)
     expect(agDal.markAchieved).toHaveBeenCalledWith("g1", "2026-05-14")
   })

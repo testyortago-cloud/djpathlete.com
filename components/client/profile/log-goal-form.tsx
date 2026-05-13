@@ -9,13 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   GOAL_METRIC_KINDS,
   GOAL_METRIC_KIND_LABELS,
@@ -51,9 +45,7 @@ export function LogGoalForm({ clientUserId }: { clientUserId?: string }) {
       const res = await fetch("/api/athlete-goals", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(
-          clientUserId ? { ...values, client_user_id: clientUserId } : values,
-        ),
+        body: JSON.stringify(clientUserId ? { ...values, client_user_id: clientUserId } : values),
       })
       if (!res.ok) throw new Error("Save failed")
       toast.success("Goal added")
@@ -71,9 +63,7 @@ export function LogGoalForm({ clientUserId }: { clientUserId?: string }) {
         <Label>Metric</Label>
         <Select
           value={form.watch("metric_kind")}
-          onValueChange={(v) =>
-            form.setValue("metric_kind", v as AthleteGoalFormData["metric_kind"])
-          }
+          onValueChange={(v) => form.setValue("metric_kind", v as AthleteGoalFormData["metric_kind"])}
         >
           <SelectTrigger>
             <SelectValue />
@@ -93,9 +83,7 @@ export function LogGoalForm({ clientUserId }: { clientUserId?: string }) {
           <Label>Test type</Label>
           <Select
             value={form.watch("test_type") ?? "drop_jump"}
-            onValueChange={(v) =>
-              form.setValue("test_type", v as AthleteGoalFormData["test_type"])
-            }
+            onValueChange={(v) => form.setValue("test_type", v as AthleteGoalFormData["test_type"])}
           >
             <SelectTrigger>
               <SelectValue />
@@ -114,11 +102,7 @@ export function LogGoalForm({ clientUserId }: { clientUserId?: string }) {
       <div className="grid grid-cols-2 gap-4">
         <div className="grid gap-2">
           <Label>Target value</Label>
-          <Input
-            type="number"
-            step="0.001"
-            {...form.register("target_value", { valueAsNumber: true })}
-          />
+          <Input type="number" step="0.001" {...form.register("target_value", { valueAsNumber: true })} />
         </div>
         <div className="grid gap-2">
           <Label>Unit</Label>
@@ -131,9 +115,7 @@ export function LogGoalForm({ clientUserId }: { clientUserId?: string }) {
           <Label>Direction</Label>
           <Select
             value={form.watch("direction")}
-            onValueChange={(v) =>
-              form.setValue("direction", v as AthleteGoalFormData["direction"])
-            }
+            onValueChange={(v) => form.setValue("direction", v as AthleteGoalFormData["direction"])}
           >
             <SelectTrigger>
               <SelectValue />
@@ -151,18 +133,12 @@ export function LogGoalForm({ clientUserId }: { clientUserId?: string }) {
 
       <div className="grid gap-2">
         <Label>Deadline (optional)</Label>
-        <Input
-          type="date"
-          {...form.register("deadline", { setValueAs: (v) => (v === "" ? null : v) })}
-        />
+        <Input type="date" {...form.register("deadline", { setValueAs: (v) => (v === "" ? null : v) })} />
       </div>
 
       <div className="grid gap-2">
         <Label>Notes</Label>
-        <Textarea
-          rows={2}
-          {...form.register("notes", { setValueAs: (v) => (v === "" ? null : v) })}
-        />
+        <Textarea rows={2} {...form.register("notes", { setValueAs: (v) => (v === "" ? null : v) })} />
       </div>
 
       <Button type="submit" disabled={submitting} className="w-full">

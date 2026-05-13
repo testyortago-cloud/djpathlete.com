@@ -37,11 +37,7 @@ export const RADAR_CATEGORIES: Record<RadarCategory, TestType[]> = {
   Mobility: ["sit_reach"],
 }
 
-export function normalize(
-  testType: TestType,
-  value: number,
-  bodyWeightKg?: number | null,
-): number | null {
+export function normalize(testType: TestType, value: number, bodyWeightKg?: number | null): number | null {
   const r = REFERENCE_RANGES[testType]
   if (!r) return null
   let v = value

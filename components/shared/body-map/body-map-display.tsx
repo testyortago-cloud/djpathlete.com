@@ -10,13 +10,7 @@ const STATUS_FILL: Record<Injury["status"], string> = {
   resolved: "!fill-success/40",
 }
 
-export function BodyMapDisplay({
-  injuries,
-  clientUserId,
-}: {
-  injuries: Injury[]
-  clientUserId?: string
-}) {
+export function BodyMapDisplay({ injuries, clientUserId }: { injuries: Injury[]; clientUserId?: string }) {
   const router = useRouter()
 
   const byRegion = new Map<BodyRegion, Injury>()

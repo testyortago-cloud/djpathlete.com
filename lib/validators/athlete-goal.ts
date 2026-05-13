@@ -19,7 +19,10 @@ export const athleteGoalFormSchema = z
     target_unit: z.string().min(1).max(20),
     direction: z.enum(GOAL_DIRECTIONS),
     start_value: z.number().nullable(),
-    deadline: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+    deadline: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .nullable(),
     notes: z.string().max(1000).nullable(),
   })
   .refine((d) => !(d.metric_kind === "test" && !d.test_type), {
