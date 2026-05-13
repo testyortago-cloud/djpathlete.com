@@ -12,6 +12,7 @@ export type CronJobName =
   | "performance-learning-loop"
   | "auto-blog-generation"
   | "gsc-nightly-sync"
+  | "seo-agent-weekly"
 
 export interface CronJob {
   name: CronJobName
@@ -127,6 +128,19 @@ export const CRON_CATALOG: readonly CronJob[] = [
     firebaseFunction: "gscSyncCron",
     phase: "seo-agent-1",
     enabledKey: "cron_gsc_sync_enabled",
+    defaultEnabled: false,
+  },
+  {
+    name: "seo-agent-weekly",
+    label: "SEO Agent weekly run",
+    description:
+      "Every Sunday afternoon, the SEO agent reviews your Google Search Console data, blog inventory, and prior decisions, then picks the two highest-leverage actions for the week — a new post, a refresh, an internal-link sweep, or a human flag. Skips silently until GSC has 28+ days of data.",
+    schedule: "0 14 * * 0",
+    timezone: "UTC",
+    humanSchedule: "Every Sunday at 2:00 PM UTC",
+    firebaseFunction: "seoAgentCron",
+    phase: "seo-agent-4",
+    enabledKey: "cron_seo_agent_enabled",
     defaultEnabled: false,
   },
 ] as const
