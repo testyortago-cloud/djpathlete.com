@@ -33,6 +33,7 @@ import { getCoachPolicyFromFn, formatCoachPolicyAsInstructions } from "./coach-p
 import { getExercisesForAI } from "./program-chat-tools.js"
 import {
   buildPriorWeekContext,
+  dedupAssignmentsInPlace,
   verifyWeekDiversity,
   analyzeFullProgramRepetition,
   extractWeekSkeleton,
@@ -740,6 +741,28 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
       }
 
       if (!weekAssignment) throw new Error(`Failed to generate exercises for week ${weekNum}`)
+
+      // Last-resort within-day deduplication. The retry loop fixes most duplicates,
+      // but when retries are exhausted we otherwise accept the bad output with a
+      // warning. Enforce the "no exercise_id twice on the same day" invariant
+      // programmatically before the week is committed.
+      const weekDedupSwap = dedupAssignmentsInPlace(weekAssignment.assignments, weekSkeleton, thisWeekLibrary, {
+        equipment: availableEquipment,
+        difficulty: clientDifficultySync,
+      })
+      if (weekDedupSwap.swapped_count > 0 || weekDedupSwap.unresolved.length > 0) {
+        console.log(
+          `[orchestrator:sync] Week ${weekNum} post-hoc dedup: ${weekDedupSwap.summary}` +
+            (weekDedupSwap.swaps.length > 0
+              ? `\n  swaps: ${weekDedupSwap.swaps
+                  .map((s) => `${s.from_exercise_name} → ${s.to_exercise_name} (day ${s.day_of_week})`)
+                  .join("; ")}`
+              : "") +
+            (weekDedupSwap.unresolved.length > 0
+              ? `\n  unresolved: ${weekDedupSwap.unresolved.map((u) => `${u.exercise_name} (day ${u.day_of_week})`).join("; ")}`
+              : ""),
+        )
+      }
 
       completedWeeksSync.push({ week_number: weekNum, assignments: weekAssignment.assignments })
       console.log(`[orchestrator:sync] Week ${weekNum} complete`)

@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest"
-import { buildPriorContextFromExistingExercises, verifyWithinWeekDuplicates } from "../dedup-verify.js"
-import type { AssignedExercise, ProgramWeek, ExerciseSlot } from "../types.js"
+import {
+  buildPriorContextFromExistingExercises,
+  dedupAssignmentsInPlace,
+  verifyWithinWeekDuplicates,
+} from "../dedup-verify.js"
+import type { AssignedExercise, CompressedExercise, ProgramWeek, ExerciseSlot } from "../types.js"
 
 function slot(
   slot_id: string,
@@ -143,5 +147,176 @@ describe("verifyWithinWeekDuplicates", () => {
     const result = verifyWithinWeekDuplicates(assignments, w)
     expect(result.pass).toBe(true)
     expect(result.issues).toHaveLength(0)
+  })
+})
+
+function exercise(
+  id: string,
+  name: string,
+  pattern: "push" | "pull" | "squat" | "hinge" | "lunge" | "rotation" | "isometric",
+  primary: string[],
+): CompressedExercise {
+  return {
+    id,
+    name,
+    category: ["strength"],
+    difficulty: "intermediate",
+    difficulty_score: 5,
+    muscle_group: primary[0] ?? null,
+    movement_pattern: pattern,
+    primary_muscles: primary,
+    secondary_muscles: [],
+    force_type: null,
+    laterality: null,
+    equipment_required: [],
+    is_bodyweight: true,
+    training_intent: ["build"],
+    sport_tags: [],
+    plane_of_motion: [],
+    joints_loaded: [],
+  }
+}
+
+describe("dedupAssignmentsInPlace", () => {
+  it("swaps a within-day duplicate for the best-scoring unused alternative", () => {
+    const w = week(1, [
+      {
+        day_of_week: 1,
+        slots: [
+          slot("w1d1s1", "primary_compound", "push"),
+          slot("w1d1s2", "accessory", "push"),
+          slot("w1d1s3", "isolation", "push"),
+        ],
+      },
+    ])
+    const assignments = [
+      assign("w1d1s1", "ex-a", "Bench Press"),
+      assign("w1d1s2", "ex-b", "Cable Fly"),
+      assign("w1d1s3", "ex-a", "Bench Press"), // duplicate of slot 1
+    ]
+    const library = [
+      exercise("ex-a", "Bench Press", "push", ["chest"]),
+      exercise("ex-b", "Cable Fly", "push", ["chest"]),
+      exercise("ex-c", "Incline DB Press", "push", ["chest"]),
+    ]
+    const result = dedupAssignmentsInPlace(assignments, w, library)
+    expect(result.swapped_count).toBe(1)
+    expect(result.unresolved).toHaveLength(0)
+    // Third slot should now hold a different exercise_id
+    expect(assignments[2].exercise_id).not.toBe("ex-a")
+    expect(assignments[2].exercise_id).toBe("ex-c")
+    expect(assignments[2].notes).toMatch(/Auto-swapped/i)
+  })
+
+  it("leaves first occurrence untouched and only swaps later collisions", () => {
+    const w = week(1, [
+      {
+        day_of_week: 1,
+        slots: [slot("w1d1s1", "accessory", "pull"), slot("w1d1s2", "accessory", "pull")],
+      },
+    ])
+    const assignments = [
+      assign("w1d1s1", "dup", "Row"),
+      assign("w1d1s2", "dup", "Row"),
+    ]
+    const library = [
+      exercise("dup", "Row", "pull", ["upper_back"]),
+      exercise("alt", "Face Pull", "pull", ["upper_back"]),
+    ]
+    dedupAssignmentsInPlace(assignments, w, library)
+    expect(assignments[0].exercise_id).toBe("dup")
+    expect(assignments[1].exercise_id).toBe("alt")
+  })
+
+  it("does not swap warm-up / cool-down anchors that legitimately repeat", () => {
+    const w = week(1, [
+      {
+        day_of_week: 1,
+        slots: [slot("w1d1s1", "warm_up"), slot("w1d1s2", "warm_up")],
+      },
+    ])
+    const assignments = [
+      assign("w1d1s1", "wu", "Cat-Cow"),
+      assign("w1d1s2", "wu", "Cat-Cow"),
+    ]
+    const library = [exercise("wu", "Cat-Cow", "isometric", ["core"])]
+    const result = dedupAssignmentsInPlace(assignments, w, library)
+    expect(result.swapped_count).toBe(0)
+    expect(assignments[1].exercise_id).toBe("wu")
+  })
+
+  it("treats different days independently — same exercise on different days is fine", () => {
+    const w = week(1, [
+      { day_of_week: 1, slots: [slot("w1d1s1", "accessory", "pull")] },
+      { day_of_week: 3, slots: [slot("w1d3s1", "accessory", "pull")] },
+    ])
+    const assignments = [
+      assign("w1d1s1", "row", "Row"),
+      assign("w1d3s1", "row", "Row"),
+    ]
+    const library = [exercise("row", "Row", "pull", ["upper_back"])]
+    const result = dedupAssignmentsInPlace(assignments, w, library)
+    expect(result.swapped_count).toBe(0)
+    expect(assignments[0].exercise_id).toBe("row")
+    expect(assignments[1].exercise_id).toBe("row")
+  })
+
+  it("records unresolved when no suitable alternative exists in the library", () => {
+    const w = week(1, [
+      {
+        day_of_week: 1,
+        slots: [slot("w1d1s1", "accessory", "push"), slot("w1d1s2", "accessory", "push")],
+      },
+    ])
+    const assignments = [
+      assign("w1d1s1", "only", "Push-Up"),
+      assign("w1d1s2", "only", "Push-Up"),
+    ]
+    const library = [exercise("only", "Push-Up", "push", ["chest"])]
+    const result = dedupAssignmentsInPlace(assignments, w, library)
+    expect(result.swapped_count).toBe(0)
+    expect(result.unresolved).toHaveLength(1)
+    expect(result.unresolved[0].slot_id).toBe("w1d1s2")
+    // Assignment is left in place — coach can manually fix
+    expect(assignments[1].exercise_id).toBe("only")
+  })
+
+  it("does not introduce a new duplicate when swapping", () => {
+    // Two slots want the same exercise, but the only alternative is already used
+    // elsewhere in the same day. Should be unresolved, not swap into existing.
+    const w = week(1, [
+      {
+        day_of_week: 1,
+        slots: [
+          slot("w1d1s1", "accessory", "squat"),
+          slot("w1d1s2", "accessory", "squat"),
+          slot("w1d1s3", "accessory", "squat"),
+        ],
+      },
+    ])
+    const assignments = [
+      assign("w1d1s1", "alt", "Goblet Squat"),
+      assign("w1d1s2", "dup", "Back Squat"),
+      assign("w1d1s3", "dup", "Back Squat"),
+    ]
+    // Library only has these two — the candidate "alt" is already used in slot 1.
+    const library = [
+      exercise("alt", "Goblet Squat", "squat", ["quads"]),
+      exercise("dup", "Back Squat", "squat", ["quads"]),
+    ]
+    const result = dedupAssignmentsInPlace(assignments, w, library)
+    // Either unresolved, or swapped to something NOT already in the day
+    expect(assignments.map((a) => a.exercise_id)).not.toContain("alt-twice")
+    // Verify no exercise_id now appears twice in the day
+    const counts = new Map<string, number>()
+    for (const a of assignments) counts.set(a.exercise_id, (counts.get(a.exercise_id) ?? 0) + 1)
+    const duplicatesAfter = [...counts.entries()].filter(([, c]) => c > 1)
+    // If unresolved, the duplicate remains (coach must fix). Either way, the
+    // invariant is: we never introduced a NEW duplicate by swapping into another
+    // used exercise. The only acceptable duplicate is the original "dup" pair.
+    for (const [id] of duplicatesAfter) {
+      expect(id).toBe("dup")
+    }
+    expect(result.unresolved.length + result.swapped_count).toBeGreaterThan(0)
   })
 })

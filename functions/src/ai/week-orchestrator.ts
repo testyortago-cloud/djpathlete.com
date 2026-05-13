@@ -8,6 +8,7 @@ import { formatExerciseLibrary, filterByDifficultyLevel, filterByProgressionPhas
 import { getExercisesForAI } from "./program-chat-tools.js"
 import {
   buildPriorContextFromExistingExercises,
+  dedupAssignmentsInPlace,
   verifyWeekAgainstExisting,
   verifyWithinWeekDuplicates,
 } from "./dedup-verify.js"
@@ -856,6 +857,28 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
 
   if (!assignment) {
     throw new Error("Failed to generate exercise assignments")
+  }
+
+  // ── Step 3.5: Last-resort within-day deduplication ─────────────────────
+  // The retry loop fixes most duplicates, but when retries are exhausted the
+  // loop falls back to "accept with warning". Enforce the invariant
+  // programmatically so the same exercise_id never lands on the same day.
+  const dedupSwap = dedupAssignmentsInPlace(assignment.assignments, skeleton.weeks[0], filtered, {
+    equipment: availableEquipment,
+    difficulty: clientDifficultyLevel,
+  })
+  if (dedupSwap.swapped_count > 0 || dedupSwap.unresolved.length > 0) {
+    console.log(
+      `[week-orchestrator] Post-hoc dedup: ${dedupSwap.summary}` +
+        (dedupSwap.swaps.length > 0
+          ? `\n  swaps: ${dedupSwap.swaps
+              .map((s) => `${s.from_exercise_name} → ${s.to_exercise_name} (day ${s.day_of_week})`)
+              .join("; ")}`
+          : "") +
+        (dedupSwap.unresolved.length > 0
+          ? `\n  unresolved: ${dedupSwap.unresolved.map((u) => `${u.exercise_name} (day ${u.day_of_week})`).join("; ")}`
+          : ""),
+    )
   }
 
   // ── Step 4: Save to database ───────────────────────────────────────────

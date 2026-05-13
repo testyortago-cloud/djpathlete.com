@@ -1,4 +1,5 @@
-import type { AssignedExercise, ExerciseSlot, ProgramWeek } from "./types.js"
+import type { AssignedExercise, CompressedExercise, ExerciseSlot, ProgramWeek } from "./types.js"
+import { scoreExerciseForSlot } from "./exercise-filter.js"
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
 
@@ -603,4 +604,145 @@ export function verifyWithinWeekDuplicates(
       ? `No within-week duplicates — PASS`
       : `${issues.length} within-week duplicate exercise${issues.length === 1 ? "" : "s"} found — FAIL`,
   }
+}
+
+// ─── Post-Hoc Within-Day Deduplication ──────────────────────────────────────
+
+export interface DedupSwap {
+  slot_id: string
+  day_of_week: number
+  from_exercise_id: string
+  from_exercise_name: string
+  to_exercise_id: string
+  to_exercise_name: string
+}
+
+export interface DedupUnresolved {
+  slot_id: string
+  day_of_week: number
+  exercise_id: string
+  exercise_name: string
+  reason: string
+}
+
+export interface DedupSwapResult {
+  swapped_count: number
+  swaps: DedupSwap[]
+  unresolved: DedupUnresolved[]
+  summary: string
+}
+
+/**
+ * Enforce the "no exercise_id twice in the same day" invariant after the
+ * Exercise Selector + retry loop finishes. The selector's retry loop fixes
+ * most duplicates, but when retries are exhausted the orchestrator otherwise
+ * accepts the bad output with a warning. This is the last line of defense:
+ * walk the assignments, and for any exercise_id that appears 2+ times within
+ * a single day (anchor roles excepted), swap the later occurrence(s) for the
+ * best-scoring alternative from the candidate library that:
+ *   - matches the slot's movement_pattern / role / target_muscles (via
+ *     scoreExerciseForSlot — same scorer used during filtering),
+ *   - isn't already used on that same day,
+ *   - and isn't already excluded by prior weeks (caller filters the library
+ *     before passing it in).
+ *
+ * Mutates `newAssignments` in place. Returns a summary suitable for logging
+ * and for surfacing to the coach via warnings.
+ */
+export function dedupAssignmentsInPlace(
+  newAssignments: AssignedExercise[],
+  newWeekSkeleton: ProgramWeek,
+  candidateLibrary: CompressedExercise[],
+  options?: {
+    equipment?: string[]
+    difficulty?: string
+  },
+): DedupSwapResult {
+  const equipment = options?.equipment ?? []
+  const difficulty = options?.difficulty ?? "intermediate"
+
+  const slotById = new Map<string, ExerciseSlot>()
+  const slotDay = new Map<string, number>()
+  for (const day of newWeekSkeleton.days) {
+    for (const slot of day.slots) {
+      slotById.set(slot.slot_id, slot)
+      slotDay.set(slot.slot_id, day.day_of_week)
+    }
+  }
+
+  // Track every exercise_id currently committed to each day. Updated as we
+  // perform swaps so we never re-introduce another duplicate.
+  const usedByDay = new Map<number, Set<string>>()
+  for (const a of newAssignments) {
+    const day = slotDay.get(a.slot_id) ?? -1
+    const set = usedByDay.get(day) ?? new Set<string>()
+    set.add(a.exercise_id)
+    usedByDay.set(day, set)
+  }
+
+  const swaps: DedupSwap[] = []
+  const unresolved: DedupUnresolved[] = []
+  // First-seen exercise_id per day stays; later collisions get swapped.
+  const seenPerDay = new Map<number, Set<string>>()
+
+  for (const a of newAssignments) {
+    const slot = slotById.get(a.slot_id)
+    if (!slot) continue
+    // Warm-up / cool-down may legitimately repeat
+    if (ANCHOR_ROLES.has(slot.role)) continue
+
+    const day = slotDay.get(a.slot_id) ?? -1
+    const seen = seenPerDay.get(day) ?? new Set<string>()
+
+    if (!seen.has(a.exercise_id)) {
+      seen.add(a.exercise_id)
+      seenPerDay.set(day, seen)
+      continue
+    }
+
+    // Duplicate within day — find the best-scoring unused alternative.
+    const dayUsed = usedByDay.get(day) ?? new Set<string>()
+    const scored = candidateLibrary
+      .filter((ex) => !dayUsed.has(ex.id))
+      .map((ex) => ({ exercise: ex, score: scoreExerciseForSlot(ex, slot, equipment, difficulty) }))
+      .sort((a, b) => b.score - a.score)
+
+    // Require a positive score — guarantees at least some pattern / muscle fit.
+    const best = scored.find((c) => c.score > 0)
+
+    if (best) {
+      const fromId = a.exercise_id
+      const fromName = a.exercise_name
+      a.exercise_id = best.exercise.id
+      a.exercise_name = best.exercise.name
+      const swapNote = `Auto-swapped to avoid duplicate of "${fromName}" on this day.`
+      a.notes = a.notes ? `${a.notes} ${swapNote}` : swapNote
+      dayUsed.add(best.exercise.id)
+      seen.add(best.exercise.id)
+      seenPerDay.set(day, seen)
+      swaps.push({
+        slot_id: a.slot_id,
+        day_of_week: day,
+        from_exercise_id: fromId,
+        from_exercise_name: fromName,
+        to_exercise_id: best.exercise.id,
+        to_exercise_name: best.exercise.name,
+      })
+    } else {
+      unresolved.push({
+        slot_id: a.slot_id,
+        day_of_week: day,
+        exercise_id: a.exercise_id,
+        exercise_name: a.exercise_name,
+        reason: "No suitable alternative in candidate library that isn't already used today.",
+      })
+    }
+  }
+
+  const summary =
+    swaps.length === 0 && unresolved.length === 0
+      ? "No within-day duplicates."
+      : `${swaps.length} swap${swaps.length === 1 ? "" : "s"}, ${unresolved.length} unresolved`
+
+  return { swapped_count: swaps.length, swaps, unresolved, summary }
 }
