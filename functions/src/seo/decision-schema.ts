@@ -63,4 +63,3 @@ export const decisionSchema = z
 
 export type Decision = z.infer<typeof decisionSchema>
 export type Action = z.infer<typeof actionSchema>
-export type ToolName = Action["tool"]

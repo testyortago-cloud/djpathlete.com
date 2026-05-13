@@ -7,8 +7,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { isCronSkipped } from "@/lib/db/system-settings"
 import { getAdminFirestore } from "@/lib/firebase-admin"
 import { FieldValue } from "firebase-admin/firestore"
-
-const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000001"
+import { SYSTEM_USER_ID } from "@/lib/system-user"
 
 export async function POST(request: NextRequest) {
   const expected = process.env.INTERNAL_CRON_TOKEN

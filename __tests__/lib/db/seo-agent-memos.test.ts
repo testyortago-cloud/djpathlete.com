@@ -13,7 +13,7 @@ vi.mock("@/lib/supabase", () => ({
   createServiceRoleClient: () => ({ from: fromMock }),
 }))
 
-const { getMemoById, listMemos, getRecentMemos } = await import("@/lib/db/seo-agent-memos")
+const { getMemoById, listMemos } = await import("@/lib/db/seo-agent-memos")
 
 beforeEach(() => {
   fromMock.mockClear()
@@ -42,11 +42,6 @@ describe("seo_agent_memos DAL", () => {
   it("listMemos returns [] on null data", async () => {
     listResponse.mockResolvedValueOnce({ data: null, error: null })
     expect(await listMemos()).toEqual([])
-  })
-
-  it("getRecentMemos delegates to listMemos with default 8", async () => {
-    listResponse.mockResolvedValueOnce({ data: [], error: null })
-    expect(await getRecentMemos()).toEqual([])
   })
 
   it("throws on supabase error", async () => {

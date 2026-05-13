@@ -30,7 +30,3 @@ export async function listMemos(limit = 25): Promise<SeoAgentMemo[]> {
   if (error) throw error
   return (data ?? []) as SeoAgentMemo[]
 }
-
-export async function getRecentMemos(limit = 8): Promise<SeoAgentMemo[]> {
-  return listMemos(limit)
-}

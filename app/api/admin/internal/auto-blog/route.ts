@@ -15,6 +15,7 @@ import { getAdminFirestore } from "@/lib/firebase-admin"
 import { isCronSkipped } from "@/lib/db/system-settings"
 import { proposePrimaryKeyword } from "@/lib/blog/keyword-proposal"
 import { extractContentAngle } from "@/lib/blog/content-angle"
+import { SYSTEM_USER_ID } from "@/lib/system-user"
 import type { ContentCalendarEntry } from "@/types/database"
 
 interface TopicMetadata {
@@ -23,11 +24,6 @@ interface TopicMetadata {
   summary?: string
   source?: string
 }
-
-// blog_posts.author_id is uuid NOT NULL, so cron-generated posts must be
-// attributed to a real admin. There is exactly one admin (Darren) — use
-// that UUID rather than a sentinel string.
-const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000001"
 
 export async function POST(request: NextRequest) {
   // ── Auth ────────────────────────────────────────────────────────────────

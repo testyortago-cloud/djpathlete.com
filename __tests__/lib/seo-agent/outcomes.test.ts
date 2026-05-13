@@ -57,7 +57,9 @@ describe("resolveNewPostOutcome", () => {
             eq: () => ({
               maybeSingle: () =>
                 Promise.resolve({
-                  data: { id: "cc-1", reference_id: "post-1", status: "published" },
+                  // status="in_progress" matches what blog-generation.ts actually sets
+                  // when an agent-queued topic is picked up by autoBlogCron.
+                  data: { id: "cc-1", reference_id: "post-1", status: "in_progress" },
                   error: null,
                 }),
             }),
