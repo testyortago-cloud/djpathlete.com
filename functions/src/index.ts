@@ -895,6 +895,42 @@ export const tavilyTrendingCron = onSchedule(
   },
 )
 
+// ─── GSC Nightly Sync (03:00 UTC daily) ──────────────────────────────────────
+// POSTs to the Next.js /api/admin/internal/gsc-sync route. Subject to
+// automation_paused + cron_gsc_sync_enabled gates inside the route
+// (cron_gsc_sync_enabled defaults to false — flip on from /admin/automation
+// once GSC is connected).
+
+export const gscSyncCron = onSchedule(
+  {
+    schedule: "0 3 * * *",
+    timeZone: "UTC",
+    timeoutSeconds: 120,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [internalCronToken, appUrl],
+  },
+  async () => {
+    const baseUrl = process.env.APP_URL
+    const token = process.env.INTERNAL_CRON_TOKEN
+    if (!baseUrl || !token) {
+      console.error("[gscSyncCron] APP_URL or INTERNAL_CRON_TOKEN missing — abort")
+      return
+    }
+    try {
+      const res = await fetch(`${baseUrl}/api/admin/internal/gsc-sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: "{}",
+      })
+      const body = await res.json().catch(() => ({}))
+      console.log("[gscSyncCron]", res.status, body)
+    } catch (err) {
+      console.error("[gscSyncCron] failed:", err)
+    }
+  },
+)
+
 export const runJob = onRequest(
   {
     region: "us-central1",
