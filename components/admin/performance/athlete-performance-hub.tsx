@@ -24,6 +24,22 @@ import { WeekOverWeekCard } from "@/components/admin/coach-intel/week-over-week-
 import { RiskFlagsCard } from "@/components/admin/coach-intel/risk-flags-card"
 import { RiskFlagsList } from "@/components/admin/coach-intel/risk-flags-list"
 import { BodyMapDisplay } from "@/components/shared/body-map/body-map-display"
+import { AthleteRadarCard } from "@/components/client/profile/athlete-radar-card"
+import { TrainingStreakHeatmap } from "@/components/client/profile/training-streak-heatmap"
+import { BadgeShelfCard } from "@/components/client/profile/badge-shelf-card"
+import { OpenGoalsCard } from "@/components/client/profile/open-goals-card"
+import type {
+  AthleteGoal,
+  Badge as BadgeType,
+  TrainingSession,
+} from "@/types/database"
+
+export interface ProfileSummary {
+  tests: PerformanceTest[]
+  sessions: TrainingSession[]
+  goals: AthleteGoal[]
+  badges: BadgeType[]
+}
 
 export interface CoachIntelSummary {
   acuteLoad: number
@@ -53,6 +69,7 @@ export function AthletePerformanceHub({
   prs,
   recentTests,
   coachIntel,
+  profile,
 }: {
   clientUserId: string
   tab: string
@@ -63,6 +80,7 @@ export function AthletePerformanceHub({
   prs: PerformanceTestPR[]
   recentTests: PerformanceTest[]
   coachIntel: CoachIntelSummary
+  profile: ProfileSummary
 }) {
   const grouped = recentTests.reduce<Record<string, PerformanceTest[]>>((acc, t) => {
     const key = t.test_type === "custom" ? `custom:${t.custom_name}` : t.test_type
@@ -138,6 +156,10 @@ export function AthletePerformanceHub({
           />
           <ActiveInjuriesCard injuries={activeInjuries} clientUserId={clientUserId} />
           <RiskFlagsCard flags={coachIntel.openFlags} />
+          <OpenGoalsCard
+            goals={profile.goals}
+            goalsHref={`/admin/clients/${clientUserId}/performance?tab=profile`}
+          />
           <PRsShelfCard prs={prs} />
           {recentTests[0] && (
             <PerformanceTestCard
@@ -179,6 +201,16 @@ export function AthletePerformanceHub({
 
         <TabsContent value="alerts" className="mt-6">
           <RiskFlagsList flags={coachIntel.openFlags} />
+        </TabsContent>
+
+        <TabsContent value="profile" className="mt-6 grid gap-6 md:grid-cols-2">
+          <AthleteRadarCard tests={profile.tests} />
+          <TrainingStreakHeatmap sessions={profile.sessions} />
+          <BadgeShelfCard badges={profile.badges} />
+          <OpenGoalsCard
+            goals={profile.goals}
+            goalsHref={`/admin/clients/${clientUserId}/performance?tab=profile`}
+          />
         </TabsContent>
 
         <TabsContent value="injuries" className="mt-6 space-y-6">

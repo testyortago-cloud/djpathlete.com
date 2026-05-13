@@ -1,10 +1,15 @@
 import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
-import { getLatest, getReadinessTrend } from "@/lib/db/daily-readiness"
+import {
+  getLatest,
+  getReadinessTrend,
+  listByUser as listReadiness,
+} from "@/lib/db/daily-readiness"
 import { listByUser, getActive } from "@/lib/db/injuries"
 import { getPRsByUser, listByUser as listTests } from "@/lib/db/performance-tests"
 import { listByUser as listTrainingSessions } from "@/lib/db/training-sessions"
 import { getOpenByUser } from "@/lib/db/risk-flags"
+import { getActive as activeGoals } from "@/lib/db/athlete-goals"
 import {
   dailyLoads,
   acuteLoad,
@@ -14,10 +19,8 @@ import {
 } from "@/lib/coach-intel/load"
 import { weeklyStats } from "@/lib/coach-intel/monotony"
 import { weekOverWeek } from "@/lib/coach-intel/week-over-week"
-import {
-  ACUTE_WINDOW_DAYS,
-  CHRONIC_WINDOW_DAYS,
-} from "@/lib/coach-intel/thresholds"
+import { ACUTE_WINDOW_DAYS, CHRONIC_WINDOW_DAYS } from "@/lib/coach-intel/thresholds"
+import { computeBadges } from "@/lib/badges"
 import { AthletePerformanceHub } from "@/components/admin/performance/athlete-performance-hub"
 
 function addDays(iso: string, days: number): string {
@@ -48,8 +51,11 @@ export default async function AdminPerformanceHubPage({
     activeInjuries,
     prs,
     recentTests,
+    fullTests,
     trainingSessions,
     openFlags,
+    goals,
+    allReadiness,
   ] = await Promise.all([
     getLatest(id),
     getReadinessTrend(id, 30),
@@ -57,8 +63,11 @@ export default async function AdminPerformanceHubPage({
     getActive(id),
     getPRsByUser(id),
     listTests(id).then((t) => t.slice(0, 10)),
+    listTests(id),
     listTrainingSessions(id, { from, to: today }),
     getOpenByUser(id),
+    activeGoals(id),
+    listReadiness(id, { from, to: today }),
   ])
 
   const daily = dailyLoads(trainingSessions, from, today)
@@ -72,6 +81,14 @@ export default async function AdminPerformanceHubPage({
   const trimDaily = daily.filter((d) => d.date >= visibleFrom)
   const trimAcute = acute.filter((d) => d.date >= visibleFrom)
   const trimChronic = chronic.filter((d) => d.date >= visibleFrom)
+
+  const badges = computeBadges({
+    asOf: today,
+    dailyLoads: daily,
+    tests: fullTests,
+    readiness: allReadiness,
+    monthlyCompliancePct: null,
+  })
 
   return (
     <AthletePerformanceHub
@@ -95,6 +112,12 @@ export default async function AdminPerformanceHubPage({
         acuteSeries: trimAcute,
         chronicSeries: trimChronic,
         openFlags,
+      }}
+      profile={{
+        tests: fullTests,
+        sessions: trainingSessions,
+        goals,
+        badges,
       }}
     />
   )
