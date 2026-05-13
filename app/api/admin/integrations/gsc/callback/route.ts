@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { exchangeCodeForTokens, verifyState } from "@/lib/gsc/oauth"
 import { upsertGscProperty } from "@/lib/db/gsc-properties"
+import { setSetting } from "@/lib/db/system-settings"
 import { SITE_URL } from "@/lib/constants"
 
 interface GscState {
@@ -88,6 +89,9 @@ export async function GET(req: NextRequest) {
     access_token_expires: expiresAt,
     connected_by_user_id: verified.userId,
   })
+
+  // Clear the OAuth-broken flag set by a previous failed sync, if any.
+  await setSetting("gsc_oauth_broken", false)
 
   return NextResponse.redirect(`${siteUrl()}/admin/integrations/gsc?connected=1`, { status: 302 })
 }
