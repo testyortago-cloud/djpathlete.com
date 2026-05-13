@@ -9,9 +9,9 @@ function getClient() {
 // so they stay optional on insert while remaining required on read.
 type CreateBlogPostInput = Omit<
   BlogPost,
-  "id" | "created_at" | "updated_at" | "source_video_id" | "seo_metadata" | "tavily_research" | "fact_check_status" | "fact_check_details"
+  "id" | "created_at" | "updated_at" | "source_video_id" | "seo_metadata" | "tavily_research" | "fact_check_status" | "fact_check_details" | "last_refreshed_at" | "refresh_count"
 > &
-  Partial<Pick<BlogPost, "source_video_id" | "seo_metadata" | "tavily_research" | "fact_check_status" | "fact_check_details">>
+  Partial<Pick<BlogPost, "source_video_id" | "seo_metadata" | "tavily_research" | "fact_check_status" | "fact_check_details" | "last_refreshed_at" | "refresh_count">>
 
 export async function getBlogPosts(status?: BlogPostStatus): Promise<BlogPost[]> {
   const supabase = getClient()
