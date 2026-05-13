@@ -62,12 +62,14 @@ export async function POST(request: NextRequest) {
       totalRows += upserted
     } catch (err) {
       if (err instanceof OAuthBrokenError) {
+        console.error(`[gsc-sync] OAuth broken on date=${date}:`, err)
         await setSetting("gsc_oauth_broken", true)
         return NextResponse.json(
           { error: "OAuth broken — coach must reconnect", date },
           { status: 500 },
         )
       }
+      console.error(`[gsc-sync] transient error on date=${date}:`, err)
       errors.push({ date, message: (err as Error).message ?? "unknown" })
     }
   }
