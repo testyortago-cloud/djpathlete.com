@@ -14,6 +14,7 @@ export type CronJobName =
   | "gsc-nightly-sync"
   | "seo-agent-weekly"
   | "outcome-tracker-daily"
+  | "ads-outcome-tracker-daily"
 
 export interface CronJob {
   name: CronJobName
@@ -155,6 +156,19 @@ export const CRON_CATALOG: readonly CronJob[] = [
     firebaseFunction: "outcomeTrackerCron",
     phase: "seo-agent-5",
     enabledKey: "cron_outcome_tracker_enabled",
+    defaultEnabled: false,
+  },
+  {
+    name: "ads-outcome-tracker-daily",
+    label: "Ads outcome tracker (daily)",
+    description:
+      "Every morning, finds ads agent memos whose 14-day measurement window has closed and computes their outcomes — CTR, CPC, conversions, and spend before vs after — so the agent learns which paid-media tactics are working.",
+    schedule: "30 4 * * *",
+    timezone: "UTC",
+    humanSchedule: "Every morning at 4:30 AM UTC",
+    firebaseFunction: "adsOutcomeTrackerCron",
+    phase: "ads-agent-5",
+    enabledKey: "cron_ads_outcome_tracker_enabled",
     defaultEnabled: false,
   },
 ] as const
