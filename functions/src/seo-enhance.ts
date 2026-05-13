@@ -91,7 +91,7 @@ export function buildSeoPrompt(p: BuildSeoPromptParams): string {
     p.content.slice(0, 4000),
     "",
     "# INSTRUCTIONS",
-    "Generate SEO metadata for this post. Output a JSON object with: meta_title (<=60 chars), meta_description (<=155 chars), keywords (5-10 lowercase), json_ld (schema.org Article object with at least @context, @type, headline, description, author { @type: Person, name: 'Darren Paul' }, datePublished, AND an `image` field — if a hero URL is provided above, use it; if inline images are provided, include them as an array of ImageObject with url, width, height, caption=alt).",
+    "Generate SEO metadata for this post. Output a JSON object with: meta_title (<=60 chars, do NOT include the site name 'DJP Athlete'), meta_description (<=155 chars), keywords (5-10 lowercase). Do NOT generate Article/BlogPosting schema; the site renders that itself. Only include a `json_ld` field if the post is a genuine step-by-step how-to; in that case set json_ld to a single schema.org HowTo object with @context, @type 'HowTo', name, and a `step` array of HowToStep objects (each with name and text). Otherwise omit json_ld.",
   ]
     .filter(Boolean)
     .join("\n")
@@ -101,8 +101,26 @@ const SeoSchema = z.object({
   meta_title: z.string().max(200),
   meta_description: z.string().max(300),
   keywords: z.array(z.string()),
-  json_ld: z.record(z.string(), z.unknown()),
+  // Optional: only present when the post is a step-by-step how-to (a HowTo
+  // object). The canonical Article/FAQPage schema is emitted by the page,
+  // not stored here, so Article-type entries are filtered out below.
+  json_ld: z.record(z.string(), z.unknown()).nullable().optional(),
 })
+
+const ARTICLE_SCHEMA_TYPES = new Set([
+  "Article",
+  "BlogPosting",
+  "NewsArticle",
+  "TechArticle",
+  "ScholarlyArticle",
+])
+
+function isArticleSchema(entry: unknown): boolean {
+  if (!entry || typeof entry !== "object") return false
+  const t = (entry as { "@type"?: string | string[] })["@type"]
+  if (!t) return false
+  return Array.isArray(t) ? t.some((x) => ARTICLE_SCHEMA_TYPES.has(x)) : ARTICLE_SCHEMA_TYPES.has(t)
+}
 
 const SYSTEM_PROMPT = `You are an SEO specialist generating structured metadata for a fitness/coaching blog. Output strict JSON matching the schema. Do not fabricate facts — use only what the blog post provides.`
 
@@ -229,7 +247,14 @@ export async function handleSeoEnhance(jobId: string): Promise<void> {
     const faqEntries = (postRow.faq as Array<{ question: string; answer: string }> | null) ?? []
     const faqPageJsonLd = buildFaqPageJsonLd(faqEntries)
 
-    const jsonLdDocs: Record<string, unknown>[] = [seoResult.content.json_ld as Record<string, unknown>]
+    // Only keep auxiliary schemas here (HowTo, etc.) — the page emits the
+    // canonical BlogPosting itself, so drop any Article-type entry the model
+    // may have produced.
+    const jsonLdDocs: Record<string, unknown>[] = []
+    const modelJsonLd = seoResult.content.json_ld
+    if (modelJsonLd && typeof modelJsonLd === "object" && !isArticleSchema(modelJsonLd)) {
+      jsonLdDocs.push(modelJsonLd as Record<string, unknown>)
+    }
     if (faqPageJsonLd) jsonLdDocs.push(faqPageJsonLd)
 
     const seoMetadata = {
