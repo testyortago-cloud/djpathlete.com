@@ -13,6 +13,7 @@ export type CronJobName =
   | "auto-blog-generation"
   | "gsc-nightly-sync"
   | "seo-agent-weekly"
+  | "outcome-tracker-daily"
 
 export interface CronJob {
   name: CronJobName
@@ -141,6 +142,19 @@ export const CRON_CATALOG: readonly CronJob[] = [
     firebaseFunction: "seoAgentCron",
     phase: "seo-agent-4",
     enabledKey: "cron_seo_agent_enabled",
+    defaultEnabled: false,
+  },
+  {
+    name: "outcome-tracker-daily",
+    label: "SEO outcome tracker (daily)",
+    description:
+      "Every morning, finds SEO agent decisions made 14+ days ago and measures their outcomes — clicks before vs after, position before vs after — so the agent learns which tactics are working on your site.",
+    schedule: "0 4 * * *",
+    timezone: "UTC",
+    humanSchedule: "Every morning at 4:00 AM UTC",
+    firebaseFunction: "outcomeTrackerCron",
+    phase: "seo-agent-5",
+    enabledKey: "cron_outcome_tracker_enabled",
     defaultEnabled: false,
   },
 ] as const

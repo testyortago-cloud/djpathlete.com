@@ -25,6 +25,7 @@ const VERCEL_ROUTE_JOBS: Record<string, string> = {
   "auto-blog-generation": "/api/admin/internal/auto-blog",
   "gsc-nightly-sync":     "/api/admin/internal/gsc-sync",
   "seo-agent-weekly":     "/api/admin/internal/seo-agent",
+  "outcome-tracker-daily": "/api/admin/internal/outcome-tracker",
 }
 
 function getRunJobUrl(): string | null {
