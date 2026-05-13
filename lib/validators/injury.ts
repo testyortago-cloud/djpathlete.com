@@ -58,15 +58,15 @@ export const rehabMilestoneSchema = z.object({
 export const injuryFormSchema = z
   .object({
     body_region: z.enum(BODY_REGIONS),
-    side: z.enum(INJURY_SIDES).default("n_a"),
+    side: z.enum(INJURY_SIDES),
     injury_type: z.string().min(1).max(100),
     severity: z.enum(INJURY_SEVERITIES),
     mechanism: z.string().max(500).nullable(),
     description: z.string().max(2000).nullable(),
     date_occurred: isoDate,
     date_resolved: isoDate.nullable(),
-    status: z.enum(INJURY_STATUSES).default("active"),
-    rehab_milestones: z.array(rehabMilestoneSchema).default([]),
+    status: z.enum(INJURY_STATUSES),
+    rehab_milestones: z.array(rehabMilestoneSchema),
   })
   .refine((d) => !(d.status === "resolved" && !d.date_resolved), {
     message: "Resolved injuries must have a date_resolved",

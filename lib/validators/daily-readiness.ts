@@ -16,7 +16,7 @@ export const readinessFormSchema = z.object({
   sleep_hours: z.number().min(0).max(24).nullable(),
   sleep_quality: rating,
   soreness_overall: rating,
-  soreness_by_region: z.record(z.string(), rating).default({}),
+  soreness_by_region: z.record(z.string(), rating),
   fatigue: rating,
   mood: rating,
   stress: rating,
