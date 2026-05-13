@@ -1002,7 +1002,9 @@ export const seoAgentCron = onSchedule(
 
 export const outcomeTrackerCron = onSchedule(
   {
-    schedule: "0 4 * * *",
+    // 04:15 UTC (staggered from 04:00 to separate from voiceDriftMonitor's
+    // Monday firing).
+    schedule: "15 4 * * *",
     timeZone: "UTC",
     timeoutSeconds: 120,
     memory: "256MiB",
@@ -1038,7 +1040,9 @@ export const outcomeTrackerCron = onSchedule(
 
 export const gscSyncCron = onSchedule(
   {
-    schedule: "0 3 * * *",
+    // 03:15 UTC (staggered from 03:00 to separate from syncPlatformAnalytics +
+    // performanceLearningLoop in ops dashboards).
+    schedule: "15 3 * * *",
     timeZone: "UTC",
     timeoutSeconds: 120,
     memory: "256MiB",

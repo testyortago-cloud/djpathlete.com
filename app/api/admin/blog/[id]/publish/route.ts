@@ -20,6 +20,20 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
       published_at: post.published_at ?? new Date().toISOString(),
     })
 
+    // Flip any linked content_calendar row from "in_progress" to "published" so
+    // the SEO agent's outcome tracker sees the lifecycle terminate. The link is
+    // set by blog-generation.ts via content_calendar.reference_id = blogPostId.
+    // Fire-and-forget — the publish still succeeds if this fails.
+    try {
+      const { createServiceRoleClient } = await import("@/lib/supabase")
+      await createServiceRoleClient()
+        .from("content_calendar")
+        .update({ status: "published" })
+        .eq("reference_id", id)
+    } catch (err) {
+      console.error("[Blog publish] content_calendar status flip failed:", err)
+    }
+
     // Queue an AI-drafted newsletter for admin review (replaces the old plain blast).
     // Fire-and-forget: if queuing fails, publishing still succeeds.
     createAiJob({

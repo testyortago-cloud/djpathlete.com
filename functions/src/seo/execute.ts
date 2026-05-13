@@ -62,6 +62,10 @@ export async function executeQueueRefresh(
     await jobRef.set({
       type: "blog_refresh",
       status: "pending",
+      // CONTRACT: `input.blogPostId` is read by lib/seo-agent/outcomes.ts:resolveRefreshOutcome
+      // when Phase 5's outcome tracker resolves this action's outcome 14d later.
+      // Renaming this field here REQUIRES updating the resolver in the same commit
+      // or the agent's last_8_memos_outcomes signal will be silently empty.
       input: {
         blogPostId: args.blog_post_id,
         triggerReason: `seo_agent: ${args.reason}`,
@@ -93,6 +97,9 @@ export async function executeQueueInternalLinkSweep(
     await jobRef.set({
       type: "internal_link_sweep",
       status: "pending",
+      // CONTRACT: `input.targetBlogPostId` is read by lib/seo-agent/outcomes.ts:resolveLinkSweepOutcome
+      // when Phase 5's outcome tracker resolves this action's outcome 14d later.
+      // Renaming this field here REQUIRES updating the resolver in the same commit.
       input: {
         targetBlogPostId: args.target_blog_post_id,
         candidateAnchorPostIds: args.candidate_anchor_post_ids,

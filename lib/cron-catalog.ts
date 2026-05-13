@@ -123,9 +123,9 @@ export const CRON_CATALOG: readonly CronJob[] = [
     label: "Sync Google Search Console nightly",
     description:
       "Every night, pulls the last three days of search performance from Google Search Console — queries, pages, impressions, clicks, and average position — so the SEO agent has fresh data to reason over.",
-    schedule: "0 3 * * *",
+    schedule: "15 3 * * *",
     timezone: "UTC",
-    humanSchedule: "Every night at 3:00 AM UTC",
+    humanSchedule: "Every night at 3:15 AM UTC",
     firebaseFunction: "gscSyncCron",
     phase: "seo-agent-1",
     enabledKey: "cron_gsc_sync_enabled",
@@ -149,9 +149,9 @@ export const CRON_CATALOG: readonly CronJob[] = [
     label: "SEO outcome tracker (daily)",
     description:
       "Every morning, finds SEO agent decisions made 14+ days ago and measures their outcomes — clicks before vs after, position before vs after — so the agent learns which tactics are working on your site.",
-    schedule: "0 4 * * *",
+    schedule: "15 4 * * *",
     timezone: "UTC",
-    humanSchedule: "Every morning at 4:00 AM UTC",
+    humanSchedule: "Every morning at 4:15 AM UTC",
     firebaseFunction: "outcomeTrackerCron",
     phase: "seo-agent-5",
     enabledKey: "cron_outcome_tracker_enabled",

@@ -141,6 +141,9 @@ export async function resolveRefreshOutcome(
   if (!jobSnap.exists) {
     return { executed: true, target_id: null, error: "ai_job not found" }
   }
+  // CONTRACT: `input.blogPostId` is written by functions/src/seo/execute.ts:executeQueueRefresh.
+  // The field name MUST match exactly. If you rename it on either side without updating
+  // the other, every refresh outcome will silently report this error metric.
   const job = jobSnap.data() as { input?: { blogPostId?: string } } | undefined
   const blogPostId = job?.input?.blogPostId
   if (!blogPostId) {
@@ -198,6 +201,9 @@ export async function resolveLinkSweepOutcome(
   if (!jobSnap.exists) {
     return { executed: true, target_id: null, error: "ai_job not found" }
   }
+  // CONTRACT: `input.targetBlogPostId` is written by
+  // functions/src/seo/execute.ts:executeQueueInternalLinkSweep. Field name
+  // MUST match exactly across both sides.
   const job = jobSnap.data() as { input?: { targetBlogPostId?: string } } | undefined
   const targetId = job?.input?.targetBlogPostId
   if (!targetId) {
