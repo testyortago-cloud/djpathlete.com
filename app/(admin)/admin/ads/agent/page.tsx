@@ -1,5 +1,7 @@
 import Link from "next/link"
 import { listAgentMemos } from "@/lib/db/google-ads-agent-memos"
+import { Badge } from "@/components/ui/badge"
+import type { GoogleAdsAgentMemo } from "@/types/database"
 import { AskAgentBox } from "./AskAgentBox"
 import { GenerateMemoButton } from "./GenerateMemoButton"
 
@@ -22,6 +24,45 @@ function relativeTime(iso: string): string {
   if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m ago`
   if (ms < 86_400_000) return `${Math.floor(ms / 3_600_000)}h ago`
   return `${Math.floor(ms / 86_400_000)}d ago`
+}
+
+type BadgeVariant = "default" | "secondary" | "destructive" | "outline" | "ghost" | "link"
+
+function outcomeBadgeVariant(status: GoogleAdsAgentMemo["outcome_status"]): BadgeVariant {
+  switch (status) {
+    case "measured":
+      return "default"
+    case "rolled_back":
+      return "destructive"
+    case "preflight_failed":
+      return "outline"
+    case "pending":
+    default:
+      return "secondary"
+  }
+}
+
+function OutcomeBadge({ memo }: { memo: GoogleAdsAgentMemo }) {
+  const label = memo.outcome_status.replace(/_/g, " ")
+  return (
+    <Badge variant={outcomeBadgeVariant(memo.outcome_status)} className="text-[10px] font-mono uppercase tracking-wider">
+      {label}
+    </Badge>
+  )
+}
+
+function topHeadlineMetric(metrics: Record<string, unknown> | null): string {
+  if (!metrics) return ""
+  for (const value of Object.values(metrics)) {
+    if (value && typeof value === "object") {
+      const bucket = value as Record<string, unknown>
+      const delta = bucket.CVR_delta_pct
+      if (typeof delta === "number" && Number.isFinite(delta)) {
+        return `CVR ${delta >= 0 ? "+" : ""}${delta.toFixed(1)}%`
+      }
+    }
+  }
+  return ""
 }
 
 export default async function AgentPage() {
@@ -67,6 +108,14 @@ export default async function AgentPage() {
                   Week of {fmtWeekOf(latest.week_of)} · {relativeTime(latest.created_at)}
                 </p>
                 <h3 className="font-heading text-xl text-primary mt-1">{latest.subject}</h3>
+                <div className="flex items-center gap-2 mt-2">
+                  <OutcomeBadge memo={latest} />
+                  {topHeadlineMetric(latest.outcome_metrics) ? (
+                    <span className="text-xs font-mono text-muted-foreground">
+                      {topHeadlineMetric(latest.outcome_metrics)}
+                    </span>
+                  ) : null}
+                </div>
               </div>
               <Link
                 href={`/admin/ads/agent/${latest.id}`}
@@ -119,25 +168,37 @@ export default async function AgentPage() {
                 <tr>
                   <th className="text-left p-3 w-32">Week of</th>
                   <th className="text-left p-3">Subject</th>
+                  <th className="text-left p-3 w-40">Outcome</th>
                   <th className="text-left p-3 w-24">Source</th>
                   <th className="text-left p-3 w-32">Sent to</th>
                 </tr>
               </thead>
               <tbody>
-                {memos.slice(1).map((m) => (
-                  <tr key={m.id} className="border-t border-border/60">
-                    <td className="p-3 font-mono text-xs">{fmtWeekOf(m.week_of)}</td>
-                    <td className="p-3">
-                      <Link href={`/admin/ads/agent/${m.id}`} className="text-primary hover:text-accent">
-                        {m.subject}
-                      </Link>
-                    </td>
-                    <td className="p-3 text-xs">{m.source}</td>
-                    <td className="p-3 text-xs font-mono text-muted-foreground">
-                      {m.email_recipient ?? "—"}
-                    </td>
-                  </tr>
-                ))}
+                {memos.slice(1).map((m) => {
+                  const headline = topHeadlineMetric(m.outcome_metrics)
+                  return (
+                    <tr key={m.id} className="border-t border-border/60">
+                      <td className="p-3 font-mono text-xs">{fmtWeekOf(m.week_of)}</td>
+                      <td className="p-3">
+                        <Link href={`/admin/ads/agent/${m.id}`} className="text-primary hover:text-accent">
+                          {m.subject}
+                        </Link>
+                      </td>
+                      <td className="p-3">
+                        <div className="flex items-center gap-2">
+                          <OutcomeBadge memo={m} />
+                          {headline ? (
+                            <span className="text-xs font-mono text-muted-foreground">{headline}</span>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="p-3 text-xs">{m.source}</td>
+                      <td className="p-3 text-xs font-mono text-muted-foreground">
+                        {m.email_recipient ?? "—"}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
