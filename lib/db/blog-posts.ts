@@ -111,6 +111,64 @@ export async function createBlogPost(post: CreateBlogPostInput): Promise<BlogPos
   return data as BlogPost
 }
 
+export interface RefreshBlogPostInput {
+  id: string
+  // Regenerated fields:
+  title: string
+  excerpt: string
+  content: string
+  meta_description: string
+  faq: BlogPost["faq"]
+  tags: string[]
+  // Preserved by the handler (passed in to make the update explicit):
+  // id, slug, published_at, author_id, category, primary_keyword — NOT updated here.
+}
+
+/**
+ * Updates an existing blog post in place with regenerated content. Forces
+ * status to "draft" so the coach reviews before re-publishing. Sets
+ * `last_refreshed_at = now()` and increments `refresh_count` atomically via
+ * a single SQL statement (RPC) to avoid race conditions if two refreshes
+ * land at the same time.
+ *
+ * Preserves: id, slug, published_at, author_id, category, primary_keyword,
+ * cover_image_url, seo_metadata (all unchanged by this call).
+ */
+export async function refreshBlogPost(input: RefreshBlogPostInput): Promise<BlogPost> {
+  const supabase = getClient()
+
+  // Two-step update (no RPC needed): read current refresh_count, then write +1.
+  // Concurrent refreshes are vanishingly unlikely (manual button + future
+  // weekly agent), so optimistic read-then-write is acceptable here.
+  const { data: current, error: readErr } = await supabase
+    .from("blog_posts")
+    .select("refresh_count")
+    .eq("id", input.id)
+    .single()
+  if (readErr) throw readErr
+  const nextRefreshCount = ((current as { refresh_count: number | null } | null)?.refresh_count ?? 0) + 1
+
+  const { data, error } = await supabase
+    .from("blog_posts")
+    .update({
+      title: input.title,
+      excerpt: input.excerpt,
+      content: input.content,
+      meta_description: input.meta_description,
+      faq: input.faq,
+      tags: input.tags,
+      status: "draft",
+      last_refreshed_at: new Date().toISOString(),
+      refresh_count: nextRefreshCount,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", input.id)
+    .select()
+    .single()
+  if (error) throw error
+  return data as BlogPost
+}
+
 export async function updateBlogPost(
   id: string,
   updates: Partial<Omit<BlogPost, "id" | "created_at">>,
