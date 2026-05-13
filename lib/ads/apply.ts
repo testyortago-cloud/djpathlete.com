@@ -174,6 +174,23 @@ async function buildMutation(
       }
       return { ok: true, ops: [op] }
     }
+
+    // Phase 1.6+ ads-agent types — these land in the recommendations queue
+    // as advisory only. They have no Google Ads mutation path yet; approval
+    // is a human acknowledgement, not an auto-apply. Reject the apply call
+    // with a clear message so the queue stays honest.
+    case "budget_shift":
+    case "audience_expansion":
+    case "new_campaign":
+    case "campaign_pause":
+    case "campaign_split":
+    case "match_type_change":
+    case "bid_strategy_review":
+    case "flag":
+      return {
+        ok: false,
+        error: `${rec.recommendation_type} is advisory only; no apply path implemented`,
+      }
   }
 }
 
