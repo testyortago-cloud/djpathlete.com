@@ -405,10 +405,11 @@ export function ReviewSurface({
 
           {/* While drawing, the inline popover IS the composer; hide the */}
           {/* bottom editor to avoid two competing inputs. */}
-          {submission.kind !== "image_set" &&
-            selectedSignedUrl &&
-            viewingCurrent &&
-            !drawingMode && (
+          {viewingCurrent &&
+            !drawingMode &&
+            (submission.kind === "image_set"
+              ? (imageSetImages?.length ?? 0) > 0
+              : !!selectedSignedUrl) && (
               <CommentEditor
                 submissionId={submission.id}
                 getCurrentTimecode={() =>
