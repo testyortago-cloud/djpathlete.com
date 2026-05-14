@@ -20,6 +20,7 @@ const DrawingCanvas = dynamic(
 )
 import { useVisibleAnnotations } from "@/hooks/useVideoOverlay"
 import { RevisionUploadZone } from "@/components/editor/RevisionUploadZone"
+import { PhotoRevisionUploadZone } from "@/components/editor/PhotoRevisionUploadZone"
 import {
   VersionHistoryList,
   type VersionRow,
@@ -196,7 +197,11 @@ export function EditorVideoView({
           )}
 
           {canRevise && viewingCurrent && (
-            <RevisionUploadZone submissionId={submission.id} />
+            submission.kind === "image_set" ? (
+              <PhotoRevisionUploadZone submissionId={submission.id} />
+            ) : (
+              <RevisionUploadZone submissionId={submission.id} />
+            )
           )}
 
           <VersionHistoryList
