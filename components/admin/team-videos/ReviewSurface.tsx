@@ -21,6 +21,7 @@ import { StatusActions } from "./StatusActions"
 import { CommentEditor } from "./CommentEditor"
 import { DrawingToolbar } from "./DrawingToolbar"
 import { PinCommentPopover } from "./PinCommentPopover"
+import { ImageSetViewer, type ViewerImage } from "./ImageSetViewer"
 import {
   VersionHistoryList,
   type VersionRow,
@@ -43,6 +44,16 @@ interface Props {
   videoUrl: string | null
   /** All versions on the submission, with pre-fetched stream + download URLs. */
   versions: VersionRow[]
+  /**
+   * For image_set submissions only — pre-signed per-image read URLs hydrated
+   * server-side so the viewer can render without an extra fetch round-trip.
+   */
+  imageSetImages?: Array<{
+    id: string
+    position: number
+    signedUrl: string
+    originalFilename: string
+  }>
 }
 
 export function ReviewSurface({
@@ -51,10 +62,15 @@ export function ReviewSurface({
   comments,
   videoUrl,
   versions,
+  imageSetImages,
 }: Props) {
   const router = useRouter()
   const playerRef = useRef<TeamVideoPlayerHandle>(null)
   const [currentTime, setCurrentTime] = useState(0)
+  // For image_set submissions — which image is currently being reviewed?
+  // B9 will thread this into the comment composer so notes can reference
+  // a specific image. The video path ignores it entirely.
+  const [activeImageIndex, setActiveImageIndex] = useState(0)
 
   // Which version is the player currently showing? Defaults to current.
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(
@@ -328,7 +344,13 @@ export function ReviewSurface({
 
       <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
         <div className="space-y-4">
-          {selectedSignedUrl ? (
+          {submission.kind === "image_set" ? (
+            <ImageSetViewer
+              images={(imageSetImages ?? []) as ViewerImage[]}
+              activeIndex={activeImageIndex}
+              onActiveIndexChange={setActiveImageIndex}
+            />
+          ) : selectedSignedUrl ? (
             <TeamVideoPlayer
               ref={playerRef}
               src={selectedSignedUrl}
@@ -342,7 +364,7 @@ export function ReviewSurface({
             </div>
           )}
 
-          {selectedSignedUrl && viewingCurrent && (
+          {submission.kind !== "image_set" && selectedSignedUrl && viewingCurrent && (
             <DrawingToolbar
               active={drawingMode}
               tool={tool}
@@ -360,7 +382,7 @@ export function ReviewSurface({
             />
           )}
 
-          {selectedSignedUrl && viewingCurrent && (
+          {submission.kind !== "image_set" && selectedSignedUrl && viewingCurrent && (
             <div className="flex items-center gap-2">
               {!drawingMode ? (
                 <Button
@@ -383,17 +405,20 @@ export function ReviewSurface({
 
           {/* While drawing, the inline popover IS the composer; hide the */}
           {/* bottom editor to avoid two competing inputs. */}
-          {selectedSignedUrl && viewingCurrent && !drawingMode && (
-            <CommentEditor
-              submissionId={submission.id}
-              getCurrentTimecode={() =>
-                playerRef.current?.getCurrentTime() ?? null
-              }
-              onCreated={() => {}}
-              drawing={null}
-              onAfterSubmit={() => {}}
-            />
-          )}
+          {submission.kind !== "image_set" &&
+            selectedSignedUrl &&
+            viewingCurrent &&
+            !drawingMode && (
+              <CommentEditor
+                submissionId={submission.id}
+                getCurrentTimecode={() =>
+                  playerRef.current?.getCurrentTime() ?? null
+                }
+                onCreated={() => {}}
+                drawing={null}
+                onAfterSubmit={() => {}}
+              />
+            )}
 
           <VersionHistoryList
             versions={versions}

@@ -4,6 +4,7 @@ import { getSubmissionById } from "@/lib/db/team-video-submissions"
 import { getCurrentVersion, listVersionsForSubmission } from "@/lib/db/team-video-versions"
 import { listAuthorsForIds, listCommentsForSubmission } from "@/lib/db/team-video-comments"
 import { listAnnotationsForCommentIds } from "@/lib/db/team-video-annotations"
+import { listImagesForVersion } from "@/lib/db/team-submission-images"
 import { createReadUrl, createDownloadUrl } from "@/lib/storage/team-videos"
 import { ReviewSurface } from "@/components/admin/team-videos/ReviewSurface"
 import type { VersionRow } from "@/components/editor/VersionHistoryList"
@@ -60,6 +61,27 @@ export default async function TeamVideoReviewPage({ params }: Props) {
       ? versions.find((v) => v.id === version.id)?.signedUrl ?? null
       : null
 
+  // For image_set submissions, hydrate the per-image signed read URLs so
+  // ImageSetViewer can render them client-side without extra fetches.
+  let imageSetImages: Array<{
+    id: string
+    position: number
+    signedUrl: string
+    originalFilename: string
+  }> = []
+
+  if (submission.kind === "image_set" && version) {
+    const rows = await listImagesForVersion(version.id)
+    imageSetImages = await Promise.all(
+      rows.map(async (row) => ({
+        id: row.id,
+        position: row.position,
+        signedUrl: await createReadUrl(row.storage_path),
+        originalFilename: row.original_filename,
+      })),
+    )
+  }
+
   return (
     <ReviewSurface
       submission={submission}
@@ -67,6 +89,7 @@ export default async function TeamVideoReviewPage({ params }: Props) {
       comments={comments}
       videoUrl={videoUrl}
       versions={versions}
+      imageSetImages={imageSetImages}
     />
   )
 }
