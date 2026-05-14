@@ -8,6 +8,8 @@ import {
   finalizeVersion,
   getCurrentVersion,
 } from "@/lib/db/team-video-versions"
+import { listImagesForVersion } from "@/lib/db/team-submission-images"
+import { imageStorageObjectExists } from "@/lib/storage/team-videos"
 import { sendVideoUploadedEmail } from "@/lib/email"
 import { getBaseUrl } from "@/lib/url"
 import { createServiceRoleClient } from "@/lib/supabase"
@@ -35,6 +37,29 @@ export async function POST(
   if (!version) return NextResponse.json({ error: "No version to finalize" }, { status: 409 })
   if (version.status === "uploaded") {
     return NextResponse.json({ error: "Version already finalized" }, { status: 409 })
+  }
+
+  // For image_set submissions, verify every storage object actually landed
+  // before flipping status. A missing object means a PUT failed; the client
+  // should retry that specific position.
+  if (submission.kind === "image_set") {
+    const images = await listImagesForVersion(version.id)
+    const checks = await Promise.all(
+      images.map(async (img) => ({
+        position: img.position,
+        exists: await imageStorageObjectExists(img.storage_path),
+      })),
+    )
+    const missingPositions = checks.filter((c) => !c.exists).map((c) => c.position)
+    if (missingPositions.length > 0) {
+      return NextResponse.json(
+        {
+          error: "Some images failed to upload. Retry the missing positions.",
+          missingPositions,
+        },
+        { status: 409 },
+      )
+    }
   }
 
   await finalizeVersion(version.id)
