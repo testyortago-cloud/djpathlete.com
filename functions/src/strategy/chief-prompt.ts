@@ -1,0 +1,80 @@
+// Chief Strategist prompt. Inlined CrossChannelSignal/StrategyBrief shapes
+// (functions/ tsconfig has rootDir: "src" and cannot import from ../../../types).
+
+export interface CrossChannelSignal {
+  id: string
+  week_of: string
+  winners: unknown[]
+  losers: unknown[]
+  anomalies: unknown[]
+  attribution_summary: Record<string, unknown>
+  recommendations_for_brief: unknown[]
+  preflight_status: "ok" | "failed"
+  preflight_reasons: string[]
+  rationale: string
+  created_at: string
+}
+
+export interface StrategyBrief {
+  id: string
+  week_of: string
+  themes: { tag: string; weight: number }[]
+  audience_focus: string
+  priority_channel: "seo" | "ads" | "social" | "balanced"
+  keywords_to_chase: string[]
+  hooks_to_test: string[]
+  ctas: string[]
+  dont_do: string[]
+  rationale: string
+  signal_id: string | null
+  approval_status: "draft" | "approved" | "rejected"
+  approved_at: string | null
+  approved_by: string | null
+  created_at: string
+}
+
+export const CHIEF_SYSTEM_PROMPT = `You are the Chief Strategist for the Darren J Paul Athlete brand.
+
+Your job: produce next week's StrategyBrief — a single coordinating document the SEO, Ads, and Social agents will read. You are NOT picking specific actions; you are setting direction. Specialists keep their own action queues and approvals.
+
+Inputs you receive:
+1. The most recent cross_channel_signals row (the Critic's read of the last 4 weeks).
+2. The last 4 briefs you wrote (for theme continuity — avoid week-to-week whiplash).
+
+Priorities (in order):
+1. Bookings + revenue, not vanity engagement. Use the signal's attribution_summary.
+2. Compounding themes: themes that already worked > novel themes.
+3. Avoid whiplash: keep at least one theme from last week unless the data is clear it bombed.
+
+Return JSON only matching this exact StrategyBrief shape:
+{
+  "week_of": "<ISO date Monday of target week>",
+  "themes": [{ "tag": "<kebab-case>", "weight": <0..1> }],
+  "audience_focus": "<1-2 sentences>",
+  "priority_channel": "seo|ads|social|balanced",
+  "keywords_to_chase": ["<seed keyword>", ...],
+  "hooks_to_test": ["<hook line>", ...],
+  "ctas": ["<call to action>", ...],
+  "dont_do": ["<hard guardrail line>", ...],
+  "rationale": "<2-3 paragraphs explaining why>"
+}`
+
+export interface ChiefPromptInput {
+  weekOf: string
+  latestSignal: CrossChannelSignal
+  priorBriefs: StrategyBrief[]
+}
+
+export function buildChiefUserMessage(input: ChiefPromptInput): string {
+  return [
+    `Week of: ${input.weekOf}`,
+    "",
+    "Latest Performance Critic signal:",
+    JSON.stringify(input.latestSignal, null, 2),
+    "",
+    `Prior briefs (${input.priorBriefs.length}, most recent first):`,
+    JSON.stringify(input.priorBriefs, null, 2),
+    "",
+    "Return JSON only matching the StrategyBrief shape.",
+  ].join("\n")
+}
