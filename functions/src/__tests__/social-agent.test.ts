@@ -3,6 +3,7 @@ import {
   buildCopywriterUserMessage,
   buildReviewerUserMessage,
   pickTopic,
+  pickTopicWithBrief,
   type BlogTopic,
 } from "../social-agent.js"
 
@@ -135,5 +136,37 @@ describe("pickTopic", () => {
     // @ts-expect-error: minimal mock — SupabaseClient surface we use is narrow.
     const result = await pickTopic({ supabase: { from: fake.from } })
     expect(result).toBeNull()
+  })
+
+  it("pickTopicWithBrief falls back to most-recent when no approved brief exists", async () => {
+    const supabase = {
+      from: vi.fn().mockImplementation((table: string) => {
+        if (table === "strategy_briefs") {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            order: vi.fn().mockReturnThis(),
+            limit: vi.fn().mockReturnThis(),
+            maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+          }
+        }
+        if (table === "blog_posts") {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            order: vi.fn().mockReturnThis(),
+            limit: vi.fn().mockResolvedValue({
+              data: [{ id: "b1", title: "T", slug: "t", excerpt: null, content: null }],
+              error: null,
+            }),
+          }
+        }
+        return {}
+      }),
+    } as never
+    const { topic, brief, alignmentScore } = await pickTopicWithBrief({ supabase })
+    expect(topic?.id).toBe("b1")
+    expect(brief).toBeNull()
+    expect(alignmentScore).toBeNull()
   })
 })

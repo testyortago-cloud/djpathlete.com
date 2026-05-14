@@ -21,6 +21,7 @@ import { z } from "zod"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { callAgent, MODEL_SONNET } from "./ai/anthropic.js"
 import { getSupabase } from "./lib/supabase.js"
+import { scoreBlogVsBrief } from "./strategy/brief-blog-scorer.js"
 
 export const SUPPORTED_PLATFORMS = ["linkedin"] as const
 export type AgentPlatform = (typeof SUPPORTED_PLATFORMS)[number]
@@ -80,6 +81,75 @@ export async function pickTopic(args: {
     .limit(1)
 
   return ((candidates as BlogTopic[] | null) ?? [])[0] ?? null
+}
+
+// ─── Strategist (brief-aware) ──────────────────────────────────────────────
+// `pickTopicWithBrief` is the new entry point: if there's a current approved
+// strategy brief, it scores recent published posts against the brief's
+// themes/keywords/hooks and picks the best match. Falls back to most-recent
+// when no brief exists. Honors an explicit `blogPostId` override.
+
+export interface MinimalBriefRow {
+  id: string
+  week_of: string
+  themes: Array<{ tag: string; weight: number }>
+  audience_focus: string
+  priority_channel: "seo" | "ads" | "social" | "balanced"
+  keywords_to_chase: string[]
+  hooks_to_test: string[]
+  ctas: string[]
+  dont_do: string[]
+}
+
+async function fetchLatestApprovedBrief(
+  supabase: SupabaseClient,
+): Promise<MinimalBriefRow | null> {
+  const { data } = await supabase
+    .from("strategy_briefs")
+    .select("*")
+    .eq("approval_status", "approved")
+    .order("week_of", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  return (data as MinimalBriefRow | null) ?? null
+}
+
+export async function pickTopicWithBrief(args: {
+  supabase: SupabaseClient
+  blogPostId?: string
+}): Promise<{
+  topic: BlogTopic | null
+  brief: MinimalBriefRow | null
+  alignmentScore: number | null
+}> {
+  const { supabase, blogPostId } = args
+  if (blogPostId) {
+    const topic = await pickTopic({ supabase, blogPostId })
+    return { topic, brief: null, alignmentScore: null }
+  }
+  const brief = await fetchLatestApprovedBrief(supabase)
+  const { data } = await supabase
+    .from("blog_posts")
+    .select("id, title, slug, excerpt, content")
+    .eq("status", "published")
+    .order("published_at", { ascending: false, nullsFirst: false })
+    .limit(20)
+  const list = (data as BlogTopic[] | null) ?? []
+  if (list.length === 0) return { topic: null, brief, alignmentScore: null }
+  if (!brief) return { topic: list[0], brief: null, alignmentScore: null }
+
+  const scored = list
+    .map((c) => ({ c, score: scoreBlogVsBrief(c, brief) }))
+    .sort((a, b) => b.score - a.score)
+  const top = scored[0]
+  if (top.score === 0) return { topic: list[0], brief, alignmentScore: 1 }
+  const max = scored[0].score
+  const min = scored[scored.length - 1]?.score ?? 0
+  const norm =
+    max === min
+      ? 10
+      : Math.max(1, Math.min(10, Math.round(((top.score - min) / (max - min)) * 9 + 1)))
+  return { topic: top.c, brief, alignmentScore: norm }
 }
 
 // ─── Copywriter ────────────────────────────────────────────────────────────
@@ -165,12 +235,17 @@ export async function handleSocialAgentRun(jobId: string): Promise<void> {
     await jobRef.update({ status: "processing", updatedAt: FieldValue.serverTimestamp() })
 
     // 1. Strategist
-    const topic = await pickTopic({ supabase, blogPostId: input.blogPostId })
+    const { topic, brief, alignmentScore } = await pickTopicWithBrief({
+      supabase,
+      blogPostId: input.blogPostId,
+    })
     if (!topic) {
       await failJob("Strategist found no published blog post to draft from")
       return
     }
-    console.log(`[social-agent] platform=${platform} topic=${topic.slug}`)
+    console.log(
+      `[social-agent] platform=${platform} topic=${topic.slug} brief=${brief?.id ?? "none"} alignment=${alignmentScore ?? "n/a"}`,
+    )
 
     // 2. Load prompt rows — same shape social-fanout uses.
     const { data: prompts, error: pErr } = await supabase
@@ -242,6 +317,29 @@ export async function handleSocialAgentRun(jobId: string): Promise<void> {
       version: 1,
     })
 
+    // 6. Memo — record what the strategist did this run so the chief can
+    // audit how the brief shaped the draft. Inline insert (no DAL import).
+    await supabase.from("social_agent_memos").insert({
+      run_date: new Date().toISOString().slice(0, 10),
+      ai_job_id: jobId,
+      brief_id: brief?.id ?? null,
+      brief_alignment_score: alignmentScore,
+      ran_without_brief: brief === null,
+      signals_summary: { topic_slug: topic.slug, platform },
+      actions: [
+        {
+          kind: "drafted_social_post",
+          payload: { social_post_id: post.id, platform, blog_post_id: topic.id },
+          rationale: reviewed.content.notes || "writer+reviewer agreed",
+        },
+      ],
+      rationale: reviewed.content.notes || "",
+      outcome_status: "pending",
+      outcome_metrics: null,
+      social_post_id: post.id,
+      platform,
+    })
+
     await jobRef.update({
       status: "completed",
       error: null,
@@ -250,6 +348,8 @@ export async function handleSocialAgentRun(jobId: string): Promise<void> {
         social_post_id: post.id,
         blog_post_id: topic.id,
         reviewer_score: reviewed.content.score,
+        brief_id: brief?.id ?? null,
+        brief_alignment_score: alignmentScore,
       },
       updatedAt: FieldValue.serverTimestamp(),
     })
