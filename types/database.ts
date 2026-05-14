@@ -231,10 +231,27 @@ export interface DrawingJson {
   paths: DrawingPath[]
 }
 
+/**
+ * image_index annotation — pins a comment to a specific image in an
+ * image_set submission. Lives in the same `drawing_json` jsonb column as
+ * DrawingJson; the `kind` discriminator separates them at read time.
+ */
+export interface ImageIndexAnnotation {
+  kind: "image_index"
+  index: number
+}
+
+/**
+ * Persisted annotation payload. Either a drawing (video pins/sketches) or
+ * an image_index reference (carousel slot pin). Readers narrow via the
+ * presence of the `kind` field on ImageIndexAnnotation.
+ */
+export type StoredAnnotation = DrawingJson | ImageIndexAnnotation
+
 export interface TeamVideoAnnotation {
   id: string
   comment_id: string
-  drawing_json: DrawingJson
+  drawing_json: StoredAnnotation
   created_at: string
 }
 
@@ -242,7 +259,7 @@ export interface TeamVideoAnnotation {
  *  its author's denormalized name + role, and the version_number it belongs
  *  to (so the thread can show "v1" / "v2" badges across cuts). */
 export interface TeamVideoCommentWithAnnotation extends TeamVideoComment {
-  annotation: DrawingJson | null
+  annotation: StoredAnnotation | null
   author: CommentAuthor | null
   version_number: number | null
 }

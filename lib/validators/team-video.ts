@@ -59,6 +59,24 @@ export const drawingJsonSchema = z.object({
 
 export type DrawingJsonInput = z.infer<typeof drawingJsonSchema>
 
+/**
+ * image_index annotations pin a comment to a specific image in an image_set
+ * submission (carousel slot). Unlike drawing annotations, they don't require
+ * a timecode — they're position-based, not time-based.
+ *
+ * Stored alongside drawings in `team_video_annotations.drawing_json` — the
+ * discriminator `kind` keeps the two shapes apart at read time.
+ */
+export const imageIndexAnnotationSchema = z.object({
+  kind: z.literal("image_index"),
+  index: z.number().int().min(0).max(9),
+})
+
+export type ImageIndexAnnotationInput = z.infer<typeof imageIndexAnnotationSchema>
+
+export const annotationSchema = z.union([drawingJsonSchema, imageIndexAnnotationSchema])
+export type AnnotationInput = z.infer<typeof annotationSchema>
+
 export const createSubmissionSchema = z.object({
   title: z.string().trim().min(1, "Title is required").max(200),
   description: z.string().trim().max(2000).optional(),
@@ -141,13 +159,19 @@ export type CreatePhotoVersionInput = z.infer<typeof createPhotoVersionSchema>
 export const createCommentSchema = z.object({
   timecodeSeconds: z.number().min(0).nullable(),
   commentText: z.string().trim().min(1, "Comment cannot be empty").max(2000),
-  annotation: drawingJsonSchema.optional(),
+  annotation: annotationSchema.optional(),
   /** When set, this is a reply to that parent comment id. */
   parentId: z.string().uuid().nullable().optional(),
 })
   .refine(
-    (d) => !d.annotation || d.timecodeSeconds != null,
-    { message: "annotation requires a timecode", path: ["annotation"] },
+    (d) => {
+      // Drawing annotations require a timecode; image_index annotations don't
+      // (they pin to a carousel slot, which has no time dimension).
+      if (!d.annotation) return true
+      if ("kind" in d.annotation && d.annotation.kind === "image_index") return true
+      return d.timecodeSeconds != null
+    },
+    { message: "drawing annotation requires a timecode", path: ["annotation"] },
   )
   .refine(
     (d) => !d.parentId || !d.annotation,

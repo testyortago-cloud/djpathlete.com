@@ -1,20 +1,34 @@
 import { createServiceRoleClient } from "@/lib/supabase"
-import type { DrawingJson, TeamVideoAnnotation } from "@/types/database"
+import type {
+  DrawingJson,
+  ImageIndexAnnotation,
+  StoredAnnotation,
+  TeamVideoAnnotation,
+} from "@/types/database"
 
 function getClient() {
   return createServiceRoleClient()
 }
 
+/**
+ * Persist an annotation payload for a comment.
+ *
+ * The `drawing_json` column is a flexible jsonb that holds two shapes:
+ *   - DrawingJson: `{ paths: [...] }` (no `kind` discriminator — legacy shape)
+ *   - ImageIndexAnnotation: `{ kind: "image_index", index: number }`
+ *
+ * Readers distinguish the two via the presence of the `kind` field.
+ */
 export async function createAnnotationForComment(
   commentId: string,
-  drawing: DrawingJson,
+  annotation: DrawingJson | ImageIndexAnnotation,
 ): Promise<TeamVideoAnnotation> {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("team_video_annotations")
     .insert({
       comment_id: commentId,
-      drawing_json: drawing,
+      drawing_json: annotation,
     })
     .select()
     .single()
@@ -28,7 +42,7 @@ export async function createAnnotationForComment(
  */
 export async function listAnnotationsForCommentIds(
   commentIds: string[],
-): Promise<Map<string, DrawingJson>> {
+): Promise<Map<string, StoredAnnotation>> {
   if (commentIds.length === 0) return new Map()
   const supabase = getClient()
   const { data, error } = await supabase
@@ -36,8 +50,8 @@ export async function listAnnotationsForCommentIds(
     .select("comment_id, drawing_json")
     .in("comment_id", commentIds)
   if (error) throw error
-  const map = new Map<string, DrawingJson>()
-  for (const row of (data ?? []) as Array<{ comment_id: string; drawing_json: DrawingJson }>) {
+  const map = new Map<string, StoredAnnotation>()
+  for (const row of (data ?? []) as Array<{ comment_id: string; drawing_json: StoredAnnotation }>) {
     map.set(row.comment_id, row.drawing_json)
   }
   return map

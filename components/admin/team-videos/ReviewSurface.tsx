@@ -418,6 +418,10 @@ export function ReviewSurface({
                 onCreated={() => {}}
                 drawing={null}
                 onAfterSubmit={() => {}}
+                currentImageIndex={
+                  submission.kind === "image_set" ? activeImageIndex : null
+                }
+                submissionKind={submission.kind}
               />
             )}
 

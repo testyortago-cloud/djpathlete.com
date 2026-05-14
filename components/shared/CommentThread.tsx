@@ -225,7 +225,11 @@ function CommentRow({
   onReplySubmit: (text: string) => Promise<void>
   showReplyComposer: boolean
 }) {
-  const annotation = c.annotation ? summariseDrawing(c.annotation.paths) : null
+  // Only summarise drawing annotations — image_index annotations don't have
+  // tool/color metadata to summarise (B10 renders the "Image N" pill instead).
+  const drawingAnno =
+    c.annotation && !("kind" in c.annotation) ? c.annotation : null
+  const annotation = drawingAnno ? summariseDrawing(drawingAnno.paths) : null
   const ToolIcon = annotation ? TOOL_ICON[annotation.tool] : null
   const hasTime = c.timecode_seconds != null
   const isOtherVersion =

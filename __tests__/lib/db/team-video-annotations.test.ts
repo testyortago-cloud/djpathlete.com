@@ -48,8 +48,12 @@ describe("listAnnotationsForCommentIds", () => {
     })
     const result = await listAnnotationsForCommentIds(["c1", "c2", "c3"])
     expect(result.size).toBe(2)
-    expect(result.get("c1")?.paths[0].tool).toBe("pen")
-    expect(result.get("c2")?.paths).toHaveLength(0)
+    // StoredAnnotation is a union of DrawingJson | ImageIndexAnnotation —
+    // the fixtures here are drawings, narrow via the absence of `kind`.
+    const c1 = result.get("c1")
+    const c2 = result.get("c2")
+    expect(c1 && !("kind" in c1) ? c1.paths[0].tool : null).toBe("pen")
+    expect(c2 && !("kind" in c2) ? c2.paths.length : -1).toBe(0)
     expect(result.get("c3")).toBeUndefined()
   })
   it("returns empty map for empty input", async () => {
