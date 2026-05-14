@@ -14,6 +14,12 @@ import {
   LacrosseIcon,
   PickleballIcon,
 } from "@/lib/icons/sports"
+import {
+  ProfessionalAthleteIcon,
+  CollegiateAthleteIcon,
+  YouthAthleteIcon,
+  ReturnToSportAthleteIcon,
+} from "@/lib/icons/athletes"
 
 /** Lucide-compatible icon component shape — takes className + strokeWidth. */
 export type NavIcon = ComponentType<SVGProps<SVGSVGElement> & { strokeWidth?: number | string }>
@@ -56,6 +62,17 @@ export const NAV_ITEMS: NavGroup[] = [
       { label: "All sports →", href: "/sports", description: "See every sport-specific program" },
     ],
   },
+  {
+    label: "Athletes",
+    href: "/athletes",
+    children: [
+      { label: "Professional", href: "/athletes/professional", description: "Touring pros, in-season load, longevity", icon: ProfessionalAthleteIcon },
+      { label: "Collegiate & Amateur", href: "/athletes/collegiate", description: "College players, serious amateurs", icon: CollegiateAthleteIcon },
+      { label: "Youth", href: "/athletes/youth", description: "Long-term athletic development", icon: YouthAthleteIcon },
+      { label: "Return to Sport", href: "/athletes/return-to-sport", description: "Cleared, but not yet ready", icon: ReturnToSportAthleteIcon },
+      { label: "All athletes →", href: "/athletes", description: "Coached at every stage" },
+    ],
+  },
   { label: "Resources", href: "/resources" },
   { label: "Education", href: "/education" },
   { label: "Blog", href: "/blog" },
@@ -92,6 +109,16 @@ export const FOOTER_SECTIONS = [
       { label: "Lacrosse", href: "/sports/lacrosse-performance-training" },
       { label: "Pickleball", href: "/sports/pickleball-performance-training" },
       { label: "All sports", href: "/sports" },
+    ],
+  },
+  {
+    title: "Athletes",
+    links: [
+      { label: "Professional", href: "/athletes/professional" },
+      { label: "Collegiate & Amateur", href: "/athletes/collegiate" },
+      { label: "Youth", href: "/athletes/youth" },
+      { label: "Return to Sport", href: "/athletes/return-to-sport" },
+      { label: "All athletes", href: "/athletes" },
     ],
   },
   {

@@ -241,7 +241,7 @@ export function SiteNavbar() {
   // Keep in sync with the actual hero `bg-*` of each page — a mismatch
   // produces dark-on-dark nav text (the symptom that hid Sports for a while).
   const darkHeroExact = ["/", "/in-person", "/education", "/shop"]
-  const darkHeroPrefixes = ["/clinics", "/online", "/sports", "/programs"]
+  const darkHeroPrefixes = ["/clinics", "/online", "/sports", "/programs", "/athletes"]
   const isDarkHero =
     darkHeroExact.includes(pathname) ||
     darkHeroPrefixes.some((p) => pathname === p || pathname.startsWith(p + "/"))
