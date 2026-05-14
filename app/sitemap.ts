@@ -4,6 +4,7 @@ import { getPublishedEvents } from "@/lib/db/events"
 import { listActiveProducts } from "@/lib/db/shop-products"
 import { SITE_URL } from "@/lib/constants"
 import { SPORTS } from "@/lib/data/sports"
+import { ATHLETES } from "@/lib/data/athletes"
 
 const BASE_URL = SITE_URL
 
@@ -47,6 +48,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${BASE_URL}/sports`, lastModified: now, changeFrequency: "monthly", priority: 0.8 },
     ...SPORTS.map((s) => ({
       url: `${BASE_URL}/sports/${s.slug}`,
+      lastModified: now,
+      changeFrequency: "monthly" as const,
+      priority: 0.8,
+    })),
+
+    // Athletes hub + audience-segment landing pages
+    { url: `${BASE_URL}/athletes`, lastModified: now, changeFrequency: "monthly", priority: 0.8 },
+    ...ATHLETES.map((a) => ({
+      url: `${BASE_URL}/athletes/${a.slug}`,
       lastModified: now,
       changeFrequency: "monthly" as const,
       priority: 0.8,
