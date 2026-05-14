@@ -48,7 +48,18 @@ Output a JSON object matching this shape exactly:
 }`
 
 export async function reasonAboutWeek(signals: SeoSignalsSummary): Promise<{ decision: Decision; tokens_used: number }> {
-  const userMessage = `Here is the current state of darrenjpaul.com SEO. Pick the two highest-leverage actions for this week.
+  const briefBlock = signals.brief_context
+    ? [
+        "Brief context (bias your action ranking toward themes + keywords; treat dont_do as hard guardrail):",
+        JSON.stringify(signals.brief_context, null, 2),
+        "",
+        "If you align well with the brief, set brief_alignment_score 7-10. If you deviate (with reason), 4-6. Ignoring the brief entirely is 1-3.",
+        "",
+      ].join("\n")
+    : "(No approved brief this week — reason freely. Set brief_alignment_score to null.)\n"
+
+  const userMessage = `${briefBlock}
+Here is the current state of darrenjpaul.com SEO. Pick the two highest-leverage actions for this week.
 
 \`\`\`json
 ${JSON.stringify(signals, null, 2)}

@@ -18,6 +18,7 @@ describe("decisionSchema", () => {
     const valid = {
       rationale: "Striking-distance keyword + refresh of a decayed post — diverse and high-leverage.",
       actions: [validQueueNewPost, validQueueRefresh],
+      brief_alignment_score: null,
     }
     const out = decisionSchema.safeParse(valid)
     expect(out.success).toBe(true)
@@ -28,12 +29,14 @@ describe("decisionSchema", () => {
       decisionSchema.safeParse({
         rationale: "x".repeat(50),
         actions: [validQueueNewPost],
+        brief_alignment_score: null,
       }).success,
     ).toBe(false)
     expect(
       decisionSchema.safeParse({
         rationale: "x".repeat(50),
         actions: [validQueueNewPost, validQueueRefresh, validQueueNewPost],
+        brief_alignment_score: null,
       }).success,
     ).toBe(false)
   })
@@ -45,6 +48,7 @@ describe("decisionSchema", () => {
         validQueueNewPost,
         { rank: 2 as const, tool: "queue_new_post" as const, args: { keyword: "x", angle: "y" } },
       ],
+      brief_alignment_score: null,
     }
     expect(decisionSchema.safeParse(dup).success).toBe(false)
   })
@@ -56,6 +60,7 @@ describe("decisionSchema", () => {
         { rank: 1, tool: "nuke_database", args: {} },
         validQueueRefresh,
       ],
+      brief_alignment_score: null,
     }
     expect(decisionSchema.safeParse(bad).success).toBe(false)
   })
@@ -67,6 +72,7 @@ describe("decisionSchema", () => {
         { tool: "queue_new_post", args: { keyword: "x", angle: "y" } },
         validQueueRefresh,
       ],
+      brief_alignment_score: null,
     }
     expect(decisionSchema.safeParse(bad).success).toBe(false)
   })
@@ -78,6 +84,7 @@ describe("decisionSchema", () => {
         validQueueNewPost,
         { rank: 2, tool: "queue_refresh", args: { blog_post_id: "id" } }, // missing reason
       ],
+      brief_alignment_score: null,
     }
     expect(decisionSchema.safeParse(bad).success).toBe(false)
   })
@@ -93,6 +100,7 @@ describe("decisionSchema", () => {
           args: { issue: "Possible cannibalization", urgency: "medium", context: "Posts X and Y both target keyword Z" },
         },
       ],
+      brief_alignment_score: 8,
     }
     expect(decisionSchema.safeParse(ok).success).toBe(true)
   })
@@ -104,7 +112,34 @@ describe("decisionSchema", () => {
         validQueueNewPost,
         { rank: 2, tool: "flag_for_human", args: { issue: "x", urgency: "extreme", context: "y" } },
       ],
+      brief_alignment_score: null,
     }
     expect(decisionSchema.safeParse(bad).success).toBe(false)
+  })
+
+  it("rejects brief_alignment_score outside 1-10 range", () => {
+    expect(
+      decisionSchema.safeParse({
+        rationale: "x".repeat(50),
+        actions: [validQueueNewPost, validQueueRefresh],
+        brief_alignment_score: 0,
+      }).success,
+    ).toBe(false)
+    expect(
+      decisionSchema.safeParse({
+        rationale: "x".repeat(50),
+        actions: [validQueueNewPost, validQueueRefresh],
+        brief_alignment_score: 11,
+      }).success,
+    ).toBe(false)
+  })
+
+  it("requires brief_alignment_score field (null acceptable but not undefined)", () => {
+    expect(
+      decisionSchema.safeParse({
+        rationale: "x".repeat(50),
+        actions: [validQueueNewPost, validQueueRefresh],
+      }).success,
+    ).toBe(false)
   })
 })

@@ -72,6 +72,9 @@ export async function handleSeoAgent(jobId: string): Promise<void> {
           complementary_to_rank_1: a.complementary_to_rank_1,
         })),
         outcome_status: "pending",
+        brief_id: signals.brief_context?.brief_id ?? null,
+        brief_alignment_score: decision.brief_alignment_score ?? null,
+        ran_without_brief: signals.brief_context === null,
       })
       .select("id")
       .single()
@@ -84,7 +87,7 @@ export async function handleSeoAgent(jobId: string): Promise<void> {
     const ctx = { memoId, userId }
     const results: ExecutionResult[] = []
     for (const action of decision.actions) {
-      const r = await executeAction(action, ctx)
+      const r = await executeAction(action, ctx, signals)
       results.push(r)
       console.log(
         `[seo-agent] action rank=${action.rank} tool=${action.tool} executed=${r.executed} target=${r.execution_target_id ?? "null"}`,

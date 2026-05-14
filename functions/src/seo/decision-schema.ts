@@ -55,6 +55,7 @@ export const decisionSchema = z
   .object({
     rationale: z.string().min(20).max(2000),
     actions: z.tuple([actionSchema, actionSchema]),
+    brief_alignment_score: z.number().int().min(1).max(10).nullable(),
   })
   .refine((d) => d.actions[0].tool !== d.actions[1].tool, {
     message: "Both actions must be of different tools",

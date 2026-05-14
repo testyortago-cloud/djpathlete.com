@@ -40,6 +40,7 @@ describe("handleSeoAgent", () => {
       orphan_post_ids: [],
       last_8_memos_outcomes: [],
       gsc_distinct_dates: 28,
+      brief_context: null,
     })
     reasonAboutWeekMock.mockResolvedValueOnce({
       decision: {
@@ -48,6 +49,7 @@ describe("handleSeoAgent", () => {
           { rank: 1, tool: "queue_new_post", args: { keyword: "deadlift", angle: "bio" } },
           { rank: 2, tool: "queue_refresh", args: { blog_post_id: "11111111-1111-1111-1111-111111111111", reason: "decay" } },
         ],
+        brief_alignment_score: null,
       },
       tokens_used: 500,
     })
@@ -89,6 +91,7 @@ describe("handleSeoAgent", () => {
       orphan_post_ids: [],
       last_8_memos_outcomes: [],
       gsc_distinct_dates: 5,
+      brief_context: null,
     })
 
     const { handleSeoAgent } = await import("../seo-agent.js")
@@ -113,6 +116,7 @@ describe("handleSeoAgent", () => {
       orphan_post_ids: [],
       last_8_memos_outcomes: [],
       gsc_distinct_dates: 30,
+      brief_context: null,
     })
     reasonAboutWeekMock.mockRejectedValueOnce(new Error("Claude API timeout"))
 

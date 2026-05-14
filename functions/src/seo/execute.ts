@@ -6,6 +6,7 @@
 import { getFirestore, FieldValue } from "firebase-admin/firestore"
 import { getSupabase } from "../lib/supabase.js"
 import type { Action } from "./decision-schema.js"
+import type { SeoSignalsSummary } from "./signals.js"
 
 export interface AgentContext {
   memoId: string
@@ -16,6 +17,8 @@ export interface ExecutionResult {
   executed: boolean
   execution_target_id: string | null
   error?: string
+  /** Populated when the dispatcher rejects an action via brief dont_do guardrail. */
+  rejection_reason?: string
 }
 
 // ─── queue_new_post ────────────────────────────────────────────────────────
@@ -163,7 +166,26 @@ export async function executeFlagForHuman(
 
 // ─── Dispatcher ────────────────────────────────────────────────────────────
 
-export async function executeAction(action: Action, ctx: AgentContext): Promise<ExecutionResult> {
+export async function executeAction(
+  action: Action,
+  ctx: AgentContext,
+  signals?: SeoSignalsSummary,
+): Promise<ExecutionResult> {
+  // Hard guardrail: if the approved brief specifies dont_do phrases, reject any
+  // action whose serialized form mentions one. Case-insensitive substring match.
+  const dontDo = (signals?.brief_context?.dont_do ?? []) as string[]
+  if (dontDo.length > 0) {
+    const blob = JSON.stringify(action).toLowerCase()
+    const blockedBy = dontDo.find((phrase) => blob.includes(phrase.toLowerCase()))
+    if (blockedBy) {
+      return {
+        executed: false,
+        execution_target_id: null,
+        rejection_reason: `brief_dont_do:${blockedBy}`,
+      }
+    }
+  }
+
   switch (action.tool) {
     case "queue_new_post":
       return executeQueueNewPost(action.args, ctx)

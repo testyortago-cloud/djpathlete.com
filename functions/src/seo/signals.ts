@@ -32,6 +32,19 @@ export interface MemoryOutcomeSignal {
   outcome_summary?: string
 }
 
+// Inlined locally — functions/tsconfig has rootDir: "src" so we can't import from ../../../lib.
+export interface BriefContext {
+  brief_id: string
+  week_of: string
+  themes: Array<{ tag: string; weight: number }>
+  audience_focus: string
+  priority_channel: "seo" | "ads" | "social" | "balanced"
+  keywords_to_chase: string[]
+  hooks_to_test: string[]
+  ctas: string[]
+  dont_do: string[]
+}
+
 export interface SeoSignalsSummary {
   gsc_28d: GscSignals
   inventory: InventorySignals
@@ -40,6 +53,8 @@ export interface SeoSignalsSummary {
   last_8_memos_outcomes: MemoryOutcomeSignal[]
   /** Convenience: count of distinct dates in gsc_query_daily — used by the data warm-up gate. */
   gsc_distinct_dates: number
+  /** Latest approved StrategyBrief; null when no approved brief exists for the current week. */
+  brief_context: BriefContext | null
 }
 
 const TOP_K = 20
@@ -273,16 +288,52 @@ export async function gatherMemorySignals(supabase: SupabaseClient): Promise<Mem
   return out
 }
 
+export async function gatherLatestApprovedBrief(
+  supabase: SupabaseClient,
+): Promise<BriefContext | null> {
+  const briefRes = await supabase
+    .from("strategy_briefs")
+    .select("*")
+    .eq("approval_status", "approved")
+    .order("week_of", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  const briefRow = briefRes.data as {
+    id: string
+    week_of: string
+    themes: BriefContext["themes"]
+    audience_focus: string
+    priority_channel: BriefContext["priority_channel"]
+    keywords_to_chase: string[]
+    hooks_to_test: string[]
+    ctas: string[]
+    dont_do: string[]
+  } | null
+  if (!briefRow) return null
+  return {
+    brief_id: briefRow.id,
+    week_of: briefRow.week_of,
+    themes: briefRow.themes,
+    audience_focus: briefRow.audience_focus,
+    priority_channel: briefRow.priority_channel,
+    keywords_to_chase: briefRow.keywords_to_chase,
+    hooks_to_test: briefRow.hooks_to_test,
+    ctas: briefRow.ctas,
+    dont_do: briefRow.dont_do,
+  }
+}
+
 // ─── Top-level ──────────────────────────────────────────────────────────────
 
 export async function gatherSeoSignals(supabase: SupabaseClient): Promise<SeoSignalsSummary> {
-  const [gsc, inventory, tavily, orphanIds, memory, gscDistinctDates] = await Promise.all([
+  const [gsc, inventory, tavily, orphanIds, memory, gscDistinctDates, briefContext] = await Promise.all([
     gatherGscSignals(supabase),
     gatherInventorySignals(supabase),
     gatherTavilySignals(supabase),
     gatherOrphanPostIds(supabase),
     gatherMemorySignals(supabase),
     gatherCount28dDates(supabase),
+    gatherLatestApprovedBrief(supabase),
   ])
   return {
     gsc_28d: gsc,
@@ -291,6 +342,7 @@ export async function gatherSeoSignals(supabase: SupabaseClient): Promise<SeoSig
     orphan_post_ids: orphanIds,
     last_8_memos_outcomes: memory,
     gsc_distinct_dates: gscDistinctDates,
+    brief_context: briefContext,
   }
 }
 
