@@ -2,9 +2,9 @@ import Link from "next/link"
 import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import { listSubmissionsForEditor } from "@/lib/db/team-video-submissions"
-import { Button } from "@/components/ui/button"
 import { ArrowRight, Upload, Clock, AlertCircle, CheckCircle2, FilmIcon } from "lucide-react"
 import type { TeamVideoSubmission, TeamVideoSubmissionStatus } from "@/types/database"
+import { NewSubmissionMenu } from "@/components/editor/NewSubmissionMenu"
 
 export const metadata = { title: "Dashboard" }
 
@@ -264,17 +264,7 @@ function UploadCard({ draftCount }: { draftCount: number }) {
         Upload your latest cut and Darren will get a notification to review.
       </p>
       <div className="mt-auto pt-4 flex items-center justify-between">
-        <Button
-          asChild
-          size="sm"
-          variant="secondary"
-          className="bg-accent text-accent-foreground hover:bg-accent/90"
-        >
-          <Link href="/editor/upload">
-            <Upload className="mr-1.5 size-4" />
-            Start upload
-          </Link>
-        </Button>
+        <NewSubmissionMenu />
         {draftCount > 0 && (
           <span className="font-mono text-[10px] tracking-widest uppercase text-white/50">
             {draftCount} draft{draftCount === 1 ? "" : "s"}
