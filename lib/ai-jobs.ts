@@ -24,6 +24,7 @@ export type AiJobType =
   | "video_transcription"
   | "video_vision"
   | "image_vision"
+  | "image_caption_generation"
   | "tavily_research"
   | "tavily_fact_check"
   | "tavily_trending_scan"

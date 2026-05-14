@@ -375,6 +375,26 @@ export const imageVision = onDocumentCreated(
   },
 )
 
+// ─── Image Caption Generation ─────────────────────────────────────────────────
+// Triggered when a new ai_jobs doc is created with type "image_caption_generation".
+
+export const imageCaptionGeneration = onDocumentCreated(
+  {
+    document: "ai_jobs/{jobId}",
+    timeoutSeconds: 300,
+    memory: "1GiB",
+    region: "us-central1",
+    secrets: [supabaseUrl, supabaseServiceRoleKey, anthropicApiKey],
+  },
+  async (event) => {
+    const data = event.data?.data()
+    if (!data || data.type !== "image_caption_generation") return
+
+    const { handleImageCaptionGeneration } = await import("./image-caption-generation.js")
+    await handleImageCaptionGeneration(event.params.jobId)
+  },
+)
+
 // ─── Tavily Research ──────────────────────────────────────────────────────────
 // Triggered when a new ai_jobs doc is created with type "tavily_research"
 
