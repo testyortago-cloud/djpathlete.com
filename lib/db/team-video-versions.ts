@@ -8,10 +8,10 @@ function getClient() {
 export async function createVersion(input: {
   submissionId: string
   versionNumber: number
-  storagePath: string
-  originalFilename: string
-  mimeType: string
-  sizeBytes: number
+  storagePath?: string | null
+  originalFilename?: string | null
+  mimeType?: string | null
+  sizeBytes?: number | null
 }): Promise<TeamVideoVersion> {
   const supabase = getClient()
   const { data, error } = await supabase
@@ -19,10 +19,10 @@ export async function createVersion(input: {
     .insert({
       submission_id: input.submissionId,
       version_number: input.versionNumber,
-      storage_path: input.storagePath,
-      original_filename: input.originalFilename,
-      mime_type: input.mimeType,
-      size_bytes: input.sizeBytes,
+      storage_path: input.storagePath ?? null,
+      original_filename: input.originalFilename ?? null,
+      mime_type: input.mimeType ?? null,
+      size_bytes: input.sizeBytes ?? null,
       status: "pending",
     })
     .select()

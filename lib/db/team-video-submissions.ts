@@ -1,6 +1,7 @@
 import { createServiceRoleClient } from "@/lib/supabase"
 import type {
   TeamVideoSubmission,
+  TeamVideoSubmissionKind,
   TeamVideoSubmissionStatus,
 } from "@/types/database"
 
@@ -12,6 +13,7 @@ export async function createSubmission(input: {
   title: string
   description?: string | null
   submittedBy: string
+  kind?: TeamVideoSubmissionKind
 }): Promise<TeamVideoSubmission> {
   const supabase = getClient()
   const { data, error } = await supabase
@@ -20,6 +22,7 @@ export async function createSubmission(input: {
       title: input.title,
       description: input.description ?? null,
       submitted_by: input.submittedBy,
+      kind: input.kind ?? "video",
       status: "draft" as TeamVideoSubmissionStatus,
     })
     .select()
