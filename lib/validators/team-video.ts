@@ -85,6 +85,59 @@ export const createVersionSchema = z.object({
 
 export type CreateVersionInput = z.infer<typeof createVersionSchema>
 
+const ALLOWED_IMAGE_MIME = ["image/jpeg", "image/png", "image/webp"] as const
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024 // 8 MB per image (IG ceiling)
+const MAX_IMAGES_PER_SUBMISSION = 10
+
+const imageSpecSchema = z.object({
+  filename: z.string().trim().min(1).max(255),
+  mimeType: z.enum(ALLOWED_IMAGE_MIME, { message: "Unsupported image format" }),
+  sizeBytes: z
+    .number()
+    .int()
+    .positive()
+    .max(MAX_IMAGE_BYTES, "Image exceeds 8 MB limit"),
+  position: z.number().int().min(0).max(MAX_IMAGES_PER_SUBMISSION - 1),
+})
+
+const imagesArraySchema = z
+  .array(imageSpecSchema)
+  .min(1, "At least one image is required")
+  .max(MAX_IMAGES_PER_SUBMISSION, `At most ${MAX_IMAGES_PER_SUBMISSION} images allowed`)
+  .superRefine((images, ctx) => {
+    const positions = images.map((i) => i.position).sort((a, b) => a - b)
+    const unique = new Set(positions)
+    if (unique.size !== positions.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "image positions must be unique",
+      })
+    }
+    for (let i = 0; i < positions.length; i++) {
+      if (positions[i] !== i) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `image positions must be contiguous starting at 0 (got ${positions.join(",")})`,
+        })
+        return
+      }
+    }
+  })
+
+export const createPhotoSubmissionSchema = z.object({
+  title: z.string().trim().min(1, "Title is required").max(200),
+  description: z.string().trim().max(2000).optional(),
+  images: imagesArraySchema,
+})
+
+export type CreatePhotoSubmissionInput = z.infer<typeof createPhotoSubmissionSchema>
+
+export const createPhotoVersionSchema = z.object({
+  images: imagesArraySchema,
+})
+
+export type CreatePhotoVersionInput = z.infer<typeof createPhotoVersionSchema>
+
 export const createCommentSchema = z.object({
   timecodeSeconds: z.number().min(0).nullable(),
   commentText: z.string().trim().min(1, "Comment cannot be empty").max(2000),
