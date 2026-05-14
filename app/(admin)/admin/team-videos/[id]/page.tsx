@@ -42,7 +42,9 @@ export default async function TeamVideoReviewPage({ params }: Props) {
   }))
   const versions: VersionRow[] = await Promise.all(
     allVersions.map(async (v) => {
-      if (v.status !== "uploaded") {
+      // image_set versions store files in team_submission_images, not on the
+      // version row; storage_path/original_filename are null in that case.
+      if (v.status !== "uploaded" || !v.storage_path || !v.original_filename) {
         return { ...v, signedUrl: null, signedDownloadUrl: null }
       }
       const [signedUrl, signedDownloadUrl] = await Promise.all([

@@ -146,6 +146,8 @@ export type TeamVideoSubmissionStatus =
 
 export type TeamVideoVersionStatus = "pending" | "uploaded" | "failed"
 
+export type TeamVideoSubmissionKind = "video" | "image_set"
+
 export type TeamVideoCommentStatus = "open" | "resolved"
 
 export interface TeamVideoSubmission {
@@ -154,6 +156,7 @@ export interface TeamVideoSubmission {
   description: string | null
   submitted_by: string
   status: TeamVideoSubmissionStatus
+  kind: TeamVideoSubmissionKind
   current_version_id: string | null
   approved_at: string | null
   approved_by: string | null
@@ -166,13 +169,27 @@ export interface TeamVideoVersion {
   id: string
   submission_id: string
   version_number: number
-  storage_path: string
-  original_filename: string
+  storage_path: string | null
+  original_filename: string | null
   duration_seconds: number | null
   size_bytes: number | null
   mime_type: string | null
+  image_count: number | null
   status: TeamVideoVersionStatus
   uploaded_at: string | null
+  created_at: string
+}
+
+export interface TeamSubmissionImage {
+  id: string
+  version_id: string
+  position: number
+  storage_path: string
+  original_filename: string
+  mime_type: "image/jpeg" | "image/png" | "image/webp"
+  size_bytes: number
+  width: number | null
+  height: number | null
   created_at: string
 }
 

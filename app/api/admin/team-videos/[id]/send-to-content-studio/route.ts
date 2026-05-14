@@ -27,6 +27,16 @@ export async function POST(
   const version = await getCurrentVersion(submission.id)
   if (!version) return NextResponse.json({ error: "No current version" }, { status: 409 })
 
+  // Content Studio's pipeline only handles video uploads. Image-set
+  // submissions store their files in team_submission_images and don't have a
+  // version-level storage_path, so we reject them here.
+  if (!version.storage_path || !version.original_filename) {
+    return NextResponse.json(
+      { error: "Only video submissions can be sent to Content Studio" },
+      { status: 409 },
+    )
+  }
+
   // Create the Content Studio video_uploads row using the approved version's
   // storage path. Content Studio's existing pipeline (transcribe, post compose,
   // schedule) takes over from there.

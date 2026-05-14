@@ -77,7 +77,7 @@ export function VersionHistoryList({ versions, selectedId, onSelect }: Props) {
     try {
       for (let i = 0; i < downloadable.length; i++) {
         const v = downloadable[i]
-        triggerDownload(v.signedDownloadUrl!, v.original_filename)
+        triggerDownload(v.signedDownloadUrl!, v.original_filename ?? `version-${v.version_number}`)
         // 400ms gap so Chrome doesn't treat them as a popup-style burst.
         if (i < downloadable.length - 1) {
           await new Promise((r) => setTimeout(r, 400))
@@ -160,8 +160,11 @@ export function VersionHistoryList({ versions, selectedId, onSelect }: Props) {
                 className="min-w-0 flex-1 text-left disabled:cursor-not-allowed"
               >
                 <div className="flex items-center gap-2">
-                  <p className="truncate text-sm font-medium text-primary" title={v.original_filename}>
-                    {v.original_filename}
+                  <p
+                    className="truncate text-sm font-medium text-primary"
+                    title={v.original_filename ?? "(image set)"}
+                  >
+                    {v.original_filename ?? "(image set)"}
                   </p>
                   {isSelected && (
                     <span className="font-mono text-[9px] tracking-widest uppercase text-accent">
@@ -194,7 +197,10 @@ export function VersionHistoryList({ versions, selectedId, onSelect }: Props) {
                 variant="ghost"
                 onClick={() =>
                   canDownload &&
-                  triggerDownload(v.signedDownloadUrl!, v.original_filename)
+                  triggerDownload(
+                    v.signedDownloadUrl!,
+                    v.original_filename ?? `version-${v.version_number}`,
+                  )
                 }
                 disabled={!canDownload}
                 aria-label={`Download version ${v.version_number}`}
