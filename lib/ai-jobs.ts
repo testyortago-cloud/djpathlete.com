@@ -21,6 +21,7 @@ export type AiJobType =
   | "ai_coach"
   // Starter AI Automation (Phase 2+ — handlers not yet implemented)
   | "social_fanout"
+  | "social_agent_run"
   | "video_transcription"
   | "video_vision"
   | "image_vision"

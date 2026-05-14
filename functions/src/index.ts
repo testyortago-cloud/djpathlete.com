@@ -455,6 +455,28 @@ export const socialFanout = onDocumentCreated(
   },
 )
 
+// ─── Social Agent (autonomous) ────────────────────────────────────────────────
+// Triggered when a new ai_jobs doc is created with type "social_agent_run".
+// Picks a blog topic and drafts a LinkedIn post via writer + reviewer agents.
+// Output is a draft social_post that lands in the admin approval queue.
+
+export const socialAgent = onDocumentCreated(
+  {
+    document: "ai_jobs/{jobId}",
+    timeoutSeconds: 540,
+    memory: "1GiB",
+    region: "us-central1",
+    secrets: [anthropicApiKey, supabaseUrl, supabaseServiceRoleKey],
+  },
+  async (event) => {
+    const data = event.data?.data()
+    if (!data || data.type !== "social_agent_run") return
+
+    const { handleSocialAgentRun } = await import("./social-agent.js")
+    await handleSocialAgentRun(event.params.jobId)
+  },
+)
+
 // ─── Blog From Video ──────────────────────────────────────────────────────────
 // Triggered when a new ai_jobs doc is created with type "blog_from_video"
 
