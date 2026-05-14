@@ -149,3 +149,46 @@ export async function deleteVideo(storagePath: string): Promise<void> {
   const bucket = getAdminStorage().bucket()
   await bucket.file(storagePath).delete({ ignoreNotFound: true })
 }
+
+/**
+ * Path prefix for media-assets-owned images.
+ *
+ * Matches the existing Content Studio convention (see
+ * app/api/admin/media-assets/upload-url/route.ts and
+ * app/api/admin/content-studio/quote-cards/route.ts) which uses
+ * `images/<scopeId>/<...>` in the default Firebase bucket. Team-submission
+ * copies live under their submissionId for traceability rather than a userId.
+ */
+const MEDIA_ASSETS_PATH_PREFIX = "images"
+
+/**
+ * Copies a team-submission image into the media-assets path so the asset has
+ * its own retention lifecycle separate from the editor pipeline. Returns the
+ * new storage path and the `public_url` value the `media_assets` row should
+ * store.
+ *
+ * Implementation: a server-side bucket-to-bucket copy within the default
+ * Firebase bucket. The source object stays in `team-videos/` for the audit
+ * trail.
+ *
+ * URL convention note: the existing media-assets flow (upload-url and
+ * quote-cards routes) stores the **storage path** as `public_url`, not a
+ * signed URL. Consumers sign it lazily via `lib/social/resolve-media-url.ts`
+ * (for publishing) or `lib/content-studio/asset-thumbnails.ts` (for the asset
+ * library). We mirror that so the downstream `media_assets` row behaves
+ * identically to other Content Studio assets.
+ */
+export async function copyImageToMediaAssetsBucket(input: {
+  sourceStoragePath: string
+  submissionId: string
+  position: number
+  originalFilename: string
+}): Promise<{ storagePath: string; publicUrl: string }> {
+  const bucket = getAdminStorage().bucket()
+  const safe = input.originalFilename.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 120)
+  const destPath = `${MEDIA_ASSETS_PATH_PREFIX}/${input.submissionId}/${input.position}_${safe}`
+  await bucket.file(input.sourceStoragePath).copy(bucket.file(destPath))
+  // `public_url` mirrors the storage path so it resolves through the same
+  // lazy-signing pipeline as every other media asset in Content Studio.
+  return { storagePath: destPath, publicUrl: destPath }
+}
