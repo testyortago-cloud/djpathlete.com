@@ -1,8 +1,17 @@
 "use client"
 
 import Link from "next/link"
+import {
+  LayoutDashboard,
+  Activity,
+  Gauge,
+  AlertTriangle,
+  User,
+  HeartPulse,
+  Trophy,
+} from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Button } from "@/components/ui/button"
+import { PerformanceActionButtons } from "./performance-action-buttons"
 import type {
   DailyReadiness,
   Injury,
@@ -91,65 +100,105 @@ export function AthletePerformanceHub({
 
   const sparkline = coachIntel.dailyLoadSeries.slice(-7)
 
+  const alertCount = coachIntel.openFlags.length
+
   return (
-    <div className="container max-w-6xl py-8">
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="font-heading text-3xl font-bold">Performance</h1>
-        <div className="flex gap-2">
-          <Button asChild variant="outline">
-            <Link
-              href={`/admin/clients/${clientUserId}/performance/injuries/new`}
-            >
-              + Report injury
-            </Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link
-              href={`/admin/clients/${clientUserId}/performance/log-session`}
-            >
-              + Log session
-            </Link>
-          </Button>
-          <Button asChild>
-            <Link href={`/admin/clients/${clientUserId}/performance/log-test`}>
-              + Log test
-            </Link>
-          </Button>
+    <div className="py-2">
+      {/* Page header */}
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-muted-foreground mb-1 text-xs font-medium uppercase tracking-[0.18em]">
+            Athlete
+          </p>
+          <h1 className="font-heading text-primary text-3xl font-bold tracking-tight">
+            Performance
+          </h1>
         </div>
+        <PerformanceActionButtons clientUserId={clientUserId} />
       </div>
 
       <Tabs defaultValue={tab}>
-        <TabsList>
-          <TabsTrigger value="overview" asChild>
+        <TabsList
+          variant="line"
+          className="border-border h-auto w-full justify-start overflow-x-auto rounded-none border-b px-0 pb-0"
+        >
+          <TabsTrigger
+            value="overview"
+            asChild
+            className="font-heading h-10 px-3 text-sm font-medium tracking-wide"
+          >
             <Link href={`/admin/clients/${clientUserId}/performance?tab=overview`}>
+              <LayoutDashboard className="size-4" strokeWidth={1.75} />
               Overview
             </Link>
           </TabsTrigger>
-          <TabsTrigger value="readiness" asChild>
+          <TabsTrigger
+            value="readiness"
+            asChild
+            className="font-heading h-10 px-3 text-sm font-medium tracking-wide"
+          >
             <Link href={`/admin/clients/${clientUserId}/performance?tab=readiness`}>
+              <Activity className="size-4" strokeWidth={1.75} />
               Readiness
             </Link>
           </TabsTrigger>
-          <TabsTrigger value="load" asChild>
-            <Link href={`/admin/clients/${clientUserId}/performance?tab=load`}>Load</Link>
-          </TabsTrigger>
-          <TabsTrigger value="alerts" asChild>
-            <Link href={`/admin/clients/${clientUserId}/performance?tab=alerts`}>
-              Alerts ({coachIntel.openFlags.length})
+          <TabsTrigger
+            value="load"
+            asChild
+            className="font-heading h-10 px-3 text-sm font-medium tracking-wide"
+          >
+            <Link href={`/admin/clients/${clientUserId}/performance?tab=load`}>
+              <Gauge className="size-4" strokeWidth={1.75} />
+              Load
             </Link>
           </TabsTrigger>
-          <TabsTrigger value="profile" asChild>
+          <TabsTrigger
+            value="alerts"
+            asChild
+            className="font-heading h-10 px-3 text-sm font-medium tracking-wide"
+          >
+            <Link
+              href={`/admin/clients/${clientUserId}/performance?tab=alerts`}
+              className="flex items-center gap-1.5"
+            >
+              <AlertTriangle className="size-4" strokeWidth={1.75} />
+              Alerts
+              {alertCount > 0 && (
+                <span className="bg-error/10 text-error inline-flex min-w-[18px] items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums">
+                  {alertCount}
+                </span>
+              )}
+            </Link>
+          </TabsTrigger>
+          <TabsTrigger
+            value="profile"
+            asChild
+            className="font-heading h-10 px-3 text-sm font-medium tracking-wide"
+          >
             <Link href={`/admin/clients/${clientUserId}/performance?tab=profile`}>
+              <User className="size-4" strokeWidth={1.75} />
               Profile
             </Link>
           </TabsTrigger>
-          <TabsTrigger value="injuries" asChild>
+          <TabsTrigger
+            value="injuries"
+            asChild
+            className="font-heading h-10 px-3 text-sm font-medium tracking-wide"
+          >
             <Link href={`/admin/clients/${clientUserId}/performance?tab=injuries`}>
+              <HeartPulse className="size-4" strokeWidth={1.75} />
               Injuries
             </Link>
           </TabsTrigger>
-          <TabsTrigger value="tests" asChild>
-            <Link href={`/admin/clients/${clientUserId}/performance?tab=tests`}>Tests</Link>
+          <TabsTrigger
+            value="tests"
+            asChild
+            className="font-heading h-10 px-3 text-sm font-medium tracking-wide"
+          >
+            <Link href={`/admin/clients/${clientUserId}/performance?tab=tests`}>
+              <Trophy className="size-4" strokeWidth={1.75} />
+              Tests
+            </Link>
           </TabsTrigger>
         </TabsList>
 

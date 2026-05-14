@@ -17,7 +17,13 @@ import {
   type InjuryFormData,
 } from "@/lib/validators/injury"
 
-export function ReportInjuryForm({ clientUserId }: { clientUserId?: string }) {
+export function ReportInjuryForm({
+  clientUserId,
+  onSuccess,
+}: {
+  clientUserId?: string
+  onSuccess?: () => void
+}) {
   const router = useRouter()
   const [submitting, setSubmitting] = useState(false)
 
@@ -47,8 +53,13 @@ export function ReportInjuryForm({ clientUserId }: { clientUserId?: string }) {
       })
       if (!res.ok) throw new Error("Save failed")
       toast.success("Injury reported")
-      router.push(clientUserId ? `/admin/clients/${clientUserId}/performance?tab=injuries` : "/client/injuries")
-      router.refresh()
+      if (onSuccess) {
+        router.refresh()
+        onSuccess()
+      } else {
+        router.push(clientUserId ? `/admin/clients/${clientUserId}/performance?tab=injuries` : "/client/injuries")
+        router.refresh()
+      }
     } catch (e) {
       toast.error((e as Error).message)
     } finally {

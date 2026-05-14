@@ -1,0 +1,56 @@
+"use client"
+
+import { useState } from "react"
+import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { ReportInjuryForm } from "@/components/client/performance/report-injury-form"
+import { LogTrainingSessionForm } from "@/components/client/coach-intel/log-training-session-form"
+import { LogTestDialog } from "@/components/client/performance/log-test-dialog"
+
+export function PerformanceActionButtons({ clientUserId }: { clientUserId: string }) {
+  const [injuryOpen, setInjuryOpen] = useState(false)
+  const [sessionOpen, setSessionOpen] = useState(false)
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      <Dialog open={injuryOpen} onOpenChange={setInjuryOpen}>
+        <DialogTrigger asChild>
+          <Button variant="outline" size="sm">
+            + Report injury
+          </Button>
+        </DialogTrigger>
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Report injury</DialogTitle>
+          </DialogHeader>
+          <ReportInjuryForm clientUserId={clientUserId} onSuccess={() => setInjuryOpen(false)} />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={sessionOpen} onOpenChange={setSessionOpen}>
+        <DialogTrigger asChild>
+          <Button variant="outline" size="sm">
+            + Log session
+          </Button>
+        </DialogTrigger>
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Log training session</DialogTitle>
+          </DialogHeader>
+          <LogTrainingSessionForm clientUserId={clientUserId} onSuccess={() => setSessionOpen(false)} />
+        </DialogContent>
+      </Dialog>
+
+      <LogTestDialog
+        clientUserId={clientUserId}
+        trigger={<Button size="sm">+ Log test</Button>}
+      />
+    </div>
+  )
+}

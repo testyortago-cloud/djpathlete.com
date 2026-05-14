@@ -23,7 +23,9 @@ export function AdminLayout({ children, avatarUrl, initials, contentStudioEnable
         <AdminMobileSidebar open={mobileOpen} onClose={() => setMobileOpen(false)} />
         <div className="flex-1 flex flex-col min-w-0 lg:ml-64">
           <AdminTopBar onMenuClick={() => setMobileOpen(true)} avatarUrl={avatarUrl} initials={initials} />
-          <main className="flex-1 p-6">{children}</main>
+          <main className="flex-1 p-6">
+            <div className="mx-auto w-full max-w-7xl">{children}</div>
+          </main>
         </div>
       </div>
     </AdminWeightUnitProvider>

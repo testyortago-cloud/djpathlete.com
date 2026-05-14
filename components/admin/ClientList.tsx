@@ -3,7 +3,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Search, ChevronLeft, ChevronRight, Send, Pencil, Loader2 } from "lucide-react"
+import { Search, ChevronLeft, ChevronRight, Send, Pencil, Loader2, Activity } from "lucide-react"
 import { toast } from "sonner"
 import { Input } from "@/components/ui/input"
 import { EditClientDialog } from "@/components/admin/EditClientDialog"
@@ -169,6 +169,14 @@ export function ClientList({ users }: { users: User[] }) {
                         Invite
                       </button>
                     )}
+                    <Link
+                      href={`/admin/clients/${client.id}/performance`}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/15 px-2.5 py-1 text-xs font-medium transition-colors"
+                      title="Open performance database"
+                    >
+                      <Activity className="size-3" />
+                      Performance
+                    </Link>
                     <button
                       type="button"
                       onClick={() => setEditingClient(client)}

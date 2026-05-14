@@ -21,9 +21,11 @@ import {
 export function LogTrainingSessionForm({
   initial,
   clientUserId,
+  onSuccess,
 }: {
   initial?: Partial<TrainingSessionFormData>
   clientUserId?: string
+  onSuccess?: () => void
 }) {
   const router = useRouter()
   const [submitting, setSubmitting] = useState(false)
@@ -53,6 +55,7 @@ export function LogTrainingSessionForm({
       if (!res.ok) throw new Error("Save failed")
       toast.success("Session logged")
       router.refresh()
+      onSuccess?.()
     } catch (e) {
       toast.error((e as Error).message)
     } finally {

@@ -143,7 +143,9 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
           <NotificationBell />
         </div>
         <main className="p-6 pb-28 lg:pb-6">
-          <PullToRefresh>{children}</PullToRefresh>
+          <div className="mx-auto w-full max-w-7xl">
+            <PullToRefresh>{children}</PullToRefresh>
+          </div>
         </main>
       </div>
 
