@@ -1924,6 +1924,10 @@ export interface GoogleAdsAgentMemo {
   guardrail_rejections: GoogleAdsAgentMemoGuardrailRejection[]
   outcome_status: GoogleAdsAgentMemoOutcomeStatus
   outcome_metrics: Record<string, unknown> | null
+  // Added 2026-05-15 by strategy-team plan A3 — nullable so prior rows stay valid
+  brief_id: string | null
+  brief_alignment_score: number | null
+  ran_without_brief: boolean
   created_at: string
   updated_at: string
 }
@@ -2052,6 +2056,71 @@ export interface SeoAgentMemo {
   outcome_status: "pending" | "measured" | "rolled_back"
   outcome_metrics: SeoAgentMemoOutcomeMetric[] | null
   created_at: string       // ISO string
+  measured_at: string | null
+  // Added 2026-05-15 by strategy-team plan A3 — nullable so prior rows stay valid
+  brief_id: string | null
+  brief_alignment_score: number | null
+  ran_without_brief: boolean
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Strategy Team (added 2026-05-15)
+// cross_channel_signals + strategy_briefs + social_agent_memos
+// ─────────────────────────────────────────────────────────────────
+
+export interface CrossChannelSignal {
+  id: string
+  week_of: string
+  winners: unknown[]
+  losers: unknown[]
+  anomalies: unknown[]
+  attribution_summary: Record<string, unknown>
+  recommendations_for_brief: unknown[]
+  preflight_status: "ok" | "failed"
+  preflight_reasons: string[]
+  rationale: string
+  created_at: string
+}
+
+export interface StrategyBrief {
+  id: string
+  week_of: string
+  themes: { tag: string; weight: number }[]
+  audience_focus: string
+  priority_channel: "seo" | "ads" | "social" | "balanced"
+  keywords_to_chase: string[]
+  hooks_to_test: string[]
+  ctas: string[]
+  dont_do: string[]
+  rationale: string
+  signal_id: string | null
+  approval_status: "draft" | "approved" | "rejected"
+  approved_at: string | null
+  approved_by: string | null
+  created_at: string
+}
+
+export interface SocialAgentMemoAction {
+  kind: string
+  payload: unknown
+  rationale: string
+}
+
+export interface SocialAgentMemo {
+  id: string
+  run_date: string
+  ai_job_id: string | null
+  brief_id: string | null
+  brief_alignment_score: number | null
+  ran_without_brief: boolean
+  signals_summary: Record<string, unknown>
+  actions: SocialAgentMemoAction[]
+  rationale: string
+  outcome_status: "pending" | "measured" | "preflight_failed" | "no_op"
+  outcome_metrics: Record<string, unknown> | null
+  social_post_id: string | null
+  platform: string | null
+  created_at: string
   measured_at: string | null
 }
 
