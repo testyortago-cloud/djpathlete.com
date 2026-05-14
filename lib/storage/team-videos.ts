@@ -17,6 +17,64 @@ export function buildVersionPath(
   return `${TEAM_VIDEO_PATH_PREFIX}/${submissionId}/v${versionNumber}/${safe}`
 }
 
+/** Build the storage path for one image in an image_set version. */
+export function buildImagePath(
+  submissionId: string,
+  versionNumber: number,
+  position: number,
+  filename: string,
+): string {
+  const safe = filename.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 120)
+  return `${TEAM_VIDEO_PATH_PREFIX}/${submissionId}/v${versionNumber}/${position}_${safe}`
+}
+
+export interface ImageUploadSpec {
+  storagePath: string
+  contentType: string
+}
+
+export interface SignedImageUpload {
+  storagePath: string
+  uploadUrl: string
+  expiresInSeconds: number
+}
+
+/**
+ * Create N parallel Firebase v4 signed PUT URLs, one per image. Each upload is
+ * independently signed; callers fire them in parallel from the browser.
+ */
+export async function createImageUploadUrls(
+  images: ImageUploadSpec[],
+): Promise<SignedImageUpload[]> {
+  const bucket = getAdminStorage().bucket()
+  return Promise.all(
+    images.map(async (img) => {
+      const file = bucket.file(img.storagePath)
+      const [uploadUrl] = await file.getSignedUrl({
+        version: "v4",
+        action: "write",
+        expires: Date.now() + TEAM_VIDEO_UPLOAD_URL_TTL_MS,
+        contentType: img.contentType,
+      })
+      return {
+        storagePath: img.storagePath,
+        uploadUrl,
+        expiresInSeconds: Math.floor(TEAM_VIDEO_UPLOAD_URL_TTL_MS / 1000),
+      }
+    }),
+  )
+}
+
+/**
+ * Confirms a file exists in the team-videos bucket. Used by finalize to verify
+ * every image actually got PUT before flipping submission status.
+ */
+export async function imageStorageObjectExists(storagePath: string): Promise<boolean> {
+  const bucket = getAdminStorage().bucket()
+  const [exists] = await bucket.file(storagePath).exists()
+  return exists
+}
+
 /**
  * Create a Firebase v4 signed URL the editor's browser can PUT to directly.
  * Returns just the URL + the path we built — Firebase's v4 signed URLs are
