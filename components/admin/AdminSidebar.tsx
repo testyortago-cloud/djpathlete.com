@@ -41,6 +41,7 @@ import {
   LineChart,
   Search,
   Workflow,
+  Compass,
 } from "lucide-react"
 import { signOut } from "next-auth/react"
 import { cn } from "@/lib/utils"
@@ -135,6 +136,10 @@ function getNavSections(contentStudioOn: boolean): NavSection[] {
         { label: "Search Console", href: "/admin/integrations/gsc", icon: Search },
         { label: "Agent Memos", href: "/admin/seo-agent/memos", icon: Workflow },
       ],
+    },
+    {
+      title: "Strategy",
+      items: [{ label: "Strategy", href: "/admin/strategy", icon: Compass }],
     },
     {
       title: "Business",
