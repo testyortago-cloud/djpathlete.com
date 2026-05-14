@@ -1164,3 +1164,111 @@ export const runJob = onRequest(
     await handleRunJob(req, res)
   },
 )
+
+// ─── Performance Critic (ai_jobs handler) ────────────────────────────────────
+export const performanceCritic = onDocumentCreated(
+  {
+    document: "ai_jobs/{jobId}",
+    timeoutSeconds: 540,
+    memory: "512MiB",
+    region: "us-central1",
+    secrets: allSecrets,
+  },
+  async (event) => {
+    const data = event.data?.data()
+    if (!data || data.type !== "performance_critic_run") return
+    const { runPerformanceCritic } = await import("./performance-critic.js")
+    const result = await runPerformanceCritic()
+    console.log("[performanceCritic]", event.params.jobId, result)
+    const { getFirestore, FieldValue } = await import("firebase-admin/firestore")
+    await getFirestore().collection("ai_jobs").doc(event.params.jobId).update({
+      status: "completed",
+      result,
+      updatedAt: FieldValue.serverTimestamp(),
+    })
+  },
+)
+
+// ─── Chief Strategist (ai_jobs handler) ──────────────────────────────────────
+export const chiefStrategist = onDocumentCreated(
+  {
+    document: "ai_jobs/{jobId}",
+    timeoutSeconds: 540,
+    memory: "512MiB",
+    region: "us-central1",
+    secrets: allSecrets,
+  },
+  async (event) => {
+    const data = event.data?.data()
+    if (!data || data.type !== "chief_strategist_run") return
+    const { runChiefStrategist } = await import("./chief-strategist.js")
+    const result = await runChiefStrategist()
+    console.log("[chiefStrategist]", event.params.jobId, result)
+    const { getFirestore, FieldValue } = await import("firebase-admin/firestore")
+    await getFirestore().collection("ai_jobs").doc(event.params.jobId).update({
+      status: "completed",
+      result,
+      updatedAt: FieldValue.serverTimestamp(),
+    })
+  },
+)
+
+// ─── Performance Critic Cron (Sat 13:00 UTC) ────────────────────────────────
+export const performanceCriticCron = onSchedule(
+  {
+    schedule: "0 13 * * 6",
+    timeZone: "UTC",
+    timeoutSeconds: 120,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [internalCronToken, appUrl],
+  },
+  async () => {
+    const baseUrl = process.env.APP_URL
+    const token = process.env.INTERNAL_CRON_TOKEN
+    if (!baseUrl || !token) {
+      console.error("[performanceCriticCron] APP_URL or INTERNAL_CRON_TOKEN missing")
+      return
+    }
+    try {
+      const res = await fetch(`${baseUrl}/api/admin/internal/strategy-critic`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: "{}",
+      })
+      console.log("[performanceCriticCron]", res.status, await res.json().catch(() => ({})))
+    } catch (err) {
+      console.error("[performanceCriticCron] failed:", err)
+    }
+  },
+)
+
+// ─── Chief Strategist Cron (Sun 10:00 UTC) ───────────────────────────────────
+export const chiefStrategistCron = onSchedule(
+  {
+    schedule: "0 10 * * 0",
+    timeZone: "UTC",
+    timeoutSeconds: 120,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [internalCronToken, appUrl],
+  },
+  async () => {
+    const baseUrl = process.env.APP_URL
+    const token = process.env.INTERNAL_CRON_TOKEN
+    if (!baseUrl || !token) {
+      console.error("[chiefStrategistCron] APP_URL or INTERNAL_CRON_TOKEN missing")
+      return
+    }
+    try {
+      const res = await fetch(`${baseUrl}/api/admin/internal/strategy-chief`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: "{}",
+      })
+      console.log("[chiefStrategistCron]", res.status, await res.json().catch(() => ({})))
+    } catch (err) {
+      console.error("[chiefStrategistCron] failed:", err)
+    }
+  },
+)
