@@ -92,6 +92,15 @@ export function TeamVideoTable({ submissions }: { submissions: TeamVideoSubmissi
                   >
                     {s.title}
                   </Link>
+                  <span
+                    className={`ml-2 rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide ${
+                      s.kind === "image_set"
+                        ? "bg-accent/10 text-accent"
+                        : "bg-primary/10 text-primary"
+                    }`}
+                  >
+                    {s.kind === "image_set" ? "Photos" : "Video"}
+                  </span>
                 </td>
                 <td className="px-4 py-3">
                   <span
