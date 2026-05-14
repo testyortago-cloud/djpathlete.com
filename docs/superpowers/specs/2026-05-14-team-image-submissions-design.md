@@ -315,7 +315,7 @@ All four prompts share a base system prompt establishing the brand (Darren Paul,
 - Hashtags must match `/^[a-z0-9_]+$/`, ≤ 30 chars each; invalid ones are filtered.
 - If the model returns malformed JSON, the job retries once with `response_format` enforcement; second failure marks the job `failed` and leaves the post caption empty (Darren can write his own).
 
-**Cost guardrail:** Anthropic Sonnet 4.6 vision cost ≈ $0.01–0.03 per image for typical sizes. Worst case: 10 images × 4 platforms = 40 images processed per submission ≈ $0.40–$1.20. Acceptable per submission; cap by env flag `IMAGE_CAPTION_GENERATION_ENABLED` so it can be killed if billing spikes.
+**Cost note:** Anthropic Sonnet 4.6 vision cost ≈ $0.01–0.03 per image for typical sizes. Worst case: 10 images × 4 platforms = 40 images processed per submission ≈ $0.40–$1.20. Acceptable per submission. The handler runs unconditionally — no env kill-switch; if billing ever needs an emergency cut-off, drop the Firebase function or revoke its `ANTHROPIC_API_KEY` secret.
 
 **Idempotency:** the job sets `social_posts.metadata.image_caption_job_id`. Re-running for the same post is a no-op unless `force=true` is passed in the job input.
 
