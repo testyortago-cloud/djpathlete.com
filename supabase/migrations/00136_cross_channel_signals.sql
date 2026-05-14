@@ -1,4 +1,4 @@
--- supabase/migrations/00130_cross_channel_signals.sql
+-- supabase/migrations/00136_cross_channel_signals.sql
 -- Weekly cross-channel synthesis written by the performance critic.
 -- One row per ISO-week. Consumed by the chief strategist as the primary
 -- input to next week's brief.
@@ -25,6 +25,9 @@ COMMENT ON TABLE cross_channel_signals IS
 
 ALTER TABLE cross_channel_signals ENABLE ROW LEVEL SECURITY;
 
+CREATE POLICY "Service role full access on cross_channel_signals"
+  ON cross_channel_signals FOR ALL TO service_role USING (true) WITH CHECK (true);
+
 CREATE POLICY "Admins read all cross_channel_signals"
-  ON public.cross_channel_signals FOR SELECT
-  USING (EXISTS (SELECT 1 FROM public.users u WHERE u.id = auth.uid() AND u.role = 'admin'));
+  ON cross_channel_signals FOR SELECT TO authenticated
+  USING (EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'));
