@@ -150,6 +150,22 @@ function defaultAnnotations(): GuardrailAnnotations {
 }
 
 export function applyGuardrails(action: AdsAction, signals: AdsSignals): GuardrailResult {
+  // Brief dont_do guardrail. Approved strategy briefs may list forbidden phrases
+  // (e.g. "free trial", competitor brand names). Reject any action whose
+  // serialized payload mentions one (case-insensitive substring match).
+  const dontDo = signals.brief_context?.dont_do ?? []
+  if (dontDo.length > 0) {
+    const blob = JSON.stringify(action.args ?? {}).toLowerCase()
+    for (const phrase of dontDo) {
+      if (blob.includes(phrase.toLowerCase())) {
+        return {
+          kind: "reject",
+          reason: `brief_dont_do: brief.dont_do contains "${phrase}"`,
+        }
+      }
+    }
+  }
+
   const { action: clampedAction, clamped } = clampBudgetShift(action)
   for (const rule of HARD_RULES) {
     const reason = rule(clampedAction, signals)

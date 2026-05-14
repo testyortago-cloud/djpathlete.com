@@ -28,6 +28,7 @@ const validDecision = {
     },
   ],
   watch_list: [],
+  brief_alignment_score: null,
 }
 
 const passingSignals: AdsSignals = {
@@ -67,6 +68,7 @@ const passingSignals: AdsSignals = {
     prior_actions_that_failed: [],
   },
   gaps: [],
+  brief_context: null,
 }
 
 describe("reasonAdsDecision", () => {

@@ -44,6 +44,7 @@ const { validDecision } = vi.hoisted(() => ({
       },
     ],
     watch_list: ["Watch CAC on Brand Search."],
+    brief_alignment_score: null,
   },
 }))
 

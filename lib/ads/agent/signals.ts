@@ -6,6 +6,7 @@
 // 3. Learning layer (added in Task 11)
 
 import * as T from "./thresholds"
+import type { BriefContext } from "@/lib/strategy/specialist-contract"
 import type {
   AdsDerivedSignals,
   AdsLearningLayer,
@@ -224,12 +225,22 @@ export function deriveLearningLayer(
 export interface GatherAdsSignalsDeps extends RawInputDeps {
   fetchPreflightInput: () => Promise<PreflightInput>
   fetchCampaignToLandingPageMap: () => Promise<Record<string, string>>
+  /**
+   * Returns the latest approved strategy brief (week_of DESC) as a
+   * BriefContext, or null if none exists. The Chief Strategist (Task D1's
+   * cousin) is the producer; specialists read here. Optional so existing
+   * tests can omit it — they'll receive `brief_context: null`.
+   */
+  fetchBriefContext?: () => Promise<BriefContext | null>
 }
 
 export async function gatherAdsSignals(deps: GatherAdsSignalsDeps): Promise<AdsSignals> {
   const generated_at = new Date().toISOString()
   const preflightInput = await deps.fetchPreflightInput()
   const preflight = await runPreflight(preflightInput)
+  const brief_context = deps.fetchBriefContext
+    ? await deps.fetchBriefContext().catch(() => null)
+    : null
   if (!preflight.ok) {
     return {
       generated_at,
@@ -238,6 +249,7 @@ export async function gatherAdsSignals(deps: GatherAdsSignalsDeps): Promise<AdsS
       derived: null,
       learning: null,
       gaps: ["Preflight failed; raw, derived, and learning skipped."],
+      brief_context,
     }
   }
   const gaps: string[] = []
@@ -254,5 +266,5 @@ export async function gatherAdsSignals(deps: GatherAdsSignalsDeps): Promise<AdsS
     derived = deriveCrossChannelSignals(raw, map)
     learning = deriveLearningLayer(raw)
   }
-  return { generated_at, preflight, raw, derived, learning, gaps }
+  return { generated_at, preflight, raw, derived, learning, gaps, brief_context }
 }

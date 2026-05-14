@@ -5,6 +5,7 @@ import type {
   GoogleAdsAgentMemoAction,
   GoogleAdsAgentMemoGuardrailRejection,
 } from "@/types/database"
+import type { BriefContext } from "@/lib/strategy/specialist-contract"
 
 export interface PreflightResult {
   ok: boolean
@@ -160,6 +161,7 @@ export interface AdsSignals {
   derived: AdsDerivedSignals | null
   learning: AdsLearningLayer | null
   gaps: string[]
+  brief_context: BriefContext | null
 }
 
 export type AdsActionTool =

@@ -43,6 +43,8 @@ import { applyGuardrailsBatch } from "@/lib/ads/agent/guardrails"
 import { executeAdsActions, type PreExecutionPair } from "@/lib/ads/agent/execute"
 import type { AdsAction, AdsRawInputs, AdsSignals } from "@/lib/ads/agent/types"
 import type { AdsAgentDecision } from "@/lib/ads/agent/decision-schema"
+import { latestApprovedBrief } from "@/lib/db/strategy-briefs"
+import type { BriefContext } from "@/lib/strategy/specialist-contract"
 import type {
   GoogleAdsAgentMemo,
   GoogleAdsAgentMemoSections,
@@ -701,6 +703,23 @@ async function fetchCampaignToLandingPageMap(): Promise<Record<string, string>> 
   return {}
 }
 
+async function fetchBriefContextAdapter(): Promise<BriefContext | null> {
+  const supabase = createServiceRoleClient()
+  const brief = await latestApprovedBrief(supabase)
+  if (!brief) return null
+  return {
+    brief_id: brief.id,
+    week_of: brief.week_of,
+    themes: brief.themes,
+    audience_focus: brief.audience_focus,
+    priority_channel: brief.priority_channel,
+    keywords_to_chase: brief.keywords_to_chase,
+    hooks_to_test: brief.hooks_to_test,
+    ctas: brief.ctas,
+    dont_do: brief.dont_do,
+  }
+}
+
 function buildSignalsDeps(): GatherAdsSignalsDeps {
   return {
     fetchPreflightInput,
@@ -714,6 +733,7 @@ function buildSignalsDeps(): GatherAdsSignalsDeps {
     fetchPipeline: fetchPipelineAdapter,
     fetchPriorMemos: fetchPriorMemosAdapter,
     fetchCampaignToLandingPageMap,
+    fetchBriefContext: fetchBriefContextAdapter,
   }
 }
 
@@ -847,6 +867,9 @@ export async function buildStrategistMemo(
       source,
       triggered_by: options.triggered_by ?? null,
       tokens_used: 0,
+      brief_id: signals.brief_context?.brief_id ?? null,
+      brief_alignment_score: null,
+      ran_without_brief: signals.brief_context === null,
     })
     await updateAgentMemoLifecycle(memo.id, {
       signals_summary: summarizeSignals(signals),
@@ -879,6 +902,9 @@ export async function buildStrategistMemo(
     source,
     triggered_by: options.triggered_by ?? null,
     tokens_used: tokensUsed,
+    brief_id: signals.brief_context?.brief_id ?? null,
+    brief_alignment_score: decision.brief_alignment_score ?? null,
+    ran_without_brief: signals.brief_context === null,
   })
 
   // Step 6: execute (insert pending recommendation rows for accepted actions).

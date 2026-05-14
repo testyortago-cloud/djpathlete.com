@@ -38,14 +38,24 @@ export interface ReasonAdsDecisionResult {
 export async function reasonAdsDecision(
   signals: AdsSignals,
 ): Promise<ReasonAdsDecisionResult> {
+  const briefBlock = signals.brief_context
+    ? [
+        "Brief context (bias your action ranking toward themes + keywords; treat dont_do as hard guardrail):",
+        JSON.stringify(signals.brief_context, null, 2),
+        "",
+        "If you align well with the brief, set brief_alignment_score 7-10. If you deviate (with reason), 4-6. Ignoring the brief entirely is 1-3.",
+        "",
+      ].join("\n")
+    : "(No approved brief this week — reason freely. Set brief_alignment_score to null.)\n"
   const snapshot = JSON.stringify(signals)
+  const baseUserMessage = `${briefBlock}\n${snapshot}`
   let lastError: unknown = null
 
   for (let attempt = 0; attempt < 2; attempt++) {
     const userMessage =
       attempt === 0
-        ? snapshot
-        : `${snapshot}\n\nYour previous response did not match the schema. Return ONLY valid JSON matching adsAgentDecisionSchema.`
+        ? baseUserMessage
+        : `${baseUserMessage}\n\nYour previous response did not match the schema. Return ONLY valid JSON matching adsAgentDecisionSchema.`
 
     const response = await callAgent(
       SYSTEM_PROMPT,

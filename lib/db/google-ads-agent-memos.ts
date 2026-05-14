@@ -22,6 +22,12 @@ export interface InsertAgentMemoInput {
   source: GoogleAdsAgentMemoSource
   triggered_by?: string | null
   tokens_used?: number
+  /** FK to strategy_briefs(id); null when no approved brief was available. */
+  brief_id?: string | null
+  /** Model self-rating 1-10 of how well actions align with the brief. */
+  brief_alignment_score?: number | null
+  /** True when no approved brief was available at memo time. */
+  ran_without_brief?: boolean
 }
 
 export async function insertAgentMemo(
@@ -37,6 +43,9 @@ export async function insertAgentMemo(
       source: input.source,
       triggered_by: input.triggered_by ?? null,
       tokens_used: input.tokens_used ?? 0,
+      brief_id: input.brief_id ?? null,
+      brief_alignment_score: input.brief_alignment_score ?? null,
+      ran_without_brief: input.ran_without_brief ?? false,
     })
     .select()
     .single()

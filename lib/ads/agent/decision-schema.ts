@@ -31,6 +31,7 @@ export const adsAgentDecisionSchema = z.object({
   rationale: z.string().min(1),
   actions: z.array(adsAgentActionSchema).max(7),
   watch_list: z.array(z.string()).max(5),
+  brief_alignment_score: z.number().int().min(1).max(10).nullable(),
 })
 
 export type AdsAgentDecision = z.infer<typeof adsAgentDecisionSchema>

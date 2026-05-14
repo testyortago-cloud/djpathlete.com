@@ -18,20 +18,21 @@ describe("adsAgentDecisionSchema", () => {
       rationale: "Snapshot read here.",
       actions: [validAction],
       watch_list: ["Watch CAC on Brand Search next week."],
+      brief_alignment_score: null,
     }).success).toBe(true)
   })
 
   it("rejects unknown tool name", () => {
     const bad = { ...validAction, tool: "delete_everything" }
     expect(adsAgentDecisionSchema.safeParse({
-      rationale: "x", actions: [bad], watch_list: [],
+      rationale: "x", actions: [bad], watch_list: [], brief_alignment_score: null,
     }).success).toBe(false)
   })
 
   it("rejects > 7 actions", () => {
     const many = Array.from({ length: 8 }, (_, i) => ({ ...validAction, rank: i + 1 }))
     expect(adsAgentDecisionSchema.safeParse({
-      rationale: "x", actions: many, watch_list: [],
+      rationale: "x", actions: many, watch_list: [], brief_alignment_score: null,
     }).success).toBe(false)
   })
 
@@ -40,6 +41,7 @@ describe("adsAgentDecisionSchema", () => {
       rationale: "x",
       actions: [validAction],
       watch_list: ["a", "b", "c", "d", "e", "f"],
+      brief_alignment_score: null,
     }).success).toBe(false)
   })
 
@@ -54,8 +56,29 @@ describe("adsAgentDecisionSchema", () => {
       const result = adsAgentDecisionSchema.safeParse({
         rationale: "x", watch_list: [],
         actions: [{ ...validAction, tool }],
+        brief_alignment_score: null,
       })
       expect(result.success, `tool "${tool}" should parse`).toBe(true)
+    }
+  })
+
+  it("accepts brief_alignment_score in [1,10] and null", () => {
+    for (const score of [1, 5, 10, null]) {
+      const result = adsAgentDecisionSchema.safeParse({
+        rationale: "x", actions: [validAction], watch_list: [],
+        brief_alignment_score: score,
+      })
+      expect(result.success, `score ${score} should parse`).toBe(true)
+    }
+  })
+
+  it("rejects brief_alignment_score outside 1-10 range", () => {
+    for (const score of [0, 11, -1, 1.5]) {
+      const result = adsAgentDecisionSchema.safeParse({
+        rationale: "x", actions: [validAction], watch_list: [],
+        brief_alignment_score: score,
+      })
+      expect(result.success, `score ${score} should NOT parse`).toBe(false)
     }
   })
 })

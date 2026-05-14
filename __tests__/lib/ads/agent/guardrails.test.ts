@@ -66,6 +66,52 @@ const makeSignals = (overrides: Partial<NonNullable<AdsSignals["raw"]>> = {}): A
     prior_actions_that_worked: [], prior_actions_that_failed: [],
   },
   gaps: [],
+  brief_context: null,
+})
+
+describe("guardrails — brief dont_do", () => {
+  const briefContext = {
+    brief_id: "b1",
+    week_of: "2026-05-11",
+    themes: [],
+    audience_focus: "comeback athletes",
+    priority_channel: "ads" as const,
+    keywords_to_chase: [],
+    hooks_to_test: [],
+    ctas: [],
+    dont_do: ["free trial", "discount"],
+  }
+
+  it("rejects an action whose payload mentions a dont_do phrase (case-insensitive)", () => {
+    const signals = makeSignals()
+    signals.brief_context = briefContext
+    const action = makeAction({
+      tool: "propose_new_keywords",
+      args: {
+        campaign_id: "c1",
+        ad_group_id: "ag1",
+        keywords: [{ text: "Free Trial Coaching", match_type: "phrase" }],
+      },
+    })
+    const result = applyGuardrails(action, signals)
+    expect(result.kind).toBe("reject")
+    if (result.kind === "reject") {
+      expect(result.reason).toMatch(/brief_dont_do/)
+      expect(result.reason).toMatch(/free trial/i)
+    }
+  })
+
+  it("passes action when brief is null", () => {
+    const result = applyGuardrails(makeAction(), makeSignals())
+    expect(result.kind).toBe("pass")
+  })
+
+  it("passes action whose payload does not mention any dont_do phrase", () => {
+    const signals = makeSignals()
+    signals.brief_context = briefContext
+    const result = applyGuardrails(makeAction(), signals)
+    expect(result.kind).toBe("pass")
+  })
 })
 
 describe("guardrails — campaign age", () => {
