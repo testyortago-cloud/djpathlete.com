@@ -64,6 +64,9 @@ interface Props {
   /** When provided, clicking a comment from a different version switches the
    *  player to that version (and seeks). Falls back to onJumpTo otherwise. */
   onJumpToVersion?: (input: { versionNumber: number; timecodeSeconds: number }) => void
+  /** When provided, clicking the "Image N" pill on an image_index annotation
+   *  jumps the carousel viewer to that image. Editor side leaves it off. */
+  onJumpToImage?: (index: number) => void
 }
 
 export function CommentThread({
@@ -76,6 +79,7 @@ export function CommentThread({
   onReply,
   currentVersionNumber,
   onJumpToVersion,
+  onJumpToImage,
 }: Props) {
   const [showResolved, setShowResolved] = useState(false)
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
@@ -142,6 +146,7 @@ export function CommentThread({
               currentVersionNumber={currentVersionNumber ?? null}
               onJumpTo={onJumpTo}
               onJumpToVersion={onJumpToVersion}
+              onJumpToImage={onJumpToImage}
               onResolve={onResolve}
               onDeleteClick={onDelete ? handleDeleteClick : undefined}
               onReplyOpen={() => setReplyingTo(c.id)}
@@ -201,6 +206,7 @@ function CommentRow({
   currentVersionNumber,
   onJumpTo,
   onJumpToVersion,
+  onJumpToImage,
   onResolve,
   onDeleteClick,
   onReplyOpen,
@@ -218,6 +224,7 @@ function CommentRow({
   currentVersionNumber: number | null
   onJumpTo?: (t: number) => void
   onJumpToVersion?: (input: { versionNumber: number; timecodeSeconds: number }) => void
+  onJumpToImage?: (index: number) => void
   onResolve?: (id: string) => void
   onDeleteClick?: (e: React.MouseEvent, id: string) => void
   onReplyOpen: () => void
@@ -225,10 +232,15 @@ function CommentRow({
   onReplySubmit: (text: string) => Promise<void>
   showReplyComposer: boolean
 }) {
-  // Only summarise drawing annotations — image_index annotations don't have
-  // tool/color metadata to summarise (B10 renders the "Image N" pill instead).
+  // Narrow the annotation: drawing payloads have a `paths` array; image_index
+  // payloads carry `kind: "image_index"`. The header renders different pills
+  // for each case (B10 added the "Image N" pill for image_index).
   const drawingAnno =
     c.annotation && !("kind" in c.annotation) ? c.annotation : null
+  const imageAnno =
+    c.annotation && "kind" in c.annotation && c.annotation.kind === "image_index"
+      ? c.annotation
+      : null
   const annotation = drawingAnno ? summariseDrawing(drawingAnno.paths) : null
   const ToolIcon = annotation ? TOOL_ICON[annotation.tool] : null
   const hasTime = c.timecode_seconds != null
@@ -259,7 +271,14 @@ function CommentRow({
       <div className="p-3">
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0 space-y-1">
-            <CommentHeader comment={c} annotation={annotation} ToolIcon={ToolIcon} hasTime={hasTime} />
+            <CommentHeader
+              comment={c}
+              annotation={annotation}
+              ToolIcon={ToolIcon}
+              hasTime={hasTime}
+              imageAnnotation={imageAnno}
+              onJumpToImage={onJumpToImage}
+            />
             <p className="text-sm">{c.comment_text}</p>
           </div>
           {canWrite && (
@@ -418,21 +437,39 @@ function CommentHeader({
   annotation,
   ToolIcon,
   hasTime,
+  imageAnnotation,
+  onJumpToImage,
 }: {
   comment: TeamVideoCommentWithAnnotation
   annotation: ReturnType<typeof summariseDrawing>
   ToolIcon: (typeof TOOL_ICON)[keyof typeof TOOL_ICON] | null
   hasTime: boolean
+  imageAnnotation: { kind: "image_index"; index: number } | null
+  onJumpToImage?: (index: number) => void
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span
-        className={`font-mono text-xs font-medium ${
-          hasTime ? "text-primary group-hover:underline" : "text-muted-foreground"
-        }`}
-      >
-        {fmtTime(c.timecode_seconds)}
-      </span>
+      {imageAnnotation ? (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            onJumpToImage?.(imageAnnotation.index)
+          }}
+          className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide text-accent hover:bg-accent/20 transition-colors"
+          title="Jump to this image"
+        >
+          Image {imageAnnotation.index + 1}
+        </button>
+      ) : (
+        <span
+          className={`font-mono text-xs font-medium ${
+            hasTime ? "text-primary group-hover:underline" : "text-muted-foreground"
+          }`}
+        >
+          {fmtTime(c.timecode_seconds)}
+        </span>
+      )}
       {c.version_number != null && (
         <span
           className="rounded-md bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] tabular-nums tracking-wide text-primary"

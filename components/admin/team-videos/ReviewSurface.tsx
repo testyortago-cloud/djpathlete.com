@@ -455,6 +455,7 @@ export function ReviewSurface({
               // Seek after a tick so the player has the new src ready.
               setTimeout(() => playerRef.current?.seek(timecodeSeconds), 50)
             }}
+            onJumpToImage={(idx) => setActiveImageIndex(idx)}
           />
         </aside>
       </div>
