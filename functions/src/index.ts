@@ -1272,3 +1272,81 @@ export const chiefStrategistCron = onSchedule(
     }
   },
 )
+
+// ─── Social Outcome Tracker (ai_jobs handler) ────────────────────────────────
+export const socialOutcomeTracker = onDocumentCreated(
+  {
+    document: "ai_jobs/{jobId}",
+    timeoutSeconds: 300,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [supabaseUrl, supabaseServiceRoleKey],
+  },
+  async (event) => {
+    const data = event.data?.data()
+    if (!data || data.type !== "social_outcome_tracker_run") return
+    const { runSocialOutcomeTracker } = await import("./social-outcome-tracker.js")
+    const result = await runSocialOutcomeTracker()
+    console.log("[socialOutcomeTracker]", event.params.jobId, result)
+    const { getFirestore, FieldValue } = await import("firebase-admin/firestore")
+    await getFirestore().collection("ai_jobs").doc(event.params.jobId).update({
+      status: "completed",
+      result,
+      updatedAt: FieldValue.serverTimestamp(),
+    })
+  },
+)
+
+// ─── Social Agent Cron (Tue + Thu 13:00 UTC) ─────────────────────────────────
+export const socialAgentCron = onSchedule(
+  {
+    schedule: "0 13 * * 2,4",
+    timeZone: "UTC",
+    timeoutSeconds: 120,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [internalCronToken, appUrl],
+  },
+  async () => {
+    const baseUrl = process.env.APP_URL
+    const token = process.env.INTERNAL_CRON_TOKEN
+    if (!baseUrl || !token) return
+    try {
+      const res = await fetch(`${baseUrl}/api/admin/internal/social-agent-cron`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: "{}",
+      })
+      console.log("[socialAgentCron]", res.status, await res.json().catch(() => ({})))
+    } catch (err) {
+      console.error("[socialAgentCron] failed:", err)
+    }
+  },
+)
+
+// ─── Social Outcome Tracker Cron (daily 04:45 UTC) ───────────────────────────
+export const socialOutcomeTrackerCron = onSchedule(
+  {
+    schedule: "45 4 * * *",
+    timeZone: "UTC",
+    timeoutSeconds: 120,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [internalCronToken, appUrl],
+  },
+  async () => {
+    const baseUrl = process.env.APP_URL
+    const token = process.env.INTERNAL_CRON_TOKEN
+    if (!baseUrl || !token) return
+    try {
+      const res = await fetch(`${baseUrl}/api/admin/internal/social-outcome-tracker`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: "{}",
+      })
+      console.log("[socialOutcomeTrackerCron]", res.status, await res.json().catch(() => ({})))
+    } catch (err) {
+      console.error("[socialOutcomeTrackerCron] failed:", err)
+    }
+  },
+)

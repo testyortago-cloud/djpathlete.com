@@ -35,6 +35,7 @@ export type AiJobType =
   | "enhance_caption"
   | "performance_critic_run"
   | "chief_strategist_run"
+  | "social_outcome_tracker_run"
 
 export interface CreateAiJobOptions {
   type: AiJobType
