@@ -33,6 +33,8 @@ export type AiJobType =
   | "newsletter_from_blog"
   | "seo_enhance"
   | "enhance_caption"
+  | "performance_critic_run"
+  | "chief_strategist_run"
 
 export interface CreateAiJobOptions {
   type: AiJobType
