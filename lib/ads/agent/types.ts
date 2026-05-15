@@ -172,6 +172,13 @@ export interface AdsSignals {
   brief_context: BriefContext | null
   /** Per-tool aggregates from agent_tool_baselines + recent measured memos. Empty array when no rows. */
   tool_performance: AdsToolPerformanceEntry[]
+  /**
+   * Recent winning examples populated by the performance-learning-loop
+   * onto the (global, ads_agent) prompt_templates row. Empty when the
+   * column is null/empty or the carrier row is missing. Rendered into
+   * the user message as a "Recent winners" block.
+   */
+  few_shots: string[]
 }
 
 export type AdsActionTool =

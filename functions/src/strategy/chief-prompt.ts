@@ -1,6 +1,8 @@
 // Chief Strategist prompt. Inlined CrossChannelSignal/StrategyBrief shapes
 // (functions/ tsconfig has rootDir: "src" and cannot import from ../../../types).
 
+import { fewShotsBlock } from "../lib/few-shots.js"
+
 export interface ChiefToolPerfEntry {
   tool: string
   n_measured: number
@@ -102,10 +104,18 @@ export interface ChiefPromptInput {
   latestSignal: CrossChannelSignal
   priorBriefs: StrategyBrief[]
   toolPerformanceByChannel: ChiefToolPerfPerChannel
+  /**
+   * Recent winning examples from the (global, chief_strategist) row of
+   * prompt_templates. Empty when the column is null/empty. Rendered as a
+   * "Recent winners" block; the chief should treat them as inspiration,
+   * not templates.
+   */
+  fewShots?: string[]
 }
 
 export function buildChiefUserMessage(input: ChiefPromptInput): string {
-  return [
+  const fewShotsRendered = fewShotsBlock(input.fewShots ?? [])
+  const sections = [
     `Week of: ${input.weekOf}`,
     "",
     "Latest Performance Critic signal:",
@@ -117,6 +127,10 @@ export function buildChiefUserMessage(input: ChiefPromptInput): string {
     `Prior briefs (${input.priorBriefs.length}, most recent first):`,
     JSON.stringify(input.priorBriefs, null, 2),
     "",
-    "Return JSON only matching the StrategyBrief shape.",
-  ].join("\n")
+  ]
+  if (fewShotsRendered) {
+    sections.push(fewShotsRendered)
+  }
+  sections.push("Return JSON only matching the StrategyBrief shape.")
+  return sections.join("\n")
 }

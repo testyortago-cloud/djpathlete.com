@@ -42,6 +42,7 @@ function emptySignals(): AdsSignals {
     gaps: [],
     brief_context: null,
     tool_performance: [],
+    few_shots: [],
   }
 }
 
@@ -145,5 +146,45 @@ describe("buildAdsReasonUserMessage", () => {
     const msg = buildAdsReasonUserMessage(signals)
     expect(msg).toContain("avg impact +0")
     expect(msg).toContain("50% success")
+  })
+
+  it("omits the few-shots block when few_shots is empty", () => {
+    const msg = buildAdsReasonUserMessage(emptySignals())
+    expect(msg).not.toContain("Recent winners")
+  })
+
+  it("renders the few-shots block when few_shots is populated", () => {
+    const signals = emptySignals()
+    signals.few_shots = [
+      "negative_keywords saved $48/wk on broad-match 'shoulder pain'",
+      "budget_shift +20% to Comeback Code Search lifted CVR to 7.2%",
+    ]
+    const msg = buildAdsReasonUserMessage(signals)
+    expect(msg).toContain(
+      "Recent winners (for inspiration only — do not copy verbatim):",
+    )
+    expect(msg).toContain("  1. negative_keywords saved $48/wk")
+    expect(msg).toContain("  2. budget_shift +20%")
+  })
+
+  it("renders few-shots after tool_performance and before the JSON snapshot", () => {
+    const signals = emptySignals()
+    signals.tool_performance = [
+      {
+        tool: "propose_budget_shift",
+        n_measured: 3,
+        avg_impact_score: 12,
+        p95_abs_delta: 2.1,
+        success_rate: 0.66,
+      },
+    ]
+    signals.few_shots = ["winner caption"]
+    const msg = buildAdsReasonUserMessage(signals)
+    const perfIdx = msg.indexOf("Tool performance")
+    const winnersIdx = msg.indexOf("Recent winners")
+    const jsonIdx = msg.indexOf('"generated_at"')
+    expect(perfIdx).toBeGreaterThan(-1)
+    expect(winnersIdx).toBeGreaterThan(perfIdx)
+    expect(jsonIdx).toBeGreaterThan(winnersIdx)
   })
 })

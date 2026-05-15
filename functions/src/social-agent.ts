@@ -21,6 +21,7 @@ import { z } from "zod"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { callAgent, MODEL_SONNET } from "./ai/anthropic.js"
 import { getSupabase } from "./lib/supabase.js"
+import { fewShotsBlock } from "./lib/few-shots.js"
 import { scoreBlogVsBrief } from "./strategy/brief-blog-scorer.js"
 
 export const SUPPORTED_PLATFORMS = ["linkedin"] as const
@@ -322,10 +323,13 @@ export async function handleSocialAgentRun(jobId: string): Promise<void> {
       `[social-agent] platform=${platform} topic=${topic.slug} brief=${brief?.id ?? "none"} alignment=${alignmentScore ?? "n/a"}`,
     )
 
-    // 2. Load prompt rows — same shape social-fanout uses.
+    // 2. Load prompt rows — same shape social-fanout uses. Also pull
+    //    few_shot_examples so the writer can lean on the
+    //    performance-learning-loop's top-performing captions for this
+    //    platform.
     const { data: prompts, error: pErr } = await supabase
       .from("prompt_templates")
-      .select("scope, category, prompt")
+      .select("scope, category, prompt, few_shot_examples")
       .in("category", ["voice_profile", "social_caption", "social_caption_reviewer"])
     if (pErr || !prompts) {
       await failJob(`Could not load prompt templates: ${pErr?.message ?? "unknown"}`)
@@ -333,12 +337,30 @@ export async function handleSocialAgentRun(jobId: string): Promise<void> {
     }
     const voiceProfile = prompts.find((p) => p.category === "voice_profile")?.prompt
     const reviewerPrompt = prompts.find((p) => p.category === "social_caption_reviewer")?.prompt
-    const platformPrompt = prompts.find(
+    const writerRow = prompts.find(
       (p) => p.category === "social_caption" && p.scope === platform,
-    )?.prompt
+    )
+    const platformPrompt = writerRow?.prompt
     if (!voiceProfile) return failJob("No voice_profile prompt_template row found")
     if (!reviewerPrompt) return failJob("No social_caption_reviewer prompt_template row found")
     if (!platformPrompt) return failJob(`No social_caption prompt seeded for scope=${platform}`)
+
+    // Extract caption strings from the writer row's few_shot_examples. The
+    // performance-learning-loop writes FewShotExample objects (caption +
+    // meta); tolerate plain strings too in case the shape evolves.
+    const writerFewShotsRaw = (writerRow as { few_shot_examples?: unknown } | undefined)
+      ?.few_shot_examples
+    const writerFewShots: string[] = Array.isArray(writerFewShotsRaw)
+      ? writerFewShotsRaw.flatMap((e) => {
+          if (typeof e === "string" && e.length > 0) return [e]
+          if (e && typeof e === "object") {
+            const caption = (e as { caption?: unknown }).caption
+            if (typeof caption === "string" && caption.length > 0) return [caption]
+          }
+          return []
+        })
+      : []
+    const fewShotsRendered = fewShotsBlock(writerFewShots)
 
     // 3. Tool performance — historical engagement floor for our one tool
     //    (drafted_social_post). Empty string when no baseline rows exist.
@@ -348,7 +370,7 @@ export async function handleSocialAgentRun(jobId: string): Promise<void> {
     // 4. Writer pass
     const writerSystem = `${voiceProfile}\n\n---\n\n${platformPrompt}`
     const writerUserMessage =
-      toolPerfBlock + buildCopywriterUserMessage({ topic, platform })
+      toolPerfBlock + fewShotsRendered + buildCopywriterUserMessage({ topic, platform })
     const writer = await callAgent<Caption>(
       writerSystem,
       writerUserMessage,

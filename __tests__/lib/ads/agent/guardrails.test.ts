@@ -68,6 +68,7 @@ const makeSignals = (overrides: Partial<NonNullable<AdsSignals["raw"]>> = {}): A
   gaps: [],
   brief_context: null,
   tool_performance: [],
+  few_shots: [],
 })
 
 describe("guardrails — brief dont_do", () => {

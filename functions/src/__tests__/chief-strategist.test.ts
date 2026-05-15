@@ -92,6 +92,18 @@ describe("runChiefStrategist", () => {
               .mockResolvedValue({ data: { value: { enabled: true } }, error: null }),
           }
         }
+        if (table === "prompt_templates") {
+          return {
+            select: () => ({
+              eq: () => ({
+                eq: () => ({
+                  maybeSingle: () =>
+                    Promise.resolve({ data: { few_shot_examples: [] }, error: null }),
+                }),
+              }),
+            }),
+          }
+        }
         return {
           select: vi.fn().mockReturnThis(),
           order: vi.fn().mockReturnThis(),
@@ -223,6 +235,18 @@ describe("runChiefStrategist — chief_strategist_memos persistence", () => {
               }),
             }
           }
+          if (table === "prompt_templates") {
+            return {
+              select: () => ({
+                eq: () => ({
+                  eq: () => ({
+                    maybeSingle: () =>
+                      Promise.resolve({ data: { few_shot_examples: [] }, error: null }),
+                  }),
+                }),
+              }),
+            }
+          }
           throw new Error(`unexpected table: ${table}`)
         },
       }),
@@ -331,6 +355,18 @@ describe("runChiefStrategist — chief_strategist_memos persistence", () => {
                 eq: () => ({
                   maybeSingle: () =>
                     Promise.resolve({ data: { value: { enabled: true } }, error: null }),
+                }),
+              }),
+            }
+          }
+          if (table === "prompt_templates") {
+            return {
+              select: () => ({
+                eq: () => ({
+                  eq: () => ({
+                    maybeSingle: () =>
+                      Promise.resolve({ data: { few_shot_examples: [] }, error: null }),
+                  }),
                 }),
               }),
             }
@@ -473,6 +509,18 @@ describe("runChiefStrategist — self-critique re-run", () => {
               }),
             }
           }
+          if (table === "prompt_templates") {
+            return {
+              select: () => ({
+                eq: () => ({
+                  eq: () => ({
+                    maybeSingle: () =>
+                      Promise.resolve({ data: { few_shot_examples: [] }, error: null }),
+                  }),
+                }),
+              }),
+            }
+          }
           throw new Error(`unexpected table: ${table}`)
         },
       }),
@@ -603,6 +651,18 @@ describe("runChiefStrategist — self-critique re-run", () => {
               }),
             }
           }
+          if (table === "prompt_templates") {
+            return {
+              select: () => ({
+                eq: () => ({
+                  eq: () => ({
+                    maybeSingle: () =>
+                      Promise.resolve({ data: { few_shot_examples: [] }, error: null }),
+                  }),
+                }),
+              }),
+            }
+          }
           throw new Error(`unexpected table: ${table}`)
         },
       }),
@@ -701,6 +761,18 @@ describe("runChiefStrategist — self-critique re-run", () => {
                 eq: () => ({
                   maybeSingle: () =>
                     Promise.resolve({ data: { value: { enabled: true } }, error: null }),
+                }),
+              }),
+            }
+          }
+          if (table === "prompt_templates") {
+            return {
+              select: () => ({
+                eq: () => ({
+                  eq: () => ({
+                    maybeSingle: () =>
+                      Promise.resolve({ data: { few_shot_examples: [] }, error: null }),
+                  }),
                 }),
               }),
             }

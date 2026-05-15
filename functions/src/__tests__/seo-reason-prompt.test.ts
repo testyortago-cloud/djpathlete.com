@@ -145,4 +145,47 @@ describe("buildSeoReasonUserMessage", () => {
     const msg = buildSeoReasonUserMessage(emptySignals(), { critique_objections: [] })
     expect(msg).not.toContain("A second model raised these objections")
   })
+
+  it("omits the few-shots block when few_shots is empty or undefined", () => {
+    const msgUndefined = buildSeoReasonUserMessage(emptySignals())
+    expect(msgUndefined).not.toContain("Recent winners")
+    const msgEmpty = buildSeoReasonUserMessage(emptySignals(), { few_shots: [] })
+    expect(msgEmpty).not.toContain("Recent winners")
+  })
+
+  it("renders the few-shots block when few_shots is populated", () => {
+    const msg = buildSeoReasonUserMessage(emptySignals(), {
+      few_shots: [
+        "queue_refresh on rotational-power post bumped impressions 38%",
+        "internal_link_sweep into deload-weeks lifted position 3 -> 1.4",
+      ],
+    })
+    expect(msg).toContain(
+      "Recent winners (for inspiration only — do not copy verbatim):",
+    )
+    expect(msg).toContain("  1. queue_refresh on rotational-power post")
+    expect(msg).toContain("  2. internal_link_sweep into deload-weeks")
+  })
+
+  it("renders the few-shots block after tool_performance and before the JSON payload", () => {
+    const signals = emptySignals()
+    signals.tool_performance = [
+      {
+        tool: "queue_new_post",
+        n_measured: 4,
+        avg_impact_score: 22,
+        p95_abs_delta: 9,
+        success_rate: 0.6,
+      },
+    ]
+    const msg = buildSeoReasonUserMessage(signals, {
+      few_shots: ["winner caption"],
+    })
+    const perfIdx = msg.indexOf("Tool performance")
+    const winnersIdx = msg.indexOf("Recent winners")
+    const jsonIdx = msg.indexOf("```json")
+    expect(perfIdx).toBeGreaterThan(-1)
+    expect(winnersIdx).toBeGreaterThan(perfIdx)
+    expect(jsonIdx).toBeGreaterThan(winnersIdx)
+  })
 })

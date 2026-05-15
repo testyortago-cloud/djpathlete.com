@@ -5,6 +5,7 @@
 
 import { getFirestore, FieldValue } from "firebase-admin/firestore"
 import { getSupabase } from "./lib/supabase.js"
+import { readFewShots } from "./lib/few-shots.js"
 import { gatherSeoSignals } from "./seo/signals.js"
 import { reasonAboutWeek } from "./seo/reason.js"
 import { executeAction, type ExecutionResult } from "./seo/execute.js"
@@ -51,8 +52,13 @@ export async function handleSeoAgent(jobId: string): Promise<void> {
       return
     }
 
+    // Step 2: reason. Pull recent winning examples from prompt_templates
+    // so the agent can lean on patterns the performance-learning-loop
+    // has marked as proven.
+    const fewShots = await readFewShots(supabase, "global", "seo_agent")
+
     // Step 2: reason
-    const { decision } = await reasonAboutWeek(signals)
+    const { decision } = await reasonAboutWeek(signals, { few_shots: fewShots })
 
     // Step 2b: self-critique (Haiku second pass). Gated by feature flag.
     // If overall='should_revise' AND agent_confidence <= 7, re-run reason
@@ -85,6 +91,7 @@ export async function handleSeoAgent(jobId: string): Promise<void> {
         if (shouldReRunAfterCritique(critique, decision.agent_confidence)) {
           const { decision: revised } = await reasonAboutWeek(signals, {
             critique_objections: critique.objections,
+            few_shots: fewShots,
           })
           critiqueNotes = `[v1 plan] ${JSON.stringify(decision.actions.map((a) => a.tool))}\n[critique] ${critique.objections.join("; ")}\n[v2 plan] ${JSON.stringify(revised.actions.map((a) => a.tool))}`
           finalDecision = revised

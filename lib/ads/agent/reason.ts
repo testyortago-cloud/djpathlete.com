@@ -3,6 +3,7 @@
 // against adsAgentDecisionSchema; retries once on validation failure.
 
 import { callAgent, MODEL_SONNET } from "@/lib/ai/anthropic"
+import { fewShotsBlock } from "@/lib/agents/few-shots"
 import { adsAgentDecisionSchema, type AdsAgentDecision } from "./decision-schema"
 import type { AdsSignals } from "./types"
 
@@ -92,8 +93,10 @@ export function buildAdsReasonUserMessage(
         ].join("\n")
       : ""
 
+  const fewShotsRendered = fewShotsBlock(signals.few_shots ?? [])
+
   const snapshot = JSON.stringify(signals)
-  return `${briefBlock}${toolPerfBlock}${critiqueBlock}\n${snapshot}`
+  return `${briefBlock}${toolPerfBlock}${fewShotsRendered}${critiqueBlock}\n${snapshot}`
 }
 
 export async function reasonAdsDecision(

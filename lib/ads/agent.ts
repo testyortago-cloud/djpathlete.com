@@ -42,6 +42,7 @@ import { reasonAdsDecision } from "@/lib/ads/agent/reason"
 import { applyGuardrailsBatch } from "@/lib/ads/agent/guardrails"
 import { executeAdsActions, type PreExecutionPair } from "@/lib/ads/agent/execute"
 import { runSelfCritique, shouldReRunAfterCritique } from "@/lib/agents/self-critique"
+import { readFewShots } from "@/lib/agents/few-shots"
 import type { AdsAction, AdsRawInputs, AdsSignals } from "@/lib/ads/agent/types"
 import type { AdsAgentDecision } from "@/lib/ads/agent/decision-schema"
 import { latestApprovedBrief } from "@/lib/db/strategy-briefs"
@@ -721,6 +722,11 @@ async function fetchBriefContextAdapter(): Promise<BriefContext | null> {
   }
 }
 
+async function fetchFewShotsAdapter(): Promise<string[]> {
+  const supabase = createServiceRoleClient()
+  return readFewShots(supabase, "global", "ads_agent")
+}
+
 function buildSignalsDeps(): GatherAdsSignalsDeps {
   return {
     fetchPreflightInput,
@@ -735,6 +741,7 @@ function buildSignalsDeps(): GatherAdsSignalsDeps {
     fetchPriorMemos: fetchPriorMemosAdapter,
     fetchCampaignToLandingPageMap,
     fetchBriefContext: fetchBriefContextAdapter,
+    fetchFewShots: fetchFewShotsAdapter,
   }
 }
 

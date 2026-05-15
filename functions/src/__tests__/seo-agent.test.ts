@@ -62,6 +62,20 @@ function defaultSupabaseRouter(opts: {
         update: () => ({ eq: () => Promise.resolve({ error: null }) }),
       }
     }
+    if (table === "prompt_templates") {
+      // Read by (scope, category) via readFewShots — return the carrier
+      // row with an empty examples array so the agent still runs.
+      return {
+        select: () => ({
+          eq: () => ({
+            eq: () => ({
+              maybeSingle: () =>
+                Promise.resolve({ data: { few_shot_examples: [] }, error: null }),
+            }),
+          }),
+        }),
+      }
+    }
     return {}
   }
 }
@@ -167,6 +181,7 @@ describe("handleSeoAgent", () => {
       tool_performance: [],
     })
     reasonAboutWeekMock.mockRejectedValueOnce(new Error("Claude API timeout"))
+    supabaseFromMock.mockImplementation(defaultSupabaseRouter())
 
     const { handleSeoAgent } = await import("../seo-agent.js")
     await handleSeoAgent("job-3")
@@ -259,6 +274,18 @@ describe("handleSeoAgent", () => {
             update: () => ({ eq: () => Promise.resolve({ error: null }) }),
           }
         }
+        if (table === "prompt_templates") {
+          return {
+            select: () => ({
+              eq: () => ({
+                eq: () => ({
+                  maybeSingle: () =>
+                    Promise.resolve({ data: { few_shot_examples: [] }, error: null }),
+                }),
+              }),
+            }),
+          }
+        }
         return {}
       })
 
@@ -312,6 +339,18 @@ describe("handleSeoAgent", () => {
             update: () => ({ eq: () => Promise.resolve({ error: null }) }),
           }
         }
+        if (table === "prompt_templates") {
+          return {
+            select: () => ({
+              eq: () => ({
+                eq: () => ({
+                  maybeSingle: () =>
+                    Promise.resolve({ data: { few_shot_examples: [] }, error: null }),
+                }),
+              }),
+            }),
+          }
+        }
         return {}
       })
 
@@ -319,9 +358,11 @@ describe("handleSeoAgent", () => {
       await handleSeoAgent("job-rerun")
 
       expect(reasonAboutWeekMock).toHaveBeenCalledTimes(2)
-      // Second call should pass the critique objections
+      // Second call should pass the critique objections (alongside any
+      // contextual extras like few_shots that the handler threads
+      // through every reason call).
       const secondCallArgs = reasonAboutWeekMock.mock.calls[1]
-      expect(secondCallArgs[1]).toEqual({
+      expect(secondCallArgs[1]).toMatchObject({
         critique_objections: ["queue_refresh has 30% historical success — bias away"],
       })
 
@@ -374,6 +415,18 @@ describe("handleSeoAgent", () => {
           return {
             insert: insertSpy,
             update: () => ({ eq: () => Promise.resolve({ error: null }) }),
+          }
+        }
+        if (table === "prompt_templates") {
+          return {
+            select: () => ({
+              eq: () => ({
+                eq: () => ({
+                  maybeSingle: () =>
+                    Promise.resolve({ data: { few_shot_examples: [] }, error: null }),
+                }),
+              }),
+            }),
           }
         }
         return {}

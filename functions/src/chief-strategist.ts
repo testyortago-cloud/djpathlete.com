@@ -5,6 +5,7 @@
 import { z } from "zod"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { getSupabase } from "./lib/supabase.js"
+import { readFewShots } from "./lib/few-shots.js"
 import { callAgent, MODEL_SONNET } from "./ai/anthropic.js"
 import { runSelfCritique, shouldReRunAfterCritique } from "./lib/self-critique.js"
 import {
@@ -135,6 +136,10 @@ export async function runChiefStrategist(): Promise<ChiefStrategistResult> {
 
   const weekOf = nextMondayUTC()
   const toolPerformanceByChannel = await gatherChiefToolPerformance(supabase)
+  // Pull recent winning briefs (or future placeholder examples) from
+  // prompt_templates so the Chief can bias toward proven theme/CTA
+  // shapes when the performance-learning-loop has populated them.
+  const chiefFewShots = await readFewShots(supabase, "global", "chief_strategist")
   const { content } = await callAgent(
     CHIEF_SYSTEM_PROMPT,
     buildChiefUserMessage({
@@ -142,6 +147,7 @@ export async function runChiefStrategist(): Promise<ChiefStrategistResult> {
       latestSignal: signal,
       priorBriefs,
       toolPerformanceByChannel,
+      fewShots: chiefFewShots,
     }),
     StrategyBriefSchema,
     { model: MODEL_SONNET, maxTokens: 3000, cacheSystemPrompt: true },
@@ -189,6 +195,7 @@ export async function runChiefStrategist(): Promise<ChiefStrategistResult> {
             latestSignal: signal,
             priorBriefs,
             toolPerformanceByChannel,
+            fewShots: chiefFewShots,
           }) +
           "\n\nA second model raised these objections to your prior plan:\n" +
           critique.objections.map((o) => `  - ${o}`).join("\n") +

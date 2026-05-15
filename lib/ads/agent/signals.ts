@@ -8,6 +8,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import * as T from "./thresholds"
 import { listChannelBaselines } from "@/lib/db/agent-tool-baselines"
+import { readFewShots } from "@/lib/agents/few-shots"
 import type { BriefContext } from "@/lib/strategy/specialist-contract"
 import type {
   AdsDerivedSignals,
@@ -287,6 +288,13 @@ export interface GatherAdsSignalsDeps extends RawInputDeps {
    * Production callers should pass `() => gatherAdsToolPerformance(supabase)`.
    */
   fetchToolPerformance?: () => Promise<AdsToolPerformanceEntry[]>
+  /**
+   * Returns recent winning few-shot examples from the (global, ads_agent)
+   * prompt_templates row. Optional so existing tests can omit it —
+   * they'll receive `few_shots: []`. Production callers should pass
+   * `() => readFewShots(supabase, "global", "ads_agent")`.
+   */
+  fetchFewShots?: () => Promise<string[]>
 }
 
 export async function gatherAdsSignals(deps: GatherAdsSignalsDeps): Promise<AdsSignals> {
@@ -299,6 +307,9 @@ export async function gatherAdsSignals(deps: GatherAdsSignalsDeps): Promise<AdsS
   const tool_performance = deps.fetchToolPerformance
     ? await deps.fetchToolPerformance().catch(() => [] as AdsToolPerformanceEntry[])
     : []
+  const few_shots = deps.fetchFewShots
+    ? await deps.fetchFewShots().catch(() => [] as string[])
+    : []
   if (!preflight.ok) {
     return {
       generated_at,
@@ -309,6 +320,7 @@ export async function gatherAdsSignals(deps: GatherAdsSignalsDeps): Promise<AdsS
       gaps: ["Preflight failed; raw, derived, and learning skipped."],
       brief_context,
       tool_performance,
+      few_shots,
     }
   }
   const gaps: string[] = []
@@ -334,5 +346,6 @@ export async function gatherAdsSignals(deps: GatherAdsSignalsDeps): Promise<AdsS
     gaps,
     brief_context,
     tool_performance,
+    few_shots,
   }
 }

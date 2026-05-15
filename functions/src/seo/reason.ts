@@ -2,6 +2,7 @@
 // The single Claude call that picks two ranked actions for the week.
 
 import { callAgent, MODEL_SONNET } from "../ai/anthropic.js"
+import { fewShotsBlock } from "../lib/few-shots.js"
 import { decisionSchema, type Decision } from "./decision-schema.js"
 import type { SeoSignalsSummary } from "./signals.js"
 
@@ -62,6 +63,7 @@ Output a JSON object matching this shape exactly:
 
 export interface BuildSeoReasonUserMessageOpts {
   critique_objections?: string[]
+  few_shots?: string[]
 }
 
 export function buildSeoReasonUserMessage(
@@ -103,7 +105,9 @@ export function buildSeoReasonUserMessage(
         ].join("\n")
       : ""
 
-  return `${briefBlock}${toolPerfBlock}${critiqueBlock}
+  const fewShotsRendered = fewShotsBlock(opts.few_shots ?? [])
+
+  return `${briefBlock}${toolPerfBlock}${fewShotsRendered}${critiqueBlock}
 Here is the current state of darrenjpaul.com SEO. Pick the two highest-leverage actions for this week.
 
 \`\`\`json
@@ -115,10 +119,11 @@ Return ONLY the JSON object — no commentary outside it.`
 
 export async function reasonAboutWeek(
   signals: SeoSignalsSummary,
-  opts: { critique_objections?: string[] } = {},
+  opts: { critique_objections?: string[]; few_shots?: string[] } = {},
 ): Promise<{ decision: Decision; tokens_used: number }> {
   const userMessage = buildSeoReasonUserMessage(signals, {
     critique_objections: opts.critique_objections,
+    few_shots: opts.few_shots,
   })
   const result = await callAgent(SYSTEM_PROMPT, userMessage, decisionSchema, { model: MODEL_SONNET })
   return { decision: result.content, tokens_used: result.tokens_used }
