@@ -55,7 +55,7 @@ test.describe("Team video review flow", () => {
     await adminPage.getByRole("button", { name: /log in/i }).click()
     await adminPage.waitForURL("**/admin/**")
 
-    await adminPage.goto(`/admin/team-videos/${submissionId}`)
+    await adminPage.goto(`/admin/team-media/${submissionId}`)
     await expect(adminPage.getByRole("heading", { level: 1 })).toBeVisible()
 
     // Optional: enable drawing mode and create one annotated comment.

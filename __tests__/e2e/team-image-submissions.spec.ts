@@ -75,7 +75,7 @@ test.describe("Team image submissions", () => {
     await adminPage.getByRole("button", { name: /log in/i }).click()
     await adminPage.waitForURL("**/admin/**")
 
-    await adminPage.goto(`/admin/team-videos/${submissionId}`)
+    await adminPage.goto(`/admin/team-media/${submissionId}`)
     await expect(adminPage.getByText(/1 of 3/i)).toBeVisible()
     await adminPage.keyboard.press("ArrowRight")
     await expect(adminPage.getByText(/2 of 3/i)).toBeVisible()

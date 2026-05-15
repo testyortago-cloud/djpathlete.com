@@ -39,6 +39,23 @@ const nextConfig = {
       { hostname: "epzuvzkokzqtzomeyoha.supabase.co" },
     ],
   },
+  async redirects() {
+    return [
+      // Legacy URL — team-videos was renamed to team-media when the surface
+      // expanded to cover both videos and image-set submissions. Keeps old
+      // email links and bookmarks working.
+      {
+        source: "/admin/team-videos",
+        destination: "/admin/team-media",
+        permanent: true,
+      },
+      {
+        source: "/admin/team-videos/:path*",
+        destination: "/admin/team-media/:path*",
+        permanent: true,
+      },
+    ]
+  },
   async headers() {
     // Content Security Policy. 'unsafe-inline' on script/style is required by
     // Next.js's hydration scripts, the inline GA snippet, and Tailwind inline
