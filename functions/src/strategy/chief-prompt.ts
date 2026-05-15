@@ -46,7 +46,8 @@ Priorities (in order):
 2. Compounding themes: themes that already worked > novel themes.
 3. Avoid whiplash: keep at least one theme from last week unless the data is clear it bombed.
 
-Return JSON only matching this exact StrategyBrief shape:
+Return JSON only matching this exact shape. Note: you MUST include a chief_memo block recording your reasoning trail.
+
 {
   "week_of": "<ISO date Monday of target week>",
   "themes": [{ "tag": "<kebab-case>", "weight": <0..1> }],
@@ -55,9 +56,30 @@ Return JSON only matching this exact StrategyBrief shape:
   "keywords_to_chase": ["<seed keyword>", ...],
   "hooks_to_test": ["<hook line>", ...],
   "ctas": ["<call to action>", ...],
-  "dont_do": ["<hard guardrail line>", ...],
-  "rationale": "<2-3 paragraphs explaining why>"
-}`
+  "dont_do": ["<hard guardrail phrase, prefer word-boundary specificity>", ...],
+  "rationale": "<2-3 paragraphs explaining why>",
+  "chief_memo": {
+    "themes_considered": [
+      { "tag": "<kebab>", "weight": <0..1>, "accepted": <bool>, "reason": "<one sentence>" }
+    ],
+    "channels_considered": [
+      { "channel": "seo|ads|social|balanced", "score": <0..10>, "accepted": <bool> }
+    ],
+    "confidence": <integer 1..10>,
+    "dissents_from_critic": <bool>,
+    "dissent_reason": "<one sentence if dissents=true, else null>"
+  }
+}
+
+Confidence rubric (be honest, not optimistic):
+  10 = identical pattern to recent measured wins, strong signal
+   7 = clean reasoning, partial historical match
+   4 = weak signal or ambiguous; best available direction but uncertain
+   1 = high uncertainty; would prefer to flag for human review
+
+If you disagree with the Critic's recommendations_for_brief, set dissents_from_critic=true and explain.
+
+dont_do entries should be specific phrases (e.g. "knee surgery recovery", not "pain"). Specialist agents match these as case-insensitive word-boundary substrings; broad words will over-reject.`
 
 export interface ChiefPromptInput {
   weekOf: string

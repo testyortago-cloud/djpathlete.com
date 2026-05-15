@@ -15,6 +15,27 @@ import {
 // Inlined StrategyBrief Zod schema. Source of truth lives in
 // lib/strategy/specialist-contract.ts; mirrored here because functions/
 // tsconfig has rootDir: "src" and cannot import outside it.
+const ChiefMemoPayloadSchema = z.object({
+  themes_considered: z.array(
+    z.object({
+      tag: z.string().min(1),
+      weight: z.number().min(0).max(1),
+      accepted: z.boolean(),
+      reason: z.string().min(1),
+    }),
+  ),
+  channels_considered: z.array(
+    z.object({
+      channel: z.enum(["seo", "ads", "social", "balanced"]),
+      score: z.number().min(0).max(10),
+      accepted: z.boolean(),
+    }),
+  ),
+  confidence: z.number().int().min(1).max(10),
+  dissents_from_critic: z.boolean(),
+  dissent_reason: z.string().nullable(),
+})
+
 const StrategyBriefSchema = z.object({
   week_of: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   themes: z.array(z.object({ tag: z.string().min(1), weight: z.number().min(0).max(1) })),
@@ -25,6 +46,7 @@ const StrategyBriefSchema = z.object({
   ctas: z.array(z.string()),
   dont_do: z.array(z.string()),
   rationale: z.string().min(1),
+  chief_memo: ChiefMemoPayloadSchema,
 })
 
 const SIGNAL_MAX_AGE_DAYS = 8
@@ -85,7 +107,7 @@ export async function runChiefStrategist(): Promise<ChiefStrategistResult> {
     { model: MODEL_SONNET, maxTokens: 3000, cacheSystemPrompt: true },
   )
 
-  const { data, error } = await supabase
+  const briefResult = await supabase
     .from("strategy_briefs")
     .insert({
       week_of: content.week_of,
@@ -102,10 +124,36 @@ export async function runChiefStrategist(): Promise<ChiefStrategistResult> {
     })
     .select("id")
     .single()
-  if (error) {
-    console.error("[chief-strategist] insert error", error)
+
+  const briefId = briefResult.data?.id ?? null
+  if (briefResult.error) {
+    console.error("[chief-strategist] brief insert error", briefResult.error)
+  }
+
+  // ALWAYS write the memo, even if the brief failed. This is the audit trail.
+  const memoResult = await supabase
+    .from("chief_strategist_memos")
+    .insert({
+      brief_id: briefId,
+      signal_id: signal.id,
+      themes_considered: content.chief_memo.themes_considered,
+      channels_considered: content.chief_memo.channels_considered,
+      confidence: content.chief_memo.confidence,
+      dissents_from_critic: content.chief_memo.dissents_from_critic,
+      dissent_reason: content.chief_memo.dissent_reason,
+      self_critique_notes: null,
+      rationale: content.rationale,
+    })
+    .select("id")
+    .single()
+
+  if (memoResult.error) {
+    console.error("[chief-strategist] memo insert error", memoResult.error)
+  }
+
+  if (!briefId) {
     return { outcome: "error", signalId: signal.id }
   }
-  console.log(`[chief-strategist] wrote draft brief ${data?.id} for week ${content.week_of}`)
-  return { outcome: "draft_created", briefId: data?.id, signalId: signal.id }
+  console.log(`[chief-strategist] wrote draft brief ${briefId} for week ${content.week_of}`)
+  return { outcome: "draft_created", briefId, signalId: signal.id }
 }
