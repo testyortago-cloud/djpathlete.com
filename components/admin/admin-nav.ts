@@ -1,0 +1,148 @@
+import {
+  LayoutDashboard,
+  Bot,
+  Users,
+  Dumbbell,
+  ClipboardList,
+  FileText,
+  Mail,
+  CreditCard,
+  BarChart3,
+  Brain,
+  CalendarDays,
+  Sparkles,
+  Lightbulb,
+  Star,
+  MessageSquareQuote,
+  Video,
+  ClipboardCheck,
+  CalendarCheck,
+  Inbox,
+  ShoppingBag,
+  Package,
+  Megaphone,
+  Film,
+  TrendingUp,
+  Layers,
+  Target,
+  Search,
+  Workflow,
+  Compass,
+} from "lucide-react"
+import type { LucideIcon } from "lucide-react"
+
+export interface NavItem {
+  label: string
+  href: string
+  icon: LucideIcon
+}
+
+export interface NavSection {
+  title: string
+  items: NavItem[]
+}
+
+export interface AdminNav {
+  topLinks: NavItem[]
+  groupedSections: NavSection[]
+  standaloneLinks: NavItem[]
+}
+
+export function getAdminNav(opts: { contentStudioEnabled: boolean }): AdminNav {
+  const marketingItems: NavItem[] = opts.contentStudioEnabled
+    ? [
+        { label: "Blog", href: "/admin/blog", icon: FileText },
+        { label: "Newsletter", href: "/admin/newsletter", icon: Mail },
+        { label: "Testimonials", href: "/admin/testimonials", icon: MessageSquareQuote },
+        { label: "Content Studio", href: "/admin/content", icon: Layers },
+        { label: "Topic Suggestions", href: "/admin/topic-suggestions", icon: TrendingUp },
+        { label: "SEO Console", href: "/admin/integrations/gsc", icon: Search },
+        { label: "SEO Memos", href: "/admin/seo-agent/memos", icon: Workflow },
+      ]
+    : [
+        { label: "Blog", href: "/admin/blog", icon: FileText },
+        { label: "Newsletter", href: "/admin/newsletter", icon: Mail },
+        { label: "Testimonials", href: "/admin/testimonials", icon: MessageSquareQuote },
+        { label: "Social", href: "/admin/social", icon: Megaphone },
+        { label: "Calendar", href: "/admin/calendar", icon: CalendarDays },
+        { label: "Videos", href: "/admin/videos", icon: Film },
+        { label: "Topic Suggestions", href: "/admin/topic-suggestions", icon: TrendingUp },
+        { label: "SEO Console", href: "/admin/integrations/gsc", icon: Search },
+        { label: "SEO Memos", href: "/admin/seo-agent/memos", icon: Workflow },
+      ]
+
+  return {
+    topLinks: [
+      { label: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
+      { label: "Inbox", href: "/admin/inbox", icon: Inbox },
+    ],
+    groupedSections: [
+      {
+        title: "Coaching",
+        items: [
+          { label: "Clients", href: "/admin/clients", icon: Users },
+          { label: "Programs", href: "/admin/programs", icon: ClipboardList },
+          { label: "Exercises", href: "/admin/exercises", icon: Dumbbell },
+          { label: "Form Reviews", href: "/admin/form-reviews", icon: Video },
+          { label: "Assessments", href: "/admin/performance-assessments", icon: ClipboardCheck },
+        ],
+      },
+      {
+        title: "Marketing",
+        items: marketingItems,
+      },
+      {
+        title: "Ads",
+        items: [
+          { label: "Overview", href: "/admin/ads", icon: Target },
+          { label: "Campaigns", href: "/admin/ads/campaigns", icon: BarChart3 },
+          { label: "Pipeline", href: "/admin/ads/pipeline", icon: Layers },
+          { label: "AI Agent", href: "/admin/ads/agent", icon: Sparkles },
+          { label: "Recommendations", href: "/admin/ads/recommendations", icon: Lightbulb },
+        ],
+      },
+      {
+        title: "AI",
+        items: [
+          { label: "Assistant", href: "/admin/ai-assistant", icon: Bot },
+          { label: "Insights", href: "/admin/ai-insights", icon: Lightbulb },
+          { label: "Templates", href: "/admin/ai-templates", icon: FileText },
+          { label: "Usage", href: "/admin/ai-usage", icon: Brain },
+        ],
+      },
+      {
+        title: "Business",
+        items: [
+          { label: "Bookings", href: "/admin/bookings", icon: CalendarCheck },
+          { label: "Events", href: "/admin/events", icon: CalendarDays },
+          { label: "Payments", href: "/admin/payments", icon: CreditCard },
+          { label: "Analytics", href: "/admin/analytics", icon: BarChart3 },
+          { label: "Reviews", href: "/admin/reviews", icon: Star },
+          { label: "Shop Products", href: "/admin/shop/products", icon: ShoppingBag },
+          { label: "Shop Orders", href: "/admin/shop/orders", icon: Package },
+        ],
+      },
+    ],
+    standaloneLinks: [{ label: "Strategy", href: "/admin/strategy", icon: Compass }],
+  }
+}
+
+/** Flattened href list — used by both sidebars to compute the active link. */
+export function getAllHrefs(nav: AdminNav): string[] {
+  return [
+    ...nav.topLinks.map((l) => l.href),
+    ...nav.groupedSections.flatMap((s) => s.items.map((i) => i.href)),
+    ...nav.standaloneLinks.map((l) => l.href),
+    "/admin/settings",
+  ]
+}
+
+/** Longest-prefix active-href resolution. Prevents parent + child both highlighting. */
+export function findActiveHref(pathname: string, candidates: string[]): string | null {
+  let best: string | null = null
+  for (const href of candidates) {
+    if (pathname !== href && !pathname.startsWith(href + "/")) continue
+    if (best === null || href.length > best.length) best = href
+  }
+  return best
+}
