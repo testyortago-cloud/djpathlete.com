@@ -3,148 +3,22 @@
 import Link from "next/link"
 import Image from "next/image"
 import { usePathname } from "next/navigation"
-import {
-  X,
-  LayoutDashboard,
-  Bot,
-  Users,
-  Dumbbell,
-  ClipboardList,
-  FileText,
-  Mail,
-  CreditCard,
-  BarChart3,
-  Brain,
-  CalendarDays,
-  Lightbulb,
-  Sparkles,
-  Star,
-  Video,
-  ClipboardCheck,
-  CalendarCheck,
-  Inbox,
-  Settings,
-  LogOut,
-  ShoppingBag,
-  Package,
-  Users2,
-  Search,
-  Workflow,
-  Compass,
-} from "lucide-react"
+import { useMemo } from "react"
+import { X, Settings, LogOut } from "lucide-react"
 import { signOut } from "next-auth/react"
 import { cn } from "@/lib/utils"
-import type { LucideIcon } from "lucide-react"
-
-function isHrefActive(pathname: string, href: string): boolean {
-  return pathname === href || pathname.startsWith(href + "/")
-}
-
-/**
- * Returns the most-specific (longest) href among `candidates` that's a prefix
- * of (or equal to) the current pathname. Prevents the parent + child both
- * highlighting at /admin/settings/ai-policy — only "AI Policy" wins, not the
- * bottom "Settings" link.
- */
-function findActiveHref(pathname: string, candidates: string[]): string | null {
-  let best: string | null = null
-  for (const href of candidates) {
-    if (!isHrefActive(pathname, href)) continue
-    if (best === null || href.length > best.length) best = href
-  }
-  return best
-}
-
-interface NavItem {
-  label: string
-  href: string
-  icon: LucideIcon
-}
-
-interface NavSection {
-  title: string
-  items: NavItem[]
-}
-
-const navSections: NavSection[] = [
-  {
-    title: "",
-    items: [{ label: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard }],
-  },
-  {
-    title: "Coaching",
-    items: [
-      { label: "Clients", href: "/admin/clients", icon: Users },
-      { label: "Programs", href: "/admin/programs", icon: ClipboardList },
-      { label: "Exercises", href: "/admin/exercises", icon: Dumbbell },
-      { label: "Form Reviews", href: "/admin/form-reviews", icon: Video },
-      { label: "Assessments", href: "/admin/performance-assessments", icon: ClipboardCheck },
-    ],
-  },
-  {
-    title: "Content",
-    items: [
-      { label: "Blog", href: "/admin/blog", icon: FileText },
-      { label: "Newsletter", href: "/admin/newsletter", icon: Mail },
-    ],
-  },
-  {
-    title: "AI Tools",
-    items: [
-      { label: "AI Assistant", href: "/admin/ai-assistant", icon: Bot },
-      { label: "AI Usage", href: "/admin/ai-usage", icon: Brain },
-      { label: "AI Insights", href: "/admin/ai-insights", icon: Lightbulb },
-      { label: "AI Templates", href: "/admin/ai-templates", icon: FileText },
-      { label: "AI Policy", href: "/admin/settings/ai-policy", icon: Sparkles },
-    ],
-  },
-  {
-    title: "SEO Agent",
-    items: [
-      { label: "Search Console", href: "/admin/integrations/gsc", icon: Search },
-      { label: "Agent Memos", href: "/admin/seo-agent/memos", icon: Workflow },
-    ],
-  },
-  {
-    title: "Strategy",
-    items: [{ label: "Strategy", href: "/admin/strategy", icon: Compass }],
-  },
-  {
-    title: "Business",
-    items: [
-      { label: "Inbox", href: "/admin/inbox", icon: Inbox },
-      { label: "Bookings", href: "/admin/bookings", icon: CalendarCheck },
-      { label: "Events", href: "/admin/events", icon: CalendarDays },
-      { label: "Payments", href: "/admin/payments", icon: CreditCard },
-      { label: "Analytics", href: "/admin/analytics", icon: BarChart3 },
-      { label: "Reviews", href: "/admin/reviews", icon: Star },
-    ],
-  },
-  {
-    title: "Shop",
-    items: [
-      { label: "Products", href: "/admin/shop/products", icon: ShoppingBag },
-      { label: "Orders", href: "/admin/shop/orders", icon: Package },
-    ],
-  },
-  {
-    title: "Team Videos",
-    items: [{ label: "Team Videos", href: "/admin/team-videos", icon: Video }],
-  },
-  {
-    title: "Team",
-    items: [{ label: "Team", href: "/admin/team", icon: Users2 }],
-  },
-]
+import { getAdminNav, getAllHrefs, findActiveHref, type NavItem } from "./admin-nav"
 
 interface AdminMobileSidebarProps {
   open: boolean
   onClose: () => void
+  contentStudioEnabled?: boolean
 }
 
-export function AdminMobileSidebar({ open, onClose }: AdminMobileSidebarProps) {
+export function AdminMobileSidebar({ open, onClose, contentStudioEnabled = false }: AdminMobileSidebarProps) {
   const pathname = usePathname()
-  const allHrefs = [...navSections.flatMap((s) => s.items.map((i) => i.href)), "/admin/settings"]
+  const nav = useMemo(() => getAdminNav({ contentStudioEnabled }), [contentStudioEnabled])
+  const allHrefs = useMemo(() => getAllHrefs(nav), [nav])
   const activeHref = findActiveHref(pathname, allHrefs)
 
   if (!open) return null
@@ -170,43 +44,39 @@ export function AdminMobileSidebar({ open, onClose }: AdminMobileSidebarProps) {
               Athlete
             </span>
           </div>
-          <button onClick={onClose} className="text-white/70 hover:text-white">
+          <button onClick={onClose} className="text-white/70 hover:text-white" aria-label="Close menu">
             <X className="size-5" />
           </button>
         </div>
 
         <nav className="flex-1 overflow-y-auto sidebar-scroll px-3 py-2 space-y-4">
-          {navSections.map((section) => (
-            <div key={section.title || "top"}>
-              {section.title && (
-                <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-white/30">
-                  {section.title}
-                </p>
-              )}
+          {/* Top-level links */}
+          <div className="space-y-0.5">
+            {nav.topLinks.map((item) => (
+              <MobileLink key={item.href} item={item} isActive={item.href === activeHref} onClick={onClose} />
+            ))}
+          </div>
+
+          {/* Grouped sections (always expanded on mobile) */}
+          {nav.groupedSections.map((section) => (
+            <div key={section.title}>
+              <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-white/30">
+                {section.title}
+              </p>
               <div className="space-y-0.5">
-                {section.items.map((item) => {
-                  const isActive = item.href === activeHref
-                  const Icon = item.icon
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      onClick={onClose}
-                      className={cn(
-                        "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
-                        isActive
-                          ? "bg-accent text-accent-foreground"
-                          : "text-white/70 hover:text-white hover:bg-white/10",
-                      )}
-                    >
-                      <Icon className="size-[18px]" strokeWidth={1.5} />
-                      {item.label}
-                    </Link>
-                  )
-                })}
+                {section.items.map((item) => (
+                  <MobileLink key={item.href} item={item} isActive={item.href === activeHref} onClick={onClose} />
+                ))}
               </div>
             </div>
           ))}
+
+          {/* Standalone links */}
+          <div className="space-y-0.5 border-t border-white/10 pt-3">
+            {nav.standaloneLinks.map((item) => (
+              <MobileLink key={item.href} item={item} isActive={item.href === activeHref} onClick={onClose} />
+            ))}
+          </div>
         </nav>
 
         {/* Bottom section */}
@@ -214,6 +84,7 @@ export function AdminMobileSidebar({ open, onClose }: AdminMobileSidebarProps) {
           <Link
             href="/admin/settings"
             onClick={onClose}
+            aria-current={activeHref === "/admin/settings" ? "page" : undefined}
             className={cn(
               "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
               activeHref === "/admin/settings"
@@ -234,5 +105,23 @@ export function AdminMobileSidebar({ open, onClose }: AdminMobileSidebarProps) {
         </div>
       </div>
     </>
+  )
+}
+
+function MobileLink({ item, isActive, onClick }: { item: NavItem; isActive: boolean; onClick: () => void }) {
+  const Icon = item.icon
+  return (
+    <Link
+      href={item.href}
+      onClick={onClick}
+      aria-current={isActive ? "page" : undefined}
+      className={cn(
+        "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+        isActive ? "bg-accent text-accent-foreground" : "text-white/70 hover:text-white hover:bg-white/10",
+      )}
+    >
+      <Icon className="size-[18px]" strokeWidth={1.5} />
+      {item.label}
+    </Link>
   )
 }

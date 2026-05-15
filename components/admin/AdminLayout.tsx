@@ -20,7 +20,11 @@ export function AdminLayout({ children, avatarUrl, initials, contentStudioEnable
     <AdminWeightUnitProvider>
       <div className="flex min-h-screen bg-surface">
         <AdminSidebar contentStudioEnabled={contentStudioEnabled} />
-        <AdminMobileSidebar open={mobileOpen} onClose={() => setMobileOpen(false)} />
+        <AdminMobileSidebar
+          open={mobileOpen}
+          onClose={() => setMobileOpen(false)}
+          contentStudioEnabled={contentStudioEnabled}
+        />
         <div className="flex-1 flex flex-col min-w-0 lg:ml-64">
           <AdminTopBar onMenuClick={() => setMobileOpen(true)} avatarUrl={avatarUrl} initials={initials} />
           <main className="flex-1 p-6">
