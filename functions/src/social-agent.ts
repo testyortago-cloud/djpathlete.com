@@ -53,6 +53,81 @@ const reviewedCaptionSchema = z.object({
 })
 type ReviewedCaption = z.infer<typeof reviewedCaptionSchema>
 
+// ─── Tool performance ──────────────────────────────────────────────────────
+// Mirrors gatherToolPerformance from seo/signals.ts. Joins agent_tool_baselines
+// (social channel) with a 90-day rollup of impact_score from measured
+// social_agent_memos. Social only has one tool (drafted_social_post) today, so
+// this is effectively the agent's historical engagement floor.
+
+export interface SocialToolPerformanceEntry {
+  tool: string
+  n_measured: number
+  avg_impact_score: number
+  p95_abs_delta: number
+  success_rate: number
+}
+
+export async function gatherSocialToolPerformance(
+  supabase: SupabaseClient,
+): Promise<SocialToolPerformanceEntry[]> {
+  const { data: baselines } = await supabase
+    .from("agent_tool_baselines")
+    .select("tool_name, n_measured, p95_abs_delta, success_rate")
+    .eq("channel", "social")
+  if (!baselines || baselines.length === 0) return []
+
+  const ninety = new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0, 10)
+  const { data: memos } = await supabase
+    .from("social_agent_memos")
+    .select("actions, impact_score")
+    .eq("outcome_status", "measured")
+    .gte("run_date", ninety)
+
+  const sumByTool: Record<string, { sum: number; count: number }> = {}
+  for (const m of (memos ?? []) as Array<{
+    actions: Array<{ kind: string }>
+    impact_score: number | null
+  }>) {
+    if (m.impact_score == null) continue
+    for (const a of m.actions ?? []) {
+      // social_agent_memos.actions[i].kind is the tool name analog.
+      sumByTool[a.kind] ??= { sum: 0, count: 0 }
+      sumByTool[a.kind].sum += m.impact_score
+      sumByTool[a.kind].count += 1
+    }
+  }
+
+  return (
+    baselines as Array<{
+      tool_name: string
+      n_measured: number
+      p95_abs_delta: number
+      success_rate: number
+    }>
+  ).map((b) => {
+    const agg = sumByTool[b.tool_name] ?? { sum: 0, count: 0 }
+    return {
+      tool: b.tool_name,
+      n_measured: b.n_measured,
+      avg_impact_score: agg.count > 0 ? Math.round(agg.sum / agg.count) : 0,
+      p95_abs_delta: b.p95_abs_delta,
+      success_rate: b.success_rate,
+    }
+  })
+}
+
+export function buildSocialToolPerfBlock(entries: SocialToolPerformanceEntry[]): string {
+  if (entries.length === 0) return ""
+  return [
+    "Tool performance (last 90 days, your channel):",
+    ...entries.map(
+      (t) =>
+        `  ${t.tool}: avg impact ${t.avg_impact_score >= 0 ? "+" : ""}${t.avg_impact_score}, ${t.n_measured} runs, ${Math.round(t.success_rate * 100)}% success`,
+    ),
+    "",
+  ].join("\n")
+}
+
 // ─── Strategist ────────────────────────────────────────────────────────────
 // Picks the topic. Deterministic — most recent published blog_post. If the
 // user passed an explicit blogPostId we honor it. Duplicate-topic detection is
@@ -265,16 +340,23 @@ export async function handleSocialAgentRun(jobId: string): Promise<void> {
     if (!reviewerPrompt) return failJob("No social_caption_reviewer prompt_template row found")
     if (!platformPrompt) return failJob(`No social_caption prompt seeded for scope=${platform}`)
 
-    // 3. Writer pass
+    // 3. Tool performance — historical engagement floor for our one tool
+    //    (drafted_social_post). Empty string when no baseline rows exist.
+    const socialToolPerf = await gatherSocialToolPerformance(supabase)
+    const toolPerfBlock = buildSocialToolPerfBlock(socialToolPerf)
+
+    // 4. Writer pass
     const writerSystem = `${voiceProfile}\n\n---\n\n${platformPrompt}`
+    const writerUserMessage =
+      toolPerfBlock + buildCopywriterUserMessage({ topic, platform })
     const writer = await callAgent<Caption>(
       writerSystem,
-      buildCopywriterUserMessage({ topic, platform }),
+      writerUserMessage,
       captionSchema,
       { model: MODEL_SONNET, maxTokens: 2000, cacheSystemPrompt: true },
     )
 
-    // 4. Reviewer pass
+    // 5. Reviewer pass
     const reviewed = await callAgent<ReviewedCaption>(
       reviewerPrompt,
       buildReviewerUserMessage({
@@ -294,7 +376,7 @@ export async function handleSocialAgentRun(jobId: string): Promise<void> {
       hashtags: reviewed.content.revised_hashtags,
     }
 
-    // 5. Persist as draft
+    // 6. Persist as draft
     const { data: post, error: postErr } = await supabase
       .from("social_posts")
       .insert({
@@ -317,7 +399,7 @@ export async function handleSocialAgentRun(jobId: string): Promise<void> {
       version: 1,
     })
 
-    // 6. Memo — record what the strategist did this run so the chief can
+    // 7. Memo — record what the strategist did this run so the chief can
     // audit how the brief shaped the draft. Inline insert (no DAL import).
     await supabase.from("social_agent_memos").insert({
       run_date: new Date().toISOString().slice(0, 10),
