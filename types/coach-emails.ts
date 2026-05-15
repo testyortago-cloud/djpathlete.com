@@ -70,12 +70,27 @@ export interface DailyClientRiskPayload {
   items: DailyClientRiskItem[] // capped at 5
 }
 
+export interface DailyInboxSlaItem {
+  contactName: string
+  hoursWaiting: number
+  snippet: string | null
+}
+
+export interface DailyInboxSlaPayload {
+  unreadCount: number
+  awaitingReplyOver24h: number
+  awaitingReplyOver48h: number
+  meanResponseMinutes7d: number | null
+  oldestUnanswered: DailyInboxSlaItem[] // capped at 3
+}
+
 export interface DailyBriefPayload {
   referenceDate: Date
   isMondayEdition: boolean
   bookings: DailyBookingsPayload | null
   coaching: DailyCoachingPayload | null
   clientRisk: DailyClientRiskPayload | null
+  inboxSla: DailyInboxSlaPayload | null
   pipeline: DailyContentPipelinePayload // always present (existing behaviour)
   revenueFunnel: DailyRevenueFunnelPayload | null
   anomalies: DailyAnomaliesPayload | null

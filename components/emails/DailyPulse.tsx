@@ -27,6 +27,8 @@ function summaryLine(p: DailyBriefPayload): string {
     bits.push(`${p.coaching.atRiskClients.length} clients at-risk`)
   if (p.clientRisk && p.clientRisk.totalHigh > 0)
     bits.push(`${p.clientRisk.totalHigh} high-risk client${p.clientRisk.totalHigh === 1 ? "" : "s"}`)
+  if (p.inboxSla && p.inboxSla.awaitingReplyOver24h > 0)
+    bits.push(`${p.inboxSla.awaitingReplyOver24h} inbox >24h`)
   if (p.pipeline.awaitingReview > 0) bits.push(`${p.pipeline.awaitingReview} posts awaiting review`)
   if (p.revenueFunnel && p.revenueFunnel.adSpendCents > 0)
     bits.push(`$${(p.revenueFunnel.adSpendCents / 100).toFixed(0)} ad spend yesterday`)
@@ -145,6 +147,36 @@ export function DailyPulse({ payload }: Props) {
                           <p style={{ margin: "0 0 8px", fontFamily: "'Lexend Deca', sans-serif", fontSize: "14px", color: BRAND.textPrimary }}>
                             {payload.coaching.voiceDriftFlags} voice-drift flag{payload.coaching.voiceDriftFlags === 1 ? "" : "s"} since yesterday
                           </p>
+                        )}
+                      </Section>
+                    )}
+
+                    {payload.inboxSla && (
+                      <Section title="Inbox health">
+                        <p style={{ margin: "0 0 8px", fontFamily: "'Lexend Deca', sans-serif", fontSize: "14px", color: BRAND.textPrimary }}>
+                          <strong>{payload.inboxSla.unreadCount}</strong> unread ·{" "}
+                          <strong style={{ color: payload.inboxSla.awaitingReplyOver24h > 0 ? BRAND.warning : BRAND.textPrimary }}>{payload.inboxSla.awaitingReplyOver24h}</strong> awaiting reply &gt;24h
+                          {payload.inboxSla.awaitingReplyOver48h > 0 && (
+                            <span style={{ color: BRAND.warning }}> · {payload.inboxSla.awaitingReplyOver48h} &gt;48h</span>
+                          )}
+                        </p>
+                        {payload.inboxSla.meanResponseMinutes7d !== null && (
+                          <p style={{ margin: "0 0 8px", fontFamily: "'Lexend Deca', sans-serif", fontSize: "13px", color: BRAND.textMuted }}>
+                            Mean response (7d): {Math.round(payload.inboxSla.meanResponseMinutes7d)}m
+                            {payload.inboxSla.meanResponseMinutes7d > 1440 && (
+                              <span style={{ color: BRAND.warning }}> · slower than 24h</span>
+                            )}
+                          </p>
+                        )}
+                        {payload.inboxSla.oldestUnanswered.length > 0 && (
+                          <ul style={{ margin: "8px 0 0", paddingLeft: "16px", fontFamily: "'Lexend Deca', sans-serif", fontSize: "13px", color: BRAND.textPrimary, lineHeight: 1.6 }}>
+                            {payload.inboxSla.oldestUnanswered.map((c, i) => (
+                              <li key={i}>
+                                <strong>{c.contactName}</strong>{" · "}<span style={{ color: BRAND.textMuted }}>{Math.round(c.hoursWaiting)}h waiting</span>
+                                {c.snippet && <> — <em style={{ color: BRAND.textMuted }}>{c.snippet.slice(0, 80)}</em></>}
+                              </li>
+                            ))}
+                          </ul>
                         )}
                       </Section>
                     )}

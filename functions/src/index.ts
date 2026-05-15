@@ -1324,6 +1324,41 @@ export const socialAgentCron = onSchedule(
   },
 )
 
+// ─── Inbox SLA (Mon-Fri 06:00 UTC) ───────────────────────────────────────────
+// Plan: docs/superpowers/plans/2026-05-16-broader-automations.md Phase 5.
+// Runs an hour before Daily Pulse (07:00 Central) so the latest inbox-health
+// snapshot is available for the email.
+
+export const inboxSlaCron = onSchedule(
+  {
+    schedule: "0 6 * * 1-5",
+    timeZone: "UTC",
+    timeoutSeconds: 120,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [internalCronToken, appUrl],
+  },
+  async () => {
+    const baseUrl = process.env.APP_URL
+    const token = process.env.INTERNAL_CRON_TOKEN
+    if (!baseUrl || !token) {
+      console.error("[inboxSlaCron] APP_URL or INTERNAL_CRON_TOKEN missing — abort")
+      return
+    }
+    try {
+      const res = await fetch(`${baseUrl}/api/admin/internal/inbox-sla`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: "{}",
+      })
+      const body = await res.json().catch(() => ({}))
+      console.log("[inboxSlaCron]", res.status, body)
+    } catch (err) {
+      console.error("[inboxSlaCron] failed:", err)
+    }
+  },
+)
+
 // ─── Content → Revenue Attribution (Sun 22:00 UTC) ──────────────────────────
 // Plan: docs/superpowers/plans/2026-05-16-broader-automations.md Phase 4.
 // Joins blog_posts × GSC × marketing_attribution × payments. Runs after the

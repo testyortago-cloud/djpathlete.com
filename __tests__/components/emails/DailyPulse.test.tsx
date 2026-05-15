@@ -21,6 +21,7 @@ function makePayload(overrides: Partial<DailyBriefPayload>): DailyBriefPayload {
     bookings: null,
     coaching: null,
     clientRisk: null,
+    inboxSla: null,
     pipeline: basePipeline,
     revenueFunnel: null,
     anomalies: null,
@@ -141,6 +142,24 @@ describe("<DailyPulse />", () => {
     expect(html).toContain("75/100")
     expect(html).toContain("no session 30d+")
     expect(html).toContain("renewal unstarted")
+  })
+
+  it("renders inbox-sla section and rolls awaiting-24h into the summary line", () => {
+    const html = render(makePayload({
+      inboxSla: {
+        unreadCount: 7,
+        awaitingReplyOver24h: 3,
+        awaitingReplyOver48h: 1,
+        meanResponseMinutes7d: 240,
+        oldestUnanswered: [
+          { contactName: "Coach Jen", hoursWaiting: 52.5, snippet: "Quick question on programming" },
+        ],
+      },
+    }))
+    expect(html).toContain("Inbox health")
+    expect(html).toContain("<strong>7</strong> unread")
+    expect(html).toContain("3 inbox &gt;24h")
+    expect(html).toContain("Coach Jen")
   })
 
   it("rolls high-risk count into the summary line", () => {
