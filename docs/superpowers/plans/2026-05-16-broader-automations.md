@@ -1211,6 +1211,25 @@ Attribution: first-touch-landing — if the customer's first session in the last
 - [ ] Route `app/api/admin/internal/content-attribution/route.ts`. Schedule weekly Sunday 22:00 UTC (after weekly content report Fri, before Chief Sun 10:00 — so Chief's brief can ingest it).
 - [ ] **Commit:** `feat(automation): content attribution cron`
 
+### 🛠 Phase 4.4 scope decision (added 2026-05-16)
+
+The plan called for the weekly performance-learning-loop to write
+revenue-winning blog posts into `prompt_templates.few_shot_examples`. **Deferred:**
+
+- The `prompt_templates.category` column has a strict CHECK constraint listing
+  only ~18 allowed categories — no slot for `revenue_winners`. Adding one
+  would require altering the constraint AND coordinating with downstream
+  consumers (chief, ads, social, SEO readers).
+- The existing `(scope='global', category='seo_agent')` row likely holds
+  hand-curated examples for the SEO agent's prompt. Overwriting it on
+  every Monday risks erasing coach edits.
+
+Instead: `content_attribution_snapshots` is persisted weekly, the admin page
+surfaces top posts by revenue, and the operator can hand-pick winners into
+the seo_agent template at their discretion. Cleaner cutover when ready:
+extend the category enum + add a dedicated `seo_agent_revenue_winners` row
+in a separate migration.
+
 ### Task 4.4: Feed performance-learning-loop
 
 **File:** `functions/src/performance-learning-loop.ts` and twin `lib/agents/performance-learning-loop.ts` if it exists.

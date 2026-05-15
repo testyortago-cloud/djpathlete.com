@@ -119,6 +119,16 @@ export async function runPerformanceLearningLoop(
   return result
 }
 
+// Phase 4.4 of broader-automations plan called for writing revenue-winning
+// blog posts as few_shot_examples on the SEO-agent prompt template. Deferred:
+// (a) the prompt_templates.category check constraint is a strict enum that
+// doesn't have a 'revenue_winners' slot, and (b) the existing
+// (scope='global', category='seo_agent') row may hold hand-curated examples
+// that the loop would clobber on every Monday. Instead, content_attribution
+// snapshots persist alongside other insights and the operator can hand-pick
+// revenue winners into the seo_agent prompt at their leisure. The
+// admin /admin/insights/content-revenue page surfaces the candidates.
+
 async function collectTopExamplesForPlatform(
   supabase: SupabaseClient,
   platform: LearningLoopPlatform,

@@ -1324,6 +1324,43 @@ export const socialAgentCron = onSchedule(
   },
 )
 
+// ─── Content → Revenue Attribution (Sun 22:00 UTC) ──────────────────────────
+// Plan: docs/superpowers/plans/2026-05-16-broader-automations.md Phase 4.
+// Joins blog_posts × GSC × marketing_attribution × payments. Runs after the
+// Friday content report but before chiefStrategistCron at Sun 10:00 — wait,
+// 22:00 UTC Sunday is AFTER 10:00 UTC Sunday so chief won't see this week's
+// row until next week's brief. Acceptable: data lag of 7d.
+
+export const contentAttributionCron = onSchedule(
+  {
+    schedule: "0 22 * * 0",
+    timeZone: "UTC",
+    timeoutSeconds: 300,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [internalCronToken, appUrl],
+  },
+  async () => {
+    const baseUrl = process.env.APP_URL
+    const token = process.env.INTERNAL_CRON_TOKEN
+    if (!baseUrl || !token) {
+      console.error("[contentAttributionCron] APP_URL or INTERNAL_CRON_TOKEN missing — abort")
+      return
+    }
+    try {
+      const res = await fetch(`${baseUrl}/api/admin/internal/content-attribution`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: "{}",
+      })
+      const body = await res.json().catch(() => ({}))
+      console.log("[contentAttributionCron]", res.status, body)
+    } catch (err) {
+      console.error("[contentAttributionCron] failed:", err)
+    }
+  },
+)
+
 // ─── Automation Health Watchdog (daily 08:00 UTC) ───────────────────────────
 // Plan: docs/superpowers/plans/2026-05-16-broader-automations.md Phase 3.
 // Scans Firestore ai_jobs + Supabase cron_runs, persists an
