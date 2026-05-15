@@ -50,6 +50,8 @@ describe("handleSeoAgent", () => {
           { rank: 2, tool: "queue_refresh", args: { blog_post_id: "11111111-1111-1111-1111-111111111111", reason: "decay" } },
         ],
         brief_alignment_score: null,
+        agent_confidence: 7,
+        dissent_from_upstream: { dissents: false, reason: null },
       },
       tokens_used: 500,
     })

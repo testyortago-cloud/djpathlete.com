@@ -19,6 +19,8 @@ describe("decisionSchema", () => {
       rationale: "Striking-distance keyword + refresh of a decayed post — diverse and high-leverage.",
       actions: [validQueueNewPost, validQueueRefresh],
       brief_alignment_score: null,
+      agent_confidence: 7,
+      dissent_from_upstream: { dissents: false, reason: null },
     }
     const out = decisionSchema.safeParse(valid)
     expect(out.success).toBe(true)
@@ -101,6 +103,8 @@ describe("decisionSchema", () => {
         },
       ],
       brief_alignment_score: 8,
+      agent_confidence: 7,
+      dissent_from_upstream: { dissents: false, reason: null },
     }
     expect(decisionSchema.safeParse(ok).success).toBe(true)
   })
@@ -141,5 +145,35 @@ describe("decisionSchema", () => {
         actions: [validQueueNewPost, validQueueRefresh],
       }).success,
     ).toBe(false)
+  })
+
+  it("requires agent_confidence and dissent_from_upstream", () => {
+    const validBase = {
+      rationale: "a".repeat(50),
+      actions: [
+        { rank: 1, tool: "flag_for_human", args: { issue: "test issue", urgency: "low", context: "context text" } },
+        { rank: 2, tool: "queue_refresh", args: { blog_post_id: "00000000-0000-0000-0000-000000000001", reason: "stale" } },
+      ],
+      brief_alignment_score: null,
+    }
+    // Missing agent_confidence → should fail
+    expect(() => decisionSchema.parse(validBase)).toThrow()
+
+    // Adding both → should pass
+    const withConfidence = {
+      ...validBase,
+      agent_confidence: 7,
+      dissent_from_upstream: { dissents: false, reason: null },
+    }
+    expect(() => decisionSchema.parse(withConfidence)).not.toThrow()
+
+    // Dissents=true without reason → should fail
+    expect(() =>
+      decisionSchema.parse({
+        ...validBase,
+        agent_confidence: 4,
+        dissent_from_upstream: { dissents: true, reason: null },
+      }),
+    ).toThrow()
   })
 })

@@ -56,10 +56,19 @@ export const decisionSchema = z
     rationale: z.string().min(20).max(2000),
     actions: z.tuple([actionSchema, actionSchema]),
     brief_alignment_score: z.number().int().min(1).max(10).nullable(),
+    agent_confidence: z.number().int().min(1).max(10),
+    dissent_from_upstream: z.object({
+      dissents: z.boolean(),
+      reason: z.string().nullable(),
+    }),
   })
   .refine((d) => d.actions[0].tool !== d.actions[1].tool, {
     message: "Both actions must be of different tools",
     path: ["actions"],
+  })
+  .refine((d) => !d.dissent_from_upstream.dissents || d.dissent_from_upstream.reason !== null, {
+    message: "dissent_from_upstream.reason is required when dissents=true",
+    path: ["dissent_from_upstream", "reason"],
   })
 
 export type Decision = z.infer<typeof decisionSchema>
