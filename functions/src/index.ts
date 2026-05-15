@@ -1324,6 +1324,43 @@ export const socialAgentCron = onSchedule(
   },
 )
 
+// ─── Revenue Digest (Mon 13:00 UTC = 06:00 PT) ───────────────────────────────
+// Plan: docs/superpowers/plans/2026-05-16-broader-automations.md Phase 2.
+// POSTs to /api/admin/internal/revenue-digest which aggregates one week of
+// subscriptions + payments into a revenue_snapshots row and emails the result
+// to COACH_EMAIL. Subject to automation_paused + cron_revenue_digest_enabled
+// gates (defaults to false — flip on from /admin/automation once verified).
+
+export const revenueDigestCron = onSchedule(
+  {
+    schedule: "0 13 * * 1",
+    timeZone: "UTC",
+    timeoutSeconds: 120,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [internalCronToken, appUrl],
+  },
+  async () => {
+    const baseUrl = process.env.APP_URL
+    const token = process.env.INTERNAL_CRON_TOKEN
+    if (!baseUrl || !token) {
+      console.error("[revenueDigestCron] APP_URL or INTERNAL_CRON_TOKEN missing — abort")
+      return
+    }
+    try {
+      const res = await fetch(`${baseUrl}/api/admin/internal/revenue-digest`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: "{}",
+      })
+      const body = await res.json().catch(() => ({}))
+      console.log("[revenueDigestCron]", res.status, body)
+    } catch (err) {
+      console.error("[revenueDigestCron] failed:", err)
+    }
+  },
+)
+
 // ─── Client Risk Scan (daily 05:00 UTC) ──────────────────────────────────────
 // Plan: docs/superpowers/plans/2026-05-16-broader-automations.md Phase 1.
 // POSTs to /api/admin/internal/client-risk-scan which walks active clients,
