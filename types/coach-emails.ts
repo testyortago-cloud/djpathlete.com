@@ -57,11 +57,25 @@ export interface DailyTrendingTopic {
   sourceUrl: string | null
 }
 
+export interface DailyClientRiskItem {
+  name: string
+  tier: "medium" | "high"
+  score: number
+  reasons: string[] // top 3 reason codes
+}
+
+export interface DailyClientRiskPayload {
+  totalHigh: number
+  totalMedium: number
+  items: DailyClientRiskItem[] // capped at 5
+}
+
 export interface DailyBriefPayload {
   referenceDate: Date
   isMondayEdition: boolean
   bookings: DailyBookingsPayload | null
   coaching: DailyCoachingPayload | null
+  clientRisk: DailyClientRiskPayload | null
   pipeline: DailyContentPipelinePayload // always present (existing behaviour)
   revenueFunnel: DailyRevenueFunnelPayload | null
   anomalies: DailyAnomaliesPayload | null

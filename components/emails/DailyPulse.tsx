@@ -25,6 +25,8 @@ function summaryLine(p: DailyBriefPayload): string {
     bits.push(`${p.coaching.formReviewsAwaiting.count} form reviews waiting`)
   if (p.coaching && p.coaching.atRiskClients.length > 0)
     bits.push(`${p.coaching.atRiskClients.length} clients at-risk`)
+  if (p.clientRisk && p.clientRisk.totalHigh > 0)
+    bits.push(`${p.clientRisk.totalHigh} high-risk client${p.clientRisk.totalHigh === 1 ? "" : "s"}`)
   if (p.pipeline.awaitingReview > 0) bits.push(`${p.pipeline.awaitingReview} posts awaiting review`)
   if (p.revenueFunnel && p.revenueFunnel.adSpendCents > 0)
     bits.push(`$${(p.revenueFunnel.adSpendCents / 100).toFixed(0)} ad spend yesterday`)
@@ -32,6 +34,22 @@ function summaryLine(p: DailyBriefPayload): string {
     bits.push(`${p.anomalies.flags.length} anomalies`)
   if (bits.length === 0) return "Quiet morning — nothing flagged."
   return bits.join(" · ") + "."
+}
+
+const REASON_LABELS: Record<string, string> = {
+  no_session_7d: "no session 7d+",
+  no_session_14d: "no session 14d+",
+  no_session_30d: "no session 30d+",
+  frequency_lt_50: "freq <50%",
+  frequency_lt_25: "freq <25%",
+  form_review_stale_5d: "form review 5d+",
+  form_review_stale_10d: "form review 10d+",
+  perf_assessment_stale_10d: "perf assess 10d+",
+  renewal_unstarted: "renewal unstarted",
+}
+
+function formatReasons(codes: string[]): string {
+  return codes.map((c) => REASON_LABELS[c] ?? c).join(", ")
 }
 
 interface Props { payload: DailyBriefPayload }
@@ -128,6 +146,38 @@ export function DailyPulse({ payload }: Props) {
                             {payload.coaching.voiceDriftFlags} voice-drift flag{payload.coaching.voiceDriftFlags === 1 ? "" : "s"} since yesterday
                           </p>
                         )}
+                      </Section>
+                    )}
+
+                    {payload.clientRisk && (
+                      <Section title="Clients needing reach-out">
+                        <p style={{ margin: "0 0 10px", fontFamily: "'Lexend Deca', sans-serif", fontSize: "13px", color: BRAND.textMuted }}>
+                          {payload.clientRisk.totalHigh} high · {payload.clientRisk.totalMedium} medium (scored signals)
+                        </p>
+                        <table role="presentation" width="100%" cellPadding={0} cellSpacing={0} border={0}>
+                          <tbody>
+                            {payload.clientRisk.items.map((c, i) => (
+                              <tr key={i}>
+                                <td style={{ padding: "8px 0", borderBottom: `1px solid ${BRAND.border}`, fontFamily: "'Lexend Deca', sans-serif", fontSize: "14px", color: BRAND.textPrimary }}>
+                                  <strong style={{ color: c.tier === "high" ? BRAND.warning : BRAND.textPrimary }}>{c.tier === "high" ? "HIGH" : "MED"}</strong>
+                                  {" · "}
+                                  <strong>{c.name}</strong>
+                                  {" · "}
+                                  <span style={{ color: BRAND.textMuted }}>{c.score}/100</span>
+                                  {c.reasons.length > 0 && (
+                                    <>
+                                      {" · "}
+                                      <span style={{ color: BRAND.textMuted, fontSize: "13px" }}>{formatReasons(c.reasons)}</span>
+                                    </>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        <p style={{ margin: "10px 0 0", fontFamily: "'Lexend Deca', sans-serif", fontSize: "12px", color: BRAND.textSubtle }}>
+                          Full list at <a href={`${payload.dashboardUrl.replace(/\/admin\/.*$/, "")}/admin/insights/client-risk`} style={{ color: BRAND.accent }}>insights/client-risk</a>.
+                        </p>
                       </Section>
                     )}
 

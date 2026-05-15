@@ -20,6 +20,7 @@ function makePayload(overrides: Partial<DailyBriefPayload>): DailyBriefPayload {
     isMondayEdition: false,
     bookings: null,
     coaching: null,
+    clientRisk: null,
     pipeline: basePipeline,
     revenueFunnel: null,
     anomalies: null,
@@ -120,5 +121,39 @@ describe("<DailyPulse />", () => {
     }))
     expect(html).toContain("Anomalies")
     expect(html).toContain("Ad CPL spike")
+  })
+
+  it("renders the client-risk section with names, score, reasons", () => {
+    const html = render(makePayload({
+      clientRisk: {
+        totalHigh: 2,
+        totalMedium: 1,
+        items: [
+          { name: "Sarah K.", tier: "high", score: 75, reasons: ["no_session_30d", "frequency_lt_25"] },
+          { name: "Mark P.", tier: "high", score: 60, reasons: ["renewal_unstarted"] },
+          { name: "Jane R.", tier: "medium", score: 40, reasons: ["form_review_stale_10d"] },
+        ],
+      },
+    }))
+    expect(html).toContain("Clients needing reach-out")
+    expect(html).toContain("2 high")
+    expect(html).toContain("Sarah K.")
+    expect(html).toContain("75/100")
+    expect(html).toContain("no session 30d+")
+    expect(html).toContain("renewal unstarted")
+  })
+
+  it("rolls high-risk count into the summary line", () => {
+    const html = render(makePayload({
+      clientRisk: {
+        totalHigh: 2,
+        totalMedium: 0,
+        items: [
+          { name: "A", tier: "high", score: 75, reasons: [] },
+          { name: "B", tier: "high", score: 70, reasons: [] },
+        ],
+      },
+    }))
+    expect(html).toContain("2 high-risk clients")
   })
 })

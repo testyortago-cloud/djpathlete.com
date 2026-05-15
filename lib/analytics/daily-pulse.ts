@@ -13,6 +13,7 @@ import { buildDailyBookings } from "@/lib/analytics/sections/bookings"
 import { buildDailyCoaching } from "@/lib/analytics/sections/coaching-daily"
 import { buildDailyRevenueFunnel } from "@/lib/analytics/sections/revenue-funnel-daily"
 import { buildDailyAnomalies } from "@/lib/analytics/sections/anomalies-daily"
+import { buildDailyClientRisk } from "@/lib/analytics/sections/client-risk-daily"
 import type { DailyBriefPayload, DailyContentPipelinePayload, DailyTrendingTopic } from "@/types/coach-emails"
 
 async function renderEmail(element: React.ReactElement): Promise<string> {
@@ -49,10 +50,11 @@ export async function buildDailyPulse(options: BuildOptions = {}): Promise<Daily
 
   // New per-area builders, run in parallel. Each catches its own errors so a
   // bad section doesn't kill the email.
-  const [bookings, coaching, revenueFunnel, trendingTopics] = await Promise.all([
+  const [bookings, coaching, revenueFunnel, clientRisk, trendingTopics] = await Promise.all([
     safe(() => buildDailyBookings({ referenceDate }), "bookings"),
     safe(() => buildDailyCoaching({ referenceDate }), "coaching"),
     safe(() => buildDailyRevenueFunnel({ referenceDate }), "revenueFunnel"),
+    safe(() => buildDailyClientRisk(), "clientRisk"),
     isMondayEdition ? loadTrendingTopics(referenceDate) : Promise.resolve<DailyTrendingTopic[]>([]),
   ])
 
@@ -74,6 +76,7 @@ export async function buildDailyPulse(options: BuildOptions = {}): Promise<Daily
     isMondayEdition,
     bookings,
     coaching,
+    clientRisk,
     pipeline,
     revenueFunnel,
     anomalies,
