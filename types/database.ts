@@ -2100,6 +2100,35 @@ export interface StrategyBrief {
   created_at: string
 }
 
+export interface ChiefStrategistMemoConsideredTheme {
+  tag: string
+  weight: number
+  accepted: boolean
+  reason: string
+}
+
+export interface ChiefStrategistMemoConsideredChannel {
+  channel: "seo" | "ads" | "social" | "balanced"
+  score: number
+  accepted: boolean
+}
+
+export interface ChiefStrategistMemo {
+  id: string
+  brief_id: string | null
+  signal_id: string | null
+  themes_considered: ChiefStrategistMemoConsideredTheme[]
+  channels_considered: ChiefStrategistMemoConsideredChannel[]
+  confidence: number | null
+  dissents_from_critic: boolean
+  dissent_reason: string | null
+  self_critique_notes: string | null
+  rationale: string
+  brief_was_rejected: boolean
+  rejection_reason: string | null
+  created_at: string
+}
+
 export interface SocialAgentMemoAction {
   kind: string
   payload: unknown
