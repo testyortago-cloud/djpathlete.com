@@ -905,6 +905,9 @@ export async function buildStrategistMemo(
     brief_id: signals.brief_context?.brief_id ?? null,
     brief_alignment_score: decision.brief_alignment_score ?? null,
     ran_without_brief: signals.brief_context === null,
+    agent_confidence: decision.agent_confidence,
+    dissents_from_brief: decision.dissent_from_upstream.dissents,
+    dissent_reason: decision.dissent_from_upstream.reason,
   })
 
   // Step 6: execute (insert pending recommendation rows for accepted actions).

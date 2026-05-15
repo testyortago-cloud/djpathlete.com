@@ -28,6 +28,12 @@ export interface InsertAgentMemoInput {
   brief_alignment_score?: number | null
   /** True when no approved brief was available at memo time. */
   ran_without_brief?: boolean
+  /** Model's calibrated self-confidence 1-10 for the overall decision. */
+  agent_confidence?: number | null
+  /** True when the agent's plan deviates from the upstream brief. */
+  dissents_from_brief?: boolean
+  /** One-sentence rationale for the dissent (required when dissents_from_brief=true). */
+  dissent_reason?: string | null
 }
 
 export async function insertAgentMemo(
@@ -46,6 +52,9 @@ export async function insertAgentMemo(
       brief_id: input.brief_id ?? null,
       brief_alignment_score: input.brief_alignment_score ?? null,
       ran_without_brief: input.ran_without_brief ?? false,
+      agent_confidence: input.agent_confidence ?? null,
+      dissents_from_brief: input.dissents_from_brief ?? false,
+      dissent_reason: input.dissent_reason ?? null,
     })
     .select()
     .single()

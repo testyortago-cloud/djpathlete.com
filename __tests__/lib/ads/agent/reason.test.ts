@@ -29,6 +29,8 @@ const validDecision = {
   ],
   watch_list: [],
   brief_alignment_score: null,
+  agent_confidence: 6,
+  dissent_from_upstream: { dissents: false, reason: null },
 }
 
 const passingSignals: AdsSignals = {

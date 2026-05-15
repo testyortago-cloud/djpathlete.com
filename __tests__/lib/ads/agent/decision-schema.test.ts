@@ -12,6 +12,11 @@ const validAction = {
   supporting_signals: ["organic_wins_not_in_ads"],
 }
 
+const baseFields = {
+  agent_confidence: 6,
+  dissent_from_upstream: { dissents: false, reason: null },
+}
+
 describe("adsAgentDecisionSchema", () => {
   it("accepts a valid decision with one action", () => {
     expect(adsAgentDecisionSchema.safeParse({
@@ -19,6 +24,7 @@ describe("adsAgentDecisionSchema", () => {
       actions: [validAction],
       watch_list: ["Watch CAC on Brand Search next week."],
       brief_alignment_score: null,
+      ...baseFields,
     }).success).toBe(true)
   })
 
@@ -26,6 +32,7 @@ describe("adsAgentDecisionSchema", () => {
     const bad = { ...validAction, tool: "delete_everything" }
     expect(adsAgentDecisionSchema.safeParse({
       rationale: "x", actions: [bad], watch_list: [], brief_alignment_score: null,
+      ...baseFields,
     }).success).toBe(false)
   })
 
@@ -33,6 +40,7 @@ describe("adsAgentDecisionSchema", () => {
     const many = Array.from({ length: 8 }, (_, i) => ({ ...validAction, rank: i + 1 }))
     expect(adsAgentDecisionSchema.safeParse({
       rationale: "x", actions: many, watch_list: [], brief_alignment_score: null,
+      ...baseFields,
     }).success).toBe(false)
   })
 
@@ -42,6 +50,7 @@ describe("adsAgentDecisionSchema", () => {
       actions: [validAction],
       watch_list: ["a", "b", "c", "d", "e", "f"],
       brief_alignment_score: null,
+      ...baseFields,
     }).success).toBe(false)
   })
 
@@ -57,6 +66,7 @@ describe("adsAgentDecisionSchema", () => {
         rationale: "x", watch_list: [],
         actions: [{ ...validAction, tool }],
         brief_alignment_score: null,
+        ...baseFields,
       })
       expect(result.success, `tool "${tool}" should parse`).toBe(true)
     }
@@ -67,6 +77,7 @@ describe("adsAgentDecisionSchema", () => {
       const result = adsAgentDecisionSchema.safeParse({
         rationale: "x", actions: [validAction], watch_list: [],
         brief_alignment_score: score,
+        ...baseFields,
       })
       expect(result.success, `score ${score} should parse`).toBe(true)
     }
@@ -77,8 +88,52 @@ describe("adsAgentDecisionSchema", () => {
       const result = adsAgentDecisionSchema.safeParse({
         rationale: "x", actions: [validAction], watch_list: [],
         brief_alignment_score: score,
+        ...baseFields,
       })
       expect(result.success, `score ${score} should NOT parse`).toBe(false)
+    }
+  })
+
+  it("requires agent_confidence and dissent_from_upstream", () => {
+    const base = {
+      rationale: "test",
+      actions: [],
+      watch_list: [],
+      brief_alignment_score: null,
+    }
+    expect(() => adsAgentDecisionSchema.parse(base)).toThrow()
+    expect(() =>
+      adsAgentDecisionSchema.parse({
+        ...base,
+        agent_confidence: 6,
+        dissent_from_upstream: { dissents: false, reason: null },
+      }),
+    ).not.toThrow()
+    expect(() =>
+      adsAgentDecisionSchema.parse({
+        ...base,
+        agent_confidence: 6,
+        dissent_from_upstream: { dissents: true, reason: null },
+      }),
+    ).toThrow()
+  })
+
+  it("accepts dissent when reason is provided", () => {
+    expect(adsAgentDecisionSchema.safeParse({
+      rationale: "x", actions: [validAction], watch_list: [], brief_alignment_score: null,
+      agent_confidence: 4,
+      dissent_from_upstream: { dissents: true, reason: "Brief priorities mismatch the highest-ROAS opportunity this week." },
+    }).success).toBe(true)
+  })
+
+  it("rejects agent_confidence outside 1-10 range", () => {
+    for (const c of [0, 11, -1, 1.5]) {
+      const result = adsAgentDecisionSchema.safeParse({
+        rationale: "x", actions: [validAction], watch_list: [], brief_alignment_score: null,
+        agent_confidence: c,
+        dissent_from_upstream: { dissents: false, reason: null },
+      })
+      expect(result.success, `agent_confidence ${c} should NOT parse`).toBe(false)
     }
   })
 })
