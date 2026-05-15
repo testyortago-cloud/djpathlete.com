@@ -1,20 +1,27 @@
 // functions/src/social-agent.ts
 // Autonomous social-media agent. Unlike social-fanout (which is driven by a
 // video transcript), this handler picks its own topic, drafts copy, and lands
-// the result as a draft social_post in the admin approval queue.
+// the result as draft social_posts in the admin approval queue.
+//
+// Multi-platform: each run generates one draft per platform that's currently
+// `connected` in platform_connections. Reuses the same writer→reviewer
+// pipeline social-fanout uses, so voice stays consistent across platforms.
 //
 // Pipeline:
-//   1. Strategist — pick a published blog post that has no LinkedIn social_post
-//      in the last 60 days. Falls back to the most recent published post.
-//   2. Copywriter — writer pass (voice_profile + social_caption[linkedin]) then
-//      reviewer pass (social_caption_reviewer). Same prompt rows social-fanout
-//      uses, so voice stays consistent.
+//   1. Strategist — pick a published blog post (brief-aware via
+//      pickTopicWithBrief, which also enforces brief.dont_do).
+//   2. Determine targetPlatforms — explicit input.platform overrides;
+//      otherwise the set of `connected` social platforms.
+//   3. For each target platform:
+//        a. Writer pass (voice_profile + social_caption[platform])
+//        b. Reviewer pass (social_caption_reviewer)
+//        c. Insert social_posts + social_captions
+//      Per-platform failures are logged and skipped; the run continues.
+//   4. One aggregate social_agent_memos row records all platforms.
 //
-// Output: one social_posts row (platform=linkedin, approval_status=draft) and
-// a matching social_captions row. No publishing happens here.
-//
-// Input: { platform?: "linkedin"; blogPostId?: string } — optional overrides.
-// Platform is fixed to linkedin in this phase; passing other values is a noop.
+// Input: { platform?: AgentPlatform; blogPostId?: string }
+//   platform — if set, only that platform runs (overrides connection filter).
+//   blogPostId — manual topic override.
 
 import { FieldValue, getFirestore } from "firebase-admin/firestore"
 import { z } from "zod"
@@ -24,7 +31,14 @@ import { getSupabase } from "./lib/supabase.js"
 import { fewShotsBlock } from "./lib/few-shots.js"
 import { scoreBlogVsBrief } from "./strategy/brief-blog-scorer.js"
 
-export const SUPPORTED_PLATFORMS = ["linkedin"] as const
+export const SUPPORTED_PLATFORMS = [
+  "linkedin",
+  "facebook",
+  "instagram",
+  "tiktok",
+  "youtube",
+  "youtube_shorts",
+] as const
 export type AgentPlatform = (typeof SUPPORTED_PLATFORMS)[number]
 
 export interface SocialAgentInput {
@@ -53,6 +67,29 @@ const reviewedCaptionSchema = z.object({
   notes: z.string().default(""),
 })
 type ReviewedCaption = z.infer<typeof reviewedCaptionSchema>
+
+// ─── Connected-platform filter ─────────────────────────────────────────────
+// platform_connections.plugin_name uses the same string as social_caption.scope
+// and SocialPost.platform — e.g. "linkedin", "tiktok". Status='connected' means
+// OAuth tokens are valid; 'not_connected'/'paused'/'error' rows are skipped.
+// gmail and google_ads rows exist in platform_connections but are filtered out
+// by the SOCIAL_PLATFORMS allowlist.
+
+export async function listConnectedSocialPlatforms(
+  supabase: SupabaseClient,
+): Promise<AgentPlatform[]> {
+  const { data } = await supabase
+    .from("platform_connections")
+    .select("plugin_name, status")
+    .in("plugin_name", SUPPORTED_PLATFORMS as unknown as string[])
+    .eq("status", "connected")
+  const rows = (data as Array<{ plugin_name: string; status: string }> | null) ?? []
+  return rows
+    .map((r) => r.plugin_name)
+    .filter((name): name is AgentPlatform =>
+      (SUPPORTED_PLATFORMS as readonly string[]).includes(name),
+    )
+}
 
 // ─── Tool performance ──────────────────────────────────────────────────────
 // Mirrors gatherToolPerformance from seo/signals.ts. Joins agent_tool_baselines
@@ -338,6 +375,137 @@ export function buildReviewerUserMessage(input: BuildReviewerMessageInput): stri
   ].join("\n")
 }
 
+// ─── Per-platform draft helper ─────────────────────────────────────────────
+// Encapsulates the writer + reviewer + persistence work for ONE platform so
+// the handler can loop and collect results.
+
+interface PromptRow {
+  scope: string
+  category: string
+  prompt: string
+  few_shot_examples?: unknown
+}
+
+function extractCaptionFewShots(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  return raw.flatMap((e) => {
+    if (typeof e === "string" && e.length > 0) return [e]
+    if (e && typeof e === "object") {
+      const caption = (e as { caption?: unknown }).caption
+      if (typeof caption === "string" && caption.length > 0) return [caption]
+    }
+    return []
+  })
+}
+
+export interface PlatformDraftResult {
+  platform: AgentPlatform
+  socialPostId: string
+  reviewerScore: number
+  notes: string
+}
+
+export interface PlatformDraftError {
+  platform: AgentPlatform
+  error: string
+}
+
+async function draftForPlatform(args: {
+  supabase: SupabaseClient
+  platform: AgentPlatform
+  topic: BlogTopic
+  voiceProfile: string
+  platformPrompt: string
+  reviewerPrompt: string
+  toolPerfBlock: string
+  trendingBlock: string
+  fewShotsRendered: string
+}): Promise<PlatformDraftResult | PlatformDraftError> {
+  const {
+    supabase,
+    platform,
+    topic,
+    voiceProfile,
+    platformPrompt,
+    reviewerPrompt,
+    toolPerfBlock,
+    trendingBlock,
+    fewShotsRendered,
+  } = args
+
+  try {
+    // Writer pass
+    const writerSystem = `${voiceProfile}\n\n---\n\n${platformPrompt}`
+    const writerUserMessage =
+      toolPerfBlock +
+      fewShotsRendered +
+      trendingBlock +
+      buildCopywriterUserMessage({ topic, platform })
+    const writer = await callAgent<Caption>(writerSystem, writerUserMessage, captionSchema, {
+      model: MODEL_SONNET,
+      maxTokens: 2000,
+      cacheSystemPrompt: true,
+    })
+
+    // Reviewer pass
+    const reviewed = await callAgent<ReviewedCaption>(
+      reviewerPrompt,
+      buildReviewerUserMessage({
+        platform,
+        writerRules: platformPrompt,
+        draft: writer.content,
+      }),
+      reviewedCaptionSchema,
+      { model: MODEL_SONNET, maxTokens: 2000, cacheSystemPrompt: true },
+    )
+
+    console.log(
+      `[social-agent] ${platform} reviewer score=${reviewed.content.score} notes=${reviewed.content.notes}`,
+    )
+
+    const finalCaption: Caption = {
+      caption_text: reviewed.content.revised_caption_text,
+      hashtags: reviewed.content.revised_hashtags,
+    }
+
+    // Persist as draft
+    const { data: post, error: postErr } = await supabase
+      .from("social_posts")
+      .insert({
+        platform,
+        content: finalCaption.caption_text,
+        approval_status: "draft",
+        post_type: "text",
+      })
+      .select()
+      .single()
+    if (postErr || !post) {
+      return {
+        platform,
+        error: `social_posts insert failed: ${postErr?.message ?? "unknown"}`,
+      }
+    }
+
+    await supabase.from("social_captions").insert({
+      social_post_id: (post as { id: string }).id,
+      caption_text: finalCaption.caption_text,
+      hashtags: finalCaption.hashtags,
+      version: 1,
+    })
+
+    return {
+      platform,
+      socialPostId: (post as { id: string }).id,
+      reviewerScore: reviewed.content.score,
+      notes: reviewed.content.notes || "writer+reviewer agreed",
+    }
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "unknown"
+    console.error(`[social-agent] ${platform} draft failed:`, message)
+    return { platform, error: message }
+  }
+}
+
 // ─── Handler ───────────────────────────────────────────────────────────────
 
 export async function handleSocialAgentRun(jobId: string): Promise<void> {
@@ -361,10 +529,25 @@ export async function handleSocialAgentRun(jobId: string): Promise<void> {
       return
     }
     const input = (data.input as SocialAgentInput | undefined) ?? {}
-    const platform: AgentPlatform = input.platform ?? "linkedin"
-    if (!SUPPORTED_PLATFORMS.includes(platform)) {
-      await failJob(`Unsupported platform: ${platform}`)
-      return
+
+    // Determine target platforms.
+    // - Explicit input.platform → that platform only (manual-trigger override).
+    // - Otherwise: every platform currently `connected` in platform_connections.
+    let targetPlatforms: AgentPlatform[]
+    if (input.platform) {
+      if (!(SUPPORTED_PLATFORMS as readonly string[]).includes(input.platform)) {
+        await failJob(`Unsupported platform: ${input.platform}`)
+        return
+      }
+      targetPlatforms = [input.platform]
+    } else {
+      targetPlatforms = await listConnectedSocialPlatforms(supabase)
+      if (targetPlatforms.length === 0) {
+        await failJob(
+          "No social platforms are connected. Connect at least one in /admin/integrations.",
+        )
+        return
+      }
     }
 
     await jobRef.update({ status: "processing", updatedAt: FieldValue.serverTimestamp() })
@@ -404,7 +587,7 @@ export async function handleSocialAgentRun(jobId: string): Promise<void> {
           outcome_status: "no_op",
           outcome_metrics: null,
           social_post_id: null,
-          platform,
+          platform: null,
           agent_confidence: 1,
           dissents_from_brief: false,
           dissent_reason: null,
@@ -438,13 +621,12 @@ export async function handleSocialAgentRun(jobId: string): Promise<void> {
       return
     }
     console.log(
-      `[social-agent] platform=${platform} topic=${topic.slug} brief=${brief?.id ?? "none"} alignment=${alignmentScore ?? "n/a"}`,
+      `[social-agent] platforms=[${targetPlatforms.join(",")}] topic=${topic.slug} brief=${brief?.id ?? "none"} alignment=${alignmentScore ?? "n/a"}`,
     )
 
-    // 2. Load prompt rows — same shape social-fanout uses. Also pull
-    //    few_shot_examples so the writer can lean on the
-    //    performance-learning-loop's top-performing captions for this
-    //    platform.
+    // 2. Load prompt rows — voice profile + reviewer + every per-platform
+    //    writer row. Each platform's row also carries its own
+    //    few_shot_examples populated by the performance-learning-loop.
     const { data: prompts, error: pErr } = await supabase
       .from("prompt_templates")
       .select("scope, category, prompt, few_shot_examples")
@@ -453,124 +635,93 @@ export async function handleSocialAgentRun(jobId: string): Promise<void> {
       await failJob(`Could not load prompt templates: ${pErr?.message ?? "unknown"}`)
       return
     }
-    const voiceProfile = prompts.find((p) => p.category === "voice_profile")?.prompt
-    const reviewerPrompt = prompts.find((p) => p.category === "social_caption_reviewer")?.prompt
-    const writerRow = prompts.find(
-      (p) => p.category === "social_caption" && p.scope === platform,
-    )
-    const platformPrompt = writerRow?.prompt
+    const promptRows = prompts as PromptRow[]
+    const voiceProfile = promptRows.find((p) => p.category === "voice_profile")?.prompt
+    const reviewerPrompt = promptRows.find((p) => p.category === "social_caption_reviewer")
+      ?.prompt
     if (!voiceProfile) return failJob("No voice_profile prompt_template row found")
     if (!reviewerPrompt) return failJob("No social_caption_reviewer prompt_template row found")
-    if (!platformPrompt) return failJob(`No social_caption prompt seeded for scope=${platform}`)
 
-    // Extract caption strings from the writer row's few_shot_examples. The
-    // performance-learning-loop writes FewShotExample objects (caption +
-    // meta); tolerate plain strings too in case the shape evolves.
-    const writerFewShotsRaw = (writerRow as { few_shot_examples?: unknown } | undefined)
-      ?.few_shot_examples
-    const writerFewShots: string[] = Array.isArray(writerFewShotsRaw)
-      ? writerFewShotsRaw.flatMap((e) => {
-          if (typeof e === "string" && e.length > 0) return [e]
-          if (e && typeof e === "object") {
-            const caption = (e as { caption?: unknown }).caption
-            if (typeof caption === "string" && caption.length > 0) return [caption]
-          }
-          return []
-        })
-      : []
-    const fewShotsRendered = fewShotsBlock(writerFewShots)
-
-    // 3. Tool performance — historical engagement floor for our one tool
-    //    (drafted_social_post). Empty string when no baseline rows exist.
+    // 3. Tool performance + trending blocks — same for every platform in
+    //    this run, so compute once.
     const socialToolPerf = await gatherSocialToolPerformance(supabase)
     const toolPerfBlock = buildSocialToolPerfBlock(socialToolPerf)
-
-    // 3b. Tavily trending topics — recent (last 7d) rows the trending-scan
-    //     cron wrote into content_calendar. Lets the writer flag a gap when a
-    //     trend aligns with the brief but no blog covers it. Empty string
-    //     when no recent tavily rows exist.
     const trendingTopics = await latestTavilyTopics(supabase, 5, 7)
     const trendingBlock = buildTrendingBlock(trendingTopics)
 
-    // 4. Writer pass
-    const writerSystem = `${voiceProfile}\n\n---\n\n${platformPrompt}`
-    const writerUserMessage =
-      toolPerfBlock +
-      fewShotsRendered +
-      trendingBlock +
-      buildCopywriterUserMessage({ topic, platform })
-    const writer = await callAgent<Caption>(
-      writerSystem,
-      writerUserMessage,
-      captionSchema,
-      { model: MODEL_SONNET, maxTokens: 2000, cacheSystemPrompt: true },
-    )
-
-    // 5. Reviewer pass
-    const reviewed = await callAgent<ReviewedCaption>(
-      reviewerPrompt,
-      buildReviewerUserMessage({
+    // 4. Loop over target platforms — independent per-platform try/catch
+    //    inside draftForPlatform, so one platform's failure doesn't kill the
+    //    others.
+    const results: Array<PlatformDraftResult | PlatformDraftError> = []
+    for (const platform of targetPlatforms) {
+      const writerRow = promptRows.find(
+        (p) => p.category === "social_caption" && p.scope === platform,
+      )
+      if (!writerRow?.prompt) {
+        results.push({
+          platform,
+          error: `No social_caption prompt seeded for scope=${platform}`,
+        })
+        continue
+      }
+      const fewShotsRendered = fewShotsBlock(extractCaptionFewShots(writerRow.few_shot_examples))
+      const r = await draftForPlatform({
+        supabase,
         platform,
-        writerRules: platformPrompt,
-        draft: writer.content,
-      }),
-      reviewedCaptionSchema,
-      { model: MODEL_SONNET, maxTokens: 2000, cacheSystemPrompt: true },
-    )
-    console.log(
-      `[social-agent] ${platform} reviewer score=${reviewed.content.score} notes=${reviewed.content.notes}`,
-    )
-
-    const finalCaption: Caption = {
-      caption_text: reviewed.content.revised_caption_text,
-      hashtags: reviewed.content.revised_hashtags,
+        topic,
+        voiceProfile,
+        platformPrompt: writerRow.prompt,
+        reviewerPrompt,
+        toolPerfBlock,
+        trendingBlock,
+        fewShotsRendered,
+      })
+      results.push(r)
     }
 
-    // 6. Persist as draft
-    const { data: post, error: postErr } = await supabase
-      .from("social_posts")
-      .insert({
-        platform,
-        content: finalCaption.caption_text,
-        approval_status: "draft",
-        post_type: "text",
-      })
-      .select()
-      .single()
-    if (postErr || !post) {
-      await failJob(`social_posts insert failed: ${postErr?.message ?? "unknown"}`)
+    const succeeded = results.filter(
+      (r): r is PlatformDraftResult => !("error" in r),
+    )
+    const failures = results.filter((r): r is PlatformDraftError => "error" in r)
+
+    if (succeeded.length === 0) {
+      await failJob(
+        `All platforms failed: ${failures.map((f) => `${f.platform}: ${f.error}`).join("; ")}`,
+      )
       return
     }
 
-    await supabase.from("social_captions").insert({
-      social_post_id: post.id,
-      caption_text: finalCaption.caption_text,
-      hashtags: finalCaption.hashtags,
-      version: 1,
-    })
-
-    // 7. Memo — record what the strategist did this run so the chief can
-    // audit how the brief shaped the draft. Inline insert (no DAL import).
+    // 5. Aggregate memo — one row per run, one action per succeeded platform.
+    //    social_post_id and platform on the memo row are null going forward;
+    //    per-post linkage lives in actions[i].payload.social_post_id. The
+    //    outcome tracker reads from there.
+    const avgScore =
+      succeeded.reduce((sum, r) => sum + r.reviewerScore, 0) / succeeded.length
     await supabase.from("social_agent_memos").insert({
       run_date: new Date().toISOString().slice(0, 10),
       ai_job_id: jobId,
       brief_id: brief?.id ?? null,
       brief_alignment_score: alignmentScore,
       ran_without_brief: brief === null,
-      signals_summary: { topic_slug: topic.slug, platform },
-      actions: [
-        {
-          kind: "drafted_social_post",
-          payload: { social_post_id: post.id, platform, blog_post_id: topic.id },
-          rationale: reviewed.content.notes || "writer+reviewer agreed",
-        },
-      ],
-      rationale: reviewed.content.notes || "",
+      signals_summary: {
+        topic_slug: topic.slug,
+        platforms: succeeded.map((r) => r.platform),
+        failed_platforms: failures.map((f) => f.platform),
+      },
+      actions: succeeded.map((r) => ({
+        kind: "drafted_social_post",
+        payload: { social_post_id: r.socialPostId, platform: r.platform, blog_post_id: topic.id },
+        rationale: r.notes,
+      })),
+      rationale:
+        failures.length === 0
+          ? `drafted ${succeeded.length} platform${succeeded.length === 1 ? "" : "s"}`
+          : `drafted ${succeeded.length} platform${succeeded.length === 1 ? "" : "s"}; ${failures.length} failed`,
       outcome_status: "pending",
       outcome_metrics: null,
-      social_post_id: post.id,
-      platform,
-      agent_confidence: reviewed.content.score,
+      social_post_id: null,
+      platform: null,
+      agent_confidence: Math.round(avgScore),
       dissents_from_brief: false,
       dissent_reason: null,
     })
@@ -579,12 +730,16 @@ export async function handleSocialAgentRun(jobId: string): Promise<void> {
       status: "completed",
       error: null,
       result: {
-        platform,
-        social_post_id: post.id,
+        platforms: succeeded.map((r) => ({
+          platform: r.platform,
+          social_post_id: r.socialPostId,
+          reviewer_score: r.reviewerScore,
+        })),
+        failed_platforms: failures.map((f) => ({ platform: f.platform, error: f.error })),
         blog_post_id: topic.id,
-        reviewer_score: reviewed.content.score,
         brief_id: brief?.id ?? null,
         brief_alignment_score: alignmentScore,
+        agent_confidence: Math.round(avgScore),
       },
       updatedAt: FieldValue.serverTimestamp(),
     })
