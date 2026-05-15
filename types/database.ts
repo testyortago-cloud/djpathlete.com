@@ -1928,6 +1928,9 @@ export interface GoogleAdsAgentMemo {
   brief_id: string | null
   brief_alignment_score: number | null
   ran_without_brief: boolean
+  agent_confidence: number | null
+  dissents_from_brief: boolean
+  dissent_reason: string | null
   created_at: string
   updated_at: string
 }
@@ -2061,6 +2064,9 @@ export interface SeoAgentMemo {
   brief_id: string | null
   brief_alignment_score: number | null
   ran_without_brief: boolean
+  agent_confidence: number | null
+  dissents_from_brief: boolean
+  dissent_reason: string | null
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -2149,6 +2155,9 @@ export interface SocialAgentMemo {
   outcome_metrics: Record<string, unknown> | null
   social_post_id: string | null
   platform: string | null
+  agent_confidence: number | null
+  dissents_from_brief: boolean
+  dissent_reason: string | null
   created_at: string
   measured_at: string | null
 }
