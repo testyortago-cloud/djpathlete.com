@@ -71,6 +71,7 @@ const passingSignals: AdsSignals = {
   },
   gaps: [],
   brief_context: null,
+  tool_performance: [],
 }
 
 describe("reasonAdsDecision", () => {

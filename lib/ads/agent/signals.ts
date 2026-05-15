@@ -5,15 +5,20 @@
 // 2. Derived cross-channel signals (added in Task 11)
 // 3. Learning layer (added in Task 11)
 
+import type { SupabaseClient } from "@supabase/supabase-js"
 import * as T from "./thresholds"
+import { listChannelBaselines } from "@/lib/db/agent-tool-baselines"
 import type { BriefContext } from "@/lib/strategy/specialist-contract"
 import type {
   AdsDerivedSignals,
   AdsLearningLayer,
   AdsRawInputs,
   AdsSignals,
+  AdsToolPerformanceEntry,
   PreflightResult,
 } from "./types"
+
+export type { AdsToolPerformanceEntry } from "./types"
 
 const HOURS = 3_600_000
 
@@ -222,6 +227,50 @@ export function deriveLearningLayer(
   }
 }
 
+/**
+ * Fetches per-tool ads performance aggregates (last 90 days) by joining the
+ * `agent_tool_baselines` rows for the `ads` channel with a rollup of
+ * `impact_score` from recently-measured `google_ads_agent_memos`.
+ *
+ * Returns one entry per baseline tool, in the same ordering as
+ * `listChannelBaselines` (n_measured DESC). Returns `[]` when there are no
+ * baseline rows yet (cold start).
+ */
+export async function gatherAdsToolPerformance(
+  supabase: SupabaseClient,
+): Promise<AdsToolPerformanceEntry[]> {
+  const baselines = await listChannelBaselines(supabase, "ads")
+  if (baselines.length === 0) return []
+  const ninety = new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0, 10)
+  const { data: memos } = await supabase
+    .from("google_ads_agent_memos")
+    .select("actions, impact_score")
+    .eq("outcome_status", "measured")
+    .gte("week_of", ninety)
+  const sumByTool: Record<string, { sum: number; count: number }> = {}
+  for (const m of (memos ?? []) as Array<{
+    actions: Array<{ tool: string }>
+    impact_score: number | null
+  }>) {
+    if (m.impact_score == null) continue
+    for (const a of m.actions ?? []) {
+      sumByTool[a.tool] ??= { sum: 0, count: 0 }
+      sumByTool[a.tool].sum += m.impact_score
+      sumByTool[a.tool].count += 1
+    }
+  }
+  return baselines.map((b) => {
+    const agg = sumByTool[b.tool_name] ?? { sum: 0, count: 0 }
+    return {
+      tool: b.tool_name,
+      n_measured: b.n_measured,
+      avg_impact_score: agg.count > 0 ? Math.round(agg.sum / agg.count) : 0,
+      p95_abs_delta: b.p95_abs_delta,
+      success_rate: b.success_rate,
+    }
+  })
+}
+
 export interface GatherAdsSignalsDeps extends RawInputDeps {
   fetchPreflightInput: () => Promise<PreflightInput>
   fetchCampaignToLandingPageMap: () => Promise<Record<string, string>>
@@ -232,6 +281,12 @@ export interface GatherAdsSignalsDeps extends RawInputDeps {
    * tests can omit it — they'll receive `brief_context: null`.
    */
   fetchBriefContext?: () => Promise<BriefContext | null>
+  /**
+   * Returns per-tool ads performance aggregates (last 90 days). Optional so
+   * existing tests can omit it — they'll receive `tool_performance: []`.
+   * Production callers should pass `() => gatherAdsToolPerformance(supabase)`.
+   */
+  fetchToolPerformance?: () => Promise<AdsToolPerformanceEntry[]>
 }
 
 export async function gatherAdsSignals(deps: GatherAdsSignalsDeps): Promise<AdsSignals> {
@@ -241,6 +296,9 @@ export async function gatherAdsSignals(deps: GatherAdsSignalsDeps): Promise<AdsS
   const brief_context = deps.fetchBriefContext
     ? await deps.fetchBriefContext().catch(() => null)
     : null
+  const tool_performance = deps.fetchToolPerformance
+    ? await deps.fetchToolPerformance().catch(() => [] as AdsToolPerformanceEntry[])
+    : []
   if (!preflight.ok) {
     return {
       generated_at,
@@ -250,6 +308,7 @@ export async function gatherAdsSignals(deps: GatherAdsSignalsDeps): Promise<AdsS
       learning: null,
       gaps: ["Preflight failed; raw, derived, and learning skipped."],
       brief_context,
+      tool_performance,
     }
   }
   const gaps: string[] = []
@@ -266,5 +325,14 @@ export async function gatherAdsSignals(deps: GatherAdsSignalsDeps): Promise<AdsS
     derived = deriveCrossChannelSignals(raw, map)
     learning = deriveLearningLayer(raw)
   }
-  return { generated_at, preflight, raw, derived, learning, gaps, brief_context }
+  return {
+    generated_at,
+    preflight,
+    raw,
+    derived,
+    learning,
+    gaps,
+    brief_context,
+    tool_performance,
+  }
 }

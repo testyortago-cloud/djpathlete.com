@@ -45,9 +45,11 @@ export interface ReasonAdsDecisionResult {
   tokensUsed: number
 }
 
-export async function reasonAdsDecision(
-  signals: AdsSignals,
-): Promise<ReasonAdsDecisionResult> {
+/**
+ * Pure assembly of the user message Claude sees. Extracted so the prompt
+ * shape can be unit-tested without invoking the Anthropic SDK.
+ */
+export function buildAdsReasonUserMessage(signals: AdsSignals): string {
   const briefBlock = signals.brief_context
     ? [
         "Brief context (bias your action ranking toward themes + keywords; treat dont_do as hard guardrail):",
@@ -57,8 +59,29 @@ export async function reasonAdsDecision(
         "",
       ].join("\n")
     : "(No approved brief this week — reason freely. Set brief_alignment_score to null.)\n"
+
+  const toolPerfBlock =
+    signals.tool_performance.length > 0
+      ? [
+          "Tool performance (last 90 days, your channel):",
+          ...signals.tool_performance.map(
+            (t) =>
+              `  ${t.tool}: avg impact ${t.avg_impact_score >= 0 ? "+" : ""}${t.avg_impact_score}, ${t.n_measured} runs, ${Math.round(t.success_rate * 100)}% success`,
+          ),
+          "",
+          "Bias your ranking toward tools with positive avg_impact and >50% success unless the signal strongly indicates otherwise. If you choose a historically weak tool, lower your agent_confidence and explain in rationale.",
+          "",
+        ].join("\n")
+      : ""
+
   const snapshot = JSON.stringify(signals)
-  const baseUserMessage = `${briefBlock}\n${snapshot}`
+  return `${briefBlock}${toolPerfBlock}\n${snapshot}`
+}
+
+export async function reasonAdsDecision(
+  signals: AdsSignals,
+): Promise<ReasonAdsDecisionResult> {
+  const baseUserMessage = buildAdsReasonUserMessage(signals)
   let lastError: unknown = null
 
   for (let attempt = 0; attempt < 2; attempt++) {

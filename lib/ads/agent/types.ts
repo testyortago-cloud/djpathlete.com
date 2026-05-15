@@ -154,6 +154,14 @@ export interface AdsLearningLayer {
   }>
 }
 
+export interface AdsToolPerformanceEntry {
+  tool: string
+  n_measured: number
+  avg_impact_score: number
+  p95_abs_delta: number
+  success_rate: number
+}
+
 export interface AdsSignals {
   generated_at: string
   preflight: PreflightResult
@@ -162,6 +170,8 @@ export interface AdsSignals {
   learning: AdsLearningLayer | null
   gaps: string[]
   brief_context: BriefContext | null
+  /** Per-tool aggregates from agent_tool_baselines + recent measured memos. Empty array when no rows. */
+  tool_performance: AdsToolPerformanceEntry[]
 }
 
 export type AdsActionTool =

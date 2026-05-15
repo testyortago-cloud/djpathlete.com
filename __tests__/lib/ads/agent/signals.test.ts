@@ -4,7 +4,9 @@ import {
   gatherRawInputs,
   deriveCrossChannelSignals,
   deriveLearningLayer,
+  gatherAdsToolPerformance,
 } from "@/lib/ads/agent/signals"
+import type { SupabaseClient } from "@supabase/supabase-js"
 
 describe("ads agent preflight", () => {
   beforeEach(() => {
@@ -215,5 +217,87 @@ describe("deriveLearningLayer", () => {
     const learning = deriveLearningLayer(raw, new Date("2026-05-13"))
     expect(learning.prior_actions_that_worked).toHaveLength(1)
     expect(learning.prior_actions_that_failed).toHaveLength(0)
+  })
+})
+
+describe("gatherAdsToolPerformance", () => {
+  function makeSupabase(
+    baselines: Array<{
+      tool_name: string
+      n_measured: number
+      p95_abs_delta: number
+      success_rate: number
+    }>,
+    memos: Array<{ actions: Array<{ tool: string }>; impact_score: number | null }>,
+  ): SupabaseClient {
+    const queryCalls: Array<{ table: string; week_of_gte?: string }> = []
+    const fromImpl = (table: string) => {
+      if (table === "agent_tool_baselines") {
+        const order = vi.fn().mockResolvedValue({ data: baselines, error: null })
+        const eq = vi.fn().mockReturnValue({ order })
+        const select = vi.fn().mockReturnValue({ eq })
+        return { select }
+      }
+      if (table === "google_ads_agent_memos") {
+        const gte = vi.fn().mockImplementation((col: string, val: string) => {
+          queryCalls.push({ table, week_of_gte: `${col}:${val}` })
+          return Promise.resolve({ data: memos, error: null })
+        })
+        const eq = vi.fn().mockReturnValue({ gte })
+        const select = vi.fn().mockReturnValue({ eq })
+        return { select }
+      }
+      throw new Error(`Unexpected table ${table}`)
+    }
+    return { from: fromImpl } as unknown as SupabaseClient
+  }
+
+  it("returns [] when no baselines exist", async () => {
+    const supabase = makeSupabase([], [])
+    const out = await gatherAdsToolPerformance(supabase)
+    expect(out).toEqual([])
+  })
+
+  it("computes avg_impact_score from measured memos and pulls n_measured / p95 / success from baselines", async () => {
+    const supabase = makeSupabase(
+      [
+        { tool_name: "propose_new_keywords", n_measured: 6, p95_abs_delta: 20, success_rate: 0.66 },
+        { tool_name: "propose_budget_shift", n_measured: 3, p95_abs_delta: 8, success_rate: 0.33 },
+      ],
+      [
+        { actions: [{ tool: "propose_new_keywords" }], impact_score: 40 },
+        { actions: [{ tool: "propose_new_keywords" }, { tool: "propose_budget_shift" }], impact_score: 20 },
+        { actions: [{ tool: "propose_budget_shift" }], impact_score: -10 },
+        { actions: [{ tool: "propose_new_keywords" }], impact_score: null }, // ignored
+      ],
+    )
+    const out = await gatherAdsToolPerformance(supabase)
+    expect(out).toHaveLength(2)
+    const byTool = Object.fromEntries(out.map((e) => [e.tool, e]))
+    // propose_new_keywords: (40 + 20) / 2 = 30
+    expect(byTool.propose_new_keywords.avg_impact_score).toBe(30)
+    expect(byTool.propose_new_keywords.n_measured).toBe(6)
+    expect(byTool.propose_new_keywords.p95_abs_delta).toBe(20)
+    expect(byTool.propose_new_keywords.success_rate).toBe(0.66)
+    // propose_budget_shift: (20 + -10) / 2 = 5
+    expect(byTool.propose_budget_shift.avg_impact_score).toBe(5)
+    expect(byTool.propose_budget_shift.n_measured).toBe(3)
+  })
+
+  it("defaults avg_impact_score to 0 when a baseline tool has no measured memos", async () => {
+    const supabase = makeSupabase(
+      [{ tool_name: "propose_campaign_pause", n_measured: 2, p95_abs_delta: 5, success_rate: 0.5 }],
+      [],
+    )
+    const out = await gatherAdsToolPerformance(supabase)
+    expect(out).toEqual([
+      {
+        tool: "propose_campaign_pause",
+        n_measured: 2,
+        avg_impact_score: 0,
+        p95_abs_delta: 5,
+        success_rate: 0.5,
+      },
+    ])
   })
 })
