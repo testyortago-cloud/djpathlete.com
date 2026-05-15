@@ -16,6 +16,9 @@ import { buildWeeklyRevenue } from "@/lib/analytics/sections/revenue-weekly"
 import { buildWeeklyFunnel } from "@/lib/analytics/sections/funnel-weekly"
 import { buildWeeklyOpsHealth } from "@/lib/analytics/sections/ops-health-weekly"
 import { buildTopOfMind } from "@/lib/analytics/sections/top-of-mind"
+import { latestApprovedBrief } from "@/lib/db/strategy-briefs"
+import { latestSignal } from "@/lib/db/cross-channel-signals"
+import { createServiceRoleClient } from "@/lib/supabase"
 import type { WeeklyReviewPayload } from "@/types/coach-emails"
 
 async function renderEmail(element: React.ReactElement): Promise<string> {
@@ -38,9 +41,11 @@ export async function buildWeeklyReport(options: { rangeEnd?: Date } = {}): Prom
   const range = { from: rangeStart, to: rangeEnd }
   const previousRange = { from: previousStart, to: rangeStart }
 
+  const supabase = createServiceRoleClient()
+
   const [
     socialPosts, socialAnalytics, blogs, newsletters, activeSubs,
-    coaching, revenue, funnel, opsHealth,
+    coaching, revenue, funnel, opsHealth, brief, signal,
   ] = await Promise.all([
     listSocialPosts(),
     listSocialAnalyticsInRange(previousStart, rangeEnd),
@@ -51,6 +56,8 @@ export async function buildWeeklyReport(options: { rangeEnd?: Date } = {}): Prom
     safe(() => buildWeeklyRevenue({ range, previousRange }), "revenue"),
     safe(() => buildWeeklyFunnel({ range, previousRange }), "funnel"),
     safe(() => buildWeeklyOpsHealth({ range }), "opsHealth"),
+    safe(() => latestApprovedBrief(supabase), "brief"),
+    safe(() => latestSignal(supabase), "signal"),
   ])
 
   const social = computeSocialMetrics(socialPosts, socialAnalytics, range, previousRange)
@@ -65,6 +72,7 @@ export async function buildWeeklyReport(options: { rangeEnd?: Date } = {}): Prom
     rangeStart, rangeEnd, topOfMind,
     coaching, revenue, funnel,
     social, content, opsHealth,
+    brief, signal,
     dashboardUrl,
   }
 

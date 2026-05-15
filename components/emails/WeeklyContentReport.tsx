@@ -157,7 +157,8 @@ interface Props {
 }
 
 export function WeeklyContentReport({ payload }: Props) {
-  const { rangeStart, rangeEnd, topOfMind, coaching, revenue, funnel, social, content, opsHealth, dashboardUrl } = payload
+  const { rangeStart, rangeEnd, topOfMind, coaching, revenue, funnel, social, content, opsHealth, brief, signal, dashboardUrl } = payload
+  const signalRecs = signal ? ((signal.recommendations_for_brief as unknown[]) ?? []).filter((r): r is string => typeof r === "string") : []
 
   const oneLineSummary = `${social.publishedPosts} ${social.publishedPosts === 1 ? "post" : "posts"} published · ${fmtNumber(social.totalEngagement)} engagement · ${content.blogsPublished} ${content.blogsPublished === 1 ? "blog" : "blogs"} shipped`
 
@@ -716,6 +717,111 @@ export function WeeklyContentReport({ payload }: Props) {
                             </li>
                           )}
                         </ul>
+                      </Section>
+                    )}
+
+                    {/* This week's strategy (conditional) */}
+                    {brief && (
+                      <Section title="This week's strategy">
+                        <p
+                          style={{
+                            margin: "0 0 8px",
+                            fontFamily: "'Lexend Deca', -apple-system, sans-serif",
+                            fontSize: "13px",
+                            color: BRAND.textPrimary,
+                          }}
+                        >
+                          <span style={{ color: BRAND.textMuted }}>Focus:</span>{" "}
+                          <strong>{brief.audience_focus}</strong>
+                        </p>
+                        <p
+                          style={{
+                            margin: "0 0 8px",
+                            fontFamily: "'Lexend Deca', -apple-system, sans-serif",
+                            fontSize: "13px",
+                            color: BRAND.textPrimary,
+                          }}
+                        >
+                          <span style={{ color: BRAND.textMuted }}>Priority channel:</span>{" "}
+                          <strong>{brief.priority_channel}</strong>
+                        </p>
+                        {brief.keywords_to_chase.length > 0 && (
+                          <>
+                            <p
+                              style={{
+                                margin: "12px 0 6px",
+                                fontFamily: "'Lexend Deca', -apple-system, sans-serif",
+                                fontSize: "11px",
+                                color: BRAND.textMuted,
+                                textTransform: "uppercase",
+                                letterSpacing: "1px",
+                              }}
+                            >
+                              Keywords to chase
+                            </p>
+                            <ul
+                              style={{
+                                margin: 0,
+                                paddingLeft: "18px",
+                                fontFamily: "'Lexend Deca', -apple-system, sans-serif",
+                                fontSize: "13px",
+                                color: BRAND.textPrimary,
+                                lineHeight: 1.7,
+                              }}
+                            >
+                              {brief.keywords_to_chase.map((k) => (
+                                <li key={k}>{k}</li>
+                              ))}
+                            </ul>
+                          </>
+                        )}
+                      </Section>
+                    )}
+
+                    {/* What the critic noticed (conditional) */}
+                    {signal && (
+                      <Section title="What the critic noticed">
+                        <p
+                          style={{
+                            margin: 0,
+                            fontFamily: "'Lexend Deca', -apple-system, sans-serif",
+                            fontSize: "13px",
+                            color: BRAND.textPrimary,
+                            lineHeight: 1.7,
+                          }}
+                        >
+                          {signal.rationale.slice(0, 600)}
+                        </p>
+                        {signalRecs.length > 0 && (
+                          <>
+                            <p
+                              style={{
+                                margin: "14px 0 6px",
+                                fontFamily: "'Lexend Deca', -apple-system, sans-serif",
+                                fontSize: "11px",
+                                color: BRAND.textMuted,
+                                textTransform: "uppercase",
+                                letterSpacing: "1px",
+                              }}
+                            >
+                              Carrying into next week
+                            </p>
+                            <ul
+                              style={{
+                                margin: 0,
+                                paddingLeft: "18px",
+                                fontFamily: "'Lexend Deca', -apple-system, sans-serif",
+                                fontSize: "13px",
+                                color: BRAND.textPrimary,
+                                lineHeight: 1.7,
+                              }}
+                            >
+                              {signalRecs.map((r, i) => (
+                                <li key={i}>{r}</li>
+                              ))}
+                            </ul>
+                          </>
+                        )}
                       </Section>
                     )}
 

@@ -127,5 +127,7 @@ export interface WeeklyReviewPayload {
   social: import("./analytics").SocialMetrics
   content: import("./analytics").ContentMetrics
   opsHealth: WeeklyOpsHealthPayload | null
+  brief?: import("./database").StrategyBrief | null
+  signal?: import("./database").CrossChannelSignal | null
   dashboardUrl: string
 }
