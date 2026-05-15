@@ -6,7 +6,7 @@
 CREATE TABLE chief_strategist_memos (
   id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   brief_id               UUID REFERENCES strategy_briefs(id) ON DELETE SET NULL,
-  signal_id              UUID REFERENCES cross_channel_signals(id),
+  signal_id              UUID REFERENCES cross_channel_signals(id) ON DELETE SET NULL,
   themes_considered      JSONB NOT NULL DEFAULT '[]',
   channels_considered    JSONB NOT NULL DEFAULT '[]',
   confidence             INTEGER CHECK (confidence BETWEEN 1 AND 10),
