@@ -106,6 +106,8 @@ export interface UpdateAgentMemoLifecycleInput {
   guardrail_rejections: GoogleAdsAgentMemoGuardrailRejection[]
   outcome_status: GoogleAdsAgentMemoOutcomeStatus
   outcome_metrics?: Record<string, unknown> | null
+  /** Normalized -100..100 impact score; set when outcome_status flips to 'measured'. */
+  impact_score?: number | null
 }
 
 export async function updateAgentMemoLifecycle(
@@ -113,15 +115,19 @@ export async function updateAgentMemoLifecycle(
   input: UpdateAgentMemoLifecycleInput,
 ): Promise<void> {
   const supabase = getClient()
+  const update: Record<string, unknown> = {
+    signals_summary: input.signals_summary,
+    actions: input.actions,
+    guardrail_rejections: input.guardrail_rejections,
+    outcome_status: input.outcome_status,
+    outcome_metrics: input.outcome_metrics ?? null,
+  }
+  if (input.impact_score !== undefined) {
+    update.impact_score = input.impact_score
+  }
   const { error } = await supabase
     .from("google_ads_agent_memos")
-    .update({
-      signals_summary: input.signals_summary,
-      actions: input.actions,
-      guardrail_rejections: input.guardrail_rejections,
-      outcome_status: input.outcome_status,
-      outcome_metrics: input.outcome_metrics ?? null,
-    })
+    .update(update)
     .eq("id", id)
   if (error) throw error
 }
