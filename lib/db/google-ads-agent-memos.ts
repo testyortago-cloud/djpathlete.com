@@ -34,6 +34,8 @@ export interface InsertAgentMemoInput {
   dissents_from_brief?: boolean
   /** One-sentence rationale for the dissent (required when dissents_from_brief=true). */
   dissent_reason?: string | null
+  /** Audit trail of the Haiku second-pass critique (v1 plan / objections / v2 plan). */
+  self_critique_notes?: string | null
 }
 
 export async function insertAgentMemo(
@@ -55,6 +57,7 @@ export async function insertAgentMemo(
       agent_confidence: input.agent_confidence ?? null,
       dissents_from_brief: input.dissents_from_brief ?? false,
       dissent_reason: input.dissent_reason ?? null,
+      self_critique_notes: input.self_critique_notes ?? null,
     })
     .select()
     .single()

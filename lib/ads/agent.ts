@@ -41,6 +41,7 @@ import { gatherAdsSignals, type GatherAdsSignalsDeps, type PreflightInput } from
 import { reasonAdsDecision } from "@/lib/ads/agent/reason"
 import { applyGuardrailsBatch } from "@/lib/ads/agent/guardrails"
 import { executeAdsActions, type PreExecutionPair } from "@/lib/ads/agent/execute"
+import { runSelfCritique, shouldReRunAfterCritique } from "@/lib/agents/self-critique"
 import type { AdsAction, AdsRawInputs, AdsSignals } from "@/lib/ads/agent/types"
 import type { AdsAgentDecision } from "@/lib/ads/agent/decision-schema"
 import { latestApprovedBrief } from "@/lib/db/strategy-briefs"
@@ -890,31 +891,84 @@ export async function buildStrategistMemo(
   // Step 3: reason via Claude.
   const { decision, tokensUsed } = await reasonAdsDecision(signals)
 
+  // Step 3b: self-critique (Haiku second pass). Gated by feature flag.
+  // If overall='should_revise' AND agent_confidence <= 7, re-run reason
+  // once with objections appended. Notes persist on the memo regardless.
+  const supabase = createServiceRoleClient()
+  const flagRow = await supabase
+    .from("system_settings")
+    .select("value")
+    .eq("key", "agent_self_critique_enabled")
+    .maybeSingle()
+  const critiqueEnabled =
+    (flagRow.data?.value as { enabled?: boolean } | null)?.enabled !== false
+
+  let finalDecision = decision
+  let finalTokensUsed = tokensUsed
+  let critiqueNotes: string | null = null
+
+  if (critiqueEnabled) {
+    try {
+      const critique = await runSelfCritique({
+        planSummary: JSON.stringify({
+          rationale: decision.rationale,
+          actions: decision.actions,
+        }),
+        signalsSummary: JSON.stringify(signals).slice(0, 4000),
+        briefSummary: signals.brief_context
+          ? JSON.stringify(signals.brief_context)
+          : null,
+      })
+      critiqueNotes = `[v1 critique] overall=${critique.overall}\nobjections: ${critique.objections.join("; ")}`
+
+      if (shouldReRunAfterCritique(critique, decision.agent_confidence)) {
+        const { decision: revised, tokensUsed: revisedTokens } = await reasonAdsDecision(
+          signals,
+          { critique_objections: critique.objections },
+        )
+        critiqueNotes = `[v1 plan] ${JSON.stringify(decision.actions.map((a) => a.tool))}\n[critique] ${critique.objections.join("; ")}\n[v2 plan] ${JSON.stringify(revised.actions.map((a) => a.tool))}`
+        finalDecision = revised
+        finalTokensUsed = tokensUsed + revisedTokens
+        console.log(
+          `[ads-agent] critique triggered re-run (confidence=${decision.agent_confidence}, overall=${critique.overall})`,
+        )
+      }
+    } catch (critiqueErr) {
+      const msg = critiqueErr instanceof Error ? critiqueErr.message : "unknown"
+      console.warn(`[ads-agent] self-critique failed, continuing with v1 plan: ${msg}`)
+      critiqueNotes = `[v1 critique] failed: ${msg}`
+    }
+  }
+
   // Step 4: guardrails (pure-function gate).
-  const guardrailResults = applyGuardrailsBatch(decision.actions as AdsAction[], signals)
+  const guardrailResults = applyGuardrailsBatch(
+    finalDecision.actions as AdsAction[],
+    signals,
+  )
 
   // Step 5: insert the memo row so we have a memo_id to tag recommendations.
-  const sections = renderSectionsFromDecision(decision, signals)
+  const sections = renderSectionsFromDecision(finalDecision, signals)
   const memo = await insertAgentMemo({
     week_of,
     subject,
     sections,
     source,
     triggered_by: options.triggered_by ?? null,
-    tokens_used: tokensUsed,
+    tokens_used: finalTokensUsed,
     brief_id: signals.brief_context?.brief_id ?? null,
-    brief_alignment_score: decision.brief_alignment_score ?? null,
+    brief_alignment_score: finalDecision.brief_alignment_score ?? null,
     ran_without_brief: signals.brief_context === null,
-    agent_confidence: decision.agent_confidence,
-    dissents_from_brief: decision.dissent_from_upstream.dissents,
-    dissent_reason: decision.dissent_from_upstream.reason,
+    agent_confidence: finalDecision.agent_confidence,
+    dissents_from_brief: finalDecision.dissent_from_upstream.dissents,
+    dissent_reason: finalDecision.dissent_from_upstream.reason,
+    self_critique_notes: critiqueNotes,
   })
 
   // Step 6: execute (insert pending recommendation rows for accepted actions).
   const customer_id = (await resolveCustomerId()) ?? "__no_account__"
   const pairs: PreExecutionPair[] = guardrailResults.map((guardrail, idx) => ({
     guardrail,
-    originalAction: decision.actions[idx] as AdsAction,
+    originalAction: finalDecision.actions[idx] as AdsAction,
   }))
   const { actions, rejections } = await executeAdsActions(pairs, {
     memo_id: memo.id,

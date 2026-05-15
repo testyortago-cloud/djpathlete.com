@@ -45,11 +45,18 @@ export interface ReasonAdsDecisionResult {
   tokensUsed: number
 }
 
+export interface BuildAdsReasonUserMessageOpts {
+  critique_objections?: string[]
+}
+
 /**
  * Pure assembly of the user message Claude sees. Extracted so the prompt
  * shape can be unit-tested without invoking the Anthropic SDK.
  */
-export function buildAdsReasonUserMessage(signals: AdsSignals): string {
+export function buildAdsReasonUserMessage(
+  signals: AdsSignals,
+  opts: BuildAdsReasonUserMessageOpts = {},
+): string {
   const briefBlock = signals.brief_context
     ? [
         "Brief context (bias your action ranking toward themes + keywords; treat dont_do as hard guardrail):",
@@ -74,14 +81,28 @@ export function buildAdsReasonUserMessage(signals: AdsSignals): string {
         ].join("\n")
       : ""
 
+  const critiqueBlock =
+    opts.critique_objections && opts.critique_objections.length > 0
+      ? [
+          "A second model raised these objections to your prior plan:",
+          ...opts.critique_objections.map((o) => `  - ${o}`),
+          "",
+          "Reconsider. You may keep the plan with stronger justification, or revise it. Output the same schema as before.",
+          "",
+        ].join("\n")
+      : ""
+
   const snapshot = JSON.stringify(signals)
-  return `${briefBlock}${toolPerfBlock}\n${snapshot}`
+  return `${briefBlock}${toolPerfBlock}${critiqueBlock}\n${snapshot}`
 }
 
 export async function reasonAdsDecision(
   signals: AdsSignals,
+  opts: { critique_objections?: string[] } = {},
 ): Promise<ReasonAdsDecisionResult> {
-  const baseUserMessage = buildAdsReasonUserMessage(signals)
+  const baseUserMessage = buildAdsReasonUserMessage(signals, {
+    critique_objections: opts.critique_objections,
+  })
   let lastError: unknown = null
 
   for (let attempt = 0; attempt < 2; attempt++) {
