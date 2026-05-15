@@ -338,6 +338,9 @@ export async function handleSocialAgentRun(jobId: string): Promise<void> {
       outcome_metrics: null,
       social_post_id: post.id,
       platform,
+      agent_confidence: reviewed.content.score,
+      dissents_from_brief: false,
+      dissent_reason: null,
     })
 
     await jobRef.update({
