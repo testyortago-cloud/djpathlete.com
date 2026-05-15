@@ -1,4 +1,23 @@
-import { Settings, Shield, CreditCard, Bell, AlertTriangle, ExternalLink, Lock, User } from "lucide-react"
+import {
+  Settings,
+  Shield,
+  CreditCard,
+  Bell,
+  AlertTriangle,
+  ExternalLink,
+  Lock,
+  User,
+  Sparkles,
+  Link2,
+  PlayCircle,
+  Users2,
+  Video,
+  Scale,
+  Target,
+  ChevronRight,
+  SlidersHorizontal,
+} from "lucide-react"
+import Link from "next/link"
 import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import { getUserById } from "@/lib/db/users"
@@ -97,7 +116,45 @@ export default async function SettingsPage() {
         <p className="text-xs text-muted-foreground mt-4">Platform settings will be configurable in a future update.</p>
       </div>
 
-      {/* 3. Stripe Integration */}
+      {/* 3. Configuration */}
+      <div className="bg-white rounded-xl border border-border p-6 mb-6">
+        <div className="flex items-center gap-2 mb-1">
+          <SlidersHorizontal className="size-5 text-primary" />
+          <h2 className="text-lg font-semibold text-primary">Configuration</h2>
+        </div>
+        <p className="text-xs text-muted-foreground mb-4">
+          Admin tools and integrations. Each opens its dedicated workspace.
+        </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {[
+            { label: "AI Policy", href: "/admin/settings/ai-policy", icon: Sparkles },
+            { label: "Platform Connections", href: "/admin/platform-connections", icon: Link2 },
+            { label: "Automation Rules", href: "/admin/automation", icon: PlayCircle },
+            { label: "Team Members", href: "/admin/team", icon: Users2 },
+            { label: "Team Videos", href: "/admin/team-videos", icon: Video },
+            { label: "Legal Documents", href: "/admin/legal", icon: Scale },
+            { label: "Ads Settings", href: "/admin/ads/settings", icon: Target },
+          ].map((item) => {
+            const Icon = item.icon
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface px-3 py-2.5 transition-colors hover:border-primary/30 hover:bg-primary/5"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <Icon className="size-5 text-primary shrink-0" strokeWidth={1.75} />
+                  <span className="text-sm font-medium text-primary truncate">{item.label}</span>
+                </div>
+                <ChevronRight className="size-4 text-muted-foreground shrink-0" />
+              </Link>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* 4. Stripe Integration */}
       <div className="bg-white rounded-xl border border-border p-6 mb-6">
         <div className="flex items-center gap-2 mb-4">
           <CreditCard className="size-5 text-primary" />
@@ -150,7 +207,7 @@ export default async function SettingsPage() {
         </a>
       </div>
 
-      {/* 4. Notification Preferences */}
+      {/* 5. Notification Preferences */}
       <div className="bg-white rounded-xl border border-border p-6 mb-6">
         <div className="flex items-center gap-2 mb-4">
           <Bell className="size-5 text-primary" />
@@ -160,7 +217,7 @@ export default async function SettingsPage() {
         <SettingsNotificationToggles />
       </div>
 
-      {/* 5. Danger Zone */}
+      {/* 6. Danger Zone */}
       <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-6 mb-6">
         <div className="flex items-center gap-2 mb-4">
           <AlertTriangle className="size-5 text-destructive" />
