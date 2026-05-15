@@ -846,6 +846,22 @@ ON CONFLICT (key) DO NOTHING;
 - [ ] **Step 2: Apply via MCP** (as Phase 1.1)
 - [ ] **Step 3: Commit:** `chore(db): migration revenue_snapshots`
 
+### 🛠 Schema reconciliation note for Phase 2 (added 2026-05-16)
+
+Stripe is fully wired (path A in Task 2.2 below). Confirmed:
+- `lib/stripe.ts` exists with subscription helpers and webhook signature verification.
+- `subscriptions` table has `stripe_subscription_id`, `stripe_customer_id`, `status` (active/past_due/canceled/unpaid/incomplete/trialing/paused), `current_period_end`, `cancel_at_period_end`, `canceled_at`, `program_id`. **No `monthly_cents` column.**
+- `programs` table has `price_cents`, `billing_interval` (week/month/year), `stripe_price_id`. Monthly amount derives from `price_cents` normalized by interval.
+- `payments` table has `amount_cents`, `status` (pending/succeeded/failed/refunded), `stripe_payment_id`, `created_at`, `user_id`.
+
+Aggregator data sources (all DB, no Stripe API hammering):
+- **MRR** = SUM over rows in `subscriptions` (status IN ('active','trialing','past_due')) of `programs.price_cents` normalized to monthly: `month` → as-is, `year` → /12, `week` → ×4.33. Anything else: skip.
+- **New customers (7d)** = `subscriptions.created_at` within last 7d, distinct user_id.
+- **Churned customers (7d)** = `subscriptions.canceled_at` within last 7d.
+- **Failed payments (7d)** = `payments.status='failed' AND created_at >= now()-7d`.
+- **Upcoming renewals (14d)** = `subscriptions.status IN ('active','trialing') AND current_period_end <= now()+14d`.
+- **At-risk subscriptions** = active subs where `cancel_at_period_end=true` OR the subscription's user has a failed payment in last 7d. Joined with `programs` for monthly amount + with `users` for email.
+
 ### Task 2.2: Stripe data source
 
 Per `CLAUDE.md`, Stripe is **planned** but not yet fully integrated. This phase MUST work with whatever's wired today.
