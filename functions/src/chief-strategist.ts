@@ -6,6 +6,7 @@ import { z } from "zod"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { getSupabase } from "./lib/supabase.js"
 import { callAgent, MODEL_SONNET } from "./ai/anthropic.js"
+import { runSelfCritique, shouldReRunAfterCritique } from "./lib/self-critique.js"
 import {
   CHIEF_SYSTEM_PROMPT,
   buildChiefUserMessage,
@@ -146,18 +147,84 @@ export async function runChiefStrategist(): Promise<ChiefStrategistResult> {
     { model: MODEL_SONNET, maxTokens: 3000, cacheSystemPrompt: true },
   )
 
+  // Self-critique pass (Haiku second-pass). Gated by feature flag. If overall
+  // is 'should_revise' AND confidence <= 7, re-run Chief once with the
+  // objections appended. Notes persist on the memo regardless.
+  const flagRow = await supabase
+    .from("system_settings")
+    .select("value")
+    .eq("key", "agent_self_critique_enabled")
+    .maybeSingle()
+  const critiqueEnabled =
+    (flagRow.data?.value as { enabled?: boolean } | null)?.enabled !== false
+
+  let finalContent = content
+  let critiqueNotes: string | null = null
+
+  if (critiqueEnabled) {
+    try {
+      const planSummary = JSON.stringify({
+        themes: content.themes,
+        priority_channel: content.priority_channel,
+        keywords_to_chase: content.keywords_to_chase,
+        hooks_to_test: content.hooks_to_test,
+        dont_do: content.dont_do,
+        rationale: content.rationale,
+      })
+      const signalsSummary = JSON.stringify(signal).slice(0, 4000)
+      const critique = await runSelfCritique({
+        planSummary,
+        signalsSummary,
+        briefSummary:
+          priorBriefs.length > 0
+            ? `Prior week's themes: ${JSON.stringify(priorBriefs[0]?.themes ?? [])}`
+            : null,
+      })
+      critiqueNotes = `[v1 critique] overall=${critique.overall}\nobjections: ${critique.objections.join("; ")}`
+
+      if (shouldReRunAfterCritique(critique, content.chief_memo.confidence)) {
+        const revisedUserMessage =
+          buildChiefUserMessage({
+            weekOf,
+            latestSignal: signal,
+            priorBriefs,
+            toolPerformanceByChannel,
+          }) +
+          "\n\nA second model raised these objections to your prior plan:\n" +
+          critique.objections.map((o) => `  - ${o}`).join("\n") +
+          "\n\nReconsider. You may keep the plan with stronger justification, or revise it. Output the same schema as before."
+
+        const revised = await callAgent(
+          CHIEF_SYSTEM_PROMPT,
+          revisedUserMessage,
+          StrategyBriefSchema,
+          { model: MODEL_SONNET, maxTokens: 3000, cacheSystemPrompt: true },
+        )
+        critiqueNotes = `[v1 themes] ${JSON.stringify(content.themes.map((t) => t.tag))}\n[critique] ${critique.objections.join("; ")}\n[v2 themes] ${JSON.stringify(revised.content.themes.map((t) => t.tag))}`
+        finalContent = revised.content
+        console.log(
+          `[chief-strategist] critique triggered re-run (confidence=${content.chief_memo.confidence}, overall=${critique.overall})`,
+        )
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "unknown"
+      console.error(`[chief-strategist] self-critique failed: ${msg}`)
+      critiqueNotes = `[v1 critique] failed: ${msg}`
+    }
+  }
+
   const briefResult = await supabase
     .from("strategy_briefs")
     .insert({
-      week_of: content.week_of,
-      themes: content.themes,
-      audience_focus: content.audience_focus,
-      priority_channel: content.priority_channel,
-      keywords_to_chase: content.keywords_to_chase,
-      hooks_to_test: content.hooks_to_test,
-      ctas: content.ctas,
-      dont_do: content.dont_do,
-      rationale: content.rationale,
+      week_of: finalContent.week_of,
+      themes: finalContent.themes,
+      audience_focus: finalContent.audience_focus,
+      priority_channel: finalContent.priority_channel,
+      keywords_to_chase: finalContent.keywords_to_chase,
+      hooks_to_test: finalContent.hooks_to_test,
+      ctas: finalContent.ctas,
+      dont_do: finalContent.dont_do,
+      rationale: finalContent.rationale,
       signal_id: signal.id,
       approval_status: "draft",
     })
@@ -175,13 +242,13 @@ export async function runChiefStrategist(): Promise<ChiefStrategistResult> {
     .insert({
       brief_id: briefId,
       signal_id: signal.id,
-      themes_considered: content.chief_memo.themes_considered,
-      channels_considered: content.chief_memo.channels_considered,
-      confidence: content.chief_memo.confidence,
-      dissents_from_critic: content.chief_memo.dissents_from_critic,
-      dissent_reason: content.chief_memo.dissent_reason,
-      self_critique_notes: null,
-      rationale: content.rationale,
+      themes_considered: finalContent.chief_memo.themes_considered,
+      channels_considered: finalContent.chief_memo.channels_considered,
+      confidence: finalContent.chief_memo.confidence,
+      dissents_from_critic: finalContent.chief_memo.dissents_from_critic,
+      dissent_reason: finalContent.chief_memo.dissent_reason,
+      self_critique_notes: critiqueNotes,
+      rationale: finalContent.rationale,
     })
     .select("id")
     .single()
@@ -193,6 +260,6 @@ export async function runChiefStrategist(): Promise<ChiefStrategistResult> {
   if (!briefId) {
     return { outcome: "error", signalId: signal.id }
   }
-  console.log(`[chief-strategist] wrote draft brief ${briefId} for week ${content.week_of}`)
+  console.log(`[chief-strategist] wrote draft brief ${briefId} for week ${finalContent.week_of}`)
   return { outcome: "draft_created", briefId, signalId: signal.id }
 }
