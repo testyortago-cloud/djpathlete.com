@@ -1324,6 +1324,41 @@ export const socialAgentCron = onSchedule(
   },
 )
 
+// ─── Automation Health Watchdog (daily 08:00 UTC) ───────────────────────────
+// Plan: docs/superpowers/plans/2026-05-16-broader-automations.md Phase 3.
+// Scans Firestore ai_jobs + Supabase cron_runs, persists an
+// automation_health_snapshots row. Emails an alert when severity=critical.
+
+export const automationHealthCron = onSchedule(
+  {
+    schedule: "0 8 * * *",
+    timeZone: "UTC",
+    timeoutSeconds: 120,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [internalCronToken, appUrl],
+  },
+  async () => {
+    const baseUrl = process.env.APP_URL
+    const token = process.env.INTERNAL_CRON_TOKEN
+    if (!baseUrl || !token) {
+      console.error("[automationHealthCron] APP_URL or INTERNAL_CRON_TOKEN missing — abort")
+      return
+    }
+    try {
+      const res = await fetch(`${baseUrl}/api/admin/internal/automation-health`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: "{}",
+      })
+      const body = await res.json().catch(() => ({}))
+      console.log("[automationHealthCron]", res.status, body)
+    } catch (err) {
+      console.error("[automationHealthCron] failed:", err)
+    }
+  },
+)
+
 // ─── Revenue Digest (Mon 13:00 UTC = 06:00 PT) ───────────────────────────────
 // Plan: docs/superpowers/plans/2026-05-16-broader-automations.md Phase 2.
 // POSTs to /api/admin/internal/revenue-digest which aggregates one week of

@@ -1061,6 +1061,21 @@ ON CONFLICT (key) DO NOTHING;
 
 - [ ] **Step 2: Apply both via MCP, commit each:** `chore(db): migration cron_runs`, `chore(db): migration automation_health_snapshots`
 
+### 🛠 Phase 3 scope decision (added 2026-05-16)
+
+The plan called for wiring `logCronStart`/`logCronEnd` into 7 existing crons
+in Task 3.2. **Deferred** — modifying 7 production cron handlers in one
+ralph pass is too invasive and risks breaking the content engine. Instead:
+
+- Twin helpers are still written so they're available.
+- The Phase 3 scanner reads **Firestore `ai_jobs`** for failure / pending
+  counts (the primary signal for "is anything broken right now"). Failed
+  jobs of any single type > 5 in 24h still surfaces.
+- `cron_runs` is created and ready to be populated. The "silent_crons"
+  check will warm up as operators incrementally wrap individual crons with
+  the helper at their leisure. For the first weeks it'll be empty, which
+  is fine — the AI-jobs signal alone is the highest-value alert.
+
 ### Task 3.2: Twin helpers `lib/db/cron-runs.ts` + `functions/src/lib/cron-runs.ts`
 
 Twin pair per `CLAUDE.md` boundary rule.
