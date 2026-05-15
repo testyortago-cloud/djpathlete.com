@@ -58,11 +58,11 @@ export default async function StrategyPage() {
   const latestSignal = signals[0] ?? null
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
+    <div className="space-y-6 p-6">
+      <header className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-primary">Strategy</h1>
-          <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
+          <h1 className="font-heading text-3xl text-primary">Strategy</h1>
+          <p className="text-muted-foreground">
             One weekly brief steers SEO, Ads, and Social as a team. The critic reads what worked
             on Saturdays; the chief drafts next week&apos;s direction on Sundays. You approve here.
           </p>
@@ -74,7 +74,7 @@ export default async function StrategyPage() {
           View signals
           <ArrowUpRight className="size-3.5" />
         </Link>
-      </div>
+      </header>
 
       {/* Current brief */}
       <div className="rounded-xl border border-border bg-white overflow-hidden">

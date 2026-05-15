@@ -45,8 +45,8 @@ export default async function SignalsPage() {
   const preflightOk = channelsWithMemos >= 2
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
+    <div className="space-y-6 p-6">
+      <header className="flex items-start justify-between gap-4">
         <div>
           <Link
             href="/admin/strategy"
@@ -54,14 +54,14 @@ export default async function SignalsPage() {
           >
             <ArrowLeft className="size-3" /> Strategy
           </Link>
-          <h1 className="text-2xl font-semibold text-primary mt-1">Cross-channel signals</h1>
-          <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
+          <h1 className="font-heading text-3xl text-primary mt-1">Cross-channel signals</h1>
+          <p className="text-muted-foreground">
             Each Saturday the critic distills the past {WINDOW_DAYS} days of agent memos and booking
             attribution into a single signal row. The chief reads it on Sunday to draft your brief.
           </p>
         </div>
         <RunCriticButton />
-      </div>
+      </header>
 
       {/* Inputs available for the next critic run */}
       <div className="rounded-xl border border-border bg-white overflow-hidden">
