@@ -71,4 +71,18 @@ describe("getAdminNav", () => {
       expect(href.startsWith("/admin/") || href === "/admin/settings").toBe(true)
     }
   })
+
+  it("marks Coaching as pinned (always expanded)", () => {
+    const nav = getAdminNav({ contentStudioEnabled: false })
+    const coaching = nav.groupedSections.find((s) => s.title === "Coaching")
+    expect(coaching?.pinned).toBe(true)
+  })
+
+  it("non-pinned sections do not have pinned=true", () => {
+    const nav = getAdminNav({ contentStudioEnabled: false })
+    const nonPinned = nav.groupedSections.filter((s) => s.title !== "Coaching")
+    for (const section of nonPinned) {
+      expect(section.pinned).not.toBe(true)
+    }
+  })
 })

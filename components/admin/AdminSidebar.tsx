@@ -93,26 +93,32 @@ export function AdminSidebar({ contentStudioEnabled = false }: AdminSidebarProps
 
         {/* Grouped sections */}
         {nav.groupedSections.map((section) => {
-          const isOpen = openSections[section.title] ?? false
+          const isOpen = section.pinned ? true : (openSections[section.title] ?? false)
           const hasActiveChild = section.items.some((item) => item.href === activeHref)
           const contentId = `admin-sidebar-section-${section.title.toLowerCase()}`
 
           return (
             <div key={section.title}>
-              <button
-                onClick={() => toggleSection(section.title)}
-                aria-expanded={isOpen}
-                aria-controls={contentId}
-                className={cn(
-                  "flex w-full items-center justify-between px-3 py-1.5 rounded-lg text-[10px] font-semibold uppercase tracking-[0.15em] transition-colors",
-                  hasActiveChild && !isOpen ? "text-white/60" : "text-white/30 hover:text-white/50",
-                )}
-              >
-                {section.title}
-                <ChevronDown
-                  className={cn("size-3.5 transition-transform duration-200", isOpen ? "rotate-0" : "-rotate-90")}
-                />
-              </button>
+              {section.pinned ? (
+                <p className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-white/30">
+                  {section.title}
+                </p>
+              ) : (
+                <button
+                  onClick={() => toggleSection(section.title)}
+                  aria-expanded={isOpen}
+                  aria-controls={contentId}
+                  className={cn(
+                    "flex w-full items-center justify-between px-3 py-1.5 rounded-lg text-[10px] font-semibold uppercase tracking-[0.15em] transition-colors",
+                    hasActiveChild && !isOpen ? "text-white/60" : "text-white/30 hover:text-white/50",
+                  )}
+                >
+                  {section.title}
+                  <ChevronDown
+                    className={cn("size-3.5 transition-transform duration-200", isOpen ? "rotate-0" : "-rotate-90")}
+                  />
+                </button>
+              )}
               <div
                 id={contentId}
                 className={cn(

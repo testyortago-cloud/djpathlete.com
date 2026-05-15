@@ -40,6 +40,8 @@ export interface NavItem {
 export interface NavSection {
   title: string
   items: NavItem[]
+  /** When true, the section is always expanded and renders no toggle. */
+  pinned?: boolean
 }
 
 export interface AdminNav {
@@ -79,6 +81,7 @@ export function getAdminNav(opts: { contentStudioEnabled: boolean }): AdminNav {
     groupedSections: [
       {
         title: "Coaching",
+        pinned: true,
         items: [
           { label: "Clients", href: "/admin/clients", icon: Users },
           { label: "Programs", href: "/admin/programs", icon: ClipboardList },
