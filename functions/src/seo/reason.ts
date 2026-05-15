@@ -60,7 +60,14 @@ Output a JSON object matching this shape exactly:
   "dissent_from_upstream": { "dissents": <bool>, "reason": "<string or null>" }
 }`
 
-export function buildSeoReasonUserMessage(signals: SeoSignalsSummary): string {
+export interface BuildSeoReasonUserMessageOpts {
+  critique_objections?: string[]
+}
+
+export function buildSeoReasonUserMessage(
+  signals: SeoSignalsSummary,
+  opts: BuildSeoReasonUserMessageOpts = {},
+): string {
   const briefBlock = signals.brief_context
     ? [
         "Brief context (bias your action ranking toward themes + keywords; treat dont_do as hard guardrail):",
@@ -85,7 +92,18 @@ export function buildSeoReasonUserMessage(signals: SeoSignalsSummary): string {
         ].join("\n")
       : ""
 
-  return `${briefBlock}${toolPerfBlock}
+  const critiqueBlock =
+    opts.critique_objections && opts.critique_objections.length > 0
+      ? [
+          "A second model raised these objections to your prior plan:",
+          ...opts.critique_objections.map((o) => `  - ${o}`),
+          "",
+          "Reconsider. You may keep the plan with stronger justification, or revise it. Output the same schema as before.",
+          "",
+        ].join("\n")
+      : ""
+
+  return `${briefBlock}${toolPerfBlock}${critiqueBlock}
 Here is the current state of darrenjpaul.com SEO. Pick the two highest-leverage actions for this week.
 
 \`\`\`json
@@ -95,8 +113,13 @@ ${JSON.stringify(signals, null, 2)}
 Return ONLY the JSON object — no commentary outside it.`
 }
 
-export async function reasonAboutWeek(signals: SeoSignalsSummary): Promise<{ decision: Decision; tokens_used: number }> {
-  const userMessage = buildSeoReasonUserMessage(signals)
+export async function reasonAboutWeek(
+  signals: SeoSignalsSummary,
+  opts: { critique_objections?: string[] } = {},
+): Promise<{ decision: Decision; tokens_used: number }> {
+  const userMessage = buildSeoReasonUserMessage(signals, {
+    critique_objections: opts.critique_objections,
+  })
   const result = await callAgent(SYSTEM_PROMPT, userMessage, decisionSchema, { model: MODEL_SONNET })
   return { decision: result.content, tokens_used: result.tokens_used }
 }

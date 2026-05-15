@@ -105,4 +105,44 @@ describe("buildSeoReasonUserMessage", () => {
     expect(briefIdx).toBeGreaterThan(-1)
     expect(perfIdx).toBeGreaterThan(briefIdx)
   })
+
+  it("omits the critique block when no critique_objections are passed", () => {
+    const msg = buildSeoReasonUserMessage(emptySignals())
+    expect(msg).not.toContain("A second model raised these objections")
+  })
+
+  it("renders critique objections after tool_performance and before the JSON payload", () => {
+    const signals = emptySignals()
+    signals.tool_performance = [
+      {
+        tool: "queue_refresh",
+        n_measured: 8,
+        avg_impact_score: -10,
+        p95_abs_delta: 4.2,
+        success_rate: 0.3,
+      },
+    ]
+    const msg = buildSeoReasonUserMessage(signals, {
+      critique_objections: [
+        "queue_refresh underperformed in last 90d",
+        "no inventory data for the chosen keyword",
+      ],
+    })
+    expect(msg).toContain("A second model raised these objections to your prior plan:")
+    expect(msg).toContain("  - queue_refresh underperformed in last 90d")
+    expect(msg).toContain("  - no inventory data for the chosen keyword")
+    expect(msg).toContain("Reconsider. You may keep the plan with stronger justification, or revise it.")
+
+    const perfIdx = msg.indexOf("Tool performance")
+    const critiqueIdx = msg.indexOf("A second model")
+    const jsonIdx = msg.indexOf("```json")
+    expect(perfIdx).toBeGreaterThan(-1)
+    expect(critiqueIdx).toBeGreaterThan(perfIdx)
+    expect(jsonIdx).toBeGreaterThan(critiqueIdx)
+  })
+
+  it("omits the critique block when critique_objections is an empty array", () => {
+    const msg = buildSeoReasonUserMessage(emptySignals(), { critique_objections: [] })
+    expect(msg).not.toContain("A second model raised these objections")
+  })
 })

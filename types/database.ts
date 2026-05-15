@@ -1932,6 +1932,8 @@ export interface GoogleAdsAgentMemo {
   agent_confidence: number | null
   dissents_from_brief: boolean
   dissent_reason: string | null
+  // Added 2026-05-15 by learning-loop plan E2 — nullable for prior rows
+  self_critique_notes: string | null
   created_at: string
   updated_at: string
 }
@@ -2083,6 +2085,8 @@ export interface SeoAgentMemo {
   agent_confidence: number | null
   dissents_from_brief: boolean
   dissent_reason: string | null
+  // Added 2026-05-15 by learning-loop plan E2 — nullable for prior rows
+  self_critique_notes: string | null
 }
 
 // ─────────────────────────────────────────────────────────────────
