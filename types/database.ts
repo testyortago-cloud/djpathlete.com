@@ -1924,6 +1924,7 @@ export interface GoogleAdsAgentMemo {
   guardrail_rejections: GoogleAdsAgentMemoGuardrailRejection[]
   outcome_status: GoogleAdsAgentMemoOutcomeStatus
   outcome_metrics: Record<string, unknown> | null
+  impact_score: number | null
   // Added 2026-05-15 by strategy-team plan A3 — nullable so prior rows stay valid
   brief_id: string | null
   brief_alignment_score: number | null
@@ -1932,6 +1933,20 @@ export interface GoogleAdsAgentMemo {
   dissents_from_brief: boolean
   dissent_reason: string | null
   created_at: string
+  updated_at: string
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Agent Outcome Scoring — Phase C1 (added 2026-05-15)
+// Per-(channel, tool) running aggregates used to normalize impact_score.
+// ─────────────────────────────────────────────────────────────────
+
+export interface AgentToolBaseline {
+  channel: "seo" | "ads" | "social"
+  tool_name: string
+  p95_abs_delta: number
+  n_measured: number
+  success_rate: number
   updated_at: string
 }
 
@@ -2058,6 +2073,7 @@ export interface SeoAgentMemo {
   actions: SeoAgentMemoAction[]
   outcome_status: "pending" | "measured" | "rolled_back"
   outcome_metrics: SeoAgentMemoOutcomeMetric[] | null
+  impact_score: number | null
   created_at: string       // ISO string
   measured_at: string | null
   // Added 2026-05-15 by strategy-team plan A3 — nullable so prior rows stay valid
@@ -2153,6 +2169,7 @@ export interface SocialAgentMemo {
   rationale: string
   outcome_status: "pending" | "measured" | "preflight_failed" | "no_op"
   outcome_metrics: Record<string, unknown> | null
+  impact_score: number | null
   social_post_id: string | null
   platform: string | null
   agent_confidence: number | null
