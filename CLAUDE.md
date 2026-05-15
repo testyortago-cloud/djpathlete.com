@@ -71,6 +71,17 @@ Embeddings use Hugging Face transformers for exercise matching. Token tracking a
 - Notifications via Sonner
 - Animations via Framer Motion
 
+## Strategy Team Agents
+
+Four agents coordinate through a weekly brief: Chief (Sun 10:00 UTC) → SEO / Ads / Social specialists. Each persists a memo row in its own `*_agent_memos` table.
+
+- **Brief consumption.** Specialists call `latestApprovedBrief(supabase)` from `lib/db/strategy-briefs.ts` and stamp `brief_id`, `brief_alignment_score` (1-10), `ran_without_brief` on every memo. `brief.dont_do[]` is a hard guardrail (word-boundary regex in `scoreBlogVsBrief`; `brief_dont_do` rejection in SEO + Ads execute steps).
+- **Calibrated confidence + dissent.** Every memo has `agent_confidence` (1-10) and `dissents_from_brief` + `dissent_reason`. Treat `agent_confidence ≤ 4` as actionable for human review. Chief memo uses `confidence` + `dissents_from_critic`.
+- **Outcome scoring.** Outcome trackers compute `impact_score` (-100..100) per measured memo against the `agent_tool_baselines` running P95. `n_measured < 5` yields warm-up score `±50`. Updated on every batch.
+- **Self-critique.** Chief, SEO, Ads run a cheap Haiku second pass via `runSelfCritique` after the main Sonnet call. If `shouldReRunAfterCritique(critique, confidence)` returns true (=== `should_revise` AND confidence ≤ 7), the main reason runs once more with objections appended. Notes persist on `*.self_critique_notes`. Social skips this — already has writer→reviewer. Feature flag: `agent_self_critique_enabled` in `system_settings` (default true).
+- **Few-shot examples.** Read from `prompt_templates` via `readFewShots(supabase, scope, category)`. Scopes: `(global, chief_strategist)`, `(global, seo_agent)`, `(global, ads_agent)`, `(social, <platform>)`. `performance-learning-loop` writes the column; agents read it through `fewShotsBlock(examples)`.
+- **functions/ ↔ lib/ boundary.** `functions/` has `rootDir: "src"` and cannot import from `lib/`. Helpers used in both runtimes (self-critique, few-shots, outcome-scoring) exist as twin copies: `functions/src/lib/*.ts` + `lib/agents/*.ts` or `lib/social/*.ts`.
+
 ## Environment Variables
 
 See `.env.example` for required variables: Supabase, NextAuth, Stripe, Anthropic, GoHighLevel, Resend, Firebase credentials.
