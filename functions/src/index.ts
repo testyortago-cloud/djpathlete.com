@@ -1324,6 +1324,45 @@ export const socialAgentCron = onSchedule(
   },
 )
 
+// ─── Client Risk Scan (daily 05:00 UTC) ──────────────────────────────────────
+// Plan: docs/superpowers/plans/2026-05-16-broader-automations.md Phase 1.
+// POSTs to /api/admin/internal/client-risk-scan which walks active clients,
+// collects engagement signals, scores risk, and upserts one row per client
+// into client_engagement_snapshots. Read by /admin/insights/client-risk and
+// the Daily Pulse email. Subject to automation_paused +
+// cron_client_risk_scan_enabled gates inside the route (defaults to false —
+// flip on from /admin/automation once verified).
+
+export const clientRiskScanCron = onSchedule(
+  {
+    schedule: "0 5 * * *",
+    timeZone: "UTC",
+    timeoutSeconds: 540,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [internalCronToken, appUrl],
+  },
+  async () => {
+    const baseUrl = process.env.APP_URL
+    const token = process.env.INTERNAL_CRON_TOKEN
+    if (!baseUrl || !token) {
+      console.error("[clientRiskScanCron] APP_URL or INTERNAL_CRON_TOKEN missing — abort")
+      return
+    }
+    try {
+      const res = await fetch(`${baseUrl}/api/admin/internal/client-risk-scan`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: "{}",
+      })
+      const body = await res.json().catch(() => ({}))
+      console.log("[clientRiskScanCron]", res.status, body)
+    } catch (err) {
+      console.error("[clientRiskScanCron] failed:", err)
+    }
+  },
+)
+
 // ─── Social Outcome Tracker Cron (daily 04:45 UTC) ───────────────────────────
 export const socialOutcomeTrackerCron = onSchedule(
   {
