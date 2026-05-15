@@ -2376,6 +2376,34 @@ export interface Badge {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// Revenue snapshots (Phase 2, broader-automations)
+// ────────────────────────────────────────────────────────────────────────────
+
+export interface RevenueSnapshotAtRisk {
+  subscription_id: string
+  customer_email: string
+  mrr_cents: number
+  renewal_at: string
+  reason: "cancel_at_period_end" | "failed_payment"
+}
+
+export interface RevenueSnapshot {
+  id: string
+  week_of: string
+  generated_at: string
+  mrr_cents: number
+  mrr_delta_cents: number
+  new_customers: number
+  churned_customers: number
+  failed_payments_7d: number
+  failed_payment_value_cents: number
+  upcoming_renewals_14d: number
+  upcoming_renewals_value_cents: number
+  top_at_risk_subscriptions: RevenueSnapshotAtRisk[]
+  raw: Record<string, unknown>
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // Client engagement / risk (Phase 1, broader-automations)
 // ────────────────────────────────────────────────────────────────────────────
 
