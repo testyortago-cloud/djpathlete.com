@@ -2374,3 +2374,25 @@ export interface Badge {
   icon: string
   tier: BadgeTier
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Client engagement / risk (Phase 1, broader-automations)
+// ────────────────────────────────────────────────────────────────────────────
+
+export type RiskTier = "none" | "low" | "medium" | "high"
+
+export interface ClientEngagementSnapshot {
+  id: string
+  client_id: string
+  snapshot_date: string
+  days_since_last_session: number
+  session_frequency_pct_14d: number | null
+  open_form_review_days: number | null
+  open_performance_assessment_days: number | null
+  program_ending_in_days: number | null
+  last_renewal_conversation_at: string | null
+  risk_score: number
+  risk_tier: RiskTier
+  reasons: string[]
+  created_at: string
+}
