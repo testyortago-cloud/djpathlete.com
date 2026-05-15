@@ -29,7 +29,6 @@ function getStatusClasses(status: UserStatus): string {
 export function ClientList({ users }: { users: User[] }) {
   const router = useRouter()
   const [search, setSearch] = useState("")
-  const [roleFilter, setRoleFilter] = useState<string>("all")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(10)
@@ -59,9 +58,8 @@ export function ClientList({ users }: { users: User[] }) {
       c.first_name.toLowerCase().includes(search.toLowerCase()) ||
       c.last_name.toLowerCase().includes(search.toLowerCase()) ||
       c.email.toLowerCase().includes(search.toLowerCase())
-    const matchesRole = roleFilter === "all" || c.role === roleFilter
     const matchesStatus = statusFilter === "all" || c.status === statusFilter
-    return matchesSearch && matchesRole && matchesStatus
+    return matchesSearch && matchesStatus
   })
 
   const totalPages = Math.ceil(filtered.length / perPage)
@@ -84,18 +82,6 @@ export function ClientList({ users }: { users: User[] }) {
           />
         </div>
         <div className="flex gap-2">
-          <select
-            value={roleFilter}
-            onChange={(e) => {
-              setRoleFilter(e.target.value)
-              setPage(1)
-            }}
-            className="h-9 rounded-lg border border-border bg-white px-3 text-sm text-foreground"
-          >
-            <option value="all">All Roles</option>
-            <option value="admin">Admin</option>
-            <option value="client">Client</option>
-          </select>
           <select
             value={statusFilter}
             onChange={(e) => {
