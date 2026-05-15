@@ -38,10 +38,13 @@ ALTER TABLE program_assignments
   ADD COLUMN IF NOT EXISTS last_renewal_conversation_at TIMESTAMPTZ;
 
 -- 3) Feature flag (off by default).
+-- Note: existing cron flags store a raw boolean in `value` (consumed by
+-- isCronSkipped({ defaultEnabled }) → getSetting<boolean>). Keep the shape
+-- consistent so the same helper works for every cron.
 INSERT INTO system_settings (key, value, description) VALUES
   (
     'cron_client_risk_scan_enabled',
-    '{"enabled": false}'::jsonb,
+    'false'::jsonb,
     'When true, the daily clientRiskScanCron (05:00 UTC) scans active clients and writes risk snapshots to client_engagement_snapshots. Defaults to false — flip on from /admin/automation once verified.'
   )
 ON CONFLICT (key) DO NOTHING;
