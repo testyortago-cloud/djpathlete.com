@@ -129,6 +129,58 @@ export function buildSocialToolPerfBlock(entries: SocialToolPerformanceEntry[]):
   ].join("\n")
 }
 
+// ─── Tavily trending topics ────────────────────────────────────────────────
+// The Tavily trending-scan cron (functions/src/tavily-trending-scan.ts) writes
+// rows into `content_calendar` with entry_type='topic_suggestion' and
+// metadata.source='tavily'. We surface the most recent batch to the social
+// writer so it can flag a relevance gap when a trend matches the brief but
+// no published blog covers it. Reader stays inline because functions/ has
+// rootDir: "src" and can't import from lib/.
+
+export interface TavilyTopicRow {
+  id: string
+  title: string
+  metadata: {
+    source?: string
+    rank?: number
+    tavily_url?: string
+    summary?: string
+  } | null
+  created_at: string
+}
+
+export async function latestTavilyTopics(
+  supabase: SupabaseClient,
+  limit = 5,
+  withinDays = 7,
+): Promise<TavilyTopicRow[]> {
+  const cutoff = new Date(Date.now() - withinDays * 86_400_000).toISOString()
+  const { data } = await supabase
+    .from("content_calendar")
+    .select("id, title, metadata, created_at")
+    .eq("entry_type", "topic_suggestion")
+    .gte("created_at", cutoff)
+    .order("created_at", { ascending: false })
+    .limit(limit * 3) // overfetch to allow post-filter on metadata.source
+  const rows = (data as TavilyTopicRow[] | null) ?? []
+  return rows.filter((r) => r.metadata?.source === "tavily").slice(0, limit)
+}
+
+export function buildTrendingBlock(topics: TavilyTopicRow[]): string {
+  if (topics.length === 0) return ""
+  return [
+    "Trending topics this week (Tavily, ranked):",
+    ...topics.map((t, i) => {
+      const rank = t.metadata?.rank ?? i + 1
+      const url = t.metadata?.tavily_url ? ` (${t.metadata.tavily_url})` : ""
+      return `  ${i + 1}. ${t.title} — relevance rank ${rank}${url}`
+    }),
+    "",
+    "If a trending topic aligns with brief themes or keywords_to_chase AND no blog covers it, note this in caption_text and suggest the editor consider a flag_trending_gap action.",
+    "",
+  ].join("\n")
+}
+
 // ─── Strategist ────────────────────────────────────────────────────────────
 // Picks the topic. Deterministic — most recent published blog_post. If the
 // user passed an explicit blogPostId we honor it. Duplicate-topic detection is
@@ -433,10 +485,20 @@ export async function handleSocialAgentRun(jobId: string): Promise<void> {
     const socialToolPerf = await gatherSocialToolPerformance(supabase)
     const toolPerfBlock = buildSocialToolPerfBlock(socialToolPerf)
 
+    // 3b. Tavily trending topics — recent (last 7d) rows the trending-scan
+    //     cron wrote into content_calendar. Lets the writer flag a gap when a
+    //     trend aligns with the brief but no blog covers it. Empty string
+    //     when no recent tavily rows exist.
+    const trendingTopics = await latestTavilyTopics(supabase, 5, 7)
+    const trendingBlock = buildTrendingBlock(trendingTopics)
+
     // 4. Writer pass
     const writerSystem = `${voiceProfile}\n\n---\n\n${platformPrompt}`
     const writerUserMessage =
-      toolPerfBlock + fewShotsRendered + buildCopywriterUserMessage({ topic, platform })
+      toolPerfBlock +
+      fewShotsRendered +
+      trendingBlock +
+      buildCopywriterUserMessage({ topic, platform })
     const writer = await callAgent<Caption>(
       writerSystem,
       writerUserMessage,

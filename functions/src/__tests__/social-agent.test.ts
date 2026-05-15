@@ -2,9 +2,12 @@ import { describe, it, expect, vi } from "vitest"
 import {
   buildCopywriterUserMessage,
   buildReviewerUserMessage,
+  buildTrendingBlock,
+  latestTavilyTopics,
   pickTopic,
   pickTopicWithBrief,
   type BlogTopic,
+  type TavilyTopicRow,
 } from "../social-agent.js"
 
 describe("social-agent helpers", () => {
@@ -138,6 +141,110 @@ describe("pickTopic", () => {
     expect(result).toBeNull()
   })
 
+})
+
+describe("Tavily trending topics", () => {
+  function mockContentCalendarSupabase(rows: TavilyTopicRow[]) {
+    const limit = vi.fn().mockResolvedValue({ data: rows, error: null })
+    const order = vi.fn().mockReturnValue({ limit })
+    const gte = vi.fn().mockReturnValue({ order })
+    const eq = vi.fn().mockReturnValue({ gte })
+    const select = vi.fn().mockReturnValue({ eq })
+    const from = vi.fn((table: string) => {
+      if (table !== "content_calendar") throw new Error(`unexpected table ${table}`)
+      return { select }
+    })
+    return { from, select, eq, gte, order, limit }
+  }
+
+  it("latestTavilyTopics filters out non-tavily rows and respects limit", async () => {
+    const rows: TavilyTopicRow[] = [
+      {
+        id: "1",
+        title: "Tavily 1",
+        metadata: { source: "tavily", rank: 1, tavily_url: "https://a", summary: "" },
+        created_at: "2026-05-12T00:00:00Z",
+      },
+      {
+        id: "2",
+        title: "Manual entry",
+        metadata: { source: "manual" },
+        created_at: "2026-05-11T00:00:00Z",
+      },
+      {
+        id: "3",
+        title: "Tavily 2",
+        metadata: { source: "tavily", rank: 2 },
+        created_at: "2026-05-10T00:00:00Z",
+      },
+      {
+        id: "4",
+        title: "Tavily 3",
+        metadata: { source: "tavily", rank: 3 },
+        created_at: "2026-05-09T00:00:00Z",
+      },
+    ]
+    const fake = mockContentCalendarSupabase(rows)
+    // @ts-expect-error: minimal SupabaseClient mock.
+    const out = await latestTavilyTopics({ from: fake.from }, 2, 7)
+    expect(out.map((r) => r.id)).toEqual(["1", "3"])
+    expect(fake.eq).toHaveBeenCalledWith("entry_type", "topic_suggestion")
+    expect(fake.limit).toHaveBeenCalledWith(6) // limit * 3 overfetch
+  })
+
+  it("latestTavilyTopics returns empty when supabase returns no data", async () => {
+    const fake = mockContentCalendarSupabase([])
+    // @ts-expect-error: minimal SupabaseClient mock.
+    const out = await latestTavilyTopics({ from: fake.from }, 5, 7)
+    expect(out).toEqual([])
+  })
+
+  it("buildTrendingBlock renders header, numbered topics, and gap-flag hint", () => {
+    const block = buildTrendingBlock([
+      {
+        id: "1",
+        title: "Hamstring rehab returns",
+        metadata: {
+          source: "tavily",
+          rank: 1,
+          tavily_url: "https://example.com/x",
+          summary: "summary",
+        },
+        created_at: "2026-05-12T00:00:00Z",
+      },
+      {
+        id: "2",
+        title: "Velocity-based training resurges",
+        metadata: { source: "tavily", rank: 2 },
+        created_at: "2026-05-11T00:00:00Z",
+      },
+    ])
+    expect(block).toContain("Trending topics this week")
+    expect(block).toContain("Hamstring rehab returns")
+    expect(block).toContain("Velocity-based training resurges")
+    expect(block).toContain("relevance rank 1")
+    expect(block).toContain("(https://example.com/x)")
+    expect(block).toContain("flag_trending_gap")
+  })
+
+  it("buildTrendingBlock returns empty string when no topics", () => {
+    expect(buildTrendingBlock([])).toBe("")
+  })
+
+  it("buildTrendingBlock falls back to index rank when metadata.rank is missing", () => {
+    const block = buildTrendingBlock([
+      {
+        id: "1",
+        title: "Topic without rank",
+        metadata: { source: "tavily" },
+        created_at: "2026-05-12T00:00:00Z",
+      },
+    ])
+    expect(block).toContain("relevance rank 1")
+  })
+})
+
+describe("pickTopicWithBrief fallback (separated)", () => {
   it("pickTopicWithBrief falls back to most-recent when no approved brief exists", async () => {
     const supabase = {
       from: vi.fn().mockImplementation((table: string) => {
