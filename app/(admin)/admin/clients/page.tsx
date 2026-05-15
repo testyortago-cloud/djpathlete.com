@@ -76,7 +76,7 @@ export default async function ClientsPage() {
         </div>
       </div>
 
-      <ClientList users={users} />
+      <ClientList users={clients} />
     </div>
   )
 }
