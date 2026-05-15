@@ -82,6 +82,18 @@ Four agents coordinate through a weekly brief: Chief (Sun 10:00 UTC) → SEO / A
 - **Few-shot examples.** Read from `prompt_templates` via `readFewShots(supabase, scope, category)`. Scopes: `(global, chief_strategist)`, `(global, seo_agent)`, `(global, ads_agent)`, `(social, <platform>)`. `performance-learning-loop` writes the column; agents read it through `fewShotsBlock(examples)`.
 - **functions/ ↔ lib/ boundary.** `functions/` has `rootDir: "src"` and cannot import from `lib/`. Helpers used in both runtimes (self-critique, few-shots, outcome-scoring) exist as twin copies: `functions/src/lib/*.ts` + `lib/agents/*.ts` or `lib/social/*.ts`.
 
+## Insights Subsystem (broader-automations)
+
+Five non-content-engine watchdogs surface under `/admin/insights/*`. Each follows the pattern: Firebase `onSchedule` → POST to `/api/admin/internal/<slug>` → pure aggregator in `lib/automation/<name>.ts` → snapshot row in a per-phase table. All gated by per-cron flags in `system_settings` (default `false`).
+
+- **Client risk** (`clientRiskScanCron` daily 05:00 UTC) — `client_engagement_snapshots`, scorer in [lib/automation/client-risk-scorer.ts](lib/automation/client-risk-scorer.ts). Surfaces in Daily Pulse.
+- **Revenue digest** (`revenueDigestCron` Mon 13:00 UTC) — `revenue_snapshots`, aggregator in [lib/automation/revenue-aggregator.ts](lib/automation/revenue-aggregator.ts). MRR derives from `subscriptions × programs.price_cents` normalized monthly.
+- **Automation health** (`automationHealthCron` daily 08:00 UTC) — `cron_runs` + `automation_health_snapshots`, scanner in [lib/automation/automation-health-scanner.ts](lib/automation/automation-health-scanner.ts). Emails on `critical`. Twin helper `logCronStart`/`logCronEnd` lives in both `lib/db/cron-runs.ts` and `functions/src/lib/cron-runs.ts` — wire into individual crons opportunistically.
+- **Content attribution** (`contentAttributionCron` Sun 22:00 UTC) — `content_attribution_snapshots`, first-touch-landing joiner in [lib/automation/content-revenue-joiner.ts](lib/automation/content-revenue-joiner.ts). Joins `blog_posts × gsc_query_daily × marketing_attribution × payments`.
+- **Inbox SLA** (`inboxSlaCron` Mon-Fri 06:00 UTC) — `inbox_sla_snapshots`, aggregator in [lib/automation/inbox-sla-aggregator.ts](lib/automation/inbox-sla-aggregator.ts). Pulls from GHL, degrades gracefully when GHL isn't configured (`fetch_status='degraded'`). Surfaces in Daily Pulse.
+
+Plan + reconciliation notes live in `docs/superpowers/plans/2026-05-16-broader-automations.md`.
+
 ## Environment Variables
 
 See `.env.example` for required variables: Supabase, NextAuth, Stripe, Anthropic, GoHighLevel, Resend, Firebase credentials.
