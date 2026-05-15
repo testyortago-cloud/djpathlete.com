@@ -217,10 +217,17 @@ export async function pickTopicWithBrief(args: {
   const scored = list
     .map((c) => ({ c, score: scoreBlogVsBrief(c, brief) }))
     .sort((a, b) => b.score - a.score)
-  const top = scored[0]
-  if (top.score === 0) return { topic: list[0], brief, alignmentScore: 1 }
-  const max = scored[0].score
-  const min = scored[scored.length - 1]?.score ?? 0
+  // Drop any candidate the scorer flagged as -1 (matched a dont_do phrase).
+  // If every candidate is blocked, signal "no eligible topic" so the handler
+  // can write a memo + notify the coach instead of drafting a rejected post.
+  const eligible = scored.filter((s) => s.score !== -1)
+  if (eligible.length === 0) {
+    return { topic: null, brief, alignmentScore: 1 }
+  }
+  const top = eligible[0]
+  if (top.score === 0) return { topic: eligible[0].c, brief, alignmentScore: 1 }
+  const max = eligible[0].score
+  const min = eligible[eligible.length - 1]?.score ?? 0
   const norm =
     max === min
       ? 10
@@ -316,6 +323,65 @@ export async function handleSocialAgentRun(jobId: string): Promise<void> {
       blogPostId: input.blogPostId,
     })
     if (!topic) {
+      // Distinguish two empty-result cases:
+      //   a) No published blog posts at all (or no brief + nothing recent) →
+      //      hard failure so the coach sees this isn't an agent decision.
+      //   b) A brief exists AND every recent post matched a dont_do phrase →
+      //      record a "no_eligible_topic" memo, notify the coach, and mark
+      //      the job completed-but-skipped. Not a failure — the agent
+      //      correctly chose not to draft. pickTopicWithBrief flags this
+      //      case with alignmentScore=1; alignmentScore=null means there
+      //      simply weren't any published posts to consider.
+      if (brief && alignmentScore === 1) {
+        const runDate = new Date().toISOString().slice(0, 10)
+        await supabase.from("social_agent_memos").insert({
+          run_date: runDate,
+          ai_job_id: jobId,
+          brief_id: brief.id,
+          brief_alignment_score: null,
+          ran_without_brief: false,
+          signals_summary: { reason: "all_candidates_rejected_by_dont_do" },
+          actions: [
+            {
+              kind: "no_eligible_topic",
+              payload: { brief_id: brief.id },
+              rationale: "no candidate cleared dont_do filter",
+            },
+          ],
+          rationale: "All recent published posts matched brief.dont_do.",
+          outcome_status: "no_op",
+          outcome_metrics: null,
+          social_post_id: null,
+          platform,
+          agent_confidence: 1,
+          dissents_from_brief: false,
+          dissent_reason: null,
+        })
+        // Notify the coach (admin) — mirrors executeFlagForHuman shape.
+        const { data: admins } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("role", "admin")
+          .limit(1)
+        const adminId = (admins as Array<{ id: string }> | null)?.[0]?.id
+        if (adminId) {
+          await supabase.from("notifications").insert({
+            user_id: adminId,
+            type: "warning",
+            title: "Social agent could not find an eligible topic",
+            message: `All recent published posts matched the brief's dont_do filter. Brief id: ${brief.id}`,
+            link: "/admin/social-agent/memos",
+            is_read: false,
+          })
+        }
+        await jobRef.update({
+          status: "completed",
+          error: null,
+          result: { skipped: "no_eligible_topic", brief_id: brief.id },
+          updatedAt: FieldValue.serverTimestamp(),
+        })
+        return
+      }
       await failJob("Strategist found no published blog post to draft from")
       return
     }

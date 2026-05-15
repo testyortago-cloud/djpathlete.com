@@ -33,3 +33,55 @@ describe("scoreBlogVsBrief", () => {
     ).toBe(0)
   })
 })
+
+describe("scoreBlogVsBrief — dont_do rejection", () => {
+  const brief = {
+    themes: [{ tag: "rotational-power", weight: 1 }],
+    keywords_to_chase: ["rotational athletes"],
+    hooks_to_test: [],
+    dont_do: ["knee surgery recovery"],
+  }
+
+  it("returns -1 when a dont_do phrase appears in the title", () => {
+    const blog = {
+      title: "Comeback from knee surgery recovery",
+      content: "anything",
+    }
+    expect(scoreBlogVsBrief(blog, brief)).toBe(-1)
+  })
+
+  it("returns -1 when a dont_do phrase appears in the content (word-boundary)", () => {
+    const blog = {
+      title: "Rotational power for athletes",
+      content: "We discuss knee surgery recovery briefly here.",
+    }
+    expect(scoreBlogVsBrief(blog, brief)).toBe(-1)
+  })
+
+  it("rejects 'pain' as a word even when used in a phrase", () => {
+    const brief2 = { ...brief, dont_do: ["pain"] }
+    const blog = {
+      title: "Pain-free rotation",
+      content: "Pain free does not equal pain.",
+    }
+    // "pain" matches at word boundary in "Pain-free" (because hyphen is a boundary) and "pain."
+    expect(scoreBlogVsBrief(blog, brief2)).toBe(-1)
+  })
+
+  it("does NOT reject 'painted' when dont_do is 'pain' (word-boundary)", () => {
+    const brief3 = { ...brief, dont_do: ["pain"] }
+    const blog = {
+      title: "A painted wall",
+      content: "The wall was painted.",
+    }
+    expect(scoreBlogVsBrief(blog, brief3)).not.toBe(-1)
+  })
+
+  it("returns positive score when dont_do is absent and themes/keywords match", () => {
+    const blog = {
+      title: "Rotational power for elite athletes",
+      content: "Rotational athletes need...",
+    }
+    expect(scoreBlogVsBrief(blog, brief)).toBeGreaterThan(0)
+  })
+})
