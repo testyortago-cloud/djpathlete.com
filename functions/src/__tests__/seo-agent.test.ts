@@ -41,6 +41,7 @@ describe("handleSeoAgent", () => {
       last_8_memos_outcomes: [],
       gsc_distinct_dates: 28,
       brief_context: null,
+      tool_performance: [],
     })
     reasonAboutWeekMock.mockResolvedValueOnce({
       decision: {
@@ -94,6 +95,7 @@ describe("handleSeoAgent", () => {
       last_8_memos_outcomes: [],
       gsc_distinct_dates: 5,
       brief_context: null,
+      tool_performance: [],
     })
 
     const { handleSeoAgent } = await import("../seo-agent.js")
@@ -119,6 +121,7 @@ describe("handleSeoAgent", () => {
       last_8_memos_outcomes: [],
       gsc_distinct_dates: 30,
       brief_context: null,
+      tool_performance: [],
     })
     reasonAboutWeekMock.mockRejectedValueOnce(new Error("Claude API timeout"))
 

@@ -45,6 +45,14 @@ export interface BriefContext {
   dont_do: string[]
 }
 
+export interface ToolPerformanceEntry {
+  tool: string
+  n_measured: number
+  avg_impact_score: number
+  p95_abs_delta: number
+  success_rate: number
+}
+
 export interface SeoSignalsSummary {
   gsc_28d: GscSignals
   inventory: InventorySignals
@@ -55,6 +63,8 @@ export interface SeoSignalsSummary {
   gsc_distinct_dates: number
   /** Latest approved StrategyBrief; null when no approved brief exists for the current week. */
   brief_context: BriefContext | null
+  /** Per-tool aggregates from agent_tool_baselines + recent measured memos. Empty array when no rows. */
+  tool_performance: ToolPerformanceEntry[]
 }
 
 const TOP_K = 20
@@ -323,10 +333,71 @@ export async function gatherLatestApprovedBrief(
   }
 }
 
+export async function gatherToolPerformance(
+  supabase: SupabaseClient,
+): Promise<ToolPerformanceEntry[]> {
+  // functions/ can't import from lib/ (rootDir: "src"), so we mirror the
+  // baseline reader here. Joins agent_tool_baselines (seo channel) with a
+  // 90-day rollup of impact_score from measured seo_agent_memos.
+  const { data: baselines } = await supabase
+    .from("agent_tool_baselines")
+    .select("tool_name, n_measured, p95_abs_delta, success_rate")
+    .eq("channel", "seo")
+  if (!baselines) return []
+
+  // Compute avg_impact_score from recent measured memos.
+  const ninety = new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0, 10)
+  const { data: memos } = await supabase
+    .from("seo_agent_memos")
+    .select("actions, impact_score")
+    .eq("outcome_status", "measured")
+    .gte("run_date", ninety)
+
+  const sumByTool: Record<string, { sum: number; count: number }> = {}
+  for (const m of (memos ?? []) as Array<{
+    actions: Array<{ tool: string }>
+    impact_score: number | null
+  }>) {
+    if (m.impact_score == null) continue
+    for (const a of m.actions ?? []) {
+      sumByTool[a.tool] ??= { sum: 0, count: 0 }
+      sumByTool[a.tool].sum += m.impact_score
+      sumByTool[a.tool].count += 1
+    }
+  }
+
+  return (
+    baselines as Array<{
+      tool_name: string
+      n_measured: number
+      p95_abs_delta: number
+      success_rate: number
+    }>
+  ).map((b) => {
+    const agg = sumByTool[b.tool_name] ?? { sum: 0, count: 0 }
+    return {
+      tool: b.tool_name,
+      n_measured: b.n_measured,
+      avg_impact_score: agg.count > 0 ? Math.round(agg.sum / agg.count) : 0,
+      p95_abs_delta: b.p95_abs_delta,
+      success_rate: b.success_rate,
+    }
+  })
+}
+
 // ─── Top-level ──────────────────────────────────────────────────────────────
 
 export async function gatherSeoSignals(supabase: SupabaseClient): Promise<SeoSignalsSummary> {
-  const [gsc, inventory, tavily, orphanIds, memory, gscDistinctDates, briefContext] = await Promise.all([
+  const [
+    gsc,
+    inventory,
+    tavily,
+    orphanIds,
+    memory,
+    gscDistinctDates,
+    briefContext,
+    toolPerformance,
+  ] = await Promise.all([
     gatherGscSignals(supabase),
     gatherInventorySignals(supabase),
     gatherTavilySignals(supabase),
@@ -334,6 +405,7 @@ export async function gatherSeoSignals(supabase: SupabaseClient): Promise<SeoSig
     gatherMemorySignals(supabase),
     gatherCount28dDates(supabase),
     gatherLatestApprovedBrief(supabase),
+    gatherToolPerformance(supabase),
   ])
   return {
     gsc_28d: gsc,
@@ -343,6 +415,7 @@ export async function gatherSeoSignals(supabase: SupabaseClient): Promise<SeoSig
     last_8_memos_outcomes: memory,
     gsc_distinct_dates: gscDistinctDates,
     brief_context: briefContext,
+    tool_performance: toolPerformance,
   }
 }
 

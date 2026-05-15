@@ -60,7 +60,7 @@ Output a JSON object matching this shape exactly:
   "dissent_from_upstream": { "dissents": <bool>, "reason": "<string or null>" }
 }`
 
-export async function reasonAboutWeek(signals: SeoSignalsSummary): Promise<{ decision: Decision; tokens_used: number }> {
+export function buildSeoReasonUserMessage(signals: SeoSignalsSummary): string {
   const briefBlock = signals.brief_context
     ? [
         "Brief context (bias your action ranking toward themes + keywords; treat dont_do as hard guardrail):",
@@ -71,7 +71,21 @@ export async function reasonAboutWeek(signals: SeoSignalsSummary): Promise<{ dec
       ].join("\n")
     : "(No approved brief this week — reason freely. Set brief_alignment_score to null.)\n"
 
-  const userMessage = `${briefBlock}
+  const toolPerfBlock =
+    signals.tool_performance.length > 0
+      ? [
+          "Tool performance (last 90 days, your channel):",
+          ...signals.tool_performance.map(
+            (t) =>
+              `  ${t.tool}: avg impact ${t.avg_impact_score >= 0 ? "+" : ""}${t.avg_impact_score}, ${t.n_measured} runs, ${Math.round(t.success_rate * 100)}% success`,
+          ),
+          "",
+          "Bias your ranking toward tools with positive avg_impact and >50% success unless the signal strongly indicates otherwise. If you choose a historically weak tool, lower your agent_confidence and explain in rationale.",
+          "",
+        ].join("\n")
+      : ""
+
+  return `${briefBlock}${toolPerfBlock}
 Here is the current state of darrenjpaul.com SEO. Pick the two highest-leverage actions for this week.
 
 \`\`\`json
@@ -79,6 +93,10 @@ ${JSON.stringify(signals, null, 2)}
 \`\`\`
 
 Return ONLY the JSON object — no commentary outside it.`
+}
+
+export async function reasonAboutWeek(signals: SeoSignalsSummary): Promise<{ decision: Decision; tokens_used: number }> {
+  const userMessage = buildSeoReasonUserMessage(signals)
   const result = await callAgent(SYSTEM_PROMPT, userMessage, decisionSchema, { model: MODEL_SONNET })
   return { decision: result.content, tokens_used: result.tokens_used }
 }
