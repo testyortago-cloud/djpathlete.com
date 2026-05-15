@@ -3,11 +3,13 @@
 // no fresh signal exists.
 
 import { z } from "zod"
+import type { SupabaseClient } from "@supabase/supabase-js"
 import { getSupabase } from "./lib/supabase.js"
 import { callAgent, MODEL_SONNET } from "./ai/anthropic.js"
 import {
   CHIEF_SYSTEM_PROMPT,
   buildChiefUserMessage,
+  type ChiefToolPerfPerChannel,
   type CrossChannelSignal,
   type StrategyBrief,
 } from "./strategy/chief-prompt.js"
@@ -60,6 +62,37 @@ export interface ChiefStrategistResult {
   signalId?: string
 }
 
+async function gatherChiefToolPerformance(
+  supabase: SupabaseClient,
+): Promise<ChiefToolPerfPerChannel> {
+  const { data: baselines } = await supabase
+    .from("agent_tool_baselines")
+    .select("channel, tool_name, n_measured, success_rate")
+  const byChannel: ChiefToolPerfPerChannel = { seo: [], ads: [], social: [] }
+  if (!baselines) return byChannel
+
+  // For avg_impact_score we'd need to join with memos per channel; for
+  // simplicity at the Chief level we omit it (the Chief doesn't need per-tool
+  // precision — it needs to know which channel is producing wins). Use 0 if
+  // we don't have it readily available. success_rate + n_measured is
+  // sufficient signal for the Chief's priority_channel decision.
+  for (const b of baselines as Array<{
+    channel: "seo" | "ads" | "social"
+    tool_name: string
+    n_measured: number
+    success_rate: number
+  }>) {
+    if (!byChannel[b.channel]) continue
+    byChannel[b.channel].push({
+      tool: b.tool_name,
+      n_measured: b.n_measured,
+      avg_impact_score: 0,
+      success_rate: b.success_rate,
+    })
+  }
+  return byChannel
+}
+
 function nextMondayUTC(d = new Date()): string {
   const day = d.getUTCDay()
   const offset = day === 0 ? 1 : 8 - day
@@ -100,9 +133,15 @@ export async function runChiefStrategist(): Promise<ChiefStrategistResult> {
   const priorBriefs = (priorRows as StrategyBrief[] | null) ?? []
 
   const weekOf = nextMondayUTC()
+  const toolPerformanceByChannel = await gatherChiefToolPerformance(supabase)
   const { content } = await callAgent(
     CHIEF_SYSTEM_PROMPT,
-    buildChiefUserMessage({ weekOf, latestSignal: signal, priorBriefs }),
+    buildChiefUserMessage({
+      weekOf,
+      latestSignal: signal,
+      priorBriefs,
+      toolPerformanceByChannel,
+    }),
     StrategyBriefSchema,
     { model: MODEL_SONNET, maxTokens: 3000, cacheSystemPrompt: true },
   )

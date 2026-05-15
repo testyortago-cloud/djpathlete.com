@@ -1,6 +1,19 @@
 // Chief Strategist prompt. Inlined CrossChannelSignal/StrategyBrief shapes
 // (functions/ tsconfig has rootDir: "src" and cannot import from ../../../types).
 
+export interface ChiefToolPerfEntry {
+  tool: string
+  n_measured: number
+  avg_impact_score: number
+  success_rate: number
+}
+
+export interface ChiefToolPerfPerChannel {
+  seo: ChiefToolPerfEntry[]
+  ads: ChiefToolPerfEntry[]
+  social: ChiefToolPerfEntry[]
+}
+
 export interface CrossChannelSignal {
   id: string
   week_of: string
@@ -40,6 +53,9 @@ Your job: produce next week's StrategyBrief — a single coordinating document t
 Inputs you receive:
 1. The most recent cross_channel_signals row (the Critic's read of the last 4 weeks).
 2. The last 4 briefs you wrote (for theme continuity — avoid week-to-week whiplash).
+3. Cross-channel tool_performance (last 90 days) keyed by channel.
+
+You will also receive cross-channel tool_performance (last 90 days). Bias priority_channel selection toward channels whose tools have positive success_rate and meaningful n_measured. If a channel is in warm-up (n_measured < 5), do not yet treat its absence of wins as a signal.
 
 Priorities (in order):
 1. Bookings + revenue, not vanity engagement. Use the signal's attribution_summary.
@@ -85,6 +101,7 @@ export interface ChiefPromptInput {
   weekOf: string
   latestSignal: CrossChannelSignal
   priorBriefs: StrategyBrief[]
+  toolPerformanceByChannel: ChiefToolPerfPerChannel
 }
 
 export function buildChiefUserMessage(input: ChiefPromptInput): string {
@@ -93,6 +110,9 @@ export function buildChiefUserMessage(input: ChiefPromptInput): string {
     "",
     "Latest Performance Critic signal:",
     JSON.stringify(input.latestSignal, null, 2),
+    "",
+    "Cross-channel tool performance (last 90 days):",
+    JSON.stringify(input.toolPerformanceByChannel, null, 2),
     "",
     `Prior briefs (${input.priorBriefs.length}, most recent first):`,
     JSON.stringify(input.priorBriefs, null, 2),

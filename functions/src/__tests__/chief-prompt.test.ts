@@ -29,9 +29,43 @@ describe("chief prompt", () => {
           themes: [{ tag: "rotational-power", weight: 0.8 }],
         } as never,
       ],
+      toolPerformanceByChannel: { seo: [], ads: [], social: [] },
     })
     expect(msg).toContain("Week of: 2026-05-18")
     expect(msg).toContain("rotational-power")
     expect(msg).toContain("double down on rotational power")
+  })
+
+  it("system prompt instructs Chief to bias priority_channel on tool_performance", () => {
+    expect(CHIEF_SYSTEM_PROMPT).toMatch(/tool_performance/)
+    expect(CHIEF_SYSTEM_PROMPT).toMatch(/warm-up/)
+  })
+
+  it("user message embeds the per-channel tool performance block", () => {
+    const msg = buildChiefUserMessage({
+      weekOf: "2026-05-18",
+      latestSignal: {
+        id: "s1",
+        week_of: "2026-05-11",
+        winners: [],
+        losers: [],
+        anomalies: [],
+        attribution_summary: {},
+        recommendations_for_brief: [],
+        preflight_status: "ok",
+        preflight_reasons: [],
+        rationale: "x",
+        created_at: "2026-05-11T13:00:00Z",
+      },
+      priorBriefs: [],
+      toolPerformanceByChannel: {
+        seo: [{ tool: "topical_map", n_measured: 12, avg_impact_score: 0, success_rate: 0.66 }],
+        ads: [],
+        social: [],
+      },
+    })
+    expect(msg).toContain("Cross-channel tool performance")
+    expect(msg).toContain("topical_map")
+    expect(msg).toContain("0.66")
   })
 })

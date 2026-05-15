@@ -61,6 +61,11 @@ describe("runChiefStrategist", () => {
         if (table === "chief_strategist_memos") {
           return { insert: memoInsert }
         }
+        if (table === "agent_tool_baselines") {
+          return {
+            select: vi.fn().mockResolvedValue({ data: [], error: null }),
+          }
+        }
         return {
           select: vi.fn().mockReturnThis(),
           order: vi.fn().mockReturnThis(),
@@ -172,6 +177,11 @@ describe("runChiefStrategist — chief_strategist_memos persistence", () => {
           if (table === "chief_strategist_memos") {
             return { insert: memoInsertFn }
           }
+          if (table === "agent_tool_baselines") {
+            return {
+              select: () => Promise.resolve({ data: [], error: null }),
+            }
+          }
           throw new Error(`unexpected table: ${table}`)
         },
       }),
@@ -257,6 +267,11 @@ describe("runChiefStrategist — chief_strategist_memos persistence", () => {
           }
           if (table === "chief_strategist_memos") {
             return { insert: memoInsertFn }
+          }
+          if (table === "agent_tool_baselines") {
+            return {
+              select: () => Promise.resolve({ data: [], error: null }),
+            }
           }
           throw new Error(`unexpected table: ${table}`)
         },
