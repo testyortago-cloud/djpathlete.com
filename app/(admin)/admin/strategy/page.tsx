@@ -10,6 +10,7 @@ import {
 import { createServiceRoleClient } from "@/lib/supabase"
 import { listBriefs } from "@/lib/db/strategy-briefs"
 import { listSignals } from "@/lib/db/cross-channel-signals"
+import { chiefMemoForBrief } from "@/lib/db/chief-strategist-memos"
 import { BriefEditor } from "@/components/admin/strategy/BriefEditor"
 import { BriefCard } from "@/components/admin/strategy/BriefCard"
 import { RunCriticButton } from "@/components/admin/strategy/RunCriticButton"
@@ -56,6 +57,7 @@ export default async function StrategyPage() {
   const draft = briefs.find((b) => b.approval_status === "draft") ?? null
   const history = briefs.filter((b) => b.id !== draft?.id)
   const latestSignal = signals[0] ?? null
+  const chiefMemo = draft ? await chiefMemoForBrief(sb, draft.id) : null
 
   return (
     <div className="space-y-6 p-6">
@@ -88,8 +90,62 @@ export default async function StrategyPage() {
         </div>
 
         {draft ? (
-          <div className="p-4">
+          <div className="p-4 space-y-4">
             <BriefEditor brief={draft} />
+            {chiefMemo && (
+              <section className="rounded-md border border-border bg-surface p-4">
+                <header className="flex items-center justify-between">
+                  <h3 className="font-heading text-lg">Chief reasoning</h3>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={
+                        chiefMemo.confidence == null
+                          ? "rounded bg-muted px-2 py-1 text-xs"
+                          : chiefMemo.confidence >= 7
+                            ? "rounded bg-success/20 px-2 py-1 text-xs text-success"
+                            : chiefMemo.confidence >= 4
+                              ? "rounded bg-warning/20 px-2 py-1 text-xs text-warning"
+                              : "rounded bg-error/20 px-2 py-1 text-xs text-error"
+                      }
+                    >
+                      confidence {chiefMemo.confidence ?? "—"}/10
+                    </span>
+                    {chiefMemo.dissents_from_critic && (
+                      <span
+                        className="rounded bg-accent/20 px-2 py-1 text-xs text-accent"
+                        title={chiefMemo.dissent_reason ?? ""}
+                      >
+                        dissents from Critic
+                      </span>
+                    )}
+                  </div>
+                </header>
+                {chiefMemo.themes_considered.length > 0 && (
+                  <div className="mt-3">
+                    <h4 className="font-heading text-sm">Themes considered</h4>
+                    <ul className="mt-1 space-y-1 text-sm">
+                      {chiefMemo.themes_considered.map((t) => (
+                        <li key={t.tag}>
+                          <span
+                            className={
+                              t.accepted ? "" : "text-muted-foreground line-through"
+                            }
+                          >
+                            {t.tag} (weight {t.weight.toFixed(2)})
+                          </span>
+                          <span className="text-muted-foreground"> — {t.reason}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {chiefMemo.dissent_reason && (
+                  <p className="mt-3 text-sm text-muted-foreground">
+                    <span className="font-heading">Dissent:</span> {chiefMemo.dissent_reason}
+                  </p>
+                )}
+              </section>
+            )}
           </div>
         ) : (
           <div className="p-6 text-sm text-muted-foreground">
