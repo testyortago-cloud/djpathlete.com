@@ -1,5 +1,9 @@
 import { redirect } from "next/navigation"
 import { auth } from "@/lib/auth"
+import {
+  AgentConfidenceChip,
+  AgentDissentBadge,
+} from "@/components/admin/AgentConfidenceChip"
 import { listMemos } from "@/lib/db/seo-agent-memos"
 import type { SeoAgentMemo, SeoAgentMemoAction, SeoAgentMemoOutcomeMetric } from "@/types/database"
 
@@ -97,6 +101,11 @@ function MemoCard({ memo }: { memo: SeoAgentMemo }) {
       <header className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
         <h2 className="font-heading text-xl text-primary">{memo.run_date}</h2>
         <div className="flex items-center gap-2 text-xs">
+          <AgentConfidenceChip confidence={memo.agent_confidence} />
+          <AgentDissentBadge
+            dissents={memo.dissents_from_brief}
+            reason={memo.dissent_reason}
+          />
           <span
             className={
               memo.outcome_status === "measured"

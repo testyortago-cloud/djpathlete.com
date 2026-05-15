@@ -1,6 +1,10 @@
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { AgentMemoTabs } from "@/components/admin/ads/agent-memo-tabs"
+import {
+  AgentConfidenceChip,
+  AgentDissentBadge,
+} from "@/components/admin/AgentConfidenceChip"
 import { getAgentMemoById } from "@/lib/db/google-ads-agent-memos"
 
 export const metadata = { title: "Google Ads — Strategist Memo" }
@@ -33,6 +37,13 @@ export default async function MemoDetailPage({ params }: PageProps) {
           Week of {fmtWeekOf(memo.week_of)} · {memo.source}
           {memo.email_recipient ? ` · sent to ${memo.email_recipient}` : ""}
         </p>
+        <div className="mt-2 flex items-center gap-2">
+          <AgentConfidenceChip confidence={memo.agent_confidence} />
+          <AgentDissentBadge
+            dissents={memo.dissents_from_brief}
+            reason={memo.dissent_reason}
+          />
+        </div>
       </div>
 
       <AgentMemoTabs memo={memo} />
