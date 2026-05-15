@@ -10,8 +10,6 @@ import {
   Sparkles,
   Link2,
   PlayCircle,
-  Users2,
-  Video,
   Scale,
   Target,
   ChevronRight,
@@ -131,8 +129,6 @@ export default async function SettingsPage() {
             { label: "AI Policy", href: "/admin/settings/ai-policy", icon: Sparkles },
             { label: "Platform Connections", href: "/admin/platform-connections", icon: Link2 },
             { label: "Automation Rules", href: "/admin/automation", icon: PlayCircle },
-            { label: "Team Members", href: "/admin/team", icon: Users2 },
-            { label: "Team Videos", href: "/admin/team-videos", icon: Video },
             { label: "Legal Documents", href: "/admin/legal", icon: Scale },
             { label: "Ads Settings", href: "/admin/ads/settings", icon: Target },
           ].map((item) => {

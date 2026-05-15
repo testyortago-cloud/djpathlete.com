@@ -28,6 +28,7 @@ import {
   Search,
   Workflow,
   Compass,
+  Users2,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 
@@ -57,9 +58,11 @@ export function getAdminNav(opts: { contentStudioEnabled: boolean }): AdminNav {
         { label: "Newsletter", href: "/admin/newsletter", icon: Mail },
         { label: "Testimonials", href: "/admin/testimonials", icon: MessageSquareQuote },
         { label: "Content Studio", href: "/admin/content", icon: Layers },
+        { label: "Team Videos", href: "/admin/team-videos", icon: Video },
         { label: "Topic Suggestions", href: "/admin/topic-suggestions", icon: TrendingUp },
         { label: "SEO Console", href: "/admin/integrations/gsc", icon: Search },
         { label: "SEO Memos", href: "/admin/seo-agent/memos", icon: Workflow },
+        { label: "Editor Invites", href: "/admin/team", icon: Users2 },
       ]
     : [
         { label: "Blog", href: "/admin/blog", icon: FileText },
@@ -68,9 +71,11 @@ export function getAdminNav(opts: { contentStudioEnabled: boolean }): AdminNav {
         { label: "Social", href: "/admin/social", icon: Megaphone },
         { label: "Calendar", href: "/admin/calendar", icon: CalendarDays },
         { label: "Videos", href: "/admin/videos", icon: Film },
+        { label: "Team Videos", href: "/admin/team-videos", icon: Video },
         { label: "Topic Suggestions", href: "/admin/topic-suggestions", icon: TrendingUp },
         { label: "SEO Console", href: "/admin/integrations/gsc", icon: Search },
         { label: "SEO Memos", href: "/admin/seo-agent/memos", icon: Workflow },
+        { label: "Editor Invites", href: "/admin/team", icon: Users2 },
       ]
 
   return {
