@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { z } from "zod"
 import { getFormReviewById, updateFormReview } from "@/lib/db/form-reviews"
 import { getSignedVideoUrl } from "@/lib/firebase-admin"
+import { recordAudit } from "@/lib/audit/record"
 
 const updateSchema = z.object({
   status: z.enum(["pending", "in_progress", "reviewed"]),
@@ -50,6 +51,17 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
 
     const updated = await updateFormReview(id, { status: parsed.data.status })
+
+    if (parsed.data.status === "reviewed") {
+      await recordAudit({
+        action: "form_review.reviewed",
+        category: "support",
+        target: { type: "form_review", id },
+        metadata: { status: parsed.data.status },
+        request,
+      })
+    }
+
     return NextResponse.json(updated)
   } catch (error) {
     console.error("Admin form review PATCH error:", error)
