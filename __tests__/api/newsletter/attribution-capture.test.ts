@@ -33,12 +33,12 @@ describe("POST /api/newsletter — attribution capture", () => {
   })
 
   it("400 on invalid email", async () => {
-    const res = await POST(jsonRequest({ email: "not-an-email" }))
+    const res = await POST(jsonRequest({ email: "not-an-email" }), { params: Promise.resolve({}) })
     expect(res.status).toBe(400)
   })
 
   it("subscribes with no attribution when cookie absent", async () => {
-    const res = await POST(jsonRequest({ email: "a@b.com", consent_marketing: true }))
+    const res = await POST(jsonRequest({ email: "a@b.com", consent_marketing: true }), { params: Promise.resolve({}) })
     expect(res.status).toBe(200)
     expect(mocks.addSubscriberWithAttribution).toHaveBeenCalledWith({
       email: "a@b.com",
@@ -52,6 +52,7 @@ describe("POST /api/newsletter — attribution capture", () => {
   it("forwards session_id from djp_attr cookie", async () => {
     const res = await POST(
       jsonRequest({ email: "a@b.com", consent_marketing: true }, "djp_attr=abc123; foo=bar"),
+      { params: Promise.resolve({}) },
     )
     expect(res.status).toBe(200)
     expect(mocks.addSubscriberWithAttribution).toHaveBeenCalledWith(
@@ -60,7 +61,7 @@ describe("POST /api/newsletter — attribution capture", () => {
   })
 
   it("defaults consent_marketing to false when omitted", async () => {
-    const res = await POST(jsonRequest({ email: "a@b.com" }))
+    const res = await POST(jsonRequest({ email: "a@b.com" }), { params: Promise.resolve({}) })
     expect(res.status).toBe(200)
     expect(mocks.addSubscriberWithAttribution).toHaveBeenCalledWith(
       expect.objectContaining({ consent_marketing: false }),
