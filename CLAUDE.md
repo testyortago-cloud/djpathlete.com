@@ -94,6 +94,19 @@ Five non-content-engine watchdogs surface under `/admin/insights/*`. Each follow
 
 Plan + reconciliation notes live in `docs/superpowers/plans/2026-05-16-broader-automations.md`.
 
+## Audit Logs
+
+Append-only trail of mutations, auth events, automation runs, and billing webhooks in `audit_logs` (migration `00152_audit_logs.sql`). Eleven categories: `auth | admin_write | admin_read_sensitive | client_action | support | commerce | billing | marketing | compliance | automation | system`.
+
+- **Write path:** `lib/audit/record.ts` exposes `recordAudit()` (fire-and-forget; resolves actor from `auth()` or accepts an `actor` override for system / cron / webhook writes). Admin route handlers use `withAudit()` from `lib/audit/with-audit.ts` to auto-record success / denied (401/403) / failure based on response status. For routes where the slug depends on payload (e.g. assignment status change, injury resolved, booking lifecycle), use inline `recordAudit()` after the DB write.
+- **Action taxonomy:** Closed set of ~100 slugs in [lib/audit/actions.ts](lib/audit/actions.ts). Adding new events means adding rows there.
+- **Metadata scrubbing:** `lib/audit/scrub.ts` redacts `password / token / secret / api_key` at any depth (snake_case + camelCase) and caps serialized metadata at 8KB.
+- **Read path:** Admin-only `/admin/audit-logs` page (server component) with category / outcome / actor / target / date / free-text filters. API at `/api/admin/audit-logs`. 24h-failure alert strip at the top links to the filtered view.
+- **Retention:** Daily `auditLogRetentionCron` (03:00 UTC) prunes rows older than `audit_log_retention_days` (default 365). Feature flag `cron_audit_log_retention_enabled` defaults **TRUE** because unbounded growth is a real cost concern — flip off only for compliance investigations. Twin: `lib/db/audit-logs.ts:pruneAuditLogs` ↔ `functions/src/lib/audit-logs.ts:pruneAuditLogs`. Cron is in the `automation-health-scanner` expected list so silent failures surface in the daily watchdog.
+- **What is NOT audited (and where to find it):** per-set workout logs → `tracked_exercises`; public page visits → `marketing_attribution`; per-page client navigation → `client_engagement_snapshots`; AI prompt content → `ai_generation_log`. The audit row references those via `metadata.training_session_id` / `metadata.ai_generation_id` etc. when relevant.
+
+Plan + reconciliation notes live in `docs/superpowers/plans/2026-05-16-audit-logs.md`.
+
 ## Environment Variables
 
 See `.env.example` for required variables: Supabase, NextAuth, Stripe, Anthropic, GoHighLevel, Resend, Firebase credentials.
