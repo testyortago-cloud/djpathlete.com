@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
 import { getAssignmentById, updateAssignment, deleteAssignment } from "@/lib/db/assignments"
+import { withAudit } from "@/lib/audit/with-audit"
+import { recordAudit } from "@/lib/audit/record"
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -63,24 +65,46 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
     const updated = await updateAssignment(id, updates)
 
+    // Audit: slug depends on payload — status change vs general update.
+    void recordAudit({
+      action: status ? "assignment.status_changed" : "assignment.updated",
+      category: "admin_write",
+      target: { type: "assignment", id },
+      metadata: status
+        ? { new_status: status }
+        : { changed: Object.keys(body) },
+      request,
+    })
+
     return NextResponse.json(updated)
   } catch {
     return NextResponse.json({ error: "Failed to update assignment. Please try again." }, { status: 500 })
   }
 }
 
-export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await params
+export const DELETE = withAudit(
+  {
+    action: "assignment.deleted",
+    category: "admin_write",
+    target: async (_req, ctx) => {
+      const { id } = (await ctx.params) as { id: string }
+      return { type: "assignment", id }
+    },
+  },
+  async (_request, context) => {
+    const { params } = context as unknown as { params: Promise<{ id: string }> }
+    try {
+      const { id } = await params
 
-    const existing = await getAssignmentById(id)
-    if (!existing) {
-      return NextResponse.json({ error: "Assignment not found" }, { status: 404 })
+      const existing = await getAssignmentById(id)
+      if (!existing) {
+        return NextResponse.json({ error: "Assignment not found" }, { status: 404 })
+      }
+
+      await deleteAssignment(id)
+      return NextResponse.json({ success: true })
+    } catch {
+      return NextResponse.json({ error: "Failed to delete assignment. Please try again." }, { status: 500 })
     }
-
-    await deleteAssignment(id)
-    return NextResponse.json({ success: true })
-  } catch {
-    return NextResponse.json({ error: "Failed to delete assignment. Please try again." }, { status: 500 })
-  }
-}
+  },
+)

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { exerciseFormSchema } from "@/lib/validators/exercise"
 import { createExercise, getExercises } from "@/lib/db/exercises"
+import { withAudit } from "@/lib/audit/with-audit"
 
 export async function GET(request: Request) {
   try {
@@ -32,27 +33,39 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
-  try {
-    const body = await request.json()
-    const result = exerciseFormSchema.safeParse(body)
+export const POST = withAudit(
+  {
+    action: "exercise.created",
+    category: "admin_write",
+    metadata: async (_req, res) => {
+      const id = res.headers.get("x-audit-target-id")
+      return id ? { target_id: id } : {}
+    },
+  },
+  async (request) => {
+    try {
+      const body = await request.json()
+      const result = exerciseFormSchema.safeParse(body)
 
-    if (!result.success) {
-      return NextResponse.json(
-        { error: "Invalid form data", details: result.error.flatten().fieldErrors },
-        { status: 400 },
-      )
+      if (!result.success) {
+        return NextResponse.json(
+          { error: "Invalid form data", details: result.error.flatten().fieldErrors },
+          { status: 400 },
+        )
+      }
+
+      const exercise = await createExercise({
+        ...result.data,
+        is_active: true,
+        created_by: null,
+        thumbnail_url: null,
+      })
+
+      const response = NextResponse.json(exercise, { status: 201 })
+      response.headers.set("x-audit-target-id", exercise.id)
+      return response
+    } catch {
+      return NextResponse.json({ error: "Failed to create exercise. Please try again." }, { status: 500 })
     }
-
-    const exercise = await createExercise({
-      ...result.data,
-      is_active: true,
-      created_by: null,
-      thumbnail_url: null,
-    })
-
-    return NextResponse.json(exercise, { status: 201 })
-  } catch {
-    return NextResponse.json({ error: "Failed to create exercise. Please try again." }, { status: 500 })
-  }
-}
+  },
+)

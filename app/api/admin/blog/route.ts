@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { getBlogPosts, createBlogPost, isSlugTaken } from "@/lib/db/blog-posts"
 import { blogPostFormSchema } from "@/lib/validators/blog-post"
+import { withAudit } from "@/lib/audit/with-audit"
 import type { BlogPostStatus } from "@/types/database"
 
 export async function GET(request: Request) {
@@ -22,38 +23,50 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
-  try {
-    const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+export const POST = withAudit(
+  {
+    action: "blog_post.created",
+    category: "admin_write",
+    metadata: async (_req, res) => {
+      const id = res.headers.get("x-audit-target-id")
+      return id ? { target_id: id } : {}
+    },
+  },
+  async (request) => {
+    try {
+      const session = await auth()
+      if (!session?.user?.id || session.user.role !== "admin") {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+      }
+
+      const body = await request.json()
+      const parsed = blogPostFormSchema.safeParse(body)
+
+      if (!parsed.success) {
+        return NextResponse.json({ error: "Invalid data", details: parsed.error.flatten() }, { status: 400 })
+      }
+
+      const data = parsed.data
+
+      if (await isSlugTaken(data.slug)) {
+        return NextResponse.json({ error: "A post with this slug already exists" }, { status: 409 })
+      }
+
+      const status = (body.status as BlogPostStatus) ?? "draft"
+
+      const post = await createBlogPost({
+        ...data,
+        status,
+        author_id: session.user.id,
+        published_at: status === "published" ? new Date().toISOString() : null,
+      })
+
+      const response = NextResponse.json(post, { status: 201 })
+      response.headers.set("x-audit-target-id", post.id)
+      return response
+    } catch (error) {
+      console.error("Blog POST error:", error)
+      return NextResponse.json({ error: "Failed to create blog post" }, { status: 500 })
     }
-
-    const body = await request.json()
-    const parsed = blogPostFormSchema.safeParse(body)
-
-    if (!parsed.success) {
-      return NextResponse.json({ error: "Invalid data", details: parsed.error.flatten() }, { status: 400 })
-    }
-
-    const data = parsed.data
-
-    if (await isSlugTaken(data.slug)) {
-      return NextResponse.json({ error: "A post with this slug already exists" }, { status: 409 })
-    }
-
-    const status = (body.status as BlogPostStatus) ?? "draft"
-
-    const post = await createBlogPost({
-      ...data,
-      status,
-      author_id: session.user.id,
-      published_at: status === "published" ? new Date().toISOString() : null,
-    })
-
-    return NextResponse.json(post, { status: 201 })
-  } catch (error) {
-    console.error("Blog POST error:", error)
-    return NextResponse.json({ error: "Failed to create blog post" }, { status: 500 })
-  }
-}
+  },
+)
