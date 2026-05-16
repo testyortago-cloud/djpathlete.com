@@ -20,6 +20,19 @@ import { handleShopOrderCheckout } from "@/lib/shop/webhooks"
 import { getEventById as getEventByIdForSignup } from "@/lib/db/events"
 import { createServiceRoleClient as createSupabaseServiceClient } from "@/lib/supabase"
 import { enqueuePaymentValueAdjustmentByEmail } from "@/lib/ads/conversions"
+import { recordAudit } from "@/lib/audit/record"
+
+// Plan 3.4 — Stripe webhook audit instrumentation. Only the event types in
+// this map get audited; others (e.g. payment_intent.*) pass through silently.
+const stripeAuditSlugByType: Record<string, string> = {
+  "checkout.session.completed":    "stripe.checkout_completed",
+  "customer.subscription.created": "stripe.subscription_created",
+  "customer.subscription.updated": "stripe.subscription_updated",
+  "customer.subscription.deleted": "stripe.subscription_canceled",
+  "invoice.payment_succeeded":     "stripe.payment_succeeded",
+  "invoice.payment_failed":        "stripe.payment_failed",
+  "charge.refunded":               "stripe.refund",
+}
 
 /**
  * Plan 1.5d — fires after a booking-relevant Stripe payment so the matching
@@ -129,6 +142,40 @@ export async function POST(request: Request) {
 
         break
       }
+    }
+
+    // Plan 3.4 — record audit row AFTER the event-specific DB writes complete
+    // successfully. A thrown handler bypasses this and lands in the catch
+    // below, so we never log a false success.
+    const auditSlug = stripeAuditSlugByType[event.type]
+    if (auditSlug) {
+      const object = event.data.object as {
+        id?: string
+        customer_email?: string | null
+        customer?: string | null
+      }
+      await recordAudit({
+        action: auditSlug,
+        category: "billing",
+        outcome: event.type.endsWith("payment_failed") ? "failure" : "success",
+        actor: { id: null, email: "stripe", role: "system" },
+        target: {
+          type: event.type.startsWith("invoice")
+            ? "invoice"
+            : event.type.startsWith("customer.subscription")
+              ? "subscription"
+              : event.type.startsWith("charge")
+                ? "charge"
+                : "stripe_event",
+          id: object.id ?? event.id,
+          label: object.customer_email ?? object.customer ?? undefined,
+        },
+        metadata: {
+          stripe_event_id: event.id,
+          stripe_event_type: event.type,
+        },
+        request,
+      })
     }
   } catch (err) {
     console.error("Webhook processing error:", err)
