@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { createServiceRoleClient } from "@/lib/supabase"
 import { compare } from "bcryptjs"
+import { recordAudit } from "@/lib/audit/record"
 
 export async function POST(request: Request) {
   try {
@@ -79,6 +80,18 @@ export async function POST(request: Request) {
     const { error: usersError } = await supabase.from("users").delete().eq("role", "client")
 
     if (usersError) errors.push(`users (clients): ${usersError.message}`)
+
+    await recordAudit({
+      action: "data.deleted_bulk",
+      category: "compliance",
+      target: { type: "reset_operation", id: "manual", label: "admin_reset_client_data" },
+      metadata: {
+        scope: "client_data",
+        tables: tables.length + 2,
+        warnings: errors.length,
+      },
+      request,
+    })
 
     if (errors.length > 0) {
       console.error("Reset data partial failures:", errors)

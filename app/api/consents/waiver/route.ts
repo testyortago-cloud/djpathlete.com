@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { waiverConsentSchema } from "@/lib/validators/consent"
 import { getActiveDocument } from "@/lib/db/legal-documents"
 import { createConsent, hasActiveWaiver } from "@/lib/db/consents"
+import { recordAudit } from "@/lib/audit/record"
 
 export async function POST(request: Request) {
   try {
@@ -43,6 +44,19 @@ export async function POST(request: Request) {
       program_id: programId,
       ip_address: ipAddress,
       user_agent: userAgent,
+    })
+
+    await recordAudit({
+      action: "consent.granted",
+      category: "compliance",
+      target: { type: "consent", id: consent.id, label: consent.consent_type ?? "liability_waiver" },
+      metadata: {
+        consent_type: consent.consent_type ?? "liability_waiver",
+        legal_document_id: waiverDoc?.id ?? null,
+        legal_document_version: waiverDoc?.version ?? null,
+        program_id: programId,
+      },
+      request,
     })
 
     return NextResponse.json(consent, { status: 201 })

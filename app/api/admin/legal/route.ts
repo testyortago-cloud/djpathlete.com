@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { getAllDocuments, createDocument } from "@/lib/db/legal-documents"
 import type { LegalDocumentType } from "@/types/database"
+import { recordAudit } from "@/lib/audit/record"
 
 export async function GET() {
   const session = await auth()
@@ -33,6 +34,19 @@ export async function POST(request: Request) {
     }
 
     const doc = await createDocument({ document_type, title, content, effective_date })
+
+    await recordAudit({
+      action: "legal_document.published",
+      category: "compliance",
+      target: { type: "legal_document", id: doc.id, label: doc.document_type },
+      metadata: {
+        version: doc.version,
+        document_type: doc.document_type,
+        effective_date: doc.effective_date,
+      },
+      request,
+    })
+
     return NextResponse.json(doc, { status: 201 })
   } catch (error) {
     console.error("Failed to create legal document:", error)
