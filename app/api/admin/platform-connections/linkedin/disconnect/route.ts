@@ -4,9 +4,10 @@
 // linkedin.com/psettings/permitted-services. So this is a DB-only disconnect;
 // reconnecting re-prompts for consent only if the admin revoked manually.
 
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { disconnectPlatform } from "@/lib/db/platform-connections"
+import { recordAudit } from "@/lib/audit/record"
 
 function siteUrl() {
   return (process.env.NEXTAUTH_URL ?? "").replace(/\/$/, "")
@@ -18,7 +19,7 @@ function redirectHome(param: string) {
   return NextResponse.redirect(url.toString(), { status: 303 })
 }
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   const session = await auth()
   if (!session?.user?.id || session.user.role !== "admin") {
     return NextResponse.json({ error: "Admin access required." }, { status: 403 })
@@ -26,6 +27,12 @@ export async function POST() {
 
   try {
     await disconnectPlatform("linkedin")
+    await recordAudit({
+      action: "integration.disconnected",
+      category: "admin_write",
+      target: { type: "integration", id: "linkedin", label: "linkedin" },
+      request,
+    })
   } catch (err) {
     console.error("[linkedin/disconnect] failed", err)
     return redirectHome("error")

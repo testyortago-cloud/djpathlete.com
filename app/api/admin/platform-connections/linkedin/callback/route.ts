@@ -13,6 +13,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { connectPlatform } from "@/lib/db/platform-connections"
+import { recordAudit } from "@/lib/audit/record"
 
 const STATE_COOKIE = "li_oauth_state"
 const TOKEN_URL = "https://www.linkedin.com/oauth/v2/accessToken"
@@ -143,6 +144,12 @@ export async function GET(request: NextRequest) {
       },
       account_handle: accountHandle,
       connected_by: session.user.id,
+    })
+    await recordAudit({
+      action: "integration.connected",
+      category: "admin_write",
+      target: { type: "integration", id: "linkedin", label: "linkedin" },
+      request,
     })
   } catch (err) {
     console.error("[linkedin/callback] connectPlatform failed", err)

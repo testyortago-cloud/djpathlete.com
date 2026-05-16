@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { exchangeCodeForTokens, verifyState } from "@/lib/gsc/oauth"
 import { upsertGscProperty } from "@/lib/db/gsc-properties"
 import { setSetting } from "@/lib/db/system-settings"
+import { recordAudit } from "@/lib/audit/record"
 
 interface GscState {
   userId: string
@@ -90,6 +91,13 @@ export async function GET(req: NextRequest) {
 
   // Clear the OAuth-broken flag set by a previous failed sync, if any.
   await setSetting("gsc_oauth_broken", false)
+
+  await recordAudit({
+    action: "integration.connected",
+    category: "admin_write",
+    target: { type: "integration", id: "gsc", label: "gsc" },
+    request: req,
+  })
 
   return NextResponse.redirect(`${siteUrl()}/admin/integrations/gsc?connected=1`, { status: 302 })
 }

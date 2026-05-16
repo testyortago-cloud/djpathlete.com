@@ -4,9 +4,10 @@
 // next reconnect forces a fresh consent screen — useful when the admin
 // picked the wrong Page or needs to re-grant scopes after App Review.
 
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { disconnectPlatform, getPlatformConnection } from "@/lib/db/platform-connections"
+import { recordAudit } from "@/lib/audit/record"
 
 const GRAPH_VERSION = "v22.0"
 const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`
@@ -21,7 +22,7 @@ function redirectHome(param: string) {
   return NextResponse.redirect(url.toString(), { status: 303 })
 }
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   const session = await auth()
   if (!session?.user?.id || session.user.role !== "admin") {
     return NextResponse.json({ error: "Admin access required." }, { status: 403 })
@@ -43,7 +44,19 @@ export async function POST() {
     }
 
     await disconnectPlatform("facebook")
+    await recordAudit({
+      action: "integration.disconnected",
+      category: "admin_write",
+      target: { type: "integration", id: "facebook", label: "facebook" },
+      request,
+    })
     await disconnectPlatform("instagram")
+    await recordAudit({
+      action: "integration.disconnected",
+      category: "admin_write",
+      target: { type: "integration", id: "instagram", label: "instagram" },
+      request,
+    })
   } catch (err) {
     console.error("[facebook/disconnect] failed", err)
     return redirectHome("error")

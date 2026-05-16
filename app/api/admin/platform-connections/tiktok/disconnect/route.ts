@@ -2,9 +2,10 @@
 // Disconnects TikTok. Best-effort revokes the access token with TikTok so a
 // subsequent Connect forces a fresh consent screen.
 
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { disconnectPlatform, getPlatformConnection } from "@/lib/db/platform-connections"
+import { recordAudit } from "@/lib/audit/record"
 
 const REVOKE_URL = "https://open.tiktokapis.com/v2/oauth/revoke/"
 
@@ -18,7 +19,7 @@ function redirectHome(param: string) {
   return NextResponse.redirect(url.toString(), { status: 303 })
 }
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   const session = await auth()
   if (!session?.user?.id || session.user.role !== "admin") {
     return NextResponse.json({ error: "Admin access required." }, { status: 403 })
@@ -50,6 +51,12 @@ export async function POST() {
     }
 
     await disconnectPlatform("tiktok")
+    await recordAudit({
+      action: "integration.disconnected",
+      category: "admin_write",
+      target: { type: "integration", id: "tiktok", label: "tiktok" },
+      request,
+    })
   } catch (err) {
     console.error("[tiktok/disconnect] failed", err)
     return redirectHome("error")

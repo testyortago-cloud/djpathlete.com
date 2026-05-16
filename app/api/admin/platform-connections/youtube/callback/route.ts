@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { connectPlatform } from "@/lib/db/platform-connections"
+import { recordAudit } from "@/lib/audit/record"
 
 const STATE_COOKIE = "yt_oauth_state"
 const TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -110,10 +111,22 @@ export async function GET(request: NextRequest) {
       account_handle: accountHandle,
       connected_by: session.user.id,
     })
+    await recordAudit({
+      action: "integration.connected",
+      category: "admin_write",
+      target: { type: "integration", id: "youtube", label: "youtube" },
+      request,
+    })
     await connectPlatform("youtube_shorts", {
       credentials,
       account_handle: accountHandle,
       connected_by: session.user.id,
+    })
+    await recordAudit({
+      action: "integration.connected",
+      category: "admin_write",
+      target: { type: "integration", id: "youtube_shorts", label: "youtube_shorts" },
+      request,
     })
   } catch (err) {
     console.error("[youtube/callback] connectPlatform failed", err)

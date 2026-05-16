@@ -7,6 +7,7 @@ import { z } from "zod"
 import { auth } from "@/lib/auth"
 import { setSetting } from "@/lib/db/system-settings"
 import { CRON_CATALOG } from "@/lib/cron-catalog"
+import { recordAudit } from "@/lib/audit/record"
 
 const requestSchema = z.object({
   enabledKey: z.string().min(1).max(120),
@@ -39,6 +40,16 @@ export async function POST(request: NextRequest) {
 
   try {
     await setSetting(enabledKey, enabled, session.user.id)
+    await recordAudit({
+      action:
+        enabledKey.startsWith("cron_") || enabledKey.startsWith("feature_")
+          ? "feature_flag.toggled"
+          : "system_setting.changed",
+      category: "system",
+      target: { type: "system_setting", id: enabledKey, label: enabledKey },
+      metadata: { key: enabledKey, new_value: enabled },
+      request,
+    })
     return NextResponse.json({ enabledKey, enabled })
   } catch (err) {
     console.error("[/api/admin/automation/toggle-cron]", err)

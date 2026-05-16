@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { connectPlatform } from "@/lib/db/platform-connections"
+import { recordAudit } from "@/lib/audit/record"
 
 const STATE_COOKIE = "fb_oauth_state"
 const GRAPH_VERSION = "v22.0"
@@ -128,6 +129,12 @@ export async function GET(request: NextRequest) {
       account_handle: page.name,
       connected_by: session.user.id,
     })
+    await recordAudit({
+      action: "integration.connected",
+      category: "admin_write",
+      target: { type: "integration", id: "facebook", label: "facebook" },
+      request,
+    })
 
     if (page.instagram_business_account?.id) {
       await connectPlatform("instagram", {
@@ -139,6 +146,12 @@ export async function GET(request: NextRequest) {
           ? `@${page.instagram_business_account.username}`
           : null,
         connected_by: session.user.id,
+      })
+      await recordAudit({
+        action: "integration.connected",
+        category: "admin_write",
+        target: { type: "integration", id: "instagram", label: "instagram" },
+        request,
       })
     }
   } catch (err) {

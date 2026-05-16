@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { connectPlatform } from "@/lib/db/platform-connections"
+import { recordAudit } from "@/lib/audit/record"
 
 const STATE_COOKIE = "tk_oauth_state"
 const VERIFIER_COOKIE = "tk_oauth_verifier"
@@ -122,6 +123,12 @@ export async function GET(request: NextRequest) {
       },
       account_handle: accountHandle,
       connected_by: session.user.id,
+    })
+    await recordAudit({
+      action: "integration.connected",
+      category: "admin_write",
+      target: { type: "integration", id: "tiktok", label: "tiktok" },
+      request,
     })
   } catch (err) {
     console.error("[tiktok/callback] connectPlatform failed", err)
