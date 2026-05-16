@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { getProfileByUserId, updateProfile, createProfile } from "@/lib/db/client-profiles"
+import { withAudit } from "@/lib/audit/with-audit"
 import { z } from "zod"
 
 const profileSchema = z.object({
@@ -18,69 +19,76 @@ const profileSchema = z.object({
   weight_unit: z.enum(["kg", "lbs"]).optional(),
 })
 
-export async function PATCH(request: Request) {
-  try {
-    const session = await auth()
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+export const PATCH = withAudit(
+  {
+    action: "profile.updated",
+    category: "client_action",
+    target: async () => ({ type: "user", id: "self" }),
+  },
+  async (request) => {
+    try {
+      const session = await auth()
+      if (!session?.user) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      }
+
+      const userId = session.user.id
+      const body = await request.json()
+      const parsed = profileSchema.safeParse(body)
+
+      if (!parsed.success) {
+        return NextResponse.json({ error: "Invalid data", details: parsed.error.flatten() }, { status: 400 })
+      }
+
+      const updates = parsed.data
+
+      // Check if profile exists; if not, create one first
+      const existingProfile = await getProfileByUserId(userId)
+
+      if (!existingProfile) {
+        const newProfile = await createProfile({
+          user_id: userId,
+          date_of_birth: updates.date_of_birth ?? null,
+          gender: updates.gender ?? null,
+          sport: updates.sport ?? null,
+          position: updates.position ?? null,
+          experience_level: updates.experience_level ?? null,
+          goals: updates.goals ?? null,
+          injuries: updates.injuries ?? null,
+          height_cm: updates.height_cm ?? null,
+          weight_kg: updates.weight_kg ?? null,
+          emergency_contact_name: updates.emergency_contact_name ?? null,
+          emergency_contact_phone: updates.emergency_contact_phone ?? null,
+          available_equipment: [],
+          preferred_day_names: [],
+          preferred_session_minutes: null,
+          preferred_training_days: null,
+          time_efficiency_preference: null,
+          preferred_techniques: [],
+          injury_details: [],
+          training_years: null,
+          sleep_hours: null,
+          stress_level: null,
+          occupation_activity_level: null,
+          movement_confidence: null,
+          exercise_likes: null,
+          exercise_dislikes: null,
+          training_background: null,
+          additional_notes: null,
+          weight_unit: "lbs",
+          is_minor: false,
+          guardian_name: null,
+          guardian_email: null,
+          parental_consent_at: null,
+        })
+        return NextResponse.json(newProfile)
+      }
+
+      const updated = await updateProfile(userId, updates)
+      return NextResponse.json(updated)
+    } catch (error) {
+      console.error("Profile update error:", error)
+      return NextResponse.json({ error: "Failed to update profile" }, { status: 500 })
     }
-
-    const userId = session.user.id
-    const body = await request.json()
-    const parsed = profileSchema.safeParse(body)
-
-    if (!parsed.success) {
-      return NextResponse.json({ error: "Invalid data", details: parsed.error.flatten() }, { status: 400 })
-    }
-
-    const updates = parsed.data
-
-    // Check if profile exists; if not, create one first
-    const existingProfile = await getProfileByUserId(userId)
-
-    if (!existingProfile) {
-      const newProfile = await createProfile({
-        user_id: userId,
-        date_of_birth: updates.date_of_birth ?? null,
-        gender: updates.gender ?? null,
-        sport: updates.sport ?? null,
-        position: updates.position ?? null,
-        experience_level: updates.experience_level ?? null,
-        goals: updates.goals ?? null,
-        injuries: updates.injuries ?? null,
-        height_cm: updates.height_cm ?? null,
-        weight_kg: updates.weight_kg ?? null,
-        emergency_contact_name: updates.emergency_contact_name ?? null,
-        emergency_contact_phone: updates.emergency_contact_phone ?? null,
-        available_equipment: [],
-        preferred_day_names: [],
-        preferred_session_minutes: null,
-        preferred_training_days: null,
-        time_efficiency_preference: null,
-        preferred_techniques: [],
-        injury_details: [],
-        training_years: null,
-        sleep_hours: null,
-        stress_level: null,
-        occupation_activity_level: null,
-        movement_confidence: null,
-        exercise_likes: null,
-        exercise_dislikes: null,
-        training_background: null,
-        additional_notes: null,
-        weight_unit: "lbs",
-        is_minor: false,
-        guardian_name: null,
-        guardian_email: null,
-        parental_consent_at: null,
-      })
-      return NextResponse.json(newProfile)
-    }
-
-    const updated = await updateProfile(userId, updates)
-    return NextResponse.json(updated)
-  } catch (error) {
-    console.error("Profile update error:", error)
-    return NextResponse.json({ error: "Failed to update profile" }, { status: 500 })
-  }
-}
+  },
+)
