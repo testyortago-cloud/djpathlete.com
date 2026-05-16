@@ -4,6 +4,7 @@ import { trainingSessionFormSchema } from "@/lib/validators/training-session"
 import { upsert, listByUser } from "@/lib/db/training-sessions"
 import { runEvaluation } from "@/lib/coach-intel/run-evaluation"
 import { checkGoals } from "@/lib/coach-intel/check-goals"
+import { recordAudit } from "@/lib/audit/record"
 
 export async function GET(req: Request) {
   const session = await auth()
@@ -45,6 +46,20 @@ export async function POST(req: Request) {
   } catch (e) {
     console.error("[training-sessions] checkGoals failed", e)
   }
+
+  await recordAudit({
+    action: "workout.session_started",
+    category: "client_action",
+    target: { type: "training_session", id: result.id, label: result.session_type ?? undefined },
+    metadata: {
+      program_assignment_id: result.program_assignment_id ?? null,
+      date: result.date ?? null,
+      session_type: result.session_type ?? null,
+      rpe: result.rpe ?? null,
+      duration_min: result.duration_min ?? null,
+    },
+    request: req,
+  })
 
   return NextResponse.json({ session: result })
 }
