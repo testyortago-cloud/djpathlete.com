@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { getProfileByUserId, updateProfile, createProfile } from "@/lib/db/client-profiles"
 import { questionnaireSchema } from "@/lib/validators/questionnaire"
 import { ghlCreateContact, ghlTriggerWorkflow } from "@/lib/ghl"
+import { recordAudit } from "@/lib/audit/record"
 
 export async function GET() {
   try {
@@ -121,6 +122,18 @@ export async function POST(request: Request) {
         // GHL sync failure should not affect questionnaire submission
       }
 
+      await recordAudit({
+        action: "questionnaire.submitted",
+        category: "client_action",
+        target: { type: "questionnaire", id: newProfile.id ?? userId },
+        metadata: {
+          answers_count: Object.keys(data ?? {}).length,
+          mode: "created",
+          experience_level: data.experience_level ?? null,
+        },
+        request,
+      })
+
       return NextResponse.json({ profile: newProfile })
     }
 
@@ -141,6 +154,18 @@ export async function POST(request: Request) {
     } catch {
       // GHL sync failure should not affect questionnaire submission
     }
+
+    await recordAudit({
+      action: "questionnaire.submitted",
+      category: "client_action",
+      target: { type: "questionnaire", id: updated?.id ?? userId },
+      metadata: {
+        answers_count: Object.keys(data ?? {}).length,
+        mode: "updated",
+        experience_level: data.experience_level ?? null,
+      },
+      request,
+    })
 
     return NextResponse.json({ profile: updated })
   } catch (error) {

@@ -5,6 +5,7 @@ import { getAssignments } from "@/lib/db/assignments"
 import { getProgress } from "@/lib/db/progress"
 import { computeReassessmentAdjustment, computeAssessmentScores } from "@/lib/assessment-scoring"
 import type { AssessmentFeedback, ProgramAssignment } from "@/types/database"
+import { recordAudit } from "@/lib/audit/record"
 
 export async function POST(request: Request) {
   try {
@@ -98,6 +99,20 @@ export async function POST(request: Request) {
 
     // TODO: Trigger AI program generation from Phase 3C
     // await triggerProgramGeneration(userId, newResult)
+
+    await recordAudit({
+      action: "assessment.reassessment_submitted",
+      category: "client_action",
+      target: { type: "assessment", id: newResult.id },
+      metadata: {
+        answers_count: Object.keys(answers ?? {}).length,
+        type: "reassessment",
+        adjustment,
+        previous_max_difficulty: previousResult.max_difficulty_score,
+        new_max_difficulty: newMaxDifficultyScore,
+      },
+      request,
+    })
 
     return NextResponse.json({
       result: newResult,

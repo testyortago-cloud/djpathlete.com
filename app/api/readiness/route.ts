@@ -4,6 +4,7 @@ import { readinessFormSchema } from "@/lib/validators/daily-readiness"
 import { upsert } from "@/lib/db/daily-readiness"
 import { runEvaluation } from "@/lib/coach-intel/run-evaluation"
 import { checkGoals } from "@/lib/coach-intel/check-goals"
+import { recordAudit } from "@/lib/audit/record"
 
 export async function POST(req: Request) {
   const session = await auth()
@@ -32,6 +33,19 @@ export async function POST(req: Request) {
   } catch (e) {
     console.error("[readiness] checkGoals failed", e)
   }
+
+  await recordAudit({
+    action: "readiness.submitted",
+    category: "client_action",
+    target: { type: "daily_readiness", id: result.id },
+    metadata: {
+      score: result.readiness_score,
+      sleep_hours: result.sleep_hours,
+      stress_level: parsed.data.stress,
+      date,
+    },
+    request: req,
+  })
 
   return NextResponse.json({ readiness: result })
 }

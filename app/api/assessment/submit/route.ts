@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { assessmentSubmitSchema } from "@/lib/validators/assessment"
 import { getActiveQuestions, getLatestAssessmentResult, createAssessmentResult } from "@/lib/db/assessments"
 import { computeAssessmentScores } from "@/lib/assessment-scoring"
+import { recordAudit } from "@/lib/audit/record"
 
 export async function POST(request: Request) {
   try {
@@ -49,6 +50,18 @@ export async function POST(request: Request) {
       previous_assessment_id,
       feedback,
       completed_at: new Date().toISOString(),
+    })
+
+    await recordAudit({
+      action: "assessment.submitted",
+      category: "client_action",
+      target: { type: "assessment", id: result.id },
+      metadata: {
+        answers_count: Object.keys(answers ?? {}).length,
+        type: assessment_type ?? null,
+        max_difficulty_score,
+      },
+      request,
     })
 
     return NextResponse.json(result, { status: 201 })
