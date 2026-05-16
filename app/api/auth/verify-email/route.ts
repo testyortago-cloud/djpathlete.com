@@ -7,6 +7,7 @@ import {
 } from "@/lib/db/email-verification-tokens"
 import { updateUser } from "@/lib/db/users"
 import { sendWelcomeEmail } from "@/lib/email"
+import { recordAudit } from "@/lib/audit/record"
 
 const verifySchema = z.object({
   token: z.string().min(1, "Token is required"),
@@ -44,6 +45,15 @@ export async function POST(request: Request) {
 
     // Mark token as used
     await markVerificationTokenUsed(token)
+
+    await recordAudit({
+      action: "auth.email_verified",
+      category: "auth",
+      outcome: "success",
+      actor: { id: user.id, email: user.email, role: "client" },
+      target: { type: "user", id: user.id, label: user.email },
+      request,
+    })
 
     // Send welcome email (non-blocking)
     try {

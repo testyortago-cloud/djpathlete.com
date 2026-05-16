@@ -7,6 +7,7 @@ import { sendVerificationEmail, sendNewRegistrationEmail } from "@/lib/email"
 import { ghlCreateContact, ghlTriggerWorkflow } from "@/lib/ghl"
 import { getActiveDocument } from "@/lib/db/legal-documents"
 import { createConsent } from "@/lib/db/consents"
+import { recordAudit } from "@/lib/audit/record"
 import type { User } from "@/types/database"
 
 export async function POST(request: Request) {
@@ -35,6 +36,14 @@ export async function POST(request: Request) {
       .maybeSingle()
 
     if (existingUser && (existingUser.status !== "lead" || existingUser.password_hash)) {
+      await recordAudit({
+        action: "auth.register",
+        category: "auth",
+        outcome: "failure",
+        actor: { id: null, email, role: "anonymous" },
+        error: { code: "duplicate_email", message: "Email already registered" },
+        request,
+      })
       return NextResponse.json({ error: "An account with this email already exists." }, { status: 409 })
     }
 
@@ -72,6 +81,19 @@ export async function POST(request: Request) {
     }
 
     const typedUser = user as User
+
+    await recordAudit({
+      action: "auth.register",
+      category: "auth",
+      outcome: "success",
+      actor: { id: typedUser.id, email: typedUser.email, role: typedUser.role },
+      target: {
+        type: "user",
+        id: typedUser.id,
+        label: `${typedUser.first_name} ${typedUser.last_name}`,
+      },
+      request,
+    })
 
     // Create client profile with DOB and guardian info
     const { error: profileError } = await supabase.from("client_profiles").insert({

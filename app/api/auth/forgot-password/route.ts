@@ -3,6 +3,7 @@ import { z } from "zod"
 import { getUserByEmail } from "@/lib/db/users"
 import { createPasswordResetToken } from "@/lib/db/password-reset-tokens"
 import { sendPasswordResetEmail } from "@/lib/email"
+import { recordAudit } from "@/lib/audit/record"
 
 const forgotPasswordSchema = z.object({
   email: z.string().email(),
@@ -19,6 +20,15 @@ export async function POST(request: Request) {
 
     const { email } = result.data
     const user = await getUserByEmail(email)
+
+    await recordAudit({
+      action: "auth.password_reset_request",
+      category: "auth",
+      outcome: user ? "success" : "failure",
+      actor: { id: user?.id ?? null, email, role: "anonymous" },
+      request,
+      error: user ? undefined : { code: "user_not_found" },
+    })
 
     // Always return success to prevent email enumeration
     if (!user) {
