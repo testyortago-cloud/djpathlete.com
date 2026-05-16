@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { auth } from "@/lib/auth"
+import { recordAudit } from "@/lib/audit/record"
 import {
   GmailNotConnectedError,
   decodeMessage,
@@ -80,6 +81,20 @@ export async function POST(request: NextRequest) {
         subject: payload.subject!,
         bodyText: payload.body,
       })
+      await recordAudit({
+        action: "inbox.message_sent",
+        category: "support",
+        target: { type: "conversation", id: sent.threadId, label: payload.to },
+        metadata: {
+          channel: "gmail",
+          mode: "compose",
+          has_attachments: false,
+          body_length: payload.body?.length ?? 0,
+          subject_length: payload.subject?.length ?? 0,
+          has_cc: Boolean(payload.cc),
+        },
+        request,
+      })
       return NextResponse.json({ success: true, message: sent })
     } catch (err) {
       return NextResponse.json({ error: (err as Error).message }, { status: 502 })
@@ -126,6 +141,20 @@ export async function POST(request: NextRequest) {
       threadId: payload.threadId,
       inReplyTo,
       references,
+    })
+    await recordAudit({
+      action: "inbox.message_sent",
+      category: "support",
+      target: { type: "conversation", id: payload.threadId, label: replyTo },
+      metadata: {
+        channel: "gmail",
+        mode: "reply",
+        has_attachments: false,
+        body_length: payload.body?.length ?? 0,
+        subject_length: subject?.length ?? 0,
+        has_cc: Boolean(payload.cc),
+      },
+      request,
     })
     return NextResponse.json({ success: true, message: sent })
   } catch (err) {
