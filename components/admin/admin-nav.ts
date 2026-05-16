@@ -29,6 +29,7 @@ import {
   Workflow,
   Compass,
   Users2,
+  Activity,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 
@@ -125,6 +126,7 @@ export function getAdminNav(opts: { contentStudioEnabled: boolean }): AdminNav {
           { label: "Events", href: "/admin/events", icon: CalendarDays },
           { label: "Payments", href: "/admin/payments", icon: CreditCard },
           { label: "Analytics", href: "/admin/analytics", icon: BarChart3 },
+          { label: "Audit Logs", href: "/admin/audit-logs", icon: Activity },
           { label: "Reviews", href: "/admin/reviews", icon: Star },
           { label: "Shop Products", href: "/admin/shop/products", icon: ShoppingBag },
           { label: "Shop Orders", href: "/admin/shop/orders", icon: Package },
