@@ -6,8 +6,18 @@ import { createImagesForVersion } from "@/lib/db/team-submission-images"
 import { buildImagePath, createImageUploadUrls } from "@/lib/storage/team-videos"
 import { createPhotoSubmissionSchema } from "@/lib/validators/team-video"
 import { isTeamImagesEnabled } from "@/lib/team-images/feature-flag"
+import { withAudit } from "@/lib/audit/with-audit"
 
-export async function POST(request: Request) {
+export const POST = withAudit(
+  {
+    action: "team_video.submitted",
+    category: "support",
+    metadata: async (_req, res) => {
+      const id = res.headers.get("x-audit-target-id")
+      return id ? { submission_id: id, kind: "image_set" } : { kind: "image_set" }
+    },
+  },
+  async (request) => {
   const session = await auth()
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   if (session.user.role !== "editor" && session.user.role !== "admin") {
@@ -70,7 +80,7 @@ export async function POST(request: Request) {
     imageInputs.map((i) => ({ storagePath: i.storagePath, contentType: i.mimeType })),
   )
 
-  return NextResponse.json(
+  const response = NextResponse.json(
     {
       submission,
       version,
@@ -83,4 +93,7 @@ export async function POST(request: Request) {
     },
     { status: 201 },
   )
-}
+  response.headers.set("x-audit-target-id", submission.id)
+  return response
+  },
+)

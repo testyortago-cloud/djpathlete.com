@@ -10,6 +10,7 @@ import {
 } from "@/lib/db/team-video-comments"
 import { createAnnotationForComment, listAnnotationsForCommentIds } from "@/lib/db/team-video-annotations"
 import { createCommentSchema } from "@/lib/validators/team-video"
+import { recordAudit } from "@/lib/audit/record"
 
 export async function POST(
   request: Request,
@@ -78,6 +79,21 @@ export async function POST(
   if (submission.status === "submitted") {
     await setSubmissionStatus(submission.id, "in_review")
   }
+
+  // Dispatch audit slug based on whether an annotation payload was attached.
+  const slug = parsed.data.annotation ? "team_video.annotated" : "team_video.commented"
+  void recordAudit({
+    action: slug,
+    category: "support",
+    target: { type: "team_video_submission", id: submission.id },
+    metadata: {
+      comment_id: comment.id,
+      version_id: version.id,
+      timecode_seconds: parsed.data.timecodeSeconds ?? null,
+      is_reply: parsed.data.parentId != null,
+    },
+    request,
+  })
 
   return NextResponse.json({ comment, annotationError }, { status: 201 })
 }

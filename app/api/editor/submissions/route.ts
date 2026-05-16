@@ -4,8 +4,18 @@ import { createSubmission, setCurrentVersion } from "@/lib/db/team-video-submiss
 import { createVersion, nextVersionNumber } from "@/lib/db/team-video-versions"
 import { buildVersionPath, createUploadUrl } from "@/lib/storage/team-videos"
 import { createSubmissionSchema } from "@/lib/validators/team-video"
+import { withAudit } from "@/lib/audit/with-audit"
 
-export async function POST(request: Request) {
+export const POST = withAudit(
+  {
+    action: "team_video.submitted",
+    category: "support",
+    metadata: async (_req, res) => {
+      const id = res.headers.get("x-audit-target-id")
+      return id ? { submission_id: id } : {}
+    },
+  },
+  async (request) => {
   const session = await auth()
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -54,7 +64,7 @@ export async function POST(request: Request) {
     contentType: parsed.data.mimeType,
   })
 
-  return NextResponse.json(
+  const response = NextResponse.json(
     {
       submission,
       version,
@@ -66,4 +76,7 @@ export async function POST(request: Request) {
     },
     { status: 201 },
   )
-}
+  response.headers.set("x-audit-target-id", submission.id)
+  return response
+  },
+)

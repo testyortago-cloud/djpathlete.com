@@ -6,11 +6,19 @@ import { createImagesForVersion } from "@/lib/db/team-submission-images"
 import { buildImagePath, createImageUploadUrls } from "@/lib/storage/team-videos"
 import { createPhotoVersionSchema } from "@/lib/validators/team-video"
 import { isTeamImagesEnabled } from "@/lib/team-images/feature-flag"
+import { withAudit } from "@/lib/audit/with-audit"
 
-export async function POST(
-  request: Request,
-  ctx: { params: Promise<{ id: string }> },
-) {
+export const POST = withAudit(
+  {
+    action: "team_video.version_added",
+    category: "support",
+    target: async (_req, ctx) => {
+      const { id } = (await ctx.params) as { id: string }
+      return { type: "team_video_submission", id }
+    },
+  },
+  async (request, context) => {
+    const ctx = context as unknown as { params: Promise<{ id: string }> }
   const session = await auth()
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   if (session.user.role !== "editor" && session.user.role !== "admin") {
@@ -89,4 +97,5 @@ export async function POST(
     },
     { status: 201 },
   )
-}
+  },
+)

@@ -41,26 +41,35 @@ function req(body: unknown) {
 describe("POST /api/editor/submissions/photos", () => {
   it("401 unauthenticated", async () => {
     ;(auth as ReturnType<typeof vi.fn>).mockResolvedValue(null)
-    const res = await POST(req({ title: "T", images: [{ filename: "a.jpg", mimeType: "image/jpeg", sizeBytes: 1000, position: 0 }] }))
+    const res = await POST(
+      req({ title: "T", images: [{ filename: "a.jpg", mimeType: "image/jpeg", sizeBytes: 1000, position: 0 }] }),
+      { params: Promise.resolve({}) } as never,
+    )
     expect(res.status).toBe(401)
   })
 
   it("403 non-editor non-admin", async () => {
     ;(auth as ReturnType<typeof vi.fn>).mockResolvedValue({ user: { id: "u", role: "client" } })
-    const res = await POST(req({ title: "T", images: [{ filename: "a.jpg", mimeType: "image/jpeg", sizeBytes: 1000, position: 0 }] }))
+    const res = await POST(
+      req({ title: "T", images: [{ filename: "a.jpg", mimeType: "image/jpeg", sizeBytes: 1000, position: 0 }] }),
+      { params: Promise.resolve({}) } as never,
+    )
     expect(res.status).toBe(403)
   })
 
   it("400 when feature flag disabled", async () => {
     ;(auth as ReturnType<typeof vi.fn>).mockResolvedValue({ user: { id: "u1", role: "editor" } })
     ;(isTeamImagesEnabled as ReturnType<typeof vi.fn>).mockReturnValueOnce(false)
-    const res = await POST(req({ title: "T", images: [{ filename: "a.jpg", mimeType: "image/jpeg", sizeBytes: 1000, position: 0 }] }))
+    const res = await POST(
+      req({ title: "T", images: [{ filename: "a.jpg", mimeType: "image/jpeg", sizeBytes: 1000, position: 0 }] }),
+      { params: Promise.resolve({}) } as never,
+    )
     expect(res.status).toBe(400)
   })
 
   it("400 invalid input", async () => {
     ;(auth as ReturnType<typeof vi.fn>).mockResolvedValue({ user: { id: "u1", role: "editor" } })
-    const res = await POST(req({ title: "T", images: [] }))
+    const res = await POST(req({ title: "T", images: [] }), { params: Promise.resolve({}) } as never)
     expect(res.status).toBe(400)
   })
 
@@ -73,10 +82,13 @@ describe("POST /api/editor/submissions/photos", () => {
     ;(createImageUploadUrls as ReturnType<typeof vi.fn>).mockResolvedValue([
       { storagePath: "team-videos/sub1/v1/0_a.jpg", uploadUrl: "https://put.example", expiresInSeconds: 900 },
     ])
-    const res = await POST(req({
-      title: "Carousel",
-      images: [{ filename: "a.jpg", mimeType: "image/jpeg", sizeBytes: 1000, position: 0 }],
-    }))
+    const res = await POST(
+      req({
+        title: "Carousel",
+        images: [{ filename: "a.jpg", mimeType: "image/jpeg", sizeBytes: 1000, position: 0 }],
+      }),
+      { params: Promise.resolve({}) } as never,
+    )
     expect(res.status).toBe(201)
     const json = await res.json()
     expect(json.submission.id).toBe("sub1")

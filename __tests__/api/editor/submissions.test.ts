@@ -40,7 +40,7 @@ const validBody = {
 describe("POST /api/editor/submissions", () => {
   it("401 when not authenticated", async () => {
     ;(auth as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(null)
-    const res = await POST(post(validBody))
+    const res = await POST(post(validBody), { params: Promise.resolve({}) } as never)
     expect(res.status).toBe(401)
   })
 
@@ -48,7 +48,7 @@ describe("POST /api/editor/submissions", () => {
     ;(auth as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       user: { id: "u1", role: "client" },
     })
-    const res = await POST(post(validBody))
+    const res = await POST(post(validBody), { params: Promise.resolve({}) } as never)
     expect(res.status).toBe(403)
   })
 
@@ -56,7 +56,10 @@ describe("POST /api/editor/submissions", () => {
     ;(auth as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       user: { id: "u1", role: "editor" },
     })
-    const res = await POST(post({ ...validBody, mimeType: "image/gif" }))
+    const res = await POST(
+      post({ ...validBody, mimeType: "image/gif" }),
+      { params: Promise.resolve({}) } as never,
+    )
     expect(res.status).toBe(400)
   })
 
@@ -77,7 +80,7 @@ describe("POST /api/editor/submissions", () => {
       expiresInSeconds: 900,
     })
 
-    const res = await POST(post(validBody))
+    const res = await POST(post(validBody), { params: Promise.resolve({}) } as never)
     expect(res.status).toBe(201)
     const json = await res.json()
     expect(json.submission.id).toBe("sub1")

@@ -4,11 +4,19 @@ import { getSubmissionById, setCurrentVersion } from "@/lib/db/team-video-submis
 import { createVersion, nextVersionNumber } from "@/lib/db/team-video-versions"
 import { buildVersionPath, createUploadUrl } from "@/lib/storage/team-videos"
 import { createVersionSchema } from "@/lib/validators/team-video"
+import { withAudit } from "@/lib/audit/with-audit"
 
-export async function POST(
-  request: Request,
-  ctx: { params: Promise<{ id: string }> },
-) {
+export const POST = withAudit(
+  {
+    action: "team_video.version_added",
+    category: "support",
+    target: async (_req, ctx) => {
+      const { id } = (await ctx.params) as { id: string }
+      return { type: "team_video_submission", id }
+    },
+  },
+  async (request, context) => {
+    const ctx = context as unknown as { params: Promise<{ id: string }> }
   const session = await auth()
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   if (session.user.role !== "editor" && session.user.role !== "admin") {
@@ -66,4 +74,5 @@ export async function POST(
   })
 
   return NextResponse.json({ version, upload }, { status: 201 })
-}
+  },
+)
