@@ -4,8 +4,18 @@ import { getNewsletterById, updateNewsletter } from "@/lib/db/newsletters"
 import { getAdminFirestore } from "@/lib/firebase-admin"
 import { FieldValue } from "firebase-admin/firestore"
 import { buildNewsletterHtml } from "@/lib/email"
+import { withAudit } from "@/lib/audit/with-audit"
 
-export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export const POST = withAudit(
+  {
+    action: "newsletter.sent",
+    category: "marketing",
+    target: async (_request, ctx) => {
+      const { id } = await ctx.params
+      return { type: "newsletter", id }
+    },
+  },
+  async (_request, { params }) => {
   try {
     const session = await auth()
     if (!session?.user?.id || session.user.role !== "admin") {
@@ -58,4 +68,5 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     console.error("Newsletter send error:", error)
     return NextResponse.json({ error: "Failed to send newsletter" }, { status: 500 })
   }
-}
+  },
+)

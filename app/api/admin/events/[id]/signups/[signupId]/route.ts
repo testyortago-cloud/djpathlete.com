@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { getSignupById, confirmSignup, cancelSignup } from "@/lib/db/event-signups"
 import { getEventById } from "@/lib/db/events"
 import { sendEventSignupConfirmedEmail } from "@/lib/email"
+import { recordAudit } from "@/lib/audit/record"
 
 type Action = "confirm" | "cancel"
 
@@ -59,6 +60,15 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
     }
 
     const updated = await getSignupById(signupId)
+
+    await recordAudit({
+      action: "event_signup.cancelled",
+      category: "marketing",
+      target: { type: "event_signup", id: signupId, label: updated?.parent_email ?? undefined },
+      metadata: { event_id: id, from_status: signup.status },
+      request,
+    })
+
     return NextResponse.json({ signup: updated })
   } catch (err) {
     console.error("[api admin signups PATCH]", err)

@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import { z } from "zod"
 import { addSubscriberWithAttribution } from "@/lib/db/newsletter"
 import { ghlCreateContact } from "@/lib/ghl"
 import { parseAttrCookie } from "@/lib/marketing/cookies"
+import { withAudit } from "@/lib/audit/with-audit"
 
 const newsletterSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -10,7 +11,9 @@ const newsletterSchema = z.object({
   source: z.string().max(60).optional(),
 })
 
-export async function POST(request: NextRequest) {
+export const POST = withAudit(
+  { action: "newsletter.subscribed", category: "marketing" },
+  async (request) => {
   try {
     const body = await request.json().catch(() => null)
     const result = newsletterSchema.safeParse(body)
@@ -44,4 +47,5 @@ export async function POST(request: NextRequest) {
     console.error("[Newsletter] Subscription failed:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
-}
+  },
+)

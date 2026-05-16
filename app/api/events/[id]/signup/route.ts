@@ -4,8 +4,18 @@ import { getEventById } from "@/lib/db/events"
 import { createSignup } from "@/lib/db/event-signups"
 import { getActiveDocument } from "@/lib/db/legal-documents"
 import { sendEventSignupReceivedEmail, sendAdminNewSignupEmail } from "@/lib/email"
+import { withAudit } from "@/lib/audit/with-audit"
 
-export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }) {
+export const POST = withAudit(
+  {
+    action: "event_signup.created",
+    category: "marketing",
+    target: async (_request, ctx) => {
+      const { id } = await ctx.params
+      return { type: "event", id }
+    },
+  },
+  async (request, ctx) => {
   try {
     const { id } = await ctx.params
     const url = new URL(request.url)
@@ -63,4 +73,5 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
     console.error("[api/events/signup] unexpected error", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
-}
+  },
+)

@@ -3,8 +3,11 @@ import { contactFormSchema } from "@/lib/validators/contact"
 import { createServiceRoleClient } from "@/lib/supabase"
 import { ghlCreateContact, ghlTriggerWorkflow } from "@/lib/ghl"
 import { sendContactFormEmail, sendContactAutoReply } from "@/lib/email"
+import { withAudit } from "@/lib/audit/with-audit"
 
-export async function POST(request: Request) {
+export const POST = withAudit(
+  { action: "contact.submitted", category: "marketing" },
+  async (request) => {
   try {
     const body = await request.json()
     const result = contactFormSchema.safeParse(body)
@@ -113,4 +116,5 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 })
   }
-}
+  },
+)

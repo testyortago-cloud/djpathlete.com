@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { updateReview, deleteReview } from "@/lib/db/reviews"
+import { recordAudit } from "@/lib/audit/record"
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -20,6 +21,18 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
 
     const review = await updateReview(id, updates)
+
+    // Audit only on moderation decisions (is_published toggle).
+    if ("is_published" in updates) {
+      await recordAudit({
+        action: "review.moderated",
+        category: "marketing",
+        target: { type: "review", id },
+        metadata: { decision: updates.is_published ? "approved" : "rejected" },
+        request,
+      })
+    }
+
     return NextResponse.json(review)
   } catch {
     return NextResponse.json({ error: "Failed to update review. Please try again." }, { status: 500 })
