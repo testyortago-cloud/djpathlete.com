@@ -69,7 +69,7 @@ export function RevenueDigestCard({ snapshots }: Props) {
             <CartesianGrid strokeDasharray="3 3" stroke="#e8e5e0" />
             <XAxis dataKey="week" fontSize={11} stroke={PRIMARY_HEX} />
             <YAxis fontSize={11} stroke={PRIMARY_HEX} tickFormatter={(v: number) => `$${v}`} />
-            <Tooltip formatter={(v: number) => [`$${v.toFixed(2)}`, "MRR"]} />
+            <Tooltip formatter={(v: number | undefined) => [`$${(v ?? 0).toFixed(2)}`, "MRR"]} />
             <Area type="monotone" dataKey="mrr" stroke={PRIMARY_HEX} fill={ACCENT_HEX} fillOpacity={0.3} />
           </AreaChart>
         </ResponsiveContainer>
