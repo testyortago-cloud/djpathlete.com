@@ -3,6 +3,7 @@ import Credentials from "next-auth/providers/credentials"
 import { compare } from "bcryptjs"
 import { createServiceRoleClient } from "@/lib/supabase"
 import { decode as defaultDecode } from "next-auth/jwt"
+import { recordAudit } from "@/lib/audit/record"
 import type { UserRole } from "@/types/database"
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
@@ -23,13 +24,45 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const supabase = createServiceRoleClient()
         const { data: user, error } = await supabase.from("users").select("*").eq("email", email).single()
 
-        if (error || !user) return null
-        // Lead-status users (created from the contact form) have no password_hash yet —
-        // they must register before they can log in.
-        if (!user.password_hash) return null
+        if (error || !user) {
+          await recordAudit({
+            action: "auth.login_failed",
+            category: "auth",
+            outcome: "failure",
+            actor: { id: null, email, role: "anonymous" },
+            metadata: { reason: "user_not_found" },
+          })
+          return null
+        }
+        if (!user.password_hash) {
+          await recordAudit({
+            action: "auth.login_failed",
+            category: "auth",
+            outcome: "failure",
+            actor: { id: user.id, email, role: "anonymous" },
+            metadata: { reason: "lead_no_password" },
+          })
+          return null
+        }
 
         const isValid = await compare(password, user.password_hash)
-        if (!isValid) return null
+        if (!isValid) {
+          await recordAudit({
+            action: "auth.login_failed",
+            category: "auth",
+            outcome: "failure",
+            actor: { id: user.id, email, role: "anonymous" },
+            metadata: { reason: "bad_password" },
+          })
+          return null
+        }
+
+        await recordAudit({
+          action: "auth.login_succeeded",
+          category: "auth",
+          outcome: "success",
+          actor: { id: user.id, email: user.email, role: user.role },
+        })
 
         console.log(`[Auth] Login: ${user.email}, role: ${user.role}`)
         return {
