@@ -8,10 +8,20 @@ import { createServiceRoleClient } from "@/lib/supabase"
 import { createEmailVerificationToken } from "@/lib/db/email-verification-tokens"
 import { sendAccountCreatedEmail, sendVerificationEmail } from "@/lib/email"
 import { ghlCreateContact, ghlTriggerWorkflow } from "@/lib/ghl"
+import { withAudit } from "@/lib/audit/with-audit"
 import type { User } from "@/types/database"
 
-export async function POST(request: Request) {
-  try {
+export const POST = withAudit(
+  {
+    action: "user.created",
+    category: "admin_write",
+    metadata: async (_req, res) => {
+      const id = res.headers.get("x-audit-target-id")
+      return id ? { target_id: id } : {}
+    },
+  },
+  async (request) => {
+    try {
     // Auth check
     const session = await auth()
     if (!session?.user?.id || session.user.role !== "admin") {
@@ -119,9 +129,15 @@ export async function POST(request: Request) {
     // Return user without password_hash
     const { password_hash: _, ...safeUser } = typedUser
 
-    return NextResponse.json({ ...safeUser, emailSent, ...(emailSent ? {} : { tempPassword }) }, { status: 201 })
-  } catch (error) {
-    console.error("Add client error:", error)
-    return NextResponse.json({ error: "An unexpected error occurred. Please try again." }, { status: 500 })
-  }
-}
+    const response = NextResponse.json(
+      { ...safeUser, emailSent, ...(emailSent ? {} : { tempPassword }) },
+      { status: 201 },
+    )
+    response.headers.set("x-audit-target-id", typedUser.id)
+    return response
+    } catch (error) {
+      console.error("Add client error:", error)
+      return NextResponse.json({ error: "An unexpected error occurred. Please try again." }, { status: 500 })
+    }
+  },
+)

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { updateUser, getUserByEmail, getUserById, deleteUser } from "@/lib/db/users"
 import { ghlDeleteContact } from "@/lib/ghl"
+import { withAudit } from "@/lib/audit/with-audit"
 import { z } from "zod"
 
 const editClientSchema = z.object({
@@ -12,79 +13,101 @@ const editClientSchema = z.object({
   status: z.enum(["active", "inactive", "suspended", "lead"]).optional(),
 })
 
-export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
-      return NextResponse.json({ error: "Unauthorized. Admin access required." }, { status: 403 })
+export const PATCH = withAudit(
+  {
+    action: "user.updated",
+    category: "admin_write",
+    target: async (_req, ctx) => {
+      const { id } = (await ctx.params) as { id: string }
+      return { type: "user", id }
+    },
+  },
+  async (request, context) => {
+    const { params } = context as unknown as { params: Promise<{ id: string }> }
+    try {
+      const session = await auth()
+      if (!session?.user?.id || session.user.role !== "admin") {
+        return NextResponse.json({ error: "Unauthorized. Admin access required." }, { status: 403 })
+      }
+
+      const { id } = await params
+      const body = await request.json()
+      const result = editClientSchema.safeParse(body)
+
+      if (!result.success) {
+        return NextResponse.json(
+          { error: "Invalid form data", details: result.error.flatten().fieldErrors },
+          { status: 400 },
+        )
+      }
+
+      const { firstName, lastName, email, phone, status } = result.data
+
+      // Check for duplicate email (excluding current user)
+      const existing = await getUserByEmail(email)
+      if (existing && existing.id !== id) {
+        return NextResponse.json({ error: "Another user already has this email address." }, { status: 409 })
+      }
+
+      const updates: Record<string, unknown> = {
+        first_name: firstName,
+        last_name: lastName,
+        email,
+        phone: phone || null,
+      }
+      if (status) updates.status = status
+
+      const user = await updateUser(id, updates)
+
+      // Strip password_hash from response
+      const { password_hash: _, ...safeUser } = user
+
+      return NextResponse.json(safeUser)
+    } catch (error) {
+      console.error("Edit client error:", error)
+      return NextResponse.json({ error: "An unexpected error occurred. Please try again." }, { status: 500 })
     }
+  },
+)
 
-    const { id } = await params
-    const body = await request.json()
-    const result = editClientSchema.safeParse(body)
+export const DELETE = withAudit(
+  {
+    action: "user.deleted",
+    category: "admin_write",
+    target: async (_req, ctx) => {
+      const { id } = (await ctx.params) as { id: string }
+      return { type: "user", id }
+    },
+  },
+  async (_request, context) => {
+    const { params } = context as unknown as { params: Promise<{ id: string }> }
+    try {
+      const session = await auth()
+      if (!session?.user?.id || session.user.role !== "admin") {
+        return NextResponse.json({ error: "Unauthorized. Admin access required." }, { status: 403 })
+      }
 
-    if (!result.success) {
-      return NextResponse.json(
-        { error: "Invalid form data", details: result.error.flatten().fieldErrors },
-        { status: 400 },
-      )
+      const { id } = await params
+
+      // Prevent self-deletion
+      if (id === session.user.id) {
+        return NextResponse.json({ error: "You cannot delete your own account." }, { status: 400 })
+      }
+
+      // Fetch user to get email for GHL lookup
+      const user = await getUserById(id)
+
+      // Non-blocking: delete GHL contact by email
+      ghlDeleteContact(user.email).catch(() => {
+        // GHL failure should not block user deletion
+      })
+
+      await deleteUser(id)
+
+      return NextResponse.json({ success: true })
+    } catch (error) {
+      console.error("Delete client error:", error)
+      return NextResponse.json({ error: "An unexpected error occurred. Please try again." }, { status: 500 })
     }
-
-    const { firstName, lastName, email, phone, status } = result.data
-
-    // Check for duplicate email (excluding current user)
-    const existing = await getUserByEmail(email)
-    if (existing && existing.id !== id) {
-      return NextResponse.json({ error: "Another user already has this email address." }, { status: 409 })
-    }
-
-    const updates: Record<string, unknown> = {
-      first_name: firstName,
-      last_name: lastName,
-      email,
-      phone: phone || null,
-    }
-    if (status) updates.status = status
-
-    const user = await updateUser(id, updates)
-
-    // Strip password_hash from response
-    const { password_hash: _, ...safeUser } = user
-
-    return NextResponse.json(safeUser)
-  } catch (error) {
-    console.error("Edit client error:", error)
-    return NextResponse.json({ error: "An unexpected error occurred. Please try again." }, { status: 500 })
-  }
-}
-
-export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
-      return NextResponse.json({ error: "Unauthorized. Admin access required." }, { status: 403 })
-    }
-
-    const { id } = await params
-
-    // Prevent self-deletion
-    if (id === session.user.id) {
-      return NextResponse.json({ error: "You cannot delete your own account." }, { status: 400 })
-    }
-
-    // Fetch user to get email for GHL lookup
-    const user = await getUserById(id)
-
-    // Non-blocking: delete GHL contact by email
-    ghlDeleteContact(user.email).catch(() => {
-      // GHL failure should not block user deletion
-    })
-
-    await deleteUser(id)
-
-    return NextResponse.json({ success: true })
-  } catch (error) {
-    console.error("Delete client error:", error)
-    return NextResponse.json({ error: "An unexpected error occurred. Please try again." }, { status: 500 })
-  }
-}
+  },
+)
