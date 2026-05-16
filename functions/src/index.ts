@@ -1533,3 +1533,57 @@ export const socialOutcomeTrackerCron = onSchedule(
     }
   },
 )
+
+// ─── Audit Log Retention (daily 03:00 UTC) ───────────────────────────────────
+// Task 5.1 of the Audit Logs plan. Prunes audit_logs older than
+// system_settings.audit_log_retention_days (default 365). Gated by
+// system_settings.cron_audit_log_retention_enabled (default false). Talks to
+// Supabase directly via the service-role client — no Next.js round-trip.
+//
+// 03:00 UTC overlaps with syncPlatformAnalytics; the two operate on disjoint
+// tables and both are short, so collision is fine.
+
+export const auditLogRetentionCron = onSchedule(
+  {
+    schedule: "0 3 * * *",
+    timeZone: "UTC",
+    timeoutSeconds: 300,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [supabaseUrl, supabaseServiceRoleKey],
+  },
+  async () => {
+    const { getSupabase } = await import("./lib/supabase.js")
+    const { logCronStart, logCronEnd } = await import("./lib/cron-runs.js")
+    const { pruneAuditLogs } = await import("./lib/audit-logs.js")
+
+    const supabase = getSupabase()
+
+    const { data: enabledRow } = await supabase
+      .from("system_settings")
+      .select("value")
+      .eq("key", "cron_audit_log_retention_enabled")
+      .single()
+    if (enabledRow?.value !== true) {
+      console.log("[auditLogRetentionCron] disabled via flag, skipping")
+      return
+    }
+
+    const { data: daysRow } = await supabase
+      .from("system_settings")
+      .select("value")
+      .eq("key", "audit_log_retention_days")
+      .single()
+    const days = typeof daysRow?.value === "number" ? daysRow.value : 365
+
+    const runId = await logCronStart(supabase, "auditLogRetentionCron")
+    try {
+      const deleted = await pruneAuditLogs(supabase, days)
+      await logCronEnd(supabase, runId, "success", { deleted, days })
+      console.log(`[auditLogRetentionCron] deleted ${deleted} rows older than ${days}d`)
+    } catch (err) {
+      await logCronEnd(supabase, runId, "failed", { message: (err as Error).message })
+      throw err
+    }
+  },
+)
