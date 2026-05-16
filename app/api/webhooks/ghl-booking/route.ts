@@ -3,6 +3,7 @@ import { z } from "zod"
 import { createServiceRoleClient } from "@/lib/supabase"
 import { findAttributionByEmail } from "@/lib/db/marketing-attribution"
 import { enqueueBookingConversion } from "@/lib/ads/conversions"
+import { recordAudit } from "@/lib/audit/record"
 
 /**
  * Webhook endpoint for GoHighLevel appointment bookings.
@@ -135,7 +136,7 @@ export async function POST(request: Request) {
     if (data.ghl_appointment_id) {
       const { data: existing } = await supabase
         .from("bookings")
-        .select("id")
+        .select("id, status, booking_date")
         .eq("ghl_appointment_id", data.ghl_appointment_id)
         .maybeSingle()
 
@@ -151,6 +152,39 @@ export async function POST(request: Request) {
           .eq("id", existing.id)
 
         if (error) throw error
+
+        // Dispatch audit slug on transition (reschedule or status change).
+        const prevStatus = (existing as { status?: string | null }).status ?? null
+        const prevDate = (existing as { booking_date?: string | null }).booking_date ?? null
+
+        let slug: string | null = null
+        if (prevStatus !== data.status) {
+          if (data.status === "completed") slug = "booking.completed"
+          else if (data.status === "cancelled") slug = "booking.cancelled"
+          else if (data.status === "no_show") slug = "booking.no_show"
+        } else if (prevDate && prevDate !== data.booking_date) {
+          slug = "booking.rescheduled"
+        }
+
+        if (slug) {
+          await recordAudit({
+            action: slug,
+            category: "commerce",
+            outcome: "success",
+            actor: { id: null, email: "ghl", role: "system" },
+            target: { type: "booking", id: existing.id, label: data.booking_date ?? undefined },
+            metadata: {
+              ghl_appointment_id: data.ghl_appointment_id,
+              source: "ghl_webhook",
+              from_status: prevStatus,
+              to_status: data.status,
+              from_booking_date: prevDate,
+              to_booking_date: data.booking_date,
+            },
+            request,
+          })
+        }
+
         return NextResponse.json({ success: true, action: "updated" }, { status: 200 })
       }
     }
@@ -178,6 +212,24 @@ export async function POST(request: Request) {
       .single()
 
     if (error) throw error
+
+    // Audit booking creation (system actor = GHL webhook).
+    if (insertedBooking?.id) {
+      await recordAudit({
+        action: "booking.created",
+        category: "commerce",
+        outcome: "success",
+        actor: { id: null, email: "ghl", role: "system" },
+        target: { type: "booking", id: insertedBooking.id, label: data.booking_date ?? undefined },
+        metadata: {
+          ghl_appointment_id: data.ghl_appointment_id ?? null,
+          ghl_contact_id: data.ghl_contact_id ?? null,
+          status: data.status,
+          source: "ghl_webhook",
+        },
+        request,
+      })
+    }
 
     // Phase 1.5c — enqueue an offline conversion upload to Google Ads.
     // No-ops silently when there's no gclid/gbraid/wbraid OR no active
