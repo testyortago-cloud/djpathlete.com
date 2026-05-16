@@ -11,6 +11,7 @@ import { addContactToAudience } from "@/lib/shop/resend-audience"
 import { sendFreeDownloadEmail } from "@/lib/shop/emails"
 import { isShopDigitalEnabled } from "@/lib/shop/feature-flag"
 import { rateLimit } from "@/lib/shop/rate-limit"
+import { recordAudit } from "@/lib/audit/record"
 
 export async function POST(req: Request) {
   if (!isShopDigitalEnabled()) {
@@ -66,6 +67,19 @@ export async function POST(req: Request) {
   } catch (e: unknown) {
     await markLeadFailed(lead.id, String((e as Error).message ?? e))
   }
+
+  // Audit AFTER lead row exists. Lead capture is anonymous from a session
+  // standpoint; record DAL falls back to actor_role="anonymous".
+  await recordAudit({
+    action: "shop.lead_captured",
+    category: "commerce",
+    target: { type: "shop_lead", id: lead.id, label: email },
+    metadata: {
+      product_id,
+      product_slug: product.slug,
+    },
+    request: req,
+  })
 
   return NextResponse.json({ ok: true })
 }

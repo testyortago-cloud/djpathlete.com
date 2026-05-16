@@ -24,7 +24,7 @@ describe("POST /api/admin/shop/products/affiliate", () => {
         affiliate_url: "https://www.amazon.com/dp/B001",
       }),
     })
-    const res = await POST(req)
+    const res = await POST(req, { params: Promise.resolve({}) })
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.product.product_type).toBe("affiliate")
@@ -42,7 +42,7 @@ describe("POST /api/admin/shop/products/affiliate", () => {
         affiliate_url: "https://walmart.com/x",
       }),
     })
-    const res = await POST(req)
+    const res = await POST(req, { params: Promise.resolve({}) })
     expect(res.status).toBe(400)
   })
 })

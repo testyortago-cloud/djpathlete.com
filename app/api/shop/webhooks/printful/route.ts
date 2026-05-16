@@ -6,6 +6,7 @@ import {
   updateOrder,
 } from "@/lib/db/shop-orders"
 import { sendOrderShippedEmail } from "@/lib/shop/emails"
+import { recordAudit } from "@/lib/audit/record"
 
 interface PrintfulWebhookEvent {
   type: string
@@ -55,6 +56,21 @@ export async function POST(request: Request) {
         shipped_at: new Date(s.shipped_at * 1000).toISOString(),
       })
       await sendOrderShippedEmail(updated)
+      // Shipped is the boundary that maps to "fulfilled" in audit taxonomy
+      // for POD orders. Digital fulfillment happens in the Stripe webhook.
+      await recordAudit({
+        action: "shop.order_fulfilled",
+        category: "commerce",
+        actor: { id: null, email: "printful", role: "system" },
+        target: { type: "shop_order", id: order.id, label: order.order_number },
+        metadata: {
+          printful_order_id: printfulOrderId,
+          tracking_number: s.tracking_number,
+          carrier: s.carrier,
+          event_type: event.type,
+        },
+        request,
+      })
       break
     }
     case "order_updated": {

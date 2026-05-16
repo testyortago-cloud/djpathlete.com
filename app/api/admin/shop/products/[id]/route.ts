@@ -11,6 +11,7 @@ import {
   countClicksForProductSince,
 } from "@/lib/db/shop-affiliate-clicks"
 import { buildAffiliateUrl } from "@/lib/shop/amazon"
+import { withAudit } from "@/lib/audit/with-audit"
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
@@ -59,65 +60,111 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   return NextResponse.json({ product, variants })
 }
 
-export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
-  }
-  const { id } = await params
-  const body = await request.json()
-  const parsed = adminUpdateProductSchema.safeParse(body)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
-  }
-  const updated = await updateProduct(id, parsed.data)
+export const PATCH = withAudit(
+  {
+    action: "shop.product_updated",
+    category: "admin_write",
+    target: async (_req, ctx) => {
+      const { id } = (await ctx.params) as { id: string }
+      return { type: "shop_product", id }
+    },
+    metadata: async (_req, res) => {
+      if (!res.ok) return {}
+      try {
+        const body = await res.json() as { slug?: string; product_type?: string; is_active?: boolean }
+        return {
+          product_slug: body.slug,
+          product_type: body.product_type,
+          is_active: body.is_active,
+        }
+      } catch {
+        return {}
+      }
+    },
+  },
+  async (request: Request, context) => {
+    const { params } = context as unknown as { params: Promise<{ id: string }> }
+    const session = await auth()
+    if (!session?.user?.id || session.user.role !== "admin") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+    const { id } = await params
+    const body = await request.json()
+    const parsed = adminUpdateProductSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+    }
+    const updated = await updateProduct(id, parsed.data)
 
-  revalidatePath("/shop")
-  revalidatePath(`/shop/${updated.slug}`)
+    revalidatePath("/shop")
+    revalidatePath(`/shop/${updated.slug}`)
 
-  return NextResponse.json(updated)
-}
+    return NextResponse.json(updated)
+  },
+)
 
-export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
-  }
-  const { id } = await params
-  const product = await getProductById(id)
-  if (!product) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 })
-  }
-  if (product.product_type === "pod") {
-    return NextResponse.json(
-      {
-        error:
-          "POD products are synced from Printful and cannot be deleted here. Deactivate instead.",
-      },
-      { status: 400 },
-    )
-  }
-
-  try {
-    await deleteProduct(id)
-  } catch (err) {
-    const e = err as { code?: string; message?: string }
-    if (e.code === "23503") {
+export const DELETE = withAudit(
+  {
+    action: "shop.product_deleted",
+    category: "admin_write",
+    target: async (_req, ctx) => {
+      const { id } = (await ctx.params) as { id: string }
+      return { type: "shop_product", id }
+    },
+    metadata: async (_req, res) => {
+      const slug = res.headers.get("x-audit-target-label")
+      const type = res.headers.get("x-audit-product-type")
+      return {
+        ...(slug ? { product_slug: slug } : {}),
+        ...(type ? { product_type: type } : {}),
+      }
+    },
+  },
+  async (_req: Request, context) => {
+    const { params } = context as unknown as { params: Promise<{ id: string }> }
+    const session = await auth()
+    if (!session?.user?.id || session.user.role !== "admin") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+    const { id } = await params
+    const product = await getProductById(id)
+    if (!product) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 })
+    }
+    if (product.product_type === "pod") {
       return NextResponse.json(
         {
           error:
-            "Cannot delete: this product has existing orders, downloads, or leads. Deactivate it instead.",
+            "POD products are synced from Printful and cannot be deleted here. Deactivate instead.",
         },
-        { status: 409 },
+        { status: 400 },
       )
     }
-    return NextResponse.json(
-      { error: e.message ?? "Failed to delete product" },
-      { status: 500 },
-    )
-  }
 
-  revalidatePath("/shop")
-  revalidatePath(`/shop/${product.slug}`)
-  return NextResponse.json({ success: true })
-}
+    try {
+      await deleteProduct(id)
+    } catch (err) {
+      const e = err as { code?: string; message?: string }
+      if (e.code === "23503") {
+        return NextResponse.json(
+          {
+            error:
+              "Cannot delete: this product has existing orders, downloads, or leads. Deactivate it instead.",
+          },
+          { status: 409 },
+        )
+      }
+      return NextResponse.json(
+        { error: e.message ?? "Failed to delete product" },
+        { status: 500 },
+      )
+    }
+
+    revalidatePath("/shop")
+    revalidatePath(`/shop/${product.slug}`)
+    const response = NextResponse.json({ success: true })
+    response.headers.set("x-audit-target-label", product.slug)
+    response.headers.set("x-audit-product-type", product.product_type)
+    return response
+  },
+)

@@ -9,6 +9,7 @@ import { stripe } from "@/lib/stripe"
 import type { ShopOrderItem } from "@/types/database"
 import { parseAttrCookie } from "@/lib/marketing/cookies"
 import { getUnclaimedAttribution } from "@/lib/db/marketing-attribution"
+import { recordAudit } from "@/lib/audit/record"
 
 export async function POST(request: Request) {
   if (!isShopEnabled()) return NextResponse.json({ error: "Not found" }, { status: 404 })
@@ -121,5 +122,25 @@ export async function POST(request: Request) {
   })
 
   await updateOrder(order.id, { stripe_session_id: stripeSession.id })
+
+  // Audit AFTER the order row + stripe session are persisted. Status is still
+  // "pending" here — shop.order_paid is emitted later by the Stripe webhook.
+  await recordAudit({
+    action: "shop.order_created",
+    category: "commerce",
+    target: { type: "shop_order", id: order.id, label: order.order_number },
+    metadata: {
+      order_number: order.order_number,
+      total_cents,
+      subtotal_cents,
+      shipping_cents,
+      item_count: orderItems.length,
+      contains_digital: containsDigital,
+      contains_pod: containsPod,
+      stripe_session_id: stripeSession.id,
+    },
+    request,
+  })
+
   return NextResponse.json({ url: stripeSession.url, order_number: order.order_number })
 }

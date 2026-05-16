@@ -9,6 +9,7 @@ import { getProductFile } from "@/lib/db/shop-product-files"
 import { getProductById } from "@/lib/db/shop-products"
 import { generateSignedDownloadUrl } from "@/lib/shop/downloads"
 import { rateLimit } from "@/lib/shop/rate-limit"
+import { recordAudit } from "@/lib/audit/record"
 
 export async function POST(req: Request) {
   const ip = req.headers.get("x-forwarded-for") ?? "unknown"
@@ -52,5 +53,24 @@ export async function POST(req: Request) {
     file.storage_path,
     product.digital_signed_url_ttl_seconds,
   )
+
+  // Audit each call (replay is intentional — admins want access patterns).
+  // The DAL doesn't dedupe; volume is whatever the customer triggers.
+  const ttl = product.digital_signed_url_ttl_seconds
+  const expiresAtIso = new Date(Date.now() + ttl * 1000).toISOString()
+  await recordAudit({
+    action: "shop.download_issued",
+    category: "commerce",
+    target: { type: "shop_order_download", id: download.id, label: order.order_number },
+    metadata: {
+      order_id: order.id,
+      product_id: download.product_id,
+      file_id: file.id,
+      expires_at_iso: expiresAtIso,
+      ttl_seconds: ttl,
+    },
+    request: req,
+  })
+
   return NextResponse.json({ url })
 }
