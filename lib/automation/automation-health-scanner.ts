@@ -25,6 +25,7 @@ export const EXPECTED_CRONS: ExpectedCron[] = [
   { name: "socialAgentCron", sla_hours: 96 },          // Tue + Thu
   { name: "clientRiskScanCron", sla_hours: 30 },       // daily 05:00
   { name: "revenueDigestCron", sla_hours: 192 },       // weekly Mon
+  { name: "auditLogRetentionCron", sla_hours: 30 },    // daily 03:00
 ]
 
 export interface ScannerInput {
