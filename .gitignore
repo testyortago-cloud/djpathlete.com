@@ -50,3 +50,5 @@ Screenshot*.png
 
 # git worktrees
 .worktrees/
+
+.playwright-mcp/
