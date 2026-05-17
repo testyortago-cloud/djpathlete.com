@@ -195,6 +195,19 @@ export interface PromotableInventoryItem {
   age_range: string | null
   /** Event-only — raw location_name; the agent infers geo from this. */
   location_name: string | null
+  /** Event-only — earliest day pre-event to start paid acquisition (heuristic from price/duration/type). */
+  paid_window_open_days_before: number | null
+  /** Event-only — latest day pre-event where paid still has time to compound. */
+  paid_window_close_days_before: number | null
+  /**
+   * Event-only seasonal-lift state. Drives the agent's `propose_new_campaign`
+   * decision for events:
+   *  - too_early: outside window, advise waiting
+   *  - in_window: paid acquisition makes sense now
+   *  - closing_soon: in window but <7 days remain — push hard or accept skip
+   *  - too_late: past the window, propose flag_for_human for the next cycle
+   */
+  paid_window_state: "too_early" | "in_window" | "closing_soon" | "too_late" | null
   /** Coach-only context. */
   notes: string | null
 }

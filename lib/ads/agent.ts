@@ -747,6 +747,53 @@ async function fetchFewShotsAdapter(): Promise<string[]> {
  * strategy and `gaps[]` is unaffected (this signal is additive, not
  * required for preflight).
  */
+/**
+ * Heuristic paid-acquisition window for an event. Higher-commitment events
+ * (multi-day, expensive, older audience) need a longer ramp; cheap single-
+ * session clinics convert faster on shorter ramps. The window is bounded
+ * by `open_days_before` (start promoting) and `close_days_before` (stop
+ * — too late for paid to compound). `state` snaps the current
+ * `days_until` into one of four buckets the prompt acts on directly.
+ *
+ * Buckets are intentionally coarse: this is decision-support for the
+ * agent, not a forecasting model. Real attribution data later will let us
+ * regress optimal windows per event-type/price-band.
+ */
+export function computePaidWindow(input: {
+  type: "clinic" | "camp"
+  price_cents: number | null
+  days_until: number
+}): {
+  open_days_before: number
+  close_days_before: number
+  state: "too_early" | "in_window" | "closing_soon" | "too_late"
+} {
+  const priceUsd = (input.price_cents ?? 0) / 100
+  // Camps: multi-day commitment, parents need lead time → 6-week ramp.
+  // Clinics: single-session, lower commitment → 3-week ramp.
+  // Cheap clinics (<$50): 2-week ramp (impulse purchase).
+  let open: number
+  let close: number
+  if (input.type === "camp") {
+    open = 42
+    close = 7
+  } else if (priceUsd >= 50) {
+    open = 21
+    close = 3
+  } else {
+    open = 14
+    close = 2
+  }
+
+  let state: "too_early" | "in_window" | "closing_soon" | "too_late"
+  if (input.days_until > open) state = "too_early"
+  else if (input.days_until < close) state = "too_late"
+  else if (input.days_until <= 7) state = "closing_soon"
+  else state = "in_window"
+
+  return { open_days_before: open, close_days_before: close, state }
+}
+
 async function fetchPromotableInventoryAdapter(): Promise<PromotableInventoryItem[]> {
   const supabase = createServiceRoleClient()
   const items: PromotableInventoryItem[] = []
@@ -789,6 +836,9 @@ async function fetchPromotableInventoryAdapter(): Promise<PromotableInventoryIte
         spots_remaining: null,
         age_range: null,
         location_name: null,
+        paid_window_open_days_before: null,
+        paid_window_close_days_before: null,
+        paid_window_state: null,
         notes: p.notes,
       })
     }
@@ -836,6 +886,11 @@ async function fetchPromotableInventoryAdapter(): Promise<PromotableInventoryIte
         f.replace(/^\d+\)\s*/, "").trim(),
       )
       const landing = e.type === "clinic" ? `/clinics/${e.slug}` : `/camps/${e.slug}`
+      const window = computePaidWindow({
+        type: e.type,
+        price_cents: e.price_cents,
+        days_until,
+      })
       items.push({
         kind: "event",
         ref: e.id,
@@ -855,6 +910,9 @@ async function fetchPromotableInventoryAdapter(): Promise<PromotableInventoryIte
         spots_remaining: e.capacity - e.signup_count,
         age_range: ageRange,
         location_name: e.location_name,
+        paid_window_open_days_before: window.open_days_before,
+        paid_window_close_days_before: window.close_days_before,
+        paid_window_state: window.state,
         notes: `${e.type}, capacity ${e.capacity}, ${e.signup_count} signed up`,
       })
     }

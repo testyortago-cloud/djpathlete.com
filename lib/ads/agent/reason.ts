@@ -2,6 +2,7 @@
 // Single Claude call with cached system prompt. Validates the response
 // against adsAgentDecisionSchema; retries once on validation failure.
 
+import { z } from "zod"
 import { callAgent, MODEL_SONNET } from "@/lib/ai/anthropic"
 import { fewShotsBlock } from "@/lib/agents/few-shots"
 import { adsAgentDecisionSchema, type AdsAgentDecision } from "./decision-schema"
@@ -46,9 +47,14 @@ propose_new_campaign rules:
   product slug (kind='product') or event id (kind='event'). Do NOT propose a
   campaign with no inventory_ref — the human reviewer can't act on a vague
   blueprint.
-- Prefer event inventory when days_until_event >= 7 (otherwise too late for
-  paid acquisition to compound; instead propose flag_for_human "next clinic
-  pipeline" or propose_negative_keywords for past-event terms).
+- For event inventory, respect the paid_window_state field:
+    in_window     → propose_new_campaign is appropriate
+    closing_soon  → only if confidence is high AND budget is small ($5-10/day)
+    too_early     → wait; propose flag_for_human "next event planning"
+    too_late      → do NOT propose paid; flag_for_human with "next cycle"
+                    framing, and consider propose_negative_keywords for
+                    past-event terms.
+  paid_window_open_days_before / paid_window_close_days_before give the bounds.
 - Derive keyword_themes from the inventory item's signature_phrases. Add
   match types thoughtfully — EXACT for brand/explicit intent, PHRASE for
   themed clusters, BROAD only when learning has shown the account converts
@@ -156,6 +162,13 @@ export function buildAdsReasonUserMessage(
   return `${briefBlock}${toolPerfBlock}${inventoryBlock}${fewShotsRendered}${critiqueBlock}\n${snapshot}`
 }
 
+function formatZodIssues(error: z.ZodError): string {
+  return error.issues
+    .slice(0, 8)
+    .map((issue) => `  - ${issue.path.join(".") || "(root)"}: ${issue.message}`)
+    .join("\n")
+}
+
 export async function reasonAdsDecision(
   signals: AdsSignals,
   opts: { critique_objections?: string[] } = {},
@@ -163,23 +176,55 @@ export async function reasonAdsDecision(
   const baseUserMessage = buildAdsReasonUserMessage(signals, {
     critique_objections: opts.critique_objections,
   })
-  let lastError: unknown = null
+  let lastError: z.ZodError | unknown = null
+
+  let lastErrorMessage: string | null = null
 
   for (let attempt = 0; attempt < 2; attempt++) {
-    const userMessage =
-      attempt === 0
-        ? baseUserMessage
-        : `${baseUserMessage}\n\nYour previous response did not match the schema. Return ONLY valid JSON matching adsAgentDecisionSchema.`
+    let userMessage = baseUserMessage
+    if (attempt === 1 && lastError instanceof z.ZodError) {
+      userMessage = `${baseUserMessage}
 
-    const response = await callAgent(
-      SYSTEM_PROMPT,
-      userMessage,
-      adsAgentDecisionSchema,
-      {
-        model: MODEL_SONNET,
-        cacheSystemPrompt: true,
-      },
-    )
+Your previous response failed schema validation. Fix THESE specific issues and re-emit the full decision (do not omit other actions, just fix these fields):
+${formatZodIssues(lastError)}
+
+Hard reminders:
+- Headline strings: <= 30 characters each. If your draft is 31, drop a word.
+- Description strings: <= 90 characters each. If 91+, end the sentence sooner.
+- keyword_themes: at least 1, max 5 themes; each with >= 2 keywords.
+- supporting_gaql_evidence: at least 1 row with non-empty gaql AND finding.`
+    } else if (attempt === 1 && lastErrorMessage) {
+      userMessage = `${baseUserMessage}
+
+Your previous response could not be parsed. Reason: ${lastErrorMessage}
+Return ONLY valid JSON matching the schema.`
+    }
+
+    let response
+    try {
+      response = await callAgent(
+        SYSTEM_PROMPT,
+        userMessage,
+        adsAgentDecisionSchema,
+        {
+          model: MODEL_SONNET,
+          cacheSystemPrompt: true,
+        },
+      )
+    } catch (err) {
+      // generateObject throws AI_NoObjectGeneratedError when the model
+      // output fails the Zod schema (including the superRefine on
+      // propose_new_campaign.args). Pull out the Zod cause if present so
+      // the next attempt gets specific feedback.
+      const cause = (err as { cause?: unknown })?.cause
+      if (cause instanceof z.ZodError) {
+        lastError = cause
+      } else {
+        lastError = null
+        lastErrorMessage = err instanceof Error ? err.message : String(err)
+      }
+      continue
+    }
 
     const parsed = adsAgentDecisionSchema.safeParse(response.content)
     if (parsed.success) {
@@ -191,5 +236,6 @@ export async function reasonAdsDecision(
     lastError = parsed.error
   }
 
-  throw new Error(`Ads agent decision invalid after retry: ${String(lastError)}`)
+  const detail = lastError instanceof z.ZodError ? formatZodIssues(lastError) : lastErrorMessage
+  throw new Error(`Ads agent decision invalid after retry:\n${detail ?? "unknown"}`)
 }
