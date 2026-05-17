@@ -7,6 +7,8 @@ import { Label } from "@/components/ui/label"
 import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
 import { summarizeApiError, type FieldErrors } from "@/lib/errors/humanize"
 import { contactFormSchema, type ContactFormData } from "@/lib/validators/contact"
+import { fireConversion } from "@/lib/google-ads-tag"
+import { getSendTo } from "@/lib/ads/conversion-registry"
 
 const CONTACT_FIELD_LABELS: Record<string, string> = {
   name: "Name",
@@ -69,6 +71,9 @@ export function ContactForm() {
       }
 
       toast.success("Message sent! We'll get back to you within 24 hours.")
+      // Fire Google Ads contact-form conversion (no-op if gtag isn't loaded).
+      // Server-side /api/contact records the message regardless.
+      fireConversion({ send_to: getSendTo("contact_form"), currency: "USD" })
       ;(e.target as HTMLFormElement).reset()
     } catch {
       const message = "We couldn't reach our server. Please check your connection and try again."

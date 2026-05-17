@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { getEventBySlug } from "@/lib/db/events"
 import { getEventSignupByStripeSessionId } from "@/lib/db/event-signups"
-import { EventBookingConversionTracker } from "@/components/public/events/EventBookingConversionTracker"
+import { ConversionTracker } from "@/components/shared/ConversionTracker"
+import { getSendTo } from "@/lib/ads/conversion-registry"
 
 export const metadata: Metadata = {
   title: "Booking confirmed",
@@ -113,10 +114,11 @@ export default async function ClinicBookingSuccessPage({ params, searchParams }:
         </Card>
       </div>
       {signup && transactionId ? (
-        <EventBookingConversionTracker
-          transactionId={transactionId}
+        <ConversionTracker
+          sendTo={getSendTo("event_booking")}
           valueCents={conversionValueCents}
-          status={signup.status}
+          transactionId={transactionId}
+          ready={signup.status === "confirmed"}
         />
       ) : null}
     </div>
