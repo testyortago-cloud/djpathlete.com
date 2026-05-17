@@ -5,21 +5,21 @@ import { toast } from "sonner"
 import type { GoogleAdsRecommendation, GoogleAdsRecommendationType } from "@/types/database"
 
 const TYPE_LABEL: Record<GoogleAdsRecommendationType, string> = {
-  add_negative_keyword: "Add negative keyword",
-  adjust_bid: "Adjust bid",
-  pause_keyword: "Pause keyword",
-  add_keyword: "Add keyword",
-  add_ad_variant: "Add ad variant",
-  pause_ad: "Pause ad",
+  add_negative_keyword: "Block a bad search term",
+  adjust_bid: "Change a bid",
+  pause_keyword: "Pause a keyword",
+  add_keyword: "Add a keyword",
+  add_ad_variant: "Try a new ad headline",
+  pause_ad: "Pause an ad",
   // Phase 1.6+ — agent-only types (advisory; no apply path yet).
-  budget_shift: "Budget shift",
-  audience_expansion: "Audience expansion",
-  new_campaign: "New campaign",
-  campaign_pause: "Pause campaign",
-  campaign_split: "Split campaign",
-  match_type_change: "Match type change",
-  bid_strategy_review: "Bid strategy review",
-  flag: "Flag for human review",
+  budget_shift: "Move money between campaigns",
+  audience_expansion: "Reach more people",
+  new_campaign: "Launch a new campaign",
+  campaign_pause: "Pause a whole campaign",
+  campaign_split: "Split a campaign",
+  match_type_change: "Change how a keyword matches",
+  bid_strategy_review: "Review bidding approach",
+  flag: "Heads up — not a fix",
 }
 
 const TYPE_TONE: Record<GoogleAdsRecommendationType, string> = {
@@ -46,50 +46,81 @@ function payloadSummary(
 ): string {
   switch (type) {
     case "add_negative_keyword":
-      return `"${payload.text}" [${payload.match_type}]`
+      return `"${payload.text}" (${String(payload.match_type ?? "").toLowerCase()})`
     case "adjust_bid": {
       const cur = Number(payload.current_micros ?? 0) / 1_000_000
       const next = Number(payload.proposed_micros ?? 0) / 1_000_000
-      const delta = cur > 0 ? `${(((next - cur) / cur) * 100).toFixed(0)}%` : "—"
-      return `$${cur.toFixed(2)} → $${next.toFixed(2)} (${delta})`
+      const delta = cur > 0 ? `${(((next - cur) / cur) * 100).toFixed(0)}%` : ""
+      return `$${cur.toFixed(2)} → $${next.toFixed(2)}${delta ? ` (${delta})` : ""}`
     }
     case "pause_keyword":
-      return `criterion ${payload.criterion_id}`
+      return ""
     case "add_keyword":
-      return `"${payload.text}" [${payload.match_type}]`
+      return `"${payload.text}" (${String(payload.match_type ?? "").toLowerCase()})`
     case "add_ad_variant": {
       const headlines = Array.isArray(payload.headlines) ? payload.headlines : []
-      return `${headlines.length} headlines · ${
-        Array.isArray(payload.descriptions) ? payload.descriptions.length : 0
-      } descriptions`
+      const descs = Array.isArray(payload.descriptions) ? payload.descriptions : []
+      return `${headlines.length} headlines, ${descs.length} descriptions`
     }
     case "pause_ad":
-      return `ad ${payload.ad_id}`
-    // Agent-only types (advisory; show the tool tag until rich summaries land).
+      return ""
+    case "new_campaign": {
+      const args = (payload.args ?? payload) as Record<string, unknown>
+      const name = args.campaign_name ? String(args.campaign_name) : ""
+      const budget = Number(args.daily_budget_cents ?? 0) / 100
+      return name ? `${name} · $${budget.toFixed(2)}/day` : ""
+    }
+    // Other agent-advisory types — no extra summary, keep the card clean.
     case "budget_shift":
     case "audience_expansion":
-    case "new_campaign":
     case "campaign_pause":
     case "campaign_split":
     case "match_type_change":
     case "bid_strategy_review":
     case "flag":
-      return String(payload.tool ?? type)
+      return ""
   }
+}
+
+function formatScope(scope_type: string, scope_id: string): string {
+  // Hide the sentinel scope_ids used for account-wide actions — they aren't
+  // useful to a non-technical reader.
+  if (scope_type === "account") return "Whole account"
+  if (scope_id.startsWith("__") && scope_id.endsWith("__")) {
+    return scope_type === "campaign" ? "New campaign (not yet created)" : "Account-level"
+  }
+  return `${scope_type}: ${scope_id}`
+}
+
+function formatExpires(iso: string): string {
+  const d = new Date(iso)
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" })
+}
+
+function confidenceLabel(c: number): { text: string; tone: string } {
+  if (c >= 0.8) return { text: "High confidence", tone: "text-success" }
+  if (c >= 0.5) return { text: "Medium confidence", tone: "text-accent" }
+  return { text: "Lower confidence", tone: "text-muted-foreground" }
 }
 
 type Action = "approve" | "reject" | "apply"
 type ResolvedState = "applied" | "auto_applied" | "rejected" | "failed"
 
 const RESOLVED_LABEL: Record<ResolvedState, { text: string; tone: string }> = {
-  applied: { text: "Applied to Google Ads.", tone: "border-success/40 bg-success/5 text-success" },
-  auto_applied: {
-    text: "Auto-applied (auto-pilot, confidence ≥ 0.8).",
+  applied: {
+    text: "Done. The change is live in your Google Ads account.",
     tone: "border-success/40 bg-success/5 text-success",
   },
-  rejected: { text: "Rejected.", tone: "border-border/60 bg-muted/20 text-muted-foreground" },
+  auto_applied: {
+    text: "Done — the assistant applied this automatically (high confidence).",
+    tone: "border-success/40 bg-success/5 text-success",
+  },
+  rejected: {
+    text: "Skipped — no change was made.",
+    tone: "border-border/60 bg-muted/20 text-muted-foreground",
+  },
   failed: {
-    text: "Apply failed — see automation log.",
+    text: "Couldn't be applied. You can try again or skip.",
     tone: "border-error/40 bg-error/5 text-error",
   },
 }
@@ -157,18 +188,20 @@ export function RecommendationCard({ rec }: { rec: GoogleAdsRecommendation }) {
       className={`border bg-card rounded-xl p-5 space-y-3 ${isFailed ? "border-error/40" : "border-border"}`}
     >
       <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-2 min-w-0">
+        <div className="flex items-center gap-2 min-w-0 flex-wrap">
           <span
-            className={`inline-block px-2 py-0.5 rounded text-[11px] font-mono uppercase tracking-wide ${TYPE_TONE[rec.recommendation_type]}`}
+            className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${TYPE_TONE[rec.recommendation_type]}`}
           >
             {TYPE_LABEL[rec.recommendation_type]}
           </span>
-          <span className="text-xs font-mono text-muted-foreground truncate">
-            {payloadSummary(rec.recommendation_type, rec.payload)}
-          </span>
+          {payloadSummary(rec.recommendation_type, rec.payload) ? (
+            <span className="text-xs text-muted-foreground truncate">
+              {payloadSummary(rec.recommendation_type, rec.payload)}
+            </span>
+          ) : null}
         </div>
-        <span className="text-[11px] font-mono text-muted-foreground shrink-0">
-          conf {(rec.confidence * 100).toFixed(0)}%
+        <span className={`text-xs shrink-0 ${confidenceLabel(rec.confidence).tone}`}>
+          {confidenceLabel(rec.confidence).text}
         </span>
       </div>
 
@@ -176,15 +209,14 @@ export function RecommendationCard({ rec }: { rec: GoogleAdsRecommendation }) {
 
       {isFailed && rec.failure_reason ? (
         <div className="border border-error/40 bg-error/5 rounded-md p-3 text-xs text-error leading-snug">
-          <span className="font-mono uppercase tracking-wider">Last failure:</span>{" "}
+          <span className="font-medium">Why it failed last time:</span>{" "}
           {rec.failure_reason.slice(0, 280)}
         </div>
       ) : null}
 
       <div className="flex items-center justify-between pt-2 border-t border-border/40">
-        <p className="text-[11px] font-mono text-muted-foreground">
-          {rec.scope_type} · {rec.scope_id} · expires{" "}
-          {new Date(rec.expires_at).toLocaleDateString()}
+        <p className="text-xs text-muted-foreground">
+          {formatScope(rec.scope_type, rec.scope_id)} · expires {formatExpires(rec.expires_at)}
         </p>
         <div className="flex items-center gap-2">
           {rec.recommendation_type === "new_campaign" ? (

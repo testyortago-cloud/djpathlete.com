@@ -19,31 +19,31 @@ export default async function RecommendationsPage() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-heading text-primary">Recommendations</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            AI-generated optimizations sorted by confidence. Approve to apply directly to Google
-            Ads via the automation worker; reject to dismiss. Auto-pilot also applies negative
-            keywords with confidence ≥ 0.8 after each nightly sync. Rows expire 14 days after
-            generation if untouched.
+          <p className="text-sm text-muted-foreground mt-1 max-w-3xl">
+            Suggestions the AI assistant made about your Google Ads account. Click{" "}
+            <span className="font-semibold text-primary">Approve</span> to apply a change to your
+            ads, or <span className="font-semibold text-primary">Reject</span> to skip it.
+            Unactioned suggestions disappear after 14 days.
           </p>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <CountTile label="Pending" value={counts.pending} tone="bg-accent/10 text-accent" />
-        <CountTile label="Failed" value={counts.failed} tone="bg-error/10 text-error" />
-        <CountTile label="Applied" value={counts.applied} tone="bg-success/10 text-success" />
-        <CountTile label="Auto-applied" value={counts.auto_applied} tone="bg-success/10 text-success" />
-        <CountTile label="Rejected" value={counts.rejected} tone="bg-muted/40 text-muted-foreground" />
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <CountTile label="Waiting for you" value={counts.pending} tone="bg-accent/10 text-accent" />
+        <CountTile label="Needs another try" value={counts.failed} tone="bg-error/10 text-error" />
+        <CountTile label="Live in Google Ads" value={counts.applied + counts.auto_applied} tone="bg-success/10 text-success" />
+        <CountTile label="Skipped" value={counts.rejected} tone="bg-muted/40 text-muted-foreground" />
       </div>
 
       {actionable.length === 0 ? (
         <div className="border border-dashed border-border rounded-xl p-8 text-center bg-card">
           <p className="text-sm text-muted-foreground">
-            No pending or failed recommendations.{" "}
+            Nothing to review right now. New suggestions show up after the nightly Google Ads
+            refresh, or you can{" "}
             <Link href="/admin/ads/campaigns" className="underline hover:text-accent">
-              Trigger a sync
-            </Link>{" "}
-            to refresh, or wait for the 06:00 UTC nightly run.
+              refresh now
+            </Link>
+            .
           </p>
         </div>
       ) : (
