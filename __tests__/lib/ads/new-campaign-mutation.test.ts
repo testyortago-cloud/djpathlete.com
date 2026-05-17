@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest"
-import { buildNewCampaignOps } from "@/lib/ads/new-campaign-mutation"
+import {
+  buildNewCampaignOps,
+  toAbsoluteFinalUrl,
+} from "@/lib/ads/new-campaign-mutation"
 import type { CampaignBlueprintArgs } from "@/lib/ads/agent/decision-schema"
 import type { ResolvedGeoTarget } from "@/lib/ads/geo-target-resolver"
 
@@ -246,6 +249,44 @@ describe("buildNewCampaignOps", () => {
       selective_optimization?: unknown
     }
     expect(campaign.selective_optimization).toBeUndefined()
+  })
+
+  describe("toAbsoluteFinalUrl", () => {
+    it("leaves absolute URLs unchanged", () => {
+      expect(toAbsoluteFinalUrl("https://example.com/x")).toBe("https://example.com/x")
+      expect(toAbsoluteFinalUrl("HTTP://example.com")).toBe("HTTP://example.com")
+    })
+    it("prepends the production origin to a leading-slash path", () => {
+      expect(toAbsoluteFinalUrl("/programs/rotational-reboot")).toBe(
+        "https://www.darrenjpaul.com/programs/rotational-reboot",
+      )
+    })
+    it("normalizes a path missing the leading slash", () => {
+      expect(toAbsoluteFinalUrl("programs/rotational-reboot")).toBe(
+        "https://www.darrenjpaul.com/programs/rotational-reboot",
+      )
+    })
+  })
+
+  it("converts relative final_url to absolute on every RSA so Google Ads accepts it", () => {
+    const ops = buildNewCampaignOps(
+      CUSTOMER_ID,
+      blueprint({
+        ad_copy: {
+          headlines: ["A", "B", "C"],
+          descriptions: ["D1", "D2"],
+          final_url: "/programs/rotational-reboot", // relative — agent stores these
+        },
+      }),
+    )
+    const rsas = ops.filter((o) => o.entity === "ad_group_ad") as Array<{
+      ad: { final_urls: string[] }
+    }>
+    for (const r of rsas) {
+      expect(r.ad.final_urls[0]).toBe(
+        "https://www.darrenjpaul.com/programs/rotational-reboot",
+      )
+    }
   })
 
   it("attaches the ad copy headlines and descriptions to every RSA", () => {

@@ -35,6 +35,24 @@ const LANGUAGE_CONSTANT_ENGLISH = "languageConstants/1000"
 const DEFAULT_AD_GROUP_CPC_MICROS = 1_000_000 // $1.00 — matches the blueprint CSV default
 
 /**
+ * Google Ads requires final_urls to be absolute (protocol + host). Inventory
+ * rows (marketing_products.landing_url, events landing slugs) store relative
+ * paths like "/programs/rotational-reboot" because they're consumed by both
+ * the public site (Next.js) and the agent. Prepend the production origin
+ * when the URL isn't already absolute.
+ */
+const PRODUCTION_ORIGIN = "https://www.darrenjpaul.com"
+
+export function toAbsoluteFinalUrl(url: string): string {
+  const trimmed = url.trim()
+  if (/^https?:\/\//i.test(trimmed)) return trimmed
+  // Always use production — campaigns must never point at localhost or a
+  // preview deploy even when the apply is triggered from one.
+  const path = trimmed.startsWith("/") ? trimmed : `/${trimmed}`
+  return `${PRODUCTION_ORIGIN}${path}`
+}
+
+/**
  * Builds the operations to atomically create:
  *   1 budget → 1 campaign → N ad groups → keywords + 1 RSA per ad group → campaign negatives
  *
@@ -191,7 +209,7 @@ export function buildNewCampaignOps(
       ad_group: adGroupResource,
       status: "PAUSED",
       ad: {
-        final_urls: [blueprint.ad_copy.final_url],
+        final_urls: [toAbsoluteFinalUrl(blueprint.ad_copy.final_url)],
         responsive_search_ad: {
           headlines: blueprint.ad_copy.headlines.map((text) => ({ text })),
           descriptions: blueprint.ad_copy.descriptions.map((text) => ({ text })),
