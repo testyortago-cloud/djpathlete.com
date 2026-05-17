@@ -5,6 +5,7 @@ import { stripe } from "@/lib/stripe"
 import { isShopEnabled } from "@/lib/shop/feature-flag"
 import { handleShopOrderCheckout } from "@/lib/shop/webhooks"
 import { ClearCartOnMount } from "@/components/public/shop/ClearCartOnMount"
+import { PurchaseConversionTracker } from "@/components/public/shop/PurchaseConversionTracker"
 
 export default async function Page({
   params,
@@ -97,6 +98,15 @@ export default async function Page({
         </p>
       </div>
       <ClearCartOnMount />
+      {/* Only fire conversion when Stripe actually settled the payment —
+          avoids double-counting if a user lands here while pending. */}
+      {order.status !== "pending" ? (
+        <PurchaseConversionTracker
+          orderNumber={order.order_number}
+          totalCents={order.total_cents}
+          productNames={order.items.map((i) => i.name)}
+        />
+      ) : null}
     </>
   )
 }

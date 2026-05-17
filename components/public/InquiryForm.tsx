@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
 import { summarizeApiError, type FieldErrors } from "@/lib/errors/humanize"
+import { fireLeadFormSubmission } from "@/lib/google-ads-tag"
 import {
   inquiryFormSchema,
   SERVICE_LABELS,
@@ -113,6 +114,11 @@ export function InquiryForm({
 
       setIsSubmitted(true)
       toast.success("Application submitted!")
+      // Fire Google Ads lead conversion (AW-18133890533/Vu0HCLPN3K4cEOXr9MZD).
+      // No-op if gtag.js hasn't loaded (SSR, ad-blocker, etc.) — server-side
+      // /api/inquiry has already recorded the lead, so this is just the
+      // tracking ping, not the source of truth.
+      fireLeadFormSubmission()
     } catch {
       const message = "We couldn't reach our server. Please check your connection and try again."
       setFormError(message)
