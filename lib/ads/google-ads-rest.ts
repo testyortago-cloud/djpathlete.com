@@ -56,6 +56,7 @@ const ENTITY_TO_OPERATION_KEY: Record<string, string> = {
   ad_group: "adGroupOperation",
   ad_group_criterion: "adGroupCriterionOperation",
   ad_group_ad: "adGroupAdOperation",
+  conversion_action: "conversionActionOperation",
 }
 
 function entityOperationKey(entity: string): string {
