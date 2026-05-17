@@ -1,6 +1,17 @@
+import { ExternalLink } from "lucide-react"
 import type { GoogleAdsCampaign } from "@/types/database"
 import { AutomationModeSelector } from "./AutomationModeSelector"
 import { GenerateCopyButton } from "./GenerateCopyButton"
+
+/**
+ * Builds a deep link into the Google Ads web UI for a specific campaign.
+ * `__c` is the customer ID (integer, no dashes); `campaignId` opens the
+ * detail view. Works whether or not the user is currently signed in —
+ * Google routes through account selection if needed.
+ */
+function googleAdsCampaignUrl(customerId: string, campaignId: string): string {
+  return `https://ads.google.com/aw/campaigns?campaignId=${campaignId}&__c=${customerId}`
+}
 
 export interface CampaignWithMetrics extends GoogleAdsCampaign {
   cost_micros_7d: number
@@ -59,7 +70,16 @@ export function CampaignsTable({ campaigns }: { campaigns: CampaignWithMetrics[]
           {campaigns.map((c) => (
             <tr key={c.id} className="border-t border-border/60 align-top">
               <td className="p-3">
-                <p className="font-medium text-primary leading-snug">{c.name}</p>
+                <a
+                  href={googleAdsCampaignUrl(c.customer_id, c.campaign_id)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group inline-flex items-center gap-1.5 font-medium text-primary leading-snug hover:text-accent hover:underline transition-colors"
+                  title="Open in Google Ads — view spend, edit budget/keywords/ads, enable/pause"
+                >
+                  <span>{c.name}</span>
+                  <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-70 transition-opacity" />
+                </a>
                 <p className="text-xs text-muted-foreground font-mono mt-0.5">
                   {c.customer_id} · {c.campaign_id}
                 </p>

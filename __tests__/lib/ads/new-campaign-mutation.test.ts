@@ -250,17 +250,18 @@ describe("buildNewCampaignOps", () => {
     )
   })
 
-  it("attaches selective_optimization when conversionActionResource is provided", () => {
+  it("never sets selective_optimization on Search campaigns (invalid field — App-only)", () => {
+    // Even when conversionActionResource is passed, the builder must ignore
+    // it for Search campaigns. selective_optimization is only valid on
+    // App campaigns; Google silently dropped it at create and now rejects
+    // it on update.
     const ops = buildNewCampaignOps(CUSTOMER_ID, blueprint(), {
       conversionActionResource: "customers/1234567890/conversionActions/9999",
     })
     const campaign = ops.find((o) => o.entity === "campaign") as {
-      selective_optimization?: { conversion_actions: string[] }
+      selective_optimization?: unknown
     }
-    expect(campaign.selective_optimization).toBeDefined()
-    expect(campaign.selective_optimization?.conversion_actions).toEqual([
-      "customers/1234567890/conversionActions/9999",
-    ])
+    expect(campaign.selective_optimization).toBeUndefined()
   })
 
   it("omits selective_optimization when no conversionActionResource (account-level inherit)", () => {

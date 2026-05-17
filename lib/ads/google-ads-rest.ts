@@ -71,7 +71,14 @@ interface RestMutateBody {
 
 function toRestEnvelope(ops: MutationOperation[]): RestMutateBody {
   const mutateOperations = ops.map((op) => {
-    const { entity, operation, resource, policy_validation_parameter, ...fields } = op
+    const {
+      entity,
+      operation,
+      resource,
+      policy_validation_parameter,
+      update_mask,
+      ...fields
+    } = op
     // Convert field keys to camelCase. resourceName is only included when the
     // caller actually set a temp/real resource name — leaf ops (criteria,
     // keywords, RSAs) omit it because composite temp IDs like
@@ -88,6 +95,12 @@ function toRestEnvelope(ops: MutationOperation[]): RestMutateBody {
     // ops actually accept ignorable_policy_topics.
     if (policy_validation_parameter) {
       envelope.policyValidationParameter = snakeToCamel(policy_validation_parameter)
+    }
+    // update_mask is required for `update` operations — it's a comma-
+    // separated list of field paths and lives as `updateMask` on the
+    // envelope (sibling of `update`).
+    if (operation === "update" && update_mask) {
+      envelope.updateMask = update_mask
     }
     return {
       [entityOperationKey(entity)]: envelope,

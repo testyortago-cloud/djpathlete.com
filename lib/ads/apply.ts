@@ -33,7 +33,6 @@ import {
   type MutationOperation,
 } from "@/lib/ads/new-campaign-mutation"
 import { resolveGeoTargets, validateGeoCoverage } from "@/lib/ads/geo-target-resolver"
-import { getActiveConversionAction } from "@/lib/db/google-ads-conversion-actions"
 import { mutateResourcesRest } from "@/lib/ads/google-ads-rest"
 import { upsertCampaign } from "@/lib/db/google-ads-campaigns"
 import type {
@@ -230,29 +229,12 @@ async function buildMutation(
         return { ok: false, error: coverage.error }
       }
 
-      // Look up the matching conversion action for this goal, if one exists.
-      // form_submission_lead has no native local trigger today — campaign
-      // inherits account-level optimization in that case.
-      const triggerType =
-        parsed.data.conversion_goal === "purchase"
-          ? "payment_succeeded"
-          : parsed.data.conversion_goal === "booking"
-            ? "booking_created"
-            : null
-      let conversionActionResource: string | null = null
-      if (triggerType) {
-        const conversionAction = await getActiveConversionAction(customerId, triggerType)
-        if (conversionAction) {
-          conversionActionResource = ResourceNames.conversionAction(
-            customerId,
-            conversionAction.conversion_action_id,
-          )
-        }
-      }
-
+      // Conversion-action linking on Search campaigns is account-level by
+      // default (set in Google Ads UI → Tools → Conversions → Settings).
+      // Per-campaign overrides require CampaignConversionGoal resources,
+      // which are a separate mutation graph — deferred until needed.
       const ops = buildNewCampaignOps(customerId, parsed.data, {
         geoTargets: resolvedGeo,
-        conversionActionResource,
       })
       return { ok: true, ops }
     }

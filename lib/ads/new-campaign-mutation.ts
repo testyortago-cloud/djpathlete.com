@@ -25,6 +25,12 @@ export interface MutationOperation {
    * leaves don't need cross-references anyway.
    */
   resource?: string
+  /**
+   * Required for `update` operations: comma-separated list of field paths
+   * to update (e.g. `"selective_optimization.conversion_actions"`). The
+   * REST envelope places this as `updateMask` adjacent to `update`.
+   */
+  update_mask?: string
   [field: string]: unknown
 }
 
@@ -207,11 +213,14 @@ export function buildNewCampaignOps(
     // create or the API returns fieldError: REQUIRED.
     contains_eu_political_advertising: "DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING",
   }
-  if (options.conversionActionResource) {
-    campaignOp.selective_optimization = {
-      conversion_actions: [options.conversionActionResource],
-    }
-  }
+  // NOTE: campaign.selective_optimization is ONLY valid for App campaigns
+  // (Multi-Channel / APP_CAMPAIGN subtype). For Search campaigns it's
+  // silently ignored at create and rejected on update. Per-campaign
+  // conversion-action selection on Search uses CampaignConversionGoal,
+  // a separate resource — wire that as a follow-up if you need per-campaign
+  // overrides. For now, Search campaigns inherit account-level conversion
+  // goals from Tools → Conversions → Settings in Google Ads UI.
+  void options.conversionActionResource // kept in signature for future use
   ops.push(campaignOp)
 
   // Language criterion — English. Leaf op: no resource_name (the API
