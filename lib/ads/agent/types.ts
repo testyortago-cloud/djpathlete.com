@@ -162,6 +162,43 @@ export interface AdsToolPerformanceEntry {
   success_rate: number
 }
 
+/**
+ * Promotable inventory: things the agent can propose a campaign for.
+ * Two sources merged into one shape so the reasoning prompt sees a single
+ * list — always-on programs from `marketing_products`, plus specific
+ * upcoming clinic/camp instances from `events`.
+ */
+export interface PromotableInventoryItem {
+  kind: "product" | "event"
+  /** Stable identifier — products use `slug`, events use `id`. */
+  ref: string
+  name: string
+  one_liner: string
+  target_audience: string
+  /** Phrases the agent uses to seed keyword themes + cross-reference GSC. */
+  signature_phrases: string[]
+  /** Customer pains. Drive ad-copy headline/description suggestions. */
+  pain_points: string[]
+  /** Site path the campaign should drive to (e.g. /programs/rotational-reboot). */
+  landing_url: string
+  /** Free-form geo focus (ISO codes for online; local descriptors like "Tampa Bay, FL" for in-person). */
+  geo_focus: string[]
+  conversion_type: "purchase" | "lead" | "booking"
+  price_cents: number | null
+  /** Event-only — campaign should end the day before. ISO date when set. */
+  event_start_date: string | null
+  /** Event-only — derived from start_date in days. Null for products. */
+  days_until_event: number | null
+  /** Event-only — capacity - signup_count. Null for products. */
+  spots_remaining: number | null
+  /** Event-only — `age_min`-`age_max` joined, or null. */
+  age_range: string | null
+  /** Event-only — raw location_name; the agent infers geo from this. */
+  location_name: string | null
+  /** Coach-only context. */
+  notes: string | null
+}
+
 export interface AdsSignals {
   generated_at: string
   preflight: PreflightResult
@@ -179,6 +216,13 @@ export interface AdsSignals {
    * the user message as a "Recent winners" block.
    */
   few_shots: string[]
+  /**
+   * Always-on programs + specific upcoming clinic/camp events the agent
+   * should consider when proposing campaigns. Empty when no products are
+   * seeded AND no upcoming events exist. The agent should prefer concrete
+   * blueprints tied to an inventory item over generic strategy.
+   */
+  promotable_inventory: PromotableInventoryItem[]
 }
 
 export type AdsActionTool =

@@ -17,6 +17,7 @@ import type {
   AdsSignals,
   AdsToolPerformanceEntry,
   PreflightResult,
+  PromotableInventoryItem,
 } from "./types"
 
 export type { AdsToolPerformanceEntry } from "./types"
@@ -295,6 +296,15 @@ export interface GatherAdsSignalsDeps extends RawInputDeps {
    * `() => readFewShots(supabase, "global", "ads_agent")`.
    */
   fetchFewShots?: () => Promise<string[]>
+  /**
+   * Returns the merged catalog of always-on programs (from
+   * `marketing_products`) and specific upcoming events (from `events`
+   * where `status='published'`, `start_date >= now()`, and capacity
+   * isn't full). Optional so existing tests can omit it — they'll
+   * receive `promotable_inventory: []`. Without inventory the agent
+   * falls back to generic strategy.
+   */
+  fetchPromotableInventory?: () => Promise<PromotableInventoryItem[]>
 }
 
 export async function gatherAdsSignals(deps: GatherAdsSignalsDeps): Promise<AdsSignals> {
@@ -310,6 +320,9 @@ export async function gatherAdsSignals(deps: GatherAdsSignalsDeps): Promise<AdsS
   const few_shots = deps.fetchFewShots
     ? await deps.fetchFewShots().catch(() => [] as string[])
     : []
+  const promotable_inventory = deps.fetchPromotableInventory
+    ? await deps.fetchPromotableInventory().catch(() => [] as PromotableInventoryItem[])
+    : []
   if (!preflight.ok) {
     return {
       generated_at,
@@ -321,6 +334,7 @@ export async function gatherAdsSignals(deps: GatherAdsSignalsDeps): Promise<AdsS
       brief_context,
       tool_performance,
       few_shots,
+      promotable_inventory,
     }
   }
   const gaps: string[] = []
@@ -347,5 +361,6 @@ export async function gatherAdsSignals(deps: GatherAdsSignalsDeps): Promise<AdsS
     brief_context,
     tool_performance,
     few_shots,
+    promotable_inventory,
   }
 }

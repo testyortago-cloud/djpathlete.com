@@ -12,9 +12,12 @@ export async function POST() {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
   try {
+    // Manual runs bypass preflight so the admin can see a full reasoning
+    // pass — the cron path still gates normally.
     const memo = await buildStrategistMemo({
       source: "manual",
       triggered_by: session.user.id,
+      bypassPreflight: true,
     })
     return NextResponse.json({ ok: true, id: memo.id })
   } catch (error) {

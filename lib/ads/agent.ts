@@ -43,7 +43,7 @@ import { applyGuardrailsBatch } from "@/lib/ads/agent/guardrails"
 import { executeAdsActions, type PreExecutionPair } from "@/lib/ads/agent/execute"
 import { runSelfCritique, shouldReRunAfterCritique } from "@/lib/agents/self-critique"
 import { readFewShots } from "@/lib/agents/few-shots"
-import type { AdsAction, AdsRawInputs, AdsSignals } from "@/lib/ads/agent/types"
+import type { AdsAction, AdsRawInputs, AdsSignals, PromotableInventoryItem } from "@/lib/ads/agent/types"
 import type { AdsAgentDecision } from "@/lib/ads/agent/decision-schema"
 import { latestApprovedBrief } from "@/lib/db/strategy-briefs"
 import type { BriefContext } from "@/lib/strategy/specialist-contract"
@@ -727,6 +727,144 @@ async function fetchFewShotsAdapter(): Promise<string[]> {
   return readFewShots(supabase, "global", "ads_agent")
 }
 
+/**
+ * Merges always-on programs (`marketing_products`) with upcoming, published
+ * clinic/camp instances (`events`) into a single list the agent reasons over
+ * when picking `propose_new_campaign` actions.
+ *
+ *  - Products: rows where `status='active'`. Edited from the admin catalog.
+ *  - Events: rows where `status='published'`, `start_date >= now()`, and
+ *    `signup_count < capacity`. Drafts are intentionally excluded — the agent
+ *    shouldn't run paid acquisition for an event that isn't live yet. The
+ *    admin publish flow is the opt-in.
+ *
+ * Returned items are typed as a unified `PromotableInventoryItem`, with
+ * event-only fields (start date, spots remaining, age range, location)
+ * present for events and `null` for products. The reasoning prompt uses
+ * these to make blueprints time-bound and geo-targeted.
+ *
+ * Returns `[]` on any DB error — the agent then falls back to generic
+ * strategy and `gaps[]` is unaffected (this signal is additive, not
+ * required for preflight).
+ */
+async function fetchPromotableInventoryAdapter(): Promise<PromotableInventoryItem[]> {
+  const supabase = createServiceRoleClient()
+  const items: PromotableInventoryItem[] = []
+
+  try {
+    const { data: products } = await supabase
+      .from("marketing_products")
+      .select(
+        "slug, name, one_liner, target_audience, signature_phrases, pain_points, landing_url, geo_focus, conversion_type, price_cents, notes",
+      )
+      .eq("status", "active")
+    const productRows = (products ?? []) as Array<{
+      slug: string
+      name: string
+      one_liner: string
+      target_audience: string
+      signature_phrases: string[]
+      pain_points: string[]
+      landing_url: string
+      geo_focus: string[]
+      conversion_type: PromotableInventoryItem["conversion_type"]
+      price_cents: number | null
+      notes: string | null
+    }>
+    for (const p of productRows) {
+      items.push({
+        kind: "product",
+        ref: p.slug,
+        name: p.name,
+        one_liner: p.one_liner,
+        target_audience: p.target_audience,
+        signature_phrases: p.signature_phrases ?? [],
+        pain_points: p.pain_points ?? [],
+        landing_url: p.landing_url,
+        geo_focus: p.geo_focus ?? [],
+        conversion_type: p.conversion_type,
+        price_cents: p.price_cents,
+        event_start_date: null,
+        days_until_event: null,
+        spots_remaining: null,
+        age_range: null,
+        location_name: null,
+        notes: p.notes,
+      })
+    }
+  } catch {
+    // ignore — products are additive
+  }
+
+  try {
+    const nowIso = new Date().toISOString()
+    const { data: events } = await supabase
+      .from("events")
+      .select(
+        "id, type, slug, title, summary, focus_areas, audience, location_name, age_min, age_max, capacity, signup_count, price_cents, start_date",
+      )
+      .eq("status", "published")
+      .gte("start_date", nowIso)
+    const eventRows = (events ?? []) as Array<{
+      id: string
+      type: "clinic" | "camp"
+      slug: string
+      title: string
+      summary: string
+      focus_areas: string[]
+      audience: string[]
+      location_name: string
+      age_min: number | null
+      age_max: number | null
+      capacity: number
+      signup_count: number
+      price_cents: number | null
+      start_date: string
+    }>
+    for (const e of eventRows) {
+      if (e.signup_count >= e.capacity) continue
+      const start = new Date(e.start_date)
+      const days_until = Math.max(
+        0,
+        Math.ceil((start.getTime() - Date.now()) / 86_400_000),
+      )
+      const ageRange =
+        e.age_min != null && e.age_max != null ? `${e.age_min}-${e.age_max}` : null
+      // Strip the leading "1) " numbering coaches use in focus_areas — the
+      // agent doesn't need that to derive keyword themes.
+      const phrases = (e.focus_areas ?? []).map((f) =>
+        f.replace(/^\d+\)\s*/, "").trim(),
+      )
+      const landing = e.type === "clinic" ? `/clinics/${e.slug}` : `/camps/${e.slug}`
+      items.push({
+        kind: "event",
+        ref: e.id,
+        name: e.title,
+        one_liner: e.summary,
+        target_audience:
+          (e.audience ?? []).join(", ") ||
+          (ageRange ? `Athletes aged ${ageRange}` : "Local athletes"),
+        signature_phrases: phrases,
+        pain_points: [],
+        landing_url: landing,
+        geo_focus: [e.location_name],
+        conversion_type: "lead",
+        price_cents: e.price_cents,
+        event_start_date: e.start_date,
+        days_until_event: days_until,
+        spots_remaining: e.capacity - e.signup_count,
+        age_range: ageRange,
+        location_name: e.location_name,
+        notes: `${e.type}, capacity ${e.capacity}, ${e.signup_count} signed up`,
+      })
+    }
+  } catch {
+    // ignore — events are additive
+  }
+
+  return items
+}
+
 function buildSignalsDeps(): GatherAdsSignalsDeps {
   return {
     fetchPreflightInput,
@@ -742,6 +880,7 @@ function buildSignalsDeps(): GatherAdsSignalsDeps {
     fetchCampaignToLandingPageMap,
     fetchBriefContext: fetchBriefContextAdapter,
     fetchFewShots: fetchFewShotsAdapter,
+    fetchPromotableInventory: fetchPromotableInventoryAdapter,
   }
 }
 
@@ -839,6 +978,8 @@ function summarizeSignals(signals: AdsSignals): Record<string, unknown> {
         signals.derived?.landing_page_engagement_mismatch.length ?? 0,
       prior_actions_that_worked: signals.learning?.prior_actions_that_worked.length ?? 0,
       prior_actions_that_failed: signals.learning?.prior_actions_that_failed.length ?? 0,
+      promotable_products: signals.promotable_inventory.filter((i) => i.kind === "product").length,
+      promotable_events: signals.promotable_inventory.filter((i) => i.kind === "event").length,
     },
   }
 }
@@ -847,6 +988,12 @@ export interface BuildStrategistMemoOptions {
   source?: GoogleAdsAgentMemoSource
   triggered_by?: string | null
   weekEnd?: Date
+  /**
+   * Skip the preflight gate. Intended for manual smoke tests from
+   * /admin/ads/agent when an admin wants to see the reasoning step run end-
+   * to-end on a cold account. Never set true on the scheduled cron path.
+   */
+  bypassPreflight?: boolean
 }
 
 export async function buildStrategistMemo(
@@ -863,8 +1010,9 @@ export async function buildStrategistMemo(
   // Step 1: gather signals (preflight + raw + derived + learning).
   const signals = await gatherAdsSignals(buildSignalsDeps())
 
-  // Step 2: preflight gate.
-  if (!signals.preflight.ok) {
+  // Step 2: preflight gate. `bypassPreflight` is the manual-smoke-test
+  // escape hatch — the scheduled cron never sets it.
+  if (!signals.preflight.ok && !options.bypassPreflight) {
     const memo = await insertAgentMemo({
       week_of,
       subject: `${subject} — preflight failed`,

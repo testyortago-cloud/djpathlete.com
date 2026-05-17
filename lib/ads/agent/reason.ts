@@ -8,13 +8,16 @@ import { adsAgentDecisionSchema, type AdsAgentDecision } from "./decision-schema
 import type { AdsSignals } from "./types"
 
 const SYSTEM_PROMPT = `You are the senior paid-media strategist for DJP Athlete.
-Programs include "Comeback Code" and "Rotational Reboot". Tone: direct,
-opinionated, pragmatic.
+Tone: direct, opinionated, pragmatic.
 
 You will receive a JSON snapshot of the account's marketing state:
 - raw inputs (campaigns, search terms, GA4, GSC, pipeline)
 - cross-channel derived signals (paid-terms-already-organic, organic-wins-not-in-ads, landing-page-engagement-mismatch)
 - a learning layer (prior_actions_that_worked / prior_actions_that_failed from past memos)
+- promotable_inventory — always-on programs and specific upcoming clinic/camp events
+  the business can run campaigns for. Each item has signature_phrases (seed keywords),
+  pain_points (ad-copy fuel), landing_url, geo_focus, conversion_type, and event-only
+  fields (event_start_date, days_until_event, spots_remaining, age_range, location_name).
 
 Your job is to produce a Zod-validated decision with up to 7 ranked actions.
 
@@ -33,11 +36,54 @@ Rules you MUST follow:
 - Avoid repeating patterns in prior_actions_that_failed.
 - Cite specific signals in supporting_signals (use the signal names from the snapshot).
 - Use flag_for_human when signals are ambiguous or when no tool fits.
-- Use propose_new_campaign sparingly — at most one per memo, and only when
-  organic_wins_not_in_ads shows a cluster the account has zero paid presence on.
 - When data is sparse (gaps[] is non-empty), mark confidence as 'low'.
 - All actions are PROPOSALS routed to a human-approved queue. Phrase rationale
   as a recommendation, not a fait accompli.
+
+propose_new_campaign rules:
+- Use sparingly — at most one per memo.
+- Pin every proposal to an inventory item. Set "inventory_ref" in args to the
+  product slug (kind='product') or event id (kind='event'). Do NOT propose a
+  campaign with no inventory_ref — the human reviewer can't act on a vague
+  blueprint.
+- Prefer event inventory when days_until_event >= 7 (otherwise too late for
+  paid acquisition to compound; instead propose flag_for_human "next clinic
+  pipeline" or propose_negative_keywords for past-event terms).
+- Derive keyword_themes from the inventory item's signature_phrases. Add
+  match types thoughtfully — EXACT for brand/explicit intent, PHRASE for
+  themed clusters, BROAD only when learning has shown the account converts
+  on broad.
+- Use the inventory item's geo_focus verbatim for online products (ISO
+  codes). For local events (kind='event'), set geo_target to the city/region
+  parsed from location_name plus a 25-mile radius.
+- Required args shape (fill all fields; the executor enforces this):
+    {
+      "inventory_ref": "<slug or event uuid>",
+      "inventory_kind": "product" | "event",
+      "campaign_type": "SEARCH" | "PMAX" | "DISPLAY",
+      "campaign_name": "<product/event> - <type> - <theme>",
+      "daily_budget_cents": <number 500..5000 unless prior wins justify more>,
+      "geo_targets": ["<ISO or city,region>", ...],
+      "keyword_themes": [
+        { "theme": "<short>", "match_type": "EXACT|PHRASE|BROAD",
+          "keywords": ["<3+ items>"] }
+      ],
+      "negative_seed": ["free","youtube","cheap","reddit"],
+      "ad_copy": {
+        "headlines": ["<<=30 chars>", ... 3..15 items],
+        "descriptions": ["<<=90 chars>", ... 2..4 items],
+        "final_url": "<absolute or path>"
+      },
+      "conversion_goal": "form_submission_lead" | "purchase" | "booking",
+      "supporting_gaql_evidence": [
+        { "gaql": "SELECT ... FROM search_term_view WHERE ...",
+          "finding": "<one-line summary of what this query proves>" }
+      ]
+    }
+- supporting_gaql_evidence must reference real queries you'd run against the
+  Google Ads or GSC APIs. Tie each finding to a concrete number from the
+  snapshot (e.g. "organic_wins_not_in_ads has 'rotational power' at #4 with
+  187 clicks/28d, zero paid coverage").
 
 Return only the structured decision — no narrative text outside the schema.`
 
@@ -95,8 +141,19 @@ export function buildAdsReasonUserMessage(
 
   const fewShotsRendered = fewShotsBlock(signals.few_shots ?? [])
 
+  const inventoryBlock =
+    signals.promotable_inventory.length > 0
+      ? [
+          "Promotable inventory (programs + upcoming events the agent can build campaigns for):",
+          JSON.stringify(signals.promotable_inventory, null, 2),
+          "",
+          "When picking propose_new_campaign, the inventory_ref MUST match a 'ref' in the list above (product slug or event id). Skip inventory whose conversion_type doesn't match the action you're proposing (e.g. don't drive purchase ads at a 'lead' product).",
+          "",
+        ].join("\n")
+      : ""
+
   const snapshot = JSON.stringify(signals)
-  return `${briefBlock}${toolPerfBlock}${fewShotsRendered}${critiqueBlock}\n${snapshot}`
+  return `${briefBlock}${toolPerfBlock}${inventoryBlock}${fewShotsRendered}${critiqueBlock}\n${snapshot}`
 }
 
 export async function reasonAdsDecision(
