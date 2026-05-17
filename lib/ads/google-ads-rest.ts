@@ -158,7 +158,7 @@ export async function mutateResourcesRest(
   const text = await res.text()
   if (!res.ok) {
     throw new Error(
-      `googleAds:mutate failed (HTTP ${res.status}): ${text.slice(0, 800)}`,
+      `googleAds:mutate failed (HTTP ${res.status}): ${text.slice(0, 3000)}`,
     )
   }
   const response = JSON.parse(text) as {
@@ -219,7 +219,7 @@ export async function searchGoogleAdsRest(
   })
   const text = await res.text()
   if (!res.ok) {
-    throw new Error(`googleAds:search failed (HTTP ${res.status}): ${text.slice(0, 800)}`)
+    throw new Error(`googleAds:search failed (HTTP ${res.status}): ${text.slice(0, 3000)}`)
   }
   const parsed = JSON.parse(text) as { results?: unknown[] }
   return parsed.results ?? []

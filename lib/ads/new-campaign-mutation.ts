@@ -95,6 +95,10 @@ export function buildNewCampaignOps(
     status: "PAUSED",
     advertising_channel_type: "SEARCH",
     campaign_budget: budgetResource,
+    // Both fields are required on REST — biddingStrategyType is the explicit
+    // enum and manualCpc is the strategy-specific payload. Setting only one
+    // of them yields fieldError: REQUIRED on the other.
+    bidding_strategy_type: "MANUAL_CPC",
     manual_cpc: { enhanced_cpc_enabled: false },
     network_settings: {
       target_google_search: true,
@@ -102,10 +106,9 @@ export function buildNewCampaignOps(
       target_content_network: false,
       target_partner_search_network: false,
     },
-    start_date: (options.startDate ?? new Date().toISOString().slice(0, 10)).replace(
-      /-/g,
-      "",
-    ),
+    // REST API accepts YYYY-MM-DD (with dashes); the dash-stripped YYYYMMDD
+    // form is only valid for the gRPC proto path.
+    start_date: options.startDate ?? new Date().toISOString().slice(0, 10),
   }
   if (options.conversionActionResource) {
     campaignOp.selective_optimization = {
