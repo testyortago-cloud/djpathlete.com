@@ -34,6 +34,7 @@ import {
 } from "@/lib/ads/new-campaign-mutation"
 import { resolveGeoTargets, validateGeoCoverage } from "@/lib/ads/geo-target-resolver"
 import { mutateResourcesRest } from "@/lib/ads/google-ads-rest"
+import { verifyTrackingForBlueprint } from "@/lib/ads/tracking-verification"
 import { upsertCampaign } from "@/lib/db/google-ads-campaigns"
 import type {
   GoogleAdsAutomationMode,
@@ -199,6 +200,19 @@ async function buildMutation(
         }
       }
 
+      // Pre-flight: verify the landing URL leads to a page that fires a
+      // matching gtag conversion. Without this, the campaign would spend
+      // without ever counting conversions — Smart Bidding has no signal,
+      // ROAS reports look empty. We refuse to apply 'untracked' (caller
+      // would need to wire a tracker first); 'partial' is a warning.
+      const tracking = verifyTrackingForBlueprint(parsed.data)
+      if (tracking.status === "untracked") {
+        return {
+          ok: false,
+          error: `Conversion tracking gap — ${tracking.notes.join(" | ")}. Wire a tracker for ${parsed.data.conversion_goal} landing at ${parsed.data.ad_copy.final_url} before applying.`,
+        }
+      }
+
       // Resolve geo strings → geoTargetConstant resource names. The blueprint
       // mixes ISO codes ("US", "AU") for worldwide programs and city/region
       // strings ("Tampa Bay, FL") for in-person services and events.
@@ -301,6 +315,19 @@ export async function applyRecommendation(
     return { recommendation_id: rec.id, applied: false, status: "failed", error: built.error }
   }
 
+  // For new_campaign apply, re-run the tracking verification so the result
+  // gets persisted alongside the api_request (gives /admin/ads admins a
+  // record of which campaigns shipped with full vs partial tracking).
+  const trackingMeta =
+    rec.recommendation_type === "new_campaign"
+      ? (() => {
+          const args =
+            (rec.payload as { args?: unknown }).args ?? (rec.payload as unknown)
+          const parsed = campaignBlueprintArgsSchema.safeParse(args)
+          return parsed.success ? verifyTrackingForBlueprint(parsed.data) : null
+        })()
+      : null
+
   // Call Google Ads via REST. The gRPC SDK (customer.mutateResources) crashes
   // on Vercel with "Channel credentials must be a ChannelCredentials object"
   // because Webpack-bundled lambdas duplicate @grpc/grpc-js, breaking an
@@ -338,7 +365,10 @@ export async function applyRecommendation(
     customer_id: rec.customer_id,
     mode: options.mode,
     actor: options.actor,
-    api_request: { ops: built.ops },
+    api_request: {
+      ops: built.ops,
+      ...(trackingMeta ? { tracking: trackingMeta } : {}),
+    },
     api_response: apiResponse as Record<string, unknown> | null,
     result_status: "success",
   })

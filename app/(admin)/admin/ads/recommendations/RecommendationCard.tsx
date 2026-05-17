@@ -3,6 +3,8 @@
 import { useState } from "react"
 import { toast } from "sonner"
 import { BlueprintModal } from "./BlueprintModal"
+import { campaignBlueprintArgsSchema } from "@/lib/ads/agent/decision-schema"
+import { verifyTrackingForBlueprint } from "@/lib/ads/tracking-verification"
 import type { GoogleAdsRecommendation, GoogleAdsRecommendationType } from "@/types/database"
 
 const TYPE_LABEL: Record<GoogleAdsRecommendationType, string> = {
@@ -126,11 +128,27 @@ const RESOLVED_LABEL: Record<ResolvedState, { text: string; tone: string }> = {
   },
 }
 
+/**
+ * For new_campaign recs, compute the tracking-coverage status from the
+ * blueprint payload so admins see at a glance whether the conversion gtag
+ * will fire for this campaign's landing page before approving. Returns
+ * null for any non-new_campaign rec or malformed payload (no banner shown).
+ */
+function computeTrackingForRec(rec: GoogleAdsRecommendation) {
+  if (rec.recommendation_type !== "new_campaign") return null
+  const raw =
+    (rec.payload as { args?: unknown }).args ?? (rec.payload as unknown)
+  const parsed = campaignBlueprintArgsSchema.safeParse(raw)
+  if (!parsed.success) return null
+  return verifyTrackingForBlueprint(parsed.data)
+}
+
 export function RecommendationCard({ rec }: { rec: GoogleAdsRecommendation }) {
   const [pending, setPending] = useState<Action | null>(null)
   const [resolved, setResolved] = useState<ResolvedState | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const isFailed = rec.status === "failed"
+  const tracking = computeTrackingForRec(rec)
 
   async function act(action: Action) {
     if (pending) return
@@ -223,6 +241,29 @@ export function RecommendationCard({ rec }: { rec: GoogleAdsRecommendation }) {
         <div className="border border-error/40 bg-error/5 rounded-md p-3 text-xs text-error leading-snug">
           <span className="font-medium">Why it failed last time:</span>{" "}
           {rec.failure_reason.slice(0, 280)}
+        </div>
+      ) : null}
+
+      {tracking ? (
+        <div
+          className={`border rounded-md p-3 text-xs leading-snug ${
+            tracking.status === "tracked"
+              ? "border-success/40 bg-success/5 text-success"
+              : tracking.status === "partial"
+                ? "border-warning/40 bg-warning/10 text-warning"
+                : "border-error/40 bg-error/5 text-error"
+          }`}
+        >
+          <div className="font-medium">
+            {tracking.status === "tracked"
+              ? "✓ Conversion tracking ready"
+              : tracking.status === "partial"
+                ? "⚠ Partial tracking — review before enabling"
+                : "✗ No conversion tracking on the landing page"}
+          </div>
+          {tracking.status !== "tracked" ? (
+            <div className="mt-1 opacity-90">{tracking.notes[0]}</div>
+          ) : null}
         </div>
       ) : null}
 
