@@ -24,6 +24,8 @@ export const CONVERSION_SEND_TO = {
   purchase_rotational_reboot: "AW-18133890533/m76NCLDN3K4cEOXr9MZD",
   /** Assessment / inquiry form submission. Fires on InquiryForm success. */
   lead_form_submission: "AW-18133890533/Vu0HCLPN3K4cEOXr9MZD",
+  /** Paid camp / clinic booking. Fires on /camps|clinics/<slug>/success when status=confirmed. */
+  event_booking: "AW-18133890533/d9FLCLDs3a4cEOXr9MZD",
 } as const
 
 declare global {
@@ -71,5 +73,22 @@ export function fireLeadFormSubmission(): void {
     send_to: CONVERSION_SEND_TO.lead_form_submission,
     value: 0,
     currency: "USD",
+  })
+}
+
+/**
+ * Convenience wrapper for paid camp/clinic booking. transaction_id = the
+ * Stripe checkout session id (or signup id) so Google dedupes if the user
+ * refreshes the success page.
+ */
+export function fireEventBooking(args: {
+  value_usd: number
+  transaction_id: string
+}): void {
+  fireConversion({
+    send_to: CONVERSION_SEND_TO.event_booking,
+    value: args.value_usd,
+    currency: "USD",
+    transaction_id: args.transaction_id,
   })
 }

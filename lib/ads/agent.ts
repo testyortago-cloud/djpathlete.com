@@ -903,7 +903,11 @@ async function fetchPromotableInventoryAdapter(): Promise<PromotableInventoryIte
         pain_points: [],
         landing_url: landing,
         geo_focus: [e.location_name],
-        conversion_type: "lead",
+        // Paid camps/clinics are PURCHASE intent (Stripe checkout on signup);
+        // free events are still LEAD. Maps to blueprint.conversion_goal,
+        // which determines which Google Ads conversion action gets bound.
+        conversion_type:
+          e.price_cents != null && e.price_cents > 0 ? "purchase" : "lead",
         price_cents: e.price_cents,
         event_start_date: e.start_date,
         days_until_event: days_until,

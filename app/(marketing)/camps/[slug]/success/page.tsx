@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { getEventBySlug } from "@/lib/db/events"
 import { getEventSignupByStripeSessionId } from "@/lib/db/event-signups"
+import { EventBookingConversionTracker } from "@/components/public/events/EventBookingConversionTracker"
 
 export const metadata: Metadata = {
   title: "Booking confirmed",
@@ -34,6 +35,9 @@ export default async function CampBookingSuccessPage({ params, searchParams }: P
   if (!event || event.type !== "camp") notFound()
 
   const signup = session_id ? await getEventSignupByStripeSessionId(session_id) : null
+
+  const conversionValueCents = signup?.amount_paid_cents ?? event.price_cents ?? 0
+  const transactionId = signup?.id ?? session_id ?? null
 
   return (
     <div className="bg-surface min-h-[calc(100vh-80px)] py-12 md:py-20">
@@ -104,6 +108,13 @@ export default async function CampBookingSuccessPage({ params, searchParams }: P
           </CardContent>
         </Card>
       </div>
+      {signup && transactionId ? (
+        <EventBookingConversionTracker
+          transactionId={transactionId}
+          valueCents={conversionValueCents}
+          status={signup.status}
+        />
+      ) : null}
     </div>
   )
 }

@@ -44,6 +44,13 @@ const ACTIONS_TO_CREATE: ConversionActionCreate[] = [
     default_value_usd: 0,
     description: "Lead capture — fires on /assessment form submit success",
   },
+  {
+    name: "Event Booking (Camp/Clinic)",
+    category: "PURCHASE",
+    default_value_usd: 150.0, // approximate avg — actual value passed per booking
+    description:
+      "Paid camp/clinic signup — fires on /camps/.../success or /clinics/.../success with confirmed status. Value passed per booking from event.price_cents.",
+  },
 ]
 
 async function main() {
@@ -68,11 +75,11 @@ async function main() {
   const skipped: string[] = []
 
   for (const action of ACTIONS_TO_CREATE) {
+    // Dedup by name only — multiple actions per category is valid (e.g.
+    // a $79 program purchase AND a $150 event booking are both PURCHASE
+    // but should track separately for value precision + reporting).
     const dup = existing.find(
-      (e) =>
-        e.conversionAction.name.toLowerCase() === action.name.toLowerCase() ||
-        (e.conversionAction.category === action.category &&
-          e.conversionAction.category !== "PHONE_CALL_LEAD"),
+      (e) => e.conversionAction.name.toLowerCase() === action.name.toLowerCase(),
     )
     if (dup) {
       skipped.push(

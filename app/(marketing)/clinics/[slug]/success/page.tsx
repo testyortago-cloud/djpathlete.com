@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { getEventBySlug } from "@/lib/db/events"
 import { getEventSignupByStripeSessionId } from "@/lib/db/event-signups"
+import { EventBookingConversionTracker } from "@/components/public/events/EventBookingConversionTracker"
 
 export const metadata: Metadata = {
   title: "Booking confirmed",
@@ -34,6 +35,13 @@ export default async function ClinicBookingSuccessPage({ params, searchParams }:
   if (!event || event.type !== "clinic") notFound()
 
   const signup = session_id ? await getEventSignupByStripeSessionId(session_id) : null
+
+  // Use signup.amount_paid_cents when available (handles discounts /
+  // partial refunds); fall back to the event's listed price. Either way
+  // the tracker only fires for status='confirmed' so cancellations and
+  // pending bookings never count as conversions.
+  const conversionValueCents = signup?.amount_paid_cents ?? event.price_cents ?? 0
+  const transactionId = signup?.id ?? session_id ?? null
 
   return (
     <div className="bg-surface min-h-[calc(100vh-80px)] py-12 md:py-20">
@@ -104,6 +112,13 @@ export default async function ClinicBookingSuccessPage({ params, searchParams }:
           </CardContent>
         </Card>
       </div>
+      {signup && transactionId ? (
+        <EventBookingConversionTracker
+          transactionId={transactionId}
+          valueCents={conversionValueCents}
+          status={signup.status}
+        />
+      ) : null}
     </div>
   )
 }
