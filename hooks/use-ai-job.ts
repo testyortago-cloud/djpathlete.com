@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { db } from "@/lib/firebase"
-import { doc, collection, onSnapshot, query, orderBy } from "firebase/firestore"
+import { doc, collection, getDoc, onSnapshot, query, orderBy } from "firebase/firestore"
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -76,9 +76,28 @@ export function useAiJob(jobId: string | null): AiJobResult & { reset: () => voi
     // Reset state for new job
     reset()
 
+    let cancelled = false
+    const jobRef = doc(db, "ai_jobs", jobId)
+
+    // One-shot fetch so we render the current state even if the snapshot
+    // stream is slow to deliver or this listener mounts after the job has
+    // already reached a terminal state (e.g. tab was backgrounded during
+    // generation and Firestore paused the long-poll).
+    getDoc(jobRef)
+      .then((snap) => {
+        if (cancelled || !snap.exists()) return
+        const data = snap.data()
+        setStatus(data.status as AiJobStatus)
+        if (data.result) setResult(data.result)
+        if (data.error) setError(data.error)
+      })
+      .catch((err) => {
+        console.error("[useAiJob] Job initial fetch failed:", err)
+      })
+
     // Listen to the job document for status changes
     const jobUnsub = onSnapshot(
-      doc(db, "ai_jobs", jobId),
+      jobRef,
       (snap) => {
         if (!snap.exists()) return
         const data = snap.data()
@@ -154,6 +173,7 @@ export function useAiJob(jobId: string | null): AiJobResult & { reset: () => voi
     )
 
     return () => {
+      cancelled = true
       jobUnsub()
       chunksUnsub()
     }
