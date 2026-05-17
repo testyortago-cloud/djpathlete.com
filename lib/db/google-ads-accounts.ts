@@ -39,21 +39,44 @@ export async function upsertGoogleAdsAccount(
   account: UpsertGoogleAdsAccountInput,
 ): Promise<GoogleAdsAccount> {
   const supabase = getClient()
+  // Split insert vs update so OAuth re-discovery doesn't clobber the admin's
+  // manual is_active=false decisions on sub-accounts they don't run ads in.
+  //  - existing row → UPDATE metadata only, leave is_active alone
+  //  - missing row  → INSERT with is_active=true (newly discovered accounts
+  //                   default to active)
+  const { data: existing } = await supabase
+    .from("google_ads_accounts")
+    .select("customer_id")
+    .eq("customer_id", account.customer_id)
+    .maybeSingle()
+
+  const metadataPatch = {
+    manager_customer_id: account.manager_customer_id ?? null,
+    descriptive_name: account.descriptive_name ?? null,
+    currency_code: account.currency_code ?? null,
+    time_zone: account.time_zone ?? null,
+    last_error: null,
+  }
+
+  if (existing) {
+    const { data, error } = await supabase
+      .from("google_ads_accounts")
+      .update(metadataPatch)
+      .eq("customer_id", account.customer_id)
+      .select()
+      .single()
+    if (error) throw error
+    return data as GoogleAdsAccount
+  }
+
   const { data, error } = await supabase
     .from("google_ads_accounts")
-    .upsert(
-      {
-        customer_id: account.customer_id,
-        manager_customer_id: account.manager_customer_id ?? null,
-        descriptive_name: account.descriptive_name ?? null,
-        currency_code: account.currency_code ?? null,
-        time_zone: account.time_zone ?? null,
-        connected_at: account.connected_at ?? new Date().toISOString(),
-        is_active: true,
-        last_error: null,
-      },
-      { onConflict: "customer_id" },
-    )
+    .insert({
+      customer_id: account.customer_id,
+      ...metadataPatch,
+      connected_at: account.connected_at ?? new Date().toISOString(),
+      is_active: true,
+    })
     .select()
     .single()
   if (error) throw error

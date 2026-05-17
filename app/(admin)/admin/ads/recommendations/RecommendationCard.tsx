@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { toast } from "sonner"
+import { BlueprintModal } from "./BlueprintModal"
 import type { GoogleAdsRecommendation, GoogleAdsRecommendationType } from "@/types/database"
 
 const TYPE_LABEL: Record<GoogleAdsRecommendationType, string> = {
@@ -220,13 +221,17 @@ export function RecommendationCard({ rec }: { rec: GoogleAdsRecommendation }) {
         </p>
         <div className="flex items-center gap-2">
           {rec.recommendation_type === "new_campaign" ? (
-            <a
-              href={`/api/admin/ads/recommendations/${rec.id}/blueprint.csv`}
-              className="text-xs px-3 py-1.5 rounded-md border border-border text-muted-foreground hover:text-accent hover:border-accent/50 transition-colors"
-              title="Download a multi-section CSV ready to paste into Google Ads Editor"
-            >
-              Download CSV
-            </a>
+            <BlueprintModal
+              recId={rec.id}
+              trigger={
+                <button
+                  type="button"
+                  className="text-xs px-3 py-1.5 rounded-md border border-accent/50 text-accent hover:bg-accent/10 transition-colors"
+                >
+                  View campaign
+                </button>
+              }
+            />
           ) : null}
           {!isFailed ? (
             <button
