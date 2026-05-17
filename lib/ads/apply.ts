@@ -27,6 +27,10 @@ import {
   negativeKeywordPayloadSchema,
   newKeywordPayloadSchema,
 } from "@/lib/validators/ads"
+import { campaignBlueprintArgsSchema } from "@/lib/ads/agent/decision-schema"
+import { buildNewCampaignOps } from "@/lib/ads/new-campaign-mutation"
+import { resolveGeoTargets, validateGeoCoverage } from "@/lib/ads/geo-target-resolver"
+import { getActiveConversionAction } from "@/lib/db/google-ads-conversion-actions"
 import type {
   GoogleAdsAutomationMode,
   GoogleAdsRecommendation,
@@ -175,13 +179,88 @@ async function buildMutation(
       return { ok: true, ops: [op] }
     }
 
+    case "new_campaign": {
+      // The agent stores the blueprint under `payload.args`; older or
+      // hand-edited rows may have it at the top level. Try args first.
+      const rawArgs =
+        (rec.payload as { args?: unknown }).args ?? (rec.payload as unknown)
+      const parsed = campaignBlueprintArgsSchema.safeParse(rawArgs)
+      if (!parsed.success) {
+        return { ok: false, error: `Invalid blueprint: ${parsed.error.message}` }
+      }
+      // PMAX / Display need asset groups + a different mutation graph; keep
+      // those advisory until we add a dedicated builder. The blueprint CSV
+      // export still works for them.
+      if (parsed.data.campaign_type !== "SEARCH") {
+        return {
+          ok: false,
+          error: `${parsed.data.campaign_type} auto-create is not yet supported — use the blueprint CSV from the recommendation card`,
+        }
+      }
+
+      // Resolve geo strings → geoTargetConstant resource names. The blueprint
+      // mixes ISO codes ("US", "AU") for worldwide programs and city/region
+      // strings ("Tampa Bay, FL") for in-person services and events.
+      const { resolved: resolvedGeo, unresolved } = await resolveGeoTargets(
+        parsed.data.geo_targets,
+      )
+
+      // Refuse to ship a lead-gen / booking / event campaign with no resolved
+      // location — those should never run nationwide by accident. Online
+      // purchase campaigns may legitimately ship with no geo (= worldwide).
+      const inventoryKind =
+        ((rec.payload as { args?: { inventory_kind?: unknown } }).args?.inventory_kind ??
+          (rec.payload as { inventory_kind?: unknown }).inventory_kind) === "event"
+          ? "event"
+          : "product"
+      const coverage = validateGeoCoverage({
+        conversion_type: parsed.data.conversion_goal === "form_submission_lead"
+          ? "lead"
+          : parsed.data.conversion_goal === "purchase"
+            ? "purchase"
+            : "booking",
+        inventory_kind: inventoryKind,
+        resolved_count: resolvedGeo.length,
+        unresolved,
+        source_count: parsed.data.geo_targets.length,
+      })
+      if (!coverage.ok) {
+        return { ok: false, error: coverage.error }
+      }
+
+      // Look up the matching conversion action for this goal, if one exists.
+      // form_submission_lead has no native local trigger today — campaign
+      // inherits account-level optimization in that case.
+      const triggerType =
+        parsed.data.conversion_goal === "purchase"
+          ? "payment_succeeded"
+          : parsed.data.conversion_goal === "booking"
+            ? "booking_created"
+            : null
+      let conversionActionResource: string | null = null
+      if (triggerType) {
+        const conversionAction = await getActiveConversionAction(customerId, triggerType)
+        if (conversionAction) {
+          conversionActionResource = ResourceNames.conversionAction(
+            customerId,
+            conversionAction.conversion_action_id,
+          )
+        }
+      }
+
+      const ops = buildNewCampaignOps(customerId, parsed.data, {
+        geoTargets: resolvedGeo,
+        conversionActionResource,
+      })
+      return { ok: true, ops }
+    }
+
     // Phase 1.6+ ads-agent types — these land in the recommendations queue
     // as advisory only. They have no Google Ads mutation path yet; approval
     // is a human acknowledgement, not an auto-apply. Reject the apply call
     // with a clear message so the queue stays honest.
     case "budget_shift":
     case "audience_expansion":
-    case "new_campaign":
     case "campaign_pause":
     case "campaign_split":
     case "match_type_change":

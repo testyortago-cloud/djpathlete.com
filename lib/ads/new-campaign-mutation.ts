@@ -1,0 +1,227 @@
+// lib/ads/new-campaign-mutation.ts
+// Builds the multi-resource atomic mutation that creates a Search campaign
+// from an agent-proposed blueprint. Used by the apply path when an admin
+// approves a `new_campaign` recommendation.
+//
+// Everything is created as PAUSED so the admin can review in Google Ads
+// (set geo targeting, link conversion actions, sanity-check ad copy)
+// before flipping ENABLED. Geo targeting is intentionally NOT set on
+// creation — converting blueprint geo strings ("Phoenix, AZ") into
+// geoTargetConstant IDs requires Google's suggest API and is deferred.
+// PMAX and DISPLAY are advisory-only — caller must guard those out.
+
+import { ResourceNames } from "google-ads-api"
+import type { CampaignBlueprintArgs } from "./agent/decision-schema"
+import type { ResolvedGeoTarget } from "./geo-target-resolver"
+
+export interface MutationOperation {
+  entity: string
+  operation: "create" | "update" | "remove"
+  resource: string
+  [field: string]: unknown
+}
+
+// Language constant for English. Google's languageConstants table is global
+// and stable — 1000 = English. See https://developers.google.com/google-ads/api/data/codes-formats#languages
+const LANGUAGE_CONSTANT_ENGLISH = "languageConstants/1000"
+
+const DEFAULT_AD_GROUP_CPC_MICROS = 1_000_000 // $1.00 — matches the blueprint CSV default
+
+/**
+ * Builds the operations to atomically create:
+ *   1 budget → 1 campaign → N ad groups → keywords + 1 RSA per ad group → campaign negatives
+ *
+ * All temp resource IDs are negative integers; the SDK resolves cross-
+ * references inside a single mutateResources call. Returns ops in dependency
+ * order (parents before children).
+ */
+export interface BuildNewCampaignOptions {
+  /** YYYY-MM-DD; defaults to today. */
+  startDate?: string
+  /**
+   * Geo targets resolved to Google Ads resource names. Empty array means
+   * "no geo criteria" (i.e. target everywhere) — caller should have already
+   * validated this is intentional via `validateGeoCoverage`.
+   */
+  geoTargets?: ResolvedGeoTarget[]
+  /**
+   * Optional conversion-action resource name (e.g.
+   * "customers/123/conversionActions/456") to bind to the campaign via
+   * selective_optimization. When omitted, the campaign inherits account-
+   * level conversion settings.
+   */
+  conversionActionResource?: string | null
+}
+
+export function buildNewCampaignOps(
+  customerId: string,
+  blueprint: CampaignBlueprintArgs,
+  options: BuildNewCampaignOptions = {},
+): MutationOperation[] {
+  if (blueprint.campaign_type !== "SEARCH") {
+    throw new Error(
+      `buildNewCampaignOps only supports SEARCH; got ${blueprint.campaign_type}`,
+    )
+  }
+
+  const ops: MutationOperation[] = []
+  let nextTempId = -1
+  const tempId = () => String(nextTempId--)
+
+  // Budget — daily, standard delivery.
+  const budgetId = tempId()
+  const budgetResource = ResourceNames.campaignBudget(customerId, budgetId)
+  ops.push({
+    entity: "campaign_budget",
+    operation: "create",
+    resource: budgetResource,
+    name: `${blueprint.campaign_name} budget`,
+    amount_micros: blueprint.daily_budget_cents * 10_000, // cents → micros
+    delivery_method: "STANDARD",
+    explicitly_shared: false,
+  })
+
+  // Campaign — Search, Manual CPC, PAUSED, English. selective_optimization
+  // (when set) binds optimization to a specific conversion action so the
+  // campaign optimizes against the right goal even if the account has
+  // multiple actions configured.
+  const campaignId = tempId()
+  const campaignResource = ResourceNames.campaign(customerId, campaignId)
+  const campaignOp: MutationOperation = {
+    entity: "campaign",
+    operation: "create",
+    resource: campaignResource,
+    name: blueprint.campaign_name,
+    status: "PAUSED",
+    advertising_channel_type: "SEARCH",
+    campaign_budget: budgetResource,
+    manual_cpc: { enhanced_cpc_enabled: false },
+    network_settings: {
+      target_google_search: true,
+      target_search_network: true,
+      target_content_network: false,
+      target_partner_search_network: false,
+    },
+    start_date: (options.startDate ?? new Date().toISOString().slice(0, 10)).replace(
+      /-/g,
+      "",
+    ),
+  }
+  if (options.conversionActionResource) {
+    campaignOp.selective_optimization = {
+      conversion_actions: [options.conversionActionResource],
+    }
+  }
+  ops.push(campaignOp)
+
+  // Language criterion — English.
+  ops.push({
+    entity: "campaign_criterion",
+    operation: "create",
+    resource: ResourceNames.campaignCriterion(customerId, campaignId, tempId()),
+    campaign: campaignResource,
+    language: { language_constant: LANGUAGE_CONSTANT_ENGLISH },
+  })
+
+  // Geo target criteria — one per resolved location. Empty geoTargets means
+  // "all locations" (intentional for worldwide online programs).
+  for (const geo of options.geoTargets ?? []) {
+    ops.push({
+      entity: "campaign_criterion",
+      operation: "create",
+      resource: ResourceNames.campaignCriterion(customerId, campaignId, tempId()),
+      campaign: campaignResource,
+      location: { geo_target_constant: geo.resource_name },
+    })
+  }
+
+  // Campaign-scope negative keywords (Broad match).
+  for (const text of blueprint.negative_seed) {
+    ops.push({
+      entity: "campaign_criterion",
+      operation: "create",
+      resource: ResourceNames.campaignCriterion(customerId, campaignId, tempId()),
+      campaign: campaignResource,
+      negative: true,
+      keyword: { text, match_type: "BROAD" },
+    })
+  }
+
+  // Ad groups + their keywords + one RSA each.
+  for (const theme of blueprint.keyword_themes) {
+    const adGroupId = tempId()
+    const adGroupResource = ResourceNames.adGroup(customerId, adGroupId)
+    ops.push({
+      entity: "ad_group",
+      operation: "create",
+      resource: adGroupResource,
+      name: theme.theme,
+      status: "PAUSED",
+      campaign: campaignResource,
+      type: "SEARCH_STANDARD",
+      cpc_bid_micros: DEFAULT_AD_GROUP_CPC_MICROS,
+    })
+
+    for (const kwText of theme.keywords) {
+      ops.push({
+        entity: "ad_group_criterion",
+        operation: "create",
+        resource: ResourceNames.adGroupCriterion(customerId, adGroupId, tempId()),
+        ad_group: adGroupResource,
+        status: "ENABLED", // ad-group status (PAUSED) gates serving; keywords stay enabled
+        keyword: { text: kwText, match_type: theme.match_type },
+      })
+    }
+
+    ops.push({
+      entity: "ad_group_ad",
+      operation: "create",
+      resource: ResourceNames.adGroupAd(customerId, adGroupId, tempId()),
+      ad_group: adGroupResource,
+      status: "PAUSED",
+      ad: {
+        final_urls: [blueprint.ad_copy.final_url],
+        responsive_search_ad: {
+          headlines: blueprint.ad_copy.headlines.map((text) => ({ text })),
+          descriptions: blueprint.ad_copy.descriptions.map((text) => ({ text })),
+        },
+      },
+    })
+  }
+
+  return ops
+}
+
+/**
+ * Extracts the real (post-API) campaign resource name from a mutateResources
+ * response. The response is an array of MutateOperationResponse — for each
+ * op we expect exactly one populated field whose key matches the entity type.
+ * Returns null if the campaign op isn't found (which would be a contract
+ * violation, but we don't want to crash the apply path on logging).
+ */
+export function extractCreatedCampaignResource(apiResponse: unknown): string | null {
+  if (!apiResponse || typeof apiResponse !== "object") return null
+  // The library returns either { mutate_operation_responses: [...] } or
+  // (in some versions) the array directly. Handle both.
+  const arr = Array.isArray(apiResponse)
+    ? apiResponse
+    : Array.isArray((apiResponse as Record<string, unknown>).mutate_operation_responses)
+      ? ((apiResponse as Record<string, unknown>).mutate_operation_responses as unknown[])
+      : Array.isArray((apiResponse as Record<string, unknown>).results)
+        ? ((apiResponse as Record<string, unknown>).results as unknown[])
+        : null
+  if (!arr) return null
+  for (const item of arr) {
+    if (!item || typeof item !== "object") continue
+    const campaignResult = (item as Record<string, unknown>).campaign_result as
+      | { resource_name?: string }
+      | undefined
+    if (campaignResult?.resource_name) return campaignResult.resource_name
+    // Some response shapes nest under `campaign`.
+    const campaign = (item as Record<string, unknown>).campaign as
+      | { resource_name?: string }
+      | undefined
+    if (campaign?.resource_name) return campaign.resource_name
+  }
+  return null
+}

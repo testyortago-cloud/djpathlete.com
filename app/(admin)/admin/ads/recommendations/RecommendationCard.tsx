@@ -174,9 +174,20 @@ export function RecommendationCard({ rec }: { rec: GoogleAdsRecommendation }) {
 
   if (resolved) {
     const meta = RESOLVED_LABEL[resolved]
+    // new_campaign success deserves an extra line — the campaign is created
+    // PAUSED and needs geo targeting + a final review in Google Ads.
+    const isNewCampaignApplied =
+      rec.recommendation_type === "new_campaign" &&
+      (resolved === "applied" || resolved === "auto_applied")
     return (
-      <div className={`border ${meta.tone} rounded-xl p-5 text-sm`}>
+      <div className={`border ${meta.tone} rounded-xl p-5 text-sm space-y-2`}>
         <p>{meta.text}</p>
+        {isNewCampaignApplied ? (
+          <p className="text-xs opacity-90">
+            Created as <strong>Paused</strong>. Open it in Google Ads to set location
+            targeting and review ad copy, then enable.
+          </p>
+        ) : null}
         {errorMessage ? (
           <p className="text-[11px] font-mono mt-2 leading-snug opacity-80">{errorMessage}</p>
         ) : null}
