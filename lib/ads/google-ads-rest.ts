@@ -66,11 +66,12 @@ function entityOperationKey(entity: string): string {
 
 interface RestMutateBody {
   mutateOperations: Array<Record<string, unknown>>
+  partialFailure?: boolean
 }
 
 function toRestEnvelope(ops: MutationOperation[]): RestMutateBody {
   const mutateOperations = ops.map((op) => {
-    const { entity, operation, resource, ...fields } = op
+    const { entity, operation, resource, policy_validation_parameter, ...fields } = op
     // Convert field keys to camelCase. resourceName is only included when the
     // caller actually set a temp/real resource name — leaf ops (criteria,
     // keywords, RSAs) omit it because composite temp IDs like
@@ -79,10 +80,17 @@ function toRestEnvelope(ops: MutationOperation[]): RestMutateBody {
     const body: Record<string, unknown> = resource
       ? { resourceName: resource, ...camelFields }
       : { ...camelFields }
+    const envelope: Record<string, unknown> = {
+      [operation]: body,
+    }
+    // policy_validation_parameter is a sibling of `create`/`update`, NOT
+    // nested inside the entity body. Only ad_group_ad / ad_group_criterion
+    // ops actually accept ignorable_policy_topics.
+    if (policy_validation_parameter) {
+      envelope.policyValidationParameter = snakeToCamel(policy_validation_parameter)
+    }
     return {
-      [entityOperationKey(entity)]: {
-        [operation]: body,
-      },
+      [entityOperationKey(entity)]: envelope,
     }
   })
   return { mutateOperations }
@@ -126,9 +134,21 @@ export interface RestMutateResult {
  * error body included in the message (truncated) so the apply path can
  * record it in automation_log.
  */
+export interface MutateResourcesOptions {
+  /**
+   * Per Google Ads REST docs: when true, individual op failures (e.g. a
+   * keyword that violates a policy topic that can't be ignored at the
+   * keyword level) don't abort the whole batch. Successful ops still apply,
+   * failures surface in `partialFailureError`. Use for new_campaign creates
+   * so a single bad keyword doesn't kill an otherwise-good campaign.
+   */
+  partialFailure?: boolean
+}
+
 export async function mutateResourcesRest(
   customerId: string,
   ops: MutationOperation[],
+  options: MutateResourcesOptions = {},
 ): Promise<RestMutateResult> {
   if (ops.length === 0) {
     return { response: { mutateOperationResponses: [] }, createdCampaignResource: null }
@@ -145,6 +165,7 @@ export async function mutateResourcesRest(
   const access_token = await refreshAccessToken(refresh_token)
 
   const body = toRestEnvelope(ops)
+  if (options.partialFailure) body.partialFailure = true
   const url = `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}/customers/${customerId}/googleAds:mutate`
   const headers: Record<string, string> = {
     authorization: `Bearer ${access_token}`,

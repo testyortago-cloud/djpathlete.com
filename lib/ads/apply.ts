@@ -326,7 +326,13 @@ export async function applyRecommendation(
   // the same MutationOperation shape after a snake_case→camelCase pass.
   let apiResponse: unknown = null
   try {
-    const result = await mutateResourcesRest(rec.customer_id, built.ops)
+    // partial_failure=true on new_campaign so a single policy-flagged keyword
+    // (e.g. HEALTH_IN_PERSONALIZED_ADS on Assessment campaigns) drops just
+    // that keyword instead of killing the whole campaign create. Other
+    // recommendation types are single-op so partial_failure has no effect.
+    const result = await mutateResourcesRest(rec.customer_id, built.ops, {
+      partialFailure: rec.recommendation_type === "new_campaign",
+    })
     apiResponse = result.response
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)

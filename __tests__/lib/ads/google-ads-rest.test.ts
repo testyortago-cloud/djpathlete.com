@@ -131,6 +131,66 @@ describe("mutateResourcesRest", () => {
     })
   })
 
+  it("nests policy_validation_parameter as a SIBLING of create on ad_group_ad ops", async () => {
+    mockOauthOnce()
+    fetchSpy.mockResolvedValueOnce(
+      new Response(JSON.stringify({ mutateOperationResponses: [] }), { status: 200 }),
+    )
+    const ops: MutationOperation[] = [
+      {
+        entity: "ad_group_ad",
+        operation: "create",
+        ad_group: "customers/123/adGroups/-1",
+        status: "PAUSED",
+        ad: {
+          final_urls: ["https://example.com"],
+          responsive_search_ad: {
+            headlines: [{ text: "A" }, { text: "B" }, { text: "C" }],
+            descriptions: [{ text: "D1" }, { text: "D2" }],
+          },
+        },
+        policy_validation_parameter: {
+          ignorable_policy_topics: ["HEALTH_IN_PERSONALIZED_ADS"],
+        },
+      },
+    ]
+    await mutateResourcesRest("123", ops)
+    const body = JSON.parse((fetchSpy.mock.calls[1][1] as RequestInit).body as string) as {
+      mutateOperations: Array<{
+        adGroupAdOperation: {
+          create: Record<string, unknown>
+          policyValidationParameter?: { ignorablePolicyTopics?: string[] }
+        }
+      }>
+    }
+    const op = body.mutateOperations[0].adGroupAdOperation
+    expect(op.create).not.toHaveProperty("policyValidationParameter")
+    expect(op.policyValidationParameter).toEqual({
+      ignorablePolicyTopics: ["HEALTH_IN_PERSONALIZED_ADS"],
+    })
+  })
+
+  it("sets partialFailure=true at request level when option is passed", async () => {
+    mockOauthOnce()
+    fetchSpy.mockResolvedValueOnce(
+      new Response(JSON.stringify({ mutateOperationResponses: [] }), { status: 200 }),
+    )
+    const ops: MutationOperation[] = [
+      {
+        entity: "campaign_budget",
+        operation: "create",
+        resource: "customers/123/campaignBudgets/-1",
+        name: "x",
+        amount_micros: 1,
+      },
+    ]
+    await mutateResourcesRest("123", ops, { partialFailure: true })
+    const body = JSON.parse(
+      (fetchSpy.mock.calls[1][1] as RequestInit).body as string,
+    ) as { partialFailure?: boolean }
+    expect(body.partialFailure).toBe(true)
+  })
+
   it("throws with the API error body when the mutate POST returns non-2xx", async () => {
     mockOauthOnce()
     fetchSpy.mockResolvedValueOnce(

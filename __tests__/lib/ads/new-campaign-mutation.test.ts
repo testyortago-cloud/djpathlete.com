@@ -100,6 +100,26 @@ describe("buildNewCampaignOps", () => {
     expect(campaign?.start_date as string).toMatch(/^\d{4}-\d{2}-\d{2}$/)
   })
 
+  it("attaches policy_validation_parameter only on ad_group_ad ops (criterion ops don't accept it)", () => {
+    const ops = buildNewCampaignOps(CUSTOMER_ID, blueprint())
+    for (const op of ops.filter((o) => o.entity === "ad_group_ad")) {
+      expect(op.policy_validation_parameter).toEqual({
+        ignorable_policy_topics: ["HEALTH_IN_PERSONALIZED_ADS"],
+      })
+    }
+    // ad_group_criterion (keywords) — Google rejects policy_validation_parameter
+    // here with "Cannot find field". Policy-flagged keywords drop via
+    // partial_failure mode at the request level.
+    for (const op of ops.filter((o) => o.entity === "ad_group_criterion")) {
+      expect(op.policy_validation_parameter).toBeUndefined()
+    }
+    // Parents never accept it.
+    for (const entity of ["campaign_budget", "campaign", "ad_group"]) {
+      const op = ops.find((o) => o.entity === entity)
+      expect(op?.policy_validation_parameter).toBeUndefined()
+    }
+  })
+
   it("omits resource_name on leaf ops (criteria, keywords, RSAs) but keeps it on parents", () => {
     const ops = buildNewCampaignOps(CUSTOMER_ID, blueprint())
     // Parents: budget, campaign, ad_group → must have resource_name (referenced by children).

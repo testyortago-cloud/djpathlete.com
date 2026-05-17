@@ -35,6 +35,26 @@ const LANGUAGE_CONSTANT_ENGLISH = "languageConstants/1000"
 const DEFAULT_AD_GROUP_CPC_MICROS = 1_000_000 // $1.00 — matches the blueprint CSV default
 
 /**
+ * Policy topics we ask Google to ignore on keyword + ad creates. These are
+ * topics where DJP Athlete's content is structurally fine but Google's
+ * automated review flags individual phrases pre-emptively:
+ *
+ *   HEALTH_IN_PERSONALIZED_ADS — triggers on "return to sport assessment",
+ *     "post-injury", "medical clearance"; the business IS sports
+ *     performance coaching for athletes (incl. post-injury return), so the
+ *     personalized-health policy hit is a known false positive.
+ *
+ * Ignoring a topic doesn't bypass review — Google still reviews the ad and
+ * may disapprove. It just lets the resource get CREATED so we can iterate
+ * on copy instead of the apply failing outright at insertion time.
+ */
+const IGNORABLE_POLICY_TOPICS = ["HEALTH_IN_PERSONALIZED_ADS"]
+
+const POLICY_VALIDATION_PARAMETER = {
+  ignorable_policy_topics: IGNORABLE_POLICY_TOPICS,
+}
+
+/**
  * Google Ads requires final_urls to be absolute (protocol + host). Inventory
  * rows (marketing_products.landing_url, events landing slugs) store relative
  * paths like "/programs/rotational-reboot" because they're consumed by both
@@ -242,6 +262,9 @@ export function buildNewCampaignOps(
     })
 
     for (const kwText of theme.keywords) {
+      // AdGroupCriterionOperation does NOT accept policy_validation_parameter
+      // — only AdGroupAdOperation does. Policy-flagged keywords get dropped
+      // by partial_failure mode at the request level instead.
       ops.push({
         entity: "ad_group_criterion",
         operation: "create",
@@ -263,6 +286,7 @@ export function buildNewCampaignOps(
           descriptions: blueprint.ad_copy.descriptions.map((text) => ({ text })),
         },
       },
+      policy_validation_parameter: POLICY_VALIDATION_PARAMETER,
     })
   }
 
