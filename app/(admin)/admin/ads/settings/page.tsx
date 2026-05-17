@@ -2,16 +2,19 @@ import { createServiceRoleClient } from "@/lib/supabase"
 import { listGoogleAdsAccounts } from "@/lib/db/google-ads-accounts"
 import { ConnectGoogleAdsButton } from "./ConnectGoogleAdsButton"
 import { RediscoverAccountsButton } from "./RediscoverAccountsButton"
+import { AccountToggleButton } from "./AccountToggleButton"
+import { HiddenAccountsToggle } from "./HiddenAccountsToggle"
 import type { GoogleAdsAccount } from "@/types/database"
 
 export const metadata = { title: "Google Ads — Settings" }
 
 interface PageProps {
-  searchParams: Promise<{ connected?: string; error?: string }>
+  searchParams: Promise<{ connected?: string; error?: string; show_hidden?: string }>
 }
 
 export default async function GoogleAdsSettingsPage({ searchParams }: PageProps) {
   const sp = await searchParams
+  const showHidden = sp.show_hidden === "1"
   const supabase = createServiceRoleClient()
 
   const { data: connection } = await supabase
@@ -23,14 +26,16 @@ export default async function GoogleAdsSettingsPage({ searchParams }: PageProps)
   const isConnected = (connection?.status ?? "not_connected") === "connected"
   const accounts: GoogleAdsAccount[] = isConnected ? await listGoogleAdsAccounts() : []
   const activeAccounts = accounts.filter((a) => a.is_active)
+  const hiddenAccounts = accounts.filter((a) => !a.is_active)
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-heading text-primary">Google Ads — Settings</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          OAuth status, connected customer accounts, and last-sync state. Reconnect here if the
-          refresh token ever rotates.
+        <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
+          Manage which Google Ads accounts the assistant looks at. Hide any sub-accounts
+          you don&apos;t actively run ads in — they&apos;ll disappear from every screen and
+          the AI will stop suggesting changes for them. You can re-enable them anytime.
         </p>
       </div>
 
@@ -41,10 +46,9 @@ export default async function GoogleAdsSettingsPage({ searchParams }: PageProps)
       ) : null}
       {sp.connected === "1" ? (
         <div className="border border-success/40 bg-success/5 text-success rounded-lg p-4 text-sm">
-          Connected.
           {activeAccounts.length === 0
-            ? " No accounts discovered yet — verify GOOGLE_ADS_LOGIN_CUSTOMER_ID is correct and reconnect."
-            : " Nightly sync runs at 06:00 UTC; trigger one manually from /admin/ads/campaigns."}
+            ? "Connected, but no accounts were found yet. Try Re-discover accounts below."
+            : "Connected. New ad performance refreshes every night."}
         </div>
       ) : null}
 
@@ -54,8 +58,8 @@ export default async function GoogleAdsSettingsPage({ searchParams }: PageProps)
             <p className="font-medium text-primary">Connection</p>
             <p className="text-xs text-muted-foreground mt-1">
               {isConnected
-                ? `Authorized — refresh token stored${connection?.account_handle ? ` for Customer ID ${connection.account_handle}` : ""}.`
-                : "Not connected."}
+                ? `Signed in${connection?.account_handle ? ` to Google Ads (Customer ID ${connection.account_handle})` : ""}.`
+                : "Not connected to Google Ads."}
             </p>
           </div>
           <ConnectGoogleAdsButton isConnected={isConnected} />
@@ -65,10 +69,9 @@ export default async function GoogleAdsSettingsPage({ searchParams }: PageProps)
             <div>
               <p className="text-sm text-primary">Re-discover accounts</p>
               <p className="text-xs text-muted-foreground mt-1 max-w-xl">
-                Re-runs <code className="font-mono">listAccessibleCustomers</code> against the
-                stored refresh token and upserts each Customer ID. Use this if the OAuth
-                handshake completed before <code className="font-mono">GOOGLE_ADS_DEVELOPER_TOKEN</code>{" "}
-                was set, or after the dev token rotates. No consent screen.
+                Ask Google for the latest list of accounts you can access and add any
+                new ones here. Existing accounts keep their hide/show state — no
+                consent screen, no re-sign-in.
               </p>
             </div>
             <RediscoverAccountsButton />
@@ -77,42 +80,87 @@ export default async function GoogleAdsSettingsPage({ searchParams }: PageProps)
       </div>
 
       {activeAccounts.length > 0 ? (
-        <div className="border border-border rounded-xl bg-card overflow-hidden">
-          <div className="p-4 border-b border-border/60">
-            <p className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
-              Connected accounts
-            </p>
-          </div>
-          <table className="w-full text-sm">
-            <thead className="bg-surface text-xs font-mono uppercase tracking-wider text-muted-foreground">
-              <tr>
-                <th className="text-left p-3">Customer ID</th>
-                <th className="text-left p-3">Name</th>
-                <th className="text-left p-3">Last synced</th>
-                <th className="text-left p-3">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {activeAccounts.map((a) => (
-                <tr key={a.customer_id} className="border-t border-border/60">
-                  <td className="p-3 font-mono text-xs">{a.customer_id}</td>
-                  <td className="p-3">{a.descriptive_name ?? "—"}</td>
-                  <td className="p-3 font-mono text-xs">
-                    {a.last_synced_at ? new Date(a.last_synced_at).toLocaleString() : "Never"}
-                  </td>
-                  <td className="p-3 text-xs">
-                    {a.last_error ? (
-                      <span className="text-error">Error: {a.last_error.slice(0, 80)}</span>
-                    ) : (
-                      <span className="text-success">OK</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <AccountsTable title="Accounts the assistant manages" accounts={activeAccounts} mode="active" />
+      ) : null}
+
+      {hiddenAccounts.length > 0 ? (
+        <div className="space-y-3">
+          <HiddenAccountsToggle hiddenCount={hiddenAccounts.length} showHidden={showHidden} />
+          {showHidden ? (
+            <AccountsTable
+              title="Hidden accounts (the assistant ignores these)"
+              accounts={hiddenAccounts}
+              mode="hidden"
+              muted
+            />
+          ) : null}
         </div>
       ) : null}
+    </div>
+  )
+}
+
+function AccountsTable({
+  title,
+  accounts,
+  mode,
+  muted,
+}: {
+  title: string
+  accounts: GoogleAdsAccount[]
+  mode: "active" | "hidden"
+  muted?: boolean
+}) {
+  return (
+    <div
+      className={`border ${muted ? "border-dashed border-border" : "border-border"} rounded-xl bg-card overflow-hidden`}
+    >
+      <div className="p-4 border-b border-border/60">
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+          {title}
+        </p>
+      </div>
+      <table className="w-full text-sm">
+        <thead className="bg-surface text-xs uppercase tracking-wider text-muted-foreground">
+          <tr>
+            <th className="text-left p-3 font-medium">Customer ID</th>
+            <th className="text-left p-3 font-medium">Name</th>
+            <th className="text-left p-3 font-medium">Last refreshed</th>
+            <th className="text-left p-3 font-medium">Health</th>
+            <th className="text-right p-3 font-medium">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {accounts.map((a) => (
+            <tr key={a.customer_id} className="border-t border-border/60">
+              <td className="p-3 font-mono text-xs">{a.customer_id}</td>
+              <td className="p-3">{a.descriptive_name ?? "—"}</td>
+              <td className="p-3 text-xs text-muted-foreground">
+                {a.last_synced_at
+                  ? new Date(a.last_synced_at).toLocaleString(undefined, {
+                      month: "short",
+                      day: "numeric",
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })
+                  : "Never"}
+              </td>
+              <td className="p-3 text-xs">
+                {a.last_error ? (
+                  <span className="text-error" title={a.last_error}>
+                    Last refresh failed
+                  </span>
+                ) : (
+                  <span className="text-success">OK</span>
+                )}
+              </td>
+              <td className="p-3 text-right">
+                <AccountToggleButton customerId={a.customer_id} active={mode === "active"} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }
