@@ -35,6 +35,7 @@ import {
 import { resolveGeoTargets, validateGeoCoverage } from "@/lib/ads/geo-target-resolver"
 import { getActiveConversionAction } from "@/lib/db/google-ads-conversion-actions"
 import { mutateResourcesRest } from "@/lib/ads/google-ads-rest"
+import { upsertCampaign } from "@/lib/db/google-ads-campaigns"
 import type {
   GoogleAdsAutomationMode,
   GoogleAdsRecommendation,
@@ -354,6 +355,21 @@ export async function applyRecommendation(
     result_status: "success",
   })
 
+  // If this was a new_campaign apply, insert the created campaign into the
+  // local mirror immediately so /admin/ads/campaigns and the agent's
+  // snapshot see it without waiting for the nightly sync. Best-effort —
+  // failure here doesn't roll back the Google Ads create; sync will pick
+  // it up later.
+  if (rec.recommendation_type === "new_campaign") {
+    try {
+      await mirrorNewlyCreatedCampaign(rec, apiResponse)
+    } catch (mirrorErr) {
+      console.warn(
+        `[apply] new campaign created but mirror insert failed (sync will reconcile): ${(mirrorErr as Error).message}`,
+      )
+    }
+  }
+
   if (options.mode === "auto_pilot") {
     // Plan 1.3: auto-applied recs use a distinct status so they're filterable
     // in the queue. setRecommendationApplied flips to 'applied'; we override
@@ -374,6 +390,54 @@ export async function applyRecommendation(
 
   await setRecommendationApplied(rec.id)
   return { recommendation_id: rec.id, applied: true, status: "applied" }
+}
+
+/**
+ * Reads the campaignResult from a successful mutateOperationResponses array
+ * and inserts a row into google_ads_campaigns so the UI + agent see the new
+ * campaign immediately. Pulls budget/name/dates from the blueprint payload
+ * — the next nightly sync will overwrite with authoritative Google Ads data.
+ */
+async function mirrorNewlyCreatedCampaign(
+  rec: GoogleAdsRecommendation,
+  apiResponse: unknown,
+): Promise<void> {
+  const responses = (apiResponse as {
+    mutateOperationResponses?: Array<{
+      campaignResult?: { resourceName?: string }
+    }>
+  })?.mutateOperationResponses
+  if (!responses) return
+  const campaignResult = responses.find((r) => r.campaignResult)?.campaignResult
+  if (!campaignResult?.resourceName) return
+  // resourceName format: customers/{customer_id}/campaigns/{campaign_id}
+  const externalCampaignId = campaignResult.resourceName.split("/").pop()
+  if (!externalCampaignId) return
+
+  const rawArgs =
+    (rec.payload as { args?: unknown }).args ?? (rec.payload as unknown)
+  const args = rawArgs as {
+    campaign_name?: string
+    daily_budget_cents?: number
+    campaign_type?: "SEARCH" | "PMAX" | "DISPLAY"
+  }
+
+  await upsertCampaign({
+    customer_id: rec.customer_id,
+    campaign_id: externalCampaignId,
+    name: args.campaign_name ?? "Unnamed campaign",
+    type: args.campaign_type === "PMAX"
+      ? "PERFORMANCE_MAX"
+      : args.campaign_type === "DISPLAY"
+        ? "DISPLAY"
+        : "SEARCH",
+    status: "PAUSED",
+    bidding_strategy: "MANUAL_CPC",
+    budget_micros: args.daily_budget_cents != null ? args.daily_budget_cents * 10_000 : null,
+    start_date: new Date().toISOString().slice(0, 10),
+    end_date: null,
+    raw_data: { source: "apply_path_mirror", recommendation_id: rec.id },
+  })
 }
 
 /**
