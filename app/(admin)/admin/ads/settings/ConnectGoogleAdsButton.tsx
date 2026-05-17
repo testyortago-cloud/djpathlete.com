@@ -28,14 +28,23 @@ export function ConnectGoogleAdsButton({ isConnected }: Props) {
 
   if (isConnected) {
     return (
-      <button
-        type="button"
-        onClick={disconnect}
-        disabled={pending}
-        className="inline-flex items-center px-4 py-2 rounded-md border border-error/40 text-error bg-error/5 text-sm font-medium hover:bg-error/10 transition-colors disabled:opacity-50"
-      >
-        {pending ? "Disconnecting..." : "Disconnect Google Ads"}
-      </button>
+      <div className="flex items-center gap-2">
+        <a
+          href="/api/integrations/google-ads/connect"
+          className="inline-flex items-center px-4 py-2 rounded-md bg-accent text-white text-sm font-medium hover:bg-accent/90 transition-colors"
+          title="Re-run the OAuth flow and overwrite the stored refresh token. Use when sync errors mention invalid_client or invalid_grant."
+        >
+          Reconnect
+        </a>
+        <button
+          type="button"
+          onClick={disconnect}
+          disabled={pending}
+          className="inline-flex items-center px-4 py-2 rounded-md border border-error/40 text-error bg-error/5 text-sm font-medium hover:bg-error/10 transition-colors disabled:opacity-50"
+        >
+          {pending ? "Disconnecting..." : "Disconnect"}
+        </button>
+      </div>
     )
   }
 
