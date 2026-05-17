@@ -182,14 +182,22 @@ export function applyGuardrailsBatch(
   actions: AdsAction[],
   signals: AdsSignals,
 ): GuardrailResult[] {
+  // Cold-start allows two starters (one lead-gen + one purchase). Steady
+  // state still caps at one — past the first active campaign, focus shifts
+  // to optimising existing campaigns rather than launching new ones.
+  const accountIsColdStart =
+    !signals.raw ||
+    signals.raw.campaigns.length === 0 ||
+    signals.raw.campaigns.every((c) => c.status !== "ENABLED")
+  const newCampaignCap = accountIsColdStart ? 2 : 1
   const state: BatchState = { newCampaignsProposed: 0, newDailySpendUsd: 0 }
   const results: GuardrailResult[] = []
   for (const action of actions) {
     if (action.tool === "propose_new_campaign") {
-      if (state.newCampaignsProposed >= 1) {
+      if (state.newCampaignsProposed >= newCampaignCap) {
         results.push({
           kind: "reject",
-          reason: `Already proposed 1 new campaign in this memo; cap is 1.`,
+          reason: `Already proposed ${newCampaignCap} new campaign(s) in this memo; cap is ${newCampaignCap} (${accountIsColdStart ? "cold-start" : "steady-state"}).`,
         })
         continue
       }

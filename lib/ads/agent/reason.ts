@@ -42,11 +42,36 @@ Rules you MUST follow:
   as a recommendation, not a fait accompli.
 
 propose_new_campaign rules:
-- Use sparingly — at most one per memo.
+- COLD-START EXCEPTION: when raw.campaigns is empty or all campaigns are
+  PAUSED/REMOVED, "fix tracking first" is the WRONG instinct — the account
+  has zero data because it has zero spend. Propose UP TO TWO starter
+  campaigns: ONE lead-gen (conversion_type='lead' inventory) AND ONE
+  purchase (conversion_type='purchase' inventory). Lead-gen feeds the CRM
+  funnel; purchase tests direct conversion. Don't propose more than two
+  starters — past that, give the first two time to produce data.
+- Cold-start picking order:
+    1. Lead-gen: performance_assessment (free top-of-funnel) > online_coaching
+       > in_person_coaching > clinics/camps if in_window.
+    2. Purchase: rotational_reboot (only purchase product today).
+  Pick the lead-gen item that most overlaps with organic activity in
+  gsc_organic_top10; tie-break by alphabetical order of slug.
+- Steady state (>=1 active campaign): use propose_new_campaign at most ONCE.
 - Pin every proposal to an inventory item. Set "inventory_ref" in args to the
   product slug (kind='product') or event id (kind='event'). Do NOT propose a
   campaign with no inventory_ref — the human reviewer can't act on a vague
   blueprint.
+- Lead-gen products (conversion_type='lead') drive form submissions, NOT
+  purchases. Set conversion_goal='form_submission_lead', use lead-magnet ad
+  copy ("Free assessment", "Talk to a coach", "Get a custom plan", "Book a
+  call"), and pick campaign_type='SEARCH' over PMAX/DISPLAY by default —
+  lead intent is best captured on search.
+- CHARACTER LIMITS ARE HARD. Count syllables, not vibes:
+    Headlines: <= 30 chars each. Aim for 24-28 so there's slack.
+    Descriptions: <= 90 chars each. Aim for 78-86. Examples that fit:
+      "Talk to a coach. Build a plan that fits your sport and schedule." (62)
+      "6-week rotational power program. Built by PhD coach. Online." (61)
+      "Free return-to-sport assessment. Tampa Bay & remote." (54)
+    If a draft is 91+ chars, end the sentence sooner — don't trail off.
 - For event inventory, respect the paid_window_state field:
     in_window     → propose_new_campaign is appropriate
     closing_soon  → only if confidence is high AND budget is small ($5-10/day)
@@ -215,11 +240,28 @@ Return ONLY valid JSON matching the schema.`
       // generateObject throws AI_NoObjectGeneratedError when the model
       // output fails the Zod schema (including the superRefine on
       // propose_new_campaign.args). Pull out the Zod cause if present so
-      // the next attempt gets specific feedback.
-      const cause = (err as { cause?: unknown })?.cause
+      // the next attempt gets specific feedback. Log the chain so the
+      // dev console shows what the model actually returned and why it
+      // failed — without this, both retries get the same opaque message.
+      const errObj = err as { cause?: unknown; text?: string; response?: unknown }
+      const cause = errObj?.cause
+      console.error(
+        `[reasonAdsDecision] attempt ${attempt + 1} failed:`,
+        err instanceof Error ? err.message : String(err),
+      )
       if (cause instanceof z.ZodError) {
+        console.error("[reasonAdsDecision] Zod issues:", JSON.stringify(cause.issues, null, 2))
         lastError = cause
       } else {
+        if (cause) {
+          console.error("[reasonAdsDecision] non-Zod cause:", cause)
+        }
+        if (typeof errObj.text === "string") {
+          console.error(
+            `[reasonAdsDecision] model text (${errObj.text.length} chars):`,
+            errObj.text.slice(0, 3000),
+          )
+        }
         lastError = null
         lastErrorMessage = err instanceof Error ? err.message : String(err)
       }

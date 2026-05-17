@@ -48,41 +48,45 @@ export const campaignBlueprintArgsSchema = z.object({
 
 export type CampaignBlueprintArgs = z.infer<typeof campaignBlueprintArgsSchema>
 
-export const adsAgentActionSchema = z
-  .object({
-    rank: z.number().int().min(1),
-    tool: z.enum([
-      "propose_budget_shift",
-      "propose_new_keywords",
-      "propose_negative_keywords",
-      "propose_ad_copy_test",
-      "propose_audience_expansion",
-      "propose_new_campaign",
-      "propose_campaign_pause",
-      "propose_campaign_split",
-      "propose_match_type_change",
-      "propose_bid_strategy_review",
-      "flag_for_human",
-    ]),
-    args: z.record(z.string(), z.unknown()),
-    rationale: z.string().min(20).max(400),
-    expected_metric: z.enum(["CTR", "CVR", "CAC", "ROAS", "spend_efficiency", "impression_share"]),
-    expected_direction: z.enum(["increase", "decrease"]),
-    confidence: z.enum(["low", "medium", "high"]),
-    supporting_signals: z.array(z.string()).max(5),
-  })
-  .superRefine((action, ctx) => {
-    if (action.tool !== "propose_new_campaign") return
-    const parsed = campaignBlueprintArgsSchema.safeParse(action.args)
-    if (parsed.success) return
-    for (const issue of parsed.error.issues) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: issue.message,
-        path: ["args", ...issue.path],
-      })
-    }
-  })
+export const adsAgentActionSchema = z.object({
+  rank: z.number().int().min(1),
+  tool: z.enum([
+    "propose_budget_shift",
+    "propose_new_keywords",
+    "propose_negative_keywords",
+    "propose_ad_copy_test",
+    "propose_audience_expansion",
+    "propose_new_campaign",
+    "propose_campaign_pause",
+    "propose_campaign_split",
+    "propose_match_type_change",
+    "propose_bid_strategy_review",
+    "flag_for_human",
+  ]),
+  args: z.record(z.string(), z.unknown()),
+  rationale: z.string().min(20).max(400),
+  expected_metric: z.enum(["CTR", "CVR", "CAC", "ROAS", "spend_efficiency", "impression_share"]),
+  expected_direction: z.enum(["increase", "decrease"]),
+  confidence: z.enum(["low", "medium", "high"]),
+  supporting_signals: z.array(z.string()).max(5),
+})
+
+/**
+ * Validates a propose_new_campaign action's args against the strict blueprint
+ * schema. Called from buildStrategistMemo AFTER the model responds, so the
+ * AI SDK never sees the strict constraints (it would confuse Anthropic's
+ * tool-use into emitting wrapped responses like {"$schema": ...} or
+ * {"$PARAMETER_NAME": ...}). Invalid blueprints get logged and demoted to a
+ * neutral status — the CSV export endpoint enforces the same schema, so a
+ * malformed blueprint just can't be downloaded as a CSV.
+ */
+export function validateCampaignBlueprint(args: unknown):
+  | { ok: true; data: CampaignBlueprintArgs }
+  | { ok: false; issues: z.ZodIssue[] } {
+  const parsed = campaignBlueprintArgsSchema.safeParse(args)
+  if (parsed.success) return { ok: true, data: parsed.data }
+  return { ok: false, issues: parsed.error.issues }
+}
 
 export const adsAgentDecisionSchema = z
   .object({
