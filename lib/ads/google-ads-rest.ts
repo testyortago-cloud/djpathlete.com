@@ -177,3 +177,50 @@ export async function mutateResourcesRest(
 
   return { response, createdCampaignResource }
 }
+
+/**
+ * Runs a GAQL query against `customers/{customer_id}/googleAds:search` and
+ * returns the parsed `results` array (or an empty array). Same REST + fetch
+ * approach as mutateResourcesRest — bypasses the gRPC SDK so it works on
+ * Vercel. Throws on non-2xx with the API error body included.
+ */
+export async function searchGoogleAdsRest(
+  customerId: string,
+  gaql: string,
+  options: { loginCustomerIdOverride?: string | null } = {},
+): Promise<unknown[]> {
+  const developer_token = process.env.GOOGLE_ADS_DEVELOPER_TOKEN
+  if (!developer_token) {
+    throw new Error("GOOGLE_ADS_DEVELOPER_TOKEN missing")
+  }
+  const conn = await getPlatformConnection("google_ads")
+  const refresh_token = conn?.credentials?.refresh_token as string | undefined
+  if (!refresh_token) {
+    throw new Error("Google Ads not connected (no refresh_token in platform_connections)")
+  }
+  const access_token = await refreshAccessToken(refresh_token)
+
+  const url = `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}/customers/${customerId}/googleAds:search`
+  const headers: Record<string, string> = {
+    authorization: `Bearer ${access_token}`,
+    "developer-token": developer_token,
+    "content-type": "application/json",
+  }
+  const loginCustomerId =
+    options.loginCustomerIdOverride !== undefined
+      ? options.loginCustomerIdOverride
+      : process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID
+  if (loginCustomerId) headers["login-customer-id"] = loginCustomerId
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ query: gaql }),
+  })
+  const text = await res.text()
+  if (!res.ok) {
+    throw new Error(`googleAds:search failed (HTTP ${res.status}): ${text.slice(0, 800)}`)
+  }
+  const parsed = JSON.parse(text) as { results?: unknown[] }
+  return parsed.results ?? []
+}
