@@ -9,7 +9,6 @@
 // a structured ApplyResult back.
 
 import { ResourceNames } from "google-ads-api"
-import { getCustomerClient } from "@/lib/ads/google-ads-client"
 import {
   getRecommendationById,
   setRecommendationApplied,
@@ -31,6 +30,7 @@ import { campaignBlueprintArgsSchema } from "@/lib/ads/agent/decision-schema"
 import { buildNewCampaignOps } from "@/lib/ads/new-campaign-mutation"
 import { resolveGeoTargets, validateGeoCoverage } from "@/lib/ads/geo-target-resolver"
 import { getActiveConversionAction } from "@/lib/db/google-ads-conversion-actions"
+import { mutateResourcesRest } from "@/lib/ads/google-ads-rest"
 import type {
   GoogleAdsAutomationMode,
   GoogleAdsRecommendation,
@@ -317,17 +317,15 @@ export async function applyRecommendation(
     return { recommendation_id: rec.id, applied: false, status: "failed", error: built.error }
   }
 
-  // Call Google Ads
+  // Call Google Ads via REST. The gRPC SDK (customer.mutateResources) crashes
+  // on Vercel with "Channel credentials must be a ChannelCredentials object"
+  // because Webpack-bundled lambdas duplicate @grpc/grpc-js, breaking an
+  // internal instanceof check. REST has none of that machinery and accepts
+  // the same MutationOperation shape after a snake_case→camelCase pass.
   let apiResponse: unknown = null
   try {
-    const customer = await getCustomerClient(rec.customer_id)
-    // The library's MutateOperation<T> generic is overly strict (T flows into
-    // `resource: T` but at runtime the field is a resource-name string with
-    // the rest of the fields spread alongside). Our shape is correct;
-    // mutateResources converts to protos internally.
-    apiResponse = await customer.mutateResources(
-      built.ops as unknown as Parameters<typeof customer.mutateResources>[0],
-    )
+    const result = await mutateResourcesRest(rec.customer_id, built.ops)
+    apiResponse = result.response
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     await insertAutomationLog({
