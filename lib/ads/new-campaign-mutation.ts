@@ -17,7 +17,14 @@ import type { ResolvedGeoTarget } from "./geo-target-resolver"
 export interface MutationOperation {
   entity: string
   operation: "create" | "update" | "remove"
-  resource: string
+  /**
+   * Optional temp/real resource name. Required for parents that other ops
+   * reference (budget, campaign, ad_group). Should be OMITTED for leaf ops
+   * (criteria, keywords, RSAs) — the REST API's INCONSISTENT_FIELD_VALUES
+   * check rejects composite temp IDs like `campaignCriteria/-2~-3`, and
+   * leaves don't need cross-references anyway.
+   */
+  resource?: string
   [field: string]: unknown
 }
 
@@ -109,6 +116,10 @@ export function buildNewCampaignOps(
     // REST API accepts YYYY-MM-DD (with dashes); the dash-stripped YYYYMMDD
     // form is only valid for the gRPC proto path.
     start_date: options.startDate ?? new Date().toISOString().slice(0, 10),
+    // Required since Google's 2025 EU political-ads compliance update. Even
+    // for non-political accounts the field must be present on every campaign
+    // create or the API returns fieldError: REQUIRED.
+    contains_eu_political_advertising: "DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING",
   }
   if (options.conversionActionResource) {
     campaignOp.selective_optimization = {
@@ -117,11 +128,12 @@ export function buildNewCampaignOps(
   }
   ops.push(campaignOp)
 
-  // Language criterion — English.
+  // Language criterion — English. Leaf op: no resource_name (the API
+  // auto-assigns one; including a composite temp resource_name triggers
+  // INCONSISTENT_FIELD_VALUES).
   ops.push({
     entity: "campaign_criterion",
     operation: "create",
-    resource: ResourceNames.campaignCriterion(customerId, campaignId, tempId()),
     campaign: campaignResource,
     language: { language_constant: LANGUAGE_CONSTANT_ENGLISH },
   })
@@ -132,7 +144,6 @@ export function buildNewCampaignOps(
     ops.push({
       entity: "campaign_criterion",
       operation: "create",
-      resource: ResourceNames.campaignCriterion(customerId, campaignId, tempId()),
       campaign: campaignResource,
       location: { geo_target_constant: geo.resource_name },
     })
@@ -143,7 +154,6 @@ export function buildNewCampaignOps(
     ops.push({
       entity: "campaign_criterion",
       operation: "create",
-      resource: ResourceNames.campaignCriterion(customerId, campaignId, tempId()),
       campaign: campaignResource,
       negative: true,
       keyword: { text, match_type: "BROAD" },
@@ -169,7 +179,6 @@ export function buildNewCampaignOps(
       ops.push({
         entity: "ad_group_criterion",
         operation: "create",
-        resource: ResourceNames.adGroupCriterion(customerId, adGroupId, tempId()),
         ad_group: adGroupResource,
         status: "ENABLED", // ad-group status (PAUSED) gates serving; keywords stay enabled
         keyword: { text: kwText, match_type: theme.match_type },
@@ -179,7 +188,6 @@ export function buildNewCampaignOps(
     ops.push({
       entity: "ad_group_ad",
       operation: "create",
-      resource: ResourceNames.adGroupAd(customerId, adGroupId, tempId()),
       ad_group: adGroupResource,
       status: "PAUSED",
       ad: {

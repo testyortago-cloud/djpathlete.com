@@ -93,10 +93,10 @@ describe("mutateResourcesRest", () => {
         amount_micros: 1_500_000,
         delivery_method: "STANDARD",
       },
+      // Leaf op (no resource) — REST envelope should omit resourceName.
       {
         entity: "ad_group_criterion",
         operation: "create",
-        resource: "customers/123/adGroupCriteria/-1~-2",
         ad_group: "customers/123/adGroups/-1",
         status: "ENABLED",
         keyword: { text: "rotational power", match_type: "PHRASE" },
@@ -122,8 +122,9 @@ describe("mutateResourcesRest", () => {
     const criterionOp = body.mutateOperations[1] as {
       adGroupCriterionOperation: { create: Record<string, unknown> }
     }
+    // No resourceName on leaf ops — the API auto-assigns from the FK.
+    expect(criterionOp.adGroupCriterionOperation.create).not.toHaveProperty("resourceName")
     expect(criterionOp.adGroupCriterionOperation.create).toMatchObject({
-      resourceName: "customers/123/adGroupCriteria/-1~-2",
       adGroup: "customers/123/adGroups/-1", // ad_group → adGroup
       status: "ENABLED",
       keyword: { text: "rotational power", matchType: "PHRASE" }, // nested snake→camel

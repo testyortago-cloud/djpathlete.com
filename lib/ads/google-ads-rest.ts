@@ -71,10 +71,14 @@ interface RestMutateBody {
 function toRestEnvelope(ops: MutationOperation[]): RestMutateBody {
   const mutateOperations = ops.map((op) => {
     const { entity, operation, resource, ...fields } = op
-    // Convert field keys to camelCase. The body for create/update is the
-    // entity object itself, with resourceName for the temp/real resource.
+    // Convert field keys to camelCase. resourceName is only included when the
+    // caller actually set a temp/real resource name — leaf ops (criteria,
+    // keywords, RSAs) omit it because composite temp IDs like
+    // `campaignCriteria/-2~-3` trigger INCONSISTENT_FIELD_VALUES on REST.
     const camelFields = snakeToCamel(fields) as Record<string, unknown>
-    const body: Record<string, unknown> = { resourceName: resource, ...camelFields }
+    const body: Record<string, unknown> = resource
+      ? { resourceName: resource, ...camelFields }
+      : { ...camelFields }
     return {
       [entityOperationKey(entity)]: {
         [operation]: body,

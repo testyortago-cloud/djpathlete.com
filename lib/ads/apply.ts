@@ -27,7 +27,10 @@ import {
   newKeywordPayloadSchema,
 } from "@/lib/validators/ads"
 import { campaignBlueprintArgsSchema } from "@/lib/ads/agent/decision-schema"
-import { buildNewCampaignOps } from "@/lib/ads/new-campaign-mutation"
+import {
+  buildNewCampaignOps,
+  type MutationOperation,
+} from "@/lib/ads/new-campaign-mutation"
 import { resolveGeoTargets, validateGeoCoverage } from "@/lib/ads/geo-target-resolver"
 import { getActiveConversionAction } from "@/lib/db/google-ads-conversion-actions"
 import { mutateResourcesRest } from "@/lib/ads/google-ads-rest"
@@ -42,13 +45,6 @@ export interface ApplyResult {
   applied: boolean
   status: "applied" | "auto_applied" | "failed"
   error?: string
-}
-
-interface MutationOperation {
-  entity: string
-  operation: "create" | "update" | "remove"
-  resource: string
-  [field: string]: unknown
 }
 
 /**

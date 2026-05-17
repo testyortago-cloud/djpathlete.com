@@ -82,11 +82,35 @@ describe("buildNewCampaignOps", () => {
     expect(campaign).toBeDefined()
     expect(campaign?.status).toBe("PAUSED")
     expect(campaign?.advertising_channel_type).toBe("SEARCH")
+    expect(campaign?.bidding_strategy_type).toBe("MANUAL_CPC")
     expect(campaign?.manual_cpc).toBeDefined()
     expect(campaign?.network_settings).toMatchObject({
       target_google_search: true,
       target_content_network: false,
     })
+    // EU political advertising flag is required since 2025 — must be present
+    // on every campaign create or REST returns fieldError: REQUIRED.
+    expect(campaign?.contains_eu_political_advertising).toBe(
+      "DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING",
+    )
+    // YYYY-MM-DD format (REST), not YYYYMMDD (gRPC proto).
+    expect(campaign?.start_date as string).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+  })
+
+  it("omits resource_name on leaf ops (criteria, keywords, RSAs) but keeps it on parents", () => {
+    const ops = buildNewCampaignOps(CUSTOMER_ID, blueprint())
+    // Parents: budget, campaign, ad_group → must have resource_name (referenced by children).
+    for (const entity of ["campaign_budget", "campaign", "ad_group"]) {
+      const op = ops.find((o) => o.entity === entity)
+      expect(op?.resource).toBeTruthy()
+    }
+    // Leaves: campaign_criterion, ad_group_criterion, ad_group_ad → must NOT
+    // have resource_name (composite temp IDs trigger INCONSISTENT_FIELD_VALUES).
+    for (const op of ops.filter((o) =>
+      ["campaign_criterion", "ad_group_criterion", "ad_group_ad"].includes(o.entity),
+    )) {
+      expect(op.resource).toBeUndefined()
+    }
   })
 
   it("converts daily_budget_cents to micros correctly", () => {
