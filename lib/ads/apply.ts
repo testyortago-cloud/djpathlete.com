@@ -29,6 +29,7 @@ import {
 import { campaignBlueprintArgsSchema } from "@/lib/ads/agent/decision-schema"
 import {
   buildNewCampaignOps,
+  sanitizeBlueprintPayload,
   type MutationOperation,
 } from "@/lib/ads/new-campaign-mutation"
 import { resolveGeoTargets, validateGeoCoverage } from "@/lib/ads/geo-target-resolver"
@@ -180,7 +181,11 @@ async function buildMutation(
       // hand-edited rows may have it at the top level. Try args first.
       const rawArgs =
         (rec.payload as { args?: unknown }).args ?? (rec.payload as unknown)
-      const parsed = campaignBlueprintArgsSchema.safeParse(rawArgs)
+      // Trim ad-copy strings to Google's hard limits before validation —
+      // older recs were generated under a more lenient schema and would
+      // otherwise be rejected for length violations alone.
+      const sanitized = sanitizeBlueprintPayload(rawArgs)
+      const parsed = campaignBlueprintArgsSchema.safeParse(sanitized)
       if (!parsed.success) {
         return { ok: false, error: `Invalid blueprint: ${parsed.error.message}` }
       }

@@ -43,6 +43,54 @@ const DEFAULT_AD_GROUP_CPC_MICROS = 1_000_000 // $1.00 — matches the blueprint
  */
 const PRODUCTION_ORIGIN = "https://www.darrenjpaul.com"
 
+// Google Ads RSA hard limits, per https://support.google.com/google-ads/answer/7684791
+const RSA_HEADLINE_MAX = 30
+const RSA_DESCRIPTION_MAX = 90
+
+/**
+ * Truncates a string at the nearest word boundary <= maxLen so old/stale
+ * AI-generated copy that exceeds Google's hard limits still apply cleanly
+ * instead of being rejected at the Zod gate. Returns the original string if
+ * already short enough.
+ */
+function truncateAtWord(s: string, maxLen: number): string {
+  const trimmed = s.trim()
+  if (trimmed.length <= maxLen) return trimmed
+  const sliced = trimmed.slice(0, maxLen)
+  const lastSpace = sliced.lastIndexOf(" ")
+  // Only break at the last space when it's not too aggressive (i.e. would
+  // leave at least 60% of the limit). Otherwise hard-cut at maxLen.
+  if (lastSpace > Math.floor(maxLen * 0.6)) return sliced.slice(0, lastSpace).trim()
+  return sliced.trim()
+}
+
+/**
+ * Returns a copy of the blueprint payload with ad_copy.headlines and
+ * descriptions trimmed to Google's hard limits. Called before Zod validation
+ * in apply.ts so older recs whose strings exceed the current schema (the
+ * agent has tightened its prompt over time) still go through.
+ */
+export function sanitizeBlueprintPayload(rawArgs: unknown): unknown {
+  if (!rawArgs || typeof rawArgs !== "object") return rawArgs
+  const args = rawArgs as Record<string, unknown>
+  const adCopy = args.ad_copy as Record<string, unknown> | undefined
+  if (!adCopy) return rawArgs
+  const headlines = Array.isArray(adCopy.headlines)
+    ? (adCopy.headlines as unknown[]).map((h) =>
+        typeof h === "string" ? truncateAtWord(h, RSA_HEADLINE_MAX) : h,
+      )
+    : adCopy.headlines
+  const descriptions = Array.isArray(adCopy.descriptions)
+    ? (adCopy.descriptions as unknown[]).map((d) =>
+        typeof d === "string" ? truncateAtWord(d, RSA_DESCRIPTION_MAX) : d,
+      )
+    : adCopy.descriptions
+  return {
+    ...args,
+    ad_copy: { ...adCopy, headlines, descriptions },
+  }
+}
+
 export function toAbsoluteFinalUrl(url: string): string {
   const trimmed = url.trim()
   if (/^https?:\/\//i.test(trimmed)) return trimmed
