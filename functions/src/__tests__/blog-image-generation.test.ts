@@ -175,6 +175,8 @@ describe("handleBlogImageGeneration", () => {
 
     // Hero was generated twice (initial + 1 retry), inline once
     expect(mocks.generateFalImage).toHaveBeenCalledTimes(3)
+    expect(mocks.transcodeAndUpload).toHaveBeenCalledTimes(3)
+    expect(mocks.judgeImageQuality).toHaveBeenCalledTimes(3)
 
     const completedCall = jobUpdate.mock.calls.find((c) => c[0]?.status === "completed")
     expect(completedCall).toBeDefined()
@@ -187,6 +189,8 @@ describe("handleBlogImageGeneration", () => {
 
     // Hero: 2 attempts (initial + 1 retry) — never a 3rd. Inline: 1.
     expect(mocks.generateFalImage).toHaveBeenCalledTimes(3)
+    expect(mocks.transcodeAndUpload).toHaveBeenCalledTimes(3)
+    expect(mocks.judgeImageQuality).toHaveBeenCalledTimes(3)
   })
 
   it("does not retry when judge itself failed (judge_failed=true)", async () => {
@@ -196,5 +200,7 @@ describe("handleBlogImageGeneration", () => {
 
     // Hero: 1 attempt (no retry because judge_failed). Inline: 1.
     expect(mocks.generateFalImage).toHaveBeenCalledTimes(2)
+    expect(mocks.transcodeAndUpload).toHaveBeenCalledTimes(2)
+    expect(mocks.judgeImageQuality).toHaveBeenCalledTimes(2)
   })
 })

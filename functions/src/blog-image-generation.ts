@@ -10,6 +10,12 @@ import { getSupabase } from "./lib/supabase.js"
 const HERO_MODEL = "fal-ai/flux-pro/v1.1-ultra"
 const INLINE_MODEL = "fal-ai/flux-pro/v1.1"
 
+// Mirrors the CHECK constraint on blog_posts.category (migration 00043).
+// Kept as a local alias because functions/ has rootDir:"src" and cannot
+// import from project-root types/database.ts — if the schema changes, both
+// the project type and this alias must be updated in parallel.
+type BlogCategory = "Performance" | "Recovery" | "Coaching" | "Youth Development"
+
 export interface BlogImageGenerationInput {
   blog_post_id: string
 }
@@ -170,7 +176,7 @@ export async function handleBlogImageGeneration(jobId: string): Promise<void> {
     const prompts = await extractImagePrompts({
       title: post.title as string,
       content: html,
-      category: (post.category as string) ?? "Performance",
+      category: post.category as BlogCategory,
       qualifyingSections: qualifyingTitles,
     })
 
