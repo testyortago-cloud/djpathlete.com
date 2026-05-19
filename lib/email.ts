@@ -1064,18 +1064,26 @@ export async function sendFormReviewRequestEmail({
  * Notify a client that their coach left feedback on their form review.
  * Gated by the client's email_notifications preference.
  */
+function formatAudioDuration(seconds: number): string {
+  const m = Math.floor(seconds / 60)
+  const s = Math.floor(seconds % 60)
+  return `${m}:${s.toString().padStart(2, "0")}`
+}
+
 export async function sendFormReviewFeedbackEmail({
   clientEmail,
   clientFirstName,
   clientUserId,
   reviewTitle,
   reviewId,
+  audioDurationSeconds,
 }: {
   clientEmail: string
   clientFirstName: string
   clientUserId?: string
   reviewTitle: string
   reviewId: string
+  audioDurationSeconds?: number | null
 }) {
   if (clientUserId) {
     const prefs = await getPreferences(clientUserId)
@@ -1085,14 +1093,22 @@ export async function sendFormReviewFeedbackEmail({
   const baseUrl = getBaseUrl()
   const reviewUrl = `${baseUrl}/client/form-reviews/${reviewId}`
 
+  const isVoiceMessage = typeof audioDurationSeconds === "number" && audioDurationSeconds > 0
+  const heroSubtitle = isVoiceMessage
+    ? `🎧 Voice message (${formatAudioDuration(audioDurationSeconds!)})`
+    : "Your coach left feedback."
+  const bodyPreview = isVoiceMessage
+    ? `Hi ${clientFirstName}, your coach has left a voice message on your form review.`
+    : `Hi ${clientFirstName}, your coach has reviewed your form video and left feedback.`
+
   const html = emailLayout(`
-    ${heroBanner("Form Review Feedback", "Your coach left feedback.")}
+    ${heroBanner("Form Review Feedback", heroSubtitle)}
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
       <tr>
         <td style="padding:44px 48px 48px;">
           <p style="margin:0 0 28px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:16px; color:#333; line-height:1.8;">
-            Hi ${clientFirstName}, your coach has reviewed your form video and left feedback.
+            ${bodyPreview}
           </p>
 
           ${infoCard([{ label: "Review", value: reviewTitle }])}
