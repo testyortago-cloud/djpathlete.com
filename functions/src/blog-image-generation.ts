@@ -1,15 +1,14 @@
 import { FieldValue, getFirestore } from "firebase-admin/firestore"
-import { extractImagePrompts } from "./ai/image-prompts.js"
+import { extractImagePrompts, PROMPT_VERSION } from "./ai/image-prompts.js"
 import { generateFalImage } from "./lib/fal-client.js"
-import { transcodeAndUpload } from "./lib/image-pipeline.js"
+import { transcodeAndUpload, RENDER_DIMENSIONS, FINAL_DIMENSIONS } from "./lib/image-pipeline.js"
 import { generateAltText } from "./lib/image-alt-text.js"
 import { findQualifyingSections, spliceInlineImages } from "./lib/html-splice.js"
+import { judgeImageQuality, QUALITY_RETRY_THRESHOLD } from "./lib/image-quality-judge.js"
 import { getSupabase } from "./lib/supabase.js"
 
-const HERO_MODEL = "fal-ai/flux-pro/v1.1"
-const INLINE_MODEL = "fal-ai/flux/schnell"
-const HERO_DIMS = { width: 1200, height: 630 }
-const INLINE_DIMS = { width: 1024, height: 576 }
+const HERO_MODEL = "fal-ai/flux-pro/v1.1-ultra"
+const INLINE_MODEL = "fal-ai/flux-pro/v1.1"
 
 export interface BlogImageGenerationInput {
   blog_post_id: string
@@ -22,6 +21,106 @@ export interface InlineImageRecord {
   section_h2: string
   width: number
   height: number
+  seed: number
+  model: string
+  prompt_version: string
+  quality_score: number
+  quality_reasons: string[]
+  judge_failed: boolean
+  attempts: number
+}
+
+export interface CoverImageMeta {
+  seed: number
+  model: string
+  prompt: string
+  prompt_version: string
+  quality_score: number
+  quality_reasons: string[]
+  judge_failed: boolean
+  attempts: number
+}
+
+interface GenerateAndJudgeArgs {
+  model: string
+  prompt: string
+  renderWidth: number
+  renderHeight: number
+  slug: string
+  kind: "hero" | "inline"
+  sectionIdx?: number
+  // Hero images get one retry on low quality; inline images do not (cost
+  // discipline — there can be up to 5 inline per post vs 1 hero).
+  allowRetry: boolean
+}
+
+interface GenerateAndJudgeResult {
+  url: string
+  width: number
+  height: number
+  alt: string
+  buffer: Buffer
+  mime: string
+  seed: number
+  quality_score: number
+  quality_reasons: string[]
+  judge_failed: boolean
+  attempts: number
+}
+
+async function generateJudgeAndRetry(args: GenerateAndJudgeArgs): Promise<GenerateAndJudgeResult> {
+  const maxAttempts = args.allowRetry ? 2 : 1
+  let attempts = 0
+  let lastResult: GenerateAndJudgeResult | null = null
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    attempts++
+    const fal = await generateFalImage({
+      model: args.model,
+      prompt: args.prompt,
+      width: args.renderWidth,
+      height: args.renderHeight,
+      // Let fal pick a fresh seed on each attempt by not passing one.
+    })
+    const upload = await transcodeAndUpload({
+      buffer: fal.buffer,
+      slug: args.slug,
+      kind: args.kind,
+      sectionIdx: args.sectionIdx,
+    })
+    const judgment = await judgeImageQuality({
+      buffer: fal.buffer,
+      mime: fal.mime,
+      originalPrompt: args.prompt,
+    }).catch((err) => {
+      console.warn(`[blog-image-generation] judge threw for ${args.kind}: ${(err as Error).message}`)
+      return { score: 7, reasons: ["judge threw — accepting"], judge_failed: true }
+    })
+    const alt = (await generateAltText(fal.buffer, fal.mime).catch(() => "")) || args.prompt.slice(0, 120)
+
+    lastResult = {
+      url: upload.url,
+      width: upload.width,
+      height: upload.height,
+      alt,
+      buffer: fal.buffer,
+      mime: fal.mime,
+      seed: fal.seed,
+      quality_score: judgment.score,
+      quality_reasons: judgment.reasons,
+      judge_failed: judgment.judge_failed,
+      attempts,
+    }
+
+    // Retry only if (a) the judge says the image is bad AND (b) the judge itself succeeded.
+    // If the judge itself failed (parse error or thrown), accept the image — retrying
+    // would double fal spend without quality signal.
+    if (judgment.judge_failed) break
+    if (judgment.score >= QUALITY_RETRY_THRESHOLD) break
+  }
+
+  if (!lastResult) throw new Error("generateJudgeAndRetry produced no result")
+  return lastResult
 }
 
 export async function handleBlogImageGeneration(jobId: string): Promise<void> {
@@ -52,7 +151,6 @@ export async function handleBlogImageGeneration(jobId: string): Promise<void> {
 
     await jobRef.update({ status: "processing", updatedAt: FieldValue.serverTimestamp() })
 
-    // Load the post
     const { data: post, error: postErr } = await supabase
       .from("blog_posts")
       .select("id, title, slug, content, category")
@@ -66,11 +164,9 @@ export async function handleBlogImageGeneration(jobId: string): Promise<void> {
     const slug = (post.slug as string) ?? "post"
     const html = (post.content as string) ?? ""
 
-    // Find sections that qualify for inline images
     const qualifying = findQualifyingSections(html)
     const qualifyingTitles = qualifying.map((s) => s.h2Text)
 
-    // Step 1: ask Claude for image prompts
     const prompts = await extractImagePrompts({
       title: post.title as string,
       content: html,
@@ -78,52 +174,60 @@ export async function handleBlogImageGeneration(jobId: string): Promise<void> {
       qualifyingSections: qualifyingTitles,
     })
 
-    // Step 2: hero must succeed first. Run it alone so a hero failure short-circuits
-    // before we incur fal cost on inline images. Alt-text fallback uses `||` because
-    // generateAltText returns "" on parse failure (rather than throwing), so .catch
-    // alone wouldn't substitute the fallback.
-    let hero: { url: string; alt: string; width: number; height: number }
+    let hero: GenerateAndJudgeResult
     try {
-      const heroFal = await generateFalImage({
+      hero = await generateJudgeAndRetry({
         model: HERO_MODEL,
         prompt: prompts.hero_prompt,
-        ...HERO_DIMS,
+        renderWidth: RENDER_DIMENSIONS.hero.width,
+        renderHeight: RENDER_DIMENSIONS.hero.height,
+        slug,
+        kind: "hero",
+        allowRetry: true,
       })
-      const heroUpload = await transcodeAndUpload({ buffer: heroFal.buffer, slug, kind: "hero" })
-      const heroAlt =
-        (await generateAltText(heroFal.buffer, heroFal.mime).catch(() => "")) ||
-        prompts.hero_prompt.slice(0, 120)
-      hero = { url: heroUpload.url, alt: heroAlt, width: heroUpload.width, height: heroUpload.height }
     } catch (err) {
       await failJob(`hero generation failed: ${(err as Error).message}`)
       return
     }
 
-    // Step 3: inline images run in parallel; per-image failure is logged but does not fail the job.
+    const coverMeta: CoverImageMeta = {
+      seed: hero.seed,
+      model: HERO_MODEL,
+      prompt: prompts.hero_prompt,
+      prompt_version: PROMPT_VERSION,
+      quality_score: hero.quality_score,
+      quality_reasons: hero.quality_reasons,
+      judge_failed: hero.judge_failed,
+      attempts: hero.attempts,
+    }
+
     const inlinePromises = prompts.inline_prompts.map(async (p, idx) => {
       const sectionIdx = idx + 1
       try {
-        const fal = await generateFalImage({
+        const result = await generateJudgeAndRetry({
           model: INLINE_MODEL,
           prompt: p.prompt,
-          ...INLINE_DIMS,
-        })
-        const upload = await transcodeAndUpload({
-          buffer: fal.buffer,
+          renderWidth: RENDER_DIMENSIONS.inline.width,
+          renderHeight: RENDER_DIMENSIONS.inline.height,
           slug,
           kind: "inline",
           sectionIdx,
+          allowRetry: false,
         })
-        const alt =
-          (await generateAltText(fal.buffer, fal.mime).catch(() => "")) ||
-          p.prompt.slice(0, 120)
         const record: InlineImageRecord = {
-          url: upload.url,
-          alt,
+          url: result.url,
+          alt: result.alt,
           prompt: p.prompt,
           section_h2: p.section_h2,
-          width: upload.width,
-          height: upload.height,
+          width: result.width,
+          height: result.height,
+          seed: result.seed,
+          model: INLINE_MODEL,
+          prompt_version: PROMPT_VERSION,
+          quality_score: result.quality_score,
+          quality_reasons: result.quality_reasons,
+          judge_failed: result.judge_failed,
+          attempts: result.attempts,
         }
         return { ok: true as const, record }
       } catch (err) {
@@ -141,7 +245,6 @@ export async function handleBlogImageGeneration(jobId: string): Promise<void> {
       .map((r) => r.record)
     const failedInlineCount = inlineResults.filter((r) => !r.ok).length
 
-    // Step 3: splice <img> tags into the HTML
     const splicedContent = spliceInlineImages(
       html,
       successfulInline.map((r) => ({
@@ -153,11 +256,11 @@ export async function handleBlogImageGeneration(jobId: string): Promise<void> {
       })),
     )
 
-    // Step 4: write back to blog_posts
     const { error: updateErr } = await supabase
       .from("blog_posts")
       .update({
         cover_image_url: hero.url,
+        cover_image_meta: coverMeta,
         content: splicedContent,
         inline_images: successfulInline,
       })
@@ -171,6 +274,7 @@ export async function handleBlogImageGeneration(jobId: string): Promise<void> {
       status: "completed",
       result: {
         cover_image_url: hero.url,
+        cover_image_meta: coverMeta,
         inline_images: successfulInline,
         failed_inline_count: failedInlineCount,
       },
@@ -180,3 +284,5 @@ export async function handleBlogImageGeneration(jobId: string): Promise<void> {
     await failJob((err as Error).message ?? "Unknown blog-image-generation error")
   }
 }
+
+export { FINAL_DIMENSIONS }
