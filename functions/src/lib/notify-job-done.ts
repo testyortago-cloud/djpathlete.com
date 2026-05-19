@@ -14,6 +14,14 @@
 
 import { Resend } from "resend"
 import { getSupabase } from "./supabase.js"
+import {
+  emailLayout,
+  sectionLabel,
+  ctaButton,
+  infoCard,
+  fallbackLink,
+  errorBlock,
+} from "./email-template.js"
 
 interface JobSuccessInput {
   /** Address from input.notify_email — null/empty disables the send. */
@@ -109,25 +117,44 @@ export async function notifyJobCompleted(opts: JobSuccessInput): Promise<void> {
       opts.targetUrl ??
       (opts.programId ? `${getBaseUrl()}/admin/programs/${opts.programId}` : getBaseUrl())
 
-    const detailsHtml =
-      opts.details && opts.details.length > 0
-        ? `<ul>${opts.details
-            .map((d) => `<li><strong>${d.label}:</strong> ${d.value}</li>`)
-            .join("")}</ul>`
-        : ""
+    const cardRows: Array<{ label: string; value: string }> = [
+      { label: "Program", value: programName },
+      { label: "Scope", value: opts.jobLabel },
+    ]
+    if (opts.details && opts.details.length > 0) {
+      for (const d of opts.details) cardRows.push({ label: d.label, value: d.value })
+    }
+
+    const html = emailLayout(`
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td style="padding:48px 48px 52px;">
+            ${sectionLabel("Generation Complete")}
+            <p style="margin:0 0 8px; font-family:'Lexend Exa', Georgia, 'Times New Roman', serif; font-size:22px; font-weight:400; color:#0E3F50;">
+              ${opts.jobLabel} is ready.
+            </p>
+            <p style="margin:0 0 32px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:15px; color:#5c5750; line-height:1.8;">
+              ${opts.summary}
+            </p>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:36px;">
+              <tr><td>${infoCard(cardRows)}</td></tr>
+            </table>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td align="center">${ctaButton(targetUrl, "Open in admin")}</td></tr>
+            </table>
+            ${fallbackLink(targetUrl)}
+          </td>
+        </tr>
+      </table>
+    `)
 
     const fromAddr = getFromEmail()
     const resend = new Resend(apiKey)
     const sendResult = await resend.emails.send({
       from: fromAddr,
       to: recipients,
-      subject: `✓ ${opts.jobLabel} ready — ${programName}`,
-      html: `
-        <p><strong>${opts.jobLabel}</strong> for <strong>${programName}</strong> is ready.</p>
-        <p>${opts.summary}</p>
-        ${detailsHtml}
-        <p><a href="${targetUrl}">Open in admin →</a></p>
-      `,
+      subject: `${opts.jobLabel} is ready — ${programName}`,
+      html,
     })
     if (sendResult.error) {
       console.warn(
@@ -169,16 +196,35 @@ export async function notifyJobFailed(opts: JobFailureInput): Promise<void> {
       opts.targetUrl ??
       (opts.programId ? `${getBaseUrl()}/admin/programs/${opts.programId}` : getBaseUrl())
 
+    const html = emailLayout(`
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td style="padding:48px 48px 52px;">
+            ${sectionLabel("Generation Failed")}
+            <p style="margin:0 0 8px; font-family:'Lexend Exa', Georgia, 'Times New Roman', serif; font-size:22px; font-weight:400; color:#0E3F50;">
+              ${opts.jobLabel} could not be completed.
+            </p>
+            <p style="margin:0 0 32px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:15px; color:#5c5750; line-height:1.8;">
+              The generation for <strong>${programName}</strong> failed. The error message below was returned by the orchestrator — open the admin to retry or adjust the request.
+            </p>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:36px;">
+              <tr><td>${errorBlock(opts.error)}</td></tr>
+            </table>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td align="center">${ctaButton(targetUrl, "Open in admin")}</td></tr>
+            </table>
+            ${fallbackLink(targetUrl)}
+          </td>
+        </tr>
+      </table>
+    `)
+
     const resend = new Resend(apiKey)
     const sendResult = await resend.emails.send({
       from: getFromEmail(),
       to: recipients,
-      subject: `✗ ${opts.jobLabel} FAILED — ${programName}`,
-      html: `
-        <p><strong>${opts.jobLabel}</strong> for <strong>${programName}</strong> failed.</p>
-        <pre style="background:#f4f4f4;padding:12px;border-radius:6px;white-space:pre-wrap;font-family:monospace;font-size:12px">${opts.error.slice(0, 1500)}</pre>
-        <p><a href="${targetUrl}">Open in admin →</a></p>
-      `,
+      subject: `${opts.jobLabel} failed — ${programName}`,
+      html,
     })
     if (sendResult.error) {
       console.warn(
