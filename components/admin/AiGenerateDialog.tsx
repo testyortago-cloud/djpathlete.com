@@ -70,6 +70,7 @@ import { getAiGenerateTourSteps } from "@/lib/tour-steps"
 import { AssignProgramDialog } from "@/components/admin/AssignProgramDialog"
 import { TemplateSelector } from "@/components/admin/TemplateSelector"
 import { NotifyWhenDoneToggle } from "@/components/admin/NotifyWhenDoneToggle"
+import { useAiJobsDock } from "@/hooks/use-ai-jobs-dock"
 import type { User, ClientProfile } from "@/types/database"
 import { summarizeApiError } from "@/lib/errors/humanize"
 
@@ -209,6 +210,7 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
   const [audience, setAudience] = useState<"private" | "public">("private")
   const [priceDollars, setPriceDollars] = useState("")
   const [notifyWhenDone, setNotifyWhenDone] = useState(true)
+  const { addJob } = useAiJobsDock()
 
   // Profile state
   const [profileSummary, setProfileSummary] = useState<ProfileSummary | null>(null)
@@ -563,6 +565,14 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
       if (response.status === 202 && data.jobId) {
         // Store jobId for cancellation
         setActiveJobId(data.jobId)
+        // Push to the floating dock so the admin can close this dialog and
+        // keep working; the dialog still shows full step-by-step if they
+        // want to stay here, but they don't have to.
+        addJob({
+          jobId: data.jobId,
+          kind: "full_program",
+          label: `Full program${clientId ? " · client" : ""}`,
+        })
         // Start elapsed timer
         setElapsedSeconds(0)
         timerRef.current = setInterval(() => setElapsedSeconds((s) => s + 1), 1000)

@@ -18,6 +18,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { useAiJob } from "@/hooks/use-ai-job"
+import { useAiJobsDock } from "@/hooks/use-ai-jobs-dock"
 import { TemplateSelector } from "@/components/admin/TemplateSelector"
 import { NotifyWhenDoneToggle } from "@/components/admin/NotifyWhenDoneToggle"
 
@@ -64,6 +65,7 @@ export function GenerationDialog(props: GenerationDialogProps) {
   const [usePool, setUsePool] = useState(true)
   const [strictPool, setStrictPool] = useState(false)
   const [notifyWhenDone, setNotifyWhenDone] = useState(true)
+  const { addJob } = useAiJobsDock()
 
   const { status, result, error, reset } = useAiJob(jobId)
 
@@ -167,6 +169,22 @@ export function GenerationDialog(props: GenerationDialogProps) {
 
       const data = await response.json()
       setJobId(data.jobId)
+      // Push to the floating dock so the admin can close this dialog and
+      // keep working — the dock keeps showing progress until completion.
+      addJob({
+        jobId: data.jobId,
+        kind: isWeek ? "week" : "day",
+        label: isWeek
+          ? isFillingBlank
+            ? `Fill Week ${weekLabel}`
+            : `New Week ${weekLabel}`
+          : `Week ${weekLabel} / ${dayName}`,
+        programId: props.programId,
+      })
+      // Auto-close so the admin sees the dock immediately. The dialog stays
+      // available for a re-open if they want to watch step-by-step here.
+      toast.success("Generation started — track progress in the bottom-right.")
+      onOpenChange(false)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : `Failed to generate ${mode}`)
     } finally {
