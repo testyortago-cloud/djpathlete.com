@@ -21,8 +21,8 @@ interface VoiceRecorderProps {
   disabled?: boolean
 }
 
-const MAX_DURATION_SECONDS = 120
-const MAX_BYTES = 3 * 1024 * 1024
+const MAX_DURATION_SECONDS = 300
+const MAX_BYTES = 6 * 1024 * 1024
 const MIC_ERROR_TOAST_ID = "voice-recorder-mic-error"
 
 function pickMimeType(): string | null {

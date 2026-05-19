@@ -22,7 +22,7 @@ describe("createFormReviewMessageWithAudio", () => {
     fromMock.mockReset()
   })
 
-  it("calls the RPC and returns the joined message+attachment shape", async () => {
+  it("calls the RPC and returns the joined message+attachment shape with playback URL and author", async () => {
     rpcMock.mockResolvedValueOnce({
       data: [
         {
@@ -33,6 +33,15 @@ describe("createFormReviewMessageWithAudio", () => {
       ],
       error: null,
     })
+    const userBuilder = {
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      single: vi.fn().mockResolvedValue({
+        data: { first_name: "Coach", last_name: "Paul", avatar_url: null, role: "admin" },
+        error: null,
+      }),
+    }
+    fromMock.mockReturnValue(userBuilder)
 
     const result = await createFormReviewMessageWithAudio({
       review_id: "r-1",
@@ -57,6 +66,8 @@ describe("createFormReviewMessageWithAudio", () => {
     expect(result.message).toBeNull()
     expect(result.attachments).toHaveLength(1)
     expect(result.attachments?.[0].storage_path).toBe("form-review-audio/u-1/x.webm")
+    expect(result.attachments?.[0].playback_url).toContain("https://signed.example/")
+    expect(result.users).toMatchObject({ first_name: "Coach", role: "admin" })
   })
 
   it("throws when the RPC returns an error", async () => {

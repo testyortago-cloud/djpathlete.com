@@ -22,7 +22,7 @@ service firebase.storage {
     // Auth is enforced at the Next.js API layer + path-ownership check
     match /form-review-audio/{userId}/{fileName} {
       allow read: if true;
-      allow write: if request.resource.size < 3 * 1024 * 1024  // 3MB max
+      allow write: if request.resource.size < 6 * 1024 * 1024  // 6MB max (~5min @ 128kbps)
                    && request.resource.contentType.matches('audio/.*');
     }
 

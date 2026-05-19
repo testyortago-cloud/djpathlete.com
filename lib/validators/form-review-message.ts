@@ -5,12 +5,12 @@ const AUDIO_MIME_TYPES = ["audio/webm", "audio/mp4", "audio/ogg"] as const
 const audioAttachmentSchema = z.object({
   storage_path: z.string().regex(/^form-review-audio\/[^/]+\/[^/]+$/),
   mime_type: z.enum(AUDIO_MIME_TYPES),
-  duration_seconds: z.number().int().min(1).max(120),
+  duration_seconds: z.number().int().min(1).max(300),
   byte_size: z
     .number()
     .int()
     .min(1)
-    .max(3 * 1024 * 1024),
+    .max(6 * 1024 * 1024),
 })
 
 // Strict objects so { message, audio } together is rejected.

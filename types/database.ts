@@ -840,6 +840,12 @@ export interface FormReviewMessage {
   message: string | null
   created_at: string
   attachments?: FormReviewMessageAttachment[]
+  users?: {
+    first_name: string
+    last_name: string
+    avatar_url?: string | null
+    role?: string
+  } | null
 }
 
 export type FormReviewMessageAttachmentKind = "audio"

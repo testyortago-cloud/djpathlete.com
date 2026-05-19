@@ -146,6 +146,21 @@ export async function createFormReviewMessageWithAudio(input: {
   const row = Array.isArray(data) ? data[0] : data
   if (!row) throw new Error("RPC returned no row")
 
+  // Sign the playback URL and hydrate the author so the optimistic-append
+  // in the thread renders correctly without a refresh.
+  let playback_url: string | null = null
+  try {
+    playback_url = await getSignedVideoUrl(input.storage_path)
+  } catch (err) {
+    console.error("Failed to sign new audio attachment URL:", input.storage_path, err)
+  }
+
+  const { data: author } = await supabase
+    .from("users")
+    .select("first_name, last_name, avatar_url, role")
+    .eq("id", input.user_id)
+    .single()
+
   return {
     id: row.message_id,
     form_review_id: input.review_id,
@@ -162,8 +177,10 @@ export async function createFormReviewMessageWithAudio(input: {
         duration_seconds: input.duration_seconds,
         byte_size: input.byte_size,
         created_at: row.created_at,
+        playback_url,
       },
     ],
+    users: (author as FormReviewMessage["users"]) ?? null,
   }
 }
 

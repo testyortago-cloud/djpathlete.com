@@ -35,25 +35,25 @@ describe("formReviewMessageSchema", () => {
     expect(r.success).toBe(false)
   })
 
-  it("rejects audio over 120 seconds", () => {
+  it("rejects audio over 300 seconds", () => {
     const r = formReviewMessageSchema.safeParse({
       audio: {
         storage_path: "form-review-audio/u-123/x.webm",
         mime_type: "audio/webm",
-        duration_seconds: 121,
+        duration_seconds: 301,
         byte_size: 100,
       },
     })
     expect(r.success).toBe(false)
   })
 
-  it("rejects audio over 3 MB", () => {
+  it("rejects audio over 6 MB", () => {
     const r = formReviewMessageSchema.safeParse({
       audio: {
         storage_path: "form-review-audio/u-123/x.webm",
         mime_type: "audio/webm",
         duration_seconds: 14,
-        byte_size: 3 * 1024 * 1024 + 1,
+        byte_size: 6 * 1024 * 1024 + 1,
       },
     })
     expect(r.success).toBe(false)
