@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { ref, onValue, off } from "firebase/database"
+import { ref, onValue, get } from "firebase/database"
 import { Loader2, CheckCircle2, XCircle, X, Sparkles, ChevronDown, ChevronUp } from "lucide-react"
 import { rtdb } from "@/lib/firebase"
 import { useAiJobsDock, type DockedJob } from "@/hooks/use-ai-jobs-dock"
@@ -51,18 +51,56 @@ function JobCard({ job }: { job: DockedJob }) {
 
   // RTDB subscription. Only active while the dock entry hasn't resolved —
   // once resolved=true, the card displays the sticky outcome from the store.
+  //
+  // Belt-and-braces design: onValue gives realtime updates while the tab
+  // stays connected, but Firebase's websocket can miss updates if the tab
+  // was backgrounded or the connection dropped mid-job. So on mount AND
+  // whenever the tab regains visibility, we also run a one-shot get() to
+  // reconcile against the current server value. Without this, a job that
+  // completes while the tab is asleep stays stuck in "Working" forever.
   useEffect(() => {
     if (job.resolvedState) return
     const jobRef = ref(rtdb, `ai_jobs/${job.jobId}`)
-    const unsub = onValue(jobRef, (snap) => {
-      const val = (snap.val() ?? null) as RtdbJobState | null
+
+    const applyVal = (val: RtdbJobState | null) => {
       if (!val) return
       setState(val)
       if (val.status === "completed" || val.status === "failed" || val.status === "cancelled") {
         markResolved(job.jobId, val.status)
       }
+    }
+
+    // Realtime subscription. onValue returns the unsubscribe fn — call it
+    // directly on cleanup. (Earlier code passed it to off() which was a
+    // no-op and leaked the listener.)
+    const unsubscribe = onValue(jobRef, (snap) => {
+      applyVal((snap.val() ?? null) as RtdbJobState | null)
     })
-    return () => off(jobRef, "value", unsub)
+
+    // Safety-net one-shot fetch. Catches the case where the websocket
+    // missed an update before onValue attached.
+    get(jobRef)
+      .then((snap) => applyVal((snap.val() ?? null) as RtdbJobState | null))
+      .catch(() => {})
+
+    // Re-sync on tab visibility restore — handles the "I left the tab
+    // backgrounded while the job finished" case.
+    const onVisible = () => {
+      if (typeof document === "undefined" || document.hidden) return
+      get(jobRef)
+        .then((snap) => applyVal((snap.val() ?? null) as RtdbJobState | null))
+        .catch(() => {})
+    }
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", onVisible)
+    }
+
+    return () => {
+      unsubscribe()
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", onVisible)
+      }
+    }
   }, [job.jobId, job.resolvedState, markResolved])
 
   // Auto-dismiss after grace period once resolved.
