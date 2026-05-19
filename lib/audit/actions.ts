@@ -49,6 +49,11 @@ export const AUDIT_ACTIONS = [
   { slug: "system_setting.changed",       category: "system",      description: "system_settings row updated" },
   { slug: "feature_flag.toggled",         category: "system",      description: "Feature flag toggled" },
 
+  // google ads — direct admin actions on remote campaigns
+  { slug: "ads.campaign_status_changed",  category: "admin_write", description: "Google Ads campaign paused or resumed from admin UI" },
+  { slug: "ads.campaign_budget_changed",  category: "admin_write", description: "Google Ads campaign daily budget changed from admin UI" },
+  { slug: "ads.campaign_renamed",         category: "admin_write", description: "Google Ads campaign renamed from admin UI" },
+
   // billing
   { slug: "stripe.checkout_completed",    category: "billing", description: "Stripe Checkout session completed" },
   { slug: "stripe.subscription_created",  category: "billing", description: "Stripe subscription created" },

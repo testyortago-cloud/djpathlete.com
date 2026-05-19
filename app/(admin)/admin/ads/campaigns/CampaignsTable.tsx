@@ -1,17 +1,9 @@
-import { ExternalLink } from "lucide-react"
 import type { GoogleAdsCampaign } from "@/types/database"
 import { AutomationModeSelector } from "./AutomationModeSelector"
+import { CampaignBudgetEdit } from "./CampaignBudgetEdit"
+import { CampaignNameEdit } from "./CampaignNameEdit"
+import { CampaignStatusToggle } from "./CampaignStatusToggle"
 import { GenerateCopyButton } from "./GenerateCopyButton"
-
-/**
- * Builds a deep link into the Google Ads web UI for a specific campaign.
- * `__c` is the customer ID (integer, no dashes); `campaignId` opens the
- * detail view. Works whether or not the user is currently signed in —
- * Google routes through account selection if needed.
- */
-function googleAdsCampaignUrl(customerId: string, campaignId: string): string {
-  return `https://ads.google.com/aw/campaigns?campaignId=${campaignId}&__c=${customerId}`
-}
 
 export interface CampaignWithMetrics extends GoogleAdsCampaign {
   cost_micros_7d: number
@@ -30,12 +22,6 @@ function fmtCurrencyMicros(micros: number): string {
 function fmtNumber(n: number): string {
   if (n === 0) return "—"
   return n.toLocaleString()
-}
-
-const STATUS_CLASSES: Record<GoogleAdsCampaign["status"], string> = {
-  ENABLED: "bg-success/10 text-success",
-  PAUSED: "bg-warning/15 text-warning",
-  REMOVED: "bg-muted/40 text-muted-foreground",
 }
 
 export function CampaignsTable({ campaigns }: { campaigns: CampaignWithMetrics[] }) {
@@ -60,6 +46,7 @@ export function CampaignsTable({ campaigns }: { campaigns: CampaignWithMetrics[]
             <th className="text-left p-3 w-28">Type</th>
             <th className="text-left p-3 w-24">Status</th>
             <th className="text-left p-3 w-28">Mode</th>
+            <th className="text-right p-3 w-32">Budget</th>
             <th className="text-right p-3 w-28">Spend (7d)</th>
             <th className="text-right p-3 w-24">Clicks</th>
             <th className="text-right p-3 w-28">Conversions</th>
@@ -70,31 +57,33 @@ export function CampaignsTable({ campaigns }: { campaigns: CampaignWithMetrics[]
           {campaigns.map((c) => (
             <tr key={c.id} className="border-t border-border/60 align-top">
               <td className="p-3">
-                <a
-                  href={googleAdsCampaignUrl(c.customer_id, c.campaign_id)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="group inline-flex items-center gap-1.5 font-medium text-primary leading-snug hover:text-accent hover:underline transition-colors"
-                  title="Open in Google Ads — view spend, edit budget/keywords/ads, enable/pause"
-                >
-                  <span>{c.name}</span>
-                  <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-70 transition-opacity" />
-                </a>
-                <p className="text-xs text-muted-foreground font-mono mt-0.5">
-                  {c.customer_id} · {c.campaign_id}
-                </p>
+                <CampaignNameEdit
+                  campaignId={c.id}
+                  customerId={c.customer_id}
+                  externalCampaignId={c.campaign_id}
+                  initialName={c.name}
+                />
               </td>
               <td className="p-3 text-xs font-mono">{c.type}</td>
               <td className="p-3">
-                <span className={`inline-block px-2 py-0.5 rounded text-xs ${STATUS_CLASSES[c.status]}`}>
-                  {c.status}
-                </span>
+                <CampaignStatusToggle
+                  campaignId={c.id}
+                  campaignName={c.name}
+                  initialStatus={c.status}
+                />
               </td>
               <td className="p-3">
                 <AutomationModeSelector
                   campaignId={c.id}
                   initialMode={c.automation_mode}
                   locked={c.type === "PERFORMANCE_MAX"}
+                />
+              </td>
+              <td className="p-3 text-right">
+                <CampaignBudgetEdit
+                  campaignId={c.id}
+                  campaignName={c.name}
+                  initialBudgetMicros={c.budget_micros}
                 />
               </td>
               <td className="p-3 text-right font-mono text-xs">

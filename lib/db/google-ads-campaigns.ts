@@ -98,3 +98,55 @@ export async function setAutomationMode(
     .eq("id", id)
   if (error) throw error
 }
+
+/**
+ * Local mirror update for campaign.status. Call AFTER a successful Google Ads
+ * mutate so the UI shows the new state without waiting for nightly sync.
+ * Nightly sync will reconcile if anything drifts.
+ */
+export async function setCampaignStatus(
+  id: string,
+  status: GoogleAdsResourceStatus,
+): Promise<void> {
+  const supabase = getClient()
+  const { error } = await supabase
+    .from("google_ads_campaigns")
+    .update({ status })
+    .eq("id", id)
+  if (error) throw error
+}
+
+/**
+ * Local mirror update for campaign.name. Best-effort write after a successful
+ * Google Ads mutate; nightly sync reconciles drift.
+ */
+export async function setCampaignName(id: string, name: string): Promise<void> {
+  const supabase = getClient()
+  const { error } = await supabase
+    .from("google_ads_campaigns")
+    .update({ name })
+    .eq("id", id)
+  if (error) throw error
+}
+
+/**
+ * Local mirror update for the linked campaign_budget.amount_micros. Same
+ * pattern as setCampaignStatus — best-effort write after a successful Google
+ * Ads mutate; nightly sync reconciles drift.
+ *
+ * Note: in Google Ads, budgets are a separate CampaignBudget resource that a
+ * campaign references. Multiple campaigns can share one budget. We mirror
+ * the amount onto the campaign row for display, but the resource name lives
+ * on the API side — we look it up on-demand at edit time.
+ */
+export async function setCampaignBudgetMicros(
+  id: string,
+  budgetMicros: number,
+): Promise<void> {
+  const supabase = getClient()
+  const { error } = await supabase
+    .from("google_ads_campaigns")
+    .update({ budget_micros: budgetMicros })
+    .eq("id", id)
+  if (error) throw error
+}
