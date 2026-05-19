@@ -6,12 +6,23 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Send } from "lucide-react"
 import { toast } from "sonner"
+import { VoiceRecorder } from "@/components/shared/VoiceRecorder"
+
+interface Attachment {
+  id: string
+  kind: "audio"
+  storage_path: string
+  mime_type: string
+  duration_seconds: number | null
+  playback_url?: string | null
+}
 
 interface Message {
   id: string
   user_id: string
-  message: string
+  message: string | null
   created_at: string
+  attachments?: Attachment[]
   users?: {
     first_name: string
     last_name: string
@@ -63,6 +74,25 @@ export function FormReviewThread({
     }
   }
 
+  async function handleSendAudio(payload: {
+    storage_path: string
+    mime_type: string
+    duration_seconds: number
+    byte_size: number
+  }) {
+    const res = await fetch(`${apiBasePath}/${reviewId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ audio: payload }),
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      throw new Error(data.error || "Failed to send voice message")
+    }
+    const created = await res.json()
+    setMessages((prev) => [...prev, created])
+  }
+
   function formatTime(dateStr: string) {
     const d = new Date(dateStr)
     return d.toLocaleDateString("en-US", {
@@ -105,7 +135,23 @@ export function FormReviewThread({
                   isOwn ? "bg-primary text-primary-foreground" : "bg-white border border-border text-foreground",
                 )}
               >
-                {msg.message}
+                {msg.attachments?.[0]?.kind === "audio" ? (
+                  <div className="flex items-center gap-2">
+                    {msg.attachments[0].playback_url ? (
+                      <audio src={msg.attachments[0].playback_url} controls className="h-8" />
+                    ) : (
+                      <span className="text-xs italic opacity-70">Audio unavailable</span>
+                    )}
+                    {msg.attachments[0].duration_seconds != null && (
+                      <span className="text-xs opacity-70 tabular-nums">
+                        ({Math.floor(msg.attachments[0].duration_seconds / 60)}:
+                        {(msg.attachments[0].duration_seconds % 60).toString().padStart(2, "0")})
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  msg.message
+                )}
               </div>
               <span className="text-[10px] text-muted-foreground">{formatTime(msg.created_at)}</span>
             </div>
@@ -126,6 +172,11 @@ export function FormReviewThread({
               handleSend()
             }
           }}
+        />
+        <VoiceRecorder
+          userId={currentUserId}
+          onSend={handleSendAudio}
+          disabled={sending}
         />
         <Button size="icon" onClick={handleSend} disabled={!newMessage.trim() || sending} className="shrink-0">
           <Send className="size-4" />
