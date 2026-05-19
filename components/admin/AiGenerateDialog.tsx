@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { useRouter } from "next/navigation"
-import { useSession } from "next-auth/react"
 import { toast } from "sonner"
+import { COACH_EMAIL } from "@/lib/constants"
 import Link from "next/link"
 import { motion, AnimatePresence } from "framer-motion"
 import { rtdb } from "@/lib/firebase"
@@ -209,7 +209,6 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
   const [audience, setAudience] = useState<"private" | "public">("private")
   const [priceDollars, setPriceDollars] = useState("")
   const [notifyWhenDone, setNotifyWhenDone] = useState(true)
-  const { data: authSession } = useSession()
 
   // Profile state
   const [profileSummary, setProfileSummary] = useState<ProfileSummary | null>(null)
@@ -544,8 +543,8 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
       if (profileSummary && profileSummary.availableEquipment.length > 0 && !ignoreProfile) {
         body.equipment_override = profileSummary.availableEquipment
       }
-      if (notifyWhenDone && authSession?.user?.email) {
-        body.notify_email = authSession.user.email
+      if (notifyWhenDone) {
+        body.notify_email = COACH_EMAIL
       }
 
       const response = await fetch("/api/admin/programs/generate", {

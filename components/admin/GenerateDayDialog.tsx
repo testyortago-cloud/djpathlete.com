@@ -2,8 +2,8 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { useSession } from "next-auth/react"
 import { toast } from "sonner"
+import { COACH_EMAIL } from "@/lib/constants"
 import { Sparkles, Loader2, CheckCircle2, XCircle, Layers } from "lucide-react"
 import {
   Dialog,
@@ -55,7 +55,6 @@ export function GenerateDayDialog({
   const [usePool, setUsePool] = useState(true)
   const [strictPool, setStrictPool] = useState(false)
   const [notifyWhenDone, setNotifyWhenDone] = useState(true)
-  const { data: authSession } = useSession()
 
   const { status, result, error, reset } = useAiJob(jobId)
 
@@ -83,9 +82,7 @@ export function GenerateDayDialog({
             pool_mode: strictPool ? "strict" : "preferred",
           }),
           ...(ignoreProfile && { ignore_profile: true }),
-          ...(notifyWhenDone && authSession?.user?.email
-            ? { notify_email: authSession.user.email }
-            : {}),
+          ...(notifyWhenDone ? { notify_email: COACH_EMAIL } : {}),
         }),
       })
 

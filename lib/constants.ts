@@ -5,6 +5,14 @@
  */
 export const SITE_URL = "https://www.darrenjpaul.com"
 
+/**
+ * Hardcoded coach email — every AI generation notification, weekly digest,
+ * and admin alert lands here regardless of which admin clicked the button.
+ * Server-side COACH_EMAIL env var should match; this constant is for
+ * client-side UI display (toggle labels, dialog hints).
+ */
+export const COACH_EMAIL = "darren@darrenjpaul.com"
+
 import type { ComponentType, SVGProps } from "react"
 import {
   TennisIcon,

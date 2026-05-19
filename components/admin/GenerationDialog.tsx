@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { useSession } from "next-auth/react"
 import { toast } from "sonner"
+import { COACH_EMAIL } from "@/lib/constants"
 import { Sparkles, Loader2, CheckCircle2, XCircle, Layers } from "lucide-react"
 import {
   Dialog,
@@ -64,7 +64,6 @@ export function GenerationDialog(props: GenerationDialogProps) {
   const [usePool, setUsePool] = useState(true)
   const [strictPool, setStrictPool] = useState(false)
   const [notifyWhenDone, setNotifyWhenDone] = useState(true)
-  const { data: authSession } = useSession()
 
   const { status, result, error, reset } = useAiJob(jobId)
 
@@ -151,8 +150,8 @@ export function GenerationDialog(props: GenerationDialogProps) {
         body.target_day_of_week = props.dayOfWeek
       }
 
-      if (notifyWhenDone && authSession?.user?.email) {
-        body.notify_email = authSession.user.email
+      if (notifyWhenDone) {
+        body.notify_email = COACH_EMAIL
       }
 
       const response = await fetch(`/api/admin/programs/${props.programId}/generate-week`, {
