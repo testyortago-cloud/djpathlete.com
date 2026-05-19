@@ -116,9 +116,10 @@ export async function notifyJobCompleted(opts: JobSuccessInput): Promise<void> {
             .join("")}</ul>`
         : ""
 
+    const fromAddr = getFromEmail()
     const resend = new Resend(apiKey)
     const sendResult = await resend.emails.send({
-      from: getFromEmail(),
+      from: fromAddr,
       to: recipients,
       subject: `✓ ${opts.jobLabel} ready — ${programName}`,
       html: `
@@ -130,12 +131,12 @@ export async function notifyJobCompleted(opts: JobSuccessInput): Promise<void> {
     })
     if (sendResult.error) {
       console.warn(
-        `[notify-job-done] Resend rejected success email (to=${recipients.join(",")}):`,
+        `[notify-job-done] Resend rejected success email (from=${fromAddr}, to=${recipients.join(",")}):`,
         sendResult.error,
       )
     } else {
       console.log(
-        `[notify-job-done] success email sent (to=${recipients.join(",")}, id=${sendResult.data?.id ?? "?"})`,
+        `[notify-job-done] success email sent (from=${fromAddr}, to=${recipients.join(",")}, id=${sendResult.data?.id ?? "?"})`,
       )
     }
   } catch (e) {
