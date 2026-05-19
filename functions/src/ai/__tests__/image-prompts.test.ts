@@ -91,7 +91,7 @@ describe("extractImagePrompts", () => {
       qualifyingSections: ["Section A"],
     })
     const userMsg = mockCallAgent.mock.calls[0][1] as string
-    expect(userMsg).toContain("Rotational")
+    expect(userMsg).toContain("Category: Rotational")
   })
 
   it("filters inline_prompts to only those matching qualifyingSections", async () => {
