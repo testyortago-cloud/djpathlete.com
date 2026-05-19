@@ -784,6 +784,10 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
   // Exercise Selector with dedup retry loop
   let assignment: ExerciseAssignment | null = null
 
+  // Invariant across the retry loop — request-level inputs don't change between attempts.
+  const coachInstructionsSection = buildCoachInstructionsSection(request.admin_instructions)
+  const poolNote = buildPoolNote(poolIds, filtered.length, poolMode, poolIds?.length)
+
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     let feedbackSection = ""
     if (attempt > 0 && assignment) {
@@ -809,9 +813,6 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
       }
       if (sections.length > 0) feedbackSection = `\n\n${sections.join("\n\n")}`
     }
-
-    const coachInstructionsSection = buildCoachInstructionsSection(request.admin_instructions)
-    const poolNote = buildPoolNote(poolIds, filtered.length, poolMode, poolIds?.length)
 
     // Stable prefix — identical across the 3 attempts. Cache it.
     const selectorStablePrefix = `Program Skeleton (Week ${newWeekNumber}):\n${JSON.stringify(skeleton)}\n\nConstraints:\n${constraintsContext}\n\nExercise Library (${filtered.length} exercises):\n${exerciseLibrary}\n\n${priorContext.prompt_text}${coachInstructionsSection}${poolNote}\n\nIMPORTANT: EVERY working exercise (compounds, accessories, isolations) MUST be DIFFERENT from prior weeks. Use the AVOID list above — do NOT reuse any exercise_id from that list. For compound slots, pick a DIFFERENT exercise that trains the SAME movement pattern and muscles. WARM-UP and COOL-DOWN slots may stay consistent.`
