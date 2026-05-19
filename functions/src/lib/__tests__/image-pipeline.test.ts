@@ -23,12 +23,19 @@ vi.mock("../supabase.js", () => ({
   }),
 }))
 
-import { transcodeAndUpload, RENDER_DIMENSIONS } from "../image-pipeline.js"
+import { transcodeAndUpload, RENDER_DIMENSIONS, FINAL_DIMENSIONS } from "../image-pipeline.js"
 
 describe("RENDER_DIMENSIONS", () => {
-  it("exposes 2x render dimensions distinct from final dimensions", () => {
+  it("exposes the documented 2x render values", () => {
     expect(RENDER_DIMENSIONS.hero).toEqual({ width: 2400, height: 1260 })
     expect(RENDER_DIMENSIONS.inline).toEqual({ width: 2048, height: 1152 })
+  })
+
+  it("stays exactly 2x of FINAL_DIMENSIONS for both kinds (drift guard)", () => {
+    for (const kind of ["hero", "inline"] as const) {
+      expect(RENDER_DIMENSIONS[kind].width).toBe(FINAL_DIMENSIONS[kind].width * 2)
+      expect(RENDER_DIMENSIONS[kind].height).toBe(FINAL_DIMENSIONS[kind].height * 2)
+    }
   })
 })
 
