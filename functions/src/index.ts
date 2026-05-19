@@ -22,7 +22,6 @@ const googleAdsClientId = defineSecret("GOOGLE_ADS_CLIENT_ID")
 const googleAdsClientSecret = defineSecret("GOOGLE_ADS_CLIENT_SECRET")
 const googleAdsLoginCustomerId = defineSecret("GOOGLE_ADS_LOGIN_CUSTOMER_ID")
 const coachEmail = defineSecret("COACH_EMAIL")
-const resendFromEmail = defineSecret("RESEND_FROM_EMAIL")
 
 const googleAdsSecrets = [
   supabaseUrl,
@@ -37,7 +36,7 @@ const googleAdsSecrets = [
   appUrl,
 ]
 
-const allSecrets = [anthropicApiKey, supabaseUrl, supabaseServiceRoleKey, resendApiKey, coachEmail, resendFromEmail]
+const allSecrets = [anthropicApiKey, supabaseUrl, supabaseServiceRoleKey, resendApiKey, coachEmail]
 const sendSecrets = [supabaseUrl, supabaseServiceRoleKey, resendApiKey]
 
 // ─── Program Generation ────────────────────────────────────────────────────────
