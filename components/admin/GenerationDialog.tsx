@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
+import { useSession } from "next-auth/react"
 import { toast } from "sonner"
 import { Sparkles, Loader2, CheckCircle2, XCircle, Layers } from "lucide-react"
 import {
@@ -18,6 +19,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { useAiJob } from "@/hooks/use-ai-job"
 import { TemplateSelector } from "@/components/admin/TemplateSelector"
+import { NotifyWhenDoneToggle } from "@/components/admin/NotifyWhenDoneToggle"
 
 const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
@@ -61,6 +63,8 @@ export function GenerationDialog(props: GenerationDialogProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [usePool, setUsePool] = useState(true)
   const [strictPool, setStrictPool] = useState(false)
+  const [notifyWhenDone, setNotifyWhenDone] = useState(true)
+  const { data: authSession } = useSession()
 
   const { status, result, error, reset } = useAiJob(jobId)
 
@@ -145,6 +149,10 @@ export function GenerationDialog(props: GenerationDialogProps) {
       } else {
         body.target_week_number = props.weekNumber
         body.target_day_of_week = props.dayOfWeek
+      }
+
+      if (notifyWhenDone && authSession?.user?.email) {
+        body.notify_email = authSession.user.email
       }
 
       const response = await fetch(`/api/admin/programs/${props.programId}/generate-week`, {
@@ -357,6 +365,12 @@ export function GenerationDialog(props: GenerationDialogProps) {
               />
               <p className="text-xs text-muted-foreground">{helperText}</p>
             </div>
+
+            <NotifyWhenDoneToggle
+              checked={notifyWhenDone}
+              onChange={setNotifyWhenDone}
+              disabled={isSubmitting}
+            />
           </div>
         )}
 
