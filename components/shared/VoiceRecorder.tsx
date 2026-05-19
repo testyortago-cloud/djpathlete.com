@@ -125,6 +125,10 @@ export function VoiceRecorder({ userId, onSend, disabled }: VoiceRecorderProps) 
 
   async function handleSend() {
     if (!blob) return
+    if (elapsed < 1) {
+      toast.error("Recording too short. Hold for at least 1 second.")
+      return
+    }
     if (blob.size > MAX_BYTES) {
       toast.error("Voice message too large. Re-record a shorter clip.")
       return
