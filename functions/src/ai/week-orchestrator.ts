@@ -813,15 +813,18 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
     const coachInstructionsSection = buildCoachInstructionsSection(request.admin_instructions)
     const poolNote = buildPoolNote(poolIds, filtered.length, poolMode, poolIds?.length)
 
-    const selectorMessage = `Program Skeleton (Week ${newWeekNumber}):\n${JSON.stringify(skeleton)}\n\nConstraints:\n${constraintsContext}\n\nExercise Library (${filtered.length} exercises):\n${exerciseLibrary}\n\n${priorContext.prompt_text}${coachInstructionsSection}${poolNote}\n\nIMPORTANT: EVERY working exercise (compounds, accessories, isolations) MUST be DIFFERENT from prior weeks. Use the AVOID list above — do NOT reuse any exercise_id from that list. For compound slots, pick a DIFFERENT exercise that trains the SAME movement pattern and muscles. WARM-UP and COOL-DOWN slots may stay consistent.${feedbackSection}`
+    // Stable prefix — identical across the 3 attempts. Cache it.
+    const selectorStablePrefix = `Program Skeleton (Week ${newWeekNumber}):\n${JSON.stringify(skeleton)}\n\nConstraints:\n${constraintsContext}\n\nExercise Library (${filtered.length} exercises):\n${exerciseLibrary}\n\n${priorContext.prompt_text}${coachInstructionsSection}${poolNote}\n\nIMPORTANT: EVERY working exercise (compounds, accessories, isolations) MUST be DIFFERENT from prior weeks. Use the AVOID list above — do NOT reuse any exercise_id from that list. For compound slots, pick a DIFFERENT exercise that trains the SAME movement pattern and muscles. WARM-UP and COOL-DOWN slots may stay consistent.`
+    // Variable suffix — feedback only present on retries.
+    const selectorVariableSuffix = feedbackSection.trim() || "Begin."
 
     try {
       console.log(`[week-orchestrator] Exercise selector attempt ${attempt + 1}/${MAX_RETRIES + 1}...`)
       const selectorResult = await callAgent<ExerciseAssignment>(
         EXERCISE_SELECTOR_PROMPT,
-        selectorMessage,
+        selectorVariableSuffix,
         exerciseAssignmentSchema,
-        { cacheSystemPrompt: true },
+        { cacheSystemPrompt: true, cachedUserPrefix: selectorStablePrefix },
       )
       tokenUsage.selector += selectorResult.tokens_used
       tokenUsage.cache_creation += selectorResult.cache_creation_tokens ?? 0
