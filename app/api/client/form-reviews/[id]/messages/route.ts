@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { z } from "zod"
-import { getFormReviewById, getFormReviewMessages, createFormReviewMessage } from "@/lib/db/form-reviews"
-
-const messageSchema = z.object({
-  message: z.string().min(1).max(5000),
-})
+import {
+  getFormReviewById,
+  getFormReviewMessages,
+  createFormReviewMessage,
+  createFormReviewMessageWithAudio,
+} from "@/lib/db/form-reviews"
+import { formReviewMessageSchema } from "@/lib/validators/form-review-message"
+import { recordAudit } from "@/lib/audit/record"
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -46,16 +48,41 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
 
     const body = await request.json()
-    const parsed = messageSchema.safeParse(body)
+    const parsed = formReviewMessageSchema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json({ error: "Invalid data", details: parsed.error.flatten() }, { status: 400 })
     }
 
-    const message = await createFormReviewMessage({
-      form_review_id: id,
-      user_id: session.user.id,
-      message: parsed.data.message,
-    })
+    let message
+    if ("audio" in parsed.data) {
+      const a = parsed.data.audio
+      const expectedPrefix = `form-review-audio/${session.user.id}/`
+      if (!a.storage_path.startsWith(expectedPrefix)) {
+        return NextResponse.json({ error: "Path ownership mismatch" }, { status: 403 })
+      }
+      message = await createFormReviewMessageWithAudio({
+        review_id: id,
+        user_id: session.user.id,
+        kind: "audio",
+        storage_path: a.storage_path,
+        mime_type: a.mime_type,
+        duration_seconds: a.duration_seconds,
+        byte_size: a.byte_size,
+      })
+      // Fire-and-forget audit log
+      recordAudit({
+        action: "form_review.message.audio_sent",
+        category: "client_action",
+        target: { type: "form_review", id },
+        metadata: { duration_seconds: a.duration_seconds, byte_size: a.byte_size },
+      }).catch(() => {})
+    } else {
+      message = await createFormReviewMessage({
+        form_review_id: id,
+        user_id: session.user.id,
+        message: parsed.data.message,
+      })
+    }
 
     return NextResponse.json(message, { status: 201 })
   } catch (error) {
