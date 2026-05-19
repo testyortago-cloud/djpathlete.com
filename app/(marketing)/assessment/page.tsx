@@ -105,13 +105,6 @@ const collaborators = [
   "Team performance staff",
 ]
 
-const assessmentUses = [
-  "Inform a structured return-to-performance program",
-  "Guide in-person or online coaching",
-  "Identify readiness gaps before competition",
-  "Reduce reinjury risk through targeted development",
-]
-
 const instruments: {
   icon: typeof Dumbbell
   id: string
@@ -186,33 +179,11 @@ export default function AssessmentPage() {
 
       {/* ===================== HERO · CLINICAL BLUEPRINT ===================== */}
       <section className="relative overflow-hidden bg-surface text-primary">
-        {/* Warm corner glow */}
-        <div
-          aria-hidden
-          className="absolute top-0 right-0 w-1/2 h-full pointer-events-none"
-          style={{
-            background:
-              "radial-gradient(ellipse at 90% 30%, oklch(0.7 0.08 60 / 0.12), transparent 60%)",
-          }}
-        />
-
-        {/* Top dossier bar */}
-        <div className="relative border-b border-primary/15">
-          <div className="mx-auto max-w-7xl px-4 md:px-6 py-3 flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.3em]">
-            <span className="text-primary/55">Dossier · RTP / 2026.04</span>
-            <span className="hidden sm:flex items-center gap-4">
-              <span className="text-primary/55">Subject · Cleared Athlete</span>
-              <span className="h-3 w-px bg-primary/20" />
-              <span className="text-accent">Stage · Post-Clearance</span>
-            </span>
-          </div>
-        </div>
-
         <div className="relative mx-auto max-w-7xl px-4 md:px-6 pt-20 md:pt-28 pb-20 md:pb-28">
-          <div className="grid gap-14 lg:grid-cols-[1.05fr_0.95fr] lg:gap-16 items-start">
+          <div className="max-w-2xl">
             <FadeIn>
               <div>
-                <div className="inline-flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.3em] pr-4 text-primary/55">
+                <div className="inline-flex items-center gap-3 font-mono font-bold text-[10px] uppercase tracking-[0.3em] pr-4 text-primary/55">
                   <span className="inline-block size-1.5 rounded-full bg-accent" />
                   Return to Performance
                 </div>
@@ -232,7 +203,7 @@ export default function AssessmentPage() {
 
                 {/* Cleared → Ready gauge */}
                 <div className="mt-10 max-w-lg">
-                  <div className="flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.3em] mb-2 text-primary/55">
+                  <div className="flex items-center justify-between font-mono font-bold text-[10px] uppercase tracking-[0.3em] mb-2 text-primary/55">
                     <span>Cleared</span>
                     <span className="text-accent">Gap · measured</span>
                     <span>Ready</span>
@@ -291,240 +262,20 @@ export default function AssessmentPage() {
                 </div>
               </div>
             </FadeIn>
-
-            {/* Right — anatomical blueprint card */}
-            <FadeIn delay={0.1}>
-              <div className="relative">
-                <div className="rounded-sm border border-primary/15 bg-background p-6 md:p-8">
-                  {/* Blueprint header */}
-                  <div className="flex items-center justify-between pb-4 border-b border-primary/15 font-mono text-[10px] uppercase tracking-[0.3em] text-primary/50">
-                    <span>Fig · A1 / Readiness map</span>
-                    <span>Scale · 1:1</span>
-                  </div>
-
-                  {/* Anatomical blueprint */}
-                  <div className="relative mt-5 aspect-[5/6]">
-                    <svg
-                      viewBox="0 0 500 600"
-                      className="absolute inset-0 w-full h-full"
-                      aria-hidden
-                    >
-                      <defs>
-                        <pattern
-                          id="bp-grid"
-                          x="0"
-                          y="0"
-                          width="25"
-                          height="25"
-                          patternUnits="userSpaceOnUse"
-                        >
-                          <path
-                            d="M 25 0 L 0 0 0 25"
-                            fill="none"
-                            stroke="var(--primary)"
-                            strokeOpacity="0.1"
-                            strokeWidth="0.5"
-                          />
-                        </pattern>
-                      </defs>
-                      <rect width="500" height="600" fill="url(#bp-grid)" />
-
-                      {/* Abstract human silhouette */}
-                      <g
-                        fill="none"
-                        stroke="var(--primary)"
-                        strokeWidth="1.2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <circle cx="250" cy="80" r="28" />
-                        <path d="M250,108 L250,140 M210,150 C225,142 275,142 290,150 L295,250 L290,320 L270,330 L230,330 L210,320 L205,250 Z" />
-                        <line
-                          x1="250"
-                          y1="140"
-                          x2="250"
-                          y2="330"
-                          strokeDasharray="2 3"
-                          stroke="var(--primary)"
-                          strokeOpacity="0.5"
-                        />
-                        <path d="M210,160 L170,210 L160,290 L168,340" />
-                        <path d="M290,160 L330,210 L340,290 L332,340" />
-                        <path d="M215,330 L230,370 L250,375 L270,370 L285,330" />
-                        <path d="M232,370 L220,470 L212,560" />
-                        <path d="M268,370 L280,470 L288,560" />
-                        <path d="M200,560 L230,560 L235,572 L205,572 Z" />
-                        <path d="M270,560 L300,560 L295,572 L265,572 Z" />
-                      </g>
-
-                      {/* Measurement crosshairs */}
-                      {[
-                        { x: 250, y: 80, id: "M-01", label: "Neuro-reactive", pos: "right" },
-                        { x: 160, y: 290, id: "M-02", label: "Symmetry · L", pos: "left" },
-                        { x: 340, y: 290, id: "M-03", label: "Symmetry · R", pos: "right" },
-                        { x: 250, y: 375, id: "M-04", label: "Hip/pelvis load", pos: "right" },
-                        { x: 220, y: 470, id: "M-05", label: "Decel braking", pos: "left" },
-                      ].map((p) => (
-                        <g key={p.id}>
-                          <circle
-                            cx={p.x}
-                            cy={p.y}
-                            r="14"
-                            fill="none"
-                            stroke="var(--accent)"
-                            strokeWidth="1"
-                          />
-                          <circle cx={p.x} cy={p.y} r="3" fill="var(--accent)" />
-                          <line
-                            x1={p.x - 20}
-                            y1={p.y}
-                            x2={p.x - 9}
-                            y2={p.y}
-                            stroke="var(--accent)"
-                            strokeWidth="0.8"
-                          />
-                          <line
-                            x1={p.x + 9}
-                            y1={p.y}
-                            x2={p.x + 20}
-                            y2={p.y}
-                            stroke="var(--accent)"
-                            strokeWidth="0.8"
-                          />
-                          <line
-                            x1={p.x}
-                            y1={p.y - 20}
-                            x2={p.x}
-                            y2={p.y - 9}
-                            stroke="var(--accent)"
-                            strokeWidth="0.8"
-                          />
-                          <line
-                            x1={p.x}
-                            y1={p.y + 9}
-                            x2={p.x}
-                            y2={p.y + 20}
-                            stroke="var(--accent)"
-                            strokeWidth="0.8"
-                          />
-                          {p.pos === "right" ? (
-                            <g>
-                              <line
-                                x1={p.x + 14}
-                                y1={p.y}
-                                x2={p.x + 70}
-                                y2={p.y}
-                                stroke="var(--primary)"
-                                strokeOpacity="0.5"
-                                strokeWidth="0.8"
-                              />
-                              <text
-                                x={p.x + 76}
-                                y={p.y - 4}
-                                fontFamily="var(--font-mono), monospace"
-                                fontSize="10"
-                                letterSpacing="2"
-                                fill="var(--accent)"
-                              >
-                                {p.id}
-                              </text>
-                              <text
-                                x={p.x + 76}
-                                y={p.y + 9}
-                                fontFamily="var(--font-body), sans-serif"
-                                fontSize="10"
-                                fill="var(--primary)"
-                              >
-                                {p.label}
-                              </text>
-                            </g>
-                          ) : (
-                            <g>
-                              <line
-                                x1={p.x - 14}
-                                y1={p.y}
-                                x2={p.x - 70}
-                                y2={p.y}
-                                stroke="var(--primary)"
-                                strokeOpacity="0.5"
-                                strokeWidth="0.8"
-                              />
-                              <text
-                                x={p.x - 76}
-                                y={p.y - 4}
-                                fontFamily="var(--font-mono), monospace"
-                                fontSize="10"
-                                letterSpacing="2"
-                                textAnchor="end"
-                                fill="var(--accent)"
-                              >
-                                {p.id}
-                              </text>
-                              <text
-                                x={p.x - 76}
-                                y={p.y + 9}
-                                fontFamily="var(--font-body), sans-serif"
-                                fontSize="10"
-                                textAnchor="end"
-                                fill="var(--primary)"
-                              >
-                                {p.label}
-                              </text>
-                            </g>
-                          )}
-                        </g>
-                      ))}
-
-                      <line
-                        x1="100"
-                        x2="400"
-                        y1="580"
-                        y2="580"
-                        stroke="var(--primary)"
-                        strokeOpacity="0.3"
-                      />
-                      <text
-                        x="405"
-                        y="584"
-                        fontFamily="var(--font-mono), monospace"
-                        fontSize="9"
-                        letterSpacing="2"
-                        fill="var(--primary)"
-                        fillOpacity="0.5"
-                      >
-                        GROUND
-                      </text>
-                    </svg>
-                  </div>
-
-                  {/* Footer spec */}
-                  <div className="mt-5 grid grid-cols-3 divide-x divide-primary/15 border-t border-primary/15">
-                    {[
-                      { v: "Post-rehab", l: "Stage" },
-                      { v: "Performance", l: "Method" },
-                      { v: "Data-led", l: "Evidence" },
-                    ].map((s) => (
-                      <div key={s.l} className="px-3 pt-4 first:pl-0 last:pr-0">
-                        <div className="font-heading text-sm font-semibold text-primary">{s.v}</div>
-                        <div className="font-mono text-[9px] uppercase tracking-[0.25em] mt-0.5 text-primary/50">
-                          {s.l}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </FadeIn>
           </div>
         </div>
       </section>
 
-      {/* ===================== SEMANTIC ANSWER BLOCK (AEO) ===================== */}
-      <SemanticAnswerBlock
-        eyebrow="Quick answer"
-        question="What is return-to-performance assessment?"
-        answer="Return-to-performance assessment is criterion-based testing that bridges medical clearance and competition readiness — the answer to every cleared athlete's question, &lsquo;I&rsquo;m cleared, but am I ready?&rsquo; Distinct from clinical rehab, return-to-performance ends only when objective testing confirms it: force-platform output, limb-symmetry index above 90%, single-leg hop performance, reactive control, and psychological readiness. Most ACL athletes need 9–12 months post-surgery to reach this point, and research shows fewer than half pass standard symmetry thresholds at the typical 6-month clearance window. We work alongside your physiotherapist, surgeon, and team staff — additive to clinical care, never a replacement. Conducted at our Zephyrhills, Florida facility by Darren J Paul, PhD (CSCS, NASM, USA Weightlifting Level 2)."
-      />
+      {/* ===================== SEMANTIC ANSWER BLOCK (AEO) =====================
+          Hidden visually (boss flagged as noisy) but kept in DOM via sr-only
+          so AI Overviews / LLM crawlers still extract the RTP definition. */}
+      <div className="sr-only" aria-hidden="false">
+        <SemanticAnswerBlock
+          eyebrow="Quick answer"
+          question="What is return-to-performance assessment?"
+          answer="Return-to-performance assessment is criterion-based testing that bridges medical clearance and competition readiness — the answer to every cleared athlete's question, &lsquo;I&rsquo;m cleared, but am I ready?&rsquo; Distinct from clinical rehab, return-to-performance ends only when objective testing confirms it: force-platform output, limb-symmetry index above 90%, single-leg hop performance, reactive control, and psychological readiness. Most ACL athletes need 9–12 months post-surgery to reach this point, and research shows fewer than half pass standard symmetry thresholds at the typical 6-month clearance window. We work alongside your physiotherapist, surgeon, and team staff — additive to clinical care, never a replacement. Conducted at our Zephyrhills, Florida facility by Darren J Paul, PhD (CSCS, NASM, USA Weightlifting Level 2)."
+        />
+      </div>
 
       {/* ===================== EDITORIAL · THE PROBLEM ===================== */}
       <section className="relative py-24 lg:py-32 px-4 sm:px-8 bg-background">
@@ -532,7 +283,7 @@ export default function AssessmentPage() {
           <FadeIn>
             <div className="grid gap-14 lg:grid-cols-[0.85fr_1.15fr] lg:gap-20">
               <div>
-                <div className="font-mono text-[10px] uppercase tracking-[0.3em] text-accent">
+                <div className="font-mono font-bold text-[10px] uppercase tracking-[0.3em] text-accent">
                   § 1 · The Problem
                 </div>
                 <h2 className="mt-4 font-heading text-3xl sm:text-4xl md:text-5xl font-semibold tracking-tight leading-[1.05] text-primary">
@@ -550,7 +301,7 @@ export default function AssessmentPage() {
                 <div className="mt-10 divide-y divide-border border-y border-border">
                   {traditionalProblems.map((p, i) => (
                     <div key={p.label} className="flex items-baseline gap-6 py-5">
-                      <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-accent tabular-nums shrink-0 w-10">
+                      <span className="font-mono font-bold text-[10px] uppercase tracking-[0.3em] text-accent tabular-nums shrink-0 w-10">
                         §{String(i + 1).padStart(2, "0")}
                       </span>
                       <span className="font-heading text-xl md:text-2xl font-semibold text-primary tracking-tight">
@@ -574,7 +325,7 @@ export default function AssessmentPage() {
           <div className="grid gap-14 lg:grid-cols-2 lg:gap-16">
             <FadeIn>
               <div className="relative rounded-sm border border-primary/15 bg-background p-8 md:p-10 h-full">
-                <div className="absolute -top-3 left-6 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.3em] bg-surface text-accent">
+                <div className="absolute -top-3 left-6 px-3 py-1 font-mono font-bold text-[10px] uppercase tracking-[0.3em] bg-surface text-accent">
                   § 2 · What this is
                 </div>
                 <p className="mt-4 text-xl leading-8 text-primary">
@@ -585,7 +336,7 @@ export default function AssessmentPage() {
                   My role is to assess movement strategy, force characteristics, load tolerance, and
                   decision-making under physical stress.
                 </p>
-                <h3 className="mt-10 font-mono text-[10px] uppercase tracking-[0.3em] mb-4 text-primary/55">
+                <h3 className="mt-10 font-mono font-bold text-[10px] uppercase tracking-[0.3em] mb-4 text-primary/55">
                   Collaborates with
                 </h3>
                 <ul className="space-y-2.5">
@@ -601,7 +352,7 @@ export default function AssessmentPage() {
 
             <FadeIn delay={0.1}>
               <div className="relative rounded-sm border-2 border-dashed border-primary/20 p-8 md:p-10 h-full">
-                <div className="absolute -top-3 left-6 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.3em] bg-surface text-primary/70">
+                <div className="absolute -top-3 left-6 px-3 py-1 font-mono font-bold text-[10px] uppercase tracking-[0.3em] bg-surface text-primary/70">
                   § 2 · What this is not
                 </div>
                 <p className="mt-4 font-heading text-3xl md:text-4xl font-semibold leading-tight tracking-tight text-primary">
@@ -623,47 +374,14 @@ export default function AssessmentPage() {
         </div>
       </section>
 
-      {/* ===================== ASSESSMENT USES ===================== */}
-      <section className="py-24 lg:py-32 px-4 sm:px-8 bg-background">
-        <div className="max-w-6xl mx-auto">
-          <FadeIn>
-            <div className="font-mono text-[10px] uppercase tracking-[0.3em] text-accent">
-              § 3 · Integration
-            </div>
-            <h2 className="mt-4 font-heading text-3xl sm:text-4xl md:text-5xl font-semibold tracking-tight leading-[1.05] text-primary max-w-3xl">
-              Assessment is the starting point, not the end.
-            </h2>
-          </FadeIn>
-
-          <FadeIn delay={0.1}>
-            <div className="mt-12 grid gap-0 border-y border-border">
-              {assessmentUses.map((u, i) => (
-                <div
-                  key={u}
-                  className="group flex items-center gap-6 py-6 border-b border-border last:border-b-0 transition-colors hover:bg-surface px-2"
-                >
-                  <span className="font-mono text-xs uppercase tracking-[0.3em] text-accent tabular-nums shrink-0 w-14">
-                    USE/{String(i + 1).padStart(2, "0")}
-                  </span>
-                  <span className="font-heading text-xl md:text-2xl font-medium tracking-tight text-primary flex-1">
-                    {u}
-                  </span>
-                  <ArrowRight className="size-5 text-accent opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
-                </div>
-              ))}
-            </div>
-          </FadeIn>
-        </div>
-      </section>
-
       {/* ===================== INSTRUMENTS ===================== */}
       <section id="instruments" className="relative py-24 lg:py-32 px-4 sm:px-8 overflow-hidden bg-surface">
         <div className="relative max-w-7xl mx-auto">
           <FadeIn>
             <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6 mb-16">
               <div>
-                <div className="font-mono text-[10px] uppercase tracking-[0.3em] text-accent">
-                  § 4 · Instruments
+                <div className="font-mono font-bold text-[10px] uppercase tracking-[0.3em] text-accent">
+                  § 3 · Instruments
                 </div>
                 <h2 className="mt-4 font-heading text-3xl sm:text-4xl md:text-5xl font-semibold tracking-tight leading-[1.02] max-w-xl text-primary">
                   Measuring what actually{" "}
@@ -691,7 +409,7 @@ export default function AssessmentPage() {
 
                     <div className="flex items-center justify-between">
                       <Icon className="size-6 text-primary" strokeWidth={1.5} />
-                      <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-accent">
+                      <span className="font-mono font-bold text-[10px] uppercase tracking-[0.3em] text-accent">
                         {item.id}
                       </span>
                     </div>
@@ -714,8 +432,8 @@ export default function AssessmentPage() {
       <section className="py-24 lg:py-32 px-4 sm:px-8 bg-background">
         <div className="max-w-5xl mx-auto">
           <FadeIn>
-            <div className="font-mono text-[10px] uppercase tracking-[0.3em] text-accent">
-              § 5 · Outcome
+            <div className="font-mono font-bold text-[10px] uppercase tracking-[0.3em] text-accent">
+              § 4 · Outcome
             </div>
             <h2 className="mt-4 font-heading text-3xl sm:text-4xl md:text-5xl font-semibold tracking-tight leading-[1.02] text-primary max-w-3xl">
               The result of this process is{" "}
@@ -725,7 +443,7 @@ export default function AssessmentPage() {
 
           <FadeIn delay={0.1}>
             <div className="mt-12 border border-border rounded-sm overflow-hidden">
-              <div className="grid grid-cols-[80px_1fr_1fr] font-mono text-[10px] uppercase tracking-[0.3em] text-muted-foreground bg-surface border-b border-border">
+              <div className="grid grid-cols-[80px_1fr_1fr] font-mono font-bold text-[10px] uppercase tracking-[0.3em] text-muted-foreground bg-surface border-b border-border">
                 <div className="px-4 py-3">№</div>
                 <div className="px-4 py-3">Output</div>
                 <div className="px-4 py-3">Detail</div>
@@ -761,8 +479,8 @@ export default function AssessmentPage() {
           <div className="grid lg:grid-cols-5 gap-10 lg:gap-16">
             <FadeIn direction="left" className="lg:col-span-2">
               <div className="lg:sticky lg:top-28">
-                <div className="font-mono text-[10px] uppercase tracking-[0.3em] text-accent">
-                  § 6 · Intake
+                <div className="font-mono font-bold text-[10px] uppercase tracking-[0.3em] text-accent">
+                  § 5 · Intake
                 </div>
                 <h2 className="mt-4 font-heading text-3xl sm:text-4xl font-semibold tracking-tight text-primary leading-[1.05]">
                   Find out where you{" "}
@@ -772,7 +490,7 @@ export default function AssessmentPage() {
                   Beyond clearance, beyond guesswork. Book an assessment to begin the process.
                 </p>
                 <div className="mt-8 border border-dashed border-primary/25 rounded-sm px-5 py-4">
-                  <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-accent mb-2">
+                  <p className="font-mono font-bold text-[10px] uppercase tracking-[0.3em] text-accent mb-2">
                     For cleared athletes
                   </p>
                   <p className="text-sm text-muted-foreground leading-6">

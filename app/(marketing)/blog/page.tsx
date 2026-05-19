@@ -11,21 +11,21 @@ import type { BlogCategory, BlogPost } from "@/types/database"
 export const revalidate = 60
 
 export const metadata: Metadata = {
-  title: "Sports Performance Journal",
+  title: "Performance Training, Strength & Athletic Development Journal",
   description:
-    "Sports performance journals from Darren J Paul. Two decades coaching elite athletes, distilled into articles on training, recovery, and the long game.",
+    "Performance training, strength and conditioning, and athletic development articles by Darren J Paul, PhD. Two decades coaching elite athletes — written down, no fads, no hype.",
   alternates: { canonical: "/blog" },
   openGraph: {
-    title: "Sports Performance Journal | DJP Athlete",
+    title: "Performance Training, Strength & Athletic Development Journal | DJP Athlete",
     description:
-      "Sports performance journals from Darren J Paul. Two decades coaching elite athletes, distilled into articles on training, recovery, and the long game.",
+      "Performance training, strength and conditioning, and athletic development articles by Darren J Paul, PhD. Two decades coaching elite athletes — written down.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Sports Performance Journal | DJP Athlete",
+    title: "Performance Training, Strength & Athletic Development Journal | DJP Athlete",
     description:
-      "Sports performance journals from Darren J Paul — articles on training, recovery, and the long game.",
+      "Performance training, strength and athletic development articles by Darren J Paul, PhD — no fads, no hype.",
   },
 }
 
@@ -137,25 +137,16 @@ export default async function BlogPage() {
               <p className="djp-eyebrow">The Performance Journal</p>
               <h1
                 className="mt-6 font-heading font-semibold text-primary tracking-[-0.02em] leading-[1.02]"
-                style={{ fontSize: "clamp(2rem, 5.5vw, 4.5rem)" }}
+                style={{ fontSize: "clamp(2.25rem, 6vw, 5rem)" }}
               >
-                Sports Performance Journals
+                Performance Training, Strength &amp; Athletic
+                Development<span className="text-accent">.</span>
               </h1>
-              <p
-                className="mt-4 font-heading font-semibold text-primary/85 tracking-[-0.02em] leading-[0.95]"
-                style={{ fontSize: "clamp(2rem, 6vw, 5rem)" }}
-              >
-                Performance<span className="text-accent">.</span>{" "}
-                Journal<span className="text-accent">.</span>
-              </p>
             </div>
             <div className="lg:col-span-4 lg:pl-8 lg:border-l lg:border-border/70">
               <p className="text-base lg:text-[17px] leading-relaxed text-muted-foreground">
                 Two decades coaching elite athletes, written down. No fads, no hype —
                 only what survives contact with the work.
-              </p>
-              <p className="mt-4 text-sm text-primary font-medium">
-                — Darren J Paul, PhD · Strength &amp; Conditioning
               </p>
             </div>
           </div>

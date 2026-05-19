@@ -163,16 +163,7 @@ export default async function CampsPage() {
             {PILLARS.map((p, i) => (
               <FadeIn key={p.n} delay={i * 0.05}>
                 <article className="relative">
-                  <div
-                    className="font-heading font-bold leading-none text-accent"
-                    style={{
-                      fontSize: "clamp(3rem, 7vw, 5rem)",
-                      letterSpacing: "-0.02em",
-                    }}
-                  >
-                    {p.n}
-                  </div>
-                  <div className="mt-3 border-t border-primary" />
+                  <div className="border-t border-primary" />
                   <h3 className="mt-5 font-heading text-2xl md:text-3xl font-semibold tracking-tight leading-tight text-primary">
                     {p.title}
                   </h3>
@@ -228,7 +219,15 @@ export default async function CampsPage() {
           <div className="grid gap-8 lg:grid-cols-2 lg:gap-10">
             {TRACKS.map((t, i) => (
               <FadeIn key={t.tag} delay={i * 0.08}>
-                <article className="relative h-full p-8 md:p-10 border-2 border-primary-foreground/25 bg-primary-foreground/[0.04]">
+                <Link
+                  href="#register-interest"
+                  aria-label={`${t.title} — apply via the registration form`}
+                  className="group relative block h-full p-8 md:p-10 border-2 border-primary-foreground/25 bg-primary-foreground/[0.04] transition-colors hover:border-accent hover:bg-primary-foreground/[0.08] focus-visible:outline-none focus-visible:border-accent focus-visible:bg-primary-foreground/[0.08]"
+                >
+                  <ArrowUpRight
+                    aria-hidden
+                    className="absolute top-6 right-6 h-5 w-5 text-primary-foreground/40 transition-all group-hover:text-accent group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
+                  />
                   <div className="font-heading text-[11px] uppercase tracking-[0.35em] text-accent">{t.tag}</div>
                   <h4 className="mt-5 font-heading text-2xl md:text-3xl font-semibold tracking-tight leading-tight">
                     {t.title}
@@ -237,7 +236,7 @@ export default async function CampsPage() {
                   <div className="mt-8 pt-5 border-t border-primary-foreground/15 font-heading text-[11px] uppercase tracking-[0.3em] text-primary-foreground/70">
                     {t.meta}
                   </div>
-                </article>
+                </Link>
               </FadeIn>
             ))}
           </div>
@@ -336,9 +335,6 @@ export default async function CampsPage() {
       <section id="register-interest" className="relative py-20 lg:py-28 px-4 sm:px-8 bg-surface text-primary">
         <div className="max-w-3xl mx-auto">
           <FadeIn>
-            <div className="border-b-2 border-primary pb-6 mb-10">
-              <div className="font-heading text-xs uppercase tracking-[0.35em] text-accent">§ Back page · Apply</div>
-            </div>
             <div className="bg-background rounded-none border-2 border-primary p-6 sm:p-8">
               <InquiryForm
                 defaultService="camp"

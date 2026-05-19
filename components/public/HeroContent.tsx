@@ -29,7 +29,7 @@ export function HeroContent() {
               {...item(0.4)}
               className="text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-heading font-bold text-primary-foreground tracking-tight leading-[1.08] mb-6"
             >
-              Sports Performance Coaching
+              Sports Performance Training
               <br />
               for <span className="text-accent">Elite Athletes.</span>
             </motion.h1>
@@ -39,7 +39,7 @@ export function HeroContent() {
               {...item(0.5)}
               className="text-xl sm:text-2xl font-heading font-semibold text-primary-foreground leading-snug mb-6 max-w-xl"
             >
-              Elite performance is not trained. It is <span className="text-accent">engineered.</span>
+              Elite performance is not coached. It is <span className="text-accent">engineered through training.</span>
             </motion.p>
 
             {/* Sub copy */}
@@ -47,7 +47,7 @@ export function HeroContent() {
               {...item(0.6)}
               className="text-lg sm:text-xl text-primary-foreground/70 leading-relaxed max-w-xl mb-12"
             >
-              Performance strategist. Coach. Researcher.
+              Performance training. Strength training. Sport-specific training.
               <br className="hidden sm:block" />
               Two decades of elite-level experience.
             </motion.p>

@@ -29,38 +29,8 @@ export function CampHero() {
         }}
       />
 
-      {/* Top masthead bar */}
-      <div className="relative border-b-2 border-primary">
-        <div className="mx-auto max-w-7xl px-4 md:px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3 font-heading text-xs uppercase tracking-[0.35em] text-primary">
-            <span className="inline-block h-4 w-1 bg-accent" />
-            DJP / Performance Gazette
-          </div>
-          <div className="hidden sm:flex items-center gap-6 text-[11px] uppercase tracking-[0.3em] text-primary/60">
-            <span>Vol. IV</span>
-            <span>Issue · Off + Pre</span>
-            <span>Soccer · College + Pro</span>
-          </div>
-        </div>
-      </div>
-
       <div className="relative mx-auto max-w-7xl px-4 md:px-6 pt-16 md:pt-24 pb-8 md:pb-12">
         <FadeIn>
-          {/* Edition tag + stamp */}
-          <div className="flex items-start justify-between gap-6 flex-wrap">
-            <div>
-              <div className="inline-block border-2 border-primary px-3 py-1 font-heading text-[11px] uppercase tracking-[0.35em] text-primary">
-                Soccer Performance Camp · Off + Pre-Season
-              </div>
-            </div>
-            {/* Rubber stamp */}
-            <div className="inline-flex items-center gap-2 rotate-[-6deg] border-2 border-accent rounded-sm px-4 py-2 font-heading font-bold uppercase tracking-[0.2em] text-sm md:text-base text-accent bg-accent/[0.06]">
-              2-Week Intensive
-              <span className="w-px h-5 bg-accent/50" />
-              <span className="tabular-nums">2026</span>
-            </div>
-          </div>
-
           {/* Headline — keyword-rich H1 + branded H2 */}
           <h1
             className="mt-10 font-heading font-semibold tracking-tight leading-[1.02] text-primary"
@@ -91,19 +61,6 @@ export function CampHero() {
               </p>
               <p className="mt-2 text-[11px] uppercase tracking-[0.3em] text-accent">— Camp ethos</p>
             </div>
-          </div>
-
-          {/* Pills */}
-          <div className="mt-8 flex flex-wrap gap-2">
-            {["Soccer-Specific Performance", "2-Week Intensive Camp", "2 Hours Per Session"].map((p) => (
-              <span
-                key={p}
-                className="inline-flex items-center gap-2 border border-primary/25 bg-primary/[0.04] px-3 py-1.5 text-[11px] uppercase tracking-[0.2em] text-primary font-heading"
-              >
-                <span className="size-1.5 rounded-full bg-accent" />
-                {p}
-              </span>
-            ))}
           </div>
 
           <div className="mt-10 flex flex-wrap items-center gap-4">

@@ -14,20 +14,6 @@ export const SITE_URL = "https://www.darrenjpaul.com"
 export const COACH_EMAIL = "darren@darrenjpaul.com"
 
 import type { ComponentType, SVGProps } from "react"
-import {
-  TennisIcon,
-  GolfIcon,
-  BaseballIcon,
-  SoccerIcon,
-  LacrosseIcon,
-  PickleballIcon,
-} from "@/lib/icons/sports"
-import {
-  ProfessionalAthleteIcon,
-  CollegiateAthleteIcon,
-  YouthAthleteIcon,
-  ReturnToSportAthleteIcon,
-} from "@/lib/icons/athletes"
 
 /** Lucide-compatible icon component shape — takes className + strokeWidth. */
 export type NavIcon = ComponentType<SVGProps<SVGSVGElement> & { strokeWidth?: number | string }>
@@ -47,6 +33,7 @@ export type NavGroup = {
 }
 
 export const NAV_ITEMS: NavGroup[] = [
+  { label: "Home", href: "/" },
   {
     label: "Services",
     children: [
@@ -57,30 +44,7 @@ export const NAV_ITEMS: NavGroup[] = [
       { label: "Performance Camps", href: "/camps", description: "Off-season & pre-season blocks" },
     ],
   },
-  {
-    label: "Sports",
-    href: "/sports",
-    children: [
-      { label: "Tennis", href: "/sports/tennis-performance-training", description: "Acceleration, deceleration, rotational power", icon: TennisIcon },
-      { label: "Golf", href: "/sports/golf-performance-training", description: "Clubhead speed and rotational power", icon: GolfIcon },
-      { label: "Baseball", href: "/sports/baseball-performance-training", description: "Exit velocity, throwing velocity, durability", icon: BaseballIcon },
-      { label: "Soccer", href: "/sports/soccer-performance-training", description: "Acceleration, deceleration, decisions", icon: SoccerIcon },
-      { label: "Lacrosse", href: "/sports/lacrosse-performance-training", description: "Stick speed, dodge agility, capacity", icon: LacrosseIcon },
-      { label: "Pickleball", href: "/sports/pickleball-performance-training", description: "Lateral speed, durability, longevity", icon: PickleballIcon },
-      { label: "All sports →", href: "/sports", description: "See every sport-specific program" },
-    ],
-  },
-  {
-    label: "Athletes",
-    href: "/athletes",
-    children: [
-      { label: "Professional", href: "/athletes/professional", description: "Touring pros, in-season load, longevity", icon: ProfessionalAthleteIcon },
-      { label: "Collegiate & Amateur", href: "/athletes/collegiate", description: "College players, serious amateurs", icon: CollegiateAthleteIcon },
-      { label: "Youth", href: "/athletes/youth", description: "Long-term athletic development", icon: YouthAthleteIcon },
-      { label: "Return to Sport", href: "/athletes/return-to-sport", description: "Cleared, but not yet ready", icon: ReturnToSportAthleteIcon },
-      { label: "All athletes →", href: "/athletes", description: "Coached at every stage" },
-    ],
-  },
+  { label: "Athletes", href: "/athletes" },
   { label: "Resources", href: "/resources" },
   { label: "Education", href: "/education" },
   { label: "Blog", href: "/blog" },
@@ -108,26 +72,8 @@ export const FOOTER_SECTIONS = [
     ],
   },
   {
-    title: "Sports",
-    links: [
-      { label: "Tennis", href: "/sports/tennis-performance-training" },
-      { label: "Golf", href: "/sports/golf-performance-training" },
-      { label: "Baseball", href: "/sports/baseball-performance-training" },
-      { label: "Soccer", href: "/sports/soccer-performance-training" },
-      { label: "Lacrosse", href: "/sports/lacrosse-performance-training" },
-      { label: "Pickleball", href: "/sports/pickleball-performance-training" },
-      { label: "All sports", href: "/sports" },
-    ],
-  },
-  {
     title: "Athletes",
-    links: [
-      { label: "Professional", href: "/athletes/professional" },
-      { label: "Collegiate & Amateur", href: "/athletes/collegiate" },
-      { label: "Youth", href: "/athletes/youth" },
-      { label: "Return to Sport", href: "/athletes/return-to-sport" },
-      { label: "All athletes", href: "/athletes" },
-    ],
+    links: [{ label: "All athletes", href: "/athletes" }],
   },
   {
     title: "Resources",

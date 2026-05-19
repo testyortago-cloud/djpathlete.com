@@ -122,17 +122,6 @@ export function ClinicHero() {
             <ellipse cx={c.x} cy={c.y + 10} rx="26" ry="6" fill="none" stroke="rgba(255,255,255,0.45)" strokeWidth="1.5" />
           </g>
         ))}
-        <text
-          x="640"
-          y="360"
-          fill="var(--accent)"
-          fontFamily="var(--font-heading), sans-serif"
-          fontWeight="700"
-          fontSize="26"
-          letterSpacing="3"
-        >
-          SLALOM · CUT
-        </text>
 
         {/* ======================= MINI HURDLES (right) ======================= */}
         <g stroke="rgba(255,255,255,0.65)" strokeWidth="3" fill="none" filter="url(#chalk)">
@@ -143,17 +132,6 @@ export function ClinicHero() {
           <rect x="1210" y="560" width="90" height="40" />
           <line x1="1210" y1="580" x2="1300" y2="580" />
         </g>
-        <text
-          x="1100"
-          y="660"
-          fill="rgba(255,255,255,0.8)"
-          fontFamily="var(--font-heading), sans-serif"
-          fontWeight="700"
-          fontSize="22"
-          letterSpacing="3"
-        >
-          HURDLES · DECEL
-        </text>
 
         {/* ======================= ROUTE — ladder → slalom → cut → hurdles ======================= */}
         {/* Start burst out of ladder */}
@@ -231,30 +209,6 @@ export function ClinicHero() {
           <circle cx="1250" cy="220" r="5" fill="var(--accent)" />
           <ellipse cx="1250" cy="228" rx="10" ry="3" fill="none" stroke="rgba(255,255,255,0.55)" strokeWidth="1.5" />
         </g>
-        <text
-          x="1180"
-          y="170"
-          fill="var(--accent)"
-          fontFamily="var(--font-heading), sans-serif"
-          fontWeight="700"
-          fontSize="24"
-          letterSpacing="3"
-        >
-          ROTATE
-        </text>
-
-        {/* ======================= ACCEL label near athlete/ladder exit ======================= */}
-        <text
-          x="300"
-          y="680"
-          fill="var(--accent)"
-          fontFamily="var(--font-heading), sans-serif"
-          fontWeight="700"
-          fontSize="26"
-          letterSpacing="3"
-        >
-          ACCEL
-        </text>
       </svg>
 
       {/* Foreground content */}
@@ -269,18 +223,15 @@ export function ClinicHero() {
             <h1 className="mt-7 font-heading text-[36px] leading-[1.02] tracking-tight font-semibold sm:text-5xl md:text-6xl">
               Speed and Agility Training Clinics for Athletes
             </h1>
-            <p className="mt-5 font-heading text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-semibold tracking-tight leading-[0.95]">
-              Move faster.
-              <br />
-              React sooner.
-              <br />
-              <span className="text-accent italic font-normal">Do it when it actually matters.</span>
+            <p className="mt-5 font-heading text-2xl sm:text-3xl md:text-4xl font-semibold tracking-tight leading-[1.05]">
+              Faster. Sooner.{" "}
+              <span className="text-accent italic font-normal">When it matters.</span>
             </p>
 
             <p className="mt-7 max-w-xl text-base leading-7 text-primary-foreground/80 md:text-lg md:leading-8">
-              A focused 2-hour session on the movements that change outcomes in real sport — starting,
-              stopping, redirecting, and recovering. Smaller groups, proper coaching, and work that transfers
-              to the pitch, court, or field.
+              A focused session on the movements that change outcomes in real sport — starting, stopping,
+              redirecting, and recovering. Smaller groups, proper coaching, and work that transfers to the
+              pitch, court, or field.
             </p>
 
             {/* Four-action pills, written as play-calls */}

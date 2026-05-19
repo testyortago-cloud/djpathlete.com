@@ -4,7 +4,6 @@ import { getPublishedEvents } from "@/lib/db/events"
 import { listActiveProducts } from "@/lib/db/shop-products"
 import { SITE_URL } from "@/lib/constants"
 import { SPORTS } from "@/lib/data/sports"
-import { ATHLETES } from "@/lib/data/athletes"
 
 const BASE_URL = SITE_URL
 
@@ -53,14 +52,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.8,
     })),
 
-    // Athletes hub + audience-segment landing pages
+    // Athletes — consolidated to a single page. The four per-stage pages
+    // (/athletes/professional, /collegiate, /youth, /return-to-sport) now 301
+    // to /athletes (see next.config.mjs redirects); keep them out of the
+    // sitemap so we don't advertise URLs that redirect.
     { url: `${BASE_URL}/athletes`, lastModified: now, changeFrequency: "monthly", priority: 0.8 },
-    ...ATHLETES.map((a) => ({
-      url: `${BASE_URL}/athletes/${a.slug}`,
-      lastModified: now,
-      changeFrequency: "monthly" as const,
-      priority: 0.8,
-    })),
 
     // Auth (low priority but discoverable)
     { url: `${BASE_URL}/login`, lastModified: now, changeFrequency: "yearly", priority: 0.3 },

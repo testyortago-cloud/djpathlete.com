@@ -228,81 +228,29 @@ export default async function ShopPage({
 
       {/* Editorial hero */}
       <section className="relative overflow-hidden bg-primary text-primary-foreground">
-        {/* ambient background */}
-        <div
-          className="pointer-events-none absolute inset-0 opacity-30"
-          style={{
-            backgroundImage:
-              "radial-gradient(circle at 80% 20%, oklch(0.7 0.08 60 / 0.35), transparent 45%), radial-gradient(circle at 10% 90%, oklch(0.985 0 0 / 0.08), transparent 40%)",
-          }}
-          aria-hidden="true"
-        />
-        <div
-          className="pointer-events-none absolute inset-0 opacity-[0.06]"
-          style={{
-            backgroundImage:
-              "linear-gradient(to right, currentColor 1px, transparent 1px), linear-gradient(to bottom, currentColor 1px, transparent 1px)",
-            backgroundSize: "72px 72px",
-          }}
-          aria-hidden="true"
-        />
-
         <div className="relative mx-auto max-w-7xl px-4 pb-14 pt-32 sm:px-8 lg:pb-20 lg:pt-40">
-          <div className="grid grid-cols-1 gap-10 lg:grid-cols-12 lg:gap-12">
-            <div className="lg:col-span-8">
-              <div className="flex items-center gap-3">
-                <div className="h-px w-10 bg-accent" />
-                <span className="font-mono text-[11px] uppercase tracking-[0.28em] text-accent">
-                  The Shop · Collection 001
-                </span>
-              </div>
-
-              <h1 className="mt-6 font-heading text-3xl font-semibold leading-[1.05] tracking-tight sm:text-4xl lg:text-5xl">
-                Athletic Performance Apparel and Performance Gear.
-              </h1>
-              <p className="mt-4 font-heading text-5xl font-semibold leading-[0.95] tracking-tight sm:text-6xl lg:text-[88px]">
-                Performance
-                <br />
-                <span className="italic text-accent">Gear.</span>
-              </p>
-
-              <p className="mt-6 max-w-xl font-body text-base text-primary-foreground/75 sm:text-lg">
-                Worn in the gym, on the pitch, and after the session ends. Every
-                piece is built from training-grade materials and printed to order —
-                no dead stock, no shortcuts.
-              </p>
+          <div className="max-w-3xl">
+            <div className="flex items-center gap-3">
+              <div className="h-px w-10 bg-accent" />
+              <span className="font-mono text-[11px] uppercase tracking-[0.28em] text-accent">
+                The Shop · Collection 001
+              </span>
             </div>
 
-            <aside className="flex flex-col justify-end border-t border-primary-foreground/15 pt-6 lg:col-span-4 lg:border-l lg:border-t-0 lg:pl-10 lg:pt-0">
-              <dl className="grid grid-cols-2 gap-6">
-                <div>
-                  <dt className="font-mono text-[10px] uppercase tracking-[0.22em] text-primary-foreground/50">
-                    Styles live
-                  </dt>
-                  <dd className="mt-2 font-heading text-3xl font-semibold">
-                    {String(totalStyles).padStart(2, "0")}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="font-mono text-[10px] uppercase tracking-[0.22em] text-primary-foreground/50">
-                    Season
-                  </dt>
-                  <dd className="mt-2 font-heading text-3xl font-semibold">SS26</dd>
-                </div>
-                <div>
-                  <dt className="font-mono text-[10px] uppercase tracking-[0.22em] text-primary-foreground/50">
-                    Ships in
-                  </dt>
-                  <dd className="mt-2 font-heading text-xl font-semibold">5–7 days</dd>
-                </div>
-                <div>
-                  <dt className="font-mono text-[10px] uppercase tracking-[0.22em] text-primary-foreground/50">
-                    Printed in
-                  </dt>
-                  <dd className="mt-2 font-heading text-xl font-semibold">USA / EU</dd>
-                </div>
-              </dl>
-            </aside>
+            <h1 className="mt-6 font-heading text-3xl font-semibold leading-[1.05] tracking-tight sm:text-4xl lg:text-5xl">
+              Athletic Performance Apparel and Performance Gear.
+            </h1>
+            <p className="mt-4 font-heading text-5xl font-semibold leading-[0.95] tracking-tight sm:text-6xl lg:text-[88px]">
+              Performance
+              <br />
+              <span className="italic text-accent">Gear.</span>
+            </p>
+
+            <p className="mt-6 max-w-xl font-body text-base text-primary-foreground/75 sm:text-lg">
+              Worn in the gym, on the pitch, and after the session ends. Every
+              piece is built from training-grade materials and printed to order —
+              no dead stock, no shortcuts.
+            </p>
           </div>
         </div>
       </section>

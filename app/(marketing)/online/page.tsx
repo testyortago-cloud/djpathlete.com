@@ -13,7 +13,6 @@ import { JsonLd } from "@/components/shared/JsonLd"
 import { FadeIn } from "@/components/shared/FadeIn"
 import { FAQSection } from "@/components/FAQSection"
 import { InquiryForm } from "@/components/public/InquiryForm"
-import { SemanticAnswerBlock } from "@/components/public/SemanticAnswerBlock"
 import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 import { Button } from "@/components/ui/button"
 
@@ -185,24 +184,6 @@ export default function OnlinePage() {
 
       {/* ===================== HERO · PERFORMANCE FLOOR ===================== */}
       <section className="relative overflow-hidden bg-primary text-primary-foreground">
-        <div
-          aria-hidden
-          className="absolute inset-0 opacity-[0.07] pointer-events-none"
-          style={{
-            backgroundImage:
-              "linear-gradient(0deg, transparent calc(100% - 1px), rgba(255,255,255,0.9) calc(100% - 1px)), linear-gradient(90deg, transparent calc(100% - 1px), rgba(255,255,255,0.9) calc(100% - 1px))",
-            backgroundSize: "48px 48px",
-          }}
-        />
-        <div
-          aria-hidden
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            background:
-              "radial-gradient(circle at 85% 20%, oklch(0.70 0.08 60 / 0.28), transparent 50%), radial-gradient(circle at 10% 100%, oklch(0.70 0.08 60 / 0.16), transparent 45%)",
-          }}
-        />
-
         <div className="relative mx-auto max-w-7xl px-4 pt-28 pb-16 md:px-6 md:pt-36 md:pb-20">
           <FadeIn>
             <div className="grid gap-12 lg:grid-cols-[1.1fr_1fr] lg:gap-14 items-end">
@@ -452,13 +433,6 @@ export default function OnlinePage() {
         </div>
       </section>
 
-      {/* ===================== SEMANTIC ANSWER BLOCK (AEO) ===================== */}
-      <SemanticAnswerBlock
-        eyebrow="What this is"
-        question="What is online sports performance coaching?"
-        answer="Online sports performance coaching is a coach-supervised remote training system for serious athletes. Every program is built from a remote movement, force, and load assessment, then adjusted weekly through video review, daily wellness data, and direct messaging with the coach — Darren J Paul, PhD (CSCS, NASM, USA Weightlifting Level 2). It is the same diagnostic-driven methodology used in person at our Zephyrhills, Florida facility, adapted for athletes training across the country and on tour. Athletes leave with measurable gains in strength, speed, power, and capacity — and a system that adjusts to travel, competition, and in-season demand. Entry is selective and application-only; we accept athletes we can genuinely help."
-      />
-
       {/* ===================== WHY MOST FAIL · EDITORIAL LIST ===================== */}
       <section className="py-24 lg:py-32 px-4 sm:px-8 bg-background">
         <div className="max-w-6xl mx-auto">
@@ -529,15 +503,6 @@ export default function OnlinePage() {
         id="components"
         className="relative py-24 lg:py-32 px-4 sm:px-8 bg-primary text-primary-foreground overflow-hidden"
       >
-        <div
-          aria-hidden
-          className="absolute inset-0 opacity-[0.06] pointer-events-none"
-          style={{
-            backgroundImage:
-              "linear-gradient(0deg, transparent calc(100% - 1px), rgba(255,255,255,0.9) calc(100% - 1px)), linear-gradient(90deg, transparent calc(100% - 1px), rgba(255,255,255,0.9) calc(100% - 1px))",
-            backgroundSize: "48px 48px",
-          }}
-        />
         <div className="relative max-w-7xl mx-auto">
           <FadeIn>
             <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-8 mb-14">

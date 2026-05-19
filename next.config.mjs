@@ -54,6 +54,14 @@ const nextConfig = {
         destination: "/admin/team-media/:path*",
         permanent: true,
       },
+      // Athletes consolidation — the four per-stage pages were merged into a
+      // single /athletes summary. 301 forwards the link equity and ensures the
+      // tab "only lands in 1 page" per product direction.
+      {
+        source: "/athletes/:type(professional|collegiate|youth|return-to-sport)",
+        destination: "/athletes",
+        permanent: true,
+      },
     ]
   },
   async headers() {

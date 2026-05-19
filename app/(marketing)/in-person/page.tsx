@@ -157,15 +157,20 @@ export default function InPersonPage() {
         </div>
       </section>
 
-      {/* Semantic Answer Block (AEO) */}
-      <SemanticAnswerBlock
-        eyebrow="What this is"
-        question="What is in-person sports performance training in Tampa Bay?"
-        answer="In-person sports performance training is a coach-led, assessment-driven program delivered at Darren J Paul Sports Performance, 6585 Simons Rd, Zephyrhills, FL — in the Tampa Bay area. Each athlete starts with a comprehensive performance assessment covering movement quality, force production, asymmetry, load tolerance, and sport-specific demand. From there, programming is individualized — never templated — and adjusted continuously as wellness markers and performance data evolve. The facility serves competitive athletes, elite youth, return-to-performance athletes, and high-performing professionals across Tampa, Wesley Chapel, Lakeland, and the wider Tampa Bay region. Coaching is delivered by Darren J Paul, PhD (CSCS, NASM, USA Weightlifting Level 2) — two decades of high-performance experience across 15+ sports."
-      />
+      {/* Semantic Answer Block (AEO) — hidden visually (boss flagged as noisy),
+          kept in DOM via sr-only so AI Overviews/LLM crawlers still extract it. */}
+      <div className="sr-only" aria-hidden="false">
+        <SemanticAnswerBlock
+          eyebrow="What this is"
+          question="What is in-person sports performance training in Tampa Bay?"
+          answer="In-person sports performance training is a coach-led, assessment-driven program delivered at Darren J Paul Sports Performance, 6585 Simons Rd, Zephyrhills, FL — in the Tampa Bay area. Each athlete starts with a comprehensive performance assessment covering movement quality, force production, asymmetry, load tolerance, and sport-specific demand. From there, programming is individualized — never templated — and adjusted continuously as wellness markers and performance data evolve. The facility serves competitive athletes, elite youth, return-to-performance athletes, and high-performing professionals across Tampa, Wesley Chapel, Lakeland, and the wider Tampa Bay region. Coaching is delivered by Darren J Paul, PhD (CSCS, NASM, USA Weightlifting Level 2) — two decades of high-performance experience across 15+ sports."
+        />
+      </div>
 
-      {/* Service Area — local SEO body content with drive times */}
-      <section className="py-16 lg:py-20 px-4 sm:px-8" aria-labelledby="service-area-heading">
+      {/* Service Area — local SEO body content with drive times.
+          Hidden visually (boss flagged as noisy), kept in DOM via sr-only so the
+          Tampa Bay / Zephyrhills city signals + NAP block still index for local SEO. */}
+      <section className="sr-only" aria-hidden="false" aria-labelledby="service-area-heading">
         <div className="max-w-5xl mx-auto">
           <FadeIn>
             <div className="text-center mb-10">

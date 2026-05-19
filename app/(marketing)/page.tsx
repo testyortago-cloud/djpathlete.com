@@ -18,21 +18,21 @@ import { BUSINESS_INFO, GOOGLE_MAPS_URL, postalAddressSchema } from "@/lib/busin
 export const revalidate = 3600 // revalidate every hour
 
 export const metadata: Metadata = {
-  title: { absolute: "Sports Performance Coaching for Elite Athletes | DJP Athlete" },
+  title: { absolute: "Sports Performance Training for Elite Athletes | DJP Athlete" },
   description:
-    "Sports performance coaching by Darren J Paul, PhD. In-person training (Tampa Bay, FL), online coaching, and return-to-performance assessment for serious athletes.",
+    "Sports performance training by Darren J Paul, PhD. In-person training (Tampa Bay, FL), online training, and return-to-performance testing for serious athletes. Strength training, speed training, and sport-specific training.",
   alternates: { canonical: "/" },
   openGraph: {
-    title: "Sports Performance Coaching for Elite Athletes | DJP Athlete",
+    title: "Sports Performance Training for Elite Athletes | DJP Athlete",
     description:
-      "Sports performance coaching by Darren J Paul, PhD. In-person training (Tampa Bay, FL), online coaching, and return-to-performance assessment for serious athletes.",
+      "Sports performance training by Darren J Paul, PhD. In-person training (Tampa Bay, FL), online training, and return-to-performance testing for serious athletes.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Sports Performance Coaching for Elite Athletes | DJP Athlete",
+    title: "Sports Performance Training for Elite Athletes | DJP Athlete",
     description:
-      "Sports performance coaching by Darren J Paul, PhD. In-person (Tampa Bay), online, and return-to-performance assessment for serious athletes.",
+      "Sports performance training by Darren J Paul, PhD. In-person (Tampa Bay), online training, and return-to-performance testing for serious athletes.",
   },
 }
 
@@ -199,12 +199,17 @@ export default async function HomePage() {
       {/* ─── Stats Bar (Animated Counter) ─── */}
       <AnimatedStats stats={stats} />
 
-      {/* ─── AEO answer block — extractable "what is sports performance coaching" ─── */}
-      <SemanticAnswerBlock
-        eyebrow="In short"
-        question="What is sports performance coaching?"
-        answer="Sports performance coaching is the structured development of how an athlete moves, produces force, and recovers, built around a specific sport rather than general fitness. Unlike a personal trainer, a sports performance coach starts with diagnostics (testing speed, strength, power, movement quality and readiness), then designs an individualized program, monitors training load, coaches technique, and adjusts in real time as the athlete adapts. At DJP Athlete, this is delivered by Darren J Paul, PhD (CSCS, NASM, USA Weightlifting Level 2), who has coached 500+ athletes across 15+ sports including WTA professionals. Three formats are available: in-person training at the Zephyrhills, Florida facility in the Tampa Bay area; online coaching with individualized programming and video feedback for athletes anywhere; and return-to-performance assessment for athletes coming back from injury. Every decision is diagnostic-driven and individualized: systems over exercises, patterns over shortcuts."
-      />
+      {/* ─── AEO answer block — extractable "what is sports performance coaching"
+            Visually hidden via sr-only (boss wants less on-screen noise) but kept in
+            the DOM and accessibility tree so Google AI Overviews and LLM crawlers
+            can still extract it. ─── */}
+      <div className="sr-only" aria-hidden="false">
+        <SemanticAnswerBlock
+          eyebrow="In short"
+          question="What is sports performance training?"
+          answer="Sports performance training is the structured development of how an athlete moves, produces force, and recovers, built around a specific sport rather than general fitness. Unlike a personal trainer, a sports performance coach starts with diagnostics (testing speed, strength, power, movement quality and readiness), then designs an individualized training program, monitors training load, coaches technique, and adjusts in real time as the athlete adapts. At DJP Athlete, this is delivered by Darren J Paul, PhD (CSCS, NASM, USA Weightlifting Level 2), who has coached 500+ athletes across 15+ sports including WTA professionals. Three formats are available: in-person training at the Zephyrhills, Florida facility in the Tampa Bay area; online training with individualized programming and video feedback for athletes anywhere; and return-to-performance testing for athletes coming back from injury. Every decision is diagnostic-driven and individualized: systems over exercises, patterns over shortcuts."
+        />
+      </div>
 
       {/* ─── Services Section ─── */}
       <section className="py-20 lg:py-32 px-4 sm:px-8">
@@ -329,10 +334,16 @@ export default async function HomePage() {
               Trusted by elite athletes.
             </h2>
 
-            {/* E-E-A-T trust block: Google Reviews badge + credentials strip */}
+            {/* E-E-A-T trust block: Google Reviews badge stays visible.
+                Credentials strip (PhD, CSCS · NASM · USAW, 500+ athletes, location,
+                response time) is kept in the DOM via sr-only — preserves E-E-A-T
+                signals for crawlers/LLMs while removing the on-screen "noise"
+                the boss flagged. ─── */}
             <div className="flex flex-col items-center gap-6">
               <GoogleReviewsBadge />
-              <TrustStrip variant="compact" />
+              <div className="sr-only" aria-hidden="false">
+                <TrustStrip variant="compact" />
+              </div>
             </div>
           </FadeIn>
 
@@ -342,8 +353,12 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* ─── Google review themes — customer-validated keywords ─── */}
-      <GoogleReviewThemes className="bg-surface" />
+      {/* ─── Google review themes — customer-validated keywords.
+            Hidden visually (boss wants less on-screen noise) but kept in the DOM
+            so the keyword chips still register as on-page entities for SEO/AEO. ─── */}
+      <div className="sr-only" aria-hidden="false">
+        <GoogleReviewThemes className="bg-surface" />
+      </div>
 
       {/* ─── CTA Section ─── */}
       <section className="py-20 lg:py-32 px-4 sm:px-8 bg-surface">

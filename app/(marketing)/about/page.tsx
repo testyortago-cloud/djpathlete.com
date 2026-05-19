@@ -174,8 +174,12 @@ export default function AboutPage() {
         </div>
       </section>
 
-      {/* Google Reviews — renders only when GOOGLE_PLACES_API_KEY + GOOGLE_BUSINESS_PLACE_ID are set */}
-      <GoogleReviewsSection />
+      {/* Google Reviews — renders only when GOOGLE_PLACES_API_KEY + GOOGLE_BUSINESS_PLACE_ID are set.
+          Hidden visually (boss flagged this block as too noisy on About) but kept in the DOM via
+          sr-only so the review snippets still register as on-page entities for SEO/AEO. ─── */}
+      <div className="sr-only" aria-hidden="false">
+        <GoogleReviewsSection />
+      </div>
 
       {/* Google-extracted review themes — customer-validated keyword chips */}
       <GoogleReviewThemes className="bg-surface" />
