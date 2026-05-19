@@ -94,6 +94,25 @@ describe("extractImagePrompts", () => {
     expect(userMsg).toContain("Category: Rotational")
   })
 
+  it("injects the category style module into the user message", async () => {
+    mockCallAgent.mockResolvedValueOnce({
+      content: {
+        hero_prompt: "h".repeat(20),
+        inline_prompts: [{ section_h2: "Section A", prompt: "i".repeat(20) }],
+      },
+      tokens_used: 100,
+    })
+    await extractImagePrompts({
+      title: "T",
+      content: "C",
+      category: "Rotational",
+      qualifyingSections: ["Section A"],
+    })
+    const userMsg = mockCallAgent.mock.calls[0][1] as string
+    expect(userMsg).toMatch(/CATEGORY-SPECIFIC STYLE MODULE/)
+    expect(userMsg).toMatch(/medicine ball|cable column/i)
+  })
+
   it("filters inline_prompts to only those matching qualifyingSections", async () => {
     mockCallAgent.mockResolvedValueOnce({
       content: {

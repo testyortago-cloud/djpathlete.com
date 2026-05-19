@@ -1,5 +1,6 @@
 import { z } from "zod"
 import { callAgent, MODEL_SONNET } from "./anthropic.js"
+import { getCategoryStyleModule } from "./category-style-modules.js"
 
 export const imagePromptsSchema = z.object({
   hero_prompt: z.string().min(10).max(800),
@@ -120,10 +121,15 @@ export async function extractImagePrompts(input: ExtractImagePromptsInput): Prom
     ? input.qualifyingSections.map((s) => `- ${s}`).join("\n")
     : "(none — emit empty inline_prompts array)"
 
+  const categoryModule = getCategoryStyleModule(input.category)
+
   const userMessage = [
     `# POST`,
     `Title: ${input.title}`,
     `Category: ${input.category}`,
+    "",
+    `# CATEGORY-SPECIFIC STYLE MODULE`,
+    categoryModule,
     "",
     `# QUALIFYING SECTIONS (use these exact strings as section_h2)`,
     sectionList,
@@ -132,7 +138,7 @@ export async function extractImagePrompts(input: ExtractImagePromptsInput): Prom
     input.content.slice(0, 4000),
     "",
     `# INSTRUCTIONS`,
-    `Generate one hero_prompt and one inline prompt per qualifying section. Use the exact h2 strings above for section_h2.`,
+    `Generate one hero_prompt and one inline prompt per qualifying section. Use the exact h2 strings above for section_h2. Honor the category-specific style module above when choosing settings, equipment, casting, and mood.`,
   ].join("\n")
 
   const result = await callAgent(SYSTEM_PROMPT, userMessage, imagePromptsSchema, {
