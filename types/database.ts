@@ -837,7 +837,21 @@ export interface FormReviewMessage {
   id: string
   form_review_id: string
   user_id: string
-  message: string
+  message: string | null
+  created_at: string
+  attachments?: FormReviewMessageAttachment[]
+}
+
+export type FormReviewMessageAttachmentKind = "audio"
+
+export interface FormReviewMessageAttachment {
+  id: string
+  message_id: string
+  kind: FormReviewMessageAttachmentKind
+  storage_path: string
+  mime_type: string
+  duration_seconds: number | null
+  byte_size: number
   created_at: string
 }
 
@@ -1320,6 +1334,11 @@ export interface Database {
         Row: FormReviewMessage
         Insert: Omit<FormReviewMessage, "id" | "created_at">
         Update: Partial<Omit<FormReviewMessage, "id" | "created_at">>
+      }
+      form_review_message_attachments: {
+        Row: FormReviewMessageAttachment
+        Insert: Omit<FormReviewMessageAttachment, "id" | "created_at">
+        Update: Partial<Omit<FormReviewMessageAttachment, "id" | "created_at">>
       }
       performance_assessments: {
         Row: PerformanceAssessment
