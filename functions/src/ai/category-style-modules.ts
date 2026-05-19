@@ -1,3 +1,13 @@
+// As of 2026-05-19, BLOG_CATEGORIES (lib/validators/blog-post.ts) restricts new
+// posts to Performance/Recovery/Coaching/Youth Development — so today only the
+// "recovery" and "youth" modules below fire in production via the formal category
+// field. The "rotational"/"comeback"/"strength"/"mobility" modules are kept ready
+// for when BLOG_CATEGORIES expands, and for the substring match to opportunistically
+// catch free-text categories on legacy posts.
+
+// Order is precedence — first match wins. When a post category contains multiple
+// keywords (e.g. "Recovery & Mobility"), the earlier entry here wins. Today this
+// matters for compound categories; reorder cautiously.
 export const KNOWN_CATEGORIES = ["rotational", "comeback", "strength", "mobility", "youth", "recovery"] as const
 type KnownCategory = (typeof KNOWN_CATEGORIES)[number]
 
@@ -59,6 +69,11 @@ function normalize(category: string): KnownCategory | null {
   return null
 }
 
+/**
+ * Maps a free-text blog category to a category-specific style instruction string.
+ * First match wins by KNOWN_CATEGORIES precedence order. Falls back to GENERIC for
+ * unknown input.
+ */
 export function getCategoryStyleModule(category: string): string {
   const key = normalize(category)
   if (!key) return GENERIC

@@ -4,29 +4,40 @@ import { getCategoryStyleModule, KNOWN_CATEGORIES } from "../category-style-modu
 describe("getCategoryStyleModule", () => {
   it("returns rotational-specific guidance for rotational categories", () => {
     const mod = getCategoryStyleModule("Rotational")
+    expect(mod).toContain("CATEGORY MODULE — Rotational training")
     expect(mod).toMatch(/golf|baseball|tennis|hockey/i)
     expect(mod).toMatch(/medicine ball|cable column|rotational/i)
   })
 
   it("returns comeback/rehab guidance for comeback categories", () => {
     const mod = getCategoryStyleModule("Comeback")
+    expect(mod).toContain("CATEGORY MODULE — Comeback / return-to-play / post-injury")
     expect(mod).toMatch(/rehab|recovery|return.to.play|post.injury/i)
     expect(mod).toMatch(/band|controlled|low.load/i)
   })
 
   it("returns strength guidance for strength categories", () => {
     const mod = getCategoryStyleModule("Strength")
+    expect(mod).toContain("CATEGORY MODULE — Strength training")
     expect(mod).toMatch(/barbell|deadlift|squat|rack/i)
   })
 
   it("returns mobility guidance for mobility categories", () => {
     const mod = getCategoryStyleModule("Mobility")
+    expect(mod).toContain("CATEGORY MODULE — Mobility and warm-up")
     expect(mod).toMatch(/mobility|warm.?up|range of motion/i)
   })
 
   it("returns youth guidance for youth-development categories", () => {
     const mod = getCategoryStyleModule("Youth")
+    expect(mod).toContain("CATEGORY MODULE — Youth development")
     expect(mod).toMatch(/adolescent|teen|youth|age.appropriate/i)
+  })
+
+  it("returns recovery-specific guidance for recovery categories", () => {
+    const mod = getCategoryStyleModule("Recovery")
+    expect(mod).toContain("CATEGORY MODULE — Recovery and sleep")
+    expect(mod).toMatch(/percussion gun|foam roller|ice bath|sauna|compression boots/i)
   })
 
   it("falls back to a generic performance module for unknown categories", () => {
