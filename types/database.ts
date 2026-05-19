@@ -853,6 +853,8 @@ export interface FormReviewMessageAttachment {
   duration_seconds: number | null
   byte_size: number
   created_at: string
+  /** Populated server-side by `getFormReviewMessages`; signed Firebase URL, ~1 h TTL. */
+  playback_url?: string | null
 }
 
 // Performance assessment types
