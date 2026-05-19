@@ -18,6 +18,14 @@ service firebase.storage {
                    && request.resource.contentType.matches('video/.*');
     }
 
+    // Form review voice messages — open upload scoped to form-review-audio path
+    // Auth is enforced at the Next.js API layer + path-ownership check
+    match /form-review-audio/{userId}/{fileName} {
+      allow read: if true;
+      allow write: if request.resource.size < 3 * 1024 * 1024  // 3MB max
+                   && request.resource.contentType.matches('audio/.*');
+    }
+
     // Deny everything else by default
     match /{allPaths=**} {
       allow read, write: if false;
