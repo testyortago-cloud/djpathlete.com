@@ -109,4 +109,43 @@ describe("callAgent cachedUserPrefix", () => {
     const callArgs = streamMock.mock.calls[0][0]
     expect(callArgs.messages[0].content).toBe("user msg")
   })
+
+  it("uses text-fallback path with cachedUserPrefix and appends JSON instruction to variable suffix", async () => {
+    // z.unknown() produces a JSON Schema with no top-level "type: object" — this
+    // forces toToolInputSchema to return null, which triggers the text-fallback
+    // path inside callAgent. z.unknown().parse(...) then accepts any parsed value.
+    streamMock.mockReturnValue({
+      finalMessage: async () => ({
+        content: [{ type: "text", text: '{"value":"hello"}' }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 10, output_tokens: 10 },
+      }),
+    })
+
+    const schema = z.unknown()
+    await callAgent("sys", "variable suffix", schema, {
+      cachedUserPrefix: "stable library content".repeat(200),
+    })
+
+    expect(streamMock).toHaveBeenCalledOnce()
+    const callArgs = streamMock.mock.calls[0][0]
+
+    // Fallback path does NOT pass tools or tool_choice — distinguishes it from tool_use path.
+    expect(callArgs.tools).toBeUndefined()
+    expect(callArgs.tool_choice).toBeUndefined()
+
+    const userMsg = callArgs.messages[0]
+    expect(userMsg.role).toBe("user")
+    expect(Array.isArray(userMsg.content)).toBe(true)
+
+    // Block 0: cached prefix.
+    expect(userMsg.content[0].cache_control).toEqual({ type: "ephemeral" })
+    expect(userMsg.content[0].text).toContain("stable library content")
+    expect(userMsg.content[0].text).not.toContain("You MUST respond with valid JSON")
+
+    // Block 1: variable suffix + appended JSON instruction. No cache_control.
+    expect(userMsg.content[1].cache_control).toBeUndefined()
+    expect(userMsg.content[1].text).toContain("variable suffix")
+    expect(userMsg.content[1].text).toContain("You MUST respond with valid JSON")
+  })
 })
