@@ -643,15 +643,18 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
           }
         }
 
-        const agent3UserMessage = `Program Skeleton (Week ${weekNum} of ${skeleton.weeks.length}):\n${JSON.stringify(weekSkeletonPayload)}\n\nConstraints:\n${constraintsContext}\n\nExercise Library (${thisWeekLibrary.length} exercises, pre-filtered for relevance):\n${thisWeekLibraryText}${poolNote}\n\n${priorContext.prompt_text}${coachInstructionsSection}${feedbackSection}${dedupFeedback}`
+        // Stable prefix — identical across the 3 attempts for this week. Cache it.
+        const agent3StablePrefix = `Program Skeleton (Week ${weekNum} of ${skeleton.weeks.length}):\n${JSON.stringify(weekSkeletonPayload)}\n\nConstraints:\n${constraintsContext}\n\nExercise Library (${thisWeekLibrary.length} exercises, pre-filtered for relevance):\n${thisWeekLibraryText}${poolNote}\n\n${priorContext.prompt_text}${coachInstructionsSection}`
+        // Variable suffix — only present on retries (attempt > 0).
+        const agent3VariableSuffix = `${feedbackSection}${dedupFeedback}`.trim() || "Begin."
 
         try {
           console.log(`[orchestrator:sync] Week ${weekNum} attempt ${attempt + 1}/${MAX_RETRIES + 1}...`)
           const agent3Result: AgentCallResult<ExerciseAssignment> = await callAgent<ExerciseAssignment>(
             EXERCISE_SELECTOR_PROMPT,
-            agent3UserMessage,
+            agent3VariableSuffix,
             exerciseAssignmentSchema,
-            { cacheSystemPrompt: true },
+            { cacheSystemPrompt: true, cachedUserPrefix: agent3StablePrefix },
           )
           tokenUsage.agent3 += agent3Result.tokens_used
           tokenUsage.cache_creation += agent3Result.cache_creation_tokens ?? 0
