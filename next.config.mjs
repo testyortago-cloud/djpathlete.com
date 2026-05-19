@@ -68,14 +68,24 @@ const nextConfig = {
     // Content Security Policy. 'unsafe-inline' on script/style is required by
     // Next.js's hydration scripts, the inline GA snippet, and Tailwind inline
     // style attributes. External hosts cover GA, Stripe (checkout + webhooks),
-    // Supabase (REST + realtime + storage), and our image CDNs.
+    // Supabase (REST + realtime + storage), Firebase (Firestore, RTDB
+    // websocket, Auth, Installations, Storage), and our image CDNs.
+    //
+    // Firebase notes:
+    //   - firestore.googleapis.com — Firestore listeners (Listen channel).
+    //   - *.firebaseio.com + wss:// — RTDB realtime websocket subscriptions.
+    //     Required for the floating job dock listener.
+    //   - *.firebasedatabase.app + wss:// — newer regional RTDB host format.
+    //   - identitytoolkit.googleapis.com + securetoken.googleapis.com — Auth.
+    //   - firebaseinstallations.googleapis.com — Firebase Installations
+    //     handshake (runs once per browser when SDK initializes).
     const csp = [
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://*.google-analytics.com https://js.stripe.com",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
-      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.google-analytics.com https://www.googletagmanager.com https://api.stripe.com https://storage.googleapis.com https://*.firebasestorage.app",
+      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.google-analytics.com https://www.googletagmanager.com https://api.stripe.com https://storage.googleapis.com https://*.firebasestorage.app https://firebasestorage.googleapis.com https://firestore.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.firebasedatabase.app wss://*.firebasedatabase.app https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firebaseinstallations.googleapis.com",
       "frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://www.youtube.com https://www.youtube-nocookie.com",
       "media-src 'self' blob: https:",
       "worker-src 'self' blob:",
