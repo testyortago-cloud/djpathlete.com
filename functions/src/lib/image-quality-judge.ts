@@ -4,6 +4,9 @@ import { MODEL_HAIKU } from "../ai/anthropic.js"
 // Anything strictly below this triggers one regeneration on a fresh seed.
 export const QUALITY_RETRY_THRESHOLD = 7
 
+const ALLOWED_MEDIA_TYPES = ["image/webp", "image/png", "image/jpeg"] as const
+type AllowedMediaType = typeof ALLOWED_MEDIA_TYPES[number]
+
 const SYSTEM = `You are a brutally honest photo editor reviewing a generated image against DJP Athlete's brand rubric.
 
 Score 1-10 against this rubric (each is a deduction risk, not a checklist):
@@ -34,6 +37,7 @@ interface JudgeInput {
 export interface JudgeResult {
   score: number
   reasons: string[]
+  judge_failed: boolean
 }
 
 export async function judgeImageQuality(input: JudgeInput): Promise<JudgeResult> {
@@ -41,7 +45,9 @@ export async function judgeImageQuality(input: JudgeInput): Promise<JudgeResult>
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY not set")
   const client = new Anthropic({ apiKey })
 
-  const mediaType = (input.mime as "image/webp" | "image/png" | "image/jpeg") ?? "image/webp"
+  const mediaType: AllowedMediaType = (ALLOWED_MEDIA_TYPES as readonly string[]).includes(input.mime)
+    ? (input.mime as AllowedMediaType)
+    : "image/webp"
 
   const response = await client.messages.create({
     model: MODEL_HAIKU,
@@ -64,10 +70,10 @@ export async function judgeImageQuality(input: JudgeInput): Promise<JudgeResult>
   const raw = textBlock && "text" in textBlock ? textBlock.text : ""
 
   try {
-    const parsed = JSON.parse(raw.trim().replace(/^```json\s*|```\s*$/g, "")) as { score: number; reasons: string[] }
+    const parsed = JSON.parse(raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "")) as { score: number; reasons: string[] }
     const score = Math.max(1, Math.min(10, Math.round(parsed.score)))
-    return { score, reasons: Array.isArray(parsed.reasons) ? parsed.reasons.slice(0, 8) : [] }
+    return { score, reasons: Array.isArray(parsed.reasons) ? parsed.reasons.slice(0, 8) : [], judge_failed: false }
   } catch {
-    return { score: 0, reasons: ["judge response unparseable"] }
+    return { score: 0, reasons: ["judge response unparseable"], judge_failed: true }
   }
 }
