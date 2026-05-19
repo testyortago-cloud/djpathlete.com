@@ -20,6 +20,7 @@ interface VoiceRecorderProps {
 
 const MAX_DURATION_SECONDS = 120
 const MAX_BYTES = 3 * 1024 * 1024
+const MIC_ERROR_TOAST_ID = "voice-recorder-mic-error"
 
 type State = "idle" | "recording" | "stopped" | "uploading"
 
@@ -29,6 +30,30 @@ function pickMimeType(): string | null {
   if (MediaRecorder.isTypeSupported("audio/webm")) return "audio/webm"
   if (MediaRecorder.isTypeSupported("audio/mp4")) return "audio/mp4"
   return null
+}
+
+// Translate a getUserMedia rejection into a message the user can act on.
+// Returns null for benign cases (user dismissed the prompt) — no toast needed.
+export function micErrorMessage(err: unknown): string | null {
+  const name = (err as DOMException | undefined)?.name
+  switch (name) {
+    case "NotAllowedError":
+    case "PermissionDeniedError":
+      return "Microphone blocked. Click the lock icon in the address bar → Site settings → Microphone → Allow, then click the mic button again."
+    case "NotReadableError":
+    case "TrackStartError":
+      return "Microphone is in use by another app. Close anything using the mic and try again."
+    case "NotFoundError":
+    case "DevicesNotFoundError":
+    case "OverconstrainedError":
+      return "No microphone found. Check your audio devices."
+    case "SecurityError":
+      return "Voice recording requires a secure (HTTPS) connection."
+    case "AbortError":
+      return null
+    default:
+      return "Couldn't access the microphone. Try again."
+  }
 }
 
 function normalizeMime(mime: string): "audio/webm" | "audio/mp4" | "audio/ogg" {
@@ -71,6 +96,36 @@ export function VoiceRecorder({ userId, onSend, disabled }: VoiceRecorderProps) 
 
   useEffect(() => cleanupStream, [])
 
+  // Watch mic permission state. If the user fixes a prior block via the lock
+  // icon → Site settings, dismiss the stale error toast so the UI doesn't lie.
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !navigator.permissions?.query) return
+
+    let status: PermissionStatus | null = null
+    let cancelled = false
+
+    function handleChange() {
+      if (status?.state === "granted") toast.dismiss(MIC_ERROR_TOAST_ID)
+    }
+
+    navigator.permissions
+      .query({ name: "microphone" as PermissionName })
+      .then((s) => {
+        if (cancelled) return
+        status = s
+        status.addEventListener("change", handleChange)
+      })
+      .catch(() => {
+        // Firefox + Safari don't expose "microphone" via the Permissions API.
+        // Recording still works; we just lose the auto-dismiss nicety.
+      })
+
+    return () => {
+      cancelled = true
+      status?.removeEventListener("change", handleChange)
+    }
+  }, [])
+
   function reset() {
     setBlob(null)
     if (previewUrl) URL.revokeObjectURL(previewUrl)
@@ -109,7 +164,8 @@ export function VoiceRecorder({ userId, onSend, disabled }: VoiceRecorderProps) 
       stopTimerRef.current = setTimeout(() => stopRecording(), MAX_DURATION_SECONDS * 1000)
     } catch (err) {
       console.error("getUserMedia error:", err)
-      toast.error("Microphone access required. Enable it in your browser settings.")
+      const msg = micErrorMessage(err)
+      if (msg) toast.error(msg, { id: MIC_ERROR_TOAST_ID })
       cleanupStream()
       setState("idle")
     }
