@@ -201,18 +201,33 @@ export function VoiceRecorder({ userId, onSend, onStateChange, disabled }: Voice
       toast.error("Recording too short. Hold for at least 1 second.")
       return
     }
+    if (blob.size < 1024) {
+      // 0-byte / sub-1KB blobs slip through occasionally on mobile when the
+      // mic captured silence or the recorder produced no chunks. Storage rule
+      // would accept them but the backend validator's byte_size >= 1 + audio
+      // playback would be a broken UX.
+      toast.error("Recording looks empty. Try again — speak after the red dot appears.")
+      return
+    }
     if (blob.size > MAX_BYTES) {
       toast.error("Voice message too large. Re-record a shorter clip.")
       return
     }
     setState("uploading")
-    const mime = normalizeMime(blob.type)
-    const ext = extFor(blob.type)
+    // Some mobile browsers leave blob.type empty when codec params get
+    // stripped during the Blob construction. Fall back to a sane default so
+    // the Firebase Storage rule `contentType.matches('audio/.*')` still passes
+    // and the upload doesn't 403.
+    const blobMime = blob.type && blob.type.startsWith("audio/") ? blob.type : pickMimeType() ?? "audio/webm"
+    const mime = normalizeMime(blobMime)
+    const ext = extFor(blobMime)
     const path = `form-review-audio/${userId}/${Date.now()}.${ext}`
     const ref = storageRef(storage, path)
+
+    // Stage 1: upload to Firebase Storage.
     try {
       await new Promise<void>((resolve, reject) => {
-        const task = uploadBytesResumable(ref, blob, { contentType: blob.type })
+        const task = uploadBytesResumable(ref, blob, { contentType: blobMime })
         task.on(
           "state_changed",
           (snap) => setProgress(Math.round((snap.bytesTransferred / snap.totalBytes) * 100)),
@@ -220,6 +235,23 @@ export function VoiceRecorder({ userId, onSend, onStateChange, disabled }: Voice
           () => resolve(),
         )
       })
+    } catch (err) {
+      const e = err as { code?: string; message?: string }
+      const code = e.code ?? "unknown"
+      console.error("Voice upload (storage) failed:", code, e.message ?? e)
+      const detail =
+        code === "storage/retry-limit-exceeded" || code === "storage/canceled"
+          ? "Upload timed out. Check your connection and try again."
+          : code === "storage/unauthorized"
+            ? `Upload blocked by storage rule (${blobMime}). Refresh and try again.`
+            : `Upload failed (${code}). ${e.message ?? ""}`.trim()
+      toast.error(detail)
+      setState("stopped")
+      return
+    }
+
+    // Stage 2: register the message with the API.
+    try {
       await onSend({
         storage_path: path,
         mime_type: mime,
@@ -228,8 +260,9 @@ export function VoiceRecorder({ userId, onSend, onStateChange, disabled }: Voice
       })
       reset()
     } catch (err) {
-      console.error("Voice upload error:", err)
-      toast.error("Failed to send voice message. Try again.")
+      const e = err as Error
+      console.error("Voice send (API) failed:", e.message ?? e)
+      toast.error(`Couldn't save voice message: ${e.message ?? "server error"}`)
       setState("stopped")
     }
   }
