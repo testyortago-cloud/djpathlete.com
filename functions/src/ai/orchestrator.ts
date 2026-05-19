@@ -204,7 +204,15 @@ export async function generateProgramSync(
   const checkCancelled = createCancellationChecker(firebaseJobId)
 
   const startTime = Date.now()
-  const tokenUsage = { agent1: 0, agent2: 0, agent3: 0, agent4: 0, total: 0 }
+  const tokenUsage = {
+    agent1: 0,
+    agent2: 0,
+    agent3: 0,
+    agent4: 0,
+    total: 0,
+    cache_creation: 0,
+    cache_read: 0,
+  }
   let retries = 0
 
   // Use existing log created by the API route, or create a new one (e.g. assessment trigger)
@@ -367,6 +375,8 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
         : Promise.resolve(new Map<string, number>()),
     ])
     tokenUsage.agent1 = agent1Result.tokens_used
+    tokenUsage.cache_creation += agent1Result.cache_creation_tokens ?? 0
+    tokenUsage.cache_read += agent1Result.cache_read_tokens ?? 0
     console.log(
       `[orchestrator:sync] Agent 1 complete. Tokens: ${agent1Result.tokens_used}. Exercises: ${allExercises.length}. Coach policy: ${coachPolicy ? "loaded" : "none"}. Usage — coach: ${coachUsage.size}, client: ${clientUsage.size}.`,
     )
@@ -468,6 +478,8 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
       { model: MODEL_OPUS, cacheSystemPrompt: true },
     )
     tokenUsage.agent2 = agent2Result.tokens_used
+    tokenUsage.cache_creation += agent2Result.cache_creation_tokens ?? 0
+    tokenUsage.cache_read += agent2Result.cache_read_tokens ?? 0
     const skeleton = agent2Result.content
     // Backfill total_sessions if the AI omitted it or returned 0
     if (!skeleton.total_sessions) {
@@ -642,6 +654,8 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
             { cacheSystemPrompt: true },
           )
           tokenUsage.agent3 += agent3Result.tokens_used
+          tokenUsage.cache_creation += agent3Result.cache_creation_tokens ?? 0
+          tokenUsage.cache_read += agent3Result.cache_read_tokens ?? 0
           weekAssignment = agent3Result.content
 
           // Strip hallucinated exercise IDs
@@ -908,6 +922,8 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
       program_id: program.id,
       status: "completed",
       tokens_used: tokenUsage.total,
+      cache_creation_tokens: tokenUsage.cache_creation,
+      cache_read_tokens: tokenUsage.cache_read,
       duration_ms: durationMs,
       completed_at: new Date().toISOString(),
       output_summary: {
@@ -917,8 +933,18 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
         validation_pass: validation.pass,
         warnings: validation.issues.filter((i) => i.type === "warning").length,
         retries,
+        cache_creation_tokens: tokenUsage.cache_creation,
+        cache_read_tokens: tokenUsage.cache_read,
       },
     })
+
+    const cacheHitRate =
+      tokenUsage.cache_read + tokenUsage.cache_creation > 0
+        ? tokenUsage.cache_read / (tokenUsage.cache_read + tokenUsage.cache_creation)
+        : 0
+    console.log(
+      `[orchestrator:sync] Cache stats — writes: ${tokenUsage.cache_creation}, reads: ${tokenUsage.cache_read}, hit rate: ${(cacheHitRate * 100).toFixed(1)}%`,
+    )
 
     // Record exercise usage for future variety enforcement (fire-and-forget, never blocks)
     const programId = program.id
