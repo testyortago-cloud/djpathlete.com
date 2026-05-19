@@ -23,7 +23,14 @@ vi.mock("../supabase.js", () => ({
   }),
 }))
 
-import { transcodeAndUpload } from "../image-pipeline.js"
+import { transcodeAndUpload, RENDER_DIMENSIONS } from "../image-pipeline.js"
+
+describe("RENDER_DIMENSIONS", () => {
+  it("exposes 2x render dimensions distinct from final dimensions", () => {
+    expect(RENDER_DIMENSIONS.hero).toEqual({ width: 2400, height: 1260 })
+    expect(RENDER_DIMENSIONS.inline).toEqual({ width: 2048, height: 1152 })
+  })
+})
 
 describe("transcodeAndUpload", () => {
   beforeEach(() => {
