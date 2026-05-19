@@ -99,6 +99,7 @@ export const AUDIT_ACTIONS = [
   { slug: "form_review.submitted",        category: "support", description: "Client submitted a video for form review" },
   { slug: "form_review.reviewed",         category: "support", description: "Coach left feedback on a form review" },
   { slug: "form_review.deleted",          category: "support", description: "Form review removed" },
+  { slug: "form_review.message.audio_sent", category: "client_action", description: "Voice message sent on a form review thread" },
   { slug: "team_video.submitted",         category: "support", description: "Team video submission uploaded" },
   { slug: "team_video.annotated",         category: "support", description: "Annotation added to team video" },
   { slug: "team_video.commented",         category: "support", description: "Comment added to team video" },
