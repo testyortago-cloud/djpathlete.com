@@ -5,7 +5,7 @@ vi.mock("../anthropic.js", () => ({
   MODEL_SONNET: "claude-sonnet-test",
 }))
 
-import { extractImagePrompts, BRAND_TREATMENT } from "../image-prompts.js"
+import { extractImagePrompts, BRAND_TREATMENT, PROMPT_VERSION } from "../image-prompts.js"
 import * as anthropic from "../anthropic.js"
 
 const mockCallAgent = vi.mocked(anthropic.callAgent)
@@ -53,9 +53,45 @@ describe("extractImagePrompts", () => {
 
   it("BRAND_TREATMENT is exported and contains DJP visual fingerprints", () => {
     expect(BRAND_TREATMENT).toContain("DJP visual treatment")
-    expect(BRAND_TREATMENT.toLowerCase()).toContain("desaturated")
-    expect(BRAND_TREATMENT.toLowerCase()).toContain("depth of field")
     expect(BRAND_TREATMENT.toLowerCase()).toContain("documentary")
+  })
+
+  it("BRAND_TREATMENT uses photographer/lens/film vocabulary, not marketing copy", () => {
+    expect(BRAND_TREATMENT).toMatch(/35mm|50mm|85mm/i)
+    expect(BRAND_TREATMENT).toMatch(/Kodak Portra|Fuji Pro|Cinestill/i)
+    expect(BRAND_TREATMENT).toMatch(/Walter Iooss|Annie Leibovitz|Platon|Joey Terrill/i)
+  })
+
+  it("BRAND_TREATMENT contains an explicit anti-AI artifact list", () => {
+    expect(BRAND_TREATMENT).toMatch(/plastic skin/i)
+    expect(BRAND_TREATMENT).toMatch(/extra fingers|deformed hands/i)
+    expect(BRAND_TREATMENT).toMatch(/over.?saturated|HDR/i)
+  })
+
+  it("BRAND_TREATMENT specifies diversity baseline", () => {
+    expect(BRAND_TREATMENT).toMatch(/mix of|varying|range of/i)
+  })
+
+  it("exports PROMPT_VERSION as a monotonically incremented string for logging", () => {
+    expect(PROMPT_VERSION).toMatch(/^v\d+$/)
+  })
+
+  it("passes the category through to the user message so prompts can specialize", async () => {
+    mockCallAgent.mockResolvedValueOnce({
+      content: {
+        hero_prompt: "h".repeat(20),
+        inline_prompts: [{ section_h2: "Section A", prompt: "i".repeat(20) }],
+      },
+      tokens_used: 100,
+    })
+    await extractImagePrompts({
+      title: "T",
+      content: "C",
+      category: "Rotational",
+      qualifyingSections: ["Section A"],
+    })
+    const userMsg = mockCallAgent.mock.calls[0][1] as string
+    expect(userMsg).toContain("Rotational")
   })
 
   it("filters inline_prompts to only those matching qualifyingSections", async () => {
