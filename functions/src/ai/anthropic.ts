@@ -154,6 +154,8 @@ function callAgentWithModel<T>(
 
       let parsed: unknown
       let tokens_used: number
+      let cache_creation_tokens = 0
+      let cache_read_tokens = 0
 
       if (toolSchema) {
         // ── Primary path: structured output via tool_use (streaming to avoid 10min timeout) ──
@@ -188,6 +190,8 @@ function callAgentWithModel<T>(
 
         parsed = toolBlock.input
         tokens_used = (response.usage?.input_tokens ?? 0) + (response.usage?.output_tokens ?? 0)
+        cache_creation_tokens = response.usage?.cache_creation_input_tokens ?? 0
+        cache_read_tokens = response.usage?.cache_read_input_tokens ?? 0
       } else {
         // ── Fallback: text-based JSON parsing (streaming to avoid 10min timeout) ──
         console.warn(`[callAgent] Falling back to text JSON parsing (model: ${modelId})`)
@@ -226,12 +230,14 @@ function callAgentWithModel<T>(
         }
 
         tokens_used = (response.usage?.input_tokens ?? 0) + (response.usage?.output_tokens ?? 0)
+        cache_creation_tokens = response.usage?.cache_creation_input_tokens ?? 0
+        cache_read_tokens = response.usage?.cache_read_input_tokens ?? 0
       }
 
       // Normalize enum fields before Zod validation (model may use spaces/dashes/mixed case)
       const normalized = normalizeEnumFields(parsed)
       const validated = schema.parse(normalized)
-      return { content: validated as T, tokens_used }
+      return { content: validated as T, tokens_used, cache_creation_tokens, cache_read_tokens }
     },
     {
       retries: 4,
