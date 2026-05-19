@@ -637,6 +637,8 @@ export interface AiGenerationLog {
   error_message: string | null
   model_used: string | null
   tokens_used: number | null
+  cache_creation_tokens: number | null
+  cache_read_tokens: number | null
   duration_ms: number | null
   current_step: number
   total_steps: number

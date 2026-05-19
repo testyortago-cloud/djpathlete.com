@@ -38,6 +38,8 @@ export async function POST(request: Request) {
       error_message: null,
       model_used: "haiku+sonnet-mixed",
       tokens_used: null,
+      cache_creation_tokens: null,
+      cache_read_tokens: null,
       duration_ms: null,
       completed_at: null,
       current_step: 0,

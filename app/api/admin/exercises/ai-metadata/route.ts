@@ -129,6 +129,8 @@ Category: ${category.join(", ")}${difficulty ? `\nDifficulty: ${difficulty}` : "
       error_message: null,
       model_used: MODEL_HAIKU,
       tokens_used: result.tokens_used,
+      cache_creation_tokens: result.cache_creation_tokens ?? null,
+      cache_read_tokens: result.cache_read_tokens ?? null,
       duration_ms: Date.now() - startTime,
       completed_at: new Date().toISOString(),
       current_step: 0,
