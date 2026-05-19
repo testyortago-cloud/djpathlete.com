@@ -127,6 +127,10 @@ export interface ValidationResult {
 export interface AgentCallResult<T> {
   content: T
   tokens_used: number
+  /** Tokens written to the prompt cache on this call (1.25× normal input cost). */
+  cache_creation_tokens?: number
+  /** Tokens read from the prompt cache on this call (0.1× normal input cost). */
+  cache_read_tokens?: number
 }
 
 export interface OrchestrationResult {
