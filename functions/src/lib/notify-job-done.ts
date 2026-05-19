@@ -46,7 +46,10 @@ function getBaseUrl(): string {
 }
 
 function getFromEmail(): string {
-  return process.env.RESEND_FROM_EMAIL ?? "DJP Athlete <noreply@darrenjpaul.com>"
+  // Default sender uses the verified send.darrenjpaul.com subdomain on Resend.
+  // The apex darrenjpaul.com is NOT verified for sending — using it triggers
+  // "domain is not verified" 403s from the Resend API.
+  return process.env.RESEND_FROM_EMAIL ?? "DJP Athlete <noreply@send.darrenjpaul.com>"
 }
 
 async function resolveProgramName(programId: string | null): Promise<string> {
