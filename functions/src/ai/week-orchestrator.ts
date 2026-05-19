@@ -75,7 +75,13 @@ export interface WeekGenerationRequest {
 export interface WeekGenerationResult {
   new_week_number: number
   exercises_added: number
-  token_usage: { architect: number; selector: number; total: number }
+  token_usage: {
+    architect: number
+    selector: number
+    total: number
+    cache_creation: number
+    cache_read: number
+  }
   duration_ms: number
 }
 
@@ -329,7 +335,7 @@ export async function generateWeekSync(
   })
 
   const startTime = Date.now()
-  const tokenUsage = { architect: 0, selector: 0, total: 0 }
+  const tokenUsage = { architect: 0, selector: 0, total: 0, cache_creation: 0, cache_read: 0 }
 
   const updateJobProgress = createJobProgressUpdater(firebaseJobId, 5)
   const checkCancelled = createCancellationChecker(firebaseJobId)
@@ -559,6 +565,8 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
     { model: MODEL_OPUS, cacheSystemPrompt: true },
   )
   tokenUsage.architect = architectResult.tokens_used
+  tokenUsage.cache_creation += architectResult.cache_creation_tokens ?? 0
+  tokenUsage.cache_read += architectResult.cache_read_tokens ?? 0
   const skeleton = architectResult.content
 
   // Ensure the week number is correct
@@ -653,6 +661,8 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
       { model: MODEL_SONNET, cacheSystemPrompt: true },
     )
     tokenUsage.architect += analyzerResult.tokens_used // reuse architect bucket; no schema change
+    tokenUsage.cache_creation += analyzerResult.cache_creation_tokens ?? 0
+    tokenUsage.cache_read += analyzerResult.cache_read_tokens ?? 0
     analysis = analyzerResult.content
     if (analysis.technique_plan[0]) analysis.technique_plan[0].week_number = newWeekNumber
     if (analysis.difficulty_ceiling[0]) analysis.difficulty_ceiling[0].week_number = newWeekNumber
@@ -814,6 +824,8 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
         { cacheSystemPrompt: true },
       )
       tokenUsage.selector += selectorResult.tokens_used
+      tokenUsage.cache_creation += selectorResult.cache_creation_tokens ?? 0
+      tokenUsage.cache_read += selectorResult.cache_read_tokens ?? 0
       assignment = selectorResult.content
 
       // Strip hallucinated exercise IDs
@@ -962,6 +974,14 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
 
   console.log(
     `[week-orchestrator] Week ${newWeekNumber} generated: ${assignment.assignments.length} exercises in ${durationMs}ms`,
+  )
+
+  const cacheHitRate =
+    tokenUsage.cache_read + tokenUsage.cache_creation > 0
+      ? tokenUsage.cache_read / (tokenUsage.cache_read + tokenUsage.cache_creation)
+      : 0
+  console.log(
+    `[week-orchestrator] Cache stats — writes: ${tokenUsage.cache_creation}, reads: ${tokenUsage.cache_read}, hit rate: ${(cacheHitRate * 100).toFixed(1)}%`,
   )
 
   return {
