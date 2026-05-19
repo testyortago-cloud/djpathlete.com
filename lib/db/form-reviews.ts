@@ -88,7 +88,12 @@ export async function getFormReviewMessages(reviewId: string) {
   const rows = (data ?? []) as Array<
     FormReviewMessage & {
       form_review_message_attachments?: FormReviewMessageAttachment[]
-      users?: unknown
+      users?: {
+        first_name: string
+        last_name: string
+        avatar_url?: string | null
+        role?: string
+      } | null
     }
   >
 

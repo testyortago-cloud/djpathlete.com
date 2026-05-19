@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { CheckCircle2, Clock, MessageSquare, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
-import type { FormReviewStatus } from "@/types/database"
+import type { FormReviewStatus, FormReviewMessageAttachment } from "@/types/database"
 
 interface FormReviewDetailProps {
   review: {
@@ -24,8 +24,9 @@ interface FormReviewDetailProps {
   messages: Array<{
     id: string
     user_id: string
-    message: string
+    message: string | null
     created_at: string
+    attachments?: FormReviewMessageAttachment[]
     users?: { first_name: string; last_name: string; avatar_url?: string | null; role?: string } | null
   }>
   currentUserId: string
