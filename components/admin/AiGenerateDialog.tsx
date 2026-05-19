@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { useRouter } from "next/navigation"
+import { useSession } from "next-auth/react"
 import { toast } from "sonner"
 import Link from "next/link"
 import { motion, AnimatePresence } from "framer-motion"
@@ -68,6 +69,7 @@ import { TourButton } from "@/components/admin/TourButton"
 import { getAiGenerateTourSteps } from "@/lib/tour-steps"
 import { AssignProgramDialog } from "@/components/admin/AssignProgramDialog"
 import { TemplateSelector } from "@/components/admin/TemplateSelector"
+import { NotifyWhenDoneToggle } from "@/components/admin/NotifyWhenDoneToggle"
 import type { User, ClientProfile } from "@/types/database"
 import { summarizeApiError } from "@/lib/errors/humanize"
 
@@ -206,6 +208,8 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
   const [selectedTier, setSelectedTier] = useState<string>("generalize")
   const [audience, setAudience] = useState<"private" | "public">("private")
   const [priceDollars, setPriceDollars] = useState("")
+  const [notifyWhenDone, setNotifyWhenDone] = useState(true)
+  const { data: authSession } = useSession()
 
   // Profile state
   const [profileSummary, setProfileSummary] = useState<ProfileSummary | null>(null)
@@ -539,6 +543,9 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
       if (ignoreProfile) body.ignore_profile = true
       if (profileSummary && profileSummary.availableEquipment.length > 0 && !ignoreProfile) {
         body.equipment_override = profileSummary.availableEquipment
+      }
+      if (notifyWhenDone && authSession?.user?.email) {
+        body.notify_email = authSession.user.email
       }
 
       const response = await fetch("/api/admin/programs/generate", {
@@ -1026,6 +1033,18 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
 
         {/* Field guide tour */}
         <FormTour {...tour} />
+
+        {/* Email-when-done toggle — shown on the final step so the admin
+            sees it right before kicking off a multi-minute generation. */}
+        {step === 2 && !isGenerating ? (
+          <div className="px-1">
+            <NotifyWhenDoneToggle
+              checked={notifyWhenDone}
+              onChange={setNotifyWhenDone}
+              disabled={isGenerating}
+            />
+          </div>
+        ) : null}
 
         {/* Footer */}
         <DialogFooter>

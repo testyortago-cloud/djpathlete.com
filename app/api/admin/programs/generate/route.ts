@@ -55,6 +55,7 @@ export async function POST(request: Request) {
         request: result.data,
         requestedBy: session.user.id,
         logId: log.id,
+        notify_email: result.data.notify_email ?? null,
       },
       result: null,
       error: null,

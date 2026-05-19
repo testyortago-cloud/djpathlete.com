@@ -24,6 +24,8 @@ const generateWeekSchema = z.object({
   pool_mode: z.enum(["preferred", "strict"]).optional(),
   /** When set, AI ignores the client profile and relies on coach instructions */
   ignore_profile: z.boolean().optional(),
+  /** When set, the Firebase function emails this address on completion / failure. */
+  notify_email: z.string().email().optional().nullable(),
 })
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -76,6 +78,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           ignore_profile: result.data.ignore_profile ?? false,
         },
         requestedBy: session.user.id,
+        notify_email: result.data.notify_email ?? null,
       },
       result: null,
       error: null,

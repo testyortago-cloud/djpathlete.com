@@ -17,6 +17,10 @@ export const aiGenerationRequestSchema = z.object({
   ignore_profile: z.boolean().optional(),
   is_public: z.boolean().optional(),
   price_cents: z.coerce.number().int().min(0).optional(),
+  /** Optional recipient — when set, the Firebase function emails this address
+   *  on completion (and on failure) so the coach doesn't have to babysit the
+   *  dialog. Null/undefined disables the email. */
+  notify_email: z.string().email().optional().nullable(),
 })
 
 export type AiGenerationRequest = z.infer<typeof aiGenerationRequestSchema>

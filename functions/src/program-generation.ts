@@ -2,6 +2,7 @@ import { getFirestore, FieldValue } from "firebase-admin/firestore"
 import { getDatabase } from "firebase-admin/database"
 import { generateProgramSync } from "./ai/orchestrator.js"
 import type { AiGenerationRequest, AssessmentContext } from "./ai/orchestrator.js"
+import { notifyJobCompleted, notifyJobFailed } from "./lib/notify-job-done.js"
 
 /** Write real-time status to RTDB so the client can listen for instant updates */
 async function updateRtdb(jobId: string, data: Record<string, unknown>) {
@@ -45,6 +46,7 @@ export async function handleProgramGeneration(jobId: string): Promise<void> {
     requestedBy: string
     logId?: string
     assessmentContext?: AssessmentContext
+    notify_email?: string | null
   }
 
   try {
@@ -82,6 +84,29 @@ export async function handleProgramGeneration(jobId: string): Promise<void> {
     await updateRtdb(jobId, { status: "completed", result: resultPayload })
 
     console.log(`[program-generation] Job ${jobId} completed — program_id: ${result.program_id}`)
+
+    await notifyJobCompleted({
+      notify_email: input.notify_email,
+      programId: result.program_id,
+      jobLabel: "Full program",
+      summary: `Generated in ${Math.round(result.duration_ms / 1000)}s.`,
+      details: [
+        {
+          label: "Validation",
+          value:
+            resultPayload.validation.errors > 0
+              ? `${resultPayload.validation.errors} error(s), ${resultPayload.validation.warnings} warning(s)`
+              : `passed${resultPayload.validation.warnings > 0 ? ` with ${resultPayload.validation.warnings} warning(s)` : ""}`,
+        },
+        { label: "Retries", value: String(result.retries ?? 0) },
+        {
+          label: "Tokens",
+          value: result.token_usage?.total
+            ? result.token_usage.total.toLocaleString()
+            : "n/a",
+        },
+      ],
+    })
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error"
     console.error(`[program-generation] Job ${jobId} failed:`, errorMessage)
@@ -94,5 +119,12 @@ export async function handleProgramGeneration(jobId: string): Promise<void> {
 
     // Write error to RTDB so client sees it instantly
     await updateRtdb(jobId, { status: "failed", error: errorMessage })
+
+    await notifyJobFailed({
+      notify_email: input.notify_email,
+      programId: null,
+      jobLabel: "Full program",
+      error: errorMessage,
+    })
   }
 }
