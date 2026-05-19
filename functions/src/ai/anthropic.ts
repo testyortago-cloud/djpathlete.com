@@ -135,6 +135,13 @@ function callAgentWithModel<T>(
   options?: {
     maxTokens?: number
     cacheSystemPrompt?: boolean
+    /**
+     * Optional stable prefix sent as a separately cached content block.
+     * When set, the model sees: [cached prefix] + [userMessage].
+     * Use for content that is identical across retries (e.g., exercise library, skeleton).
+     * The block must be ≥ 1024 tokens to actually cache.
+     */
+    cachedUserPrefix?: string
   },
 ): Promise<AgentCallResult<T>> {
   const maxTokens = options?.maxTokens ?? DEFAULT_MAX_TOKENS
@@ -157,6 +164,17 @@ function callAgentWithModel<T>(
       let cache_creation_tokens = 0
       let cache_read_tokens = 0
 
+      const userContent: Anthropic.Messages.ContentBlockParam[] | string = options?.cachedUserPrefix
+        ? [
+            {
+              type: "text" as const,
+              text: options.cachedUserPrefix,
+              cache_control: { type: "ephemeral" as const },
+            },
+            { type: "text" as const, text: userMessage },
+          ]
+        : userMessage
+
       if (toolSchema) {
         // ── Primary path: structured output via tool_use (streaming to avoid 10min timeout) ──
         const stream = client.messages.stream({
@@ -171,7 +189,7 @@ function callAgentWithModel<T>(
             },
           ],
           tool_choice: { type: "tool" as const, name: "structured_output" },
-          messages: [{ role: "user", content: userMessage }],
+          messages: [{ role: "user", content: userContent }],
         })
 
         const response = await stream.finalMessage()
@@ -196,17 +214,24 @@ function callAgentWithModel<T>(
         // ── Fallback: text-based JSON parsing (streaming to avoid 10min timeout) ──
         console.warn(`[callAgent] Falling back to text JSON parsing (model: ${modelId})`)
 
+        const fallbackUserText =
+          userMessage + "\n\nYou MUST respond with valid JSON matching this schema. Output ONLY the JSON object."
+        const fallbackUserContent: Anthropic.Messages.ContentBlockParam[] | string = options?.cachedUserPrefix
+          ? [
+              {
+                type: "text" as const,
+                text: options.cachedUserPrefix,
+                cache_control: { type: "ephemeral" as const },
+              },
+              { type: "text" as const, text: fallbackUserText },
+            ]
+          : fallbackUserText
+
         const stream = client.messages.stream({
           model: modelId,
           max_tokens: maxTokens,
           system: systemContent,
-          messages: [
-            {
-              role: "user",
-              content:
-                userMessage + "\n\nYou MUST respond with valid JSON matching this schema. Output ONLY the JSON object.",
-            },
-          ],
+          messages: [{ role: "user", content: fallbackUserContent }],
         })
 
         const response = await stream.finalMessage()
@@ -271,6 +296,7 @@ export async function callAgent<T>(
     maxTokens?: number
     model?: string
     cacheSystemPrompt?: boolean
+    cachedUserPrefix?: string
   },
 ): Promise<AgentCallResult<T>> {
   const modelId = options?.model ?? MODEL_SONNET

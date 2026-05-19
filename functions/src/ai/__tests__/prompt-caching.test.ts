@@ -63,3 +63,50 @@ describe("callAgent prompt-cache token surfacing", () => {
     expect(result.cache_read_tokens).toBe(0)
   })
 })
+
+describe("callAgent cachedUserPrefix", () => {
+  beforeEach(() => {
+    streamMock.mockReset()
+  })
+
+  it("sends cachedUserPrefix as a separate ephemeral content block", async () => {
+    streamMock.mockReturnValue({
+      finalMessage: async () => ({
+        content: [{ type: "tool_use", input: { ok: true } }],
+        stop_reason: "tool_use",
+        usage: { input_tokens: 10, output_tokens: 10 },
+      }),
+    })
+
+    const schema = z.object({ ok: z.boolean() })
+    await callAgent("sys", "variable suffix", schema, {
+      cachedUserPrefix: "stable library content".repeat(200),
+    })
+
+    expect(streamMock).toHaveBeenCalledOnce()
+    const callArgs = streamMock.mock.calls[0][0]
+    const userMsg = callArgs.messages[0]
+    expect(userMsg.role).toBe("user")
+    expect(Array.isArray(userMsg.content)).toBe(true)
+    expect(userMsg.content[0].cache_control).toEqual({ type: "ephemeral" })
+    expect(userMsg.content[0].text).toContain("stable library content")
+    expect(userMsg.content[1].cache_control).toBeUndefined()
+    expect(userMsg.content[1].text).toBe("variable suffix")
+  })
+
+  it("falls back to plain string when cachedUserPrefix is not set", async () => {
+    streamMock.mockReturnValue({
+      finalMessage: async () => ({
+        content: [{ type: "tool_use", input: { ok: true } }],
+        stop_reason: "tool_use",
+        usage: { input_tokens: 10, output_tokens: 10 },
+      }),
+    })
+
+    const schema = z.object({ ok: z.boolean() })
+    await callAgent("sys", "user msg", schema)
+
+    const callArgs = streamMock.mock.calls[0][0]
+    expect(callArgs.messages[0].content).toBe("user msg")
+  })
+})
