@@ -101,10 +101,18 @@ export async function callAgent<T>(
 
   const usage = result.usage
   const tokens_used = (usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0)
+  const anthropicMeta = (result.providerMetadata?.anthropic ?? {}) as {
+    cacheCreationInputTokens?: number
+    cacheReadInputTokens?: number
+  }
+  const cache_creation_tokens = anthropicMeta.cacheCreationInputTokens ?? 0
+  const cache_read_tokens = anthropicMeta.cacheReadInputTokens ?? 0
 
   return {
     content: result.object as T,
     tokens_used,
+    cache_creation_tokens,
+    cache_read_tokens,
   }
 }
 
