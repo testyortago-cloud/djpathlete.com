@@ -14,11 +14,15 @@ export interface GenerateFalImageInput {
   prompt: string
   width: number
   height: number
+  seed?: number
+  numInferenceSteps?: number
+  guidanceScale?: number
 }
 
 export interface GenerateFalImageResult {
   buffer: Buffer
   mime: string
+  seed: number
 }
 
 interface FalImageResult {
@@ -29,6 +33,7 @@ interface FalImageResult {
 interface FalResponseData {
   images?: FalImageResult[]
   has_nsfw_concepts?: boolean[]
+  seed?: number
 }
 
 export async function generateFalImage(input: GenerateFalImageInput): Promise<GenerateFalImageResult> {
@@ -39,15 +44,17 @@ export async function generateFalImage(input: GenerateFalImageInput): Promise<Ge
     configured = true
   }
 
-  const response = await fal.subscribe(input.model, {
-    input: {
-      prompt: input.prompt,
-      image_size: { width: input.width, height: input.height },
-      num_images: 1,
-      enable_safety_checker: true,
-    },
-    logs: false,
-  })
+  const subscribeInput: Record<string, unknown> = {
+    prompt: input.prompt,
+    image_size: { width: input.width, height: input.height },
+    num_images: 1,
+    enable_safety_checker: true,
+  }
+  if (typeof input.seed === "number") subscribeInput.seed = input.seed
+  if (typeof input.numInferenceSteps === "number") subscribeInput.num_inference_steps = input.numInferenceSteps
+  if (typeof input.guidanceScale === "number") subscribeInput.guidance_scale = input.guidanceScale
+
+  const response = await fal.subscribe(input.model, { input: subscribeInput, logs: false })
 
   const data = response.data as FalResponseData
   const first = data.images?.[0]
@@ -80,5 +87,5 @@ export async function generateFalImage(input: GenerateFalImageInput): Promise<Ge
     )
   }
 
-  return { buffer, mime }
+  return { buffer, mime, seed: data.seed ?? 0 }
 }
