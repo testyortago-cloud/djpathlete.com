@@ -2,6 +2,10 @@ import { z } from "zod"
 
 export const BLOG_CATEGORIES = ["Performance", "Recovery", "Coaching", "Youth Development"] as const
 
+// Inline image records persisted on blog_posts.inline_images (JSONB).
+// Source of truth: functions/src/blog-image-generation.ts (InlineImageRecord).
+// Quality/provenance fields are .optional() because pre-Task-6 records
+// won't have them — admin form round-trips must not strip them on save.
 export const inlineImageSchema = z.object({
   url: z.string().url(),
   alt: z.string().max(180),
@@ -9,6 +13,27 @@ export const inlineImageSchema = z.object({
   section_h2: z.string(),
   width: z.number().int().positive(),
   height: z.number().int().positive(),
+  seed: z.number().optional(),
+  model: z.string().optional(),
+  prompt_version: z.string().optional(),
+  quality_score: z.number().optional(),
+  quality_reasons: z.array(z.string()).optional(),
+  judge_failed: z.boolean().optional(),
+  attempts: z.number().optional(),
+})
+
+// Cover image quality/provenance metadata persisted on blog_posts.cover_image_meta (JSONB).
+// Source of truth: functions/src/blog-image-generation.ts (CoverImageMeta).
+// All fields .optional() for the same reason as inlineImageSchema.
+export const coverImageMetaSchema = z.object({
+  seed: z.number().optional(),
+  model: z.string().optional(),
+  prompt: z.string().optional(),
+  prompt_version: z.string().optional(),
+  quality_score: z.number().optional(),
+  quality_reasons: z.array(z.string()).optional(),
+  judge_failed: z.boolean().optional(),
+  attempts: z.number().optional(),
 })
 
 export const faqEntrySchema = z.object({
@@ -43,6 +68,7 @@ export const blogPostFormSchema = z.object({
     .optional()
     .transform((v) => v || null),
   inline_images: z.array(inlineImageSchema).optional().default([]),
+  cover_image_meta: coverImageMetaSchema.nullable().optional(),
   primary_keyword: z
     .string()
     .max(120, "Primary keyword must be under 120 characters")
@@ -70,4 +96,5 @@ export const blogPostFormSchema = z.object({
 
 export type BlogPostFormData = z.infer<typeof blogPostFormSchema>
 export type InlineImage = z.infer<typeof inlineImageSchema>
+export type CoverImageMeta = z.infer<typeof coverImageMetaSchema>
 export type FaqEntry = z.infer<typeof faqEntrySchema>

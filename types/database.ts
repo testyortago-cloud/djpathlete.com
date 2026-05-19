@@ -878,6 +878,38 @@ export interface PerformanceAssessmentMessage {
   created_at: string
 }
 
+// Image quality metadata shared by inline images and cover_image_meta.
+// All fields are optional because posts created before migration 00155 (cover_meta)
+// and the Task-6 quality-judge rollout will not have these populated.
+// Source of truth: functions/src/blog-image-generation.ts (InlineImageRecord, CoverImageMeta).
+export interface CoverImageMeta {
+  seed?: number
+  model?: string
+  prompt?: string
+  prompt_version?: string
+  quality_score?: number
+  quality_reasons?: string[]
+  judge_failed?: boolean
+  attempts?: number
+}
+
+export interface InlineImage {
+  url: string
+  alt: string
+  prompt: string
+  section_h2: string
+  width: number
+  height: number
+  // Quality/provenance metadata — optional because pre-Task-6 records won't have them.
+  seed?: number
+  model?: string
+  prompt_version?: string
+  quality_score?: number
+  quality_reasons?: string[]
+  judge_failed?: boolean
+  attempts?: number
+}
+
 export interface BlogPost {
   id: string
   title: string
@@ -886,6 +918,7 @@ export interface BlogPost {
   content: string
   category: BlogCategory
   cover_image_url: string | null
+  cover_image_meta?: CoverImageMeta | null
   status: BlogPostStatus
   tags: string[]
   meta_description: string | null
@@ -898,14 +931,7 @@ export interface BlogPost {
   tavily_research: Record<string, unknown> | null
   fact_check_status: FactCheckStatus | null
   fact_check_details: Record<string, unknown> | null
-  inline_images: Array<{
-    url: string
-    alt: string
-    prompt: string
-    section_h2: string
-    width: number
-    height: number
-  }>
+  inline_images: InlineImage[]
   primary_keyword: string | null
   secondary_keywords: string[]
   search_intent: "informational" | "commercial" | "transactional" | null
