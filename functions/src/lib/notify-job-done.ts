@@ -80,12 +80,25 @@ function buildRecipients(notify_email: string | null | undefined): string[] | nu
   return recipients.length > 0 ? recipients : null
 }
 
-/** Fire-and-forget success email. Swallows errors — never blocks the job. */
+/** Fire-and-forget success email. Swallows errors — never blocks the job.
+ *  Every code path emits a log line so failures aren't silent. */
 export async function notifyJobCompleted(opts: JobSuccessInput): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY
-  if (!apiKey) return
+  if (!apiKey) {
+    console.warn(
+      `[notify-job-done] skip success email: RESEND_API_KEY is not set in the function env`,
+    )
+    return
+  }
   const recipients = buildRecipients(opts.notify_email)
-  if (!recipients) return
+  if (!recipients) {
+    console.warn(
+      `[notify-job-done] skip success email: no recipients resolved (notify_email=${
+        opts.notify_email ?? "null"
+      }, COACH_EMAIL_set=${process.env.COACH_EMAIL ? "yes" : "no"})`,
+    )
+    return
+  }
 
   try {
     const programName = await resolveProgramName(opts.programId)
@@ -101,7 +114,7 @@ export async function notifyJobCompleted(opts: JobSuccessInput): Promise<void> {
         : ""
 
     const resend = new Resend(apiKey)
-    await resend.emails.send({
+    const sendResult = await resend.emails.send({
       from: getFromEmail(),
       to: recipients,
       subject: `✓ ${opts.jobLabel} ready — ${programName}`,
@@ -112,17 +125,39 @@ export async function notifyJobCompleted(opts: JobSuccessInput): Promise<void> {
         <p><a href="${targetUrl}">Open in admin →</a></p>
       `,
     })
+    if (sendResult.error) {
+      console.warn(
+        `[notify-job-done] Resend rejected success email (to=${recipients.join(",")}):`,
+        sendResult.error,
+      )
+    } else {
+      console.log(
+        `[notify-job-done] success email sent (to=${recipients.join(",")}, id=${sendResult.data?.id ?? "?"})`,
+      )
+    }
   } catch (e) {
-    console.warn(`[notify-job-done] success email failed:`, e)
+    console.warn(`[notify-job-done] success email threw:`, e)
   }
 }
 
 /** Fire-and-forget failure email. Swallows errors — never blocks the job. */
 export async function notifyJobFailed(opts: JobFailureInput): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY
-  if (!apiKey) return
+  if (!apiKey) {
+    console.warn(
+      `[notify-job-done] skip failure email: RESEND_API_KEY is not set in the function env`,
+    )
+    return
+  }
   const recipients = buildRecipients(opts.notify_email)
-  if (!recipients) return
+  if (!recipients) {
+    console.warn(
+      `[notify-job-done] skip failure email: no recipients resolved (notify_email=${
+        opts.notify_email ?? "null"
+      }, COACH_EMAIL_set=${process.env.COACH_EMAIL ? "yes" : "no"})`,
+    )
+    return
+  }
 
   try {
     const programName = await resolveProgramName(opts.programId)
@@ -131,7 +166,7 @@ export async function notifyJobFailed(opts: JobFailureInput): Promise<void> {
       (opts.programId ? `${getBaseUrl()}/admin/programs/${opts.programId}` : getBaseUrl())
 
     const resend = new Resend(apiKey)
-    await resend.emails.send({
+    const sendResult = await resend.emails.send({
       from: getFromEmail(),
       to: recipients,
       subject: `✗ ${opts.jobLabel} FAILED — ${programName}`,
@@ -141,7 +176,17 @@ export async function notifyJobFailed(opts: JobFailureInput): Promise<void> {
         <p><a href="${targetUrl}">Open in admin →</a></p>
       `,
     })
+    if (sendResult.error) {
+      console.warn(
+        `[notify-job-done] Resend rejected failure email (to=${recipients.join(",")}):`,
+        sendResult.error,
+      )
+    } else {
+      console.log(
+        `[notify-job-done] failure email sent (to=${recipients.join(",")}, id=${sendResult.data?.id ?? "?"})`,
+      )
+    }
   } catch (e) {
-    console.warn(`[notify-job-done] failure email failed:`, e)
+    console.warn(`[notify-job-done] failure email threw:`, e)
   }
 }
