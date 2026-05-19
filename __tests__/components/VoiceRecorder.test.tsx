@@ -84,6 +84,27 @@ describe("VoiceRecorder", () => {
       expect(screen.getByRole("button", { name: /record/i })).toBeInTheDocument()
     })
   })
+
+  it("notifies parent of state changes via onStateChange (idle → recording → stopped → idle)", async () => {
+    const onStateChange = vi.fn()
+    render(<VoiceRecorder userId="u-1" onSend={vi.fn()} onStateChange={onStateChange} />)
+
+    // Initial mount fires with "idle".
+    await waitFor(() => expect(onStateChange).toHaveBeenCalledWith("idle"))
+
+    fireEvent.click(screen.getByRole("button", { name: /record/i }))
+    await waitFor(() => expect(onStateChange).toHaveBeenCalledWith("recording"))
+
+    fireEvent.click(screen.getByRole("button", { name: /stop/i }))
+    await waitFor(() => expect(onStateChange).toHaveBeenCalledWith("stopped"))
+
+    fireEvent.click(screen.getByRole("button", { name: /delete/i }))
+    await waitFor(() => {
+      const calls = onStateChange.mock.calls.map((c) => c[0])
+      // last call should be "idle" after deletion
+      expect(calls[calls.length - 1]).toBe("idle")
+    })
+  })
 })
 
 describe("micErrorMessage", () => {
@@ -164,7 +185,7 @@ describe("VoiceRecorder error handling", () => {
 
     // User flips permission to granted via the lock icon.
     status.state = "granted"
-    onChange?.()
+    onChange!()
 
     await waitFor(() => {
       expect(toast.dismiss).toHaveBeenCalledWith("voice-recorder-mic-error")

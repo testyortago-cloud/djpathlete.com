@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Send } from "lucide-react"
 import { toast } from "sonner"
-import { VoiceRecorder } from "@/components/shared/VoiceRecorder"
+import { VoiceRecorder, type VoiceRecorderState } from "@/components/shared/VoiceRecorder"
 
 interface Attachment {
   id: string
@@ -47,6 +47,8 @@ export function FormReviewThread({
   const [messages, setMessages] = useState(initialMessages)
   const [newMessage, setNewMessage] = useState("")
   const [sending, setSending] = useState(false)
+  const [voiceState, setVoiceState] = useState<VoiceRecorderState>("idle")
+  const isComposingVoice = voiceState !== "idle"
 
   async function handleSend() {
     if (!newMessage.trim() || sending) return
@@ -136,14 +138,18 @@ export function FormReviewThread({
                 )}
               >
                 {msg.attachments?.[0]?.kind === "audio" ? (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
                     {msg.attachments[0].playback_url ? (
-                      <audio src={msg.attachments[0].playback_url} controls className="h-8" />
+                      <audio
+                        src={msg.attachments[0].playback_url}
+                        controls
+                        className="h-8 min-w-0 max-w-full flex-1"
+                      />
                     ) : (
                       <span className="text-xs italic opacity-70">Audio unavailable</span>
                     )}
                     {msg.attachments[0].duration_seconds != null && (
-                      <span className="text-xs opacity-70 tabular-nums">
+                      <span className="text-xs opacity-70 tabular-nums shrink-0">
                         ({Math.floor(msg.attachments[0].duration_seconds / 60)}:
                         {(msg.attachments[0].duration_seconds % 60).toString().padStart(2, "0")})
                       </span>
@@ -159,24 +165,36 @@ export function FormReviewThread({
         })}
       </div>
 
-      {/* Reply input */}
+      {/* Reply input — when voice recorder is active (recording / previewing /
+          uploading), the recorder takes the full row and we hide the text
+          input + text-send button so the native <audio controls> widget
+          doesn't push the row off-screen on mobile. */}
       <div className="flex gap-2 items-end">
-        <Textarea
-          value={newMessage}
-          onChange={(e) => setNewMessage(e.target.value)}
-          placeholder="Type a message..."
-          className="min-h-[44px] max-h-[120px] resize-none"
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault()
-              handleSend()
-            }
-          }}
+        {!isComposingVoice && (
+          <Textarea
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            placeholder="Type a message..."
+            className="min-h-[44px] max-h-[120px] resize-none flex-1 min-w-0"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault()
+                handleSend()
+              }
+            }}
+          />
+        )}
+        <VoiceRecorder
+          userId={currentUserId}
+          onSend={handleSendAudio}
+          onStateChange={setVoiceState}
+          disabled={sending}
         />
-        <VoiceRecorder userId={currentUserId} onSend={handleSendAudio} disabled={sending} />
-        <Button size="icon" onClick={handleSend} disabled={!newMessage.trim() || sending} className="shrink-0">
-          <Send className="size-4" />
-        </Button>
+        {!isComposingVoice && (
+          <Button size="icon" onClick={handleSend} disabled={!newMessage.trim() || sending} className="shrink-0">
+            <Send className="size-4" />
+          </Button>
+        )}
       </div>
     </div>
   )

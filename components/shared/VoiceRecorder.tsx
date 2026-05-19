@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button"
 import { Mic, Square, Send, Trash2, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
+export type VoiceRecorderState = "idle" | "recording" | "stopped" | "uploading"
+
 interface VoiceRecorderProps {
   userId: string
   onSend(payload: {
@@ -15,14 +17,13 @@ interface VoiceRecorderProps {
     duration_seconds: number
     byte_size: number
   }): Promise<void>
+  onStateChange?: (state: VoiceRecorderState) => void
   disabled?: boolean
 }
 
 const MAX_DURATION_SECONDS = 120
 const MAX_BYTES = 3 * 1024 * 1024
 const MIC_ERROR_TOAST_ID = "voice-recorder-mic-error"
-
-type State = "idle" | "recording" | "stopped" | "uploading"
 
 function pickMimeType(): string | null {
   if (typeof MediaRecorder === "undefined") return null
@@ -68,8 +69,17 @@ function extFor(mime: string): string {
   return "ogg"
 }
 
-export function VoiceRecorder({ userId, onSend, disabled }: VoiceRecorderProps) {
-  const [state, setState] = useState<State>("idle")
+export function VoiceRecorder({ userId, onSend, onStateChange, disabled }: VoiceRecorderProps) {
+  const [state, setState] = useState<VoiceRecorderState>("idle")
+
+  // Notify parent on every state change so it can reflow layout — e.g. hide
+  // the text Textarea and text-Send button while a recording is in progress
+  // or being previewed, so the native <audio controls> widget doesn't push
+  // the row off-screen on mobile.
+  useEffect(() => {
+    onStateChange?.(state)
+  }, [state, onStateChange])
+
   const [elapsed, setElapsed] = useState(0)
   const [progress, setProgress] = useState(0)
   const [blob, setBlob] = useState<Blob | null>(null)
@@ -163,7 +173,13 @@ export function VoiceRecorder({ userId, onSend, disabled }: VoiceRecorderProps) 
       timerRef.current = setInterval(() => setElapsed((e) => e + 1), 1000)
       stopTimerRef.current = setTimeout(() => stopRecording(), MAX_DURATION_SECONDS * 1000)
     } catch (err) {
-      console.error("getUserMedia error:", err)
+      // Demoted to warn: NotAllowedError / NotFoundError / NotReadableError /
+      // AbortError are all user-initiated or environment outcomes (user denied
+      // permission, no mic plugged in, mic in use, prompt dismissed) — not
+      // app bugs. The toast tells the user how to fix it; the log is for
+      // optional debugging. Truly unexpected errors still surface in the log
+      // text + the fallback toast message.
+      console.warn("getUserMedia rejected:", (err as DOMException | undefined)?.name ?? err)
       const msg = micErrorMessage(err)
       if (msg) toast.error(msg, { id: MIC_ERROR_TOAST_ID })
       cleanupStream()
@@ -233,6 +249,7 @@ export function VoiceRecorder({ userId, onSend, disabled }: VoiceRecorderProps) 
         size="icon"
         variant="ghost"
         aria-label="Record voice message"
+        title="Record voice message. Pick 'Always Allow' when prompted so you don't re-grant per session."
         onClick={startRecording}
         disabled={disabled}
       >
@@ -243,10 +260,18 @@ export function VoiceRecorder({ userId, onSend, disabled }: VoiceRecorderProps) 
 
   if (state === "recording") {
     return (
-      <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-red-50 border border-red-200">
-        <span className="size-2 rounded-full bg-red-500 animate-pulse" />
-        <span className="text-xs font-mono text-red-700 tabular-nums">{formatTime(elapsed)}</span>
-        <Button type="button" size="icon" variant="ghost" aria-label="Stop recording" onClick={stopRecording}>
+      <div className="flex flex-1 min-w-0 items-center gap-2 px-2 py-1.5 rounded-md bg-red-50 border border-red-200">
+        <span className="size-2 shrink-0 rounded-full bg-red-500 animate-pulse" />
+        <span className="text-xs font-mono text-red-700 tabular-nums shrink-0">{formatTime(elapsed)}</span>
+        <span className="flex-1" />
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          aria-label="Stop recording"
+          onClick={stopRecording}
+          className="shrink-0"
+        >
           <Square className="size-4 fill-current" />
         </Button>
       </div>
@@ -255,12 +280,19 @@ export function VoiceRecorder({ userId, onSend, disabled }: VoiceRecorderProps) 
 
   if (state === "stopped" && previewUrl) {
     return (
-      <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-muted">
-        <audio src={previewUrl} controls className="h-8" />
-        <Button type="button" size="icon" variant="ghost" aria-label="Delete recording" onClick={reset}>
+      <div className="flex flex-1 min-w-0 items-center gap-2 px-2 py-1.5 rounded-md bg-muted">
+        <audio src={previewUrl} controls className="h-8 min-w-0 max-w-full flex-1" />
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          aria-label="Delete recording"
+          onClick={reset}
+          className="shrink-0"
+        >
           <Trash2 className="size-4 text-muted-foreground" />
         </Button>
-        <Button type="button" size="icon" aria-label="Send voice message" onClick={handleSend}>
+        <Button type="button" size="icon" aria-label="Send voice message" onClick={handleSend} className="shrink-0">
           <Send className="size-4" />
         </Button>
       </div>
@@ -269,8 +301,8 @@ export function VoiceRecorder({ userId, onSend, disabled }: VoiceRecorderProps) 
 
   // uploading
   return (
-    <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-muted">
-      <Loader2 className="size-4 animate-spin" />
+    <div className="flex flex-1 min-w-0 items-center gap-2 px-2 py-1.5 rounded-md bg-muted">
+      <Loader2 className="size-4 shrink-0 animate-spin" />
       <span className="text-xs text-muted-foreground">{progress}%</span>
     </div>
   )
