@@ -57,9 +57,7 @@ export function VoiceRecorder({ userId, onSend, disabled }: VoiceRecorderProps) 
   const stopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const supported =
-    typeof window !== "undefined" &&
-    typeof MediaRecorder !== "undefined" &&
-    !!navigator.mediaDevices?.getUserMedia
+    typeof window !== "undefined" && typeof MediaRecorder !== "undefined" && !!navigator.mediaDevices?.getUserMedia
 
   function cleanupStream() {
     streamRef.current?.getTracks().forEach((t) => t.stop())

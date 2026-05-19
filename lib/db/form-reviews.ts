@@ -1,11 +1,6 @@
 import { createServiceRoleClient } from "@/lib/supabase"
 import { getSignedVideoUrl } from "@/lib/firebase-admin"
-import type {
-  FormReview,
-  FormReviewMessage,
-  FormReviewMessageAttachment,
-  FormReviewStatus,
-} from "@/types/database"
+import type { FormReview, FormReviewMessage, FormReviewMessageAttachment, FormReviewStatus } from "@/types/database"
 
 function getClient() {
   return createServiceRoleClient()
@@ -78,9 +73,7 @@ export async function getFormReviewMessages(reviewId: string) {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("form_review_messages")
-    .select(
-      "*, users(first_name, last_name, avatar_url, role), form_review_message_attachments(*)",
-    )
+    .select("*, users(first_name, last_name, avatar_url, role), form_review_message_attachments(*)")
     .eq("form_review_id", reviewId)
     .order("created_at", { ascending: true })
   if (error) throw error

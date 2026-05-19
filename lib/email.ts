@@ -2128,7 +2128,9 @@ export async function sendVideoUploadedEmail(params: {
     </table>
   `
   const { error } = await resend.emails.send({
-    from: FROM_EMAIL, to, subject: `New video to review: ${submissionTitle}`,
+    from: FROM_EMAIL,
+    to,
+    subject: `New video to review: ${submissionTitle}`,
     html: emailLayout(body),
   })
   if (error) {
@@ -2166,7 +2168,9 @@ export async function sendVideoRevisionRequestedEmail(params: {
     </table>
   `
   const { error } = await resend.emails.send({
-    from: FROM_EMAIL, to, subject: `Darren has feedback on ${submissionTitle}`,
+    from: FROM_EMAIL,
+    to,
+    subject: `Darren has feedback on ${submissionTitle}`,
     html: emailLayout(body),
   })
   if (error) {
@@ -2175,11 +2179,7 @@ export async function sendVideoRevisionRequestedEmail(params: {
   }
 }
 
-export async function sendVideoApprovedEmail(params: {
-  to: string
-  submissionTitle: string
-  reviewUrl: string
-}) {
+export async function sendVideoApprovedEmail(params: { to: string; submissionTitle: string; reviewUrl: string }) {
   const { to, submissionTitle, reviewUrl } = params
   const body = `
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
@@ -2202,7 +2202,9 @@ export async function sendVideoApprovedEmail(params: {
     </table>
   `
   const { error } = await resend.emails.send({
-    from: FROM_EMAIL, to, subject: `Darren approved ${submissionTitle}`,
+    from: FROM_EMAIL,
+    to,
+    subject: `Darren approved ${submissionTitle}`,
     html: emailLayout(body),
   })
   if (error) {
@@ -2211,11 +2213,7 @@ export async function sendVideoApprovedEmail(params: {
   }
 }
 
-export async function sendVideoReopenedEmail(params: {
-  to: string
-  submissionTitle: string
-  reviewUrl: string
-}) {
+export async function sendVideoReopenedEmail(params: { to: string; submissionTitle: string; reviewUrl: string }) {
   const { to, submissionTitle, reviewUrl } = params
   const body = `
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
@@ -2239,7 +2237,9 @@ export async function sendVideoReopenedEmail(params: {
     </table>
   `
   const { error } = await resend.emails.send({
-    from: FROM_EMAIL, to, subject: `Darren reopened ${submissionTitle}`,
+    from: FROM_EMAIL,
+    to,
+    subject: `Darren reopened ${submissionTitle}`,
     html: emailLayout(body),
   })
   if (error) {

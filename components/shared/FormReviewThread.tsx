@@ -173,11 +173,7 @@ export function FormReviewThread({
             }
           }}
         />
-        <VoiceRecorder
-          userId={currentUserId}
-          onSend={handleSendAudio}
-          disabled={sending}
-        />
+        <VoiceRecorder userId={currentUserId} onSend={handleSendAudio} disabled={sending} />
         <Button size="icon" onClick={handleSend} disabled={!newMessage.trim() || sending} className="shrink-0">
           <Send className="size-4" />
         </Button>

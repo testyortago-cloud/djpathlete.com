@@ -95,8 +95,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         clientUserId: client.id,
         reviewTitle: review.title,
         reviewId: review.id,
-        audioDurationSeconds:
-          "audio" in parsed.data ? parsed.data.audio.duration_seconds : null,
+        audioDurationSeconds: "audio" in parsed.data ? parsed.data.audio.duration_seconds : null,
       }).catch((err) => console.error("Failed to send form review feedback email:", err))
     } catch (err) {
       console.error("Failed to notify client of form review feedback:", err)
