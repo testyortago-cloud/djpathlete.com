@@ -2,6 +2,7 @@ import { initializeApp } from "firebase-admin/app"
 import { onDocumentCreated, onDocumentUpdated } from "firebase-functions/v2/firestore"
 import { onSchedule } from "firebase-functions/v2/scheduler"
 import { onRequest } from "firebase-functions/v2/https"
+import { onObjectFinalized } from "firebase-functions/v2/storage"
 import { defineSecret } from "firebase-functions/params"
 
 // Initialize Firebase Admin
@@ -352,6 +353,34 @@ export const videoVision = onDocumentCreated(
 
     const { handleVideoVision } = await import("./video-vision.js")
     await handleVideoVision(event.params.jobId)
+  },
+)
+
+// ─── Transcode Form-Review Voice Messages ─────────────────────────────────────
+// Triggered when a new audio object lands in form-review-audio/. Chrome on PC
+// records voice messages as audio/webm;codecs=opus — which iOS Safari cannot
+// decode (no Opus/WebM support on iOS). We transcode webm → AAC in mp4
+// container so the audio plays on every browser, then rewrite the attachment
+// row to point at the new file.
+
+export const transcodeFormReviewAudioFn = onObjectFinalized(
+  {
+    bucket: undefined, // default bucket
+    timeoutSeconds: 120,
+    memory: "1GiB", // ffmpeg's webm decoder + AAC encoder fits comfortably
+    region: "us-central1",
+    secrets: [supabaseUrl, supabaseServiceRoleKey],
+  },
+  async (event) => {
+    const filePath = event.data.name
+    const contentType = event.data.contentType ?? ""
+
+    // Only act on objects under form-review-audio/ that are still webm.
+    if (!filePath.startsWith("form-review-audio/")) return
+    if (!filePath.endsWith(".webm") && !contentType.startsWith("audio/webm")) return
+
+    const { transcodeFormReviewAudio } = await import("./transcode-form-review-audio.js")
+    await transcodeFormReviewAudio(filePath, contentType)
   },
 )
 
