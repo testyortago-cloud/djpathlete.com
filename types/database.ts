@@ -968,6 +968,20 @@ export interface FaqEntry {
   answer: string
 }
 
+export interface Faq {
+  id: string
+  page_key: string
+  category: string | null
+  question: string
+  answer: string
+  link_text: string | null
+  link_href: string | null
+  sort_order: number
+  status: "published" | "draft"
+  created_at: string
+  updated_at: string
+}
+
 export interface LeadMagnet {
   id: string
   slug: string
