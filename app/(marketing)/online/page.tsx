@@ -11,7 +11,7 @@ import {
 } from "lucide-react"
 import { JsonLd } from "@/components/shared/JsonLd"
 import { FadeIn } from "@/components/shared/FadeIn"
-import { FAQSection } from "@/components/FAQSection"
+import { ManagedFaqSection } from "@/components/public/ManagedFaqSection"
 import { InquiryForm } from "@/components/public/InquiryForm"
 import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 import { Button } from "@/components/ui/button"
@@ -124,42 +124,6 @@ const components = [
   },
 ]
 
-const onlineFAQs = [
-  {
-    question: "How is this different from other online coaching?",
-    answer:
-      "Most online coaching delivers a spreadsheet and a check-in form. This system is diagnostic-driven. Every program is built from assessment data, adjusted through continuous monitoring, and refined with direct coaching feedback. It is the same methodology used in person — adapted for remote delivery without compromising quality.",
-  },
-  {
-    question: "What does a typical week look like?",
-    answer:
-      "Your week includes structured programming tailored to your current phase, regular coaching check-ins, and video reviews of key sessions. You will receive detailed feedback on movement quality, load management adjustments based on wellness data, and direct communication with your coach as needed. Every week is planned with intention.",
-  },
-  {
-    question: "How do I get started?",
-    answer:
-      "The process begins with an application. If accepted, you will complete a comprehensive remote assessment covering movement quality, training history, sport demands, and performance goals. From there, a strategic plan is built and your coaching begins. Entry is selective to ensure every athlete receives the attention they deserve.",
-  },
-  {
-    question: "What equipment do I need?",
-    answer:
-      "Equipment requirements vary by sport and training goals. At minimum, access to a well-equipped gym with free weights, a squat rack, and basic conditioning tools is recommended. Specific requirements will be discussed during the assessment process and programming is adapted to your available environment.",
-  },
-]
-
-const onlineFAQSchema = {
-  "@context": "https://schema.org",
-  "@type": "FAQPage",
-  mainEntity: onlineFAQs.map((faq) => ({
-    "@type": "Question",
-    name: faq.question,
-    acceptedAnswer: {
-      "@type": "Answer",
-      text: faq.answer,
-    },
-  })),
-}
-
 /* Coaching-note feed — reads as a coach's working notes, not a log. */
 const coachNotes: { time: string; note: string; by: "athlete" | "coach" }[] = [
   { time: "Mon 07:04", note: "Upper contrast session logged · 42 min", by: "athlete" },
@@ -173,7 +137,6 @@ export default function OnlinePage() {
   return (
     <>
       <JsonLd data={serviceSchema} />
-      <JsonLd data={onlineFAQSchema} />
       <BreadcrumbSchema
         items={[
           { name: "Home", url: "/" },
@@ -591,7 +554,12 @@ export default function OnlinePage() {
         </div>
       </section>
 
-      <FAQSection title="Online Coaching FAQ" faqs={onlineFAQs} />
+      <ManagedFaqSection
+        pageKey="online"
+        variant="cards"
+        eyebrow="Common questions"
+        title="Online Coaching FAQ"
+      />
 
       {/* Internal links — help searchers (and crawlers) reach the comparison pages */}
       <section className="py-12 px-4 sm:px-8 border-t border-border">
