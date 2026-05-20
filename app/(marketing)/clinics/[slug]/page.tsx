@@ -1,11 +1,12 @@
 ﻿import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 import Link from "next/link"
-import { ExternalLink, ChevronRight } from "lucide-react"
+import { ExternalLink } from "lucide-react"
 import { JsonLd } from "@/components/shared/JsonLd"
 import { FadeIn } from "@/components/shared/FadeIn"
 import { EventDetailHero } from "@/components/public/EventDetailHero"
 import { EventSignupCard } from "@/components/public/EventSignupCard"
+import { ManagedFaqSection } from "@/components/public/ManagedFaqSection"
 import { SemanticAnswerBlock } from "@/components/public/SemanticAnswerBlock"
 import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 import { getEventBySlug, getPublishedEvents } from "@/lib/db/events"
@@ -113,57 +114,9 @@ export default async function ClinicDetailPage({ params }: { params: Promise<{ s
     },
   }
 
-  // Parent-facing FAQs for youth speed & agility clinics. These match the
-  // questions parents type into Google / AI ("is it safe", "what age",
-  // "what to bring"). Partly dynamic from the event record.
-  const clinicFaqs = [
-    {
-      question: "What age is the speed and agility clinic for?",
-      answer: `This clinic is built for youth athletes aged ${ages}. Coaching is calibrated to where each athlete is developmentally — the same standards apply across the group, scaled appropriately.`,
-    },
-    {
-      question: "Is speed and agility training safe for my child?",
-      answer:
-        "Yes — when supervised by a properly certified coach with age-appropriate progression, which is exactly how this clinic is run. It's coached by Darren J Paul, PhD (CSCS, NASM, USA Weightlifting Level 2). The National Strength and Conditioning Association endorses supervised speed, agility, and resistance training for youth, and properly programmed work like this is one of the most effective injury-prevention tools available to young athletes.",
-    },
-    {
-      question: "What should my child bring?",
-      answer:
-        "Athletic training shoes (not turf cleats unless told otherwise), a full water bottle, and weather-appropriate athletic clothing. If the session is outdoors, sunscreen and a hat are a good idea. No equipment needed — everything is provided.",
-    },
-    {
-      question: "What gets coached at the clinic?",
-      answer:
-        event.focus_areas.length > 0
-          ? `The session covers ${event.focus_areas.join(", ").toLowerCase()} — the movement skills that change outcomes in real sport: starting, stopping, redirecting, and recovering under pressure. Structured progression, not random cone drills.`
-          : "Acceleration, deceleration, change of direction, and reactive movement — the movement skills that change outcomes in real sport. Structured progression: purposeful warm-up, technical coaching, reactive tasks, then competitive work so it transfers to the pitch, court, or field.",
-    },
-    {
-      question: "How big are the groups?",
-      answer:
-        "Small — typically 8 to 12 athletes — so every athlete gets real coaching feedback, not lost in a crowd of 40. That's the whole point of running it as a clinic rather than a generic group session.",
-    },
-    {
-      question: "Who coaches the clinic?",
-      answer:
-        "Darren J Paul, PhD — a sports performance coach with two decades inside high-performance environments, having coached 500+ athletes across 15+ sports including WTA professionals. Certifications: CSCS (NSCA), NASM-CPT, USA Weightlifting Level 2 Coach.",
-    },
-  ]
-
-  const faqSchema = {
-    "@context": "https://schema.org",
-    "@type": "FAQPage",
-    mainEntity: clinicFaqs.map((f) => ({
-      "@type": "Question",
-      name: f.question,
-      acceptedAnswer: { "@type": "Answer", text: f.answer },
-    })),
-  }
-
   return (
     <>
       <JsonLd data={eventSchema} />
-      <JsonLd data={faqSchema} />
       <BreadcrumbSchema
         items={[
           { name: "Home", url: "/" },
@@ -239,25 +192,6 @@ export default async function ClinicDetailPage({ params }: { params: Promise<{ s
                 </div>
               </div>
 
-              {/* Visible FAQ — mirrors the FAQPage schema so the answers are
-                  crawlable text, not schema-only. Parents read this; Google and
-                  AI assistants extract it. */}
-              <div>
-                <h2 className="font-heading text-2xl font-semibold text-foreground">
-                  Parent questions, answered
-                </h2>
-                <dl className="mt-4 divide-y divide-border rounded-xl border border-border">
-                  {clinicFaqs.map((f) => (
-                    <div key={f.question} className="p-4 md:p-5">
-                      <dt className="flex items-start gap-2 font-medium text-foreground">
-                        <ChevronRight className="mt-1 h-4 w-4 flex-shrink-0 text-accent" />
-                        <span>{f.question}</span>
-                      </dt>
-                      <dd className="mt-2 pl-6 text-muted-foreground">{f.answer}</dd>
-                    </div>
-                  ))}
-                </dl>
-              </div>
             </article>
           </FadeIn>
 
@@ -266,6 +200,13 @@ export default async function ClinicDetailPage({ params }: { params: Promise<{ s
           </aside>
         </div>
       </div>
+
+      <ManagedFaqSection
+        pageKey={`event/${event.id}`}
+        variant="cards"
+        eyebrow="Common questions"
+        title="Questions, answered."
+      />
     </>
   )
 }
