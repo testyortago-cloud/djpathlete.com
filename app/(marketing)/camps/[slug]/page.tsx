@@ -2,11 +2,12 @@ import { Suspense } from "react"
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 import Link from "next/link"
-import { ExternalLink, ChevronRight } from "lucide-react"
+import { ExternalLink } from "lucide-react"
 import { JsonLd } from "@/components/shared/JsonLd"
 import { FadeIn } from "@/components/shared/FadeIn"
 import { EventDetailHero } from "@/components/public/EventDetailHero"
 import { EventSignupCard } from "@/components/public/EventSignupCard"
+import { ManagedFaqSection } from "@/components/public/ManagedFaqSection"
 import { SemanticAnswerBlock } from "@/components/public/SemanticAnswerBlock"
 import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 import { CheckoutCancelledBanner } from "@/components/public/CheckoutCancelledBanner"
@@ -112,59 +113,9 @@ export default async function CampDetailPage({ params }: { params: Promise<{ slu
     },
   }
 
-  // Parent-facing FAQs for a youth soccer camp — these match what parents type
-  // into Google / AI assistants. Partly dynamic from the event record.
-  const campFaqs = [
-    {
-      question: "What age is this soccer camp for?",
-      answer: `This camp is built for youth soccer players aged ${ages}. Coaching is calibrated to where each player is developmentally — the same standards apply across the group, scaled appropriately.`,
-    },
-    {
-      question: "Is the camp right for competitive players or beginners?",
-      answer:
-        "Both, within reason. The camp is designed for players who already train and play organized soccer and want to raise their physical and technical ceiling — it's not an introduction to the sport. Sessions are grouped so a developing player and a more advanced one each get appropriately challenged work.",
-    },
-    {
-      question: "What should my child bring?",
-      answer:
-        "Soccer cleats and turf/training shoes, shin guards, a ball if they have one (extras provided), a full water bottle, and weather-appropriate athletic clothing. For outdoor sessions, sunscreen and a hat are a good idea. Everything else is provided.",
-    },
-    {
-      question: "What gets developed at the camp?",
-      answer:
-        event.focus_areas.length > 0
-          ? `The camp develops ${event.focus_areas.join(", ").toLowerCase()} — the qualities that show up in real matches: moving well, holding up physically over 90 minutes, and executing technique under fatigue and pressure. Structured progression, not random drills.`
-          : "Speed, agility, acceleration, change of direction, conditioning, and technical execution under pressure — the qualities that decide real matches. Structured progression: purposeful movement prep, technical and tactical work, conditioning, then competitive play so it transfers to game day.",
-    },
-    ...(event.session_schedule
-      ? [
-          {
-            question: "How are the camp sessions structured?",
-            answer: `${event.session_schedule} Each session follows a deliberate arc — movement prep, technical and physical work, then competitive play — so the work transfers to match day rather than staying on the training ground.`,
-          },
-        ]
-      : []),
-    {
-      question: "Who runs the camp?",
-      answer:
-        "Darren J Paul, PhD — a sports performance coach with two decades inside high-performance environments, having coached 500+ athletes across 15+ sports including WTA professionals. Certifications: CSCS (NSCA), NASM-CPT, USA Weightlifting Level 2 Coach.",
-    },
-  ]
-
-  const faqSchema = {
-    "@context": "https://schema.org",
-    "@type": "FAQPage",
-    mainEntity: campFaqs.map((f) => ({
-      "@type": "Question",
-      name: f.question,
-      acceptedAnswer: { "@type": "Answer", text: f.answer },
-    })),
-  }
-
   return (
     <>
       <JsonLd data={eventSchema} />
-      <JsonLd data={faqSchema} />
       <BreadcrumbSchema
         items={[
           { name: "Home", url: "/" },
@@ -251,24 +202,6 @@ export default async function CampDetailPage({ params }: { params: Promise<{ slu
                 </div>
               </div>
 
-              {/* Visible FAQ — mirrors the FAQPage schema so the answers are
-                  crawlable text, not schema-only. */}
-              <div>
-                <h2 className="font-heading text-2xl font-semibold text-foreground">
-                  Parent questions, answered
-                </h2>
-                <dl className="mt-4 divide-y divide-border rounded-xl border border-border">
-                  {campFaqs.map((f) => (
-                    <div key={f.question} className="p-4 md:p-5">
-                      <dt className="flex items-start gap-2 font-medium text-foreground">
-                        <ChevronRight className="mt-1 h-4 w-4 flex-shrink-0 text-accent" />
-                        <span>{f.question}</span>
-                      </dt>
-                      <dd className="mt-2 pl-6 text-muted-foreground">{f.answer}</dd>
-                    </div>
-                  ))}
-                </dl>
-              </div>
             </article>
           </FadeIn>
 
@@ -277,6 +210,13 @@ export default async function CampDetailPage({ params }: { params: Promise<{ slu
           </aside>
         </div>
       </div>
+
+      <ManagedFaqSection
+        pageKey={`event/${event.id}`}
+        variant="cards"
+        eyebrow="Common questions"
+        title="Questions, answered."
+      />
     </>
   )
 }
