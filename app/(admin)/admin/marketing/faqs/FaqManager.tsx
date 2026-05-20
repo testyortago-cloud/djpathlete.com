@@ -1,8 +1,22 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { Pencil, Plus, Trash2 } from "lucide-react"
+import { GripVertical, Pencil, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
+import {
+  DndContext,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core"
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 import type { Faq } from "@/types/database"
 import type { FaqPage } from "@/lib/faq/pages"
 
@@ -40,6 +54,10 @@ export function FaqManager({ pages }: Props) {
   const [loading, setLoading] = useState(false)
   const [editor, setEditor] = useState<EditorState | null>(null)
   const [saving, setSaving] = useState(false)
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+  )
 
   const activePage = useMemo(
     () => pages.find((p) => p.key === pageKey) ?? null,
@@ -170,6 +188,40 @@ export function FaqManager({ pages }: Props) {
     }
   }
 
+  async function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    if (!over || active.id === over.id || !activePage) return
+
+    const oldIndex = faqs.findIndex((f) => f.id === active.id)
+    const newIndex = faqs.findIndex((f) => f.id === over.id)
+    if (oldIndex < 0 || newIndex < 0) return
+
+    const prevFaqs = faqs
+    const reordered = arrayMove(faqs, oldIndex, newIndex)
+    setFaqs(reordered)
+
+    try {
+      const res = await fetch("/api/admin/marketing/faqs/reorder", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          page_key: activePage.key,
+          ordered_ids: reordered.map((f) => f.id),
+        }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(json.error ?? `HTTP ${res.status}`)
+        setFaqs(prevFaqs)
+        return
+      }
+      toast.success("Order saved")
+    } catch {
+      toast.error("Failed to save order")
+      setFaqs(prevFaqs)
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Page picker */}
@@ -226,57 +278,26 @@ export function FaqManager({ pages }: Props) {
               </p>
             </div>
           ) : (
-            <ul className="divide-y divide-border/60">
-              {faqs.map((faq) => (
-                <li
-                  key={faq.id}
-                  className="p-4 flex items-start gap-3 hover:bg-surface/40"
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span
-                        className={`inline-block text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded ${
-                          faq.status === "published"
-                            ? "bg-success/10 text-success"
-                            : "bg-warning/10 text-warning"
-                        }`}
-                      >
-                        {faq.status}
-                      </span>
-                      {faq.category && (
-                        <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
-                          {faq.category}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-sm font-medium text-primary mt-1">
-                      {faq.question}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
-                      {faq.answer}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => openEdit(faq)}
-                      aria-label="Edit FAQ"
-                      className="p-2 rounded-md text-muted-foreground hover:text-primary hover:bg-surface"
-                    >
-                      <Pencil className="size-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => deleteFaq(faq)}
-                      aria-label="Delete FAQ"
-                      className="p-2 rounded-md text-muted-foreground hover:text-error hover:bg-error/5"
-                    >
-                      <Trash2 className="size-4" />
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
+            <DndContext
+              sensors={sensors}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext
+                items={faqs.map((f) => f.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                <ul className="divide-y divide-border/60">
+                  {faqs.map((faq) => (
+                    <SortableFaqRow
+                      key={faq.id}
+                      faq={faq}
+                      onEdit={() => openEdit(faq)}
+                      onDelete={() => deleteFaq(faq)}
+                    />
+                  ))}
+                </ul>
+              </SortableContext>
+            </DndContext>
           )}
         </div>
       )}
@@ -416,6 +437,84 @@ export function FaqManager({ pages }: Props) {
         }
       `}</style>
     </div>
+  )
+}
+
+function SortableFaqRow({
+  faq,
+  onEdit,
+  onDelete,
+}: {
+  faq: Faq
+  onEdit: () => void
+  onDelete: () => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: faq.id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+
+  return (
+    <li
+      ref={setNodeRef}
+      style={style}
+      className={`p-4 flex items-start gap-3 hover:bg-surface/40 bg-card ${
+        isDragging ? "opacity-50 shadow-lg z-50" : ""
+      }`}
+    >
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        aria-label="Drag to reorder FAQ"
+        className="shrink-0 mt-0.5 flex items-center cursor-grab active:cursor-grabbing touch-none text-muted-foreground hover:text-primary"
+      >
+        <GripVertical className="size-4" />
+      </button>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span
+            className={`inline-block text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded ${
+              faq.status === "published"
+                ? "bg-success/10 text-success"
+                : "bg-warning/10 text-warning"
+            }`}
+          >
+            {faq.status}
+          </span>
+          {faq.category && (
+            <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+              {faq.category}
+            </span>
+          )}
+        </div>
+        <p className="text-sm font-medium text-primary mt-1">{faq.question}</p>
+        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+          {faq.answer}
+        </p>
+      </div>
+      <div className="flex items-center gap-1 shrink-0">
+        <button
+          type="button"
+          onClick={onEdit}
+          aria-label="Edit FAQ"
+          className="p-2 rounded-md text-muted-foreground hover:text-primary hover:bg-surface"
+        >
+          <Pencil className="size-4" />
+        </button>
+        <button
+          type="button"
+          onClick={onDelete}
+          aria-label="Delete FAQ"
+          className="p-2 rounded-md text-muted-foreground hover:text-error hover:bg-error/5"
+        >
+          <Trash2 className="size-4" />
+        </button>
+      </div>
+    </li>
   )
 }
 
