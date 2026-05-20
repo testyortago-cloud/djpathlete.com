@@ -4,6 +4,7 @@ import { notFound } from "next/navigation"
 import { ArrowRight, ArrowUpRight, CheckCircle2, ChevronRight, Quote, Target } from "lucide-react"
 import { JsonLd } from "@/components/shared/JsonLd"
 import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
+import { ManagedFaqSection } from "@/components/public/ManagedFaqSection"
 import { SemanticAnswerBlock } from "@/components/public/SemanticAnswerBlock"
 import { TrustStrip } from "@/components/public/TrustStrip"
 import { GoogleReviewsBadge } from "@/components/public/GoogleReviewsBadge"
@@ -177,22 +178,11 @@ export default async function SportPage({ params }: Props) {
     ],
   }
 
-  const faqSchema = {
-    "@context": "https://schema.org",
-    "@type": "FAQPage",
-    mainEntity: sport.faqs.map((f) => ({
-      "@type": "Question",
-      name: f.question,
-      acceptedAnswer: { "@type": "Answer", text: f.answer },
-    })),
-  }
-
   return (
     <>
       <JsonLd data={webPageSchema} />
       <JsonLd data={serviceSchema} />
       <JsonLd data={howToSchema} />
-      <JsonLd data={faqSchema} />
       <BreadcrumbSchema
         items={[
           { name: "Home", url: "/" },
@@ -448,35 +438,18 @@ export default async function SportPage({ params }: Props) {
         </section>
       )}
 
-      {/* ─────────────── FAQ (visible) ─────────────── */}
-      <section className="mx-auto max-w-4xl px-4 py-16 sm:px-8 lg:py-24">
-        <FadeIn>
-          <div className="flex items-center gap-3">
-            <div className="h-px w-8 bg-accent" />
-            <span className="font-mono text-[11px] uppercase tracking-[0.28em] text-accent">
-              Questions
-            </span>
-          </div>
-          <h2
-            id="faq"
-            className="mt-4 font-heading text-3xl font-semibold tracking-tight text-primary sm:text-4xl"
-          >
-            {sport.name} performance training, answered.
-          </h2>
-          <dl className="mt-8 divide-y divide-border rounded-2xl border border-border">
-            {sport.faqs.map((f) => (
-              <div key={f.question} className="p-5 md:p-6">
-                <dt className="flex items-start gap-2 font-heading text-lg font-semibold text-primary">
-                  <span className="mt-1 size-1.5 shrink-0 rounded-full bg-accent" aria-hidden />
-                  <span>{f.question}</span>
-                </dt>
-                <dd className="mt-2 pl-3.5 leading-7 text-muted-foreground">{f.answer}</dd>
-              </div>
-            ))}
-          </dl>
+      {/* ─────────────── FAQ (managed via CMS) ─────────────── */}
+      <ManagedFaqSection
+        pageKey={`sports/${slug}`}
+        variant="list"
+        eyebrow="Questions"
+        title={`${sport.name} performance training, answered.`}
+      />
 
-          {/* Comparison + related-decision link strip */}
-          <p className="mt-10 text-center text-sm text-muted-foreground">
+      {/* Comparison + related-decision link strip */}
+      <section className="mx-auto max-w-4xl px-4 pb-16 sm:px-8 lg:pb-24">
+        <FadeIn>
+          <p className="text-center text-sm text-muted-foreground">
             Still deciding?{" "}
             <Link
               href="/services/online-vs-in-person"
