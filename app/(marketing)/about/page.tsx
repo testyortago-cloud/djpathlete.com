@@ -5,7 +5,7 @@ import Link from "next/link"
 import { JsonLd } from "@/components/shared/JsonLd"
 import { FadeIn } from "@/components/shared/FadeIn"
 import { GoogleReviewsSection } from "@/components/public/GoogleReviewsSection"
-import { GoogleReviewThemes } from "@/components/public/GoogleReviewThemes"
+import { ManagedFaqSection } from "@/components/public/ManagedFaqSection"
 import { SemanticAnswerBlock } from "@/components/public/SemanticAnswerBlock"
 import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 import { DJP_PERSON_FULL } from "@/lib/brand/author"
@@ -181,9 +181,6 @@ export default function AboutPage() {
         <GoogleReviewsSection />
       </div>
 
-      {/* Google-extracted review themes — customer-validated keyword chips */}
-      <GoogleReviewThemes className="bg-surface" />
-
       {/* Philosophy Section */}
       <section className="py-16 lg:py-24 px-4 sm:px-8">
         <div className="max-w-5xl mx-auto">
@@ -257,6 +254,15 @@ export default function AboutPage() {
           </FadeIn>
         </div>
       </section>
+
+      {/* FAQ (managed via CMS) — renders only when published FAQs exist for /about */}
+      <ManagedFaqSection
+        pageKey="about"
+        variant="cards"
+        eyebrow="Common questions"
+        title="Questions about Darren and DJP Athlete."
+        className="bg-surface"
+      />
 
       {/* CTA Section */}
       <section className="py-16 lg:py-24 px-4 sm:px-8">
