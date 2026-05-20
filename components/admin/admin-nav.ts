@@ -30,6 +30,7 @@ import {
   Compass,
   Users2,
   Activity,
+  HelpCircle,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 
@@ -62,6 +63,7 @@ export function getAdminNav(opts: { contentStudioEnabled: boolean }): AdminNav {
         { label: "Team Media", href: "/admin/team-media", icon: Video },
         { label: "Topic Suggestions", href: "/admin/topic-suggestions", icon: TrendingUp },
         { label: "Products", href: "/admin/marketing/products", icon: Package },
+        { label: "FAQs", href: "/admin/marketing/faqs", icon: HelpCircle },
         { label: "SEO Console", href: "/admin/integrations/gsc", icon: Search },
         { label: "SEO Memos", href: "/admin/seo-agent/memos", icon: Workflow },
         { label: "Editor Invites", href: "/admin/team", icon: Users2 },
@@ -76,6 +78,7 @@ export function getAdminNav(opts: { contentStudioEnabled: boolean }): AdminNav {
         { label: "Team Media", href: "/admin/team-media", icon: Video },
         { label: "Topic Suggestions", href: "/admin/topic-suggestions", icon: TrendingUp },
         { label: "Products", href: "/admin/marketing/products", icon: Package },
+        { label: "FAQs", href: "/admin/marketing/faqs", icon: HelpCircle },
         { label: "SEO Console", href: "/admin/integrations/gsc", icon: Search },
         { label: "SEO Memos", href: "/admin/seo-agent/memos", icon: Workflow },
         { label: "Editor Invites", href: "/admin/team", icon: Users2 },
