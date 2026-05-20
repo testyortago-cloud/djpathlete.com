@@ -24,6 +24,10 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { AssignProgramDialog } from "@/components/admin/AssignProgramDialog"
+import {
+  getOrCreateProgramChatSessionId,
+  resetProgramChatSessionId,
+} from "@/lib/program-chat-session"
 import type { User as UserType } from "@/types/database"
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -548,9 +552,10 @@ export function AiProgramChatDialog({ open, onOpenChange }: AiProgramChatDialogP
   const [input, setInput] = useState("")
   const [isStreaming, setIsStreaming] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
-  const sessionIdRef = useRef(
-    loadChatState()?.sessionId ?? `program-chat-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-  )
+  // Session id is persisted under its own localStorage key (see
+  // lib/program-chat-session.ts) so it survives remounts/reloads — this is
+  // what lets the backend resume ai_chat_state instead of looping.
+  const sessionIdRef = useRef(getOrCreateProgramChatSessionId())
 
   // Assign dialog
   const [assignProgramId, setAssignProgramId] = useState<string | null>(null)
@@ -899,7 +904,7 @@ export function AiProgramChatDialog({ open, onOpenChange }: AiProgramChatDialogP
     setPipelineSteps([])
     setCurrentJobId(null)
     prevChunkCountRef.current = 0
-    sessionIdRef.current = `program-chat-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    sessionIdRef.current = resetProgramChatSessionId()
     clearChatState()
   }
 
