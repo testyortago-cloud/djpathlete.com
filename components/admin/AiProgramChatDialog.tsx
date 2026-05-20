@@ -86,6 +86,16 @@ function loadChatState(): StoredChatState | null {
       localStorage.removeItem(PROGRAM_CHAT_STORAGE_KEY)
       return null
     }
+    // Heal duplicate ids written by older builds whose id generator was not
+    // collision-safe (an in-memory counter reset on remount re-issued
+    // `user-1`, `assistant-2`, ...). Drop later duplicates so restored React
+    // keys stay unique; the cleaned array is persisted again on next save.
+    const seen = new Set<string>()
+    parsed.items = (parsed.items ?? []).filter((item) => {
+      if (seen.has(item.data.id)) return false
+      seen.add(item.data.id)
+      return true
+    })
     return parsed
   } catch {
     return null
@@ -551,7 +561,17 @@ export function AiProgramChatDialog({ open, onOpenChange }: AiProgramChatDialogP
 
   const abortRef = useRef<AbortController | null>(null)
   const idCounter = useRef(0)
-  const nextId = useCallback((prefix: string) => `${prefix}-${++idCounter.current}`, [])
+  // The counter alone is NOT collision-safe: it lives in an in-memory ref that
+  // resets to 0 on every remount, while `items` (which carry these ids) are
+  // persisted to localStorage and restored on reopen. A bare counter re-issues
+  // `user-1`, `assistant-2`, ... after a remount and collides with restored
+  // items — producing React duplicate-key errors. Appending a time+random
+  // segment makes every id globally unique regardless of counter state.
+  const nextId = useCallback(
+    (prefix: string) =>
+      `${prefix}-${++idCounter.current}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`,
+    [],
+  )
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 

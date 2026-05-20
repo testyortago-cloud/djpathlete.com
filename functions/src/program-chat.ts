@@ -43,8 +43,17 @@ async function createWithRetry(
   params: Omit<Anthropic.Messages.MessageCreateParamsNonStreaming, "model">,
   primaryModel: string = MODEL_OPUS,
 ): Promise<Anthropic.Messages.Message> {
+  // Stream + finalMessage() instead of a non-streaming messages.create():
+  // with max_tokens this large (32k), the Anthropic SDK rejects non-streaming
+  // requests outright — "Streaming is required for operations that may take
+  // longer than 10 minutes." stream().finalMessage() still resolves to a
+  // complete Message, so every downstream consumer (response.content/usage/
+  // stop_reason) is unchanged. Same pattern as functions/src/ai/anthropic.ts.
+  const runStreaming = (model: string) =>
+    client.messages.stream({ ...params, model }).finalMessage()
+
   try {
-    return await pRetry(() => client.messages.create({ ...params, model: primaryModel }), {
+    return await pRetry(() => runStreaming(primaryModel), {
       retries: 3,
       minTimeout: 3_000,
       maxTimeout: 15_000,
@@ -59,7 +68,7 @@ async function createWithRetry(
     // If primary model exhausted retries on transient error, fall back to Haiku
     if (primaryModel !== MODEL_HAIKU && isTransientError(error)) {
       console.warn(`[program-chat] ${primaryModel} exhausted retries — falling back to ${MODEL_HAIKU}`)
-      return await pRetry(() => client.messages.create({ ...params, model: MODEL_HAIKU }), {
+      return await pRetry(() => runStreaming(MODEL_HAIKU), {
         retries: 2,
         minTimeout: 2_000,
         maxTimeout: 10_000,
