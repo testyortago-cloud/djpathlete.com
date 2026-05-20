@@ -5,6 +5,7 @@ import { JsonLd } from "@/components/shared/JsonLd"
 import { FadeIn } from "@/components/shared/FadeIn"
 import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 import { SemanticAnswerBlock } from "@/components/public/SemanticAnswerBlock"
+import { ManagedFaqSection } from "@/components/public/ManagedFaqSection"
 import { TrustStrip } from "@/components/public/TrustStrip"
 
 export const metadata: Metadata = {
@@ -108,34 +109,6 @@ const ROWS: Row[] = [
   },
 ]
 
-const APPS_FAQ = [
-  {
-    question: "Is sports performance coaching worth it over a $30/month app?",
-    answer:
-      "It depends on the athlete's goal. For lifestyle fitness, an app is often enough — and is the right product. For performance development, return-to-performance after injury, or sport-specific preparation, an app is structurally not the same product as supervised coaching. Apps deliver a workout. Coaching delivers an adjusted, individualized plan with weekly video review, daily wellness-driven decisions, and direct messaging with the coach who built it. The cost difference reflects the work difference, not the brand difference.",
-  },
-  {
-    question: "Will I get the same results from a training app as from a coach?",
-    answer:
-      "For general fitness goals, modern training apps can drive meaningful results. For performance goals — measurable strength, speed, power, capacity gains tied to a sport or competition — supervised coaching outperforms because programming responds to your actual data (sleep, HRV, sRPE, video review). An app cannot cut volume on the day your HRV drops 9% or substitute a movement when the coach sees a knee valgus collapse on rep 3. A coach can.",
-  },
-  {
-    question: "Why does coach-supervised coaching cost more than apps?",
-    answer:
-      "Different product. Apps charge for software access; the marginal cost of one more user is near zero. Supervised coaching charges for the coach's time — a coach who reviews your video each week, reads your wellness data daily, builds and adjusts your specific program, and answers your messages directly. We do not benchmark price against apps because the work being delivered is structurally different.",
-  },
-  {
-    question: "Can I use both a coach and a training app?",
-    answer:
-      "Most of our athletes do — but not for the same purpose. Apps are useful as logging tools, for cardio prescriptions, or for travel-day fallback when the gym situation is uncertain. The coaching program is the source of truth for programming and progression. We integrate with whatever tracking tools the athlete already uses (Whoop, Garmin, AppleHealth, sRPE diaries) without forcing a single platform.",
-  },
-  {
-    question: "When is a training app the right choice?",
-    answer:
-      "When the athlete's goal is general fitness, weight loss, or unstructured strength training and budget is the deciding factor. When there is no injury history that requires programming care. When the athlete does not need sport-specific qualities developed. When self-discipline and consistency are the primary obstacles, not programming quality. In those cases, a quality app is the right product and we will tell you so.",
-  },
-]
-
 const comparePageSchema = {
   "@context": "https://schema.org",
   "@type": "WebPage",
@@ -154,24 +127,10 @@ const comparePageSchema = {
   },
 }
 
-const compareFAQSchema = {
-  "@context": "https://schema.org",
-  "@type": "FAQPage",
-  mainEntity: APPS_FAQ.map((faq) => ({
-    "@type": "Question",
-    name: faq.question,
-    acceptedAnswer: {
-      "@type": "Answer",
-      text: faq.answer,
-    },
-  })),
-}
-
 export default function CoachingVsTrainingAppPage() {
   return (
     <>
       <JsonLd data={comparePageSchema} />
-      <JsonLd data={compareFAQSchema} />
       <BreadcrumbSchema
         items={[
           { name: "Home", url: "/" },
@@ -397,37 +356,14 @@ export default function CoachingVsTrainingAppPage() {
         </div>
       </section>
 
-      {/* FAQs */}
-      <section className="py-16 lg:py-24 px-4 sm:px-8 bg-surface">
-        <div className="max-w-3xl mx-auto">
-          <FadeIn>
-            <div className="text-center mb-12">
-              <div className="flex items-center justify-center gap-3 mb-4">
-                <div className="h-px w-8 bg-accent" />
-                <p className="text-sm font-medium text-accent uppercase tracking-widest">Common questions</p>
-                <div className="h-px w-8 bg-accent" />
-              </div>
-              <h2 className="text-2xl sm:text-3xl font-heading font-semibold text-primary tracking-tight">
-                Frequently asked
-              </h2>
-            </div>
-          </FadeIn>
-
-          <div className="space-y-3">
-            {APPS_FAQ.map((faq, i) => (
-              <FadeIn key={faq.question} delay={i * 0.04}>
-                <details className="group rounded-2xl border border-border bg-white p-6 transition-shadow hover:shadow-sm open:shadow-sm">
-                  <summary className="flex items-start justify-between gap-4 cursor-pointer list-none">
-                    <h3 className="text-base sm:text-lg font-heading font-semibold text-primary">{faq.question}</h3>
-                    <ArrowRight className="size-5 text-accent shrink-0 mt-0.5 transition-transform group-open:rotate-90" />
-                  </summary>
-                  <p className="mt-4 text-sm sm:text-base leading-relaxed text-muted-foreground">{faq.answer}</p>
-                </details>
-              </FadeIn>
-            ))}
-          </div>
-        </div>
-      </section>
+      {/* FAQs (CMS-managed) */}
+      <ManagedFaqSection
+        pageKey="services/coaching-vs-training-app"
+        variant="cards"
+        eyebrow="Common questions"
+        title="Frequently asked"
+        className="bg-surface"
+      />
 
       {/* CTA */}
       <section className="py-16 lg:py-24 px-4 sm:px-8 bg-primary text-primary-foreground">
