@@ -5,6 +5,7 @@ import { JsonLd } from "@/components/shared/JsonLd"
 import { FadeIn } from "@/components/shared/FadeIn"
 import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 import { SemanticAnswerBlock } from "@/components/public/SemanticAnswerBlock"
+import { ManagedFaqSection } from "@/components/public/ManagedFaqSection"
 import { TrustStrip } from "@/components/public/TrustStrip"
 
 export const metadata: Metadata = {
@@ -26,34 +27,6 @@ export const metadata: Metadata = {
   },
 }
 
-const VS_FAQS = [
-  {
-    question: "Is online sports performance coaching as effective as in-person?",
-    answer:
-      "For most athletes outside the Tampa Bay area, online coaching delivers near-equivalent outcomes when the athlete has access to a well-equipped gym and engages with the wellness logging, video review, and weekly programming. The methodology — diagnostic-driven, individually programmed, continuously adjusted — is identical between the two formats. In-person is preferred when real-time cueing, on-site instrumentation (force plates, sprint timing), or post-injury supervision is the deciding factor. For touring professionals or athletes whose schedules disqualify regular in-person sessions, online is structurally a better fit than splitting time.",
-  },
-  {
-    question: "Can I switch from online to in-person (or vice versa)?",
-    answer:
-      "Yes. Athletes regularly start in one format and shift to the other based on life or competitive circumstances — for example, an athlete moving back to Florida for an off-season block, or a touring athlete starting in-person and transitioning to online when the season begins. The Performance Blueprint travels across formats; the underlying assessment data, programming history, and coaching relationship continue uninterrupted.",
-  },
-  {
-    question: "Which is better for return-to-performance after surgery?",
-    answer:
-      "In-person is structurally preferred for the early-to-mid return-to-performance phase because instrumented testing (force plates, motion capture, reactive testing) and hands-on supervision close the gap from medical clearance to competition readiness most efficiently. Online return-to-performance work is possible later in the phase, when the athlete is past the highest-risk window and has access to a credible local clinician for in-person retesting milestones.",
-  },
-  {
-    question: "Do online and in-person athletes train differently?",
-    answer:
-      "Within the same Performance Blueprint, no — the program structure, exercise selection logic, autoregulation rules, and coaching feedback follow the same Five Pillar Framework. Differences are operational: online athletes log wellness daily and submit weekly video, in-person athletes are observed live. The output of either path is the same: an athlete with measurable, durable performance qualities who knows what they can trust under competition stress.",
-  },
-  {
-    question: "Which is more expensive?",
-    answer:
-      "In-person and online have different cost structures. Pricing is shared after application review and depends on coaching depth, frequency, and program length. We do not benchmark against $20–30/month training apps; the work is structurally different. A free 15-minute consultation determines fit before any commitment.",
-  },
-]
-
 const comparePageSchema = {
   "@context": "https://schema.org",
   "@type": "WebPage",
@@ -72,24 +45,10 @@ const comparePageSchema = {
   },
 }
 
-const compareFAQSchema = {
-  "@context": "https://schema.org",
-  "@type": "FAQPage",
-  mainEntity: VS_FAQS.map((faq) => ({
-    "@type": "Question",
-    name: faq.question,
-    acceptedAnswer: {
-      "@type": "Answer",
-      text: faq.answer,
-    },
-  })),
-}
-
 export default function OnlineVsInPersonPage() {
   return (
     <>
       <JsonLd data={comparePageSchema} />
-      <JsonLd data={compareFAQSchema} />
       <BreadcrumbSchema
         items={[
           { name: "Home", url: "/" },
@@ -178,37 +137,13 @@ export default function OnlineVsInPersonPage() {
         </div>
       </section>
 
-      {/* FAQs */}
-      <section className="py-16 lg:py-24 px-4 sm:px-8">
-        <div className="max-w-3xl mx-auto">
-          <FadeIn>
-            <div className="text-center mb-12">
-              <div className="flex items-center justify-center gap-3 mb-4">
-                <div className="h-px w-8 bg-accent" />
-                <p className="text-sm font-medium text-accent uppercase tracking-widest">Common questions</p>
-                <div className="h-px w-8 bg-accent" />
-              </div>
-              <h2 className="text-2xl sm:text-3xl font-heading font-semibold text-primary tracking-tight">
-                Frequently asked
-              </h2>
-            </div>
-          </FadeIn>
-
-          <div className="space-y-3">
-            {VS_FAQS.map((faq, i) => (
-              <FadeIn key={faq.question} delay={i * 0.04}>
-                <details className="group rounded-2xl border border-border bg-white p-6 transition-shadow hover:shadow-sm open:shadow-sm">
-                  <summary className="flex items-start justify-between gap-4 cursor-pointer list-none">
-                    <h3 className="text-base sm:text-lg font-heading font-semibold text-primary">{faq.question}</h3>
-                    <ArrowRight className="size-5 text-accent shrink-0 mt-0.5 transition-transform group-open:rotate-90" />
-                  </summary>
-                  <p className="mt-4 text-sm sm:text-base leading-relaxed text-muted-foreground">{faq.answer}</p>
-                </details>
-              </FadeIn>
-            ))}
-          </div>
-        </div>
-      </section>
+      {/* FAQs (CMS-managed) */}
+      <ManagedFaqSection
+        pageKey="services/online-vs-in-person"
+        variant="cards"
+        eyebrow="Common questions"
+        title="Frequently asked"
+      />
 
       {/* Trust strip + CTA */}
       <section className="py-16 lg:py-24 px-4 sm:px-8 bg-primary text-primary-foreground">
