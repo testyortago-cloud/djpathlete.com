@@ -45,6 +45,7 @@ export const NAV_ITEMS: NavGroup[] = [
     ],
   },
   { label: "Athletes", href: "/athletes" },
+  { label: "About", href: "/about" },
   { label: "Resources", href: "/resources" },
   { label: "Education", href: "/education" },
   { label: "Blog", href: "/blog" },
