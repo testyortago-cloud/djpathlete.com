@@ -13,6 +13,7 @@ import {
 import { JsonLd } from "@/components/shared/JsonLd"
 import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 import { SemanticAnswerBlock } from "@/components/public/SemanticAnswerBlock"
+import { ManagedFaqSection } from "@/components/public/ManagedFaqSection"
 import { TrustStrip } from "@/components/public/TrustStrip"
 import { AuthorCard } from "@/components/shared/AuthorCard"
 import { FadeIn } from "@/components/shared/FadeIn"
@@ -100,49 +101,6 @@ const WHO = [
   "Coaches and parents who want a properly programmed plan instead of YouTube roulette",
 ]
 
-const FAQS = [
-  {
-    question: "What is the Rotational Reboot program?",
-    answer:
-      "Rotational Reboot is a 6-week training program of 4 sessions per week (24 sessions in total) built to develop rotational power for athletes in rotational sports like tennis, golf, baseball, lacrosse, hockey and soccer. It's core-led (roughly 70% rotational core and trunk work, 30% supporting legs and arms) and runs a deliberate progression from beginner to moderate intensity, so you build control before speed. It was designed and programmed by Darren J Paul, PhD (CSCS, NASM, USA Weightlifting Level 2).",
-  },
-  {
-    question: "What sports is it for?",
-    answer:
-      "Any sport where performance comes from rotating the body through the core and hips into the limbs: tennis, golf, baseball, softball, lacrosse, ice and field hockey, soccer, cricket, throwing events, boxing and MMA, volleyball, squash and padel. If your sport rewards a faster, better-sequenced rotation, this program is built for you.",
-  },
-  {
-    question: "Do I need a gym?",
-    answer:
-      "A full gym makes it easiest, but the program is written to run on a basic home setup too. Most sessions need only a band or cable, a medicine ball, and a single dumbbell or kettlebell. Every exercise comes with a regression so you can scale it to your equipment without losing the point of the session.",
-  },
-  {
-    question: "How much time does it take each week?",
-    answer:
-      "Four sessions a week, typically 40 to 55 minutes each, for six weeks. The sessions are built to be efficient (purposeful warm-up, the main rotational work, then supporting strength), so you're not living in the gym.",
-  },
-  {
-    question: "Is it suitable for beginners?",
-    answer:
-      "Yes. The program starts at a beginner intensity and progresses to moderate over the six weeks; it never assumes you're already an advanced lifter. If you're more experienced, the built-in progressions let you load it appropriately. What it is not is a return-from-injury rehab plan; if you're working back from an injury, talk to Darren first.",
-  },
-  {
-    question: "How is this different from a generic strength program?",
-    answer:
-      "Generic programs train the body in straight lines (push, pull, squat, hinge) and hope rotation shows up on its own. Rotational Reboot is built the other way round: it puts the core and the rotational pattern at the center, sequences anti-rotation control before rotational power, and progresses load and speed deliberately. It's the way rotational athletes are coached in high-performance environments, written down as a plan you can follow.",
-  },
-  {
-    question: "How much is it?",
-    answer:
-      "$79, usually $249. One payment, lifetime access to the full 6-week program and every session, cue and demonstration inside it.",
-  },
-  {
-    question: "Who built it?",
-    answer:
-      "Darren J Paul, PhD, is a sports performance coach with two decades inside high-performance environments, having coached 500+ athletes across 15+ sports including WTA professionals. Certifications: CSCS (NSCA), NASM-CPT, USA Weightlifting Level 2 Coach.",
-  },
-]
-
 // ── Schema ────────────────────────────────────────────────────────────────
 
 const productSchema = {
@@ -193,16 +151,6 @@ const courseSchema = {
   },
 }
 
-const faqSchema = {
-  "@context": "https://schema.org",
-  "@type": "FAQPage",
-  mainEntity: FAQS.map((f) => ({
-    "@type": "Question",
-    name: f.question,
-    acceptedAnswer: { "@type": "Answer", text: f.answer },
-  })),
-}
-
 // ── Page ──────────────────────────────────────────────────────────────────
 
 export default function RotationalRebootPage() {
@@ -210,7 +158,6 @@ export default function RotationalRebootPage() {
     <>
       <JsonLd data={productSchema} />
       <JsonLd data={courseSchema} />
-      <JsonLd data={faqSchema} />
       <BreadcrumbSchema
         items={[
           { name: "Home", url: "/" },
@@ -437,29 +384,14 @@ export default function RotationalRebootPage() {
         </div>
       </section>
 
-      {/* ───────────────── FAQ ───────────────── */}
-      <section className="mx-auto max-w-4xl px-4 py-16 sm:px-8 lg:py-24">
-        <FadeIn>
-          <div className="flex items-center gap-3">
-            <div className="h-px w-8 bg-accent" />
-            <span className="font-mono text-[11px] uppercase tracking-[0.28em] text-accent">Questions</span>
-          </div>
-          <h2 className="mt-4 font-heading text-3xl font-semibold tracking-tight text-primary sm:text-4xl">
-            Rotational Reboot, answered
-          </h2>
-          <dl className="mt-8 divide-y divide-border rounded-2xl border border-border">
-            {FAQS.map((f) => (
-              <div key={f.question} className="p-5 md:p-6">
-                <dt className="flex items-start gap-2 font-heading text-lg font-semibold text-primary">
-                  <span className="mt-1 size-1.5 shrink-0 rounded-full bg-accent" aria-hidden />
-                  <span>{f.question}</span>
-                </dt>
-                <dd className="mt-2 pl-3.5 leading-7 text-muted-foreground">{f.answer}</dd>
-              </div>
-            ))}
-          </dl>
-        </FadeIn>
-      </section>
+      {/* ───────────────── FAQ (CMS-managed) ───────────────── */}
+      <ManagedFaqSection
+        pageKey="programs/rotational-reboot"
+        variant="list"
+        eyebrow="Questions"
+        title="Rotational Reboot, answered"
+        className="max-w-4xl"
+      />
 
       {/* ───────────────── Get the program ───────────────── */}
       <section id="get-the-program" className="bg-primary text-primary-foreground">
