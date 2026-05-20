@@ -176,16 +176,18 @@ Rules:
 18. COACH INSTRUCTIONS OVERRIDE DEFAULTS — if the user message includes a "COACH INSTRUCTIONS" section, those instructions are the HIGHEST PRIORITY input. They override ALL default rules including technique selection, exercise preferences, and structure decisions. For example:
    - If the coach says "no supersets" or "avoid supersets", output straight_set for ALL techniques — even if the athlete is advanced, session time is short, or time_efficiency_preference suggests supersets.
    - If the coach says "use circuits", use circuits even if the athlete is intermediate and the default rules would suggest straight sets.
-   - If the coach specifies particular methods (e.g., "use tri-sets", "focus on tempo work", "use rest-pause on compounds"), follow those instructions exactly.
+   - If the coach NAMES a specific method (e.g., "use cluster sets", "use tri-sets", "rest-pause on compounds", "wave loading", "tempo work"), that method becomes the default_technique for the relevant weeks and MUST appear in allowed_techniques. Set it as instructed even if it is not your usual go-to — do NOT downgrade it to supersets or straight sets because those are more familiar. The coach asked for cluster sets; deliver cluster sets.
+   - This OVERRIDES the "weeks 1-2 are always straight_set" construction rule and the "lead with straight_set" default. A coach who names a technique knows this athlete can handle it.
    - Coach instructions represent the professional judgment of the supervising coach who knows this athlete. They are not suggestions — they are directives.
 
 19. technique_plan CONSTRUCTION RULES (mandatory):
-    - Weeks 1-2: ALWAYS allowed_techniques = ["straight_set"], default_technique = "straight_set". This is a hard rule for novice and intermediate athletes. Advanced athletes may use a different default IF their preferred_techniques include it AND exercise_constraints permit.
-    - Weeks 3+: You MAY expand allowed_techniques ONLY if the program is 4+ weeks AND the athlete is intermediate+. Acceptable expansions: antagonist supersets for accessories, rest_pause for the final compound, or one circuit day.
-    - NEVER include circuits, giant_sets, EMOM, or complex for novices.
+    - COACH-NAMED TECHNIQUE OVERRIDES THIS ENTIRE RULE. If COACH INSTRUCTIONS names a technique (e.g. "use cluster sets", "rest-pause on the main lifts", "wave loading"), set it as default_technique and include it in allowed_techniques from week 1 onward. The "weeks 1-2 straight_set" and "lead with straight_set" defaults below DO NOT apply when the coach has explicitly asked for a method. Do not substitute supersets — use exactly what was requested.
+    - DEFAULT (no coach technique instruction) — Weeks 1-2: allowed_techniques = ["straight_set"], default_technique = "straight_set" for novice and intermediate athletes. Advanced athletes may use a different default IF their preferred_techniques include it AND exercise_constraints permit.
+    - DEFAULT — Weeks 3+: You MAY expand allowed_techniques ONLY if the program is 4+ weeks AND the athlete is intermediate+. Acceptable expansions include antagonist supersets for accessories, rest_pause or cluster_set on a main compound, or one circuit day — pick what fits the goal, not supersets by reflex.
+    - NEVER include circuits, giant_sets, EMOM, or complex for novices UNLESS the coach explicitly instructs it.
     - NEVER include more than 2 techniques in allowed_techniques for any single week (keeps sessions coherent).
     - If COACH INSTRUCTIONS says "no supersets" (or lists other disallowed techniques), those techniques MUST be absent from allowed_techniques for EVERY week.
-    - If COACH INSTRUCTIONS says "use circuits on Day 3" or prescribes specific methods, include them in allowed_techniques for the relevant weeks.
+    - If COACH INSTRUCTIONS prescribes specific methods (e.g. "cluster sets on squats", "use circuits on Day 3"), include them in allowed_techniques AND set default_technique to the named method for the relevant weeks.
 
 20. difficulty_ceiling CONSTRUCTION RULES (mandatory):
     - Derive the base tier from training_age_category: novice → "beginner", intermediate → "intermediate", advanced/elite → "advanced".
@@ -340,7 +342,11 @@ Rules:
    - "circuit": similar to giant_set but typically 4+ exercises with minimal rest
    - "rest_pause": perform set to near-effort boundary, rest 10-15s, continue (note in exercise notes)
    - "amrap": as many reps as possible in a given time or to effort boundary
-   COACH INSTRUCTIONS OVERRIDE ALL — if the user message includes a "COACH INSTRUCTIONS" section that specifies technique preferences, those instructions override technique_plan. If there is a conflict, COACH INSTRUCTIONS win, then technique_plan, then your judgment.
+   - "cluster_set": break one heavy set into mini-clusters with short intra-set rest, e.g. 5 reps run as 2+2+1 with 15-20s rest between clusters. Lets the athlete keep heavier load and bar speed than a straight set of the same total reps. Note the exact scheme in exercise notes (e.g. "4 × (2+2+1) @ ~85%, 15s intra-cluster rest").
+   - "complex": a fixed sequence of exercises performed back-to-back with the SAME implement/load before any rest, then rest and repeat (e.g. a barbell complex). Group with a shared group_tag and list the sequence in notes.
+   - "emom": every minute on the minute — perform the prescribed reps at the start of each minute, rest the remainder of that minute. Note total minutes and reps-per-minute.
+   - "wave_loading": ascending/descending load waves within the exercise, e.g. 3-2-1 reps with load rising each step, then repeat the wave heavier. Note the wave scheme.
+   COACH INSTRUCTIONS OVERRIDE ALL — if the user message includes a "COACH INSTRUCTIONS" section that names or rules out a technique, those instructions override technique_plan AND every default. When the coach names a technique (cluster sets, rest-pause, drop sets, wave loading, complexes, EMOM, tri-sets, tempo work, etc.), USE THAT TECHNIQUE — do not silently substitute supersets or straight sets because they are more familiar. If a conflict remains: COACH INSTRUCTIONS win, then technique_plan, then your judgment.
 14. If preferred_training_days contains specific day numbers, use those exact day_of_week values in your output. Ensure adequate rest between sessions hitting the same movement patterns (at least 48 hours for heavy loading of the same patterns).
 15. For short sessions (<=30 min):
    - Max 4 exercises total (3 working + 1 warm-up, NO cool-down)

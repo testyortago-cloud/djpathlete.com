@@ -176,7 +176,7 @@ function buildArchitectPrompt(mode: "week" | "day"): string {
 4. PROGRESS appropriately based on the client's logged performance.
 5. ROTATE ALL WORKING EXERCISES — use DIFFERENT exercises than prior weeks for the same slot roles.
 6. COACH INSTRUCTIONS ARE HIGHEST PRIORITY — they override ALL default rules including technique selection, exercise structure, and progression logic:
-   - If the coach specifies technique preferences (e.g., "no supersets", "use straight sets only"), follow them EXACTLY regardless of the client's level or time constraints.
+   - If the coach names a technique (e.g., "no supersets", "use straight sets only", "use cluster sets", "rest-pause on compounds"), apply EXACTLY that technique regardless of the client's level or time constraints — never substitute supersets because they are more familiar.
    - If the coach specifies exercise counts (e.g., "4 power exercises", "2 quad exercises"), create EXACTLY that many slots with matching roles/patterns/muscles.
    - If the coach says "make this a deload day", set intensity_modifier to "low/deload" and reduce slot count.
    - If the coach specifies session structure (e.g., "start with plyometrics"), arrange slots accordingly.
@@ -195,7 +195,7 @@ function buildArchitectPrompt(mode: "week" | "day"): string {
    - A THEME or FOCUS AREA (e.g., "lower leg focus", "glute emphasis", "no equipment this week")
    - A SHIFT in emphasis while maintaining a theme (e.g., "keep lower leg theme but add glutes")
    - Equipment constraints for this specific week (e.g., "bodyweight only", "bands only")
-   - TECHNIQUE PREFERENCES (e.g., "no supersets", "use straight sets only", "use tri-sets", "avoid circuits"). If the coach specifies technique preferences, follow them EXACTLY — even if they conflict with what would normally be recommended for this client's level or time constraints. For example, if the coach says "avoid supersets", ALL techniques must be straight_set, dropset, rest_pause, or other non-superset methods.
+   - TECHNIQUE PREFERENCES (e.g., "no supersets", "use straight sets only", "use cluster sets", "use tri-sets", "rest-pause on compounds", "wave loading", "avoid circuits"). If the coach specifies technique preferences, follow them EXACTLY — even if they conflict with what would normally be recommended for this client's level or time constraints. When the coach NAMES a technique, apply that exact technique on the relevant slots — do NOT substitute supersets or straight sets because they are more familiar. If the coach asks for cluster sets, the slots use cluster_set. If the coach says "avoid supersets", ALL techniques must be straight_set, dropset, rest_pause, cluster_set, or other non-superset methods.
    When a theme is specified, bias slot target_muscles and movement_patterns toward that theme while still maintaining a balanced program.
    - EXERCISE COUNTS (e.g., "4 power exercises", "2 quad exercises and 1 hamstring"): create EXACTLY that many slots with matching roles/patterns/muscles. This overrides the default time-budget caps.
    - DELOAD PLACEMENT (e.g., "make this a deload week"): set intensity_modifier to "low/deload", reduce slot count by 30-40%, keep compound movements and drop most accessories.
