@@ -1,16 +1,17 @@
 // FAQ page registry.
 //
-// Static marketing pages are AUTO-DERIVED from `marketing-routes.generated.ts`,
-// which a build-time codegen script (scripts/generate-faq-pages.ts) regenerates
-// on every build and dev start (wired via prebuild/predev in package.json).
-// New marketing pages auto-appear and deleted ones auto-drop — no manual edits.
+// Static FAQ pages are DERIVED from `NAV_ITEMS` (the site navigation config in
+// `@/lib/constants`) — so when a nav item is added it automatically appears in
+// the FAQ tool — plus an explicit `EXTRA_FAQ_ROUTES` list for non-nav pages
+// that still carry FAQ content (e.g. /faq itself, comparison pages, programs).
 //
 // Curated metadata (rich label / supportsCategories / contextSummary) for the
 // pages we have hand-written copy for lives in the `CURATED` map below. Routes
-// not in `CURATED` get a Title-Cased label and a generic context summary.
+// not in `CURATED` get the nav label (if any) or a Title-Cased last segment,
+// and a generic context summary.
 import { SPORTS } from "@/lib/data/sports"
 import { ATHLETES } from "@/lib/data/athletes"
-import { MARKETING_FAQ_ROUTES } from "./marketing-routes.generated"
+import { NAV_ITEMS } from "@/lib/constants"
 
 export interface FaqPage {
   /** Stable key stored in faqs.page_key. */
@@ -76,6 +77,29 @@ const CURATED: Record<
   },
 }
 
+/**
+ * Pages that carry FAQ content but are not in the site navigation. Kept
+ * explicit so the FAQ registry stays correct even though they aren't nav items.
+ */
+const EXTRA_FAQ_ROUTES: readonly string[] = [
+  "/faq",
+  "/services/online-vs-in-person",
+  "/services/coaching-vs-training-app",
+  "/programs/rotational-reboot",
+]
+
+/** Flatten NAV_ITEMS into a map of href -> nav label (top-level links + every child link). */
+function navLinkLabels(): Map<string, string> {
+  const map = new Map<string, string>()
+  for (const item of NAV_ITEMS) {
+    if (item.href) map.set(item.href, item.label)
+    for (const child of item.children ?? []) {
+      map.set(child.href, child.label)
+    }
+  }
+  return map
+}
+
 /** Title-case the last route segment, e.g. "/services/coaching-vs-training-app" → "Coaching Vs Training App". */
 function labelFromRoute(routePath: string): string {
   const lastSegment = routePath.split("/").filter(Boolean).pop() ?? ""
@@ -86,30 +110,41 @@ function labelFromRoute(routePath: string): string {
     .join(" ")
 }
 
-/** Static marketing pages — derived from the auto-generated route list. */
-export const STATIC_FAQ_PAGES: FaqPage[] = MARKETING_FAQ_ROUTES.map((routePath) => {
-  const key = routePath.replace(/^\//, "")
-  const curated = CURATED[routePath]
-  if (curated) {
+/** Build the static FAQ page list from nav routes ∪ extra FAQ routes. */
+function buildStaticFaqPages(): FaqPage[] {
+  const navLabels = navLinkLabels()
+  const routes = Array.from(new Set([...navLabels.keys(), ...EXTRA_FAQ_ROUTES])).sort()
+
+  return routes.map((routePath) => {
+    const key = routePath === "/" ? "home" : routePath.replace(/^\//, "")
+    const curated = CURATED[routePath]
+    if (curated) {
+      return {
+        key,
+        label: curated.label,
+        routePath,
+        group: "Static" as const,
+        supportsCategories: curated.supportsCategories,
+        contextSummary: curated.contextSummary,
+      }
+    }
+    const label = navLabels.get(routePath) ?? (labelFromRoute(routePath) || "Home")
     return {
       key,
-      label: curated.label,
+      label,
       routePath,
       group: "Static" as const,
-      supportsCategories: curated.supportsCategories,
-      contextSummary: curated.contextSummary,
+      supportsCategories: false,
+      contextSummary: `The ${label} page of the DJP Athlete sports performance coaching website.`,
     }
-  }
-  const label = labelFromRoute(routePath)
-  return {
-    key,
-    label,
-    routePath,
-    group: "Static" as const,
-    supportsCategories: false,
-    contextSummary: `The ${label} page of the DJP Athlete sports performance coaching website.`,
-  }
-})
+  })
+}
+
+/**
+ * Static FAQ pages — derived from `NAV_ITEMS` plus `EXTRA_FAQ_ROUTES`,
+ * de-duplicated and sorted by routePath.
+ */
+export const STATIC_FAQ_PAGES: FaqPage[] = buildStaticFaqPages()
 
 function sportFaqPages(): FaqPage[] {
   return SPORTS.map((s) => ({

@@ -4,10 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "generate:faq-pages": "tsx scripts/generate-faq-pages.ts",
-    "prebuild": "tsx scripts/generate-faq-pages.ts",
     "build": "next build",
-    "predev": "tsx scripts/generate-faq-pages.ts",
     "dev": "next dev --port 3050",
     "lint": "next lint",
     "start": "next start",
