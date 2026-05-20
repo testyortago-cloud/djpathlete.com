@@ -9,8 +9,10 @@
 // pages we have hand-written copy for lives in the `CURATED` map below. Routes
 // not in `CURATED` get the nav label (if any) or a Title-Cased last segment,
 // and a generic context summary.
-import { SPORTS } from "@/lib/data/sports"
-import { ATHLETES } from "@/lib/data/athletes"
+//
+// Note: per-sport (/sports/[sport]) and per-athlete-type (/athletes/[type])
+// pages are NOT FAQ targets — the Sports section was removed from the site and
+// the athlete pages were consolidated into a single /athletes page.
 import { NAV_ITEMS } from "@/lib/constants"
 
 export interface FaqPage {
@@ -146,31 +148,9 @@ function buildStaticFaqPages(): FaqPage[] {
  */
 export const STATIC_FAQ_PAGES: FaqPage[] = buildStaticFaqPages()
 
-function sportFaqPages(): FaqPage[] {
-  return SPORTS.map((s) => ({
-    key: `sports/${s.slug}`,
-    label: `${s.name} (sport)`,
-    routePath: `/sports/${s.slug}`,
-    group: "Sports" as const,
-    supportsCategories: false,
-    contextSummary: `${s.name} performance training page. ${s.description ?? ""}`.trim(),
-  }))
-}
-
-function athleteFaqPages(): FaqPage[] {
-  return ATHLETES.map((a) => ({
-    key: `athletes/${a.slug}`,
-    label: `${a.name} (athlete type)`,
-    routePath: `/athletes/${a.slug}`,
-    group: "Athletes" as const,
-    supportsCategories: false,
-    contextSummary: `Athlete-type page for ${a.name}. ${a.description ?? ""}`.trim(),
-  }))
-}
-
 /** All non-event FAQ pages — known at build time. */
 export function getStaticAndTemplatedFaqPages(): FaqPage[] {
-  return [...STATIC_FAQ_PAGES, ...sportFaqPages(), ...athleteFaqPages()]
+  return [...STATIC_FAQ_PAGES]
 }
 
 /** Resolve a non-event page_key to its registry entry. */
