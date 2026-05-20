@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { GripVertical, Pencil, Plus, Trash2 } from "lucide-react"
+import { GripVertical, Pencil, Plus, Sparkles, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import {
   DndContext,
@@ -54,6 +54,11 @@ export function FaqManager({ pages }: Props) {
   const [loading, setLoading] = useState(false)
   const [editor, setEditor] = useState<EditorState | null>(null)
   const [saving, setSaving] = useState(false)
+  const [generating, setGenerating] = useState(false)
+  const [suggesting, setSuggesting] = useState(false)
+  const [generatedQuestions, setGeneratedQuestions] = useState<string[] | null>(
+    null,
+  )
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -188,6 +193,78 @@ export function FaqManager({ pages }: Props) {
     }
   }
 
+  async function generateQuestions() {
+    if (!activePage) return
+    setGenerating(true)
+    try {
+      const res = await fetch("/api/admin/marketing/faqs/ai", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "generate_questions",
+          page_key: activePage.key,
+        }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(json.error ?? `HTTP ${res.status}`)
+        return
+      }
+      const questions = (json.questions as string[]) ?? []
+      if (questions.length === 0) {
+        toast.error("No questions returned")
+        return
+      }
+      setGeneratedQuestions(questions)
+    } catch {
+      toast.error("Failed to generate questions")
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  function useGeneratedQuestion(question: string) {
+    setGeneratedQuestions(null)
+    setEditor({ ...EMPTY_EDITOR, question })
+  }
+
+  async function suggestAnswer() {
+    if (!editor || !activePage) return
+    const question = editor.question.trim()
+    if (!question) {
+      toast.error("Enter a question first")
+      return
+    }
+    setSuggesting(true)
+    try {
+      const res = await fetch("/api/admin/marketing/faqs/ai", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "suggest_answer",
+          page_key: activePage.key,
+          question,
+        }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(json.error ?? `HTTP ${res.status}`)
+        return
+      }
+      const answer = (json.answer as string) ?? ""
+      if (!answer) {
+        toast.error("No answer returned")
+        return
+      }
+      setEditor((s) => s && { ...s, answer })
+      toast.success("Answer suggested — edit before saving")
+    } catch {
+      toast.error("Failed to suggest answer")
+    } finally {
+      setSuggesting(false)
+    }
+  }
+
   async function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
     if (!over || active.id === over.id || !activePage) return
@@ -263,6 +340,15 @@ export function FaqManager({ pages }: Props) {
             </p>
             <button
               type="button"
+              onClick={generateQuestions}
+              disabled={generating}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-accent text-accent text-sm font-medium hover:bg-accent/10 transition-colors disabled:opacity-50"
+            >
+              <Sparkles className="size-4" />
+              {generating ? "Generating…" : "Generate questions"}
+            </button>
+            <button
+              type="button"
               onClick={openCreate}
               className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-accent text-white text-sm font-medium hover:bg-accent/90 transition-colors"
             >
@@ -330,7 +416,19 @@ export function FaqManager({ pages }: Props) {
               />
             </FaqField>
 
-            <FaqField label="Answer">
+            <label className="block">
+              <span className="flex items-center justify-between mb-1">
+                <span className="text-sm font-medium text-primary">Answer</span>
+                <button
+                  type="button"
+                  onClick={suggestAnswer}
+                  disabled={suggesting}
+                  className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-accent text-accent text-xs font-medium hover:bg-accent/10 transition-colors disabled:opacity-50"
+                >
+                  <Sparkles className="size-3.5" />
+                  {suggesting ? "Suggesting…" : "Suggest answer"}
+                </button>
+              </span>
               <textarea
                 value={editor.answer}
                 onChange={(e) =>
@@ -341,7 +439,7 @@ export function FaqManager({ pages }: Props) {
                 rows={5}
                 className="faq-input"
               />
-            </FaqField>
+            </label>
 
             {activePage.supportsCategories && (
               <FaqField
@@ -418,6 +516,56 @@ export function FaqManager({ pages }: Props) {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* Generated questions panel */}
+      {generatedQuestions && activePage && (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:p-8"
+          onClick={() => setGeneratedQuestions(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-xl rounded-xl bg-card border border-border shadow-lg p-6 space-y-4"
+          >
+            <div>
+              <h2 className="text-lg font-heading text-primary">
+                Suggested questions
+              </h2>
+              <p className="text-xs text-muted-foreground mt-1">
+                Pick one to open the editor pre-filled. You can edit it before
+                saving — nothing is saved automatically.
+              </p>
+            </div>
+            <ul className="divide-y divide-border/60 -mx-2">
+              {generatedQuestions.map((q, i) => (
+                <li
+                  key={i}
+                  className="flex items-start gap-3 px-2 py-2.5"
+                >
+                  <p className="flex-1 text-sm text-primary">{q}</p>
+                  <button
+                    type="button"
+                    onClick={() => useGeneratedQuestion(q)}
+                    className="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-accent text-white text-xs font-medium hover:bg-accent/90 transition-colors"
+                  >
+                    <Plus className="size-3.5" />
+                    Use
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <div className="flex items-center gap-3 pt-2 border-t border-border">
+              <button
+                type="button"
+                onClick={() => setGeneratedQuestions(null)}
+                className="text-sm text-muted-foreground hover:text-primary"
+              >
+                Close
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
