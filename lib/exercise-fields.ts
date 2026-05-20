@@ -24,7 +24,7 @@ const CATEGORY_FIELDS: Record<ExerciseCategory, CategoryFields> = {
   speed: {
     showWeight: false,
     showReps: true,
-    showRpe: false,
+    showRpe: true,
     showDuration: true,
     showTempo: false,
     showIntensity: false,
@@ -42,7 +42,7 @@ const CATEGORY_FIELDS: Record<ExerciseCategory, CategoryFields> = {
   plyometric: {
     showWeight: false,
     showReps: true,
-    showRpe: false,
+    showRpe: true,
     showDuration: false,
     showTempo: false,
     showIntensity: false,
@@ -60,7 +60,7 @@ const CATEGORY_FIELDS: Record<ExerciseCategory, CategoryFields> = {
   mobility: {
     showWeight: false,
     showReps: true,
-    showRpe: false,
+    showRpe: true,
     showDuration: true,
     showTempo: false,
     showIntensity: false,
@@ -69,7 +69,7 @@ const CATEGORY_FIELDS: Record<ExerciseCategory, CategoryFields> = {
   motor_control: {
     showWeight: false,
     showReps: true,
-    showRpe: false,
+    showRpe: true,
     showDuration: true,
     showTempo: true,
     showIntensity: false,
