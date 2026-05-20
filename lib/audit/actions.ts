@@ -166,6 +166,10 @@ export const AUDIT_ACTIONS = [
   { slug: "review.moderated", category: "marketing", description: "Admin moderated a review (approve/reject)" },
   { slug: "testimonial.submitted", category: "marketing", description: "Testimonial submitted" },
   { slug: "testimonial.moderated", category: "marketing", description: "Admin moderated a testimonial" },
+  { slug: "faq.create", category: "marketing", description: "FAQ entry created" },
+  { slug: "faq.update", category: "marketing", description: "FAQ entry updated" },
+  { slug: "faq.delete", category: "marketing", description: "FAQ entry deleted" },
+  { slug: "faq.reorder", category: "marketing", description: "FAQ entries reordered" },
 
   // compliance — consents + GDPR + legal
   {
