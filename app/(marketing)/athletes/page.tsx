@@ -3,6 +3,7 @@ import Link from "next/link"
 import { ArrowRight, Plane, GraduationCap, Sparkles, HeartPulse } from "lucide-react"
 import { JsonLd } from "@/components/shared/JsonLd"
 import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
+import { ManagedFaqSection } from "@/components/public/ManagedFaqSection"
 import { AuthorCard } from "@/components/shared/AuthorCard"
 import { FadeIn } from "@/components/shared/FadeIn"
 import { Button } from "@/components/ui/button"
@@ -44,61 +45,6 @@ const webPageSchema = {
     { "@type": "PeopleAudience", audienceType: "Athletes returning from injury" },
   ],
   speakable: { "@type": "SpeakableSpecification", cssSelector: ["h1"] },
-}
-
-const faqSchema = {
-  "@context": "https://schema.org",
-  "@type": "FAQPage",
-  mainEntity: [
-    {
-      "@type": "Question",
-      name: "What athletes do you train?",
-      acceptedAnswer: {
-        "@type": "Answer",
-        text: "Four stages: professional athletes (touring pros across rotational and racquet sports), collegiate and competitive amateur athletes, youth athletes in long-term athletic development, and athletes returning from injury who have been cleared by a clinician but are not yet competition-ready. The same five-pillar training framework runs each stage, scaled to training age, sport and calendar.",
-      },
-    },
-    {
-      "@type": "Question",
-      name: "Is strength training safe for young athletes?",
-      acceptedAnswer: {
-        "@type": "Answer",
-        text: "Yes, when supervised and age-appropriate. The National Strength and Conditioning Association's position is that properly designed and supervised youth resistance training is safe, effective and beneficial. It does not stunt growth. Programmed correctly, it is one of the most effective injury-prevention tools available to young athletes.",
-      },
-    },
-    {
-      "@type": "Question",
-      name: "How long after an ACL reconstruction can I return to sport?",
-      acceptedAnswer: {
-        "@type": "Answer",
-        text: "Research published in the Journal of Orthopaedic & Sports Physical Therapy (2020) shows that returning to level-1 cutting and pivoting sport before 9 months after ACL reconstruction is associated with roughly a 7-fold higher rate of a second ACL injury. Each month of delay beyond that reduces reinjury risk by approximately 51 percent. Return-to-performance training runs alongside that timeline, not against it.",
-      },
-    },
-    {
-      "@type": "Question",
-      name: "Should youth athletes specialize in one sport early?",
-      acceptedAnswer: {
-        "@type": "Answer",
-        text: "Generally no. The 2016 American Orthopaedic Society for Sports Medicine consensus on early sport specialization concluded there is no evidence that early specialization benefits young athletes in the majority of sports, and that it is associated with increased overuse injury and burnout. Multi-sport participation through the early teens is the better long-term path.",
-      },
-    },
-    {
-      "@type": "Question",
-      name: "Can a touring professional be trained remotely?",
-      acceptedAnswer: {
-        "@type": "Answer",
-        text: "Yes. Online training is built around the realities of touring: travel, time zones, tournament density and the equipment available at the venue. Programming adjusts weekly to load and wellness markers, with video feedback and direct coach access. WTA professionals already train in this format.",
-      },
-    },
-    {
-      "@type": "Question",
-      name: "How is sports performance training different from a personal trainer?",
-      acceptedAnswer: {
-        "@type": "Answer",
-        text: "A personal trainer programs around general fitness. A sports performance coach programs around a sport — starting with diagnostics on force production, asymmetry, movement quality and sport-specific output, then building an individualized training plan that adjusts to load and wellness over time. Different goal, different toolset.",
-      },
-    },
-  ],
 }
 
 interface Stage {
@@ -172,7 +118,6 @@ export default function AthletesHubPage() {
   return (
     <>
       <JsonLd data={webPageSchema} />
-      <JsonLd data={faqSchema} />
       <BreadcrumbSchema
         items={[
           { name: "Home", url: "/" },
@@ -279,33 +224,13 @@ export default function AthletesHubPage() {
         </div>
       </section>
 
-      {/* ─────────────── FAQ (fact-checked) ─────────────── */}
-      <section className="mx-auto max-w-3xl px-4 py-16 sm:px-8 lg:py-20">
-        <FadeIn>
-          <div className="mb-8 flex items-center gap-3">
-            <div className="h-px w-8 bg-accent" />
-            <span className="font-mono text-[11px] uppercase tracking-[0.28em] text-accent">
-              Common questions
-            </span>
-          </div>
-          <h2 className="font-heading text-2xl font-semibold tracking-tight text-primary sm:text-3xl">
-            Questions athletes and parents actually ask.
-          </h2>
-        </FadeIn>
-
-        <dl className="mt-10 divide-y divide-border">
-          {faqSchema.mainEntity.map((q, i) => (
-            <FadeIn key={q.name} delay={i * 0.04}>
-              <div className="py-6">
-                <dt className="font-heading text-lg font-semibold text-primary">{q.name}</dt>
-                <dd className="mt-3 text-sm leading-7 text-muted-foreground sm:text-base">
-                  {q.acceptedAnswer.text}
-                </dd>
-              </div>
-            </FadeIn>
-          ))}
-        </dl>
-      </section>
+      {/* ─────────────── FAQ (managed via CMS) ─────────────── */}
+      <ManagedFaqSection
+        pageKey="athletes"
+        variant="list"
+        eyebrow="Common questions"
+        title="Questions athletes and parents actually ask."
+      />
 
       {/* ─────────────── Footer CTA ─────────────── */}
       <section className="bg-primary text-primary-foreground">
