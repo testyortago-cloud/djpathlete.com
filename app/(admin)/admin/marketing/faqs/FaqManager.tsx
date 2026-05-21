@@ -22,6 +22,8 @@ import type { FaqPage } from "@/lib/faq/pages"
 
 interface Props {
   pages: FaqPage[]
+  /** FAQ counts keyed by page_key — drives the per-page card badges. */
+  initialCounts: Record<string, number>
 }
 
 type Status = "published" | "draft"
@@ -48,8 +50,17 @@ const EMPTY_EDITOR: EditorState = {
 
 const GROUP_ORDER: FaqPage["group"][] = ["Static", "Sports", "Athletes", "Events"]
 
-export function FaqManager({ pages }: Props) {
+/** Human-friendly section headings for the picker (registry groups are internal terms). */
+const GROUP_LABELS: Record<FaqPage["group"], string> = {
+  Static: "Site pages",
+  Sports: "Sports",
+  Athletes: "Athletes",
+  Events: "Events",
+}
+
+export function FaqManager({ pages, initialCounts }: Props) {
   const [pageKey, setPageKey] = useState<string>("")
+  const [counts, setCounts] = useState<Record<string, number>>(initialCounts)
   const [faqs, setFaqs] = useState<Faq[]>([])
   const [loading, setLoading] = useState(false)
   const [editor, setEditor] = useState<EditorState | null>(null)
@@ -88,7 +99,10 @@ export function FaqManager({ pages }: Props) {
         setFaqs([])
         return
       }
-      setFaqs((json.faqs as Faq[]) ?? [])
+      const loaded = (json.faqs as Faq[]) ?? []
+      setFaqs(loaded)
+      // Keep this page's card badge in sync with what's actually in the DB.
+      setCounts((c) => ({ ...c, [key]: loaded.length }))
     } catch {
       toast.error("Failed to load FAQs")
       setFaqs([])
@@ -301,60 +315,93 @@ export function FaqManager({ pages }: Props) {
 
   return (
     <div className="space-y-6">
-      {/* Page picker */}
-      <div className="border border-border rounded-xl bg-card p-4">
-        <label className="block max-w-md">
-          <span className="block text-sm font-medium text-primary mb-1">Page</span>
-          <select
-            value={pageKey}
-            onChange={(e) => setPageKey(e.target.value)}
-            className="faq-input"
-          >
-            <option value="">Select a page…</option>
-            {grouped.map((g) => (
-              <optgroup key={g.group} label={g.group}>
-                {g.pages.map((p) => (
-                  <option key={p.key} value={p.key}>
-                    {p.label}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-        </label>
-        {activePage && (
-          <p className="text-xs text-muted-foreground mt-2">
-            <span className="font-mono">{activePage.routePath}</span>
-            {" · "}
-            {activePage.contextSummary}
-          </p>
-        )}
+      {/* Page picker — one card per page. Every page on the site is here, so
+          the coach can add FAQs to any of them; the badge shows what each
+          page already has. */}
+      <div className="space-y-5">
+        <p className="text-sm text-muted-foreground">
+          Pick any page below to manage its FAQs. Every page is editable — the
+          badge shows how many FAQs it currently has.
+        </p>
+        {grouped.map((g) => (
+          <div key={g.group}>
+            <p className="mb-2 text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
+              {GROUP_LABELS[g.group]}
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {g.pages.map((p) => {
+                const count = counts[p.key] ?? 0
+                const selected = p.key === pageKey
+                return (
+                  <button
+                    key={p.key}
+                    type="button"
+                    onClick={() => setPageKey(p.key)}
+                    aria-pressed={selected}
+                    className={`flex flex-col gap-1 rounded-xl border p-4 text-left transition-colors ${
+                      selected
+                        ? "border-accent bg-accent/5 ring-1 ring-accent"
+                        : "border-border bg-card hover:border-accent/60 hover:bg-surface/50"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-sm font-medium text-primary">{p.label}</span>
+                      <span
+                        className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-wider ${
+                          count > 0
+                            ? "bg-success/10 text-success"
+                            : "bg-muted text-muted-foreground"
+                        }`}
+                      >
+                        {count > 0 ? `${count} FAQ${count === 1 ? "" : "s"}` : "No FAQs"}
+                      </span>
+                    </div>
+                    <span className="font-mono text-xs text-muted-foreground">
+                      {p.routePath}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* FAQ list */}
       {activePage && (
         <div className="border border-border rounded-xl bg-card overflow-hidden">
-          <div className="p-4 border-b border-border/60 flex items-center gap-3">
-            <p className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground flex-1">
-              {loading ? "Loading…" : `${faqs.length} FAQ${faqs.length === 1 ? "" : "s"}`}
+          <div className="border-b border-border/60 p-4">
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+              <h2 className="font-heading text-base text-primary">{activePage.label}</h2>
+              <span className="font-mono text-xs text-muted-foreground">
+                {activePage.routePath}
+              </span>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {activePage.contextSummary}
             </p>
-            <button
-              type="button"
-              onClick={generateQuestions}
-              disabled={generating}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-accent text-accent text-sm font-medium hover:bg-accent/10 transition-colors disabled:opacity-50"
-            >
-              <Sparkles className="size-4" />
-              {generating ? "Generating…" : "Generate questions"}
-            </button>
-            <button
-              type="button"
-              onClick={openCreate}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-accent text-white text-sm font-medium hover:bg-accent/90 transition-colors"
-            >
-              <Plus className="size-4" />
-              Add FAQ
-            </button>
+            <div className="mt-3 flex items-center gap-3">
+              <p className="flex-1 text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
+                {loading ? "Loading…" : `${faqs.length} FAQ${faqs.length === 1 ? "" : "s"}`}
+              </p>
+              <button
+                type="button"
+                onClick={generateQuestions}
+                disabled={generating}
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-accent text-accent text-sm font-medium hover:bg-accent/10 transition-colors disabled:opacity-50"
+              >
+                <Sparkles className="size-4" />
+                {generating ? "Generating…" : "Generate questions"}
+              </button>
+              <button
+                type="button"
+                onClick={openCreate}
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-accent text-white text-sm font-medium hover:bg-accent/90 transition-colors"
+              >
+                <Plus className="size-4" />
+                Add FAQ
+              </button>
+            </div>
           </div>
 
           {!loading && faqs.length === 0 ? (

@@ -16,6 +16,22 @@ export async function listFaqsForPage(
   return (data ?? []) as Faq[]
 }
 
+/**
+ * FAQ counts keyed by page_key, across every status. One lightweight query —
+ * powers the admin page picker so the coach sees which pages already have FAQs.
+ */
+export async function getFaqCountsByPage(): Promise<Record<string, number>> {
+  const supabase = createServiceRoleClient()
+  const { data, error } = await supabase.from("faqs").select("page_key")
+  if (error) throw new Error(`getFaqCountsByPage: ${error.message}`)
+  const counts: Record<string, number> = {}
+  for (const row of data ?? []) {
+    const key = (row as { page_key: string }).page_key
+    counts[key] = (counts[key] ?? 0) + 1
+  }
+  return counts
+}
+
 export async function createFaq(input: FaqInput): Promise<Faq> {
   const supabase = createServiceRoleClient()
   // New FAQ goes to the end of its page list.

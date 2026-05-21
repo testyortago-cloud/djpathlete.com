@@ -1,6 +1,7 @@
 import { HelpCircle } from "lucide-react"
 import { getStaticAndTemplatedFaqPages, type FaqPage } from "@/lib/faq/pages"
 import { getPublishedEvents } from "@/lib/db/events"
+import { getFaqCountsByPage } from "@/lib/db/faqs"
 import { FaqManager } from "./FaqManager"
 
 export const metadata = { title: "FAQs — DJP Athlete" }
@@ -23,10 +24,20 @@ async function eventFaqPages(): Promise<FaqPage[]> {
   }
 }
 
+async function faqCounts(): Promise<Record<string, number>> {
+  try {
+    return await getFaqCountsByPage()
+  } catch {
+    // A count-query failure must not block the tool — fall back to empty.
+    return {}
+  }
+}
+
 export default async function FaqsAdminPage() {
-  const [staticPages, eventPages] = await Promise.all([
+  const [staticPages, eventPages, counts] = await Promise.all([
     Promise.resolve(getStaticAndTemplatedFaqPages()),
     eventFaqPages(),
+    faqCounts(),
   ])
   const allPages = [...staticPages, ...eventPages]
 
@@ -46,7 +57,7 @@ export default async function FaqsAdminPage() {
         </div>
       </div>
 
-      <FaqManager pages={allPages} />
+      <FaqManager pages={allPages} initialCounts={counts} />
     </div>
   )
 }
