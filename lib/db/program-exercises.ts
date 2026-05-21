@@ -122,6 +122,139 @@ export async function deleteDayExercises(programId: string, weekNumber: number, 
   if (error) throw error
 }
 
+export type CopyScope = "day" | "week" | "program"
+
+export interface CopyFromProgramArgs {
+  sourceProgramId: string
+  targetProgramId: string
+  scope: CopyScope
+  sourceWeek?: number
+  sourceDay?: number
+  targetWeek?: number
+  targetDay?: number
+  includeWeights: boolean
+}
+
+/**
+ * Copy program_exercises from a source program into a target program.
+ *
+ * - scope='day'     → requires sourceWeek + sourceDay + targetWeek + targetDay, copies one day's exercises
+ * - scope='week'    → requires sourceWeek + targetWeek, copies the whole week (all 7 days)
+ * - scope='program' → copies every source week N into target week N; source weeks beyond
+ *                     the target program's duration are silently skipped
+ *
+ * Inserts are appended after existing exercises on the target day (order_index continues from
+ * the current max). When includeWeights is false, suggested_weight_kg is stripped from each row.
+ *
+ * Throws if the target program does not exist or if any required target week exceeds its duration.
+ */
+export async function copyExercisesFromProgram(args: CopyFromProgramArgs) {
+  const supabase = getClient()
+
+  const { data: targetProgram, error: targetErr } = await supabase
+    .from("programs")
+    .select("duration_weeks")
+    .eq("id", args.targetProgramId)
+    .single()
+  if (targetErr) throw targetErr
+  const targetDuration = (targetProgram?.duration_weeks ?? 0) as number
+
+  let query = supabase.from("program_exercises").select("*").eq("program_id", args.sourceProgramId)
+  if (args.scope === "day" || args.scope === "week") {
+    if (!args.sourceWeek) throw new Error("sourceWeek is required for day/week scope")
+    query = query.eq("week_number", args.sourceWeek)
+  }
+  if (args.scope === "day") {
+    if (!args.sourceDay) throw new Error("sourceDay is required for day scope")
+    query = query.eq("day_of_week", args.sourceDay)
+  }
+  const { data: sourceRows, error: srcErr } = await query
+  if (srcErr) throw srcErr
+  if (!sourceRows || sourceRows.length === 0) return [] as ProgramExercise[]
+
+  function mapTarget(row: ProgramExercise): { week: number; day: number } | null {
+    if (args.scope === "day") {
+      if (!args.targetWeek || !args.targetDay) throw new Error("targetWeek and targetDay required for day scope")
+      if (args.targetWeek > targetDuration) {
+        throw new Error(`Target week ${args.targetWeek} exceeds target program duration (${targetDuration})`)
+      }
+      return { week: args.targetWeek, day: args.targetDay }
+    }
+    if (args.scope === "week") {
+      if (!args.targetWeek) throw new Error("targetWeek required for week scope")
+      if (args.targetWeek > targetDuration) {
+        throw new Error(`Target week ${args.targetWeek} exceeds target program duration (${targetDuration})`)
+      }
+      return { week: args.targetWeek, day: row.day_of_week }
+    }
+    // program scope: 1:1 mapping; skip overflow weeks
+    if (row.week_number > targetDuration) return null
+    return { week: row.week_number, day: row.day_of_week }
+  }
+
+  // Compute next order_index per (week, day) on the target program so we append.
+  const targetWeekDayPairs = new Set<string>()
+  const projected: Array<{ row: ProgramExercise; week: number; day: number }> = []
+  for (const row of sourceRows as ProgramExercise[]) {
+    const t = mapTarget(row)
+    if (!t) continue
+    projected.push({ row, week: t.week, day: t.day })
+    targetWeekDayPairs.add(`${t.week}:${t.day}`)
+  }
+  if (projected.length === 0) return [] as ProgramExercise[]
+
+  const baseOffsets = new Map<string, number>()
+  await Promise.all(
+    Array.from(targetWeekDayPairs).map(async (pair) => {
+      const [w, d] = pair.split(":").map(Number)
+      const { data: existing, error: existErr } = await supabase
+        .from("program_exercises")
+        .select("order_index")
+        .eq("program_id", args.targetProgramId)
+        .eq("week_number", w)
+        .eq("day_of_week", d)
+        .order("order_index", { ascending: false })
+        .limit(1)
+      if (existErr) throw existErr
+      const max = existing && existing.length > 0 ? (existing[0].order_index as number) : -1
+      baseOffsets.set(pair, max + 1)
+    }),
+  )
+
+  // Group source rows by (week, day) and re-index per group so order_index stays dense.
+  const perGroupCounter = new Map<string, number>()
+  const toInsert = projected
+    .sort((a, b) => a.row.order_index - b.row.order_index)
+    .map(({ row, week, day }) => {
+      const key = `${week}:${day}`
+      const offset = baseOffsets.get(key) ?? 0
+      const n = perGroupCounter.get(key) ?? 0
+      perGroupCounter.set(key, n + 1)
+      return {
+        program_id: args.targetProgramId,
+        exercise_id: row.exercise_id,
+        day_of_week: day,
+        week_number: week,
+        order_index: offset + n,
+        sets: row.sets,
+        reps: row.reps,
+        duration_seconds: row.duration_seconds,
+        rest_seconds: row.rest_seconds,
+        notes: row.notes,
+        rpe_target: row.rpe_target,
+        intensity_pct: row.intensity_pct,
+        tempo: row.tempo,
+        group_tag: row.group_tag,
+        technique: row.technique,
+        suggested_weight_kg: args.includeWeights ? row.suggested_weight_kg : null,
+      }
+    })
+
+  const { data, error } = await supabase.from("program_exercises").insert(toInsert).select()
+  if (error) throw error
+  return data as ProgramExercise[]
+}
+
 export async function duplicateProgramExercises(sourceProgramId: string, targetProgramId: string) {
   const supabase = getClient()
   const { data: existing, error: fetchError } = await supabase

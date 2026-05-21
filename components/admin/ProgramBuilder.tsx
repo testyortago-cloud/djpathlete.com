@@ -35,6 +35,7 @@ import { ExerciseCard } from "@/components/admin/ExerciseCard"
 import { ExercisePool } from "@/components/admin/ExercisePool"
 import { ExercisePoolCard } from "@/components/admin/ExercisePoolCard"
 import { GenerationDialog } from "@/components/admin/GenerationDialog"
+import { CopyFromProgramDialog } from "@/components/admin/CopyFromProgramDialog"
 import type { Exercise, ProgramExercise } from "@/types/database"
 
 type ProgramExerciseWithExercise = ProgramExercise & { exercises: Exercise }
@@ -82,6 +83,9 @@ export function ProgramBuilder({
   // Duplicate week dialog
   const [duplicateOpen, setDuplicateOpen] = useState(false)
   const [isDuplicating, setIsDuplicating] = useState(false)
+
+  // Copy-from-another-program dialog
+  const [copyFromOpen, setCopyFromOpen] = useState(false)
 
   // AI Generate week dialog
   const [generateWeekOpen, setGenerateWeekOpen] = useState(false)
@@ -748,6 +752,7 @@ export function ProgramBuilder({
             selectedWeek={selectedWeek}
             onSelectWeek={setSelectedWeek}
             onDuplicateWeek={() => setDuplicateOpen(true)}
+            onCopyFromProgram={() => setCopyFromOpen(true)}
             onAddWeek={openAddWeekDialog}
             isAddingWeek={isAddingWeek}
             onDeleteWeek={() => setDeleteWeekOpen(true)}
@@ -1059,6 +1064,15 @@ export function ProgramBuilder({
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Copy from another program */}
+      <CopyFromProgramDialog
+        open={copyFromOpen}
+        onOpenChange={setCopyFromOpen}
+        targetProgramId={programId}
+        targetTotalWeeks={localTotalWeeks}
+        defaultTargetWeek={selectedWeek}
+      />
 
       {/* AI Generate Week Dialog */}
       <GenerationDialog

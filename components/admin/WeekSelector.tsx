@@ -1,6 +1,6 @@
 "use client"
 
-import { Copy, Plus, Sparkles, Trash2 } from "lucide-react"
+import { Copy, ClipboardCopy, Plus, Sparkles, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 interface WeekSelectorProps {
@@ -8,6 +8,7 @@ interface WeekSelectorProps {
   selectedWeek: number
   onSelectWeek: (week: number) => void
   onDuplicateWeek: () => void
+  onCopyFromProgram: () => void
   onAddWeek: () => void
   isAddingWeek?: boolean
   onDeleteWeek: () => void
@@ -23,6 +24,7 @@ export function WeekSelector({
   selectedWeek,
   onSelectWeek,
   onDuplicateWeek,
+  onCopyFromProgram,
   onAddWeek,
   isAddingWeek = false,
   onDeleteWeek,
@@ -59,6 +61,15 @@ export function WeekSelector({
       <Button variant="outline" size="sm" onClick={onDuplicateWeek} title="Duplicate this week">
         <Copy className="size-3.5" />
         Duplicate Week
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={onCopyFromProgram}
+        title="Copy a day, week, or whole program from another client"
+      >
+        <ClipboardCopy className="size-3.5" />
+        Copy from…
       </Button>
       {totalWeeks > 1 && (
         <Button
