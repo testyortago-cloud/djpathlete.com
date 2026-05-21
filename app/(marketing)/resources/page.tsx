@@ -4,6 +4,7 @@ import Link from "next/link"
 import { JsonLd } from "@/components/shared/JsonLd"
 import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 import { FadeIn } from "@/components/shared/FadeIn"
+import { ManagedFaqSection } from "@/components/public/ManagedFaqSection"
 
 export const metadata: Metadata = {
   title: "Sports Training Resources",
@@ -138,6 +139,14 @@ export default function ResourcesPage() {
           </div>
         </div>
       </section>
+
+      {/* FAQ (managed via CMS) — renders only when published FAQs exist for this page */}
+      <ManagedFaqSection
+        pageKey="resources"
+        variant="cards"
+        eyebrow="Common questions"
+        title="Frequently asked questions."
+      />
 
       {/* CTA */}
       <section className="py-16 lg:py-24 px-4 sm:px-8">

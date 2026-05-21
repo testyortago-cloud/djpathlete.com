@@ -4,6 +4,7 @@ import NextImage from "next/image"
 import { ArrowUpRight } from "lucide-react"
 import { JsonLd } from "@/components/shared/JsonLd"
 import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
+import { ManagedFaqSection } from "@/components/public/ManagedFaqSection"
 import { getPublishedBlogPosts } from "@/lib/db/blog-posts"
 import type { BlogCategory, BlogPost } from "@/types/database"
 
@@ -345,6 +346,14 @@ export default async function BlogPage() {
           })}
         </div>
       )}
+
+      {/* FAQ (managed via CMS) — renders only when published FAQs exist for this page */}
+      <ManagedFaqSection
+        pageKey="blog"
+        variant="cards"
+        eyebrow="Common questions"
+        title="Frequently asked questions."
+      />
 
       {/* ─────────── Closing colophon / CTA strip ─────────── */}
       <section className="bg-primary text-primary-foreground px-4 sm:px-8 py-20 lg:py-28 relative overflow-hidden">

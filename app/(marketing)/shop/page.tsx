@@ -10,6 +10,7 @@ import {
 } from "@/lib/shop/feature-flag"
 import { listActiveProducts } from "@/lib/db/shop-products"
 import { listVariantsForProduct } from "@/lib/db/shop-variants"
+import { ManagedFaqSection } from "@/components/public/ManagedFaqSection"
 import { ComingSoon } from "@/components/public/shop/ComingSoon"
 import { ProductCard } from "@/components/public/shop/ProductCard"
 import { ShopFilterBar, type ShopCategory, type ShopSort } from "./ShopFilterBar"
@@ -305,6 +306,14 @@ export default async function ShopPage({
           </p>
         </div>
       </section>
+
+      {/* FAQ (managed via CMS) — renders only when published FAQs exist for this page */}
+      <ManagedFaqSection
+        pageKey="shop"
+        variant="cards"
+        eyebrow="Common questions"
+        title="Frequently asked questions."
+      />
 
       {/* Trust strip */}
       <section className="px-4 py-14 sm:px-8 lg:py-20">

@@ -16,6 +16,7 @@ import { JsonLd } from "@/components/shared/JsonLd"
 import { FadeIn } from "@/components/shared/FadeIn"
 import { LocalVideoBackground } from "@/components/public/LocalVideoBackground"
 import { InquiryForm } from "@/components/public/InquiryForm"
+import { ManagedFaqSection } from "@/components/public/ManagedFaqSection"
 import { SemanticAnswerBlock } from "@/components/public/SemanticAnswerBlock"
 import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 
@@ -414,6 +415,14 @@ export default function InPersonPage() {
           .
         </div>
       </section>
+
+      {/* FAQ (managed via CMS) — renders only when published FAQs exist for this page */}
+      <ManagedFaqSection
+        pageKey="in-person"
+        variant="cards"
+        eyebrow="Common questions"
+        title="Frequently asked questions."
+      />
 
       {/* Apply — Inquiry Form */}
       <section className="py-16 lg:py-24 px-4 sm:px-8" id="apply">

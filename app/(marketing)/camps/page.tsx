@@ -7,6 +7,7 @@ import { FadeIn } from "@/components/shared/FadeIn"
 import { Button } from "@/components/ui/button"
 import { CampHero } from "@/components/public/CampHero"
 import { EventsComingSoonPanel } from "@/components/public/EventsComingSoonPanel"
+import { ManagedFaqSection } from "@/components/public/ManagedFaqSection"
 import { InquiryForm } from "@/components/public/InquiryForm"
 import { getPublishedEvents } from "@/lib/db/events"
 import { buildEventListSchema } from "@/lib/seo/build-event-list-schema"
@@ -330,6 +331,14 @@ export default async function CampsPage() {
           </div>
         </div>
       </section>
+
+      {/* FAQ (managed via CMS) — renders only when published FAQs exist for this page */}
+      <ManagedFaqSection
+        pageKey="camps"
+        variant="cards"
+        eyebrow="Common questions"
+        title="Frequently asked questions."
+      />
 
       {/* ===================== § 7 · INQUIRY · CALL FUNNEL ===================== */}
       <section id="register-interest" className="relative py-20 lg:py-28 px-4 sm:px-8 bg-surface text-primary">

@@ -4,6 +4,7 @@ import { ArrowRight, Dumbbell, Activity, Target, Zap, Brain, BarChart3 } from "l
 import { JsonLd } from "@/components/shared/JsonLd"
 import { FadeIn } from "@/components/shared/FadeIn"
 import { InquiryForm } from "@/components/public/InquiryForm"
+import { ManagedFaqSection } from "@/components/public/ManagedFaqSection"
 import { SemanticAnswerBlock } from "@/components/public/SemanticAnswerBlock"
 import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 import { Button } from "@/components/ui/button"
@@ -472,6 +473,14 @@ export default function AssessmentPage() {
           </FadeIn>
         </div>
       </section>
+
+      {/* FAQ (managed via CMS) — renders only when published FAQs exist for this page */}
+      <ManagedFaqSection
+        pageKey="assessment"
+        variant="cards"
+        eyebrow="Common questions"
+        title="Frequently asked questions."
+      />
 
       {/* ===================== INTAKE ===================== */}
       <section className="py-24 lg:py-32 px-4 sm:px-8 bg-surface" id="apply">

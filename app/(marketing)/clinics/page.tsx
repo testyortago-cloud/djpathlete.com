@@ -8,6 +8,7 @@ import Link from "next/link"
 import Image from "next/image"
 import { ClinicHero } from "@/components/public/ClinicHero"
 import { EventsComingSoonPanel } from "@/components/public/EventsComingSoonPanel"
+import { ManagedFaqSection } from "@/components/public/ManagedFaqSection"
 import { InquiryForm } from "@/components/public/InquiryForm"
 import { getPublishedEvents } from "@/lib/db/events"
 import { buildEventListSchema } from "@/lib/seo/build-event-list-schema"
@@ -317,6 +318,14 @@ export default async function ClinicsPage() {
           </div>
         </div>
       </section>
+
+      {/* FAQ (managed via CMS) — renders only when published FAQs exist for this page */}
+      <ManagedFaqSection
+        pageKey="clinics"
+        variant="cards"
+        eyebrow="Common questions"
+        title="Frequently asked questions."
+      />
 
       <section id="register-interest" className="bg-surface border-t border-border">
         <div className="mx-auto max-w-3xl px-4 py-20 md:px-6 md:py-28">

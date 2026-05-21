@@ -1,6 +1,7 @@
 ﻿import type { Metadata } from "next"
 import { JsonLd } from "@/components/shared/JsonLd"
 import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
+import { ManagedFaqSection } from "@/components/public/ManagedFaqSection"
 import { WaitlistForm } from "./WaitlistForm"
 
 export const metadata: Metadata = {
@@ -85,6 +86,14 @@ export default function EducationPage() {
           <WaitlistForm />
         </div>
       </section>
+
+      {/* FAQ (managed via CMS) — renders only when published FAQs exist for this page */}
+      <ManagedFaqSection
+        pageKey="education"
+        variant="cards"
+        eyebrow="Common questions"
+        title="Frequently asked questions."
+      />
     </>
   )
 }
