@@ -1072,6 +1072,17 @@ export function ProgramBuilder({
         targetProgramId={programId}
         targetTotalWeeks={localTotalWeeks}
         defaultTargetWeek={selectedWeek}
+        onCopied={(rows) => {
+          // Merge newly inserted exercises into local state so the day grid
+          // updates without waiting for router.refresh() to land.
+          setLocalExercises((prev) => [...prev, ...(rows as ProgramExerciseWithExercise[])])
+          // If the copied rows include a week the user is currently viewing, no jump needed —
+          // they already see the change. Otherwise jump to the first copied week.
+          const firstWeek = (rows as ProgramExerciseWithExercise[])[0]?.week_number
+          if (firstWeek && firstWeek !== selectedWeek) {
+            setSelectedWeek(firstWeek)
+          }
+        }}
       />
 
       {/* AI Generate Week Dialog */}

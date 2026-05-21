@@ -52,7 +52,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       includeWeights: parsed.data.includeWeights,
     })
 
-    return NextResponse.json({ inserted: inserted.length }, { status: 201 })
+    return NextResponse.json({ inserted: inserted.length, rows: inserted }, { status: 201 })
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to copy exercises."
     return NextResponse.json({ error: message }, { status: 500 })

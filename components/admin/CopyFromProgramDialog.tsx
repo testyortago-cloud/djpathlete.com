@@ -45,6 +45,8 @@ interface CopyFromProgramDialogProps {
   targetTotalWeeks: number
   defaultTargetWeek: number
   defaultTargetDay?: number
+  /** Called after a successful copy with the newly inserted rows so the parent can update local state. */
+  onCopied?: (rows: unknown[]) => void
 }
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
@@ -68,6 +70,7 @@ export function CopyFromProgramDialog({
   targetTotalWeeks,
   defaultTargetWeek,
   defaultTargetDay,
+  onCopied,
 }: CopyFromProgramDialogProps) {
   const router = useRouter()
 
@@ -240,13 +243,17 @@ export function CopyFromProgramDialog({
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || "Failed to copy")
 
-      const inserted = (data as { inserted?: number }).inserted ?? 0
+      const inserted = (data as { inserted?: number; rows?: unknown[] }).inserted ?? 0
+      const rows = (data as { rows?: unknown[] }).rows ?? []
       if (inserted === 0) {
         toast.warning("Nothing was copied — the selected source was empty")
       } else {
         toast.success(`Copied ${pluralise(inserted, "exercise")} into this program`)
+        onCopied?.(rows)
         onOpenChange(false)
       }
+      // Background refresh keeps any other server-rendered bits in sync;
+      // the live update happens via onCopied above.
       router.refresh()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to copy")

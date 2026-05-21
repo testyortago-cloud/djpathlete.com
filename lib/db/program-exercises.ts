@@ -250,9 +250,12 @@ export async function copyExercisesFromProgram(args: CopyFromProgramArgs) {
       }
     })
 
-  const { data, error } = await supabase.from("program_exercises").insert(toInsert).select()
+  const { data, error } = await supabase
+    .from("program_exercises")
+    .insert(toInsert)
+    .select("*, exercises(*)")
   if (error) throw error
-  return data as ProgramExercise[]
+  return data as (ProgramExercise & { exercises: unknown })[]
 }
 
 export async function duplicateProgramExercises(sourceProgramId: string, targetProgramId: string) {
