@@ -25,10 +25,17 @@ interface CopySource {
   assignees: { id: string; name: string }[]
 }
 
-interface ExerciseCounts {
-  total: number
-  byWeek: Record<string, number>
-  byWeekDay: Record<string, number>
+interface PreviewExercise {
+  week: number
+  day: number
+  orderIndex: number
+  name: string
+  sets: number | null
+  reps: string | null
+  durationSeconds: number | null
+  rpe: number | null
+  groupTag: string | null
+  technique: string | null
 }
 
 interface CopyFromProgramDialogProps {
@@ -77,8 +84,8 @@ export function CopyFromProgramDialog({
   const [includeWeights, setIncludeWeights] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
-  const [counts, setCounts] = useState<ExerciseCounts | null>(null)
-  const [loadingCounts, setLoadingCounts] = useState(false)
+  const [preview, setPreview] = useState<PreviewExercise[] | null>(null)
+  const [loadingPreview, setLoadingPreview] = useState(false)
 
   // Reset on each open
   useEffect(() => {
@@ -91,7 +98,7 @@ export function CopyFromProgramDialog({
     setTargetWeek(defaultTargetWeek)
     setTargetDay(defaultTargetDay ?? 1)
     setIncludeWeights(false)
-    setCounts(null)
+    setPreview(null)
   }, [open, defaultTargetWeek, defaultTargetDay])
 
   // Load sources on open
@@ -119,25 +126,25 @@ export function CopyFromProgramDialog({
     }
   }, [open, targetProgramId])
 
-  // Fetch exercise counts whenever source program changes
+  // Fetch preview exercises whenever source program changes
   useEffect(() => {
     if (!sourceProgramId) {
-      setCounts(null)
+      setPreview(null)
       return
     }
     let cancelled = false
-    setLoadingCounts(true)
-    fetch(`/api/admin/programs/${sourceProgramId}/exercise-counts`)
+    setLoadingPreview(true)
+    fetch(`/api/admin/programs/${sourceProgramId}/preview`)
       .then(async (res) => {
         if (!res.ok) throw new Error("Failed to load preview")
-        const data = (await res.json()) as ExerciseCounts
-        if (!cancelled) setCounts(data)
+        const data = (await res.json()) as { exercises: PreviewExercise[] }
+        if (!cancelled) setPreview(data.exercises ?? [])
       })
       .catch(() => {
-        if (!cancelled) setCounts(null)
+        if (!cancelled) setPreview(null)
       })
       .finally(() => {
-        if (!cancelled) setLoadingCounts(false)
+        if (!cancelled) setLoadingPreview(false)
       })
     return () => {
       cancelled = true
@@ -165,34 +172,40 @@ export function CopyFromProgramDialog({
     }
   }, [selectedSource, sourceWeek])
 
-  // Preview text for the chosen source slice
-  const sourcePreview = useMemo(() => {
-    if (!counts) return null
-    if (scope === "day") {
-      const n = counts.byWeekDay[`${sourceWeek}:${sourceDay}`] ?? 0
-      return n === 0 ? "This day is empty — nothing to copy" : `${pluralise(n, "exercise")} on this day`
+  // Compute which slice of the preview list will actually be copied
+  const previewSlice = useMemo<PreviewExercise[]>(() => {
+    if (!preview) return []
+    if (scope === "day") return preview.filter((e) => e.week === sourceWeek && e.day === sourceDay)
+    if (scope === "week") return preview.filter((e) => e.week === sourceWeek)
+    // program scope — only weeks that fit in the target
+    const copyableWeeks = Math.min(selectedSource?.durationWeeks ?? 0, targetTotalWeeks)
+    return preview.filter((e) => e.week <= copyableWeeks)
+  }, [preview, scope, sourceWeek, sourceDay, selectedSource, targetTotalWeeks])
+
+  const skippedFromOverflow = useMemo(() => {
+    if (!preview || scope !== "program") return 0
+    const copyableWeeks = Math.min(selectedSource?.durationWeeks ?? 0, targetTotalWeeks)
+    return preview.filter((e) => e.week > copyableWeeks).length
+  }, [preview, scope, selectedSource, targetTotalWeeks])
+
+  const previewSummary = useMemo(() => {
+    if (!preview) return null
+    if (previewSlice.length === 0) {
+      if (scope === "day") return "This day is empty — nothing to copy"
+      if (scope === "week") return "This week is empty — nothing to copy"
+      return "Source program is empty"
     }
+    if (scope === "day") return `${pluralise(previewSlice.length, "exercise")} on this day`
     if (scope === "week") {
-      const n = counts.byWeek[String(sourceWeek)] ?? 0
-      if (n === 0) return "This week is empty — nothing to copy"
-      const days = Object.keys(counts.byWeekDay).filter((k) => k.startsWith(`${sourceWeek}:`)).length
-      return `${pluralise(n, "exercise")} across ${pluralise(days, "day")}`
+      const days = new Set(previewSlice.map((e) => e.day)).size
+      return `${pluralise(previewSlice.length, "exercise")} across ${pluralise(days, "day")}`
     }
-    if (scope === "program") {
-      const totalWeeks = selectedSource?.durationWeeks ?? 0
-      const copyableWeeks = Math.min(totalWeeks, targetTotalWeeks)
-      const copied = Object.entries(counts.byWeek)
-        .filter(([w]) => Number(w) <= copyableWeeks)
-        .reduce((sum, [, n]) => sum + n, 0)
-      const skipped = counts.total - copied
-      if (copied === 0) return "Source program is empty"
-      const base = `${pluralise(copied, "exercise")} across ${pluralise(copyableWeeks, "week")}`
-      return skipped > 0
-        ? `${base} (${pluralise(skipped, "exercise")} in later weeks will be skipped)`
-        : base
-    }
-    return null
-  }, [counts, scope, sourceWeek, sourceDay, selectedSource, targetTotalWeeks])
+    const weeks = new Set(previewSlice.map((e) => e.week)).size
+    const base = `${pluralise(previewSlice.length, "exercise")} across ${pluralise(weeks, "week")}`
+    return skippedFromOverflow > 0
+      ? `${base} · ${pluralise(skippedFromOverflow, "exercise")} in later weeks will be skipped`
+      : base
+  }, [preview, previewSlice, scope, skippedFromOverflow])
 
   const canSubmit = !submitting && !!sourceProgramId
 
@@ -244,8 +257,8 @@ export function CopyFromProgramDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader className="pr-8">
           <DialogTitle className="flex items-center gap-2">
             <ClipboardCopy className="size-4" />
             Copy from another program
@@ -276,10 +289,10 @@ export function CopyFromProgramDialog({
               </div>
               <div className="border rounded-md max-h-72 overflow-y-auto divide-y">
                 {loadingSources && (
-                  <div className="px-3 py-6 text-center text-sm text-muted-foreground">Loading programs…</div>
+                  <div className="px-4 py-6 text-center text-sm text-muted-foreground">Loading programs…</div>
                 )}
                 {!loadingSources && filteredSources.length === 0 && (
-                  <div className="px-3 py-6 text-center text-sm text-muted-foreground">
+                  <div className="px-4 py-6 text-center text-sm text-muted-foreground">
                     {sources.length === 0
                       ? "No other programs available to copy from."
                       : "No programs match your search."}
@@ -290,18 +303,15 @@ export function CopyFromProgramDialog({
                     key={s.programId}
                     type="button"
                     onClick={() => setSourceProgramId(s.programId)}
-                    className="w-full text-left px-3 py-2.5 hover:bg-muted/60 transition-colors flex items-center justify-between gap-3"
+                    className="w-full text-left px-3 py-2.5 hover:bg-muted/60 transition-colors block min-w-0"
                   >
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium truncate">{s.programName}</div>
-                      <div className="text-xs text-muted-foreground flex items-center gap-1.5">
-                        <User className="size-3" />
-                        <span className="truncate">{sourceLabel(s)}</span>
-                      </div>
+                    <div className="text-sm font-medium truncate">{s.programName}</div>
+                    <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
+                      <User className="size-3 shrink-0" />
+                      <span className="truncate">{sourceLabel(s)}</span>
+                      <span className="text-muted-foreground/50">·</span>
+                      <span className="shrink-0">{pluralise(s.durationWeeks, "week")}</span>
                     </div>
-                    <span className="text-xs text-muted-foreground shrink-0">
-                      {pluralise(s.durationWeeks, "week")}
-                    </span>
                   </button>
                 ))}
               </div>
@@ -324,7 +334,7 @@ export function CopyFromProgramDialog({
                   type="button"
                   onClick={() => {
                     setSourceProgramId("")
-                    setCounts(null)
+                    setPreview(null)
                   }}
                   className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
                 >
@@ -481,9 +491,16 @@ export function CopyFromProgramDialog({
                   </div>
                 )}
 
-                {/* Preview line */}
-                <div className="text-xs text-muted-foreground min-h-[1.25rem]">
-                  {loadingCounts ? "Loading preview…" : sourcePreview}
+                {/* Preview line + exercise list */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs text-muted-foreground">
+                      {loadingPreview ? "Loading preview…" : (previewSummary ?? "")}
+                    </span>
+                  </div>
+                  {!loadingPreview && previewSlice.length > 0 && (
+                    <PreviewList exercises={previewSlice} scope={scope} />
+                  )}
                 </div>
               </div>
 
@@ -517,5 +534,59 @@ export function CopyFromProgramDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+function formatLoading(ex: PreviewExercise): string {
+  const parts: string[] = []
+  if (ex.sets != null) parts.push(`${ex.sets} set${ex.sets === 1 ? "" : "s"}`)
+  if (ex.reps) parts.push(`${ex.reps} reps`)
+  else if (ex.durationSeconds) parts.push(`${ex.durationSeconds}s`)
+  if (ex.rpe != null) parts.push(`RPE ${ex.rpe}`)
+  return parts.join(" · ")
+}
+
+function PreviewList({ exercises, scope }: { exercises: PreviewExercise[]; scope: Scope }) {
+  // Group by (week, day) so we can show day/week headers when copying a week or whole program.
+  const groups = new Map<string, { week: number; day: number; items: PreviewExercise[] }>()
+  for (const ex of exercises) {
+    const key = `${ex.week}:${ex.day}`
+    const g = groups.get(key) ?? { week: ex.week, day: ex.day, items: [] }
+    g.items.push(ex)
+    groups.set(key, g)
+  }
+  const groupList = Array.from(groups.values()).sort((a, b) => a.week - b.week || a.day - b.day)
+
+  return (
+    <div className="rounded-md border bg-muted/20 max-h-56 overflow-y-auto divide-y">
+      {groupList.map((g) => (
+        <div key={`${g.week}:${g.day}`} className="px-3 py-2">
+          {scope !== "day" && (
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">
+              {scope === "program" ? `Week ${g.week} · ` : ""}
+              {DAYS[g.day - 1]}
+              <span className="ml-1.5 text-muted-foreground/70 normal-case tracking-normal">
+                ({g.items.length})
+              </span>
+            </div>
+          )}
+          <ul className="space-y-1">
+            {g.items.map((ex, i) => (
+              <li key={`${g.week}:${g.day}:${ex.orderIndex}:${i}`} className="flex items-start gap-2 text-xs">
+                {ex.groupTag && (
+                  <span className="font-mono text-[10px] font-bold text-accent mt-0.5 shrink-0">{ex.groupTag}</span>
+                )}
+                <span className="min-w-0 flex-1">
+                  <span className="font-medium text-foreground">{ex.name}</span>
+                  {formatLoading(ex) && (
+                    <span className="text-muted-foreground"> — {formatLoading(ex)}</span>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
   )
 }
