@@ -19,7 +19,7 @@ export const POST = withAudit(
       )
     }
 
-    const { name, email, phone, service, sport, experience, goals, injuries, how_heard } = result.data
+    const { name, email, phone, service, sport, experience, goals, injuries, how_heard, gclid } = result.data
     const serviceLabel = SERVICE_LABELS[service]
 
     const supabase = createServiceRoleClient()
@@ -77,6 +77,7 @@ export const POST = withAudit(
         `\nGoals:\n${goals}`,
         injuries ? `\nInjuries/Limitations:\n${injuries}` : null,
         how_heard ? `How they heard about us: ${how_heard}` : null,
+        gclid ? `Google Ads click id: ${gclid}` : null,
       ]
         .filter(Boolean)
         .join("\n")
@@ -128,7 +129,14 @@ export const POST = withAudit(
         firstName: name.split(" ")[0],
         lastName: name.split(" ").slice(1).join(" ") || undefined,
         phone: phone ?? undefined,
-        tags: ["inquiry", `service-${service}`, sport ? `sport-${sport.toLowerCase()}` : ""].filter(Boolean),
+        tags: [
+          "inquiry",
+          `service-${service}`,
+          sport ? `sport-${sport.toLowerCase()}` : "",
+          // Stored as a tag so the GHL export can join lead → Google Ads click id
+          // for the qualified-conversion upload back to Google Ads.
+          gclid ? `gclid:${gclid}` : "",
+        ].filter(Boolean),
         source: `website-inquiry-${service}`,
       })
       if (contact?.id && process.env.GHL_WORKFLOW_NEW_INQUIRY) {

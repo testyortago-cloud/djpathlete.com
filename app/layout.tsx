@@ -4,6 +4,7 @@ import { Lexend_Exa, Lexend_Deca, JetBrains_Mono } from "next/font/google"
 import { SessionProvider } from "@/components/providers/SessionProvider"
 import { Toaster } from "@/components/ui/sonner"
 import { GoogleAnalytics } from "@/components/shared/GoogleAnalytics"
+import { CaptureGclid } from "@/components/analytics/CaptureGclid"
 import { SITE_URL } from "@/lib/constants"
 import "./globals.css"
 
@@ -77,6 +78,7 @@ export default function RootLayout({
           <Toaster />
         </SessionProvider>
         <GoogleAnalytics />
+        <CaptureGclid />
       </body>
     </html>
   )

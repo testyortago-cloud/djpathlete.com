@@ -45,6 +45,13 @@ export const inquiryFormSchema = z.object({
     .max(200)
     .optional()
     .transform((v) => v || null),
+  /** Google click identifier (from ?gclid=...) — used for Google Ads
+   * conversion-uploads. Optional; empty when traffic isn't from a Google Ad. */
+  gclid: z
+    .string()
+    .max(200)
+    .optional()
+    .transform((v) => v || null),
 })
 
 export type InquiryFormData = z.infer<typeof inquiryFormSchema>

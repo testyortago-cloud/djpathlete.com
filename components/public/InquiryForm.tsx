@@ -1,14 +1,12 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { CheckCircle2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
 import { summarizeApiError, type FieldErrors } from "@/lib/errors/humanize"
-import { fireConversion } from "@/lib/google-ads-tag"
-import { getSendTo } from "@/lib/ads/conversion-registry"
 import {
   inquiryFormSchema,
   SERVICE_LABELS,
@@ -16,6 +14,13 @@ import {
   type InquiryFormData,
   type ServiceType,
 } from "@/lib/validators/inquiry"
+
+/** Read a single cookie by name. Returns "" when absent. */
+function readCookie(name: string): string {
+  if (typeof document === "undefined") return ""
+  const match = document.cookie.split("; ").find((r) => r.startsWith(name + "="))
+  return match ? decodeURIComponent(match.split("=")[1] ?? "") : ""
+}
 
 const INQUIRY_FIELD_LABELS: Record<string, string> = {
   name: "Name",
@@ -56,8 +61,8 @@ export function InquiryForm({
   heading = "Apply Now",
   description = "Tell us about yourself and your goals. We review every application and respond within 48 hours.",
 }: InquiryFormProps) {
+  const router = useRouter()
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [isSubmitted, setIsSubmitted] = useState(false)
   const [errors, setErrors] = useState<Partial<Record<keyof InquiryFormData, string[]>>>({})
   const [formError, setFormError] = useState<string | null>(null)
   const [serverFieldErrors, setServerFieldErrors] = useState<FieldErrors>({})
@@ -79,6 +84,7 @@ export function InquiryForm({
       goals: formData.get("goals") as string,
       injuries: formData.get("injuries") as string,
       how_heard: formData.get("how_heard") as string,
+      gclid: readCookie("gclid"),
     }
 
     const result = inquiryFormSchema.safeParse(data)
@@ -113,33 +119,16 @@ export function InquiryForm({
         return
       }
 
-      setIsSubmitted(true)
-      toast.success("Application submitted!")
-      // Fire Google Ads lead conversion. No-op if gtag.js hasn't loaded
-      // (SSR, ad-blocker, etc.) — server-side /api/inquiry has already
-      // recorded the lead, so this is just the tracking ping.
-      fireConversion({ send_to: getSendTo("lead_form"), currency: "USD" })
+      // Send the user to the dedicated thank-you page. The conversion event
+      // fires there (via ConversionTracker), not here — so we only count
+      // successful submissions, not optimistic button clicks.
+      router.push("/application-received")
     } catch {
       const message = "We couldn't reach our server. Please check your connection and try again."
       setFormError(message)
       toast.error(message)
-    } finally {
       setIsSubmitting(false)
     }
-  }
-
-  if (isSubmitted) {
-    return (
-      <div className="text-center py-12">
-        <div className="flex size-16 items-center justify-center rounded-full bg-success/10 mx-auto mb-4">
-          <CheckCircle2 className="size-8 text-success" />
-        </div>
-        <h3 className="text-xl font-heading font-semibold text-primary mb-2">Application Received</h3>
-        <p className="text-muted-foreground max-w-md mx-auto">
-          Thank you for your interest. We review every application personally and will be in touch within 48 hours.
-        </p>
-      </div>
-    )
   }
 
   return (
