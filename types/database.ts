@@ -1406,6 +1406,13 @@ export interface MediaAsset {
   id: string
   kind: MediaAssetKind
   storage_path: string
+  /**
+   * Misnomer: this stores a Firebase Storage *path*, not a public URL (e.g.
+   * `images/<uid>/<file>.png`), so it equals `storage_path` for assets we
+   * upload. To render or publish it, generate a signed READ URL — pass it
+   * through `resolveMediaUrl` (publish path) or sign `storage_path` directly
+   * (drawer / asset thumbnails). Never use this value as an <img> src as-is.
+   */
   public_url: string
   mime_type: string
   width: number | null
