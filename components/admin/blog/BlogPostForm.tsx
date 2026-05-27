@@ -138,11 +138,14 @@ export function BlogPostForm({ post, authorId, initialPrompt }: BlogPostFormProp
 
     try {
       if (post) {
-        // Update existing post
+        // Update existing post. "Save Draft" (publish=false) forces status to
+        // "draft" so it actually un-publishes a live post; "Update"/"Publish"
+        // (publish=true) forces "published". The /publish endpoint below still
+        // handles the published_at stamp + side-effects on first publish.
         const res = await fetch(`/api/admin/blog/${post.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(parsed.data),
+          body: JSON.stringify({ ...parsed.data, status: publish ? "published" : "draft" }),
         })
         if (!res.ok) {
           const data = await res.json().catch(() => ({}))
@@ -164,6 +167,8 @@ export function BlogPostForm({ post, authorId, initialPrompt }: BlogPostFormProp
             throw new Error(message)
           }
           toast.success("Post published!")
+        } else if (!publish && post.status === "published") {
+          toast.success("Post moved to draft")
         } else {
           toast.success("Post saved!")
         }

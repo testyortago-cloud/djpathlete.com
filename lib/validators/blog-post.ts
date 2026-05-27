@@ -92,6 +92,10 @@ export const blogPostFormSchema = z.object({
     .nullable()
     .optional()
     .transform((v) => v || null),
+  // Lets the admin form flip a post between draft/published on save (e.g.
+  // "Save Draft" on an already-published post un-publishes it). Optional so
+  // payloads that omit it leave status untouched.
+  status: z.enum(["draft", "published"]).optional(),
 })
 
 export type BlogPostFormData = z.infer<typeof blogPostFormSchema>
