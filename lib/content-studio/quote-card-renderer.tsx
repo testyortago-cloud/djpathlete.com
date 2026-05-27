@@ -10,7 +10,12 @@
 
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { ImageResponse } from "@vercel/og"
+// Use Next's built-in `next/og` wrapper rather than `@vercel/og` directly.
+// next/og is the import the framework's bundler (Turbopack/webpack) knows how
+// to handle — it wires up the Satori/resvg WASM + font assets. Importing
+// @vercel/og raw caused the asset loading to fail at render time in the dev
+// server, surfacing as an opaque 500 on /api/admin/content-studio/quote-cards.
+import { ImageResponse } from "next/og"
 import sharp from "sharp"
 
 const CANVAS_SIZE = 1080

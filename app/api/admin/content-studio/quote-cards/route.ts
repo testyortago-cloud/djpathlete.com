@@ -68,93 +68,114 @@ export async function POST(request: NextRequest) {
 
   const count = Math.max(MIN_COUNT, Math.min(MAX_COUNT, body.count ?? DEFAULT_COUNT))
 
-  // Load the video + its transcript.
-  const video = await getVideoUploadById(body.videoUploadId)
-  if (!video) {
-    return NextResponse.json(
-      { error: `Video ${body.videoUploadId} not found` },
-      { status: 404 },
-    )
-  }
-  const transcript = await getTranscriptByVideoId(body.videoUploadId)
-  if (
-    !transcript ||
-    !transcript.transcript_text ||
-    transcript.transcript_text.trim().length < MIN_TRANSCRIPT_LENGTH
-  ) {
-    return NextResponse.json(
-      { error: "Video has no transcript or transcript is too short." },
-      { status: 422 },
-    )
-  }
+  // Track which step we're in so a thrown error reports WHERE it broke instead
+  // of an opaque 500. The whole pipeline (Claude extraction, @vercel/og render,
+  // Firebase upload, DB writes) is wrapped below — any throw is logged
+  // server-side and returned to the admin caller with the failing stage.
+  let stage = "load-video"
+  try {
+    // Load the video + its transcript.
+    const video = await getVideoUploadById(body.videoUploadId)
+    if (!video) {
+      return NextResponse.json(
+        { error: `Video ${body.videoUploadId} not found` },
+        { status: 404 },
+      )
+    }
+    stage = "load-transcript"
+    const transcript = await getTranscriptByVideoId(body.videoUploadId)
+    if (
+      !transcript ||
+      !transcript.transcript_text ||
+      transcript.transcript_text.trim().length < MIN_TRANSCRIPT_LENGTH
+    ) {
+      return NextResponse.json(
+        { error: "Video has no transcript or transcript is too short." },
+        { status: 422 },
+      )
+    }
 
-  // Extract quotes.
-  const quotes = await extractQuotesFromTranscript(transcript.transcript_text, count)
-  if (quotes.length === 0) {
-    return NextResponse.json(
-      { error: "Claude could not extract any usable quotes from this transcript." },
-      { status: 422 },
-    )
-  }
+    // Extract quotes.
+    stage = "extract-quotes"
+    const quotes = await extractQuotesFromTranscript(transcript.transcript_text, count)
+    if (quotes.length === 0) {
+      return NextResponse.json(
+        { error: "Claude could not extract any usable quotes from this transcript." },
+        { status: 422 },
+      )
+    }
 
-  // Render each quote -> PNG -> upload to Firebase -> create media_asset.
-  const bucket = getAdminStorage().bucket()
-  const mediaAssetIds: string[] = []
-  const userId = session.user.id
+    // Render each quote -> PNG -> upload to Firebase -> create media_asset.
+    const bucket = getAdminStorage().bucket()
+    const mediaAssetIds: string[] = []
+    const userId = session.user.id
 
-  for (let i = 0; i < quotes.length; i += 1) {
-    const quote = quotes[i]
-    const useJpeg = platform === "instagram"
-    const buffer = useJpeg ? await renderQuoteCardJpeg(quote) : await renderQuoteCard(quote)
-    const extension = useJpeg ? "jpg" : "png"
-    const mimeType = useJpeg ? "image/jpeg" : "image/png"
-    const storagePath = `images/${userId}/${Date.now()}-quote-${i}.${extension}`
-    await bucket.file(storagePath).save(buffer, { contentType: mimeType })
+    for (let i = 0; i < quotes.length; i += 1) {
+      const quote = quotes[i]
+      const useJpeg = platform === "instagram"
+      stage = `render-card-${i}`
+      const buffer = useJpeg ? await renderQuoteCardJpeg(quote) : await renderQuoteCard(quote)
+      const extension = useJpeg ? "jpg" : "png"
+      const mimeType = useJpeg ? "image/jpeg" : "image/png"
+      const storagePath = `images/${userId}/${Date.now()}-quote-${i}.${extension}`
+      stage = `upload-card-${i}`
+      await bucket.file(storagePath).save(buffer, { contentType: mimeType })
 
-    const asset = await createMediaAsset({
-      kind: "image",
-      storage_path: storagePath,
-      public_url: storagePath,
-      mime_type: mimeType,
-      bytes: buffer.length,
-      width: 1080,
-      height: 1080,
-      duration_ms: null,
-      derived_from_video_id: body.videoUploadId,
-      ai_alt_text: quote.slice(0, 125),
-      ai_analysis: { origin: "quote_card", quote },
+      stage = `create-media-asset-${i}`
+      const asset = await createMediaAsset({
+        kind: "image",
+        storage_path: storagePath,
+        public_url: storagePath,
+        mime_type: mimeType,
+        bytes: buffer.length,
+        width: 1080,
+        height: 1080,
+        duration_ms: null,
+        derived_from_video_id: body.videoUploadId,
+        ai_alt_text: quote.slice(0, 125),
+        ai_analysis: { origin: "quote_card", quote },
+        created_by: userId,
+      })
+      mediaAssetIds.push(asset.id)
+    }
+
+    // Create the draft carousel post + attach each asset.
+    stage = "create-post"
+    const post = await createSocialPost({
+      platform,
+      content: "",
+      media_url: null,
+      post_type: "carousel",
+      approval_status: "draft",
+      scheduled_at: null,
+      source_video_id: null,
       created_by: userId,
     })
-    mediaAssetIds.push(asset.id)
-  }
 
-  // Create the draft carousel post + attach each asset.
-  const post = await createSocialPost({
-    platform,
-    content: "",
-    media_url: null,
-    post_type: "carousel",
-    approval_status: "draft",
-    scheduled_at: null,
-    source_video_id: null,
-    created_by: userId,
-  })
-
-  try {
-    for (let i = 0; i < mediaAssetIds.length; i += 1) {
-      await attachMedia(post.id, mediaAssetIds[i], i)
-    }
-  } catch (err) {
     try {
-      await deleteSocialPost(post.id)
-    } catch {
-      // Swallow cleanup errors — the original failure is what matters.
+      stage = "attach-media"
+      for (let i = 0; i < mediaAssetIds.length; i += 1) {
+        await attachMedia(post.id, mediaAssetIds[i], i)
+      }
+    } catch (err) {
+      try {
+        await deleteSocialPost(post.id)
+      } catch {
+        // Swallow cleanup errors — the original failure is what matters.
+      }
+      return NextResponse.json(
+        { error: `Failed to attach media: ${(err as Error).message}` },
+        { status: 500 },
+      )
     }
+
+    return NextResponse.json({ postId: post.id, mediaAssetIds })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error(`[quote-cards] failed at stage "${stage}":`, err)
     return NextResponse.json(
-      { error: `Failed to attach media: ${(err as Error).message}` },
+      { error: `Quote card generation failed (${stage}): ${message}` },
       { status: 500 },
     )
   }
-
-  return NextResponse.json({ postId: post.id, mediaAssetIds })
 }

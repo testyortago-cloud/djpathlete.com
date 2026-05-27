@@ -14,6 +14,9 @@ const nextConfig = {
     "@google-analytics/data",
     "@google-cloud/firestore",
     "firebase-admin",
+    // sharp ships a native binary; bundling it breaks the quote-card JPEG
+    // (Instagram) render path. Keep it loaded as a native node module.
+    "sharp",
   ],
   experimental: {
     optimizePackageImports: ["lucide-react"],
