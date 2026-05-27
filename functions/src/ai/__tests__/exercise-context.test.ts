@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest"
-import { filterByDifficultyLevel, filterByProgressionPhase } from "../exercise-context.js"
+import {
+  filterByDifficultyLevel,
+  filterByProgressionPhase,
+  filterByAvailableEquipment,
+} from "../exercise-context.js"
 import type { CompressedExercise } from "../types.js"
 
 const mk = (id: string, difficulty: string, score: number | null = null): CompressedExercise =>
@@ -17,6 +21,14 @@ const mk = (id: string, difficulty: string, score: number | null = null): Compre
     sport_tags: [],
     joints_loaded: [],
     plane_of_motion: ["sagittal"],
+  }) as unknown as CompressedExercise
+
+/** Build a compressed exercise with specific equipment / bodyweight settings. */
+const mkEquip = (id: string, equipment_required: string[], is_bodyweight = false): CompressedExercise =>
+  ({
+    ...mk(id, "beginner"),
+    equipment_required,
+    is_bodyweight,
   }) as unknown as CompressedExercise
 
 describe("filterByDifficultyLevel — hard exclusion", () => {
@@ -53,6 +65,45 @@ describe("filterByDifficultyLevel — hard exclusion", () => {
     const weird = [...exercises, mk("unknown", "mystery")]
     const result = filterByDifficultyLevel(weird, "beginner")
     expect(result.map((e) => e.id)).toContain("unknown")
+  })
+})
+
+describe("filterByAvailableEquipment — hard exclusion", () => {
+  const exercises = [
+    mkEquip("none", []), // no equipment required
+    mkEquip("bw", ["dumbbell"], true), // bodyweight (kept despite listing equipment)
+    mkEquip("db", ["dumbbell"]),
+    mkEquip("band", ["resistance_band"]),
+    mkEquip("cable", ["cable_machine"]),
+    mkEquip("multi_ok", ["dumbbell", "bench"]),
+    mkEquip("multi_partial", ["dumbbell", "barbell"]),
+  ]
+
+  it("excludes exercises requiring unavailable equipment", () => {
+    const result = filterByAvailableEquipment(exercises, ["dumbbell", "bench"])
+    expect(result.map((e) => e.id).sort()).toEqual(["bw", "db", "multi_ok", "none"])
+  })
+
+  it("requires ALL listed equipment to be available (partial match excluded)", () => {
+    const result = filterByAvailableEquipment(exercises, ["dumbbell"])
+    expect(result.map((e) => e.id)).not.toContain("multi_partial")
+  })
+
+  it("always keeps bodyweight and no-equipment exercises even with empty equipment", () => {
+    const result = filterByAvailableEquipment(exercises, [])
+    expect(result.map((e) => e.id).sort()).toEqual(["bw", "none"])
+  })
+
+  it("normalizes equipment aliases (plural/short forms) before comparing", () => {
+    // client selected "dumbbells" (plural) — should still match "dumbbell" exercises
+    const result = filterByAvailableEquipment(exercises, ["dumbbells", "bands"])
+    expect(result.map((e) => e.id).sort()).toEqual(["band", "bw", "db", "none"])
+  })
+
+  it("skips filtering entirely for a full-gym client (>= threshold items)", () => {
+    const fullGym = Array.from({ length: 25 }, (_, i) => `eq_${i}`)
+    const result = filterByAvailableEquipment(exercises, fullGym)
+    expect(result).toHaveLength(exercises.length)
   })
 })
 

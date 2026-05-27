@@ -49,7 +49,7 @@ const CANONICAL_EQUIPMENT = [
  * and skip equipment-availability checks (still enforce avoided-equipment).
  * This threshold matches the EQUIPMENT_OPTIONS length from the questionnaire.
  */
-const FULL_GYM_THRESHOLD = 25
+export const FULL_GYM_THRESHOLD = 25
 
 const EQUIPMENT_ALIASES: Record<string, string> = {
   dumbbells: "dumbbell",

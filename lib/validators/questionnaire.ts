@@ -146,6 +146,10 @@ export const EQUIPMENT_LABELS: Record<string, string> = {
   agility_ladder: "Agility Ladder",
   cones: "Cones",
   yoga_mat: "Yoga Mat",
+  gliders: "Gliders",
+  wall: "Wall",
+  weight_plate: "Weight Plate",
+  short_barbell: "Short Barbell",
 }
 
 export const EQUIPMENT_PRESETS: Record<string, readonly string[]> = {

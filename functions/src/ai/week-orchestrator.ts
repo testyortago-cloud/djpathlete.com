@@ -4,7 +4,12 @@ import { scoreAndFilterExercises, semanticFilterExercises, filterByInjuredJoints
 import { profileAnalysisSchema, programSkeletonSchema, exerciseAssignmentSchema } from "./schemas.js"
 import { EXERCISE_SELECTOR_PROMPT, WEEK_PROFILE_ANALYZER_PROMPT } from "./prompts.js"
 import { validateProgram } from "./validate.js"
-import { formatExerciseLibrary, filterByDifficultyLevel, filterByProgressionPhase } from "./exercise-context.js"
+import {
+  formatExerciseLibrary,
+  filterByDifficultyLevel,
+  filterByProgressionPhase,
+  filterByAvailableEquipment,
+} from "./exercise-context.js"
 import { getExercisesForAI } from "./program-chat-tools.js"
 import {
   buildPriorContextFromExistingExercises,
@@ -721,6 +726,18 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
   if (injuredJoints.length > 0) {
     exercisesForSelection = filterByInjuredJoints(exercisesForSelection, injuredJoints)
     console.log(`[week-orchestrator] Joint injury filter: removed high-load exercises on: ${injuredJoints.join(", ")}`)
+  }
+
+  // Hard-exclude exercises requiring unavailable equipment — same list the
+  // validator enforces, so the candidate pool and validateProgram agree.
+  {
+    const beforeCount = exercisesForSelection.length
+    exercisesForSelection = filterByAvailableEquipment(exercisesForSelection, availableEquipment)
+    if (exercisesForSelection.length !== beforeCount) {
+      console.log(
+        `[week-orchestrator] Equipment filter: ${beforeCount} -> ${exercisesForSelection.length} (available: ${availableEquipment.length > 0 ? availableEquipment.join(", ") : "none/bodyweight-only"})`,
+      )
+    }
   }
 
   // Build dedup context from ALL existing program exercises (not just last 2 weeks)

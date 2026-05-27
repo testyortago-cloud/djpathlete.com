@@ -1,4 +1,5 @@
 import type { CompressedExercise } from "./types.js"
+import { normalizeEquipment, FULL_GYM_THRESHOLD } from "./validate.js"
 
 const DIFFICULTY_LEVELS = ["beginner", "intermediate", "advanced"] as const
 type DifficultyLevel = (typeof DIFFICULTY_LEVELS)[number]
@@ -85,6 +86,33 @@ export function filterByProgressionPhase(
     }
 
     return false
+  })
+}
+
+/**
+ * Hard-exclusion equipment filter — mirrors the availability check in
+ * validateProgram so the candidate pool sent to the Exercise Selector can only
+ * contain exercises the client can actually perform.
+ *
+ * - Full-gym clients (>= FULL_GYM_THRESHOLD items selected): no filtering, since
+ *   the validator also skips availability checks for them.
+ * - Bodyweight exercises are ALWAYS kept (the "backfill" so push/squat patterns
+ *   stay coverable even when a client has little or no equipment).
+ * - Exercises with no required equipment are always kept.
+ * - Otherwise an exercise is kept only if EVERY required item is available
+ *   (compared via normalizeEquipment, identical to the validator).
+ */
+export function filterByAvailableEquipment(
+  exercises: CompressedExercise[],
+  availableEquipment: string[],
+): CompressedExercise[] {
+  if (availableEquipment.length >= FULL_GYM_THRESHOLD) return exercises
+
+  const equipmentSet = new Set(availableEquipment.map(normalizeEquipment))
+  return exercises.filter((ex) => {
+    if (ex.is_bodyweight) return true
+    if (!ex.equipment_required || ex.equipment_required.length === 0) return true
+    return ex.equipment_required.every((eq) => equipmentSet.has(normalizeEquipment(eq)))
   })
 }
 

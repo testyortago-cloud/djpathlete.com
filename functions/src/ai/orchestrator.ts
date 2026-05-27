@@ -26,6 +26,7 @@ import {
   filterByDifficultyScore,
   filterByDifficultyLevel,
   filterByProgressionPhase,
+  filterByAvailableEquipment,
   formatExerciseLibrary,
 } from "./exercise-context.js"
 import { getCoachRecentUsageFromFn, getClientRecentUsageFromFn, recordUsageFromFn } from "./usage-history.js"
@@ -442,6 +443,21 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
       )
     }
 
+    // Hard-exclude exercises requiring unavailable equipment. Uses the SAME
+    // equipment list the validator enforces, so the candidate pool and
+    // validateProgram always agree (no spurious equipment_violation errors).
+    // Bodyweight/no-equipment exercises are always kept; full-gym clients skip.
+    const availableEquipment = request.equipment_override ?? profile?.available_equipment ?? []
+    {
+      const beforeCount = compressed.length
+      compressed = filterByAvailableEquipment(compressed, availableEquipment)
+      if (compressed.length !== beforeCount) {
+        console.log(
+          `[orchestrator:sync] Equipment filter: ${beforeCount} → ${compressed.length} (available: ${availableEquipment.length > 0 ? availableEquipment.join(", ") : "none/bodyweight-only"})`,
+        )
+      }
+    }
+
     console.log(
       `[orchestrator:sync] Exercise filtering: ${allCompressed.length} total → ${compressed.length} after all filters (level: ${clientDifficultyLevel})${poolActive ? ` [pool: ${poolIds!.length}]` : ""}`,
     )
@@ -524,8 +540,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
       `${skeleton.weeks.length} weeks × ${skeleton.weeks[0]?.days.length ?? 0} days — ${totalSlots} exercise slots`,
     )
 
-    // Pre-filter exercises
-    const availableEquipment = request.equipment_override ?? profile?.available_equipment ?? []
+    // Pre-filter exercises (availableEquipment computed earlier, with the equipment filter)
     const constraintsContext = JSON.stringify({
       exercise_constraints: analysis.exercise_constraints,
       available_equipment: availableEquipment,
