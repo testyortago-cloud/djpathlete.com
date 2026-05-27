@@ -8,6 +8,7 @@
     "build": "tsc",
     "build:watch": "tsc --watch",
     "serve": "npm run build && firebase emulators:start --only functions",
+    "serve:full": "npm run build && firebase emulators:start --only functions,firestore,database,pubsub,storage",
     "deploy": "firebase deploy --only functions",
     "test": "vitest run",
     "test:watch": "vitest"

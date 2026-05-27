@@ -1,7 +1,7 @@
 import { initializeApp, getApps, getApp } from "firebase/app"
-import { getStorage } from "firebase/storage"
-import { getFirestore } from "firebase/firestore"
-import { getDatabase } from "firebase/database"
+import { getStorage, connectStorageEmulator } from "firebase/storage"
+import { getFirestore, connectFirestoreEmulator } from "firebase/firestore"
+import { getDatabase, connectDatabaseEmulator } from "firebase/database"
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY!,
@@ -13,7 +13,16 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID!,
 }
 
-const app = getApps().length ? getApp() : initializeApp(firebaseConfig)
+const isNewApp = getApps().length === 0
+const app = isNewApp ? initializeApp(firebaseConfig) : getApp()
 export const storage = getStorage(app)
 export const db = getFirestore(app)
 export const rtdb = getDatabase(app)
+
+// Point the browser SDK at the local Firebase emulators when the toggle is on
+// (set by `npm run dev:emu`). Only wire on first init to avoid re-connect errors.
+if (isNewApp && process.env.NEXT_PUBLIC_FIREBASE_USE_EMULATORS === "true") {
+  connectFirestoreEmulator(db, "127.0.0.1", 8080)
+  connectDatabaseEmulator(rtdb, "127.0.0.1", 9000)
+  connectStorageEmulator(storage, "127.0.0.1", 9199)
+}

@@ -10,6 +10,13 @@ export function getAdminApp() {
     if (getApps().length) {
       app = getApps()[0]
     } else {
+      // Route the Admin SDK at the local emulators when the toggle is on (set by
+      // `npm run dev:emu`). The SDK auto-detects these *_EMULATOR_HOST vars.
+      if (process.env.NEXT_PUBLIC_FIREBASE_USE_EMULATORS === "true") {
+        process.env.FIRESTORE_EMULATOR_HOST ??= "127.0.0.1:8080"
+        process.env.FIREBASE_DATABASE_EMULATOR_HOST ??= "127.0.0.1:9000"
+        process.env.FIREBASE_STORAGE_EMULATOR_HOST ??= "127.0.0.1:9199"
+      }
       const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY ?? "{}")
       app = initializeApp({
         credential: cert(serviceAccount),

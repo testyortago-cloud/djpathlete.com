@@ -4,6 +4,18 @@ node_modules/
 # firebase functions build output
 functions/dist/
 
+# firebase emulator local secrets (defineSecret values)
+functions/.secret.local
+functions/.env
+functions/.env.local
+functions/.env.*.local
+firebase-debug.log
+firestore-debug.log
+database-debug.log
+pubsub-debug.log
+ui-debug.log
+.firebase/
+
 # next.js
 .next/
 out/
