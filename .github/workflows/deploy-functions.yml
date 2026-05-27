@@ -1,0 +1,55 @@
+name: Deploy Firebase Functions
+
+# Redeploys ALL functions in the "default" codebase whenever functions code
+# (or the Firebase config) lands on main. Also runnable on demand from the
+# Actions tab via "Run workflow".
+on:
+  push:
+    branches: [main]
+    paths:
+      - "functions/**"
+      - "firebase.json"
+      - ".firebaserc"
+      - ".github/workflows/deploy-functions.yml"
+  workflow_dispatch: {}
+
+# If several deploy-worthy commits land quickly, only the newest one deploys —
+# but don't cancel a deploy already in flight (half-deployed functions are bad).
+concurrency:
+  group: deploy-firebase-functions
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22" # matches functions/package.json "engines.node"
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      # Installs prod + dev deps (tsc lives in devDependencies and the
+      # firebase.json predeploy hook runs `npm --prefix functions run build`).
+      - name: Install functions dependencies
+        run: npm ci --prefix functions
+
+      # Write the service-account JSON to a file and point Google's libraries at
+      # it. Passing the secret through env (not inline) avoids shell-escaping the
+      # JSON. The file lives in the runner and is discarded when the job ends.
+      - name: Authenticate to Firebase
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "${HOME}/firebase-key.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=${HOME}/firebase-key.json" >> "$GITHUB_ENV"
+
+      # `--only functions` deploys every function in the default codebase. The
+      # predeploy hook in firebase.json compiles TypeScript first.
+      - name: Deploy functions
+        run: npx --yes firebase-tools@latest deploy --only functions --project darrenjpaulcom --non-interactive --force
