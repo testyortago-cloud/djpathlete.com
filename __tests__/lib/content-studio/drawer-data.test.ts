@@ -11,6 +11,9 @@ vi.mock("@/lib/db/social-posts", () => ({
   getSocialPostById: vi.fn(),
   listSocialPostsBySourceVideo: vi.fn(),
 }))
+vi.mock("@/lib/db/social-post-media", () => ({
+  listMediaForPosts: vi.fn(async () => []),
+}))
 vi.mock("@/lib/firebase-admin", () => ({
   getAdminStorage: () => ({
     bucket: () => ({
@@ -24,6 +27,7 @@ vi.mock("@/lib/firebase-admin", () => ({
 import { getVideoUploadById } from "@/lib/db/video-uploads"
 import { getTranscriptForVideo } from "@/lib/db/video-transcripts"
 import { getSocialPostById, listSocialPostsBySourceVideo } from "@/lib/db/social-posts"
+import { listMediaForPosts } from "@/lib/db/social-post-media"
 import { getDrawerData, getDrawerDataForPost } from "@/lib/content-studio/drawer-data"
 
 const fixtureVideo = {
@@ -73,6 +77,7 @@ describe("getDrawerData", () => {
     vi.mocked(getVideoUploadById).mockReset()
     vi.mocked(getTranscriptForVideo).mockReset()
     vi.mocked(listSocialPostsBySourceVideo).mockReset()
+    vi.mocked(listMediaForPosts).mockReset().mockResolvedValue([])
   })
 
   it("returns null when the video does not exist", async () => {
@@ -118,6 +123,7 @@ describe("getDrawerDataForPost", () => {
     vi.mocked(getVideoUploadById).mockReset()
     vi.mocked(getTranscriptForVideo).mockReset()
     vi.mocked(listSocialPostsBySourceVideo).mockReset()
+    vi.mocked(listMediaForPosts).mockReset().mockResolvedValue([])
   })
 
   it("returns null when the post does not exist", async () => {
@@ -135,6 +141,42 @@ describe("getDrawerDataForPost", () => {
     expect(result!.mode).toBe("post-only")
     expect(result!.posts).toHaveLength(1)
     expect(result!.video).toBeNull()
+  })
+
+  it("signs attached carousel slides and keys them by post id", async () => {
+    // The quote-card generator creates a carousel post with source_video_id=null
+    // and attaches the rendered slides; the drawer must surface them.
+    vi.mocked(getSocialPostById).mockResolvedValueOnce({
+      ...fixturePost,
+      post_type: "carousel",
+      source_video_id: null,
+    })
+    vi.mocked(listMediaForPosts).mockResolvedValueOnce([
+      {
+        social_post_id: "post-1",
+        media_asset_id: "asset-0",
+        position: 0,
+        storage_path: "images/u/quote-0.png",
+        kind: "image",
+        mime_type: "image/png",
+        ai_alt_text: "First quote",
+      },
+      {
+        social_post_id: "post-1",
+        media_asset_id: "asset-1",
+        position: 1,
+        storage_path: "images/u/quote-1.png",
+        kind: "image",
+        mime_type: "image/png",
+        ai_alt_text: null,
+      },
+    ])
+    const result = await getDrawerDataForPost("post-1")
+    const slides = result!.mediaByPost["post-1"]
+    expect(slides).toHaveLength(2)
+    expect(slides[0]).toMatchObject({ assetId: "asset-0", position: 0, alt: "First quote" })
+    expect(slides[0].url).toMatch(/^https:\/\/signed\.example/)
+    expect(slides[1]).toMatchObject({ assetId: "asset-1", position: 1, alt: null })
   })
 
   it("resolves to full video mode when source_video_id is set", async () => {

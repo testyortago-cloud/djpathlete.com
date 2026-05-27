@@ -4,14 +4,21 @@ import { useState, useEffect } from "react"
 import { Megaphone } from "lucide-react"
 import { PostsTabRow } from "./PostsTabRow"
 import type { SocialPost } from "@/types/database"
+import type { PostSlide } from "@/lib/content-studio/drawer-data"
 
 interface PostsTabProps {
   posts: SocialPost[]
+  /** Attached image slides per post id, keyed for thumbnail rendering. */
+  mediaByPost?: Record<string, PostSlide[]>
   /** Post id that should start expanded (from ?postId= query). */
   initialExpandedPostId: string | null
 }
 
-export function PostsTab({ posts: initialPosts, initialExpandedPostId }: PostsTabProps) {
+export function PostsTab({
+  posts: initialPosts,
+  mediaByPost = {},
+  initialExpandedPostId,
+}: PostsTabProps) {
   const [posts, setPosts] = useState(initialPosts)
   const [expandedId, setExpandedId] = useState<string | null>(initialExpandedPostId)
 
@@ -58,6 +65,7 @@ export function PostsTab({ posts: initialPosts, initialExpandedPostId }: PostsTa
         <PostsTabRow
           key={post.id}
           post={post}
+          slides={mediaByPost[post.id] ?? []}
           isExpanded={expandedId === post.id}
           onToggle={toggle}
           onMutate={mutate}

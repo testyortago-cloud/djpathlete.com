@@ -4,6 +4,7 @@ import { useState } from "react"
 import { AlertCircle, Calendar, CalendarX, ChevronDown, ChevronRight, Zap } from "lucide-react"
 import { toast } from "sonner"
 import type { SocialPost, SocialApprovalStatus } from "@/types/database"
+import type { PostSlide } from "@/lib/content-studio/drawer-data"
 import { cn } from "@/lib/utils"
 import { PLATFORM_ICONS, PLATFORM_LABELS } from "@/lib/social/platform-ui"
 import { SchedulePickerDialog } from "@/components/admin/social/SchedulePickerDialog"
@@ -34,12 +35,14 @@ const STATUS_LABELS: Record<SocialApprovalStatus, string> = {
 
 interface PostsTabRowProps {
   post: SocialPost
+  /** Attached image slides (carousel/image/story), ordered by position. */
+  slides?: PostSlide[]
   isExpanded: boolean
   onToggle: (postId: string) => void
   onMutate: (updated: SocialPost) => void
 }
 
-export function PostsTabRow({ post, isExpanded, onToggle, onMutate }: PostsTabRowProps) {
+export function PostsTabRow({ post, slides = [], isExpanded, onToggle, onMutate }: PostsTabRowProps) {
   const [draft, setDraft] = useState(post.content)
   const [busy, setBusy] = useState<"publishNow" | "unschedule" | "save" | null>(null)
   const [scheduleOpen, setScheduleOpen] = useState(false)
@@ -146,6 +149,37 @@ export function PostsTabRow({ post, isExpanded, onToggle, onMutate }: PostsTabRo
             <ChevronRight className="size-4 text-muted-foreground" />
           )}
         </button>
+
+        {slides.length > 0 && (
+          <div className="flex gap-2 overflow-x-auto border-t border-border bg-surface/30 px-4 py-3">
+            {slides.map((slide, i) => (
+              <div key={slide.assetId} className="relative shrink-0">
+                {slide.url ? (
+                  <a
+                    href={slide.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={`Open slide ${i + 1} in a new tab`}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={slide.url}
+                      alt={slide.alt ?? `Slide ${i + 1}`}
+                      className="size-16 rounded border border-border object-cover"
+                    />
+                  </a>
+                ) : (
+                  <div className="flex size-16 items-center justify-center rounded border border-border bg-muted text-[10px] text-muted-foreground">
+                    n/a
+                  </div>
+                )}
+                <span className="absolute left-0.5 top-0.5 rounded bg-black/60 px-1 text-[10px] font-medium text-white">
+                  {i + 1}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
 
         {isExpanded && (
           <div className="px-4 pb-4 border-t border-border space-y-3">

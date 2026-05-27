@@ -1,6 +1,6 @@
 // lib/db/social-post-media.ts
 import { createServiceRoleClient } from "@/lib/supabase"
-import type { SocialPostMediaRow } from "@/types/database"
+import type { SocialPostMediaRow, MediaAssetKind } from "@/types/database"
 
 function getClient() {
   return createServiceRoleClient()
@@ -37,6 +37,58 @@ export async function listMediaForPost(socialPostId: string): Promise<SocialPost
     .order("position", { ascending: true })
   if (error) throw error
   return (data ?? []) as SocialPostMediaRow[]
+}
+
+export interface PostMediaWithAsset {
+  social_post_id: string
+  media_asset_id: string
+  position: number
+  storage_path: string
+  kind: MediaAssetKind
+  mime_type: string
+  ai_alt_text: string | null
+}
+
+/**
+ * Load every attached media row for a set of posts, joined to the underlying
+ * media_assets so callers can render thumbnails. Ordered by post then slide
+ * position. Returns [] for an empty input (skips the round-trip).
+ */
+export async function listMediaForPosts(postIds: string[]): Promise<PostMediaWithAsset[]> {
+  if (postIds.length === 0) return []
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("social_post_media")
+    .select(
+      "social_post_id, media_asset_id, position, media_assets(storage_path, kind, mime_type, ai_alt_text)",
+    )
+    .in("social_post_id", postIds)
+    .order("position", { ascending: true })
+  if (error) throw error
+
+  type Row = {
+    social_post_id: string
+    media_asset_id: string
+    position: number
+    media_assets: {
+      storage_path: string
+      kind: MediaAssetKind
+      mime_type: string
+      ai_alt_text: string | null
+    } | null
+  }
+
+  return ((data ?? []) as unknown as Row[])
+    .filter((r) => r.media_assets !== null)
+    .map((r) => ({
+      social_post_id: r.social_post_id,
+      media_asset_id: r.media_asset_id,
+      position: r.position,
+      storage_path: r.media_assets!.storage_path,
+      kind: r.media_assets!.kind,
+      mime_type: r.media_assets!.mime_type,
+      ai_alt_text: r.media_assets!.ai_alt_text,
+    }))
 }
 
 export async function reorderMedia(

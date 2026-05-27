@@ -102,4 +102,35 @@ describe("<PostsTabRow>", () => {
     )
     expect(screen.getByRole("button", { name: /publish now/i })).toBeInTheDocument()
   })
+
+  it("renders attached carousel slides as thumbnails even when collapsed", () => {
+    render(
+      <PostsTabRow
+        post={makePost({ post_type: "carousel" })}
+        slides={[
+          { assetId: "a0", position: 0, url: "https://signed.example/0.png", alt: "Quote one" },
+          { assetId: "a1", position: 1, url: "https://signed.example/1.png", alt: null },
+        ]}
+        isExpanded={false}
+        onToggle={vi.fn()}
+        onMutate={vi.fn()}
+      />,
+    )
+    expect(screen.getByAltText("Quote one")).toHaveAttribute("src", "https://signed.example/0.png")
+    // Null alt falls back to a positional label.
+    expect(screen.getByAltText("Slide 2")).toHaveAttribute("src", "https://signed.example/1.png")
+  })
+
+  it("renders a placeholder for a slide whose URL could not be signed", () => {
+    render(
+      <PostsTabRow
+        post={makePost({ post_type: "carousel" })}
+        slides={[{ assetId: "a0", position: 0, url: null, alt: null }]}
+        isExpanded={false}
+        onToggle={vi.fn()}
+        onMutate={vi.fn()}
+      />,
+    )
+    expect(screen.getByText(/n\/a/i)).toBeInTheDocument()
+  })
 })
