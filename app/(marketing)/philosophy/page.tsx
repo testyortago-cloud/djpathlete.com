@@ -7,30 +7,30 @@ import { SemanticAnswerBlock } from "@/components/public/SemanticAnswerBlock"
 import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 
 export const metadata: Metadata = {
-  title: "The Grey Zone — Darren J Paul's Coaching Philosophy",
+  title: "Coaching Philosophy — Darren J Paul",
   description:
-    "Darren J Paul's coaching philosophy. The Grey Zone Five Pillar Framework: assessment, individualized programming, load monitoring, technical coaching, long-term development.",
+    "Darren J Paul's coaching philosophy: assessment, individualized programming, load monitoring, technical coaching, long-term athlete development.",
   alternates: { canonical: "/philosophy" },
   openGraph: {
-    title: "The Grey Zone — Darren J Paul's Coaching Philosophy | DJP Athlete",
+    title: "Coaching Philosophy — Darren J Paul | DJP Athlete",
     description:
-      "Darren J Paul's Five Pillar Framework: assessment, individualized programming, load monitoring, technical coaching, long-term athlete development.",
+      "Darren J Paul's coaching approach: assessment, individualized programming, load monitoring, technical coaching, long-term athlete development.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "The Grey Zone — Darren J Paul's Coaching Philosophy | DJP Athlete",
+    title: "Coaching Philosophy — Darren J Paul | DJP Athlete",
     description:
-      "Darren J Paul's Five Pillar Framework: assessment, individualized programming, load monitoring, technical coaching, long-term athlete development.",
+      "Darren J Paul's coaching approach: assessment, individualized programming, load monitoring, technical coaching, long-term athlete development.",
   },
 }
 
 const philosophySchema = {
   "@context": "https://schema.org",
   "@type": "WebPage",
-  name: "Coaching Philosophy — The Grey Zone",
+  name: "Coaching Philosophy",
   description:
-    "The Grey Zone Five Pillar Framework by Darren J Paul. A systems-based coaching philosophy for athletic performance.",
+    "A systems-based coaching philosophy for athletic performance by Darren J Paul.",
   url: "https://www.darrenjpaul.com/philosophy",
   author: {
     "@type": "Person",
@@ -103,10 +103,10 @@ export default function PhilosophyPage() {
               <div className="h-px w-8 bg-accent" />
             </div>
             <h1 className="text-3xl sm:text-4xl lg:text-5xl font-heading font-semibold text-primary tracking-tight mb-6">
-              The Grey Zone
+              Coaching Philosophy
             </h1>
             <p className="text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-              Most training lives in black and white. Performance happens in the grey.
+              Most training lives in black and white. Performance happens in the space between.
             </p>
           </FadeIn>
         </div>
@@ -115,8 +115,8 @@ export default function PhilosophyPage() {
       {/* Semantic Answer Block (AEO) */}
       <SemanticAnswerBlock
         eyebrow="What this is"
-        question="What is the Grey Zone framework?"
-        answer="The Grey Zone is Darren J Paul's coaching philosophy — the space between textbook training protocols and real-world performance demands, where adaptation actually happens. Most training systems operate in extremes (all-out or rest, rigid protocol or no structure). Athletes exist in the complex space between. The Grey Zone framework rejects training in extremes in favor of context-aware decision-making informed by daily readiness data. It is operationalized through the Five Pillar Framework: assessment and diagnostics, individualized programming, load and readiness monitoring, technical coaching, and long-term athlete development. The methodology is the foundation of every program at DJP Athlete — applied in person at our Zephyrhills, Florida facility and remotely to athletes worldwide."
+        question="What is Darren J Paul's coaching philosophy?"
+        answer="Darren J Paul's coaching philosophy lives in the space between textbook training protocols and real-world performance demands, where adaptation actually happens. Most training systems operate in extremes (all-out or rest, rigid protocol or no structure). Athletes exist in the complex space between. The approach rejects training in extremes in favor of context-aware decision-making informed by daily readiness data. It is built on five interconnected elements: assessment and diagnostics, individualized programming, load and readiness monitoring, technical coaching, and long-term athlete development. This is the foundation of every program at DJP Athlete — applied in person at our Zephyrhills, Florida facility and remotely to athletes worldwide."
       />
 
       {/* The Problem */}
@@ -160,14 +160,14 @@ export default function PhilosophyPage() {
               <div>
                 <div className="flex items-center gap-3 mb-4">
                   <div className="h-px w-12 bg-accent" />
-                  <p className="text-sm font-medium text-accent uppercase tracking-widest">The Framework</p>
+                  <p className="text-sm font-medium text-accent uppercase tracking-widest">The Approach</p>
                 </div>
                 <h2 className="text-2xl sm:text-3xl font-heading font-semibold text-primary tracking-tight mb-6">
                   The Space Between Protocol and Performance
                 </h2>
                 <div className="space-y-5">
                   <p className="text-lg text-muted-foreground leading-relaxed">
-                    The Grey Zone is the space between textbook protocols and real-world performance demands. It is
+                    Performance lives in the space between textbook protocols and real-world demands. It is
                     where adaptation actually happens — not in the controlled environment of theory, but in the
                     unpredictable reality of sport.
                   </p>
@@ -193,7 +193,7 @@ export default function PhilosophyPage() {
         </div>
       </section>
 
-      {/* Five Pillar Framework */}
+      {/* Coaching pillars */}
       <section className="py-16 lg:py-24 px-4 sm:px-8 bg-surface">
         <div className="max-w-7xl mx-auto">
           <FadeIn>
@@ -204,10 +204,10 @@ export default function PhilosophyPage() {
                 <div className="h-px w-8 bg-accent" />
               </div>
               <h2 className="text-2xl sm:text-3xl font-heading font-semibold text-primary tracking-tight mb-4">
-                The Five Pillar Framework
+                How Every Program Is Built
               </h2>
               <p className="text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-                Five interconnected pillars that drive every decision, every program, and every athlete interaction.
+                Five interconnected elements that drive every decision, every program, and every athlete interaction.
               </p>
             </div>
           </FadeIn>
@@ -263,7 +263,7 @@ export default function PhilosophyPage() {
             <div className="max-w-3xl mx-auto text-center">
               <p className="text-lg text-muted-foreground leading-relaxed">
                 This is not about doing more. It is about doing what matters, when it matters, for the athlete in front
-                of you. The Grey Zone is where good coaching lives — and it is where athletes become their best.
+                of you. That is where good coaching lives — and it is where athletes become their best.
               </p>
             </div>
           </FadeIn>
@@ -280,7 +280,7 @@ export default function PhilosophyPage() {
               <div className="h-px w-8 bg-accent" />
             </div>
             <h2 className="text-2xl sm:text-3xl font-heading font-semibold text-primary tracking-tight mb-4">
-              Ready to train in the Grey Zone?
+              Ready to train with intent?
             </h2>
             <p className="text-lg text-muted-foreground mb-8">
               Book a free consultation and find out how a systems-based approach can change the way you train, recover,

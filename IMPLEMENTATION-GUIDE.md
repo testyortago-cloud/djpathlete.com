@@ -529,9 +529,9 @@ ALTER TABLE assessment_results
 - [ ] Real athlete testimonials with sport badges (WTA, Pro Pickleball)
 - [ ] Updated about section
 
-### 4.3 Coaching Philosophy / Five Pillar Framework
+### 4.3 Coaching Philosophy
 
-- [ ] `/philosophy` page with "The Grey Zone" content
+- [ ] `/philosophy` page with coaching approach content
 - [ ] Visual framework diagram
 - [ ] Integration with service pages
 

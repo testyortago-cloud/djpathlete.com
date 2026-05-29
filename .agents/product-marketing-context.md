@@ -94,7 +94,7 @@ The buying motion is mostly direct-to-athlete, but for youth athletes there's a 
 - **Systems thinking, not exercise lists** — "I think in systems, not exercises."
 - **Selective entry / supervised system** — capacity is intentionally limited; not for everyone.
 - **Direct coach access** — no DM dead-ends, no auto-replies, no template hand-offs.
-- **The Grey Zone Five Pillar Framework** — assessment, individualized programming, load & readiness monitoring, technical coaching, long-term athlete development.
+- **Five-element coaching system** — assessment, individualized programming, load & readiness monitoring, technical coaching, long-term athlete development.
 - **Post-rehab to competition bridge** — the "return-to-performance" niche most coaches don't serve.
 - **Two decades inside high-performance environments** — 500+ athletes, 15+ sports, 3 continents.
 - **Researcher + practitioner** — academic depth (PhD) plus on-the-floor coaching, plus advisory work.
@@ -163,7 +163,7 @@ The buying motion is mostly direct-to-athlete, but for youth athletes there's a 
 - "Easy to navigate," "thoroughly explains how to perform the exercises," "seamless," "train from anywhere"
 
 **Words to use:**
-- *engineered, system, framework, diagnostic, assessment-led, individualized, coach-led, structured, intent, capacity, readiness, load, supervised, selective, precision, return-to-performance, the Grey Zone*
+- *engineered, system, diagnostic, assessment-led, individualized, coach-led, structured, intent, capacity, readiness, load, supervised, selective, precision, return-to-performance*
 - Athletic / pro-sport editorial vocabulary
 
 **Words to avoid:**
@@ -173,8 +173,6 @@ The buying motion is mostly direct-to-athlete, but for youth athletes there's a 
 **Glossary:**
 | Term | Meaning |
 |------|---------|
-| The Grey Zone | DJP's coaching philosophy — the space between textbook protocols and real-world performance demands; where adaptation actually happens |
-| Five Pillar Framework | Assessment & Diagnostics → Individualized Programming → Load & Readiness Monitoring → Technical Coaching → Long-Term Athlete Development |
 | Return-to-Performance | The bridge between medical clearance and competition readiness — distinct from rehab |
 | Supervised system | Coach-overseen, application-only program; explicit contrast with "self-service" or "automated" |
 | Capacity | Trainable, durable physical qualities the athlete can rely on under competition stress |
@@ -212,7 +210,6 @@ The buying motion is mostly direct-to-athlete, but for youth athletes there's a 
 **Credentials (from `/about`):**
 - CSCS (Certified Strength & Conditioning Specialist)
 - NASM Certified Personal Trainer
-- USA Weightlifting Level 2 Coach
 - B.S. in Exercise Science & Kinesiology
 - *Note:* the `/about` page lists "10+ years coaching experience" while the homepage says "20+ years." Verify and align.
 - Darren also holds a PhD per LinkedIn (`linkedin.com/in/darren-paul-phd-b022a213b`) — may be worth surfacing in copy.
@@ -227,7 +224,7 @@ The buying motion is mostly direct-to-athlete, but for youth athletes there's a 
 **Value themes:**
 | Theme | Proof |
 |-------|-------|
-| Assessment-led programming | Five Pillar Framework, force platforms, motion capture, load monitoring on `/assessment` |
+| Assessment-led programming | Force platforms, motion capture, load monitoring on `/assessment` |
 | Pro-athlete trust | WTA + pro pickleball testimonials, 500+ athletes, 15+ sports, 3 continents |
 | Real-time adjustment | Pit-wall pattern panel on `/online` showing live load-vs-readiness, daily wellness, weekly video review |
 | Return-to-performance niche | Dedicated `/assessment` page positioned as "beyond clearance" |

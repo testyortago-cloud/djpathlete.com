@@ -90,7 +90,7 @@ const INSIDE = [
   "Warm-up and movement-prep sequences built into each session, so there's no guesswork",
   "Regressions and progressions so the work fits where you actually are right now",
   "Trains on a full gym or a basic home setup, with minimal equipment required",
-  "Built and programmed by Darren J Paul, PhD (CSCS, NASM, USA Weightlifting Level 2)",
+  "Built and programmed by Darren J Paul, PhD (CSCS, NASM)",
 ]
 
 const WHO = [
@@ -108,7 +108,7 @@ const productSchema = {
   "@type": "Product",
   name: "Rotational Reboot: 6-Week Rotational Power Training Program",
   description:
-    "A 6-week, 4-sessions-per-week rotational power training program for athletes in rotational sports (tennis, golf, baseball, lacrosse, hockey, soccer). Core-led, beginner-to-moderate progression. Designed by Darren J Paul, PhD (CSCS, NASM, USA Weightlifting Level 2).",
+    "A 6-week, 4-sessions-per-week rotational power training program for athletes in rotational sports (tennis, golf, baseball, lacrosse, hockey, soccer). Core-led, beginner-to-moderate progression. Designed by Darren J Paul, PhD (CSCS, NASM).",
   url: PAGE_URL,
   category: "Sports performance training program",
   brand: { "@type": "Brand", name: "DJP Athlete" },
@@ -239,7 +239,7 @@ export default function RotationalRebootPage() {
       <SemanticAnswerBlock
         eyebrow="What this is"
         question="What is the Rotational Reboot program?"
-        answer="Rotational Reboot is a 6-week training program of 4 sessions per week (24 sessions in total) built to develop rotational power for athletes in rotational sports such as tennis, golf, baseball, lacrosse, hockey and soccer. It is core-led: roughly 70% of the work targets the rotational core and trunk, with the remaining 30% supporting legs and arms. The program runs a deliberate progression from beginner to moderate intensity, so athletes earn rotational control before chasing rotational speed. Every session is laid out day by day, every exercise is mapped to a coaching cue and a video demonstration, and the work scales to a full gym or a basic home setup. It was designed and programmed by Darren J Paul, PhD (CSCS, NASM, USA Weightlifting Level 2), who has coached 500+ athletes across 15+ sports including WTA professionals. Price: $79 (usually $249), one payment, lifetime access."
+        answer="Rotational Reboot is a 6-week training program of 4 sessions per week (24 sessions in total) built to develop rotational power for athletes in rotational sports such as tennis, golf, baseball, lacrosse, hockey and soccer. It is core-led: roughly 70% of the work targets the rotational core and trunk, with the remaining 30% supporting legs and arms. The program runs a deliberate progression from beginner to moderate intensity, so athletes earn rotational control before chasing rotational speed. Every session is laid out day by day, every exercise is mapped to a coaching cue and a video demonstration, and the work scales to a full gym or a basic home setup. It was designed and programmed by Darren J Paul, PhD (CSCS, NASM), who has coached 500+ athletes across 15+ sports including WTA professionals. Price: $79 (usually $249), one payment, lifetime access."
       />
 
       {/* ───────────────── Who it's for ───────────────── */}

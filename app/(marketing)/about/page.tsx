@@ -41,7 +41,6 @@ const credentials = [
   { icon: GraduationCap, title: "B.S. in Exercise Science & Kinesiology" },
   { icon: Award, title: "Certified Strength & Conditioning Specialist (CSCS)" },
   { icon: Award, title: "NASM Certified Personal Trainer" },
-  { icon: Trophy, title: "USA Weightlifting Level 2 Coach" },
   { icon: Trophy, title: "Two Decades of High-Performance Experience" },
 ]
 
@@ -108,7 +107,7 @@ export default function AboutPage() {
                   About Darren J Paul
                 </h1>
                 <p className="text-base font-medium text-accent uppercase tracking-widest mb-6">
-                  PhD · Sports Performance Coach · CSCS · NASM · USAW Level 2
+                  PhD · Sports Performance Coach · CSCS · NASM
                 </p>
                 <p className="text-lg text-muted-foreground leading-relaxed mb-4">
                   Performance strategist, coach, and researcher. Two decades inside high-performance environments.
@@ -117,9 +116,7 @@ export default function AboutPage() {
                 </p>
                 <p className="text-lg text-muted-foreground leading-relaxed">
                   I think in systems, not exercises. I look for patterns, not shortcuts. Every program is built from
-                  diagnostic data and adjusted in real time. The methodology I&apos;ve developed — the Grey Zone and the
-                  Five Pillar Framework — is delivered in person at our Zephyrhills, FL facility and remotely to athletes
-                  worldwide.
+                  diagnostic data and adjusted in real time.
                 </p>
               </div>
             </FadeIn>
@@ -131,7 +128,7 @@ export default function AboutPage() {
       <SemanticAnswerBlock
         eyebrow="In short"
         question="Who is Darren J Paul?"
-        answer="Darren J Paul, PhD, is a sports performance coach and the founder of DJP Athlete, based in Zephyrhills, Florida (Tampa Bay area). He has spent two decades inside high-performance environments and has coached 500+ athletes across 15+ sports and three continents, including WTA professional tennis players and professional pickleball players. His certifications include CSCS (NSCA), NASM-CPT and USA Weightlifting Level 2 Coach, alongside a PhD and a degree in exercise science. He is the author of the Grey Zone coaching philosophy and the Five Pillar Framework (assessment, individualized programming, load monitoring, technical coaching and long-term development), which he delivers through in-person training at his Tampa Bay facility and online coaching for athletes worldwide, plus return-to-performance assessments for athletes coming back from injury. His approach is diagnostic-driven and individualized: systems over exercises, patterns over shortcuts."
+        answer="Darren J Paul, PhD, is a sports performance coach and the founder of DJP Athlete, based in Zephyrhills, Florida (Tampa Bay area). He has spent two decades inside high-performance environments and has coached 500+ athletes across 15+ sports and three continents, including WTA professional tennis players and professional pickleball players. His certifications include CSCS (NSCA) and NASM-CPT, alongside a PhD and a degree in exercise science. He delivers in-person training at his Tampa Bay facility and online coaching for athletes worldwide, plus return-to-performance assessments for athletes coming back from injury. His approach is diagnostic-driven and individualized: systems over exercises, patterns over shortcuts."
       />
 
       {/* Credentials Section */}
@@ -225,11 +222,6 @@ export default function AboutPage() {
       <section className="py-16 lg:py-24 px-4 sm:px-8 bg-surface">
         <div className="max-w-3xl mx-auto">
           <FadeIn>
-            <div className="flex items-center justify-center gap-3 mb-4">
-              <div className="h-px w-8 bg-accent" />
-              <p className="text-sm font-medium text-accent uppercase tracking-widest">The Journey</p>
-              <div className="h-px w-8 bg-accent" />
-            </div>
             <h2 className="text-2xl sm:text-3xl font-heading font-semibold text-primary tracking-tight mb-8 text-center">
               The Journey
             </h2>
@@ -286,12 +278,6 @@ export default function AboutPage() {
               >
                 Get in Touch
                 <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
-              </Link>
-              <Link
-                href="/#pricing"
-                className="inline-flex items-center gap-2 border border-border text-primary px-8 py-4 rounded-full text-sm font-semibold hover:bg-surface transition-colors"
-              >
-                View Pricing
               </Link>
             </div>
           </div>

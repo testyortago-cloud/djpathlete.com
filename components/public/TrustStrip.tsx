@@ -9,7 +9,7 @@ interface TrustStripProps {
 
 const ITEMS = [
   { icon: GraduationCap, label: "Darren J Paul, PhD", aria: "Doctorate" },
-  { icon: Award, label: "CSCS · NASM · USAW Level 2", aria: "Industry certifications" },
+  { icon: Award, label: "CSCS · NASM", aria: "Industry certifications" },
   { icon: Trophy, label: "500+ athletes · 15+ sports", aria: "Coaching experience" },
   {
     icon: MapPin,

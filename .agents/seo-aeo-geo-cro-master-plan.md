@@ -23,7 +23,7 @@ This plan reorganizes execution around those four levers, plus the local-SEO + C
 1. **Application volume** for online + in-person + assessment (the money outcome).
 2. **AI citation rate** in ChatGPT / Perplexity / AI Overviews for target queries.
 3. **Local Map Pack** ranking for "sports performance coach Tampa / Zephyrhills / Wesley Chapel."
-4. **Branded search recovery** for "Darren J Paul," "DJP Athlete," "the Grey Zone," "Five Pillar Framework."
+4. **Branded search recovery** for "Darren J Paul," "DJP Athlete."
 5. **Organic traffic** to the three money pages (`/in-person`, `/online`, `/assessment`).
 
 ---
@@ -41,8 +41,6 @@ The 2026 SEO playbook is no longer "rank for a keyword." It's **"own a topic clu
 | `djp athlete` | Navigational | `/` | Organization schema + brand hub | Owned |
 | `darren j paul phd` | Navigational | `/about` | Add PhD prominently | **Gap: not surfaced** |
 | `darren j paul sports performance` | Local + brand | `/contact` + GBP | LocalBusiness + GBP | Mostly owned |
-| `the grey zone coaching` | Concept-branded | `/philosophy` | Definitional content + DefinedTerm schema | Owned |
-| `five pillar framework` | Concept-branded | `/philosophy` | List + visual schema | Owned |
 | `return to performance` | Concept-branded (we coined it) | `/assessment` | Definitional + comparison | Owned |
 
 ### 1.2 Money-page torso terms — torso, ranks-with-effort
@@ -67,7 +65,6 @@ These are written *as the user actually phrases them*. Each becomes a self-conta
 | What is return-to-performance training? | `/assessment` + `/faq` + `/blog/what-is-return-to-performance` | FAQPage + Article |
 | What's the difference between rehab and return-to-performance? | `/assessment/traditional-vs-performance-based` | FAQPage |
 | How long does return-to-sport take after ACL surgery? | `/blog/return-to-sport-acl-timeline` | Article + FAQPage |
-| What is the Grey Zone in athletic training? | `/philosophy` + `/faq` | DefinedTerm + FAQPage |
 | How do I choose an online sports performance coach? | `/blog/how-to-choose-online-performance-coach` | Article + FAQPage |
 | Online vs in-person performance coaching — which is better? | `/services/online-vs-in-person` | FAQPage + comparison |
 | Does my child need a strength coach? | `/blog/does-my-young-athlete-need-strength-coach` | Article + FAQPage |
@@ -113,9 +110,9 @@ Current state of money-page intros:
 ```
 
 Example for `/online`:
-> **Online sports performance coaching is a coach-supervised remote training system for serious athletes.** Every program is built from a remote movement, force, and load assessment, then adjusted weekly through video review, daily wellness data, and direct messaging with the coach — Darren J Paul, PhD (CSCS, NASM, USAW Level 2). It's the same diagnostic-driven methodology used in person at our Zephyrhills, FL office, adapted for athletes training across the country and on tour. Athletes leave with measurable gains in strength, speed, power, and capacity — and a system that adjusts to travel, competition, and in-season demand. Entry is selective; we accept athletes we can genuinely help.
+> **Online sports performance coaching is a coach-supervised remote training system for serious athletes.** Every program is built from a remote movement, force, and load assessment, then adjusted weekly through video review, daily wellness data, and direct messaging with the coach — Darren J Paul, PhD (CSCS, NASM). It's the same diagnostic-driven methodology used in person at our Zephyrhills, FL office, adapted for athletes training across the country and on tour. Athletes leave with measurable gains in strength, speed, power, and capacity — and a system that adjusts to travel, competition, and in-season demand. Entry is selective; we accept athletes we can genuinely help.
 
-This is **154 words**. Hits semantic completeness, names entities (PhD, CSCS, NASM, USAW, Zephyrhills FL), surfaces credentials, frames outcome.
+This is **154 words**. Hits semantic completeness, names entities (PhD, CSCS, NASM, Zephyrhills FL), surfaces credentials, frames outcome.
 
 Build one of these for `/in-person`, `/online`, `/assessment`, `/philosophy`. They become the "extracted snippet" candidates for AI Overviews.
 
@@ -123,10 +120,10 @@ Build one of these for `/in-person`, `/online`, `/assessment`, `/philosophy`. Th
 
 "Recognized entities" = things in Google's Knowledge Graph: people, places, organizations, certifications, sports leagues, surgical procedures, equipment brands, academic institutions.
 
-**Current `/about` entities mentioned:** ~6 (CSCS, NASM, USA Weightlifting, B.S. Exercise Science, DJP Athlete, plus 3 social platforms via sameAs).
+**Current `/about` entities mentioned:** ~5 (CSCS, NASM, B.S. Exercise Science, DJP Athlete, plus 3 social platforms via sameAs).
 
 **Target: 15+ per money page.** Examples to weave in:
-- Certifications: CSCS (NSCA), NASM, USAW Level 2, FMS, Postural Restoration Institute (if held)
+- Certifications: CSCS (NSCA), NASM, FMS, Postural Restoration Institute (if held)
 - Education: name the university for B.S. + PhD
 - Equipment / instruments: ForceDecks, VALD Performance, Catapult, Polar, Whoop, GymAware (if used)
 - Sports + leagues: WTA, ATP, NCAA, USL, MLS, NHL, NFL (where athletes have come from)
@@ -158,12 +155,6 @@ Add a section to `public/llms.txt`:
 ### What is return-to-performance training?
 Return-to-performance training is the bridge between medical clearance and competition readiness. It restores capacity, reintegrates speed and power, and rebuilds confidence to compete. Distinct from rehab (which ends at clearance), return-to-performance ends when an athlete is verifiably ready to compete at full intensity.
 
-### What is the Grey Zone framework?
-The Grey Zone is Darren J Paul's coaching philosophy. It refers to the space between textbook training protocols and real-world performance demands — where adaptation actually happens. The framework rejects training in extremes (all-out or rest, rigid protocol or no structure) in favor of context-aware decision-making informed by daily readiness data.
-
-### What is the Five Pillar Framework?
-DJP Athlete's coaching methodology, organized as five interconnected pillars: (1) Assessment & Diagnostics, (2) Individualized Programming, (3) Load & Readiness Monitoring, (4) Technical Coaching & Feedback, (5) Long-Term Athlete Development.
-
 ### Where is Darren J Paul Sports Performance located?
 6585 Simons Rd, Zephyrhills, FL 33541, in the Tampa Bay area. In-person coaching is delivered there. Online coaching serves athletes worldwide. Google Place ID: ChIJw5GXPKNN3YgRqvY7cRf1S8g.
 ```
@@ -183,8 +174,6 @@ Each FAQ entry uses **exact-question-match H2/H3 patterns** — "What is X?" rat
 Each brand-specific term gets a `DefinedTerm` schema entry. Slug: `/glossary` with anchor links per term (e.g., `/glossary#return-to-performance`).
 
 Terms (pulled from marketing context Glossary):
-- The Grey Zone
-- Five Pillar Framework
 - Return-to-Performance
 - Performance Blueprint
 - Capacity vs Readiness
@@ -241,9 +230,7 @@ Spec for the expanded Person object (place in `lib/brand/author.ts`, reuse every
     "athletic performance development",
     "load monitoring",
     "movement screening",
-    "long-term athlete development",
-    "the Grey Zone framework",
-    "Five Pillar Framework"
+    "long-term athlete development"
   ],
   "knowsLanguage": ["en"],
   "alumniOf": [
@@ -276,12 +263,6 @@ Spec for the expanded Person object (place in `lib/brand/author.ts`, reuse every
       "name": "NASM Certified Personal Trainer",
       "credentialCategory": "Professional certification",
       "recognizedBy": { "@type": "Organization", "name": "National Academy of Sports Medicine", "url": "https://www.nasm.org/" }
-    },
-    {
-      "@type": "EducationalOccupationalCredential",
-      "name": "USA Weightlifting Level 2 Coach",
-      "credentialCategory": "Professional certification",
-      "recognizedBy": { "@type": "Organization", "name": "USA Weightlifting", "url": "https://www.usaweightlifting.org/" }
     }
   ],
   "memberOf": [
@@ -375,7 +356,7 @@ GBP = 32% of all local-ranking signals per 2026 research. AI Overviews trigger o
 
 Submit consistent NAP to:
 - **Tier 1 (must-have):** GBP, Bing Places, Apple Business Connect, Facebook, Yelp, Better Business Bureau, Yellow Pages
-- **Sport / fitness niche:** TrueCoach, CoachUp, MAX Sports & Fitness directory, NSCA Coach Directory, USAW directory
+- **Sport / fitness niche:** TrueCoach, CoachUp, MAX Sports & Fitness directory, NSCA Coach Directory
 - **Local:** Tampa Bay Chamber, Pasco County Chamber, Florida.com directories, Visit Tampa Bay
 - **Health-adjacent:** Healthgrades-style directories that allow "performance coach" listings
 
@@ -425,7 +406,6 @@ A single, long-form, third-person bio of Darren on `/about` that becomes the sou
 - Specific notable athletes (with permission)
 - Research / publications if any
 - Speaking engagements / podcast appearances
-- Methodology authorship (the Grey Zone, Five Pillar Framework)
 
 ### 5.2 Author footer on every blog post
 
@@ -454,7 +434,7 @@ Current `sameAs` on Person: 4 URLs (LinkedIn, Instagram, TikTok, Facebook). **Ga
 - YouTube channel (if any)
 - Twitter/X if active
 - Spotify / podcast hosts where Darren has appeared (each podcast appearance link)
-- Athletic federation profiles (NSCA member directory, USAW)
+- Athletic federation profiles (NSCA member directory)
 - Wikipedia article (long-term goal — see §5.5)
 
 Each external profile should reciprocally link back to `darrenjpaul.com/about` for the chain to be bi-directional and trusted.
@@ -463,7 +443,6 @@ Each external profile should reciprocally link back to `darrenjpaul.com/about` f
 
 To compound E-E-A-T:
 - Get listed on NSCA "Find a CSCS" directory
-- Get listed on USAW Coach directory
 - Submit to TrueCoach / CoachUp profiles
 - Pitch guest posts on `simplifaster.com`, `t-nation.com`, `breakingmuscle.com`, sport-specific blogs
 - Pitch podcast appearances on Pacey Performance, Just Fly Podcast, Strength Coach Podcast
@@ -500,8 +479,8 @@ Per current research, AI Overviews favor sites with clear topical clusters and d
               └── Each links back to /assessment + 2 sibling articles
 
 /philosophy ──┐
-              ├── Cluster D: The Grey Zone Methodology
-              ├── Articles: 4-6 pieces on framework, autoregulation, LTAD
+              ├── Cluster D: Coaching Methodology
+              ├── Articles: 4-6 pieces on the approach, autoregulation, LTAD
               └── Each links back to /philosophy + 2 sibling articles
 ```
 
@@ -549,7 +528,7 @@ Avoid: "click here," "learn more," and exact-match keyword-only links. Use natur
 - Lowercase, hyphen-separated, no stop words
 - Keep < 5 words where possible; max 8 words
 - Match user intent verbatim ("what is X" type slugs perform well in AI Overviews)
-- Drop redundant brand suffix ("/blog/the-grey-zone-explained" not "/blog/the-grey-zone-explained-by-djp-athlete")
+- Drop redundant brand suffix ("/blog/coaching-philosophy" not "/blog/coaching-philosophy-by-djp-athlete")
 
 ---
 
@@ -618,9 +597,8 @@ Avoid: "click here," "learn more," and exact-match keyword-only links. Use natur
 ### 7.6 `/philosophy`
 
 Already strong content-wise. Additions:
-- Add `DefinedTerm` schema for "The Grey Zone" and "Five Pillar Framework"
-- Add an at-end FAQ block: "Why is it called the Grey Zone?", "How does this differ from periodization?"
-- Cross-link from every other money page using the phrase "the Grey Zone framework"
+- Add an at-end FAQ block: "How does this differ from periodization?"
+- Cross-link from every other money page using the phrase "coaching philosophy"
 
 ### 7.7 `/services`
 

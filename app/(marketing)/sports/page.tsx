@@ -15,7 +15,7 @@ export const metadata: Metadata = {
   // Layout template appends " | DJP Athlete".
   title: "Sports Performance Training by Sport",
   description:
-    "Sport-specific performance training in Tampa Bay and online: tennis, golf, baseball, soccer, lacrosse, pickleball. Coached by Darren J Paul, PhD (CSCS, NASM, USAW Level 2).",
+    "Sport-specific performance training in Tampa Bay and online: tennis, golf, baseball, soccer, lacrosse, pickleball. Coached by Darren J Paul, PhD (CSCS, NASM).",
   alternates: { canonical: "/sports" },
   openGraph: {
     title: "Sports Performance Training by Sport | DJP Athlete",
@@ -126,7 +126,7 @@ export default function SportsHubPage() {
       <SemanticAnswerBlock
         eyebrow="What this is"
         question="What sports does DJP Athlete coach?"
-        answer={`DJP Athlete coaches performance training for athletes in tennis, golf, baseball, soccer, lacrosse and pickleball, in-person at our Zephyrhills facility in the Tampa Bay area and online for athletes anywhere. Every sport gets a dedicated program built around what that sport actually demands: tennis around acceleration, deceleration and rotational power; golf around clubhead speed and rotational chain; baseball around exit velocity, throwing velocity and durability; soccer around repeated-sprint capacity and reactive agility; lacrosse around rotational power for shooting and dodge agility; pickleball around lateral movement and joint durability. Training is delivered by Darren J Paul, PhD (CSCS, NASM, USA Weightlifting Level 2), who has coached 500+ athletes across 15+ sports including WTA professionals and pro pickleball players. The same five-pillar framework underpins every program: assessment, individualized programming, load monitoring, technical coaching and long-term development.`}
+        answer={`DJP Athlete coaches performance training for athletes in tennis, golf, baseball, soccer, lacrosse and pickleball, in-person at our Zephyrhills facility in the Tampa Bay area and online for athletes anywhere. Every sport gets a dedicated program built around what that sport actually demands: tennis around acceleration, deceleration and rotational power; golf around clubhead speed and rotational chain; baseball around exit velocity, throwing velocity and durability; soccer around repeated-sprint capacity and reactive agility; lacrosse around rotational power for shooting and dodge agility; pickleball around lateral movement and joint durability. Training is delivered by Darren J Paul, PhD (CSCS, NASM), who has coached 500+ athletes across 15+ sports including WTA professionals and pro pickleball players.`}
         className="speakable-answer"
       />
 

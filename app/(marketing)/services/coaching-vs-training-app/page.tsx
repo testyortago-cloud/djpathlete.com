@@ -45,7 +45,7 @@ const ROWS: Row[] = [
   {
     criterion: "Decision-maker",
     app: "Algorithm. No human reviews your week before it lands.",
-    coach: "Darren J Paul, PhD (CSCS, NASM, USAW Level 2). A coach who reviews your data weekly.",
+    coach: "Darren J Paul, PhD (CSCS, NASM). A coach who reviews your data weekly.",
     coachPositive: true,
   },
   {
@@ -163,7 +163,7 @@ export default function CoachingVsTrainingAppPage() {
       <SemanticAnswerBlock
         eyebrow="Quick answer"
         question="What's the difference between sports performance coaching and a training app?"
-        answer="A subscription training app delivers pre-built workout templates assigned algorithmically — useful for general fitness, structured strength, and lifestyle goals at $10–$80 per month. Coach-supervised sports performance coaching delivers an individualized program built from a personal assessment, adjusted weekly through video review, daily wellness data, and direct coach messaging. At DJP Athlete, the coach is Darren J Paul, PhD (CSCS, NASM, USAW Level 2). Apps cannot adjust volume when readiness markers drop, swap movements based on observed technique, or interpret return-to-performance milestones; coaching can. The cost difference reflects a difference in product, not in brand. Apps are the right choice for general fitness; coaching is the right choice for performance development and post-injury return-to-sport phases."
+        answer="A subscription training app delivers pre-built workout templates assigned algorithmically — useful for general fitness, structured strength, and lifestyle goals at $10–$80 per month. Coach-supervised sports performance coaching delivers an individualized program built from a personal assessment, adjusted weekly through video review, daily wellness data, and direct coach messaging. At DJP Athlete, the coach is Darren J Paul, PhD (CSCS, NASM). Apps cannot adjust volume when readiness markers drop, swap movements based on observed technique, or interpret return-to-performance milestones; coaching can. The cost difference reflects a difference in product, not in brand. Apps are the right choice for general fitness; coaching is the right choice for performance development and post-injury return-to-sport phases."
       />
 
       {/* Format-at-a-glance */}

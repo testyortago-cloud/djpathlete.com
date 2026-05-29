@@ -8,19 +8,19 @@ import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 export const metadata: Metadata = {
   title: "Sports Performance Glossary",
   description:
-    "Definitions of sports performance terms used at DJP Athlete: the Grey Zone, Five Pillar Framework, return-to-performance, capacity, readiness, autoregulation, force production, and more.",
+    "Definitions of sports performance terms used at DJP Athlete: return-to-performance, capacity, readiness, autoregulation, force production, and more.",
   alternates: { canonical: "/glossary" },
   openGraph: {
     title: "Sports Performance Glossary | DJP Athlete",
     description:
-      "Definitions of the methodology terms used by Darren J Paul, PhD — the Grey Zone, Five Pillar Framework, return-to-performance, capacity, readiness, and more.",
+      "Definitions of the methodology terms used by Darren J Paul, PhD — return-to-performance, capacity, readiness, and more.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
     title: "Sports Performance Glossary | DJP Athlete",
     description:
-      "Definitions of the methodology terms used at DJP Athlete: the Grey Zone, Five Pillar Framework, return-to-performance, capacity, readiness, and more.",
+      "Definitions of the methodology terms used at DJP Athlete: return-to-performance, capacity, readiness, and more.",
   },
 }
 
@@ -42,22 +42,6 @@ interface Term {
  * "nuggetization" passage length AI Overviews extract.
  */
 const TERMS: Term[] = [
-  {
-    id: "the-grey-zone",
-    term: "The Grey Zone",
-    category: "Methodology",
-    definition:
-      "Darren J Paul's coaching philosophy. The Grey Zone refers to the space between textbook training protocols and real-world performance demands — where adaptation actually happens. The framework rejects training in extremes (all-out or rest, rigid protocol or no structure) in favor of context-aware decision-making informed by daily readiness data, video review, and coach observation.",
-    inPracticeAt: { label: "Read the Grey Zone philosophy", href: "/philosophy" },
-  },
-  {
-    id: "five-pillar-framework",
-    term: "Five Pillar Framework",
-    category: "Methodology",
-    definition:
-      "DJP Athlete's coaching methodology. Five interconnected pillars structure every program: (1) Assessment & Diagnostics, (2) Individualized Programming, (3) Load & Readiness Monitoring, (4) Technical Coaching & Feedback, (5) Long-Term Athlete Development. Each pillar feeds the next; no pillar runs in isolation.",
-    inPracticeAt: { label: "See the framework", href: "/philosophy" },
-  },
   {
     id: "return-to-performance",
     term: "Return-to-Performance",

@@ -208,7 +208,7 @@ export default async function HomePage() {
         <SemanticAnswerBlock
           eyebrow="In short"
           question="What is sports performance training?"
-          answer="Sports performance training is the structured development of how an athlete moves, produces force, and recovers, built around a specific sport rather than general fitness. Unlike a personal trainer, a sports performance coach starts with diagnostics (testing speed, strength, power, movement quality and readiness), then designs an individualized training program, monitors training load, coaches technique, and adjusts in real time as the athlete adapts. At DJP Athlete, this is delivered by Darren J Paul, PhD (CSCS, NASM, USA Weightlifting Level 2), who has coached 500+ athletes across 15+ sports including WTA professionals. Three formats are available: in-person training at the Zephyrhills, Florida facility in the Tampa Bay area; online training with individualized programming and video feedback for athletes anywhere; and return-to-performance testing for athletes coming back from injury. Every decision is diagnostic-driven and individualized: systems over exercises, patterns over shortcuts."
+          answer="Sports performance training is the structured development of how an athlete moves, produces force, and recovers, built around a specific sport rather than general fitness. Unlike a personal trainer, a sports performance coach starts with diagnostics (testing speed, strength, power, movement quality and readiness), then designs an individualized training program, monitors training load, coaches technique, and adjusts in real time as the athlete adapts. At DJP Athlete, this is delivered by Darren J Paul, PhD (CSCS, NASM), who has coached 500+ athletes across 15+ sports including WTA professionals. Three formats are available: in-person training at the Zephyrhills, Florida facility in the Tampa Bay area; online training with individualized programming and video feedback for athletes anywhere; and return-to-performance testing for athletes coming back from injury. Every decision is diagnostic-driven and individualized: systems over exercises, patterns over shortcuts."
         />
       </div>
 
@@ -336,7 +336,7 @@ export default async function HomePage() {
             </h2>
 
             {/* E-E-A-T trust block: Google Reviews badge stays visible.
-                Credentials strip (PhD, CSCS · NASM · USAW, 500+ athletes, location,
+                Credentials strip (PhD, CSCS · NASM, 500+ athletes, location,
                 response time) is kept in the DOM via sr-only — preserves E-E-A-T
                 signals for crawlers/LLMs while removing the on-screen "noise"
                 the boss flagged. ─── */}

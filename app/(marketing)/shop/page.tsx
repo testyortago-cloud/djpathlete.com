@@ -227,35 +227,6 @@ export default async function ShopPage({
       {shopBreadcrumb}
       {productListSchema && <JsonLd data={productListSchema} />}
 
-      {/* Editorial hero */}
-      <section className="relative overflow-hidden bg-primary text-primary-foreground">
-        <div className="relative mx-auto max-w-7xl px-4 pb-14 pt-32 sm:px-8 lg:pb-20 lg:pt-40">
-          <div className="max-w-3xl">
-            <div className="flex items-center gap-3">
-              <div className="h-px w-10 bg-accent" />
-              <span className="font-mono text-[11px] uppercase tracking-[0.28em] text-accent">
-                The Shop · Collection 001
-              </span>
-            </div>
-
-            <h1 className="mt-6 font-heading text-3xl font-semibold leading-[1.05] tracking-tight sm:text-4xl lg:text-5xl">
-              Athletic Performance Apparel and Performance Gear.
-            </h1>
-            <p className="mt-4 font-heading text-5xl font-semibold leading-[0.95] tracking-tight sm:text-6xl lg:text-[88px]">
-              Performance
-              <br />
-              <span className="italic text-accent">Gear.</span>
-            </p>
-
-            <p className="mt-6 max-w-xl font-body text-base text-primary-foreground/75 sm:text-lg">
-              Worn in the gym, on the pitch, and after the session ends. Every
-              piece is built from training-grade materials and printed to order —
-              no dead stock, no shortcuts.
-            </p>
-          </div>
-        </div>
-      </section>
-
       {/* Category + sort bar */}
       <section className="border-b border-border bg-background">
         <ShopFilterBar

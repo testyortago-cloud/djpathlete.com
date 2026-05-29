@@ -8,12 +8,12 @@ import { ManagedFaqSection } from "@/components/public/ManagedFaqSection"
 export const metadata: Metadata = {
   title: "FAQ — Sports Performance Coaching Questions",
   description:
-    "Answers to common questions about sports performance coaching, online vs in-person training, return-to-performance assessment, and the Grey Zone framework.",
+    "Answers to common questions about sports performance coaching, online vs in-person training, and return-to-performance assessment.",
   alternates: { canonical: "/faq" },
   openGraph: {
     title: "FAQ — Sports Performance Coaching Questions | DJP Athlete",
     description:
-      "Common questions about sports performance coaching, online and in-person training, return-to-performance assessment, and the Grey Zone framework.",
+      "Common questions about sports performance coaching, online and in-person training, and return-to-performance assessment.",
     type: "website",
   },
   twitter: {
@@ -47,8 +47,8 @@ export default function FAQPage() {
               Sports performance coaching, answered.
             </h1>
             <p className="text-lg text-muted-foreground leading-relaxed">
-              Common questions about online and in-person coaching, the return-to-performance phase, and the Grey Zone
-              framework. If yours isn&apos;t here, the application form is the next step.
+              Common questions about online and in-person coaching and the return-to-performance phase. If yours
+              isn&apos;t here, the application form is the next step.
             </p>
           </FadeIn>
         </div>

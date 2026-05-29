@@ -154,7 +154,7 @@ export async function generateMetadata({ params }): Promise<Metadata> {
 | `/in-person` | "In-Person Sports Performance Training in Tampa Bay, FL" | 55 | ✅ Updated 2026-05-08 |
 | `/online` | "Online Sports Performance Training" | 35 | ✅ |
 | `/assessment` | "Return-to-Sport Assessment & Performance Testing" | 49 | ✅ Updated 2026-05-08 |
-| `/philosophy` | "The Grey Zone — Coaching Philosophy" | 36 | ✅ |
+| `/philosophy` | "Coaching Philosophy — Darren J Paul" | 36 | ✅ |
 | `/testimonials` | "Athlete Testimonials & Reviews" | 31 | ✅ |
 | `/contact` | "Contact Darren J Paul — Book a Consultation" | 44 | ✅ |
 | `/faq` | "FAQ — Sports Performance Coaching Questions" | 44 | ✅ |

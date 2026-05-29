@@ -36,8 +36,6 @@ Sources:
 | darren j paul phd | /about | ✅ Schema + visible H1 |
 | djp athlete reviews | / + /testimonials | ✅ GoogleReviewsBadge live |
 | darren j paul sports performance | /contact + GBP | ✅ LocalBusiness schema |
-| the grey zone framework | /philosophy | ✅ DefinedTerm + semantic block |
-| five pillar framework | /philosophy | ✅ DefinedTerm + visible content |
 | return-to-performance | /assessment | ✅ DefinedTerm + HowTo + semantic block |
 
 ### B. Service-defining "What is X?" queries
@@ -47,7 +45,6 @@ Sources:
 | what is online sports performance coaching | /online | ✅ Semantic block |
 | what is in-person sports performance training | /in-person | ✅ Semantic block |
 | what is return-to-performance assessment | /assessment | ✅ Semantic block + HowTo |
-| what is the grey zone framework | /philosophy | ✅ Semantic block |
 | what is sports performance coaching | /services + /faq | ✅ FAQ |
 | what is a performance blueprint | /glossary#performance-blueprint | ✅ DefinedTerm |
 | what is autoregulation in training | /glossary#autoregulation | ✅ DefinedTerm |

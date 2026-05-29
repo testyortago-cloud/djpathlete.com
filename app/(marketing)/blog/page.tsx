@@ -114,33 +114,16 @@ export default async function BlogPage() {
         ]}
       />
 
-      {/* ─────────── Issue masthead ─────────── */}
+      {/* ─────────── Hero ─────────── */}
       <header className="djp-paper-deep djp-grain border-b border-border/70 pt-32 pb-12 lg:pt-36 lg:pb-16 px-4 sm:px-8">
         <div className="max-w-7xl mx-auto">
-          <div className="flex flex-wrap items-baseline justify-between gap-4 djp-issue-no text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
-            <span className="text-primary font-semibold">DJP / The Performance Journal</span>
-            <span>Vol. 01</span>
-            <span>
-              Issue{" "}
-              <span className="text-primary tabular-nums">
-                {String(totalCount).padStart(3, "0")}
-              </span>
-            </span>
-            {lastUpdated && (
-              <span className="hidden sm:inline">
-                Updated {formatShort(lastUpdated)}
-              </span>
-            )}
-          </div>
-
-          <div className="mt-12 lg:mt-16 grid lg:grid-cols-12 gap-8 lg:gap-12 items-end">
+          <div className="grid lg:grid-cols-12 gap-8 lg:gap-12 items-end">
             <div className="lg:col-span-8">
-              <p className="djp-eyebrow">The Performance Journal</p>
               <h1
-                className="mt-6 font-heading font-semibold text-primary tracking-[-0.02em] leading-[1.02]"
+                className="font-heading font-semibold text-primary tracking-[-0.02em] leading-[1.02]"
                 style={{ fontSize: "clamp(2.25rem, 6vw, 5rem)" }}
               >
-                Performance Training, Strength &amp; Athletic
+                Performance Health and Athlete
                 Development<span className="text-accent">.</span>
               </h1>
             </div>

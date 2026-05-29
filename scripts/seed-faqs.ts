@@ -39,27 +39,9 @@ const faqPage: SeedFaq[] = [
     category: "About DJP Athlete",
     question: "Who is Darren J Paul?",
     answer:
-      "Darren J Paul, PhD is a sports performance coach, performance strategist, and researcher with two decades inside high-performance environments. He has coached 500+ athletes across 15+ sports and 3 continents — including WTA professional tennis players and pro pickleball players. He is the author of the Grey Zone coaching philosophy and the Five Pillar Framework. Certifications: CSCS (NSCA), NASM Certified Personal Trainer, USA Weightlifting Level 2 Coach. He holds a B.S. in Exercise Science & Kinesiology and a PhD.",
+      "Darren J Paul, PhD is a sports performance coach, performance strategist, and researcher with two decades inside high-performance environments. He has coached 500+ athletes across 15+ sports and 3 continents — including WTA professional tennis players and pro pickleball players. Certifications: CSCS (NSCA) and NASM Certified Personal Trainer. He holds a B.S. in Exercise Science & Kinesiology and a PhD.",
     link_text: "Read full bio",
     link_href: "/about",
-  },
-  {
-    page_key: "faq",
-    category: "About DJP Athlete",
-    question: "What is the Grey Zone framework?",
-    answer:
-      "The Grey Zone is Darren J Paul's coaching philosophy. It refers to the space between textbook training protocols and real-world performance demands — where adaptation actually happens. The framework rejects training in extremes (all-out or rest, rigid protocol or no structure) in favor of context-aware decision-making informed by daily readiness data. Most training systems operate in extremes; athletes exist in the complex space between. Navigating it requires a coach who can read context, adjust in real time, and make informed decisions based on what the athlete needs today — not what the plan said last week.",
-    link_text: "Read the Grey Zone philosophy",
-    link_href: "/philosophy",
-  },
-  {
-    page_key: "faq",
-    category: "About DJP Athlete",
-    question: "What is the Five Pillar Framework?",
-    answer:
-      "The Five Pillar Framework is the operational structure of DJP Athlete's coaching methodology. It is built on five interconnected pillars: (1) Assessment & Diagnostics — understanding the athlete before building the plan; (2) Individualized Programming — no templates, every program built from assessment data; (3) Load & Readiness Monitoring — continuous tracking of training load, wellness markers, and performance indicators; (4) Technical Coaching & Feedback — movement is coached, not just programmed; (5) Long-Term Athlete Development — building robust, adaptable athletes over years.",
-    link_text: "See the framework",
-    link_href: "/philosophy",
   },
   {
     page_key: "faq",
@@ -261,7 +243,7 @@ const faqPage: SeedFaq[] = [
     category: "Comparing Coaching Options",
     question: "What's the difference between a sports performance coach and a personal trainer?",
     answer:
-      "A personal trainer is generalist-fitness-focused: weight management, general strength, lifestyle health. A sports performance coach is athletic-output-focused: speed, power, capacity, sport-specific qualities, and post-injury return to competition. The certifications differ (CSCS, NSCA, USA Weightlifting are sport-performance credentials; CPT-style certifications cover general fitness). The programming differs (sport-specific demand modeling vs general body-comp goals). At DJP Athlete, the focus is sport performance, not fitness.",
+      "A personal trainer is generalist-fitness-focused: weight management, general strength, lifestyle health. A sports performance coach is athletic-output-focused: speed, power, capacity, sport-specific qualities, and post-injury return to competition. The certifications differ (CSCS and NSCA are sport-performance credentials; CPT-style certifications cover general fitness). The programming differs (sport-specific demand modeling vs general body-comp goals). At DJP Athlete, the focus is sport performance, not fitness.",
     link_text: null,
     link_href: null,
   },
@@ -270,7 +252,7 @@ const faqPage: SeedFaq[] = [
     category: "Comparing Coaching Options",
     question: "How do I find a good sports performance coach?",
     answer:
-      "Look for: (1) Industry-standard certifications — CSCS (NSCA), NASM, USA Weightlifting Level 1+; (2) Documented experience with athletes at your level or above; (3) An assessment-driven process, not template-based programming; (4) Clear communication about how decisions get made (e.g., what changes when wellness markers drop); (5) Willingness to coordinate with your physio, sport coach, or team performance staff; (6) A selective intake process — coaches who take everyone usually don't deliver to anyone in particular.",
+      "Look for: (1) Industry-standard certifications — CSCS (NSCA) or NASM; (2) Documented experience with athletes at your level or above; (3) An assessment-driven process, not template-based programming; (4) Clear communication about how decisions get made (e.g., what changes when wellness markers drop); (5) Willingness to coordinate with your physio, sport coach, or team performance staff; (6) A selective intake process — coaches who take everyone usually don't deliver to anyone in particular.",
     link_text: null,
     link_href: null,
   },
@@ -370,7 +352,7 @@ const onlineVsInPersonPage: SeedFaq[] = [
     category: null,
     question: "Do online and in-person athletes train differently?",
     answer:
-      "Within the same Performance Blueprint, no — the program structure, exercise selection logic, autoregulation rules, and coaching feedback follow the same Five Pillar Framework. Differences are operational: online athletes log wellness daily and submit weekly video, in-person athletes are observed live. The output of either path is the same: an athlete with measurable, durable performance qualities who knows what they can trust under competition stress.",
+      "Within the same Performance Blueprint, no — the program structure, exercise selection logic, autoregulation rules, and coaching feedback follow the same approach. Differences are operational: online athletes log wellness daily and submit weekly video, in-person athletes are observed live. The output of either path is the same: an athlete with measurable, durable performance qualities who knows what they can trust under competition stress.",
     link_text: null,
     link_href: null,
   },
@@ -443,7 +425,7 @@ const athletesHubPage: SeedFaq[] = [
     category: null,
     question: "What athletes do you train?",
     answer:
-      "Four stages: professional athletes (touring pros across rotational and racquet sports), collegiate and competitive amateur athletes, youth athletes in long-term athletic development, and athletes returning from injury who have been cleared by a clinician but are not yet competition-ready. The same five-pillar training framework runs each stage, scaled to training age, sport and calendar.",
+      "Four stages: professional athletes (touring pros across rotational and racquet sports), collegiate and competitive amateur athletes, youth athletes in long-term athletic development, and athletes returning from injury who have been cleared by a clinician but are not yet competition-ready. The same coaching approach runs each stage, scaled to training age, sport and calendar.",
     link_text: null,
     link_href: null,
   },
@@ -502,7 +484,7 @@ const rotationalRebootPage: SeedFaq[] = [
     category: null,
     question: "What is the Rotational Reboot program?",
     answer:
-      "Rotational Reboot is a 6-week training program of 4 sessions per week (24 sessions in total) built to develop rotational power for athletes in rotational sports like tennis, golf, baseball, lacrosse, hockey and soccer. It's core-led (roughly 70% rotational core and trunk work, 30% supporting legs and arms) and runs a deliberate progression from beginner to moderate intensity, so you build control before speed. It was designed and programmed by Darren J Paul, PhD (CSCS, NASM, USA Weightlifting Level 2).",
+      "Rotational Reboot is a 6-week training program of 4 sessions per week (24 sessions in total) built to develop rotational power for athletes in rotational sports like tennis, golf, baseball, lacrosse, hockey and soccer. It's core-led (roughly 70% rotational core and trunk work, 30% supporting legs and arms) and runs a deliberate progression from beginner to moderate intensity, so you build control before speed. It was designed and programmed by Darren J Paul, PhD (CSCS, NASM).",
     link_text: null,
     link_href: null,
   },
@@ -565,7 +547,7 @@ const rotationalRebootPage: SeedFaq[] = [
     category: null,
     question: "Who built it?",
     answer:
-      "Darren J Paul, PhD, is a sports performance coach with two decades inside high-performance environments, having coached 500+ athletes across 15+ sports including WTA professionals. Certifications: CSCS (NSCA), NASM-CPT, USA Weightlifting Level 2 Coach.",
+      "Darren J Paul, PhD, is a sports performance coach with two decades inside high-performance environments, having coached 500+ athletes across 15+ sports including WTA professionals. Certifications: CSCS (NSCA) and NASM-CPT.",
     link_text: null,
     link_href: null,
   },
@@ -753,7 +735,7 @@ const sportsFaqs: Record<string, { question: string; answer: string }[]> = {
     {
       question: "Can you coach pickleball players online?",
       answer:
-        "Yes. The online program is built around your weekly schedule and the equipment you have. Weekly programming, video feedback and ongoing oversight, the same five-pillar framework we run in person.",
+        "Yes. The online program is built around your weekly schedule and the equipment you have. Weekly programming, video feedback and ongoing oversight, the same way we run things in person.",
     },
     {
       question: "I have a sore shoulder from too much pickleball. Where do I start?",
@@ -817,7 +799,7 @@ const athleteAudienceFaqs: Record<string, { question: string; answer: string }[]
     {
       question: "Is this for any level of college athlete, or only D1?",
       answer:
-        "Any level, plus competitive amateurs outside the college system. The bar is intent, not status. The Five Pillar Framework scales with training age, not with division.",
+        "Any level, plus competitive amateurs outside the college system. The bar is intent, not status. The program scales with training age, not with division.",
     },
     {
       question: "What about my parents or coach getting visibility into the plan?",

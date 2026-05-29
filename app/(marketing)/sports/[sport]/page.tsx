@@ -135,14 +135,14 @@ export default async function SportPage({ params }: Props) {
     },
   }
 
-  // HowTo — the five-pillar process applied to this sport. Google removed
+  // HowTo — the coaching process applied to this sport. Google removed
   // HowTo rich results from SERPs in late 2023, but the schema still feeds AI
   // assistants and adds entity density for the page.
   const howToSchema = {
     "@context": "https://schema.org",
     "@type": "HowTo",
     name: `How ${sport.name.toLowerCase()} performance training works at DJP Athlete`,
-    description: `The five-pillar process for developing the physical qualities that drive ${sport.name.toLowerCase()} outcomes: assessment, individualized programming, load monitoring, technical coaching and long-term development.`,
+    description: `The coaching process for developing the physical qualities that drive ${sport.name.toLowerCase()} outcomes: assessment, individualized programming, load monitoring, technical coaching and long-term development.`,
     totalTime: "P12W",
     step: [
       {
@@ -285,7 +285,7 @@ export default async function SportPage({ params }: Props) {
         </FadeIn>
       </section>
 
-      {/* ─────────────── How we train it (Five Pillar) ─────────────── */}
+      {/* ─────────────── How we train it ─────────────── */}
       <section className="bg-surface border-y border-border">
         <div className="mx-auto max-w-5xl px-4 py-16 sm:px-8 lg:py-20">
           <FadeIn>
@@ -299,11 +299,11 @@ export default async function SportPage({ params }: Props) {
               id="how-we-train-it"
               className="mt-4 font-heading text-3xl font-semibold tracking-tight text-primary sm:text-4xl"
             >
-              The Five Pillar Framework, applied to {sport.name.toLowerCase()}.
+              How we coach {sport.name.toLowerCase()}.
             </h2>
             <p className="mt-4 leading-7 text-muted-foreground">
-              Every program at DJP Athlete runs the same five-pillar logic. For {sport.name.toLowerCase()},
-              the pillars look like this:
+              Every program at DJP Athlete runs the same coaching logic. For {sport.name.toLowerCase()},
+              it looks like this:
             </p>
             <dl className="mt-8 space-y-5">
               <FivePillar
@@ -332,16 +332,6 @@ export default async function SportPage({ params }: Props) {
                 body={`We are not chasing a peak in eight weeks. The plan looks at the season, the calendar and the next two years. Sustainable output is the standard.`}
               />
             </dl>
-            <p className="mt-8 text-sm text-muted-foreground">
-              Want the underlying philosophy?{" "}
-              <Link
-                href="/philosophy"
-                className="font-medium text-primary underline underline-offset-4 hover:text-accent"
-              >
-                Read about the Grey Zone framework
-              </Link>
-              .
-            </p>
           </FadeIn>
         </div>
       </section>

@@ -22,7 +22,7 @@ export const DJP_AUTHOR_ID = "https://www.darrenjpaul.com/about#person"
  * link back to https://www.darrenjpaul.com/about for the chain to be trusted.
  *
  * TODO (owner): add Google Scholar, ORCID, ResearchGate, YouTube, Twitter/X,
- * podcast appearance pages, and federation directory profiles (NSCA, USAW)
+ * podcast appearance pages, and federation directory profiles (NSCA)
  * once URLs are verified.
  */
 export const DJP_SAME_AS = [
@@ -70,16 +70,6 @@ const CREDENTIALS = [
   },
   {
     "@type": "EducationalOccupationalCredential",
-    name: "USA Weightlifting Level 2 Coach",
-    credentialCategory: "Professional certification",
-    recognizedBy: {
-      "@type": "Organization",
-      name: "USA Weightlifting",
-      url: "https://www.usaweightlifting.org/",
-    },
-  },
-  {
-    "@type": "EducationalOccupationalCredential",
     name: "B.S. in Exercise Science & Kinesiology",
     credentialCategory: "degree",
     // recognizedBy: TODO once university confirmed
@@ -110,8 +100,6 @@ const KNOWS_ABOUT = [
   "load and readiness monitoring",
   "long-term athlete development",
   "movement screening",
-  "the Grey Zone framework",
-  "Five Pillar Framework",
   "force plate testing",
   "post-injury return to performance",
 ] as const
@@ -148,7 +136,7 @@ export const DJP_PERSON_FULL = {
   honorificSuffix: "PhD, CSCS",
   jobTitle: "Sports Performance Coach & Performance Strategist",
   description:
-    "Darren J Paul, PhD is a sports performance coach and performance strategist based in Zephyrhills, Florida. Two decades inside high-performance environments, with 500+ athletes coached across 15+ sports and 3 continents — including WTA professionals and pro pickleball players. Author of the Grey Zone coaching philosophy and the Five Pillar Framework. CSCS, NASM, and USA Weightlifting Level 2 certified.",
+    "Darren J Paul, PhD is a sports performance coach and performance strategist based in Zephyrhills, Florida. Two decades inside high-performance environments, with 500+ athletes coached across 15+ sports and 3 continents — including WTA professionals and pro pickleball players. CSCS and NASM certified.",
   image: "https://www.darrenjpaul.com/images/professionalheadshot.jpg",
   url: "https://www.darrenjpaul.com/about",
   worksFor: {

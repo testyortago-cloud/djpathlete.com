@@ -88,12 +88,11 @@ export function AuthorCard({ variant = "full", publishedDate, updatedDate, class
             </Link>
           </h3>
           <p className="text-xs text-muted-foreground mb-3">
-            Sports Performance Coach · CSCS · NASM · USAW Level 2 · Zephyrhills, FL
+            Sports Performance Coach · CSCS · NASM · Zephyrhills, FL
           </p>
           <p className="text-sm text-muted-foreground leading-relaxed mb-4">
             Performance strategist, coach, and researcher. 500+ athletes coached across 15+ sports and 3 continents —
-            including WTA professionals and pro pickleball players. Author of the Grey Zone coaching philosophy and the
-            Five Pillar Framework.
+            including WTA professionals and pro pickleball players.
           </p>
           <div className="flex flex-wrap items-center gap-3">
             <Link

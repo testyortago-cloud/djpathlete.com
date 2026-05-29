@@ -133,7 +133,7 @@ export default async function AthleteAudiencePage({ params }: Props) {
     "@context": "https://schema.org",
     "@type": "HowTo",
     name: `How DJP Athlete coaches ${audience.name.toLowerCase()} athletes`,
-    description: `The five-pillar process applied to ${audience.audienceType.toLowerCase()}: assessment, individualized programming, load monitoring, technical coaching and long-term development.`,
+    description: `The coaching process applied to ${audience.audienceType.toLowerCase()}: assessment, individualized programming, load monitoring, technical coaching and long-term development.`,
     totalTime: "P12W",
     step: [
       {
@@ -287,7 +287,7 @@ export default async function AthleteAudiencePage({ params }: Props) {
         </FadeIn>
       </section>
 
-      {/* ─────────────── How we coach it (Five Pillar) ─────────────── */}
+      {/* ─────────────── How we coach it ─────────────── */}
       <section className="bg-surface border-y border-border">
         <div className="mx-auto max-w-5xl px-4 py-16 sm:px-8 lg:py-20">
           <FadeIn>
@@ -301,11 +301,11 @@ export default async function AthleteAudiencePage({ params }: Props) {
               id="how-we-coach-it"
               className="mt-4 font-heading text-3xl font-semibold tracking-tight text-primary sm:text-4xl"
             >
-              The Five Pillar Framework, applied to {audience.name.toLowerCase()} athletes.
+              How we coach {audience.name.toLowerCase()} athletes.
             </h2>
             <p className="mt-4 leading-7 text-muted-foreground">
-              Every program at DJP Athlete runs the same five-pillar logic. For {audience.name.toLowerCase()} athletes,
-              the pillars look like this:
+              Every program at DJP Athlete runs the same coaching logic. For {audience.name.toLowerCase()} athletes,
+              it looks like this:
             </p>
             <dl className="mt-8 space-y-5">
               <FivePillar
@@ -334,16 +334,6 @@ export default async function AthleteAudiencePage({ params }: Props) {
                 body={`The plan looks at the season, the calendar and the next two to four years. Sustainable output is the standard.`}
               />
             </dl>
-            <p className="mt-8 text-sm text-muted-foreground">
-              Want the underlying philosophy?{" "}
-              <Link
-                href="/philosophy"
-                className="font-medium text-primary underline underline-offset-4 hover:text-accent"
-              >
-                Read about the Grey Zone framework
-              </Link>
-              .
-            </p>
           </FadeIn>
         </div>
       </section>
