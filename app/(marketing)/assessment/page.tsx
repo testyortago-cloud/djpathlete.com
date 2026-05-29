@@ -157,14 +157,6 @@ const instruments: {
   },
 ]
 
-const outcomes = [
-  { label: "Performance profile", detail: "a clear, testable read of current qualities" },
-  { label: "Asymmetries identified", detail: "compensations and strategy flagged" },
-  { label: "Risk gaps defined", detail: "where exposure outstrips capacity" },
-  { label: "Return progression", detail: "a targeted plan to close the gap" },
-  { label: "Competitive confidence", detail: "evidence behind the decision to play" },
-]
-
 export default function AssessmentPage() {
   return (
     <>
@@ -192,8 +184,8 @@ export default function AssessmentPage() {
                 <h1 className="mt-6 font-heading text-[40px] leading-[1.02] tracking-tight sm:text-5xl md:text-6xl font-semibold text-primary">
                   Athlete Assessments for Return-to-Performance
                 </h1>
-                <p className="mt-4 font-heading text-2xl sm:text-4xl md:text-5xl font-semibold tracking-tight text-primary/85 leading-[1.05]">
-                  Cleared is not the same as <span className="italic font-normal text-accent">ready.</span>
+                <p className="mt-6 text-xl sm:text-2xl lg:text-3xl font-normal tracking-tight text-primary/70 leading-snug">
+                  Cleared is not the same as <span className="italic text-accent">ready.</span>
                 </p>
 
                 <p className="mt-8 max-w-lg text-base leading-7 md:text-lg md:leading-8 text-muted-foreground">
@@ -284,10 +276,7 @@ export default function AssessmentPage() {
           <FadeIn>
             <div className="grid gap-14 lg:grid-cols-[0.85fr_1.15fr] lg:gap-20">
               <div>
-                <div className="font-mono font-bold text-[10px] uppercase tracking-[0.3em] text-accent">
-                  § 1 · The Problem
-                </div>
-                <h2 className="mt-4 font-heading text-3xl sm:text-4xl md:text-5xl font-semibold tracking-tight leading-[1.05] text-primary">
+                <h2 className="font-heading text-3xl sm:text-4xl md:text-5xl font-semibold tracking-tight leading-[1.05] text-primary">
                   Traditional assessment asks the wrong question.
                 </h2>
               </div>
@@ -300,11 +289,8 @@ export default function AssessmentPage() {
                 </p>
 
                 <div className="mt-10 divide-y divide-border border-y border-border">
-                  {traditionalProblems.map((p, i) => (
+                  {traditionalProblems.map((p) => (
                     <div key={p.label} className="flex items-baseline gap-6 py-5">
-                      <span className="font-mono font-bold text-[10px] uppercase tracking-[0.3em] text-accent tabular-nums shrink-0 w-10">
-                        §{String(i + 1).padStart(2, "0")}
-                      </span>
                       <span className="font-heading text-xl md:text-2xl font-semibold text-primary tracking-tight">
                         {p.label}
                       </span>
@@ -326,9 +312,6 @@ export default function AssessmentPage() {
           <div className="grid gap-14 lg:grid-cols-2 lg:gap-16">
             <FadeIn>
               <div className="relative rounded-sm border border-primary/15 bg-background p-8 md:p-10 h-full">
-                <div className="absolute -top-3 left-6 px-3 py-1 font-mono font-bold text-[10px] uppercase tracking-[0.3em] bg-surface text-accent">
-                  § 2 · What this is
-                </div>
                 <p className="mt-4 text-xl leading-8 text-primary">
                   A performance-based assessment process designed to evaluate readiness for high-level sport
                   after the conclusion of clinical care.
@@ -353,9 +336,6 @@ export default function AssessmentPage() {
 
             <FadeIn delay={0.1}>
               <div className="relative rounded-sm border-2 border-dashed border-primary/20 p-8 md:p-10 h-full">
-                <div className="absolute -top-3 left-6 px-3 py-1 font-mono font-bold text-[10px] uppercase tracking-[0.3em] bg-surface text-primary/70">
-                  § 2 · What this is not
-                </div>
                 <p className="mt-4 font-heading text-3xl md:text-4xl font-semibold leading-tight tracking-tight text-primary">
                   Not rehabilitation.
                   <br />
@@ -381,10 +361,7 @@ export default function AssessmentPage() {
           <FadeIn>
             <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6 mb-16">
               <div>
-                <div className="font-mono font-bold text-[10px] uppercase tracking-[0.3em] text-accent">
-                  § 3 · Instruments
-                </div>
-                <h2 className="mt-4 font-heading text-3xl sm:text-4xl md:text-5xl font-semibold tracking-tight leading-[1.02] max-w-xl text-primary">
+                <h2 className="font-heading text-3xl sm:text-4xl md:text-5xl font-semibold tracking-tight leading-[1.02] max-w-xl text-primary">
                   Measuring what actually{" "}
                   <span className="italic font-normal text-accent">matters.</span>
                 </h2>
@@ -429,51 +406,6 @@ export default function AssessmentPage() {
         </div>
       </section>
 
-      {/* ===================== OUTCOME LEDGER ===================== */}
-      <section className="py-24 lg:py-32 px-4 sm:px-8 bg-background">
-        <div className="max-w-5xl mx-auto">
-          <FadeIn>
-            <div className="font-mono font-bold text-[10px] uppercase tracking-[0.3em] text-accent">
-              § 4 · Outcome
-            </div>
-            <h2 className="mt-4 font-heading text-3xl sm:text-4xl md:text-5xl font-semibold tracking-tight leading-[1.02] text-primary max-w-3xl">
-              The result of this process is{" "}
-              <span className="italic font-normal text-accent">clarity.</span>
-            </h2>
-          </FadeIn>
-
-          <FadeIn delay={0.1}>
-            <div className="mt-12 border border-border rounded-sm overflow-hidden">
-              <div className="grid grid-cols-[80px_1fr_1fr] font-mono font-bold text-[10px] uppercase tracking-[0.3em] text-muted-foreground bg-surface border-b border-border">
-                <div className="px-4 py-3">№</div>
-                <div className="px-4 py-3">Output</div>
-                <div className="px-4 py-3">Detail</div>
-              </div>
-              {outcomes.map((o, i) => (
-                <div
-                  key={o.label}
-                  className="grid grid-cols-[80px_1fr_1fr] items-baseline border-b border-border last:border-b-0"
-                >
-                  <div className="px-4 py-5 font-mono text-xs tabular-nums text-accent tracking-widest">
-                    {String(i + 1).padStart(2, "0")}
-                  </div>
-                  <div className="px-4 py-5 font-heading text-lg font-semibold text-primary tracking-tight">
-                    {o.label}
-                  </div>
-                  <div className="px-4 py-5 text-sm text-muted-foreground leading-6 italic">
-                    {o.detail}
-                  </div>
-                </div>
-              ))}
-            </div>
-            <p className="mt-8 text-base md:text-lg italic text-muted-foreground leading-8 max-w-2xl">
-              The objective is not to eliminate risk — sport always carries risk. The objective is to reduce
-              avoidable risk through informed performance decision-making.
-            </p>
-          </FadeIn>
-        </div>
-      </section>
-
       {/* FAQ (managed via CMS) — renders only when published FAQs exist for this page */}
       <ManagedFaqSection
         pageKey="assessment"
@@ -488,10 +420,7 @@ export default function AssessmentPage() {
           <div className="grid lg:grid-cols-5 gap-10 lg:gap-16">
             <FadeIn direction="left" className="lg:col-span-2">
               <div className="lg:sticky lg:top-28">
-                <div className="font-mono font-bold text-[10px] uppercase tracking-[0.3em] text-accent">
-                  § 5 · Intake
-                </div>
-                <h2 className="mt-4 font-heading text-3xl sm:text-4xl font-semibold tracking-tight text-primary leading-[1.05]">
+                <h2 className="font-heading text-3xl sm:text-4xl font-semibold tracking-tight text-primary leading-[1.05]">
                   Find out where you{" "}
                   <span className="italic font-normal">truly stand.</span>
                 </h2>

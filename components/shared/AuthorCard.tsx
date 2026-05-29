@@ -88,7 +88,7 @@ export function AuthorCard({ variant = "full", publishedDate, updatedDate, class
             </Link>
           </h3>
           <p className="text-xs text-muted-foreground mb-3">
-            Sports Performance Coach · CSCS · NASM · Zephyrhills, FL
+            Sports Performance Coach · CSCS · NASM · Tampa Bay, FL
           </p>
           <p className="text-sm text-muted-foreground leading-relaxed mb-4">
             Performance strategist, coach, and researcher. 500+ athletes coached across 15+ sports and 3 continents —

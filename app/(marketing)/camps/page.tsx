@@ -116,14 +116,14 @@ export default async function CampsPage() {
 
       <CampHero />
 
-      {/* ===================== § 2 · WHY THIS CAMP ===================== */}
+      {/* ===================== WHY THIS CAMP ===================== */}
       <section
         id="why-this-camp"
         className="relative py-20 lg:py-28 px-4 sm:px-8 border-b-2 border-primary bg-background text-primary"
       >
         <div className="max-w-5xl mx-auto">
           <FadeIn>
-            <div className="font-heading text-xs uppercase tracking-[0.35em] mb-6 text-accent">§ Why this camp</div>
+            <div className="font-heading text-xs uppercase tracking-[0.35em] mb-6 text-accent">Why this camp</div>
             <h2
               className="font-heading font-semibold tracking-tight leading-[0.95] text-primary"
               style={{ fontSize: "clamp(2rem, 5vw, 4rem)" }}
@@ -140,14 +140,14 @@ export default async function CampsPage() {
         </div>
       </section>
 
-      {/* ===================== § 3 · PILLARS ===================== */}
+      {/* ===================== PILLARS ===================== */}
       <section id="what-gets-developed" className="relative py-20 lg:py-28 px-4 sm:px-8 bg-surface text-primary">
         <div className="relative max-w-7xl mx-auto">
           <FadeIn>
             <div className="flex items-end justify-between flex-wrap gap-6 border-b-2 border-primary pb-6 mb-14">
               <div>
                 <div className="font-heading text-xs uppercase tracking-[0.35em] text-accent mb-4">
-                  § What gets developed · 4 pillars
+                  What gets developed · 4 pillars
                 </div>
                 <h2
                   className="font-heading font-semibold tracking-tight leading-[0.9] text-primary"
@@ -156,7 +156,7 @@ export default async function CampsPage() {
                   The four <span className="italic font-normal text-accent">pillars.</span>
                 </h2>
               </div>
-              <div className="font-heading text-xs uppercase tracking-[0.35em] text-primary/55">§ Feature · page 3</div>
+              <div className="font-heading text-xs uppercase tracking-[0.35em] text-primary/55">Feature · page 3</div>
             </div>
           </FadeIn>
 
@@ -189,7 +189,7 @@ export default async function CampsPage() {
         className="hidden border-t-2 border-b-2 border-primary bg-background py-20 lg:py-28 px-4 sm:px-8"
       >
         <div className="max-w-7xl mx-auto">
-          <div className="font-heading text-xs uppercase tracking-[0.35em] text-accent mb-6">§ Coach · reserved</div>
+          <div className="font-heading text-xs uppercase tracking-[0.35em] text-accent mb-6">Coach · reserved</div>
           <div className="aspect-video w-full border-2 border-dashed border-primary/30 bg-surface grid place-items-center">
             <span className="font-heading text-sm uppercase tracking-[0.3em] text-primary/40">
               Video content — to be slotted in
@@ -198,14 +198,14 @@ export default async function CampsPage() {
         </div>
       </section>
 
-      {/* ===================== § 4 · WHO IT'S FOR · TWO TRACKS ===================== */}
+      {/* ===================== WHO IT'S FOR · TWO TRACKS ===================== */}
       <section className="relative overflow-hidden py-20 lg:py-28 px-4 sm:px-8 border-t-2 border-b-2 border-primary bg-primary text-primary-foreground">
         <div className="relative max-w-7xl mx-auto">
           <FadeIn>
             <div className="flex items-end justify-between flex-wrap gap-6 border-b border-primary-foreground/20 pb-6 mb-14">
               <div>
                 <div className="font-heading text-xs uppercase tracking-[0.35em] text-accent">
-                  § Who it's for · Two tracks
+                  Who it's for · Two tracks
                 </div>
                 <h3
                   className="mt-4 font-heading font-semibold tracking-tight leading-[0.95]"
@@ -246,7 +246,7 @@ export default async function CampsPage() {
             <div className="mt-16 grid gap-10 lg:grid-cols-[1.1fr_0.9fr] lg:gap-16 items-start">
               <div>
                 <div className="font-heading text-xs uppercase tracking-[0.35em] text-accent">
-                  § What you leave with
+                  What you leave with
                 </div>
                 <p
                   className="mt-4 font-heading font-semibold tracking-tight leading-[0.95]"
@@ -294,14 +294,14 @@ export default async function CampsPage() {
         </div>
       </section>
 
-      {/* ===================== § 6 · UPCOMING SESSIONS ===================== */}
+      {/* ===================== UPCOMING SESSIONS ===================== */}
       <section className="relative py-20 lg:py-28 px-4 sm:px-8 bg-surface text-primary">
         <div className="max-w-7xl mx-auto">
           <FadeIn>
             <div className="flex items-end justify-between flex-wrap gap-6 border-b-2 border-primary pb-6 mb-6">
               <div>
                 <div className="font-heading text-xs uppercase tracking-[0.35em] text-accent mb-4">
-                  § Upcoming sessions
+                  Upcoming sessions
                 </div>
                 <h2
                   className="font-heading font-semibold tracking-tight leading-[0.9] text-primary"
@@ -311,7 +311,7 @@ export default async function CampsPage() {
                 </h2>
               </div>
               <div className="font-heading text-xs uppercase tracking-[0.35em] text-primary/55">
-                § Fixtures · page 6
+                Fixtures · page 6
               </div>
             </div>
             <p className="mb-12 max-w-2xl text-muted-foreground leading-7">
@@ -340,7 +340,7 @@ export default async function CampsPage() {
         title="Frequently asked questions."
       />
 
-      {/* ===================== § 7 · INQUIRY · CALL FUNNEL ===================== */}
+      {/* ===================== INQUIRY · CALL FUNNEL ===================== */}
       <section id="register-interest" className="relative py-20 lg:py-28 px-4 sm:px-8 bg-surface text-primary">
         <div className="max-w-3xl mx-auto">
           <FadeIn>

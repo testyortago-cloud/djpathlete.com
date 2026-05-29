@@ -124,15 +124,6 @@ const components = [
   },
 ]
 
-/* Coaching-note feed — reads as a coach's working notes, not a log. */
-const coachNotes: { time: string; note: string; by: "athlete" | "coach" }[] = [
-  { time: "Mon 07:04", note: "Upper contrast session logged · 42 min", by: "athlete" },
-  { time: "Mon 09:12", note: "Trap-bar pull reviewed — tighter lat engagement on rep 3.", by: "coach" },
-  { time: "Tue 12:30", note: "Sleep 6.2h · HRV down 9% from baseline", by: "athlete" },
-  { time: "Tue 13:05", note: "PM volume cut 15%. Recovery-led decision.", by: "coach" },
-  { time: "Wed 18:22", note: "Nice intent on pulls today. Hold that.", by: "coach" },
-]
-
 export default function OnlinePage() {
   return (
     <>
@@ -149,8 +140,8 @@ export default function OnlinePage() {
       <section className="relative overflow-hidden bg-primary text-primary-foreground">
         <div className="relative mx-auto max-w-7xl px-4 pt-28 pb-16 md:px-6 md:pt-36 md:pb-20">
           <FadeIn>
-            <div className="grid gap-12 lg:grid-cols-[1.1fr_1fr] lg:gap-14 items-end">
-              {/* Left — editorial */}
+            <div className="max-w-3xl">
+              {/* Editorial */}
               <div>
                 <div className="flex items-center gap-3 text-xs uppercase tracking-[0.3em] text-primary-foreground/70">
                   <span className="h-px w-10 bg-accent" />
@@ -208,146 +199,6 @@ export default function OnlinePage() {
                 </div>
               </div>
 
-              {/* Right — Pit-wall style performance panel */}
-              <div className="relative">
-                {/* Small caption above */}
-                <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.3em] text-primary-foreground/55 pb-3">
-                  <span>A week in the system</span>
-                  <span className="flex items-center gap-2 text-accent">
-                    <span className="relative flex size-1.5">
-                      <span className="absolute inset-0 rounded-full bg-accent/60 animate-ping" />
-                      <span className="relative size-1.5 rounded-full bg-accent" />
-                    </span>
-                    Live
-                  </span>
-                </div>
-
-                <div className="rounded-2xl border border-primary-foreground/15 bg-primary/60 backdrop-blur-sm shadow-[0_30px_80px_-20px_rgba(0,0,0,0.55)] overflow-hidden ring-1 ring-inset ring-primary-foreground/5">
-                  {/* Header row */}
-                  <div className="flex items-center justify-between border-b border-primary-foreground/10 px-5 py-3.5">
-                    <div className="flex items-center gap-3">
-                      <div className="size-8 rounded-full bg-accent/15 border border-accent/40 flex items-center justify-center text-xs font-heading text-accent">
-                        A
-                      </div>
-                      <div>
-                        <div className="font-heading text-sm font-semibold">Athlete profile</div>
-                        <div className="text-[10px] uppercase tracking-[0.25em] text-primary-foreground/50">
-                          Field sport · Wk 07 of 12
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-heading text-xl font-semibold tabular-nums">94</div>
-                      <div className="text-[9px] uppercase tracking-[0.25em] text-primary-foreground/50">
-                        Readiness
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Load vs. readiness trace */}
-                  <div className="px-5 pt-5">
-                    <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.25em] text-primary-foreground/55">
-                      <span>Load vs. readiness · 14 days</span>
-                      <span className="flex items-center gap-4">
-                        <span className="flex items-center gap-1.5">
-                          <span className="h-[2px] w-3.5 bg-accent" /> Load
-                        </span>
-                        <span className="flex items-center gap-1.5">
-                          <span
-                            className="h-[2px] w-3.5"
-                            style={{
-                              background:
-                                "repeating-linear-gradient(to right, rgba(255,255,255,0.7) 0 2px, transparent 2px 5px)",
-                            }}
-                          />
-                          Readiness
-                        </span>
-                      </span>
-                    </div>
-                    <svg
-                      viewBox="0 0 400 120"
-                      className="mt-3 w-full h-[130px]"
-                      preserveAspectRatio="none"
-                      aria-hidden
-                    >
-                      {[0, 1, 2, 3].map((i) => (
-                        <line
-                          key={i}
-                          x1="0"
-                          x2="400"
-                          y1={25 + i * 24}
-                          y2={25 + i * 24}
-                          stroke="rgba(255,255,255,0.06)"
-                          strokeDasharray="2 4"
-                        />
-                      ))}
-                      <path
-                        d="M0,82 L30,76 L60,70 L90,58 L120,62 L150,52 L180,46 L210,50 L240,40 L270,44 L300,34 L330,38 L360,30 L400,24 L400,120 L0,120 Z"
-                        fill="oklch(0.70 0.08 60 / 0.16)"
-                      />
-                      <polyline
-                        points="0,82 30,76 60,70 90,58 120,62 150,52 180,46 210,50 240,40 270,44 300,34 330,38 360,30 400,24"
-                        fill="none"
-                        stroke="oklch(0.70 0.08 60)"
-                        strokeWidth="1.8"
-                      />
-                      <polyline
-                        points="0,72 40,64 80,68 120,54 160,50 200,58 240,48 280,42 320,52 360,46 400,40"
-                        fill="none"
-                        stroke="rgba(255,255,255,0.7)"
-                        strokeWidth="1.4"
-                        strokeDasharray="4 4"
-                      />
-                      <line
-                        x1="330"
-                        x2="330"
-                        y1="0"
-                        y2="120"
-                        stroke="oklch(0.70 0.08 60 / 0.6)"
-                        strokeWidth="0.8"
-                      />
-                      <circle cx="330" cy="38" r="4" fill="oklch(0.70 0.08 60)" />
-                      <circle cx="330" cy="38" r="8" fill="oklch(0.70 0.08 60 / 0.3)" />
-                    </svg>
-                  </div>
-
-                  {/* Coach notes */}
-                  <div className="px-5 pt-4 pb-5">
-                    <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.25em] text-primary-foreground/55 mb-3">
-                      <span>This week's notes</span>
-                      <span>{coachNotes.length} entries</span>
-                    </div>
-                    <ul className="space-y-2.5">
-                      {coachNotes.slice(0, 4).map((n, i) => (
-                        <li key={i} className="flex items-start gap-3">
-                          <span
-                            className={`mt-1 size-1.5 rounded-full shrink-0 ${
-                              n.by === "coach" ? "bg-accent" : "bg-primary-foreground/40"
-                            }`}
-                          />
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-baseline gap-2 text-[10px] uppercase tracking-[0.25em] text-primary-foreground/50">
-                              <span>{n.time}</span>
-                              <span>·</span>
-                              <span className={n.by === "coach" ? "text-accent" : ""}>
-                                {n.by === "coach" ? "Coach" : "Athlete"}
-                              </span>
-                            </div>
-                            <div className="mt-0.5 text-sm leading-6 text-primary-foreground/85 truncate">
-                              {n.note}
-                            </div>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-
-                {/* Caption below */}
-                <p className="mt-4 text-[11px] leading-5 text-primary-foreground/50 italic max-w-[22rem]">
-                  Representative. Real athlete data stays with the athlete.
-                </p>
-              </div>
             </div>
           </FadeIn>
         </div>
@@ -561,25 +412,6 @@ export default function OnlinePage() {
         title="Online Coaching FAQ"
       />
 
-      {/* Internal links — help searchers (and crawlers) reach the comparison pages */}
-      <section className="py-12 px-4 sm:px-8 border-t border-border">
-        <div className="max-w-3xl mx-auto text-center text-muted-foreground">
-          Still deciding?{" "}
-          <Link
-            href="/services/online-vs-in-person"
-            className="font-medium text-primary underline underline-offset-4 hover:text-accent"
-          >
-            Online vs in-person coaching, compared
-          </Link>{" "}
-          ·{" "}
-          <Link
-            href="/services/coaching-vs-training-app"
-            className="font-medium text-primary underline underline-offset-4 hover:text-accent"
-          >
-            Coaching vs a training app
-          </Link>
-        </div>
-      </section>
     </>
   )
 }

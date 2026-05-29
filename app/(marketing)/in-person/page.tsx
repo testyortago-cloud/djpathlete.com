@@ -10,7 +10,6 @@ import {
   Layers,
   RefreshCcw,
 } from "lucide-react"
-import Link from "next/link"
 import Image from "next/image"
 import { JsonLd } from "@/components/shared/JsonLd"
 import { FadeIn } from "@/components/shared/FadeIn"
@@ -399,20 +398,6 @@ export default function InPersonPage() {
               </div>
             </div>
           </FadeIn>
-        </div>
-      </section>
-
-      {/* Internal link — route searchers to the format comparison */}
-      <section className="py-10 px-4 sm:px-8 border-t border-border">
-        <div className="max-w-3xl mx-auto text-center text-muted-foreground">
-          Not sure whether in-person or remote coaching fits your situation?{" "}
-          <Link
-            href="/services/online-vs-in-person"
-            className="font-medium text-primary underline underline-offset-4 hover:text-accent"
-          >
-            See online vs in-person coaching, compared
-          </Link>
-          .
         </div>
       </section>
 
