@@ -50,11 +50,21 @@ export async function resolveVideoUploadForSubmission(
   })
 
   await lockSubmission(submissionId)
-  await createAiJob({
-    type: "video_transcription",
-    userId: adminId,
-    input: { videoUploadId: row.id },
-  })
+
+  // Auto-queue transcription. Non-fatal (matches the original send-to-content-studio
+  // behavior): the video_uploads row already exists, so a queue failure just means
+  // the admin re-triggers later or clicks Transcribe manually.
+  try {
+    await createAiJob({
+      type: "video_transcription",
+      userId: adminId,
+      input: { videoUploadId: row.id },
+    })
+  } catch (err) {
+    console.error(
+      `[promote-submission] failed to queue transcription for video ${row.id}: ${(err as Error).message}`,
+    )
+  }
 
   return { videoUploadId: row.id, transcribed: false }
 }

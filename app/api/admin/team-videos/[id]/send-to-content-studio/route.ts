@@ -2,8 +2,9 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { getSubmissionById, lockSubmission } from "@/lib/db/team-video-submissions"
 import { getCurrentVersion } from "@/lib/db/team-video-versions"
-import { createVideoUpload } from "@/lib/db/video-uploads"
+import { getVideoUploadById } from "@/lib/db/video-uploads"
 import { createAiJob } from "@/lib/ai-jobs"
+import { resolveVideoUploadForSubmission } from "@/lib/content-studio/promote-submission"
 import { listImagesForVersion } from "@/lib/db/team-submission-images"
 import { createMediaAsset } from "@/lib/db/media-assets"
 import { createSocialPost } from "@/lib/db/social-posts"
@@ -51,8 +52,7 @@ async function sendVideo(
   adminId: string,
 ) {
   // For video submissions both storage_path and original_filename are non-null
-  // (image_set is the only kind that uses nulls). Guard for type-safety so the
-  // createVideoUpload call below has a properly typed payload.
+  // (image_set is the only kind that uses nulls). Guard before delegating.
   if (!version.storage_path || !version.original_filename) {
     return NextResponse.json(
       { error: "Video version is missing storage_path or original_filename" },
@@ -60,39 +60,12 @@ async function sendVideo(
     )
   }
 
-  // Create the Content Studio video_uploads row using the approved version's
-  // storage path. Content Studio's existing pipeline (transcribe, post compose,
-  // schedule) takes over from there.
-  const videoUpload = await createVideoUpload({
-    storage_path: version.storage_path,
-    original_filename: version.original_filename,
-    duration_seconds: version.duration_seconds,
-    size_bytes: version.size_bytes,
-    mime_type: version.mime_type,
-    title: submission.title,
-    uploaded_by: adminId,
-    status: "uploaded",
-  })
-
-  await lockSubmission(submission.id)
-
-  // Auto-kick the transcription pipeline so promoted team videos don't sit
-  // in the Uploaded column waiting for a manual click. The on-ai-job-completed
-  // Firebase handler then chains transcription → social_fanout, so the
-  // promoted video lands in the studio with 6 draft captions ready to review.
-  // A queue failure here is non-fatal: the studio still has the video row,
-  // and the admin can click Transcribe manually as a fallback.
-  try {
-    await createAiJob({
-      type: "video_transcription",
-      userId: adminId,
-      input: { videoUploadId: videoUpload.id },
-    })
-  } catch (err) {
-    console.error(
-      `[send-to-content-studio] Failed to auto-queue transcription for video ${videoUpload.id}: ${(err as Error).message}`,
-    )
-  }
+  // Delegate to the shared promote-or-reuse helper so there is exactly one
+  // promotion code path (the captioned-cut team flow uses the same helper). It
+  // creates (or reuses) the video_uploads row, locks the submission, and
+  // non-fatally queues transcription — preserving this route's prior behavior.
+  const { videoUploadId } = await resolveVideoUploadForSubmission(submission.id, adminId)
+  const videoUpload = await getVideoUploadById(videoUploadId)
 
   return NextResponse.json({ kind: "video", videoUpload }, { status: 201 })
 }

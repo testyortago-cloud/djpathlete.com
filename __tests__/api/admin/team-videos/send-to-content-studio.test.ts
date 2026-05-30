@@ -9,7 +9,10 @@ vi.mock("@/lib/db/team-video-versions", () => ({
   getCurrentVersion: vi.fn(),
 }))
 vi.mock("@/lib/db/video-uploads", () => ({
-  createVideoUpload: vi.fn(),
+  getVideoUploadById: vi.fn(),
+}))
+vi.mock("@/lib/content-studio/promote-submission", () => ({
+  resolveVideoUploadForSubmission: vi.fn(),
 }))
 vi.mock("@/lib/db/team-submission-images", () => ({
   listImagesForVersion: vi.fn(),
@@ -44,7 +47,8 @@ vi.mock("@/lib/ai-jobs", async (orig) => {
 import { auth } from "@/lib/auth"
 import { getSubmissionById, lockSubmission } from "@/lib/db/team-video-submissions"
 import { getCurrentVersion } from "@/lib/db/team-video-versions"
-import { createVideoUpload } from "@/lib/db/video-uploads"
+import { getVideoUploadById } from "@/lib/db/video-uploads"
+import { resolveVideoUploadForSubmission } from "@/lib/content-studio/promote-submission"
 import { listImagesForVersion } from "@/lib/db/team-submission-images"
 import { createMediaAsset } from "@/lib/db/media-assets"
 import { createSocialPost } from "@/lib/db/social-posts"
@@ -88,7 +92,7 @@ describe("POST send-to-content-studio", () => {
     const res = await POST(post(), { params })
     expect(res.status).toBe(409)
   })
-  it("creates video_uploads + locks submission on happy path", async () => {
+  it("promotes a video submission via the shared promote-or-reuse helper", async () => {
     ;(auth as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       user: { id: "admin1", role: "admin" },
     })
@@ -100,19 +104,18 @@ describe("POST send-to-content-studio", () => {
       original_filename: "squat.mp4", duration_seconds: 120,
       size_bytes: 1024, mime_type: "video/mp4",
     })
-    ;(createVideoUpload as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "vu1" })
-    ;(createAiJob as ReturnType<typeof vi.fn>).mockResolvedValue({ jobId: "j1", status: "pending" })
+    ;(resolveVideoUploadForSubmission as ReturnType<typeof vi.fn>).mockResolvedValue({
+      videoUploadId: "vu1", transcribed: false,
+    })
+    ;(getVideoUploadById as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "vu1" })
 
     const res = await POST(post(), { params })
     expect(res.status).toBe(201)
     const json = await res.json()
     expect(json.videoUpload.id).toBe("vu1")
-    expect(createVideoUpload).toHaveBeenCalledWith(expect.objectContaining({
-      title: "Squat",
-      storage_path: "team-videos/sub1/v1/squat.mp4",
-      uploaded_by: "admin1",
-    }))
-    expect(lockSubmission).toHaveBeenCalledWith("sub1")
+    // The route delegates row-creation + lock + transcription-queue to the shared
+    // helper (unit-tested separately in promote-submission.test.ts).
+    expect(resolveVideoUploadForSubmission).toHaveBeenCalledWith("sub1", "admin1")
   })
 })
 
