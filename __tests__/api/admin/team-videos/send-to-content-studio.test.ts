@@ -29,20 +29,15 @@ vi.mock("@/lib/db/social-post-media", () => ({
 vi.mock("@/lib/db/platform-connections", () => ({
   listPlatformConnections: vi.fn(),
 }))
-vi.mock("@/lib/storage/team-videos", async (orig) => {
-  const actual = (await orig()) as object
-  return {
-    ...actual,
-    copyImageToMediaAssetsBucket: vi.fn(),
-  }
-})
-vi.mock("@/lib/ai-jobs", async (orig) => {
-  const actual = (await orig()) as object
-  return {
-    ...actual,
-    createAiJob: vi.fn(),
-  }
-})
+// Self-contained mocks (no `async orig()` real-module load) so this file is
+// hermetic and can't pick up a polluted module resolution when run alongside
+// other suites that mock the same modules. The route only uses these exports.
+vi.mock("@/lib/storage/team-videos", () => ({
+  copyImageToMediaAssetsBucket: vi.fn(),
+}))
+vi.mock("@/lib/ai-jobs", () => ({
+  createAiJob: vi.fn(),
+}))
 
 import { auth } from "@/lib/auth"
 import { getSubmissionById, lockSubmission } from "@/lib/db/team-video-submissions"
