@@ -6,6 +6,7 @@ import { listAuthorsForIds, listCommentsForSubmission } from "@/lib/db/team-vide
 import { listAnnotationsForCommentIds } from "@/lib/db/team-video-annotations"
 import { listImagesForVersion } from "@/lib/db/team-submission-images"
 import { createReadUrl, createDownloadUrl } from "@/lib/storage/team-videos"
+import { getSetting } from "@/lib/db/system-settings"
 import { ReviewSurface } from "@/components/admin/team-videos/ReviewSurface"
 import type { VersionRow } from "@/components/editor/VersionHistoryList"
 
@@ -20,6 +21,8 @@ export default async function TeamVideoReviewPage({ params }: Props) {
   const { id } = await params
   const submission = await getSubmissionById(id)
   if (!submission) notFound()
+
+  const captionedCutEnabled = await getSetting<boolean>("feature_captioned_cut_enabled", false)
 
   const version = await getCurrentVersion(submission.id)
   // All-versions comment list — keeps prior cuts' notes visible after a new
@@ -90,6 +93,7 @@ export default async function TeamVideoReviewPage({ params }: Props) {
       videoUrl={videoUrl}
       versions={versions}
       imageSetImages={imageSetImages}
+      captionedCutEnabled={captionedCutEnabled}
     />
   )
 }

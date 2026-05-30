@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
@@ -9,19 +9,41 @@ import {
   generateVideoThumbnailFromUrl,
   uploadThumbnailFor,
 } from "@/lib/firebase-client-thumbnail"
+import { useAiJob } from "@/hooks/use-ai-job"
 
 interface Props {
   submission: TeamVideoSubmission
   /** Signed read URL for the current version, used to grab a thumbnail frame
    *  in the browser when promoting to Content Studio. */
   videoUrl: string | null
+  /** When true (DB feature flag on), show "Generate Captioned Cut" on
+   *  approved/locked submissions. */
+  captionedCutEnabled?: boolean
 }
 
-export function StatusActions({ submission, videoUrl }: Props) {
+export function StatusActions({ submission, videoUrl, captionedCutEnabled = false }: Props) {
   const router = useRouter()
   const [busy, setBusy] = useState<
-    null | "request_revision" | "approve" | "reopen" | "send"
+    null | "request_revision" | "approve" | "reopen" | "send" | "caption"
   >(null)
+  const [captionJobId, setCaptionJobId] = useState<string | null>(null)
+  const { status: capStatus, result: capResult, error: capError } = useAiJob(captionJobId)
+
+  useEffect(() => {
+    if (capStatus === "completed" && capResult) {
+      const postIds = (capResult.postIds as string[] | undefined) ?? []
+      toast.success(
+        postIds.length
+          ? `Captioned cut ready — ${postIds.length} draft post${postIds.length > 1 ? "s" : ""}`
+          : "Captioned cut ready",
+      )
+      if (postIds[0]) router.push(`/admin/content/post/${postIds[0]}`)
+      setCaptionJobId(null)
+    } else if (capStatus === "failed") {
+      toast.error(capError || "Captioned cut failed")
+      setCaptionJobId(null)
+    }
+  }, [capStatus, capResult, capError, router])
 
   async function callStatus(action: "request_revision" | "approve" | "reopen") {
     setBusy(action)
@@ -85,12 +107,49 @@ export function StatusActions({ submission, videoUrl }: Props) {
     }
   }
 
+  async function generateCaptionedCut() {
+    setBusy("caption")
+    try {
+      const res = await fetch("/api/admin/content-studio/captioned-cut", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ submissionId: submission.id }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (res.status === 409) {
+        // Freshly promoted — transcription still running, or not yet eligible.
+        toast.message(data.error ?? "Still transcribing — try again shortly.")
+        router.refresh()
+        return
+      }
+      if (!res.ok) throw new Error(data?.error ?? `Request failed (${res.status})`)
+      const newJobId = data?.jobId
+      if (typeof newJobId !== "string" || !newJobId) {
+        throw new Error("Server returned no job id")
+      }
+      setCaptionJobId(newJobId)
+      toast.message("Rendering captioned cut…")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to start render")
+    } finally {
+      setBusy(null)
+    }
+  }
+
   const canRequestRevision =
     submission.status === "submitted" || submission.status === "in_review"
   const canApprove =
     submission.status === "submitted" || submission.status === "in_review"
   const canReopen = submission.status === "approved"
   const canSend = submission.status === "approved"
+  const canCaption =
+    captionedCutEnabled &&
+    (submission.status === "approved" || submission.status === "locked")
+  // Guard on captionJobId: useAiJob(null) defaults status to "pending", so
+  // without this the button would be permanently disabled before any render.
+  const captionRunning =
+    busy === "caption" ||
+    (captionJobId !== null && (capStatus === "pending" || capStatus === "processing"))
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -126,6 +185,16 @@ export function StatusActions({ submission, videoUrl }: Props) {
       {canSend && (
         <Button size="sm" disabled={busy !== null} onClick={callSend}>
           {busy === "send" ? "..." : "Send to Content Studio"}
+        </Button>
+      )}
+      {canCaption && (
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={busy !== null || captionRunning}
+          onClick={generateCaptionedCut}
+        >
+          {captionRunning ? "Rendering…" : "Generate Captioned Cut"}
         </Button>
       )}
     </div>

@@ -54,6 +54,8 @@ interface Props {
     signedUrl: string
     originalFilename: string
   }>
+  /** DB feature flag — gates the "Generate Captioned Cut" action in StatusActions. */
+  captionedCutEnabled?: boolean
 }
 
 export function ReviewSurface({
@@ -63,6 +65,7 @@ export function ReviewSurface({
   videoUrl,
   versions,
   imageSetImages,
+  captionedCutEnabled = false,
 }: Props) {
   const router = useRouter()
   const playerRef = useRef<TeamVideoPlayerHandle>(null)
@@ -331,7 +334,11 @@ export function ReviewSurface({
             </p>
           )}
         </div>
-        <StatusActions submission={submission} videoUrl={videoUrl} />
+        <StatusActions
+          submission={submission}
+          videoUrl={videoUrl}
+          captionedCutEnabled={captionedCutEnabled}
+        />
       </header>
 
       {!viewingCurrent && (
