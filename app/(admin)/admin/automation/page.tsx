@@ -1,6 +1,7 @@
 import { Clock } from "lucide-react"
 import { getSetting } from "@/lib/db/system-settings"
 import { CRON_CATALOG } from "@/lib/cron-catalog"
+import { FEATURE_FLAG_CATALOG } from "@/lib/feature-flag-catalog"
 import { PauseToggle } from "@/components/admin/automation/PauseToggle"
 import { RunNowButton } from "@/components/admin/automation/RunNowButton"
 import { CronEnabledToggle } from "@/components/admin/automation/CronEnabledToggle"
@@ -15,6 +16,10 @@ export default async function AutomationPage() {
   // the fallback when no system_settings row exists yet.
   const enabledStates = await Promise.all(
     CRON_CATALOG.map((job) => getSetting<boolean>(job.enabledKey, job.defaultEnabled)),
+  )
+
+  const featureStates = await Promise.all(
+    FEATURE_FLAG_CATALOG.map((f) => getSetting<boolean>(f.key, f.defaultEnabled)),
   )
 
   return (
@@ -61,6 +66,30 @@ export default async function AutomationPage() {
               </div>
             )
           })}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-white overflow-hidden">
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+          <Clock className="size-4 text-primary" />
+          <h2 className="text-lg font-semibold text-primary">Features</h2>
+        </div>
+        <div className="divide-y divide-border">
+          {FEATURE_FLAG_CATALOG.map((flag, idx) => (
+            <div key={flag.key} className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 p-4">
+              <div className="flex-1 min-w-0">
+                <h3 className="font-medium text-primary">{flag.label}</h3>
+                <p className="text-sm text-muted-foreground mt-1">{flag.description}</p>
+              </div>
+              <div className="shrink-0">
+                <CronEnabledToggle
+                  enabledKey={flag.key}
+                  initialEnabled={featureStates[idx]}
+                  label={flag.label}
+                />
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 

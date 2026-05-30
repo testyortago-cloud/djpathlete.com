@@ -7,6 +7,7 @@ import { z } from "zod"
 import { auth } from "@/lib/auth"
 import { setSetting } from "@/lib/db/system-settings"
 import { CRON_CATALOG } from "@/lib/cron-catalog"
+import { isFeatureFlagKey } from "@/lib/feature-flag-catalog"
 import { recordAudit } from "@/lib/audit/record"
 
 const requestSchema = z.object({
@@ -18,7 +19,7 @@ const requestSchema = z.object({
 // in the catalog. Prevents the endpoint from being repurposed as a generic
 // system_settings writer.
 function isAllowedKey(key: string): boolean {
-  return CRON_CATALOG.some((c) => c.enabledKey === key)
+  return CRON_CATALOG.some((c) => c.enabledKey === key) || isFeatureFlagKey(key)
 }
 
 export async function POST(request: NextRequest) {
