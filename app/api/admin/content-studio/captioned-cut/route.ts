@@ -12,6 +12,7 @@ import { captionedCutRequestSchema } from "@/lib/validators/captioned-cut"
 import { getVideoUploadById } from "@/lib/db/video-uploads"
 import { getSpeechTranscriptForVideo } from "@/lib/db/video-transcripts"
 import { createAiJob, findInFlightCaptionRender } from "@/lib/ai-jobs"
+import { resolveVideoUploadForSubmission } from "@/lib/content-studio/promote-submission"
 
 export async function POST(request: NextRequest | Request) {
   const session = await auth()
@@ -29,18 +30,30 @@ export async function POST(request: NextRequest | Request) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 })
   }
 
-  // Milestone 1: drawer path only. submissionId is wired in Milestone 2.
-  if (!parsed.data.videoUploadId) {
-    return NextResponse.json(
-      { error: "submissionId is not supported yet — open the video in Content Studio." },
-      { status: 400 },
-    )
-  }
-  const videoUploadId = parsed.data.videoUploadId
-
-  const video = await getVideoUploadById(videoUploadId)
-  if (!video) {
-    return NextResponse.json({ error: "Video not found" }, { status: 404 })
+  let videoUploadId: string
+  if (parsed.data.submissionId) {
+    // Team path: promote-or-reuse to a single video_uploads row. A just-created
+    // row has transcription queued but not finished — tell the admin to retry
+    // rather than queue a render with no word timings.
+    let resolved
+    try {
+      resolved = await resolveVideoUploadForSubmission(parsed.data.submissionId, session.user.id)
+    } catch (err) {
+      return NextResponse.json({ error: (err as Error).message }, { status: 409 })
+    }
+    if (!resolved.transcribed) {
+      return NextResponse.json(
+        { error: "Promoted to Content Studio — still transcribing. Try again in a minute." },
+        { status: 409 },
+      )
+    }
+    videoUploadId = resolved.videoUploadId
+  } else {
+    videoUploadId = parsed.data.videoUploadId!
+    const video = await getVideoUploadById(videoUploadId)
+    if (!video) {
+      return NextResponse.json({ error: "Video not found" }, { status: 404 })
+    }
   }
 
   // Transcript guard: needs a speech transcript with word timings.

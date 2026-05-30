@@ -5,6 +5,9 @@ vi.mock("@/lib/db/system-settings", () => ({ getSetting: vi.fn() }))
 vi.mock("@/lib/db/video-uploads", () => ({ getVideoUploadById: vi.fn() }))
 vi.mock("@/lib/db/video-transcripts", () => ({ getSpeechTranscriptForVideo: vi.fn() }))
 vi.mock("@/lib/ai-jobs", () => ({ createAiJob: vi.fn(), findInFlightCaptionRender: vi.fn() }))
+vi.mock("@/lib/content-studio/promote-submission", () => ({
+  resolveVideoUploadForSubmission: vi.fn(),
+}))
 
 import { POST } from "@/app/api/admin/content-studio/captioned-cut/route"
 import { auth } from "@/lib/auth"
@@ -12,6 +15,7 @@ import { getSetting } from "@/lib/db/system-settings"
 import { getVideoUploadById } from "@/lib/db/video-uploads"
 import { getSpeechTranscriptForVideo } from "@/lib/db/video-transcripts"
 import { createAiJob, findInFlightCaptionRender } from "@/lib/ai-jobs"
+import { resolveVideoUploadForSubmission } from "@/lib/content-studio/promote-submission"
 
 const UUID = "11111111-1111-1111-1111-111111111111"
 const admin = { user: { id: "admin-1", role: "admin" } }
@@ -74,6 +78,40 @@ describe("POST /api/admin/content-studio/captioned-cut", () => {
     const res = await POST(req({ videoUploadId: UUID }))
     expect(res.status).toBe(202)
     expect((await res.json()).jobId).toBe("job-1")
+    expect(createAiJob).toHaveBeenCalledWith({
+      type: "video_caption_render",
+      userId: "admin-1",
+      input: { videoUploadId: UUID },
+    })
+  })
+})
+
+describe("POST /api/admin/content-studio/captioned-cut — submission branch", () => {
+  it("409 when the promoted submission is not transcribed yet", async () => {
+    ;(resolveVideoUploadForSubmission as ReturnType<typeof vi.fn>).mockResolvedValue({
+      videoUploadId: UUID,
+      transcribed: false,
+    })
+    const res = await POST(req({ submissionId: UUID }))
+    expect(res.status).toBe(409)
+    expect(createAiJob).not.toHaveBeenCalled()
+  })
+
+  it("409 when promote-or-reuse throws (e.g. not approved)", async () => {
+    ;(resolveVideoUploadForSubmission as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("Only approved submissions can be sent to Content Studio"),
+    )
+    const res = await POST(req({ submissionId: UUID }))
+    expect(res.status).toBe(409)
+  })
+
+  it("202 + jobId when the submission already has a transcript", async () => {
+    ;(resolveVideoUploadForSubmission as ReturnType<typeof vi.fn>).mockResolvedValue({
+      videoUploadId: UUID,
+      transcribed: true,
+    })
+    const res = await POST(req({ submissionId: UUID }))
+    expect(res.status).toBe(202)
     expect(createAiJob).toHaveBeenCalledWith({
       type: "video_caption_render",
       userId: "admin-1",
