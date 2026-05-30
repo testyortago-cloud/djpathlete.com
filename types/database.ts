@@ -1579,6 +1579,12 @@ export interface VideoUpload {
    * callers (and test fixtures) may omit it entirely.
    */
   thumbnail_path?: string | null
+  /**
+   * Set when this row was promoted from a team_video_submissions row (the
+   * "Send to Content Studio" / captioned-cut promote-or-reuse path); null for
+   * direct admin uploads. Optional on insert — nullable column, no default.
+   */
+  source_submission_id?: string | null
   created_at: string
   updated_at: string
 }
