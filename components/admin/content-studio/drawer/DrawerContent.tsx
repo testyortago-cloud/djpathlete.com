@@ -53,6 +53,7 @@ export function DrawerContent({ data, defaultTab }: DrawerContentProps) {
           video={data.video}
           previewUrl={data.previewUrl}
           hasTranscript={Boolean(data.transcript?.transcript_text)}
+          captionedCutEnabled={data.captionedCutEnabled}
         />
       ) : (
         <DrawerPostOnlyHeader />

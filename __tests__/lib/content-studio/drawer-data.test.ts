@@ -23,6 +23,9 @@ vi.mock("@/lib/firebase-admin", () => ({
     }),
   }),
 }))
+vi.mock("@/lib/db/system-settings", () => ({
+  getSetting: vi.fn(async () => false),
+}))
 
 import { getVideoUploadById } from "@/lib/db/video-uploads"
 import { getTranscriptForVideo } from "@/lib/db/video-transcripts"

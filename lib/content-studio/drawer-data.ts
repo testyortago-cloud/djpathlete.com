@@ -3,6 +3,7 @@ import { getVideoUploadById } from "@/lib/db/video-uploads"
 import { getTranscriptForVideo } from "@/lib/db/video-transcripts"
 import { getSocialPostById, listSocialPostsBySourceVideo } from "@/lib/db/social-posts"
 import { listMediaForPosts } from "@/lib/db/social-post-media"
+import { getSetting } from "@/lib/db/system-settings"
 import type { VideoUpload, VideoTranscript, SocialPost } from "@/types/database"
 
 const PREVIEW_URL_EXPIRY_MS = 10 * 60 * 1000 // 10 minutes
@@ -26,6 +27,8 @@ export interface DrawerData {
   mediaByPost: Record<string, PostSlide[]>
   /** When opened from a post card, echoed back so the client can pre-expand. */
   highlightPostId: string | null
+  /** Whether the Captioned Cut feature flag is on (gates the drawer button). */
+  captionedCutEnabled: boolean
 }
 
 /**
@@ -83,10 +86,11 @@ export async function getDrawerData(videoId: string): Promise<DrawerData | null>
   const video = await getVideoUploadById(videoId)
   if (!video) return null
 
-  const [transcript, posts, previewUrl] = await Promise.all([
+  const [transcript, posts, previewUrl, captionedCutEnabled] = await Promise.all([
     getTranscriptForVideo(videoId),
     listSocialPostsBySourceVideo(videoId),
     signPreviewUrl(video.storage_path),
+    getSetting<boolean>("feature_captioned_cut_enabled", false),
   ])
 
   const mediaByPost = await signMediaByPost(posts.map((p) => p.id))
@@ -99,6 +103,7 @@ export async function getDrawerData(videoId: string): Promise<DrawerData | null>
     posts,
     mediaByPost,
     highlightPostId: null,
+    captionedCutEnabled,
   }
 }
 
@@ -115,6 +120,7 @@ export async function getDrawerDataForPost(postId: string): Promise<DrawerData |
       posts: [post],
       mediaByPost: await signMediaByPost([post.id]),
       highlightPostId: post.id,
+      captionedCutEnabled: false,
     }
   }
 
@@ -128,6 +134,7 @@ export async function getDrawerDataForPost(postId: string): Promise<DrawerData |
       posts: [post],
       mediaByPost: await signMediaByPost([post.id]),
       highlightPostId: post.id,
+      captionedCutEnabled: false,
     }
   }
 

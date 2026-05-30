@@ -32,7 +32,9 @@ const videoData: DrawerData = {
   previewUrl: "https://signed.example/video.mp4",
   transcript: null,
   posts: [],
+  mediaByPost: {},
   highlightPostId: null,
+  captionedCutEnabled: false,
 }
 
 const postOnlyData: DrawerData = {
@@ -58,7 +60,9 @@ const postOnlyData: DrawerData = {
       updated_at: "2026-04-15T00:00:00Z",
     },
   ],
+  mediaByPost: {},
   highlightPostId: "p1",
+  captionedCutEnabled: false,
 }
 
 describe("<DrawerContent>", () => {

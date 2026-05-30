@@ -28,7 +28,9 @@ const data: DrawerData = {
   previewUrl: "https://example/p.mp4",
   transcript: null,
   posts: [],
+  mediaByPost: {},
   highlightPostId: null,
+  captionedCutEnabled: false,
 }
 
 describe("<DetailDrawer>", () => {
