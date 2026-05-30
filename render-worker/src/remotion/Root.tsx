@@ -23,16 +23,11 @@ const SAMPLE: CaptionedCutProps = {
   accentHex: "#C49B7A",
 }
 
-// Remotion 4.x Composition<Schema, Props> requires both type params to infer
-// correctly; casting component to any is the minimal workaround.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const AnyComp = CaptionedCut as any
-
 export function RemotionRoot() {
   return (
     <Composition
       id="CaptionedCut"
-      component={AnyComp}
+      component={CaptionedCut}
       durationInFrames={FPS * 10}
       fps={FPS}
       width={WIDTH}

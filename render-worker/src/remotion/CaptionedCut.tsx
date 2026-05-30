@@ -2,7 +2,10 @@
 import { AbsoluteFill, OffthreadVideo, useCurrentFrame, useVideoConfig } from "remotion"
 import type { CaptionPage } from "../lib/caption-paging.js"
 
-export interface CaptionedCutProps {
+// A `type` (not `interface`) so it satisfies Remotion's
+// `Props extends Record<string, unknown>` constraint on <Composition> — an
+// interface lacks an implicit index signature and would force an `as any` cast.
+export type CaptionedCutProps = {
   videoSrc: string
   pages: CaptionPage[]
   accentHex: string
