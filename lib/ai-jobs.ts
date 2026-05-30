@@ -24,6 +24,7 @@ export type AiJobType =
   | "social_agent_run"
   | "video_transcription"
   | "video_vision"
+  | "video_caption_render"
   | "image_vision"
   | "image_caption_generation"
   | "tavily_research"
@@ -78,4 +79,23 @@ export async function createAiJob(options: CreateAiJobOptions): Promise<CreateAi
   })
 
   return { jobId: jobRef.id, status: "pending" }
+}
+
+/**
+ * Returns the id of an existing captioned-cut render job for this video that is
+ * still pending/processing, or null. Used by the create-route to avoid
+ * double-queuing on a rapid second click. Requires a Firestore composite index
+ * on (type ASC, input.videoUploadId ASC, status ASC) — Firestore prints a
+ * one-click "create index" link the first time this query runs.
+ */
+export async function findInFlightCaptionRender(videoUploadId: string): Promise<string | null> {
+  const db = getAdminFirestore()
+  const snap = await db
+    .collection("ai_jobs")
+    .where("type", "==", "video_caption_render")
+    .where("input.videoUploadId", "==", videoUploadId)
+    .where("status", "in", ["pending", "processing"])
+    .limit(1)
+    .get()
+  return snap.empty ? null : snap.docs[0].id
 }
