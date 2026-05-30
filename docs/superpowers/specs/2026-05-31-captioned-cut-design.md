@@ -1,7 +1,7 @@
 # Captioned Cut — Design Spec
 
 **Date:** 2026-05-31
-**Status:** Design approved; spec self-reviewed (26-finding adversarial pass folded in); pending user review
+**Status:** Approved (user-reviewed 2026-05-31; Remotion licensing cleared — solo individual). Ready for implementation planning.
 **Feature flag:** `feature_captioned_cut_enabled` — DB-backed row in
 `system_settings` (default false), admin-togglable at runtime (no redeploy). NOT
 env-driven.
@@ -401,9 +401,8 @@ today — see Components note).
 
 ## Open questions / risks
 
-- **Remotion licensing:** free for individuals/small teams; a company license +
-  Cloud Rendering Units apply above a headcount threshold. Confirm against
-  business size before shipping (commercial product).
+- **Remotion licensing:** RESOLVED (2026-05-31) — solo individual operator, so
+  Remotion's free tier applies; no company license / Cloud Rendering Units needed.
 - **Cloud Run Job cold start + Chromium image size:** acceptable for an
   admin-triggered, non-realtime feature; monitor render wall-clock.
 - **`MAX_CAPTION_CLIP_SECONDS` (180s)** is a starting guardrail; revisit once real
