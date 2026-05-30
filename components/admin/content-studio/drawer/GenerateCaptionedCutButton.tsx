@@ -49,7 +49,11 @@ export function GenerateCaptionedCutButton({
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data?.error || `Request failed (${res.status})`)
-      setJobId(data.jobId as string)
+      const newJobId = data?.jobId
+      if (typeof newJobId !== "string" || !newJobId) {
+        throw new Error("Server returned no job id")
+      }
+      setJobId(newJobId)
       toast.message("Rendering captioned cut… this can take a couple of minutes.")
     } catch (err) {
       toast.error((err as Error).message || "Failed to start render")
@@ -68,6 +72,7 @@ export function GenerateCaptionedCutButton({
           ? "No speech transcript — captions need spoken audio"
           : "Render a vertical 9:16 clip with word-pop captions burned in"
       }
+      aria-label="Generate captioned cut"
       className="inline-flex items-center gap-2 text-xs px-3 py-1.5 rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
     >
       <Clapperboard className="size-3.5" />

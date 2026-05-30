@@ -46,4 +46,12 @@ describe("pageCaptions", () => {
     expect(pages[0].startMs).toBe(500)
     expect(pages[0].endMs).toBe(500)
   })
+
+  it("falls back to the default for a NaN/zero/negative maxWordsPerPage", () => {
+    const words = [w("a", 0, 100), w("b", 100, 200), w("c", 200, 300), w("d", 300, 400)]
+    // NaN, 0, and negative all fall back to the default of 3 (4 words -> 3 + 1)
+    expect(pageCaptions(words, { maxWordsPerPage: NaN }).map((p) => p.text)).toEqual(["a b c", "d"])
+    expect(pageCaptions(words, { maxWordsPerPage: 0 }).map((p) => p.text)).toEqual(["a b c", "d"])
+    expect(pageCaptions(words, { maxWordsPerPage: -2 }).map((p) => p.text)).toEqual(["a b c", "d"])
+  })
 })

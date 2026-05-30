@@ -28,7 +28,11 @@ export function pageCaptions(
   words: TranscriptWord[],
   opts: { maxWordsPerPage?: number } = {},
 ): CaptionPage[] {
-  const maxWords = Math.max(1, opts.maxWordsPerPage ?? DEFAULT_MAX_WORDS_PER_PAGE)
+  // Guard against NaN/0/negative/fractional — Math.max(1, NaN) is NaN, which
+  // would make slice() return [] and crash on group[0]. Fall back to the default.
+  const requested = opts.maxWordsPerPage ?? DEFAULT_MAX_WORDS_PER_PAGE
+  const maxWords =
+    Number.isFinite(requested) && requested >= 1 ? Math.floor(requested) : DEFAULT_MAX_WORDS_PER_PAGE
 
   const clean = words
     .filter((w) => typeof w.text === "string" && w.text.trim().length > 0)
