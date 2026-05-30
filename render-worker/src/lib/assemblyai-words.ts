@@ -27,6 +27,9 @@ export async function fetchTranscriptWords(transcriptId: string): Promise<Transc
     throw new Error(`AssemblyAI fetch failed (${res.status}): ${text}`)
   }
   const body = (await res.json()) as AssemblyTranscriptResponse
+  if (body.status === "error") {
+    throw new Error(`AssemblyAI transcript error: ${body.error ?? "unknown error"}`)
+  }
   if (!body.words || body.words.length === 0) {
     throw new Error("AssemblyAI transcript has no word timestamps")
   }
