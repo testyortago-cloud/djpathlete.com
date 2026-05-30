@@ -4,10 +4,12 @@
 FROM node:22-bookworm-slim
 
 # Chromium runtime deps for Remotion's headless render + fontconfig for captions.
+# Matches Remotion's documented Debian dependency list. NOTE: libasound2 (NOT
+# libasound2t64) is correct on bookworm/Debian 12 — the t64 rename is trixie+.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    fonts-liberation libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
+    fonts-liberation libnss3 libdbus-1-3 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
     libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
-    libgbm1 libasound2 libpango-1.0-0 libcairo2 ca-certificates \
+    libgbm1 libasound2 libpango-1.0-0 libcairo2 libxshmfence1 ca-certificates \
     fontconfig curl \
   && rm -rf /var/lib/apt/lists/*
 

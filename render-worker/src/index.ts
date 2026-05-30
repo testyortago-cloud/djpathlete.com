@@ -4,7 +4,7 @@
 // upload -> media_asset + draft posts -> flip ai_job. Any throw -> ai_job failed.
 
 import { createClient } from "@supabase/supabase-js"
-import { initializeApp, cert } from "firebase-admin/app"
+import { initializeApp, cert, getApps } from "firebase-admin/app"
 import { getStorage } from "firebase-admin/storage"
 import { getFirestore, FieldValue } from "firebase-admin/firestore"
 import { bundle } from "@remotion/bundler"
@@ -39,10 +39,13 @@ const PLUGIN_TO_PLATFORM: Record<string, string | null> = {
 }
 
 function fbApp() {
+  if (getApps().length) return getApps()[0]
+  const bucket = process.env.FIREBASE_STORAGE_BUCKET
+  if (!bucket) throw new Error("FIREBASE_STORAGE_BUCKET not set")
   const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY ?? "{}")
   return initializeApp({
     credential: cert(sa),
-    storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
+    storageBucket: bucket,
   })
 }
 
@@ -114,6 +117,7 @@ async function main() {
     const storagePath = `videos/${userId}/${Date.now()}-captioned-cut.mp4`
     await bucket.upload(outPath, { destination: storagePath, contentType: "video/mp4" })
     const bytes = fs.statSync(outPath).size
+    fs.rmSync(outPath, { force: true }) // free RAM-backed /tmp before the DB writes
 
     // 7. media_asset
     const { data: asset, error: aErr } = await supabase.from("media_assets").insert({
@@ -132,11 +136,17 @@ async function main() {
     }).select().single()
     if (aErr || !asset) throw new Error(`media_asset insert failed: ${aErr?.message}`)
 
-    // 8. One draft post per video-capable connected platform
-    const { data: connections } = await supabase.rpc("fn_list_platform_connections")
-    const platforms = ((connections ?? []) as { plugin_name: string }[])
+    // 8. One draft post per video-capable CONNECTED platform. fn_list_platform_connections
+    // returns every row (including not_connected/error/paused), so filter to connected.
+    const { data: connections, error: cErr } = await supabase.rpc("fn_list_platform_connections")
+    if (cErr) throw new Error(`fn_list_platform_connections failed: ${cErr.message}`)
+    const platforms = ((connections ?? []) as { plugin_name: string; status: string }[])
+      .filter((c) => c.status === "connected")
       .map((c) => PLUGIN_TO_PLATFORM[c.plugin_name])
       .filter((p): p is string => p !== null && (VIDEO_PLATFORMS as readonly string[]).includes(p))
+    if (platforms.length === 0) {
+      console.log("[render-worker] no video-capable connected platforms — asset created, no draft posts")
+    }
 
     const postIds: string[] = []
     for (const platform of platforms) {
