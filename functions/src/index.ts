@@ -356,6 +356,24 @@ export const videoVision = onDocumentCreated(
   },
 )
 
+// ─── Captioned Cut Render ────────────────────────────────────────────────────
+// Triggered when an ai_jobs doc is created with type "video_caption_render".
+// Claims the job and launches the captioned-cut Cloud Run Job.
+export const captionRender = onDocumentCreated(
+  {
+    document: "ai_jobs/{jobId}",
+    timeoutSeconds: 120,
+    memory: "256MiB",
+    region: "us-central1",
+  },
+  async (event) => {
+    const data = event.data?.data()
+    if (!data || data.type !== "video_caption_render") return
+    const { handleCaptionRenderTrigger } = await import("./caption-render-trigger.js")
+    await handleCaptionRenderTrigger(event.params.jobId)
+  },
+)
+
 // ─── Transcode Form-Review Voice Messages ─────────────────────────────────────
 // Triggered when a new audio object lands in form-review-audio/. Chrome on PC
 // records voice messages as audio/webm;codecs=opus — which iOS Safari cannot
