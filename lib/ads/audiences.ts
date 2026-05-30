@@ -36,6 +36,39 @@ function hashEmail(normalized: string): string {
   return createHash("sha256").update(normalized).digest("hex")
 }
 
+/**
+ * google-ads-api throws structured GoogleAdsFailure objects, NOT Error
+ * instances — so `String(err)` on them yields a useless "[object Object]".
+ * Pull the real message(s) out of the failure shape, falling back to JSON
+ * so we never persist a coercion artifact into `last_error`.
+ *
+ * Twin of `serializeAdsError` in functions/src/sync-google-ads.ts (the
+ * functions/ ↔ lib/ boundary forbids a shared import).
+ */
+function serializeAdsError(err: unknown): string {
+  if (err instanceof Error) return err.message
+  if (err && typeof err === "object") {
+    const obj = err as Record<string, unknown>
+    // GoogleAdsFailure: { errors: [{ message, error_code, ... }], request_id }
+    if (Array.isArray(obj.errors)) {
+      const msgs = obj.errors
+        .map((e) =>
+          e && typeof e === "object" ? (e as { message?: string }).message : null,
+        )
+        .filter((m): m is string => Boolean(m))
+      if (msgs.length) return msgs.join("; ")
+    }
+    if (typeof obj.message === "string" && obj.message) return obj.message
+    try {
+      const json = JSON.stringify(err)
+      if (json && json !== "{}") return json
+    } catch {
+      // fall through to String() below
+    }
+  }
+  return String(err)
+}
+
 interface DesiredMember {
   normalized: string
   hash: string
@@ -181,7 +214,7 @@ async function syncOneUserList(list: GoogleAdsUserList): Promise<UserListSyncRes
     jobResourceName = (create as unknown as { resource_name?: string }).resource_name ?? ""
     if (!jobResourceName) throw new Error("create job returned no resource_name")
   } catch (err) {
-    result.error = err instanceof Error ? err.message : String(err)
+    result.error = serializeAdsError(err)
     await setUserListSyncResult(list.id, { last_error: result.error })
     return result
   }
@@ -199,7 +232,7 @@ async function syncOneUserList(list: GoogleAdsUserList): Promise<UserListSyncRes
       } as never)
     }
   } catch (err) {
-    result.error = err instanceof Error ? err.message : String(err)
+    result.error = serializeAdsError(err)
     await setUserListSyncResult(list.id, { last_error: result.error })
     return result
   }
@@ -212,7 +245,7 @@ async function syncOneUserList(list: GoogleAdsUserList): Promise<UserListSyncRes
       resource_name: jobResourceName,
     } as never)
   } catch (err) {
-    result.error = err instanceof Error ? err.message : String(err)
+    result.error = serializeAdsError(err)
     await setUserListSyncResult(list.id, { last_error: result.error })
     return result
   }
@@ -263,7 +296,7 @@ export async function syncCustomerMatchAudiences(): Promise<SyncAudiencesResult>
       result.total_added += r.added
       result.total_removed += r.removed
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
+      const message = serializeAdsError(err)
       console.error(`[audiences] list ${list.id} (${list.audience_type}) failed:`, message)
       result.lists_failed++
       try {

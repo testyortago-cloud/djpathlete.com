@@ -90,6 +90,36 @@ function isoDate(daysAgo: number): string {
   return d.toISOString().slice(0, 10)
 }
 
+/**
+ * google-ads-api throws structured GoogleAdsFailure objects, NOT Error
+ * instances — so `String(err)` on them yields a useless "[object Object]".
+ * Pull the real message(s) out of the failure shape, falling back to JSON
+ * so we never persist a coercion artifact into `last_error` again.
+ */
+export function serializeAdsError(err: unknown): string {
+  if (err instanceof Error) return err.message
+  if (err && typeof err === "object") {
+    const obj = err as Record<string, unknown>
+    // GoogleAdsFailure: { errors: [{ message, error_code, ... }], request_id }
+    if (Array.isArray(obj.errors)) {
+      const msgs = obj.errors
+        .map((e) =>
+          e && typeof e === "object" ? (e as { message?: string }).message : null,
+        )
+        .filter((m): m is string => Boolean(m))
+      if (msgs.length) return msgs.join("; ")
+    }
+    if (typeof obj.message === "string" && obj.message) return obj.message
+    try {
+      const json = JSON.stringify(err)
+      if (json && json !== "{}") return json
+    } catch {
+      // fall through to String() below
+    }
+  }
+  return String(err)
+}
+
 interface SyncDeps {
   getRefreshToken?: typeof getGoogleAdsRefreshToken
   getActiveAccounts?: typeof getActiveGoogleAdsAccounts
@@ -241,7 +271,7 @@ export async function runSyncGoogleAds(
       if (ok) result.recommendations_triggered++
       else result.recommendations_failed++
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
+      const message = serializeAdsError(err)
       console.error(`[syncGoogleAds] account ${account.customer_id} failed:`, message)
       try {
         await setGoogleAdsAccountSyncResult(account.customer_id, { last_error: message })
