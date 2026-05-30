@@ -74,3 +74,23 @@ export async function updateVideoUpload(
   if (error) throw error
   return data as VideoUpload
 }
+
+/**
+ * The video_uploads row promoted from a given team submission, or null. Keyed
+ * on source_submission_id so the captioned-cut promote-or-reuse helper can
+ * dedupe instead of inserting a duplicate row.
+ */
+export async function getVideoUploadBySubmission(
+  submissionId: string,
+): Promise<VideoUpload | null> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("video_uploads")
+    .select("*")
+    .eq("source_submission_id", submissionId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  return (data as VideoUpload | null) ?? null
+}
