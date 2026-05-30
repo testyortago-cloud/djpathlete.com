@@ -33,6 +33,28 @@ export async function getTranscriptForVideo(
 }
 
 /**
+ * The captioned-cut guard: the most recent SPEECH transcript (with a non-null
+ * AssemblyAI id) for a video, or null. Vision-fallback rows (source='vision',
+ * no word timings) are deliberately excluded — captions need word-level timing.
+ */
+export async function getSpeechTranscriptForVideo(
+  videoUploadId: string,
+): Promise<VideoTranscript | null> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("video_transcripts")
+    .select("*")
+    .eq("video_upload_id", videoUploadId)
+    .eq("source", "speech")
+    .not("assemblyai_job_id", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  return (data as VideoTranscript | null) ?? null
+}
+
+/**
  * Thin read helper that returns just the transcript text for a video upload.
  * Used by the quote-card generator, which only cares about the text payload.
  * Kept separate from `getTranscriptForVideo` so future callers don't over-read
