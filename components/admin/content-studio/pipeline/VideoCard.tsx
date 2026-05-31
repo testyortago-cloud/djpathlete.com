@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { Film, AlertCircle, Clock, Loader2, CheckCircle, Clapperboard } from "lucide-react"
+import { Film, AlertCircle, Clock, Loader2, CheckCircle, Clapperboard, Scissors } from "lucide-react"
 import type { VideoUpload } from "@/types/database"
 import type { PostCounts } from "@/lib/content-studio/pipeline-data"
 import { accentStyle } from "@/lib/content-studio/video-accent"
@@ -98,6 +98,14 @@ export function VideoCard({ video, counts, thumbnailUrl, hasCut = false }: Video
       <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground pt-0.5">
         <StatusBadge status={video.status} />
         <div className="inline-flex items-center gap-2">
+          {video.needs_edit && !hasCut && (
+            <span
+              className="inline-flex items-center gap-1 text-[10px] font-medium text-warning px-1.5 py-0.5 rounded bg-warning/10"
+              title="This video still needs editing before it can be posted"
+            >
+              <Scissors className="size-3" /> Needs edit
+            </span>
+          )}
           {hasCut && (
             <span
               className="inline-flex items-center gap-1 text-[10px] font-medium text-accent-foreground px-1.5 py-0.5 rounded bg-accent/15"
