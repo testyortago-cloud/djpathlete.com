@@ -5,6 +5,7 @@ const authMock = vi.fn()
 const getSocialPostByIdMock = vi.fn()
 const updateSocialPostMock = vi.fn()
 const listPlatformConnectionsMock = vi.fn()
+const guardMock = vi.fn()
 
 vi.mock("@/lib/auth", () => ({ auth: () => authMock() }))
 vi.mock("@/lib/db/social-posts", () => ({
@@ -13,6 +14,9 @@ vi.mock("@/lib/db/social-posts", () => ({
 }))
 vi.mock("@/lib/db/platform-connections", () => ({
   listPlatformConnections: () => listPlatformConnectionsMock(),
+}))
+vi.mock("@/lib/content-studio/edit-gate", () => ({
+  assertSourceVideoPostable: (...a: unknown[]) => guardMock(...a),
 }))
 
 import { POST } from "@/app/api/admin/social/posts/[id]/approve/route"
@@ -28,6 +32,7 @@ describe("POST /api/admin/social/posts/:id/approve", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     authMock.mockResolvedValue({ user: { id: "admin-1", role: "admin" } })
+    guardMock.mockResolvedValue({ ok: true })
   })
 
   it("sets approval_status=approved when the platform is connected", async () => {
@@ -59,5 +64,19 @@ describe("POST /api/admin/social/posts/:id/approve", () => {
     getSocialPostByIdMock.mockResolvedValue(null)
     const res = await callApprove("nope")
     expect(res.status).toBe(404)
+  })
+
+  it("returns 409 when the source video still needs editing (bulk-approve path)", async () => {
+    getSocialPostByIdMock.mockResolvedValue({
+      id: "p1",
+      platform: "instagram",
+      approval_status: "draft",
+      source_video_id: "v1",
+    })
+    guardMock.mockResolvedValue({ ok: false, reason: "needs editing" })
+    const res = await callApprove("p1")
+    expect(res.status).toBe(409)
+    expect(updateSocialPostMock).not.toHaveBeenCalled()
+    expect(listPlatformConnectionsMock).not.toHaveBeenCalled()
   })
 })

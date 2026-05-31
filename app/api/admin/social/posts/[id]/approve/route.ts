@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { getSocialPostById, updateSocialPost } from "@/lib/db/social-posts"
 import { listPlatformConnections } from "@/lib/db/platform-connections"
+import { assertSourceVideoPostable } from "@/lib/content-studio/edit-gate"
 
 export async function POST(
   _request: NextRequest,
@@ -22,6 +23,13 @@ export async function POST(
   const post = await getSocialPostById(id)
   if (!post) {
     return NextResponse.json({ error: "Social post not found" }, { status: 404 })
+  }
+
+  // Edit gate: approving readies a post for the publisher, so its source video
+  // must clear the gate first (same chokepoint as the Content Studio status route).
+  const guard = await assertSourceVideoPostable(post.source_video_id ?? null)
+  if (!guard.ok) {
+    return NextResponse.json({ error: guard.reason }, { status: 409 })
   }
 
   const connections = await listPlatformConnections()
