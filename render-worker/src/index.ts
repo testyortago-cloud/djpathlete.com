@@ -126,7 +126,19 @@ async function main() {
     const serveUrl = await bundle({ entryPoint: entry })
     console.log(`[render-worker] step=bundle ok`)
     const durationInFrames = Math.max(1, Math.ceil(durationInSeconds * FPS))
-    const inputProps = { videoSrc: videoSrcUrl, pages, accentHex: BRAND_ACCENT_HEX }
+    // Optional hook title (set by the panel → route → ai_jobs.input.hook). Absent
+    // for older/other jobs → no hook card. Trim + cap defensively (mirror the
+    // validator) so a bad value can never blow up the render.
+    const jobSnap = await jobRef.get()
+    const rawHook = jobSnap.data()?.input?.hook
+    const hookText = typeof rawHook === "string" ? rawHook.trim().slice(0, 80) : ""
+    const inputProps = {
+      videoSrc: videoSrcUrl,
+      pages,
+      accentHex: BRAND_ACCENT_HEX,
+      ...(hookText ? { hook: { text: hookText } } : {}),
+    }
+    console.log(`[render-worker] step=hook ${hookText ? `text="${hookText}"` : "none"}`)
     console.log(`[render-worker] step=selectComposition frames=${durationInFrames}`)
     const comp = await selectComposition({ serveUrl, id: "CaptionedCut", inputProps })
     console.log(`[render-worker] step=selectComposition ok`)
