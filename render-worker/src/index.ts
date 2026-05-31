@@ -134,11 +134,23 @@ async function main() {
     const jobSnap = await jobRef.get()
     const rawHook = jobSnap.data()?.input?.hook
     const hookText = typeof rawHook === "string" ? rawHook.trim().slice(0, 80) : ""
+    // Music selection (panel → route → ai_jobs.input.music). Absent → the brand
+    // default; "none" → no music; otherwise the chosen track IF it exists in the
+    // baked public/music dir (guard against a bad name crashing the render).
+    const DEFAULT_MUSIC = "motivational-cinematic.mp3"
+    const rawMusic = jobSnap.data()?.input?.music
+    const musicSel = typeof rawMusic === "string" ? rawMusic.trim() : ""
+    const musicExists = (name: string) =>
+      name !== "" && fs.existsSync(path.join(process.cwd(), "public", "music", name))
+    const musicTrack =
+      musicSel === "none" ? "" : musicExists(musicSel) ? musicSel : musicExists(DEFAULT_MUSIC) ? DEFAULT_MUSIC : ""
+    console.log(`[render-worker] step=music ${musicTrack ? `track=${musicTrack}` : "none"}`)
     const inputProps = {
       videoSrc: videoSrcUrl,
       pages,
       accentHex: BRAND_ACCENT_HEX,
       ...(hookText ? { hook: { text: hookText } } : {}),
+      ...(musicTrack ? { music: { track: musicTrack } } : {}),
     }
     console.log(`[render-worker] step=hook ${hookText ? `text="${hookText}"` : "none"}`)
     console.log(`[render-worker] step=selectComposition frames=${durationInFrames}`)
