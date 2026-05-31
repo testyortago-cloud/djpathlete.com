@@ -21,6 +21,14 @@ export const captionedCutRequestSchema = z
     // Optional hook title for the opening 2s card. Trimmed; capped so it fits the
     // card. Empty/whitespace-only is treated as "no hook" by the route.
     hook: z.string().trim().max(80, "Hook must be 80 characters or fewer").optional(),
+    // Optional music selection: a baked track filename or "none". Filename-safe
+    // charset only (the worker also checks the file exists before using it).
+    music: z
+      .string()
+      .trim()
+      .max(60)
+      .regex(/^[a-zA-Z0-9._-]+$/, "Invalid music selection")
+      .optional(),
   })
   .refine((d) => Boolean(d.videoUploadId) !== Boolean(d.submissionId), {
     message: "Provide exactly one of videoUploadId or submissionId",

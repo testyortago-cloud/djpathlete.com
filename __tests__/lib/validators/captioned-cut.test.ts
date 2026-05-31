@@ -25,4 +25,16 @@ describe("captionedCutRequestSchema", () => {
     expect(captionedCutRequestSchema.safeParse({ hook: "hi" }).success).toBe(false)
     expect(captionedCutRequestSchema.safeParse({ videoUploadId: VID, submissionId: VID }).success).toBe(false)
   })
+
+  it("accepts an optional music track filename", () => {
+    const r = captionedCutRequestSchema.safeParse({ videoUploadId: VID, music: "cinematic.mp3" })
+    expect(r.success).toBe(true)
+    if (r.success) expect(r.data.music).toBe("cinematic.mp3")
+  })
+  it("accepts 'none' for music", () => {
+    expect(captionedCutRequestSchema.safeParse({ videoUploadId: VID, music: "none" }).success).toBe(true)
+  })
+  it("rejects a music value with unsafe characters", () => {
+    expect(captionedCutRequestSchema.safeParse({ videoUploadId: VID, music: "../etc/passwd" }).success).toBe(false)
+  })
 })
