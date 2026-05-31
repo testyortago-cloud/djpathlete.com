@@ -5,6 +5,7 @@ import { CaptionLayer } from "./CaptionLayer.js"
 import { SourceLayer } from "./SourceLayer.js"
 import { ProgressBar } from "./ProgressBar.js"
 import { BrandBug } from "./BrandBug.js"
+import { HookCard } from "./HookCard.js"
 
 // A `type` (not `interface`) so it satisfies Remotion's
 // `Props extends Record<string, unknown>` constraint on <Composition>.
@@ -12,13 +13,15 @@ export type CaptionedCutProps = {
   videoSrc: string
   pages: CaptionPage[]
   accentHex: string
+  hook?: { text: string }
 }
 
-export function CaptionedCut({ videoSrc, pages, accentHex }: CaptionedCutProps) {
+export function CaptionedCut({ videoSrc, pages, accentHex, hook }: CaptionedCutProps) {
   return (
     <AbsoluteFill style={{ backgroundColor: "black" }}>
       <SourceLayer videoSrc={videoSrc} />
       <CaptionLayer pages={pages} accentHex={accentHex} />
+      {hook?.text ? <HookCard text={hook.text} accentHex={accentHex} /> : null}
       <ProgressBar accentHex={accentHex} />
       <BrandBug accentHex={accentHex} />
     </AbsoluteFill>
