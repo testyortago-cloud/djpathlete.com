@@ -87,19 +87,15 @@ export function CaptionLayer({ pages, accentHex }: CaptionLayerProps) {
             <span
               key={i}
               style={{
-                color: active ? "#0E3F50" : wd.emphasis ? accentHex : "white",
+                // Active word (and emphasized words) render in the brand accent;
+                // no background pill — the black outline + spring bounce make the
+                // active word pop on their own.
+                color: active || wd.emphasis ? accentHex : "white",
                 fontSize: wd.emphasis ? "1.18em" : "1em",
                 opacity: enter,
                 transform: `translateY(${(1 - enter) * 24}px) scale(${scale})`,
                 transformOrigin: "center",
                 display: "inline-block",
-                backgroundColor: active ? accentHex : "transparent",
-                borderRadius: active ? "12px" : 0,
-                padding: active ? "0 14px" : 0,
-                // Active word sits in an accent pill with dark #0E3F50 text; drop
-                // the container's black stroke on it (transparent color longhand
-                // overrides the shorthand) so the pill reads clean.
-                WebkitTextStrokeColor: active ? "transparent" : undefined,
               }}
             >
               {wd.text}

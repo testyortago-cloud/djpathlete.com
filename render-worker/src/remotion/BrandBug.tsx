@@ -1,15 +1,10 @@
 // render-worker/src/remotion/BrandBug.tsx
-import { interpolate, useCurrentFrame, useVideoConfig } from "remotion"
-import { loadFont } from "@remotion/google-fonts/LexendExa"
+import { Img, interpolate, staticFile, useCurrentFrame, useVideoConfig } from "remotion"
 
-// Reuse the brand heading font (idempotent — CaptionLayer also loads it).
-const { fontFamily } = loadFont("normal", { weights: ["800"], subsets: ["latin"] })
-
-export type BrandBugProps = {
-  accentHex: string
-}
-
-export function BrandBug({ accentHex }: BrandBugProps) {
+// The brand "dj" mark — the same icon the marketing site navbar uses
+// (public/logos/logo-icon-light.png), copied into the worker's public dir and
+// baked into the image (Dockerfile COPYs ./public; index.ts bundles with publicDir).
+export function BrandBug() {
   const frame = useCurrentFrame()
   const { fps } = useVideoConfig()
   // Fade in over the first ~0.5s, then hold for the rest of the clip.
@@ -18,25 +13,20 @@ export function BrandBug({ accentHex }: BrandBugProps) {
     extrapolateRight: "clamp",
   })
   return (
-    <div
+    <Img
+      src={staticFile("brand/dj-logo.png")}
       style={{
         position: "absolute",
-        top: 40,
-        left: 48,
+        // The source PNG has transparent padding around the mark, so negative
+        // offsets tuck the visible glyph into the top-left corner.
+        top: -34,
+        left: -28,
+        width: 280,
+        height: "auto",
         opacity,
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "flex-start",
-        lineHeight: 1,
-        fontFamily,
-        // Shadow so the white wordmark reads over a bright frame.
-        textShadow: "0 2px 10px rgba(0,0,0,0.7)",
+        // Soft shadow so the white mark reads over a bright frame.
+        filter: "drop-shadow(0 2px 10px rgba(0,0,0,0.55))",
       }}
-    >
-      <span style={{ fontWeight: 800, fontSize: 54, color: "white", letterSpacing: "-0.02em" }}>dj</span>
-      <span style={{ fontWeight: 800, fontSize: 17, color: accentHex, letterSpacing: "0.4em", marginTop: 2 }}>
-        ATHLETE
-      </span>
-    </div>
+    />
   )
 }

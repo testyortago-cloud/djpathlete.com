@@ -123,7 +123,9 @@ async function main() {
     // 5. Render
     const entry = path.join(process.cwd(), "dist", "remotion", "index.js")
     console.log(`[render-worker] step=bundle entry=${entry}`)
-    const serveUrl = await bundle({ entryPoint: entry })
+    // publicDir lets <Img src={staticFile(...)}> resolve the baked-in brand assets
+    // (the Dockerfile COPYs ./public into /app/public alongside the compiled dist/).
+    const serveUrl = await bundle({ entryPoint: entry, publicDir: path.join(process.cwd(), "public") })
     console.log(`[render-worker] step=bundle ok`)
     const durationInFrames = Math.max(1, Math.ceil(durationInSeconds * FPS))
     // Optional hook title (set by the panel → route → ai_jobs.input.hook). Absent

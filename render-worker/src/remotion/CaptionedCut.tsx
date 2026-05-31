@@ -23,7 +23,7 @@ export function CaptionedCut({ videoSrc, pages, accentHex, hook }: CaptionedCutP
       <CaptionLayer pages={pages} accentHex={accentHex} />
       {hook?.text ? <HookCard text={hook.text} accentHex={accentHex} /> : null}
       <ProgressBar accentHex={accentHex} />
-      <BrandBug accentHex={accentHex} />
+      <BrandBug />
     </AbsoluteFill>
   )
 }

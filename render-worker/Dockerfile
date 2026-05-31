@@ -32,6 +32,7 @@ COPY package.json package-lock.json ./
 RUN npm ci
 COPY tsconfig.json ./
 COPY src ./src
+COPY public ./public
 RUN npm run build
 
 # Remotion downloads its own Chromium ("chrome headless shell") on first use;
