@@ -38,6 +38,7 @@ export function CaptionedCutPanel({ videoUploadId, hasTranscript }: CaptionedCut
   const [state, setState] = useState<CutState | null>(null) // null = initial load
   const [jobId, setJobId] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [hook, setHook] = useState("")
   const { status, error } = useAiJob(jobId)
 
   const fetchState = useCallback(async () => {
@@ -82,7 +83,7 @@ export function CaptionedCutPanel({ videoUploadId, hasTranscript }: CaptionedCut
       const res = await fetch("/api/admin/content-studio/captioned-cut", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ videoUploadId }),
+        body: JSON.stringify({ videoUploadId, hook: hook.trim() || undefined }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data?.error || `Request failed (${res.status})`)
@@ -158,6 +159,7 @@ export function CaptionedCutPanel({ videoUploadId, hasTranscript }: CaptionedCut
                 No draft posts — connect a video platform to auto-create them.
               </p>
             )}
+            <HookInput value={hook} onChange={setHook} />
             <button
               type="button"
               onClick={generate}
@@ -175,6 +177,7 @@ export function CaptionedCutPanel({ videoUploadId, hasTranscript }: CaptionedCut
   // ── idle: no cut yet ──────────────────────────────────────────────────────
   return (
     <PanelShell>
+      <HookInput value={hook} onChange={setHook} />
       <button
         type="button"
         onClick={generate}
@@ -202,5 +205,21 @@ function PanelShell({ children }: { children: ReactNode }) {
       </p>
       {children}
     </div>
+  )
+}
+
+function HookInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <label className="mb-2 block">
+      <span className="mb-1 block text-[11px] text-muted-foreground">Hook title (optional)</span>
+      <input
+        type="text"
+        value={value}
+        maxLength={80}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="e.g. 5 Mistakes Athletes Make"
+        className="w-full rounded border border-border bg-background px-2 py-1 text-xs"
+      />
+    </label>
   )
 }
