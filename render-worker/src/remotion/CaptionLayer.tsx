@@ -96,6 +96,9 @@ export function CaptionLayer({ pages, accentHex }: CaptionLayerProps) {
                 backgroundColor: active ? accentHex : "transparent",
                 borderRadius: active ? "12px" : 0,
                 padding: active ? "0 14px" : 0,
+                // Active word sits in an accent pill with dark #0E3F50 text; drop
+                // the container's black stroke on it (transparent color longhand
+                // overrides the shorthand) so the pill reads clean.
                 WebkitTextStrokeColor: active ? "transparent" : undefined,
               }}
             >
