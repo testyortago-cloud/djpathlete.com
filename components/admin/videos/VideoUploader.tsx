@@ -62,7 +62,7 @@ export function VideoUploader({
   }
 
   return (
-    <div className="bg-white rounded-xl border border-border">
+    <div className="bg-white rounded-xl border border-border overflow-hidden">
       <label
         htmlFor="video-uploader-input"
         onDragOver={(e) => {
@@ -77,7 +77,7 @@ export function VideoUploader({
           if (file) void handleFile(file)
         }}
         className={cn(
-          "flex flex-col items-center justify-center gap-3 p-8 cursor-pointer rounded-xl border-2 border-dashed transition",
+          "m-3 flex flex-col items-center justify-center gap-3 p-8 cursor-pointer rounded-lg border-2 border-dashed transition",
           dragging ? "border-primary bg-primary/5" : "border-border hover:border-primary/40",
         )}
       >
@@ -126,14 +126,17 @@ export function VideoUploader({
         )}
       </label>
       {showNeedsEditToggle && (
-        <label className="flex items-center gap-2 px-4 pb-4 -mt-2 text-xs text-muted-foreground cursor-pointer select-none">
+        <label className="flex items-center gap-2.5 border-t border-border bg-muted/20 px-4 py-3 text-xs text-muted-foreground cursor-pointer select-none transition-colors hover:bg-muted/40">
           <input
             type="checkbox"
             checked={needsEdit}
             onChange={(e) => setNeedsEdit(e.target.checked)}
-            className="size-4 rounded border-border accent-primary"
+            className="size-4 shrink-0 rounded border-border accent-primary"
           />
-          Needs editing — gate from posting until a cut is rendered
+          <span>
+            <span className="font-medium text-primary">Needs editing</span> — gate from posting until a
+            cut is rendered
+          </span>
         </label>
       )}
     </div>
