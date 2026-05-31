@@ -18,6 +18,9 @@ export const captionedCutRequestSchema = z
   .object({
     videoUploadId: uuidLike.optional(),
     submissionId: uuidLike.optional(),
+    // Optional hook title for the opening 2s card. Trimmed; capped so it fits the
+    // card. Empty/whitespace-only is treated as "no hook" by the route.
+    hook: z.string().trim().max(80, "Hook must be 80 characters or fewer").optional(),
   })
   .refine((d) => Boolean(d.videoUploadId) !== Boolean(d.submissionId), {
     message: "Provide exactly one of videoUploadId or submissionId",
