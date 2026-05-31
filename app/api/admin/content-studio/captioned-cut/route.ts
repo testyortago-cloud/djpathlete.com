@@ -119,10 +119,11 @@ export async function POST(request: NextRequest | Request) {
     return NextResponse.json({ jobId: inFlight }, { status: 200 })
   }
 
+  const hook = parsed.data.hook && parsed.data.hook.length > 0 ? parsed.data.hook : undefined
   const { jobId } = await createAiJob({
     type: "video_caption_render",
     userId: session.user.id,
-    input: { videoUploadId },
+    input: hook ? { videoUploadId, hook } : { videoUploadId },
   })
   return NextResponse.json({ jobId }, { status: 202 })
 }
