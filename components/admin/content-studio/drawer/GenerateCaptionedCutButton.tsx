@@ -20,7 +20,11 @@ export function GenerateCaptionedCutButton({
   const [submitting, setSubmitting] = useState(false)
   const { status, result, error } = useAiJob(jobId)
 
-  const running = submitting || status === "pending" || status === "processing"
+  // Guard on jobId: useAiJob(null) returns its initial status "pending" and never
+  // resets while jobId is null, so without this the button would show "Rendering…"
+  // and stay disabled before any render is ever started.
+  const running =
+    submitting || (jobId !== null && (status === "pending" || status === "processing"))
   const disabled = running || !hasTranscript
 
   useEffect(() => {
