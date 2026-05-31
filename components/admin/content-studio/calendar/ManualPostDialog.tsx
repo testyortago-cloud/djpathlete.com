@@ -277,7 +277,11 @@ export function ManualPostDialog({
             {storyMediaType === "image" ? (
               <ImageUploader onUploaded={(e) => setMediaAssetId(e.mediaAssetId)} />
             ) : (
-              <VideoUploader onUploaded={(id) => setSourceVideoId(id)} />
+              <VideoUploader
+                onUploaded={(id) => setSourceVideoId(id)}
+                needsEditDefault={false}
+                showNeedsEditToggle={false}
+              />
             )}
           </div>
         ) : null}

@@ -9,6 +9,10 @@ import { cn } from "@/lib/utils"
 
 interface VideoUploaderProps {
   onUploaded: (videoUploadId: string) => void
+  /** Initial value of the "needs editing" toggle. Default true (gated). */
+  needsEditDefault?: boolean
+  /** Whether to show the toggle at all. Default true. */
+  showNeedsEditToggle?: boolean
 }
 
 type UploadState =
@@ -17,9 +21,14 @@ type UploadState =
   | { status: "done"; filename: string }
   | { status: "error"; message: string }
 
-export function VideoUploader({ onUploaded }: VideoUploaderProps) {
+export function VideoUploader({
+  onUploaded,
+  needsEditDefault = true,
+  showNeedsEditToggle = true,
+}: VideoUploaderProps) {
   const [state, setState] = useState<UploadState>({ status: "idle" })
   const [dragging, setDragging] = useState(false)
+  const [needsEdit, setNeedsEdit] = useState(needsEditDefault)
   const inputRef = useRef<HTMLInputElement>(null)
 
   async function handleFile(file: File) {
@@ -33,6 +42,7 @@ export function VideoUploader({ onUploaded }: VideoUploaderProps) {
     try {
       const { videoUploadId } = await uploadVideoFile(file, {
         title: file.name.replace(/\.[^.]+$/, ""),
+        needsEdit,
         onProgress: (event: UploadProgressEvent) => {
           setState({ status: "uploading", filename: file.name, percent: event.percent })
         },
@@ -115,6 +125,17 @@ export function VideoUploader({ onUploaded }: VideoUploaderProps) {
           </>
         )}
       </label>
+      {showNeedsEditToggle && (
+        <label className="flex items-center gap-2 px-4 pb-4 -mt-2 text-xs text-muted-foreground cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={needsEdit}
+            onChange={(e) => setNeedsEdit(e.target.checked)}
+            className="size-4 rounded border-border accent-primary"
+          />
+          Needs editing — gate from posting until a cut is rendered
+        </label>
+      )}
     </div>
   )
 }
