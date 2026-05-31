@@ -1,11 +1,16 @@
 // app/api/admin/videos/[id]/route.ts
-// GET  — returns the video row + a short-lived signed GET URL for inline preview.
+// GET    — returns the video row + a short-lived signed GET URL for inline preview.
+// PATCH  — { needs_edit: boolean } manual override for the edit gate (Mark as ready).
 // DELETE — removes the Firebase Storage blob and the Supabase row. Admin-only.
 
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { getAdminStorage } from "@/lib/firebase-admin"
-import { getVideoUploadById, deleteVideoUpload } from "@/lib/db/video-uploads"
+import {
+  getVideoUploadById,
+  deleteVideoUpload,
+  updateVideoUpload,
+} from "@/lib/db/video-uploads"
 import { getTranscriptForVideo } from "@/lib/db/video-transcripts"
 
 const PREVIEW_URL_EXPIRY_MS = 10 * 60 * 1000 // 10 minutes
@@ -46,6 +51,27 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         }
       : null,
   })
+}
+
+// PATCH { needs_edit: boolean } — manual override for the edit gate. Used by the
+// "Mark as ready" action in the video drawer.
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const session = await auth()
+  if (!session?.user?.id || session.user.role !== "admin") {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  const body = (await request.json().catch(() => null)) as { needs_edit?: boolean } | null
+  if (typeof body?.needs_edit !== "boolean") {
+    return NextResponse.json({ error: "needs_edit (boolean) is required" }, { status: 400 })
+  }
+
+  const { id } = await params
+  const updated = await updateVideoUpload(id, { needs_edit: body.needs_edit })
+  return NextResponse.json({ id: updated.id, needs_edit: updated.needs_edit })
 }
 
 export async function DELETE(
