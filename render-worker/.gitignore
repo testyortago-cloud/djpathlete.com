@@ -1,2 +1,4 @@
 node_modules
 dist
+_still*.png
+_still-props.json
