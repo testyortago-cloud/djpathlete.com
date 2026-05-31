@@ -4,6 +4,7 @@ import type { CaptionPage } from "../lib/caption-paging.js"
 import { CaptionLayer } from "./CaptionLayer.js"
 import { SourceLayer } from "./SourceLayer.js"
 import { ProgressBar } from "./ProgressBar.js"
+import { BrandBug } from "./BrandBug.js"
 
 // A `type` (not `interface`) so it satisfies Remotion's
 // `Props extends Record<string, unknown>` constraint on <Composition>.
@@ -19,6 +20,7 @@ export function CaptionedCut({ videoSrc, pages, accentHex }: CaptionedCutProps) 
       <SourceLayer videoSrc={videoSrc} />
       <CaptionLayer pages={pages} accentHex={accentHex} />
       <ProgressBar accentHex={accentHex} />
+      <BrandBug accentHex={accentHex} />
     </AbsoluteFill>
   )
 }
