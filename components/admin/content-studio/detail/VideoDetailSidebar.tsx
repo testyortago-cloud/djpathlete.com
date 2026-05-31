@@ -1,4 +1,3 @@
-import { Clock, HardDrive, Calendar } from "lucide-react"
 import type { VideoUpload } from "@/types/database"
 import { GenerateQuoteCardsButton } from "@/components/admin/content-studio/drawer/GenerateQuoteCardsButton"
 import { CaptionedCutPanel } from "@/components/admin/content-studio/drawer/CaptionedCutPanel"
@@ -46,24 +45,21 @@ export function VideoDetailSidebar({
       </div>
 
       <div>
-        <p className="text-xs text-muted-foreground truncate" title={video.original_filename}>
+        <p className="font-mono text-xs text-muted-foreground truncate" title={video.original_filename}>
           {video.original_filename}
         </p>
-        <dl className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-          <div className="inline-flex items-center gap-1">
-            <Calendar className="size-3.5" />
-            <dt className="sr-only">Uploaded</dt>
-            <dd>{new Date(video.created_at).toLocaleDateString()}</dd>
+        <dl className="mt-3 space-y-1.5 text-xs">
+          <div className="flex items-center justify-between gap-2">
+            <dt className="text-muted-foreground">Uploaded</dt>
+            <dd className="text-primary">{new Date(video.created_at).toLocaleDateString()}</dd>
           </div>
-          <div className="inline-flex items-center gap-1">
-            <Clock className="size-3.5" />
-            <dt className="sr-only">Duration</dt>
-            <dd>{formatDuration(video.duration_seconds)}</dd>
+          <div className="flex items-center justify-between gap-2">
+            <dt className="text-muted-foreground">Duration</dt>
+            <dd className="text-primary tabular-nums">{formatDuration(video.duration_seconds)}</dd>
           </div>
-          <div className="inline-flex items-center gap-1">
-            <HardDrive className="size-3.5" />
-            <dt className="sr-only">Size</dt>
-            <dd>{formatSize(video.size_bytes)}</dd>
+          <div className="flex items-center justify-between gap-2">
+            <dt className="text-muted-foreground">Size</dt>
+            <dd className="text-primary tabular-nums">{formatSize(video.size_bytes)}</dd>
           </div>
         </dl>
       </div>

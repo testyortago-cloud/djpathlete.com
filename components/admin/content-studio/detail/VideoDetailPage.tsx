@@ -14,7 +14,9 @@ interface VideoDetailPageProps {
   highlightPostId: string | null
 }
 
-const SECTION_HEADING = "font-heading text-sm uppercase tracking-wide text-muted-foreground mb-2"
+// Section headings: primary weight + a hairline rule so the stacked sections
+// read as distinct bands without any decorative chrome.
+const SECTION_HEADING = "font-heading text-sm font-semibold text-primary border-b border-border pb-1.5 mb-3"
 
 export function VideoDetailPage({ data, backHref, backLabel, highlightPostId }: VideoDetailPageProps) {
   const video = data.video!
@@ -22,19 +24,19 @@ export function VideoDetailPage({ data, backHref, backLabel, highlightPostId }: 
 
   return (
     <div className="px-4 py-4 sm:px-6">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <Link
-            href={backHref}
-            className="inline-flex shrink-0 items-center gap-1.5 text-sm text-muted-foreground hover:text-primary"
-          >
-            <ArrowLeft className="size-4" /> {backLabel}
-          </Link>
-          <h1 className="truncate font-heading text-lg text-primary" title={title}>
+      <div className="mb-6 border-b border-border pb-4">
+        <Link
+          href={backHref}
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-primary"
+        >
+          <ArrowLeft className="size-3.5" /> {backLabel}
+        </Link>
+        <div className="mt-2 flex items-start justify-between gap-3">
+          <h1 className="min-w-0 truncate font-heading text-xl text-primary" title={title}>
             {title}
           </h1>
+          <MarkReadyButton videoUploadId={video.id} needsEdit={video.needs_edit} />
         </div>
-        <MarkReadyButton videoUploadId={video.id} needsEdit={video.needs_edit} />
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(280px,360px)_1fr]">

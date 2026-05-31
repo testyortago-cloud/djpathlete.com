@@ -13,15 +13,15 @@ interface PostDetailPageProps {
 export function PostDetailPage({ data, backHref, backLabel }: PostDetailPageProps) {
   return (
     <div className="max-w-3xl px-4 py-4 sm:px-6">
-      <div className="mb-4 flex items-center gap-3">
+      <div className="mb-6 border-b border-border pb-4">
         <Link
           href={backHref}
-          className="inline-flex shrink-0 items-center gap-1.5 text-sm text-muted-foreground hover:text-primary"
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-primary"
         >
-          <ArrowLeft className="size-4" /> {backLabel}
+          <ArrowLeft className="size-3.5" /> {backLabel}
         </Link>
-        <h1 className="inline-flex items-center gap-2 font-heading text-lg text-primary">
-          <FileText className="size-4 text-muted-foreground" /> Manual post
+        <h1 className="mt-2 inline-flex items-center gap-2 font-heading text-xl text-primary">
+          <FileText className="size-5 text-muted-foreground" /> Manual post
         </h1>
       </div>
 
@@ -32,7 +32,7 @@ export function PostDetailPage({ data, backHref, backLabel }: PostDetailPageProp
         <section aria-labelledby="post-meta-heading">
           <h2
             id="post-meta-heading"
-            className="font-heading text-sm uppercase tracking-wide text-muted-foreground mb-2"
+            className="font-heading text-sm font-semibold text-primary border-b border-border pb-1.5 mb-3"
           >
             Details
           </h2>
