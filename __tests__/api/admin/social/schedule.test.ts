@@ -26,6 +26,11 @@ vi.mock("@/lib/social/publish-runner", () => ({
   buildPluginInput: (post: unknown) => buildPluginInputMock(post),
 }))
 
+const guardMock = vi.fn()
+vi.mock("@/lib/content-studio/edit-gate", () => ({
+  assertSourceVideoPostable: (...a: unknown[]) => guardMock(...a),
+}))
+
 import { POST } from "@/app/api/admin/social/posts/[id]/schedule/route"
 
 async function callSchedule(id: string, body: unknown) {
@@ -52,6 +57,7 @@ describe("POST /api/admin/social/posts/:id/schedule", () => {
     vi.clearAllMocks()
     authMock.mockResolvedValue({ user: { id: "admin-1", role: "admin" } })
     withConnected(["instagram", "facebook", "linkedin"])
+    guardMock.mockResolvedValue({ ok: true })
     // Default: no plugin registered → falls through to DB-cron path
     registryGetMock.mockReturnValue(undefined)
     buildPluginInputMock.mockResolvedValue({
@@ -235,6 +241,22 @@ describe("POST /api/admin/social/posts/:id/schedule", () => {
     const res = await callSchedule("p1", { scheduled_at: tooSoon })
     expect(res.status).toBe(400)
     expect(await res.text()).toMatch(/15 min/i)
+  })
+
+  it("returns 409 when the source video still needs editing", async () => {
+    getSocialPostByIdMock.mockResolvedValue({
+      id: "p1",
+      approval_status: "draft",
+      platform: "instagram",
+      source_video_id: "v1",
+    })
+    guardMock.mockResolvedValue({ ok: false, reason: "needs editing" })
+    const res = await callSchedule("p1", { scheduled_at: futureIso(60) })
+    expect(res.status).toBe(409)
+    expect(await res.json()).toMatchObject({ error: "needs editing" })
+    // Gate must short-circuit BEFORE any platform/connection work.
+    expect(listPlatformConnectionsMock).not.toHaveBeenCalled()
+    expect(updateSocialPostMock).not.toHaveBeenCalled()
   })
 
   it("native path: when rescheduling, cancels the previous platform schedule first", async () => {

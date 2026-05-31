@@ -14,6 +14,11 @@ vi.mock("@/lib/db/platform-connections", () => ({
   listPlatformConnections: () => listPlatformConnectionsMock(),
 }))
 
+const guardMock = vi.fn()
+vi.mock("@/lib/content-studio/edit-gate", () => ({
+  assertSourceVideoPostable: (...a: unknown[]) => guardMock(...a),
+}))
+
 import { POST } from "@/app/api/admin/social/posts/[id]/publish-now/route"
 
 async function call(id: string) {
@@ -31,6 +36,7 @@ describe("POST /api/admin/social/posts/:id/publish-now", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     authMock.mockResolvedValue({ user: { id: "a", role: "admin" } })
+    guardMock.mockResolvedValue({ ok: true })
     withConnected(["instagram", "facebook", "linkedin"])
   })
 
@@ -129,6 +135,23 @@ describe("POST /api/admin/social/posts/:id/publish-now", () => {
     const args = updateSocialPostMock.mock.calls[0]
     expect(args[1].approval_status).toBe("scheduled")
     expect(args[1].rejection_notes).toBeNull()
+  })
+
+  it("returns 409 when the source video still needs editing", async () => {
+    getSocialPostByIdMock.mockResolvedValue({
+      id: "p1",
+      approval_status: "draft",
+      platform: "instagram",
+      post_type: "video",
+      source_video_id: "v1",
+    })
+    guardMock.mockResolvedValue({ ok: false, reason: "needs editing" })
+    const res = await call("p1")
+    expect(res.status).toBe(409)
+    expect(await res.json()).toMatchObject({ error: "needs editing" })
+    // Gate must short-circuit BEFORE any platform/connection work.
+    expect(listPlatformConnectionsMock).not.toHaveBeenCalled()
+    expect(updateSocialPostMock).not.toHaveBeenCalled()
   })
 
   it("accepts draft Story posts without a connection check (lightweight pipeline)", async () => {

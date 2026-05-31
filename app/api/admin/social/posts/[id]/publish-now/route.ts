@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { getSocialPostById, updateSocialPost } from "@/lib/db/social-posts"
 import { listPlatformConnections } from "@/lib/db/platform-connections"
+import { assertSourceVideoPostable } from "@/lib/content-studio/edit-gate"
 
 const PUBLISHABLE_STATUSES = new Set([
   "draft",
@@ -39,6 +40,11 @@ export async function POST(
       { error: `Cannot publish a ${post.approval_status} post` },
       { status: 409 },
     )
+  }
+
+  const guard = await assertSourceVideoPostable(post.source_video_id ?? null)
+  if (!guard.ok) {
+    return NextResponse.json({ error: guard.reason }, { status: 409 })
   }
 
   // Stories skip the platform-connection check because the lightweight

@@ -21,6 +21,7 @@ import { listPlatformConnections } from "@/lib/db/platform-connections"
 import { bootstrapPlugins } from "@/lib/social/bootstrap"
 import { pluginRegistry } from "@/lib/social/registry"
 import { buildPluginInput } from "@/lib/social/publish-runner"
+import { assertSourceVideoPostable } from "@/lib/content-studio/edit-gate"
 
 const SCHEDULABLE_STATUSES = new Set([
   "draft",
@@ -70,6 +71,11 @@ export async function POST(
       { error: `Cannot schedule a ${post.approval_status} post` },
       { status: 409 },
     )
+  }
+
+  const guard = await assertSourceVideoPostable(post.source_video_id ?? null)
+  if (!guard.ok) {
+    return NextResponse.json({ error: guard.reason }, { status: 409 })
   }
 
   const connections = await listPlatformConnections()
