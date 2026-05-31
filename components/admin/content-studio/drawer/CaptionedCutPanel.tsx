@@ -39,6 +39,7 @@ export function CaptionedCutPanel({ videoUploadId, hasTranscript }: CaptionedCut
   const [jobId, setJobId] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [hook, setHook] = useState("")
+  const [music, setMusic] = useState("")
   const { status, error } = useAiJob(jobId)
 
   const fetchState = useCallback(async () => {
@@ -83,7 +84,7 @@ export function CaptionedCutPanel({ videoUploadId, hasTranscript }: CaptionedCut
       const res = await fetch("/api/admin/content-studio/captioned-cut", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ videoUploadId, hook: hook.trim() || undefined }),
+        body: JSON.stringify({ videoUploadId, hook: hook.trim() || undefined, music: music || undefined }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data?.error || `Request failed (${res.status})`)
@@ -160,6 +161,7 @@ export function CaptionedCutPanel({ videoUploadId, hasTranscript }: CaptionedCut
               </p>
             )}
             <HookInput value={hook} onChange={setHook} />
+            <MusicPicker value={music} onChange={setMusic} />
             <button
               type="button"
               onClick={generate}
@@ -178,6 +180,7 @@ export function CaptionedCutPanel({ videoUploadId, hasTranscript }: CaptionedCut
   return (
     <PanelShell>
       <HookInput value={hook} onChange={setHook} />
+      <MusicPicker value={music} onChange={setMusic} />
       <button
         type="button"
         onClick={generate}
@@ -220,6 +223,32 @@ function HookInput({ value, onChange }: { value: string; onChange: (v: string) =
         placeholder="e.g. 5 Mistakes Athletes Make"
         className="w-full rounded border border-border bg-background px-2 py-1 text-xs"
       />
+    </label>
+  )
+}
+
+const MUSIC_OPTIONS: { value: string; label: string }[] = [
+  { value: "", label: "Default (Motivational Cinematic)" },
+  { value: "inspirational.mp3", label: "Inspirational" },
+  { value: "cinematic.mp3", label: "Cinematic" },
+  { value: "none", label: "No music" },
+]
+
+function MusicPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <label className="mb-2 block">
+      <span className="mb-1 block text-[11px] text-muted-foreground">Music</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded border border-border bg-background px-2 py-1 text-xs"
+      >
+        {MUSIC_OPTIONS.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
     </label>
   )
 }
