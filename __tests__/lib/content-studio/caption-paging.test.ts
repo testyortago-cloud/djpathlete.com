@@ -71,6 +71,10 @@ describe("isEmphasisWord", () => {
     expect(isEmphasisWord("deceleration")).toBe(true)
     expect(isEmphasisWord("ankle")).toBe(false)
   })
+  it("treats the 7-letter length cutoff as inclusive", () => {
+    expect(isEmphasisWord("fitness")).toBe(true) // exactly 7 letters
+    expect(isEmphasisWord("muscle")).toBe(false) // 6 letters, not a power word
+  })
   it("emphasizes power words regardless of length", () => {
     expect(isEmphasisWord("never")).toBe(true)
     expect(isEmphasisWord("key")).toBe(true)
