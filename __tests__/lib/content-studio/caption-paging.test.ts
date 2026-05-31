@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { pageCaptions, type TranscriptWord } from "@/lib/content-studio/caption-paging"
+import { pageCaptions, isEmphasisWord, type TranscriptWord } from "@/lib/content-studio/caption-paging"
 
 const w = (text: string, start: number, end: number): TranscriptWord => ({ text, start, end })
 
@@ -14,7 +14,7 @@ describe("pageCaptions", () => {
     expect(pages[0].text).toBe("go")
     expect(pages[0].startMs).toBe(100)
     expect(pages[0].endMs).toBe(400)
-    expect(pages[0].words).toEqual([{ text: "go", startMs: 100, endMs: 400 }])
+    expect(pages[0].words).toEqual([{ text: "go", startMs: 100, endMs: 400, emphasis: false }])
   })
 
   it("chunks into <=3-word pages by default (7 words -> 3/3/1)", () => {
@@ -53,5 +53,31 @@ describe("pageCaptions", () => {
     expect(pageCaptions(words, { maxWordsPerPage: NaN }).map((p) => p.text)).toEqual(["a b c", "d"])
     expect(pageCaptions(words, { maxWordsPerPage: 0 }).map((p) => p.text)).toEqual(["a b c", "d"])
     expect(pageCaptions(words, { maxWordsPerPage: -2 }).map((p) => p.text)).toEqual(["a b c", "d"])
+  })
+})
+
+describe("isEmphasisWord", () => {
+  it("emphasizes words containing a number (reps, %, etc.)", () => {
+    expect(isEmphasisWord("5")).toBe(true)
+    expect(isEmphasisWord("20%")).toBe(true)
+    expect(isEmphasisWord("3x")).toBe(true)
+  })
+  it("emphasizes ALL-CAPS words of 2+ letters", () => {
+    expect(isEmphasisWord("STOP")).toBe(true)
+    expect(isEmphasisWord("go")).toBe(false)
+    expect(isEmphasisWord("I")).toBe(false) // single letter
+  })
+  it("emphasizes long (>=7 letter) content words", () => {
+    expect(isEmphasisWord("deceleration")).toBe(true)
+    expect(isEmphasisWord("ankle")).toBe(false)
+  })
+  it("emphasizes power words regardless of length", () => {
+    expect(isEmphasisWord("never")).toBe(true)
+    expect(isEmphasisWord("key")).toBe(true)
+  })
+  it("returns false for short filler and empty input", () => {
+    expect(isEmphasisWord("the")).toBe(false)
+    expect(isEmphasisWord("")).toBe(false)
+    expect(isEmphasisWord("  ")).toBe(false)
   })
 })
