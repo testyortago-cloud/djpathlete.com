@@ -29,6 +29,7 @@ const data: PipelineData = {
   posts: [],
   postCountsByVideo: {},
   thumbnailUrlsByVideo: {},
+  cutVideoIds: new Set(),
 }
 
 describe("<PipelineBoard>", () => {
