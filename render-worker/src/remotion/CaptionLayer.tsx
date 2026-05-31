@@ -1,5 +1,5 @@
 // render-worker/src/remotion/CaptionLayer.tsx
-import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig } from "remotion"
+import { AbsoluteFill, spring, useCurrentFrame, useVideoConfig } from "remotion"
 import { loadFont } from "@remotion/google-fonts/LexendExa"
 import type { CaptionPage } from "../lib/caption-paging.js"
 
@@ -9,7 +9,12 @@ import type { CaptionPage } from "../lib/caption-paging.js"
 // present before the first frame.
 const { fontFamily } = loadFont("normal", { weights: ["800"], subsets: ["latin"] })
 
-export function CaptionLayer({ pages, accentHex }: { pages: CaptionPage[]; accentHex: string }) {
+export type CaptionLayerProps = {
+  pages: CaptionPage[]
+  accentHex: string
+}
+
+export function CaptionLayer({ pages, accentHex }: CaptionLayerProps) {
   const frame = useCurrentFrame()
   const { fps } = useVideoConfig()
   const ms = (frame / fps) * 1000
@@ -56,20 +61,18 @@ export function CaptionLayer({ pages, accentHex }: { pages: CaptionPage[]; accen
       >
         {page.words.map((wd, i) => {
           const active = ms >= wd.startMs && ms < wd.endMs
-          // Frame-based "pop" (CSS transitions don't render in Remotion): the
-          // word scales up over the first ~90ms it's active, then holds.
-          const pop = active
-            ? interpolate(ms - wd.startMs, [0, 90], [0, 1], {
-                extrapolateLeft: "clamp",
-                extrapolateRight: "clamp",
-              })
+          // Spring "bounce": overshoot then settle, starting when the word goes active.
+          const startFrame = (wd.startMs / 1000) * fps
+          const bounce = active
+            ? spring({ frame: frame - startFrame, fps, config: { damping: 9, stiffness: 180, mass: 0.5 } })
             : 0
+          const scale = 1 + 0.14 * bounce
           return (
             <span
               key={i}
               style={{
                 color: active ? accentHex : "white",
-                transform: `scale(${1 + 0.08 * pop})`,
+                transform: `scale(${scale})`,
                 transformOrigin: "center",
                 display: "inline-block",
               }}
