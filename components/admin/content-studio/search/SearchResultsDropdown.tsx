@@ -69,7 +69,7 @@ export function SearchResultsDropdown({ q, results, loading, onSelect }: SearchR
         {results.transcripts.map((t) => (
           <li key={t.id}>
             <Link
-              href={`/admin/content/${t.video_upload_id}?drawerTab=transcript`}
+              href={`/admin/content/${t.video_upload_id}`}
               onClick={onSelect}
               className="block px-3 py-1.5 hover:bg-surface/40"
             >
