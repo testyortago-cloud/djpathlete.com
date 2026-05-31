@@ -12,6 +12,7 @@ import { selectComposition, renderMedia, getVideoMetadata } from "@remotion/rend
 import path from "node:path"
 import os from "node:os"
 import fs from "node:fs"
+import { pathToFileURL } from "node:url"
 import { pageCaptions } from "./lib/caption-paging.js"
 import { fetchTranscriptWords } from "./lib/assemblyai-words.js"
 import { oklchToHex } from "./lib/color.js"
@@ -86,25 +87,32 @@ async function main() {
     const words = await fetchTranscriptWords(tx.assemblyai_job_id)
     console.log(`[render-worker] step=words ok count=${words.length}`)
 
-    // 3. Sign source URL (7-day default is plenty for a <5min render)
-    console.log(`[render-worker] step=sign path=${video.storage_path}`)
-    const [signedUrl] = await bucket.file(video.storage_path).getSignedUrl({
-      version: "v4", action: "read", expires: Date.now() + 7 * 24 * 60 * 60 * 1000,
-    })
-    // Log host + length only — the URL carries a credential, never log it whole.
-    console.log(
-      `[render-worker] step=sign ok host=${(() => { try { return new URL(signedUrl).host } catch { return "INVALID_URL" } })()} len=${signedUrl?.length ?? 0}`,
-    )
+    // 3. Download source to local /tmp. Remotion's getVideoMetadata (and the
+    // ffmpeg compositor) only accept LOCAL absolute paths — "URLs are not
+    // supported" (Remotion docs). Passing a signed HTTPS URL failed with
+    // "Compositor error: No such file or directory". Downloading once also frees
+    // the render from depending on remote streaming.
+    const workDir = path.join(os.tmpdir(), "captioned-cut", aiJobId)
+    fs.mkdirSync(workDir, { recursive: true })
+    const srcExt = path.extname(video.storage_path) || ".mp4"
+    const srcPath = path.join(workDir, `source${srcExt}`)
+    console.log(`[render-worker] step=download path=${video.storage_path}`)
+    await bucket.file(video.storage_path).download({ destination: srcPath })
+    const srcBytes = fs.statSync(srcPath).size
+    console.log(`[render-worker] step=download ok bytes=${srcBytes} -> ${srcPath}`)
 
     // Probe real duration and enforce the cap (don't trust duration_seconds)
     console.log(`[render-worker] step=metadata`)
-    const meta = await getVideoMetadata(signedUrl)
+    const meta = await getVideoMetadata(srcPath)
     const durationInSeconds = meta.durationInSeconds
     if (durationInSeconds === null) throw new Error("could not determine video duration")
     if (durationInSeconds > MAX_CAPTION_CLIP_SECONDS) {
       throw new Error(`clip is ${Math.round(durationInSeconds)}s — exceeds the ${MAX_CAPTION_CLIP_SECONDS}s cap`)
     }
     console.log(`[render-worker] step=metadata ok duration=${durationInSeconds}s`)
+
+    // OffthreadVideo needs a URL form — point it at the local file via file://.
+    const videoSrcUrl = pathToFileURL(srcPath).href
 
     // 4. Page captions
     const pages = pageCaptions(words)
@@ -116,7 +124,7 @@ async function main() {
     const serveUrl = await bundle({ entryPoint: entry })
     console.log(`[render-worker] step=bundle ok`)
     const durationInFrames = Math.max(1, Math.ceil(durationInSeconds * FPS))
-    const inputProps = { videoSrc: signedUrl, pages, accentHex: oklchToHex(accentForVideo(videoUploadId)) }
+    const inputProps = { videoSrc: videoSrcUrl, pages, accentHex: oklchToHex(accentForVideo(videoUploadId)) }
     console.log(`[render-worker] step=selectComposition frames=${durationInFrames}`)
     const comp = await selectComposition({ serveUrl, id: "CaptionedCut", inputProps })
     console.log(`[render-worker] step=selectComposition ok`)
