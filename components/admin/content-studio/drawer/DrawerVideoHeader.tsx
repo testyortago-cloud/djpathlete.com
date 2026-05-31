@@ -2,6 +2,7 @@ import { Clock, HardDrive, Calendar } from "lucide-react"
 import type { VideoUpload } from "@/types/database"
 import { GenerateQuoteCardsButton } from "./GenerateQuoteCardsButton"
 import { CaptionedCutPanel } from "./CaptionedCutPanel"
+import { MarkReadyButton } from "./MarkReadyButton"
 
 interface DrawerVideoHeaderProps {
   video: VideoUpload
@@ -69,6 +70,7 @@ export function DrawerVideoHeader({
         </dl>
         <div className="mt-4 flex flex-wrap gap-2">
           <GenerateQuoteCardsButton videoUploadId={video.id} hasTranscript={hasTranscript} />
+          <MarkReadyButton videoUploadId={video.id} needsEdit={video.needs_edit} />
         </div>
         {captionedCutEnabled && (
           <div className="mt-3">
