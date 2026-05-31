@@ -75,11 +75,13 @@ export function CaptionLayer({ pages, accentHex }: CaptionLayerProps) {
             ? spring({ frame: frame - startFrame, fps, config: { damping: 9, stiffness: 180, mass: 0.5 } })
             : 0
           const scale = 1 + 0.14 * bounce
+          const color = active || wd.emphasis ? accentHex : "white"
           return (
             <span
               key={i}
               style={{
-                color: active ? accentHex : "white",
+                color,
+                fontSize: wd.emphasis ? "1.18em" : "1em",
                 transform: `scale(${scale})`,
                 transformOrigin: "center",
                 display: "inline-block",
