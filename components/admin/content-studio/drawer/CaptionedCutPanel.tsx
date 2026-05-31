@@ -1,10 +1,12 @@
 "use client"
 
 import { useState, useEffect, useCallback, type ReactNode } from "react"
-import { Clapperboard, Loader2, ExternalLink, RefreshCw } from "lucide-react"
+import { Clapperboard, Loader2, ExternalLink, RefreshCw, CheckCircle2 } from "lucide-react"
 import { toast } from "sonner"
 import Link from "next/link"
 import { useAiJob } from "@/hooks/use-ai-job"
+import { renderPhase, formatElapsed } from "@/lib/content-studio/render-progress"
+import { cn } from "@/lib/utils"
 
 interface CutPost {
   id: string
@@ -40,6 +42,7 @@ export function CaptionedCutPanel({ videoUploadId, hasTranscript }: CaptionedCut
   const [submitting, setSubmitting] = useState(false)
   const [hook, setHook] = useState("")
   const [music, setMusic] = useState("")
+  const [elapsedMs, setElapsedMs] = useState(0)
   const { status, error } = useAiJob(jobId)
 
   const fetchState = useCallback(async () => {
@@ -78,6 +81,18 @@ export function CaptionedCutPanel({ videoUploadId, hasTranscript }: CaptionedCut
 
   const rendering = submitting || (jobId !== null && (status === "pending" || status === "processing"))
 
+  // Tick an elapsed-time counter while a render is in flight. The job only
+  // reports queued/rendering (no true %), so the live timer is the "it's alive"
+  // cue during the multi-minute wait. Resets each time a render starts; for a
+  // render resumed after reopening the drawer it counts from reopen, not queue.
+  useEffect(() => {
+    if (!rendering) return
+    const start = Date.now()
+    setElapsedMs(0)
+    const id = setInterval(() => setElapsedMs(Date.now() - start), 1000)
+    return () => clearInterval(id)
+  }, [rendering])
+
   async function generate() {
     setSubmitting(true)
     try {
@@ -111,14 +126,35 @@ export function CaptionedCutPanel({ videoUploadId, hasTranscript }: CaptionedCut
 
   // ── rendering ─────────────────────────────────────────────────────────────
   if (rendering) {
+    const phase = renderPhase(status)
     return (
       <PanelShell>
-        <div className="flex items-start gap-2 text-xs text-primary">
-          <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin" />
-          <span>
-            Rendering captioned cut… this runs in the background and takes a few minutes. Safe to close this drawer or
-            navigate away — it’ll be waiting here when it’s done.
-          </span>
+        <div className="space-y-2.5 text-xs">
+          <div className="flex items-center gap-2 text-primary">
+            <Loader2 className="size-4 shrink-0 animate-spin" />
+            <span className="font-medium">
+              {phase === "queued" ? "Queued…" : "Rendering captioned cut…"}
+            </span>
+            <span className="ml-auto font-mono tabular-nums text-muted-foreground" aria-label="Elapsed time">
+              {formatElapsed(elapsedMs)}
+            </span>
+          </div>
+
+          <ol className="flex items-center gap-1.5 text-[11px]">
+            <ProgressStep label="Queued" state={phase === "queued" ? "active" : "done"} />
+            <span aria-hidden className="text-muted-foreground/50">
+              →
+            </span>
+            <ProgressStep label="Rendering" state={phase === "rendering" ? "active" : "todo"} />
+            <span aria-hidden className="text-muted-foreground/50">
+              →
+            </span>
+            <ProgressStep label="Ready" state="todo" />
+          </ol>
+
+          <p className="text-muted-foreground">
+            Usually ~2–4 min. Safe to close this drawer or navigate away — it’ll be waiting here when it’s done.
+          </p>
         </div>
       </PanelShell>
     )
@@ -197,6 +233,28 @@ export function CaptionedCutPanel({ videoUploadId, hasTranscript }: CaptionedCut
       </button>
       {!hasTranscript && <p className="mt-1.5 text-xs text-muted-foreground">Needs a speech transcript first.</p>}
     </PanelShell>
+  )
+}
+
+function ProgressStep({ label, state }: { label: string; state: "done" | "active" | "todo" }) {
+  return (
+    <li
+      className={cn(
+        "inline-flex items-center gap-1",
+        state === "active" && "font-medium text-primary",
+        state === "done" && "text-muted-foreground",
+        state === "todo" && "text-muted-foreground/40",
+      )}
+    >
+      {state === "done" ? (
+        <CheckCircle2 className="size-3" />
+      ) : state === "active" ? (
+        <span className="size-2 rounded-full bg-primary" />
+      ) : (
+        <span className="size-2 rounded-full border border-current" />
+      )}
+      {label}
+    </li>
   )
 }
 
