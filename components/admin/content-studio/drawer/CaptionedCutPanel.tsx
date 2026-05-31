@@ -228,10 +228,10 @@ function HookInput({ value, onChange }: { value: string; onChange: (v: string) =
 }
 
 const MUSIC_OPTIONS: { value: string; label: string }[] = [
-  { value: "", label: "Default (Motivational Cinematic)" },
+  { value: "", label: "No music" },
+  { value: "motivational-cinematic.mp3", label: "Motivational Cinematic" },
   { value: "inspirational.mp3", label: "Inspirational" },
   { value: "cinematic.mp3", label: "Cinematic" },
-  { value: "none", label: "No music" },
 ]
 
 function MusicPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
