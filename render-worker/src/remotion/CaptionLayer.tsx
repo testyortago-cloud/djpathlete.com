@@ -61,7 +61,12 @@ export function CaptionLayer({ pages, accentHex }: CaptionLayerProps) {
       >
         {page.words.map((wd, i) => {
           const active = ms >= wd.startMs && ms < wd.endMs
-          // Spring "bounce": overshoot then settle, starting when the word goes active.
+          // Spring "bounce": overshoot then settle, starting when the word goes
+          // active. The spring rests at 1, so an active word holds at scale ~1.14
+          // for its whole window and snaps back to 1.0 on deactivation — that snap
+          // is one frame and is masked by the simultaneous accent->white color
+          // change, so it reads as the standard active-word treatment. (Note for
+          // emphasis: keyword `fontSize` stacks on top of this scale.)
           const startFrame = (wd.startMs / 1000) * fps
           const bounce = active
             ? spring({ frame: frame - startFrame, fps, config: { damping: 9, stiffness: 180, mass: 0.5 } })
