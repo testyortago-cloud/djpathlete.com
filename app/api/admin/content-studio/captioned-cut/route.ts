@@ -13,6 +13,54 @@ import { getVideoUploadById } from "@/lib/db/video-uploads"
 import { getSpeechTranscriptForVideo } from "@/lib/db/video-transcripts"
 import { createAiJob, findInFlightCaptionRender } from "@/lib/ai-jobs"
 import { resolveVideoUploadForSubmission } from "@/lib/content-studio/promote-submission"
+import { getLatestCaptionedCutForVideo } from "@/lib/db/media-assets"
+import { getAdminStorage } from "@/lib/firebase-admin"
+
+const CUT_URL_EXPIRY_MS = 6 * 60 * 60 * 1000 // 6h — long enough to watch the cut
+
+// GET — current captioned-cut state for a video, so the drawer panel rehydrates
+// on open (survives refresh / navigating away mid-render): any in-flight render
+// job id + the latest rendered cut (signed for inline playback) + its draft posts.
+export async function GET(request: NextRequest | Request) {
+  const session = await auth()
+  if (!session?.user?.id || session.user.role !== "admin") {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  const enabled = await getSetting<boolean>("feature_captioned_cut_enabled", false)
+  if (!enabled) {
+    return NextResponse.json({ error: "Captioned Cut is disabled." }, { status: 403 })
+  }
+
+  const videoUploadId = new URL(request.url).searchParams.get("videoUploadId")
+  if (!videoUploadId) {
+    return NextResponse.json({ error: "videoUploadId required" }, { status: 400 })
+  }
+
+  const [inFlightJobId, cut] = await Promise.all([
+    findInFlightCaptionRender(videoUploadId),
+    getLatestCaptionedCutForVideo(videoUploadId),
+  ])
+
+  let signedCut = null
+  if (cut) {
+    const [signedUrl] = await getAdminStorage()
+      .bucket()
+      .file(cut.asset.storage_path)
+      .getSignedUrl({ version: "v4", action: "read", expires: Date.now() + CUT_URL_EXPIRY_MS })
+    signedCut = {
+      assetId: cut.asset.id,
+      signedUrl,
+      width: cut.asset.width,
+      height: cut.asset.height,
+      durationMs: cut.asset.duration_ms,
+      createdAt: cut.asset.created_at,
+      posts: cut.posts.map((p) => ({ id: p.id, platform: p.platform, approvalStatus: p.approval_status })),
+    }
+  }
+
+  return NextResponse.json({ inFlightJobId, cut: signedCut })
+}
 
 export async function POST(request: NextRequest | Request) {
   const session = await auth()

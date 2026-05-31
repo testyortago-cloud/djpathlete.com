@@ -17,11 +17,7 @@ export async function createMediaAsset(input: CreateMediaAssetInput): Promise<Me
 
 export async function getMediaAssetById(id: string): Promise<MediaAsset | null> {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("media_assets")
-    .select("*")
-    .eq("id", id)
-    .maybeSingle()
+  const { data, error } = await supabase.from("media_assets").select("*").eq("id", id).maybeSingle()
   if (error) throw error
   return (data as MediaAsset | null) ?? null
 }
@@ -46,18 +42,13 @@ export interface MediaAssetAiMetadata {
   ai_analysis: Record<string, unknown> | null
 }
 
-export async function updateMediaAssetAiMetadata(
-  id: string,
-  metadata: Partial<MediaAssetAiMetadata>,
-): Promise<void> {
+export async function updateMediaAssetAiMetadata(id: string, metadata: Partial<MediaAssetAiMetadata>): Promise<void> {
   const supabase = getClient()
   const { error } = await supabase.from("media_assets").update(metadata).eq("id", id)
   if (error) throw error
 }
 
-export type UpdateMediaAssetInput = Partial<
-  Pick<MediaAsset, "width" | "height" | "bytes" | "mime_type">
->
+export type UpdateMediaAssetInput = Partial<Pick<MediaAsset, "width" | "height" | "bytes" | "mime_type">>
 
 /**
  * Partial update of a media_asset. Scoped to dimension/metadata fields that
@@ -126,11 +117,10 @@ export async function listAssetsWithPostCounts(
   const { data, error } = await query
   if (error) throw error
 
-  return ((data ?? []) as Array<MediaAsset & { social_post_media: Array<{ media_asset_id: string }> }>)
-    .map((row) => {
-      const { social_post_media, ...asset } = row
-      return { ...asset, post_count: (social_post_media ?? []).length }
-    })
+  return ((data ?? []) as Array<MediaAsset & { social_post_media: Array<{ media_asset_id: string }> }>).map((row) => {
+    const { social_post_media, ...asset } = row
+    return { ...asset, post_count: (social_post_media ?? []).length }
+  })
 }
 
 export interface AssetLinkedPost {
@@ -148,9 +138,7 @@ export interface AssetWithLinkedPosts {
   posts: AssetLinkedPost[]
 }
 
-export async function getAssetWithLinkedPosts(
-  id: string,
-): Promise<AssetWithLinkedPosts | null> {
+export async function getAssetWithLinkedPosts(id: string): Promise<AssetWithLinkedPosts | null> {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("media_assets")
@@ -166,6 +154,40 @@ export async function getAssetWithLinkedPosts(
     social_post_media?: Array<{ social_posts: AssetLinkedPost | null }>
   }
   const { social_post_media, ...asset } = raw
+  const posts: AssetLinkedPost[] = (social_post_media ?? [])
+    .map((row) => row.social_posts)
+    .filter((p): p is AssetLinkedPost => p !== null)
+  return { asset: asset as MediaAsset, posts }
+}
+
+/**
+ * The most recent captioned-cut render for a source video, with its linked
+ * draft posts — powers the Content Studio drawer panel. Returns null if the
+ * video has no cut yet. Origin is filtered in JS (a video has few derived
+ * assets) to avoid a JSON-path SQL filter, mirroring `listCaptionedCutVideoIds`.
+ */
+export async function getLatestCaptionedCutForVideo(videoUploadId: string): Promise<AssetWithLinkedPosts | null> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("media_assets")
+    .select(
+      "*, social_post_media(social_posts(id, platform, content, approval_status, post_type, scheduled_at, published_at))",
+    )
+    .eq("kind", "video")
+    .eq("derived_from_video_id", videoUploadId)
+    .order("created_at", { ascending: false })
+  if (error) throw error
+
+  const rows = (data ?? []) as Array<
+    MediaAsset & {
+      ai_analysis: Record<string, unknown> | null
+      social_post_media?: Array<{ social_posts: AssetLinkedPost | null }>
+    }
+  >
+  const match = rows.find((r) => r.ai_analysis?.origin === "captioned_cut")
+  if (!match) return null
+
+  const { social_post_media, ...asset } = match
   const posts: AssetLinkedPost[] = (social_post_media ?? [])
     .map((row) => row.social_posts)
     .filter((p): p is AssetLinkedPost => p !== null)
