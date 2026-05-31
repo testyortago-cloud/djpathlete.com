@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { Film, AlertCircle, Clock, Loader2, CheckCircle } from "lucide-react"
+import { Film, AlertCircle, Clock, Loader2, CheckCircle, Clapperboard } from "lucide-react"
 import type { VideoUpload } from "@/types/database"
 import type { PostCounts } from "@/lib/content-studio/pipeline-data"
 import { accentStyle } from "@/lib/content-studio/video-accent"
@@ -46,9 +46,11 @@ interface VideoCardProps {
   counts: PostCounts | null
   /** Signed read URL for the thumbnail, if one has been generated. */
   thumbnailUrl?: string | null
+  /** True when this video has a rendered captioned-cut asset. */
+  hasCut?: boolean
 }
 
-export function VideoCard({ video, counts, thumbnailUrl }: VideoCardProps) {
+export function VideoCard({ video, counts, thumbnailUrl, hasCut = false }: VideoCardProps) {
   const title = video.title ?? video.original_filename
   const isFailed = video.status === "failed"
 
@@ -95,9 +97,19 @@ export function VideoCard({ video, counts, thumbnailUrl }: VideoCardProps) {
       </div>
       <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground pt-0.5">
         <StatusBadge status={video.status} />
-        <span className="inline-flex items-center gap-1 font-mono tabular-nums">
-          <Clock className="size-3" /> {formatDuration(video.duration_seconds)}
-        </span>
+        <div className="inline-flex items-center gap-2">
+          {hasCut && (
+            <span
+              className="inline-flex items-center gap-1 text-[10px] font-medium text-accent-foreground px-1.5 py-0.5 rounded bg-accent/15"
+              title="This video has a rendered captioned cut"
+            >
+              <Clapperboard className="size-3" /> Cut
+            </span>
+          )}
+          <span className="inline-flex items-center gap-1 font-mono tabular-nums">
+            <Clock className="size-3" /> {formatDuration(video.duration_seconds)}
+          </span>
+        </div>
       </div>
       {counts && counts.total > 0 && (
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 border-t border-border/70 pt-2 text-[10.5px] font-mono tabular-nums text-muted-foreground">

@@ -1,5 +1,6 @@
 import { listVideoUploads } from "@/lib/db/video-uploads"
 import { listSocialPostsForPipeline, type PipelinePostRow } from "@/lib/db/social-posts"
+import { listCaptionedCutVideoIds } from "@/lib/db/media-assets"
 import { getAdminStorage } from "@/lib/firebase-admin"
 import type { VideoUpload } from "@/types/database"
 
@@ -11,6 +12,8 @@ export interface PipelineData {
   postCountsByVideo: Record<string, PostCounts>
   /** Signed read URL per video-id, only for videos that have a thumbnail_path. */
   thumbnailUrlsByVideo: Record<string, string>
+  /** Video ids that have a rendered captioned-cut asset (for the "Cut" badge). */
+  cutVideoIds: Set<string>
 }
 
 export interface PostCounts {
@@ -55,9 +58,10 @@ async function signThumbnailUrls(
 }
 
 export async function getPipelineData(): Promise<PipelineData> {
-  const [videos, posts] = await Promise.all([
+  const [videos, posts, cutVideoIds] = await Promise.all([
     listVideoUploads({ limit: 200 }),
     listSocialPostsForPipeline(),
+    listCaptionedCutVideoIds(),
   ])
 
   const postCountsByVideo: Record<string, PostCounts> = {}
@@ -88,5 +92,5 @@ export async function getPipelineData(): Promise<PipelineData> {
 
   const thumbnailUrlsByVideo = await signThumbnailUrls(videos)
 
-  return { videos, posts, postCountsByVideo, thumbnailUrlsByVideo }
+  return { videos, posts, postCountsByVideo, thumbnailUrlsByVideo, cutVideoIds }
 }

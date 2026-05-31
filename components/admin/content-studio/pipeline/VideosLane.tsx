@@ -59,6 +59,7 @@ export function VideosLane({ data }: VideosLaneProps) {
               video={v}
               counts={data.postCountsByVideo[v.id] ?? null}
               thumbnailUrl={data.thumbnailUrlsByVideo[v.id] ?? null}
+              hasCut={data.cutVideoIds.has(v.id)}
             />
           ))}
           {grouped[col].length === 0 && (

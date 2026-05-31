@@ -77,6 +77,32 @@ export async function deleteMediaAsset(id: string): Promise<void> {
   if (error) throw error
 }
 
+/**
+ * The set of video_upload ids that have at least one captioned-cut render
+ * (a media_asset with ai_analysis.origin = 'captioned_cut'). Used by the
+ * Content Studio pipeline to badge videos that have a rendered cut, distinct
+ * from videos that only have text-caption posts.
+ */
+export async function listCaptionedCutVideoIds(): Promise<Set<string>> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("media_assets")
+    .select("derived_from_video_id, ai_analysis")
+    .eq("kind", "video")
+    .not("derived_from_video_id", "is", null)
+  if (error) throw error
+  const ids = new Set<string>()
+  for (const row of (data ?? []) as Array<{
+    derived_from_video_id: string | null
+    ai_analysis: Record<string, unknown> | null
+  }>) {
+    if (row.derived_from_video_id && row.ai_analysis?.origin === "captioned_cut") {
+      ids.add(row.derived_from_video_id)
+    }
+  }
+  return ids
+}
+
 export interface AssetWithPostCount extends MediaAsset {
   post_count: number
 }
