@@ -4,7 +4,7 @@
 // upload -> media_asset + draft posts -> flip ai_job. Any throw -> ai_job failed.
 
 import { createClient } from "@supabase/supabase-js"
-import { initializeApp, cert, getApps } from "firebase-admin/app"
+import { initializeApp, applicationDefault, getApps } from "firebase-admin/app"
 import { getStorage } from "firebase-admin/storage"
 import { getFirestore, FieldValue } from "firebase-admin/firestore"
 import { bundle } from "@remotion/bundler"
@@ -42,9 +42,12 @@ function fbApp() {
   if (getApps().length) return getApps()[0]
   const bucket = process.env.FIREBASE_STORAGE_BUCKET
   if (!bucket) throw new Error("FIREBASE_STORAGE_BUCKET not set")
-  const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY ?? "{}")
+  // On Cloud Run the job's bound service account supplies credentials via ADC —
+  // no long-lived key file. Signed URLs are produced through the IAM signBlob
+  // API (the SA holds Token Creator on itself + iamcredentials.googleapis.com is
+  // enabled), so getSignedUrl works without a local private key.
   return initializeApp({
-    credential: cert(sa),
+    credential: applicationDefault(),
     storageBucket: bucket,
   })
 }
