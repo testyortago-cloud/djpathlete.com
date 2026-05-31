@@ -12,10 +12,10 @@ import { selectComposition, renderMedia, getVideoMetadata } from "@remotion/rend
 import path from "node:path"
 import os from "node:os"
 import fs from "node:fs"
-import { pathToFileURL } from "node:url"
 import { pageCaptions } from "./lib/caption-paging.js"
 import { fetchTranscriptWords } from "./lib/assemblyai-words.js"
 import { oklchToHex } from "./lib/color.js"
+import { serveFileLocally } from "./lib/serve-file.js"
 
 const MAX_CAPTION_CLIP_SECONDS = 180
 const FPS = 30
@@ -89,9 +89,8 @@ async function main() {
 
     // 3. Download source to local /tmp. Remotion's getVideoMetadata (and the
     // ffmpeg compositor) only accept LOCAL absolute paths — "URLs are not
-    // supported" (Remotion docs). Passing a signed HTTPS URL failed with
-    // "Compositor error: No such file or directory". Downloading once also frees
-    // the render from depending on remote streaming.
+    // supported" (Remotion docs). Passing a signed HTTPS URL to getVideoMetadata
+    // failed with "Compositor error: No such file or directory".
     const workDir = path.join(os.tmpdir(), "captioned-cut", aiJobId)
     fs.mkdirSync(workDir, { recursive: true })
     const srcExt = path.extname(video.storage_path) || ".mp4"
@@ -111,8 +110,18 @@ async function main() {
     }
     console.log(`[render-worker] step=metadata ok duration=${durationInSeconds}s`)
 
-    // OffthreadVideo needs a URL form — point it at the local file via file://.
-    const videoSrcUrl = pathToFileURL(srcPath).href
+    // <OffthreadVideo> runs inside headless Chrome; the compositor fetches the
+    // source over HTTP and REJECTS file:// ("Can only download URLs starting with
+    // http:// or https://"). getVideoMetadata needs the exact opposite (a local
+    // path). Earlier we handed OffthreadVideo a remote signed URL, but a range
+    // fetch to GCS dropped mid-render ("Request closed" -> "No frame found at
+    // position"). So serve the already-downloaded /tmp file over loopback instead:
+    // a local path for the probe above, a 127.0.0.1 URL for the compositor — no
+    // external connection that can drop during the multi-minute render.
+    console.log(`[render-worker] step=serve file=${srcPath}`)
+    const videoServer = await serveFileLocally(srcPath)
+    const videoSrcUrl = videoServer.url
+    console.log(`[render-worker] step=serve ok url=${videoSrcUrl}`)
 
     // 4. Page captions
     const pages = pageCaptions(words)
@@ -140,8 +149,17 @@ async function main() {
       inputProps,
       // Remotion's documented setting for headless Chrome in Docker/Linux.
       chromiumOptions: { enableMultiProcessOnLinux: true },
+      // "No frame found at position" = the OffthreadVideo frame cache evicting
+      // decoded frames before the compositor reads them (Remotion's documented
+      // cause: too little memory). OffthreadVideo downloads the WHOLE source for
+      // extraction, so on a memory-tight box the default cache thrashes and the
+      // render dies mid-way (non-deterministically: frame 352 / 2480 across runs).
+      // Pin a generous 2 GiB cache (job has 8 GiB) so frames survive until used.
+      offthreadVideoCacheSizeInBytes: 2 * 1024 * 1024 * 1024,
     })
     console.log(`[render-worker] step=render ok out=${outPath}`)
+    await videoServer.close() // render done — stop serving the source
+    fs.rmSync(srcPath, { force: true }) // free RAM-backed /tmp before upload + DB writes
 
     // 6. Upload
     const userId = (video.uploaded_by as string | null) ?? "system"
