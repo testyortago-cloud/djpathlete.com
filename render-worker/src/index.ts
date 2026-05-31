@@ -154,8 +154,12 @@ async function main() {
       // cause: too little memory). OffthreadVideo downloads the WHOLE source for
       // extraction, so on a memory-tight box the default cache thrashes and the
       // render dies mid-way (non-deterministically: frame 352 / 2480 across runs).
-      // Pin a generous 2 GiB cache (job has 8 GiB) so frames survive until used.
-      offthreadVideoCacheSizeInBytes: 2 * 1024 * 1024 * 1024,
+      // A 4 GiB shared cache (job has 16 GiB) keeps ample headroom even at
+      // concurrency 4 so decoded frames survive until the compositor reads them.
+      offthreadVideoCacheSizeInBytes: 4 * 1024 * 1024 * 1024,
+      // Render N frames in parallel (one Chrome tab each). The job runs 4 vCPU,
+      // so 4-way concurrency ~doubles throughput vs the old 2 vCPU / 2-way.
+      concurrency: 4,
     })
     console.log(`[render-worker] step=render ok out=${outPath}`)
     await videoServer.close() // render done — stop serving the source
@@ -217,9 +221,11 @@ async function main() {
       postIds.push(post.id)
     }
 
-    // 9. Complete
+    // 9. Complete. Clear any error left by a prior failed attempt on this doc
+    // (the retry / re-run path) so a completed job never carries a stale error.
     await jobRef.update({
       status: "completed",
+      error: null,
       result: { assetId: asset.id, postIds },
       updatedAt: FieldValue.serverTimestamp(),
     })
