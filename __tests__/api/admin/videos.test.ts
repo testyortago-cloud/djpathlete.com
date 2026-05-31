@@ -82,4 +82,26 @@ describe("POST /api/admin/videos", () => {
       }),
     )
   })
+
+  it("passes needs_edit=false through to createVideoUpload", async () => {
+    const fileMock = { getSignedUrl: vi.fn().mockResolvedValue(["https://signed"]) }
+    getAdminStorageMock.mockReturnValue({ bucket: () => ({ file: () => fileMock }) })
+    createVideoUploadMock.mockResolvedValue({ id: "u1" })
+
+    await POST(makeRequest({ filename: "a.mp4", needsEdit: false }))
+    expect(createVideoUploadMock).toHaveBeenCalledWith(
+      expect.objectContaining({ needs_edit: false }),
+    )
+  })
+
+  it("defaults needs_edit to true when needsEdit is omitted", async () => {
+    const fileMock = { getSignedUrl: vi.fn().mockResolvedValue(["https://signed"]) }
+    getAdminStorageMock.mockReturnValue({ bucket: () => ({ file: () => fileMock }) })
+    createVideoUploadMock.mockResolvedValue({ id: "u1" })
+
+    await POST(makeRequest({ filename: "a.mp4" }))
+    expect(createVideoUploadMock).toHaveBeenCalledWith(
+      expect.objectContaining({ needs_edit: true }),
+    )
+  })
 })

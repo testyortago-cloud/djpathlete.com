@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = (await request.json().catch(() => null)) as
-    | { filename?: string; contentType?: string; title?: string }
+    | { filename?: string; contentType?: string; title?: string; needsEdit?: boolean }
     | null
 
   const filename = body?.filename?.trim()
@@ -64,6 +64,7 @@ export async function POST(request: NextRequest) {
     title: body?.title ?? null,
     uploaded_by: session.user.id,
     status: "uploaded",
+    needs_edit: body?.needsEdit ?? true,
   })
 
   return NextResponse.json(

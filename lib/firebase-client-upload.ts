@@ -8,6 +8,7 @@ export interface UploadRequestBody {
   filename: string
   contentType: string
   title?: string
+  needsEdit?: boolean
 }
 
 export interface UploadApiResponse {
@@ -82,12 +83,17 @@ export function uploadToSignedUrl(
  */
 export async function uploadVideoFile(
   file: File,
-  options: { title?: string; onProgress?: (event: UploadProgressEvent) => void } = {},
+  options: {
+    title?: string
+    needsEdit?: boolean
+    onProgress?: (event: UploadProgressEvent) => void
+  } = {},
 ): Promise<{ videoUploadId: string; storagePath: string }> {
   const { videoUploadId, uploadUrl, storagePath } = await requestSignedUpload({
     filename: file.name,
     contentType: file.type || "video/mp4",
     title: options.title,
+    needsEdit: options.needsEdit,
   })
   if (!videoUploadId) throw new Error("Video upload response missing videoUploadId")
   await uploadToSignedUrl(uploadUrl, file, options.onProgress)
