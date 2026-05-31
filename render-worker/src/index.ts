@@ -82,38 +82,58 @@ async function main() {
     if (tErr || !tx?.assemblyai_job_id) throw new Error("no speech transcript with an AssemblyAI id")
 
     // 2. Word timestamps
+    console.log(`[render-worker] step=words transcript=${tx.assemblyai_job_id}`)
     const words = await fetchTranscriptWords(tx.assemblyai_job_id)
+    console.log(`[render-worker] step=words ok count=${words.length}`)
 
     // 3. Sign source URL (7-day default is plenty for a <5min render)
+    console.log(`[render-worker] step=sign path=${video.storage_path}`)
     const [signedUrl] = await bucket.file(video.storage_path).getSignedUrl({
       version: "v4", action: "read", expires: Date.now() + 7 * 24 * 60 * 60 * 1000,
     })
+    // Log host + length only — the URL carries a credential, never log it whole.
+    console.log(
+      `[render-worker] step=sign ok host=${(() => { try { return new URL(signedUrl).host } catch { return "INVALID_URL" } })()} len=${signedUrl?.length ?? 0}`,
+    )
 
     // Probe real duration and enforce the cap (don't trust duration_seconds)
+    console.log(`[render-worker] step=metadata`)
     const meta = await getVideoMetadata(signedUrl)
     const durationInSeconds = meta.durationInSeconds
     if (durationInSeconds === null) throw new Error("could not determine video duration")
     if (durationInSeconds > MAX_CAPTION_CLIP_SECONDS) {
       throw new Error(`clip is ${Math.round(durationInSeconds)}s — exceeds the ${MAX_CAPTION_CLIP_SECONDS}s cap`)
     }
+    console.log(`[render-worker] step=metadata ok duration=${durationInSeconds}s`)
 
     // 4. Page captions
     const pages = pageCaptions(words)
+    console.log(`[render-worker] step=paging ok pages=${pages.length}`)
 
     // 5. Render
     const entry = path.join(process.cwd(), "dist", "remotion", "index.js")
+    console.log(`[render-worker] step=bundle entry=${entry}`)
     const serveUrl = await bundle({ entryPoint: entry })
+    console.log(`[render-worker] step=bundle ok`)
     const durationInFrames = Math.max(1, Math.ceil(durationInSeconds * FPS))
     const inputProps = { videoSrc: signedUrl, pages, accentHex: oklchToHex(accentForVideo(videoUploadId)) }
+    console.log(`[render-worker] step=selectComposition frames=${durationInFrames}`)
     const comp = await selectComposition({ serveUrl, id: "CaptionedCut", inputProps })
-    const outPath = path.join(os.tmpdir(), `captioned-${aiJobId}.mp4`)
+    console.log(`[render-worker] step=selectComposition ok`)
+    const outDir = path.join(os.tmpdir(), "captioned-cut")
+    fs.mkdirSync(outDir, { recursive: true }) // guarantee the output dir exists
+    const outPath = path.join(outDir, `${aiJobId}.mp4`)
+    console.log(`[render-worker] step=render out=${outPath}`)
     await renderMedia({
       composition: { ...comp, durationInFrames, fps: FPS, width: 1080, height: 1920 },
       serveUrl,
       codec: "h264",
       outputLocation: outPath,
       inputProps,
+      // Remotion's documented setting for headless Chrome in Docker/Linux.
+      chromiumOptions: { enableMultiProcessOnLinux: true },
     })
+    console.log(`[render-worker] step=render ok out=${outPath}`)
 
     // 6. Upload
     const userId = (video.uploaded_by as string | null) ?? "system"
