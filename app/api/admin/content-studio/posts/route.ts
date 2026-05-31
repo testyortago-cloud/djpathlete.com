@@ -6,6 +6,7 @@ import { getMediaAssetById } from "@/lib/db/media-assets"
 import { getVideoUploadById } from "@/lib/db/video-uploads"
 import { isPlatformPostTypeSupported } from "@/lib/content-studio/post-type-support"
 import { isContentStudioMultimediaEnabled } from "@/lib/content-studio/feature-flag"
+import { assertSourceVideoPostable } from "@/lib/content-studio/edit-gate"
 import type { SocialPlatform, PostType } from "@/types/database"
 
 const VALID_PLATFORMS: readonly SocialPlatform[] = [
@@ -171,11 +172,25 @@ export async function POST(request: NextRequest) {
   // Stories follow a lightweight pipeline (umbrella spec §5.6) — they start in
   // draft and skip the explicit approve step. Other post types jump straight
   // to approved on creation so admin can schedule/publish right away.
-  const initialStatus: "draft" | "scheduled" | "approved" = scheduledAt
+  let initialStatus: "draft" | "scheduled" | "approved" = scheduledAt
     ? "scheduled"
     : postType === "story"
       ? "draft"
       : "approved"
+  // May be cleared by the edit gate below when a gated post is downgraded to draft.
+  let effectiveScheduledAt = scheduledAt
+
+  // Edit gate: a post backed by a video that still needs editing can't enter
+  // approved/scheduled. Downgrade it to a draft rather than publishing raw footage.
+  let gated = false
+  if (sourceVideoId && (initialStatus === "approved" || initialStatus === "scheduled")) {
+    const guard = await assertSourceVideoPostable(sourceVideoId)
+    if (!guard.ok) {
+      gated = true
+      initialStatus = "draft"
+      effectiveScheduledAt = null
+    }
+  }
 
   const post = await createSocialPost({
     platform,
@@ -183,7 +198,7 @@ export async function POST(request: NextRequest) {
     media_url: null,
     post_type: postType,
     approval_status: initialStatus,
-    scheduled_at: scheduledAt,
+    scheduled_at: effectiveScheduledAt,
     source_video_id: sourceVideoId,
     created_by: session.user.id,
   })
@@ -206,5 +221,5 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  return NextResponse.json({ id: post.id, approval_status: post.approval_status })
+  return NextResponse.json({ id: post.id, approval_status: post.approval_status, gated })
 }

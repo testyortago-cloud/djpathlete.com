@@ -21,6 +21,9 @@ vi.mock("@/lib/db/media-assets", () => ({
 vi.mock("@/lib/content-studio/feature-flag", () => ({
   isContentStudioMultimediaEnabled: () => true,
 }))
+vi.mock("@/lib/content-studio/edit-gate", () => ({
+  assertSourceVideoPostable: async () => ({ ok: true }),
+}))
 
 describe("POST /api/admin/content-studio/posts — carousel path", () => {
   beforeEach(() => {
