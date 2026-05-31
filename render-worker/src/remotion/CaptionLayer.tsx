@@ -34,6 +34,17 @@ export function CaptionLayer({ pages, accentHex }: CaptionLayerProps) {
   }
   if (!page) return null
 
+  // Subtle page-level "pop" when a new phrase appears (distinct from the per-word
+  // entrance below): the whole block scales 0.97 -> 1.0 over ~0.16s.
+  const pageStartFrame = (page.startMs / 1000) * fps
+  const pageEnter = spring({
+    frame: frame - pageStartFrame,
+    fps,
+    config: { damping: 200 },
+    durationInFrames: Math.round(0.16 * fps),
+  })
+  const pageScale = 0.97 + 0.03 * pageEnter
+
   return (
     <AbsoluteFill
       style={{
@@ -60,6 +71,8 @@ export function CaptionLayer({ pages, accentHex }: CaptionLayerProps) {
           // Crisp outline: stroke painted BEHIND the fill (paint-order) for legibility over any background.
           WebkitTextStroke: "3px rgba(0,0,0,0.92)",
           paintOrder: "stroke fill",
+          transform: `scale(${pageScale})`,
+          transformOrigin: "center",
         }}
       >
         {page.words.map((wd, i) => {
