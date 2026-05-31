@@ -1574,6 +1574,12 @@ export interface VideoUpload {
   uploaded_by: string | null
   status: VideoUploadStatus
   /**
+   * Edit gate. When true the video still needs editing — posts backed by it
+   * cannot be approved/scheduled/published until a captioned cut is rendered
+   * (auto-clears) or it is manually marked ready. NOT NULL, defaults true.
+   */
+  needs_edit: boolean
+  /**
    * Firebase Storage path of a small JPG thumbnail; null until generated.
    * Optional on insert — the DB column is nullable with no default, so
    * callers (and test fixtures) may omit it entirely.

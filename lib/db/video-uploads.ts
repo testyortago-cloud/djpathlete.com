@@ -7,7 +7,9 @@ function getClient() {
 }
 
 export async function createVideoUpload(
-  upload: Omit<VideoUpload, "id" | "created_at" | "updated_at">,
+  upload: Omit<VideoUpload, "id" | "created_at" | "updated_at" | "needs_edit"> & {
+    needs_edit?: boolean
+  },
 ): Promise<VideoUpload> {
   const supabase = getClient()
   const { data, error } = await supabase.from("video_uploads").insert(upload).select().single()

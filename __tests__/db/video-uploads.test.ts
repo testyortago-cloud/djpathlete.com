@@ -63,6 +63,33 @@ describe("video-uploads + video-transcripts DAL", () => {
     expect(t?.assemblyai_job_id).toBe("aa_test_123")
   })
 
+  it("defaults needs_edit to true and accepts an explicit false", async () => {
+    const gated = await createVideoUpload({
+      storage_path: `video-uploads/${TEST_TAG}d.mp4`,
+      original_filename: `${TEST_TAG}d.mp4`,
+      duration_seconds: null,
+      size_bytes: null,
+      mime_type: null,
+      title: null,
+      uploaded_by: null,
+      status: "uploaded",
+    })
+    expect(gated.needs_edit).toBe(true)
+
+    const ready = await createVideoUpload({
+      storage_path: `video-uploads/${TEST_TAG}e.mp4`,
+      original_filename: `${TEST_TAG}e.mp4`,
+      duration_seconds: null,
+      size_bytes: null,
+      mime_type: null,
+      title: null,
+      uploaded_by: null,
+      status: "uploaded",
+      needs_edit: false,
+    })
+    expect(ready.needs_edit).toBe(false)
+  })
+
   it("lists video uploads ordered by most recent", async () => {
     await createVideoUpload({
       storage_path: `video-uploads/${TEST_TAG}c1.mp4`,
