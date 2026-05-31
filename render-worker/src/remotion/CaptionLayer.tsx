@@ -57,6 +57,9 @@ export function CaptionLayer({ pages, accentHex }: CaptionLayerProps) {
           lineHeight: 1.18,
           textAlign: "center",
           textShadow: "0 4px 24px rgba(0,0,0,0.85), 0 2px 6px rgba(0,0,0,0.9)",
+          // Crisp outline: stroke painted BEHIND the fill (paint-order) for legibility over any background.
+          WebkitTextStroke: "3px rgba(0,0,0,0.92)",
+          paintOrder: "stroke fill",
         }}
       >
         {page.words.map((wd, i) => {
