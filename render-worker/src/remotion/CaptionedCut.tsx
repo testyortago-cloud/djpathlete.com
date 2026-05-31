@@ -1,24 +1,46 @@
 // render-worker/src/remotion/CaptionedCut.tsx
-import { AbsoluteFill, OffthreadVideo, useCurrentFrame, useVideoConfig } from "remotion"
+import {
+  AbsoluteFill,
+  OffthreadVideo,
+  interpolate,
+  useCurrentFrame,
+  useVideoConfig,
+} from "remotion"
+import { loadFont } from "@remotion/google-fonts/LexendExa"
 import type { CaptionPage } from "../lib/caption-paging.js"
 
+// Load the brand heading font (Lexend Exa, weight 800) FOR THE RENDER. Relying on
+// the OS-installed font let headless Chromium fall back to a system font; this
+// @font-face loader (with delayRender readiness) guarantees the real glyphs are
+// present before the first frame.
+const { fontFamily } = loadFont("normal", { weights: ["800"], subsets: ["latin"] })
+
 // A `type` (not `interface`) so it satisfies Remotion's
-// `Props extends Record<string, unknown>` constraint on <Composition> — an
-// interface lacks an implicit index signature and would force an `as any` cast.
+// `Props extends Record<string, unknown>` constraint on <Composition>.
 export type CaptionedCutProps = {
   videoSrc: string
   pages: CaptionPage[]
   accentHex: string
 }
 
-const FONT = "Lexend Exa, system-ui, sans-serif"
-
 export function CaptionedCut({ videoSrc, pages, accentHex }: CaptionedCutProps) {
   const frame = useCurrentFrame()
   const { fps } = useVideoConfig()
   const ms = (frame / fps) * 1000
 
-  const page = pages.find((p) => ms >= p.startMs && ms < p.endMs) ?? null
+  // Show each page until the NEXT page begins (not just until its own last word
+  // ends). Phrases are separated by silences; ending a page at its last word
+  // blanked the captions during those gaps. Holding the phrase until the next one
+  // starts keeps captions on screen continuously.
+  let page: CaptionPage | null = null
+  for (let i = 0; i < pages.length; i += 1) {
+    const start = pages[i].startMs
+    const end = i + 1 < pages.length ? pages[i + 1].startMs : pages[i].endMs
+    if (ms >= start && ms < end) {
+      page = pages[i]
+      break
+    }
+  }
 
   return (
     <AbsoluteFill style={{ backgroundColor: "black" }}>
@@ -30,9 +52,10 @@ export function CaptionedCut({ videoSrc, pages, accentHex }: CaptionedCutProps) 
       {page && (
         <AbsoluteFill
           style={{
-            justifyContent: "center",
+            // Lower third, not dead center: pin to the bottom and lift off the floor.
+            justifyContent: "flex-end",
             alignItems: "center",
-            padding: "0 80px",
+            padding: "0 72px 420px",
           }}
         >
           <div
@@ -40,24 +63,34 @@ export function CaptionedCut({ videoSrc, pages, accentHex }: CaptionedCutProps) 
               display: "flex",
               flexWrap: "wrap",
               justifyContent: "center",
-              gap: "0 18px",
-              fontFamily: FONT,
+              // Generous row + column spacing so the active (scaled-up) word never
+              // collides with its neighbours.
+              gap: "16px 36px",
+              fontFamily,
               fontWeight: 800,
-              fontSize: 92,
-              lineHeight: 1.1,
+              fontSize: 88,
+              lineHeight: 1.18,
               textAlign: "center",
               textShadow: "0 4px 24px rgba(0,0,0,0.85), 0 2px 6px rgba(0,0,0,0.9)",
             }}
           >
             {page.words.map((wd, i) => {
               const active = ms >= wd.startMs && ms < wd.endMs
+              // Frame-based "pop" (CSS transitions don't render in Remotion): the
+              // word scales up over the first ~90ms it's active, then holds.
+              const pop = active
+                ? interpolate(ms - wd.startMs, [0, 90], [0, 1], {
+                    extrapolateLeft: "clamp",
+                    extrapolateRight: "clamp",
+                  })
+                : 0
               return (
                 <span
                   key={i}
                   style={{
                     color: active ? accentHex : "white",
-                    transform: active ? "scale(1.15)" : "scale(1)",
-                    transition: "transform 0.08s",
+                    transform: `scale(${1 + 0.08 * pop})`,
+                    transformOrigin: "center",
                     display: "inline-block",
                   }}
                 >

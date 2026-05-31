@@ -14,23 +14,16 @@ import os from "node:os"
 import fs from "node:fs"
 import { pageCaptions } from "./lib/caption-paging.js"
 import { fetchTranscriptWords } from "./lib/assemblyai-words.js"
-import { oklchToHex } from "./lib/color.js"
 import { serveFileLocally } from "./lib/serve-file.js"
 
 const MAX_CAPTION_CLIP_SECONDS = 180
 const FPS = 30
 
-// Deterministic brand accent palette (mirror of lib/content-studio/video-accent.ts)
-const PALETTE = [
-  "oklch(0.68 0.12 180)", "oklch(0.72 0.11 45)", "oklch(0.62 0.14 260)",
-  "oklch(0.70 0.13 140)", "oklch(0.66 0.16 25)", "oklch(0.74 0.10 85)",
-  "oklch(0.64 0.12 320)", "oklch(0.70 0.11 215)",
-]
-function accentForVideo(id: string): string {
-  let h = 0
-  for (let i = 0; i < id.length; i += 1) h = (h * 31 + id.charCodeAt(i)) >>> 0
-  return PALETTE[h % PALETTE.length]
-}
+// Brand accent (Gray Orange) for the active caption word. This is the EXACT sRGB
+// of the site's `--accent: oklch(0.7 0.08 60)` token (app/globals.css). The brand
+// docs' "#C49B7A" is a slightly grayer approximation; #c4936b matches what renders
+// on the site. sRGB hex (not the oklch token) because H.264 video is sRGB anyway.
+const BRAND_ACCENT_HEX = "#c4936b"
 
 const VIDEO_PLATFORMS = ["instagram", "facebook", "linkedin", "tiktok", "youtube", "youtube_shorts"] as const
 const PLUGIN_TO_PLATFORM: Record<string, string | null> = {
@@ -133,7 +126,7 @@ async function main() {
     const serveUrl = await bundle({ entryPoint: entry })
     console.log(`[render-worker] step=bundle ok`)
     const durationInFrames = Math.max(1, Math.ceil(durationInSeconds * FPS))
-    const inputProps = { videoSrc: videoSrcUrl, pages, accentHex: oklchToHex(accentForVideo(videoUploadId)) }
+    const inputProps = { videoSrc: videoSrcUrl, pages, accentHex: BRAND_ACCENT_HEX }
     console.log(`[render-worker] step=selectComposition frames=${durationInFrames}`)
     const comp = await selectComposition({ serveUrl, id: "CaptionedCut", inputProps })
     console.log(`[render-worker] step=selectComposition ok`)
