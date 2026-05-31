@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { getSocialPostById, updateSocialPost } from "@/lib/db/social-posts"
+import { assertSourceVideoPostable } from "@/lib/content-studio/edit-gate"
 import type { SocialApprovalStatus } from "@/types/database"
 
 const ALLOWED_COLUMNS = ["needs_review", "approved", "scheduled", "published", "failed"] as const
@@ -53,6 +54,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const { id } = await params
   const post = await getSocialPostById(id)
   if (!post) return NextResponse.json({ error: "Post not found" }, { status: 404 })
+
+  // Edit gate: approving a post means it can be scheduled/published next, so it
+  // must clear the gate first. Moving back to needs_review/failed stays open;
+  // scheduled/published targets are already rejected above.
+  if (target === "approved") {
+    const guard = await assertSourceVideoPostable(post.source_video_id ?? null)
+    if (!guard.ok) {
+      return NextResponse.json({ error: guard.reason }, { status: 409 })
+    }
+  }
 
   const nextStatus = columnToStatus(target)
 

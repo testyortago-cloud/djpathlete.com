@@ -12,6 +12,11 @@ vi.mock("@/lib/db/social-posts", () => ({
   updateSocialPost: (...args: unknown[]) => mockUpdatePost(...args),
 }))
 
+const mockGuard = vi.fn()
+vi.mock("@/lib/content-studio/edit-gate", () => ({
+  assertSourceVideoPostable: (...args: unknown[]) => mockGuard(...args),
+}))
+
 import { POST } from "@/app/api/admin/content-studio/posts/[id]/status/route"
 
 function req(body: unknown): Request {
@@ -42,6 +47,8 @@ describe("POST /api/admin/content-studio/posts/[id]/status", () => {
   beforeEach(() => {
     mockGetPost.mockReset()
     mockUpdatePost.mockReset()
+    mockGuard.mockReset()
+    mockGuard.mockResolvedValue({ ok: true })
   })
 
   it("rejects an unknown target column", async () => {
@@ -104,5 +111,28 @@ describe("POST /api/admin/content-studio/posts/[id]/status", () => {
     mockGetPost.mockResolvedValueOnce(null)
     const res = await POST(req({ targetColumn: "approved" }) as never, { params: Promise.resolve({ id: "p1" }) })
     expect(res.status).toBe(404)
+  })
+
+  it("blocks approve (409) when the source video still needs editing", async () => {
+    mockGetPost.mockResolvedValueOnce(basePost) // source_video_id: "v1"
+    mockGuard.mockResolvedValueOnce({ ok: false, reason: "still needs editing" })
+    const res = await POST(req({ targetColumn: "approved" }) as never, {
+      params: Promise.resolve({ id: "p1" }),
+    })
+    expect(res.status).toBe(409)
+    expect(mockUpdatePost).not.toHaveBeenCalled()
+  })
+
+  it("still allows moving a gated post back to needs_review", async () => {
+    mockGetPost.mockResolvedValueOnce({ ...basePost, approval_status: "approved" })
+    mockUpdatePost.mockResolvedValueOnce({ ...basePost, approval_status: "draft" })
+    // Guard would say not-ok, but the route never consults it for needs_review —
+    // this proves the gate is approve-only.
+    mockGuard.mockResolvedValueOnce({ ok: false, reason: "still needs editing" })
+    const res = await POST(req({ targetColumn: "needs_review" }) as never, {
+      params: Promise.resolve({ id: "p1" }),
+    })
+    expect(res.status).toBe(200)
+    expect(mockGuard).not.toHaveBeenCalled()
   })
 })
