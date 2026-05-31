@@ -1,6 +1,6 @@
-import Link from "next/link"
-import { ArrowLeft, FileText } from "lucide-react"
+import { FileText } from "lucide-react"
 import type { DrawerData } from "@/lib/content-studio/drawer-data"
+import { DetailBreadcrumb } from "./DetailBreadcrumb"
 import { PostsTab } from "@/components/admin/content-studio/drawer/PostsTab"
 import { MetaTab } from "@/components/admin/content-studio/drawer/MetaTab"
 
@@ -14,12 +14,7 @@ export function PostDetailPage({ data, backHref, backLabel }: PostDetailPageProp
   return (
     <div className="max-w-3xl px-4 py-4 sm:px-6">
       <div className="mb-6 border-b border-border pb-4">
-        <Link
-          href={backHref}
-          className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-primary"
-        >
-          <ArrowLeft className="size-3.5" /> {backLabel}
-        </Link>
+        <DetailBreadcrumb backHref={backHref} backLabel={backLabel} current="Manual post" />
         <h1 className="mt-2 inline-flex items-center gap-2 font-heading text-xl text-primary">
           <FileText className="size-5 text-muted-foreground" /> Manual post
         </h1>

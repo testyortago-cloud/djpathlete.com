@@ -1,6 +1,5 @@
-import Link from "next/link"
-import { ArrowLeft } from "lucide-react"
 import type { DrawerData } from "@/lib/content-studio/drawer-data"
+import { DetailBreadcrumb } from "./DetailBreadcrumb"
 import { VideoDetailSidebar } from "./VideoDetailSidebar"
 import { TranscriptTab } from "@/components/admin/content-studio/drawer/TranscriptTab"
 import { PostsTab } from "@/components/admin/content-studio/drawer/PostsTab"
@@ -25,12 +24,7 @@ export function VideoDetailPage({ data, backHref, backLabel, highlightPostId }: 
   return (
     <div className="px-4 py-4 sm:px-6">
       <div className="mb-6 border-b border-border pb-4">
-        <Link
-          href={backHref}
-          className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-primary"
-        >
-          <ArrowLeft className="size-3.5" /> {backLabel}
-        </Link>
+        <DetailBreadcrumb backHref={backHref} backLabel={backLabel} current={title} />
         <div className="mt-2 flex items-start justify-between gap-3">
           <h1 className="min-w-0 truncate font-heading text-xl text-primary" title={title}>
             {title}
