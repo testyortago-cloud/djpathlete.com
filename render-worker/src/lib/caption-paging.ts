@@ -14,6 +14,7 @@ export interface CaptionPageWord {
   text: string
   startMs: number
   endMs: number
+  emphasis: boolean
 }
 
 export interface CaptionPage {
@@ -24,6 +25,27 @@ export interface CaptionPage {
 }
 
 const DEFAULT_MAX_WORDS_PER_PAGE = 3
+
+// Words worth visually emphasizing in captions (Hormozi-style keyword pop). Kept
+// deliberately small; the visual aggressiveness is tuned in the composition.
+const POWER_WORDS = new Set([
+  "never", "always", "every", "best", "worst", "most", "key", "secret", "proven",
+  "elite", "stop", "start", "must", "critical", "essential", "power", "strong",
+  "fast", "faster", "explosive", "mistake", "truth", "results", "win", "change",
+])
+
+/** Should this caption word be visually emphasized? Numbers, ALL-CAPS, long
+ *  content words (>=7 letters), or a small power-word list. Pure + deterministic. */
+export function isEmphasisWord(text: string): boolean {
+  const t = text.trim()
+  if (!t) return false
+  if (/\d/.test(t)) return true
+  const letters = t.replace(/[^A-Za-z]/g, "")
+  if (letters.length >= 2 && letters === letters.toUpperCase()) return true
+  const word = letters.toLowerCase()
+  if (word.length >= 7) return true
+  return POWER_WORDS.has(word)
+}
 
 export function pageCaptions(
   words: TranscriptWord[],
@@ -41,6 +63,7 @@ export function pageCaptions(
       text: w.text.trim(),
       startMs: w.start,
       endMs: Math.max(w.start, w.end), // clamp inverted ranges
+      emphasis: isEmphasisWord(w.text),
     }))
 
   const pages: CaptionPage[] = []

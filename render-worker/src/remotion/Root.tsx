@@ -13,8 +13,8 @@ const SAMPLE: CaptionedCutProps = {
     {
       text: "let's get",
       words: [
-        { text: "let's", startMs: 0, endMs: 400 },
-        { text: "get", startMs: 400, endMs: 800 },
+        { text: "let's", startMs: 0, endMs: 400, emphasis: false },
+        { text: "get", startMs: 400, endMs: 800, emphasis: false },
       ],
       startMs: 0,
       endMs: 800,
