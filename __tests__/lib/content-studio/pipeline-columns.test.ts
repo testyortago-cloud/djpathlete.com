@@ -19,6 +19,7 @@ const video = (id: string, o: Partial<VideoUpload> = {}): VideoUpload => ({
   title: id,
   uploaded_by: null,
   status: "uploaded",
+  needs_edit: false,
   created_at: "",
   updated_at: "",
   ...o,

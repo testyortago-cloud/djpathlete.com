@@ -18,6 +18,7 @@ const video = (id: string, overrides: Partial<VideoUpload> = {}): VideoUpload =>
   title: id,
   uploaded_by: null,
   status: "transcribed",
+  needs_edit: false,
   created_at: "2026-04-15T12:00:00Z",
   updated_at: "2026-04-15T12:00:00Z",
   ...overrides,

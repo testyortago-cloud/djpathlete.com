@@ -21,6 +21,7 @@ const data: PipelineData = {
       title: "A",
       uploaded_by: null,
       status: "uploaded",
+      needs_edit: false,
       thumbnail_path: null,
       created_at: "",
       updated_at: "",

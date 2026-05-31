@@ -26,6 +26,7 @@ const videoData: DrawerData = {
     title: "Test",
     uploaded_by: "u",
     status: "transcribed",
+    needs_edit: false,
     created_at: "2026-04-15T00:00:00Z",
     updated_at: "2026-04-15T00:00:00Z",
   },

@@ -22,6 +22,7 @@ const data: DrawerData = {
     title: "Abc",
     uploaded_by: null,
     status: "transcribed",
+    needs_edit: false,
     created_at: "2026-04-15T00:00:00Z",
     updated_at: "2026-04-15T00:00:00Z",
   },

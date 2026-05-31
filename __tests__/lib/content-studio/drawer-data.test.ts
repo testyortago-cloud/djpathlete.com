@@ -43,6 +43,7 @@ const fixtureVideo = {
   title: "Rotational Reboot Teaser",
   uploaded_by: "user-1",
   status: "transcribed" as const,
+  needs_edit: false,
   created_at: "2026-04-15T12:00:00Z",
   updated_at: "2026-04-15T12:01:00Z",
 }
