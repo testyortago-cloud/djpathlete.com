@@ -63,6 +63,15 @@ export function CaptionLayer({ pages, accentHex }: CaptionLayerProps) {
         }}
       >
         {page.words.map((wd, i) => {
+          const startFrame = (wd.startMs / 1000) * fps
+          // Per-word entrance: each word fades + rises into place over ~180ms,
+          // starting at its own startMs — the page builds up word-by-word.
+          const enter = spring({
+            frame: frame - startFrame,
+            fps,
+            config: { damping: 200 }, // no overshoot for the entrance itself
+            durationInFrames: Math.round(0.18 * fps),
+          })
           const active = ms >= wd.startMs && ms < wd.endMs
           // Spring "bounce": overshoot then settle, starting when the word goes
           // active. The spring rests at 1, so an active word holds at scale ~1.14
@@ -70,22 +79,18 @@ export function CaptionLayer({ pages, accentHex }: CaptionLayerProps) {
           // is one frame and is masked by the simultaneous accent->white color
           // change, so it reads as the standard active-word treatment. (Note for
           // emphasis: keyword `fontSize` stacks on top of this scale.)
-          const startFrame = (wd.startMs / 1000) * fps
           const bounce = active
             ? spring({ frame: frame - startFrame, fps, config: { damping: 9, stiffness: 180, mass: 0.5 } })
             : 0
           const scale = 1 + 0.14 * bounce
-          // When active, the word sits in an accent pill with dark #0E3F50 text.
-          // The black stroke (set on the container) is dropped on the active span by
-          // overriding WebkitTextStrokeColor to "transparent" — only the color
-          // longhand is overridden, so non-active words keep the inherited stroke.
           return (
             <span
               key={i}
               style={{
                 color: active ? "#0E3F50" : wd.emphasis ? accentHex : "white",
                 fontSize: wd.emphasis ? "1.18em" : "1em",
-                transform: `scale(${scale})`,
+                opacity: enter,
+                transform: `translateY(${(1 - enter) * 24}px) scale(${scale})`,
                 transformOrigin: "center",
                 display: "inline-block",
                 backgroundColor: active ? accentHex : "transparent",
