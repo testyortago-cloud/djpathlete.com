@@ -75,16 +75,23 @@ export function CaptionLayer({ pages, accentHex }: CaptionLayerProps) {
             ? spring({ frame: frame - startFrame, fps, config: { damping: 9, stiffness: 180, mass: 0.5 } })
             : 0
           const scale = 1 + 0.14 * bounce
-          const color = active || wd.emphasis ? accentHex : "white"
+          // When active, the word sits in an accent pill with dark #0E3F50 text.
+          // The black stroke (set on the container) is dropped on the active span by
+          // overriding WebkitTextStrokeColor to "transparent" — only the color
+          // longhand is overridden, so non-active words keep the inherited stroke.
           return (
             <span
               key={i}
               style={{
-                color,
+                color: active ? "#0E3F50" : wd.emphasis ? accentHex : "white",
                 fontSize: wd.emphasis ? "1.18em" : "1em",
                 transform: `scale(${scale})`,
                 transformOrigin: "center",
                 display: "inline-block",
+                backgroundColor: active ? accentHex : "transparent",
+                borderRadius: active ? "12px" : 0,
+                padding: active ? "0 14px" : 0,
+                WebkitTextStrokeColor: active ? "transparent" : undefined,
               }}
             >
               {wd.text}
