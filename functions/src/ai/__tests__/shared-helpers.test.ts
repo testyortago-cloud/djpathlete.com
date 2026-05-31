@@ -5,9 +5,12 @@ import {
   buildExerciseRows,
   buildPoolNote,
   buildSlotLookups,
+  filterCandidateEquipment,
+  resolveCrossDayExcludeIds,
+  findUncoveredPatterns,
 } from "../shared-helpers.js"
 import type { PriorWeekContext } from "../dedup-verify.js"
-import type { ProgramWeek } from "../types.js"
+import type { ProgramWeek, CompressedExercise } from "../types.js"
 
 function ctxWith(rolesToIds: Record<string, string[]>): PriorWeekContext {
   const used = new Map<string, Set<string>>()
@@ -83,6 +86,84 @@ describe("buildPoolNote mode-aware language", () => {
   it("returns empty string when no pool ids are set", () => {
     expect(buildPoolNote(undefined, 0, "preferred")).toBe("")
     expect(buildPoolNote([], 0, "strict")).toBe("")
+  })
+})
+
+describe("filterCandidateEquipment honors pool over equipment (strict mode)", () => {
+  const exercises = [
+    { id: "bw", is_bodyweight: true, equipment_required: [] },
+    { id: "db", is_bodyweight: false, equipment_required: ["dumbbell"] },
+  ] as unknown as CompressedExercise[]
+
+  it("keeps equipment-requiring exercises when pool is active, even with no equipment", () => {
+    const out = filterCandidateEquipment(exercises, [], true)
+    expect(out.map((e) => e.id).sort()).toEqual(["bw", "db"])
+  })
+
+  it("drops equipment-requiring exercises when not pool-active and equipment is unavailable", () => {
+    const out = filterCandidateEquipment(exercises, [], false)
+    expect(out.map((e) => e.id)).toEqual(["bw"])
+  })
+})
+
+describe("resolveCrossDayExcludeIds relaxes exclusion in strict pool mode", () => {
+  const ctx = ctxWith({ "primary_compound|squat|quads": ["ex-1", "ex-2"] })
+  const roles = new Set(["primary_compound", "secondary_compound", "accessory", "isolation"])
+
+  it("returns an empty set when the pool is active (strict) so a small pool can repeat across days", () => {
+    expect(resolveCrossDayExcludeIds(ctx, roles, true).size).toBe(0)
+  })
+
+  it("excludes prior-used ids when not pool-active (normal cross-day variety)", () => {
+    const out = resolveCrossDayExcludeIds(ctx, roles, false)
+    expect(out.has("ex-1")).toBe(true)
+    expect(out.has("ex-2")).toBe(true)
+  })
+})
+
+describe("findUncoveredPatterns flags patterns the candidate pool cannot fill", () => {
+  function weekWithPatterns(patterns: string[]): ProgramWeek {
+    return {
+      week_number: 1,
+      phase: "x",
+      intensity_modifier: "moderate",
+      days: [
+        {
+          day_of_week: 1,
+          label: "L",
+          focus: "f",
+          slots: patterns.map((p, i) => ({
+            slot_id: `w1d1s${i + 1}`,
+            role: "primary_compound",
+            movement_pattern: p,
+            target_muscles: [],
+            sets: 3,
+            reps: "5",
+            rest_seconds: 60,
+            rpe_target: 7,
+            tempo: null,
+            group_tag: null,
+            technique: "straight_set",
+            intensity_pct: null,
+          })),
+        },
+      ],
+    } as ProgramWeek
+  }
+
+  it("returns required patterns missing from the candidate set", () => {
+    const weeks = [weekWithPatterns(["squat", "rotation", "push"])]
+    const candidates = [
+      { movement_pattern: "rotation" },
+      { movement_pattern: "locomotion" },
+    ] as unknown as CompressedExercise[]
+    expect(findUncoveredPatterns(weeks, candidates).sort()).toEqual(["push", "squat"])
+  })
+
+  it("returns an empty array when every required pattern is covered", () => {
+    const weeks = [weekWithPatterns(["rotation"])]
+    const candidates = [{ movement_pattern: "rotation" }] as unknown as CompressedExercise[]
+    expect(findUncoveredPatterns(weeks, candidates)).toEqual([])
   })
 })
 

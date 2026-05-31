@@ -4,12 +4,7 @@ import { scoreAndFilterExercises, semanticFilterExercises, filterByInjuredJoints
 import { profileAnalysisSchema, programSkeletonSchema, exerciseAssignmentSchema } from "./schemas.js"
 import { EXERCISE_SELECTOR_PROMPT, WEEK_PROFILE_ANALYZER_PROMPT } from "./prompts.js"
 import { validateProgram } from "./validate.js"
-import {
-  formatExerciseLibrary,
-  filterByDifficultyLevel,
-  filterByProgressionPhase,
-  filterByAvailableEquipment,
-} from "./exercise-context.js"
+import { formatExerciseLibrary, filterByDifficultyLevel, filterByProgressionPhase } from "./exercise-context.js"
 import { getExercisesForAI } from "./program-chat-tools.js"
 import {
   buildPriorContextFromExistingExercises,
@@ -33,7 +28,9 @@ import {
   createCancellationChecker,
   buildSlotLookups,
   buildExerciseRows,
-  buildExcludeIdSet,
+  resolveCrossDayExcludeIds,
+  filterCandidateEquipment,
+  findUncoveredPatterns,
 } from "./shared-helpers.js"
 import type { ProfileAnalysis } from "./types.js"
 import { z } from "zod"
@@ -374,6 +371,9 @@ export async function generateWeekSync(
   const allExercises = applyPoolFilter(fullLibrary, poolIds, "week-orchestrator", poolMode)
   const preferredIds =
     poolIds && poolIds.length > 0 && poolMode === "preferred" ? new Set(poolIds) : undefined
+  // poolActive only when STRICT — preferred mode keeps the full library available.
+  // Declared early because the equipment + cross-day-dedup filters below branch on it.
+  const poolActive = !!poolIds && poolIds.length > 0 && poolMode === "strict"
 
   // Client data is optional — programs without assignments can still use AI generation
   // Skip profile fetch when coach has opted to ignore it
@@ -730,12 +730,18 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
 
   // Hard-exclude exercises requiring unavailable equipment — same list the
   // validator enforces, so the candidate pool and validateProgram agree.
+  // Skipped in strict pool mode: the coach curated the pool, so honor it over the
+  // (often empty) equipment profile of an unassigned template program.
   {
     const beforeCount = exercisesForSelection.length
-    exercisesForSelection = filterByAvailableEquipment(exercisesForSelection, availableEquipment)
+    exercisesForSelection = filterCandidateEquipment(exercisesForSelection, availableEquipment, poolActive)
     if (exercisesForSelection.length !== beforeCount) {
       console.log(
         `[week-orchestrator] Equipment filter: ${beforeCount} -> ${exercisesForSelection.length} (available: ${availableEquipment.length > 0 ? availableEquipment.join(", ") : "none/bodyweight-only"})`,
+      )
+    } else if (poolActive) {
+      console.log(
+        `[week-orchestrator] Equipment filter skipped (strict pool) — honoring ${exercisesForSelection.length} curated exercises`,
       )
     }
   }
@@ -766,11 +772,13 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
     `[week-orchestrator] Dedup context: ${priorContext.anchor_exercises.size} anchors, ${priorContext.used_accessory_exercises.size} accessory groups, ${priorContext.exercise_week_map.size} total unique exercises`,
   )
 
-  const excludeIds = buildExcludeIdSet(priorContext, VARIETY_ROLES)
-  console.log(`[week-orchestrator] excludeIds: ${excludeIds.size} ids hard-pruned from candidate library`)
+  // Cross-day variety exclusion — relaxed in strict pool mode so a small curated
+  // pool can recur across days instead of being starved to one or two candidates.
+  const excludeIds = resolveCrossDayExcludeIds(priorContext, VARIETY_ROLES, poolActive)
+  console.log(
+    `[week-orchestrator] excludeIds: ${excludeIds.size} ids hard-pruned from candidate library${poolActive ? " (cross-day exclusion relaxed for strict pool)" : ""}`,
+  )
 
-  // poolActive only when STRICT — preferred mode keeps the full library available
-  const poolActive = !!poolIds && poolIds.length > 0 && poolMode === "strict"
   let filtered: CompressedExercise[]
   try {
     filtered = await semanticFilterExercises(exercisesForSelection, skeleton, availableEquipment, analysis, {
@@ -791,6 +799,20 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
       mmrLambda: 0.7,
     })
   }
+  // Fail loudly in strict pool mode when the curated pool can't cover a required
+  // movement pattern — an actionable message beats a duplicate-laden day or a
+  // cryptic empty-selection error surfacing downstream as a Zod failure.
+  if (poolActive) {
+    const uncovered = findUncoveredPatterns(skeleton.weeks, filtered)
+    if (uncovered.length > 0) {
+      throw new Error(
+        `Exercise Pool too small for ${isSingleDay ? targetDayName : `Week ${newWeekNumber}`}: ` +
+          `no pool exercises match required movement pattern(s): ${uncovered.join(", ")}. ` +
+          `Add pool exercises covering these patterns, or switch the pool to Preferred mode.`,
+      )
+    }
+  }
+
   const exerciseLibrary = formatExerciseLibrary(filtered)
 
   const constraintsContext = JSON.stringify({

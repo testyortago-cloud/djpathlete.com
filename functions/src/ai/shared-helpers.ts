@@ -193,6 +193,76 @@ export function buildExcludeIdSet(
   return out
 }
 
+/**
+ * Resolve the cross-day/cross-week variety exclusion set, mode-aware.
+ *
+ * In STRICT pool mode the coach deliberately curated a (often small) set, and
+ * expects its exercises to recur across days. Hard-pruning everything already
+ * used elsewhere in the program can starve that pool down to one or two
+ * candidates per day — producing duplicate-laden days or empty-selection
+ * failures. So we skip cross-day exclusion entirely in strict mode; within-day
+ * dedup still guarantees each day's working slots stay distinct.
+ *
+ * In preferred/normal mode the full library is available, so cross-day variety
+ * exclusion stays on.
+ */
+export function resolveCrossDayExcludeIds(
+  priorContext: PriorWeekContext,
+  slotRolesInScope: Set<string>,
+  poolActive: boolean,
+): Set<string> {
+  if (poolActive) return new Set<string>()
+  return buildExcludeIdSet(priorContext, slotRolesInScope)
+}
+
+// ─── Candidate Equipment / Pattern-Coverage Helpers ───────────────────────
+
+import type { CompressedExercise } from "./types.js"
+import { filterByAvailableEquipment } from "./exercise-context.js"
+
+/**
+ * Equipment hard-filter for the candidate library, mode-aware.
+ *
+ * In STRICT pool mode the coach hand-picked these exercises, so honor the pool
+ * over the client's equipment profile — which is empty on unassigned template
+ * programs and would otherwise collapse the pool to bodyweight-only exercises.
+ * In preferred/normal mode, enforce equipment availability as before so the
+ * candidate set matches what the client can actually perform.
+ */
+export function filterCandidateEquipment(
+  exercises: CompressedExercise[],
+  availableEquipment: string[],
+  poolActive: boolean,
+): CompressedExercise[] {
+  if (poolActive) return exercises
+  return filterByAvailableEquipment(exercises, availableEquipment)
+}
+
+/**
+ * Movement patterns the skeleton requires that NO candidate exercise can fill.
+ *
+ * Used to fail loudly in strict pool mode: rather than letting the selector cram
+ * a non-matching exercise into the slot (with a cosmetic "perform as X" note) or
+ * return an empty selection that surfaces as a cryptic Zod error, we surface an
+ * actionable message naming the patterns the coach's pool is missing.
+ */
+export function findUncoveredPatterns(
+  weeks: ProgramWeek[],
+  candidates: Array<{ movement_pattern?: string | null }>,
+): string[] {
+  const available = new Set<string>()
+  for (const c of candidates) if (c.movement_pattern) available.add(c.movement_pattern)
+  const missing = new Set<string>()
+  for (const week of weeks) {
+    for (const day of week.days) {
+      for (const slot of day.slots) {
+        if (!available.has(slot.movement_pattern)) missing.add(slot.movement_pattern)
+      }
+    }
+  }
+  return [...missing]
+}
+
 // ─── Slot Lookup Building ──────────────────────────────────────────────────
 
 import type { ExerciseSlot, ProgramWeek } from "./types.js"
