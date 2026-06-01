@@ -1,7 +1,14 @@
+"use client"
+
+import { useEffect, useState } from "react"
 import Link from "next/link"
-import { Film, AlertCircle, Clock, Loader2, CheckCircle, Clapperboard, Scissors } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { toast } from "sonner"
+import { Film, AlertCircle, Clock, Loader2, CheckCircle, Clapperboard, Scissors, RefreshCw } from "lucide-react"
 import type { VideoUpload } from "@/types/database"
 import type { PostCounts } from "@/lib/content-studio/pipeline-data"
+import type { VideoColumnWithEdit } from "@/lib/content-studio/pipeline-columns"
+import { formatElapsed } from "@/lib/content-studio/render-progress"
 import { accentStyle } from "@/lib/content-studio/video-accent"
 import { cn } from "@/lib/utils"
 
@@ -44,19 +51,29 @@ function StatusBadge({ status }: { status: VideoUpload["status"] }) {
 interface VideoCardProps {
   video: VideoUpload
   counts: PostCounts | null
-  /** Signed read URL for the thumbnail, if one has been generated. */
   thumbnailUrl?: string | null
-  /** True when this video has a rendered captioned-cut asset. */
   hasCut?: boolean
+  /** Edit-lane column this card is grouped under. Omit for the legacy 5-column lane. */
+  column?: VideoColumnWithEdit
+  /** In-flight render job id (present when column === "rendering"). */
+  renderJobId?: string | null
+  /** True when this video's latest render failed and it has no cut. */
+  renderFailed?: boolean
 }
 
-export function VideoCard({ video, counts, thumbnailUrl, hasCut = false }: VideoCardProps) {
+export function VideoCard({
+  video,
+  counts,
+  thumbnailUrl,
+  hasCut = false,
+  column,
+  renderFailed = false,
+}: VideoCardProps) {
   const title = video.title ?? video.original_filename
   const isFailed = video.status === "failed"
 
   return (
-    <Link
-      href={`/admin/content/${video.id}`}
+    <div
       style={accentStyle(video.id)}
       data-video-id={video.id}
       className={cn(
@@ -66,88 +83,203 @@ export function VideoCard({ video, counts, thumbnailUrl, hasCut = false }: Video
         isFailed && "border-error/40",
       )}
     >
-      {/* color-chip strip — same hue appears on every post from this video */}
-      <span
-        aria-hidden
-        className="absolute left-0 top-0 bottom-0 w-[3px] bg-[color:var(--video-accent)]"
+      {/* Stretched link: whole card opens detail, but sits below interactive buttons. */}
+      <Link
+        href={`/admin/content/${video.id}`}
+        aria-label={title}
+        className="absolute inset-0 z-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
       />
-      <div className="aspect-video rounded-md overflow-hidden ring-1 ring-border/60 bg-muted/40 flex items-center justify-center">
-        {thumbnailUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={thumbnailUrl}
-            alt=""
-            className="w-full h-full object-cover"
-            loading="lazy"
-          />
-        ) : (
-          <Film className="size-6 text-muted-foreground/60" strokeWidth={1.5} />
+      {/* color-chip strip — same hue appears on every post from this video */}
+      <span aria-hidden className="absolute left-0 top-0 bottom-0 w-[3px] bg-[color:var(--video-accent)] z-10" />
+
+      <div className="relative z-10 pointer-events-none space-y-2.5">
+        <div className="aspect-video rounded-md overflow-hidden ring-1 ring-border/60 bg-muted/40 flex items-center justify-center">
+          {thumbnailUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={thumbnailUrl} alt="" className="w-full h-full object-cover" loading="lazy" />
+          ) : (
+            <Film className="size-6 text-muted-foreground/60" strokeWidth={1.5} />
+          )}
+        </div>
+        <div className="space-y-0.5">
+          <p className="font-heading text-[13px] font-medium text-primary leading-snug line-clamp-2" title={title}>
+            {title}
+          </p>
+          <p className="font-mono text-[10.5px] text-muted-foreground truncate" title={video.original_filename}>
+            {video.original_filename}
+          </p>
+        </div>
+        <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground pt-0.5">
+          <StatusBadge status={video.status} />
+          <div className="inline-flex items-center gap-2">
+            {video.needs_edit && !hasCut && column === undefined && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-medium text-warning px-1.5 py-0.5 rounded bg-warning/10" title="This video still needs editing before it can be posted">
+                <Scissors className="size-3" /> Needs edit
+              </span>
+            )}
+            {hasCut && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-medium text-accent-foreground px-1.5 py-0.5 rounded bg-accent/15" title="This video has a rendered captioned cut">
+                <Clapperboard className="size-3" /> Cut
+              </span>
+            )}
+            <span className="inline-flex items-center gap-1 font-mono tabular-nums">
+              <Clock className="size-3" /> {formatDuration(video.duration_seconds)}
+            </span>
+          </div>
+        </div>
+        {counts && counts.total > 0 && (
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 border-t border-border/70 pt-2 text-[10.5px] font-mono tabular-nums text-muted-foreground">
+            <span className="font-medium text-primary">{counts.total} posts</span>
+            {counts.approved > 0 && (
+              <span className="text-success">· ✓{counts.approved}<span className="sr-only"> approved</span></span>
+            )}
+            {counts.scheduled > 0 && (
+              <span className="text-accent-foreground">· ⏱{counts.scheduled}<span className="sr-only"> scheduled</span></span>
+            )}
+            {counts.published > 0 && (
+              <span className="text-primary">· ●{counts.published}<span className="sr-only"> published</span></span>
+            )}
+            {counts.failed > 0 && (
+              <span className="text-error">· ✗{counts.failed}<span className="sr-only"> failed</span></span>
+            )}
+          </div>
         )}
       </div>
-      <div className="space-y-0.5">
-        <p
-          className="font-heading text-[13px] font-medium text-primary leading-snug line-clamp-2"
-          title={title}
-        >
-          {title}
-        </p>
-        <p className="font-mono text-[10.5px] text-muted-foreground truncate" title={video.original_filename}>
-          {video.original_filename}
-        </p>
-      </div>
-      <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground pt-0.5">
-        <StatusBadge status={video.status} />
-        <div className="inline-flex items-center gap-2">
-          {video.needs_edit && !hasCut && (
-            <span
-              className="inline-flex items-center gap-1 text-[10px] font-medium text-warning px-1.5 py-0.5 rounded bg-warning/10"
-              title="This video still needs editing before it can be posted"
-            >
-              <Scissors className="size-3" /> Needs edit
-            </span>
-          )}
-          {hasCut && (
-            <span
-              className="inline-flex items-center gap-1 text-[10px] font-medium text-accent-foreground px-1.5 py-0.5 rounded bg-accent/15"
-              title="This video has a rendered captioned cut"
-            >
-              <Clapperboard className="size-3" /> Cut
-            </span>
-          )}
-          <span className="inline-flex items-center gap-1 font-mono tabular-nums">
-            <Clock className="size-3" /> {formatDuration(video.duration_seconds)}
-          </span>
-        </div>
-      </div>
-      {counts && counts.total > 0 && (
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 border-t border-border/70 pt-2 text-[10.5px] font-mono tabular-nums text-muted-foreground">
-          <span className="font-medium text-primary">{counts.total} posts</span>
-          {counts.approved > 0 && (
-            <span className="text-success">
-              · ✓{counts.approved}
-              <span className="sr-only"> approved</span>
-            </span>
-          )}
-          {counts.scheduled > 0 && (
-            <span className="text-accent-foreground">
-              · ⏱{counts.scheduled}
-              <span className="sr-only"> scheduled</span>
-            </span>
-          )}
-          {counts.published > 0 && (
-            <span className="text-primary">
-              · ●{counts.published}
-              <span className="sr-only"> published</span>
-            </span>
-          )}
-          {counts.failed > 0 && (
-            <span className="text-error">
-              · ✗{counts.failed}
-              <span className="sr-only"> failed</span>
-            </span>
-          )}
-        </div>
+
+      {column !== undefined && (
+        <EditControls videoId={video.id} column={column} renderFailed={renderFailed} hasCut={hasCut} needsEdit={video.needs_edit} />
       )}
-    </Link>
+    </div>
+  )
+}
+
+function EditControls({
+  videoId,
+  column,
+  renderFailed,
+  hasCut,
+  needsEdit,
+}: {
+  videoId: string
+  column: VideoColumnWithEdit
+  renderFailed: boolean
+  hasCut: boolean
+  needsEdit: boolean
+}) {
+  const router = useRouter()
+  const [busy, setBusy] = useState(false)
+
+  async function renderCut() {
+    setBusy(true)
+    try {
+      const res = await fetch("/api/admin/content-studio/captioned-cut", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ videoUploadId: videoId }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.error || `Request failed (${res.status})`)
+      toast.message("Rendering captioned cut… runs in the background (a few minutes).")
+      router.refresh()
+    } catch (err) {
+      toast.error((err as Error).message || "Failed to start render")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function markReady() {
+    setBusy(true)
+    try {
+      const res = await fetch(`/api/admin/videos/${videoId}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ needs_edit: false }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data?.error || `Request failed (${res.status})`)
+      }
+      toast.success("Marked ready")
+      router.refresh()
+    } catch (err) {
+      toast.error((err as Error).message || "Failed to mark ready")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (column === "rendering") {
+    return (
+      <div className="relative z-10 pt-1">
+        <RenderingTimer />
+      </div>
+    )
+  }
+
+  if (column === "edited") {
+    return (
+      <div className="relative z-10 pt-1 text-[10px] font-medium text-success inline-flex items-center gap-1">
+        <Clapperboard className="size-3" /> {hasCut ? "Cut ready" : "Marked ready"}
+      </div>
+    )
+  }
+
+  if (column === "needs_edit") {
+    return (
+      <div className="relative z-10 flex flex-wrap items-center gap-1.5 pt-1">
+        {renderFailed && (
+          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-error px-1.5 py-0.5 rounded bg-error/10">
+            <AlertCircle className="size-3" /> render failed
+          </span>
+        )}
+        <button
+          type="button"
+          disabled={busy}
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            void renderCut()
+          }}
+          className="inline-flex items-center gap-1 rounded bg-primary px-2 py-1 text-[10px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+        >
+          {renderFailed ? <RefreshCw className="size-3" /> : <Clapperboard className="size-3" />}
+          {renderFailed ? "Retry render" : "Render cut"}
+        </button>
+        {!renderFailed && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              void markReady()
+            }}
+            className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-[10px] font-medium text-muted-foreground hover:bg-surface disabled:opacity-60"
+          >
+            Mark ready
+          </button>
+        )}
+      </div>
+    )
+  }
+
+  return null
+}
+
+function RenderingTimer() {
+  const [elapsedMs, setElapsedMs] = useState(0)
+  useEffect(() => {
+    const start = Date.now()
+    const id = setInterval(() => setElapsedMs(Date.now() - start), 1000)
+    return () => clearInterval(id)
+  }, [])
+  return (
+    <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-primary">
+      <Loader2 className="size-3 animate-spin" /> Rendering…
+      <span className="font-mono tabular-nums text-muted-foreground" aria-label="Elapsed time">
+        {formatElapsed(elapsedMs)}
+      </span>
+    </span>
   )
 }
