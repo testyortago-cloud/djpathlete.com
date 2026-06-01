@@ -40,6 +40,7 @@ const data: DrawerData = {
   mediaByPost: {},
   highlightPostId: "p1",
   captionedCutEnabled: false,
+  hasCut: false,
 }
 
 describe("<PostDetailPage>", () => {

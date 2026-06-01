@@ -5,6 +5,7 @@ import { TranscriptTab } from "@/components/admin/content-studio/drawer/Transcri
 import { PostsTab } from "@/components/admin/content-studio/drawer/PostsTab"
 import { MetaTab } from "@/components/admin/content-studio/drawer/MetaTab"
 import { MarkReadyButton } from "@/components/admin/content-studio/drawer/MarkReadyButton"
+import { isVideoPostable } from "@/lib/content-studio/postable"
 
 interface VideoDetailPageProps {
   data: DrawerData
@@ -20,6 +21,8 @@ const SECTION_HEADING = "font-heading text-sm font-semibold text-primary border-
 export function VideoDetailPage({ data, backHref, backLabel, highlightPostId }: VideoDetailPageProps) {
   const video = data.video!
   const title = video.title ?? video.original_filename
+  // "Ready to send" = postable: a cut has been rendered, or it was marked ready.
+  const isReady = isVideoPostable(video, data.hasCut)
 
   return (
     <div className="px-4 py-4 sm:px-6">
@@ -55,7 +58,12 @@ export function VideoDetailPage({ data, backHref, backLabel, highlightPostId }: 
             <h2 id="posts-heading" className={SECTION_HEADING}>
               Posts ({data.posts.length})
             </h2>
-            <PostsTab posts={data.posts} mediaByPost={data.mediaByPost} initialExpandedPostId={highlightPostId} />
+            <PostsTab
+              posts={data.posts}
+              mediaByPost={data.mediaByPost}
+              initialExpandedPostId={highlightPostId}
+              isReady={isReady}
+            />
           </section>
 
           <section aria-labelledby="meta-heading">

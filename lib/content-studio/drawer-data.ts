@@ -3,6 +3,7 @@ import { getVideoUploadById } from "@/lib/db/video-uploads"
 import { getTranscriptForVideo } from "@/lib/db/video-transcripts"
 import { getSocialPostById, listSocialPostsBySourceVideo } from "@/lib/db/social-posts"
 import { listMediaForPosts } from "@/lib/db/social-post-media"
+import { getLatestCaptionedCutForVideo } from "@/lib/db/media-assets"
 import { getSetting } from "@/lib/db/system-settings"
 import type { VideoUpload, VideoTranscript, SocialPost } from "@/types/database"
 
@@ -29,6 +30,9 @@ export interface DrawerData {
   highlightPostId: string | null
   /** Whether the Captioned Cut feature flag is on (gates the drawer button). */
   captionedCutEnabled: boolean
+  /** A rendered captioned cut exists for this video — makes it postable even
+   *  while needs_edit is still true. Used to gate the batch publish/schedule bar. */
+  hasCut: boolean
 }
 
 /**
@@ -86,11 +90,12 @@ export async function getDrawerData(videoId: string): Promise<DrawerData | null>
   const video = await getVideoUploadById(videoId)
   if (!video) return null
 
-  const [transcript, posts, previewUrl, captionedCutEnabled] = await Promise.all([
+  const [transcript, posts, previewUrl, captionedCutEnabled, cut] = await Promise.all([
     getTranscriptForVideo(videoId),
     listSocialPostsBySourceVideo(videoId),
     signPreviewUrl(video.storage_path),
     getSetting<boolean>("feature_captioned_cut_enabled", false),
+    getLatestCaptionedCutForVideo(videoId).catch(() => null),
   ])
 
   const mediaByPost = await signMediaByPost(posts.map((p) => p.id))
@@ -104,6 +109,7 @@ export async function getDrawerData(videoId: string): Promise<DrawerData | null>
     mediaByPost,
     highlightPostId: null,
     captionedCutEnabled,
+    hasCut: Boolean(cut),
   }
 }
 
@@ -121,6 +127,7 @@ export async function getDrawerDataForPost(postId: string): Promise<DrawerData |
       mediaByPost: await signMediaByPost([post.id]),
       highlightPostId: post.id,
       captionedCutEnabled: false,
+      hasCut: false,
     }
   }
 
@@ -135,6 +142,7 @@ export async function getDrawerDataForPost(postId: string): Promise<DrawerData |
       mediaByPost: await signMediaByPost([post.id]),
       highlightPostId: post.id,
       captionedCutEnabled: false,
+      hasCut: false,
     }
   }
 

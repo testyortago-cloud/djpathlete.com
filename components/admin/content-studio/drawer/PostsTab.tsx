@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { Megaphone } from "lucide-react"
 import { PostsTabRow } from "./PostsTabRow"
+import { BatchPostActions } from "./BatchPostActions"
 import type { SocialPost } from "@/types/database"
 import type { PostSlide } from "@/lib/content-studio/drawer-data"
 
@@ -12,12 +13,16 @@ interface PostsTabProps {
   mediaByPost?: Record<string, PostSlide[]>
   /** Post id that should start expanded (from ?postId= query). */
   initialExpandedPostId: string | null
+  /** Source video is postable (cut rendered or marked ready) — gates the
+   *  Publish-all / Schedule-all batch bar. Defaults to false (batch disabled). */
+  isReady?: boolean
 }
 
 export function PostsTab({
   posts: initialPosts,
   mediaByPost = {},
   initialExpandedPostId,
+  isReady = false,
 }: PostsTabProps) {
   const [posts, setPosts] = useState(initialPosts)
   const [expandedId, setExpandedId] = useState<string | null>(initialExpandedPostId)
@@ -61,6 +66,7 @@ export function PostsTab({
 
   return (
     <div className="flex flex-col gap-2 px-6 py-4">
+      <BatchPostActions posts={posts} isReady={isReady} onMutate={mutate} />
       {posts.map((post) => (
         <PostsTabRow
           key={post.id}
