@@ -3,6 +3,7 @@ import { listSocialPostsForPipeline, type PipelinePostRow } from "@/lib/db/socia
 import { listCaptionedCutVideoIds } from "@/lib/db/media-assets"
 import { getAdminStorage } from "@/lib/firebase-admin"
 import type { VideoUpload } from "@/types/database"
+import type { RecentCaptionRender } from "@/lib/ai-jobs"
 
 const THUMBNAIL_URL_EXPIRY_MS = 30 * 60 * 1000 // 30 minutes
 
@@ -55,6 +56,46 @@ async function signThumbnailUrls(
     if (entry) out[entry[0]] = entry[1]
   }
   return out
+}
+
+const IN_FLIGHT_RENDER_STATUSES: ReadonlySet<RecentCaptionRender["status"]> = new Set([
+  "pending",
+  "processing",
+  "streaming",
+])
+
+export interface RenderSignals {
+  /** videoUploadId → in-flight render job id. Keys are also the "rendering" set. */
+  renderJobIdByVideo: Record<string, string>
+  /** Videos whose LATEST render failed and that have no rendered cut. */
+  failedRenderVideoIds: Set<string>
+}
+
+/**
+ * Reduce recent render rows (newest-first) to per-video edit signals. Only the
+ * latest render per video matters: if it's in flight → rendering; if it failed and
+ * no cut exists → show the failed badge; otherwise no render signal.
+ */
+export function deriveRenderSignals(
+  recentRenders: RecentCaptionRender[],
+  cutVideoIds: Set<string>,
+): RenderSignals {
+  const renderJobIdByVideo: Record<string, string> = {}
+  const failedRenderVideoIds = new Set<string>()
+  const seen = new Set<string>()
+
+  for (const render of recentRenders) {
+    if (seen.has(render.videoUploadId)) continue // newest-first: skip older rows
+    seen.add(render.videoUploadId)
+
+    if (IN_FLIGHT_RENDER_STATUSES.has(render.status)) {
+      renderJobIdByVideo[render.videoUploadId] = render.jobId
+    } else if (render.status === "failed" && !cutVideoIds.has(render.videoUploadId)) {
+      failedRenderVideoIds.add(render.videoUploadId)
+    }
+  }
+
+  return { renderJobIdByVideo, failedRenderVideoIds }
 }
 
 export async function getPipelineData(): Promise<PipelineData> {
