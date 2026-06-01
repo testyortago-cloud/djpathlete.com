@@ -207,23 +207,12 @@ function EditControls({
   const router = useRouter()
   const [busy, setBusy] = useState(false)
 
-  async function renderCut() {
-    setBusy(true)
-    try {
-      const res = await fetch("/api/admin/content-studio/captioned-cut", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ videoUploadId: videoId }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data?.error || `Request failed (${res.status})`)
-      toast.message("Rendering captioned cut… runs in the background (a few minutes).")
-      router.refresh()
-    } catch (err) {
-      toast.error((err as Error).message || "Failed to start render")
-    } finally {
-      setBusy(false)
-    }
+  // Open the detail page's captioned-cut panel instead of firing a render from
+  // the board. The panel runs the suggest-before-render hook flow, so a render
+  // started here still gets a reviewed hook rather than a hook-less cut (which
+  // would otherwise mean re-rendering to add one).
+  function openCutPanel() {
+    router.push(`/admin/content/${videoId}`)
   }
 
   async function markReady() {
@@ -297,8 +286,9 @@ function EditControls({
           onClick={(e) => {
             e.preventDefault()
             e.stopPropagation()
-            void renderCut()
+            openCutPanel()
           }}
+          title="Open the captioned-cut panel — suggest a hook, then render"
           className="inline-flex items-center gap-1 rounded bg-primary px-2 py-1 text-[10px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
         >
           {renderFailed ? <RefreshCw className="size-3" /> : <Clapperboard className="size-3" />}

@@ -8,6 +8,14 @@ vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn(), message: v
 vi.mock("@/hooks/use-render-progress", () => ({ useRenderProgress: vi.fn(() => null) }))
 import { useRenderProgress } from "@/hooks/use-render-progress"
 
+// Capture router.push so we can assert the "Render cut" navigation.
+const pushMock = vi.fn()
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: pushMock, replace: vi.fn(), refresh: vi.fn(), prefetch: vi.fn(), back: vi.fn() }),
+  usePathname: () => "/admin/content",
+  useSearchParams: () => new URLSearchParams(""),
+}))
+
 const video: VideoUpload = {
   id: "v1",
   storage_path: "u/v1.mp4",
@@ -26,6 +34,7 @@ const video: VideoUpload = {
 beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 202, json: async () => ({ jobId: "j1" }) }))
   ;(useRenderProgress as ReturnType<typeof vi.fn>).mockReturnValue(null)
+  pushMock.mockClear()
 })
 
 describe("VideoCard — edit-column actions", () => {
@@ -35,12 +44,14 @@ describe("VideoCard — edit-column actions", () => {
     expect(screen.getByRole("button", { name: /mark ready/i })).toBeInTheDocument()
   })
 
-  it("POSTs to the captioned-cut endpoint when Render cut is clicked", async () => {
+  it("opens the detail panel (navigates) when Render cut is clicked — no hook-less render", async () => {
     render(<VideoCard video={video} counts={null} column="needs_edit" />)
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /render cut/i }))
     })
-    expect(fetch).toHaveBeenCalledWith(
+    // Routes to the panel (suggest-before-render) instead of firing a render here.
+    expect(pushMock).toHaveBeenCalledWith("/admin/content/v1")
+    expect(fetch).not.toHaveBeenCalledWith(
       "/api/admin/content-studio/captioned-cut",
       expect.objectContaining({ method: "POST" }),
     )
