@@ -16,6 +16,7 @@ import fs from "node:fs"
 import { pageCaptions } from "./lib/caption-paging.js"
 import { fetchTranscriptWords } from "./lib/assemblyai-words.js"
 import { serveFileLocally } from "./lib/serve-file.js"
+import { planCutAttachment } from "./lib/attach-plan.js"
 
 const MAX_CAPTION_CLIP_SECONDS = 180
 const FPS = 30
@@ -268,42 +269,70 @@ async function main() {
       .single()
     if (aErr || !asset) throw new Error(`media_asset insert failed: ${aErr?.message}`)
 
-    // 8. One draft post per video-capable CONNECTED platform. fn_list_platform_connections
-    // returns every row (including not_connected/error/paused), so filter to connected.
+    // 8. Attach the rendered cut to the EXISTING caption posts. The social
+    // fanout (functions/src/social-fanout.ts) already created one draft caption
+    // post per platform, so the render must NOT create its own posts — doing so
+    // produced blank, caption-less duplicates. For each connected video platform
+    // we attach the reel to that platform's existing caption post; a platform
+    // with no caption post is skipped (the asset still exists, just unattached).
+    // fn_list_platform_connections returns every row (including
+    // not_connected/error/paused), so filter to connected.
     const { data: connections, error: cErr } = await supabase.rpc("fn_list_platform_connections")
     if (cErr) throw new Error(`fn_list_platform_connections failed: ${cErr.message}`)
     const platforms = ((connections ?? []) as { plugin_name: string; status: string }[])
       .filter((c) => c.status === "connected")
       .map((c) => PLUGIN_TO_PLATFORM[c.plugin_name])
       .filter((p): p is string => p !== null && (VIDEO_PLATFORMS as readonly string[]).includes(p))
-    if (platforms.length === 0) {
-      console.log("[render-worker] no video-capable connected platforms — asset created, no draft posts")
-    }
+
+    // Existing posts for this video, oldest first so the original fanout caption
+    // is preferred over any later row for the same platform.
+    const { data: existingPosts, error: epErr } = await supabase
+      .from("social_posts")
+      .select("id, platform, created_at")
+      .eq("source_video_id", videoUploadId)
+      .neq("approval_status", "rejected")
+      .order("created_at", { ascending: true })
+    if (epErr) throw new Error(`load existing posts failed: ${epErr.message}`)
+
+    const plan = planCutAttachment(platforms, (existingPosts ?? []) as { id: string; platform: string }[])
 
     const postIds: string[] = []
-    for (const platform of platforms) {
-      const { data: post, error: pErr } = await supabase
-        .from("social_posts")
-        .insert({
-          platform,
-          content: "",
-          media_url: null,
-          post_type: "video",
-          approval_status: "draft",
-          scheduled_at: null,
-          source_video_id: videoUploadId,
-          created_by: video.uploaded_by ?? null,
-        })
-        .select()
-        .single()
-      if (pErr || !post) throw new Error(`social_post insert failed: ${pErr?.message}`)
+    for (const { platform, postId } of plan) {
+      if (!postId) {
+        console.log(`[render-worker] no caption post for ${platform} — cut not attached`)
+        continue
+      }
+      // Re-render replace: drop any prior cut of THIS source video already
+      // attached to the post before attaching the new one, so re-renders never
+      // stack multiple videos on a single post.
+      const { data: links } = await supabase
+        .from("social_post_media")
+        .select("media_asset_id")
+        .eq("social_post_id", postId)
+      const linkedIds = (links ?? []).map((l) => l.media_asset_id as string)
+      if (linkedIds.length > 0) {
+        const { data: priorCuts } = await supabase
+          .from("media_assets")
+          .select("id")
+          .in("id", linkedIds)
+          .eq("kind", "video")
+          .eq("derived_from_video_id", videoUploadId)
+        const priorCutIds = (priorCuts ?? []).map((a) => a.id as string)
+        if (priorCutIds.length > 0) {
+          await supabase
+            .from("social_post_media")
+            .delete()
+            .eq("social_post_id", postId)
+            .in("media_asset_id", priorCutIds)
+        }
+      }
       const { error: mErr } = await supabase.from("social_post_media").insert({
-        social_post_id: post.id,
+        social_post_id: postId,
         media_asset_id: asset.id,
         position: 0,
       })
-      if (mErr) throw new Error(`attach media failed: ${mErr.message}`)
-      postIds.push(post.id)
+      if (mErr) throw new Error(`attach media to ${platform} post ${postId} failed: ${mErr.message}`)
+      postIds.push(postId)
     }
 
     // 9. Complete. Clear any error left by a prior failed attempt on this doc
