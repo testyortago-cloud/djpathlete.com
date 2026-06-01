@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, fireEvent } from "@testing-library/react"
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import type { ReactNode } from "react"
 
@@ -80,6 +80,35 @@ describe("CaptionedCutPanel", () => {
     const link = await screen.findByRole("link", { name: /instagram draft/i })
     expect(link).toHaveAttribute("href", "/admin/content/post/p1")
     expect(screen.getByRole("button", { name: /re-render/i })).toBeInTheDocument()
+  })
+
+  it("fills the hook input with an AI suggestion when Suggest is clicked", async () => {
+    const fetchMock = vi.fn(async (url: unknown) => {
+      if (typeof url === "string" && url.includes("/suggest-hook")) {
+        return jsonResponse({ hook: "5 Mistakes Athletes Make" })
+      }
+      return jsonResponse({ inFlightJobId: null, cut: null })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    const Comp = await importComp()
+    render(<Comp videoUploadId="v1" hasTranscript />)
+
+    const suggestBtn = await screen.findByRole("button", { name: /suggest/i })
+    fireEvent.click(suggestBtn)
+
+    const input = screen.getByRole("textbox")
+    await waitFor(() => expect((input as HTMLInputElement).value).toBe("5 Mistakes Athletes Make"))
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/admin/content-studio/captioned-cut/suggest-hook",
+      expect.objectContaining({ method: "POST" }),
+    )
+  })
+
+  it("disables Suggest when there is no transcript", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ inFlightJobId: null, cut: null })))
+    const Comp = await importComp()
+    render(<Comp videoUploadId="v1" hasTranscript={false} />)
+    expect(await screen.findByRole("button", { name: /suggest/i })).toBeDisabled()
   })
 
   it("shows persistent progress when the server reports an in-flight render", async () => {

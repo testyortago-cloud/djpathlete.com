@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, type ReactNode } from "react"
-import { Clapperboard, Loader2, ExternalLink, RefreshCw, CheckCircle2 } from "lucide-react"
+import { Clapperboard, Loader2, ExternalLink, RefreshCw, CheckCircle2, Sparkles } from "lucide-react"
 import { toast } from "sonner"
 import Link from "next/link"
 import { useAiJob } from "@/hooks/use-ai-job"
@@ -196,7 +196,7 @@ export function CaptionedCutPanel({ videoUploadId, hasTranscript }: CaptionedCut
                 No draft posts — connect a video platform to auto-create them.
               </p>
             )}
-            <HookInput value={hook} onChange={setHook} />
+            <HookInput value={hook} onChange={setHook} videoUploadId={videoUploadId} hasTranscript={hasTranscript} />
             <MusicPicker value={music} onChange={setMusic} />
             <button
               type="button"
@@ -215,7 +215,7 @@ export function CaptionedCutPanel({ videoUploadId, hasTranscript }: CaptionedCut
   // ── idle: no cut yet ──────────────────────────────────────────────────────
   return (
     <PanelShell>
-      <HookInput value={hook} onChange={setHook} />
+      <HookInput value={hook} onChange={setHook} videoUploadId={videoUploadId} hasTranscript={hasTranscript} />
       <MusicPicker value={music} onChange={setMusic} />
       <button
         type="button"
@@ -269,10 +269,58 @@ function PanelShell({ children }: { children: ReactNode }) {
   )
 }
 
-function HookInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function HookInput({
+  value,
+  onChange,
+  videoUploadId,
+  hasTranscript,
+}: {
+  value: string
+  onChange: (v: string) => void
+  videoUploadId: string
+  hasTranscript: boolean
+}) {
+  const [suggesting, setSuggesting] = useState(false)
+
+  async function suggest() {
+    setSuggesting(true)
+    try {
+      const res = await fetch("/api/admin/content-studio/captioned-cut/suggest-hook", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ videoUploadId }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.error || `Request failed (${res.status})`)
+      if (typeof data?.hook === "string" && data.hook.trim()) {
+        onChange(data.hook.trim())
+        toast.success("Hook suggested — tweak it if you like")
+      } else {
+        toast.message("Couldn't draw a hook from this transcript — type one in.")
+      }
+    } catch (err) {
+      toast.error((err as Error).message || "Failed to suggest a hook")
+    } finally {
+      setSuggesting(false)
+    }
+  }
+
   return (
     <label className="mb-2 block">
-      <span className="mb-1 block text-[11px] text-muted-foreground">Hook title (optional)</span>
+      <span className="mb-1 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+        <span>Hook title (optional)</span>
+        <button
+          type="button"
+          onClick={suggest}
+          disabled={suggesting || !hasTranscript}
+          aria-label="Suggest hook from transcript"
+          title={hasTranscript ? "Suggest a hook from the transcript" : "Needs a speech transcript first"}
+          className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-0.5 text-[10px] font-medium text-primary hover:bg-surface disabled:opacity-50"
+        >
+          {suggesting ? <Loader2 className="size-3 animate-spin" /> : <Sparkles className="size-3" />}
+          Suggest
+        </button>
+      </span>
       <input
         type="text"
         value={value}
