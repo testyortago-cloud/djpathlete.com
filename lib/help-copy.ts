@@ -18,6 +18,12 @@ export const HELP_COPY = {
     "AssemblyAI is processing the audio. Usually 30 seconds to 5 minutes depending on length.",
   transcribedColumn:
     "Transcript is ready. Open the video and hit Generate to fan out captions to every connected platform.",
+  needsEditColumn:
+    "Transcribed and waiting on a captioned cut before it can post. Hit Render cut to make one, or Mark ready to skip editing. A failed render shows a retry badge here.",
+  renderingColumn:
+    "The captioned cut is rendering in the background (usually ~2–4 min). The card moves to Edited on its own when the render finishes.",
+  editedColumn:
+    "Has a rendered cut (or was marked ready) and is clear to post. Open the video to generate platform captions — they'll appear under Generated.",
   generatedColumn:
     "Captions have been drafted for at least one platform. The per-platform count on the card shows how many are awaiting your review.",
   completeColumn:
