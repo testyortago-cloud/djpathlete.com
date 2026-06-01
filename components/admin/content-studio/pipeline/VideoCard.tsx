@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { Film, AlertCircle, Clock, Loader2, CheckCircle, Clapperboard, Scissors, RefreshCw } from "lucide-react"
+import { Film, AlertCircle, Clock, Loader2, CheckCircle, Clapperboard, Scissors, RefreshCw, Sparkles } from "lucide-react"
 import type { VideoUpload } from "@/types/database"
 import type { PostCounts } from "@/lib/content-studio/pipeline-data"
 import type { VideoColumnWithEdit } from "@/lib/content-studio/pipeline-columns"
@@ -176,6 +176,7 @@ export function VideoCard({
         <EditControls
           videoId={video.id}
           column={column}
+          status={video.status}
           renderFailed={renderFailed}
           hasCut={hasCut}
           renderStartedAt={renderStartedAt}
@@ -189,6 +190,7 @@ export function VideoCard({
 function EditControls({
   videoId,
   column,
+  status,
   renderFailed,
   hasCut,
   renderStartedAt,
@@ -196,6 +198,7 @@ function EditControls({
 }: {
   videoId: string
   column: VideoColumnWithEdit
+  status: VideoUpload["status"]
   renderFailed: boolean
   hasCut: boolean
   renderStartedAt: string | null
@@ -242,6 +245,26 @@ function EditControls({
     } finally {
       setBusy(false)
     }
+  }
+
+  // Uploaded: nothing has kicked off transcription yet. A direct upload doesn't
+  // auto-transcribe, so surface the trigger right here on the card.
+  if (column === "uploaded") {
+    return (
+      <div className="relative z-10 flex flex-wrap items-center gap-1.5 pt-1">
+        <TranscribeButton videoId={videoId} failed={false} />
+      </div>
+    )
+  }
+
+  // A failed transcription lands in the "transcribing" column (status === failed);
+  // offer a retry. A genuinely in-flight transcription shows no button.
+  if (column === "transcribing" && status === "failed") {
+    return (
+      <div className="relative z-10 flex flex-wrap items-center gap-1.5 pt-1">
+        <TranscribeButton videoId={videoId} failed />
+      </div>
+    )
   }
 
   if (column === "rendering") {
@@ -300,6 +323,62 @@ function EditControls({
   }
 
   return null
+}
+
+function TranscribeButton({ videoId, failed }: { videoId: string; failed: boolean }) {
+  const router = useRouter()
+  const [busy, setBusy] = useState(false)
+  const [queued, setQueued] = useState(false)
+
+  async function transcribe(e: React.MouseEvent) {
+    // The whole card is a stretched <Link>; keep the click on the button.
+    e.preventDefault()
+    e.stopPropagation()
+    setBusy(true)
+    try {
+      const res = await fetch("/api/admin/videos/transcribe", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ videoUploadId: videoId }),
+      })
+      if (!res.ok) throw new Error((await res.text()) || "Transcribe failed")
+      setQueued(true)
+      toast.success("Transcription queued — this takes 1-5 min")
+      // Pull fresh server state; the card advances to Needs Edit once the
+      // transcription job finishes (a few minutes) and the page is re-fetched.
+      router.refresh()
+    } catch (err) {
+      toast.error((err as Error).message || "Failed to start transcription")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (queued) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded bg-warning/10 px-2 py-1 text-[10px] font-medium text-warning">
+        <Loader2 className="size-3 animate-spin" /> Transcribing…
+      </span>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      onClick={transcribe}
+      className="inline-flex items-center gap-1 rounded bg-primary px-2 py-1 text-[10px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+    >
+      {busy ? (
+        <Loader2 className="size-3 animate-spin" />
+      ) : failed ? (
+        <RefreshCw className="size-3" />
+      ) : (
+        <Sparkles className="size-3" />
+      )}
+      {failed ? "Retry" : "Transcribe"}
+    </button>
+  )
 }
 
 function RenderProgressBar({ jobId, startedAt }: { jobId: string | null; startedAt: string | null }) {
