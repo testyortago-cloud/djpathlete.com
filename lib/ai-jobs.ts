@@ -99,3 +99,36 @@ export async function findInFlightCaptionRender(videoUploadId: string): Promise<
     .get()
   return snap.empty ? null : snap.docs[0].id
 }
+
+export type AiJobStatus = "pending" | "processing" | "streaming" | "completed" | "failed" | "cancelled"
+
+export interface RecentCaptionRender {
+  jobId: string
+  videoUploadId: string
+  status: AiJobStatus
+}
+
+/**
+ * Recent captioned-cut render jobs (newest first), for deriving the Videos-lane
+ * edit columns. Ordered by createdAt desc so the first row seen per videoUploadId
+ * is its latest render. Requires a Firestore composite index on
+ * (type ASC, createdAt DESC) — Firestore prints a one-click "create index" link
+ * the first time this runs.
+ */
+export async function listRecentCaptionRenders(limit = 300): Promise<RecentCaptionRender[]> {
+  const db = getAdminFirestore()
+  const snap = await db
+    .collection("ai_jobs")
+    .where("type", "==", "video_caption_render")
+    .orderBy("createdAt", "desc")
+    .limit(limit)
+    .get()
+  const out: RecentCaptionRender[] = []
+  for (const doc of snap.docs) {
+    const data = doc.data()
+    const videoUploadId = data?.input?.videoUploadId
+    if (typeof videoUploadId !== "string") continue
+    out.push({ jobId: doc.id, videoUploadId, status: data.status as AiJobStatus })
+  }
+  return out
+}
