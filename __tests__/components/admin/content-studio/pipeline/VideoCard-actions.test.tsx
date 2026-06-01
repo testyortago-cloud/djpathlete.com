@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render, screen, fireEvent } from "@testing-library/react"
+import { render, screen, fireEvent, act } from "@testing-library/react"
 import { VideoCard } from "@/components/admin/content-studio/pipeline/VideoCard"
 import type { VideoUpload } from "@/types/database"
 
@@ -34,18 +34,22 @@ describe("VideoCard — edit-column actions", () => {
     expect(screen.getByRole("button", { name: /mark ready/i })).toBeInTheDocument()
   })
 
-  it("POSTs to the captioned-cut endpoint when Render cut is clicked", () => {
+  it("POSTs to the captioned-cut endpoint when Render cut is clicked", async () => {
     render(<VideoCard video={video} counts={null} column="needs_edit" />)
-    fireEvent.click(screen.getByRole("button", { name: /render cut/i }))
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /render cut/i }))
+    })
     expect(fetch).toHaveBeenCalledWith(
       "/api/admin/content-studio/captioned-cut",
       expect.objectContaining({ method: "POST" }),
     )
   })
 
-  it("PATCHes the videos endpoint when Mark ready is clicked", () => {
+  it("PATCHes the videos endpoint when Mark ready is clicked", async () => {
     render(<VideoCard video={video} counts={null} column="needs_edit" />)
-    fireEvent.click(screen.getByRole("button", { name: /mark ready/i }))
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /mark ready/i }))
+    })
     expect(fetch).toHaveBeenCalledWith(
       "/api/admin/videos/v1",
       expect.objectContaining({ method: "PATCH" }),
@@ -59,7 +63,7 @@ describe("VideoCard — edit-column actions", () => {
   })
 
   it("shows an elapsed timer (no action buttons) in the rendering column", () => {
-    render(<VideoCard video={video} counts={null} column="rendering" renderJobId="j1" />)
+    render(<VideoCard video={video} counts={null} column="rendering" />)
     expect(screen.queryByRole("button", { name: /render cut/i })).toBeNull()
     expect(screen.getByText(/0:0\d/)).toBeInTheDocument()
   })

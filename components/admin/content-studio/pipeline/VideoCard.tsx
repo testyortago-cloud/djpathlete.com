@@ -55,8 +55,6 @@ interface VideoCardProps {
   hasCut?: boolean
   /** Edit-lane column this card is grouped under. Omit for the legacy 5-column lane. */
   column?: VideoColumnWithEdit
-  /** In-flight render job id (present when column === "rendering"). */
-  renderJobId?: string | null
   /** True when this video's latest render failed and it has no cut. */
   renderFailed?: boolean
 }
@@ -80,6 +78,7 @@ export function VideoCard({
         "group relative block overflow-hidden rounded-lg border border-border bg-white",
         "pl-[11px] pr-3 py-3 space-y-2.5",
         "transition hover:border-primary/40 hover:shadow-[0_2px_8px_-3px_rgba(15,23,42,0.1)]",
+        "focus-within:ring-2 focus-within:ring-primary/40",
         isFailed && "border-error/40",
       )}
     >
@@ -87,7 +86,8 @@ export function VideoCard({
       <Link
         href={`/admin/content/${video.id}`}
         aria-label={title}
-        className="absolute inset-0 z-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+        title={title}
+        className="absolute inset-0 z-0 rounded-lg"
       />
       {/* color-chip strip — same hue appears on every post from this video */}
       <span aria-hidden className="absolute left-0 top-0 bottom-0 w-[3px] bg-[color:var(--video-accent)] z-10" />
@@ -147,7 +147,7 @@ export function VideoCard({
       </div>
 
       {column !== undefined && (
-        <EditControls videoId={video.id} column={column} renderFailed={renderFailed} hasCut={hasCut} needsEdit={video.needs_edit} />
+        <EditControls videoId={video.id} column={column} renderFailed={renderFailed} hasCut={hasCut} />
       )}
     </div>
   )
@@ -158,13 +158,11 @@ function EditControls({
   column,
   renderFailed,
   hasCut,
-  needsEdit,
 }: {
   videoId: string
   column: VideoColumnWithEdit
   renderFailed: boolean
   hasCut: boolean
-  needsEdit: boolean
 }) {
   const router = useRouter()
   const [busy, setBusy] = useState(false)
