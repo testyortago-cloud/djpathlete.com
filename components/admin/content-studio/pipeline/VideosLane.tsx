@@ -13,6 +13,7 @@ import { HELP_COPY } from "@/lib/help-copy"
 import { Lane, LaneColumn, type LaneTone } from "./Lane"
 import { VideoCard } from "./VideoCard"
 import { RenderWatcher } from "./RenderWatcher"
+import { RenderDiscoveryWatcher } from "./RenderDiscoveryWatcher"
 import type { PipelineData } from "@/lib/content-studio/pipeline-data"
 
 interface VideosLaneProps {
@@ -100,6 +101,7 @@ export function VideosLane({ data }: VideosLaneProps) {
       meta={meta}
     >
       <RenderWatcher jobIds={Object.values(data.renderJobIdByVideo)} />
+      <RenderDiscoveryWatcher knownRenderingVideoIds={renderingVideoIds} />
       {VIDEO_COLUMNS_WITH_EDIT.map((col: VideoColumnWithEdit) => (
         <LaneColumn
           key={col}
