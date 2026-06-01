@@ -45,6 +45,12 @@ concurrency:
 permissions:
   contents: read
 
+# google-github-actions/auth@v2 + setup-gcloud@v2 still ship on Node 20, which
+# GitHub is deprecating (forced to Node 24 on 2026-06-16). Opt them into Node 24
+# now to clear the deprecation annotation; the Google actions run fine on it.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
