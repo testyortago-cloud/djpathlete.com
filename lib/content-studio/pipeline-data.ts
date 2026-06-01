@@ -124,11 +124,20 @@ export async function getPipelineData(): Promise<PipelineData> {
   let renderStartedAtByVideo: Record<string, string> = {}
   let failedRenderVideoIds = new Set<string>()
   if (captionedCutEnabled) {
-    const recentRenders = await listRecentCaptionRenders()
-    const signals = deriveRenderSignals(recentRenders, cutVideoIds)
-    renderJobIdByVideo = signals.renderJobIdByVideo
-    renderStartedAtByVideo = signals.renderStartedAtByVideo
-    failedRenderVideoIds = signals.failedRenderVideoIds
+    try {
+      const recentRenders = await listRecentCaptionRenders()
+      const signals = deriveRenderSignals(recentRenders, cutVideoIds)
+      renderJobIdByVideo = signals.renderJobIdByVideo
+      renderStartedAtByVideo = signals.renderStartedAtByVideo
+      failedRenderVideoIds = signals.failedRenderVideoIds
+    } catch (err) {
+      // The rendering/failed badges are a non-critical enhancement. A Firestore
+      // read failure here — e.g. the (type ASC, createdAt DESC) composite index
+      // is missing or still building right after the captioned-cut flag is
+      // flipped on — must NOT 500 the entire Content Studio page. Degrade
+      // gracefully to "no render signals" and let the lane render without badges.
+      console.error("[getPipelineData] listRecentCaptionRenders failed; render badges disabled:", err)
+    }
   }
 
   const postCountsByVideo: Record<string, PostCounts> = {}
