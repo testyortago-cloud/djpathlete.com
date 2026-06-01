@@ -89,6 +89,19 @@ describe("videoColumnForWithEdit", () => {
       "complete",
     )
   })
+
+  it("routes to rendering when a render is in flight even if posts already exist (re-render)", () => {
+    const v = video("v1", { status: "transcribed" })
+    // A video that already generated posts (so would otherwise be "generated"/
+    // "complete") but is now re-rendering a captioned cut must surface in the
+    // Rendering column — an in-flight render wins over post state.
+    expect(
+      videoColumnForWithEdit(v, [post("p", { source_video_id: "v1", approval_status: "approved" })], sig({ isRendering: true })),
+    ).toBe("rendering")
+    expect(
+      videoColumnForWithEdit(v, [post("p", { source_video_id: "v1", approval_status: "published" })], sig({ isRendering: true })),
+    ).toBe("rendering")
+  })
 })
 
 describe("videosByColumnWithEdit", () => {

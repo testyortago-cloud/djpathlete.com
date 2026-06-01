@@ -128,6 +128,12 @@ export function videoColumnForWithEdit(
   posts: SocialPost[],
   signals: VideoEditSignals,
 ): VideoColumnWithEdit {
+  // An in-flight captioned-cut render wins over everything else — including a
+  // video that already generated posts (a re-render) or has a finished cut — so
+  // the active render is always visible in the Rendering column. The card settles
+  // back into its post/edit-derived column once the render finishes.
+  if (signals.isRendering) return "rendering"
+
   const myPosts = posts.filter((p) => p.source_video_id === video.id)
   if (myPosts.length > 0) {
     return myPosts.every((p) => p.approval_status === "published") ? "complete" : "generated"
@@ -141,8 +147,6 @@ export function videoColumnForWithEdit(
       return "transcribing"
     case "transcribed":
     case "analyzed":
-      // Render-in-flight wins over an existing cut (covers re-renders).
-      if (signals.isRendering) return "rendering"
       if (isVideoPostable(video, signals.hasCut)) return "edited"
       return "needs_edit"
     default: {
