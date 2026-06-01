@@ -87,6 +87,95 @@ describe("runScheduledPublish", () => {
     expect(publishPluginMock.mock.calls[0][0].postType).toBe("video")
   })
 
+  it("publishes the attached captioned cut (edited), not the original source video", async () => {
+    const now = new Date("2026-05-01T12:00:00Z")
+    const duePost = {
+      id: "p-cut",
+      platform: "instagram",
+      content: "caption text",
+      media_url: null,
+      source_video_id: "v-original",
+      post_type: "video",
+      approval_status: "scheduled",
+      scheduled_at: "2026-05-01T11:55:00Z",
+      published_at: null,
+      rejection_notes: null,
+      platform_post_id: null,
+      created_by: null,
+      created_at: "",
+      updated_at: "",
+    }
+    listSocialPostsMock.mockResolvedValue([duePost])
+    listPlatformConnectionsMock.mockResolvedValue([])
+    // The rendered cut is attached via social_post_media.
+    getSocialPostWithMediaMock.mockResolvedValue({
+      ...duePost,
+      media: [
+        {
+          media_asset_id: "cut1",
+          position: 0,
+          overlay_text: null,
+          overlay_metadata: null,
+          asset: {
+            id: "cut1",
+            kind: "video",
+            public_url: "videos/u/captioned-cut.mp4",
+            storage_path: "videos/u/captioned-cut.mp4",
+            mime_type: "video/mp4",
+            width: 1080,
+            height: 1920,
+            duration_ms: 30000,
+          },
+        },
+      ],
+    })
+    resolveMediaUrlMock.mockImplementation(async (input: { source_video_id: string | null; media_url: string | null }) => {
+      if (input.media_url === "videos/u/captioned-cut.mp4") return "https://signed.example/cut.mp4"
+      if (input.source_video_id === "v-original") return "https://signed.example/original.mp4"
+      return null
+    })
+    const publishPluginMock = vi.fn().mockResolvedValue({ success: true, platform_post_id: "IG_1" })
+    registryGetMock.mockReturnValue({ publish: publishPluginMock })
+
+    const result = await runScheduledPublish({ now })
+    expect(result.published).toBe(1)
+    // The edited cut, not the original source video, is what gets posted.
+    expect(publishPluginMock.mock.calls[0][0].mediaUrl).toBe("https://signed.example/cut.mp4")
+  })
+
+  it("falls back to the original source video when no edit is attached", async () => {
+    const now = new Date("2026-05-01T12:00:00Z")
+    const duePost = {
+      id: "p-raw",
+      platform: "instagram",
+      content: "caption text",
+      media_url: null,
+      source_video_id: "v-original",
+      post_type: "video",
+      approval_status: "scheduled",
+      scheduled_at: "2026-05-01T11:55:00Z",
+      published_at: null,
+      rejection_notes: null,
+      platform_post_id: null,
+      created_by: null,
+      created_at: "",
+      updated_at: "",
+    }
+    listSocialPostsMock.mockResolvedValue([duePost])
+    listPlatformConnectionsMock.mockResolvedValue([])
+    getSocialPostWithMediaMock.mockResolvedValue({ ...duePost, media: [] })
+    resolveMediaUrlMock.mockImplementation(async (input: { source_video_id: string | null }) => {
+      if (input.source_video_id === "v-original") return "https://signed.example/original.mp4"
+      return null
+    })
+    const publishPluginMock = vi.fn().mockResolvedValue({ success: true, platform_post_id: "IG_2" })
+    registryGetMock.mockReturnValue({ publish: publishPluginMock })
+
+    const result = await runScheduledPublish({ now })
+    expect(result.published).toBe(1)
+    expect(publishPluginMock.mock.calls[0][0].mediaUrl).toBe("https://signed.example/original.mp4")
+  })
+
   it("marks a post failed when no plugin is registered for its platform", async () => {
     const now = new Date("2026-05-01T12:00:00Z")
     const duePost = {

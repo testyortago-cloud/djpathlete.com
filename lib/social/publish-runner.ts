@@ -95,8 +95,24 @@ export async function buildPluginInput(
     mediaUrls = resolved
   }
 
+  // For single-media posts, an attached media asset (e.g. a rendered captioned
+  // cut) is the EDITED version and is what should be posted — it takes
+  // precedence over the raw source video. Only when nothing is attached do we
+  // fall back to the source video / media_url (the "post the original as-is"
+  // path — e.g. a video marked ready without a cut). The original always
+  // survives as the post's source_video_id, so it's never lost.
+  let attachedMediaUrl: string | null = null
+  if (post.post_type !== "carousel") {
+    const full = await getSocialPostWithMedia(post.id)
+    const firstAsset = full?.media?.[0]?.asset
+    if (firstAsset?.public_url) {
+      attachedMediaUrl = await resolveMediaUrl({ source_video_id: null, media_url: firstAsset.public_url })
+    }
+  }
+
   const mediaUrl =
     mediaUrls?.[0] ??
+    attachedMediaUrl ??
     (await resolveMediaUrl({
       source_video_id: post.source_video_id,
       media_url: post.media_url,
