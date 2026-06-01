@@ -145,6 +145,11 @@ export function videoColumnForWithEdit(
       if (signals.isRendering) return "rendering"
       if (isVideoPostable(video, signals.hasCut)) return "edited"
       return "needs_edit"
+    default: {
+      // exhaustiveness guard — a new VideoUploadStatus becomes a compile error here
+      const _never: never = video.status
+      return _never
+    }
   }
 }
 
