@@ -4,6 +4,8 @@ import { listCaptionedCutVideoIds } from "@/lib/db/media-assets"
 import { getAdminStorage } from "@/lib/firebase-admin"
 import type { VideoUpload } from "@/types/database"
 import type { RecentCaptionRender } from "@/lib/ai-jobs"
+import { listRecentCaptionRenders } from "@/lib/ai-jobs"
+import { getSetting } from "@/lib/db/system-settings"
 
 const THUMBNAIL_URL_EXPIRY_MS = 30 * 60 * 1000 // 30 minutes
 
@@ -15,6 +17,12 @@ export interface PipelineData {
   thumbnailUrlsByVideo: Record<string, string>
   /** Video ids that have a rendered captioned-cut asset (for the "Cut" badge). */
   cutVideoIds: Set<string>
+  /** True when feature_captioned_cut_enabled is on — switches the lane to 7 columns. */
+  captionedCutEnabled: boolean
+  /** videoUploadId → in-flight render job id (keys = the "rendering" column). */
+  renderJobIdByVideo: Record<string, string>
+  /** Videos whose latest render failed and that have no cut (failed badge). */
+  failedRenderVideoIds: Set<string>
 }
 
 export interface PostCounts {
@@ -101,11 +109,22 @@ export function deriveRenderSignals(
 }
 
 export async function getPipelineData(): Promise<PipelineData> {
-  const [videos, posts, cutVideoIds] = await Promise.all([
+  const [videos, posts, cutVideoIds, captionedCutEnabled] = await Promise.all([
     listVideoUploads({ limit: 200 }),
     listSocialPostsForPipeline(),
     listCaptionedCutVideoIds(),
+    getSetting<boolean>("feature_captioned_cut_enabled", false),
   ])
+
+  // Render signals only matter when the edit lane is active.
+  let renderJobIdByVideo: Record<string, string> = {}
+  let failedRenderVideoIds = new Set<string>()
+  if (captionedCutEnabled) {
+    const recentRenders = await listRecentCaptionRenders()
+    const signals = deriveRenderSignals(recentRenders, cutVideoIds)
+    renderJobIdByVideo = signals.renderJobIdByVideo
+    failedRenderVideoIds = signals.failedRenderVideoIds
+  }
 
   const postCountsByVideo: Record<string, PostCounts> = {}
   for (const p of posts) {
@@ -135,5 +154,14 @@ export async function getPipelineData(): Promise<PipelineData> {
 
   const thumbnailUrlsByVideo = await signThumbnailUrls(videos)
 
-  return { videos, posts, postCountsByVideo, thumbnailUrlsByVideo, cutVideoIds }
+  return {
+    videos,
+    posts,
+    postCountsByVideo,
+    thumbnailUrlsByVideo,
+    cutVideoIds,
+    captionedCutEnabled,
+    renderJobIdByVideo,
+    failedRenderVideoIds,
+  }
 }
