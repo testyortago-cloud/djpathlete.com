@@ -4,6 +4,9 @@ import { VideoCard } from "@/components/admin/content-studio/pipeline/VideoCard"
 import type { VideoUpload } from "@/types/database"
 
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn(), message: vi.fn() } }))
+// Isolate the RTDB progress hook (keeps Firebase out of the component tests).
+vi.mock("@/hooks/use-render-progress", () => ({ useRenderProgress: vi.fn(() => null) }))
+import { useRenderProgress } from "@/hooks/use-render-progress"
 
 const video: VideoUpload = {
   id: "v1",
@@ -22,6 +25,7 @@ const video: VideoUpload = {
 
 beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 202, json: async () => ({ jobId: "j1" }) }))
+  ;(useRenderProgress as ReturnType<typeof vi.fn>).mockReturnValue(null)
 })
 
 describe("VideoCard — edit-column actions", () => {
@@ -68,6 +72,19 @@ describe("VideoCard — edit-column actions", () => {
     render(<VideoCard video={video} counts={null} column="rendering" renderStartedAt={startedAt} />)
     expect(screen.getByText(/2:\d\d/)).toBeInTheDocument()
     expect(screen.queryByText(/0:0\d/)).toBeNull()
+  })
+
+  it("shows a live RTDB progress bar when the worker is publishing progress", () => {
+    ;(useRenderProgress as ReturnType<typeof vi.fn>).mockReturnValue({
+      progress: 0.42,
+      pct: 42,
+      stage: "rendering",
+      updatedAt: 1,
+    })
+    render(<VideoCard video={video} counts={null} column="rendering" renderJobId="job-1" />)
+    expect(screen.getByText(/42%/)).toBeInTheDocument()
+    const bar = screen.getByRole("progressbar")
+    expect(bar).toHaveAttribute("aria-valuenow", "42")
   })
 
   it("renders the legacy card (single link, no action buttons) when column is omitted", () => {

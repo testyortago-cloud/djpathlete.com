@@ -6,6 +6,12 @@
         ".write": false
       }
     },
+    "renderProgress": {
+      "$jobId": {
+        ".read": true,
+        ".write": false
+      }
+    },
     ".read": false,
     ".write": false
   }

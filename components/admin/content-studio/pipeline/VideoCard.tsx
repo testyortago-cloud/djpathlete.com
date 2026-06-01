@@ -9,6 +9,7 @@ import type { VideoUpload } from "@/types/database"
 import type { PostCounts } from "@/lib/content-studio/pipeline-data"
 import type { VideoColumnWithEdit } from "@/lib/content-studio/pipeline-columns"
 import { formatElapsed } from "@/lib/content-studio/render-progress"
+import { useRenderProgress } from "@/hooks/use-render-progress"
 import { accentStyle } from "@/lib/content-studio/video-accent"
 import { cn } from "@/lib/utils"
 
@@ -60,6 +61,8 @@ interface VideoCardProps {
   /** In-flight render start time (ISO) — anchors the "rendering" timer so it
    *  survives refresh/navigation instead of restarting at 0:00. */
   renderStartedAt?: string | null
+  /** In-flight render job id — subscribed to for the live RTDB progress bar. */
+  renderJobId?: string | null
 }
 
 export function VideoCard({
@@ -70,6 +73,7 @@ export function VideoCard({
   column,
   renderFailed = false,
   renderStartedAt = null,
+  renderJobId = null,
 }: VideoCardProps) {
   const title = video.title ?? video.original_filename
   const isFailed = video.status === "failed"
@@ -175,6 +179,7 @@ export function VideoCard({
           renderFailed={renderFailed}
           hasCut={hasCut}
           renderStartedAt={renderStartedAt}
+          renderJobId={renderJobId}
         />
       )}
     </div>
@@ -187,12 +192,14 @@ function EditControls({
   renderFailed,
   hasCut,
   renderStartedAt,
+  renderJobId,
 }: {
   videoId: string
   column: VideoColumnWithEdit
   renderFailed: boolean
   hasCut: boolean
   renderStartedAt: string | null
+  renderJobId: string | null
 }) {
   const router = useRouter()
   const [busy, setBusy] = useState(false)
@@ -240,7 +247,7 @@ function EditControls({
   if (column === "rendering") {
     return (
       <div className="relative z-10 pt-1">
-        <RenderingTimer startedAt={renderStartedAt} />
+        <RenderProgressBar jobId={renderJobId} startedAt={renderStartedAt} />
       </div>
     )
   }
@@ -295,7 +302,7 @@ function EditControls({
   return null
 }
 
-function RenderingTimer({ startedAt }: { startedAt: string | null }) {
+function RenderProgressBar({ jobId, startedAt }: { jobId: string | null; startedAt: string | null }) {
   // Tick a clock and derive elapsed from the render's real start time, so a refresh
   // or navigate-away-and-back shows true elapsed instead of restarting at 0:00.
   // Falls back to mount time only when we don't have a start timestamp.
@@ -308,12 +315,35 @@ function RenderingTimer({ startedAt }: { startedAt: string | null }) {
   const parsed = startedAt ? Date.parse(startedAt) : NaN
   const anchor = Number.isFinite(parsed) ? parsed : mountTime
   const elapsedMs = Math.max(0, now - anchor)
+
+  // Live percent from the worker (Realtime Database). Null until the first sample
+  // (or when progress isn't being published) — then we show just the timer.
+  const progress = useRenderProgress(jobId)
+  const label = progress ? (progress.stage === "finalizing" ? "Finalizing" : "Rendering") : "Rendering"
+
   return (
-    <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-primary">
-      <Loader2 className="size-3 animate-spin" /> Rendering…
-      <span className="font-mono tabular-nums text-muted-foreground" aria-label="Elapsed time">
-        {formatElapsed(elapsedMs)}
+    <div className="space-y-1">
+      <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-primary">
+        <Loader2 className="size-3 animate-spin" /> {label}
+        {progress ? `… ${progress.pct}%` : "…"}
+        <span className="font-mono tabular-nums text-muted-foreground" aria-label="Elapsed time">
+          {formatElapsed(elapsedMs)}
+        </span>
       </span>
-    </span>
+      {progress && (
+        <div
+          className="h-1 w-full overflow-hidden rounded-full bg-primary/15"
+          role="progressbar"
+          aria-valuenow={progress.pct}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        >
+          <div
+            className="h-full rounded-full bg-primary transition-[width] duration-500 ease-out"
+            style={{ width: `${progress.pct}%` }}
+          />
+        </div>
+      )}
+    </div>
   )
 }

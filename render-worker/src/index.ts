@@ -7,6 +7,7 @@ import { createClient } from "@supabase/supabase-js"
 import { initializeApp, applicationDefault, getApps } from "firebase-admin/app"
 import { getStorage } from "firebase-admin/storage"
 import { getFirestore, FieldValue } from "firebase-admin/firestore"
+import { getDatabase } from "firebase-admin/database"
 import { bundle } from "@remotion/bundler"
 import { selectComposition, renderMedia, getVideoMetadata } from "@remotion/renderer"
 import path from "node:path"
@@ -27,9 +28,14 @@ const BRAND_ACCENT_HEX = "#c4936b"
 
 const VIDEO_PLATFORMS = ["instagram", "facebook", "linkedin", "tiktok", "youtube", "youtube_shorts"] as const
 const PLUGIN_TO_PLATFORM: Record<string, string | null> = {
-  instagram: "instagram", facebook: "facebook", linkedin: "linkedin",
-  tiktok: "tiktok", youtube: "youtube", youtube_shorts: "youtube_shorts",
-  google_ads: null, gmail: null,
+  instagram: "instagram",
+  facebook: "facebook",
+  linkedin: "linkedin",
+  tiktok: "tiktok",
+  youtube: "youtube",
+  youtube_shorts: "youtube_shorts",
+  google_ads: null,
+  gmail: null,
 }
 
 function fbApp() {
@@ -43,6 +49,9 @@ function fbApp() {
   return initializeApp({
     credential: applicationDefault(),
     storageBucket: bucket,
+    // Optional — only needed for the live render-progress writes to Realtime
+    // Database. Absent = progress writes are silently skipped (render still works).
+    ...(process.env.FIREBASE_DATABASE_URL ? { databaseURL: process.env.FIREBASE_DATABASE_URL } : {}),
   })
 }
 
@@ -56,23 +65,67 @@ async function main() {
   const bucket = getStorage(app).bucket()
   const jobRef = firestore.collection("ai_jobs").doc(aiJobId)
 
-  const supabase = createClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false } },
-  )
+  const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
+    auth: { persistSession: false },
+  })
+
+  // Live render progress → Realtime Database, keyed by the ai_jobs doc id so the
+  // client (renderJobIdByVideo) can subscribe at renderProgress/{aiJobId}. Entirely
+  // best-effort: if FIREBASE_DATABASE_URL is unset or the SA lacks RTDB access, every
+  // call below no-ops and the render proceeds normally (client falls back to the
+  // elapsed timer). Throttled to ≤~2.5 writes/sec and only on a whole-% change.
+  const progressRef = (() => {
+    try {
+      if (!process.env.FIREBASE_DATABASE_URL) return null
+      return getDatabase(app).ref(`renderProgress/${aiJobId}`)
+    } catch (e) {
+      console.warn(`[render-worker] RTDB progress disabled: ${(e as Error).message}`)
+      return null
+    }
+  })()
+  let lastProgressPct = -1
+  let lastProgressAt = 0
+  async function writeProgress(progress: number, stage: string) {
+    if (!progressRef) return
+    const pct = Math.max(0, Math.min(100, Math.round(progress * 100)))
+    const now = Date.now()
+    if (pct === lastProgressPct && now - lastProgressAt < 1000) return
+    if (now - lastProgressAt < 400) return
+    lastProgressPct = pct
+    lastProgressAt = now
+    try {
+      await progressRef.set({ progress, pct, stage, updatedAt: now })
+    } catch (e) {
+      console.warn(`[render-worker] progress write failed: ${(e as Error).message}`)
+    }
+  }
+  async function clearProgress() {
+    if (!progressRef) return
+    try {
+      await progressRef.remove()
+    } catch {
+      /* best-effort */
+    }
+  }
 
   try {
     // 1. Load video + speech transcript
     const { data: video, error: vErr } = await supabase
-      .from("video_uploads").select("*").eq("id", videoUploadId).single()
+      .from("video_uploads")
+      .select("*")
+      .eq("id", videoUploadId)
+      .single()
     if (vErr || !video) throw new Error(`video_uploads ${videoUploadId} not found`)
 
     const { data: tx, error: tErr } = await supabase
-      .from("video_transcripts").select("*")
-      .eq("video_upload_id", videoUploadId).eq("source", "speech")
+      .from("video_transcripts")
+      .select("*")
+      .eq("video_upload_id", videoUploadId)
+      .eq("source", "speech")
       .not("assemblyai_job_id", "is", null)
-      .order("created_at", { ascending: false }).limit(1).maybeSingle()
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
     if (tErr || !tx?.assemblyai_job_id) throw new Error("no speech transcript with an AssemblyAI id")
 
     // 2. Word timestamps
@@ -177,6 +230,11 @@ async function main() {
       // Render N frames in parallel (one Chrome tab each). The job runs 4 vCPU,
       // so 4-way concurrency ~doubles throughput vs the old 2 vCPU / 2-way.
       concurrency: 4,
+      // Stream coarse progress to RTDB for the client's live "rendering" bar.
+      // progress is 0..1 across render+encode; stitchStage distinguishes the tail.
+      onProgress: ({ progress, stitchStage }) => {
+        void writeProgress(progress, stitchStage === "muxing" ? "finalizing" : "rendering")
+      },
     })
     console.log(`[render-worker] step=render ok out=${outPath}`)
     await videoServer.close() // render done — stop serving the source
@@ -190,20 +248,24 @@ async function main() {
     fs.rmSync(outPath, { force: true }) // free RAM-backed /tmp before the DB writes
 
     // 7. media_asset
-    const { data: asset, error: aErr } = await supabase.from("media_assets").insert({
-      kind: "video",
-      storage_path: storagePath,
-      public_url: storagePath, // signed on read
-      mime_type: "video/mp4",
-      bytes,
-      width: 1080,
-      height: 1920,
-      duration_ms: Math.round(durationInSeconds * 1000),
-      derived_from_video_id: videoUploadId,
-      ai_alt_text: null,
-      ai_analysis: { origin: "captioned_cut" },
-      created_by: video.uploaded_by ?? null,
-    }).select().single()
+    const { data: asset, error: aErr } = await supabase
+      .from("media_assets")
+      .insert({
+        kind: "video",
+        storage_path: storagePath,
+        public_url: storagePath, // signed on read
+        mime_type: "video/mp4",
+        bytes,
+        width: 1080,
+        height: 1920,
+        duration_ms: Math.round(durationInSeconds * 1000),
+        derived_from_video_id: videoUploadId,
+        ai_alt_text: null,
+        ai_analysis: { origin: "captioned_cut" },
+        created_by: video.uploaded_by ?? null,
+      })
+      .select()
+      .single()
     if (aErr || !asset) throw new Error(`media_asset insert failed: ${aErr?.message}`)
 
     // 8. One draft post per video-capable CONNECTED platform. fn_list_platform_connections
@@ -220,19 +282,25 @@ async function main() {
 
     const postIds: string[] = []
     for (const platform of platforms) {
-      const { data: post, error: pErr } = await supabase.from("social_posts").insert({
-        platform,
-        content: "",
-        media_url: null,
-        post_type: "video",
-        approval_status: "draft",
-        scheduled_at: null,
-        source_video_id: videoUploadId,
-        created_by: video.uploaded_by ?? null,
-      }).select().single()
+      const { data: post, error: pErr } = await supabase
+        .from("social_posts")
+        .insert({
+          platform,
+          content: "",
+          media_url: null,
+          post_type: "video",
+          approval_status: "draft",
+          scheduled_at: null,
+          source_video_id: videoUploadId,
+          created_by: video.uploaded_by ?? null,
+        })
+        .select()
+        .single()
       if (pErr || !post) throw new Error(`social_post insert failed: ${pErr?.message}`)
       const { error: mErr } = await supabase.from("social_post_media").insert({
-        social_post_id: post.id, media_asset_id: asset.id, position: 0,
+        social_post_id: post.id,
+        media_asset_id: asset.id,
+        position: 0,
       })
       if (mErr) throw new Error(`attach media failed: ${mErr.message}`)
       postIds.push(post.id)
@@ -246,13 +314,17 @@ async function main() {
       result: { assetId: asset.id, postIds },
       updatedAt: FieldValue.serverTimestamp(),
     })
+    await clearProgress() // render done — drop the live-progress node
     process.exit(0)
   } catch (err) {
-    await jobRef.update({
-      status: "failed",
-      error: (err as Error).message ?? "render failed",
-      updatedAt: FieldValue.serverTimestamp(),
-    }).catch(() => {})
+    await clearProgress() // failed — drop the live-progress node (card → needs edit)
+    await jobRef
+      .update({
+        status: "failed",
+        error: (err as Error).message ?? "render failed",
+        updatedAt: FieldValue.serverTimestamp(),
+      })
+      .catch(() => {})
     console.error("[render-worker]", err)
     process.exit(1)
   }

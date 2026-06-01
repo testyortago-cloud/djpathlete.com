@@ -120,6 +120,7 @@ export function VideosLane({ data }: VideosLaneProps) {
               column={col}
               renderFailed={data.failedRenderVideoIds.has(v.id)}
               renderStartedAt={data.renderStartedAtByVideo[v.id] ?? null}
+              renderJobId={data.renderJobIdByVideo[v.id] ?? null}
             />
           ))}
           {grouped[col].length === 0 && (
