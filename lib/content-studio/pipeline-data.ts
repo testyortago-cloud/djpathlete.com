@@ -3,8 +3,7 @@ import { listSocialPostsForPipeline, type PipelinePostRow } from "@/lib/db/socia
 import { listCaptionedCutVideoIds } from "@/lib/db/media-assets"
 import { getAdminStorage } from "@/lib/firebase-admin"
 import type { VideoUpload } from "@/types/database"
-import type { RecentCaptionRender } from "@/lib/ai-jobs"
-import { listRecentCaptionRenders } from "@/lib/ai-jobs"
+import { listRecentCaptionRenders, type RecentCaptionRender } from "@/lib/ai-jobs"
 import { getSetting } from "@/lib/db/system-settings"
 
 const THUMBNAIL_URL_EXPIRY_MS = 30 * 60 * 1000 // 30 minutes
@@ -116,7 +115,9 @@ export async function getPipelineData(): Promise<PipelineData> {
     getSetting<boolean>("feature_captioned_cut_enabled", false),
   ])
 
-  // Render signals only matter when the edit lane is active.
+  // Render signals only matter when the edit lane is active. Sequential after the
+  // Promise.all because deriveRenderSignals needs cutVideoIds (fetched above) to
+  // suppress the failed badge when a cut already exists.
   let renderJobIdByVideo: Record<string, string> = {}
   let failedRenderVideoIds = new Set<string>()
   if (captionedCutEnabled) {
