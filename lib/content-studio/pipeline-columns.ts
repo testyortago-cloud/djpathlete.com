@@ -11,6 +11,40 @@ export const VIDEO_COLUMN_LABELS: Record<VideoColumn, string> = {
   complete: "Complete",
 }
 
+// ── 7-column variant: shown when feature_captioned_cut_enabled is on. The three
+// edit columns (needs_edit/rendering/edited) replace the single "transcribed"
+// column, since a transcribed video is needs_edit=true by default and so is
+// immediately "needs edit". The original VIDEO_COLUMNS path is the flag-off
+// fallback and is left untouched.
+export const VIDEO_COLUMNS_WITH_EDIT = [
+  "uploaded",
+  "transcribing",
+  "needs_edit",
+  "rendering",
+  "edited",
+  "generated",
+  "complete",
+] as const
+export type VideoColumnWithEdit = (typeof VIDEO_COLUMNS_WITH_EDIT)[number]
+
+export const VIDEO_COLUMN_WITH_EDIT_LABELS: Record<VideoColumnWithEdit, string> = {
+  uploaded: "Uploaded",
+  transcribing: "Transcribing",
+  needs_edit: "Needs Edit",
+  rendering: "Rendering",
+  edited: "Edited",
+  generated: "Generated",
+  complete: "Complete",
+}
+
+/** Per-video signals the 7-column derivation needs that aren't on the row itself. */
+export interface VideoEditSignals {
+  /** A rendered captioned-cut asset exists for this video. */
+  hasCut: boolean
+  /** An in-flight (pending/processing) video_caption_render job exists. */
+  isRendering: boolean
+}
+
 export const POST_COLUMNS = ["needs_review", "approved", "scheduled", "published", "failed"] as const
 export type PostColumn = (typeof POST_COLUMNS)[number]
 
