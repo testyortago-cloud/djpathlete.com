@@ -1,4 +1,5 @@
 import type { SocialPost, VideoUpload } from "@/types/database"
+import { isVideoPostable } from "@/lib/content-studio/edit-gate"
 
 export const VIDEO_COLUMNS = ["uploaded", "transcribing", "transcribed", "generated", "complete"] as const
 export type VideoColumn = (typeof VIDEO_COLUMNS)[number]
@@ -118,6 +119,55 @@ export function postsByColumn<P extends SocialPost>(posts: P[]): Record<PostColu
   for (const p of posts) {
     const col = postColumnFor(p)
     if (col) out[col].push(p)
+  }
+  return out
+}
+
+export function videoColumnForWithEdit(
+  video: VideoUpload,
+  posts: SocialPost[],
+  signals: VideoEditSignals,
+): VideoColumnWithEdit {
+  const myPosts = posts.filter((p) => p.source_video_id === video.id)
+  if (myPosts.length > 0) {
+    return myPosts.every((p) => p.approval_status === "published") ? "complete" : "generated"
+  }
+
+  switch (video.status) {
+    case "uploaded":
+      return "uploaded"
+    case "transcribing":
+    case "failed":
+      return "transcribing"
+    case "transcribed":
+    case "analyzed":
+      // Render-in-flight wins over an existing cut (covers re-renders).
+      if (signals.isRendering) return "rendering"
+      if (isVideoPostable(video, signals.hasCut)) return "edited"
+      return "needs_edit"
+  }
+}
+
+export function videosByColumnWithEdit(
+  videos: VideoUpload[],
+  posts: SocialPost[],
+  lookups: { cutVideoIds: Set<string>; renderingVideoIds: Set<string> },
+): Record<VideoColumnWithEdit, VideoUpload[]> {
+  const out: Record<VideoColumnWithEdit, VideoUpload[]> = {
+    uploaded: [],
+    transcribing: [],
+    needs_edit: [],
+    rendering: [],
+    edited: [],
+    generated: [],
+    complete: [],
+  }
+  for (const v of videos) {
+    const col = videoColumnForWithEdit(v, posts, {
+      hasCut: lookups.cutVideoIds.has(v.id),
+      isRendering: lookups.renderingVideoIds.has(v.id),
+    })
+    out[col].push(v)
   }
   return out
 }
