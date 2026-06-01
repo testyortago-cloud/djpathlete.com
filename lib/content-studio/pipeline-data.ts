@@ -20,6 +20,9 @@ export interface PipelineData {
   captionedCutEnabled: boolean
   /** videoUploadId → in-flight render job id (keys = the "rendering" column). */
   renderJobIdByVideo: Record<string, string>
+  /** videoUploadId → in-flight render start time (ISO) — anchors the elapsed timer
+   *  so it survives refresh/navigation instead of resetting to 0:00. */
+  renderStartedAtByVideo: Record<string, string>
   /** Videos whose latest render failed and that have no cut (failed badge). */
   failedRenderVideoIds: Set<string>
 }
@@ -72,6 +75,8 @@ const IN_FLIGHT_RENDER_STATUSES: ReadonlySet<RecentCaptionRender["status"]> = ne
 export interface RenderSignals {
   /** videoUploadId → in-flight render job id. Keys are also the "rendering" set. */
   renderJobIdByVideo: Record<string, string>
+  /** videoUploadId → in-flight render start time (ISO), to anchor the elapsed timer. */
+  renderStartedAtByVideo: Record<string, string>
   /** Videos whose LATEST render failed and that have no rendered cut. */
   failedRenderVideoIds: Set<string>
 }
@@ -83,6 +88,7 @@ export interface RenderSignals {
  */
 export function deriveRenderSignals(recentRenders: RecentCaptionRender[], cutVideoIds: Set<string>): RenderSignals {
   const renderJobIdByVideo: Record<string, string> = {}
+  const renderStartedAtByVideo: Record<string, string> = {}
   const failedRenderVideoIds = new Set<string>()
   const seen = new Set<string>()
 
@@ -92,6 +98,7 @@ export function deriveRenderSignals(recentRenders: RecentCaptionRender[], cutVid
 
     if (IN_FLIGHT_RENDER_STATUSES.has(render.status)) {
       renderJobIdByVideo[render.videoUploadId] = render.jobId
+      if (render.startedAt) renderStartedAtByVideo[render.videoUploadId] = render.startedAt
     } else if (render.status === "failed" && !cutVideoIds.has(render.videoUploadId)) {
       failedRenderVideoIds.add(render.videoUploadId)
     }
@@ -99,7 +106,7 @@ export function deriveRenderSignals(recentRenders: RecentCaptionRender[], cutVid
     // via cutVideoIds (→ "edited"), and a cancelled render needs no badge.
   }
 
-  return { renderJobIdByVideo, failedRenderVideoIds }
+  return { renderJobIdByVideo, renderStartedAtByVideo, failedRenderVideoIds }
 }
 
 export async function getPipelineData(): Promise<PipelineData> {
@@ -114,11 +121,13 @@ export async function getPipelineData(): Promise<PipelineData> {
   // Promise.all because deriveRenderSignals needs cutVideoIds (fetched above) to
   // suppress the failed badge when a cut already exists.
   let renderJobIdByVideo: Record<string, string> = {}
+  let renderStartedAtByVideo: Record<string, string> = {}
   let failedRenderVideoIds = new Set<string>()
   if (captionedCutEnabled) {
     const recentRenders = await listRecentCaptionRenders()
     const signals = deriveRenderSignals(recentRenders, cutVideoIds)
     renderJobIdByVideo = signals.renderJobIdByVideo
+    renderStartedAtByVideo = signals.renderStartedAtByVideo
     failedRenderVideoIds = signals.failedRenderVideoIds
   }
 
@@ -158,6 +167,7 @@ export async function getPipelineData(): Promise<PipelineData> {
     cutVideoIds,
     captionedCutEnabled,
     renderJobIdByVideo,
+    renderStartedAtByVideo,
     failedRenderVideoIds,
   }
 }

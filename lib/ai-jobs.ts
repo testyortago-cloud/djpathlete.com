@@ -106,6 +106,10 @@ export interface RecentCaptionRender {
   jobId: string
   videoUploadId: string
   status: AiJobStatus
+  /** Job creation time as ISO (from the createdAt serverTimestamp), so the
+   *  "rendering" elapsed timer can anchor to a stable start instead of mount.
+   *  Null if the serverTimestamp hasn't materialized yet. */
+  startedAt: string | null
 }
 
 /**
@@ -128,7 +132,9 @@ export async function listRecentCaptionRenders(limit = 300): Promise<RecentCapti
     const data = doc.data()
     const videoUploadId = data?.input?.videoUploadId
     if (typeof videoUploadId !== "string") continue
-    out.push({ jobId: doc.id, videoUploadId, status: data.status as AiJobStatus })
+    const createdAt = data?.createdAt
+    const startedAt = createdAt && typeof createdAt.toDate === "function" ? createdAt.toDate().toISOString() : null
+    out.push({ jobId: doc.id, videoUploadId, status: data.status as AiJobStatus, startedAt })
   }
   return out
 }

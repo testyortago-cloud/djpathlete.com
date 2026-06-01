@@ -62,6 +62,14 @@ describe("VideoCard — edit-column actions", () => {
     expect(screen.getByText(/0:0\d/)).toBeInTheDocument()
   })
 
+  it("anchors the rendering timer to renderStartedAt (survives remount, not 0:00)", () => {
+    // 150s before now → ~2:30 elapsed regardless of when the component mounted.
+    const startedAt = new Date(Date.now() - 150_000).toISOString()
+    render(<VideoCard video={video} counts={null} column="rendering" renderStartedAt={startedAt} />)
+    expect(screen.getByText(/2:\d\d/)).toBeInTheDocument()
+    expect(screen.queryByText(/0:0\d/)).toBeNull()
+  })
+
   it("renders the legacy card (single link, no action buttons) when column is omitted", () => {
     render(<VideoCard video={video} counts={null} />)
     expect(screen.getByRole("link")).toHaveAttribute("href", "/admin/content/v1")

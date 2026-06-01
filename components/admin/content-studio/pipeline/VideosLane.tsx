@@ -119,6 +119,7 @@ export function VideosLane({ data }: VideosLaneProps) {
               hasCut={data.cutVideoIds.has(v.id)}
               column={col}
               renderFailed={data.failedRenderVideoIds.has(v.id)}
+              renderStartedAt={data.renderStartedAtByVideo[v.id] ?? null}
             />
           ))}
           {grouped[col].length === 0 && (

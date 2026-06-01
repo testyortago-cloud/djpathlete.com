@@ -2,10 +2,16 @@ import { describe, expect, it } from "vitest"
 import { deriveRenderSignals } from "@/lib/content-studio/pipeline-data"
 import type { RecentCaptionRender } from "@/lib/ai-jobs"
 
-const r = (videoUploadId: string, status: RecentCaptionRender["status"], jobId: string): RecentCaptionRender => ({
+const r = (
+  videoUploadId: string,
+  status: RecentCaptionRender["status"],
+  jobId: string,
+  startedAt: string | null = null,
+): RecentCaptionRender => ({
   jobId,
   videoUploadId,
   status,
+  startedAt,
 })
 
 describe("deriveRenderSignals", () => {
@@ -25,6 +31,20 @@ describe("deriveRenderSignals", () => {
   it("treats streaming as in-flight", () => {
     const { renderJobIdByVideo } = deriveRenderSignals([r("v1", "streaming", "j1")], new Set())
     expect(renderJobIdByVideo).toEqual({ v1: "j1" })
+  })
+
+  it("records the in-flight render's start time so the timer can anchor to it", () => {
+    const startedAt = "2026-06-01T03:00:00.000Z"
+    const { renderStartedAtByVideo } = deriveRenderSignals([r("v1", "processing", "j1", startedAt)], new Set())
+    expect(renderStartedAtByVideo).toEqual({ v1: startedAt })
+  })
+
+  it("omits start time for a video with no in-flight render", () => {
+    const { renderStartedAtByVideo } = deriveRenderSignals(
+      [r("v1", "failed", "j1", "2026-06-01T03:00:00.000Z")],
+      new Set(),
+    )
+    expect(renderStartedAtByVideo).toEqual({})
   })
 
   it("flags a video whose latest render failed and that has no cut", () => {

@@ -33,6 +33,7 @@ const data: PipelineData = {
   cutVideoIds: new Set(),
   captionedCutEnabled: false,
   renderJobIdByVideo: {},
+  renderStartedAtByVideo: {},
   failedRenderVideoIds: new Set<string>(),
 }
 

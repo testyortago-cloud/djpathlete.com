@@ -57,6 +57,9 @@ interface VideoCardProps {
   column?: VideoColumnWithEdit
   /** True when this video's latest render failed and it has no cut. */
   renderFailed?: boolean
+  /** In-flight render start time (ISO) — anchors the "rendering" timer so it
+   *  survives refresh/navigation instead of restarting at 0:00. */
+  renderStartedAt?: string | null
 }
 
 export function VideoCard({
@@ -66,6 +69,7 @@ export function VideoCard({
   hasCut = false,
   column,
   renderFailed = false,
+  renderStartedAt = null,
 }: VideoCardProps) {
   const title = video.title ?? video.original_filename
   const isFailed = video.status === "failed"
@@ -165,7 +169,13 @@ export function VideoCard({
       </div>
 
       {column !== undefined && (
-        <EditControls videoId={video.id} column={column} renderFailed={renderFailed} hasCut={hasCut} />
+        <EditControls
+          videoId={video.id}
+          column={column}
+          renderFailed={renderFailed}
+          hasCut={hasCut}
+          renderStartedAt={renderStartedAt}
+        />
       )}
     </div>
   )
@@ -176,11 +186,13 @@ function EditControls({
   column,
   renderFailed,
   hasCut,
+  renderStartedAt,
 }: {
   videoId: string
   column: VideoColumnWithEdit
   renderFailed: boolean
   hasCut: boolean
+  renderStartedAt: string | null
 }) {
   const router = useRouter()
   const [busy, setBusy] = useState(false)
@@ -228,7 +240,7 @@ function EditControls({
   if (column === "rendering") {
     return (
       <div className="relative z-10 pt-1">
-        <RenderingTimer />
+        <RenderingTimer startedAt={renderStartedAt} />
       </div>
     )
   }
@@ -283,13 +295,19 @@ function EditControls({
   return null
 }
 
-function RenderingTimer() {
-  const [elapsedMs, setElapsedMs] = useState(0)
+function RenderingTimer({ startedAt }: { startedAt: string | null }) {
+  // Tick a clock and derive elapsed from the render's real start time, so a refresh
+  // or navigate-away-and-back shows true elapsed instead of restarting at 0:00.
+  // Falls back to mount time only when we don't have a start timestamp.
+  const [mountTime] = useState(() => Date.now())
+  const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
-    const start = Date.now()
-    const id = setInterval(() => setElapsedMs(Date.now() - start), 1000)
+    const id = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(id)
   }, [])
+  const parsed = startedAt ? Date.parse(startedAt) : NaN
+  const anchor = Number.isFinite(parsed) ? parsed : mountTime
+  const elapsedMs = Math.max(0, now - anchor)
   return (
     <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-primary">
       <Loader2 className="size-3 animate-spin" /> Rendering…
