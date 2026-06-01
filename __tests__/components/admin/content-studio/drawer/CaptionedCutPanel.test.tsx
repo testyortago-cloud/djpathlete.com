@@ -1,4 +1,4 @@
-import { render, screen, waitFor, fireEvent } from "@testing-library/react"
+import { render, screen, waitFor, fireEvent, act } from "@testing-library/react"
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import type { ReactNode } from "react"
 
@@ -109,6 +109,64 @@ describe("CaptionedCutPanel", () => {
     const Comp = await importComp()
     render(<Comp videoUploadId="v1" hasTranscript={false} />)
     expect(await screen.findByRole("button", { name: /suggest/i })).toBeDisabled()
+  })
+
+  it("Generate with an empty hook suggests one and pauses (does not render yet)", async () => {
+    const fetchMock = vi.fn(async (url: unknown, init?: RequestInit) => {
+      if (typeof url === "string" && url.includes("/suggest-hook")) return jsonResponse({ hook: "Suggested Hook" })
+      if (typeof url === "string" && url.includes("captioned-cut") && init?.method === "POST")
+        return jsonResponse({ jobId: "job-1" })
+      return jsonResponse({ inFlightJobId: null, cut: null })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    const Comp = await importComp()
+    render(<Comp videoUploadId="v1" hasTranscript />)
+
+    const genBtn = await screen.findByRole("button", { name: /generate captioned cut/i })
+    await act(async () => {
+      fireEvent.click(genBtn)
+    })
+
+    const input = screen.getByRole("textbox")
+    await waitFor(() => expect((input as HTMLInputElement).value).toBe("Suggested Hook"))
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/admin/content-studio/captioned-cut/suggest-hook",
+      expect.objectContaining({ method: "POST" }),
+    )
+    // It must NOT have started the render — that's the whole point (review first).
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      "/api/admin/content-studio/captioned-cut",
+      expect.objectContaining({ method: "POST" }),
+    )
+  })
+
+  it("Generate renders immediately when a hook is already present (no suggestion)", async () => {
+    const fetchMock = vi.fn(async (url: unknown, init?: RequestInit) => {
+      if (typeof url === "string" && url.includes("/suggest-hook")) return jsonResponse({ hook: "X" })
+      if (typeof url === "string" && url.includes("captioned-cut") && init?.method === "POST")
+        return jsonResponse({ jobId: "job-1" })
+      return jsonResponse({ inFlightJobId: null, cut: null })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    const Comp = await importComp()
+    render(<Comp videoUploadId="v1" hasTranscript />)
+
+    const input = await screen.findByRole("textbox")
+    fireEvent.change(input, { target: { value: "My Hook" } })
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /generate captioned cut/i }))
+    })
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/admin/content-studio/captioned-cut",
+        expect.objectContaining({ method: "POST" }),
+      ),
+    )
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      "/api/admin/content-studio/captioned-cut/suggest-hook",
+      expect.anything(),
+    )
   })
 
   it("shows persistent progress when the server reports an in-flight render", async () => {

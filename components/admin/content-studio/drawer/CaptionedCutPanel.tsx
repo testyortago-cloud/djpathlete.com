@@ -43,7 +43,45 @@ export function CaptionedCutPanel({ videoUploadId, hasTranscript }: CaptionedCut
   const [hook, setHook] = useState("")
   const [music, setMusic] = useState("")
   const [elapsedMs, setElapsedMs] = useState(0)
+  const [suggesting, setSuggesting] = useState(false)
+  // Once we've offered a hook suggestion for an empty field, a second Generate
+  // click renders regardless — so the suggest-and-pause never traps someone who
+  // genuinely wants no hook.
+  const [hookOffered, setHookOffered] = useState(false)
   const { status, error } = useAiJob(jobId)
+
+  // Fetch a transcript-based hook suggestion and drop it into the field.
+  // Returns the suggested hook (or null). Shared by the manual Suggest button
+  // and the suggest-before-render flow.
+  const suggestHook = useCallback(async (): Promise<string | null> => {
+    setSuggesting(true)
+    try {
+      const res = await fetch("/api/admin/content-studio/captioned-cut/suggest-hook", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ videoUploadId }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.error || `Request failed (${res.status})`)
+      const h = typeof data?.hook === "string" ? data.hook.trim() : ""
+      if (h) {
+        setHook(h)
+        return h
+      }
+      return null
+    } catch (err) {
+      toast.error((err as Error).message || "Failed to suggest a hook")
+      return null
+    } finally {
+      setSuggesting(false)
+    }
+  }, [videoUploadId])
+
+  async function onSuggestClick() {
+    const h = await suggestHook()
+    if (h) toast.success("Hook suggested — tweak it if you like")
+    else toast.message("Couldn't draw a hook from this transcript — type one in.")
+  }
 
   const fetchState = useCallback(async () => {
     try {
@@ -94,6 +132,18 @@ export function CaptionedCutPanel({ videoUploadId, hasTranscript }: CaptionedCut
   }, [rendering])
 
   async function generate() {
+    // Suggest-before-render: the first Generate click with an empty hook fetches
+    // a suggestion and pauses so it can be reviewed/edited — rendering hook-less
+    // (and re-rendering later) is the waste we're avoiding. A second click then
+    // renders, even if the field is still empty (deliberate "no hook").
+    if (!hook.trim() && hasTranscript && !hookOffered) {
+      setHookOffered(true)
+      const h = await suggestHook()
+      if (h) toast.message("Suggested a hook — review it, then click Generate to render.")
+      else toast.message("No hook suggested — add one, or click Generate again to render without.")
+      return
+    }
+
     setSubmitting(true)
     try {
       const res = await fetch("/api/admin/content-studio/captioned-cut", {
@@ -196,12 +246,18 @@ export function CaptionedCutPanel({ videoUploadId, hasTranscript }: CaptionedCut
                 No draft posts — connect a video platform to auto-create them.
               </p>
             )}
-            <HookInput value={hook} onChange={setHook} videoUploadId={videoUploadId} hasTranscript={hasTranscript} />
+            <HookInput
+              value={hook}
+              onChange={setHook}
+              onSuggest={onSuggestClick}
+              suggesting={suggesting}
+              hasTranscript={hasTranscript}
+            />
             <MusicPicker value={music} onChange={setMusic} />
             <button
               type="button"
               onClick={generate}
-              disabled={!hasTranscript}
+              disabled={!hasTranscript || suggesting}
               className="mt-2 inline-flex items-center gap-1.5 rounded border border-border px-2.5 py-1 text-xs hover:bg-surface disabled:opacity-60"
             >
               <RefreshCw className="size-3" /> Re-render
@@ -215,12 +271,18 @@ export function CaptionedCutPanel({ videoUploadId, hasTranscript }: CaptionedCut
   // ── idle: no cut yet ──────────────────────────────────────────────────────
   return (
     <PanelShell>
-      <HookInput value={hook} onChange={setHook} videoUploadId={videoUploadId} hasTranscript={hasTranscript} />
+      <HookInput
+        value={hook}
+        onChange={setHook}
+        onSuggest={onSuggestClick}
+        suggesting={suggesting}
+        hasTranscript={hasTranscript}
+      />
       <MusicPicker value={music} onChange={setMusic} />
       <button
         type="button"
         onClick={generate}
-        disabled={!hasTranscript}
+        disabled={!hasTranscript || suggesting}
         title={
           !hasTranscript
             ? "No speech transcript — captions need spoken audio"
@@ -272,46 +334,23 @@ function PanelShell({ children }: { children: ReactNode }) {
 function HookInput({
   value,
   onChange,
-  videoUploadId,
+  onSuggest,
+  suggesting,
   hasTranscript,
 }: {
   value: string
   onChange: (v: string) => void
-  videoUploadId: string
+  onSuggest: () => void
+  suggesting: boolean
   hasTranscript: boolean
 }) {
-  const [suggesting, setSuggesting] = useState(false)
-
-  async function suggest() {
-    setSuggesting(true)
-    try {
-      const res = await fetch("/api/admin/content-studio/captioned-cut/suggest-hook", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ videoUploadId }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data?.error || `Request failed (${res.status})`)
-      if (typeof data?.hook === "string" && data.hook.trim()) {
-        onChange(data.hook.trim())
-        toast.success("Hook suggested — tweak it if you like")
-      } else {
-        toast.message("Couldn't draw a hook from this transcript — type one in.")
-      }
-    } catch (err) {
-      toast.error((err as Error).message || "Failed to suggest a hook")
-    } finally {
-      setSuggesting(false)
-    }
-  }
-
   return (
     <label className="mb-2 block">
       <span className="mb-1 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
         <span>Hook title (optional)</span>
         <button
           type="button"
-          onClick={suggest}
+          onClick={onSuggest}
           disabled={suggesting || !hasTranscript}
           aria-label="Suggest hook from transcript"
           title={hasTranscript ? "Suggest a hook from the transcript" : "Needs a speech transcript first"}
