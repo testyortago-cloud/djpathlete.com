@@ -1,0 +1,60 @@
+name: Deploy Firebase Rules + CORS
+
+# Deploys Firestore + Storage + Realtime Database security rules (via firebase) and
+# applies the GCS bucket CORS config (via gcloud) whenever any of those files land on
+# main. The repo is the source of truth — a rule/CORS entry edited only in the
+# console gets OVERWRITTEN on the next change here. Also runnable on demand.
+#
+# Setup: reuses the FIREBASE_SERVICE_ACCOUNT secret (the github-deployer@ key) — it
+# already has roles/firebase.admin (rules) + roles/storage.admin (bucket CORS), so no
+# new IAM is required.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "firestore.rules"
+      - "storage.rules"
+      - "database.rules.json"
+      - "firebase.json"
+      - "cors.json"
+      - ".github/workflows/deploy-firebase-rules.yml"
+  workflow_dispatch: {}
+
+# Never interrupt a rules release already in flight (a half-applied ruleset is bad).
+concurrency:
+  group: deploy-firebase-rules
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+# auth@v2 / setup-gcloud@v2 still ship on Node 20 (GitHub-deprecated); opt into Node 24.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      # auth@v2 writes the SA key to a file and exports GOOGLE_APPLICATION_CREDENTIALS,
+      # which BOTH gcloud and firebase-tools pick up for non-interactive auth.
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      # Firestore + Storage + Realtime Database security rules (paths from firebase.json).
+      - name: Deploy security rules
+        run: npx --yes firebase-tools@latest deploy --only firestore:rules,storage,database --project darrenjpaulcom --non-interactive --force
+
+      # Bucket CORS — applied separately because it's GCS bucket config, not a Firebase
+      # ruleset. cors.json is the source of truth for the public storage bucket.
+      - name: Apply bucket CORS
+        run: gcloud storage buckets update gs://darrenjpaulcom.firebasestorage.app --cors-file=cors.json --project=darrenjpaulcom
