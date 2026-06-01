@@ -22,6 +22,11 @@ describe("deriveRenderSignals", () => {
     expect(renderJobIdByVideo).toEqual({ v1: "j1" })
   })
 
+  it("treats streaming as in-flight", () => {
+    const { renderJobIdByVideo } = deriveRenderSignals([r("v1", "streaming", "j1")], new Set())
+    expect(renderJobIdByVideo).toEqual({ v1: "j1" })
+  })
+
   it("flags a video whose latest render failed and that has no cut", () => {
     const { renderJobIdByVideo, failedRenderVideoIds } = deriveRenderSignals([r("v1", "failed", "j1")], new Set())
     expect(renderJobIdByVideo).toEqual({})

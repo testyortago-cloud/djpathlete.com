@@ -93,6 +93,8 @@ export function deriveRenderSignals(
     } else if (render.status === "failed" && !cutVideoIds.has(render.videoUploadId)) {
       failedRenderVideoIds.add(render.videoUploadId)
     }
+    // "completed" and "cancelled" are intentionally ignored — a finished cut shows
+    // via cutVideoIds (→ "edited"), and a cancelled render needs no badge.
   }
 
   return { renderJobIdByVideo, failedRenderVideoIds }
