@@ -58,8 +58,9 @@ not drag-driven), matching the lane's existing "Auto-advance" behavior.
 
 ### State derivation
 
-`videoColumnFor(video, posts, signals)` where `signals = { hasCut: boolean,
-isRendering: boolean }`:
+A **new** function `videoColumnForWithEdit(video, posts, signals)` where `signals =
+{ hasCut: boolean, isRendering: boolean }` (the existing `videoColumnFor` / 5-column
+function and its tests are left untouched for the flag-off path):
 
 1. has posts + every post `published` → **complete**
 2. has posts (any unpublished) → **generated**
@@ -89,7 +90,10 @@ Gated by the existing DB-backed flag **`feature_captioned_cut_enabled`**
 
 Implementation: `lib/content-studio/pipeline-columns.ts` exports two column-key
 arrays (`VIDEO_COLUMNS` = current 5, `VIDEO_COLUMNS_WITH_EDIT` = 7) with matching
-label/tone/help maps. `VideosLane` selects the set from `data.captionedCutEnabled`.
+label/tone/help maps, plus the two derivation functions (`videoColumnFor` +
+`videosByColumn` for 5-col; `videoColumnForWithEdit` + `videosByColumnWithEdit` for
+7-col). `VideosLane` selects the set + function from `data.captionedCutEnabled`. The
+original 5-col functions and their pinned tests are not modified.
 
 ## Data layer
 
@@ -98,22 +102,23 @@ label/tone/help maps. `VideosLane` selects the set from `data.captionedCutEnable
 Only populated when the flag is on:
 
 - `captionedCutEnabled: boolean` — from `getSetting<boolean>("feature_captioned_cut_enabled", false)`
-- `renderingVideoIds: Set<string>` — videos with an in-flight render
-- `renderStartedAtByVideo: Record<string, string>` — job start time, for the elapsed timer
+- `renderJobIdByVideo: Record<string, string>` — for each video with an in-flight
+  render, its `ai_jobs` job id. The **keys** are the rendering set (drives the
+  `isRendering` signal); the **values** are the job ids the client live-listens to.
 - `failedRenderVideoIds: Set<string>` — videos whose **latest** render `failed` and
   that have no cut (drives the "render failed" badge)
 
-`cutVideoIds` already exists. When the flag is off, the render fields are empty /
-omitted and no extra queries run.
+`cutVideoIds` already exists. When the flag is off, the render fields are empty and
+no extra queries run.
 
 ### `lib/ai-jobs.ts` — one new batch query
 
-`listRecentCaptionRenders(limit ≈ 200)` — Firestore query: `type ==
-"video_caption_render"`, ordered by `createdAt desc`. `pipeline-data` reduces it to
-latest-per-`videoUploadId` and derives:
+`listRecentCaptionRenders(limit ≈ 300)` — Firestore query: `type ==
+"video_caption_render"`, ordered by `createdAt desc`, returning
+`{ jobId, videoUploadId, status }[]`. `pipeline-data` reduces it to
+latest-per-`videoUploadId` (first occurrence wins, since ordered desc) and derives:
 
-- `renderingVideoIds` / `renderStartedAtByVideo` — latest job `status` ∈
-  `{pending, processing}`
+- `renderJobIdByVideo` — latest job `status` ∈ `{pending, processing}` → `videoUploadId → jobId`
 - `failedRenderVideoIds` — latest job `status === "failed"` **and** the video is not
   in `cutVideoIds`
 
@@ -122,55 +127,74 @@ route.
 
 ## Components
 
-### `components/admin/content-studio/pipeline/VideoCard.tsx`
+### `components/admin/content-studio/pipeline/VideoCard.tsx` (becomes a client component)
 
-Small structural refactor: the whole card is currently one `<Link>`. To host action
-buttons without nesting interactive elements inside an anchor, split into:
+Structural refactor: the whole card is currently one `<Link>`. Nesting `<button>`s
+inside an `<a>` is invalid, so the card becomes a `<div class="relative …">` with a
+**stretched link** overlay (`<Link className="absolute inset-0" aria-label={title}>`
+→ `/admin/content/[id]`) so clicking anywhere still opens detail, and an **action
+row** rendered above it (`relative z-10`, buttons call `preventDefault()` +
+`stopPropagation()`). Existing badges/content keep rendering in the div.
 
-- a link region (thumbnail + title + filename + meta badges) → `/admin/content/[id]`
-- an **action row** below it, with buttons that call `preventDefault()` /
-  `stopPropagation()`.
+`VideoCard` gains `"use client"` and `useRouter`. New optional props: `column`,
+`renderJobId`, `renderFailed`, plus existing `hasCut`. **When `column` is omitted
+(the existing tests and any non-edit-lane use), the card renders exactly as today —
+no action row, no rendering UI.** When `column` is provided:
 
-New props: `column`, `isRendering`, `renderStartedAt`, `renderFailed`. Buttons by
-column:
+| Column / state            | Card affordances                                                              |
+|---------------------------|-------------------------------------------------------------------------------|
+| `needs_edit` (no fail)    | `Render cut` (primary) + `Mark ready` (ghost)                                 |
+| `needs_edit` + `renderFailed` | red "render failed" badge + `Retry render` + `Open`                       |
+| `rendering`               | spinner + elapsed timer (`mm:ss`, counted from mount via `formatElapsed`); no buttons |
+| `edited`                  | "Cut ready" badge (`hasCut`) or "Marked ready" badge; no buttons, card links to detail |
 
-| Column / state            | Card affordances                                            |
-|---------------------------|-------------------------------------------------------------|
-| `needs_edit`              | `Render cut` (primary) + `Mark ready` (ghost)               |
-| `needs_edit` + failed     | red "render failed" badge + `Retry render` + `Open`         |
-| `rendering`               | elapsed timer (`mm:ss` from `renderStartedAt`) + animated bar; no buttons |
-| `edited`                  | "Cut ready" badge (or "Marked ready" if `needs_edit===false` && no cut); card links to detail |
+The render completion *detection* is **not** in VideoCard — VideoCard's rendering
+state is purely presentational (CSS spinner + a mount-anchored timer, matching
+`CaptionedCutPanel`'s "counts from reopen" behavior). No Firebase import in
+VideoCard, so its tests stay simple.
 
-The existing "Needs edit" (Scissors) and "Cut" (Clapperboard) badges are folded into
-this per-column treatment.
+### `components/admin/content-studio/pipeline/RenderWatcher.tsx` (new)
+
+Isolates all Firebase live-listening. `RenderWatcher` takes `jobIds: string[]` and
+renders one invisible `<JobWatch jobId={id} onDone={refresh} />` per id; `JobWatch`
+calls `useAiJob(jobId)` and, in an effect, fires `onDone()` once `status` is
+`"completed"` or `"failed"`. `RenderWatcher` owns `useRouter` and passes
+`onDone={() => router.refresh()}`. Mounted once by `VideosLane` with
+`Object.values(data.renderJobIdByVideo)`. When `router.refresh()` re-derives columns,
+the finished video leaves the rendering set and its `JobWatch` unmounts.
 
 ### `components/admin/content-studio/pipeline/VideosLane.tsx`
 
-Select column-key array / tone map / help map from `data.captionedCutEnabled`. Pass
-render signals and action handlers into each `VideoCard`.
+Select column-key array / tone map / help map / derivation function from
+`data.captionedCutEnabled`. Pass `column`, `renderJobId` (from `renderJobIdByVideo`),
+and `renderFailed` (from `failedRenderVideoIds`) into each `VideoCard`. Render one
+`<RenderWatcher>` for the in-flight job ids.
 
-### Action wiring (existing endpoints)
+### Action wiring (existing endpoints, called from VideoCard)
 
 - **Render cut / Retry render** → `POST /api/admin/content-studio/captioned-cut`
-  with `{ videoUploadId }`. On `202`/`200`, optimistically move the card to
-  Rendering and start the timer; polling takes over. Handle `422` (no speech
-  transcript) and `403` (flag off) with a Sonner toast; card stays in Needs Edit.
-- **Mark ready** → `PATCH /api/admin/videos/[id]` with `{ needs_edit: false }`.
-  Optimistically move the card to Edited.
+  with `{ videoUploadId }`. On ok → toast + `router.refresh()` (server then places
+  the card in Rendering). Handle `422` (no speech transcript) and `403` (flag off)
+  with a Sonner `toast.error`; card stays in Needs Edit.
+- **Mark ready** → `PATCH /api/admin/videos/[id]` with `{ needs_edit: false }`. On ok
+  → toast + `router.refresh()` (card moves to Edited).
 
 ## Live updates
 
-The Videos lane is already a client component. When `renderingVideoIds.size > 0` (or
-immediately after a Render action), a poll hits a new lightweight endpoint:
+The board is already a client tree and `PipelineBoard` already calls `router.refresh()`
+(for bulk approve), which re-runs the server component and feeds fresh `PipelineData`
+back through as `initialData`. We reuse that:
 
-**`GET /api/admin/content-studio/render-status?ids=<csv>`** — admin-only, returns
-`{ id, status, hasCut }[]` for the requested videos.
+- `VideosLane` mounts `RenderWatcher` with the in-flight render job ids.
+- Each `JobWatch` **live-listens** to its job via the existing `useAiJob` hook
+  (Firestore `onSnapshot` — real-time, no polling endpoint).
+- On `completed`/`failed`, `RenderWatcher` calls `router.refresh()`; the server
+  re-derives columns and the card auto-advances to Edited (or back to Needs Edit with
+  a "render failed" badge).
+- The Rendering card's elapsed timer ticks client-side from mount.
 
-- Poll interval ≈ 4s; stop when no renders are active.
-- The elapsed timer ticks client-side from `renderStartedAt`.
-- On any transition (rendering → completed/failed), call `router.refresh()` so the
-  server component re-derives columns from fresh data (card auto-advances to Edited,
-  or back to Needs Edit with a failed badge).
+No new API endpoint is required — this replaces the poll-endpoint sketch from earlier
+drafting with the codebase's existing live-job pattern.
 
 ## Edge cases
 
@@ -185,14 +209,18 @@ immediately after a Render action), a poll hits a new lightweight endpoint:
 
 ## Testing
 
-- **Unit — `pipeline-columns`:** each new state (`needs_edit`, `rendering`,
-  `edited`) given the right `signals`; flag-off path still yields the 5-column
-  mapping.
-- **Unit — `pipeline-data`:** latest-per-video reduction produces correct
-  `renderingVideoIds` / `failedRenderVideoIds` / `renderStartedAtByVideo` (including
-  the "failed but has cut → not failed" case).
-- **Component — `VideoCard`:** correct buttons per column/state; clicking calls the
-  expected endpoint and applies the optimistic move.
+- **Unit — `pipeline-columns`:** `videoColumnForWithEdit` for each new state
+  (`needs_edit`, `rendering`, `edited`) given the right `signals`; existing
+  `videoColumnFor` 5-column tests remain unchanged and green.
+- **Unit — reduction helper:** latest-per-video reduction produces correct
+  `renderJobIdByVideo` / `failedRenderVideoIds` (including the "failed but has cut →
+  not failed" and "latest is success after an earlier failure" cases). Extracted as a
+  pure function so it needs no Firestore mock.
+- **Component — `VideoCard`:** correct buttons per `column`/state; clicking
+  `Render cut` calls the captioned-cut POST; `Mark ready` calls the videos PATCH;
+  legacy render (no `column`) is unchanged.
+- **Component — `JobWatch`:** calls `onDone` when `useAiJob` reports
+  `completed`/`failed` (with `useAiJob` mocked).
 
 ## Out of scope (YAGNI)
 
@@ -203,13 +231,15 @@ immediately after a Render action), a poll hits a new lightweight endpoint:
 
 ## Touched files (anticipated)
 
-- `lib/content-studio/pipeline-columns.ts` — column arrays, labels, tones, derivation
-- `lib/content-studio/pipeline-data.ts` — render signals + flag in `PipelineData`
+- `lib/content-studio/pipeline-columns.ts` — `*WithEdit` column array, labels, tones, derivation (originals untouched)
+- `lib/content-studio/pipeline-data.ts` — render signals + flag in `PipelineData`; pure reduction helper
 - `lib/ai-jobs.ts` — `listRecentCaptionRenders`
 - `lib/help-copy.ts` — help copy for the three new columns
-- `components/admin/content-studio/pipeline/VideosLane.tsx` — column set + handlers
-- `components/admin/content-studio/pipeline/VideoCard.tsx` — action row + per-state UI
-- `app/api/admin/content-studio/render-status/route.ts` — new batch poll endpoint
+- `components/admin/content-studio/pipeline/VideosLane.tsx` — column set + props + `RenderWatcher`
+- `components/admin/content-studio/pipeline/VideoCard.tsx` — stretched-link refactor + action row + per-state UI
+- `components/admin/content-studio/pipeline/RenderWatcher.tsx` — new; isolates `useAiJob` live-listening + `router.refresh()`
 - `__tests__/` — unit + component coverage above
+
+No new API endpoint, no database migration.
 
 No database migration required.
