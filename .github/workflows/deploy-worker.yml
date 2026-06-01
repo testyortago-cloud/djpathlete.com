@@ -14,7 +14,7 @@ name: Deploy Render Worker (Cloud Run job)
 #     deploys). For THIS workflow the deploy SA must also have, in project
 #     darrenjpaulcom:
 #       - roles/run.developer             (create/update the Cloud Run job)
-#       - roles/cloudbuild.builds.editor  (build the image — already granted)
+#       - roles/cloudbuild.builds.editor  (create the Cloud Build that builds it)
 #       - roles/artifactregistry.writer   (push the built image)
 #       - roles/storage.admin OR object access on the Cloud Build source bucket
 #                                         (gcloud uploads the source tarball there)
