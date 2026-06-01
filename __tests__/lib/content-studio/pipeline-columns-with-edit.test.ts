@@ -80,14 +80,41 @@ describe("videoColumnForWithEdit", () => {
     expect(videoColumnForWithEdit(video("v", { status: "transcribed", needs_edit: false }), [], sig())).toBe("edited")
   })
 
-  it("still uses post state for generated/complete", () => {
-    const v = video("v1", { status: "transcribed" })
+  it("keeps a gated video in needs_edit even after caption posts are generated", () => {
+    // Auto-fanout drafts caption posts the moment transcription finishes, but a
+    // video that still needs a cut must stay in needs_edit — not skip to
+    // generated — so the cut actually gets rendered.
+    const v = video("v1", { status: "transcribed", needs_edit: true })
+    expect(videoColumnForWithEdit(v, [post("p", { source_video_id: "v1", approval_status: "draft" })], sig())).toBe(
+      "needs_edit",
+    )
     expect(videoColumnForWithEdit(v, [post("p", { source_video_id: "v1", approval_status: "approved" })], sig())).toBe(
-      "generated",
+      "needs_edit",
     )
-    expect(videoColumnForWithEdit(v, [post("p", { source_video_id: "v1", approval_status: "published" })], sig())).toBe(
-      "complete",
-    )
+  })
+
+  it("uses post state for generated/complete once the video is postable", () => {
+    // Marked ready (needs_edit=false) or with a rendered cut → the edit gate is
+    // cleared and post state drives the column.
+    const ready = video("v1", { status: "transcribed", needs_edit: false })
+    expect(
+      videoColumnForWithEdit(ready, [post("p", { source_video_id: "v1", approval_status: "approved" })], sig()),
+    ).toBe("generated")
+    expect(
+      videoColumnForWithEdit(
+        video("v1", { status: "transcribed", needs_edit: true }),
+        [post("p", { source_video_id: "v1", approval_status: "approved" })],
+        sig({ hasCut: true }),
+      ),
+    ).toBe("generated")
+    // All posts published → complete, regardless of the edit gate (content shipped).
+    expect(
+      videoColumnForWithEdit(
+        video("v1", { status: "transcribed" }),
+        [post("p", { source_video_id: "v1", approval_status: "published" })],
+        sig(),
+      ),
+    ).toBe("complete")
   })
 
   it("routes to rendering when a render is in flight even if posts already exist (re-render)", () => {

@@ -135,9 +135,8 @@ export function videoColumnForWithEdit(
   if (signals.isRendering) return "rendering"
 
   const myPosts = posts.filter((p) => p.source_video_id === video.id)
-  if (myPosts.length > 0) {
-    return myPosts.every((p) => p.approval_status === "published") ? "complete" : "generated"
-  }
+  // Fully shipped: every post published → Complete, regardless of edit state.
+  if (myPosts.length > 0 && myPosts.every((p) => p.approval_status === "published")) return "complete"
 
   switch (video.status) {
     case "uploaded":
@@ -147,8 +146,14 @@ export function videoColumnForWithEdit(
       return "transcribing"
     case "transcribed":
     case "analyzed":
-      if (isVideoPostable(video, signals.hasCut)) return "edited"
-      return "needs_edit"
+      // Editing gate precedes generation. The auto-fanout drafts caption posts
+      // the moment transcription finishes, so a transcribed video that still
+      // needs a cut would otherwise skip straight to "generated" and the cut
+      // would never get rendered. Keep it in needs_edit until it's postable
+      // (cut rendered or marked ready); only THEN does post state drive the
+      // column (→ generated when posts exist, → edited when they don't).
+      if (!isVideoPostable(video, signals.hasCut)) return "needs_edit"
+      return myPosts.length > 0 ? "generated" : "edited"
     default: {
       // exhaustiveness guard — a new VideoUploadStatus becomes a compile error here
       const _never: never = video.status
