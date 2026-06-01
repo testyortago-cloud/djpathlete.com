@@ -12,10 +12,8 @@ export const HELP_COPY = {
     "The approval board. Drag a card between columns to change status. Needs Review → Approved hands it to the scheduler; Scheduled and Published are read-only once they land there.",
 
   // ─── Content Studio — video columns ──
-  uploadedColumn:
-    "Video file landed in storage. A background job picks it up in seconds to kick off transcription.",
-  transcribingColumn:
-    "AssemblyAI is processing the audio. Usually 30 seconds to 5 minutes depending on length.",
+  uploadedColumn: "Video file landed in storage. A background job picks it up in seconds to kick off transcription.",
+  transcribingColumn: "AssemblyAI is processing the audio. Usually 30 seconds to 5 minutes depending on length.",
   transcribedColumn:
     "Transcript is ready. Open the video and hit Generate to fan out captions to every connected platform.",
   needsEditColumn:

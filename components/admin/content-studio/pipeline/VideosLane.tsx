@@ -45,19 +45,40 @@ export function VideosLane({ data }: VideosLaneProps) {
   const videoCount = data.videos.length
   const withPosts = Object.keys(data.postCountsByVideo).length
 
-  const meta =
-    videoCount > 0 ? `${videoCount} total${withPosts > 0 ? ` · ${withPosts} with posts` : ""}` : undefined
+  const meta = videoCount > 0 ? `${videoCount} total${withPosts > 0 ? ` · ${withPosts} with posts` : ""}` : undefined
 
   if (!data.captionedCutEnabled) {
     const grouped = videosByColumn(data.videos, data.posts)
     return (
-      <Lane title="Videos" subtitle="Auto-advance based on transcription + fanout state" tone="neutral" help={HELP_COPY.videosLane} meta={meta}>
+      <Lane
+        title="Videos"
+        subtitle="Auto-advance based on transcription + fanout state"
+        tone="neutral"
+        help={HELP_COPY.videosLane}
+        meta={meta}
+      >
         {VIDEO_COLUMNS.map((col) => (
-          <LaneColumn key={col} id={`video-${col}`} label={VIDEO_COLUMN_LABELS[col]} count={grouped[col].length} accepts={false} tone={VIDEO_COLUMN_TONES[col] ?? "neutral"} help={VIDEO_COLUMN_HELP[col]}>
+          <LaneColumn
+            key={col}
+            id={`video-${col}`}
+            label={VIDEO_COLUMN_LABELS[col]}
+            count={grouped[col].length}
+            accepts={false}
+            tone={VIDEO_COLUMN_TONES[col] ?? "neutral"}
+            help={VIDEO_COLUMN_HELP[col]}
+          >
             {grouped[col].map((v) => (
-              <VideoCard key={v.id} video={v} counts={data.postCountsByVideo[v.id] ?? null} thumbnailUrl={data.thumbnailUrlsByVideo[v.id] ?? null} hasCut={data.cutVideoIds.has(v.id)} />
+              <VideoCard
+                key={v.id}
+                video={v}
+                counts={data.postCountsByVideo[v.id] ?? null}
+                thumbnailUrl={data.thumbnailUrlsByVideo[v.id] ?? null}
+                hasCut={data.cutVideoIds.has(v.id)}
+              />
             ))}
-            {grouped[col].length === 0 && <div className="py-6 text-center text-[11px] text-muted-foreground/50 italic">empty</div>}
+            {grouped[col].length === 0 && (
+              <div className="py-6 text-center text-[11px] text-muted-foreground/50 italic">empty</div>
+            )}
           </LaneColumn>
         ))}
       </Lane>
@@ -71,10 +92,24 @@ export function VideosLane({ data }: VideosLaneProps) {
   })
 
   return (
-    <Lane title="Videos" subtitle="Auto-advance through transcription, editing, and fanout" tone="neutral" help={HELP_COPY.videosLane} meta={meta}>
+    <Lane
+      title="Videos"
+      subtitle="Auto-advance through transcription, editing, and fanout"
+      tone="neutral"
+      help={HELP_COPY.videosLane}
+      meta={meta}
+    >
       <RenderWatcher jobIds={Object.values(data.renderJobIdByVideo)} />
       {VIDEO_COLUMNS_WITH_EDIT.map((col: VideoColumnWithEdit) => (
-        <LaneColumn key={col} id={`video-${col}`} label={VIDEO_COLUMN_WITH_EDIT_LABELS[col]} count={grouped[col].length} accepts={false} tone={VIDEO_COLUMN_TONES[col] ?? "neutral"} help={VIDEO_COLUMN_HELP[col]}>
+        <LaneColumn
+          key={col}
+          id={`video-${col}`}
+          label={VIDEO_COLUMN_WITH_EDIT_LABELS[col]}
+          count={grouped[col].length}
+          accepts={false}
+          tone={VIDEO_COLUMN_TONES[col] ?? "neutral"}
+          help={VIDEO_COLUMN_HELP[col]}
+        >
           {grouped[col].map((v) => (
             <VideoCard
               key={v.id}
@@ -86,7 +121,9 @@ export function VideosLane({ data }: VideosLaneProps) {
               renderFailed={data.failedRenderVideoIds.has(v.id)}
             />
           ))}
-          {grouped[col].length === 0 && <div className="py-6 text-center text-[11px] text-muted-foreground/50 italic">empty</div>}
+          {grouped[col].length === 0 && (
+            <div className="py-6 text-center text-[11px] text-muted-foreground/50 italic">empty</div>
+          )}
         </LaneColumn>
       ))}
     </Lane>

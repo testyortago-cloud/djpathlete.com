@@ -37,9 +37,7 @@ function emptyCounts(): PostCounts {
   return { total: 0, approved: 0, scheduled: 0, published: 0, failed: 0, needs_review: 0 }
 }
 
-async function signThumbnailUrls(
-  videos: VideoUpload[],
-): Promise<Record<string, string>> {
+async function signThumbnailUrls(videos: VideoUpload[]): Promise<Record<string, string>> {
   const bucket = getAdminStorage().bucket()
   const entries = await Promise.all(
     videos
@@ -83,10 +81,7 @@ export interface RenderSignals {
  * latest render per video matters: if it's in flight → rendering; if it failed and
  * no cut exists → show the failed badge; otherwise no render signal.
  */
-export function deriveRenderSignals(
-  recentRenders: RecentCaptionRender[],
-  cutVideoIds: Set<string>,
-): RenderSignals {
+export function deriveRenderSignals(recentRenders: RecentCaptionRender[], cutVideoIds: Set<string>): RenderSignals {
   const renderJobIdByVideo: Record<string, string> = {}
   const failedRenderVideoIds = new Set<string>()
   const seen = new Set<string>()

@@ -55,17 +55,25 @@ describe("videoColumnForWithEdit", () => {
   })
 
   it("routes a gated transcribed video with no cut/render to needs_edit", () => {
-    expect(videoColumnForWithEdit(video("v", { status: "transcribed", needs_edit: true }), [], sig())).toBe("needs_edit")
+    expect(videoColumnForWithEdit(video("v", { status: "transcribed", needs_edit: true }), [], sig())).toBe(
+      "needs_edit",
+    )
     expect(videoColumnForWithEdit(video("v", { status: "analyzed", needs_edit: true }), [], sig())).toBe("needs_edit")
   })
 
   it("routes to rendering when a render is in flight (even if a cut already exists)", () => {
-    expect(videoColumnForWithEdit(video("v", { status: "transcribed" }), [], sig({ isRendering: true }))).toBe("rendering")
-    expect(videoColumnForWithEdit(video("v", { status: "transcribed" }), [], sig({ isRendering: true, hasCut: true }))).toBe("rendering")
+    expect(videoColumnForWithEdit(video("v", { status: "transcribed" }), [], sig({ isRendering: true }))).toBe(
+      "rendering",
+    )
+    expect(
+      videoColumnForWithEdit(video("v", { status: "transcribed" }), [], sig({ isRendering: true, hasCut: true })),
+    ).toBe("rendering")
   })
 
   it("routes to edited when postable (has cut) and no render in flight", () => {
-    expect(videoColumnForWithEdit(video("v", { status: "transcribed", needs_edit: true }), [], sig({ hasCut: true }))).toBe("edited")
+    expect(
+      videoColumnForWithEdit(video("v", { status: "transcribed", needs_edit: true }), [], sig({ hasCut: true })),
+    ).toBe("edited")
   })
 
   it("routes to edited when marked ready (needs_edit=false) with no cut", () => {
@@ -74,12 +82,12 @@ describe("videoColumnForWithEdit", () => {
 
   it("still uses post state for generated/complete", () => {
     const v = video("v1", { status: "transcribed" })
-    expect(
-      videoColumnForWithEdit(v, [post("p", { source_video_id: "v1", approval_status: "approved" })], sig()),
-    ).toBe("generated")
-    expect(
-      videoColumnForWithEdit(v, [post("p", { source_video_id: "v1", approval_status: "published" })], sig()),
-    ).toBe("complete")
+    expect(videoColumnForWithEdit(v, [post("p", { source_video_id: "v1", approval_status: "approved" })], sig())).toBe(
+      "generated",
+    )
+    expect(videoColumnForWithEdit(v, [post("p", { source_video_id: "v1", approval_status: "published" })], sig())).toBe(
+      "complete",
+    )
   })
 })
 

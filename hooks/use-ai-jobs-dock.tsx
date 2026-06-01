@@ -1,14 +1,6 @@
 "use client"
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react"
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react"
 
 /**
  * Lightweight global store for the floating jobs dock. Holds a list of
@@ -99,9 +91,7 @@ export function AiJobsDockProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const markResolved = useCallback<DockContextValue["markResolved"]>((jobId, state) => {
-    setJobs((prev) =>
-      prev.map((j) => (j.jobId === jobId ? { ...j, resolvedState: state } : j)),
-    )
+    setJobs((prev) => prev.map((j) => (j.jobId === jobId ? { ...j, resolvedState: state } : j)))
   }, [])
 
   const removeJob = useCallback<DockContextValue["removeJob"]>((jobId) => {

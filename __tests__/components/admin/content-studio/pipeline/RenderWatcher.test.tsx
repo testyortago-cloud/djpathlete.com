@@ -4,13 +4,23 @@ import { render } from "@testing-library/react"
 // Mock the live-job hook: return a status driven per-jobId from a controllable map.
 const statusByJob: Record<string, string> = {}
 vi.mock("@/hooks/use-ai-job", () => ({
-  useAiJob: (jobId: string | null) => ({ status: jobId ? statusByJob[jobId] ?? "processing" : "pending", error: null }),
+  useAiJob: (jobId: string | null) => ({
+    status: jobId ? (statusByJob[jobId] ?? "processing") : "pending",
+    error: null,
+  }),
 }))
 
 // Capture router.refresh calls.
 const refreshMock = vi.fn()
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ refresh: refreshMock, push: vi.fn(), replace: vi.fn(), prefetch: vi.fn(), back: vi.fn(), forward: vi.fn() }),
+  useRouter: () => ({
+    refresh: refreshMock,
+    push: vi.fn(),
+    replace: vi.fn(),
+    prefetch: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn(),
+  }),
   usePathname: () => "/",
   useSearchParams: () => new URLSearchParams(),
   useParams: () => ({}),

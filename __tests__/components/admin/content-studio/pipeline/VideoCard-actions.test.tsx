@@ -21,10 +21,7 @@ const video: VideoUpload = {
 }
 
 beforeEach(() => {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn().mockResolvedValue({ ok: true, status: 202, json: async () => ({ jobId: "j1" }) }),
-  )
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 202, json: async () => ({ jobId: "j1" }) }))
 })
 
 describe("VideoCard — edit-column actions", () => {
@@ -50,10 +47,7 @@ describe("VideoCard — edit-column actions", () => {
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /mark ready/i }))
     })
-    expect(fetch).toHaveBeenCalledWith(
-      "/api/admin/videos/v1",
-      expect.objectContaining({ method: "PATCH" }),
-    )
+    expect(fetch).toHaveBeenCalledWith("/api/admin/videos/v1", expect.objectContaining({ method: "PATCH" }))
   })
 
   it("shows a render-failed badge and Retry render when renderFailed is set", () => {

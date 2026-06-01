@@ -31,6 +31,9 @@ const data: PipelineData = {
   postCountsByVideo: {},
   thumbnailUrlsByVideo: {},
   cutVideoIds: new Set(),
+  captionedCutEnabled: false,
+  renderJobIdByVideo: {},
+  failedRenderVideoIds: new Set<string>(),
 }
 
 describe("<PipelineBoard>", () => {

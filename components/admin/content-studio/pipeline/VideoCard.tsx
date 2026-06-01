@@ -113,12 +113,18 @@ export function VideoCard({
           <StatusBadge status={video.status} />
           <div className="inline-flex items-center gap-2">
             {video.needs_edit && !hasCut && column === undefined && (
-              <span className="inline-flex items-center gap-1 text-[10px] font-medium text-warning px-1.5 py-0.5 rounded bg-warning/10" title="This video still needs editing before it can be posted">
+              <span
+                className="inline-flex items-center gap-1 text-[10px] font-medium text-warning px-1.5 py-0.5 rounded bg-warning/10"
+                title="This video still needs editing before it can be posted"
+              >
                 <Scissors className="size-3" /> Needs edit
               </span>
             )}
             {hasCut && (
-              <span className="inline-flex items-center gap-1 text-[10px] font-medium text-accent-foreground px-1.5 py-0.5 rounded bg-accent/15" title="This video has a rendered captioned cut">
+              <span
+                className="inline-flex items-center gap-1 text-[10px] font-medium text-accent-foreground px-1.5 py-0.5 rounded bg-accent/15"
+                title="This video has a rendered captioned cut"
+              >
                 <Clapperboard className="size-3" /> Cut
               </span>
             )}
@@ -131,16 +137,28 @@ export function VideoCard({
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 border-t border-border/70 pt-2 text-[10.5px] font-mono tabular-nums text-muted-foreground">
             <span className="font-medium text-primary">{counts.total} posts</span>
             {counts.approved > 0 && (
-              <span className="text-success">· ✓{counts.approved}<span className="sr-only"> approved</span></span>
+              <span className="text-success">
+                · ✓{counts.approved}
+                <span className="sr-only"> approved</span>
+              </span>
             )}
             {counts.scheduled > 0 && (
-              <span className="text-accent-foreground">· ⏱{counts.scheduled}<span className="sr-only"> scheduled</span></span>
+              <span className="text-accent-foreground">
+                · ⏱{counts.scheduled}
+                <span className="sr-only"> scheduled</span>
+              </span>
             )}
             {counts.published > 0 && (
-              <span className="text-primary">· ●{counts.published}<span className="sr-only"> published</span></span>
+              <span className="text-primary">
+                · ●{counts.published}
+                <span className="sr-only"> published</span>
+              </span>
             )}
             {counts.failed > 0 && (
-              <span className="text-error">· ✗{counts.failed}<span className="sr-only"> failed</span></span>
+              <span className="text-error">
+                · ✗{counts.failed}
+                <span className="sr-only"> failed</span>
+              </span>
             )}
           </div>
         )}
