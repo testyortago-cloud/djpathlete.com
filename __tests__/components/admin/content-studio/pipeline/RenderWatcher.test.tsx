@@ -47,4 +47,11 @@ describe("RenderWatcher", () => {
     const { container } = render(<RenderWatcher jobIds={["j1"]} />)
     expect(container.textContent).toBe("")
   })
+
+  it("refreshes once when one of several jobs completes, not for the still-processing one", () => {
+    statusByJob["j1"] = "processing"
+    statusByJob["j2"] = "completed"
+    render(<RenderWatcher jobIds={["j1", "j2"]} />)
+    expect(refreshMock).toHaveBeenCalledTimes(1)
+  })
 })

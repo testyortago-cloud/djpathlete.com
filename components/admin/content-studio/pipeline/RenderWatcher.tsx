@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { useAiJob } from "@/hooks/use-ai-job"
 
@@ -24,8 +24,15 @@ export function RenderWatcher({ jobIds }: { jobIds: string[] }) {
 
 function JobWatch({ jobId, onDone }: { jobId: string; onDone: () => void }) {
   const { status } = useAiJob(jobId)
+  // Fire exactly once per terminal transition — onDone is a fresh arrow each parent
+  // render, so without this guard the effect would re-call router.refresh() on every
+  // re-render while the job sits terminal, triggering redundant getPipelineData fetches.
+  const fired = useRef(false)
   useEffect(() => {
-    if (status === "completed" || status === "failed") onDone()
+    if ((status === "completed" || status === "failed") && !fired.current) {
+      fired.current = true
+      onDone()
+    }
   }, [status, onDone])
   return null
 }
