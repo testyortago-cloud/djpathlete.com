@@ -4,26 +4,20 @@
 // the existing cut signal — the render-worker writes nothing extra.
 import { getVideoUploadById } from "@/lib/db/video-uploads"
 import { getLatestCaptionedCutForVideo } from "@/lib/db/media-assets"
-import type { VideoUpload } from "@/types/database"
+import { isVideoPostable } from "./postable"
 
-export function isVideoPostable(
-  video: Pick<VideoUpload, "needs_edit">,
-  hasCut: boolean,
-): boolean {
-  return video.needs_edit === false || hasCut
-}
+// The pure predicate lives in ./postable (no server imports) so client bundles can
+// use it; re-exported here for existing callers of this module.
+export { isVideoPostable }
 
 export type PostableGuardResult = { ok: true } | { ok: false; reason: string }
 
-const GATED_REASON =
-  "Source video still needs editing — render a captioned cut or mark it ready."
+const GATED_REASON = "Source video still needs editing — render a captioned cut or mark it ready."
 
 // Async guard for route handlers. Returns ok when the post is NOT gated:
 //  - sourceVideoId null → ok (manual / image / carousel posts are never gated)
 //  - video not found    → ok (let the route's own validation handle the 404)
-export async function assertSourceVideoPostable(
-  sourceVideoId: string | null,
-): Promise<PostableGuardResult> {
+export async function assertSourceVideoPostable(sourceVideoId: string | null): Promise<PostableGuardResult> {
   if (!sourceVideoId) return { ok: true }
   const video = await getVideoUploadById(sourceVideoId)
   if (!video) return { ok: true }

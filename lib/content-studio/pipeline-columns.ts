@@ -1,5 +1,5 @@
 import type { SocialPost, VideoUpload } from "@/types/database"
-import { isVideoPostable } from "@/lib/content-studio/edit-gate"
+import { isVideoPostable } from "@/lib/content-studio/postable"
 
 export const VIDEO_COLUMNS = ["uploaded", "transcribing", "transcribed", "generated", "complete"] as const
 export type VideoColumn = (typeof VIDEO_COLUMNS)[number]
