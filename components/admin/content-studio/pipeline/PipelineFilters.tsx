@@ -33,13 +33,24 @@ const STATUS_CHIPS: { id: string; label: string; statuses: SocialApprovalStatus[
 
 interface PipelineFiltersProps {
   videos: VideoUpload[]
+  /**
+   * The filter actually in effect (URL-or-stored, already pruned), supplied by
+   * the board. When present it is the single source of truth for the bar's
+   * displayed state — so a stored filter shows as active and is clearable
+   * instead of being silently applied behind an empty-looking bar. Falls back
+   * to URL-derived filters when omitted (standalone use).
+   */
+  filters?: Filters
 }
 
-export function PipelineFilters({ videos }: PipelineFiltersProps) {
+const EMPTY_FILTERS: Filters = { platforms: [], statuses: [], from: null, to: null, sourceVideoId: null }
+
+export function PipelineFilters({ videos, filters: effective }: PipelineFiltersProps) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const filters = useMemo(() => parseFilters(searchParams), [searchParams])
+  const filtersFromUrl = useMemo(() => parseFilters(searchParams), [searchParams])
+  const filters = effective ?? filtersFromUrl
 
   const update = useCallback(
     (next: Filters) => {
@@ -98,7 +109,7 @@ export function PipelineFilters({ videos }: PipelineFiltersProps) {
         {activeCount > 0 && (
           <button
             type="button"
-            onClick={() => router.replace(pathname, { scroll: false })}
+            onClick={() => update(EMPTY_FILTERS)}
             className="text-xs text-muted-foreground hover:text-primary inline-flex items-center gap-1"
           >
             <X className="size-3" /> Clear all

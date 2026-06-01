@@ -4,6 +4,8 @@ import {
   filtersToSearchParams,
   applyFilters,
   coerceStoredFilters,
+  effectiveFilters,
+  pruneMissingSourceVideo,
   type PipelineFilters,
 } from "@/lib/content-studio/pipeline-filters"
 import type { SocialPost, VideoUpload } from "@/types/database"
@@ -206,6 +208,61 @@ describe("applyFilters", () => {
     })
     expect(out.videos.length).toBe(2)
     expect(out.posts.length).toBe(3)
+  })
+})
+
+describe("effectiveFilters", () => {
+  const stored: PipelineFilters = {
+    platforms: ["tiktok"],
+    statuses: [],
+    from: null,
+    to: null,
+    sourceVideoId: "v9",
+  }
+
+  it("uses the stored filter when the URL has no filter params", () => {
+    expect(effectiveFilters(new URLSearchParams(""), stored)).toEqual(stored)
+  })
+
+  it("uses URL filters (ignoring the stored set) when any URL filter is present", () => {
+    const out = effectiveFilters(new URLSearchParams("platform=instagram"), stored)
+    expect(out.platforms).toEqual(["instagram"])
+    expect(out.sourceVideoId).toBeNull()
+  })
+
+  it("parses the URL when there is no stored filter", () => {
+    expect(effectiveFilters(new URLSearchParams(""), null)).toEqual({
+      platforms: [],
+      statuses: [],
+      from: null,
+      to: null,
+      sourceVideoId: null,
+    })
+  })
+})
+
+describe("pruneMissingSourceVideo", () => {
+  const base: PipelineFilters = {
+    platforms: [],
+    statuses: [],
+    from: null,
+    to: null,
+    sourceVideoId: "v1",
+  }
+
+  it("drops a sourceVideoId that is not among the known video ids", () => {
+    const out = pruneMissingSourceVideo(base, new Set(["other"]))
+    expect(out.sourceVideoId).toBeNull()
+  })
+
+  it("keeps a sourceVideoId that matches a known video", () => {
+    const out = pruneMissingSourceVideo(base, new Set(["v1"]))
+    expect(out.sourceVideoId).toBe("v1")
+  })
+
+  it("is a no-op (same reference) when sourceVideoId is null", () => {
+    const f: PipelineFilters = { ...base, sourceVideoId: null }
+    expect(pruneMissingSourceVideo(f, new Set())).toBe(f)
   })
 })
 

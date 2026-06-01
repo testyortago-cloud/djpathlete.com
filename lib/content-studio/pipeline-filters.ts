@@ -66,6 +66,40 @@ export function coerceStoredFilters(raw: unknown): PipelineFilters | null {
   return { platforms, statuses, from, to, sourceVideoId }
 }
 
+/** True when the URL carries at least one pipeline-filter param. */
+export function hasUrlFilter(sp: URLSearchParams): boolean {
+  return (
+    sp.has("platform") || sp.has("status") || sp.has("from") || sp.has("to") || sp.has("sourceVideo")
+  )
+}
+
+/**
+ * The filter actually in effect: URL params win when present, otherwise fall
+ * back to the stored (user_preferences) set. Both the board and the filter bar
+ * must derive their state from this single source — otherwise a stored filter
+ * silently filters the board while the URL-only filter bar shows nothing active.
+ */
+export function effectiveFilters(sp: URLSearchParams, stored: PipelineFilters | null): PipelineFilters {
+  if (hasUrlFilter(sp) || !stored) return parseFilters(sp)
+  return stored
+}
+
+/**
+ * Drop a sourceVideoId that no longer matches any known video (e.g. the video
+ * was deleted after the filter was saved). A dangling sourceVideoId would
+ * otherwise exclude every current video — emptying the entire board with no
+ * visible cause. Returns the same reference when nothing needs pruning.
+ */
+export function pruneMissingSourceVideo(
+  filters: PipelineFilters,
+  knownVideoIds: ReadonlySet<string>,
+): PipelineFilters {
+  if (filters.sourceVideoId && !knownVideoIds.has(filters.sourceVideoId)) {
+    return { ...filters, sourceVideoId: null }
+  }
+  return filters
+}
+
 export function filtersToSearchParams(filters: PipelineFilters): URLSearchParams {
   const sp = new URLSearchParams()
   if (filters.platforms.length) sp.set("platform", filters.platforms.join(","))

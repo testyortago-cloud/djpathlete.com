@@ -6,7 +6,12 @@ import { VideosLane } from "./VideosLane"
 import { PostsLane } from "./PostsLane"
 import { BulkActionsBar } from "./BulkActionsBar"
 import { PipelineFilters } from "./PipelineFilters"
-import { applyFilters, parseFilters, type PipelineFilters as Filters } from "@/lib/content-studio/pipeline-filters"
+import {
+  applyFilters,
+  effectiveFilters,
+  pruneMissingSourceVideo,
+  type PipelineFilters as Filters,
+} from "@/lib/content-studio/pipeline-filters"
 import type { PipelineData } from "@/lib/content-studio/pipeline-data"
 
 interface PipelineBoardProps {
@@ -20,14 +25,15 @@ export function PipelineBoard({ initialData, initialFilters }: PipelineBoardProp
   const searchParams = useSearchParams()
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
-  const filtersFromUrl = useMemo(() => parseFilters(searchParams), [searchParams])
-  const hasAnyUrlFilter =
-    searchParams.has("platform") ||
-    searchParams.has("status") ||
-    searchParams.has("from") ||
-    searchParams.has("to") ||
-    searchParams.has("sourceVideo")
-  const filters = hasAnyUrlFilter || !initialFilters ? filtersFromUrl : initialFilters
+  // The effective filter (URL wins, else stored prefs), with a dangling
+  // sourceVideoId — one pointing at a since-deleted video — pruned so it can't
+  // silently empty the board. The same value drives the filter bar (below), so
+  // a stored filter is always visible and clearable.
+  const videoIds = useMemo(() => new Set(initialData.videos.map((v) => v.id)), [initialData.videos])
+  const filters = useMemo(
+    () => pruneMissingSourceVideo(effectiveFilters(searchParams, initialFilters ?? null), videoIds),
+    [searchParams, initialFilters, videoIds],
+  )
 
   const filtered = useMemo(() => applyFilters(initialData.videos, initialData.posts, filters), [initialData, filters])
 
@@ -42,7 +48,7 @@ export function PipelineBoard({ initialData, initialFilters }: PipelineBoardProp
 
   return (
     <div className="space-y-6">
-      <PipelineFilters videos={initialData.videos} />
+      <PipelineFilters videos={initialData.videos} filters={filters} />
       <VideosLane
         data={{
           ...initialData,
