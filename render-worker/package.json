@@ -6,7 +6,9 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "studio": "remotion studio src/remotion/index.ts"
+    "studio": "remotion studio src/remotion/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.14.0",
@@ -23,6 +25,7 @@
     "@remotion/cli": "^4.0.0",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.8"
   }
 }
