@@ -1,6 +1,7 @@
 // render-worker/src/remotion/Root.tsx
 import { Composition } from "remotion"
 import { CaptionedCut, type CaptionedCutProps } from "./CaptionedCut.js"
+import { SplitReel, type SplitReelProps } from "./SplitReel.js"
 
 const FPS = 30
 const WIDTH = 1080
@@ -23,16 +24,68 @@ const SAMPLE: CaptionedCutProps = {
   accentHex: "#C49B7A",
 }
 
+// 10s sample: full-frame 0-3s, split (b-roll) 3-6s, full-frame 6-10s. A moving
+// face trajectory so the tracking crop is visibly doing something in Studio.
+const SPLIT_SAMPLE: SplitReelProps = {
+  videoSrc:
+    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+  pages: [
+    {
+      text: "watch this",
+      words: [
+        { text: "watch", startMs: 0, endMs: 500, emphasis: false },
+        { text: "this", startMs: 500, endMs: 1000, emphasis: true },
+      ],
+      startMs: 0,
+      endMs: 1000,
+    },
+    {
+      text: "right here",
+      words: [
+        { text: "right", startMs: 3200, endMs: 3700, emphasis: false },
+        { text: "here", startMs: 3700, endMs: 4200, emphasis: false },
+      ],
+      startMs: 3200,
+      endMs: 4200,
+    },
+  ],
+  accentHex: "#C49B7A",
+  trajectory: [
+    { ms: 0, cx: 0.35, cy: 0.4, size: 0.32 },
+    { ms: 2500, cx: 0.55, cy: 0.45, size: 0.34 },
+    { ms: 5000, cx: 0.65, cy: 0.4, size: 0.3 },
+    { ms: 10000, cx: 0.45, cy: 0.42, size: 0.33 },
+  ],
+  broll: [
+    {
+      startMs: 3000,
+      endMs: 6000,
+      src: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
+    },
+  ],
+}
+
 export function RemotionRoot() {
   return (
-    <Composition
-      id="CaptionedCut"
-      component={CaptionedCut}
-      durationInFrames={FPS * 10}
-      fps={FPS}
-      width={WIDTH}
-      height={HEIGHT}
-      defaultProps={SAMPLE}
-    />
+    <>
+      <Composition
+        id="CaptionedCut"
+        component={CaptionedCut}
+        durationInFrames={FPS * 10}
+        fps={FPS}
+        width={WIDTH}
+        height={HEIGHT}
+        defaultProps={SAMPLE}
+      />
+      <Composition
+        id="SplitReel"
+        component={SplitReel}
+        durationInFrames={FPS * 10}
+        fps={FPS}
+        width={WIDTH}
+        height={HEIGHT}
+        defaultProps={SPLIT_SAMPLE}
+      />
+    </>
   )
 }
