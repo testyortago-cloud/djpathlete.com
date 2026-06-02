@@ -19,6 +19,11 @@ describe("smoothTrajectory", () => {
     expect(out[1].cx).toBeLessThan(0.9)
     expect(out[1].cx).toBeGreaterThan(0.5)
   })
+
+  it("returns a single point unchanged (length-1 passthrough)", () => {
+    const one = [P(500, 0.3, 0.7)]
+    expect(smoothTrajectory(one, 400)).toEqual(one)
+  })
 })
 
 describe("faceAtMs", () => {
@@ -37,6 +42,13 @@ describe("faceAtMs", () => {
     const mid = faceAtMs(pts, 500)
     expect(mid.cx).toBeCloseTo(0.5, 5)
     expect(mid.cy).toBeCloseTo(0.5, 5)
+  })
+
+  it("never produces NaN with duplicate timestamps", () => {
+    const pts = [P(0, 0.2, 0.2), P(1000, 0.4, 0.4), P(1000, 0.6, 0.6), P(2000, 0.8, 0.8)]
+    const at = faceAtMs(pts, 1000)
+    expect(Number.isNaN(at.cx)).toBe(false)
+    expect(Number.isNaN(at.cy)).toBe(false)
   })
 })
 

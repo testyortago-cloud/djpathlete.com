@@ -22,6 +22,7 @@ const ANCHOR_Y: Record<CropMode, number> = { full: 0.42, split: 0.5 }
 const BASE_SCALE: Record<CropMode, number> = { full: 1.1, split: 1.6 }
 
 // Gaussian moving-average over a +/- windowMs neighbourhood (sigma = windowMs/2).
+// Callers must supply finite cx/cy/size values; the detector that produces points guarantees this.
 export function smoothTrajectory(points: FacePoint[], windowMs: number): FacePoint[] {
   if (points.length <= 2 || windowMs <= 0) return points
   const sorted = [...points].sort((a, b) => a.ms - b.ms)
@@ -50,6 +51,8 @@ export function faceAtMs(points: FacePoint[], ms: number): FacePoint {
     const a = sorted[i]
     const b = sorted[i + 1]
     if (ms >= a.ms && ms <= b.ms) {
+      // Defensive: identical/duplicate timestamps would divide by zero → NaN.
+      if (b.ms <= a.ms) return a
       const t = (ms - a.ms) / (b.ms - a.ms)
       return {
         ms,
