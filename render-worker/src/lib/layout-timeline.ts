@@ -11,10 +11,11 @@ export function buildLayoutTimeline(
   windows: BrollWindow[],
   totalMs: number,
 ): LayoutSegment[] {
-  if (totalMs <= 0) return []
+  if (!Number.isFinite(totalMs) || totalMs <= 0) return []
 
   // Clamp to [0, totalMs], drop empty/inverted, sort by start.
   const clean = windows
+    .filter((w) => Number.isFinite(w.startMs) && Number.isFinite(w.endMs))
     .map((w) => ({
       startMs: Math.max(0, Math.min(w.startMs, totalMs)),
       endMs: Math.max(0, Math.min(w.endMs, totalMs)),

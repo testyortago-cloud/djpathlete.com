@@ -65,6 +65,33 @@ describe("buildLayoutTimeline", () => {
       { mode: "split", startMs: 5000, endMs: 6000 },
     ])
   })
+
+  it("drops inverted windows (startMs > endMs)", () => {
+    expect(buildLayoutTimeline([{ startMs: 5000, endMs: 1000 }], 8000)).toEqual([
+      { mode: "full", startMs: 0, endMs: 8000 },
+    ])
+  })
+
+  it("drops windows with non-finite endpoints", () => {
+    expect(
+      buildLayoutTimeline(
+        [
+          { startMs: NaN, endMs: 3000 },
+          { startMs: 2000, endMs: Infinity },
+          { startMs: 4000, endMs: 6000 },
+        ],
+        8000,
+      ),
+    ).toEqual([
+      { mode: "full", startMs: 0, endMs: 4000 },
+      { mode: "split", startMs: 4000, endMs: 6000 },
+      { mode: "full", startMs: 6000, endMs: 8000 },
+    ])
+  })
+
+  it("returns [] when totalMs is not finite", () => {
+    expect(buildLayoutTimeline([{ startMs: 0, endMs: 1000 }], NaN)).toEqual([])
+  })
 })
 
 describe("modeAtMs", () => {
