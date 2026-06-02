@@ -24,6 +24,7 @@ const googleAdsClientSecret = defineSecret("GOOGLE_ADS_CLIENT_SECRET")
 const googleAdsLoginCustomerId = defineSecret("GOOGLE_ADS_LOGIN_CUSTOMER_ID")
 const coachEmail = defineSecret("COACH_EMAIL")
 const resendFromEmail = defineSecret("RESEND_FROM_EMAIL")
+const brollWebhookSecret = defineSecret("BROLL_WEBHOOK_SECRET")
 
 const googleAdsSecrets = [
   supabaseUrl,
@@ -213,6 +214,24 @@ export const blogImageGeneration = onDocumentCreated(
 
     const { handleBlogImageGeneration } = await import("./blog-image-generation.js")
     await handleBlogImageGeneration(event.params.jobId)
+  },
+)
+
+// --- Split Reel: b-roll generation (select moments -> fal queue submit) ---
+export const brollGeneration = onDocumentCreated(
+  {
+    document: "ai_jobs/{jobId}",
+    timeoutSeconds: 540,
+    memory: "1GiB",
+    region: "us-central1",
+    secrets: [anthropicApiKey, supabaseUrl, supabaseServiceRoleKey, falKey, assemblyAiApiKey, appUrl, brollWebhookSecret],
+  },
+  async (event) => {
+    const data = event.data?.data()
+    if (!data || data.type !== "broll_generation") return
+
+    const { handleBrollGeneration } = await import("./broll-generation.js")
+    await handleBrollGeneration(event.params.jobId)
   },
 )
 
