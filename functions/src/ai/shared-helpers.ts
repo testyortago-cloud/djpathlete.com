@@ -313,6 +313,63 @@ export function buildSlotLookups(weeks: ProgramWeek[]) {
   return { slotLookup, slotDetailsLookup }
 }
 
+// ─── Skeleton Day De-duplication ───────────────────────────────────────────
+
+export interface DayReassignment {
+  week_number: number
+  from_day: number
+  to_day: number
+}
+
+/**
+ * Guarantee every week in a skeleton has unique day_of_week values. Agent 2
+ * (the architect) occasionally emits two days with the same day_of_week. Since
+ * slot_ids are stamped as `w{week}d{day}s{idx}`, two days sharing a day_of_week
+ * collide on slot_ids and collapse onto one calendar day — producing a single
+ * day with doubled order_index (two days' worth of exercises stacked together).
+ *
+ * For each collision, the later day is reassigned to the lowest day_of_week
+ * (1-7) not already used that week, and its slot_ids are regenerated to match.
+ * Must run BEFORE slot lookups / exercise selection. Mutates `skeleton` in
+ * place; returns the reassignments made (for logging). No-op for clean weeks.
+ */
+export function dedupeSkeletonDaysInPlace(skeleton: { weeks: ProgramWeek[] }): DayReassignment[] {
+  const reassignments: DayReassignment[] = []
+
+  for (const week of skeleton.weeks) {
+    const used = new Set<number>()
+    for (const day of week.days) {
+      if (!used.has(day.day_of_week)) {
+        used.add(day.day_of_week)
+        continue
+      }
+
+      // Collision — find the lowest free weekday (1-7) not yet used this week.
+      let free = -1
+      for (let d = 1; d <= 7; d++) {
+        if (!used.has(d)) {
+          free = d
+          break
+        }
+      }
+      if (free === -1) {
+        // All 7 weekdays already used (8+ days in a week) — leave as-is rather
+        // than invent an out-of-range day. Vanishingly unlikely in practice.
+        used.add(day.day_of_week)
+        continue
+      }
+
+      reassignments.push({ week_number: week.week_number, from_day: day.day_of_week, to_day: free })
+      day.day_of_week = free
+      used.add(free)
+      // Regenerate slot_ids so they stay unique and consistent with the new day.
+      day.slots = day.slots.map((slot, idx) => ({ ...slot, slot_id: `w${week.week_number}d${free}s${idx + 1}` }))
+    }
+  }
+
+  return reassignments
+}
+
 const VALID_TECHNIQUES = new Set([
   "straight_set",
   "superset",

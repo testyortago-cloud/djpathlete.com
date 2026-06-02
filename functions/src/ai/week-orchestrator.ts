@@ -28,6 +28,7 @@ import {
   createCancellationChecker,
   buildSlotLookups,
   buildExerciseRows,
+  dedupeSkeletonDaysInPlace,
   resolveCrossDayExcludeIds,
   filterCandidateEquipment,
   findUncoveredPatterns,
@@ -587,6 +588,17 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
       }
     }
 
+    // Guarantee unique day_of_week values before slot_ids are stamped — two
+    // days sharing a day_of_week would produce colliding slot_ids and collapse
+    // into one calendar day. (No-op in single-day mode: only one day remains.)
+    const dayFixes = dedupeSkeletonDaysInPlace({ weeks: skeleton.weeks })
+    if (dayFixes.length > 0) {
+      console.warn(
+        `[week-orchestrator] Architect emitted ${dayFixes.length} duplicate day(s); reassigned:`,
+        dayFixes.map((f) => `wk${f.week_number} d${f.from_day}→d${f.to_day}`).join(", "),
+      )
+    }
+
     // Fix slot IDs to match the correct week number
     for (const day of skeleton.weeks[0].days) {
       day.slots = day.slots.map((slot, idx) => ({
@@ -914,10 +926,11 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
     throw new Error("Failed to generate exercise assignments")
   }
 
-  // ── Step 3.5: Last-resort within-day deduplication ─────────────────────
+  // ── Step 3.5: Last-resort within-week deduplication ────────────────────
   // The retry loop fixes most duplicates, but when retries are exhausted the
   // loop falls back to "accept with warning". Enforce the invariant
-  // programmatically so the same exercise_id never lands on the same day.
+  // programmatically so the same exercise_id never repeats within the week —
+  // neither twice on one day nor across two days (warm-up / cool-down excepted).
   const dedupSwap = dedupAssignmentsInPlace(assignment.assignments, skeleton.weeks[0], filtered, {
     equipment: availableEquipment,
     difficulty: clientDifficultyLevel,

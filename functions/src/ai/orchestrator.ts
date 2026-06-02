@@ -36,6 +36,7 @@ import {
   buildPriorWeekContext,
   dedupAssignmentsInPlace,
   verifyWeekDiversity,
+  verifyWithinWeekDuplicates,
   analyzeFullProgramRepetition,
   extractWeekSkeleton,
   type WeekAssignment,
@@ -54,6 +55,7 @@ import {
   createCancellationChecker,
   buildSlotLookups,
   buildExerciseRows,
+  dedupeSkeletonDaysInPlace,
 } from "./shared-helpers.js"
 
 const MAX_RETRIES = 2
@@ -497,6 +499,16 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     tokenUsage.cache_creation += agent2Result.cache_creation_tokens ?? 0
     tokenUsage.cache_read += agent2Result.cache_read_tokens ?? 0
     const skeleton = agent2Result.content
+    // Guarantee each week has unique day_of_week values before slot_ids are used.
+    // Two days sharing a day_of_week would collide on slot_ids and collapse into
+    // one calendar day with doubled exercises.
+    const dayFixes = dedupeSkeletonDaysInPlace(skeleton)
+    if (dayFixes.length > 0) {
+      console.warn(
+        `[orchestrator:sync] Architect emitted ${dayFixes.length} duplicate day(s); reassigned:`,
+        dayFixes.map((f) => `wk${f.week_number} d${f.from_day}→d${f.to_day}`).join(", "),
+      )
+    }
     // Backfill total_sessions if the AI omitted it or returned 0
     if (!skeleton.total_sessions) {
       skeleton.total_sessions = skeleton.weeks.reduce((sum, w) => sum + w.days.length, 0)
@@ -658,10 +670,21 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
           }
         }
 
+        // Within-week duplicate feedback — same exercise_id reused on the same day
+        // OR across two days of this week (warm-up / cool-down excepted).
+        let withinWeekFeedback = ""
+        if (attempt > 0 && weekAssignment) {
+          const withinResult = verifyWithinWeekDuplicates(weekAssignment.assignments, weekSkeleton)
+          if (!withinResult.pass) {
+            const withinIssues = withinResult.issues.map((i) => `- ${i.message}`).join("\n")
+            withinWeekFeedback = `\n\nWITHIN-WEEK DUPLICATES DETECTED — the same exercise was used more than once in this week (same day or across days):\n${withinIssues}\n\nEvery working slot must have a UNIQUE exercise_id within the week. Replace duplicates with DIFFERENT exercises that still match each slot's movement_pattern, target_muscles, and role — vary by equipment (dumbbell→cable→machine), stance (bilateral→unilateral), angle, or training intent.`
+          }
+        }
+
         // Stable prefix — identical across the 3 attempts for this week. Cache it.
         const agent3StablePrefix = `Program Skeleton (Week ${weekNum} of ${skeleton.weeks.length}):\n${JSON.stringify(weekSkeletonPayload)}\n\nConstraints:\n${constraintsContext}\n\nExercise Library (${thisWeekLibrary.length} exercises, pre-filtered for relevance):\n${thisWeekLibraryText}${poolNote}\n\n${priorContext.prompt_text}${coachInstructionsSection}`
         // Variable suffix — only present on retries (attempt > 0).
-        const agent3VariableSuffix = `${feedbackSection}${dedupFeedback}`.trim() || "Begin."
+        const agent3VariableSuffix = `${feedbackSection}${dedupFeedback}${withinWeekFeedback}`.trim() || "Begin."
 
         try {
           console.log(`[orchestrator:sync] Week ${weekNum} attempt ${attempt + 1}/${MAX_RETRIES + 1}...`)
@@ -712,6 +735,24 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
                 category: "exercise_repetition",
                 message: issue.message,
                 slot_ref: issue.slot_id,
+              })
+            }
+            weekValidation.pass = false
+          }
+
+          // Within-week duplicate verification — no exercise_id may appear more
+          // than once in this week (same day or across days), warm-up/cool-down
+          // excepted. verifyWeekDiversity only compares against PRIOR weeks, so
+          // this is the only check that catches same-week repeats.
+          const withinWeekResult = verifyWithinWeekDuplicates(weekAssignment.assignments, weekSkeleton)
+          console.log(`[orchestrator:sync] Week ${weekNum} within-week: ${withinWeekResult.summary}`)
+          if (!withinWeekResult.pass) {
+            for (const issue of withinWeekResult.issues) {
+              weekValidation.issues.push({
+                type: "error",
+                category: "exercise_repetition",
+                message: issue.message,
+                slot_ref: issue.slot_ids[0],
               })
             }
             weekValidation.pass = false
@@ -774,10 +815,11 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
 
       if (!weekAssignment) throw new Error(`Failed to generate exercises for week ${weekNum}`)
 
-      // Last-resort within-day deduplication. The retry loop fixes most duplicates,
-      // but when retries are exhausted we otherwise accept the bad output with a
-      // warning. Enforce the "no exercise_id twice on the same day" invariant
-      // programmatically before the week is committed.
+      // Last-resort within-week deduplication. The retry loop fixes most
+      // duplicates, but when retries are exhausted we otherwise accept the bad
+      // output with a warning. Enforce the "no exercise_id more than once per
+      // week (and therefore per day)" invariant programmatically before the
+      // week is committed — warm-up / cool-down anchors excepted.
       const weekDedupSwap = dedupAssignmentsInPlace(weekAssignment.assignments, weekSkeleton, thisWeekLibrary, {
         equipment: availableEquipment,
         difficulty: clientDifficultySync,

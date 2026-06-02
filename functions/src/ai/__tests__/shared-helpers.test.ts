@@ -5,6 +5,7 @@ import {
   buildExerciseRows,
   buildPoolNote,
   buildSlotLookups,
+  dedupeSkeletonDaysInPlace,
   filterCandidateEquipment,
   resolveCrossDayExcludeIds,
   findUncoveredPatterns,
@@ -164,6 +165,67 @@ describe("findUncoveredPatterns flags patterns the candidate pool cannot fill", 
     const weeks = [weekWithPatterns(["rotation"])]
     const candidates = [{ movement_pattern: "rotation" }] as unknown as CompressedExercise[]
     expect(findUncoveredPatterns(weeks, candidates)).toEqual([])
+  })
+})
+
+describe("dedupeSkeletonDaysInPlace", () => {
+  function wk(weekNum: number, dayNums: number[]): ProgramWeek {
+    return {
+      week_number: weekNum,
+      phase: "x",
+      intensity_modifier: "moderate",
+      days: dayNums.map((d) => ({
+        day_of_week: d,
+        label: "L",
+        focus: "f",
+        slots: [
+          {
+            slot_id: `w${weekNum}d${d}s1`, role: "primary_compound", movement_pattern: "squat",
+            target_muscles: [], sets: 3, reps: "5", rest_seconds: 60, rpe_target: 7,
+            tempo: null, group_tag: null, technique: "straight_set", intensity_pct: null,
+          },
+          {
+            slot_id: `w${weekNum}d${d}s2`, role: "accessory", movement_pattern: "hinge",
+            target_muscles: [], sets: 3, reps: "10", rest_seconds: 60, rpe_target: 7,
+            tempo: null, group_tag: null, technique: "straight_set", intensity_pct: null,
+          },
+        ],
+      })),
+    } as ProgramWeek
+  }
+
+  it("reassigns a duplicate day_of_week to the lowest free weekday", () => {
+    const skeleton = { weeks: [wk(2, [2, 2, 5])] }
+    const moves = dedupeSkeletonDaysInPlace(skeleton)
+    const days = skeleton.weeks[0].days.map((d) => d.day_of_week)
+    expect(new Set(days).size).toBe(days.length) // all unique
+    expect(days).toEqual([2, 1, 5]) // duplicate "2" moved to lowest free (1)
+    expect(moves).toEqual([{ week_number: 2, from_day: 2, to_day: 1 }])
+  })
+
+  it("regenerates slot_ids for a moved day to match its new day_of_week", () => {
+    const skeleton = { weeks: [wk(2, [2, 2])] }
+    dedupeSkeletonDaysInPlace(skeleton)
+    const movedDay = skeleton.weeks[0].days[1]
+    expect(movedDay.day_of_week).toBe(1)
+    expect(movedDay.slots.map((s) => s.slot_id)).toEqual(["w2d1s1", "w2d1s2"])
+    // first day left untouched
+    expect(skeleton.weeks[0].days[0].slots.map((s) => s.slot_id)).toEqual(["w2d2s1", "w2d2s2"])
+  })
+
+  it("is a no-op when every day is already unique", () => {
+    const skeleton = { weeks: [wk(1, [2, 5]), wk(2, [1, 3, 6])] }
+    const moves = dedupeSkeletonDaysInPlace(skeleton)
+    expect(moves).toEqual([])
+    expect(skeleton.weeks[0].days.map((d) => d.day_of_week)).toEqual([2, 5])
+    expect(skeleton.weeks[1].days.map((d) => d.day_of_week)).toEqual([1, 3, 6])
+  })
+
+  it("resolves cascading duplicates so all days in a week are distinct", () => {
+    const skeleton = { weeks: [wk(1, [2, 2, 1])] }
+    dedupeSkeletonDaysInPlace(skeleton)
+    const days = skeleton.weeks[0].days.map((d) => d.day_of_week)
+    expect(new Set(days).size).toBe(3)
   })
 })
 

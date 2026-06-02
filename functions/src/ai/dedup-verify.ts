@@ -633,16 +633,22 @@ export interface DedupSwapResult {
 }
 
 /**
- * Enforce the "no exercise_id twice in the same day" invariant after the
- * Exercise Selector + retry loop finishes. The selector's retry loop fixes
- * most duplicates, but when retries are exhausted the orchestrator otherwise
- * accepts the bad output with a warning. This is the last line of defense:
- * walk the assignments, and for any exercise_id that appears 2+ times within
- * a single day (anchor roles excepted), swap the later occurrence(s) for the
+ * Enforce the no-repeat invariant after the Exercise Selector + retry loop
+ * finishes. The selector's retry loop fixes most duplicates, but when retries
+ * are exhausted the orchestrator otherwise accepts the bad output with a
+ * warning. This is the last line of defense.
+ *
+ * Scope (default "week"): an exercise_id may not appear more than once anywhere
+ * in the week — neither twice on one day nor across two days. Pass
+ * `scope: "day"` to only collapse same-day repeats. Anchor roles (warm-up /
+ * cool-down) are exempt under both scopes — they legitimately recur.
+ *
+ * For any in-scope collision, the later occurrence(s) are swapped for the
  * best-scoring alternative from the candidate library that:
  *   - matches the slot's movement_pattern / role / target_muscles (via
  *     scoreExerciseForSlot — same scorer used during filtering),
- *   - isn't already used on that same day,
+ *   - isn't already used elsewhere in the same scope (so the swap can't create
+ *     a new duplicate),
  *   - and isn't already excluded by prior weeks (caller filters the library
  *     before passing it in).
  *
@@ -656,10 +662,17 @@ export function dedupAssignmentsInPlace(
   options?: {
     equipment?: string[]
     difficulty?: string
+    /**
+     * Dedup scope. "week" (default) forbids an exercise_id from appearing more
+     * than once anywhere in the week; "day" only forbids repeats within a
+     * single day. Anchor roles (warm-up / cool-down) are exempt either way.
+     */
+    scope?: "day" | "week"
   },
 ): DedupSwapResult {
   const equipment = options?.equipment ?? []
   const difficulty = options?.difficulty ?? "intermediate"
+  const scope = options?.scope ?? "week"
 
   const slotById = new Map<string, ExerciseSlot>()
   const slotDay = new Map<string, number>()
@@ -670,20 +683,25 @@ export function dedupAssignmentsInPlace(
     }
   }
 
-  // Track every exercise_id currently committed to each day. Updated as we
-  // perform swaps so we never re-introduce another duplicate.
-  const usedByDay = new Map<number, Set<string>>()
+  // Collisions and the "already used" set are tracked per scope bucket: a single
+  // shared bucket for the whole week, or one bucket per day.
+  const WEEK_BUCKET = -1
+  const bucketFor = (day: number) => (scope === "week" ? WEEK_BUCKET : day)
+
+  // Track every exercise_id currently committed within each bucket. Updated as
+  // we perform swaps so we never re-introduce another duplicate.
+  const usedInScope = new Map<number, Set<string>>()
   for (const a of newAssignments) {
-    const day = slotDay.get(a.slot_id) ?? -1
-    const set = usedByDay.get(day) ?? new Set<string>()
+    const bucket = bucketFor(slotDay.get(a.slot_id) ?? -1)
+    const set = usedInScope.get(bucket) ?? new Set<string>()
     set.add(a.exercise_id)
-    usedByDay.set(day, set)
+    usedInScope.set(bucket, set)
   }
 
   const swaps: DedupSwap[] = []
   const unresolved: DedupUnresolved[] = []
-  // First-seen exercise_id per day stays; later collisions get swapped.
-  const seenPerDay = new Map<number, Set<string>>()
+  // First-seen exercise_id per bucket stays; later collisions get swapped.
+  const seenInScope = new Map<number, Set<string>>()
 
   for (const a of newAssignments) {
     const slot = slotById.get(a.slot_id)
@@ -692,18 +710,20 @@ export function dedupAssignmentsInPlace(
     if (ANCHOR_ROLES.has(slot.role)) continue
 
     const day = slotDay.get(a.slot_id) ?? -1
-    const seen = seenPerDay.get(day) ?? new Set<string>()
+    const bucket = bucketFor(day)
+    const seen = seenInScope.get(bucket) ?? new Set<string>()
 
     if (!seen.has(a.exercise_id)) {
       seen.add(a.exercise_id)
-      seenPerDay.set(day, seen)
+      seenInScope.set(bucket, seen)
       continue
     }
 
-    // Duplicate within day — find the best-scoring unused alternative.
-    const dayUsed = usedByDay.get(day) ?? new Set<string>()
+    // Duplicate within scope — find the best-scoring alternative not already
+    // used anywhere in this bucket.
+    const used = usedInScope.get(bucket) ?? new Set<string>()
     const scored = candidateLibrary
-      .filter((ex) => !dayUsed.has(ex.id))
+      .filter((ex) => !used.has(ex.id))
       .map((ex) => ({ exercise: ex, score: scoreExerciseForSlot(ex, slot, equipment, difficulty) }))
       .sort((a, b) => b.score - a.score)
 
@@ -715,11 +735,14 @@ export function dedupAssignmentsInPlace(
       const fromName = a.exercise_name
       a.exercise_id = best.exercise.id
       a.exercise_name = best.exercise.name
-      const swapNote = `Auto-swapped to avoid duplicate of "${fromName}" on this day.`
+      const swapNote =
+        scope === "week"
+          ? `Auto-swapped to avoid repeating "${fromName}" elsewhere this week.`
+          : `Auto-swapped to avoid duplicate of "${fromName}" on this day.`
       a.notes = a.notes ? `${a.notes} ${swapNote}` : swapNote
-      dayUsed.add(best.exercise.id)
+      used.add(best.exercise.id)
       seen.add(best.exercise.id)
-      seenPerDay.set(day, seen)
+      seenInScope.set(bucket, seen)
       swaps.push({
         slot_id: a.slot_id,
         day_of_week: day,
@@ -734,7 +757,10 @@ export function dedupAssignmentsInPlace(
         day_of_week: day,
         exercise_id: a.exercise_id,
         exercise_name: a.exercise_name,
-        reason: "No suitable alternative in candidate library that isn't already used today.",
+        reason:
+          scope === "week"
+            ? "No suitable alternative in candidate library that isn't already used this week."
+            : "No suitable alternative in candidate library that isn't already used today.",
       })
     }
   }

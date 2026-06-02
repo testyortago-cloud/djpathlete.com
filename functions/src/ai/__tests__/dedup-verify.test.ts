@@ -245,7 +245,28 @@ describe("dedupAssignmentsInPlace", () => {
     expect(assignments[1].exercise_id).toBe("wu")
   })
 
-  it("treats different days independently — same exercise on different days is fine", () => {
+  it("swaps a cross-day duplicate within the same week (default week scope)", () => {
+    const w = week(1, [
+      { day_of_week: 1, slots: [slot("w1d1s1", "accessory", "pull")] },
+      { day_of_week: 3, slots: [slot("w1d3s1", "accessory", "pull")] },
+    ])
+    const assignments = [
+      assign("w1d1s1", "row", "Row"),
+      assign("w1d3s1", "row", "Row"), // same exercise on a different day of the same week
+    ]
+    const library = [
+      exercise("row", "Row", "pull", ["upper_back"]),
+      exercise("face", "Face Pull", "pull", ["upper_back"]),
+    ]
+    const result = dedupAssignmentsInPlace(assignments, w, library)
+    expect(result.swapped_count).toBe(1)
+    // First occurrence stays; the day-3 repeat is swapped to a different exercise
+    expect(assignments[0].exercise_id).toBe("row")
+    expect(assignments[1].exercise_id).toBe("face")
+    expect(result.swaps[0].day_of_week).toBe(3)
+  })
+
+  it("preserves day-only scoping when scope: 'day' is passed", () => {
     const w = week(1, [
       { day_of_week: 1, slots: [slot("w1d1s1", "accessory", "pull")] },
       { day_of_week: 3, slots: [slot("w1d3s1", "accessory", "pull")] },
@@ -254,11 +275,41 @@ describe("dedupAssignmentsInPlace", () => {
       assign("w1d1s1", "row", "Row"),
       assign("w1d3s1", "row", "Row"),
     ]
-    const library = [exercise("row", "Row", "pull", ["upper_back"])]
-    const result = dedupAssignmentsInPlace(assignments, w, library)
+    const library = [
+      exercise("row", "Row", "pull", ["upper_back"]),
+      exercise("face", "Face Pull", "pull", ["upper_back"]),
+    ]
+    const result = dedupAssignmentsInPlace(assignments, w, library, { scope: "day" })
     expect(result.swapped_count).toBe(0)
     expect(assignments[0].exercise_id).toBe("row")
     expect(assignments[1].exercise_id).toBe("row")
+  })
+
+  it("does not pull a within-week replacement that is already used on another day", () => {
+    // Day 1 uses "row" and "face"; day 2 repeats "row". A week-scoped swap must
+    // NOT pick "face" (already used on day 1) — that would create a new week
+    // duplicate — and must land on the unused "straight" instead.
+    const w = week(1, [
+      { day_of_week: 1, slots: [slot("w1d1s1", "accessory", "pull"), slot("w1d1s2", "accessory", "pull")] },
+      { day_of_week: 2, slots: [slot("w1d2s1", "accessory", "pull")] },
+    ])
+    const assignments = [
+      assign("w1d1s1", "row", "Row"),
+      assign("w1d1s2", "face", "Face Pull"),
+      assign("w1d2s1", "row", "Row"), // week duplicate of day-1 "row"
+    ]
+    const library = [
+      exercise("row", "Row", "pull", ["upper_back"]),
+      exercise("face", "Face Pull", "pull", ["upper_back"]),
+      exercise("straight", "Straight-Arm Pulldown", "pull", ["upper_back"]),
+    ]
+    const result = dedupAssignmentsInPlace(assignments, w, library)
+    expect(result.swapped_count).toBe(1)
+    expect(assignments[2].exercise_id).toBe("straight")
+    // No exercise_id may appear more than once across the whole week
+    const counts = new Map<string, number>()
+    for (const a of assignments) counts.set(a.exercise_id, (counts.get(a.exercise_id) ?? 0) + 1)
+    expect([...counts.values()].some((c) => c > 1)).toBe(false)
   })
 
   it("records unresolved when no suitable alternative exists in the library", () => {
