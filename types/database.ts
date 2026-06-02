@@ -1608,6 +1608,25 @@ export interface VideoTranscript {
   created_at: string
 }
 
+export type BrollSegmentStatus = "pending" | "generating" | "ready" | "failed" | "dropped"
+
+export interface BrollSegment {
+  id: string
+  video_upload_id: string
+  generation_job_id: string
+  segment_index: number
+  start_ms: number
+  end_ms: number
+  concept: string
+  prompt: string
+  media_asset_id: string | null
+  fal_request_id: string | null
+  cache_key: string
+  status: BrollSegmentStatus
+  created_at: string
+  updated_at: string
+}
+
 export type CalendarDefaultView = "month" | "week" | "day"
 
 export interface UserPreferences {
