@@ -2,6 +2,7 @@
 import { AbsoluteFill, spring, useCurrentFrame, useVideoConfig } from "remotion"
 import { loadFont } from "@remotion/google-fonts/LexendExa"
 import type { CaptionPage } from "../lib/caption-paging.js"
+import { modeAtMs, type LayoutSegment } from "../lib/layout-timeline.js"
 
 // Load the brand heading font (Lexend Exa, weight 800) FOR THE RENDER. Relying on
 // the OS-installed font lets headless Chromium fall back to a system font; this
@@ -12,12 +13,20 @@ const { fontFamily } = loadFont("normal", { weights: ["800"], subsets: ["latin"]
 export type CaptionLayerProps = {
   pages: CaptionPage[]
   accentHex: string
+  // When provided (Split Reel), captions rise to the seam during split windows.
+  // Omitted (Captioned Cut) → always lower-third, unchanged behavior.
+  layout?: LayoutSegment[]
 }
 
-export function CaptionLayer({ pages, accentHex }: CaptionLayerProps) {
+export function CaptionLayer({ pages, accentHex, layout }: CaptionLayerProps) {
   const frame = useCurrentFrame()
   const { fps } = useVideoConfig()
   const ms = (frame / fps) * 1000
+
+  // Lower-third by default; during a split window lift captions to just above the
+  // seam (frame is 1920 tall; seam at 960) so they clear the b-roll row.
+  const mode = layout ? modeAtMs(layout, ms) : "full"
+  const paddingBottom = mode === "split" ? 1020 : 420
 
   // Show each page until the NEXT page begins (not just until its own last word
   // ends). Phrases are separated by silences; ending a page at its last word
@@ -48,10 +57,9 @@ export function CaptionLayer({ pages, accentHex }: CaptionLayerProps) {
   return (
     <AbsoluteFill
       style={{
-        // Lower third, not dead center: pin to the bottom and lift off the floor.
         justifyContent: "flex-end",
         alignItems: "center",
-        padding: "0 72px 420px",
+        padding: `0 72px ${paddingBottom}px`,
       }}
     >
       <div
