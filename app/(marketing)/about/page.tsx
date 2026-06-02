@@ -9,6 +9,7 @@ import { ManagedFaqSection } from "@/components/public/ManagedFaqSection"
 import { SemanticAnswerBlock } from "@/components/public/SemanticAnswerBlock"
 import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 import { DJP_PERSON_FULL } from "@/lib/brand/author"
+import { getAboutPageContent } from "@/lib/db/about-page"
 
 export const metadata: Metadata = {
   title: "Darren J Paul — Athletic Performance Coach",
@@ -63,7 +64,9 @@ const values = [
   },
 ]
 
-export default function AboutPage() {
+export default async function AboutPage() {
+  const content = await getAboutPageContent()
+
   return (
     <>
       <JsonLd data={personSchema} />
@@ -96,39 +99,42 @@ export default function AboutPage() {
               </div>
             </FadeIn>
 
-            {/* Bio */}
+            {/* Bio — copy is editable via /admin/marketing/about */}
             <FadeIn delay={0.15}>
               <div>
                 <div className="flex items-center gap-3 mb-4">
                   <div className="h-px w-12 bg-accent" />
-                  <p className="text-sm font-medium text-accent uppercase tracking-widest">Meet Your Coach</p>
+                  <p className="text-sm font-medium text-accent uppercase tracking-widest">
+                    {content.hero_eyebrow}
+                  </p>
                 </div>
                 <h1 className="text-3xl sm:text-4xl lg:text-5xl font-heading font-semibold text-primary tracking-tight mb-3">
-                  About Darren J Paul
+                  {content.hero_heading}
                 </h1>
                 <p className="text-base font-medium text-accent uppercase tracking-widest mb-6">
-                  PhD · Sports Performance Coach · CSCS · NASM
+                  {content.hero_credentials_line}
                 </p>
-                <p className="text-lg text-muted-foreground leading-relaxed mb-4">
-                  Performance strategist, coach, and researcher. Two decades inside high-performance environments.
-                  500+ athletes coached across 15+ sports and 3 continents — including WTA professional tennis players
-                  and pro pickleball players.
-                </p>
-                <p className="text-lg text-muted-foreground leading-relaxed">
-                  I think in systems, not exercises. I look for patterns, not shortcuts. Every program is built from
-                  diagnostic data and adjusted in real time.
-                </p>
+                {content.hero_bio_paragraphs.map((paragraph, i) => (
+                  <p
+                    key={i}
+                    className={`text-lg text-muted-foreground leading-relaxed ${
+                      i < content.hero_bio_paragraphs.length - 1 ? "mb-4" : ""
+                    }`}
+                  >
+                    {paragraph}
+                  </p>
+                ))}
               </div>
             </FadeIn>
           </div>
         </div>
       </section>
 
-      {/* AEO answer block — extractable "who is Darren J Paul" entity definition */}
+      {/* AEO answer block — extractable entity definition (editable via CMS) */}
       <SemanticAnswerBlock
-        eyebrow="In short"
-        question="Who is Darren J Paul?"
-        answer="Darren J Paul, PhD, is a sports performance coach and the founder of DJP Athlete, based in Zephyrhills, Florida (Tampa Bay area). He has spent two decades inside high-performance environments and has coached 500+ athletes across 15+ sports and three continents, including WTA professional tennis players and professional pickleball players. His certifications include CSCS (NSCA) and NASM-CPT, alongside a PhD and a degree in exercise science. He delivers in-person training at his Tampa Bay facility and online coaching for athletes worldwide, plus return-to-performance assessments for athletes coming back from injury. His approach is diagnostic-driven and individualized: systems over exercises, patterns over shortcuts."
+        eyebrow={content.aeo_eyebrow}
+        question={content.aeo_question}
+        answer={content.aeo_answer}
       />
 
       {/* Credentials Section */}
@@ -218,30 +224,24 @@ export default function AboutPage() {
         </div>
       </section>
 
-      {/* Story Section */}
+      {/* Story Section — copy is editable via /admin/marketing/about */}
       <section className="py-16 lg:py-24 px-4 sm:px-8 bg-surface">
         <div className="max-w-3xl mx-auto">
           <FadeIn>
             <h2 className="text-2xl sm:text-3xl font-heading font-semibold text-primary tracking-tight mb-8 text-center">
-              The Journey
+              {content.story_heading}
             </h2>
             <div className="prose prose-lg max-w-none text-muted-foreground">
-              <p className="leading-relaxed mb-6">
-                I grew up as a multi-sport athlete — competing in track and field, football, and basketball through
-                college. Along the way, I experienced firsthand what it is like to train without proper guidance.
-                Nagging injuries, plateaus, and burnout were constant companions.
-              </p>
-              <p className="leading-relaxed mb-6">
-                When I discovered the science of athletic performance — periodization, biomechanics, and sport
-                psychology — everything changed. I realized that with the right approach, athletes could train harder
-                while staying healthier and performing at levels they never thought possible.
-              </p>
-              <p className="leading-relaxed">
-                That realization became my mission. I went back to school for Exercise Science, earned my
-                certifications, and started coaching. DJP Athlete is the culmination of everything I have learned — a
-                platform where every athlete, regardless of level, can access the coaching and tools they need to reach
-                their full potential.
-              </p>
+              {content.story_paragraphs.map((paragraph, i) => (
+                <p
+                  key={i}
+                  className={`leading-relaxed ${
+                    i < content.story_paragraphs.length - 1 ? "mb-6" : ""
+                  }`}
+                >
+                  {paragraph}
+                </p>
+              ))}
             </div>
           </FadeIn>
         </div>
@@ -256,27 +256,27 @@ export default function AboutPage() {
         className="bg-surface"
       />
 
-      {/* CTA Section */}
+      {/* CTA Section — copy is editable via /admin/marketing/about */}
       <section className="py-16 lg:py-24 px-4 sm:px-8">
         <FadeIn>
           <div className="max-w-3xl mx-auto text-center">
             <div className="flex items-center justify-center gap-3 mb-4">
               <div className="h-px w-8 bg-accent" />
-              <p className="text-sm font-medium text-accent uppercase tracking-widest">Ready to start training?</p>
+              <p className="text-sm font-medium text-accent uppercase tracking-widest">
+                {content.cta_eyebrow}
+              </p>
               <div className="h-px w-8 bg-accent" />
             </div>
             <h2 className="text-2xl sm:text-3xl font-heading font-semibold text-primary tracking-tight mb-4">
-              Ready to start training?
+              {content.cta_heading}
             </h2>
-            <p className="text-lg text-muted-foreground mb-8">
-              Whether you are an aspiring athlete or a seasoned competitor, there is a place for you here.
-            </p>
+            <p className="text-lg text-muted-foreground mb-8">{content.cta_description}</p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <Link
-                href="/contact"
+                href={content.cta_button_href}
                 className="group inline-flex items-center gap-2 bg-primary text-primary-foreground px-8 py-4 rounded-full text-sm font-semibold hover:bg-primary/90 transition-all hover:shadow-md"
               >
-                Get in Touch
+                {content.cta_button_label}
                 <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
               </Link>
             </div>
