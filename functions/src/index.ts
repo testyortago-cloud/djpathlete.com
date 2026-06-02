@@ -393,6 +393,24 @@ export const captionRender = onDocumentCreated(
   },
 )
 
+// Triggered when an ai_jobs doc is created with type "split_reel_render".
+// Claims the job and launches the SAME render-worker Cloud Run Job with
+// RENDER_MODE=split_reel so the worker takes the Split Reel path.
+export const splitReelRender = onDocumentCreated(
+  {
+    document: "ai_jobs/{jobId}",
+    timeoutSeconds: 120,
+    memory: "256MiB",
+    region: "us-central1",
+  },
+  async (event) => {
+    const data = event.data?.data()
+    if (!data || data.type !== "split_reel_render") return
+    const { handleSplitReelRender } = await import("./split-reel-render-trigger.js")
+    await handleSplitReelRender(event.params.jobId)
+  },
+)
+
 // ─── Transcode Form-Review Voice Messages ─────────────────────────────────────
 // Triggered when a new audio object lands in form-review-audio/. Chrome on PC
 // records voice messages as audio/webm;codecs=opus — which iOS Safari cannot
