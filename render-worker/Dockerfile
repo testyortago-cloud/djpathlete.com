@@ -30,6 +30,21 @@ RUN mkdir -p /usr/share/fonts/truetype/lexendexa \
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
+
+# Bake tfjs WASM backend artifacts so the runtime never fetches them from a CDN.
+# detect-face.ts points setWasmPaths() at /app/wasm (process.cwd()=/app at runtime).
+RUN mkdir -p /app/wasm \
+  && cp node_modules/@tensorflow/tfjs-backend-wasm/dist/*.wasm /app/wasm/
+
+# Bake the BlazeFace face-detector model (weights ship inside the human package).
+# detect-face.ts sets modelBasePath to file:///app/models/.
+RUN mkdir -p /app/models \
+  && cp node_modules/@vladmandic/human/models/blazeface.json /app/models/ \
+  && cp node_modules/@vladmandic/human/models/blazeface.bin /app/models/
+
+# Sanity-check the static ffmpeg binary survives into the image (frame sampling).
+RUN node -e "const p=require('ffmpeg-static'); require('fs').accessSync(p); console.log('ffmpeg-static ok:', p)"
+
 COPY tsconfig.json ./
 COPY src ./src
 COPY public ./public
