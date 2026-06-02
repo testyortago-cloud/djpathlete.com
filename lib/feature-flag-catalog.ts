@@ -18,6 +18,13 @@ export const FEATURE_FLAG_CATALOG: readonly FeatureFlag[] = [
       "Adds a 'Generate Captioned Cut' button to videos in Content Studio. Renders a vertical 9:16 clip with TikTok-style word-pop captions burned in, ready to post. Off by default.",
     defaultEnabled: false,
   },
+  {
+    key: "feature_split_reel_enabled",
+    label: "Split Reel (AI b-roll cuts)",
+    description:
+      "Dynamic two-row reels: full-frame talking head that cuts to a face-tracked split with fal.ai b-roll at AI-selected moments.",
+    defaultEnabled: false,
+  },
 ] as const
 
 export function isFeatureFlagKey(key: string): boolean {

@@ -188,6 +188,7 @@ export const AUDIT_ACTIONS = [
   { slug: "data.deleted_bulk", category: "compliance", description: "Bulk delete operation" },
   { slug: "gdpr.export_requested", category: "compliance", description: "GDPR export requested" },
   { slug: "gdpr.delete_requested", category: "compliance", description: "GDPR delete requested" },
+  { slug: "split_reel.broll_generate", category: "admin_write", description: "Split Reel b-roll generation started" },
 ] as const satisfies readonly AuditActionDef[]
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number]["slug"]
