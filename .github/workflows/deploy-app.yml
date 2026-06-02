@@ -1,0 +1,70 @@
+name: Deploy App (Cloud Build)
+
+# Fires the existing Cloud Build trigger (which builds the web app image and
+# deploys it) whenever app code lands on main. functions/** is handled by
+# deploy-functions.yml, and docs/markdown never need a deploy — so they're
+# ignored here. Also runnable on demand from the Actions tab via "Run workflow".
+#
+# Setup (one-time, no file edits needed):
+#   • Repo Variable  CLOUD_BUILD_TRIGGER  → your Cloud Build trigger name or id (required)
+#   • Repo Variable  CLOUD_BUILD_REGION   → the trigger's region (optional;
+#                                            defaults to "global", which is right
+#                                            for a console-connected GitHub trigger.
+#                                            Set it to e.g. us-central1 if your
+#                                            trigger is regional / 2nd-gen)
+#   • Secret         FIREBASE_SERVICE_ACCOUNT → already set; the SA must also have
+#                                            roles/cloudbuild.builds.editor so it
+#                                            can run the trigger.
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "functions/**"
+      - "docs/**"
+      - "**/*.md"
+      - ".github/workflows/deploy-functions.yml"
+  workflow_dispatch: {}
+
+# Coalesce rapid pushes into one run, but never interrupt a trigger already
+# fired (better a slightly stale deploy than a half-applied one).
+concurrency:
+  group: deploy-app-cloud-build
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Fail fast with a clear message if the trigger name hasn't been configured,
+      # rather than letting gcloud error out cryptically.
+      - name: Check required config
+        run: |
+          if [ -z "${{ vars.CLOUD_BUILD_TRIGGER }}" ]; then
+            echo "::error::Repository variable CLOUD_BUILD_TRIGGER is not set. Add it under Settings → Secrets and variables → Actions → Variables, set to your Cloud Build trigger name or id."
+            exit 1
+          fi
+
+      # Keyless (WIF) auth isn't set up here, so reuse the same service-account
+      # key secret the functions deploy uses. credentials_json takes the JSON
+      # contents directly; setup-gcloud then picks the credentials up for gcloud.
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      # Kick off the Cloud Build trigger for the commit on main. The actual
+      # build + deploy runs inside Cloud Build — this step returns once the build
+      # is created (it does not wait for the build to finish).
+      - name: Run Cloud Build trigger
+        run: |
+          gcloud builds triggers run "${{ vars.CLOUD_BUILD_TRIGGER }}" \
+            --project="darrenjpaulcom" \
+            --region="${{ vars.CLOUD_BUILD_REGION || 'global' }}" \
+            --branch="main"
