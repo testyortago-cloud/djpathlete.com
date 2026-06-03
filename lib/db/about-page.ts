@@ -115,9 +115,13 @@ function rowToContent(row: Record<string, unknown>): AboutPageContent {
   }
   const stringField = (value: unknown, fallback: string): string =>
     typeof value === "string" && value.trim().length > 0 ? value : fallback
+  // Eyebrow fields are intentionally allowed to be blank — empty string
+  // means "render no decorative label / line", not "fall back to default".
+  const optionalStringField = (value: unknown, fallback: string): string =>
+    typeof value === "string" ? value : fallback
 
   return {
-    hero_eyebrow: stringField(row.hero_eyebrow, ABOUT_PAGE_FALLBACK.hero_eyebrow),
+    hero_eyebrow: optionalStringField(row.hero_eyebrow, ABOUT_PAGE_FALLBACK.hero_eyebrow),
     hero_heading: stringField(row.hero_heading, ABOUT_PAGE_FALLBACK.hero_heading),
     hero_credentials_line: stringField(
       row.hero_credentials_line,
@@ -127,7 +131,7 @@ function rowToContent(row: Record<string, unknown>): AboutPageContent {
       row.hero_bio_paragraphs,
       ABOUT_PAGE_FALLBACK.hero_bio_paragraphs,
     ),
-    aeo_eyebrow: stringField(row.aeo_eyebrow, ABOUT_PAGE_FALLBACK.aeo_eyebrow),
+    aeo_eyebrow: optionalStringField(row.aeo_eyebrow, ABOUT_PAGE_FALLBACK.aeo_eyebrow),
     aeo_question: stringField(row.aeo_question, ABOUT_PAGE_FALLBACK.aeo_question),
     aeo_answer: stringField(row.aeo_answer, ABOUT_PAGE_FALLBACK.aeo_answer),
     story_heading: stringField(row.story_heading, ABOUT_PAGE_FALLBACK.story_heading),
@@ -135,7 +139,7 @@ function rowToContent(row: Record<string, unknown>): AboutPageContent {
       row.story_paragraphs,
       ABOUT_PAGE_FALLBACK.story_paragraphs,
     ),
-    cta_eyebrow: stringField(row.cta_eyebrow, ABOUT_PAGE_FALLBACK.cta_eyebrow),
+    cta_eyebrow: optionalStringField(row.cta_eyebrow, ABOUT_PAGE_FALLBACK.cta_eyebrow),
     cta_heading: stringField(row.cta_heading, ABOUT_PAGE_FALLBACK.cta_heading),
     cta_description: stringField(row.cta_description, ABOUT_PAGE_FALLBACK.cta_description),
     cta_button_label: stringField(row.cta_button_label, ABOUT_PAGE_FALLBACK.cta_button_label),

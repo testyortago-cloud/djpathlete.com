@@ -35,10 +35,14 @@ export function SemanticAnswerBlock({
       className={`py-12 lg:py-16 px-4 sm:px-8 bg-surface border-y border-border ${className}`}
     >
       <FadeIn className="max-w-3xl mx-auto">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="h-px w-12 bg-accent" />
-          <p className="text-[11px] font-medium text-accent uppercase tracking-[0.25em]">{eyebrow}</p>
-        </div>
+        {eyebrow && (
+          <div className="flex items-center gap-3 mb-3">
+            <div className="h-px w-12 bg-accent" />
+            <p className="text-[11px] font-medium text-accent uppercase tracking-[0.25em]">
+              {eyebrow}
+            </p>
+          </div>
+        )}
         <h2
           id="quick-answer-heading"
           className="text-xl sm:text-2xl font-heading font-semibold text-primary tracking-tight mb-4"

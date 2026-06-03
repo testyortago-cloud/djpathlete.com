@@ -46,7 +46,9 @@ export type Credential = {
  * before submit, and an empty array of paragraphs is rejected here.
  */
 export const aboutPageContentSchema = z.object({
-  hero_eyebrow: z.string().trim().min(1).max(120),
+  // Eyebrows are optional — when blank the small decorative label/line above
+  // the heading is omitted on the page. Heading + body are still required.
+  hero_eyebrow: z.string().trim().max(120),
   hero_heading: z.string().trim().min(1).max(160),
   hero_credentials_line: z.string().trim().min(1).max(300),
   hero_bio_paragraphs: z
@@ -54,7 +56,7 @@ export const aboutPageContentSchema = z.object({
     .min(1, "At least one bio paragraph is required")
     .max(6, "No more than six bio paragraphs"),
 
-  aeo_eyebrow: z.string().trim().min(1).max(60),
+  aeo_eyebrow: z.string().trim().max(60),
   aeo_question: z.string().trim().min(1).max(300),
   aeo_answer: z
     .string()
@@ -68,7 +70,7 @@ export const aboutPageContentSchema = z.object({
     .min(1, "At least one story paragraph is required")
     .max(10, "No more than ten story paragraphs"),
 
-  cta_eyebrow: z.string().trim().min(1).max(120),
+  cta_eyebrow: z.string().trim().max(120),
   cta_heading: z.string().trim().min(1).max(160),
   cta_description: z.string().trim().min(1).max(500),
   cta_button_label: z.string().trim().min(1).max(60),

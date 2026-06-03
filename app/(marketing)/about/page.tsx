@@ -102,12 +102,14 @@ export default async function AboutPage() {
             {/* Bio — copy is editable via /admin/marketing/about */}
             <FadeIn delay={0.15}>
               <div>
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="h-px w-12 bg-accent" />
-                  <p className="text-sm font-medium text-accent uppercase tracking-widest">
-                    {content.hero_eyebrow}
-                  </p>
-                </div>
+                {content.hero_eyebrow && (
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="h-px w-12 bg-accent" />
+                    <p className="text-sm font-medium text-accent uppercase tracking-widest">
+                      {content.hero_eyebrow}
+                    </p>
+                  </div>
+                )}
                 <h1 className="text-3xl sm:text-4xl lg:text-5xl font-heading font-semibold text-primary tracking-tight mb-3">
                   {content.hero_heading}
                 </h1>
@@ -260,13 +262,15 @@ export default async function AboutPage() {
       <section className="py-16 lg:py-24 px-4 sm:px-8">
         <FadeIn>
           <div className="max-w-3xl mx-auto text-center">
-            <div className="flex items-center justify-center gap-3 mb-4">
-              <div className="h-px w-8 bg-accent" />
-              <p className="text-sm font-medium text-accent uppercase tracking-widest">
-                {content.cta_eyebrow}
-              </p>
-              <div className="h-px w-8 bg-accent" />
-            </div>
+            {content.cta_eyebrow && (
+              <div className="flex items-center justify-center gap-3 mb-4">
+                <div className="h-px w-8 bg-accent" />
+                <p className="text-sm font-medium text-accent uppercase tracking-widest">
+                  {content.cta_eyebrow}
+                </p>
+                <div className="h-px w-8 bg-accent" />
+              </div>
+            )}
             <h2 className="text-2xl sm:text-3xl font-heading font-semibold text-primary tracking-tight mb-4">
               {content.cta_heading}
             </h2>
