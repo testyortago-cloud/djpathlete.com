@@ -122,9 +122,55 @@ export const DJP_AUTHOR_PERSON = {
 }
 
 /**
- * Full Person schema for /about. Includes credentials, expertise, employer,
- * and address binding. This is the author-entity-verification anchor that
- * 2026 research identifies as a primary AI Overview citation signal.
+ * Person.hasCredential entries are now sourced from `about_page_content` so
+ * the coach can add a new certification in /admin/marketing/about and have it
+ * appear automatically in BOTH the visible card grid AND the structured E-E-A-T
+ * signal. Call `buildAboutPersonSchema(credentials)` from /about to produce a
+ * schema that inherits everything in DJP_PERSON_FULL but overrides
+ * hasCredential with the CMS-managed list.
+ */
+type CmsCredential = {
+  title: string
+  category: "degree" | "certification" | "experience"
+  recognizing_org?: string
+  recognizing_url?: string
+}
+
+export function buildAboutPersonSchema(credentials: CmsCredential[]) {
+  return {
+    ...DJP_PERSON_FULL,
+    hasCredential: credentials.map(cmsCredentialToSchema),
+  }
+}
+
+function cmsCredentialToSchema(c: CmsCredential) {
+  const credentialCategory =
+    c.category === "degree"
+      ? "degree"
+      : c.category === "certification"
+        ? "Professional certification"
+        : "Professional experience"
+  const base: Record<string, unknown> = {
+    "@type": "EducationalOccupationalCredential",
+    name: c.title,
+    credentialCategory,
+  }
+  if (c.recognizing_org) {
+    base.recognizedBy = {
+      "@type": "Organization",
+      name: c.recognizing_org,
+      ...(c.recognizing_url ? { url: c.recognizing_url } : {}),
+    }
+  }
+  return base
+}
+
+/**
+ * Full Person schema for /about — static defaults. The hasCredential array
+ * here is the **fallback**; the live /about page calls
+ * buildAboutPersonSchema(content.credentials) to override it with the
+ * CMS-managed list so the structured signal stays in sync with what the
+ * coach has actually published.
  */
 export const DJP_PERSON_FULL = {
   "@context": "https://schema.org",

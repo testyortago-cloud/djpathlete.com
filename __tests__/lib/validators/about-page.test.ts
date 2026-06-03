@@ -16,6 +16,17 @@ const VALID = {
   cta_description: "A description.",
   cta_button_label: "Get in Touch",
   cta_button_href: "/contact",
+  meta_title: "Darren J Paul — Athletic Performance Coach",
+  meta_description: "Meet Darren J Paul, sports performance coach behind DJP Athlete.",
+  credentials: [
+    {
+      icon: "award" as const,
+      title: "CSCS",
+      category: "certification" as const,
+      recognizing_org: "NSCA",
+      recognizing_url: "https://www.nsca.com/",
+    },
+  ],
 }
 
 describe("aboutPageContentSchema", () => {
@@ -66,5 +77,41 @@ describe("aboutPageContentSchema", () => {
     if (result.success) {
       expect(result.data.hero_eyebrow).toBe("Meet Your Coach")
     }
+  })
+
+  it("rejects an empty credentials array", () => {
+    const result = aboutPageContentSchema.safeParse({ ...VALID, credentials: [] })
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects a credential with an unknown icon", () => {
+    const result = aboutPageContentSchema.safeParse({
+      ...VALID,
+      credentials: [{ icon: "rocket", title: "X", category: "certification" }],
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects a credential with a non-http recognizing_url", () => {
+    const result = aboutPageContentSchema.safeParse({
+      ...VALID,
+      credentials: [
+        {
+          icon: "award",
+          title: "X",
+          category: "certification",
+          recognizing_url: "javascript:alert(1)",
+        },
+      ],
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects a meta_title over 70 characters", () => {
+    const result = aboutPageContentSchema.safeParse({
+      ...VALID,
+      meta_title: "x".repeat(71),
+    })
+    expect(result.success).toBe(false)
   })
 })

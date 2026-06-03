@@ -8,42 +8,41 @@ import { GoogleReviewsSection } from "@/components/public/GoogleReviewsSection"
 import { ManagedFaqSection } from "@/components/public/ManagedFaqSection"
 import { SemanticAnswerBlock } from "@/components/public/SemanticAnswerBlock"
 import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
-import { DJP_PERSON_FULL } from "@/lib/brand/author"
+import { buildAboutPersonSchema } from "@/lib/brand/author"
 import { getAboutPageContent } from "@/lib/db/about-page"
+import type { Credential, CredentialIcon } from "@/lib/validators/about-page"
 
-export const metadata: Metadata = {
-  title: "Darren J Paul — Athletic Performance Coach",
-  description:
-    "Meet Darren J Paul — athletic performance coach and sports performance coach behind DJP Athlete. Two decades coaching elite and youth athletes in Tampa Bay, FL.",
-  alternates: { canonical: "/about" },
-  openGraph: {
-    title: "Darren J Paul — Athletic Performance Coach | DJP Athlete",
-    description:
-      "Meet Darren J Paul — athletic performance coach and sports performance coach behind DJP Athlete. Two decades coaching elite and youth athletes in Tampa Bay, FL.",
-    type: "website",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "Darren J Paul — Athletic Performance Coach | DJP Athlete",
-    description:
-      "Meet Darren J Paul — athletic performance coach behind DJP Athlete. Two decades coaching elite and youth athletes in Tampa Bay, FL.",
-  },
+/** Meta title + description are CMS-managed via /admin/marketing/about. */
+export async function generateMetadata(): Promise<Metadata> {
+  const content = await getAboutPageContent()
+  const ogTitle = `${content.meta_title} | DJP Athlete`
+  return {
+    title: content.meta_title,
+    description: content.meta_description,
+    alternates: { canonical: "/about" },
+    openGraph: {
+      title: ogTitle,
+      description: content.meta_description,
+      type: "website",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: ogTitle,
+      description: content.meta_description,
+    },
+  }
 }
 
-// Person schema for E-E-A-T. Note: `aggregateRating` / `review` must NOT be
-// attached to a Person — Google does not allow `Person` as a review-snippet
-// parent ("Invalid object type for field <parent_node>"). The Google Business
-// Profile rating + reviews are emitted on an `Organization` node by
-// <GoogleReviewsSection /> instead.
-const personSchema = DJP_PERSON_FULL
-
-const credentials = [
-  { icon: GraduationCap, title: "Doctor of Philosophy (PhD)" },
-  { icon: GraduationCap, title: "B.S. in Exercise Science & Kinesiology" },
-  { icon: Award, title: "Certified Strength & Conditioning Specialist (CSCS)" },
-  { icon: Award, title: "NASM Certified Personal Trainer" },
-  { icon: Trophy, title: "Two Decades of High-Performance Experience" },
-]
+/**
+ * Lucide icon picker for the credential card grid. Keep this in sync with
+ * CREDENTIAL_ICONS in lib/validators/about-page.ts — adding an icon there
+ * means adding a row here too.
+ */
+const CREDENTIAL_ICON_MAP: Record<CredentialIcon, typeof GraduationCap> = {
+  graduation_cap: GraduationCap,
+  award: Award,
+  trophy: Trophy,
+}
 
 const values = [
   {
@@ -66,6 +65,7 @@ const values = [
 
 export default async function AboutPage() {
   const content = await getAboutPageContent()
+  const personSchema = buildAboutPersonSchema(content.credentials)
 
   return (
     <>
@@ -159,10 +159,10 @@ export default async function AboutPage() {
           </FadeIn>
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {credentials.map((cred, i) => {
-              const Icon = cred.icon
+            {content.credentials.map((cred: Credential, i) => {
+              const Icon = CREDENTIAL_ICON_MAP[cred.icon]
               return (
-                <FadeIn key={cred.title} delay={i * 0.06}>
+                <FadeIn key={`${cred.title}-${i}`} delay={i * 0.06}>
                   <div className="group relative overflow-hidden flex items-center gap-4 p-4 rounded-xl bg-white border border-border">
                     <div className="absolute top-0 left-0 right-0 h-1 bg-accent scale-x-0 group-hover:scale-x-100 transition-transform duration-300 origin-left" />
                     <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">

@@ -3,7 +3,35 @@
 import { useState, type FormEvent } from "react"
 import { toast } from "sonner"
 import { Plus, Save, Trash2 } from "lucide-react"
-import { aboutPageContentSchema, type AboutPageContent } from "@/lib/validators/about-page"
+import {
+  aboutPageContentSchema,
+  CREDENTIAL_CATEGORIES,
+  CREDENTIAL_ICONS,
+  type AboutPageContent,
+  type Credential,
+  type CredentialCategory,
+  type CredentialIcon,
+} from "@/lib/validators/about-page"
+
+/** Display labels for the credential icon picker. */
+const ICON_LABELS: Record<CredentialIcon, string> = {
+  graduation_cap: "Degree (cap)",
+  award: "Certification (award)",
+  trophy: "Experience (trophy)",
+}
+
+/** Display labels for the schema credentialCategory. */
+const CATEGORY_LABELS: Record<CredentialCategory, string> = {
+  degree: "Degree",
+  certification: "Certification",
+  experience: "Experience",
+}
+
+const NEW_CREDENTIAL: Credential = {
+  icon: "award",
+  title: "",
+  category: "certification",
+}
 
 interface Props {
   initialContent: AboutPageContent
@@ -51,11 +79,35 @@ export function AboutEditor({ initialContent }: Props) {
     })
   }
 
+  function setCredential<K extends keyof Credential>(
+    index: number,
+    key: K,
+    value: Credential[K],
+  ) {
+    setContent((c) => {
+      const next = [...c.credentials]
+      next[index] = { ...next[index], [key]: value }
+      return { ...c, credentials: next }
+    })
+  }
+
+  function addCredential() {
+    setContent((c) => ({ ...c, credentials: [...c.credentials, { ...NEW_CREDENTIAL }] }))
+  }
+
+  function removeCredential(index: number) {
+    setContent((c) => {
+      const next = c.credentials.filter((_, i) => i !== index)
+      return { ...c, credentials: next.length > 0 ? next : [{ ...NEW_CREDENTIAL }] }
+    })
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setIssues([])
 
-    // Trim empties out of the paragraph lists so the user doesn't have to.
+    // Trim empties out of the paragraph and credential lists so the user
+    // doesn't have to chase down half-filled rows.
     const trimmed: AboutPageContent = {
       ...content,
       hero_bio_paragraphs: content.hero_bio_paragraphs
@@ -64,6 +116,14 @@ export function AboutEditor({ initialContent }: Props) {
       story_paragraphs: content.story_paragraphs
         .map((p) => p.trim())
         .filter((p) => p.length > 0),
+      credentials: content.credentials
+        .map((c) => ({
+          ...c,
+          title: c.title.trim(),
+          recognizing_org: c.recognizing_org?.trim() || undefined,
+          recognizing_url: c.recognizing_url?.trim() || undefined,
+        }))
+        .filter((c) => c.title.length > 0),
     }
 
     const parsed = aboutPageContentSchema.safeParse(trimmed)
@@ -218,6 +278,141 @@ export function AboutEditor({ initialContent }: Props) {
             onChange={(v) => setField("cta_button_href", v)}
             maxLength={300}
           />
+        </div>
+      </Section>
+
+      <Section
+        title="Page SEO"
+        subtitle="The <title> tag and meta description shown to Google and shared on social. Updates flow into Open Graph + Twitter Card automatically."
+      >
+        <TextField
+          label="Meta title"
+          hint="Shown as the SERP heading. Keep under 70 characters; this site appends &quot; | DJP Athlete&quot; on social shares."
+          value={content.meta_title}
+          onChange={(v) => setField("meta_title", v)}
+          maxLength={70}
+        />
+        <Textarea
+          label="Meta description"
+          hint="One-sentence summary Google may show under the title. 150–170 characters is the sweet spot."
+          value={content.meta_description}
+          onChange={(v) => setField("meta_description", v)}
+          rows={3}
+          maxLength={180}
+        />
+      </Section>
+
+      <Section
+        title="Credentials & certifications"
+        subtitle="Each credential appears as a card on the page AND as a hasCredential entry in the Person JSON-LD — adding a new certification here improves both the visible content and the structured E-E-A-T signal Google + AI Overviews read."
+      >
+        <div className="flex items-center justify-end">
+          <button
+            type="button"
+            onClick={addCredential}
+            className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-accent text-accent text-xs font-medium hover:bg-accent/10 transition-colors"
+          >
+            <Plus className="size-3.5" />
+            Add credential
+          </button>
+        </div>
+        <div className="space-y-3">
+          {content.credentials.map((cred, i) => (
+            <div
+              key={i}
+              className="rounded-lg border border-border/70 bg-background p-4 space-y-3"
+            >
+              <div className="grid sm:grid-cols-[1fr_180px_180px_auto] gap-3 items-start">
+                <label className="block">
+                  <span className="block text-xs font-medium text-primary mb-1">Title</span>
+                  <input
+                    type="text"
+                    value={cred.title}
+                    onChange={(e) => setCredential(i, "title", e.target.value)}
+                    maxLength={200}
+                    placeholder='e.g. "Certified Strength & Conditioning Specialist (CSCS)"'
+                    className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/50"
+                  />
+                </label>
+                <label className="block">
+                  <span className="block text-xs font-medium text-primary mb-1">Icon</span>
+                  <select
+                    value={cred.icon}
+                    onChange={(e) => setCredential(i, "icon", e.target.value as CredentialIcon)}
+                    className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/50"
+                  >
+                    {CREDENTIAL_ICONS.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {ICON_LABELS[opt]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="block text-xs font-medium text-primary mb-1">Category</span>
+                  <select
+                    value={cred.category}
+                    onChange={(e) =>
+                      setCredential(i, "category", e.target.value as CredentialCategory)
+                    }
+                    className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/50"
+                  >
+                    {CREDENTIAL_CATEGORIES.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {CATEGORY_LABELS[opt]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => removeCredential(i)}
+                  aria-label={`Remove credential ${i + 1}`}
+                  className="mt-5 p-2 rounded-md text-muted-foreground hover:text-error hover:bg-error/5"
+                >
+                  <Trash2 className="size-4" />
+                </button>
+              </div>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="block text-xs font-medium text-primary mb-1">
+                    Recognizing organization{" "}
+                    <span className="text-muted-foreground font-normal">(optional)</span>
+                  </span>
+                  <input
+                    type="text"
+                    value={cred.recognizing_org ?? ""}
+                    onChange={(e) =>
+                      setCredential(i, "recognizing_org", e.target.value || undefined)
+                    }
+                    maxLength={200}
+                    placeholder='e.g. "National Strength and Conditioning Association"'
+                    className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/50"
+                  />
+                </label>
+                <label className="block">
+                  <span className="block text-xs font-medium text-primary mb-1">
+                    Recognizing org URL{" "}
+                    <span className="text-muted-foreground font-normal">(optional)</span>
+                  </span>
+                  <input
+                    type="url"
+                    value={cred.recognizing_url ?? ""}
+                    onChange={(e) =>
+                      setCredential(i, "recognizing_url", e.target.value || undefined)
+                    }
+                    maxLength={500}
+                    placeholder="https://www.nsca.com/"
+                    className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/50"
+                  />
+                </label>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Linking the recognizing organization strengthens the schema — Google verifies
+                the credential entity against the org&apos;s URL.
+              </p>
+            </div>
+          ))}
         </div>
       </Section>
 

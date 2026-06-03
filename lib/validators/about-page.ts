@@ -1,9 +1,48 @@
 import { z } from "zod"
 
+/** Lucide icon picker for credential cards — keep this small + stable. */
+export const CREDENTIAL_ICONS = ["graduation_cap", "award", "trophy"] as const
+export type CredentialIcon = (typeof CREDENTIAL_ICONS)[number]
+
+/** Schema.org credentialCategory we surface in the editor. */
+export const CREDENTIAL_CATEGORIES = ["degree", "certification", "experience"] as const
+export type CredentialCategory = (typeof CREDENTIAL_CATEGORIES)[number]
+
+/**
+ * A single credential as edited in the CMS. Drives BOTH the visible card on
+ * /about AND a `hasCredential` entry on the Person JSON-LD — so adding a
+ * credential here improves the page text and the E-E-A-T signal in one shot.
+ */
+export const credentialSchema = z.object({
+  icon: z.enum(CREDENTIAL_ICONS),
+  title: z.string().trim().min(1).max(200),
+  category: z.enum(CREDENTIAL_CATEGORIES),
+  recognizing_org: z.string().trim().max(200).optional(),
+  recognizing_url: z
+    .string()
+    .trim()
+    .max(500)
+    .regex(/^https?:\/\//, "Recognizing URL must start with http(s)://")
+    .optional(),
+})
+
+/**
+ * Authored as an explicit type (rather than inferred) so the optional fields
+ * are truly `?:` instead of `string | undefined` — keeps construction sites
+ * (defaults, NEW_CREDENTIAL templates) terse.
+ */
+export type Credential = {
+  icon: CredentialIcon
+  title: string
+  category: CredentialCategory
+  recognizing_org?: string
+  recognizing_url?: string
+}
+
 /**
  * Editable copy on /about. Mirrors the columns on `about_page_content`
- * (00161). Every field is required because the public page would look
- * broken with empty strings — empty values are stripped client-side
+ * (00161 + 00162). Every field is required because the public page would
+ * look broken with empty strings — empty values are stripped client-side
  * before submit, and an empty array of paragraphs is rejected here.
  */
 export const aboutPageContentSchema = z.object({
@@ -39,6 +78,18 @@ export const aboutPageContentSchema = z.object({
     .min(1)
     .max(300)
     .regex(/^(\/|https?:\/\/)/, "Link must start with / or http(s)://"),
+
+  // ─── SEO / E-E-A-T ────────────────────────────────────────────────
+  meta_title: z.string().trim().min(1).max(70, "Keep meta titles under 70 characters"),
+  meta_description: z
+    .string()
+    .trim()
+    .min(1)
+    .max(180, "Keep meta descriptions under 180 characters"),
+  credentials: z
+    .array(credentialSchema)
+    .min(1, "At least one credential is required")
+    .max(20, "No more than twenty credentials"),
 })
 
 export type AboutPageContent = z.infer<typeof aboutPageContentSchema>

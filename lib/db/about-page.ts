@@ -2,7 +2,12 @@
 // (00161). The admin /admin/marketing/about page owns writes; the public
 // /about page reads.
 import { createServiceRoleClient } from "@/lib/supabase"
-import type { AboutPageContent } from "@/lib/validators/about-page"
+import {
+  CREDENTIAL_CATEGORIES,
+  CREDENTIAL_ICONS,
+  type AboutPageContent,
+  type Credential,
+} from "@/lib/validators/about-page"
 
 /**
  * Hard-coded fallback used when the row is missing OR the DB is unreachable.
@@ -34,6 +39,36 @@ export const ABOUT_PAGE_FALLBACK: AboutPageContent = {
     "Whether you are an aspiring athlete or a seasoned competitor, there is a place for you here.",
   cta_button_label: "Get in Touch",
   cta_button_href: "/contact",
+  meta_title: "Darren J Paul — Athletic Performance Coach",
+  meta_description:
+    "Meet Darren J Paul — athletic performance coach and sports performance coach behind DJP Athlete. Two decades coaching elite and youth athletes in Tampa Bay, FL.",
+  credentials: [
+    { icon: "graduation_cap", title: "Doctor of Philosophy (PhD)", category: "degree" },
+    {
+      icon: "graduation_cap",
+      title: "B.S. in Exercise Science & Kinesiology",
+      category: "degree",
+    },
+    {
+      icon: "award",
+      title: "Certified Strength & Conditioning Specialist (CSCS)",
+      category: "certification",
+      recognizing_org: "National Strength and Conditioning Association",
+      recognizing_url: "https://www.nsca.com/",
+    },
+    {
+      icon: "award",
+      title: "NASM Certified Personal Trainer",
+      category: "certification",
+      recognizing_org: "National Academy of Sports Medicine",
+      recognizing_url: "https://www.nasm.org/",
+    },
+    {
+      icon: "trophy",
+      title: "Two Decades of High-Performance Experience",
+      category: "experience",
+    },
+  ],
 }
 
 /** Fetches the single row; falls back to defaults on any error. Never throws. */
@@ -105,5 +140,49 @@ function rowToContent(row: Record<string, unknown>): AboutPageContent {
     cta_description: stringField(row.cta_description, ABOUT_PAGE_FALLBACK.cta_description),
     cta_button_label: stringField(row.cta_button_label, ABOUT_PAGE_FALLBACK.cta_button_label),
     cta_button_href: stringField(row.cta_button_href, ABOUT_PAGE_FALLBACK.cta_button_href),
+    meta_title: stringField(row.meta_title, ABOUT_PAGE_FALLBACK.meta_title),
+    meta_description: stringField(row.meta_description, ABOUT_PAGE_FALLBACK.meta_description),
+    credentials: credentialArray(row.credentials, ABOUT_PAGE_FALLBACK.credentials),
   }
+}
+
+/**
+ * JSONB array → typed Credential[]. Drops entries with missing/invalid icon,
+ * category, or title so a partly-corrupt row can't poison the schema layer.
+ * Falls back to the seed list if nothing valid survives.
+ */
+function credentialArray(value: unknown, fallback: Credential[]): Credential[] {
+  if (!Array.isArray(value)) return fallback
+  const out: Credential[] = []
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object") continue
+    const r = entry as Record<string, unknown>
+    const icon = r.icon
+    const title = r.title
+    const category = r.category
+    if (typeof title !== "string" || title.trim().length === 0) continue
+    if (typeof icon !== "string" || !(CREDENTIAL_ICONS as readonly string[]).includes(icon)) continue
+    if (
+      typeof category !== "string" ||
+      !(CREDENTIAL_CATEGORIES as readonly string[]).includes(category)
+    ) {
+      continue
+    }
+    const cred: Credential = {
+      icon: icon as Credential["icon"],
+      title: title.trim(),
+      category: category as Credential["category"],
+    }
+    if (typeof r.recognizing_org === "string" && r.recognizing_org.trim().length > 0) {
+      cred.recognizing_org = r.recognizing_org.trim()
+    }
+    if (
+      typeof r.recognizing_url === "string" &&
+      /^https?:\/\//.test(r.recognizing_url.trim())
+    ) {
+      cred.recognizing_url = r.recognizing_url.trim()
+    }
+    out.push(cred)
+  }
+  return out.length > 0 ? out : fallback
 }
