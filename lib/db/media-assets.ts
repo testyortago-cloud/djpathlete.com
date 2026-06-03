@@ -193,3 +193,37 @@ export async function getLatestCaptionedCutForVideo(videoUploadId: string): Prom
     .filter((p): p is AssetLinkedPost => p !== null)
   return { asset: asset as MediaAsset, posts }
 }
+
+/**
+ * The most recent Split Reel render for a source video, with its linked draft
+ * posts — powers the Split Reel drawer panel (Phase 3). Returns null if the video
+ * has no reel yet. Mirrors `getLatestCaptionedCutForVideo`, filtering
+ * `ai_analysis.origin === "split_reel"` (the worker stamps this on the reel asset).
+ */
+export async function getLatestSplitReelForVideo(videoUploadId: string): Promise<AssetWithLinkedPosts | null> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("media_assets")
+    .select(
+      "*, social_post_media(social_posts(id, platform, content, approval_status, post_type, scheduled_at, published_at))",
+    )
+    .eq("kind", "video")
+    .eq("derived_from_video_id", videoUploadId)
+    .order("created_at", { ascending: false })
+  if (error) throw error
+
+  const rows = (data ?? []) as Array<
+    MediaAsset & {
+      ai_analysis: Record<string, unknown> | null
+      social_post_media?: Array<{ social_posts: AssetLinkedPost | null }>
+    }
+  >
+  const match = rows.find((r) => r.ai_analysis?.origin === "split_reel")
+  if (!match) return null
+
+  const { social_post_media, ...asset } = match
+  const posts: AssetLinkedPost[] = (social_post_media ?? [])
+    .map((row) => row.social_posts)
+    .filter((p): p is AssetLinkedPost => p !== null)
+  return { asset: asset as MediaAsset, posts }
+}
