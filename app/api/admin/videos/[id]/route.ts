@@ -53,8 +53,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   })
 }
 
-// PATCH { needs_edit: boolean } — manual override for the edit gate. Used by the
-// "Mark as ready" action in the video drawer.
+// PATCH  — { needs_edit?: boolean; hook_text?: string|null } — edit-gate override (Mark ready) + reel hook.
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -64,14 +63,24 @@ export async function PATCH(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const body = (await request.json().catch(() => null)) as { needs_edit?: boolean } | null
-  if (typeof body?.needs_edit !== "boolean") {
-    return NextResponse.json({ error: "needs_edit (boolean) is required" }, { status: 400 })
+  const body = (await request.json().catch(() => null)) as
+    | { needs_edit?: boolean; hook_text?: string | null }
+    | null
+
+  const patch: { needs_edit?: boolean; hook_text?: string | null } = {}
+  if (typeof body?.needs_edit === "boolean") patch.needs_edit = body.needs_edit
+  if (typeof body?.hook_text === "string" || body?.hook_text === null) {
+    // Trim + cap to the 80-char hook limit; empty → null (clears the card).
+    const trimmed = typeof body.hook_text === "string" ? body.hook_text.trim().slice(0, 80) : ""
+    patch.hook_text = trimmed.length > 0 ? trimmed : null
+  }
+  if (Object.keys(patch).length === 0) {
+    return NextResponse.json({ error: "needs_edit (boolean) or hook_text (string|null) is required" }, { status: 400 })
   }
 
   const { id } = await params
-  const updated = await updateVideoUpload(id, { needs_edit: body.needs_edit })
-  return NextResponse.json({ id: updated.id, needs_edit: updated.needs_edit })
+  const updated = await updateVideoUpload(id, patch)
+  return NextResponse.json({ id: updated.id, needs_edit: updated.needs_edit, hook_text: updated.hook_text ?? null })
 }
 
 export async function DELETE(
