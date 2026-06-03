@@ -144,13 +144,6 @@ export default async function AboutPage() {
         <div className="max-w-5xl mx-auto">
           <FadeIn>
             <div className="text-center mb-12">
-              <div className="flex items-center justify-center gap-3 mb-4">
-                <div className="h-px w-8 bg-accent" />
-                <p className="text-sm font-medium text-accent uppercase tracking-widest">
-                  Credentials & Certifications
-                </p>
-                <div className="h-px w-8 bg-accent" />
-              </div>
               <h2 className="text-2xl sm:text-3xl font-heading font-semibold text-primary tracking-tight mb-4">
                 Credentials & Certifications
               </h2>
@@ -191,11 +184,6 @@ export default async function AboutPage() {
         <div className="max-w-5xl mx-auto">
           <FadeIn>
             <div className="text-center mb-12">
-              <div className="flex items-center justify-center gap-3 mb-4">
-                <div className="h-px w-8 bg-accent" />
-                <p className="text-sm font-medium text-accent uppercase tracking-widest">Training Philosophy</p>
-                <div className="h-px w-8 bg-accent" />
-              </div>
               <h2 className="text-2xl sm:text-3xl font-heading font-semibold text-primary tracking-tight mb-4">
                 Training Philosophy
               </h2>
