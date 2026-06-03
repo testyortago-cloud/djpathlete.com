@@ -1,6 +1,5 @@
 import { FieldValue, getFirestore } from "firebase-admin/firestore"
 import type { Change, FirestoreEvent, QueryDocumentSnapshot } from "firebase-functions/v2/firestore"
-import { getSupabase } from "./lib/supabase.js"
 
 interface JobShape {
   type?: string
@@ -114,28 +113,13 @@ async function chainSocialFanout(parentJobId: string, after: JobShape): Promise<
   )
 }
 
-// Phase 3: the auto-chain is GATED behind split_reel_auto_render (default false),
-// so generation stops at operator review and the render fires from the explicit
-// POST /split-reel/render. The videoUploadId lives on the broll_generation job's
-// INPUT (its result only carries segmentCount).
+// Phase 3: the reel ALWAYS auto-renders once b-roll generation completes — the
+// one-click "Create Reel" flow has no separate render step. The videoUploadId
+// lives on the broll_generation job's INPUT (its result only carries counts).
 async function chainSplitReelRender(parentJobId: string, after: JobShape): Promise<void> {
   const videoUploadId = after.input?.videoUploadId
   if (!videoUploadId) {
     console.warn(`[on-ai-job-completed] broll_generation ${parentJobId} completed without input.videoUploadId`)
-    return
-  }
-
-  // Gate: only auto-render when split_reel_auto_render is true (Phase 2 behavior).
-  const supabase = getSupabase()
-  const { data: setting } = await supabase
-    .from("system_settings")
-    .select("value")
-    .eq("key", "split_reel_auto_render")
-    .maybeSingle()
-  if (setting?.value !== true) {
-    console.log(
-      `[on-ai-job-completed] split_reel_auto_render off — broll_generation ${parentJobId} awaits operator approval`,
-    )
     return
   }
 

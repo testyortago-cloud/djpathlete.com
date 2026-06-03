@@ -145,4 +145,45 @@ describe("handleAiJobCompleted", () => {
     await handleAiJobCompleted(event as never)
     expect(mocks.set).not.toHaveBeenCalled()
   })
+
+  it("always enqueues split_reel_render when broll_generation flips to completed", async () => {
+    // The gate (split_reel_auto_render) has been removed — render always chains.
+    const event = makeEvent(
+      { type: "broll_generation", status: "processing" },
+      {
+        type: "broll_generation",
+        status: "completed",
+        input: { videoUploadId: "vid-broll-1" },
+        result: { segmentCount: 4 },
+        userId: "user-5",
+      },
+    )
+    await handleAiJobCompleted(event as never)
+
+    expect(mocks.set).toHaveBeenCalledTimes(1)
+    expect(mocks.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "split_reel_render",
+        status: "pending",
+        input: { videoUploadId: "vid-broll-1" },
+        userId: "user-5",
+        parentJobId: "parent-job",
+      }),
+    )
+  })
+
+  it("does NOT enqueue split_reel_render when broll_generation completes without input.videoUploadId", async () => {
+    const event = makeEvent(
+      { type: "broll_generation", status: "processing" },
+      {
+        type: "broll_generation",
+        status: "completed",
+        input: {},
+        result: { segmentCount: 0 },
+        userId: "user-6",
+      },
+    )
+    await handleAiJobCompleted(event as never)
+    expect(mocks.set).not.toHaveBeenCalled()
+  })
 })
