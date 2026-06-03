@@ -21,6 +21,7 @@ describe("suggestHookFromTranscript (functions twin)", () => {
     const hook = await suggestHookFromTranscript("A long transcript about agility and cutting mechanics.")
     expect(hook).toBe("5 Mistakes Killing Your Change-of-Direction Speed")
     expect(mockCreate).toHaveBeenCalledOnce()
+    expect(JSON.stringify(mockCreate.mock.calls[0][0].messages)).toContain("transcript")
   })
 
   it("strips surrounding quotes and a markdown fence", async () => {

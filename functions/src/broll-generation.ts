@@ -51,7 +51,11 @@ export async function handleBrollGeneration(jobId: string): Promise<void> {
       if (hook) {
         // TODO(phase-3): once the hook is editable, guard this write (e.g. only set
         // when hook_text is null) so a "Regenerate" doesn't clobber a coach-edited hook.
-        await supabase.from("video_uploads").update({ hook_text: hook }).eq("id", videoUploadId)
+        const { error: hookErr } = await supabase
+          .from("video_uploads")
+          .update({ hook_text: hook })
+          .eq("id", videoUploadId)
+        if (hookErr) console.warn("[broll_generation] hook write failed (non-fatal):", hookErr.message)
       }
     } catch (e) {
       console.warn("[broll_generation] hook suggestion failed (non-fatal):", (e as Error).message)
