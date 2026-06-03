@@ -14,6 +14,14 @@
 
 **Working directory for all commands:** `render-worker/` (run `cd render-worker` once, or prefix commands). All file paths below are repo-relative.
 
+**Build gate (environment note):** `npm run build` currently emits **5 pre-existing errors**, all in `src/lib/detect-face.ts` ("Cannot find module `@tensorflow/tfjs`/`@vladmandic/human`/`@tensorflow/tfjs-backend-wasm`/`jpeg-js`/`ffmpeg-static`"). Those heavy ML deps aren't installed locally — they're installed in the Docker build — and are **unrelated to this plan**. So the build gate everywhere below is:
+
+```
+cd render-worker && npm run build 2>&1 | grep "error TS" | grep -v "detect-face.ts"
+```
+
+Expected: **no output** (the change introduces no new TS errors outside `detect-face.ts`). Do not judge by `npm run build`'s exit code (it's non-zero because of the pre-existing `detect-face.ts` errors).
+
 ---
 
 ## File Structure
@@ -39,10 +47,10 @@ Left untouched: `layout-timeline.ts` + `layout-timeline.test.ts`, `face-track.ts
 Run: `cd render-worker && npm test`
 Expected: PASS — `layout-timeline.test.ts` and `face-track.test.ts` green (these stay untouched all plan; this is the regression baseline).
 
-- [ ] **Step 2: Confirm a clean build baseline**
+- [ ] **Step 2: Confirm the build baseline (only the known `detect-face.ts` errors)**
 
-Run: `cd render-worker && npm run build`
-Expected: `tsc` exits 0 (no type errors). This is the baseline the later steps must preserve.
+Run: `cd render-worker && npm run build 2>&1 | grep "error TS" | grep -v "detect-face.ts"`
+Expected: **no output** — the only `tsc` errors are the 5 pre-existing `detect-face.ts` missing-module errors (see the Build gate note above). This is the baseline the later steps must preserve.
 
 ---
 
@@ -97,10 +105,10 @@ export function BrollRow({ clips }: BrollRowProps) {
 }
 ```
 
-- [ ] **Step 2: Build to confirm it compiles**
+- [ ] **Step 2: Build to confirm it compiles (no new errors)**
 
-Run: `cd render-worker && npm run build`
-Expected: `tsc` exits 0.
+Run: `cd render-worker && npm run build 2>&1 | grep "error TS" | grep -v "detect-face.ts"`
+Expected: **no output** (only the pre-existing `detect-face.ts` errors remain).
 
 - [ ] **Step 3: Run tests (regression guard)**
 
@@ -341,8 +349,8 @@ export function SplitReel({
 
 - [ ] **Step 3: Build — the layout-prop removal across Tasks 3–5 is now consistent**
 
-Run: `cd render-worker && npm run build`
-Expected: `tsc` exits 0. (If it reports an unused import or a missing `layout` prop, re-check Tasks 3–5 were all applied.)
+Run: `cd render-worker && npm run build 2>&1 | grep "error TS" | grep -v "detect-face.ts"`
+Expected: **no output** (only the pre-existing `detect-face.ts` errors remain). If it reports an unused import or a missing `layout` prop in any `remotion/*.tsx` file, re-check Tasks 3–5 were all applied.
 
 - [ ] **Step 4: Run tests (regression guard)**
 
@@ -380,10 +388,10 @@ Open `render-worker/src/remotion/Root.tsx`, find the comment above the `SPLIT_SA
 
 Do not change the `SPLIT_SAMPLE` data itself (the `broll` window at `startMs:3000`/`endMs:6000` already marks the cutaway).
 
-- [ ] **Step 2: Build**
+- [ ] **Step 2: Build (no new errors)**
 
-Run: `cd render-worker && npm run build`
-Expected: `tsc` exits 0.
+Run: `cd render-worker && npm run build 2>&1 | grep "error TS" | grep -v "detect-face.ts"`
+Expected: **no output** (only the pre-existing `detect-face.ts` errors remain).
 
 - [ ] **Step 3: Commit**
 
