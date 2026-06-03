@@ -1,13 +1,11 @@
 import type { VideoUpload } from "@/types/database"
 import { GenerateQuoteCardsButton } from "@/components/admin/content-studio/drawer/GenerateQuoteCardsButton"
-import { CaptionedCutPanel } from "@/components/admin/content-studio/drawer/CaptionedCutPanel"
 import { SplitReelPanel } from "@/components/admin/content-studio/drawer/SplitReelPanel"
 
 interface VideoDetailSidebarProps {
   video: VideoUpload
   previewUrl: string | null
   hasTranscript?: boolean
-  captionedCutEnabled?: boolean
   splitReelEnabled?: boolean
 }
 
@@ -30,7 +28,6 @@ export function VideoDetailSidebar({
   video,
   previewUrl,
   hasTranscript = false,
-  captionedCutEnabled = false,
   splitReelEnabled = false,
 }: VideoDetailSidebarProps) {
   return (
@@ -71,7 +68,6 @@ export function VideoDetailSidebar({
         <GenerateQuoteCardsButton videoUploadId={video.id} hasTranscript={hasTranscript} />
       </div>
 
-      {captionedCutEnabled && <CaptionedCutPanel videoUploadId={video.id} hasTranscript={hasTranscript} />}
       {splitReelEnabled && <SplitReelPanel videoUploadId={video.id} hasTranscript={hasTranscript} />}
     </div>
   )
