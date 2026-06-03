@@ -49,12 +49,13 @@ export async function handleBrollGeneration(jobId: string): Promise<void> {
       const transcriptText = words.map((w) => w.text).join(" ")
       const hook = await suggestHookFromTranscript(transcriptText)
       if (hook) {
-        // TODO(phase-3): once the hook is editable, guard this write (e.g. only set
-        // when hook_text is null) so a "Regenerate" doesn't clobber a coach-edited hook.
+        // Only set the hook when none exists yet, so a "Regenerate"/re-run never
+        // clobbers a coach-edited hook (the panel edits hook_text directly).
         const { error: hookErr } = await supabase
           .from("video_uploads")
           .update({ hook_text: hook })
           .eq("id", videoUploadId)
+          .is("hook_text", null)
         if (hookErr) console.warn("[broll_generation] hook write failed (non-fatal):", hookErr.message)
       }
     } catch (e) {
