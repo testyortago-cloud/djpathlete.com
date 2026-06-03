@@ -24,8 +24,10 @@ const SAMPLE: CaptionedCutProps = {
   accentHex: "#C49B7A",
 }
 
-// 10s sample: full-frame 0-3s, split (b-roll) 3-6s, full-frame 6-10s. A moving
-// face trajectory so the tracking crop is visibly doing something in Studio.
+// 10s sample: full-frame face-tracked head 0-3s, FULL-SCREEN b-roll cutaway
+// (head hidden, voice continues) 3-6s, full-frame head 6-10s; lower-third
+// captions throughout. The broll window (3000-6000) marks the cutaway. A moving
+// face trajectory keeps the tracking crop visibly doing something in Studio.
 const SPLIT_SAMPLE: SplitReelProps = {
   videoSrc:
     "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
