@@ -1591,6 +1591,12 @@ export interface VideoUpload {
    * direct admin uploads. Optional on insert — nullable column, no default.
    */
   source_submission_id?: string | null
+  /**
+   * Auto-generated opening hook title for the reel's first-frame card. Written
+   * from the transcript by the broll_generation job and (later) editable. Null
+   * until generated. Optional on insert — nullable column, no default.
+   */
+  hook_text?: string | null
   created_at: string
   updated_at: string
 }
