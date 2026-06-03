@@ -245,6 +245,8 @@ export const onAiJobCompleted = onDocumentUpdated(
     region: "us-central1",
     timeoutSeconds: 60,
     memory: "256MiB",
+    // Phase 3: chainSplitReelRender reads split_reel_auto_render from Supabase.
+    secrets: [supabaseUrl, supabaseServiceRoleKey],
   },
   async (event) => {
     const { handleAiJobCompleted } = await import("./on-ai-job-completed.js")
