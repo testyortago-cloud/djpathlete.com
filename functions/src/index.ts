@@ -245,7 +245,7 @@ export const onAiJobCompleted = onDocumentUpdated(
     region: "us-central1",
     timeoutSeconds: 60,
     memory: "256MiB",
-    // Phase 3: chainSplitReelRender reads split_reel_auto_render from Supabase.
+    // Supabase secrets for the handler's chains (e.g. chainSocialFanout).
     secrets: [supabaseUrl, supabaseServiceRoleKey],
   },
   async (event) => {

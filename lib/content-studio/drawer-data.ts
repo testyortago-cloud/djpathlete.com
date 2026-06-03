@@ -32,8 +32,8 @@ export interface DrawerData {
   captionedCutEnabled: boolean
   /** Whether the Split Reel feature flag is on (gates the Split Reel panel). */
   splitReelEnabled: boolean
-  /** A rendered captioned cut exists for this video — makes it postable even
-   *  while needs_edit is still true. Used to gate the batch publish/schedule bar. */
+  /** A rendered captioned cut exists. Informational only — no longer affects the
+   *  posting gate (which is needs_edit-only). Retained pending Phase 3b cleanup. */
   hasCut: boolean
 }
 
