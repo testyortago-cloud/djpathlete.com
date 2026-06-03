@@ -1,8 +1,7 @@
 // render-worker/src/remotion/SplitReel.tsx
-import { AbsoluteFill, useVideoConfig } from "remotion"
+import { AbsoluteFill } from "remotion"
 import type { CaptionPage } from "../lib/caption-paging.js"
 import type { FacePoint } from "../lib/face-track.js"
-import { buildLayoutTimeline } from "../lib/layout-timeline.js"
 import { TrackedVideo } from "./TrackedVideo.js"
 import { BrollRow, type BrollClip } from "./BrollRow.js"
 import { CaptionLayer } from "./CaptionLayer.js"
@@ -32,20 +31,13 @@ export function SplitReel({
   hook,
   music,
 }: SplitReelProps) {
-  const { durationInFrames, fps } = useVideoConfig()
-  const totalMs = (durationInFrames / fps) * 1000
-  const layout = buildLayoutTimeline(
-    broll.map((b) => ({ startMs: b.startMs, endMs: b.endMs })),
-    totalMs,
-  )
-
   return (
     <AbsoluteFill style={{ backgroundColor: "black" }}>
       <AudioLayer pages={pages} music={music} hasHook={Boolean(hook?.text)} />
-      <TrackedVideo videoSrc={videoSrc} trajectory={trajectory} layout={layout} />
+      <TrackedVideo videoSrc={videoSrc} trajectory={trajectory} />
       <BrollRow clips={broll} />
       <AccentGraphics accentHex={accentHex} />
-      <CaptionLayer pages={pages} accentHex={accentHex} layout={layout} />
+      <CaptionLayer pages={pages} accentHex={accentHex} />
       {hook?.text ? <HookCard text={hook.text} accentHex={accentHex} /> : null}
       <ProgressBar accentHex={accentHex} />
       <BrandBug />
