@@ -56,3 +56,24 @@ export async function updateBrollSegment(
     .eq("id", id)
   if (error) throw error
 }
+
+// Phase 3 per-window regenerate: re-prompt (recomputed cache_key), clear the old
+// clip, and flip back to 'generating' so the fal webhook re-fills it.
+export async function regenerateBrollSegment(
+  id: string,
+  patch: { prompt: string; cache_key: string; fal_request_id: string },
+): Promise<void> {
+  const supabase = getClient()
+  const { error } = await supabase
+    .from("broll_segments")
+    .update({
+      prompt: patch.prompt,
+      cache_key: patch.cache_key,
+      fal_request_id: patch.fal_request_id,
+      media_asset_id: null,
+      status: "generating",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+  if (error) throw error
+}
