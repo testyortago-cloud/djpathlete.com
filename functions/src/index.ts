@@ -24,6 +24,7 @@ const googleAdsClientSecret = defineSecret("GOOGLE_ADS_CLIENT_SECRET")
 const googleAdsLoginCustomerId = defineSecret("GOOGLE_ADS_LOGIN_CUSTOMER_ID")
 const coachEmail = defineSecret("COACH_EMAIL")
 const resendFromEmail = defineSecret("RESEND_FROM_EMAIL")
+const brollWebhookSecret = defineSecret("BROLL_WEBHOOK_SECRET")
 
 const googleAdsSecrets = [
   supabaseUrl,
@@ -216,6 +217,24 @@ export const blogImageGeneration = onDocumentCreated(
   },
 )
 
+// --- Split Reel: b-roll generation (select moments -> fal queue submit) ---
+export const brollGeneration = onDocumentCreated(
+  {
+    document: "ai_jobs/{jobId}",
+    timeoutSeconds: 540,
+    memory: "1GiB",
+    region: "us-central1",
+    secrets: [anthropicApiKey, supabaseUrl, supabaseServiceRoleKey, falKey, assemblyAiApiKey, appUrl, brollWebhookSecret],
+  },
+  async (event) => {
+    const data = event.data?.data()
+    if (!data || data.type !== "broll_generation") return
+
+    const { handleBrollGeneration } = await import("./broll-generation.js")
+    await handleBrollGeneration(event.params.jobId)
+  },
+)
+
 // --- ai_jobs onUpdate listener ---
 // Watches all ai_jobs docs and fans out follow-up jobs on terminal-state
 // transitions (currently: blog_generation completed -> blog_image_generation).
@@ -371,6 +390,24 @@ export const captionRender = onDocumentCreated(
     if (!data || data.type !== "video_caption_render") return
     const { handleCaptionRenderTrigger } = await import("./caption-render-trigger.js")
     await handleCaptionRenderTrigger(event.params.jobId)
+  },
+)
+
+// Triggered when an ai_jobs doc is created with type "split_reel_render".
+// Claims the job and launches the SAME render-worker Cloud Run Job with
+// RENDER_MODE=split_reel so the worker takes the Split Reel path.
+export const splitReelRender = onDocumentCreated(
+  {
+    document: "ai_jobs/{jobId}",
+    timeoutSeconds: 120,
+    memory: "256MiB",
+    region: "us-central1",
+  },
+  async (event) => {
+    const data = event.data?.data()
+    if (!data || data.type !== "split_reel_render") return
+    const { handleSplitReelRender } = await import("./split-reel-render-trigger.js")
+    await handleSplitReelRender(event.params.jobId)
   },
 )
 

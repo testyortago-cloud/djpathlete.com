@@ -17,6 +17,9 @@ import { pageCaptions } from "./lib/caption-paging.js"
 import { fetchTranscriptWords } from "./lib/assemblyai-words.js"
 import { serveFileLocally } from "./lib/serve-file.js"
 import { planCutAttachment } from "./lib/attach-plan.js"
+import { detectFaceTrajectory } from "./lib/detect-face.js"
+import { smoothTrajectory } from "./lib/face-track.js"
+import { loadReadyBrollClips } from "./lib/broll-fetch.js"
 
 const MAX_CAPTION_CLIP_SECONDS = 180
 const FPS = 30
@@ -359,4 +362,157 @@ async function main() {
   }
 }
 
-void main()
+// ── Split Reel path (RENDER_MODE=split_reel) ─────────────────────────────────
+// Mirrors main() but renders the SplitReel composition with a detected face
+// trajectory + the ready fal b-roll clips. Reuses the same helpers (download,
+// metadata, serveFileLocally, pageCaptions, bundle, render, upload) and the same
+// attach-to-existing-posts logic (planCutAttachment) so a Split Reel lands on the
+// same draft posts as a captioned cut. main() is left untouched.
+async function runSplitReel(): Promise<void> {
+  const aiJobId = process.env.AI_JOB_ID
+  const videoUploadId = process.env.VIDEO_UPLOAD_ID
+  if (!aiJobId || !videoUploadId) throw new Error("AI_JOB_ID and VIDEO_UPLOAD_ID required")
+
+  const app = fbApp()
+  const firestore = getFirestore(app)
+  const bucket = getStorage(app).bucket()
+  const jobRef = firestore.collection("ai_jobs").doc(aiJobId)
+  const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
+    auth: { persistSession: false },
+  })
+
+  const servers: Array<{ close: () => Promise<void> }> = []
+  try {
+    // 1. video + speech transcript
+    const { data: video, error: vErr } = await supabase.from("video_uploads").select("*").eq("id", videoUploadId).single()
+    if (vErr || !video) throw new Error(`video_uploads ${videoUploadId} not found`)
+    const { data: tx } = await supabase
+      .from("video_transcripts").select("*").eq("video_upload_id", videoUploadId)
+      .eq("source", "speech").not("assemblyai_job_id", "is", null)
+      .order("created_at", { ascending: false }).limit(1).maybeSingle()
+    if (!tx?.assemblyai_job_id) throw new Error("no speech transcript with an AssemblyAI id")
+
+    // 2. words + pages
+    const words = await fetchTranscriptWords(tx.assemblyai_job_id)
+    const pages = pageCaptions(words)
+
+    // 3. download source
+    const workDir = path.join(os.tmpdir(), "split-reel", aiJobId)
+    fs.mkdirSync(workDir, { recursive: true })
+    const srcExt = path.extname(video.storage_path) || ".mp4"
+    const srcPath = path.join(workDir, `source${srcExt}`)
+    await bucket.file(video.storage_path).download({ destination: srcPath })
+
+    const meta = await getVideoMetadata(srcPath)
+    const durationInSeconds = meta.durationInSeconds
+    if (durationInSeconds === null) throw new Error("could not determine video duration")
+    if (durationInSeconds > MAX_CAPTION_CLIP_SECONDS) throw new Error(`clip exceeds ${MAX_CAPTION_CLIP_SECONDS}s cap`)
+
+    // 4. face trajectory (detect on the local file, then smooth)
+    const rawTrajectory = await detectFaceTrajectory(srcPath, { sampleEveryMs: 200 })
+    const trajectory = smoothTrajectory(rawTrajectory, 600)
+
+    // 5. serve source + ready b-roll clips over loopback
+    const srcServer = await serveFileLocally(srcPath)
+    servers.push(srcServer)
+    const brollClips = await loadReadyBrollClips(supabase, bucket, videoUploadId, workDir)
+    brollClips.forEach((c) => servers.push({ close: c.close }))
+
+    // 6. render SplitReel
+    const entry = path.join(process.cwd(), "dist", "remotion", "index.js")
+    const serveUrl = await bundle({ entryPoint: entry, publicDir: path.join(process.cwd(), "public") })
+    const durationInFrames = Math.max(1, Math.ceil(durationInSeconds * FPS))
+    const inputProps = {
+      videoSrc: srcServer.url,
+      pages,
+      accentHex: BRAND_ACCENT_HEX,
+      trajectory,
+      broll: brollClips.map((c) => ({ startMs: c.startMs, endMs: c.endMs, src: c.url })),
+    }
+    const comp = await selectComposition({ serveUrl, id: "SplitReel", inputProps })
+    const outDir = path.join(os.tmpdir(), "split-reel")
+    fs.mkdirSync(outDir, { recursive: true })
+    const outPath = path.join(outDir, `${aiJobId}.mp4`)
+    await renderMedia({
+      composition: { ...comp, durationInFrames, fps: FPS, width: 1080, height: 1920 },
+      serveUrl,
+      codec: "h264",
+      outputLocation: outPath,
+      inputProps,
+      chromiumOptions: { enableMultiProcessOnLinux: true },
+      offthreadVideoCacheSizeInBytes: 4 * 1024 * 1024 * 1024,
+      concurrency: 4,
+    })
+
+    await Promise.all(servers.map((s) => s.close().catch(() => {})))
+    fs.rmSync(srcPath, { force: true })
+
+    // 7. upload + media_asset(origin='split_reel')
+    const userId = (video.uploaded_by as string | null) ?? "system"
+    const storagePath = `videos/${userId}/${Date.now()}-split-reel.mp4`
+    await bucket.upload(outPath, { destination: storagePath, contentType: "video/mp4" })
+    const bytes = fs.statSync(outPath).size
+    fs.rmSync(outPath, { force: true })
+
+    const { data: asset, error: aErr } = await supabase.from("media_assets").insert({
+      kind: "video", storage_path: storagePath, public_url: storagePath, mime_type: "video/mp4",
+      bytes, width: 1080, height: 1920, duration_ms: Math.round(durationInSeconds * 1000),
+      derived_from_video_id: videoUploadId, ai_alt_text: null,
+      ai_analysis: { origin: "split_reel" }, created_by: video.uploaded_by ?? null,
+    }).select().single()
+    if (aErr || !asset) throw new Error(`media_asset insert failed: ${aErr?.message}`)
+
+    // 8. Attach to the EXISTING caption posts — same approach as the captioned-cut
+    // path (reuse planCutAttachment; never create new posts).
+    const { data: connections, error: cErr } = await supabase.rpc("fn_list_platform_connections")
+    if (cErr) throw new Error(`fn_list_platform_connections failed: ${cErr.message}`)
+    const platforms = ((connections ?? []) as { plugin_name: string; status: string }[])
+      .filter((c) => c.status === "connected")
+      .map((c) => PLUGIN_TO_PLATFORM[c.plugin_name])
+      .filter((p): p is string => p !== null && (VIDEO_PLATFORMS as readonly string[]).includes(p))
+    const { data: existingPosts, error: epErr } = await supabase
+      .from("social_posts")
+      .select("id, platform, created_at")
+      .eq("source_video_id", videoUploadId)
+      .neq("approval_status", "rejected")
+      .order("created_at", { ascending: true })
+    if (epErr) throw new Error(`load existing posts failed: ${epErr.message}`)
+    const plan = planCutAttachment(platforms, (existingPosts ?? []) as { id: string; platform: string }[])
+    const postIds: string[] = []
+    for (const { platform, postId } of plan) {
+      if (!postId) {
+        console.log(`[split-reel] no caption post for ${platform} — reel not attached`)
+        continue
+      }
+      const { data: links } = await supabase
+        .from("social_post_media").select("media_asset_id").eq("social_post_id", postId)
+      const linkedIds = (links ?? []).map((l) => l.media_asset_id as string)
+      if (linkedIds.length > 0) {
+        const { data: priorCuts } = await supabase
+          .from("media_assets").select("id").in("id", linkedIds)
+          .eq("kind", "video").eq("derived_from_video_id", videoUploadId)
+        const priorCutIds = (priorCuts ?? []).map((a) => a.id as string)
+        if (priorCutIds.length > 0) {
+          await supabase.from("social_post_media").delete().eq("social_post_id", postId).in("media_asset_id", priorCutIds)
+        }
+      }
+      const { error: mErr } = await supabase.from("social_post_media").insert({
+        social_post_id: postId, media_asset_id: asset.id, position: 0,
+      })
+      if (mErr) throw new Error(`attach media to ${platform} post ${postId} failed: ${mErr.message}`)
+      postIds.push(postId)
+    }
+
+    // 9. complete
+    await jobRef.update({ status: "completed", error: null, result: { assetId: asset.id, postIds }, updatedAt: FieldValue.serverTimestamp() })
+    process.exit(0)
+  } catch (err) {
+    await Promise.all(servers.map((s) => s.close().catch(() => {})))
+    await jobRef.update({ status: "failed", error: (err as Error).message ?? "split render failed", updatedAt: FieldValue.serverTimestamp() }).catch(() => {})
+    console.error("[split-reel]", err)
+    process.exit(1)
+  }
+}
+
+const mode = process.env.RENDER_MODE === "split_reel" ? "split_reel" : "caption"
+void (mode === "split_reel" ? runSplitReel() : main())

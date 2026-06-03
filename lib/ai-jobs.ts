@@ -37,6 +37,8 @@ export type AiJobType =
   | "performance_critic_run"
   | "chief_strategist_run"
   | "social_outcome_tracker_run"
+  | "broll_generation"
+  | "split_reel_render"
 
 export interface CreateAiJobOptions {
   type: AiJobType
@@ -93,6 +95,30 @@ export async function findInFlightCaptionRender(videoUploadId: string): Promise<
   const snap = await db
     .collection("ai_jobs")
     .where("type", "==", "video_caption_render")
+    .where("input.videoUploadId", "==", videoUploadId)
+    .where("status", "in", ["pending", "processing"])
+    .limit(1)
+    .get()
+  return snap.empty ? null : snap.docs[0].id
+}
+
+export async function findInFlightBrollGeneration(videoUploadId: string): Promise<string | null> {
+  const db = getAdminFirestore()
+  const snap = await db
+    .collection("ai_jobs")
+    .where("type", "==", "broll_generation")
+    .where("input.videoUploadId", "==", videoUploadId)
+    .where("status", "in", ["pending", "processing"])
+    .limit(1)
+    .get()
+  return snap.empty ? null : snap.docs[0].id
+}
+
+export async function findInFlightSplitRender(videoUploadId: string): Promise<string | null> {
+  const db = getAdminFirestore()
+  const snap = await db
+    .collection("ai_jobs")
+    .where("type", "==", "split_reel_render")
     .where("input.videoUploadId", "==", videoUploadId)
     .where("status", "in", ["pending", "processing"])
     .limit(1)

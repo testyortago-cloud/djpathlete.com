@@ -4,6 +4,9 @@ import type { Change, FirestoreEvent, QueryDocumentSnapshot } from "firebase-fun
 interface JobShape {
   type?: string
   status?: string
+  input?: {
+    videoUploadId?: string
+  } & Record<string, unknown>
   result?: {
     blog_post_id?: string
     videoUploadId?: string
@@ -47,6 +50,11 @@ export async function handleAiJobCompleted(event: AiJobUpdateEvent): Promise<voi
 
   if (after.type === "video_transcription" || after.type === "video_vision") {
     await chainSocialFanout(event.params.jobId, after)
+    return
+  }
+
+  if (after.type === "broll_generation") {
+    await chainSplitReelRender(event.params.jobId, after)
     return
   }
 }
@@ -102,5 +110,34 @@ async function chainSocialFanout(parentJobId: string, after: JobShape): Promise<
 
   console.log(
     `[on-ai-job-completed] Enqueued social_fanout ${newJobRef.id} for video ${videoUploadId}`,
+  )
+}
+
+// Phase 2 auto-chains generation → render back-to-back so the pipeline is testable
+// end-to-end. The videoUploadId lives on the broll_generation job's INPUT (its
+// result only carries segmentCount). Phase 3 will insert a preview/approve gate here.
+async function chainSplitReelRender(parentJobId: string, after: JobShape): Promise<void> {
+  const videoUploadId = after.input?.videoUploadId
+  if (!videoUploadId) {
+    console.warn(`[on-ai-job-completed] broll_generation ${parentJobId} completed without input.videoUploadId`)
+    return
+  }
+
+  const db = getFirestore()
+  const newJobRef = db.collection("ai_jobs").doc()
+  await newJobRef.set({
+    type: "split_reel_render",
+    status: "pending",
+    input: { videoUploadId },
+    result: null,
+    error: null,
+    userId: after.userId ?? null,
+    parentJobId,
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  })
+
+  console.log(
+    `[on-ai-job-completed] Enqueued split_reel_render ${newJobRef.id} for video ${videoUploadId}`,
   )
 }
