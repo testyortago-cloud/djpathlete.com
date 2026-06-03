@@ -92,7 +92,7 @@ export function SplitReelPanel({ videoUploadId, hasTranscript }: SplitReelPanelP
   useEffect(() => {
     if (!genJobId) return
     if (genStatus === "completed") {
-      toast.success("B-roll ready to review")
+      toast.success("B-roll ready — rendering your reel…")
       setGenJobId(null)
       void fetchState()
     } else if (genStatus === "failed") {
@@ -206,11 +206,12 @@ export function SplitReelPanel({ videoUploadId, hasTranscript }: SplitReelPanelP
     const desired = hook.trim()
     if (state && desired !== (state.hookText ?? "")) {
       try {
-        await fetch(`/api/admin/videos/${encodeURIComponent(videoUploadId)}`, {
+        const res = await fetch(`/api/admin/videos/${encodeURIComponent(videoUploadId)}`, {
           method: "PATCH",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ hook_text: desired || null }),
         })
+        if (!res.ok) throw new Error(`save failed (${res.status})`)
       } catch {
         toast.error("Failed to save the hook")
         return
