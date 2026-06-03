@@ -35,6 +35,7 @@ interface ReelState {
   inFlightRenderJobId: string | null
   windows: BrollWindow[]
   dropped: DroppedWindow[]
+  hookText: string
   reel: {
     assetId: string
     signedUrl: string
@@ -58,6 +59,7 @@ const BASE = "/api/admin/content-studio/split-reel"
 // on open and tracks the broll_generation + split_reel_render jobs in Firestore.
 export function SplitReelPanel({ videoUploadId, hasTranscript }: SplitReelPanelProps) {
   const [state, setState] = useState<ReelState | null>(null)
+  const [hook, setHook] = useState("")
   const [genJobId, setGenJobId] = useState<string | null>(null)
   const [renderJobId, setRenderJobId] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -74,10 +76,11 @@ export function SplitReelPanel({ videoUploadId, hasTranscript }: SplitReelPanelP
       if (!res.ok) throw new Error(data?.error || `Failed to load (${res.status})`)
       const s = data as ReelState
       setState(s)
+      setHook((prev) => (prev.length > 0 ? prev : (s.hookText ?? "")))
       if (s.inFlightBrollJobId) setGenJobId(s.inFlightBrollJobId)
       if (s.inFlightRenderJobId) setRenderJobId(s.inFlightRenderJobId)
     } catch (err) {
-      setState({ inFlightBrollJobId: null, inFlightRenderJobId: null, windows: [], dropped: [], reel: null })
+      setState({ inFlightBrollJobId: null, inFlightRenderJobId: null, windows: [], dropped: [], hookText: "", reel: null })
       toast.error((err as Error).message || "Failed to load Split Reel state")
     }
   }, [videoUploadId])
@@ -147,7 +150,7 @@ export function SplitReelPanel({ videoUploadId, hasTranscript }: SplitReelPanelP
       if (!res.ok) throw new Error(data?.error || `Request failed (${res.status})`)
       if (typeof data?.jobId !== "string" || !data.jobId) throw new Error("Server returned no job id")
       setGenJobId(data.jobId)
-      toast.message("Generating b-roll… picking moments and rendering clips.")
+      toast.message("Creating reel… picking moments, rendering clips, then the reel.")
     } catch (err) {
       toast.error((err as Error).message || "Failed to start b-roll generation")
     } finally {
@@ -197,6 +200,23 @@ export function SplitReelPanel({ videoUploadId, hasTranscript }: SplitReelPanelP
     } finally {
       setSubmitting(false)
     }
+  }
+
+  async function reRender() {
+    const desired = hook.trim()
+    if (state && desired !== (state.hookText ?? "")) {
+      try {
+        await fetch(`/api/admin/videos/${encodeURIComponent(videoUploadId)}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ hook_text: desired || null }),
+        })
+      } catch {
+        toast.error("Failed to save the hook")
+        return
+      }
+    }
+    await startRender()
   }
 
   // ── loading ──
@@ -267,10 +287,13 @@ export function SplitReelPanel({ videoUploadId, hasTranscript }: SplitReelPanelP
           ))}
         </div>
         {dropped.length > 0 && <DroppedBanner dropped={dropped} />}
-        <div className="mt-3 flex flex-wrap items-center gap-2">
+        <div className="mt-3">
+          <HookField value={hook} onChange={setHook} />
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={startRender}
+            onClick={reRender}
             disabled={!canRender || submitting}
             title={canRender ? "Render the Split Reel from these windows" : "Some windows are still generating"}
             className="inline-flex items-center gap-2 rounded bg-primary px-3 py-1.5 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
@@ -298,14 +321,27 @@ export function SplitReelPanel({ videoUploadId, hasTranscript }: SplitReelPanelP
     return (
       <PanelShell>
         <CurrentReel reel={reel} />
-        <button
-          type="button"
-          onClick={startGenerate}
-          disabled={!hasTranscript || submitting}
-          className="mt-2 inline-flex items-center gap-1.5 rounded border border-border px-2.5 py-1 text-xs hover:bg-surface disabled:opacity-60"
-        >
-          <RefreshCw className="size-3" /> Regenerate b-roll
-        </button>
+        <div className="mt-2">
+          <HookField value={hook} onChange={setHook} />
+        </div>
+        <div className="mt-1 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={startGenerate}
+            disabled={!hasTranscript || submitting}
+            className="inline-flex items-center gap-1.5 rounded border border-border px-2.5 py-1 text-xs hover:bg-surface disabled:opacity-60"
+          >
+            <RefreshCw className="size-3" /> Re-create
+          </button>
+          <button
+            type="button"
+            onClick={reRender}
+            disabled={submitting}
+            className="inline-flex items-center gap-1.5 rounded border border-border px-2.5 py-1 text-xs hover:bg-surface disabled:opacity-60"
+          >
+            <Film className="size-3" /> Re-render
+          </button>
+        </div>
       </PanelShell>
     )
   }
@@ -319,13 +355,13 @@ export function SplitReelPanel({ videoUploadId, hasTranscript }: SplitReelPanelP
         disabled={!hasTranscript || submitting}
         title={
           hasTranscript
-            ? "Pick b-roll moments and generate clips to review"
+            ? "Create the full reel in one click — hook, captions, b-roll, render"
             : "No speech transcript — needs spoken audio"
         }
-        aria-label="Generate b-roll"
+        aria-label="Create Reel"
         className="inline-flex items-center gap-2 rounded bg-primary px-3 py-1.5 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
       >
-        <Clapperboard className="size-3.5" /> Generate b-roll
+        <Clapperboard className="size-3.5" /> Create Reel
       </button>
       {!hasTranscript && <p className="mt-1.5 text-xs text-muted-foreground">Needs a speech transcript first.</p>}
     </PanelShell>
@@ -495,6 +531,22 @@ function DroppedBanner({ dropped }: { dropped: DroppedWindow[] }) {
         (window cap / spacing): {dropped.map((d) => `${fmtMs(d.startMs)}${d.concept ? ` ${d.concept}` : ""}`).join(", ")}
       </div>
     </div>
+  )
+}
+
+function HookField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <label className="mb-2 block">
+      <span className="mb-1 block text-[11px] text-muted-foreground">Hook title (optional)</span>
+      <input
+        type="text"
+        value={value}
+        maxLength={80}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="e.g. 5 Mistakes Athletes Make"
+        className="w-full rounded border border-border bg-background px-2 py-1 text-xs"
+      />
+    </label>
   )
 }
 
