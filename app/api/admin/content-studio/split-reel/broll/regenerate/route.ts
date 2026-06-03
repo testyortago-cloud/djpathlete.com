@@ -31,7 +31,7 @@ async function postHandler(request: Request) {
     return NextResponse.json({ error: "cannot regenerate a dropped window" }, { status: 409 })
   }
 
-  const model = await getSetting<string>("split_reel_broll_model", "fal-ai/ltx-video")
+  const model = await getSetting<string>("split_reel_broll_model", "fal-ai/kling-video/v2.5-turbo/pro/text-to-video")
   const windowSeconds = await getSetting<number>("split_reel_broll_window_seconds", 5)
   const prompt = newPrompt?.trim() || segment.prompt
   const cacheKey = brollCacheKey(prompt, model, windowSeconds)

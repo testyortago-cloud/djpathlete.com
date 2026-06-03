@@ -13,7 +13,7 @@ function ensure() {
 
 export async function fetchBrollResultUrl(requestId: string, _videoUploadId: string): Promise<string | null> {
   ensure()
-  const model = await getSetting<string>("split_reel_broll_model", "fal-ai/ltx-video")
+  const model = await getSetting<string>("split_reel_broll_model", "fal-ai/kling-video/v2.5-turbo/pro/text-to-video")
   const res = (await fal.queue.result(model, { requestId })) as { data?: { video?: { url?: string } } }
   return res?.data?.video?.url ?? null
 }

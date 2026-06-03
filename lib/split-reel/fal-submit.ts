@@ -23,8 +23,12 @@ export async function submitBrollClip(opts: {
   const { request_id } = await fal.queue.submit(opts.model, {
     input: {
       prompt: opts.prompt,
-      duration: opts.durationSeconds,
+      // Kling/Seedance/most fal video models take `duration` as a STRING enum
+      // ("5"/"10"), not a number; aspect_ratio "9:16" is shared. Keep this in
+      // lockstep with functions/src/lib/fal-broll.ts (submitBrollClip).
+      duration: String(opts.durationSeconds),
       aspect_ratio: "9:16",
+      negative_prompt: "blur, distortion, low quality, text, captions, subtitles, watermark, logo, deformed",
     },
     webhookUrl: opts.webhookUrl,
   })

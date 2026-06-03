@@ -144,7 +144,7 @@ async function loadSplitReelSettings(supabase: ReturnType<typeof getSupabase>): 
   ])
   const map = new Map((data ?? []).map((r) => [r.key as string, r.value]))
   return {
-    model: (map.get("split_reel_broll_model") as string) ?? "fal-ai/ltx-video",
+    model: (map.get("split_reel_broll_model") as string) ?? "fal-ai/kling-video/v2.5-turbo/pro/text-to-video",
     windowSeconds: (map.get("split_reel_broll_window_seconds") as number) ?? 5,
     maxWindows: (map.get("split_reel_max_broll_windows") as number) ?? 6,
     minGapSeconds: (map.get("split_reel_min_gap_seconds") as number) ?? 4,
