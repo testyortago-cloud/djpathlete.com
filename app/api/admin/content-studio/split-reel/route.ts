@@ -12,6 +12,7 @@ import { getSpeechTranscriptForVideo } from "@/lib/db/video-transcripts"
 import { createAiJob, findInFlightBrollGeneration, findInFlightSplitRender } from "@/lib/ai-jobs"
 import { getBrollSegmentsForVideo } from "@/lib/db/broll-segments"
 import { getLatestSplitReelForVideo, getMediaAssetStoragePaths } from "@/lib/db/media-assets"
+import { getVideoUploadById } from "@/lib/db/video-uploads"
 import { getAdminStorage } from "@/lib/firebase-admin"
 import { withAudit } from "@/lib/audit/with-audit"
 
@@ -25,11 +26,12 @@ async function getHandler(request: Request) {
   const videoUploadId = new URL(request.url).searchParams.get("videoUploadId")
   if (!videoUploadId) return NextResponse.json({ error: "videoUploadId required" }, { status: 400 })
 
-  const [genJob, renderJob, segments, reelAsset] = await Promise.all([
+  const [genJob, renderJob, segments, reelAsset, video] = await Promise.all([
     findInFlightBrollGeneration(videoUploadId),
     findInFlightSplitRender(videoUploadId),
     getBrollSegmentsForVideo(videoUploadId),
     getLatestSplitReelForVideo(videoUploadId),
+    getVideoUploadById(videoUploadId),
   ])
 
   // Sign each ready window's b-roll clip so the review strip can preview it.
@@ -86,6 +88,7 @@ async function getHandler(request: Request) {
     windows,
     dropped,
     reel,
+    hookText: typeof video?.hook_text === "string" ? video.hook_text : "",
   })
 }
 
