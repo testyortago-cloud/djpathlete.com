@@ -43,6 +43,7 @@ export function VideoDetailPage({ data, backHref, backLabel, highlightPostId }: 
             previewUrl={data.previewUrl}
             hasTranscript={Boolean(data.transcript?.transcript_text)}
             captionedCutEnabled={data.captionedCutEnabled}
+            splitReelEnabled={data.splitReelEnabled}
           />
         </div>
 

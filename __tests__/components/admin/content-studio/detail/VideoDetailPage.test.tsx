@@ -46,6 +46,7 @@ const data: DrawerData = {
   mediaByPost: {},
   highlightPostId: null,
   captionedCutEnabled: true,
+  splitReelEnabled: false,
   hasCut: false,
 }
 
