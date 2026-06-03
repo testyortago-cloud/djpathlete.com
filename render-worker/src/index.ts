@@ -422,12 +422,16 @@ async function runSplitReel(): Promise<void> {
     const entry = path.join(process.cwd(), "dist", "remotion", "index.js")
     const serveUrl = await bundle({ entryPoint: entry, publicDir: path.join(process.cwd(), "public") })
     const durationInFrames = Math.max(1, Math.ceil(durationInSeconds * FPS))
+    // Hook card text comes from video_uploads.hook_text (written by the
+    // broll_generation job). Trim + cap defensively (mirror main()); absent → no card.
+    const hookText = typeof video.hook_text === "string" ? video.hook_text.trim().slice(0, 80) : ""
     const inputProps = {
       videoSrc: srcServer.url,
       pages,
       accentHex: BRAND_ACCENT_HEX,
       trajectory,
       broll: brollClips.map((c) => ({ startMs: c.startMs, endMs: c.endMs, src: c.url })),
+      ...(hookText ? { hook: { text: hookText } } : {}),
     }
     const comp = await selectComposition({ serveUrl, id: "SplitReel", inputProps })
     const outDir = path.join(os.tmpdir(), "split-reel")
