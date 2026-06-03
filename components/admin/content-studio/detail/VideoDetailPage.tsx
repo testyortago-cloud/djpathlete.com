@@ -21,8 +21,8 @@ const SECTION_HEADING = "font-heading text-sm font-semibold text-primary border-
 export function VideoDetailPage({ data, backHref, backLabel, highlightPostId }: VideoDetailPageProps) {
   const video = data.video!
   const title = video.title ?? video.original_filename
-  // "Ready to send" = postable: a cut has been rendered, or it was marked ready.
-  const isReady = isVideoPostable(video, data.hasCut)
+  // "Ready to send" = postable: marked ready (needs_edit === false).
+  const isReady = isVideoPostable(video)
 
   return (
     <div className="px-4 py-4 sm:px-6">

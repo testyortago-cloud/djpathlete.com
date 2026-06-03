@@ -1,9 +1,7 @@
 // The posting "edit gate" in one place. A video is postable once it is no longer
-// gated: either it was never gated / has been marked ready (needs_edit === false),
-// or it already has a rendered captioned cut. Postability is therefore DERIVED from
-// the existing cut signal — the render-worker writes nothing extra.
+// gated: it has been marked ready (needs_edit === false). A rendered reel/cut does
+// NOT auto-unblock posting — the operator releases it via "Mark ready".
 import { getVideoUploadById } from "@/lib/db/video-uploads"
-import { getLatestCaptionedCutForVideo } from "@/lib/db/media-assets"
 import { isVideoPostable } from "./postable"
 
 // The pure predicate lives in ./postable (no server imports) so client bundles can
@@ -12,7 +10,7 @@ export { isVideoPostable }
 
 export type PostableGuardResult = { ok: true } | { ok: false; reason: string }
 
-const GATED_REASON = "Source video still needs editing — render a captioned cut or mark it ready."
+const GATED_REASON = "Source video still needs editing — mark it ready to post."
 
 // Async guard for route handlers. Returns ok when the post is NOT gated:
 //  - sourceVideoId null → ok (manual / image / carousel posts are never gated)
@@ -21,7 +19,6 @@ export async function assertSourceVideoPostable(sourceVideoId: string | null): P
   if (!sourceVideoId) return { ok: true }
   const video = await getVideoUploadById(sourceVideoId)
   if (!video) return { ok: true }
-  const cut = await getLatestCaptionedCutForVideo(sourceVideoId)
-  if (isVideoPostable(video, !!cut)) return { ok: true }
+  if (isVideoPostable(video)) return { ok: true }
   return { ok: false, reason: GATED_REASON }
 }

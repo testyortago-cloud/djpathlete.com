@@ -70,10 +70,10 @@ describe("videoColumnForWithEdit", () => {
     ).toBe("rendering")
   })
 
-  it("routes to edited when postable (has cut) and no render in flight", () => {
+  it("routes to needs_edit when hasCut=true but needs_edit still true (cut no longer unblocks)", () => {
     expect(
       videoColumnForWithEdit(video("v", { status: "transcribed", needs_edit: true }), [], sig({ hasCut: true })),
-    ).toBe("edited")
+    ).toBe("needs_edit")
   })
 
   it("routes to edited when marked ready (needs_edit=false) with no cut", () => {
@@ -94,19 +94,20 @@ describe("videoColumnForWithEdit", () => {
   })
 
   it("uses post state for generated/complete once the video is postable", () => {
-    // Marked ready (needs_edit=false) or with a rendered cut → the edit gate is
-    // cleared and post state drives the column.
+    // Marked ready (needs_edit=false) → the edit gate is cleared and post state
+    // drives the column.
     const ready = video("v1", { status: "transcribed", needs_edit: false })
     expect(
       videoColumnForWithEdit(ready, [post("p", { source_video_id: "v1", approval_status: "approved" })], sig()),
     ).toBe("generated")
+    // hasCut=true but needs_edit still true → stays in needs_edit (cut no longer unblocks).
     expect(
       videoColumnForWithEdit(
         video("v1", { status: "transcribed", needs_edit: true }),
         [post("p", { source_video_id: "v1", approval_status: "approved" })],
         sig({ hasCut: true }),
       ),
-    ).toBe("generated")
+    ).toBe("needs_edit")
     // All posts published → complete, regardless of the edit gate (content shipped).
     expect(
       videoColumnForWithEdit(

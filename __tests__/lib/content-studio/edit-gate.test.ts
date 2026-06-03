@@ -1,29 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 const getVideoUploadByIdMock = vi.fn()
-const getLatestCutMock = vi.fn()
 
 vi.mock("@/lib/db/video-uploads", () => ({
   getVideoUploadById: (...a: unknown[]) => getVideoUploadByIdMock(...a),
-}))
-vi.mock("@/lib/db/media-assets", () => ({
-  getLatestCaptionedCutForVideo: (...a: unknown[]) => getLatestCutMock(...a),
 }))
 
 import { isVideoPostable, assertSourceVideoPostable } from "@/lib/content-studio/edit-gate"
 
 describe("isVideoPostable", () => {
-  it("not postable when gated and no cut", () => {
-    expect(isVideoPostable({ needs_edit: true }, false)).toBe(false)
+  it("postable when not gated (needs_edit=false)", () => {
+    expect(isVideoPostable({ needs_edit: false })).toBe(true)
   })
-  it("postable when gated but a cut exists", () => {
-    expect(isVideoPostable({ needs_edit: true }, true)).toBe(true)
-  })
-  it("postable when not gated and no cut", () => {
-    expect(isVideoPostable({ needs_edit: false }, false)).toBe(true)
-  })
-  it("postable when not gated and a cut exists", () => {
-    expect(isVideoPostable({ needs_edit: false }, true)).toBe(true)
+  it("not postable when gated (needs_edit=true)", () => {
+    expect(isVideoPostable({ needs_edit: true })).toBe(false)
   })
 })
 
@@ -34,25 +24,17 @@ describe("assertSourceVideoPostable", () => {
     expect(await assertSourceVideoPostable(null)).toEqual({ ok: true })
     expect(getVideoUploadByIdMock).not.toHaveBeenCalled()
   })
-  it("ok when the video is not found and skips the cut query", async () => {
+  it("ok when the video is not found", async () => {
     getVideoUploadByIdMock.mockResolvedValue(null)
     expect(await assertSourceVideoPostable("v1")).toEqual({ ok: true })
-    expect(getLatestCutMock).not.toHaveBeenCalled()
   })
-  it("not ok when gated and no cut", async () => {
+  it("not ok when gated (needs_edit=true)", async () => {
     getVideoUploadByIdMock.mockResolvedValue({ id: "v1", needs_edit: true })
-    getLatestCutMock.mockResolvedValue(null)
     const r = await assertSourceVideoPostable("v1")
     expect(r.ok).toBe(false)
   })
-  it("ok when gated but a cut exists", async () => {
-    getVideoUploadByIdMock.mockResolvedValue({ id: "v1", needs_edit: true })
-    getLatestCutMock.mockResolvedValue({ asset: { id: "a1" } })
-    expect(await assertSourceVideoPostable("v1")).toEqual({ ok: true })
-  })
-  it("ok when not gated", async () => {
+  it("ok when not gated (needs_edit=false)", async () => {
     getVideoUploadByIdMock.mockResolvedValue({ id: "v1", needs_edit: false })
-    getLatestCutMock.mockResolvedValue(null)
     expect(await assertSourceVideoPostable("v1")).toEqual({ ok: true })
   })
 })
