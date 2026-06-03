@@ -16,7 +16,7 @@ export function eligibleForBatch(posts: SocialPost[]): SocialPost[] {
 
 interface BatchPostActionsProps {
   posts: SocialPost[]
-  /** Whether the source video is postable (cut rendered or marked ready). When
+  /** Whether the source video is postable (marked ready). When
    *  false the buttons are disabled with a hint — matching the per-post edit gate. */
   isReady: boolean
   onMutate: (updated: SocialPost) => void
@@ -94,7 +94,7 @@ export function BatchPostActions({ posts, isReady, onMutate }: BatchPostActionsP
           onClick={publishAll}
           disabled={!isReady || busy !== null}
           aria-label="Publish all posts"
-          title={isReady ? "Queue every post to publish on the next cycle" : "Render a cut or Mark ready first"}
+          title={isReady ? "Queue every post to publish on the next cycle" : "Mark ready first"}
           className="inline-flex items-center gap-1 rounded-md bg-success/10 px-3 py-1.5 text-xs font-medium text-success hover:bg-success/20 disabled:opacity-50"
         >
           <Zap className="size-3" /> {busy === "publish" ? "Queueing…" : "Publish all"}
@@ -104,7 +104,7 @@ export function BatchPostActions({ posts, isReady, onMutate }: BatchPostActionsP
           onClick={() => setScheduleOpen(true)}
           disabled={!isReady || busy !== null}
           aria-label="Schedule all posts"
-          title={isReady ? "Schedule every post for a chosen time" : "Render a cut or Mark ready first"}
+          title={isReady ? "Schedule every post for a chosen time" : "Mark ready first"}
           className="inline-flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
         >
           <Calendar className="size-3" /> Schedule all
@@ -112,7 +112,7 @@ export function BatchPostActions({ posts, isReady, onMutate }: BatchPostActionsP
       </div>
       {!isReady && (
         <p className="w-full text-[11px] text-muted-foreground">
-          Render a captioned cut or “Mark ready” before sending these posts.
+          “Mark ready” before sending these posts.
         </p>
       )}
       <BatchScheduleDialog

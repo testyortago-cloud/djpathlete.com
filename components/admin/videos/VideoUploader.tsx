@@ -134,8 +134,8 @@ export function VideoUploader({
             className="size-4 shrink-0 rounded border-border accent-primary"
           />
           <span>
-            <span className="font-medium text-primary">Needs editing</span> — gate from posting until a
-            cut is rendered
+            <span className="font-medium text-primary">Needs editing</span> — gate from posting until
+            marked ready
           </span>
         </label>
       )}
