@@ -9,7 +9,7 @@ const HEIGHT = 1920
 
 const SAMPLE: CaptionedCutProps = {
   videoSrc:
-    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+    "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
   pages: [
     {
       text: "let's get",
@@ -30,7 +30,7 @@ const SAMPLE: CaptionedCutProps = {
 // face trajectory keeps the tracking crop visibly doing something in Studio.
 const SPLIT_SAMPLE: SplitReelProps = {
   videoSrc:
-    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+    "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
   pages: [
     {
       text: "watch this",
@@ -62,7 +62,7 @@ const SPLIT_SAMPLE: SplitReelProps = {
     {
       startMs: 3000,
       endMs: 6000,
-      src: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
+      src: "https://mdn.github.io/learning-area/html/multimedia-and-embedding/video-and-audio-content/rabbit320.mp4",
     },
   ],
 }
