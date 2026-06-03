@@ -52,6 +52,27 @@ export async function handleBrollGeneration(jobId: string): Promise<void> {
       { maxWindows: settings.maxWindows, minGapMs: settings.minGapSeconds * 1000, totalMs },
     )
 
+    // Phase 3: persist dropped windows (status='dropped', indexed AFTER the kept
+    // ones so the (video_upload_id, segment_index) unique index holds) so the
+    // review panel can surface them. The worker loads only status='ready', so
+    // these never reach the render.
+    if (dropped.length > 0) {
+      await supabase.from("broll_segments").insert(
+        dropped.map((win, i) => ({
+          video_upload_id: videoUploadId,
+          generation_job_id: jobId,
+          segment_index: kept.length + i,
+          start_ms: win.startMs,
+          end_ms: win.endMs,
+          concept: win.concept,
+          prompt: win.prompt,
+          cache_key: brollCacheKey(win.prompt, settings.model, settings.windowSeconds),
+          media_asset_id: null,
+          status: "dropped" as const,
+        })),
+      )
+    }
+
     if (kept.length === 0) {
       // Nothing to illustrate — complete immediately so the chain can still render
       // a full-frame-only reel.
