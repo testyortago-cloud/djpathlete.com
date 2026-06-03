@@ -9,6 +9,7 @@ import { fetchTranscriptWords } from "./lib/assemblyai-words.js"
 import { selectBrollMoments } from "./ai/broll-select.js"
 import { submitBrollClip } from "./lib/fal-broll.js"
 import { postProcessWindows, brollCacheKey } from "./lib/broll-selection.js"
+import { suggestHookFromTranscript } from "./lib/hook-suggestion.js"
 
 export async function handleBrollGeneration(jobId: string): Promise<void> {
   const firestore = getFirestore()
@@ -40,6 +41,21 @@ export async function handleBrollGeneration(jobId: string): Promise<void> {
     const words = await fetchTranscriptWords(tx.assemblyai_job_id)
     if (words.length === 0) throw new Error("transcript has no words")
     const totalMs = words[words.length - 1].end
+
+    // Auto-write the opening hook from the transcript and stash it on the video
+    // row so the Split Reel render can burn it onto the first frame. Best-effort:
+    // a hook failure must NEVER fail the b-roll job — the render just omits the card.
+    try {
+      const transcriptText = words.map((w) => w.text).join(" ")
+      const hook = await suggestHookFromTranscript(transcriptText)
+      if (hook) {
+        // TODO(phase-3): once the hook is editable, guard this write (e.g. only set
+        // when hook_text is null) so a "Regenerate" doesn't clobber a coach-edited hook.
+        await supabase.from("video_uploads").update({ hook_text: hook }).eq("id", videoUploadId)
+      }
+    } catch (e) {
+      console.warn("[broll_generation] hook suggestion failed (non-fatal):", (e as Error).message)
+    }
 
     // AI selection → post-process
     const selected = await selectBrollMoments({
