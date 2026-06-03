@@ -195,6 +195,18 @@ export async function getLatestCaptionedCutForVideo(videoUploadId: string): Prom
 }
 
 /**
+ * Map of media_asset id → storage_path for a set of ids (Phase 3: sign per-window
+ * b-roll clips in the review panel). Missing ids are simply absent from the map.
+ */
+export async function getMediaAssetStoragePaths(ids: string[]): Promise<Map<string, string>> {
+  if (ids.length === 0) return new Map()
+  const supabase = getClient()
+  const { data, error } = await supabase.from("media_assets").select("id,storage_path").in("id", ids)
+  if (error) throw error
+  return new Map((data ?? []).map((r) => [r.id as string, r.storage_path as string]))
+}
+
+/**
  * The most recent Split Reel render for a source video, with its linked draft
  * posts — powers the Split Reel drawer panel (Phase 3). Returns null if the video
  * has no reel yet. Mirrors `getLatestCaptionedCutForVideo`, filtering

@@ -11,7 +11,11 @@ import { splitReelGenerateSchema } from "@/lib/validators/split-reel"
 import { getSpeechTranscriptForVideo } from "@/lib/db/video-transcripts"
 import { createAiJob, findInFlightBrollGeneration, findInFlightSplitRender } from "@/lib/ai-jobs"
 import { getBrollSegmentsForVideo } from "@/lib/db/broll-segments"
+import { getLatestSplitReelForVideo, getMediaAssetStoragePaths } from "@/lib/db/media-assets"
+import { getAdminStorage } from "@/lib/firebase-admin"
 import { withAudit } from "@/lib/audit/with-audit"
+
+const REEL_URL_EXPIRY_MS = 6 * 60 * 60 * 1000 // 6h signed playback, matching captioned-cut
 
 async function getHandler(request: Request) {
   const session = await auth()
@@ -21,22 +25,67 @@ async function getHandler(request: Request) {
   const videoUploadId = new URL(request.url).searchParams.get("videoUploadId")
   if (!videoUploadId) return NextResponse.json({ error: "videoUploadId required" }, { status: 400 })
 
-  const [genJob, renderJob, segments] = await Promise.all([
+  const [genJob, renderJob, segments, reelAsset] = await Promise.all([
     findInFlightBrollGeneration(videoUploadId),
     findInFlightSplitRender(videoUploadId),
     getBrollSegmentsForVideo(videoUploadId),
+    getLatestSplitReelForVideo(videoUploadId),
   ])
-  return NextResponse.json({
-    inFlightBrollJobId: genJob,
-    inFlightRenderJobId: renderJob,
-    segments: segments.map((s) => ({
+
+  // Sign each ready window's b-roll clip so the review strip can preview it.
+  const bucket = getAdminStorage().bucket()
+  const readyAssetIds = segments
+    .filter((s) => s.status === "ready" && s.media_asset_id)
+    .map((s) => s.media_asset_id as string)
+  const pathById = await getMediaAssetStoragePaths(readyAssetIds)
+  const signed = new Map<string, string>()
+  await Promise.all(
+    [...pathById.entries()].map(async ([assetId, storagePath]) => {
+      const [url] = await bucket
+        .file(storagePath)
+        .getSignedUrl({ version: "v4", action: "read", expires: Date.now() + REEL_URL_EXPIRY_MS })
+      signed.set(assetId, url)
+    }),
+  )
+
+  const windows = segments
+    .filter((s) => s.status !== "dropped")
+    .map((s) => ({
       id: s.id,
       index: s.segment_index,
       concept: s.concept,
+      prompt: s.prompt,
       status: s.status,
       startMs: s.start_ms,
       endMs: s.end_ms,
-    })),
+      clipUrl: s.media_asset_id ? (signed.get(s.media_asset_id) ?? null) : null,
+    }))
+  const dropped = segments
+    .filter((s) => s.status === "dropped")
+    .map((s) => ({ startMs: s.start_ms, endMs: s.end_ms, concept: s.concept }))
+
+  let reel = null
+  if (reelAsset) {
+    const [signedUrl] = await bucket
+      .file(reelAsset.asset.storage_path)
+      .getSignedUrl({ version: "v4", action: "read", expires: Date.now() + REEL_URL_EXPIRY_MS })
+    reel = {
+      assetId: reelAsset.asset.id,
+      signedUrl,
+      width: reelAsset.asset.width,
+      height: reelAsset.asset.height,
+      durationMs: reelAsset.asset.duration_ms,
+      createdAt: reelAsset.asset.created_at,
+      posts: reelAsset.posts.map((p) => ({ id: p.id, platform: p.platform, approvalStatus: p.approval_status })),
+    }
+  }
+
+  return NextResponse.json({
+    inFlightBrollJobId: genJob,
+    inFlightRenderJobId: renderJob,
+    windows,
+    dropped,
+    reel,
   })
 }
 
