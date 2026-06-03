@@ -131,9 +131,9 @@ export function VideoCard({
             {hasCut && (
               <span
                 className="inline-flex items-center gap-1 text-[10px] font-medium text-accent-foreground px-1.5 py-0.5 rounded bg-accent/15"
-                title="This video has a rendered captioned cut"
+                title="This video has a rendered reel"
               >
-                <Clapperboard className="size-3" /> Cut
+                <Clapperboard className="size-3" /> Reel
               </span>
             )}
             <span className="inline-flex items-center gap-1 font-mono tabular-nums">
@@ -267,7 +267,7 @@ function EditControls({
   if (column === "edited") {
     return (
       <div className="relative z-10 pt-1 text-[10px] font-medium text-success inline-flex items-center gap-1">
-        <Clapperboard className="size-3" /> {hasCut ? "Cut ready" : "Marked ready"}
+        <Clapperboard className="size-3" /> {hasCut ? "Reel ready" : "Marked ready"}
       </div>
     )
   }

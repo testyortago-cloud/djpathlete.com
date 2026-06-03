@@ -1,12 +1,12 @@
 // __tests__/db/media-assets-cut-ids.test.ts
 import { describe, it, expect, beforeEach, afterAll } from "vitest"
 import { createVideoUpload } from "@/lib/db/video-uploads"
-import { createMediaAsset, listCaptionedCutVideoIds } from "@/lib/db/media-assets"
+import { createMediaAsset, listRenderedVideoIds } from "@/lib/db/media-assets"
 import { createServiceRoleClient } from "@/lib/supabase"
 
 const TAG = "__TEST_CUT_IDS__"
 
-describe("listCaptionedCutVideoIds", () => {
+describe("listRenderedVideoIds", () => {
   const supabase = createServiceRoleClient()
   const cleanup = async () => {
     await supabase.from("media_assets").delete().like("storage_path", `${TAG}%`)
@@ -48,21 +48,28 @@ describe("listCaptionedCutVideoIds", () => {
   it("includes the video id of a captioned-cut asset", async () => {
     const v = await makeVideo("a")
     await makeAsset(v.id, "captioned_cut", "a")
-    const ids = await listCaptionedCutVideoIds()
+    const ids = await listRenderedVideoIds()
+    expect(ids.has(v.id)).toBe(true)
+  })
+
+  it("includes the video id of a split_reel asset", async () => {
+    const v = await makeVideo("e")
+    await makeAsset(v.id, "split_reel", "e")
+    const ids = await listRenderedVideoIds()
     expect(ids.has(v.id)).toBe(true)
   })
 
   it("excludes a video whose only asset has a different origin", async () => {
     const v = await makeVideo("b")
     await makeAsset(v.id, "quote_card", "b")
-    const ids = await listCaptionedCutVideoIds()
+    const ids = await listRenderedVideoIds()
     expect(ids.has(v.id)).toBe(false)
   })
 
   it("excludes a video whose asset has no ai_analysis origin", async () => {
     const v = await makeVideo("c")
     await makeAsset(v.id, null, "c")
-    const ids = await listCaptionedCutVideoIds()
+    const ids = await listRenderedVideoIds()
     expect(ids.has(v.id)).toBe(false)
   })
 
@@ -70,7 +77,16 @@ describe("listCaptionedCutVideoIds", () => {
     const v = await makeVideo("d")
     await makeAsset(v.id, "captioned_cut", "d1")
     await makeAsset(v.id, "captioned_cut", "d2")
-    const ids = await listCaptionedCutVideoIds()
+    const ids = await listRenderedVideoIds()
+    expect(ids.has(v.id)).toBe(true)
+    expect([...ids].filter((id) => id === v.id)).toHaveLength(1)
+  })
+
+  it("returns a Set (deduped) — one id even with both captioned_cut and split_reel assets", async () => {
+    const v = await makeVideo("f")
+    await makeAsset(v.id, "captioned_cut", "f1")
+    await makeAsset(v.id, "split_reel", "f2")
+    const ids = await listRenderedVideoIds()
     expect(ids.has(v.id)).toBe(true)
     expect([...ids].filter((id) => id === v.id)).toHaveLength(1)
   })

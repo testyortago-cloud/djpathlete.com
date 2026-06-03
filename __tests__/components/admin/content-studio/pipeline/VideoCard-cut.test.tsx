@@ -19,19 +19,19 @@ const video: VideoUpload = {
   updated_at: "2026-05-31T00:00:00.000Z",
 }
 
-describe("VideoCard — captioned-cut badge", () => {
-  it("shows the 'Cut' chip when hasCut is true", () => {
+describe("VideoCard — reel badge", () => {
+  it("shows the 'Reel' chip when hasCut is true", () => {
     render(<VideoCard video={video} counts={null} hasCut />)
-    expect(screen.getByText("Cut")).toBeTruthy()
+    expect(screen.getByText("Reel")).toBeTruthy()
   })
 
-  it("hides the 'Cut' chip when hasCut is false", () => {
+  it("hides the 'Reel' chip when hasCut is false", () => {
     render(<VideoCard video={video} counts={null} hasCut={false} />)
-    expect(screen.queryByText("Cut")).toBeNull()
+    expect(screen.queryByText("Reel")).toBeNull()
   })
 
-  it("hides the 'Cut' chip by default (prop omitted)", () => {
+  it("hides the 'Reel' chip by default (prop omitted)", () => {
     render(<VideoCard video={video} counts={null} />)
-    expect(screen.queryByText("Cut")).toBeNull()
+    expect(screen.queryByText("Reel")).toBeNull()
   })
 })

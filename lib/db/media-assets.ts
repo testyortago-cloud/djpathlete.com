@@ -69,12 +69,12 @@ export async function deleteMediaAsset(id: string): Promise<void> {
 }
 
 /**
- * The set of video_upload ids that have at least one captioned-cut render
- * (a media_asset with ai_analysis.origin = 'captioned_cut'). Used by the
- * Content Studio pipeline to badge videos that have a rendered cut, distinct
- * from videos that only have text-caption posts.
+ * The set of video_upload ids that have at least one rendered reel or captioned
+ * cut (a media_asset with ai_analysis.origin === 'split_reel' OR 'captioned_cut').
+ * Used by the Content Studio pipeline to badge videos that have a rendered
+ * output, distinct from videos that only have text-caption posts.
  */
-export async function listCaptionedCutVideoIds(): Promise<Set<string>> {
+export async function listRenderedVideoIds(): Promise<Set<string>> {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("media_assets")
@@ -83,11 +83,12 @@ export async function listCaptionedCutVideoIds(): Promise<Set<string>> {
     .not("derived_from_video_id", "is", null)
   if (error) throw error
   const ids = new Set<string>()
+  const RENDERED_ORIGINS = new Set(["captioned_cut", "split_reel"])
   for (const row of (data ?? []) as Array<{
     derived_from_video_id: string | null
     ai_analysis: Record<string, unknown> | null
   }>) {
-    if (row.derived_from_video_id && row.ai_analysis?.origin === "captioned_cut") {
+    if (row.derived_from_video_id && RENDERED_ORIGINS.has(row.ai_analysis?.origin as string)) {
       ids.add(row.derived_from_video_id)
     }
   }
@@ -161,40 +162,6 @@ export async function getAssetWithLinkedPosts(id: string): Promise<AssetWithLink
 }
 
 /**
- * The most recent captioned-cut render for a source video, with its linked
- * draft posts — powers the Content Studio drawer panel. Returns null if the
- * video has no cut yet. Origin is filtered in JS (a video has few derived
- * assets) to avoid a JSON-path SQL filter, mirroring `listCaptionedCutVideoIds`.
- */
-export async function getLatestCaptionedCutForVideo(videoUploadId: string): Promise<AssetWithLinkedPosts | null> {
-  const supabase = getClient()
-  const { data, error } = await supabase
-    .from("media_assets")
-    .select(
-      "*, social_post_media(social_posts(id, platform, content, approval_status, post_type, scheduled_at, published_at))",
-    )
-    .eq("kind", "video")
-    .eq("derived_from_video_id", videoUploadId)
-    .order("created_at", { ascending: false })
-  if (error) throw error
-
-  const rows = (data ?? []) as Array<
-    MediaAsset & {
-      ai_analysis: Record<string, unknown> | null
-      social_post_media?: Array<{ social_posts: AssetLinkedPost | null }>
-    }
-  >
-  const match = rows.find((r) => r.ai_analysis?.origin === "captioned_cut")
-  if (!match) return null
-
-  const { social_post_media, ...asset } = match
-  const posts: AssetLinkedPost[] = (social_post_media ?? [])
-    .map((row) => row.social_posts)
-    .filter((p): p is AssetLinkedPost => p !== null)
-  return { asset: asset as MediaAsset, posts }
-}
-
-/**
  * Map of media_asset id → storage_path for a set of ids (Phase 3: sign per-window
  * b-roll clips in the review panel). Missing ids are simply absent from the map.
  */
@@ -209,7 +176,7 @@ export async function getMediaAssetStoragePaths(ids: string[]): Promise<Map<stri
 /**
  * The most recent Split Reel render for a source video, with its linked draft
  * posts — powers the Split Reel drawer panel (Phase 3). Returns null if the video
- * has no reel yet. Mirrors `getLatestCaptionedCutForVideo`, filtering
+ * has no reel yet. Mirrors the captioned-cut pattern, filtering
  * `ai_analysis.origin === "split_reel"` (the worker stamps this on the reel asset).
  */
 export async function getLatestSplitReelForVideo(videoUploadId: string): Promise<AssetWithLinkedPosts | null> {

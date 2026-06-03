@@ -1,6 +1,6 @@
 import { listVideoUploads } from "@/lib/db/video-uploads"
 import { listSocialPostsForPipeline, type PipelinePostRow } from "@/lib/db/social-posts"
-import { listCaptionedCutVideoIds } from "@/lib/db/media-assets"
+import { listRenderedVideoIds } from "@/lib/db/media-assets"
 import { getAdminStorage } from "@/lib/firebase-admin"
 import type { VideoUpload } from "@/types/database"
 import { listRecentCaptionRenders, type RecentCaptionRender } from "@/lib/ai-jobs"
@@ -14,7 +14,7 @@ export interface PipelineData {
   postCountsByVideo: Record<string, PostCounts>
   /** Signed read URL per video-id, only for videos that have a thumbnail_path. */
   thumbnailUrlsByVideo: Record<string, string>
-  /** Video ids that have a rendered captioned-cut asset (for the "Cut" badge). */
+  /** Video ids that have a rendered reel or captioned cut (for the "Reel" badge). */
   cutVideoIds: Set<string>
   /** True when feature_captioned_cut_enabled is on — switches the lane to 7 columns. */
   captionedCutEnabled: boolean
@@ -110,10 +110,11 @@ export function deriveRenderSignals(recentRenders: RecentCaptionRender[], cutVid
 }
 
 export async function getPipelineData(): Promise<PipelineData> {
+  // cutVideoIds: videos with a rendered reel (split_reel) or legacy captioned cut
   const [videos, posts, cutVideoIds, captionedCutEnabled] = await Promise.all([
     listVideoUploads({ limit: 200 }),
     listSocialPostsForPipeline(),
-    listCaptionedCutVideoIds(),
+    listRenderedVideoIds(),
     getSetting<boolean>("feature_captioned_cut_enabled", false),
   ])
 
