@@ -3,7 +3,6 @@ import { getVideoUploadById } from "@/lib/db/video-uploads"
 import { getTranscriptForVideo } from "@/lib/db/video-transcripts"
 import { getSocialPostById, listSocialPostsBySourceVideo } from "@/lib/db/social-posts"
 import { listMediaForPosts } from "@/lib/db/social-post-media"
-import { getLatestCaptionedCutForVideo } from "@/lib/db/media-assets"
 import { getSetting } from "@/lib/db/system-settings"
 import type { VideoUpload, VideoTranscript, SocialPost } from "@/types/database"
 
@@ -28,13 +27,8 @@ export interface DrawerData {
   mediaByPost: Record<string, PostSlide[]>
   /** When opened from a post card, echoed back so the client can pre-expand. */
   highlightPostId: string | null
-  /** Whether the Captioned Cut feature flag is on (gates the drawer button). */
-  captionedCutEnabled: boolean
   /** Whether the Split Reel feature flag is on (gates the Split Reel panel). */
   splitReelEnabled: boolean
-  /** A rendered captioned cut exists. Informational only — no longer affects the
-   *  posting gate (which is needs_edit-only). Retained pending Phase 3b cleanup. */
-  hasCut: boolean
 }
 
 /**
@@ -92,13 +86,11 @@ export async function getDrawerData(videoId: string): Promise<DrawerData | null>
   const video = await getVideoUploadById(videoId)
   if (!video) return null
 
-  const [transcript, posts, previewUrl, captionedCutEnabled, splitReelEnabled, cut] = await Promise.all([
+  const [transcript, posts, previewUrl, splitReelEnabled] = await Promise.all([
     getTranscriptForVideo(videoId),
     listSocialPostsBySourceVideo(videoId),
     signPreviewUrl(video.storage_path),
-    getSetting<boolean>("feature_captioned_cut_enabled", false),
     getSetting<boolean>("feature_split_reel_enabled", false),
-    getLatestCaptionedCutForVideo(videoId).catch(() => null),
   ])
 
   const mediaByPost = await signMediaByPost(posts.map((p) => p.id))
@@ -111,9 +103,7 @@ export async function getDrawerData(videoId: string): Promise<DrawerData | null>
     posts,
     mediaByPost,
     highlightPostId: null,
-    captionedCutEnabled,
     splitReelEnabled,
-    hasCut: Boolean(cut),
   }
 }
 
@@ -130,9 +120,7 @@ export async function getDrawerDataForPost(postId: string): Promise<DrawerData |
       posts: [post],
       mediaByPost: await signMediaByPost([post.id]),
       highlightPostId: post.id,
-      captionedCutEnabled: false,
       splitReelEnabled: false,
-      hasCut: false,
     }
   }
 
@@ -146,9 +134,7 @@ export async function getDrawerDataForPost(postId: string): Promise<DrawerData |
       posts: [post],
       mediaByPost: await signMediaByPost([post.id]),
       highlightPostId: post.id,
-      captionedCutEnabled: false,
       splitReelEnabled: false,
-      hasCut: false,
     }
   }
 
