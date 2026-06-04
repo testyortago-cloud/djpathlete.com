@@ -3,10 +3,21 @@
 // (via @vladmandic/human on the tfjs WASM backend), and return a normalized
 // FacePoint[] trajectory (one point per sampled frame that has a face). Models
 // and wasm are baked into the image (see Dockerfile); nothing is downloaded.
-import { Human, type Config } from "@vladmandic/human"
+import type { Config, Human } from "@vladmandic/human"
+// The default @vladmandic/human Node build (dist/human.node.js) hard-requires the
+// native @tensorflow/tfjs-node at load — which this image does NOT install (it
+// ships the WASM tfjs backend instead; see the Dockerfile's baked wasm + models).
+// The node-wasm build runs on the external @tensorflow/tfjs + tfjs-backend-wasm
+// that ARE installed/baked. No types ship for this subpath — see the .d.ts shim.
+import HumanWasmModule from "@vladmandic/human/dist/human.node-wasm.js"
 import * as tf from "@tensorflow/tfjs"
 import "@tensorflow/tfjs-backend-wasm"
 import { setWasmPaths } from "@tensorflow/tfjs-backend-wasm"
+
+// node-wasm default-exports the Human class (CJS/ESM interop may wrap it in .default).
+const HumanCtor = ((HumanWasmModule as { default?: unknown }).default ?? HumanWasmModule) as new (
+  config: Partial<Config>,
+) => Human
 import jpeg from "jpeg-js"
 import { execFile } from "node:child_process"
 import { promisify } from "node:util"
@@ -40,7 +51,7 @@ async function getHuman(): Promise<Human> {
     gesture: { enabled: false },
     filter: { enabled: false },
   }
-  const h = new Human(config)
+  const h = new HumanCtor(config)
   await tf.setBackend("wasm")
   await tf.ready()
   await h.load()

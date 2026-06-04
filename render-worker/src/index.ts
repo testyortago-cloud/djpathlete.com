@@ -408,9 +408,17 @@ async function runSplitReel(): Promise<void> {
     if (durationInSeconds === null) throw new Error("could not determine video duration")
     if (durationInSeconds > MAX_CAPTION_CLIP_SECONDS) throw new Error(`clip exceeds ${MAX_CAPTION_CLIP_SECONDS}s cap`)
 
-    // 4. face trajectory (detect on the local file, then smooth)
-    const rawTrajectory = await detectFaceTrajectory(srcPath, { sampleEveryMs: 200 })
-    const trajectory = smoothTrajectory(rawTrajectory, 600)
+    // 4. face trajectory (detect on the local file, then smooth). Non-fatal: if
+    // face detection fails, fall back to an empty trajectory so the composition
+    // center-crops the talking head instead of failing the whole reel.
+    let trajectory: Awaited<ReturnType<typeof detectFaceTrajectory>> = []
+    try {
+      const rawTrajectory = await detectFaceTrajectory(srcPath, { sampleEveryMs: 200 })
+      trajectory = smoothTrajectory(rawTrajectory, 600)
+    } catch (e) {
+      console.warn(`[split-reel] face detection failed — center-crop fallback: ${(e as Error).message}`)
+      trajectory = []
+    }
 
     // 5. serve source + ready b-roll clips over loopback
     const srcServer = await serveFileLocally(srcPath)
