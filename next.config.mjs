@@ -87,10 +87,17 @@ const nextConfig = {
       "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://*.google-analytics.com https://js.stripe.com https://googleads.g.doubleclick.net https://www.googleadservices.com",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
-      "font-src 'self' data:",
+      // fonts.gstatic.com: the Remotion <Player> reel-editor preview loads Lexend
+      // Exa 800 via @remotion/google-fonts (the SAME font the render worker bakes
+      // in), which injects an @font-face pointing at the gstatic woff2. Without
+      // this the preview falls back to a system font and drifts from the render.
+      "font-src 'self' data: https://fonts.gstatic.com",
       "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.google-analytics.com https://www.googletagmanager.com https://www.google.com https://*.googleadservices.com https://stats.g.doubleclick.net https://api.stripe.com https://storage.googleapis.com https://*.firebasestorage.app https://firebasestorage.googleapis.com https://firestore.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.firebasedatabase.app wss://*.firebasedatabase.app https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firebaseinstallations.googleapis.com",
       "frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://www.youtube.com https://www.youtube-nocookie.com",
-      "media-src 'self' blob: https:",
+      // data:: @remotion/player primes audio playback with a tiny silent
+      // data:audio/mp3 URI (the reel-editor preview's Audio/Video layers); without
+      // data: the browser blocks it and audio preview is silent.
+      "media-src 'self' blob: data: https:",
       "worker-src 'self' blob:",
       "frame-ancestors 'self'",
       "base-uri 'self'",

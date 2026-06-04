@@ -5,7 +5,13 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import path from "node:path"
 import { serveFileLocally } from "./serve-file.js"
 
-export type ReadyBrollClip = { startMs: number; endMs: number; url: string; close: () => Promise<void> }
+export type ReadyBrollClip = {
+  segmentIndex: number
+  startMs: number
+  endMs: number
+  url: string
+  close: () => Promise<void>
+}
 
 export async function loadReadyBrollClips(
   supabase: SupabaseClient,
@@ -39,7 +45,13 @@ export async function loadReadyBrollClips(
     const local = path.join(workDir, `broll-${r.segment_index}.mp4`)
     await bucket.file(storagePath).download({ destination: local })
     const server = await serveFileLocally(local)
-    clips.push({ startMs: r.start_ms as number, endMs: r.end_ms as number, url: server.url, close: server.close })
+    clips.push({
+      segmentIndex: r.segment_index as number,
+      startMs: r.start_ms as number,
+      endMs: r.end_ms as number,
+      url: server.url,
+      close: server.close,
+    })
   }
   return clips
 }

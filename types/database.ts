@@ -1633,6 +1633,28 @@ export interface BrollSegment {
   updated_at: string
 }
 
+export const REEL_MODES = ["split_reel", "captioned_cut"] as const
+export type ReelMode = (typeof REEL_MODES)[number]
+
+/**
+ * Per-(video, mode) editable "reel project" snapshot for the in-app reel editor.
+ * `props` is the MEDIA-AGNOSTIC effective snapshot (shape = ReelProjectProps in
+ * lib/validators/reel-projects.ts) — captions, accent, face trajectory, b-roll
+ * window timing/enable, hook, music, trim. It holds NO signed URLs; each
+ * consumer resolves media itself. `edited_fields` lists the prop keys the
+ * operator explicitly locked — the render worker re-derives every other field
+ * from live truth, so un-edited fields never go stale.
+ */
+export interface ReelProject {
+  id: string
+  video_upload_id: string
+  mode: ReelMode
+  props: Record<string, unknown>
+  edited_fields: string[]
+  created_at: string
+  updated_at: string
+}
+
 export type CalendarDefaultView = "month" | "week" | "day"
 
 export interface UserPreferences {

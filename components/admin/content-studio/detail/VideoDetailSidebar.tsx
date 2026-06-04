@@ -7,6 +7,7 @@ interface VideoDetailSidebarProps {
   previewUrl: string | null
   hasTranscript?: boolean
   splitReelEnabled?: boolean
+  reelEditorEnabled?: boolean
 }
 
 function formatDuration(seconds: number | null): string {
@@ -29,6 +30,7 @@ export function VideoDetailSidebar({
   previewUrl,
   hasTranscript = false,
   splitReelEnabled = false,
+  reelEditorEnabled = false,
 }: VideoDetailSidebarProps) {
   return (
     <div className="space-y-4">
@@ -68,7 +70,13 @@ export function VideoDetailSidebar({
         <GenerateQuoteCardsButton videoUploadId={video.id} hasTranscript={hasTranscript} />
       </div>
 
-      {splitReelEnabled && <SplitReelPanel videoUploadId={video.id} hasTranscript={hasTranscript} />}
+      {splitReelEnabled && (
+        <SplitReelPanel
+          videoUploadId={video.id}
+          hasTranscript={hasTranscript}
+          reelEditorEnabled={reelEditorEnabled}
+        />
+      )}
     </div>
   )
 }

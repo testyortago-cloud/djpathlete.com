@@ -46,6 +46,7 @@ const data: DrawerData = {
   mediaByPost: {},
   highlightPostId: null,
   splitReelEnabled: false,
+  reelEditorEnabled: false,
 }
 
 describe("<VideoDetailPage>", () => {

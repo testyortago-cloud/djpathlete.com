@@ -1,12 +1,13 @@
 "use client"
 
 import { useState, useEffect, useCallback, Fragment, type ReactNode } from "react"
-import { Film, Loader2, ExternalLink, RefreshCw, CheckCircle2, AlertTriangle, Clapperboard } from "lucide-react"
+import { Film, Loader2, ExternalLink, RefreshCw, CheckCircle2, AlertTriangle, Clapperboard, Pencil } from "lucide-react"
 import { toast } from "sonner"
 import Link from "next/link"
 import { useAiJob } from "@/hooks/use-ai-job"
 import { renderPhase, formatElapsed } from "@/lib/content-studio/render-progress"
 import { canRenderSplitReel, segmentsRemaining } from "@/lib/split-reel/render-gate"
+import { ReelEditorDialog } from "@/components/admin/content-studio/reel-preview/ReelEditorDialog"
 import { cn } from "@/lib/utils"
 
 // ── Types (mirror the GET /api/admin/content-studio/split-reel response) ──────
@@ -50,6 +51,7 @@ interface ReelState {
 interface SplitReelPanelProps {
   videoUploadId: string
   hasTranscript: boolean
+  reelEditorEnabled?: boolean
 }
 
 const BASE = "/api/admin/content-studio/split-reel"
@@ -57,9 +59,10 @@ const BASE = "/api/admin/content-studio/split-reel"
 // The Content Studio drawer's Split Reel surface (Phase 3). Generation, review,
 // per-window regenerate, and the explicit render gate. Rehydrates from the server
 // on open and tracks the broll_generation + split_reel_render jobs in Firestore.
-export function SplitReelPanel({ videoUploadId, hasTranscript }: SplitReelPanelProps) {
+export function SplitReelPanel({ videoUploadId, hasTranscript, reelEditorEnabled = false }: SplitReelPanelProps) {
   const [state, setState] = useState<ReelState | null>(null)
   const [hook, setHook] = useState("")
+  const [editorOpen, setEditorOpen] = useState(false)
   const [genJobId, setGenJobId] = useState<string | null>(null)
   const [renderJobId, setRenderJobId] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -321,10 +324,27 @@ export function SplitReelPanel({ videoUploadId, hasTranscript }: SplitReelPanelP
           >
             <RefreshCw className="size-3" /> Regenerate all
           </button>
+          {reelEditorEnabled && (
+            <button
+              type="button"
+              onClick={() => setEditorOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded border border-border px-2.5 py-1 text-xs hover:bg-surface"
+            >
+              <Pencil className="size-3" /> Edit reel
+            </button>
+          )}
           {!canRender && (
             <span className="text-[11px] text-muted-foreground">{remaining} window(s) still generating…</span>
           )}
         </div>
+        {reelEditorEnabled && (
+          <ReelEditorDialog
+            videoUploadId={videoUploadId}
+            open={editorOpen}
+            onOpenChange={setEditorOpen}
+            onRenderStarted={(jobId) => setRenderJobId(jobId)}
+          />
+        )}
       </PanelShell>
     )
   }
@@ -354,7 +374,24 @@ export function SplitReelPanel({ videoUploadId, hasTranscript }: SplitReelPanelP
           >
             <Film className="size-3" /> Re-render
           </button>
+          {reelEditorEnabled && (
+            <button
+              type="button"
+              onClick={() => setEditorOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded border border-border px-2.5 py-1 text-xs hover:bg-surface"
+            >
+              <Pencil className="size-3" /> Edit reel
+            </button>
+          )}
         </div>
+        {reelEditorEnabled && (
+          <ReelEditorDialog
+            videoUploadId={videoUploadId}
+            open={editorOpen}
+            onOpenChange={setEditorOpen}
+            onRenderStarted={(jobId) => setRenderJobId(jobId)}
+          />
+        )}
       </PanelShell>
     )
   }

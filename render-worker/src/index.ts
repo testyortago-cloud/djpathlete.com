@@ -20,6 +20,14 @@ import { planCutAttachment } from "./lib/attach-plan.js"
 import { detectFaceTrajectory } from "./lib/detect-face.js"
 import { smoothTrajectory } from "./lib/face-track.js"
 import { loadReadyBrollClips } from "./lib/broll-fetch.js"
+import {
+  loadReelProject,
+  pickEdited,
+  resolveTrajectory,
+  defaultBrollEdits,
+  applyBrollEdits,
+  saveResolvedSnapshot,
+} from "./lib/reel-project.js"
 
 const MAX_CAPTION_CLIP_SECONDS = 180
 const FPS = 30
@@ -173,9 +181,9 @@ async function main() {
     const videoSrcUrl = videoServer.url
     console.log(`[render-worker] step=serve ok url=${videoSrcUrl}`)
 
-    // 4. Page captions
-    const pages = pageCaptions(words)
-    console.log(`[render-worker] step=paging ok pages=${pages.length}`)
+    // 4. Page captions (derived; the reel-editor snapshot may override these)
+    const derivedPages = pageCaptions(words)
+    console.log(`[render-worker] step=paging ok pages=${derivedPages.length}`)
 
     // 5. Render
     const entry = path.join(process.cwd(), "dist", "remotion", "index.js")
@@ -185,29 +193,36 @@ async function main() {
     const serveUrl = await bundle({ entryPoint: entry, publicDir: path.join(process.cwd(), "public") })
     console.log(`[render-worker] step=bundle ok`)
     const durationInFrames = Math.max(1, Math.ceil(durationInSeconds * FPS))
-    // Optional hook title (set by the panel → route → ai_jobs.input.hook). Absent
-    // for older/other jobs → no hook card. Trim + cap defensively (mirror the
-    // validator) so a bad value can never blow up the render.
+    // Reel-editor snapshot: use operator-locked fields (edited_fields); re-derive
+    // everything else. No row → identical to the pre-editor behaviour.
+    const project = await loadReelProject(supabase, videoUploadId, "captioned_cut")
+    // Derived hook (panel → route → ai_jobs.input.hook). Trim + cap defensively.
     const jobSnap = await jobRef.get()
     const rawHook = jobSnap.data()?.input?.hook
-    const hookText = typeof rawHook === "string" ? rawHook.trim().slice(0, 80) : ""
-    // Music selection (panel → route → ai_jobs.input.music). Music is OFF by
-    // default — only an explicitly chosen track that exists in the baked
-    // public/music dir plays; absent / "none" / unknown → no music bed.
-    const rawMusic = jobSnap.data()?.input?.music
-    const musicSel = typeof rawMusic === "string" ? rawMusic.trim() : ""
+    const derivedHookText = typeof rawHook === "string" ? rawHook.trim().slice(0, 80) : ""
+    // Derived music (panel → route → ai_jobs.input.music). OFF unless an explicit
+    // track exists in the baked public/music dir.
     const musicExists = (name: string) =>
       name !== "" && fs.existsSync(path.join(process.cwd(), "public", "music", name))
-    const musicTrack = musicSel !== "none" && musicExists(musicSel) ? musicSel : ""
-    console.log(`[render-worker] step=music ${musicTrack ? `track=${musicTrack}` : "none"}`)
+    const rawMusic = jobSnap.data()?.input?.music
+    const musicSel = typeof rawMusic === "string" ? rawMusic.trim() : ""
+    const derivedMusicTrack = musicSel !== "none" && musicExists(musicSel) ? musicSel : ""
+
+    const accentHex = pickEdited(project, "accentHex", BRAND_ACCENT_HEX)
+    const pages = pickEdited(project, "pages", derivedPages)
+    const hook = pickEdited(project, "hook", derivedHookText ? { text: derivedHookText } : null)
+    const musicResolved = pickEdited(project, "music", derivedMusicTrack ? { track: derivedMusicTrack } : null)
+    // Music must point at a baked track — drop anything missing on disk.
+    const music = musicResolved && musicExists(musicResolved.track) ? musicResolved : null
+    console.log(`[render-worker] step=music ${music ? `track=${music.track}` : "none"}`)
     const inputProps = {
       videoSrc: videoSrcUrl,
       pages,
-      accentHex: BRAND_ACCENT_HEX,
-      ...(hookText ? { hook: { text: hookText } } : {}),
-      ...(musicTrack ? { music: { track: musicTrack } } : {}),
+      accentHex,
+      ...(hook ? { hook } : {}),
+      ...(music ? { music } : {}),
     }
-    console.log(`[render-worker] step=hook ${hookText ? `text="${hookText}"` : "none"}`)
+    console.log(`[render-worker] step=hook ${hook ? `text="${hook.text}"` : "none"}`)
     console.log(`[render-worker] step=selectComposition frames=${durationInFrames}`)
     const comp = await selectComposition({ serveUrl, id: "CaptionedCut", inputProps })
     console.log(`[render-worker] step=selectComposition ok`)
@@ -338,6 +353,21 @@ async function main() {
       postIds.push(postId)
     }
 
+    // Persist the resolved snapshot so the reel editor reflects exactly what was
+    // rendered (and future renders reuse locked fields). Best-effort — never fail
+    // a successful render on a snapshot write.
+    try {
+      await saveResolvedSnapshot(
+        supabase,
+        videoUploadId,
+        "captioned_cut",
+        { pages, accentHex, trajectory: null, broll: [], hook, music, trimStartMs: 0, trimEndMs: null },
+        project?.editedFields ?? [],
+      )
+    } catch (e) {
+      console.warn(`[render-worker] reel snapshot save failed: ${(e as Error).message}`)
+    }
+
     // 9. Complete. Clear any error left by a prior failed attempt on this doc
     // (the retry / re-run path) so a completed job never carries a stale error.
     await jobRef.update({
@@ -392,9 +422,11 @@ async function runSplitReel(): Promise<void> {
       .order("created_at", { ascending: false }).limit(1).maybeSingle()
     if (!tx?.assemblyai_job_id) throw new Error("no speech transcript with an AssemblyAI id")
 
-    // 2. words + pages
+    // 2. words + pages (derived; the reel-editor snapshot may override pages)
     const words = await fetchTranscriptWords(tx.assemblyai_job_id)
-    const pages = pageCaptions(words)
+    const derivedPages = pageCaptions(words)
+    const project = await loadReelProject(supabase, videoUploadId, "split_reel")
+    const pages = pickEdited(project, "pages", derivedPages)
 
     // 3. download source
     const workDir = path.join(os.tmpdir(), "split-reel", aiJobId)
@@ -408,17 +440,19 @@ async function runSplitReel(): Promise<void> {
     if (durationInSeconds === null) throw new Error("could not determine video duration")
     if (durationInSeconds > MAX_CAPTION_CLIP_SECONDS) throw new Error(`clip exceeds ${MAX_CAPTION_CLIP_SECONDS}s cap`)
 
-    // 4. face trajectory (detect on the local file, then smooth). Non-fatal: if
-    // face detection fails, fall back to an empty trajectory so the composition
-    // center-crops the talking head instead of failing the whole reel.
-    let trajectory: Awaited<ReturnType<typeof detectFaceTrajectory>> = []
-    try {
-      const rawTrajectory = await detectFaceTrajectory(srcPath, { sampleEveryMs: 400 })
-      trajectory = smoothTrajectory(rawTrajectory, 600)
-    } catch (e) {
-      console.warn(`[split-reel] face detection failed — center-crop fallback: ${(e as Error).message}`)
-      trajectory = []
-    }
+    // 4. face trajectory — tri-state cache from the reel-editor snapshot: reuse a
+    // saved trajectory (skip the 2–5 min detect), honour a saved [] (computed, no
+    // face → center-crop), and only run detection when nothing usable is saved.
+    // Detection failure is non-fatal: fall back to center-crop ([]).
+    const trajectory = await resolveTrajectory(project, async () => {
+      try {
+        const rawTrajectory = await detectFaceTrajectory(srcPath, { sampleEveryMs: 400 })
+        return smoothTrajectory(rawTrajectory, 600)
+      } catch (e) {
+        console.warn(`[split-reel] face detection failed — center-crop fallback: ${(e as Error).message}`)
+        return []
+      }
+    })
 
     // 5. serve source + ready b-roll clips over loopback
     const srcServer = await serveFileLocally(srcPath)
@@ -430,16 +464,28 @@ async function runSplitReel(): Promise<void> {
     const entry = path.join(process.cwd(), "dist", "remotion", "index.js")
     const serveUrl = await bundle({ entryPoint: entry, publicDir: path.join(process.cwd(), "public") })
     const durationInFrames = Math.max(1, Math.ceil(durationInSeconds * FPS))
-    // Hook card text comes from video_uploads.hook_text (written by the
-    // broll_generation job). Trim + cap defensively (mirror main()); absent → no card.
-    const hookText = typeof video.hook_text === "string" ? video.hook_text.trim().slice(0, 80) : ""
+
+    // Reel-editor merge: accent, hook, b-roll enable/timing, and (new for the
+    // split path) music. Each falls back to the derived value when not locked.
+    const accentHex = pickEdited(project, "accentHex", BRAND_ACCENT_HEX)
+    const derivedHookText = typeof video.hook_text === "string" ? video.hook_text.trim().slice(0, 80) : ""
+    const hook = pickEdited(project, "hook", derivedHookText ? { text: derivedHookText } : null)
+    const musicExists = (name: string) =>
+      name !== "" && fs.existsSync(path.join(process.cwd(), "public", "music", name))
+    const musicResolved = pickEdited(project, "music", null)
+    const music = musicResolved && musicExists(musicResolved.track) ? musicResolved : null
+    // B-roll windows keyed by stable segment_index: enable/disable + timing edits
+    // apply over the ready clips; un-edited → every ready clip at its stored timing.
+    const brollEdits = pickEdited(project, "broll", defaultBrollEdits(brollClips))
+    const renderBroll = applyBrollEdits(brollClips, brollEdits)
     const inputProps = {
       videoSrc: srcServer.url,
       pages,
-      accentHex: BRAND_ACCENT_HEX,
+      accentHex,
       trajectory,
-      broll: brollClips.map((c) => ({ startMs: c.startMs, endMs: c.endMs, src: c.url })),
-      ...(hookText ? { hook: { text: hookText } } : {}),
+      broll: renderBroll,
+      ...(hook ? { hook } : {}),
+      ...(music ? { music } : {}),
     }
     const comp = await selectComposition({ serveUrl, id: "SplitReel", inputProps })
     const outDir = path.join(os.tmpdir(), "split-reel")
@@ -513,6 +559,21 @@ async function runSplitReel(): Promise<void> {
       })
       if (mErr) throw new Error(`attach media to ${platform} post ${postId} failed: ${mErr.message}`)
       postIds.push(postId)
+    }
+
+    // Persist the resolved snapshot (incl. the trajectory cache) so the reel
+    // editor reflects what was rendered and re-renders skip face detection.
+    // Best-effort — never fail a successful render on a snapshot write.
+    try {
+      await saveResolvedSnapshot(
+        supabase,
+        videoUploadId,
+        "split_reel",
+        { pages, accentHex, trajectory, broll: brollEdits, hook, music, trimStartMs: 0, trimEndMs: null },
+        project?.editedFields ?? [],
+      )
+    } catch (e) {
+      console.warn(`[split-reel] reel snapshot save failed: ${(e as Error).message}`)
     }
 
     // 9. complete

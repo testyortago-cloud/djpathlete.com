@@ -192,6 +192,7 @@ export const AUDIT_ACTIONS = [
   { slug: "split_reel.broll_generate", category: "admin_write", description: "Split Reel b-roll generation started" },
   { slug: "split_reel.render", category: "admin_write", description: "Split Reel render started" },
   { slug: "split_reel.regenerate", category: "admin_write", description: "Split Reel b-roll window regenerated" },
+  { slug: "reel_editor.save", category: "admin_write", description: "Reel editor snapshot saved" },
 ] as const satisfies readonly AuditActionDef[]
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number]["slug"]

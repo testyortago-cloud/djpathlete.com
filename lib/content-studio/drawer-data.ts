@@ -29,6 +29,8 @@ export interface DrawerData {
   highlightPostId: string | null
   /** Whether the Split Reel feature flag is on (gates the Split Reel panel). */
   splitReelEnabled: boolean
+  /** Whether the reel editor feature flag is on (gates the "Edit reel" Dialog). */
+  reelEditorEnabled: boolean
 }
 
 /**
@@ -86,11 +88,12 @@ export async function getDrawerData(videoId: string): Promise<DrawerData | null>
   const video = await getVideoUploadById(videoId)
   if (!video) return null
 
-  const [transcript, posts, previewUrl, splitReelEnabled] = await Promise.all([
+  const [transcript, posts, previewUrl, splitReelEnabled, reelEditorEnabled] = await Promise.all([
     getTranscriptForVideo(videoId),
     listSocialPostsBySourceVideo(videoId),
     signPreviewUrl(video.storage_path),
     getSetting<boolean>("feature_split_reel_enabled", false),
+    getSetting<boolean>("feature_reel_editor_enabled", false),
   ])
 
   const mediaByPost = await signMediaByPost(posts.map((p) => p.id))
@@ -104,6 +107,7 @@ export async function getDrawerData(videoId: string): Promise<DrawerData | null>
     mediaByPost,
     highlightPostId: null,
     splitReelEnabled,
+    reelEditorEnabled,
   }
 }
 
@@ -121,6 +125,7 @@ export async function getDrawerDataForPost(postId: string): Promise<DrawerData |
       mediaByPost: await signMediaByPost([post.id]),
       highlightPostId: post.id,
       splitReelEnabled: false,
+      reelEditorEnabled: false,
     }
   }
 
@@ -135,6 +140,7 @@ export async function getDrawerDataForPost(postId: string): Promise<DrawerData |
       mediaByPost: await signMediaByPost([post.id]),
       highlightPostId: post.id,
       splitReelEnabled: false,
+      reelEditorEnabled: false,
     }
   }
 
