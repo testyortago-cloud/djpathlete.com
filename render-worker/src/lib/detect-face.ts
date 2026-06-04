@@ -9,6 +9,7 @@ import "@tensorflow/tfjs-backend-wasm"
 import { setWasmPaths } from "@tensorflow/tfjs-backend-wasm"
 import jpeg from "jpeg-js"
 import { createRequire } from "node:module"
+import { fileURLToPath } from "node:url"
 import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 import ffmpegPath from "ffmpeg-static"
@@ -42,8 +43,31 @@ function loadHumanCtor(): new (config: Partial<Config>) => Human {
   return (mod.default ?? mod) as new (config: Partial<Config>) => Human
 }
 
+// @vladmandic/human's wasm build loads its models via fetch(), but Node's global
+// fetch (undici) does NOT support file:// URLs — and the models are baked at
+// file:///app/models/ (see Dockerfile). Shim fetch to read file:// URLs from
+// disk and pass everything else through. Idempotent.
+function installFileFetchShim(): void {
+  const g = globalThis as unknown as { fetch: typeof fetch; __fileFetchShim?: boolean }
+  if (g.__fileFetchShim) return
+  const orig = g.fetch
+  g.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : (input as Request).url
+    if (url.startsWith("file://")) {
+      const buf = fs.readFileSync(fileURLToPath(url))
+      return new Response(buf, {
+        status: 200,
+        headers: { "content-type": url.endsWith(".json") ? "application/json" : "application/octet-stream" },
+      })
+    }
+    return orig(input as RequestInfo | URL, init)
+  }) as typeof fetch
+  g.__fileFetchShim = true
+}
+
 async function getHuman(): Promise<Human> {
   if (human) return human
+  installFileFetchShim()
   const HumanCtor = loadHumanCtor()
   setWasmPaths(path.join(process.cwd(), "wasm") + "/")
   const config: Partial<Config> = {
