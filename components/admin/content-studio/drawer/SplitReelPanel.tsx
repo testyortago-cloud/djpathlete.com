@@ -77,8 +77,13 @@ export function SplitReelPanel({ videoUploadId, hasTranscript }: SplitReelPanelP
       const s = data as ReelState
       setState(s)
       setHook((prev) => (prev.length > 0 ? prev : (s.hookText ?? "")))
-      if (s.inFlightBrollJobId) setGenJobId(s.inFlightBrollJobId)
-      if (s.inFlightRenderJobId) setRenderJobId(s.inFlightRenderJobId)
+      // Drive job tracking from SERVER truth so completion is detected even when
+      // the Firestore realtime listener stalls (tab backgrounded, long-poll
+      // recycled): set the id when the server reports it in-flight, clear it when
+      // the server no longer does (the job finished). Clearing renderJobId flips
+      // `rendering` off and surfaces the finished reel without a manual refresh.
+      setGenJobId(s.inFlightBrollJobId ?? null)
+      setRenderJobId(s.inFlightRenderJobId ?? null)
     } catch (err) {
       setState({ inFlightBrollJobId: null, inFlightRenderJobId: null, windows: [], dropped: [], hookText: "", reel: null })
       toast.error((err as Error).message || "Failed to load Split Reel state")
@@ -128,15 +133,22 @@ export function SplitReelPanel({ videoUploadId, hasTranscript }: SplitReelPanelP
     return () => clearInterval(id)
   }, [generating, rendering])
 
-  // Segments live in Supabase (no realtime), so poll while a window is still
-  // cooking (a regenerate, or clips finishing after generation) to flip it ready.
+  // Poll the server (source of truth) while the pipeline is mid-flight and no
+  // finished reel exists yet — covers b-roll generation, the brief gap before the
+  // auto-chained render appears, and the multi-minute render itself. This makes
+  // completion robust even when the Firestore realtime listener stalls (the panel
+  // used to get stuck on "rendering" until a manual refresh). Stops the moment the
+  // reel is present (or nothing is pending), so it never polls when idle.
+  const pendingReel =
+    !state?.reel &&
+    (genJobId !== null || renderJobId !== null || windowsInFlight || (state?.windows.length ?? 0) > 0)
   useEffect(() => {
-    if (!windowsInFlight || generating || rendering) return
+    if (!pendingReel) return
     const id = setInterval(() => {
       void fetchState()
     }, 5000)
     return () => clearInterval(id)
-  }, [windowsInFlight, generating, rendering, fetchState])
+  }, [pendingReel, fetchState])
 
   async function startGenerate() {
     setSubmitting(true)
