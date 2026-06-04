@@ -4,21 +4,11 @@
 // FacePoint[] trajectory (one point per sampled frame that has a face). Models
 // and wasm are baked into the image (see Dockerfile); nothing is downloaded.
 import type { Config, Human } from "@vladmandic/human"
-// The default @vladmandic/human Node build (dist/human.node.js) hard-requires the
-// native @tensorflow/tfjs-node at load — which this image does NOT install (it
-// ships the WASM tfjs backend instead; see the Dockerfile's baked wasm + models).
-// The node-wasm build runs on the external @tensorflow/tfjs + tfjs-backend-wasm
-// that ARE installed/baked. No types ship for this subpath — see the .d.ts shim.
-import HumanWasmModule from "@vladmandic/human/dist/human.node-wasm.js"
 import * as tf from "@tensorflow/tfjs"
 import "@tensorflow/tfjs-backend-wasm"
 import { setWasmPaths } from "@tensorflow/tfjs-backend-wasm"
-
-// node-wasm default-exports the Human class (CJS/ESM interop may wrap it in .default).
-const HumanCtor = ((HumanWasmModule as { default?: unknown }).default ?? HumanWasmModule) as new (
-  config: Partial<Config>,
-) => Human
 import jpeg from "jpeg-js"
+import { createRequire } from "node:module"
 import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 import ffmpegPath from "ffmpeg-static"
@@ -32,8 +22,29 @@ const execFileP = promisify(execFile)
 
 let human: Human | null = null
 
+// Load the @vladmandic/human WASM build. Two obstacles, handled here:
+//  1. human's DEFAULT Node entry (human.node.js) hard-requires the native
+//     @tensorflow/tfjs-node, which this image does NOT install — it ships the
+//     WASM tfjs backend instead. So we want the `human.node-wasm.js` build.
+//  2. human's package "exports" map does NOT expose that build by subpath, so a
+//     normal `import "@vladmandic/human/dist/human.node-wasm.js"` throws
+//     ERR_PACKAGE_PATH_NOT_EXPORTED. We resolve the package dir and require the
+//     file by ABSOLUTE path, which bypasses "exports".
+// The wasm build runs on the external @tensorflow/tfjs + tfjs-backend-wasm that
+// ARE installed and baked. Called lazily (from getHuman, inside the render's
+// try/catch) so any failure degrades to a center crop, never a process crash.
+function loadHumanCtor(): new (config: Partial<Config>) => Human {
+  const requireCjs = createRequire(import.meta.url)
+  // resolve() finds the package's main entry path WITHOUT executing it (so the
+  // tfjs-node require in human.node.js never fires); we only take its directory.
+  const distDir = path.dirname(requireCjs.resolve("@vladmandic/human"))
+  const mod = requireCjs(path.join(distDir, "human.node-wasm.js")) as { default?: unknown }
+  return (mod.default ?? mod) as new (config: Partial<Config>) => Human
+}
+
 async function getHuman(): Promise<Human> {
   if (human) return human
+  const HumanCtor = loadHumanCtor()
   setWasmPaths(path.join(process.cwd(), "wasm") + "/")
   const config: Partial<Config> = {
     backend: "wasm",
