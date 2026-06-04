@@ -228,12 +228,12 @@ async function main() {
       // cause: too little memory). OffthreadVideo downloads the WHOLE source for
       // extraction, so on a memory-tight box the default cache thrashes and the
       // render dies mid-way (non-deterministically: frame 352 / 2480 across runs).
-      // A 4 GiB shared cache (job has 16 GiB) keeps ample headroom even at
-      // concurrency 4 so decoded frames survive until the compositor reads them.
-      offthreadVideoCacheSizeInBytes: 4 * 1024 * 1024 * 1024,
-      // Render N frames in parallel (one Chrome tab each). The job runs 4 vCPU,
-      // so 4-way concurrency ~doubles throughput vs the old 2 vCPU / 2-way.
-      concurrency: 4,
+      // A 6 GiB shared cache (job has 24 GiB) keeps ample headroom at concurrency
+      // 6 so decoded frames survive until the compositor reads them.
+      offthreadVideoCacheSizeInBytes: 6 * 1024 * 1024 * 1024,
+      // Render N frames in parallel (one Chrome tab each). The job runs 8 vCPU,
+      // so 6-way concurrency speeds the composite up vs the old 4 vCPU / 4-way.
+      concurrency: 6,
       // Stream coarse progress to RTDB for the client's live "rendering" bar.
       // progress is 0..1 across render+encode; stitchStage distinguishes the tail.
       onProgress: ({ progress, stitchStage }) => {
@@ -413,7 +413,7 @@ async function runSplitReel(): Promise<void> {
     // center-crops the talking head instead of failing the whole reel.
     let trajectory: Awaited<ReturnType<typeof detectFaceTrajectory>> = []
     try {
-      const rawTrajectory = await detectFaceTrajectory(srcPath, { sampleEveryMs: 200 })
+      const rawTrajectory = await detectFaceTrajectory(srcPath, { sampleEveryMs: 400 })
       trajectory = smoothTrajectory(rawTrajectory, 600)
     } catch (e) {
       console.warn(`[split-reel] face detection failed — center-crop fallback: ${(e as Error).message}`)
@@ -452,8 +452,8 @@ async function runSplitReel(): Promise<void> {
       outputLocation: outPath,
       inputProps,
       chromiumOptions: { enableMultiProcessOnLinux: true },
-      offthreadVideoCacheSizeInBytes: 4 * 1024 * 1024 * 1024,
-      concurrency: 4,
+      offthreadVideoCacheSizeInBytes: 6 * 1024 * 1024 * 1024,
+      concurrency: 6,
     })
 
     await Promise.all(servers.map((s) => s.close().catch(() => {})))

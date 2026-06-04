@@ -77,8 +77,8 @@ jobs:
             --source render-worker \
             --project darrenjpaulcom \
             --region us-central1 \
-            --memory 16Gi \
-            --cpu 4 \
+            --memory 24Gi \
+            --cpu 8 \
             --task-timeout 1800s \
             --max-retries 1 \
             --service-account captioned-cut-render@darrenjpaulcom.iam.gserviceaccount.com
