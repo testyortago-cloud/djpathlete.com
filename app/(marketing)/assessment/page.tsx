@@ -1,5 +1,6 @@
 ﻿import type { Metadata } from "next"
 import Link from "next/link"
+import NextImage from "next/image"
 import { ArrowRight, Dumbbell, Activity, Target, Zap, Brain, BarChart3 } from "lucide-react"
 import { JsonLd } from "@/components/shared/JsonLd"
 import { FadeIn } from "@/components/shared/FadeIn"
@@ -107,12 +108,22 @@ const collaborators = [
   "Team performance staff",
 ]
 
+// ──────────────────────────────────────────────────────────────────────────
+// Instrument cards
+//
+// Each card pairs an icon with a placeholder Pexels image. The boss's pattern
+// is to ship Pexels placeholders first then swap to owned photos of the
+// actual equipment / sessions — same approach used on /clinics. Replace the
+// `image.src` paths in /admin → public/images/assessment/<file> once owned
+// shots are available.
+// ──────────────────────────────────────────────────────────────────────────
 const instruments: {
   icon: typeof Dumbbell
   id: string
   label: string
   metric: string
   description: string
+  image: { src: string; alt: string }
 }[] = [
   {
     icon: Dumbbell,
@@ -120,6 +131,10 @@ const instruments: {
     label: "Force Platform",
     metric: "kN · asymmetry %",
     description: "Ground reaction force, peak output, left/right balance under load.",
+    image: {
+      src: "https://images.pexels.com/photos/5031975/pexels-photo-5031975.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750",
+      alt: "Athlete producing force under load — placeholder image for force-platform testing",
+    },
   },
   {
     icon: Activity,
@@ -127,6 +142,10 @@ const instruments: {
     label: "Motion Capture",
     metric: "joint angles · quality",
     description: "Movement strategy, control, and compensation patterns frame by frame.",
+    image: {
+      src: "https://images.pexels.com/photos/17724058/pexels-photo-17724058.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750",
+      alt: "Athlete moving through full body rotation — placeholder for motion-capture analysis",
+    },
   },
   {
     icon: BarChart3,
@@ -134,6 +153,10 @@ const instruments: {
     label: "Load Monitoring",
     metric: "exposure · tolerance",
     description: "Cumulative training load tracked against recovery and readiness.",
+    image: {
+      src: "https://images.pexels.com/photos/3756042/pexels-photo-3756042.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750",
+      alt: "Athlete training on a running track — placeholder for load-monitoring instrumentation",
+    },
   },
   {
     icon: Zap,
@@ -141,6 +164,10 @@ const instruments: {
     label: "Speed Timing",
     metric: "split · top-end",
     description: "Acceleration, top speed, and deceleration across measured distances.",
+    image: {
+      src: "https://images.pexels.com/photos/12585940/pexels-photo-12585940.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750",
+      alt: "Sprinter in starting blocks — placeholder for speed-timing gates",
+    },
   },
   {
     icon: Brain,
@@ -148,6 +175,10 @@ const instruments: {
     label: "Reactive Testing",
     metric: "latency · accuracy",
     description: "Decision-making under stimulus — cued and open-environment responses.",
+    image: {
+      src: "https://images.pexels.com/photos/7188044/pexels-photo-7188044.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750",
+      alt: "Athlete reacting through cone drills — placeholder for reactive-testing protocol",
+    },
   },
   {
     icon: Target,
@@ -155,6 +186,10 @@ const instruments: {
     label: "Power Diagnostics",
     metric: "watts · RFD",
     description: "Explosive output and rate of force development across movement planes.",
+    image: {
+      src: "https://images.pexels.com/photos/20523354/pexels-photo-20523354.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750",
+      alt: "Athlete reviewing performance data with a coach — placeholder for power diagnostics",
+    },
   },
 ]
 
@@ -385,17 +420,30 @@ export default function AssessmentPage() {
               const Icon = item.icon
               return (
                 <FadeIn key={item.id} delay={i * 0.05}>
-                  <div className="relative h-full p-7 bg-surface">
-                    {/* Measurement bracket corners */}
-                    <div className="absolute top-3 left-3 size-5 border-t border-l border-primary/40" />
-                    <div className="absolute top-3 right-3 size-5 border-t border-r border-primary/40" />
-                    <div className="absolute bottom-3 left-3 size-5 border-b border-l border-primary/40" />
-                    <div className="absolute bottom-3 right-3 size-5 border-b border-r border-primary/40" />
+                  <div className="relative flex h-full flex-col bg-surface overflow-hidden">
+                    {/* Card image — placeholder Pexels until owned shots ship */}
+                    <div className="relative aspect-[16/10] w-full bg-primary/5">
+                      <NextImage
+                        src={item.image.src}
+                        alt={item.image.alt}
+                        fill
+                        sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                        className="object-cover"
+                      />
+                    </div>
 
-                    <Icon className="size-6 text-primary" strokeWidth={1.5} />
-                    <h3 className="mt-6 font-heading text-lg font-semibold tracking-tight text-primary">
-                      {item.label}
-                    </h3>
+                    <div className="relative flex flex-1 flex-col p-7">
+                      {/* Measurement bracket corners — kept for the editorial frame */}
+                      <div className="absolute top-3 left-3 size-5 border-t border-l border-primary/40" />
+                      <div className="absolute top-3 right-3 size-5 border-t border-r border-primary/40" />
+                      <div className="absolute bottom-3 left-3 size-5 border-b border-l border-primary/40" />
+                      <div className="absolute bottom-3 right-3 size-5 border-b border-r border-primary/40" />
+
+                      <Icon className="size-6 text-primary" strokeWidth={1.5} />
+                      <h3 className="mt-6 font-heading text-lg font-semibold tracking-tight text-primary">
+                        {item.label}
+                      </h3>
+                    </div>
                   </div>
                 </FadeIn>
               )
