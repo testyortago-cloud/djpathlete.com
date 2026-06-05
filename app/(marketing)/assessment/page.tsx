@@ -420,9 +420,15 @@ export default function AssessmentPage() {
               const Icon = item.icon
               return (
                 <FadeIn key={item.id} delay={i * 0.05}>
-                  <div className="relative flex h-full flex-col bg-surface overflow-hidden">
-                    {/* Card image — placeholder Pexels until owned shots ship */}
-                    <div className="relative aspect-[16/10] w-full bg-primary/5">
+                  <div className="relative h-full p-7 bg-surface">
+                    {/* Measurement bracket corners — frame the whole card */}
+                    <div className="absolute top-3 left-3 size-5 border-t border-l border-primary/40 pointer-events-none" />
+                    <div className="absolute top-3 right-3 size-5 border-t border-r border-primary/40 pointer-events-none" />
+                    <div className="absolute bottom-3 left-3 size-5 border-b border-l border-primary/40 pointer-events-none" />
+                    <div className="absolute bottom-3 right-3 size-5 border-b border-r border-primary/40 pointer-events-none" />
+
+                    {/* Card image — sits inside the bracketed frame */}
+                    <div className="relative aspect-[16/10] w-full overflow-hidden bg-primary/5">
                       <NextImage
                         src={item.image.src}
                         alt={item.image.alt}
@@ -432,18 +438,10 @@ export default function AssessmentPage() {
                       />
                     </div>
 
-                    <div className="relative flex flex-1 flex-col p-7">
-                      {/* Measurement bracket corners — kept for the editorial frame */}
-                      <div className="absolute top-3 left-3 size-5 border-t border-l border-primary/40" />
-                      <div className="absolute top-3 right-3 size-5 border-t border-r border-primary/40" />
-                      <div className="absolute bottom-3 left-3 size-5 border-b border-l border-primary/40" />
-                      <div className="absolute bottom-3 right-3 size-5 border-b border-r border-primary/40" />
-
-                      <Icon className="size-6 text-primary" strokeWidth={1.5} />
-                      <h3 className="mt-6 font-heading text-lg font-semibold tracking-tight text-primary">
-                        {item.label}
-                      </h3>
-                    </div>
+                    <Icon className="mt-6 size-6 text-primary" strokeWidth={1.5} />
+                    <h3 className="mt-3 font-heading text-lg font-semibold tracking-tight text-primary">
+                      {item.label}
+                    </h3>
                   </div>
                 </FadeIn>
               )
