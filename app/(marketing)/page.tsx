@@ -52,6 +52,14 @@ const organizationSchema = {
   "@id": "https://www.darrenjpaul.com/#organization",
   name: BUSINESS_INFO.brand,
   legalName: BUSINESS_INFO.legalName,
+  // Same alternateName set as LocalBusiness so the brand, founder, and
+  // domain queries all resolve to the same organization entity.
+  alternateName: [
+    BUSINESS_INFO.legalName,
+    "Darren J Paul",
+    "Darren J Paul Athlete",
+    "darrenjpaul.com",
+  ],
   url: "https://www.darrenjpaul.com",
   logo: "https://www.darrenjpaul.com/logos/logo-dark.png",
   description:
@@ -70,7 +78,17 @@ const localBusinessSchema = {
   "@type": "SportsActivityLocation",
   "@id": "https://www.darrenjpaul.com/#localbusiness",
   name: BUSINESS_INFO.legalName,
-  alternateName: BUSINESS_INFO.brand,
+  // Multiple alternate names so Google resolves brand, founder, and domain
+  // searches all to this LocalBusiness. Without "Darren J Paul" here, the
+  // GBP only shows up for the full legal-name search; with it, the entity
+  // also binds to the personal-brand and domain queries the boss actually
+  // sees most.
+  alternateName: [
+    BUSINESS_INFO.brand,
+    "Darren J Paul",
+    "Darren J Paul Athlete",
+    "darrenjpaul.com",
+  ],
   url: "https://www.darrenjpaul.com",
   image: "https://www.darrenjpaul.com/images/gym-training-01.jpg",
   address: postalAddressSchema,
