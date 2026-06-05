@@ -187,8 +187,8 @@ const instruments: {
     metric: "watts · RFD",
     description: "Explosive output and rate of force development across movement planes.",
     image: {
-      src: "https://images.pexels.com/photos/20523354/pexels-photo-20523354.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750",
-      alt: "Athlete reviewing performance data with a coach — placeholder for power diagnostics",
+      src: "/images/assessment/power-diagnostics.webp",
+      alt: "Athlete performing an explosive lift with velocity-tracking during power diagnostics",
     },
   },
 ]
