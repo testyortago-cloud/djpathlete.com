@@ -8,6 +8,8 @@ import { AuthorCard } from "@/components/shared/AuthorCard"
 import { FadeIn } from "@/components/shared/FadeIn"
 import { Button } from "@/components/ui/button"
 import { SITE_URL } from "@/lib/constants"
+import { getAthletesPageContent } from "@/lib/db/athletes-page"
+import type { StageIcon } from "@/lib/validators/athletes-page"
 
 export const metadata: Metadata = {
   title: "Sports Performance Training for Every Stage of Athlete",
@@ -47,74 +49,20 @@ const webPageSchema = {
   speakable: { "@type": "SpeakableSpecification", cssSelector: ["h1"] },
 }
 
-interface Stage {
-  id: string
-  name: string
-  icon: typeof Plane
-  h2: string
-  summary: string
-  pillars: [string, string, string]
+/**
+ * Lucide icon picker for the stage cards. Keep in sync with STAGE_ICONS in
+ * lib/validators/athletes-page.ts — adding an icon there means adding a row
+ * here too.
+ */
+const STAGE_ICON_MAP: Record<StageIcon, typeof Plane> = {
+  plane: Plane,
+  graduation_cap: GraduationCap,
+  sparkles: Sparkles,
+  heart_pulse: HeartPulse,
 }
 
-// Four stages, one framework, one page. Copy is intentionally summary-length —
-// crawlable and AI-extractable without restating the same training principles
-// four times.
-const STAGES: Stage[] = [
-  {
-    id: "professional",
-    name: "Professional",
-    icon: Plane,
-    h2: "Performance training for professional athletes",
-    summary:
-      "Year-round, individualized training built around touring reality: travel, time zones, tournament density and in-season load. Programming adjusts weekly to wellness markers and the equipment available at the venue. Already used by WTA professionals and professional pickleball players among the 500+ athletes coached.",
-    pillars: [
-      "Travel-friendly programming that moves with the schedule",
-      "In-season load monitoring with weekly programming changes",
-      "Career longevity prioritized over short peak windows",
-    ],
-  },
-  {
-    id: "collegiate",
-    name: "Collegiate & competitive amateur",
-    icon: GraduationCap,
-    h2: "Sports performance training for collegiate and competitive amateur athletes",
-    summary:
-      "A diagnostic-driven training plan instead of a roster template. Force production, asymmetry, movement quality and sport-specific output measured first, then strength training and speed training periodized across off-season, pre-season, in-season and post-season blocks. Works alongside school strength staff where they exist, not around them.",
-    pillars: [
-      "Diagnostic baseline before the program is written",
-      "Year-round periodization built around the sport calendar",
-      "Strength training that transfers to sprint speed, change of direction and rotational power",
-    ],
-  },
-  {
-    id: "youth",
-    name: "Youth & long-term development",
-    icon: Sparkles,
-    h2: "Youth athletic performance training and long-term development",
-    summary:
-      "Strength training, movement quality and speed work programmed around training age and maturity, not chronological age. The NSCA's position is that supervised, age-appropriate resistance training is safe and effective for young athletes — and is one of the most effective injury-prevention tools available. Multi-sport participation is encouraged through the early teens; early single-sport specialization is not.",
-    pillars: [
-      "Age and stage-appropriate progression",
-      "Movement quality, deceleration and change of direction trained from the foundation",
-      "Long-term athletic development that protects the ceiling, not eight-week peaks",
-    ],
-  },
-  {
-    id: "return-to-sport",
-    name: "Return to sport",
-    icon: HeartPulse,
-    h2: "Return-to-performance training for athletes coming back from injury",
-    summary:
-      "The bridge between medical clearance and competition readiness. Force production, single-leg asymmetry, reactive strength and sport-specific output are measured, then closed with structured strength training and progressive reactive loading. Works alongside the clinical team; does not replace physiotherapy.",
-    pillars: [
-      "Return-to-performance assessment before the rebuild starts",
-      "Asymmetry-targeted strength training programmed from data",
-      "Progressive reactive and sport-specific reintegration",
-    ],
-  },
-]
-
-export default function AthletesHubPage() {
+export default async function AthletesHubPage() {
+  const content = await getAthletesPageContent()
   return (
     <>
       <JsonLd data={webPageSchema} />
@@ -125,51 +73,54 @@ export default function AthletesHubPage() {
         ]}
       />
 
-      {/* ─────────────── Hero ─────────────── */}
+      {/* ─────────────── Hero — copy is editable via /admin/marketing/athletes ─────────────── */}
       <section className="relative overflow-hidden bg-primary text-primary-foreground">
         <div className="relative mx-auto max-w-6xl px-4 pb-16 pt-32 sm:px-8 lg:pb-24 lg:pt-40">
           <FadeIn>
-            <div className="flex items-center gap-3">
-              <div className="h-px w-10 bg-accent" />
-              <span className="font-mono text-[11px] uppercase tracking-[0.3em] text-accent">
-                Athletes
-              </span>
-            </div>
+            {content.hero_eyebrow && (
+              <div className="flex items-center gap-3">
+                <div className="h-px w-10 bg-accent" />
+                <span className="font-mono text-[11px] uppercase tracking-[0.3em] text-accent">
+                  {content.hero_eyebrow}
+                </span>
+              </div>
+            )}
             <h1 className="mt-6 font-heading text-4xl font-semibold leading-[1.05] tracking-tight sm:text-5xl lg:text-6xl">
-              Sports performance training
+              {content.hero_heading_line_1}
               <br />
-              <span className="text-accent">for every stage of athlete.</span>
+              <span className="text-accent">{content.hero_heading_line_2}</span>
             </h1>
             <p className="mt-6 max-w-2xl text-base leading-7 text-primary-foreground/75 sm:text-lg">
-              Professional. Collegiate. Youth. Coming back from injury. The same training
-              framework runs each stage, scaled to training age, sport and calendar.
+              {content.hero_description}
             </p>
           </FadeIn>
         </div>
       </section>
 
 
-      {/* ─────────────── Four stages ─────────────── */}
+      {/* ─────────────── Stage cards — copy is editable via /admin/marketing/athletes ─────────────── */}
       <section className="mx-auto max-w-6xl px-4 py-16 sm:px-8 lg:py-24">
         <FadeIn>
           <div className="mb-12 max-w-2xl">
-            <div className="flex items-center gap-3">
-              <div className="h-px w-8 bg-accent" />
-              <span className="font-mono text-[11px] uppercase tracking-[0.28em] text-accent">
-                The four stages
-              </span>
-            </div>
+            {content.stages_eyebrow && (
+              <div className="flex items-center gap-3">
+                <div className="h-px w-8 bg-accent" />
+                <span className="font-mono text-[11px] uppercase tracking-[0.28em] text-accent">
+                  {content.stages_eyebrow}
+                </span>
+              </div>
+            )}
             <h2 className="mt-4 font-heading text-3xl font-semibold tracking-tight text-primary sm:text-4xl">
-              One training system, scaled to where you actually are.
+              {content.stages_heading}
             </h2>
           </div>
         </FadeIn>
 
         <div className="grid gap-6 md:grid-cols-2">
-          {STAGES.map((stage, i) => {
-            const Icon = stage.icon
+          {content.stages.map((stage, i) => {
+            const Icon = STAGE_ICON_MAP[stage.icon]
             return (
-              <FadeIn key={stage.id} delay={i * 0.08}>
+              <FadeIn key={stage.id || i} delay={i * 0.08}>
                 <article
                   id={stage.id}
                   className="h-full rounded-2xl border border-border bg-white p-6 sm:p-7"
@@ -183,15 +134,15 @@ export default function AthletesHubPage() {
                     </p>
                   </div>
                   <h3 className="mt-4 font-heading text-xl font-semibold tracking-tight text-primary sm:text-2xl">
-                    {stage.h2}
+                    {stage.heading}
                   </h3>
                   <p className="mt-3 text-sm leading-6 text-muted-foreground sm:text-base sm:leading-7">
                     {stage.summary}
                   </p>
                   <ul className="mt-5 space-y-2">
-                    {stage.pillars.map((p) => (
+                    {stage.pillars.map((p, pi) => (
                       <li
-                        key={p}
+                        key={`${p}-${pi}`}
                         className="flex items-start gap-2 text-sm leading-6 text-foreground"
                       >
                         <span

@@ -171,6 +171,7 @@ export const AUDIT_ACTIONS = [
   { slug: "faq.delete", category: "marketing", description: "FAQ entry deleted" },
   { slug: "faq.reorder", category: "marketing", description: "FAQ entries reordered" },
   { slug: "about_page.update", category: "marketing", description: "About page content updated" },
+  { slug: "athletes_page.update", category: "marketing", description: "Athletes page content updated" },
 
   // compliance — consents + GDPR + legal
   {
