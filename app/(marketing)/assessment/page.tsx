@@ -165,8 +165,8 @@ const instruments: {
     metric: "split · top-end",
     description: "Acceleration, top speed, and deceleration across measured distances.",
     image: {
-      src: "https://images.pexels.com/photos/12585940/pexels-photo-12585940.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750",
-      alt: "Sprinter in starting blocks — placeholder for speed-timing gates",
+      src: "/images/assessment/speed-timing.webp",
+      alt: "Athlete sprinting through electronic timing gates during speed assessment",
     },
   },
   {
