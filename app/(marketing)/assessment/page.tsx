@@ -176,8 +176,8 @@ const instruments: {
     metric: "latency · accuracy",
     description: "Decision-making under stimulus — cued and open-environment responses.",
     image: {
-      src: "https://images.pexels.com/photos/7188044/pexels-photo-7188044.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750",
-      alt: "Athlete reacting through cone drills — placeholder for reactive-testing protocol",
+      src: "/images/assessment/reactive-testing.webp",
+      alt: "Athlete responding to reactive light cues during reactive-testing protocol",
     },
   },
   {
