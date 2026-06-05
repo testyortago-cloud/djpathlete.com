@@ -161,7 +161,6 @@ export default function RotationalRebootPage() {
       <BreadcrumbSchema
         items={[
           { name: "Home", url: "/" },
-          { name: "Programs", url: "/resources" },
           { name: "Rotational Reboot", url: "/programs/rotational-reboot" },
         ]}
       />
@@ -387,7 +386,7 @@ export default function RotationalRebootPage() {
       {/* ───────────────── FAQ (CMS-managed) ───────────────── */}
       <ManagedFaqSection
         pageKey="programs/rotational-reboot"
-        variant="list"
+        variant="cards"
         eyebrow="Questions"
         title="Rotational Reboot, answered"
         className="max-w-4xl"

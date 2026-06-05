@@ -431,7 +431,7 @@ export default async function SportPage({ params }: Props) {
       {/* ─────────────── FAQ (managed via CMS) ─────────────── */}
       <ManagedFaqSection
         pageKey={`sports/${slug}`}
-        variant="list"
+        variant="cards"
         eyebrow="Questions"
         title={`${sport.name} performance training, answered.`}
       />

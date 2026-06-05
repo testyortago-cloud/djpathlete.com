@@ -227,7 +227,7 @@ export default function AthletesHubPage() {
       {/* ─────────────── FAQ (managed via CMS) ─────────────── */}
       <ManagedFaqSection
         pageKey="athletes"
-        variant="list"
+        variant="cards"
         eyebrow="Common questions"
         title="Questions athletes and parents actually ask."
       />
