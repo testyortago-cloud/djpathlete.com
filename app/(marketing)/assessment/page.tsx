@@ -154,8 +154,8 @@ const instruments: {
     metric: "exposure · tolerance",
     description: "Cumulative training load tracked against recovery and readiness.",
     image: {
-      src: "https://images.pexels.com/photos/3756042/pexels-photo-3756042.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750",
-      alt: "Athlete training on a running track — placeholder for load-monitoring instrumentation",
+      src: "/images/assessment/load-monitoring.webp",
+      alt: "Athlete wearing a GPS load-tracking vest during training-load monitoring",
     },
   },
   {
