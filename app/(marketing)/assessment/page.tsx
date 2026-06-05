@@ -392,12 +392,7 @@ export default function AssessmentPage() {
                     <div className="absolute bottom-3 left-3 size-5 border-b border-l border-primary/40" />
                     <div className="absolute bottom-3 right-3 size-5 border-b border-r border-primary/40" />
 
-                    <div className="flex items-center justify-between">
-                      <Icon className="size-6 text-primary" strokeWidth={1.5} />
-                      <span className="font-mono font-bold text-[10px] uppercase tracking-[0.3em] text-accent">
-                        {item.id}
-                      </span>
-                    </div>
+                    <Icon className="size-6 text-primary" strokeWidth={1.5} />
                     <h3 className="mt-6 font-heading text-lg font-semibold tracking-tight text-primary">
                       {item.label}
                     </h3>
