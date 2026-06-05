@@ -63,10 +63,8 @@ type ActionCard = {
   body: string
   image: {
     src: string
-    /** Descriptive alt text doubling as the photographer credit for SEO. */
+    /** Descriptive alt text for accessibility + image SEO. */
     alt: string
-    /** Pexels photo page — useful if we ever surface attribution. */
-    pexelsPage: string
   }
 }
 
@@ -77,9 +75,8 @@ const ACTIONS: ActionCard[] = [
     cue: "first step · project",
     body: "First-step intent, projection, and creating a better start when space opens up.",
     image: {
-      src: "https://images.pexels.com/photos/19787364/pexels-photo-19787364.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750",
-      alt: "Sprinters exploding out of the starting block — the acceleration phase of speed training",
-      pexelsPage: "https://www.pexels.com/photo/19787364/",
+      src: "/images/clinics/accel.jpg",
+      alt: "Athlete driving out of the first step — acceleration training on the field",
     },
   },
   {
@@ -88,9 +85,8 @@ const ACTIONS: ActionCard[] = [
     cue: "brake · load · hold",
     body: "Learning to brake with control so the next action is cleaner, quicker, and more usable.",
     image: {
-      src: "https://images.pexels.com/photos/27532389/pexels-photo-27532389.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750",
-      alt: "Soccer player braking hard and dropping low — the eccentric load of deceleration in sport",
-      pexelsPage: "https://www.pexels.com/photo/27532389/",
+      src: "/images/clinics/decel.png",
+      alt: "Athlete dropping into a controlled brake — the eccentric load of deceleration",
     },
   },
   {
@@ -99,9 +95,8 @@ const ACTIONS: ActionCard[] = [
     cue: "plant · redirect",
     body: "Sharper repositioning, better angles, and more efficient redirection under pressure.",
     image: {
-      src: "https://images.pexels.com/photos/7188044/pexels-photo-7188044.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750",
-      alt: "Athlete working cone drills outdoors — change-of-direction and redirection training",
-      pexelsPage: "https://www.pexels.com/photo/7188044/",
+      src: "/images/clinics/cod.png",
+      alt: "Athlete cutting between cones — change-of-direction training",
     },
   },
   {
@@ -110,9 +105,8 @@ const ACTIONS: ActionCard[] = [
     cue: "turn · re-orient",
     body: "Turning, re-orienting, and organising the body better in the moments that matter.",
     image: {
-      src: "https://images.pexels.com/photos/17724058/pexels-photo-17724058.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750",
-      alt: "Baseball player swinging through full torso rotation — the rotational power moment",
-      pexelsPage: "https://www.pexels.com/photo/17724058/",
+      src: "/images/clinics/rotate.webp",
+      alt: "Athlete rotating through full body turn — rotational power training",
     },
   },
 ]
