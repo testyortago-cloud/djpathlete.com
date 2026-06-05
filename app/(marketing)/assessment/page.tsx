@@ -171,36 +171,31 @@ export default function AssessmentPage() {
         ]}
       />
 
-      {/* ===================== HERO · CLINICAL BLUEPRINT ===================== */}
-      <section className="relative overflow-hidden bg-surface text-primary">
-        {/* Background video — placeholder using the clinics footage until a
-            dedicated assessment cut is supplied. The text column gets a
-            near-solid bg-surface wash so the existing dark-on-light copy is
-            fully readable; the right empty area fades so the video is still
-            visible where it doesn't fight for space. Tailwind v4 uses
-            `bg-linear-to-r` (not `bg-gradient-to-r`). */}
+      {/* ===================== HERO · VIDEO BACKGROUND ===================== */}
+      {/* Mirrors the /in-person and /clinics hero pattern: dark bg-primary,
+          full-bleed background video, uniform bg-primary/70 overlay for text
+          contrast, white-on-dark copy. The video is a placeholder using the
+          clinics footage until a dedicated assessment cut is supplied. */}
+      <section className="relative overflow-hidden bg-primary text-primary-foreground">
         <LocalVideoBackground src="/videos/clinics-hero.mp4" />
-        <div
-          aria-hidden
-          className="absolute inset-0 pointer-events-none bg-linear-to-r from-surface from-50% to-surface/30"
-        />
+        <div className="absolute inset-0 bg-primary/70" />
         <div className="relative z-10 mx-auto max-w-7xl px-4 md:px-6 pt-20 md:pt-28 pb-20 md:pb-28">
           <div className="max-w-2xl">
             <FadeIn>
               <div>
-                <div className="inline-flex items-center gap-3 font-mono font-bold text-[10px] uppercase tracking-[0.3em] pr-4 text-primary/55">
+                <div className="inline-flex items-center gap-3 font-mono font-bold text-[10px] uppercase tracking-[0.3em] pr-4 text-primary-foreground/60">
                   <span className="inline-block size-1.5 rounded-full bg-accent" />
                   Return to Performance
                 </div>
 
-                <h1 className="mt-6 font-heading text-[40px] leading-[1.02] tracking-tight sm:text-5xl md:text-6xl font-semibold text-primary">
+                <h1 className="mt-6 font-heading text-[40px] leading-[1.02] tracking-tight sm:text-5xl md:text-6xl font-semibold text-primary-foreground">
                   Athlete Assessments for Return-to-Performance
                 </h1>
-                <p className="mt-6 text-xl sm:text-2xl lg:text-3xl font-normal tracking-tight text-primary/70 leading-snug">
+                <p className="mt-6 text-xl sm:text-2xl lg:text-3xl font-normal tracking-tight text-primary-foreground/80 leading-snug">
                   Cleared is not the same as <span className="italic text-accent">ready.</span>
                 </p>
 
-                <p className="mt-8 max-w-lg text-base leading-7 md:text-lg md:leading-8 text-muted-foreground">
+                <p className="mt-8 max-w-lg text-base leading-7 md:text-lg md:leading-8 text-primary-foreground/80">
                   Medical clearance is a starting line, not a finish. Competition exposes a different
                   reality — high-speed chaos, reactive decisions, accumulated fatigue.
                   Return-to-performance testing closes that gap.
@@ -208,14 +203,14 @@ export default function AssessmentPage() {
 
                 {/* Cleared → Ready gauge */}
                 <div className="mt-10 max-w-lg">
-                  <div className="flex items-center justify-between font-mono font-bold text-[10px] uppercase tracking-[0.3em] mb-2 text-primary/55">
+                  <div className="flex items-center justify-between font-mono font-bold text-[10px] uppercase tracking-[0.3em] mb-2 text-primary-foreground/60">
                     <span>Cleared</span>
                     <span className="text-accent">Gap · measured</span>
                     <span>Ready</span>
                   </div>
-                  <div className="relative h-3 rounded-full bg-primary/10 overflow-visible">
+                  <div className="relative h-3 rounded-full bg-primary-foreground/15 overflow-visible">
                     <div
-                      className="absolute inset-y-0 left-0 rounded-full bg-primary/35"
+                      className="absolute inset-y-0 left-0 rounded-full bg-primary-foreground/35"
                       style={{ width: "36%" }}
                     />
                     <div
@@ -228,17 +223,17 @@ export default function AssessmentPage() {
                         left: "36%",
                         width: "64%",
                         background:
-                          "repeating-linear-gradient(45deg, oklch(0.7 0.08 60 / 0.25) 0 6px, transparent 6px 10px)",
+                          "repeating-linear-gradient(45deg, oklch(0.7 0.08 60 / 0.3) 0 6px, transparent 6px 10px)",
                       }}
                     />
                     <div
-                      className="absolute -top-1.5 size-6 rounded-full border-2 border-accent bg-surface flex items-center justify-center"
+                      className="absolute -top-1.5 size-6 rounded-full border-2 border-accent bg-primary flex items-center justify-center"
                       style={{ left: "calc(36% - 12px)" }}
                     >
                       <span className="size-2 rounded-full bg-accent" />
                     </div>
                   </div>
-                  <div className="mt-3 flex items-center justify-between font-mono text-[10px] tabular-nums tracking-widest text-primary/50">
+                  <div className="mt-3 flex items-center justify-between font-mono text-[10px] tabular-nums tracking-widest text-primary-foreground/55">
                     <span>T 0</span>
                     <span>CURRENT · 36%</span>
                     <span>T 100</span>
@@ -249,7 +244,7 @@ export default function AssessmentPage() {
                   <Button
                     asChild
                     size="lg"
-                    className="rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
+                    className="rounded-full bg-accent text-primary hover:bg-accent/90 shadow-lg"
                   >
                     <Link href="#apply">
                       Book an assessment
@@ -260,7 +255,7 @@ export default function AssessmentPage() {
                     asChild
                     size="lg"
                     variant="outline"
-                    className="rounded-full bg-transparent border-primary/25 text-primary hover:bg-primary/5"
+                    className="rounded-full bg-primary-foreground/5 backdrop-blur-sm border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/10"
                   >
                     <Link href="#instruments">View the instruments</Link>
                   </Button>
