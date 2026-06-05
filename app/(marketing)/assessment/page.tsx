@@ -143,8 +143,8 @@ const instruments: {
     metric: "joint angles · quality",
     description: "Movement strategy, control, and compensation patterns frame by frame.",
     image: {
-      src: "https://images.pexels.com/photos/17724058/pexels-photo-17724058.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750",
-      alt: "Athlete moving through full body rotation — placeholder for motion-capture analysis",
+      src: "/images/assessment/motion-capture.webp",
+      alt: "Athlete with reflective motion-capture markers during biomechanics analysis",
     },
   },
   {
