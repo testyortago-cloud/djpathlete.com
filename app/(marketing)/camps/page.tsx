@@ -156,7 +156,6 @@ export default async function CampsPage() {
                   The four <span className="italic font-normal text-accent">pillars.</span>
                 </h2>
               </div>
-              <div className="font-heading text-xs uppercase tracking-[0.35em] text-primary/55">Feature · page 3</div>
             </div>
           </FadeIn>
 
@@ -211,7 +210,7 @@ export default async function CampsPage() {
                   className="mt-4 font-heading font-semibold tracking-tight leading-[0.95]"
                   style={{ fontSize: "clamp(2rem, 5vw, 4rem)" }}
                 >
-                  Select the track that <span className="italic font-normal text-accent">fits you.</span>
+                  Select the journey that <span className="italic font-normal text-accent">fits you.</span>
                 </h3>
               </div>
             </div>
@@ -310,12 +309,9 @@ export default async function CampsPage() {
                   When and where
                 </h2>
               </div>
-              <div className="font-heading text-xs uppercase tracking-[0.35em] text-primary/55">
-                Fixtures · page 6
-              </div>
             </div>
             <p className="mb-12 max-w-2xl text-muted-foreground leading-7">
-              Select a track to filter, or browse all upcoming camp blocks below. Places are limited to 8 per group.
+              Select a journey to filter, or browse all upcoming camp blocks below. Places are limited to 8 per group.
             </p>
           </FadeIn>
           <div>

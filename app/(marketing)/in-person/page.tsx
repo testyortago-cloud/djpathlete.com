@@ -390,7 +390,7 @@ export default function InPersonPage() {
 
               <div className="bg-white rounded-2xl border border-border p-6 sm:p-8">
                 <p className="text-lg text-muted-foreground leading-relaxed">
-                  With over 20 years of experience, a PhD in athletic performance, and a track record trusted by the
+                  With over 20 years of experience, a PhD in Exercise Science, and a track record trusted by the
                   world&apos;s best, this is not theoretical coaching. Every decision is informed by evidence, refined
                   by experience, and tested at the highest levels of sport. The difference is not just what we do — it
                   is the depth of understanding behind every choice.
