@@ -47,6 +47,9 @@ const SAME_AS = [
 const organizationSchema = {
   "@context": "https://schema.org",
   "@type": "Organization",
+  // @id matches the worksFor target shape used by other schemas — keeping the
+  // organization entity addressable for cross-schema references.
+  "@id": "https://www.darrenjpaul.com/#organization",
   name: BUSINESS_INFO.brand,
   legalName: BUSINESS_INFO.legalName,
   url: "https://www.darrenjpaul.com",
@@ -55,7 +58,9 @@ const organizationSchema = {
     "DJP Athlete provides sports performance coaching by Darren J Paul. Elite athlete coaching, elite sports performance training, athletic performance coach services, and performance coaching for athletes — in-person training, online coaching, and return-to-performance assessment for serious athletes.",
   address: postalAddressSchema,
   areaServed: BUSINESS_INFO.serviceAreas.map((name) => ({ "@type": "Place", name })),
-  sameAs: SAME_AS,
+  // GBP URL included alongside the social profiles so the Organization entity
+  // also binds to the verified Google Business Profile in the knowledge graph.
+  sameAs: [...SAME_AS, GOOGLE_MAPS_URL],
 }
 
 // LocalBusiness — drives Google Business Profile / Map Pack visibility for local searches
@@ -388,10 +393,10 @@ export default async function HomePage() {
               <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
             </Link>
             <Link
-              href="/resources"
+              href="/blog"
               className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:text-accent transition-colors group"
             >
-              Browse Resources
+              Read the journal
               <ChevronRight className="size-4 transition-transform group-hover:translate-x-0.5" />
             </Link>
           </div>

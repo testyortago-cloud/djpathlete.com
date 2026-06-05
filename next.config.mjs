@@ -65,6 +65,30 @@ const nextConfig = {
         destination: "/athletes",
         permanent: true,
       },
+      // Resources retired — the topics that lived here are being distributed
+      // across other pages. 301 to /blog so any external links + indexed URLs
+      // keep their link equity and stay deep-linked into editorial content.
+      {
+        source: "/resources",
+        destination: "/blog",
+        permanent: true,
+      },
+      {
+        source: "/resources/:path*",
+        destination: "/blog",
+        permanent: true,
+      },
+      // Apex host canonicalisation. The site canonical is the www host
+      // (SITE_URL in lib/constants.ts); a permanent redirect from the apex
+      // collapses every duplicate-content signal onto the www variant. Vercel
+      // may also enforce this at the domain layer when www is set as primary
+      // — this redirect is idempotent with that and survives reconfiguration.
+      {
+        source: "/:path*",
+        has: [{ type: "host", value: "darrenjpaul.com" }],
+        destination: "https://www.darrenjpaul.com/:path*",
+        permanent: true,
+      },
     ]
   },
   async headers() {

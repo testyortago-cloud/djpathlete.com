@@ -12,7 +12,7 @@
 // visible page content. Fields marked TODO are blocked on owner data — leave
 // them out of the schema until verified.
 
-import { BUSINESS_INFO, postalAddressSchema } from "@/lib/business-info"
+import { BUSINESS_INFO, GOOGLE_MAPS_URL, postalAddressSchema } from "@/lib/business-info"
 
 export const DJP_AUTHOR_ID = "https://www.darrenjpaul.com/about#person"
 
@@ -30,6 +30,10 @@ export const DJP_SAME_AS = [
   "https://www.instagram.com/darrenjpaul/",
   "https://www.tiktok.com/@darrenpaul_coach",
   "https://www.facebook.com/share/1BwzDFUg66/?mibextid=wwXIfr",
+  // GBP listing — binds the Person entity to the Google Business Profile so
+  // Google's knowledge graph resolves "Darren J Paul" to the verified
+  // local-business listing, not a confused duplicate or de Paul / YORTAGO.
+  GOOGLE_MAPS_URL,
 ] as const
 
 /**
@@ -185,9 +189,12 @@ export const DJP_PERSON_FULL = {
     "Darren J Paul, PhD is a sports performance coach and performance strategist based in Zephyrhills, Florida. Two decades inside high-performance environments, with 500+ athletes coached across 15+ sports and 3 continents — including WTA professionals and pro pickleball players. CSCS and NASM certified.",
   image: "https://www.darrenjpaul.com/images/professionalheadshot.jpg",
   url: "https://www.darrenjpaul.com/about",
+  // Bind to the LocalBusiness @id declared on the homepage so Google joins
+  // Person → LocalBusiness → GBP into a single verified entity. The earlier
+  // "#organization" reference was dangling — no schema declared that @id.
   worksFor: {
-    "@type": "Organization",
-    "@id": "https://www.darrenjpaul.com/#organization",
+    "@type": "SportsActivityLocation",
+    "@id": "https://www.darrenjpaul.com/#localbusiness",
     name: BUSINESS_INFO.legalName,
   },
   workLocation: {
