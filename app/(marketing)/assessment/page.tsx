@@ -132,8 +132,8 @@ const instruments: {
     metric: "kN · asymmetry %",
     description: "Ground reaction force, peak output, left/right balance under load.",
     image: {
-      src: "https://images.pexels.com/photos/5031975/pexels-photo-5031975.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750",
-      alt: "Athlete producing force under load — placeholder image for force-platform testing",
+      src: "/images/assessment/force-platform.webp",
+      alt: "Athlete performing a counter-movement jump on a force platform during return-to-performance assessment",
     },
   },
   {
