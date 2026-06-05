@@ -4,6 +4,7 @@ import { ArrowRight, Dumbbell, Activity, Target, Zap, Brain, BarChart3 } from "l
 import { JsonLd } from "@/components/shared/JsonLd"
 import { FadeIn } from "@/components/shared/FadeIn"
 import { InquiryForm } from "@/components/public/InquiryForm"
+import { LocalVideoBackground } from "@/components/public/LocalVideoBackground"
 import { ManagedFaqSection } from "@/components/public/ManagedFaqSection"
 import { SemanticAnswerBlock } from "@/components/public/SemanticAnswerBlock"
 import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
@@ -172,7 +173,12 @@ export default function AssessmentPage() {
 
       {/* ===================== HERO · CLINICAL BLUEPRINT ===================== */}
       <section className="relative overflow-hidden bg-surface text-primary">
-        <div className="relative mx-auto max-w-7xl px-4 md:px-6 pt-20 md:pt-28 pb-20 md:pb-28">
+        {/* Background video — placeholder using the clinics footage until a
+            dedicated assessment cut is supplied. A heavy bg-surface tint keeps
+            the existing dark-on-light copy readable while the video plays. */}
+        <LocalVideoBackground src="/videos/clinics-hero.mp4" />
+        <div className="absolute inset-0 bg-surface/85" />
+        <div className="relative z-10 mx-auto max-w-7xl px-4 md:px-6 pt-20 md:pt-28 pb-20 md:pb-28">
           <div className="max-w-2xl">
             <FadeIn>
               <div>
@@ -394,10 +400,6 @@ export default function AssessmentPage() {
                     <h3 className="mt-6 font-heading text-lg font-semibold tracking-tight text-primary">
                       {item.label}
                     </h3>
-                    <p className="mt-1 font-mono text-[11px] uppercase tracking-[0.25em] text-primary/55">
-                      {item.metric}
-                    </p>
-                    <p className="mt-5 text-sm leading-6 text-muted-foreground">{item.description}</p>
                   </div>
                 </FadeIn>
               )
