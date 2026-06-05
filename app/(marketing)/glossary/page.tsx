@@ -10,6 +10,9 @@ export const metadata: Metadata = {
   description:
     "Definitions of sports performance terms used at DJP Athlete: return-to-performance, capacity, readiness, autoregulation, force production, and more.",
   alternates: { canonical: "/glossary" },
+  // Removed from the footer per the boss's call to hide it from site nav,
+  // but kept fully indexable + in the sitemap so it can still earn organic
+  // traffic via Google. This is the "unlinked landing page" pattern.
   openGraph: {
     title: "Sports Performance Glossary | DJP Athlete",
     description:

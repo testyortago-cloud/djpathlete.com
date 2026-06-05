@@ -34,6 +34,7 @@ export type NavGroup = {
 
 export const NAV_ITEMS: NavGroup[] = [
   { label: "Home", href: "/" },
+  { label: "About", href: "/about" },
   {
     label: "Services",
     children: [
@@ -45,8 +46,6 @@ export const NAV_ITEMS: NavGroup[] = [
     ],
   },
   { label: "Athletes", href: "/athletes" },
-  { label: "About", href: "/about" },
-  { label: "Resources", href: "/resources" },
   { label: "Education", href: "/education" },
   { label: "Blog", href: "/blog" },
   { label: "Shop", href: "/shop" },
@@ -81,9 +80,7 @@ export const FOOTER_SECTIONS = [
     links: [
       { label: "Blog", href: "/blog" },
       { label: "FAQ", href: "/faq" },
-      { label: "Glossary", href: "/glossary" },
       { label: "Rotational Reboot", href: "/programs/rotational-reboot" },
-      { label: "Resource Library", href: "/resources" },
     ],
   },
   {
