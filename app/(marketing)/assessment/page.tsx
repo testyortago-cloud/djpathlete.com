@@ -174,10 +174,15 @@ export default function AssessmentPage() {
       {/* ===================== HERO · CLINICAL BLUEPRINT ===================== */}
       <section className="relative overflow-hidden bg-surface text-primary">
         {/* Background video — placeholder using the clinics footage until a
-            dedicated assessment cut is supplied. A heavy bg-surface tint keeps
-            the existing dark-on-light copy readable while the video plays. */}
+            dedicated assessment cut is supplied. The text column gets a
+            solid bg-surface wash so the existing dark-on-light copy is fully
+            readable; the right empty area fades to a transparent overlay so
+            the video is actually visible where it doesn't fight for space. */}
         <LocalVideoBackground src="/videos/clinics-hero.mp4" />
-        <div className="absolute inset-0 bg-surface/85" />
+        <div
+          aria-hidden
+          className="absolute inset-0 pointer-events-none bg-gradient-to-r from-surface via-surface to-surface/40"
+        />
         <div className="relative z-10 mx-auto max-w-7xl px-4 md:px-6 pt-20 md:pt-28 pb-20 md:pb-28">
           <div className="max-w-2xl">
             <FadeIn>
