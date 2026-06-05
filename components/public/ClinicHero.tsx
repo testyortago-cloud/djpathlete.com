@@ -2,6 +2,7 @@ import Link from "next/link"
 import { ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { FadeIn } from "@/components/shared/FadeIn"
+import { LocalVideoBackground } from "@/components/public/LocalVideoBackground"
 
 const SPEC = [
   { value: "02", unit: "hrs", label: "Session" },
@@ -17,6 +18,10 @@ const SPEC = [
 export function ClinicHero() {
   return (
     <section className="relative overflow-hidden bg-primary text-primary-foreground">
+      {/* Local MP4 video background — mirrors the in-person hero pattern */}
+      <LocalVideoBackground src="/videos/clinics-hero.mp4" />
+      {/* Dark overlay for text readability over moving footage */}
+      <div className="absolute inset-0 bg-primary/70" />
       {/* Bottom vignette — pure black alpha (neutral darken, no hue) */}
       <div
         aria-hidden
@@ -28,7 +33,7 @@ export function ClinicHero() {
       />
 
       {/* Foreground content */}
-      <div className="relative mx-auto max-w-7xl px-4 pt-28 pb-20 md:px-6 md:pt-36 md:pb-28">
+      <div className="relative z-10 mx-auto max-w-7xl px-4 pt-28 pb-20 md:px-6 md:pt-36 md:pb-28">
         <FadeIn>
           <div className="max-w-3xl">
             <div className="inline-flex items-center gap-3 rounded-full bg-primary-foreground/10 border border-primary-foreground/20 backdrop-blur-sm px-4 py-1.5 text-[11px] uppercase tracking-[0.25em]">
