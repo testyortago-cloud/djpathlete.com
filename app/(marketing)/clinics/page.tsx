@@ -85,7 +85,7 @@ const ACTIONS: ActionCard[] = [
     cue: "brake · load · hold",
     body: "Learning to brake with control so the next action is cleaner, quicker, and more usable.",
     image: {
-      src: "/images/clinics/decel.png",
+      src: "/images/clinics/decel.webp",
       alt: "Athlete dropping into a controlled brake — the eccentric load of deceleration",
     },
   },
@@ -95,7 +95,7 @@ const ACTIONS: ActionCard[] = [
     cue: "plant · redirect",
     body: "Sharper repositioning, better angles, and more efficient redirection under pressure.",
     image: {
-      src: "/images/clinics/cod.png",
+      src: "/images/clinics/cod.webp",
       alt: "Athlete cutting between cones — change-of-direction training",
     },
   },
@@ -225,7 +225,6 @@ export default async function ClinicsPage() {
                       fill
                       sizes="(min-width: 1280px) 22vw, (min-width: 768px) 45vw, 90vw"
                       className="object-cover"
-                      unoptimized
                     />
                   </div>
                   <div className="px-5 pb-6 pt-2">

@@ -212,7 +212,10 @@ export default function AssessmentPage() {
           contrast, white-on-dark copy. The video is a placeholder using the
           clinics footage until a dedicated assessment cut is supplied. */}
       <section className="relative overflow-hidden bg-primary text-primary-foreground">
-        <LocalVideoBackground src="/videos/clinics-hero.mp4" />
+        <LocalVideoBackground
+          src="/videos/clinics-hero.mp4"
+          poster="/videos/clinics-hero-poster.jpg"
+        />
         <div className="absolute inset-0 bg-primary/70" />
         <div className="relative z-10 mx-auto max-w-7xl px-4 md:px-6 pt-20 md:pt-28 pb-20 md:pb-28">
           <div className="max-w-2xl">

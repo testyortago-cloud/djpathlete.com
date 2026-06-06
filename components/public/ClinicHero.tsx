@@ -19,7 +19,10 @@ export function ClinicHero() {
   return (
     <section className="relative overflow-hidden bg-primary text-primary-foreground">
       {/* Local MP4 video background — mirrors the in-person hero pattern */}
-      <LocalVideoBackground src="/videos/clinics-hero.mp4" />
+      <LocalVideoBackground
+        src="/videos/clinics-hero.mp4"
+        poster="/videos/clinics-hero-poster.jpg"
+      />
       {/* Dark overlay for text readability over moving footage */}
       <div className="absolute inset-0 bg-primary/70" />
       {/* Bottom vignette — pure black alpha (neutral darken, no hue) */}

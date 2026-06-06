@@ -127,7 +127,10 @@ export default function InPersonPage() {
       {/* Hero — Video Background */}
       <section className="relative min-h-[70vh] flex items-center justify-center bg-primary overflow-hidden">
         {/* Local MP4 video background — deferred load + fade-in */}
-        <LocalVideoBackground src="/videos/inperson-hero.mp4" />
+        <LocalVideoBackground
+          src="/videos/inperson-hero.mp4"
+          poster="/videos/inperson-hero-poster.jpg"
+        />
         {/* Dark overlay for text readability */}
         <div className="absolute inset-0 bg-primary/70" />
 
