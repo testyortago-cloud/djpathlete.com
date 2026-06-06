@@ -3,12 +3,63 @@ import Link from "next/link"
 import { auth } from "@/lib/auth"
 import { getGscProperty } from "@/lib/db/gsc-properties"
 import { getSetting } from "@/lib/db/system-settings"
-import { getGscStats, getRecentTopRows } from "@/lib/db/gsc-query-daily"
+import {
+  getGscStats,
+  getRecentTopRows,
+  getClickedRows,
+  type RecentGscRow,
+} from "@/lib/db/gsc-query-daily"
 import { Button } from "@/components/ui/button"
 
 export const dynamic = "force-dynamic"
 
 const WARM_UP_TARGET = 28
+
+function GscRowsTable({
+  rows,
+  highlightClicks = false,
+}: {
+  rows: RecentGscRow[]
+  highlightClicks?: boolean
+}) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead className="text-left text-xs uppercase text-muted-foreground">
+          <tr>
+            <th className="pb-2 pr-3">Date</th>
+            <th className="pb-2 pr-3">Query</th>
+            <th className="pb-2 pr-3">Page</th>
+            <th className="pb-2 pr-3 text-right">Impr.</th>
+            <th className="pb-2 pr-3 text-right">Clicks</th>
+            <th className="pb-2 text-right">Position</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {rows.map((r, i) => (
+            <tr key={i}>
+              <td className="py-2 pr-3 font-mono text-xs">{r.date}</td>
+              <td className="py-2 pr-3">{r.query}</td>
+              <td className="py-2 pr-3 text-xs text-muted-foreground truncate max-w-[200px]">
+                {r.page.replace(/^https?:\/\/[^/]+/, "")}
+              </td>
+              <td className="py-2 pr-3 text-right">{r.impressions}</td>
+              <td
+                className={
+                  "py-2 pr-3 text-right" +
+                  (highlightClicks && r.clicks > 0 ? " font-medium text-primary" : "")
+                }
+              >
+                {r.clicks}
+              </td>
+              <td className="py-2 text-right font-mono">{Number(r.position).toFixed(1)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
 
 function formatRelative(iso: string | null): string {
   if (!iso) return "never"
@@ -39,11 +90,19 @@ export default async function GscIntegrationPage({
   ])
 
   // Don't fetch stats unless connected.
-  const [stats, recentRows] = property
-    ? await Promise.all([getGscStats(), getRecentTopRows(10)])
+  const [stats, recentRows, clickedRows] = property
+    ? await Promise.all([getGscStats(), getRecentTopRows(10), getClickedRows(10)])
     : [
-        { totalRows: 0, distinctDates: 0, latestDateWithData: null, lastIngestAt: null },
-        [],
+        {
+          totalRows: 0,
+          totalClicks: 0,
+          totalImpressions: 0,
+          distinctDates: 0,
+          latestDateWithData: null,
+          lastIngestAt: null,
+        },
+        [] as RecentGscRow[],
+        [] as RecentGscRow[],
       ]
 
   const warmUpPct = Math.min(100, Math.round((stats.distinctDates / WARM_UP_TARGET) * 100))
@@ -82,7 +141,17 @@ export default async function GscIntegrationPage({
               <div className="font-mono">{property.site_url}</div>
             </div>
 
-            <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+              <div>
+                <dt className="text-xs uppercase text-muted-foreground">Total impressions</dt>
+                <dd className="text-xl font-medium">
+                  {stats.totalImpressions.toLocaleString()}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs uppercase text-muted-foreground">Total clicks</dt>
+                <dd className="text-xl font-medium">{stats.totalClicks.toLocaleString()}</dd>
+              </div>
               <div>
                 <dt className="text-xs uppercase text-muted-foreground">Total rows</dt>
                 <dd className="text-xl font-medium">{stats.totalRows.toLocaleString()}</dd>
@@ -132,39 +201,23 @@ export default async function GscIntegrationPage({
         )}
       </section>
 
+      {property && clickedRows.length > 0 && (
+        <section className="rounded-md border bg-white p-4">
+          <h2 className="font-heading text-lg text-primary mb-1">Clicked queries</h2>
+          <p className="text-xs text-muted-foreground mb-3">
+            Every query that earned a click. Clicks usually land on low-impression,
+            long-tail terms, so they rarely appear in the impressions-ranked list below.
+          </p>
+          <GscRowsTable rows={clickedRows} highlightClicks />
+        </section>
+      )}
+
       {property && recentRows.length > 0 && (
         <section className="rounded-md border bg-white p-4">
           <h2 className="font-heading text-lg text-primary mb-3">
             Recent rows (top {recentRows.length} by impressions)
           </h2>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-left text-xs uppercase text-muted-foreground">
-                <tr>
-                  <th className="pb-2 pr-3">Date</th>
-                  <th className="pb-2 pr-3">Query</th>
-                  <th className="pb-2 pr-3">Page</th>
-                  <th className="pb-2 pr-3 text-right">Impr.</th>
-                  <th className="pb-2 pr-3 text-right">Clicks</th>
-                  <th className="pb-2 text-right">Position</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {recentRows.map((r, i) => (
-                  <tr key={i}>
-                    <td className="py-2 pr-3 font-mono text-xs">{r.date}</td>
-                    <td className="py-2 pr-3">{r.query}</td>
-                    <td className="py-2 pr-3 text-xs text-muted-foreground truncate max-w-[200px]">
-                      {r.page.replace(/^https?:\/\/[^/]+/, "")}
-                    </td>
-                    <td className="py-2 pr-3 text-right">{r.impressions}</td>
-                    <td className="py-2 pr-3 text-right">{r.clicks}</td>
-                    <td className="py-2 text-right font-mono">{Number(r.position).toFixed(1)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <GscRowsTable rows={recentRows} />
         </section>
       )}
 

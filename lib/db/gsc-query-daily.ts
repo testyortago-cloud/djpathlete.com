@@ -51,6 +51,8 @@ export async function countRowsForDate(date: string): Promise<number> {
 
 export interface GscStats {
   totalRows: number
+  totalClicks: number
+  totalImpressions: number
   distinctDates: number
   latestDateWithData: string | null
   lastIngestAt: string | null
@@ -65,23 +67,36 @@ export async function getGscStats(): Promise<GscStats> {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("gsc_query_daily")
-    .select("date, ingested_at")
+    .select("date, ingested_at, clicks, impressions")
   if (error) throw error
-  type Row = { date: string; ingested_at: string }
+  type Row = { date: string; ingested_at: string; clicks: number; impressions: number }
   const rows = (data as Row[] | null) ?? []
   if (rows.length === 0) {
-    return { totalRows: 0, distinctDates: 0, latestDateWithData: null, lastIngestAt: null }
+    return {
+      totalRows: 0,
+      totalClicks: 0,
+      totalImpressions: 0,
+      distinctDates: 0,
+      latestDateWithData: null,
+      lastIngestAt: null,
+    }
   }
   const dates = new Set<string>()
   let latestDate = rows[0].date
   let lastIngest = rows[0].ingested_at
+  let totalClicks = 0
+  let totalImpressions = 0
   for (const r of rows) {
     dates.add(r.date)
+    totalClicks += r.clicks
+    totalImpressions += r.impressions
     if (r.date > latestDate) latestDate = r.date
     if (r.ingested_at > lastIngest) lastIngest = r.ingested_at
   }
   return {
     totalRows: rows.length,
+    totalClicks,
+    totalImpressions,
     distinctDates: dates.size,
     latestDateWithData: latestDate,
     lastIngestAt: lastIngest,
@@ -107,6 +122,25 @@ export async function getRecentTopRows(limit = 10): Promise<RecentGscRow[]> {
     .select("date, query, page, impressions, clicks, position")
     .order("date", { ascending: false })
     .order("impressions", { ascending: false })
+    .limit(limit)
+  if (error) throw error
+  return (data ?? []) as RecentGscRow[]
+}
+
+/**
+ * Rows that earned at least one click, most clicks first. Clicks land on
+ * low-impression long-tail queries that never surface in the impressions-ranked
+ * preview, so this gives them a dedicated view. Without it the admin page looks
+ * click-free even when clicks have been ingested.
+ */
+export async function getClickedRows(limit = 10): Promise<RecentGscRow[]> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("gsc_query_daily")
+    .select("date, query, page, impressions, clicks, position")
+    .gt("clicks", 0)
+    .order("clicks", { ascending: false })
+    .order("date", { ascending: false })
     .limit(limit)
   if (error) throw error
   return (data ?? []) as RecentGscRow[]
