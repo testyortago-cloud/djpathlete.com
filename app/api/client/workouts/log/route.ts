@@ -6,6 +6,7 @@ import { getExerciseById } from "@/lib/db/exercises"
 import { detectPRs, checkStreakMilestones, checkWorkoutMilestones } from "@/lib/pr-detection"
 import { createServiceRoleClient } from "@/lib/supabase"
 import { workoutLogSchema } from "@/lib/validators/workout-log"
+import { assertAssignmentPayable } from "@/lib/services/access-guard"
 import type { Achievement } from "@/types/database"
 
 export async function POST(request: Request) {
@@ -36,6 +37,14 @@ export async function POST(request: Request) {
       set_details,
       ai_next_weight_kg,
     } = parsed.data
+
+    // Payment access guard — block pending assignments before any mutation
+    if (assignment_id) {
+      const { ok } = await assertAssignmentPayable(assignment_id)
+      if (!ok) {
+        return NextResponse.json({ error: "Payment required to access this program." }, { status: 402 })
+      }
+    }
 
     // Log the workout progress
     const record = await logProgress({

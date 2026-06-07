@@ -5,6 +5,7 @@ import { getProgramById } from "@/lib/db/programs"
 import { getUserById } from "@/lib/db/users"
 import { sendCoachProgramCompletedNotification, sendReassessmentReminderEmail } from "@/lib/email"
 import { createNotification } from "@/lib/db/notifications"
+import { assertAssignmentPayable } from "@/lib/services/access-guard"
 import { z } from "zod"
 
 const completeWeekSchema = z.object({
@@ -35,6 +36,12 @@ export async function POST(request: Request) {
 
     if (assignment.status !== "active") {
       return NextResponse.json({ error: "Assignment is not active" }, { status: 400 })
+    }
+
+    // Payment access guard — block pending week advancement before any mutation
+    const { ok } = await assertAssignmentPayable(assignmentId, assignment.current_week)
+    if (!ok) {
+      return NextResponse.json({ error: "Payment required to advance this program." }, { status: 402 })
     }
 
     const result = await advanceWeek(assignmentId)
