@@ -136,29 +136,6 @@ async function createProgram(params: Record<string, unknown>) {
   return data
 }
 
-async function createAssignment(params: Record<string, unknown>) {
-  const supabase = getSupabase()
-  const { data, error } = await supabase.from("program_assignments").insert(params).select("id").single()
-  if (error) throw new Error(`Failed to create assignment: ${error.message}`)
-  return data as { id: string }
-}
-
-async function createWeekAccessRecords(assignmentId: string, totalWeeks: number) {
-  if (totalWeeks < 1) return
-  const supabase = getSupabase()
-  const rows = Array.from({ length: totalWeeks }, (_, i) => ({
-    assignment_id: assignmentId,
-    week_number: i + 1,
-    access_type: "included",
-    price_cents: null,
-    payment_status: "not_required",
-    stripe_session_id: null,
-    stripe_payment_id: null,
-  }))
-  const { error } = await supabase.from("program_week_access").insert(rows)
-  if (error) throw new Error(`Failed to create week access records: ${error.message}`)
-}
-
 async function createGenerationLog(params: Record<string, unknown>) {
   const supabase = getSupabase()
   const { data, error } = await supabase.from("ai_generation_log").insert(params).select().single()
@@ -952,27 +929,6 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     const exerciseRows = buildExerciseRows(assignment.assignments, slotLookup, slotDetailsLookup, program.id)
 
     await bulkAddExercisesToProgram(exerciseRows)
-
-    // Auto-assign
-    if (request.client_id) {
-      try {
-        const totalWeeks = program.duration_weeks ?? 1
-        const created = await createAssignment({
-          program_id: program.id,
-          user_id: request.client_id,
-          assigned_by: requestedBy,
-          start_date: new Date().toISOString().split("T")[0],
-          end_date: null,
-          status: "active",
-          notes: "Auto-assigned from AI program generation",
-          current_week: 1,
-          total_weeks: totalWeeks,
-        })
-        await createWeekAccessRecords(created.id, totalWeeks)
-      } catch (e) {
-        console.error("[orchestrator:sync] Failed to auto-assign:", e)
-      }
-    }
 
     // Update log
     const durationMs = Date.now() - startTime
