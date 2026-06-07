@@ -1,3 +1,7 @@
+# local-only handoff/journal docs (never commit)
+JOURNAL.md
+DEVLOG.md
+
 # dependencies
 node_modules/
 

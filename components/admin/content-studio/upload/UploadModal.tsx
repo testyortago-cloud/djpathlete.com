@@ -62,6 +62,8 @@ export function UploadModal() {
             </header>
             <div className="p-4">
               <VideoUploader
+                needsEditDefault={false}
+                showNeedsEditToggle={false}
                 onUploaded={() => {
                   setMode(null)
                   router.refresh()
