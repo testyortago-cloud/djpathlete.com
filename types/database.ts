@@ -452,6 +452,15 @@ export interface ProgramWeekAccess {
   updated_at: string
 }
 
+export interface ProgramWeekPricing {
+  id: string
+  program_id: string
+  week_number: number
+  price_cents: number
+  created_at: string
+  updated_at: string
+}
+
 export interface ExerciseProgress {
   id: string
   user_id: string
