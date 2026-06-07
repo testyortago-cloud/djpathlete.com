@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogTitle, DialogFooter } from "@/components/u
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Globe, Lock, CheckCircle2, ChevronRight, ChevronLeft, Gift, CreditCard, RefreshCw } from "lucide-react"
+import { CheckCircle2, ChevronRight, ChevronLeft } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
   programFormSchema,
@@ -17,10 +17,8 @@ import {
   PROGRAM_TIERS,
   SPLIT_TYPES,
   PERIODIZATION_TYPES,
-  BILLING_INTERVALS,
   type ProgramFormData,
 } from "@/lib/validators/program"
-import type { PaymentType } from "@/types/database"
 import { useFormTour } from "@/hooks/use-form-tour"
 import { FormTour } from "@/components/admin/FormTour"
 import { TourButton } from "@/components/admin/TourButton"
@@ -28,6 +26,7 @@ import { getProgramTourSteps } from "@/lib/tour-steps"
 import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
 import { humanizeFieldError, summarizeApiError, type FieldErrors } from "@/lib/errors/humanize"
 import type { Program } from "@/types/database"
+import { PricingAccessSheet } from "@/components/admin/PricingAccessSheet"
 
 interface ProgramFormDialogProps {
   open: boolean
@@ -96,21 +95,13 @@ const FIELD_LABELS: Record<string, string> = {
   tier: "Tier",
 }
 
-const BILLING_INTERVAL_LABELS: Record<string, string> = {
-  week: "Weekly",
-  month: "Monthly",
-}
-
 const selectClass =
   "flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
 
 const STEPS = [
   { label: "Info", number: 1 },
   { label: "Schedule", number: 2 },
-  { label: "Audience", number: 3 },
 ] as const
-
-type AudienceMode = "public" | "private"
 
 const stepVariants = {
   enter: (dir: number) => ({ x: dir > 0 ? 40 : -40, opacity: 0 }),
@@ -145,20 +136,10 @@ export function ProgramFormDialog({ open, onOpenChange, program }: ProgramFormDi
   const [periodization, setPeriodization] = useState(program?.periodization ?? "")
   const [durationWeeks, setDurationWeeks] = useState(program?.duration_weeks?.toString() ?? "")
   const [sessionsPerWeek, setSessionsPerWeek] = useState(program?.sessions_per_week?.toString() ?? "")
-  const [priceDollars, setPriceDollars] = useState(
-    program?.price_cents != null ? (program.price_cents / 100).toFixed(2) : "",
-  )
-  const [paymentType, setPaymentType] = useState<PaymentType>(program?.payment_type ?? "one_time")
-  const [billingInterval, setBillingInterval] = useState<string>(program?.billing_interval ?? "month")
-
-  // Audience state
-  const [audience, setAudience] = useState<AudienceMode>(() => {
-    if (program?.is_public) return "public"
-    return "private"
-  })
 
   // Post-save state
   const [savedProgramId, setSavedProgramId] = useState<string | null>(null)
+  const [createdProgram, setCreatedProgram] = useState<Program | null>(null)
 
   // Sync state when switching between create/edit
   useEffect(() => {
@@ -173,10 +154,6 @@ export function ProgramFormDialog({ open, onOpenChange, program }: ProgramFormDi
     setPeriodization(program?.periodization ?? "")
     setDurationWeeks(program?.duration_weeks?.toString() ?? "")
     setSessionsPerWeek(program?.sessions_per_week?.toString() ?? "")
-    setPriceDollars(program?.price_cents != null ? (program.price_cents / 100).toFixed(2) : "")
-    setPaymentType(program?.payment_type ?? "one_time")
-    setBillingInterval(program?.billing_interval ?? "month")
-    setAudience(program?.is_public ? "public" : "private")
     setStep(0)
     setDirection(1)
   }, [program])
@@ -213,17 +190,6 @@ export function ProgramFormDialog({ open, onOpenChange, program }: ProgramFormDi
         toast.error("Sessions per week must be at least 1")
         return false
       }
-      if (paymentType !== "free" && (!priceDollars || parseFloat(priceDollars) <= 0)) {
-        toast.error("Price is required for paid programs")
-        return false
-      }
-      if (paymentType === "subscription" && !billingInterval) {
-        toast.error("Billing interval is required for subscriptions")
-        return false
-      }
-    }
-    if (s === 2) {
-      // No additional validation needed — just public or private
     }
     return true
   }
@@ -235,7 +201,7 @@ export function ProgramFormDialog({ open, onOpenChange, program }: ProgramFormDi
   function handleNext() {
     if (!validateStep(step)) return
     setDirection(1)
-    setStep((s) => Math.min(s + 1, 2))
+    setStep((s) => Math.min(s + 1, 1))
     scrollToTop()
   }
 
@@ -271,12 +237,10 @@ export function ProgramFormDialog({ open, onOpenChange, program }: ProgramFormDi
   // ─── Submit ──────────────────────────────────────────────────────────────
 
   async function handleSubmit() {
-    if (!validateStep(2)) return
+    if (!validateStep(1)) return
     setErrors({})
     setFormError(null)
     setServerFieldErrors({})
-
-    const priceCents = priceDollars && priceDollars !== "" ? Math.round(parseFloat(priceDollars) * 100) : null
 
     const data = {
       name: name.trim(),
@@ -286,12 +250,12 @@ export function ProgramFormDialog({ open, onOpenChange, program }: ProgramFormDi
       tier: selectedTier,
       duration_weeks: durationWeeks,
       sessions_per_week: sessionsPerWeek,
-      payment_type: paymentType,
-      billing_interval: paymentType === "subscription" ? billingInterval : null,
-      price_cents: paymentType === "free" ? null : priceCents,
+      payment_type: isEditing ? (program.payment_type ?? "free") : "free",
+      billing_interval: isEditing ? (program.billing_interval ?? null) : null,
+      price_cents: isEditing ? (program.price_cents ?? null) : null,
       split_type: splitType || null,
       periodization: periodization || null,
-      is_public: audience === "public",
+      is_public: isEditing ? (program.is_public ?? false) : false,
     }
 
     const result = programFormSchema.safeParse(data)
@@ -337,8 +301,13 @@ export function ProgramFormDialog({ open, onOpenChange, program }: ProgramFormDi
 
       const responseData = await response.json()
       toast.success(isEditing ? "Program updated successfully" : "Program created successfully")
-      setSavedProgramId(isEditing ? program.id : responseData.id)
-      router.refresh()
+
+      if (isEditing) {
+        setSavedProgramId(program.id)
+        router.refresh()
+      } else {
+        setCreatedProgram(responseData as Program)
+      }
     } catch (err) {
       const message =
         err instanceof Error
@@ -356,6 +325,7 @@ export function ProgramFormDialog({ open, onOpenChange, program }: ProgramFormDi
   function handleDialogClose(o: boolean) {
     if (!o) {
       setSavedProgramId(null)
+      setCreatedProgram(null)
       setStep(0)
       setDirection(1)
       tour.close()
@@ -367,7 +337,23 @@ export function ProgramFormDialog({ open, onOpenChange, program }: ProgramFormDi
     handleDialogClose(false)
   }
 
-  // ─── Success view ───────────────────────────────────────────────────────
+  // ─── Create flow: hand off to PricingAccessSheet ─────────────────────────
+
+  if (createdProgram) {
+    return (
+      <PricingAccessSheet
+        open={open}
+        onOpenChange={handleDialogClose}
+        program={createdProgram}
+        onPublished={() => {
+          setCreatedProgram(null)
+          router.refresh()
+        }}
+      />
+    )
+  }
+
+  // ─── Success view (edit only) ────────────────────────────────────────────
 
   if (savedProgramId) {
     return (
@@ -378,13 +364,9 @@ export function ProgramFormDialog({ open, onOpenChange, program }: ProgramFormDi
               <CheckCircle2 className="size-7 text-success" />
             </div>
             <div className="text-center space-y-1">
-              <h3 className="font-heading font-semibold text-foreground">
-                {isEditing ? "Program Updated" : "Program Created"}
-              </h3>
+              <h3 className="font-heading font-semibold text-foreground">Program Updated</h3>
               <p className="text-sm text-muted-foreground">
-                {audience === "private"
-                  ? "Head to the program detail page to assign clients."
-                  : "The program is now live in the store."}
+                Head to the program detail page to assign clients.
               </p>
             </div>
           </div>
@@ -440,7 +422,7 @@ export function ProgramFormDialog({ open, onOpenChange, program }: ProgramFormDi
                         : "bg-muted-foreground/20 text-muted-foreground",
                   )}
                 >
-                  {idx < step ? "\u2713" : s.number}
+                  {idx < step ? "✓" : s.number}
                 </span>
                 {s.label}
               </button>
@@ -488,17 +470,10 @@ export function ProgramFormDialog({ open, onOpenChange, program }: ProgramFormDi
                   setDurationWeeks={setDurationWeeks}
                   sessionsPerWeek={sessionsPerWeek}
                   setSessionsPerWeek={setSessionsPerWeek}
-                  paymentType={paymentType}
-                  setPaymentType={setPaymentType}
-                  billingInterval={billingInterval}
-                  setBillingInterval={setBillingInterval}
-                  priceDollars={priceDollars}
-                  setPriceDollars={setPriceDollars}
                   errors={errors}
                   disabled={isSubmitting}
                 />
               )}
-              {step === 2 && <Step3Audience audience={audience} setAudience={setAudience} disabled={isSubmitting} />}
             </motion.div>
           </AnimatePresence>
         </div>
@@ -519,7 +494,7 @@ export function ProgramFormDialog({ open, onOpenChange, program }: ProgramFormDi
             </Button>
           )}
 
-          {step < 2 ? (
+          {step < 1 ? (
             <Button type="button" onClick={handleNext} disabled={isSubmitting}>
               Next
               <ChevronRight className="size-4" />
@@ -714,19 +689,13 @@ function Step1Info({
   )
 }
 
-// ─── Step 2: Schedule & Pricing ───────────────────────────────────────────────
+// ─── Step 2: Schedule ─────────────────────────────────────────────────────────
 
 function Step2Schedule({
   durationWeeks,
   setDurationWeeks,
   sessionsPerWeek,
   setSessionsPerWeek,
-  paymentType,
-  setPaymentType,
-  billingInterval,
-  setBillingInterval,
-  priceDollars,
-  setPriceDollars,
   errors,
   disabled,
 }: {
@@ -734,24 +703,12 @@ function Step2Schedule({
   setDurationWeeks: (v: string) => void
   sessionsPerWeek: string
   setSessionsPerWeek: (v: string) => void
-  paymentType: PaymentType
-  setPaymentType: (v: PaymentType) => void
-  billingInterval: string
-  setBillingInterval: (v: string) => void
-  priceDollars: string
-  setPriceDollars: (v: string) => void
   errors: Partial<Record<keyof ProgramFormData, string[]>>
   disabled: boolean
 }) {
-  const paymentOptions: { value: PaymentType; label: string; icon: React.ReactNode; desc: string }[] = [
-    { value: "free", label: "Free", icon: <Gift className="size-4" />, desc: "No payment required" },
-    { value: "one_time", label: "One-Time", icon: <CreditCard className="size-4" />, desc: "Single payment" },
-    { value: "subscription", label: "Subscription", icon: <RefreshCw className="size-4" />, desc: "Recurring billing" },
-  ]
-
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">Set up the program schedule and pricing.</p>
+      <p className="text-sm text-muted-foreground">Set up the program schedule.</p>
 
       {/* Duration & Sessions */}
       <div className="grid sm:grid-cols-2 gap-4">
@@ -781,156 +738,6 @@ function Step2Schedule({
           />
           {errors.sessions_per_week && <p className="text-xs text-destructive">{errors.sessions_per_week[0]}</p>}
         </div>
-      </div>
-
-      {/* Payment Type */}
-      <div className="space-y-2">
-        <Label>Payment Type *</Label>
-        <div id="payment-type-options" className="grid grid-cols-3 gap-2">
-          {paymentOptions.map((opt) => (
-            <button
-              key={opt.value}
-              type="button"
-              disabled={disabled}
-              onClick={() => {
-                setPaymentType(opt.value)
-                if (opt.value === "free") setPriceDollars("")
-              }}
-              className={cn(
-                "flex flex-col items-center gap-1.5 rounded-lg border-2 px-3 py-3 text-center transition-colors",
-                paymentType === opt.value
-                  ? "border-primary bg-primary/5"
-                  : "border-border hover:border-muted-foreground/30",
-              )}
-            >
-              <span className={cn(paymentType === opt.value ? "text-primary" : "text-muted-foreground")}>
-                {opt.icon}
-              </span>
-              <span
-                className={cn("text-xs font-medium", paymentType === opt.value ? "text-primary" : "text-foreground")}
-              >
-                {opt.label}
-              </span>
-              <span className="text-[10px] text-muted-foreground leading-tight">{opt.desc}</span>
-            </button>
-          ))}
-        </div>
-        {errors.payment_type && <p className="text-xs text-destructive">{errors.payment_type[0]}</p>}
-      </div>
-
-      {/* Price — hidden for free */}
-      {paymentType !== "free" && (
-        <div className="grid sm:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="price_dollars">
-              Price ($) *
-              {paymentType === "subscription" && billingInterval && (
-                <span className="text-muted-foreground font-normal">
-                  {" "}
-                  / {billingInterval === "month" ? "mo" : "wk"}
-                </span>
-              )}
-            </Label>
-            <Input
-              id="price_dollars"
-              type="number"
-              step="0.01"
-              min={0}
-              value={priceDollars}
-              onChange={(e) => setPriceDollars(e.target.value)}
-              placeholder="e.g. 99.99"
-              disabled={disabled}
-            />
-            {errors.price_cents && <p className="text-xs text-destructive">{errors.price_cents[0]}</p>}
-          </div>
-
-          {/* Billing Interval — only for subscription */}
-          {paymentType === "subscription" && (
-            <div className="space-y-2">
-              <Label htmlFor="billing_interval">Billing Interval *</Label>
-              <select
-                id="billing_interval"
-                value={billingInterval}
-                onChange={(e) => setBillingInterval(e.target.value)}
-                disabled={disabled}
-                className={selectClass}
-              >
-                {BILLING_INTERVALS.map((interval) => (
-                  <option key={interval} value={interval}>
-                    {BILLING_INTERVAL_LABELS[interval]}
-                  </option>
-                ))}
-              </select>
-              {errors.billing_interval && <p className="text-xs text-destructive">{errors.billing_interval[0]}</p>}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ─── Step 3: Audience ─────────────────────────────────────────────────────────
-
-function Step3Audience({
-  audience,
-  setAudience,
-  disabled,
-}: {
-  audience: AudienceMode
-  setAudience: (v: AudienceMode) => void
-  disabled: boolean
-}) {
-  return (
-    <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">Who should have access to this program?</p>
-
-      <div id="audience-options" className="grid gap-2">
-        {/* Public */}
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={() => setAudience("public")}
-          className={cn(
-            "flex items-start gap-3 rounded-lg border-2 px-4 py-3 text-left transition-colors",
-            audience === "public" ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/30",
-          )}
-        >
-          <Globe
-            className={cn("size-5 shrink-0 mt-0.5", audience === "public" ? "text-primary" : "text-muted-foreground")}
-          />
-          <div>
-            <p className={cn("text-sm font-medium", audience === "public" ? "text-primary" : "text-foreground")}>
-              Public
-            </p>
-            <p className="text-xs text-muted-foreground leading-snug">
-              Available in the store for any client to purchase
-            </p>
-          </div>
-        </button>
-
-        {/* Private */}
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={() => setAudience("private")}
-          className={cn(
-            "flex items-start gap-3 rounded-lg border-2 px-4 py-3 text-left transition-colors",
-            audience === "private" ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/30",
-          )}
-        >
-          <Lock
-            className={cn("size-5 shrink-0 mt-0.5", audience === "private" ? "text-primary" : "text-muted-foreground")}
-          />
-          <div>
-            <p className={cn("text-sm font-medium", audience === "private" ? "text-primary" : "text-foreground")}>
-              Private
-            </p>
-            <p className="text-xs text-muted-foreground leading-snug">
-              Only visible to assigned clients — assign them from the program detail page
-            </p>
-          </div>
-        </button>
       </div>
     </div>
   )
