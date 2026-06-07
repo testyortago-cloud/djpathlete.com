@@ -7,6 +7,7 @@ import { getExercises } from "@/lib/db/exercises"
 import { getClients } from "@/lib/db/users"
 import { getActiveAssignmentsForProgram, getFirstActiveAssignmentForProgram } from "@/lib/db/assignments"
 import { Badge } from "@/components/ui/badge"
+import { EditPricingAccessButton } from "@/components/admin/EditPricingAccessButton"
 import { ProgramHeader } from "@/components/admin/ProgramHeader"
 import { ProgramBuilder } from "@/components/admin/ProgramBuilder"
 import { ProgramFeedbackForm } from "@/components/admin/ProgramFeedbackForm"
@@ -61,13 +62,16 @@ export default async function ProgramBuilderPage({ params }: { params: Promise<{
 
   return (
     <div className="space-y-6">
-      <Link
-        href="/admin/programs"
-        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-      >
-        <ArrowLeft className="size-4" />
-        Back to Programs
-      </Link>
+      <div className="flex items-center justify-between">
+        <Link
+          href="/admin/programs"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ArrowLeft className="size-4" />
+          Back to Programs
+        </Link>
+        <EditPricingAccessButton program={program} />
+      </div>
 
       <ProgramHeader
         program={program}

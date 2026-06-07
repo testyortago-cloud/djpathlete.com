@@ -14,7 +14,6 @@ import {
   ArrowUp,
   Bot,
   User,
-  UserPlus,
   Search,
   Sparkles,
   Square,

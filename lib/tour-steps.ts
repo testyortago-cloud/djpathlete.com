@@ -184,7 +184,7 @@ export function getProgramTourSteps(goToStep: (step: number) => void): TourStep[
         "A summary of the program's goals and approach. Clients see this on the program overview page. Keep it motivating and informative.",
       beforeShow: () => goToStep(0),
     },
-    // Step 1: Schedule & Pricing
+    // Step 1: Schedule
     {
       target: "duration_weeks",
       title: "Duration (Weeks)",
@@ -198,21 +198,6 @@ export function getProgramTourSteps(goToStep: (step: number) => void): TourStep[
       description:
         "How many training days per week. This determines how many day slots appear in the program builder. Typical range: 2-6 depending on the client.",
       beforeShow: () => goToStep(1),
-    },
-    {
-      target: "price_dollars",
-      title: "Price",
-      description:
-        "How much to charge for this program (in dollars). Leave blank for free programs or programs you plan to assign directly.",
-      beforeShow: () => goToStep(1),
-    },
-    // Step 2: Audience
-    {
-      target: "audience-options",
-      title: "Audience",
-      description:
-        '"Sell to All Clients" = listed in the store for everyone. "Sell to One Client" = only one client sees it in their store. "Assign Directly (Free)" = not in the store, you assign it manually at no cost.',
-      beforeShow: () => goToStep(2),
     },
   ]
 }
