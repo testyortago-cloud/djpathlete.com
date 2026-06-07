@@ -24,11 +24,12 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { AssignProgramDialog } from "@/components/admin/AssignProgramDialog"
+import { PricingAccessSheet } from "@/components/admin/PricingAccessSheet"
 import {
   getOrCreateProgramChatSessionId,
   resetProgramChatSessionId,
 } from "@/lib/program-chat-session"
-import type { User as UserType } from "@/types/database"
+import type { User as UserType, Program } from "@/types/database"
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -281,7 +282,7 @@ function PipelineProgress({ steps }: { steps: PipelineStep[] }) {
   )
 }
 
-function ProgramResultCard({ event, onAssign }: { event: ToolEvent; onAssign: () => void }) {
+function ProgramResultCard({ event, onSetPricing }: { event: ToolEvent; onSetPricing: () => void }) {
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.97 }}
@@ -300,13 +301,12 @@ function ProgramResultCard({ event, onAssign }: { event: ToolEvent; onAssign: ()
         <p className="text-xs text-muted-foreground">Generated in {Math.round(event.durationMs / 1000)}s</p>
       )}
       <div className="flex items-center gap-2">
-        <Link href={`/admin/programs/${event.programId}`}>
-          <Button size="sm">View Program</Button>
-        </Link>
-        <Button size="sm" variant="outline" onClick={onAssign}>
-          <UserPlus className="size-3.5" />
-          Assign
+        <Button size="sm" onClick={onSetPricing}>
+          Set pricing &amp; access
         </Button>
+        <Link href={`/admin/programs/${event.programId}`}>
+          <Button size="sm" variant="outline">View program</Button>
+        </Link>
       </div>
     </motion.div>
   )
@@ -560,6 +560,9 @@ export function AiProgramChatDialog({ open, onOpenChange }: AiProgramChatDialogP
   // Assign dialog
   const [assignProgramId, setAssignProgramId] = useState<string | null>(null)
   const [clients, setClients] = useState<UserType[]>([])
+
+  // Pricing sheet
+  const [pricingProgram, setPricingProgram] = useState<Program | null>(null)
 
   const [currentJobId, setCurrentJobId] = useState<string | null>(null)
   const [pipelineSteps, setPipelineSteps] = useState<PipelineStep[]>([])
@@ -877,6 +880,23 @@ export function AiProgramChatDialog({ open, onOpenChange }: AiProgramChatDialogP
     }
   }, [])
 
+  // Load full program for pricing sheet
+  const openPricingForProgram = useCallback(
+    async (programId: string) => {
+      try {
+        const res = await fetch(`/api/admin/programs/${programId}`)
+        if (res.ok) {
+          setPricingProgram((await res.json()) as Program)
+        } else {
+          router.push(`/admin/programs/${programId}`)
+        }
+      } catch {
+        router.push(`/admin/programs/${programId}`)
+      }
+    },
+    [router],
+  )
+
   useEffect(() => {
     if (open && clients.length === 0) fetchClients()
   }, [open, clients.length, fetchClients])
@@ -1152,6 +1172,18 @@ export function AiProgramChatDialog({ open, onOpenChange }: AiProgramChatDialogP
     el.style.height = `${Math.min(el.scrollHeight, 200)}px`
   }
 
+  // ─── Helpers ────────────────────────────────────────────────────────────────
+
+  function latestClient(): { clientId: string; clientName?: string } | undefined {
+    for (let i = items.length - 1; i >= 0; i--) {
+      const it = items[i]
+      if (it.kind === "params" && it.data.client_id) {
+        return { clientId: it.data.client_id, clientName: it.data.client_name }
+      }
+    }
+    return undefined
+  }
+
   // ─── Assign dialog ──────────────────────────────────────────────────────
 
   if (assignProgramId) {
@@ -1172,6 +1204,7 @@ export function AiProgramChatDialog({ open, onOpenChange }: AiProgramChatDialogP
   // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
+    <>
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-2xl h-[80vh] max-h-[80vh] flex flex-col p-0 gap-0 overflow-hidden">
         {/* Header */}
@@ -1225,7 +1258,7 @@ export function AiProgramChatDialog({ open, onOpenChange }: AiProgramChatDialogP
                   <ProgramResultCard
                     key={evt.id}
                     event={evt}
-                    onAssign={() => evt.programId && setAssignProgramId(evt.programId)}
+                    onSetPricing={() => evt.programId && openPricingForProgram(evt.programId)}
                   />
                 )
               }
@@ -1305,5 +1338,19 @@ export function AiProgramChatDialog({ open, onOpenChange }: AiProgramChatDialogP
         </div>
       </DialogContent>
     </Dialog>
+
+    {pricingProgram && (
+      <PricingAccessSheet
+        open={!!pricingProgram}
+        onOpenChange={(o) => !o && setPricingProgram(null)}
+        program={pricingProgram}
+        assignTo={latestClient()}
+        onPublished={() => {
+          setPricingProgram(null)
+          router.refresh()
+        }}
+      />
+    )}
+  </>
   )
 }

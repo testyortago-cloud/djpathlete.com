@@ -4,6 +4,23 @@ import { updateProgram, deleteProgram, getProgramById } from "@/lib/db/programs"
 import { createStripeProductAndPrice, updateStripeProduct, archiveAndCreateNewPrice } from "@/lib/stripe"
 import { withAudit } from "@/lib/audit/with-audit"
 
+export const GET = withAudit(
+  {
+    action: "program.updated",
+    category: "admin_read_sensitive",
+    target: async (_req, ctx) => {
+      const { id } = (await ctx.params) as { id: string }
+      return { type: "program", id }
+    },
+  },
+  async (_request, context) => {
+    const { params } = context as unknown as { params: Promise<{ id: string }> }
+    const { id } = await params
+    const program = await getProgramById(id)
+    return NextResponse.json(program)
+  },
+)
+
 export const PATCH = withAudit(
   {
     action: "program.updated",
