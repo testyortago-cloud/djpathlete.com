@@ -38,9 +38,14 @@ export function PricingAccessSheet({
   const [saving, setSaving] = useState(false)
   const totalWeeks = program.duration_weeks ?? 1
 
-  // Load existing premium weeks; fall back to AI suggestions for a fresh program.
+  // Reset all fields + (re)load premium weeks whenever the sheet opens for a program.
   useEffect(() => {
     if (!open) return
+    setPaymentType(program.payment_type ?? "one_time")
+    setPriceDollars(program.price_cents != null ? (program.price_cents / 100).toFixed(2) : "")
+    setBillingInterval(program.billing_interval ?? "month")
+    setIsPublic(program.is_public ?? false)
+    setPremium({})
     let cancelled = false
     ;(async () => {
       try {
@@ -79,7 +84,8 @@ export function PricingAccessSheet({
 
   async function handlePublish() {
     // Validate entry price
-    if (paymentType !== "free" && (!priceDollars || parseFloat(priceDollars) <= 0)) {
+    const entryCents = Math.round(parseFloat(priceDollars) * 100)
+    if (paymentType !== "free" && (!Number.isFinite(entryCents) || entryCents <= 0)) {
       toast.error("Set an entry price (or choose Free).")
       return
     }
@@ -87,7 +93,7 @@ export function PricingAccessSheet({
     const premiumWeeks: { week_number: number; price_cents: number }[] = []
     for (const [week, price] of Object.entries(premium)) {
       const cents = Math.round(parseFloat(price) * 100)
-      if (!price || cents <= 0) {
+      if (!Number.isFinite(cents) || cents <= 0) {
         toast.error(`Set a price for premium week ${week}.`)
         return
       }
@@ -109,7 +115,7 @@ export function PricingAccessSheet({
         periodization: program.periodization,
         payment_type: paymentType,
         billing_interval: paymentType === "subscription" ? billingInterval : null,
-        price_cents: paymentType === "free" ? null : Math.round(parseFloat(priceDollars) * 100),
+        price_cents: paymentType === "free" ? null : entryCents,
         is_public: isPublic,
       }
       const patchRes = await fetch(`/api/admin/programs/${program.id}`, {
@@ -149,7 +155,10 @@ export function PricingAccessSheet({
   }
 
   const previewLine = (() => {
-    const entry = paymentType === "free" ? "Free to start" : `Pay $${priceDollars || "0"}`
+    const entry =
+      paymentType === "free"
+        ? "Free to start"
+        : `Pay $${priceDollars || "0"}${paymentType === "subscription" ? `/${billingInterval === "month" ? "mo" : "wk"}` : ""}`
     const premiumNums = Object.keys(premium).map(Number).sort((a, b) => a - b)
     const premiumPart = premiumNums.length ? ` Weeks ${premiumNums.join(", ")} are paid add-ons.` : ""
     return `${entry} → included weeks unlock.${premiumPart}`
