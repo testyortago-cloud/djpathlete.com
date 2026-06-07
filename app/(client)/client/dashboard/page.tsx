@@ -14,6 +14,7 @@ import { LayoutDashboard, Dumbbell, Activity, Flame, ClipboardList, AlertCircle,
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import Link from "next/link"
 import type { Program, ProgramAssignment } from "@/types/database"
+import { PendingPaymentCard } from "@/components/client/PendingPaymentCard"
 
 export const metadata = { title: "Dashboard | DJP Athlete" }
 
@@ -38,6 +39,7 @@ export default async function ClientDashboardPage() {
 
   let activeAssignments: AssignmentWithProgram[] = []
   let expiredAssignments: AssignmentWithProgram[] = []
+  let pendingPaymentAssignments: AssignmentWithProgram[] = []
   let totalWorkouts = 0
   let currentStreak = 0
   let hasCompletedQuestionnaire = false
@@ -57,6 +59,9 @@ export default async function ClientDashboardPage() {
     )
     expiredAssignments = typedAssignments.filter(
       (a) => a.status === "active" && a.payment_status !== "pending" && isAssignmentExpired(a.expires_at),
+    )
+    pendingPaymentAssignments = typedAssignments.filter(
+      (a) => a.status === "active" && a.payment_status === "pending" && !isAssignmentExpired(a.expires_at),
     )
     totalWorkouts = progress.length
     currentStreak = streak
@@ -151,6 +156,20 @@ export default async function ClientDashboardPage() {
           </div>
           <span className="text-sm font-medium text-primary shrink-0">Start &rarr;</span>
         </Link>
+      )}
+
+      {pendingPaymentAssignments.length > 0 && (
+        <div className="space-y-2 mb-6">
+          {pendingPaymentAssignments.map((a) => (
+            <PendingPaymentCard
+              key={a.id}
+              programId={a.program_id}
+              programName={a.programs?.name ?? "Your program"}
+              priceCents={a.programs?.price_cents ?? null}
+              isSubscription={a.programs?.payment_type === "subscription"}
+            />
+          ))}
+        </div>
       )}
 
       {/* Stats Row */}

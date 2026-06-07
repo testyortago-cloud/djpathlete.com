@@ -14,6 +14,7 @@ import type { WorkoutCalendarDay } from "@/components/client/WorkoutCalendar"
 import { Dumbbell } from "lucide-react"
 import { isAssignmentExpired } from "@/lib/utils"
 import { WaiverGate } from "@/components/client/WaiverGate"
+import { PendingPaymentCard } from "@/components/client/PendingPaymentCard"
 import type { Program, ProgramAssignment, Exercise, ProgramExercise, ProgramWeekAccess } from "@/types/database"
 
 export const dynamic = "force-dynamic"
@@ -76,12 +77,16 @@ export default async function ClientWorkoutsPage() {
   const userId = session.user.id
 
   let activeAssignments: AssignmentWithProgram[] = []
+  let pendingPaymentAssignments: AssignmentWithProgram[] = []
   let programExercises: { assignment: AssignmentWithProgram; exercises: ProgramExerciseWithExercise[] }[] = []
 
   try {
     const assignments = (await getAssignments(userId)) as AssignmentWithProgram[]
     activeAssignments = assignments.filter(
       (a) => a.status === "active" && a.payment_status !== "pending" && !isAssignmentExpired(a.expires_at),
+    )
+    pendingPaymentAssignments = assignments.filter(
+      (a) => a.status === "active" && a.payment_status === "pending" && !isAssignmentExpired(a.expires_at),
     )
 
     programExercises = await Promise.all(
@@ -317,6 +322,20 @@ export default async function ClientWorkoutsPage() {
           title="My Workouts"
           description="Your daily training plan. Follow your scheduled exercises, log your sets, and track weights for each session."
         />
+
+        {pendingPaymentAssignments.length > 0 && (
+          <div className="space-y-2 mb-6">
+            {pendingPaymentAssignments.map((a) => (
+              <PendingPaymentCard
+                key={a.id}
+                programId={a.program_id}
+                programName={a.programs?.name ?? "Your program"}
+                priceCents={a.programs?.price_cents ?? null}
+                isSubscription={a.programs?.payment_type === "subscription"}
+              />
+            ))}
+          </div>
+        )}
 
         {activeAssignments.length === 0 ? (
           <EmptyState
