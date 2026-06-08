@@ -340,6 +340,7 @@ export function ProgramFormDialog({ open, onOpenChange, program }: ProgramFormDi
   // ─── Create flow: hand off to PricingAccessSheet ─────────────────────────
 
   if (createdProgram) {
+    const newProgramId = createdProgram.id
     return (
       <PricingAccessSheet
         open={open}
@@ -347,7 +348,8 @@ export function ProgramFormDialog({ open, onOpenChange, program }: ProgramFormDi
         program={createdProgram}
         onPublished={() => {
           setCreatedProgram(null)
-          router.refresh()
+          // Land on the new program's page to build weeks and assign clients.
+          router.push(`/admin/programs/${newProgramId}`)
         }}
       />
     )
