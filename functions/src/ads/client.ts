@@ -5,6 +5,7 @@
 // registration time (see functions/src/index.ts).
 
 import { GoogleAdsApi, type Customer } from "google-ads-api"
+import { normalizeLoginCustomerId } from "./login-customer-id"
 
 interface GoogleAdsConfig {
   developer_token: string
@@ -37,7 +38,7 @@ export function getCustomerClient(
   customerId: string,
   refreshToken: string,
 ): Customer {
-  const loginCustomerId = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID
+  const loginCustomerId = normalizeLoginCustomerId(process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID)
   return getClient().Customer({
     customer_id: customerId,
     refresh_token: refreshToken,

@@ -19,6 +19,7 @@
 //   POST https://googleads.googleapis.com/v21/customers/{customer_id}/googleAds:mutate
 
 import { getPlatformConnection } from "@/lib/db/platform-connections"
+import { normalizeLoginCustomerId } from "./login-customer-id"
 import type { MutationOperation } from "./new-campaign-mutation"
 
 const GOOGLE_ADS_API_VERSION = "v21"
@@ -186,7 +187,7 @@ export async function mutateResourcesRest(
     "developer-token": developer_token,
     "content-type": "application/json",
   }
-  const loginCustomerId = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID
+  const loginCustomerId = normalizeLoginCustomerId(process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID)
   if (loginCustomerId) headers["login-customer-id"] = loginCustomerId
 
   const res = await fetch(url, {
@@ -245,10 +246,11 @@ export async function searchGoogleAdsRest(
     "developer-token": developer_token,
     "content-type": "application/json",
   }
-  const loginCustomerId =
+  const loginCustomerId = normalizeLoginCustomerId(
     options.loginCustomerIdOverride !== undefined
       ? options.loginCustomerIdOverride
-      : process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID
+      : process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID,
+  )
   if (loginCustomerId) headers["login-customer-id"] = loginCustomerId
 
   const res = await fetch(url, {

@@ -5,6 +5,7 @@
 
 import { GoogleAdsApi, type Customer } from "google-ads-api"
 import { getPlatformConnection } from "@/lib/db/platform-connections"
+import { normalizeLoginCustomerId } from "./login-customer-id"
 
 interface GoogleAdsConfig {
   developer_token: string
@@ -39,7 +40,7 @@ export async function getCustomerClient(customerId: string): Promise<Customer> {
   if (!refresh_token) {
     throw new Error("Google Ads not connected (no refresh_token in platform_connections)")
   }
-  const loginCustomerId = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID
+  const loginCustomerId = normalizeLoginCustomerId(process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID)
   return getClient().Customer({
     customer_id: customerId,
     refresh_token,
