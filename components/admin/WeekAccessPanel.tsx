@@ -3,8 +3,6 @@
 import { useState, useEffect, useCallback } from "react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import {
   Dialog,
@@ -14,7 +12,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
-import { Lock, Unlock, DollarSign, Gift, CheckCircle2, Clock, ChevronDown, ChevronUp, RefreshCw } from "lucide-react"
+import { Unlock, Gift, CheckCircle2, Clock, ChevronDown, ChevronUp, RefreshCw, Users } from "lucide-react"
 import type { ProgramWeekAccess } from "@/types/database"
 
 interface AssignmentInfo {
@@ -46,7 +44,6 @@ export function WeekAccessPanel({ programId, totalWeeks, clientNames }: WeekAcce
     clientName: string
     access: ProgramWeekAccess | null
   } | null>(null)
-  const [lockPrice, setLockPrice] = useState("")
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -74,10 +71,9 @@ export function WeekAccessPanel({ programId, totalWeeks, clientNames }: WeekAcce
   function openWeekModal(assignmentId: string, weekNumber: number, clientName: string) {
     const access = getAccessForWeek(assignmentId, weekNumber) ?? null
     setSelectedWeek({ assignmentId, weekNumber, clientName, access })
-    setLockPrice(access?.price_cents ? (access.price_cents / 100).toFixed(2) : "")
   }
 
-  async function handleAction(action: "grant_free" | "mark_paid" | "lock_week") {
+  async function handleAction(action: "grant_free" | "mark_paid") {
     if (!selectedWeek) return
     setActionLoading(true)
 
@@ -85,16 +81,6 @@ export function WeekAccessPanel({ programId, totalWeeks, clientNames }: WeekAcce
       assignmentId: selectedWeek.assignmentId,
       weekNumber: selectedWeek.weekNumber,
       action,
-    }
-
-    if (action === "lock_week") {
-      const priceCents = Math.round(parseFloat(lockPrice) * 100)
-      if (!priceCents || priceCents <= 0) {
-        toast.error("Enter a valid price")
-        setActionLoading(false)
-        return
-      }
-      body.price_cents = priceCents
     }
 
     try {
@@ -106,13 +92,11 @@ export function WeekAccessPanel({ programId, totalWeeks, clientNames }: WeekAcce
       if (!res.ok) throw new Error("Failed")
 
       const messages = {
-        grant_free: `Week ${selectedWeek.weekNumber} unlocked for ${selectedWeek.clientName}`,
+        grant_free: `Week ${selectedWeek.weekNumber} granted free for ${selectedWeek.clientName}`,
         mark_paid: `Week ${selectedWeek.weekNumber} marked as paid`,
-        lock_week: `Week ${selectedWeek.weekNumber} locked at $${lockPrice}`,
       }
       toast.success(messages[action])
       setSelectedWeek(null)
-      setLockPrice("")
       await fetchData()
     } catch {
       toast.error("Action failed")
@@ -123,18 +107,19 @@ export function WeekAccessPanel({ programId, totalWeeks, clientNames }: WeekAcce
 
   // Compute modal state helpers
   const modalAccess = selectedWeek?.access
-  const isFree =
-    !modalAccess || (modalAccess.access_type === "included" && modalAccess.payment_status === "not_required")
-  const isPending = modalAccess?.payment_status === "pending"
-  const isPaid = modalAccess?.payment_status === "paid"
+  const isIncluded = !modalAccess || modalAccess.access_type === "included"
+  const isPending = !isIncluded && modalAccess?.payment_status === "pending"
+  const isGranted =
+    !isIncluded && modalAccess?.access_type === "paid" && modalAccess?.payment_status === "not_required"
+  const isPaid = !isIncluded && modalAccess?.payment_status === "paid" && !isGranted
 
   if (assignments.length === 0 && !loading && expanded) {
     return (
       <div className="bg-white rounded-xl border border-border p-4 shadow-sm">
         <button onClick={() => setExpanded(!expanded)} className="flex items-center justify-between w-full text-left">
           <div className="flex items-center gap-2">
-            <Lock className="size-4 text-muted-foreground" />
-            <h3 className="text-sm font-heading font-semibold">Week Access Control</h3>
+            <Users className="size-4 text-muted-foreground" />
+            <h3 className="text-sm font-heading font-semibold">Client week access</h3>
           </div>
           {expanded ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
         </button>
@@ -151,8 +136,8 @@ export function WeekAccessPanel({ programId, totalWeeks, clientNames }: WeekAcce
     <div className="bg-white rounded-xl border border-border p-4 shadow-sm">
       <button onClick={() => setExpanded(!expanded)} className="flex items-center justify-between w-full text-left">
         <div className="flex items-center gap-2">
-          <Lock className="size-4 text-muted-foreground" />
-          <h3 className="text-sm font-heading font-semibold">Week Access Control</h3>
+          <Users className="size-4 text-muted-foreground" />
+          <h3 className="text-sm font-heading font-semibold">Client week access</h3>
           {assignments.length > 0 && (
             <Badge variant="outline" className="text-[10px]">
               {assignments.length} client{assignments.length !== 1 ? "s" : ""}
@@ -166,7 +151,8 @@ export function WeekAccessPanel({ programId, totalWeeks, clientNames }: WeekAcce
         <div className="mt-4 space-y-4">
           <div className="flex items-center justify-between">
             <p className="text-xs text-muted-foreground">
-              Click any week to manage access. Lock weeks to require payment before the client can view workouts.
+              Premium weeks are set in <strong>Pricing &amp; access</strong>. Here you can grant a client a premium
+              week for free, or mark one paid (cash/Venmo).
             </p>
             <Button variant="ghost" size="sm" onClick={fetchData} disabled={loading} className="shrink-0">
               <RefreshCw className={`size-3 ${loading ? "animate-spin" : ""}`} />
@@ -194,10 +180,14 @@ export function WeekAccessPanel({ programId, totalWeeks, clientNames }: WeekAcce
                     <div className="flex flex-wrap gap-1.5">
                       {Array.from({ length: totalWeeks }, (_, i) => i + 1).map((week) => {
                         const access = getAccessForWeek(assignment.id, week)
-                        const isAccessible =
-                          !access || access.payment_status === "not_required" || access.payment_status === "paid"
-                        const weekIsPending = access?.payment_status === "pending"
-                        const weekIsPaid = access?.payment_status === "paid" && access.access_type === "paid"
+                        const weekIsIncluded = !access || access.access_type === "included"
+                        const weekIsPending = !weekIsIncluded && access?.payment_status === "pending"
+                        const weekIsGranted =
+                          !weekIsIncluded &&
+                          access?.access_type === "paid" &&
+                          access?.payment_status === "not_required"
+                        const weekIsPaid =
+                          !weekIsIncluded && access?.payment_status === "paid" && !weekIsGranted
 
                         return (
                           <button
@@ -206,19 +196,19 @@ export function WeekAccessPanel({ programId, totalWeeks, clientNames }: WeekAcce
                             className={`flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs border transition-colors cursor-pointer ${
                               weekIsPending
                                 ? "border-warning/40 bg-warning/5 text-warning hover:bg-warning/10"
-                                : weekIsPaid
+                                : weekIsPaid || weekIsGranted
                                   ? "border-success/40 bg-success/5 text-success hover:bg-success/10"
-                                  : isAccessible
-                                    ? "border-border bg-background text-muted-foreground hover:border-primary/40 hover:bg-primary/5"
-                                    : "border-destructive/40 bg-destructive/5 text-destructive"
+                                  : "border-border bg-background text-muted-foreground hover:border-primary/40 hover:bg-primary/5"
                             }`}
                           >
                             {weekIsPending ? (
                               <Clock className="size-3" />
-                            ) : isAccessible ? (
-                              <Unlock className="size-3" />
+                            ) : weekIsPaid ? (
+                              <CheckCircle2 className="size-3" />
+                            ) : weekIsGranted ? (
+                              <Gift className="size-3" />
                             ) : (
-                              <Lock className="size-3" />
+                              <Unlock className="size-3" />
                             )}
                             W{week}
                             {access?.price_cents != null && access.price_cents > 0 && (
@@ -235,6 +225,9 @@ export function WeekAccessPanel({ programId, totalWeeks, clientNames }: WeekAcce
                       </span>
                       <span className="flex items-center gap-0.5">
                         <Clock className="size-2.5 text-warning" /> Pending
+                      </span>
+                      <span className="flex items-center gap-0.5">
+                        <Gift className="size-2.5 text-success" /> Granted
                       </span>
                       <span className="flex items-center gap-0.5">
                         <CheckCircle2 className="size-2.5 text-success" /> Paid
@@ -256,9 +249,10 @@ export function WeekAccessPanel({ programId, totalWeeks, clientNames }: WeekAcce
               Week {selectedWeek?.weekNumber} — {selectedWeek?.clientName}
             </DialogTitle>
             <DialogDescription>
-              {isFree && "This week is currently free. You can lock it and charge the client."}
+              {isIncluded && "Included with the program — free."}
               {isPending &&
-                `Awaiting payment${modalAccess?.price_cents ? ` ($${(modalAccess.price_cents / 100).toFixed(2)})` : ""}. You can grant free access or mark as paid.`}
+                `Awaiting payment${modalAccess?.price_cents ? ` ($${(modalAccess.price_cents / 100).toFixed(2)})` : ""}. Grant free access or mark as paid below.`}
+              {isGranted && "This week has been granted free for this client."}
               {isPaid && "This week has been paid for."}
             </DialogDescription>
           </DialogHeader>
@@ -267,15 +261,20 @@ export function WeekAccessPanel({ programId, totalWeeks, clientNames }: WeekAcce
             {/* Current status badge */}
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground">Status:</span>
-              {isFree && (
+              {isIncluded && (
                 <Badge variant="outline" className="gap-1">
-                  <Unlock className="size-3" /> Free / Unlocked
+                  <Unlock className="size-3" /> Included / Free
                 </Badge>
               )}
               {isPending && (
                 <Badge className="gap-1 bg-warning/10 text-warning border-warning/30" variant="outline">
                   <Clock className="size-3" /> Pending Payment
                   {modalAccess?.price_cents ? ` — $${(modalAccess.price_cents / 100).toFixed(2)}` : ""}
+                </Badge>
+              )}
+              {isGranted && (
+                <Badge className="gap-1 bg-success/10 text-success border-success/30" variant="outline">
+                  <Gift className="size-3" /> Granted Free
                 </Badge>
               )}
               {isPaid && (
@@ -285,41 +284,10 @@ export function WeekAccessPanel({ programId, totalWeeks, clientNames }: WeekAcce
               )}
             </div>
 
-            {/* Lock & Charge — only for free weeks */}
-            {isFree && (
-              <div className="border border-border rounded-lg p-3 space-y-3">
-                <div className="flex items-center gap-2 text-sm font-medium">
-                  <DollarSign className="size-4" />
-                  Lock & Charge
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="weekModalPrice" className="text-xs">
-                    Price (USD)
-                  </Label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
-                    <Input
-                      id="weekModalPrice"
-                      type="number"
-                      min="0.50"
-                      step="0.01"
-                      placeholder="25.00"
-                      value={lockPrice}
-                      onChange={(e) => setLockPrice(e.target.value)}
-                      className="pl-7 h-9"
-                    />
-                  </div>
-                </div>
-                <Button
-                  onClick={() => handleAction("lock_week")}
-                  disabled={actionLoading || !lockPrice || parseFloat(lockPrice) <= 0}
-                  size="sm"
-                  className="w-full"
-                >
-                  <Lock className="size-3 mr-1.5" />
-                  {actionLoading ? "Locking..." : "Lock Week"}
-                </Button>
-              </div>
+            {isIncluded && (
+              <p className="text-xs text-muted-foreground">
+                To make this a paid week for everyone, use <strong>Pricing &amp; access</strong>.
+              </p>
             )}
           </div>
 
@@ -333,11 +301,11 @@ export function WeekAccessPanel({ programId, totalWeeks, clientNames }: WeekAcce
                   className="w-full"
                 >
                   <Gift className="size-3 mr-1.5" />
-                  {actionLoading ? "..." : "Grant Free Access"}
+                  {actionLoading ? "..." : "Grant free access"}
                 </Button>
                 <Button onClick={() => handleAction("mark_paid")} disabled={actionLoading} className="w-full">
                   <CheckCircle2 className="size-3 mr-1.5" />
-                  {actionLoading ? "..." : "Mark as Paid (Cash/Venmo)"}
+                  {actionLoading ? "..." : "Mark as paid (cash/Venmo)"}
                 </Button>
               </>
             )}
