@@ -84,20 +84,22 @@ export async function POST(request: Request) {
     }
 
     if (action === "grant_free") {
-      // Create or update week access to be free
+      // Grant coach-free access: keep access_type="paid" and existing price_cents so resync
+      // recognises this as a preserved override (paid/not_required) and won't re-lock the week.
       const existing = await import("@/lib/db/week-access").then((m) => m.getWeekAccess(assignmentId, weekNumber))
       if (existing) {
         const updated = await updateWeekAccess(existing.id, {
-          access_type: "included",
+          access_type: "paid",
           payment_status: "not_required",
-          price_cents: null,
+          price_cents: existing.price_cents,
         })
         return NextResponse.json(updated)
       } else {
+        // No row yet (week was included by default) — create a preserved override
         const created = await createWeekAccess({
           assignment_id: assignmentId,
           week_number: weekNumber,
-          access_type: "included",
+          access_type: "paid",
           price_cents: null,
           payment_status: "not_required",
           stripe_session_id: null,
@@ -112,39 +114,12 @@ export async function POST(request: Request) {
       const existing = await import("@/lib/db/week-access").then((m) => m.getWeekAccess(assignmentId, weekNumber))
       if (existing) {
         const updated = await updateWeekAccess(existing.id, {
+          access_type: "paid",
           payment_status: "paid",
         })
         return NextResponse.json(updated)
       }
       return NextResponse.json({ error: "Week access record not found" }, { status: 404 })
-    }
-
-    if (action === "lock_week") {
-      const priceCents = body.price_cents
-      if (!priceCents || priceCents <= 0) {
-        return NextResponse.json({ error: "Price is required" }, { status: 400 })
-      }
-
-      const existing = await import("@/lib/db/week-access").then((m) => m.getWeekAccess(assignmentId, weekNumber))
-      if (existing) {
-        const updated = await updateWeekAccess(existing.id, {
-          access_type: "paid",
-          price_cents: priceCents,
-          payment_status: "pending",
-        })
-        return NextResponse.json(updated)
-      } else {
-        const created = await createWeekAccess({
-          assignment_id: assignmentId,
-          week_number: weekNumber,
-          access_type: "paid",
-          price_cents: priceCents,
-          payment_status: "pending",
-          stripe_session_id: null,
-          stripe_payment_id: null,
-        })
-        return NextResponse.json(created, { status: 201 })
-      }
     }
 
     return NextResponse.json({ error: "Invalid action" }, { status: 400 })

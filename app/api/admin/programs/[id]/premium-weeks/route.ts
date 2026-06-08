@@ -3,6 +3,7 @@ import { premiumWeeksSchema } from "@/lib/validators/premium-weeks"
 import { getPremiumWeeks, setPremiumWeeks } from "@/lib/db/program-week-pricing"
 import { getProgramById } from "@/lib/db/programs"
 import { withAudit } from "@/lib/audit/with-audit"
+import { resyncProgramWeekAccess } from "@/lib/services/assign-program"
 
 export const GET = withAudit(
   {
@@ -51,6 +52,7 @@ export const PUT = withAudit(
         )
       }
       const weeks = await setPremiumWeeks(id, result.data.weeks)
+      await resyncProgramWeekAccess(id)
       return NextResponse.json({ weeks })
     } catch {
       return NextResponse.json({ error: "Failed to save premium weeks." }, { status: 500 })

@@ -6,8 +6,13 @@ import type {
 } from "@/types/database"
 import { getProgramById } from "@/lib/db/programs"
 import { getPremiumWeeks } from "@/lib/db/program-week-pricing"
-import { createAssignment, getAssignmentByUserAndProgram } from "@/lib/db/assignments"
-import { createWeekAccessBulk } from "@/lib/db/week-access"
+import { createAssignment, getAssignmentByUserAndProgram, getActiveAssignmentsForProgram } from "@/lib/db/assignments"
+import {
+  createWeekAccessBulk,
+  getWeekAccessByAssignment,
+  createWeekAccess,
+  updateWeekAccessByAssignmentAndWeek,
+} from "@/lib/db/week-access"
 import { getUserById } from "@/lib/db/users"
 import { sendProgramReadyEmail } from "@/lib/email"
 
@@ -54,6 +59,72 @@ export function buildWeekAccessRows(
       stripe_payment_id: null,
     }
   })
+}
+
+type WeekAccessShape = Pick<ProgramWeekAccess, "access_type" | "payment_status" | "price_cents">
+
+/**
+ * Given a client's current week-access row (or null) and the program template's
+ * price for that week (null = not premium), return the target row fields — or
+ * "preserve" when the row is a per-client override/purchase that resync must not touch.
+ */
+export function resolveWeekResync(
+  current: WeekAccessShape | null,
+  premiumPriceCents: number | null,
+): "preserve" | { access_type: "paid" | "included"; payment_status: "pending" | "not_required"; price_cents: number | null } {
+  if (
+    current &&
+    current.access_type === "paid" &&
+    (current.payment_status === "paid" || current.payment_status === "not_required")
+  ) {
+    return "preserve"
+  }
+  if (premiumPriceCents != null) {
+    return { access_type: "paid", payment_status: "pending", price_cents: premiumPriceCents }
+  }
+  return { access_type: "included", payment_status: "not_required", price_cents: null }
+}
+
+/**
+ * Bring all active clients' per-week access into line with the program template.
+ * Preserves per-client overrides (purchased or coach-granted weeks).
+ */
+export async function resyncProgramWeekAccess(programId: string): Promise<void> {
+  const program = await getProgramById(programId)
+  const totalWeeks = program.duration_weeks ?? 1
+  const premiumWeeks = await getPremiumWeeks(programId)
+  const priceByWeek = new Map(premiumWeeks.map((w) => [w.week_number, w.price_cents]))
+  const assignments = await getActiveAssignmentsForProgram(programId)
+  for (const a of assignments) {
+    const rows = await getWeekAccessByAssignment(a.id)
+    const byWeek = new Map(rows.map((r) => [r.week_number, r]))
+    for (let week = 1; week <= totalWeeks; week++) {
+      const current = byWeek.get(week) ?? null
+      const target = resolveWeekResync(current, priceByWeek.get(week) ?? null)
+      if (target === "preserve") continue
+      if (!current) {
+        await createWeekAccess({
+          assignment_id: a.id,
+          week_number: week,
+          access_type: target.access_type,
+          price_cents: target.price_cents,
+          payment_status: target.payment_status,
+          stripe_session_id: null,
+          stripe_payment_id: null,
+        })
+      } else if (
+        current.access_type !== target.access_type ||
+        current.payment_status !== target.payment_status ||
+        (current.price_cents ?? null) !== target.price_cents
+      ) {
+        await updateWeekAccessByAssignmentAndWeek(a.id, week, {
+          access_type: target.access_type,
+          price_cents: target.price_cents,
+          payment_status: target.payment_status,
+        })
+      }
+    }
+  }
 }
 
 export interface AssignProgramInput {
