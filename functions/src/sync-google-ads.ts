@@ -165,7 +165,6 @@ export async function runSyncGoogleAds(
       const campaignRows = await customer.query(`
         SELECT campaign.id, campaign.name, campaign.advertising_channel_type,
                campaign.status, campaign.bidding_strategy_type,
-               campaign.start_date, campaign.end_date,
                campaign_budget.amount_micros
         FROM campaign
         WHERE campaign.status != 'REMOVED'
