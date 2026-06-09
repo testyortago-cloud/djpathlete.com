@@ -153,6 +153,7 @@ export async function runSyncGoogleAds(
 
   const accounts = await getActiveAccounts()
   const fromDate = isoDate(METRICS_LOOKBACK_DAYS)
+  const toDate = isoDate(0)
 
   for (const account of accounts) {
     try {
@@ -239,6 +240,7 @@ export async function runSyncGoogleAds(
                metrics.conversions, metrics.conversions_value
         FROM campaign
         WHERE segments.date >= '${fromDate}'
+          AND segments.date <= '${toDate}'
           AND campaign.status != 'REMOVED'
       `)
       const campaignMetrics = (campaignMetricsRows as unknown[]).map((row) =>
@@ -255,6 +257,7 @@ export async function runSyncGoogleAds(
                campaign.id, ad_group.id
         FROM search_term_view
         WHERE segments.date >= '${fromDate}'
+          AND segments.date <= '${toDate}'
       `)
       const searchTerms = (searchTermRows as unknown[]).map((row) =>
         transformSearchTermRow(row as never, account.customer_id),
