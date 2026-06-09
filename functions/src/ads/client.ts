@@ -5,7 +5,7 @@
 // registration time (see functions/src/index.ts).
 
 import { GoogleAdsApi, type Customer } from "google-ads-api"
-import { normalizeLoginCustomerId } from "./login-customer-id"
+import { normalizeLoginCustomerId } from "./login-customer-id.js"
 
 interface GoogleAdsConfig {
   developer_token: string
