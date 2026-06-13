@@ -77,6 +77,12 @@ const CURATED: Record<
     contextSummary:
       "The Rotational Reboot program — for athletes in rotational sports (tennis, golf, baseball, lacrosse).",
   },
+  "/step-up-for-students": {
+    label: "Step Up For Students",
+    supportsCategories: false,
+    contextSummary:
+      "The Step Up For Students page — DJP Athlete is an approved provider, so eligible Florida families can use FES-EO, FES-UA, FTC, or PEP scholarship funds for sports performance training, assessments, agility clinics, and camps in the Tampa Bay area.",
+  },
 }
 
 /**
@@ -88,6 +94,7 @@ const EXTRA_FAQ_ROUTES: readonly string[] = [
   "/services/online-vs-in-person",
   "/services/coaching-vs-training-app",
   "/programs/rotational-reboot",
+  "/step-up-for-students",
 ]
 
 /** Flatten NAV_ITEMS into a map of href -> nav label (top-level links + every child link). */

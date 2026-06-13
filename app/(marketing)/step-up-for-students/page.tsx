@@ -13,7 +13,6 @@ import {
   TrendingUp,
   RefreshCcw,
   Wallet,
-  CalendarDays,
   BadgeCheck,
   CheckCircle2,
   Phone,
@@ -22,8 +21,7 @@ import {
 import { JsonLd } from "@/components/shared/JsonLd"
 import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 import { FadeIn } from "@/components/shared/FadeIn"
-import { buildFaqPageSchema } from "@/lib/seo/build-faq-page-schema"
-import type { FaqEntry } from "@/types/database"
+import { ManagedFaqSection } from "@/components/public/ManagedFaqSection"
 import { StepUpInquiryForm } from "@/components/public/StepUpInquiryForm"
 
 export const metadata: Metadata = {
@@ -83,12 +81,6 @@ const sufsCards = [
     tag: "Physical Education",
     title: "Sports Training Is Covered",
     body: "Under Step Up's Physical Education (P.E.) category, scholarship funds can be used for sports lessons, training fees, and athletic equipment. Sports performance training, agility, and assessments all qualify.",
-  },
-  {
-    icon: CalendarDays,
-    tag: "Quarterly Disbursements",
-    title: "Funds Drop Four Times a Year",
-    body: "Funds are disbursed in August, November, February, and April. Packages are structured around these cycles so families can plan and pay ahead without stress.",
   },
   {
     icon: BadgeCheck,
@@ -296,59 +288,6 @@ const steps = [
   },
 ]
 
-const faqs: FaqEntry[] = [
-  {
-    question: "Does sports performance training actually qualify under Step Up For Students?",
-    answer:
-      "Yes. Under the Physical Education (P.E.) category in the Step Up For Students provider handbook, scholarship funds for FES-EO, FES-UA, FTC, and PEP students can be used for sports lessons, fees, or equipment. Sports performance training, athletic assessments, and agility all qualify. DJP Athlete is an approved provider.",
-  },
-  {
-    question: "Do I have to pay out of pocket and get reimbursed?",
-    answer:
-      "Not necessarily. As an approved provider with an EMA Marketplace account, DJP Athlete can receive direct payment from scholarship accounts — meaning eligible families can often pay nothing out of pocket. You approve the payment through your EMA portal after services are rendered. Reimbursement is also an option if you prefer.",
-  },
-  {
-    question: "My child holds an FES-UA scholarship. Are there extra benefits?",
-    answer:
-      "Yes. FES-UA students (those with a qualifying disability or active IEP) have the highest annual funding and the most flexible spending rules. Beyond standard PE/sports training, FES-UA families may qualify to use funds for Specialized Summer Programs, which can cover performance camps with pre-authorization. Contact us to discuss your situation.",
-  },
-  {
-    question: "My child is homeschooled on the PEP program. How does this work for PE credit?",
-    answer:
-      "PEP families are one of our most active segments. Your scholarship funds cover sports training as a Physical Education expense, and DJP Athlete can provide formal documentation of sessions, progressions, and outcomes for your homeschool portfolio or Student Learning Plan. Our Homeschool Athlete PE Program is built specifically around this need.",
-  },
-  {
-    question: "When are funds available? I don't want to start and then run out mid-program.",
-    answer:
-      "Step Up For Students disburses funds quarterly: approximately August, November, February, and April. We structure packages — especially the hybrid package and clinic blocks — to align with these dates. During your consultation we'll look at your balance and disbursement schedule and design a plan that works within your actual available funds.",
-  },
-  {
-    question: "Is online coaching covered by scholarship funds?",
-    answer:
-      "Online coaching is likely covered when it is structured as individualized athletic instruction — not just access to a video library. Our online program involves individualized programming, video analysis, and regular coach-athlete communication, which fits the structure of an eligible educational service. We recommend confirming with Step Up For Students directly if you want to be certain before booking, and we're happy to help with that conversation.",
-  },
-  {
-    question: "What areas do you serve for in-person training?",
-    answer:
-      "Our facility is at 6585 Simons Rd, Zephyrhills, FL 33541 — serving the greater Tampa Bay area including Wesley Chapel, Lutz, Land O' Lakes, New Tampa, Trinity, Odessa, and surrounding communities. Online coaching is available to scholarship families anywhere in Florida.",
-  },
-  {
-    question: "I'm not sure my child's scholarship covers this. What should I do?",
-    answer:
-      "The easiest step is to contact us first. Book a free consultation, tell us your child's scholarship type, and we'll walk you through what's covered before anything is booked or billed. You can also verify directly with Step Up For Students at (877) 735-7837 or through your EMA account portal.",
-  },
-]
-
-const faqSchema = buildFaqPageSchema(faqs)
-
-// Speakable schema for voice assistants / AI overviews — targets the FAQ
-// question/answer hooks (mirrors ManagedFaqSection's pattern).
-const faqSpeakable = {
-  "@context": "https://schema.org",
-  "@type": "WebPage",
-  speakable: { "@type": "SpeakableSpecification", cssSelector: [".faq-q", ".faq-a"] },
-}
-
 const eyebrowLeft = (label: string) => (
   <div className="flex items-center gap-3 mb-4">
     <div className="h-px w-8 bg-accent" />
@@ -360,8 +299,6 @@ export default function StepUpForStudentsPage() {
   return (
     <>
       <JsonLd data={serviceSchema} />
-      {faqSchema && <JsonLd data={faqSchema} />}
-      {faqSchema && <JsonLd data={faqSpeakable} />}
       <BreadcrumbSchema
         items={[
           { name: "Home", url: "/" },
@@ -442,7 +379,7 @@ export default function StepUpForStudentsPage() {
             </p>
           </FadeIn>
 
-          <div className="mt-12 grid sm:grid-cols-2 gap-5">
+          <div className="mt-12 grid gap-5 md:grid-cols-3">
             {sufsCards.map((card, i) => {
               const Icon = card.icon
               return (
@@ -699,31 +636,15 @@ export default function StepUpForStudentsPage() {
         </div>
       </section>
 
-      {/* FAQ */}
-      <section className="py-16 lg:py-24 px-4 sm:px-8">
-        <div className="max-w-3xl mx-auto">
-          <FadeIn>
-            {eyebrowLeft("FAQ")}
-            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-heading font-semibold text-primary tracking-tight">
-              Common Questions From Scholarship Families
-            </h2>
-          </FadeIn>
-
-          <div className="mt-10 space-y-3">
-            {faqs.map((faq) => (
-              <details key={faq.question} className="group rounded-2xl border border-border bg-white p-6 open:shadow-sm">
-                <summary className="faq-q flex cursor-pointer list-none items-center justify-between gap-4 font-heading text-base font-semibold text-primary sm:text-lg">
-                  {faq.question}
-                  <span className="text-accent text-xl font-light shrink-0 transition-transform group-open:rotate-45">
-                    +
-                  </span>
-                </summary>
-                <p className="faq-a mt-3 text-sm leading-7 text-muted-foreground sm:text-base">{faq.answer}</p>
-              </details>
-            ))}
-          </div>
-        </div>
-      </section>
+      {/* FAQ — CMS-managed. Edit at /admin/marketing/faqs → "Step Up For Students".
+          Renders nothing + emits FAQPage/speakable JSON-LD only when published
+          FAQs exist for this page key. */}
+      <ManagedFaqSection
+        pageKey="step-up-for-students"
+        variant="cards"
+        eyebrow="FAQ"
+        title="Common Questions From Scholarship Families"
+      />
 
       {/* Apply / Contact */}
       <section className="py-16 lg:py-24 px-4 sm:px-8 bg-surface" id="apply">
