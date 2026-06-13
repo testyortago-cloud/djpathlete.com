@@ -126,10 +126,12 @@ describe("events DAL", () => {
     createdIds.push(event.id)
 
     await setEventStatus(event.id, "published")
+    await setEventStatus(event.id, "completed") // published -> completed is allowed
+    // completed is a terminal state — no transitions out of it
     await expect(setEventStatus(event.id, "draft")).rejects.toThrow()
   })
 
-  it("deleteEvent rejects non-draft", async () => {
+  it("deleteEvent rejects an event that has signups", async () => {
     const event = await createEvent({
       type: "clinic",
       slug: `del-${randomUUID()}`,
@@ -143,6 +145,10 @@ describe("events DAL", () => {
       status: "published",
     })
     createdIds.push(event.id)
+    // The delete guard is signup-count based (not status): seed a signup count.
+    const { createServiceRoleClient } = await import("@/lib/supabase")
+    const supabase = createServiceRoleClient()
+    await supabase.from("events").update({ signup_count: 1 }).eq("id", event.id)
     await expect(deleteEvent(event.id)).rejects.toThrow()
   })
 

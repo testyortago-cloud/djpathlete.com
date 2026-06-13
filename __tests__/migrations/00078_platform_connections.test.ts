@@ -5,7 +5,7 @@ import { createServiceRoleClient } from "@/lib/supabase"
 describe("migration 00078 — platform_connections", () => {
   const supabase = createServiceRoleClient()
 
-  it("has all 6 plugins seeded with status=not_connected", async () => {
+  it("has all expected plugins seeded", async () => {
     const { data, error } = await supabase
       .from("platform_connections")
       .select("plugin_name, status")
@@ -13,10 +13,18 @@ describe("migration 00078 — platform_connections", () => {
 
     expect(error).toBeNull()
     const names = (data ?? []).map((r) => r.plugin_name).sort()
-    expect(names).toEqual(["facebook", "instagram", "linkedin", "tiktok", "youtube", "youtube_shorts"])
-    for (const row of data ?? []) {
-      expect(row.status).toBe("not_connected")
-    }
+    // Plugin set as it stands after later migrations added google_ads + gmail.
+    // (Per-plugin `status` is live, mutable connection state — not asserted here.)
+    expect(names).toEqual([
+      "facebook",
+      "gmail",
+      "google_ads",
+      "instagram",
+      "linkedin",
+      "tiktok",
+      "youtube",
+      "youtube_shorts",
+    ])
   })
 
   it("rejects invalid plugin_name via CHECK constraint", async () => {

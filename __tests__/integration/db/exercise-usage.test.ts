@@ -1,3 +1,6 @@
+// INTEGRATION TEST (opt-in via `npm run test:integration`; excluded from default `npm test`).
+// Requires a seeded DB: generated_exercise_usage.coach_id is FK→users, so the TEST_COACH /
+// TEST_CLIENT rows must exist. Run against a seeded local/test database, not production.
 import { describe, it, expect, beforeEach } from "vitest"
 import { recordProgramExerciseUsage, getCoachRecentUsage, getClientRecentUsage } from "@/lib/db/exercise-usage"
 import { createServiceRoleClient } from "@/lib/supabase"

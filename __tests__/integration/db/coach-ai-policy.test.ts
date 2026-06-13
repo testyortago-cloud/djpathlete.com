@@ -1,3 +1,6 @@
+// INTEGRATION TEST (opt-in via `npm run test:integration`; excluded from default `npm test`).
+// Requires a seeded DB: coach_ai_policy.coach_id is FK→users, so TEST_COACH must exist
+// as a real user row. Run against a seeded local/test database, not production.
 import { describe, it, expect, beforeEach } from "vitest"
 import { getCoachPolicy, upsertCoachPolicy } from "@/lib/db/coach-ai-policy"
 import { createServiceRoleClient } from "@/lib/supabase"
