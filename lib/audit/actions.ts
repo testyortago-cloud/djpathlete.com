@@ -195,6 +195,13 @@ export const AUDIT_ACTIONS = [
   { slug: "split_reel.render", category: "admin_write", description: "Split Reel render started" },
   { slug: "split_reel.regenerate", category: "admin_write", description: "Split Reel b-roll window regenerated" },
   { slug: "reel_editor.save", category: "admin_write", description: "Reel editor snapshot saved" },
+
+  // session packs (in-person credit tracking)
+  { slug: "pack.sold", category: "commerce", description: "Session pack sold to a client" },
+  { slug: "pack.checkin", category: "client_action", description: "Client checked in; credit deducted" },
+  { slug: "pack.checkin_voided", category: "client_action", description: "Check-in voided; credit restored" },
+  { slug: "pack.refunded", category: "commerce", description: "Session pack refunded" },
+  { slug: "pack.expired", category: "system", description: "Session pack expired" },
 ] as const satisfies readonly AuditActionDef[]
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number]["slug"]

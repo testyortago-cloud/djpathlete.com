@@ -2596,3 +2596,64 @@ export interface ClientEngagementSnapshot {
   reasons: string[]
   created_at: string
 }
+
+// ─── Session Packs (in-person credit tracking) ───────────────────────────────
+export type PackPaymentMethod = "stripe" | "cash" | "comp"
+export type PackPaymentStatus = "pending" | "paid" | "not_required" | "refunded"
+export type ClientPackageStatus = "active" | "depleted" | "expired" | "refunded" | "cancelled"
+export type CheckinMethod = "qr_self" | "coach_tap" | "manual"
+export type PackReminderThreshold = "low" | "empty" | "expiring"
+
+export interface SessionPackProduct {
+  id: string
+  name: string
+  session_type: string
+  credits: number
+  price_cents: number
+  validity_days: number | null
+  stripe_price_id: string | null
+  is_active: boolean
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
+export interface ClientPackage {
+  id: string
+  client_user_id: string
+  product_id: string | null
+  session_type: string
+  credits_total: number
+  credits_used: number
+  price_cents: number
+  payment_method: PackPaymentMethod
+  payment_status: PackPaymentStatus
+  stripe_session_id: string | null
+  stripe_payment_id: string | null
+  purchased_at: string
+  expires_at: string | null
+  status: ClientPackageStatus
+  last_reminded_threshold: PackReminderThreshold | null
+  notes: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface SessionCheckin {
+  id: string
+  client_package_id: string
+  client_user_id: string
+  checked_in_at: string
+  session_date: string
+  method: CheckinMethod
+  credit_delta: number
+  voided: boolean
+  voided_reason: string | null
+  voided_by: string | null
+  voided_at: string | null
+  calendar_event_id: string | null
+  created_by: string | null
+  notes: string | null
+  created_at: string
+}

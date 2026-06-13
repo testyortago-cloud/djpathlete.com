@@ -1,0 +1,46 @@
+import { z } from "zod"
+
+export const packProductSchema = z.object({
+  name: z.string().min(1),
+  sessionType: z.string().min(1),
+  credits: z.number().int().positive(),
+  priceCents: z.number().int().nonnegative(),
+  validityDays: z.number().int().positive().nullable().optional(),
+  stripePriceId: z.string().nullable().optional(),
+  isActive: z.boolean().optional(),
+  sortOrder: z.number().int().optional(),
+})
+
+const adhocPackSchema = z.object({
+  sessionType: z.string().min(1),
+  credits: z.number().int().positive(),
+  priceCents: z.number().int().nonnegative(),
+  validityDays: z.number().int().positive().nullable().optional(),
+})
+
+export const sellPackSchema = z
+  .object({
+    clientUserId: z.string().uuid(),
+    productId: z.string().uuid().optional(),
+    adhoc: adhocPackSchema.optional(),
+    paymentMethod: z.enum(["stripe", "cash", "comp"]),
+    returnUrl: z.string().optional(),
+    notes: z.string().optional(),
+  })
+  .refine((d) => !!d.productId || !!d.adhoc, { message: "Provide productId or adhoc pack" })
+
+export const checkinSchema = z.object({
+  clientUserId: z.string().uuid(),
+  token: z.string().min(1),
+  method: z.enum(["qr_self", "coach_tap", "manual"]).optional(),
+})
+
+export const voidCheckinSchema = z.object({
+  checkinId: z.string().uuid(),
+  reason: z.string().optional(),
+})
+
+export type SellPackInput = z.infer<typeof sellPackSchema>
+export type PackProductInput = z.infer<typeof packProductSchema>
+export type AdhocPackInput = z.infer<typeof adhocPackSchema>
+export type CheckinInput = z.infer<typeof checkinSchema>
