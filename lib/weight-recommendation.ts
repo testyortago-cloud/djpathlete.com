@@ -192,7 +192,7 @@ export function getWeightRecommendation(
 
     return {
       recommended_kg: null,
-      reasoning: "Start light, find your working weight",
+      reasoning: "",
       confidence: "none",
       estimated_1rm: null,
       last_weight_kg: null,
@@ -257,7 +257,7 @@ export function getWeightRecommendation(
   if (lastWeight == null) {
     return {
       recommended_kg: null,
-      reasoning: "Start light, find your working weight",
+      reasoning: "",
       confidence: "none",
       estimated_1rm: null,
       last_weight_kg: null,

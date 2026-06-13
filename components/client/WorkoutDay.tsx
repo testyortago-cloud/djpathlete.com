@@ -20,6 +20,7 @@ import {
   ListChecks,
   ChevronRight,
   Play,
+  Video,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -37,6 +38,9 @@ import { extractYouTubeId } from "@/lib/youtube"
 import type { Exercise, ExerciseCategory, ProgramExercise, TrainingTechnique } from "@/types/database"
 import type { WeightRecommendation } from "@/lib/weight-recommendation"
 import { getCategoryFields } from "@/lib/exercise-fields"
+import { computeVolumeLoad } from "@/lib/workout/volume-load"
+import { loadTypeMeta } from "@/lib/workout/load-type"
+import { computeExerciseDelta } from "@/lib/workout/deltas"
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -197,7 +201,11 @@ function ExerciseCard({
   const router = useRouter()
   const { unit, displayWeight, formatWeightCompact, toKg, unitLabel } = useWeightUnit()
   const baseFields = getCategoryFields(exercise.category as ExerciseCategory[])
-  const fields = exercise.is_bodyweight ? { ...baseFields, showWeight: false } : baseFields
+  const fields = {
+    ...(exercise.is_bodyweight ? { ...baseFields, showWeight: false } : baseFields),
+    // Per-set RPE removed — replaced by one session RPE captured at "Finish session".
+    showRpe: false,
+  }
   const [expanded, setExpanded] = useState(false)
   const [loggedToday, setLoggedToday] = useState(initialLogged)
   const [submitting, setSubmitting] = useState(false)
@@ -340,19 +348,7 @@ function ExerciseCard({
     const totalReps = setDetails.map((s) => s.reps)
     const avgReps =
       totalReps.length > 0 ? Math.round(totalReps.reduce((a, b) => a + b, 0) / totalReps.length) : fallbackReps
-    const lastSetRpe = setDetails[setDetails.length - 1]?.rpe ?? null
-
-    // RPE gate — require at least one set's RPE for non-bodyweight exercises
-    const isBodyweight = exercise.is_bodyweight ?? false
-    const filledSets = setRows.filter((r) => parseInt(r.reps, 10) > 0)
-    const hasAnyRpe = filledSets.some((r) => r.rpe != null && r.rpe >= 1 && r.rpe <= 10)
-
-    if (!isBodyweight && filledSets.length > 0 && !hasAnyRpe) {
-      toast.error(
-        "Add an RPE on at least one set before completing — even a single number helps the AI plan your next session.",
-      )
-      return
-    }
+    // Per-set RPE removed — one session RPE is captured at "Finish session" instead.
 
     setSubmitting(true)
     try {
@@ -365,7 +361,7 @@ function ExerciseCard({
           sets_completed: setDetails.length,
           reps_completed: String(avgReps),
           weight_kg: maxWeight > 0 ? maxWeight : null,
-          rpe: lastSetRpe,
+          rpe: null,
           duration_seconds: duration ? parseInt(duration, 10) : null,
           notes: notes || null,
           set_details: setDetails,
@@ -417,6 +413,21 @@ function ExerciseCard({
 
   // Nudge coach button when concerning patterns detected
   const coachNudge = shouldNudgeCoach(setRows)
+
+  // ─── Volume load + "vs last time" delta (live, from current entry) ───────────
+  const loadMeta = loadTypeMeta(displayExercise.load_type)
+  const liveVolumeKg = computeVolumeLoad(
+    setRows.map((r) => ({
+      weight_kg: r.weight ? toKg(parseFloat(r.weight)) : null,
+      reps: parseInt(r.reps, 10) || null,
+    })),
+    displayExercise.load_type,
+  )
+  const currentTopKg = Math.max(0, ...setRows.map((r) => (r.weight ? toKg(parseFloat(r.weight)) : 0)))
+  const liveDelta = computeExerciseDelta(
+    currentTopKg > 0 ? currentTopKg : null,
+    rec.last_weight_kg != null ? [{ weight_kg: rec.last_weight_kg }] : [],
+  )
   const nudgeOpenedRef = useRef(false)
 
   // Auto-open coach when concerning pattern first detected
@@ -454,6 +465,11 @@ function ExerciseCard({
             <p className={cn("font-medium text-sm", loggedToday ? "text-muted-foreground" : "text-foreground")}>
               {displayExercise.name}
               {swappedExercise && <span className="ml-1.5 text-[10px] font-normal text-accent">(swapped)</span>}
+              {pe.requires_video && (
+                <span className="ml-1.5 inline-flex items-center gap-0.5 align-middle text-[10px] font-semibold text-accent">
+                  <Video className="size-3" strokeWidth={2.5} /> Record
+                </span>
+              )}
             </p>
             {/* Compact summary line */}
             <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
@@ -475,6 +491,22 @@ function ExerciseCard({
                   )}
                 </Badge>
               )}
+              {liveDelta.direction !== "neutral" && liveDelta.pct != null && (
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-0.5 text-[10px] font-semibold",
+                    liveDelta.direction === "up" ? "text-success" : "text-destructive",
+                  )}
+                  title="vs your last session of this exercise"
+                >
+                  {liveDelta.direction === "up" ? (
+                    <TrendingUp className="size-3" />
+                  ) : (
+                    <TrendingDown className="size-3" />
+                  )}
+                  {liveDelta.pct}%
+                </span>
+              )}
             </div>
           </div>
 
@@ -483,6 +515,14 @@ function ExerciseCard({
             className={cn("size-4 shrink-0 text-muted-foreground transition-transform", expanded && "rotate-180")}
           />
         </button>
+
+        {/* Coach note — always visible so clients actually read the coaching cue */}
+        {!hideNotes && pe.notes && (
+          <div className="ml-10 mr-2 mb-1 flex items-start gap-2 rounded-md bg-amber-50 px-2 py-1.5">
+            <Lightbulb className="size-3.5 shrink-0 text-amber-500 mt-0.5" strokeWidth={2} />
+            <p className="text-xs italic text-foreground/70 leading-relaxed whitespace-pre-line">{pe.notes}</p>
+          </div>
+        )}
 
         {/* Expanded log form */}
         <AnimatePresence>
@@ -523,12 +563,9 @@ function ExerciseCard({
                   )}
                 </div>
 
-                {/* Single consolidated Instructions dropdown */}
-                {(displayExercise.instructions ||
-                  (!hideNotes && pe.notes) ||
-                  pe.tempo ||
-                  pe.rpe_target ||
-                  pe.rest_seconds) && (
+                {/* Single consolidated Instructions dropdown (coach note now shown
+                    always-visible above; this holds the fuller how-to + tempo/RPE/rest) */}
+                {(displayExercise.instructions || pe.tempo || pe.rpe_target || pe.rest_seconds) && (
                   <details className="group rounded-md border border-border/50 bg-muted/30">
                     <summary className="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-xs font-medium text-foreground/70 select-none list-none [&::-webkit-details-marker]:hidden">
                       <ChevronRight className="size-3 shrink-0 transition-transform group-open:rotate-90" />
@@ -564,15 +601,6 @@ function ExerciseCard({
                         <p className="text-xs leading-relaxed text-foreground/70 whitespace-pre-line">
                           {displayExercise.instructions}
                         </p>
-                      )}
-                      {/* Coach notes */}
-                      {!hideNotes && pe.notes && (
-                        <div className="flex items-start gap-2 rounded-md bg-amber-50 px-2 py-1.5">
-                          <Lightbulb className="size-3.5 shrink-0 text-amber-500 mt-0.5" strokeWidth={2} />
-                          <p className="text-xs italic text-foreground/70 leading-relaxed whitespace-pre-line">
-                            {pe.notes}
-                          </p>
-                        </div>
                       )}
                     </div>
                   </details>
@@ -638,6 +666,11 @@ function ExerciseCard({
                 {(fields.showWeight || fields.showReps) && (
                   <div>
                     <Label className="text-xs font-medium">Sets</Label>
+                    {fields.showWeight && loadMeta.clientLabel && (
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        Weight = <span className="font-medium text-foreground/80">{loadMeta.clientLabel}</span>
+                      </p>
+                    )}
                     <div className="overflow-x-auto">
                       <table
                         className="w-full mt-1.5 min-w-[320px]"
@@ -673,12 +706,14 @@ function ExerciseCard({
                                 <td className="pr-1 align-middle">
                                   <input
                                     type="number"
+                                    inputMode="decimal"
                                     step="any"
                                     min="0"
                                     placeholder={weightPlaceholder}
                                     value={row.weight}
                                     onChange={(e) => updateSetRow(idx, "weight", e.target.value)}
-                                    className="w-full h-8 rounded-md border border-input bg-transparent px-2 text-xs shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="w-16 sm:w-20 h-8 rounded-md border border-input bg-transparent px-2 text-xs shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
                                   />
                                 </td>
                               )}
@@ -686,11 +721,13 @@ function ExerciseCard({
                                 <td className="pr-1 align-middle">
                                   <input
                                     type="number"
+                                    inputMode="numeric"
                                     min="0"
                                     max="999"
                                     placeholder={prescribedReps || "0"}
                                     value={row.reps}
                                     onChange={(e) => updateSetRow(idx, "reps", e.target.value)}
+                                    onClick={(e) => e.stopPropagation()}
                                     className="w-full h-8 rounded-md border border-input bg-transparent px-2 text-xs shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
                                   />
                                 </td>
@@ -746,6 +783,15 @@ function ExerciseCard({
                         <Plus className="size-3" />
                         Add Set
                       </button>
+                    )}
+                    {/* Volume load = reps × weight (× load-type multiplier) */}
+                    {fields.showWeight && liveVolumeKg > 0 && (
+                      <p className="mt-1.5 text-[11px] text-muted-foreground">
+                        Load:{" "}
+                        <span className="font-semibold text-foreground">
+                          {Math.round(displayWeight(liveVolumeKg) ?? 0).toLocaleString()} {unitLabel()}
+                        </span>
+                      </p>
                     )}
                   </div>
                 )}
