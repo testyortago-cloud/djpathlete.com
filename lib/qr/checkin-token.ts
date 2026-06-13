@@ -19,7 +19,7 @@ export function signCheckinToken(coachId: string, now: Date): string {
 export type VerifyResult = { valid: true; coachId: string } | { valid: false }
 
 /** Verifies signature + age. Rejects tampered tokens and tokens older than maxAgeDays. */
-export function verifyCheckinToken(token: string, now: Date, maxAgeDays = 2): VerifyResult {
+export function verifyCheckinToken(token: string, now: Date, maxAgeDays = 1): VerifyResult {
   const parts = token.split(".")
   if (parts.length !== 2) return { valid: false }
   const [b64, sig] = parts

@@ -24,14 +24,15 @@ describe("checkInClient", () => {
       expires_at: null,
     } as never)
     vi.mocked(checkins.recentNonVoidedForPackage).mockResolvedValue(null)
+    vi.mocked(packs.casBumpCreditUsed).mockResolvedValue({ id: "p1", credits_used: 4 } as never)
     vi.mocked(checkins.createCheckin).mockResolvedValue({ id: "ck1" } as never)
-    vi.mocked(packs.updateClientPackage).mockResolvedValue({} as never)
 
     const r = await checkInClient({ clientUserId: "c1", method: "coach_tap", createdBy: "coach", now: new Date() })
 
     expect(r.ok).toBe(true)
     expect(r.remaining).toBe(6)
-    expect(packs.updateClientPackage).toHaveBeenCalledWith("p1", { credits_used: 4, status: "active" })
+    expect(packs.casBumpCreditUsed).toHaveBeenCalledWith("p1", 3, "active")
+    expect(checkins.createCheckin).toHaveBeenCalledTimes(1)
   })
 
   it("flips to depleted when the last credit is used", async () => {
@@ -42,13 +43,13 @@ describe("checkInClient", () => {
       expires_at: null,
     } as never)
     vi.mocked(checkins.recentNonVoidedForPackage).mockResolvedValue(null)
+    vi.mocked(packs.casBumpCreditUsed).mockResolvedValue({ id: "p1", credits_used: 3 } as never)
     vi.mocked(checkins.createCheckin).mockResolvedValue({ id: "ck1" } as never)
-    vi.mocked(packs.updateClientPackage).mockResolvedValue({} as never)
 
     const r = await checkInClient({ clientUserId: "c1", method: "qr_self", createdBy: null, now: new Date() })
 
     expect(r.remaining).toBe(0)
-    expect(packs.updateClientPackage).toHaveBeenCalledWith("p1", { credits_used: 3, status: "depleted" })
+    expect(packs.casBumpCreditUsed).toHaveBeenCalledWith("p1", 2, "depleted")
   })
 
   it("is idempotent within the window (no double-deduct)", async () => {
@@ -64,7 +65,28 @@ describe("checkInClient", () => {
 
     expect(r).toMatchObject({ ok: true, reason: "duplicate" })
     expect(checkins.createCheckin).not.toHaveBeenCalled()
-    expect(packs.updateClientPackage).not.toHaveBeenCalled()
+    expect(packs.casBumpCreditUsed).not.toHaveBeenCalled()
+  })
+
+  it("retries once when the CAS is lost, then succeeds without double-writing the ledger", async () => {
+    vi.mocked(packs.getActivePackageForClient).mockResolvedValue({
+      id: "p1",
+      credits_total: 10,
+      credits_used: 3,
+      expires_at: null,
+    } as never)
+    vi.mocked(checkins.recentNonVoidedForPackage).mockResolvedValue(null)
+    // First CAS loses the race (null), second wins.
+    vi.mocked(packs.casBumpCreditUsed)
+      .mockResolvedValueOnce(null as never)
+      .mockResolvedValueOnce({ id: "p1", credits_used: 4 } as never)
+    vi.mocked(checkins.createCheckin).mockResolvedValue({ id: "ck1" } as never)
+
+    const r = await checkInClient({ clientUserId: "c1", method: "coach_tap", createdBy: "coach", now: new Date() })
+
+    expect(r.ok).toBe(true)
+    expect(packs.casBumpCreditUsed).toHaveBeenCalledTimes(2)
+    expect(checkins.createCheckin).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -76,7 +98,7 @@ describe("voidCheckinAndRestore", () => {
       voided: false,
     } as never)
     vi.mocked(checkins.voidCheckin).mockResolvedValue({} as never)
-    vi.mocked(packs.getClientPackageById).mockResolvedValue({
+    vi.mocked(packs.getClientPackageByIdMaybe).mockResolvedValue({
       id: "p1",
       credits_total: 3,
       credits_used: 3,

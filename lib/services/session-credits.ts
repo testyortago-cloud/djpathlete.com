@@ -9,7 +9,8 @@ import type {
 } from "@/types/database"
 import {
   getActivePackageForClient,
-  getClientPackageById,
+  getClientPackageByIdMaybe,
+  casBumpCreditUsed,
   updateClientPackage,
 } from "@/lib/db/client-packages"
 import {
@@ -131,37 +132,47 @@ export interface CheckInResult {
  */
 export async function checkInClient(input: CheckInInput): Promise<CheckInResult> {
   const windowMs = input.idempotencyWindowMs ?? DEFAULT_IDEMPOTENCY_WINDOW_MS
-  const pkg = await getActivePackageForClient(input.clientUserId, input.now.toISOString())
-  if (!pkg) return { ok: false, reason: "no_credits" }
-
   const since = new Date(input.now.getTime() - windowMs).toISOString()
-  const recent = await recentNonVoidedForPackage(pkg.id, since)
-  if (recent) {
-    return { ok: true, reason: "duplicate", checkin: recent, remaining: remainingCredits(pkg), packageId: pkg.id }
+
+  // Re-read + retry on a lost CAS so a concurrent check-in can't double-deduct.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const pkg = await getActivePackageForClient(input.clientUserId, input.now.toISOString())
+    if (!pkg) return { ok: false, reason: "no_credits" }
+
+    const recent = await recentNonVoidedForPackage(pkg.id, since)
+    if (recent) {
+      return { ok: true, reason: "duplicate", checkin: recent, remaining: remainingCredits(pkg), packageId: pkg.id }
+    }
+
+    const after = { credits_total: pkg.credits_total, credits_used: pkg.credits_used + 1, expires_at: pkg.expires_at }
+    const status = packStatusAfter(after, input.now)
+
+    // Reserve the credit atomically BEFORE writing the ledger row. If another
+    // writer moved credits_used first, casBumpCreditUsed returns null → retry.
+    const swapped = await casBumpCreditUsed(pkg.id, pkg.credits_used, status)
+    if (!swapped) continue
+
+    const checkin = await createCheckin({
+      client_package_id: pkg.id,
+      client_user_id: input.clientUserId,
+      checked_in_at: input.now.toISOString(),
+      session_date: input.sessionDate ?? input.now.toISOString().slice(0, 10),
+      method: input.method,
+      credit_delta: -1,
+      voided: false,
+      voided_reason: null,
+      voided_by: null,
+      voided_at: null,
+      calendar_event_id: null,
+      created_by: input.createdBy,
+      notes: null,
+    })
+
+    return { ok: true, checkin, remaining: remainingCredits(after), packageId: pkg.id }
   }
 
-  const checkin = await createCheckin({
-    client_package_id: pkg.id,
-    client_user_id: input.clientUserId,
-    checked_in_at: input.now.toISOString(),
-    session_date: input.sessionDate ?? input.now.toISOString().slice(0, 10),
-    method: input.method,
-    credit_delta: -1,
-    voided: false,
-    voided_reason: null,
-    voided_by: null,
-    voided_at: null,
-    calendar_event_id: null,
-    created_by: input.createdBy,
-    notes: null,
-  })
-
-  const newUsed = pkg.credits_used + 1
-  const after = { credits_total: pkg.credits_total, credits_used: newUsed, expires_at: pkg.expires_at }
-  const status = packStatusAfter(after, input.now)
-  await updateClientPackage(pkg.id, { credits_used: newUsed, status })
-
-  return { ok: true, checkin, remaining: remainingCredits(after), packageId: pkg.id }
+  // Lost the CAS twice under contention — treat conservatively as no credits.
+  return { ok: false, reason: "no_credits" }
 }
 
 export interface VoidResult {
@@ -182,7 +193,10 @@ export async function voidCheckinAndRestore(input: {
 
   await voidCheckin(input.checkinId, { voided_by: input.voidedBy, voided_reason: input.reason })
 
-  const pkg = await getClientPackageById(checkin.client_package_id)
+  // Pack may have been deleted (FK cascade would also remove the checkin, so this
+  // is rare) — if it's gone, the void stands and there's nothing to restore.
+  const pkg = await getClientPackageByIdMaybe(checkin.client_package_id)
+  if (!pkg) return { ok: true }
   const newUsed = Math.max(0, pkg.credits_used - 1)
   const after = { credits_total: pkg.credits_total, credits_used: newUsed, expires_at: pkg.expires_at }
   // A refunded/cancelled pack stays in its terminal state; otherwise recompute.

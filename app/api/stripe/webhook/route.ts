@@ -118,6 +118,14 @@ export async function POST(request: Request) {
         break
       }
 
+      case "checkout.session.expired": {
+        const session = event.data.object as Stripe.Checkout.Session
+        if (session.metadata?.type === "session_pack") {
+          await handleSessionPackExpired(session)
+        }
+        break
+      }
+
       case "invoice.payment_succeeded": {
         await handleInvoicePaymentSucceeded(event.data.object as Stripe.Invoice)
         break
@@ -753,6 +761,17 @@ async function handleSessionPackCheckout(session: Stripe.Checkout.Session) {
       payment_method: "stripe",
     },
   })
+}
+
+async function handleSessionPackExpired(session: Stripe.Checkout.Session) {
+  // Stripe Checkout sessions expire ~24h after creation. Reap an abandoned,
+  // never-paid pack so it can't linger as a usable freebie — but only if the
+  // client hasn't already trained on it (credits_used > 0), in which case we
+  // leave it active so the coach can see it and chase payment.
+  const pkg = await getPackageByStripeSession(session.id)
+  if (!pkg || pkg.payment_status === "paid") return
+  if (pkg.credits_used > 0) return
+  await updateClientPackage(pkg.id, { status: "cancelled" })
 }
 
 async function handleSessionPackRefund(stripePaymentId: string) {
