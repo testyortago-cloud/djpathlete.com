@@ -24,6 +24,7 @@ export const sellPackSchema = z
     productId: z.string().uuid().optional(),
     adhoc: adhocPackSchema.optional(),
     paymentMethod: z.enum(["stripe", "cash", "comp"]),
+    programId: z.string().uuid().optional(),
     returnUrl: z.string().optional(),
     notes: z.string().optional(),
   })

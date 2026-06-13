@@ -7,6 +7,8 @@ import { buildPackageInsert } from "@/lib/services/session-credits"
 import { createPackCheckoutSession } from "@/lib/stripe"
 import { packsEnabled } from "@/lib/packs/flags"
 import { recordAudit } from "@/lib/audit/record"
+import { assignProgram } from "@/lib/services/assign-program"
+import { getAssignmentByUserAndProgram } from "@/lib/db/assignments"
 
 /**
  * Sell a session pack to a client.
@@ -64,6 +66,29 @@ export async function POST(request: Request) {
 
     const now = new Date()
 
+    // Optionally link a program: resolve-or-create a COMPLIMENTARY assignment
+    // (the pack is the payment), and store its id on the pack so check-ins advance it.
+    let assignmentId: string | null = null
+    if (input.programId) {
+      try {
+        const { assignment, skipped } = await assignProgram({
+          programId: input.programId,
+          userId: input.clientUserId,
+          startDate: now.toISOString().slice(0, 10),
+          assignedBy: session.user.id,
+          complimentary: true,
+        })
+        if (assignment) {
+          assignmentId = assignment.id
+        } else if (skipped) {
+          const existing = await getAssignmentByUserAndProgram(input.clientUserId, input.programId)
+          assignmentId = existing?.id ?? null
+        }
+      } catch (err) {
+        console.error("[sell pack] program link failed:", err)
+      }
+    }
+
     if (input.paymentMethod === "stripe") {
       const checkout = await createPackCheckoutSession({
         clientUserId: input.clientUserId,
@@ -80,6 +105,7 @@ export async function POST(request: Request) {
         buildPackageInsert({
           clientUserId: input.clientUserId,
           productId,
+          assignmentId,
           sessionType,
           credits,
           priceCents,
@@ -99,6 +125,7 @@ export async function POST(request: Request) {
       buildPackageInsert({
         clientUserId: input.clientUserId,
         productId,
+        assignmentId,
         sessionType,
         credits,
         priceCents,
