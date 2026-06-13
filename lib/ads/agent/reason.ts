@@ -192,7 +192,7 @@ export function buildAdsReasonUserMessage(
   const fewShotsRendered = fewShotsBlock(signals.few_shots ?? [])
 
   const inventoryBlock =
-    signals.promotable_inventory.length > 0
+    (signals.promotable_inventory ?? []).length > 0
       ? [
           "Promotable inventory (programs + upcoming events the agent can build campaigns for):",
           JSON.stringify(signals.promotable_inventory, null, 2),

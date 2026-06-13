@@ -31,6 +31,15 @@ export default defineConfig({
     exclude: isIntegration
       ? configDefaults.exclude
       : [...configDefaults.exclude, "__tests__/integration/**"],
+    // Inline next-auth so Vite transforms it (and applies the next/server alias
+    // below) instead of leaving Node's ESM resolver to choke on its bare
+    // `import "next/server"`. Without this, every test that transitively imports
+    // @/lib/auth (e.g. via lib/audit) fails to load.
+    server: {
+      deps: {
+        inline: ["next-auth", "@auth/core"],
+      },
+    },
     coverage: {
       provider: "v8",
       reporter: ["text", "json", "html"],
@@ -38,8 +47,13 @@ export default defineConfig({
     },
   },
   resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "."),
-    },
+    alias: [
+      { find: "@", replacement: path.resolve(__dirname, ".") },
+      // next-auth v5's lib/env.js does `import { NextRequest } from "next/server"`
+      // (no extension). next 16 has no package `exports` map, so the test env's
+      // ESM resolver can't resolve the bare specifier for this externalized dep.
+      // Point it straight at the real file.
+      { find: /^next\/server$/, replacement: path.resolve(__dirname, "node_modules/next/server.js") },
+    ],
   },
 })

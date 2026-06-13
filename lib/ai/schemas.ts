@@ -115,7 +115,9 @@ export const programSkeletonSchema = z.object({
 
 const assignedExerciseSchema = z.object({
   slot_id: z.string(),
-  exercise_id: z.string(),
+  // UUID pattern (accepts standard + seed-style hex UUIDs; rejects non-UUID /
+  // empty / wrong-length). Regex pattern is structured-output safe (see notes above).
+  exercise_id: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i),
   exercise_name: z.string(),
   notes: z.string().nullable(),
 })

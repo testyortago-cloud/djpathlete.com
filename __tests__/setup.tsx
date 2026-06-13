@@ -4,11 +4,15 @@ import { vi } from "vitest"
 // Default no-op mock for Resend so tests that forget vi.mock("resend", ...)
 // cannot hit the live API. Per-file vi.mock("resend", ...) still wins.
 vi.mock("resend", () => ({
-  Resend: vi.fn(() => ({
-    emails: {
-      send: vi.fn().mockResolvedValue({ data: { id: "test-email" }, error: null }),
-    },
-  })),
+  // Use a regular function (not an arrow) so `new Resend()` in lib/resend.ts is
+  // constructable — arrow functions can't be used with `new`.
+  Resend: vi.fn(function () {
+    return {
+      emails: {
+        send: vi.fn().mockResolvedValue({ data: { id: "test-email" }, error: null }),
+      },
+    }
+  }),
 }))
 
 // Mock next/navigation
