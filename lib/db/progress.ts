@@ -1,6 +1,8 @@
 import { createServiceRoleClient } from "@/lib/supabase"
 import type { ExerciseProgress } from "@/types/database"
 import { resolveWeightOutcomes } from "@/lib/db/ai-outcomes"
+import { listCompletedSessionDates } from "@/lib/db/workout-sessions"
+import { streakFromDates } from "@/lib/workout/streak"
 
 /** Service-role client bypasses RLS — these functions are only called from server-side routes. */
 function getClient() {
@@ -56,66 +58,46 @@ export async function getLatestProgressByExercises(
   return grouped
 }
 
+function ymdLocal(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+}
+
 /**
- * Calculate the current consecutive-day workout streak ending today (or yesterday).
- * Returns the number of consecutive days with at least one logged workout.
+ * Current workout streak = consecutive days ending today/yesterday on which the
+ * client COMPLETED a workout session (a real finished workout, not just logging
+ * one exercise).
+ *
+ * Legacy fallback: clients with no completed sessions yet (this feature is new)
+ * keep the old "days with a logged exercise" count so their existing streak
+ * doesn't reset to 0 on ship. They migrate to session-based automatically once
+ * they finish their first session.
  */
 export async function getWorkoutStreak(userId: string): Promise<number> {
-  const supabase = getClient()
+  const today = new Date()
+  const todayStr = ymdLocal(today)
+  const yesterday = new Date(today)
+  yesterday.setDate(yesterday.getDate() - 1)
+  const yesterdayStr = ymdLocal(yesterday)
 
-  // Fetch distinct dates with logged workouts, most recent first
+  // Preferred: completed workout sessions.
+  const sessionDates = await listCompletedSessionDates(userId)
+  if (sessionDates.length > 0) {
+    return streakFromDates(sessionDates, todayStr, yesterdayStr)
+  }
+
+  // Legacy fallback: days with at least one logged exercise.
+  const supabase = getClient()
   const { data, error } = await supabase
     .from("exercise_progress")
     .select("completed_at")
     .eq("user_id", userId)
     .order("completed_at", { ascending: false })
-
   if (error || !data || data.length === 0) return 0
 
-  // Collect unique dates (YYYY-MM-DD in local time)
-  const uniqueDates = new Set<string>()
-  for (const row of data) {
-    if (row.completed_at) {
-      const d = new Date(row.completed_at)
-      uniqueDates.add(
-        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`,
-      )
-    }
-  }
-
-  const sortedDates = Array.from(uniqueDates).sort().reverse()
-  if (sortedDates.length === 0) return 0
-
-  // Start counting from today or yesterday
-  const today = new Date()
-  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`
-  const yesterday = new Date(today)
-  yesterday.setDate(yesterday.getDate() - 1)
-  const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, "0")}-${String(yesterday.getDate()).padStart(2, "0")}`
-
-  let streak = 0
-  let checkDate: Date
-
-  if (sortedDates[0] === todayStr) {
-    checkDate = today
-  } else if (sortedDates[0] === yesterdayStr) {
-    checkDate = yesterday
-  } else {
-    return 0 // Most recent workout is older than yesterday — streak broken
-  }
-
-  // Count consecutive days backwards
-  for (let i = 0; i < 365; i++) {
-    const dateStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, "0")}-${String(checkDate.getDate()).padStart(2, "0")}`
-    if (uniqueDates.has(dateStr)) {
-      streak++
-      checkDate.setDate(checkDate.getDate() - 1)
-    } else {
-      break
-    }
-  }
-
-  return streak
+  const dates = data
+    .map((r) => (r.completed_at ? ymdLocal(new Date(r.completed_at)) : null))
+    .filter((d): d is string => d != null)
+  return streakFromDates(dates, todayStr, yesterdayStr)
 }
 
 /**
