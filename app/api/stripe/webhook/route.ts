@@ -151,8 +151,13 @@ export async function POST(request: Request) {
           // Check if this refund matches an event signup
           await handleEventSignupRefund(stripePaymentId)
 
-          // Check if this refund matches a session pack
-          await handleSessionPackRefund(stripePaymentId)
+          // Check if this refund matches a session pack (non-blocking: a lookup
+          // failure here must not 500 the webhook and trigger a Stripe retry).
+          try {
+            await handleSessionPackRefund(stripePaymentId)
+          } catch (err) {
+            console.error("[webhook] session pack refund handling failed:", err)
+          }
         }
 
         break
