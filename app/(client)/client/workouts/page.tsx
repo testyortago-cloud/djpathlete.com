@@ -243,6 +243,8 @@ export default async function ClientWorkoutsPage() {
           exercise,
           recommendation,
           loggedToday: isCurrentWeek && wasLoggedToday(exercise.id),
+          // Most recent logged sets → rehydrate the form so data isn't "lost" on return.
+          savedSetDetails: history[0]?.set_details ?? null,
         }
       })
   }

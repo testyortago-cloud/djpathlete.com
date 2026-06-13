@@ -35,7 +35,7 @@ import { CoachDjpPanel } from "@/components/client/CoachDjpPanel"
 import { CelebrationOverlay } from "@/components/client/CelebrationOverlay"
 import { ExerciseSwapSheet } from "@/components/client/ExerciseSwapSheet"
 import { extractYouTubeId } from "@/lib/youtube"
-import type { Exercise, ExerciseCategory, ProgramExercise, TrainingTechnique } from "@/types/database"
+import type { Exercise, ExerciseCategory, ProgramExercise, SetDetail, TrainingTechnique } from "@/types/database"
 import type { WeightRecommendation } from "@/lib/weight-recommendation"
 import { getCategoryFields } from "@/lib/exercise-fields"
 import { computeVolumeLoad } from "@/lib/workout/volume-load"
@@ -55,6 +55,9 @@ export interface ExerciseWithRecommendation {
   exercise: Exercise
   recommendation: WeightRecommendation
   loggedToday: boolean
+  /** Most recent logged sets for this exercise — used to rehydrate the form so a
+   *  client who logged, left, and came back actually sees their entered data. */
+  savedSetDetails?: SetDetail[] | null
 }
 
 export interface ProgramContextData {
@@ -186,6 +189,7 @@ function ExerciseCard({
   exercise,
   recommendation: rec,
   loggedToday: initialLogged,
+  savedSetDetails,
   assignmentId,
   index,
   onLogged,
@@ -235,8 +239,17 @@ function ExerciseCard({
   const weightPlaceholder = displayedRec != null ? String(displayedRec) : "0"
   const numSets = pe.sets ?? 3
 
-  // Multi-set state
-  const [setRows, setSetRows] = useState<SetRow[]>(() => createInitialSetRows(numSets, defaultWeight, prescribedReps))
+  // Multi-set state — rehydrate from the client's most recent logged sets so the
+  // "saved then gone" complaint is fixed (they see exactly what they entered).
+  const [setRows, setSetRows] = useState<SetRow[]>(() =>
+    savedSetDetails && savedSetDetails.length > 0
+      ? savedSetDetails.map((s) => ({
+          weight: s.weight_kg != null ? String(displayWeight(s.weight_kg) ?? "") : "",
+          reps: s.reps != null ? String(s.reps) : "",
+          rpe: null,
+        }))
+      : createInitialSetRows(numSets, defaultWeight, prescribedReps),
+  )
   const [duration, setDuration] = useState<string>("")
   const [notes, setNotes] = useState<string>("")
   const [aiSuggestedWeight, setAiSuggestedWeight] = useState<number | null>(null)
