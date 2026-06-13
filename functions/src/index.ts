@@ -1595,6 +1595,43 @@ export const clientRiskScanCron = onSchedule(
   },
 )
 
+// ─── Session Pack Renewal Scan (daily 09:00 UTC) ─────────────────────────────
+// Plan: docs/superpowers/plans/2026-06-13-session-packs.md (Phase 1).
+// POSTs to /api/admin/internal/pack-renewals which finds low/empty/expiring
+// session packs and nudges the client (email + in-app) and the coach. Subject to
+// automation_paused + cron_pack_renewals_enabled gates inside the route
+// (defaults to false — flip on from /admin/automation once verified).
+
+export const packRenewalScanCron = onSchedule(
+  {
+    schedule: "0 9 * * *",
+    timeZone: "UTC",
+    timeoutSeconds: 540,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [internalCronToken, appUrl],
+  },
+  async () => {
+    const baseUrl = process.env.APP_URL
+    const token = process.env.INTERNAL_CRON_TOKEN
+    if (!baseUrl || !token) {
+      console.error("[packRenewalScanCron] APP_URL or INTERNAL_CRON_TOKEN missing — abort")
+      return
+    }
+    try {
+      const res = await fetch(`${baseUrl}/api/admin/internal/pack-renewals`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: "{}",
+      })
+      const body = await res.json().catch(() => ({}))
+      console.log("[packRenewalScanCron]", res.status, body)
+    } catch (err) {
+      console.error("[packRenewalScanCron] failed:", err)
+    }
+  },
+)
+
 // ─── Social Outcome Tracker Cron (daily 04:45 UTC) ───────────────────────────
 export const socialOutcomeTrackerCron = onSchedule(
   {

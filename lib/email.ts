@@ -2247,3 +2247,81 @@ export async function sendVideoReopenedEmail(params: { to: string; submissionTit
     throw new Error("Failed to send email")
   }
 }
+
+// ─── Session pack renewal reminder ───────────────────────────────────────────
+
+/**
+ * Nudge a client when their session pack is low / empty / expiring so they can
+ * arrange a renewal with the coach. Respects the email-notification preference.
+ */
+export async function sendPackRenewalEmail(opts: {
+  to: string
+  firstName: string
+  threshold: "low" | "empty" | "expiring"
+  remaining: number
+  sessionType: string
+  clientUserId?: string
+}) {
+  if (opts.clientUserId) {
+    const prefs = await getPreferences(opts.clientUserId)
+    if (!prefs.email_notifications) return
+  }
+
+  const baseUrl = getBaseUrl()
+  const renewUrl = `${baseUrl}/contact`
+
+  const copy =
+    opts.threshold === "empty"
+      ? { label: "Sessions Used Up", headline: "Time to top up your sessions", lead: "You've used all the sessions on your current pack." }
+      : opts.threshold === "expiring"
+        ? { label: "Pack Expiring Soon", headline: "Your sessions expire soon", lead: "Your current pack is about to expire — let's get you renewed so you don't lose momentum." }
+        : { label: "Running Low", headline: "You're down to your last sessions", lead: `You've got ${opts.remaining} session${opts.remaining === 1 ? "" : "s"} left on your pack.` }
+
+  const html = emailLayout(`
+    ${heroBanner(copy.label, copy.headline)}
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td style="padding:48px 48px 52px;">
+
+          <p style="margin:0 0 8px; font-family:'Lexend Exa', Georgia, 'Times New Roman', serif; font-size:22px; font-weight:400; color:#0E3F50;">
+            Hi ${opts.firstName},
+          </p>
+
+          <p style="margin:0 0 32px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:15px; color:#5c5750; line-height:1.8;">
+            ${copy.lead}
+          </p>
+
+          ${infoCard([
+            { label: "Session type", value: opts.sessionType },
+            { label: "Sessions remaining", value: String(opts.remaining) },
+          ])}
+
+          <p style="margin:28px 0 32px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:15px; color:#5c5750; line-height:1.8;">
+            Get in touch to sort your next pack and keep your sessions booked in.
+          </p>
+
+          ${ctaButton(renewUrl, "Renew My Sessions")}
+
+          ${fallbackLink(renewUrl)}
+
+        </td>
+      </tr>
+    </table>
+  `)
+
+  const { error } = await resend.emails.send({
+    from: FROM_EMAIL,
+    to: opts.to,
+    subject:
+      opts.threshold === "empty"
+        ? "Your training sessions have run out"
+        : opts.threshold === "expiring"
+          ? "Your training sessions expire soon"
+          : `You're down to ${opts.remaining} session${opts.remaining === 1 ? "" : "s"}`,
+    html,
+  })
+  if (error) {
+    console.error("[sendPackRenewalEmail] resend error:", error)
+  }
+}
