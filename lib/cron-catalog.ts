@@ -15,6 +15,7 @@ export type CronJobName =
   | "seo-agent-weekly"
   | "outcome-tracker-daily"
   | "ads-outcome-tracker-daily"
+  | "session-pack-renewals"
 
 export interface CronJob {
   name: CronJobName
@@ -169,6 +170,19 @@ export const CRON_CATALOG: readonly CronJob[] = [
     firebaseFunction: "adsOutcomeTrackerCron",
     phase: "ads-agent-5",
     enabledKey: "cron_ads_outcome_tracker_enabled",
+    defaultEnabled: false,
+  },
+  {
+    name: "session-pack-renewals",
+    label: "Session pack renewal reminders",
+    description:
+      "Every morning, finds in-person session packs that are running low, empty, or expiring soon and nudges the client (email + in-app) and you, so renewals get sorted before they run out. Requires Session Packs to be on.",
+    schedule: "0 9 * * *",
+    timezone: "UTC",
+    humanSchedule: "Every morning at 9:00 AM UTC",
+    firebaseFunction: "packRenewalScanCron",
+    phase: "session-packs",
+    enabledKey: "cron_pack_renewals_enabled",
     defaultEnabled: false,
   },
 ] as const
