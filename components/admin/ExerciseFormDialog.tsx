@@ -19,6 +19,7 @@ import {
   MOVEMENT_PATTERNS,
   FORCE_TYPES,
   LATERALITY_OPTIONS,
+  LOAD_TYPE_OPTIONS,
   MUSCLE_OPTIONS,
   EQUIPMENT_OPTIONS,
   PLANES_OF_MOTION,
@@ -105,6 +106,13 @@ const LATERALITY_LABELS: Record<string, string> = {
   bilateral: "Bilateral",
   unilateral: "Unilateral",
   alternating: "Alternating",
+}
+
+// How the client enters the weight — drives the client-facing label + volume math.
+const LOAD_TYPE_LABELS: Record<string, string> = {
+  total: "Total weight (one number)",
+  per_dumbbell: "Per dumbbell (client holds two)",
+  per_side: "Per side (one limb at a time)",
 }
 
 const PLANE_LABELS: Record<string, string> = {
@@ -246,6 +254,7 @@ export function ExerciseFormDialog({ open, onOpenChange, exercise: initialExerci
   const [movementPattern, setMovementPattern] = useState(exercise?.movement_pattern ?? "")
   const [forceType, setForceType] = useState(exercise?.force_type ?? "")
   const [laterality, setLaterality] = useState(exercise?.laterality ?? "")
+  const [loadType, setLoadType] = useState<string>(exercise?.load_type ?? "total")
   const [primaryMuscles, setPrimaryMuscles] = useState<string[]>(exercise?.primary_muscles ?? [])
   const [secondaryMuscles, setSecondaryMuscles] = useState<string[]>(exercise?.secondary_muscles ?? [])
   const [equipmentRequired, setEquipmentRequired] = useState<string[]>(exercise?.equipment_required ?? [])
@@ -275,6 +284,7 @@ export function ExerciseFormDialog({ open, onOpenChange, exercise: initialExerci
     setMovementPattern(initialExercise?.movement_pattern ?? "")
     setForceType(initialExercise?.force_type ?? "")
     setLaterality(initialExercise?.laterality ?? "")
+    setLoadType(initialExercise?.load_type ?? "total")
     setPrimaryMuscles(initialExercise?.primary_muscles ?? [])
     setSecondaryMuscles(initialExercise?.secondary_muscles ?? [])
     setEquipmentRequired(initialExercise?.equipment_required ?? [])
@@ -452,6 +462,7 @@ export function ExerciseFormDialog({ open, onOpenChange, exercise: initialExerci
       movement_pattern: movementPattern || null,
       force_type: forceType || null,
       laterality: laterality || null,
+      load_type: loadType as ExerciseFormData["load_type"],
       primary_muscles: primaryMuscles,
       secondary_muscles: secondaryMuscles,
       equipment_required: equipmentRequired,
@@ -656,6 +667,8 @@ export function ExerciseFormDialog({ open, onOpenChange, exercise: initialExerci
                   setForceType={setForceType}
                   laterality={laterality}
                   setLaterality={setLaterality}
+                  loadType={loadType}
+                  setLoadType={setLoadType}
                   primaryMuscles={primaryMuscles}
                   togglePrimary={(m) => toggleItem(primaryMuscles, m, setPrimaryMuscles)}
                   secondaryMuscles={secondaryMuscles}
@@ -952,6 +965,8 @@ function StepAiMetadata({
   setForceType,
   laterality,
   setLaterality,
+  loadType,
+  setLoadType,
   primaryMuscles,
   togglePrimary,
   secondaryMuscles,
@@ -987,6 +1002,8 @@ function StepAiMetadata({
   setForceType: (v: string) => void
   laterality: string
   setLaterality: (v: string) => void
+  loadType: string
+  setLoadType: (v: string) => void
   primaryMuscles: string[]
   togglePrimary: (m: string) => void
   secondaryMuscles: string[]
@@ -1114,6 +1131,28 @@ function StepAiMetadata({
             </option>
           ))}
         </select>
+      </div>
+
+      {/* Weight entry (load type) — how the client logs the weight */}
+      <div className="space-y-2">
+        <Label htmlFor="load_type">Weight entry</Label>
+        <select
+          id="load_type"
+          value={loadType}
+          onChange={(e) => setLoadType(e.target.value)}
+          disabled={disabled}
+          className={selectClass}
+        >
+          {LOAD_TYPE_OPTIONS.map((lt) => (
+            <option key={lt} value={lt}>
+              {LOAD_TYPE_LABELS[lt]}
+            </option>
+          ))}
+        </select>
+        <p className="text-xs text-muted-foreground">
+          Shows the client a label (e.g. &quot;per dumbbell&quot;) and doubles the volume-load math for
+          per-dumbbell / per-side lifts.
+        </p>
       </div>
 
       {/* Primary Muscles */}
