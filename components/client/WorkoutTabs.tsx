@@ -10,6 +10,9 @@ import { Button } from "@/components/ui/button"
 import { WorkoutDay } from "@/components/client/WorkoutDay"
 import { CompleteWeekButton } from "@/components/client/CompleteWeekButton"
 import { WeekBanner } from "@/components/client/WeekBanner"
+import { SessionPrsPrompt } from "@/components/client/SessionPrsPrompt"
+import { FinishSessionButton } from "@/components/client/FinishSessionButton"
+import { computeVolumeLoad } from "@/lib/workout/volume-load"
 import type { WorkoutDayProps } from "@/components/client/WorkoutDay"
 
 interface ProgramWorkout {
@@ -240,6 +243,11 @@ function ProgramDetail({
 
   // Progress calculation for selected day
   const dayExercises = dayData?.exercises ?? []
+  // Best-effort session volume load (Σ reps×weight×load-type) from logged sets.
+  const sessionVolumeKg = dayExercises.reduce(
+    (sum, e) => sum + computeVolumeLoad(e.savedSetDetails ?? [], e.exercise.load_type),
+    0,
+  )
   const loggedCount = dayExercises.filter((e) => e.loggedToday || sessionLoggedIds.has(e.exercise.id)).length
   const totalCount = dayExercises.length
   const progressPct = totalCount > 0 ? Math.round((loggedCount / totalCount) * 100) : 0
@@ -377,6 +385,11 @@ function ProgramDetail({
           )
         })()}
 
+      {/* Perceived Recovery Status — skippable, once per day, current week only */}
+      {isCurrentWeek && !lockedWeeks[selectedWeek] && dayExercises.length > 0 && (
+        <SessionPrsPrompt assignmentId={program.assignmentId} weekNumber={selectedWeek} dayOfWeek={selectedDay} />
+      )}
+
       {/* Session progress bar */}
       {totalCount > 0 && (
         <div className="mb-4 space-y-2">
@@ -475,6 +488,17 @@ function ProgramDetail({
           )}
         </AnimatePresence>
       </div>
+
+      {/* Finish session — marks the day's workout complete + captures one session RPE */}
+      {isCurrentWeek && !lockedWeeks[selectedWeek] && dayExercises.length > 0 && (
+        <FinishSessionButton
+          assignmentId={program.assignmentId}
+          weekNumber={selectedWeek}
+          dayOfWeek={selectedDay}
+          volumeLoadKg={sessionVolumeKg > 0 ? sessionVolumeKg : null}
+          allLogged={totalCount > 0 && loggedCount === totalCount}
+        />
+      )}
 
       {/* Complete Week button — only shown on the current week when all exercises are logged and week is not locked */}
       {isCurrentWeek && !lockedWeeks[selectedWeek] && (

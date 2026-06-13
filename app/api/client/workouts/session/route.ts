@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { ensureSessionSchema, finishSessionSchema } from "@/lib/validators/workout-session"
 import { ensureSession, setPrs, finishSession } from "@/lib/db/workout-sessions"
+import { upsert as upsertTrainingSession } from "@/lib/db/training-sessions"
 import { assertAssignmentPayable } from "@/lib/services/access-guard"
 
 /** POST: create-or-find the day's session (and optionally record PRS at start). */
@@ -53,6 +54,25 @@ export async function PATCH(request: Request) {
       volume_load_kg: volume_load_kg ?? null,
       duration_seconds: duration_seconds ?? null,
     })
+
+    // Bonus: feed the coach-intel readiness log (training_sessions, sRPE load =
+    // rpe × duration). Best-effort — never blocks finishing the workout.
+    try {
+      const startedMs = new Date(ws.started_at).getTime()
+      const completedMs = ws.completed_at ? new Date(ws.completed_at).getTime() : Date.now()
+      const elapsedMin = Math.min(600, Math.max(1, Math.round((completedMs - startedMs) / 60000)))
+      const durationMin = ws.duration_seconds ? Math.max(1, Math.round(ws.duration_seconds / 60)) : elapsedMin
+      await upsertTrainingSession(ws.user_id, {
+        date: ws.session_date,
+        session_type: "gym",
+        rpe: ws.session_rpe ?? session_rpe,
+        duration_min: durationMin,
+        notes: null,
+        program_assignment_id: ws.assignment_id,
+      })
+    } catch (feedErr) {
+      console.error("training_sessions feed failed (non-blocking):", feedErr)
+    }
 
     return NextResponse.json({ session: ws }, { status: 200 })
   } catch (error) {
