@@ -2,7 +2,6 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 import { auth } from "@/lib/auth"
 import { checkInClient } from "@/lib/services/session-credits"
-import { packsEnabled } from "@/lib/packs/flags"
 import { recordAudit } from "@/lib/audit/record"
 
 const bodySchema = z.object({ clientUserId: z.string().uuid() })
@@ -13,9 +12,6 @@ export async function POST(request: Request) {
     const session = await auth()
     if (!session?.user?.id || session.user.role !== "admin") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
-    }
-    if (!(await packsEnabled())) {
-      return NextResponse.json({ error: "Session packs are not enabled" }, { status: 403 })
     }
 
     const parsed = bodySchema.safeParse(await request.json())

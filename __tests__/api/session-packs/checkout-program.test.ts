@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 const authMock = vi.fn()
-const packsEnabledMock = vi.fn()
 const getProductByIdMock = vi.fn()
 const createClientPackageMock = vi.fn()
 const createPackCheckoutSessionMock = vi.fn()
@@ -9,7 +8,6 @@ const assignProgramMock = vi.fn()
 const getAssignmentByUserAndProgramMock = vi.fn()
 
 vi.mock("@/lib/auth", () => ({ auth: () => authMock() }))
-vi.mock("@/lib/packs/flags", () => ({ packsEnabled: () => packsEnabledMock() }))
 vi.mock("@/lib/db/session-pack-products", () => ({ getProductById: (...a: unknown[]) => getProductByIdMock(...a) }))
 vi.mock("@/lib/db/client-packages", () => ({ createClientPackage: (...a: unknown[]) => createClientPackageMock(...a) }))
 vi.mock("@/lib/db/session-checkins", () => ({}))
@@ -38,7 +36,6 @@ function req(body: Record<string, unknown>) {
 beforeEach(() => {
   vi.clearAllMocks()
   authMock.mockResolvedValue({ user: { id: "coach-1", role: "admin" } })
-  packsEnabledMock.mockResolvedValue(true)
   getProductByIdMock.mockResolvedValue({
     id: PRODUCT,
     name: "10x 1-on-1",

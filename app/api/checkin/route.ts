@@ -2,16 +2,11 @@ import { NextResponse } from "next/server"
 import { checkinSchema } from "@/lib/validators/session-packs"
 import { verifyCheckinToken } from "@/lib/qr/checkin-token"
 import { checkInClient } from "@/lib/services/session-credits"
-import { qrCheckinEnabled } from "@/lib/packs/flags"
 import { recordAudit } from "@/lib/audit/record"
 
 /** Public QR self-check-in. Token-gated; can only deduct from the resolved client's own pack. */
 export async function POST(request: Request) {
   try {
-    if (!(await qrCheckinEnabled())) {
-      return NextResponse.json({ error: "Self check-in is not enabled" }, { status: 403 })
-    }
-
     const parsed = checkinSchema.safeParse(await request.json())
     if (!parsed.success) {
       return NextResponse.json({ error: "Invalid request" }, { status: 400 })

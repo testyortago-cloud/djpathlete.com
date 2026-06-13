@@ -1,16 +1,11 @@
 import { NextResponse } from "next/server"
 import { verifyCheckinToken } from "@/lib/qr/checkin-token"
 import { listActivePackClients } from "@/lib/db/client-packages"
-import { qrCheckinEnabled } from "@/lib/packs/flags"
 import { remainingCredits } from "@/lib/services/session-credits"
 
 /** Token-gated roster for the self-check-in page: active-pack clients to tap. */
 export async function GET(request: Request) {
   try {
-    if (!(await qrCheckinEnabled())) {
-      return NextResponse.json({ error: "Self check-in is not enabled" }, { status: 403 })
-    }
-
     const token = new URL(request.url).searchParams.get("token") ?? ""
     if (!verifyCheckinToken(token, new Date()).valid) {
       return NextResponse.json({ error: "Invalid or expired check-in code" }, { status: 401 })

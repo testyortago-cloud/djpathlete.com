@@ -25,20 +25,6 @@ export const FEATURE_FLAG_CATALOG: readonly FeatureFlag[] = [
       "Dynamic two-row reels: full-frame talking head that cuts to a face-tracked split with fal.ai b-roll at AI-selected moments.",
     defaultEnabled: false,
   },
-  {
-    key: "feature_session_packs_enabled",
-    label: "Session Packs (in-person)",
-    description:
-      "Track prepaid in-person session packs on each client: sell a pack (Stripe / cash / comp, optionally linked to a program), check clients in (one tap or QR), and credits deduct automatically. Adds the Session Packs panel on client pages and the 'Today' check-in screen. Off by default.",
-    defaultEnabled: false,
-  },
-  {
-    key: "feature_qr_checkin_enabled",
-    label: "QR self check-in",
-    description:
-      "Lets clients scan the QR on the 'Today' screen and tap their name to check themselves in. Requires Session Packs to be on. Off by default.",
-    defaultEnabled: false,
-  },
 ] as const
 
 export function isFeatureFlagKey(key: string): boolean {

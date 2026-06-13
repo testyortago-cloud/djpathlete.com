@@ -1,10 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
-const qrEnabledMock = vi.fn()
 const verifyTokenMock = vi.fn()
 const checkInClientMock = vi.fn()
 
-vi.mock("@/lib/packs/flags", () => ({ qrCheckinEnabled: () => qrEnabledMock() }))
 vi.mock("@/lib/qr/checkin-token", () => ({ verifyCheckinToken: (...a: unknown[]) => verifyTokenMock(...a) }))
 vi.mock("@/lib/services/session-credits", () => ({ checkInClient: (...a: unknown[]) => checkInClientMock(...a) }))
 vi.mock("@/lib/audit/record", () => ({ recordAudit: vi.fn() }))
@@ -23,7 +21,6 @@ function req(body: Record<string, unknown>) {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  qrEnabledMock.mockResolvedValue(true)
 })
 
 describe("POST /api/checkin (self check-in)", () => {
@@ -49,11 +46,5 @@ describe("POST /api/checkin (self check-in)", () => {
     checkInClientMock.mockResolvedValue({ ok: false, reason: "no_credits" })
     const res = await POST(req({ clientUserId: CLIENT, token: "good.token" }))
     expect(res.status).toBe(409)
-  })
-
-  it("403s when self check-in is disabled", async () => {
-    qrEnabledMock.mockResolvedValue(false)
-    const res = await POST(req({ clientUserId: CLIENT, token: "good.token" }))
-    expect(res.status).toBe(403)
   })
 })

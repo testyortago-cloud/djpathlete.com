@@ -1,11 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 const authMock = vi.fn()
-const packsEnabledMock = vi.fn()
 const checkInClientMock = vi.fn()
 
 vi.mock("@/lib/auth", () => ({ auth: () => authMock() }))
-vi.mock("@/lib/packs/flags", () => ({ packsEnabled: () => packsEnabledMock() }))
 vi.mock("@/lib/services/session-credits", () => ({ checkInClient: (...a: unknown[]) => checkInClientMock(...a) }))
 vi.mock("@/lib/audit/record", () => ({ recordAudit: vi.fn() }))
 
@@ -24,7 +22,6 @@ function req(body: Record<string, unknown>) {
 beforeEach(() => {
   vi.clearAllMocks()
   authMock.mockResolvedValue({ user: { id: "coach-1", role: "admin" } })
-  packsEnabledMock.mockResolvedValue(true)
 })
 
 describe("POST /api/admin/session-packs/checkin", () => {

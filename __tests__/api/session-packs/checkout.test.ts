@@ -1,13 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 const authMock = vi.fn()
-const packsEnabledMock = vi.fn()
 const getProductByIdMock = vi.fn()
 const createClientPackageMock = vi.fn()
 const createPackCheckoutSessionMock = vi.fn()
 
 vi.mock("@/lib/auth", () => ({ auth: () => authMock() }))
-vi.mock("@/lib/packs/flags", () => ({ packsEnabled: () => packsEnabledMock() }))
 vi.mock("@/lib/db/session-pack-products", () => ({ getProductById: (...a: unknown[]) => getProductByIdMock(...a) }))
 vi.mock("@/lib/db/client-packages", () => ({ createClientPackage: (...a: unknown[]) => createClientPackageMock(...a) }))
 vi.mock("@/lib/db/session-checkins", () => ({}))
@@ -31,7 +29,6 @@ function req(body: Record<string, unknown>) {
 beforeEach(() => {
   vi.clearAllMocks()
   authMock.mockResolvedValue({ user: { id: "coach-1", role: "admin" } })
-  packsEnabledMock.mockResolvedValue(true)
   getProductByIdMock.mockResolvedValue({
     id: PRODUCT,
     name: "10× 1-on-1",
@@ -99,11 +96,5 @@ describe("POST /api/admin/session-packs/checkout", () => {
     expect(createClientPackageMock).toHaveBeenCalledWith(
       expect.objectContaining({ session_type: "30-min", credits_total: 5 }),
     )
-  })
-
-  it("403s when the feature flag is off", async () => {
-    packsEnabledMock.mockResolvedValue(false)
-    const res = await POST(req({ clientUserId: CLIENT, productId: PRODUCT, paymentMethod: "stripe" }))
-    expect(res.status).toBe(403)
   })
 })

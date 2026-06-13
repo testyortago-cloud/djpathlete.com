@@ -5,7 +5,6 @@ import { getProductById } from "@/lib/db/session-pack-products"
 import { createClientPackage } from "@/lib/db/client-packages"
 import { buildPackageInsert } from "@/lib/services/session-credits"
 import { createPackCheckoutSession } from "@/lib/stripe"
-import { packsEnabled } from "@/lib/packs/flags"
 import { recordAudit } from "@/lib/audit/record"
 import { assignProgram } from "@/lib/services/assign-program"
 import { getAssignmentByUserAndProgram } from "@/lib/db/assignments"
@@ -22,10 +21,6 @@ export async function POST(request: Request) {
     const session = await auth()
     if (!session?.user?.id || session.user.role !== "admin") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
-    }
-
-    if (!(await packsEnabled())) {
-      return NextResponse.json({ error: "Session packs are not enabled" }, { status: 403 })
     }
 
     const parsed = sellPackSchema.safeParse(await request.json())
