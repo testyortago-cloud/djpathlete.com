@@ -194,7 +194,11 @@ export async function countActiveClientsInRange(from: Date, to: Date): Promise<n
 
 export async function logProgress(progress: Omit<ExerciseProgress, "id" | "created_at">) {
   const supabase = getClient()
-  const { data, error } = await supabase.from("exercise_progress").insert(progress).select().single()
+  // Drop a null session_id so the insert stays valid before the workout_sessions
+  // migration is applied (PostgREST rejects an unknown column even when null).
+  const payload: Record<string, unknown> = { ...progress }
+  if (payload.session_id == null) delete payload.session_id
+  const { data, error } = await supabase.from("exercise_progress").insert(payload).select().single()
   if (error) throw error
 
   const result = data as ExerciseProgress
