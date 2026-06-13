@@ -49,6 +49,7 @@ export type MovementPattern =
   | "conditioning"
 export type ForceType = "push" | "pull" | "static" | "dynamic"
 export type Laterality = "bilateral" | "unilateral" | "alternating"
+export type LoadType = "total" | "per_dumbbell" | "per_side"
 export type SplitType =
   | "full_body"
   | "upper_lower"
@@ -361,6 +362,7 @@ export interface Exercise {
   secondary_muscles: string[]
   force_type: ForceType | null
   laterality: Laterality | null
+  load_type: LoadType
   equipment_required: string[]
   is_bodyweight: boolean
   training_intent: TrainingIntent[]
@@ -419,6 +421,7 @@ export interface ProgramExercise {
   group_tag: string | null
   technique: TrainingTechnique
   suggested_weight_kg: number | null
+  requires_video: boolean
   created_at: string
 }
 
@@ -477,6 +480,7 @@ export interface ExerciseProgress {
   pr_type: PrType | null
   set_details: SetDetail[] | null
   ai_next_weight_kg: number | null
+  session_id: string | null
   created_at: string
 }
 
@@ -2442,6 +2446,30 @@ export interface TrainingSession {
   session_load: number // generated = rpe * duration_min
   notes: string | null
   program_assignment_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type WorkoutSessionStatus = "in_progress" | "completed"
+
+/** Program-flow workout session: one row per client per program day.
+ *  Anchors PRS (start), session RPE (end), volume load, and completion. */
+export interface WorkoutSession {
+  id: string
+  user_id: string
+  assignment_id: string
+  week_number: number
+  day_of_week: number
+  session_date: string // YYYY-MM-DD
+  prs: number | null // perceived recovery 0-10, at start
+  prs_recorded_at: string | null
+  session_rpe: number | null // 1-10, at end
+  volume_load_kg: number | null // Σ reps × entered weight × load-type multiplier
+  duration_seconds: number | null
+  status: WorkoutSessionStatus
+  started_at: string
+  completed_at: string | null
+  notes: string | null
   created_at: string
   updated_at: string
 }

@@ -71,6 +71,8 @@ export const programExerciseSchema = z.object({
     .optional()
     .transform((v) => v || null),
   suggested_weight_kg: nullableNum(z.coerce.number().min(0)),
+  // Coach flag: this exercise must be video-recorded by the client.
+  requires_video: z.boolean().optional().default(false),
 })
 
 export const programExerciseUpdateSchema = programExerciseSchema.partial().omit({ exercise_id: true })

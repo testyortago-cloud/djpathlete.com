@@ -7,6 +7,7 @@ import { detectPRs, checkStreakMilestones, checkWorkoutMilestones } from "@/lib/
 import { createServiceRoleClient } from "@/lib/supabase"
 import { workoutLogSchema } from "@/lib/validators/workout-log"
 import { assertAssignmentPayable } from "@/lib/services/access-guard"
+import { ensureSession } from "@/lib/db/workout-sessions"
 import type { Achievement } from "@/types/database"
 
 export async function POST(request: Request) {
@@ -36,6 +37,9 @@ export async function POST(request: Request) {
       notes,
       set_details,
       ai_next_weight_kg,
+      session_id: providedSessionId,
+      week_number,
+      day_of_week,
     } = parsed.data
 
     // Payment access guard — block pending assignments before any mutation
@@ -43,6 +47,24 @@ export async function POST(request: Request) {
       const { ok } = await assertAssignmentPayable(assignment_id)
       if (!ok) {
         return NextResponse.json({ error: "Payment required to access this program." }, { status: 402 })
+      }
+    }
+
+    // Resolve the workout session this set belongs to: use the supplied id, else
+    // find-or-create from (assignment, week, day) so the set rolls up to a session.
+    let sessionId: string | null = providedSessionId
+    if (!sessionId && assignment_id && week_number != null && day_of_week != null) {
+      try {
+        const ws = await ensureSession({
+          user_id: userId,
+          assignment_id,
+          week_number,
+          day_of_week,
+          session_date: new Date().toISOString().slice(0, 10),
+        })
+        sessionId = ws.id
+      } catch (sessionError) {
+        console.error("Failed to ensure workout session (logging without session link):", sessionError)
       }
     }
 
@@ -59,6 +81,7 @@ export async function POST(request: Request) {
       notes,
       set_details: set_details ?? null,
       ai_next_weight_kg: ai_next_weight_kg ?? null,
+      session_id: sessionId,
       completed_at: new Date().toISOString(),
       is_pr: false,
       pr_type: null,

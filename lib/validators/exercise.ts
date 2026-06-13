@@ -33,6 +33,8 @@ export const FORCE_TYPES = ["push", "pull", "static", "dynamic"] as const
 
 export const LATERALITY_OPTIONS = ["bilateral", "unilateral", "alternating"] as const
 
+export const LOAD_TYPE_OPTIONS = ["total", "per_dumbbell", "per_side"] as const
+
 export const MUSCLE_OPTIONS = [
   "chest",
   "upper_back",
@@ -178,6 +180,9 @@ export const exerciseFormSchema = z.object({
     .nullable()
     .optional()
     .transform((v) => v ?? null),
+  // How the client enters the weight for this exercise (drives the client-facing
+  // label and the volume-load multiplier). See lib/workout/load-type.ts.
+  load_type: z.enum(LOAD_TYPE_OPTIONS).optional().default("total"),
   equipment_required: z.array(z.string()).optional().default([]),
   is_bodyweight: z.boolean().optional().default(false),
   training_intent: z.array(z.enum(TRAINING_INTENTS)).min(1, "Select at least one training intent").default(["build"]),

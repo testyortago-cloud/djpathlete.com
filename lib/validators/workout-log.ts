@@ -74,6 +74,24 @@ export const workoutLogSchema = z.object({
     .nullable()
     .optional()
     .transform((v) => v ?? null),
+  // Session linkage: pass an existing session_id, or week/day so the server can
+  // find-or-create the day's workout_session and attach this set to it.
+  session_id: uuidLike.nullable().optional().transform((v) => v ?? null),
+  week_number: z
+    .number()
+    .int()
+    .min(1)
+    .nullable()
+    .optional()
+    .transform((v) => v ?? null),
+  day_of_week: z
+    .number()
+    .int()
+    .min(0)
+    .max(7)
+    .nullable()
+    .optional()
+    .transform((v) => v ?? null),
 })
 
 export type WorkoutLogFormData = z.infer<typeof workoutLogSchema>
