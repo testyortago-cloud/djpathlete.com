@@ -70,6 +70,7 @@ export function expiresAtFrom(purchasedAtIso: string, validityDays: number | nul
 export function buildPackageInsert(opts: {
   clientUserId: string
   productId: string | null
+  assignmentId?: string | null
   sessionType: string
   credits: number
   priceCents: number
@@ -86,6 +87,7 @@ export function buildPackageInsert(opts: {
   return {
     client_user_id: opts.clientUserId,
     product_id: opts.productId,
+    assignment_id: opts.assignmentId ?? null,
     session_type: opts.sessionType,
     credits_total: opts.credits,
     credits_used: 0,
@@ -164,6 +166,7 @@ export async function checkInClient(input: CheckInInput): Promise<CheckInResult>
       voided_by: null,
       voided_at: null,
       calendar_event_id: null,
+      workout_session_id: null,
       created_by: input.createdBy,
       notes: null,
     })

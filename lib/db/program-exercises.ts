@@ -6,6 +6,27 @@ function getClient() {
   return createServiceRoleClient()
 }
 
+/** Distinct (week_number, day_of_week) training slots for a program, ordered. */
+export async function getProgramDaySlots(programId: string): Promise<{ week_number: number; day_of_week: number }[]> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("program_exercises")
+    .select("week_number, day_of_week")
+    .eq("program_id", programId)
+    .order("week_number", { ascending: true })
+    .order("day_of_week", { ascending: true })
+  if (error) throw error
+  const seen = new Set<string>()
+  const slots: { week_number: number; day_of_week: number }[] = []
+  for (const r of (data ?? []) as { week_number: number; day_of_week: number }[]) {
+    const key = `${r.week_number}-${r.day_of_week}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    slots.push({ week_number: r.week_number, day_of_week: r.day_of_week })
+  }
+  return slots
+}
+
 export async function getProgramExercises(programId: string) {
   const supabase = getClient()
   const { data, error } = await supabase

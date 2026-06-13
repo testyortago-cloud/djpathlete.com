@@ -2622,6 +2622,7 @@ export interface ClientPackage {
   id: string
   client_user_id: string
   product_id: string | null
+  assignment_id: string | null
   session_type: string
   credits_total: number
   credits_used: number
@@ -2653,6 +2654,7 @@ export interface SessionCheckin {
   voided_by: string | null
   voided_at: string | null
   calendar_event_id: string | null
+  workout_session_id: string | null
   created_by: string | null
   notes: string | null
   created_at: string

@@ -59,6 +59,16 @@ export async function recentNonVoidedForPackage(clientPackageId: string, sinceIs
   return data as SessionCheckin | null
 }
 
+/** Stamp the completed workout_session this check-in advanced (for later undo). */
+export async function setWorkoutSession(checkinId: string, workoutSessionId: string | null) {
+  const supabase = getClient()
+  const { error } = await supabase
+    .from("session_checkins")
+    .update({ workout_session_id: workoutSessionId })
+    .eq("id", checkinId)
+  if (error) throw error
+}
+
 export async function voidCheckin(id: string, opts: { voided_by: string | null; voided_reason: string | null }) {
   const supabase = getClient()
   const { data, error } = await supabase

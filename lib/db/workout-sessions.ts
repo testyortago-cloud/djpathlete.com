@@ -92,6 +92,39 @@ export async function listCompletedSessionDates(userId: string): Promise<string[
   return data.map((r) => r.session_date as string)
 }
 
+/** `"week-day"` keys of completed sessions for one assignment (program progress). */
+export async function listCompletedDayKeys(userId: string, assignmentId: string): Promise<string[]> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("workout_sessions")
+    .select("week_number, day_of_week")
+    .eq("user_id", userId)
+    .eq("assignment_id", assignmentId)
+    .eq("status", "completed")
+  if (error || !data) return []
+  return (data as { week_number: number; day_of_week: number }[]).map((r) => `${r.week_number}-${r.day_of_week}`)
+}
+
+/** Mark a session completed from an in-person check-in (no metric entry required). */
+export async function completeForCheckin(sessionId: string, note: string): Promise<void> {
+  const supabase = getClient()
+  const { error } = await supabase
+    .from("workout_sessions")
+    .update({ status: "completed", completed_at: new Date().toISOString(), notes: note })
+    .eq("id", sessionId)
+  if (error) throw error
+}
+
+/** Reopen a session when its in-person check-in is voided. */
+export async function reopenForVoid(sessionId: string): Promise<void> {
+  const supabase = getClient()
+  const { error } = await supabase
+    .from("workout_sessions")
+    .update({ status: "in_progress", completed_at: null, session_rpe: null, volume_load_kg: null })
+    .eq("id", sessionId)
+  if (error) throw error
+}
+
 export async function getCompletedSessionCount(userId: string): Promise<number> {
   const supabase = getClient()
   const { count, error } = await supabase
