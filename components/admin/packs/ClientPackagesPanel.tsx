@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { SellPackDialog } from "./SellPackDialog"
 import type { ClientPackage, SessionCheckin } from "@/types/database"
 
-type PackWithCheckins = ClientPackage & { checkins: SessionCheckin[] }
+type PackWithCheckins = ClientPackage & { checkins: SessionCheckin[]; program_name?: string | null }
 
 const STATUS_COLORS: Record<string, string> = {
   active: "bg-success/10 text-success",
@@ -147,6 +147,11 @@ export function ClientPackagesPanel({ clientUserId }: { clientUserId: string }) 
                     Bought {fmtDate(p.purchased_at)}
                     {p.expires_at ? ` · expires ${fmtDate(p.expires_at)}` : " · no expiry"}
                   </p>
+                  {p.program_name && (
+                    <p className="text-xs text-accent mt-0.5">
+                      → {p.program_name} · advances on check-in
+                    </p>
+                  )}
                 </div>
                 <div className="text-right">
                   <p className="text-2xl font-semibold text-primary">

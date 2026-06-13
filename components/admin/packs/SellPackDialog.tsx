@@ -33,6 +33,8 @@ export function SellPackDialog({
 }) {
   const [open, setOpen] = useState(false)
   const [products, setProducts] = useState<SessionPackProduct[]>([])
+  const [programs, setPrograms] = useState<{ id: string; name: string }[]>([])
+  const [programId, setProgramId] = useState<string>("none")
   const [mode, setMode] = useState<"catalogue" | "adhoc">("adhoc")
   const [productId, setProductId] = useState<string>("")
   const [sessionType, setSessionType] = useState("1-on-1")
@@ -55,12 +57,17 @@ export function SellPackDialog({
         }
       })
       .catch(() => setProducts([]))
+    fetch("/api/admin/session-packs/programs")
+      .then((r) => (r.ok ? r.json() : { programs: [] }))
+      .then((d) => setPrograms(d.programs ?? []))
+      .catch(() => setPrograms([]))
   }, [open])
 
   async function submit() {
     setSubmitting(true)
     try {
       const body: Record<string, unknown> = { clientUserId, paymentMethod }
+      if (programId !== "none") body.programId = programId
       if (mode === "catalogue") {
         if (!productId) {
           toast.error("Pick a pack")
@@ -186,6 +193,26 @@ export function SellPackDialog({
                 <SelectItem value="comp">Complimentary</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Link a program (optional)</Label>
+            <Select value={programId} onValueChange={setProgramId}>
+              <SelectTrigger>
+                <SelectValue placeholder="No program" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No program</SelectItem>
+                {programs.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              If linked, each check-in marks the next workout in this program complete.
+            </p>
           </div>
         </div>
 
