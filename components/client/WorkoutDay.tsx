@@ -441,18 +441,11 @@ function ExerciseCard({
     currentTopKg > 0 ? currentTopKg : null,
     rec.last_weight_kg != null ? [{ weight_kg: rec.last_weight_kg }] : [],
   )
-  const nudgeOpenedRef = useRef(false)
-
-  // Auto-open coach when concerning pattern first detected
-  useEffect(() => {
-    if (coachNudge && !nudgeOpenedRef.current && !showCoachDjp) {
-      nudgeOpenedRef.current = true
-      setShowCoachDjp(true)
-    }
-    if (!coachNudge) {
-      nudgeOpenedRef.current = false
-    }
-  }, [coachNudge, showCoachDjp])
+  // NOTE: we intentionally do NOT auto-open the Coach DJP panel on a nudge.
+  // Entering a normal descending rep scheme (e.g. 10, 8, 6) trips shouldNudgeCoach,
+  // and auto-opening made it feel like "pressing reps jumps you to the coach"
+  // (reported bug). The nudge now only styles the button (pulse + red dot); the
+  // client chooses to open it.
 
   return (
     <>
