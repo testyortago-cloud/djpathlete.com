@@ -48,6 +48,8 @@ import {
 import { parseProfileSummary, hasQuestionnaireData } from "@/lib/profile-utils"
 import { UnassignButton } from "@/components/admin/UnassignButton"
 import { EditAssignmentButton } from "@/components/admin/EditAssignmentButton"
+import { ClientPackagesPanel } from "@/components/admin/packs/ClientPackagesPanel"
+import { packsEnabled } from "@/lib/packs/flags"
 import { ClientDetailHeader } from "./ClientDetailHeader"
 import type {
   Program,
@@ -583,13 +585,14 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
     notFound()
   }
 
-  const [profile, assignments, payments, progressData, achievements, workoutStreak] = await Promise.all([
+  const [profile, assignments, payments, progressData, achievements, workoutStreak, packsOn] = await Promise.all([
     getProfileByUserId(id),
     getAssignments(id),
     getPayments(id),
     getProgress(id),
     getAchievements(id),
     getWorkoutStreak(id),
+    packsEnabled(),
   ])
 
   // Build progress stats and shape data for the progress view
@@ -740,6 +743,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
               programName: a.programs!.name,
             }))}
         />
+        {packsOn && <ClientPackagesPanel clientUserId={id} />}
         <PaymentsSection payments={payments} />
       </div>
     </div>
