@@ -390,3 +390,55 @@ export async function resolveSessionPaymentIntent(
 
   return null
 }
+
+// ─── Session pack checkout ───────────────────────────────────────────────────
+
+/**
+ * Checkout Session for an in-person session pack. metadata.type = "session_pack"
+ * routes it to handleSessionPackCheckout in the webhook. Uses a pre-made Stripe
+ * price when available, else inline price_data.
+ */
+export async function createPackCheckoutSession(opts: {
+  clientUserId: string
+  name: string
+  sessionType: string
+  credits: number
+  priceCents: number
+  validityDays: number | null
+  productId: string | null
+  stripePriceId?: string | null
+  returnUrl?: string
+}): Promise<Stripe.Checkout.Session> {
+  const baseUrl = getBaseUrl()
+  const successUrl = `${baseUrl}${opts.returnUrl ?? `/admin/clients/${opts.clientUserId}`}?pack=purchased`
+  const cancelUrl = `${baseUrl}/admin/clients/${opts.clientUserId}?pack=cancelled`
+
+  const line_items: Stripe.Checkout.SessionCreateParams.LineItem[] = opts.stripePriceId
+    ? [{ price: opts.stripePriceId, quantity: 1 }]
+    : [
+        {
+          price_data: {
+            currency: "usd",
+            product_data: { name: opts.name },
+            unit_amount: opts.priceCents,
+          },
+          quantity: 1,
+        },
+      ]
+
+  return stripe.checkout.sessions.create({
+    mode: "payment",
+    line_items,
+    metadata: {
+      type: "session_pack",
+      clientUserId: opts.clientUserId,
+      productId: opts.productId ?? "",
+      credits: String(opts.credits),
+      validityDays: opts.validityDays == null ? "" : String(opts.validityDays),
+      sessionType: opts.sessionType,
+      priceCents: String(opts.priceCents),
+    },
+    success_url: successUrl,
+    cancel_url: cancelUrl,
+  })
+}

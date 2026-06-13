@@ -4,6 +4,8 @@ import type {
   PackReminderThreshold,
   CheckinMethod,
   SessionCheckin,
+  PackPaymentMethod,
+  PackPaymentStatus,
 } from "@/types/database"
 import {
   getActivePackageForClient,
@@ -59,6 +61,45 @@ export function expiresAtFrom(purchasedAtIso: string, validityDays: number | nul
   const d = new Date(purchasedAtIso)
   d.setUTCDate(d.getUTCDate() + validityDays)
   return d.toISOString()
+}
+
+/** Pure: build the client_packages insert payload from sell inputs. cash→paid,
+ *  comp→not_required, stripe→pending (webhook promotes). Pack is usable
+ *  immediately (status active) so a coach can start using it before the link is paid. */
+export function buildPackageInsert(opts: {
+  clientUserId: string
+  productId: string | null
+  sessionType: string
+  credits: number
+  priceCents: number
+  validityDays: number | null
+  paymentMethod: PackPaymentMethod
+  createdBy: string | null
+  now: Date
+  stripeSessionId?: string | null
+  notes?: string | null
+}): Omit<ClientPackage, "id" | "created_at" | "updated_at"> {
+  const purchasedAt = opts.now.toISOString()
+  const paymentStatus: PackPaymentStatus =
+    opts.paymentMethod === "comp" ? "not_required" : opts.paymentMethod === "cash" ? "paid" : "pending"
+  return {
+    client_user_id: opts.clientUserId,
+    product_id: opts.productId,
+    session_type: opts.sessionType,
+    credits_total: opts.credits,
+    credits_used: 0,
+    price_cents: opts.priceCents,
+    payment_method: opts.paymentMethod,
+    payment_status: paymentStatus,
+    stripe_session_id: opts.stripeSessionId ?? null,
+    stripe_payment_id: null,
+    purchased_at: purchasedAt,
+    expires_at: expiresAtFrom(purchasedAt, opts.validityDays),
+    status: "active",
+    last_reminded_threshold: null,
+    notes: opts.notes ?? null,
+    created_by: opts.createdBy,
+  }
 }
 
 // ─── Orchestration (uses DALs + the pure math above) ─────────────────────────

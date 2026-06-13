@@ -18,6 +18,12 @@ import { ghlCreateContact, ghlTriggerWorkflow } from "@/lib/ghl"
 import { confirmSignup, cancelSignup, getSignupById, getEventSignupByPaymentIntent } from "@/lib/db/event-signups"
 import { handleShopOrderCheckout } from "@/lib/shop/webhooks"
 import { getEventById as getEventByIdForSignup } from "@/lib/db/events"
+import {
+  getPackageByStripeSession,
+  getPackageByStripePaymentId,
+  updateClientPackage,
+} from "@/lib/db/client-packages"
+import { activatePaidPackage } from "@/lib/services/session-credits"
 import { createServiceRoleClient as createSupabaseServiceClient } from "@/lib/supabase"
 import { enqueuePaymentValueAdjustmentByEmail } from "@/lib/ads/conversions"
 import { recordAudit } from "@/lib/audit/record"
@@ -87,6 +93,12 @@ export async function POST(request: Request) {
           break
         }
 
+        if (session.metadata?.type === "session_pack") {
+          await handleSessionPackCheckout(session)
+          await tryEnqueueAdsValueAdjustment(session)
+          break
+        }
+
         // Per-week payment
         if (session.metadata?.type === "week_access") {
           await handleWeekAccessCheckout(session)
@@ -138,6 +150,9 @@ export async function POST(request: Request) {
 
           // Check if this refund matches an event signup
           await handleEventSignupRefund(stripePaymentId)
+
+          // Check if this refund matches a session pack
+          await handleSessionPackRefund(stripePaymentId)
         }
 
         break
@@ -685,6 +700,68 @@ async function syncAndNotify(session: Stripe.Checkout.Session, programId: string
   } catch {
     // Coach notification failure should not affect payment processing
   }
+}
+
+// ─── Session pack checkout ───────────────────────────────────────────────────
+
+async function handleSessionPackCheckout(session: Stripe.Checkout.Session) {
+  const pkg = await getPackageByStripeSession(session.id)
+  if (!pkg) {
+    console.error(`[webhook session_pack] no pack for session ${session.id}`)
+    return
+  }
+  // Idempotency: already promoted.
+  if (pkg.payment_status === "paid") return
+
+  const stripePaymentId = await resolveSessionPaymentIntent(session)
+  await activatePaidPackage(pkg, stripePaymentId)
+
+  // Record the payment for revenue tracking (idempotent).
+  if (stripePaymentId) {
+    const existing = await getPaymentByStripeId(stripePaymentId)
+    if (!existing) {
+      const tracking = await resolveTrackingParams(session.metadata ?? {}, session.customer_details?.email)
+      await createPayment({
+        user_id: pkg.client_user_id,
+        stripe_payment_id: stripePaymentId,
+        stripe_customer_id: (session.customer as string) ?? null,
+        amount_cents: session.amount_total ?? pkg.price_cents,
+        currency: session.currency ?? "usd",
+        status: "succeeded",
+        description: "Session pack",
+        metadata: { type: "session_pack", client_package_id: pkg.id },
+        ...tracking,
+      })
+    }
+  }
+
+  void recordAudit({
+    action: "pack.sold",
+    category: "commerce",
+    outcome: "success",
+    actor: { id: null, email: "stripe", role: "system" },
+    target: { type: "client_package", id: pkg.id },
+    metadata: {
+      client_user_id: pkg.client_user_id,
+      credits: pkg.credits_total,
+      price_cents: pkg.price_cents,
+      payment_method: "stripe",
+    },
+  })
+}
+
+async function handleSessionPackRefund(stripePaymentId: string) {
+  const pkg = await getPackageByStripePaymentId(stripePaymentId)
+  if (!pkg || pkg.status === "refunded") return
+  await updateClientPackage(pkg.id, { status: "refunded", payment_status: "refunded" })
+  void recordAudit({
+    action: "pack.refunded",
+    category: "commerce",
+    outcome: "success",
+    actor: { id: null, email: "stripe", role: "system" },
+    target: { type: "client_package", id: pkg.id },
+    metadata: { client_user_id: pkg.client_user_id },
+  })
 }
 
 // ─── Event signup checkout ────────────────────────────────────────────────────
