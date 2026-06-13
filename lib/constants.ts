@@ -67,6 +67,7 @@ export const FOOTER_SECTIONS = [
       { label: "Assessment", href: "/assessment" },
       { label: "Agility Clinics", href: "/clinics" },
       { label: "Performance Camps", href: "/camps" },
+      { label: "Step Up For Students", href: "/step-up-for-students" },
       { label: "Education", href: "/education" },
       { label: "Shop", href: "/shop" },
     ],
