@@ -9,6 +9,7 @@ import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
 import { WorkoutDay } from "@/components/client/WorkoutDay"
 import { CompleteWeekButton } from "@/components/client/CompleteWeekButton"
+import { WeekBanner } from "@/components/client/WeekBanner"
 import type { WorkoutDayProps } from "@/components/client/WorkoutDay"
 
 interface ProgramWorkout {
@@ -281,6 +282,16 @@ function ProgramDetail({
           </span>
         ))}
       </div>
+
+      {/* Which-week banner — guards against repeating an already-completed week */}
+      {program.totalWeeks > 1 && (
+        <WeekBanner
+          selectedWeek={selectedWeek}
+          currentWeek={effectiveCurrentWeek}
+          totalWeeks={program.totalWeeks}
+          onJumpToCurrent={() => handleWeekChange(effectiveCurrentWeek)}
+        />
+      )}
 
       {/* Week progress indicator */}
       <WeekProgressIndicator currentWeek={effectiveCurrentWeek} totalWeeks={program.totalWeeks} />
