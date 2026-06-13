@@ -172,6 +172,7 @@ export const AUDIT_ACTIONS = [
   { slug: "faq.reorder", category: "marketing", description: "FAQ entries reordered" },
   { slug: "about_page.update", category: "marketing", description: "About page content updated" },
   { slug: "athletes_page.update", category: "marketing", description: "Athletes page content updated" },
+  { slug: "step_up_page.update", category: "marketing", description: "Step Up For Students page content updated" },
 
   // compliance — consents + GDPR + legal
   {

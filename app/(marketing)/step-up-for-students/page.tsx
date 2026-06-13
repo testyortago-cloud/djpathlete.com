@@ -23,6 +23,7 @@ import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 import { FadeIn } from "@/components/shared/FadeIn"
 import { ManagedFaqSection } from "@/components/public/ManagedFaqSection"
 import { StepUpInquiryForm } from "@/components/public/StepUpInquiryForm"
+import { getStepUpPageContent } from "@/lib/db/step-up-page"
 
 export const metadata: Metadata = {
   title: "Step Up For Students Approved Provider | Sports Performance Training",
@@ -189,69 +190,6 @@ const audiences = [
   },
 ]
 
-const packages = [
-  {
-    badge: "Entry Point · One-Time",
-    title: "Athletic Performance Assessment",
-    desc: "The diagnostic foundation. Understand exactly where your athlete is — and where they need to go — before committing to a program.",
-    items: [
-      "Speed & acceleration testing (10/40-yard)",
-      "Vertical jump & power output",
-      "Agility & change-of-direction testing",
-      "Movement quality & mobility screen",
-      "Personalized performance report",
-      "30-min parent consultation",
-    ],
-    cta: "Book Assessment",
-    featured: false,
-  },
-  {
-    badge: "★ Most Popular",
-    title: "Hybrid Performance Package",
-    desc: "A hybrid of in-person sessions, small-group training, and online app-based programming — built around your athlete's goals, sport, and competition schedule. Aligns with quarterly scholarship disbursements.",
-    items: [
-      "In-person performance sessions",
-      "Small-group training",
-      "Online app-based sessions & programming",
-      "Individualized program design",
-      "Monthly progress re-testing",
-      "Parent progress updates",
-      "Direct EMA billing available",
-    ],
-    cta: "Get Started",
-    featured: true,
-  },
-  {
-    badge: "Clinic · Aligned to Funding Quarter",
-    title: "Agility Clinic",
-    desc: "A structured agility clinic to develop speed, reaction, and movement confidence — run in blocks that line up with each scholarship disbursement.",
-    items: [
-      "Pre- and post-clinic agility testing",
-      "Sport-specific change-of-direction drills",
-      "Reaction & decision-making work",
-      "Runs as a clinic aligned to each funding quarter",
-      "Small-group or individual format",
-    ],
-    cta: "Enquire",
-    featured: false,
-  },
-  {
-    badge: "Homeschool · Year-Round",
-    title: "Homeschool Athlete PE Program",
-    desc: "Structured athletic development designed specifically for homeschool families. Fulfils PE requirements with measurable, documented progress.",
-    items: [
-      "Weekly structured training sessions",
-      "PE-standard documentation & reporting",
-      "Athletic skill progression tracking",
-      "Year-round enrollment available",
-      "Social group training environment",
-      "PEP scholarship-aligned billing",
-    ],
-    cta: "Book a Spot",
-    featured: false,
-  },
-]
-
 const steps = [
   {
     num: "01",
@@ -295,7 +233,9 @@ const eyebrowLeft = (label: string) => (
   </div>
 )
 
-export default function StepUpForStudentsPage() {
+export default async function StepUpForStudentsPage() {
+  const stepUp = await getStepUpPageContent()
+
   return (
     <>
       <JsonLd data={serviceSchema} />
@@ -553,19 +493,18 @@ export default function StepUpForStudentsPage() {
       <section className="py-16 lg:py-24 px-4 sm:px-8">
         <div className="max-w-6xl mx-auto">
           <FadeIn>
-            {eyebrowLeft("Scholarship-Ready Packages")}
+            {eyebrowLeft(stepUp.packages_eyebrow)}
             <h2 className="text-2xl sm:text-3xl lg:text-4xl font-heading font-semibold text-primary tracking-tight mb-5">
-              Packages Designed for Step Up Families
+              {stepUp.packages_heading}
             </h2>
             <p className="text-base sm:text-lg text-muted-foreground max-w-3xl leading-relaxed">
-              Every package is structured to align with Step Up&apos;s quarterly funding cycle and can be billed directly
-              through the EMA portal — no out-of-pocket payment required for eligible families.
+              {stepUp.packages_intro}
             </p>
           </FadeIn>
 
           <div className="mt-12 grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {packages.map((pkg, i) => (
-              <FadeIn key={pkg.title} delay={i * 0.06} direction="up">
+            {stepUp.packages.map((pkg, i) => (
+              <FadeIn key={`${pkg.title}-${i}`} delay={i * 0.06} direction="up">
                 <div
                   className={`flex h-full flex-col rounded-2xl border p-6 ${
                     pkg.featured ? "border-accent bg-accent/5 shadow-sm" : "border-border bg-white"

@@ -32,6 +32,7 @@ import {
   Activity,
   HelpCircle,
   UserSquare,
+  GraduationCap,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 
@@ -90,6 +91,7 @@ export function getAdminNav(opts: { contentStudioEnabled: boolean }): AdminNav {
     { label: "FAQs", href: "/admin/marketing/faqs", icon: HelpCircle },
     { label: "About page", href: "/admin/marketing/about", icon: UserSquare },
     { label: "Athletes page", href: "/admin/marketing/athletes", icon: Users },
+    { label: "Step Up packages", href: "/admin/marketing/step-up", icon: GraduationCap },
   ]
 
   return {
