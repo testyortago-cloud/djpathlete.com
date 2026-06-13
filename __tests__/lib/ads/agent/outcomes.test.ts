@@ -15,7 +15,7 @@ const action = (overrides: Partial<GoogleAdsAgentMemoAction> = {}): GoogleAdsAge
   supporting_signals: [],
   status: "applied",
   recommendation_id: "rec-1",
-  applied_at: "2026-04-15T00:00:00Z",
+  applied_at: new Date(Date.now() - 20 * 86_400_000).toISOString(),
   clamped: false,
   ...overrides,
 })

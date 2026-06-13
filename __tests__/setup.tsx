@@ -15,6 +15,17 @@ vi.mock("resend", () => ({
   }),
 }))
 
+// revalidatePath / revalidateTag need Next's request store; no-op them so route
+// handlers invoked directly in tests don't throw "static generation store missing".
+vi.mock("next/cache", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("next/cache")>()
+  return {
+    ...actual,
+    revalidatePath: vi.fn(),
+    revalidateTag: vi.fn(),
+  }
+})
+
 // Mock next/navigation
 vi.mock("next/navigation", () => ({
   useRouter: () => ({

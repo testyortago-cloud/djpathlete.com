@@ -70,6 +70,7 @@ describe("/api/admin/internal/gsc-sync", () => {
     isCronSkipped.mockResolvedValueOnce({ skipped: false })
     getGscProperty.mockResolvedValueOnce({ id: "u1", site_url: "sc-domain:x" })
     searchAnalyticsQuery
+      .mockResolvedValue({ rows: [] }) // default for the remaining days in the 7-day window
       .mockResolvedValueOnce({
         rows: [{ keys: ["q1", "https://x/blog/a"], clicks: 1, impressions: 10, ctr: 0.1, position: 12 }],
       })
@@ -77,13 +78,14 @@ describe("/api/admin/internal/gsc-sync", () => {
         rows: [{ keys: ["q1", "https://x/blog/a"], clicks: 2, impressions: 11, ctr: 0.18, position: 11 }],
       })
       .mockResolvedValueOnce({ rows: [] })
-    upsertGscRows.mockResolvedValue(1).mockResolvedValueOnce(1).mockResolvedValueOnce(1).mockResolvedValueOnce(0)
+    // Default 0 for the empty days in the 7-day window; the two days with rows upsert 1 each.
+    upsertGscRows.mockResolvedValue(0).mockResolvedValueOnce(1).mockResolvedValueOnce(1)
 
     const res = await call()
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.totalRows).toBe(2)
-    expect(searchAnalyticsQuery).toHaveBeenCalledTimes(3)
+    expect(searchAnalyticsQuery).toHaveBeenCalledTimes(7)
   })
 
   it("sets gsc_oauth_broken=true on OAuthBrokenError", async () => {
@@ -100,6 +102,7 @@ describe("/api/admin/internal/gsc-sync", () => {
     isCronSkipped.mockResolvedValueOnce({ skipped: false })
     getGscProperty.mockResolvedValueOnce({ id: "u1", site_url: "sc-domain:x" })
     searchAnalyticsQuery
+      .mockResolvedValue({ rows: [] }) // default for the remaining days in the 7-day window
       .mockResolvedValueOnce({ rows: [] })
       .mockRejectedValueOnce(new Error("503 transient"))
       .mockResolvedValueOnce({ rows: [] })

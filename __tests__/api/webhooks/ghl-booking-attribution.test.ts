@@ -33,7 +33,9 @@ describe("POST /api/webhooks/ghl-booking — gclid capture", () => {
     delete process.env.GHL_WEBHOOK_SECRET
 
     bookingsSelectMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
-    bookingsInsert = vi.fn().mockResolvedValue({ error: null })
+    bookingsInsert = vi.fn().mockReturnValue({
+      select: () => ({ single: vi.fn().mockResolvedValue({ data: { id: "bk-1" }, error: null }) }),
+    })
     bookingsUpdateEq = vi.fn().mockResolvedValue({ error: null })
 
     mocks.createServiceRoleClient.mockReturnValue({

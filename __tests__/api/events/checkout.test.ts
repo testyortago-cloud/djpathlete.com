@@ -125,6 +125,7 @@ describe("POST /api/events/[id]/checkout", () => {
       expect.objectContaining({ parent_email: "a@x.com" }),
       "paid",
       expect.objectContaining({ document_id: "doc-waiver-1" }),
+      undefined,
     )
     expect(createSignupMock.mock.calls[0][1]).not.toHaveProperty("waiver_accepted")
     const data = await res.json()
@@ -168,6 +169,7 @@ describe("POST /api/events/[id]/checkout", () => {
       expect.objectContaining({ parent_email: "a@x.com" }),
       "paid",
       expect.objectContaining({ document_id: "doc-waiver-1" }),
+      undefined,
     )
     const data = await res.json()
     expect(data.sessionUrl).toBe("https://checkout.stripe.com/cs_test_xyz")

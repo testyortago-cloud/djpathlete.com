@@ -19,9 +19,9 @@ describe("NumberedFlow", () => {
 
   it("numbers steps starting at 1", () => {
     render(<NumberedFlow steps={steps} />)
-    expect(screen.getByText("1")).toBeInTheDocument()
-    expect(screen.getByText("2")).toBeInTheDocument()
-    expect(screen.getByText("3")).toBeInTheDocument()
-    expect(screen.getByText("4")).toBeInTheDocument()
+    expect(screen.getByText("01")).toBeInTheDocument()
+    expect(screen.getByText("02")).toBeInTheDocument()
+    expect(screen.getByText("03")).toBeInTheDocument()
+    expect(screen.getByText("04")).toBeInTheDocument()
   })
 })

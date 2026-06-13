@@ -44,7 +44,7 @@ describe("PATCH /api/admin/videos/[id]", () => {
     updateMock.mockResolvedValue({ id: "v1", needs_edit: false })
     const res = await call("v1", { needs_edit: false })
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ id: "v1", needs_edit: false })
+    expect(await res.json()).toEqual({ id: "v1", needs_edit: false, hook_text: null })
     expect(updateMock).toHaveBeenCalledWith("v1", { needs_edit: false })
   })
 })

@@ -357,7 +357,10 @@ describe("getOrderStats", () => {
     fromMock.mockReturnValueOnce({
       select: vi.fn().mockReturnThis(),
       in: vi.fn().mockResolvedValue({
-        data: [{ total_cents: 3000 }, { total_cents: 2500 }],
+        data: [
+          { total_cents: 3000, items: [] },
+          { total_cents: 2500, items: [] },
+        ],
         error: null,
       }),
     })

@@ -9,7 +9,7 @@ describe("getAdminNav", () => {
 
   it("returns the expected grouped-section count", () => {
     const nav = getAdminNav({ contentStudioEnabled: false })
-    expect(nav.groupedSections).toHaveLength(5)
+    expect(nav.groupedSections).toHaveLength(6)
   })
 
   it("returns the expected standalone-link count", () => {
