@@ -19,6 +19,7 @@ import {
   recentNonVoidedForPackage,
   voidCheckin,
 } from "@/lib/db/session-checkins"
+import { handleCheckinProgramAdvance, handleVoidProgramRevert } from "@/lib/services/program-progression"
 
 // ─── Pure credit math (single source of truth for balance) ───────────────────
 
@@ -124,6 +125,7 @@ export interface CheckInResult {
   checkin?: SessionCheckin
   remaining?: number
   packageId?: string
+  programCompleted?: boolean
 }
 
 /**
@@ -171,7 +173,24 @@ export async function checkInClient(input: CheckInInput): Promise<CheckInResult>
       notes: null,
     })
 
-    return { ok: true, checkin, remaining: remainingCredits(after), packageId: pkg.id }
+    // If this pack is linked to a program, advance it (best-effort: a program-side
+    // failure must never fail the check-in — attendance/credit is the primary record).
+    let programCompleted = false
+    if (pkg.assignment_id) {
+      try {
+        const r = await handleCheckinProgramAdvance({
+          checkinId: checkin.id,
+          assignmentId: pkg.assignment_id,
+          clientUserId: input.clientUserId,
+          sessionDate: input.sessionDate ?? input.now.toISOString().slice(0, 10),
+        })
+        programCompleted = r.programCompleted
+      } catch (err) {
+        console.error("[checkInClient] program advance failed:", err)
+      }
+    }
+
+    return { ok: true, checkin, remaining: remainingCredits(after), packageId: pkg.id, programCompleted }
   }
 
   // Lost the CAS twice under contention — treat conservatively as no credits.
@@ -200,6 +219,19 @@ export async function voidCheckinAndRestore(input: {
   // is rare) — if it's gone, the void stands and there's nothing to restore.
   const pkg = await getClientPackageByIdMaybe(checkin.client_package_id)
   if (!pkg) return { ok: true }
+
+  // Reverse the program advance this check-in made (reopen the day), best-effort.
+  if (checkin.workout_session_id && pkg.assignment_id) {
+    try {
+      await handleVoidProgramRevert({
+        workoutSessionId: checkin.workout_session_id,
+        assignmentId: pkg.assignment_id,
+      })
+    } catch (err) {
+      console.error("[voidCheckinAndRestore] program revert failed:", err)
+    }
+  }
+
   const newUsed = Math.max(0, pkg.credits_used - 1)
   const after = { credits_total: pkg.credits_total, credits_used: newUsed, expires_at: pkg.expires_at }
   // A refunded/cancelled pack stays in its terminal state; otherwise recompute.

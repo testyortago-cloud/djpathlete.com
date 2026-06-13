@@ -2,9 +2,14 @@ import { vi, describe, it, expect, beforeEach } from "vitest"
 
 vi.mock("@/lib/db/client-packages")
 vi.mock("@/lib/db/session-checkins")
+vi.mock("@/lib/services/program-progression", () => ({
+  handleCheckinProgramAdvance: vi.fn(async () => ({ programCompleted: false })),
+  handleVoidProgramRevert: vi.fn(async () => undefined),
+}))
 
 import * as packs from "@/lib/db/client-packages"
 import * as checkins from "@/lib/db/session-checkins"
+import * as prog from "@/lib/services/program-progression"
 import { checkInClient, voidCheckinAndRestore } from "@/lib/services/session-credits"
 
 beforeEach(() => vi.resetAllMocks())
@@ -87,6 +92,45 @@ describe("checkInClient", () => {
     expect(r.ok).toBe(true)
     expect(packs.casBumpCreditUsed).toHaveBeenCalledTimes(2)
     expect(checkins.createCheckin).toHaveBeenCalledTimes(1)
+  })
+
+  it("advances the linked program when the pack has an assignment", async () => {
+    vi.mocked(packs.getActivePackageForClient).mockResolvedValue({
+      id: "p1",
+      credits_total: 10,
+      credits_used: 0,
+      expires_at: null,
+      assignment_id: "a1",
+    } as never)
+    vi.mocked(checkins.recentNonVoidedForPackage).mockResolvedValue(null)
+    vi.mocked(packs.casBumpCreditUsed).mockResolvedValue({ id: "p1", credits_used: 1 } as never)
+    vi.mocked(checkins.createCheckin).mockResolvedValue({ id: "ck1" } as never)
+    vi.mocked(prog.handleCheckinProgramAdvance).mockResolvedValue({ programCompleted: true })
+
+    const r = await checkInClient({ clientUserId: "c1", method: "coach_tap", createdBy: "coach", now: new Date() })
+
+    expect(r.ok).toBe(true)
+    expect(r.programCompleted).toBe(true)
+    expect(prog.handleCheckinProgramAdvance).toHaveBeenCalledWith(
+      expect.objectContaining({ checkinId: "ck1", assignmentId: "a1", clientUserId: "c1" }),
+    )
+  })
+
+  it("does NOT touch the program when the pack has no assignment", async () => {
+    vi.mocked(packs.getActivePackageForClient).mockResolvedValue({
+      id: "p1",
+      credits_total: 10,
+      credits_used: 0,
+      expires_at: null,
+      assignment_id: null,
+    } as never)
+    vi.mocked(checkins.recentNonVoidedForPackage).mockResolvedValue(null)
+    vi.mocked(packs.casBumpCreditUsed).mockResolvedValue({ id: "p1", credits_used: 1 } as never)
+    vi.mocked(checkins.createCheckin).mockResolvedValue({ id: "ck1" } as never)
+
+    await checkInClient({ clientUserId: "c1", method: "coach_tap", createdBy: "coach", now: new Date() })
+
+    expect(prog.handleCheckinProgramAdvance).not.toHaveBeenCalled()
   })
 })
 

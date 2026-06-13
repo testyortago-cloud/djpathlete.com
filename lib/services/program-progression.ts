@@ -6,7 +6,12 @@ import {
   reopenForVoid,
   listCompletedDayKeys,
 } from "@/lib/db/workout-sessions"
-import { updateAssignment } from "@/lib/db/assignments"
+import { updateAssignment, getAssignmentById } from "@/lib/db/assignments"
+import { setWorkoutSession } from "@/lib/db/session-checkins"
+import { getProgramById } from "@/lib/db/programs"
+import { getUserById } from "@/lib/db/users"
+import { createNotification } from "@/lib/db/notifications"
+import { sendCoachProgramCompletedNotification, sendReassessmentReminderEmail } from "@/lib/email"
 
 // ─── Pure: next incomplete day + week recompute (recompute-from-truth) ────────
 
@@ -96,4 +101,86 @@ export async function revertProgramForCheckin(input: {
   const week = recomputeWeek(slots, completed)
   if (week === null) return // still complete (shouldn't happen right after a reopen)
   await updateAssignment(assignment.id, { status: "active", current_week: week })
+}
+
+// ─── Check-in/void entry points (called from the credit service) ─────────────
+
+/**
+ * Advance the pack's linked program for a check-in: load the assignment, complete
+ * the next day, stamp the workout_session on the check-in, and (if the program is
+ * now finished) fire the existing completion notifications. Safe to call when the
+ * assignment is missing/inactive (no-op).
+ */
+export async function handleCheckinProgramAdvance(input: {
+  checkinId: string
+  assignmentId: string
+  clientUserId: string
+  sessionDate: string
+}): Promise<{ programCompleted: boolean }> {
+  const assignment = await getAssignmentById(input.assignmentId)
+  if (!assignment || assignment.status !== "active") return { programCompleted: false }
+
+  const { workoutSessionId, programCompleted } = await advanceProgramForCheckin({
+    assignment,
+    sessionDate: input.sessionDate,
+  })
+  if (workoutSessionId) await setWorkoutSession(input.checkinId, workoutSessionId)
+  if (programCompleted) await notifyProgramCompleted(input.clientUserId, assignment.program_id)
+  return { programCompleted }
+}
+
+/** Reverse a voided check-in's program advance (reopen day + reactivate). No-op when missing. */
+export async function handleVoidProgramRevert(input: {
+  workoutSessionId: string
+  assignmentId: string
+}): Promise<void> {
+  const assignment = await getAssignmentById(input.assignmentId)
+  if (!assignment) return
+  await revertProgramForCheckin({ workoutSessionId: input.workoutSessionId, assignment })
+}
+
+/** Mirror complete-week/route.ts completion notifications (best-effort each). */
+async function notifyProgramCompleted(clientUserId: string, programId: string): Promise<void> {
+  const [client, program] = await Promise.all([
+    getUserById(clientUserId).catch(() => null),
+    getProgramById(programId).catch(() => null),
+  ])
+  const programName = program?.name ?? "your program"
+
+  if (client) {
+    try {
+      await sendCoachProgramCompletedNotification({
+        coachEmail: process.env.COACH_EMAIL ?? "admin@darrenjpaul.com",
+        coachFirstName: process.env.COACH_FIRST_NAME ?? "Coach",
+        clientName: `${client.first_name} ${client.last_name}`.trim(),
+        clientId: clientUserId,
+        programName,
+      })
+    } catch {
+      /* non-blocking */
+    }
+    try {
+      await sendReassessmentReminderEmail({
+        to: client.email,
+        firstName: client.first_name,
+        programName,
+        clientUserId,
+      })
+    } catch {
+      /* non-blocking */
+    }
+  }
+
+  try {
+    await createNotification({
+      user_id: clientUserId,
+      title: "Program Complete!",
+      message: `You've finished ${programName}. Take a reassessment to get your next program.`,
+      type: "success",
+      is_read: false,
+      link: "/client/reassessment",
+    })
+  } catch {
+    /* non-blocking */
+  }
 }
