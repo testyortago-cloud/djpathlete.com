@@ -1,4 +1,5 @@
 import { createServiceRoleClient } from "@/lib/supabase"
+import { effectiveTotalWeeks } from "@/lib/program-weeks"
 import type { ProgramAssignment } from "@/types/database"
 
 /** Service-role client bypasses RLS — these functions are only called from server-side routes. */
@@ -128,14 +129,23 @@ export async function advanceWeek(assignmentId: string) {
   // Fetch current assignment
   const { data: assignment, error: fetchError } = await supabase
     .from("program_assignments")
-    .select("current_week, total_weeks")
+    .select("current_week, total_weeks, program_id")
     .eq("id", assignmentId)
     .single()
   if (fetchError) throw fetchError
 
+  // total_weeks is a snapshot that can go stale when the program is later expanded;
+  // resolve completion against the program's live length so it never fires early.
+  const { data: program } = await supabase
+    .from("programs")
+    .select("duration_weeks")
+    .eq("id", assignment.program_id)
+    .maybeSingle()
+  const totalWeeks = effectiveTotalWeeks(assignment.total_weeks, program?.duration_weeks)
+
   const nextWeek = (assignment.current_week ?? 1) + 1
 
-  if (assignment.total_weeks && nextWeek > assignment.total_weeks) {
+  if (nextWeek > totalWeeks) {
     // Program complete
     const { data, error } = await supabase
       .from("program_assignments")

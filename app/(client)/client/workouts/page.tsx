@@ -13,6 +13,7 @@ import { WorkoutViewToggle } from "@/components/client/WorkoutViewToggle"
 import type { WorkoutCalendarDay } from "@/components/client/WorkoutCalendar"
 import { Dumbbell } from "lucide-react"
 import { isAssignmentExpired } from "@/lib/utils"
+import { effectiveTotalWeeks } from "@/lib/program-weeks"
 import { WaiverGate } from "@/components/client/WaiverGate"
 import { PendingPaymentCard } from "@/components/client/PendingPaymentCard"
 import type { Program, ProgramAssignment, Exercise, ProgramExercise, ProgramWeekAccess } from "@/types/database"
@@ -157,7 +158,10 @@ export default async function ClientWorkoutsPage() {
     .filter(({ assignment }) => assignment.programs)
     .map(({ assignment, exercises }) => {
       const program = assignment.programs!
-      const totalWeeks = assignment.total_weeks ?? program.duration_weeks ?? 1
+      // total_weeks is a snapshot that can go stale when a program is later expanded;
+      // never let it hide weeks the program now declares or has content for.
+      const maxContentWeek = exercises.reduce((m, e) => Math.max(m, e.week_number), 0)
+      const totalWeeks = effectiveTotalWeeks(assignment.total_weeks, program.duration_weeks, maxContentWeek)
       // Use DB-tracked current_week; fall back to date-based calculation
       const currentWeek = assignment.current_week ?? getCurrentWeekFromDate(assignment.start_date, totalWeeks)
 
@@ -248,7 +252,8 @@ export default async function ClientWorkoutsPage() {
   for (const { assignment, exercises } of programExercises) {
     if (!assignment.programs) continue
     const program = assignment.programs
-    const totalWeeks = assignment.total_weeks ?? program.duration_weeks ?? 1
+    const maxContentWeek = exercises.reduce((m, e) => Math.max(m, e.week_number), 0)
+    const totalWeeks = effectiveTotalWeeks(assignment.total_weeks, program.duration_weeks, maxContentWeek)
 
     // Collect unique (week, day) combos with counts
     const dayMap = new Map<
