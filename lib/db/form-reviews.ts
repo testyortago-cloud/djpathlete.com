@@ -250,7 +250,7 @@ export async function getFormReviewStatusByAssignments(
   const supabase = getClient()
   const { data, error } = await supabase
     .from("form_reviews")
-    .select("id, status, program_exercise_id, created_at")
+    .select("id, status, program_exercise_id, week_number, created_at")
     .in("assignment_id", assignmentIds)
     .not("program_exercise_id", "is", null)
     .order("created_at", { ascending: false })
@@ -260,10 +260,16 @@ export async function getFormReviewStatusByAssignments(
     id: string
     status: FormReviewStatus
     program_exercise_id: string | null
+    week_number: number | null
   }>) {
-    // Rows are newest-first, so the first one seen per exercise is the latest.
-    if (row.program_exercise_id && !map.has(row.program_exercise_id)) {
-      map.set(row.program_exercise_id, { id: row.id, status: row.status })
+    // Key by program-exercise + week so the chip is specific to the week the
+    // client trained (template-repeated weeks share one program_exercise_id).
+    // Rows are newest-first, so the first one seen per key is the latest.
+    if (row.program_exercise_id) {
+      const key = `${row.program_exercise_id}:${row.week_number}`
+      if (!map.has(key)) {
+        map.set(key, { id: row.id, status: row.status })
+      }
     }
   }
   return map

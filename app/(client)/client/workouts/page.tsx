@@ -216,7 +216,7 @@ export default async function ClientWorkoutsPage() {
             day,
             dayLabel: labels[day] ?? `Day ${day}`,
             assignmentId: assignment.id,
-            exercises: buildExerciseData(dayMap.get(day)!, isCurrentWeek),
+            exercises: buildExerciseData(dayMap.get(day)!, isCurrentWeek, w),
           }))
         }
       }
@@ -245,7 +245,7 @@ export default async function ClientWorkoutsPage() {
       }
     })
 
-  function buildExerciseData(dayExercises: ProgramExerciseWithExercise[], isCurrentWeek: boolean) {
+  function buildExerciseData(dayExercises: ProgramExerciseWithExercise[], isCurrentWeek: boolean, weekNumber: number) {
     return dayExercises
       .filter((pe) => pe.exercises)
       .map((pe) => {
@@ -259,7 +259,7 @@ export default async function ClientWorkoutsPage() {
           loggedToday: isCurrentWeek && wasLoggedToday(exercise.id),
           // Most recent logged sets → rehydrate the form so data isn't "lost" on return.
           savedSetDetails: history[0]?.set_details ?? null,
-          videoSubmission: formReviewStatusByPe.get(pe.id) ?? null,
+          videoSubmission: formReviewStatusByPe.get(`${pe.id}:${weekNumber}`) ?? null,
         }
       })
   }

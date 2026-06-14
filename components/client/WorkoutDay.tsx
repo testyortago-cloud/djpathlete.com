@@ -89,6 +89,7 @@ export interface WorkoutDayProps {
   exercises: ExerciseWithRecommendation[]
   assignmentId: string
   userId: string
+  displayWeek: number
   onExerciseLogged?: (exerciseId: string) => void
   programContext?: ProgramContextData | null
 }
@@ -207,6 +208,7 @@ function ExerciseCard({
   videoSubmission,
   assignmentId,
   userId,
+  displayWeek,
   index,
   onLogged,
   hideNotes,
@@ -214,6 +216,7 @@ function ExerciseCard({
 }: ExerciseWithRecommendation & {
   assignmentId: string
   userId: string
+  displayWeek: number
   index: number
   onLogged?: () => void
   hideNotes?: boolean
@@ -1047,7 +1050,7 @@ function ExerciseCard({
           programExerciseId={pe.id}
           exerciseId={swappedExercise ? swappedExercise.id : exercise.id}
           exerciseName={displayExercise.name}
-          weekNumber={pe.week_number}
+          weekNumber={displayWeek}
           onUploaded={() => router.refresh()}
         />
       )}
@@ -1065,6 +1068,7 @@ export function WorkoutDay({
   exercises,
   assignmentId,
   userId,
+  displayWeek,
   onExerciseLogged,
   programContext,
 }: WorkoutDayProps) {
@@ -1121,6 +1125,7 @@ export function WorkoutDay({
                     {...item}
                     assignmentId={assignmentId}
                     userId={userId}
+                    displayWeek={displayWeek}
                     onLogged={() => handleExerciseLogged(item.exercise.id)}
                     hideNotes={!!sharedNote}
                     programContext={programContext}
@@ -1156,6 +1161,7 @@ export function WorkoutDay({
                   {...item}
                   assignmentId={assignmentId}
                   userId={userId}
+                  displayWeek={displayWeek}
                   onLogged={() => handleExerciseLogged(item.exercise.id)}
                   programContext={programContext}
                 />

@@ -473,6 +473,7 @@ function ProgramDetail({
                 exercises={dayData.exercises}
                 assignmentId={program.assignmentId}
                 userId={program.userId}
+                displayWeek={selectedWeek}
                 onExerciseLogged={handleExerciseLogged}
                 programContext={{
                   programName: program.programName,
