@@ -844,6 +844,14 @@ export interface FormReview {
   status: FormReviewStatus
   created_at: string
   updated_at: string
+  // In-program context (nullable; set only for uploads made from a workout exercise — migration 00172).
+  program_id?: string | null
+  assignment_id?: string | null
+  program_exercise_id?: string | null
+  exercise_id?: string | null
+  week_number?: number | null
+  program_name?: string | null
+  exercise_name?: string | null
 }
 
 export interface FormReviewMessage {
