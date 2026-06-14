@@ -282,12 +282,16 @@ export async function getFormReviewContext(params: {
 }): Promise<{ program_id: string; program_name: string; exercise_name: string } | null> {
   const supabase = getClient()
 
-  const { data: assignment } = await supabase
+  const { data: assignment, error: assignmentError } = await supabase
     .from("program_assignments")
     .select("program_id, user_id, programs(name)")
     .eq("id", params.assignmentId)
     .single()
 
+  // PGRST116 = "no rows found" from .single() — a legitimate not-found, treated as
+  // null below. Any other error is a real failure and must surface (→ route 500),
+  // not be silently masked as an authorization rejection.
+  if (assignmentError && assignmentError.code !== "PGRST116") throw assignmentError
   if (!assignment || assignment.user_id !== params.userId) return null
 
   const { data: exercise } = await supabase
