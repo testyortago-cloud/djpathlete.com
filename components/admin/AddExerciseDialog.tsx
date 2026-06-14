@@ -260,6 +260,7 @@ export function AddExerciseDialog({
         : null,
       tempo: formData.get("tempo") || null,
       group_tag: groupTag,
+      requires_video: formData.get("requires_video") === "on",
     }
 
     try {
@@ -551,6 +552,19 @@ export function AddExerciseDialog({
                         <Input id="tempo" name="tempo" placeholder="e.g. 3-1-2-0" />
                       </div>
                     )}
+
+                    {/* Requires-video toggle — shows a 🎥 "Record" marker to the client */}
+                    <div className="flex items-center gap-2">
+                      <input
+                        id="requires_video"
+                        name="requires_video"
+                        type="checkbox"
+                        className="size-4 rounded border-input accent-primary"
+                      />
+                      <Label htmlFor="requires_video" className="font-normal">
+                        Client must record a video of this exercise
+                      </Label>
+                    </div>
 
                     <div className="space-y-2">
                       <Label htmlFor="notes">Notes</Label>
