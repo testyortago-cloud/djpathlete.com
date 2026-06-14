@@ -232,3 +232,76 @@ export async function getFormReviewCounts() {
   }
   return counts
 }
+
+// ---------------------------------------------------------------------------
+// In-program upload helpers (migration 00172)
+// ---------------------------------------------------------------------------
+
+/**
+ * Latest form-review status per program_exercise_id across the given assignments.
+ * Used by the client workout page to show a per-exercise submission chip.
+ */
+export async function getFormReviewStatusByAssignments(
+  assignmentIds: string[],
+): Promise<Map<string, { id: string; status: FormReviewStatus }>> {
+  const map = new Map<string, { id: string; status: FormReviewStatus }>()
+  if (assignmentIds.length === 0) return map
+
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("form_reviews")
+    .select("id, status, program_exercise_id, created_at")
+    .in("assignment_id", assignmentIds)
+    .not("program_exercise_id", "is", null)
+    .order("created_at", { ascending: false })
+  if (error) throw error
+
+  for (const row of (data ?? []) as Array<{
+    id: string
+    status: FormReviewStatus
+    program_exercise_id: string | null
+  }>) {
+    // Rows are newest-first, so the first one seen per exercise is the latest.
+    if (row.program_exercise_id && !map.has(row.program_exercise_id)) {
+      map.set(row.program_exercise_id, { id: row.id, status: row.status })
+    }
+  }
+  return map
+}
+
+/**
+ * Resolve + authorize program context for an in-program upload.
+ * Returns null when the assignment does not belong to the requesting user
+ * (so the route can reject a spoofed assignment_id). program_name and
+ * exercise_name are snapshots captured at submission time.
+ */
+export async function getFormReviewContext(params: {
+  assignmentId: string
+  exerciseId: string
+  userId: string
+}): Promise<{ program_id: string; program_name: string; exercise_name: string } | null> {
+  const supabase = getClient()
+
+  const { data: assignment } = await supabase
+    .from("program_assignments")
+    .select("program_id, user_id, programs(name)")
+    .eq("id", params.assignmentId)
+    .single()
+
+  if (!assignment || assignment.user_id !== params.userId) return null
+
+  const { data: exercise } = await supabase
+    .from("exercises")
+    .select("name")
+    .eq("id", params.exerciseId)
+    .single()
+
+  const programName =
+    (assignment as { programs?: { name?: string } | null }).programs?.name ?? ""
+
+  return {
+    program_id: assignment.program_id as string,
+    program_name: programName,
+    exercise_name: (exercise as { name?: string } | null)?.name ?? "",
+  }
+}
