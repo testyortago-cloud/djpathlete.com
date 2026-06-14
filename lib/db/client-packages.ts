@@ -116,9 +116,14 @@ export type ClientPackageWithUser = ClientPackage & {
 /** Active-pack clients for the Today screen / self-check-in roster. */
 export async function listActivePackClients() {
   const supabase = getClient()
+  // Disambiguate the embed: client_packages has two FKs to users
+  // (client_user_id + created_by), so a bare `users` embed is ambiguous
+  // (PostgREST PGRST201) and the query throws. Pin it to the client_user_id FK.
+  // client_user_id is NOT NULL + FK-enforced, so this always resolves a user
+  // (equivalent to an inner join); callers also guard with `if (!r.users)`.
   const { data, error } = await supabase
     .from("client_packages")
-    .select("*, users!inner(id, first_name, last_name, email)")
+    .select("*, users!client_packages_client_user_id_fkey(id, first_name, last_name, email)")
     .eq("status", "active")
     .order("purchased_at", { ascending: true })
   if (error) throw error
