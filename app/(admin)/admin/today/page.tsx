@@ -5,7 +5,7 @@ import { remainingCredits } from "@/lib/services/session-credits"
 import { signCheckinToken } from "@/lib/qr/checkin-token"
 import { TodayCheckinList } from "@/components/admin/packs/TodayCheckinList"
 
-export const metadata = { title: "Today — Check-ins" }
+export const metadata = { title: "Check-ins" }
 
 function baseUrl() {
   return (
@@ -41,7 +41,7 @@ export default async function TodayPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-primary mb-1">Today</h1>
+      <h1 className="text-2xl font-semibold text-primary mb-1">Check-ins</h1>
       <p className="text-sm text-muted-foreground mb-6">
         Tap a client to check them in, or show the QR for clients to scan themselves.
       </p>

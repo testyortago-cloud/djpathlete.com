@@ -104,7 +104,7 @@ export function getAdminNav(opts: { contentStudioEnabled: boolean }): AdminNav {
         title: "Coaching",
         pinned: true,
         items: [
-          { label: "Today", href: "/admin/today", icon: CalendarCheck },
+          { label: "Check-ins", href: "/admin/today", icon: CalendarCheck },
           { label: "Clients", href: "/admin/clients", icon: Users },
           { label: "Programs", href: "/admin/programs", icon: ClipboardList },
           { label: "Exercises", href: "/admin/exercises", icon: Dumbbell },
