@@ -29,7 +29,10 @@ export function formReviewCardState(submission: FormReviewSubmission | null): Fo
       return { kind: "in_review", reviewId: submission.id }
     case "reviewed":
       return { kind: "reviewed", reviewId: submission.id }
-    default:
+    default: {
+      const _exhaustive: never = submission.status
+      void _exhaustive
       return { kind: "none" }
+    }
   }
 }

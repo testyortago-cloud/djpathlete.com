@@ -42,3 +42,9 @@ describe("formReviewCardState", () => {
     })
   })
 })
+
+describe("deriveFormReviewTitle", () => {
+  it("includes week 0 (guard is != null, not falsy)", () => {
+    expect(deriveFormReviewTitle("Squat", "Trial", 0)).toBe("Squat — Trial, Week 0")
+  })
+})
