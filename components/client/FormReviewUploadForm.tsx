@@ -2,8 +2,6 @@
 
 import { useState, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage"
-import { storage } from "@/lib/firebase"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -12,14 +10,15 @@ import { Upload, Video, X, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
 import { summarizeApiError, type FieldErrors } from "@/lib/errors/humanize"
+import {
+  useFormReviewUpload,
+  FORM_REVIEW_MAX_SIZE_MB,
+  FORM_REVIEW_MAX_DURATION_SECONDS,
+} from "@/hooks/use-form-review-upload"
 
 interface FormReviewUploadFormProps {
   userId: string
 }
-
-const MAX_SIZE_MB = 250
-const MAX_DURATION_SECONDS = 300 // 5 minutes
-const ACCEPTED_TYPES = ["video/mp4", "video/quicktime", "video/webm", "video/x-msvideo"]
 
 export function FormReviewUploadForm({ userId }: FormReviewUploadFormProps) {
   const router = useRouter()
@@ -27,46 +26,11 @@ export function FormReviewUploadForm({ userId }: FormReviewUploadFormProps) {
   const [file, setFile] = useState<File | null>(null)
   const [title, setTitle] = useState("")
   const [notes, setNotes] = useState("")
-  const [uploading, setUploading] = useState(false)
-  const [progress, setProgress] = useState(0)
   const [dragOver, setDragOver] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [submitFieldErrors, setSubmitFieldErrors] = useState<FieldErrors>({})
 
-  async function validateVideo(videoFile: File): Promise<boolean> {
-    // Size check
-    if (videoFile.size > MAX_SIZE_MB * 1024 * 1024) {
-      toast.error(`Video must be under ${MAX_SIZE_MB}MB`)
-      return false
-    }
-
-    // Type check
-    if (!ACCEPTED_TYPES.includes(videoFile.type)) {
-      toast.error("Unsupported video format. Use MP4, MOV, WebM, or AVI.")
-      return false
-    }
-
-    // Duration check
-    return new Promise((resolve) => {
-      const video = document.createElement("video")
-      video.preload = "metadata"
-      video.onloadedmetadata = () => {
-        URL.revokeObjectURL(video.src)
-        if (video.duration > MAX_DURATION_SECONDS) {
-          toast.error("Video must be 5 minutes or less")
-          resolve(false)
-        } else {
-          resolve(true)
-        }
-      }
-      video.onerror = () => {
-        URL.revokeObjectURL(video.src)
-        // Can't validate duration, allow it
-        resolve(true)
-      }
-      video.src = URL.createObjectURL(videoFile)
-    })
-  }
+  const { uploading, progress, validateVideo, uploadVideo } = useFormReviewUpload(userId)
 
   async function handleFileSelect(selectedFile: File | undefined) {
     if (!selectedFile) return
@@ -97,28 +61,9 @@ export function FormReviewUploadForm({ userId }: FormReviewUploadFormProps) {
       return
     }
 
-    setUploading(true)
-    setProgress(0)
-
     try {
-      // 1. Upload to Firebase Storage
-      const ext = file.name.split(".").pop() ?? "mp4"
-      const videoPath = `form-reviews/${userId}/${Date.now()}.${ext}`
-      const storageRef = ref(storage, videoPath)
-
-      await new Promise<void>((resolve, reject) => {
-        const uploadTask = uploadBytesResumable(storageRef, file)
-
-        uploadTask.on(
-          "state_changed",
-          (snapshot) => {
-            const pct = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100)
-            setProgress(pct)
-          },
-          (error) => reject(error),
-          () => resolve(),
-        )
-      })
+      // 1. Upload to Firebase Storage (shared hook)
+      const videoPath = await uploadVideo(file)
 
       // 2. Create the form review record in Supabase
       const res = await fetch("/api/client/form-reviews", {
@@ -150,8 +95,6 @@ export function FormReviewUploadForm({ userId }: FormReviewUploadFormProps) {
         : "We couldn't upload your video. Please check your connection and try again."
       setSubmitError(message)
       toast.error(message)
-    } finally {
-      setUploading(false)
     }
   }
 
@@ -224,7 +167,7 @@ export function FormReviewUploadForm({ userId }: FormReviewUploadFormProps) {
               <Upload className="size-8 text-muted-foreground mx-auto" />
               <p className="text-sm text-muted-foreground">Drag and drop your video, or click to browse</p>
               <p className="text-xs text-muted-foreground">
-                MP4, MOV, WebM, or AVI. Max {MAX_SIZE_MB}MB, {MAX_DURATION_SECONDS / 60} minutes.
+                MP4, MOV, WebM, or AVI. Max {FORM_REVIEW_MAX_SIZE_MB}MB, {FORM_REVIEW_MAX_DURATION_SECONDS / 60} minutes.
               </p>
             </div>
           )}
