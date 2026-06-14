@@ -5,6 +5,8 @@ import { getProgramExercises } from "@/lib/db/program-exercises"
 import { getLatestProgressByExercises } from "@/lib/db/progress"
 import { getProfileByUserId } from "@/lib/db/client-profiles"
 import { getWeekAccessByAssignments } from "@/lib/db/week-access"
+import { getFormReviewStatusByAssignments } from "@/lib/db/form-reviews"
+import type { FormReviewStatus } from "@/types/database"
 import { getWeightRecommendation } from "@/lib/weight-recommendation"
 import type { ClientContext } from "@/lib/weight-recommendation"
 import { PageHeader } from "@/components/shared/PageHeader"
@@ -118,6 +120,17 @@ export default async function ClientWorkoutsPage() {
     // Table may not exist yet
   }
 
+  // Latest form-review submission per program-exercise (for the 🎥 status chip)
+  let formReviewStatusByPe: Map<string, { id: string; status: FormReviewStatus }> = new Map()
+  try {
+    const assignmentIds = activeAssignments.map((a) => a.id)
+    if (assignmentIds.length > 0) {
+      formReviewStatusByPe = await getFormReviewStatusByAssignments(assignmentIds)
+    }
+  } catch {
+    // Table/columns may not exist yet — render without status chips
+  }
+
   // Collect all unique exercise IDs across all programs
   const allExerciseIds = [
     ...new Set(programExercises.flatMap(({ exercises }) => exercises.map((pe) => pe.exercise_id).filter(Boolean))),
@@ -224,6 +237,7 @@ export default async function ClientWorkoutsPage() {
         periodization: program.periodization ?? null,
         splitType: program.split_type ?? null,
         assignmentId: assignment.id,
+        userId,
         currentWeek,
         totalWeeks,
         weeks,
@@ -245,6 +259,7 @@ export default async function ClientWorkoutsPage() {
           loggedToday: isCurrentWeek && wasLoggedToday(exercise.id),
           // Most recent logged sets → rehydrate the form so data isn't "lost" on return.
           savedSetDetails: history[0]?.set_details ?? null,
+          videoSubmission: formReviewStatusByPe.get(pe.id) ?? null,
         }
       })
   }

@@ -13,7 +13,16 @@ import { WeekBanner } from "@/components/client/WeekBanner"
 import { SessionPrsPrompt } from "@/components/client/SessionPrsPrompt"
 import { FinishSessionButton } from "@/components/client/FinishSessionButton"
 import { computeVolumeLoad } from "@/lib/workout/volume-load"
-import type { WorkoutDayProps } from "@/components/client/WorkoutDay"
+import type { ExerciseWithRecommendation } from "@/components/client/WorkoutDay"
+
+/** Shape of each day entry stored in `weeks` — a subset of WorkoutDayProps
+ *  (userId / onExerciseLogged / programContext are injected by WorkoutTabs at render time). */
+interface WorkoutDayEntry {
+  day: number
+  dayLabel: string
+  assignmentId: string
+  exercises: ExerciseWithRecommendation[]
+}
 
 interface ProgramWorkout {
   programName: string
@@ -22,9 +31,10 @@ interface ProgramWorkout {
   periodization: string | null
   splitType: string | null
   assignmentId: string
+  userId: string
   currentWeek: number
   totalWeeks: number
-  weeks: Record<number, WorkoutDayProps[]>
+  weeks: Record<number, WorkoutDayEntry[]>
   lockedWeeks?: Record<number, { priceCents: number }>
 }
 
@@ -459,6 +469,7 @@ function ProgramDetail({
                 dayLabel={dayData.dayLabel}
                 exercises={dayData.exercises}
                 assignmentId={program.assignmentId}
+                userId={program.userId}
                 onExerciseLogged={handleExerciseLogged}
                 programContext={{
                   programName: program.programName,
