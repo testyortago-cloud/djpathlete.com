@@ -21,6 +21,8 @@ import {
   ChevronRight,
   Play,
   Video,
+  Upload,
+  Clock,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -34,8 +36,17 @@ import { useWeightUnit } from "@/hooks/use-weight-unit"
 import { CoachDjpPanel } from "@/components/client/CoachDjpPanel"
 import { CelebrationOverlay } from "@/components/client/CelebrationOverlay"
 import { ExerciseSwapSheet } from "@/components/client/ExerciseSwapSheet"
+import { ExerciseVideoUpload } from "@/components/client/ExerciseVideoUpload"
+import { formReviewCardState } from "@/lib/workout/form-review"
 import { extractYouTubeId } from "@/lib/youtube"
-import type { Exercise, ExerciseCategory, ProgramExercise, SetDetail, TrainingTechnique } from "@/types/database"
+import type {
+  Exercise,
+  ExerciseCategory,
+  ProgramExercise,
+  SetDetail,
+  TrainingTechnique,
+  FormReviewStatus,
+} from "@/types/database"
 import type { WeightRecommendation } from "@/lib/weight-recommendation"
 import { getCategoryFields } from "@/lib/exercise-fields"
 import { computeVolumeLoad } from "@/lib/workout/volume-load"
@@ -58,6 +69,8 @@ export interface ExerciseWithRecommendation {
   /** Most recent logged sets for this exercise — used to rehydrate the form so a
    *  client who logged, left, and came back actually sees their entered data. */
   savedSetDetails?: SetDetail[] | null
+  /** Latest form-review submission for this program-exercise slot (null = none yet). */
+  videoSubmission?: { id: string; status: FormReviewStatus } | null
 }
 
 export interface ProgramContextData {
@@ -75,6 +88,7 @@ export interface WorkoutDayProps {
   dayLabel: string
   exercises: ExerciseWithRecommendation[]
   assignmentId: string
+  userId: string
   onExerciseLogged?: (exerciseId: string) => void
   programContext?: ProgramContextData | null
 }
@@ -190,13 +204,16 @@ function ExerciseCard({
   recommendation: rec,
   loggedToday: initialLogged,
   savedSetDetails,
+  videoSubmission,
   assignmentId,
+  userId,
   index,
   onLogged,
   hideNotes,
   programContext,
 }: ExerciseWithRecommendation & {
   assignmentId: string
+  userId: string
   index: number
   onLogged?: () => void
   hideNotes?: boolean
@@ -217,6 +234,7 @@ function ExerciseCard({
   const [showExtra, setShowExtra] = useState(false)
   const [showSwap, setShowSwap] = useState(false)
   const [showVideo, setShowVideo] = useState(false)
+  const [showUpload, setShowUpload] = useState(false)
   const [swappedExercise, setSwappedExercise] = useState<Exercise | null>(null)
 
   // Use swapped exercise for display, but keep original programExercise for sets/reps
@@ -567,6 +585,41 @@ function ExerciseCard({
                       Swap
                     </button>
                   )}
+                  {pe.requires_video &&
+                    (() => {
+                      const state = formReviewCardState(videoSubmission ?? null)
+                      if (state.kind === "none") {
+                        return (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="gap-1 text-accent border-accent/40 hover:text-accent h-7 text-xs"
+                            onClick={() => setShowUpload(true)}
+                          >
+                            <Upload className="size-3" />
+                            Upload recording
+                          </Button>
+                        )
+                      }
+                      if (state.kind === "reviewed") {
+                        return (
+                          <a
+                            href={`/client/form-reviews/${state.reviewId}`}
+                            className="inline-flex items-center gap-1 text-xs font-medium text-success hover:underline"
+                          >
+                            <CheckCircle2 className="size-3" />
+                            Reviewed — view feedback
+                          </a>
+                        )
+                      }
+                      return (
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
+                          <Clock className="size-3" />
+                          {state.kind === "submitted" ? "Submitted — awaiting review" : "In review"}
+                        </span>
+                      )
+                    })()}
                 </div>
 
                 {/* Single consolidated Instructions dropdown (coach note now shown
@@ -985,6 +1038,20 @@ function ExerciseCard({
           )
         })()}
 
+      {pe.requires_video && (
+        <ExerciseVideoUpload
+          open={showUpload}
+          onOpenChange={setShowUpload}
+          userId={userId}
+          assignmentId={assignmentId}
+          programExerciseId={pe.id}
+          exerciseId={swappedExercise ? swappedExercise.id : exercise.id}
+          exerciseName={displayExercise.name}
+          weekNumber={pe.week_number}
+          onUploaded={() => router.refresh()}
+        />
+      )}
+
       <CelebrationOverlay achievements={celebrations} onComplete={() => setCelebrations([])} />
     </>
   )
@@ -997,6 +1064,7 @@ export function WorkoutDay({
   dayLabel,
   exercises,
   assignmentId,
+  userId,
   onExerciseLogged,
   programContext,
 }: WorkoutDayProps) {
@@ -1052,6 +1120,7 @@ export function WorkoutDay({
                     index={idx}
                     {...item}
                     assignmentId={assignmentId}
+                    userId={userId}
                     onLogged={() => handleExerciseLogged(item.exercise.id)}
                     hideNotes={!!sharedNote}
                     programContext={programContext}
@@ -1086,6 +1155,7 @@ export function WorkoutDay({
                   index={idx}
                   {...item}
                   assignmentId={assignmentId}
+                  userId={userId}
                   onLogged={() => handleExerciseLogged(item.exercise.id)}
                   programContext={programContext}
                 />
