@@ -18,6 +18,9 @@ interface FormReviewDetailProps {
     status: string
     created_at: string
     video_path: string
+    program_name?: string | null
+    exercise_name?: string | null
+    week_number?: number | null
     users?: { first_name: string; last_name: string; email: string; avatar_url?: string | null } | null
   }
   videoUrl: string | null
@@ -105,6 +108,25 @@ export function FormReviewDetail({ review, videoUrl, messages, currentUserId }: 
           )}
         </div>
       </div>
+
+      {/* Program context (in-program uploads) */}
+      {review.program_name && (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground/80">{review.program_name}</span>
+          {review.exercise_name && (
+            <>
+              <span className="text-border">•</span>
+              <span>{review.exercise_name}</span>
+            </>
+          )}
+          {review.week_number != null && (
+            <>
+              <span className="text-border">•</span>
+              <span>Week {review.week_number}</span>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Video */}
       {videoUrl ? (
