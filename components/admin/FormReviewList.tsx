@@ -11,6 +11,9 @@ interface ReviewItem {
   title: string
   status: string
   created_at: string
+  program_name?: string | null
+  exercise_name?: string | null
+  week_number?: number | null
   users?: { first_name: string; last_name: string; email: string } | null
 }
 
@@ -51,7 +54,16 @@ export function FormReviewList({ reviews, counts }: FormReviewListProps) {
         const clientName = r.users ? `${r.users.first_name} ${r.users.last_name}`.toLowerCase() : ""
         const email = r.users?.email?.toLowerCase() ?? ""
         const title = r.title.toLowerCase()
-        if (!clientName.includes(q) && !email.includes(q) && !title.includes(q)) return false
+        const program = r.program_name?.toLowerCase() ?? ""
+        const exercise = r.exercise_name?.toLowerCase() ?? ""
+        if (
+          !clientName.includes(q) &&
+          !email.includes(q) &&
+          !title.includes(q) &&
+          !program.includes(q) &&
+          !exercise.includes(q)
+        )
+          return false
       }
 
       return true
@@ -182,6 +194,13 @@ export function FormReviewList({ reviews, counts }: FormReviewListProps) {
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground">{clientName}</p>
+                  {review.program_name && (
+                    <p className="text-[11px] text-muted-foreground/80 truncate">
+                      {review.program_name}
+                      {review.exercise_name ? ` • ${review.exercise_name}` : ""}
+                      {review.week_number != null ? ` • Wk ${review.week_number}` : ""}
+                    </p>
+                  )}
                 </div>
                 <span className="text-xs text-muted-foreground shrink-0 hidden sm:block">
                   {new Date(review.created_at).toLocaleDateString("en-US", {
