@@ -23,12 +23,14 @@ export function FinishSessionButton({
   dayOfWeek,
   volumeLoadKg,
   allLogged,
+  missingVideoCount = 0,
 }: {
   assignmentId: string
   weekNumber: number
   dayOfWeek: number
   volumeLoadKg: number | null
   allLogged: boolean
+  missingVideoCount?: number
 }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
@@ -87,6 +89,11 @@ export function FinishSessionButton({
           <CheckCircle2 className="size-4" />
           Finish session
         </Button>
+        {missingVideoCount > 0 && (
+          <p className="mt-1 text-center text-[11px] text-accent">
+            {missingVideoCount} exercise{missingVideoCount > 1 ? "s" : ""} still need a recording — you can finish anyway.
+          </p>
+        )}
         {!allLogged && (
           <p className="mt-1 text-center text-[11px] text-muted-foreground">
             You can finish early — or log the rest first.

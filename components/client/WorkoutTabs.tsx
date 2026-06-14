@@ -253,6 +253,9 @@ function ProgramDetail({
 
   // Progress calculation for selected day
   const dayExercises = dayData?.exercises ?? []
+  const missingVideoCount = dayExercises.filter(
+    (e) => e.programExercise.requires_video && !e.videoSubmission,
+  ).length
   // Best-effort session volume load (Σ reps×weight×load-type) from logged sets.
   const sessionVolumeKg = dayExercises.reduce(
     (sum, e) => sum + computeVolumeLoad(e.savedSetDetails ?? [], e.exercise.load_type),
@@ -508,6 +511,7 @@ function ProgramDetail({
           dayOfWeek={selectedDay}
           volumeLoadKg={sessionVolumeKg > 0 ? sessionVolumeKg : null}
           allLogged={totalCount > 0 && loggedCount === totalCount}
+          missingVideoCount={missingVideoCount}
         />
       )}
 
