@@ -137,24 +137,36 @@ const services = [
   },
 ]
 
-const fallbackTestimonials = [
+const fallbackTestimonials: {
+  name: string
+  title: string
+  quote: string
+  avatarUrl: string | null
+  rating: number
+}[] = [
   {
     name: "Abigail Rencheli",
     title: "WTA Professional Tennis Player",
     quote:
       "What sets him apart is how much he genuinely cares about you as a person first. The Online Program is so easy to navigate and thoroughly explains how to perform the exercises.",
+    avatarUrl: null,
+    rating: 5,
   },
   {
     name: "Ganna Poznikhierenko",
     title: "WTA Professional Tennis Player",
     quote:
       "He's truly the best coach I've ever worked with. The Online Program helps me stay connected even though I am training independently.",
+    avatarUrl: null,
+    rating: 5,
   },
   {
     name: "Tina Pisnik",
     title: "Professional Pickleball Player",
     quote:
       "Darren understands performance & injury prevention at a very high level. The Online program is seamless and allows me to train from anywhere.",
+    avatarUrl: null,
+    rating: 5,
   },
 ]
 
@@ -172,8 +184,10 @@ export default async function HomePage() {
     if (dbTestimonials.length > 0) {
       testimonials = dbTestimonials.map((t) => ({
         name: t.name,
-        title: t.role ?? "",
+        title: [t.role, t.sport].filter(Boolean).join(" · "),
         quote: t.quote,
+        avatarUrl: t.avatar_url,
+        rating: t.rating ?? 5,
       }))
     }
   } catch {

@@ -1,13 +1,16 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
+import Image from "next/image"
 import { motion, AnimatePresence } from "framer-motion"
-import { Quote, ChevronLeft, ChevronRight } from "lucide-react"
+import { Quote, ChevronLeft, ChevronRight, Star } from "lucide-react"
 
 interface Testimonial {
   name: string
   title: string
   quote: string
+  avatarUrl?: string | null
+  rating?: number
 }
 
 interface TestimonialCarouselProps {
@@ -96,20 +99,42 @@ export function TestimonialCarousel({ testimonials, interval = 5000 }: Testimoni
             exit="exit"
             transition={{ duration: 0.4, ease: [0.25, 0.1, 0.25, 1] as const }}
           >
-            <div className="bg-white rounded-2xl border border-border p-8 sm:p-10 max-w-2xl mx-auto flex flex-col items-center text-center">
-              <Quote className="size-10 text-accent/30 mb-6" />
+            <div className="relative bg-white rounded-2xl border border-border shadow-sm p-8 sm:p-12 max-w-2xl mx-auto flex flex-col items-center text-center">
+              <Quote className="size-12 text-accent/25 mb-6" />
+              {testimonials[current].rating ? (
+                <div className="mb-5 flex gap-1" aria-label={`${testimonials[current].rating} out of 5 stars`}>
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <Star
+                      key={i}
+                      className={`size-5 ${
+                        i < (testimonials[current].rating ?? 0) ? "fill-accent text-accent" : "text-border"
+                      }`}
+                    />
+                  ))}
+                </div>
+              ) : null}
               <blockquote className="mb-8">
-                <p className="text-base sm:text-lg text-muted-foreground leading-relaxed italic">
+                <p className="text-lg sm:text-xl text-foreground/90 leading-relaxed font-medium">
                   &ldquo;{testimonials[current].quote}&rdquo;
                 </p>
               </blockquote>
               <div className="flex items-center gap-3">
-                <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                  <span className="text-sm font-semibold">{testimonials[current].name.charAt(0)}</span>
-                </div>
+                {testimonials[current].avatarUrl ? (
+                  <Image
+                    src={testimonials[current].avatarUrl as string}
+                    alt={testimonials[current].name}
+                    width={56}
+                    height={56}
+                    className="size-14 shrink-0 rounded-full object-cover ring-2 ring-accent/20"
+                  />
+                ) : (
+                  <div className="flex size-14 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                    <span className="text-base font-semibold">{testimonials[current].name.charAt(0)}</span>
+                  </div>
+                )}
                 <div className="text-left">
-                  <p className="text-sm font-semibold text-foreground">{testimonials[current].name}</p>
-                  <p className="text-xs text-muted-foreground">{testimonials[current].title}</p>
+                  <p className="text-base font-semibold text-foreground">{testimonials[current].name}</p>
+                  <p className="text-sm text-muted-foreground">{testimonials[current].title}</p>
                 </div>
               </div>
             </div>

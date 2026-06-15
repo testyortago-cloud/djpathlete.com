@@ -30,6 +30,8 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { EmptyState } from "@/components/ui/empty-state"
+import { TestimonialImageUpload } from "@/components/admin/TestimonialImageUpload"
+import Image from "next/image"
 import type { Testimonial } from "@/types/database"
 
 interface TestimonialListProps {
@@ -58,6 +60,7 @@ const emptyFormData = {
   role: "",
   sport: "",
   quote: "",
+  avatar_url: "",
   rating: 5,
   is_featured: false,
   is_active: true,
@@ -117,6 +120,7 @@ export function TestimonialList({ testimonials }: TestimonialListProps) {
       role: t.role ?? "",
       sport: t.sport ?? "",
       quote: t.quote,
+      avatar_url: t.avatar_url ?? "",
       rating: t.rating ?? 5,
       is_featured: t.is_featured,
       is_active: t.is_active,
@@ -143,6 +147,7 @@ export function TestimonialList({ testimonials }: TestimonialListProps) {
           ...formData,
           role: formData.role || null,
           sport: formData.sport || null,
+          avatar_url: formData.avatar_url || null,
         }),
       })
 
@@ -284,6 +289,16 @@ export function TestimonialList({ testimonials }: TestimonialListProps) {
                 onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                 placeholder="Former Professional Football Player"
               />
+            </div>
+
+            <div>
+              <Label>Photo</Label>
+              <div className="mt-1.5">
+                <TestimonialImageUpload
+                  value={formData.avatar_url || null}
+                  onChange={(url) => setFormData({ ...formData, avatar_url: url ?? "" })}
+                />
+              </div>
             </div>
 
             <div>
@@ -447,9 +462,19 @@ export function TestimonialList({ testimonials }: TestimonialListProps) {
                 <tr key={t.id} className="border-b border-border last:border-b-0 hover:bg-surface/30 transition-colors">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
-                      <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                        <span className="text-xs font-semibold">{t.name.charAt(0)}</span>
-                      </div>
+                      {t.avatar_url ? (
+                        <Image
+                          src={t.avatar_url}
+                          alt={t.name}
+                          width={36}
+                          height={36}
+                          className="size-9 shrink-0 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                          <span className="text-xs font-semibold">{t.name.charAt(0)}</span>
+                        </div>
+                      )}
                       <div>
                         <p className="font-medium text-foreground">{t.name}</p>
                         <p className="text-xs text-muted-foreground">{[t.role, t.sport].filter(Boolean).join(" · ")}</p>

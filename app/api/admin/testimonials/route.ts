@@ -14,7 +14,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json()
 
-    const { name, role, sport, quote, rating, is_featured, is_active, display_order } = body
+    const { name, role, sport, quote, avatar_url, rating, is_featured, is_active, display_order } = body
 
     if (!name || !quote) {
       return NextResponse.json({ error: "Name and quote are required." }, { status: 400 })
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
       role: role || null,
       sport: sport || null,
       quote,
-      avatar_url: null,
+      avatar_url: avatar_url || null,
       rating: rating ?? 5,
       is_featured: is_featured ?? false,
       is_active: is_active ?? true,

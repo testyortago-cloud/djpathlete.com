@@ -12,6 +12,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       "role",
       "sport",
       "quote",
+      "avatar_url",
       "rating",
       "is_featured",
       "is_active",

@@ -1,5 +1,5 @@
 ﻿import type { Metadata } from "next"
-import { Star } from "lucide-react"
+import { Star, Quote } from "lucide-react"
 import { JsonLd } from "@/components/shared/JsonLd"
 import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 import { getTestimonials } from "@/lib/db/testimonials"
@@ -102,35 +102,51 @@ export default async function TestimonialsPage() {
           {testimonials.length > 0 ? (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
               {testimonials.map((testimonial) => (
-                <div key={testimonial.id} className="bg-white rounded-2xl border border-border p-6 flex flex-col">
-                  {/* Header with avatar and info */}
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-primary/10">
-                      {testimonial.avatar_url ? (
-                        <img
-                          src={testimonial.avatar_url}
-                          alt={testimonial.name}
-                          className="size-12 rounded-full object-cover"
-                        />
-                      ) : (
-                        <span className="text-lg font-semibold text-primary">{testimonial.name.charAt(0)}</span>
-                      )}
-                    </div>
-                    <div>
-                      <p className="font-medium text-foreground">{testimonial.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {[testimonial.role, testimonial.sport].filter(Boolean).join(" · ")}
-                      </p>
-                    </div>
-                  </div>
+                <div
+                  key={testimonial.id}
+                  className={`relative bg-white rounded-2xl p-6 flex flex-col ${
+                    testimonial.is_featured
+                      ? "border-2 border-accent/40 shadow-md"
+                      : "border border-border shadow-sm"
+                  }`}
+                >
+                  {testimonial.is_featured && (
+                    <span className="absolute -top-2.5 right-5 inline-flex items-center gap-1 rounded-full bg-accent px-2.5 py-0.5 text-[11px] font-semibold text-accent-foreground shadow-sm">
+                      <Star className="size-3 fill-current" /> Featured
+                    </span>
+                  )}
+
+                  <Quote className="size-8 text-accent/25 mb-3" />
 
                   {/* Rating */}
                   {testimonial.rating && <StarRating rating={testimonial.rating} />}
 
                   {/* Quote */}
-                  <blockquote className="mt-3 flex-1">
-                    <p className="text-sm text-muted-foreground leading-relaxed">&ldquo;{testimonial.quote}&rdquo;</p>
+                  <blockquote className="mt-3 mb-5 flex-1">
+                    <p className="text-base text-foreground/85 leading-relaxed">&ldquo;{testimonial.quote}&rdquo;</p>
                   </blockquote>
+
+                  {/* Author */}
+                  <div className="flex items-center gap-3 pt-4 border-t border-border">
+                    {testimonial.avatar_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={testimonial.avatar_url}
+                        alt={testimonial.name}
+                        className="size-12 shrink-0 rounded-full object-cover ring-2 ring-accent/20"
+                      />
+                    ) : (
+                      <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-primary/10">
+                        <span className="text-lg font-semibold text-primary">{testimonial.name.charAt(0)}</span>
+                      </div>
+                    )}
+                    <div>
+                      <p className="font-semibold text-foreground">{testimonial.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {[testimonial.role, testimonial.sport].filter(Boolean).join(" · ")}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
