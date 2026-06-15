@@ -6,9 +6,6 @@ import {
   createPerformanceAssessment,
   createAssessmentExercises,
 } from "@/lib/db/performance-assessments"
-import { createNotification } from "@/lib/db/notifications"
-import { getUserById } from "@/lib/db/users"
-import { sendPerformanceAssessmentSharedEmail } from "@/lib/email"
 
 const exerciseSchema = z
   .object({

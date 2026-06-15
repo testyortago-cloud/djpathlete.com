@@ -1,8 +1,19 @@
 import { NextResponse } from "next/server"
+import { auth } from "@/lib/auth"
 import { updateTestimonial, deleteTestimonial } from "@/lib/db/testimonials"
 import { recordAudit } from "@/lib/audit/record"
 
+async function requireAdminResponse() {
+  const session = await auth()
+  if (!session?.user?.id || session.user.role !== "admin") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  }
+  return null
+}
+
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const forbidden = await requireAdminResponse()
+  if (forbidden) return forbidden
   try {
     const { id } = await params
     const body = await request.json()
@@ -57,6 +68,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const forbidden = await requireAdminResponse()
+  if (forbidden) return forbidden
   try {
     const { id } = await params
     await deleteTestimonial(id)

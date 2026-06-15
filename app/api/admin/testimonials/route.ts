@@ -1,7 +1,18 @@
 import { NextResponse } from "next/server"
+import { auth } from "@/lib/auth"
 import { getTestimonials, createTestimonial } from "@/lib/db/testimonials"
 
+async function requireAdminResponse() {
+  const session = await auth()
+  if (!session?.user?.id || session.user.role !== "admin") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  }
+  return null
+}
+
 export async function GET() {
+  const forbidden = await requireAdminResponse()
+  if (forbidden) return forbidden
   try {
     const testimonials = await getTestimonials(false)
     return NextResponse.json(testimonials)
@@ -11,6 +22,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const forbidden = await requireAdminResponse()
+  if (forbidden) return forbidden
   try {
     const body = await request.json()
 

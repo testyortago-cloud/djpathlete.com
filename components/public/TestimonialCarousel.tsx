@@ -85,6 +85,8 @@ export function TestimonialCarousel({ testimonials, interval = 5000 }: Testimoni
     exit: (d: number) => ({ x: d > 0 ? -80 : 80, opacity: 0 }),
   }
 
+  if (count === 0) return null
+
   return (
     <div className="relative" onMouseEnter={() => setIsPaused(true)} onMouseLeave={() => setIsPaused(false)}>
       {/* Carousel viewport */}

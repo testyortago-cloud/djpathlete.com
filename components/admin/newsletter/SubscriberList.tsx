@@ -167,7 +167,13 @@ export function SubscriberList({ subscribers }: SubscriberListProps) {
       toast.success(`Imported ${imported} subscriber(s)`)
       router.refresh()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Import failed")
+      const base = err instanceof Error ? err.message : "Import failed"
+      toast.error(
+        imported > 0
+          ? `${base} — ${imported} imported before the error. Re-run to finish (safe, no duplicates).`
+          : base,
+      )
+      if (imported > 0) router.refresh()
     } finally {
       setImporting(false)
       setImportProgress(null)

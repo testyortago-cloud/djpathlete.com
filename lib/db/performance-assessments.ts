@@ -260,7 +260,10 @@ export async function getExerciseResultHistory(
 
 export async function getPerformanceAssessmentCounts() {
   const supabase = getClient()
-  const { data, error } = await supabase.from("performance_assessments").select("status")
+  const { data, error } = await supabase
+    .from("performance_assessments")
+    .select("status")
+    .eq("is_template", false)
   if (error) throw error
 
   const counts = { draft: 0, in_progress: 0, completed: 0, total: 0 }
