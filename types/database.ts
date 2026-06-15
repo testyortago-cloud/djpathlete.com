@@ -889,11 +889,13 @@ export type PerformanceAssessmentStatus = "draft" | "in_progress" | "completed"
 
 export interface PerformanceAssessment {
   id: string
-  client_user_id: string
+  client_user_id: string | null
   created_by: string
   title: string
   notes: string | null
   status: PerformanceAssessmentStatus
+  is_template: boolean
+  template_name: string | null
   created_at: string
   updated_at: string
 }

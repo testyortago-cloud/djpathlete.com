@@ -39,6 +39,7 @@ interface CreatePerformanceAssessmentFormProps {
 export function CreatePerformanceAssessmentForm({ clients, exercises }: CreatePerformanceAssessmentFormProps) {
   const router = useRouter()
   const [clientId, setClientId] = useState("")
+  const [isTemplate, setIsTemplate] = useState(false)
   const [title, setTitle] = useState("")
   const [notes, setNotes] = useState("")
   const [rows, setRows] = useState<ExerciseRow[]>([
@@ -80,8 +81,12 @@ export function CreatePerformanceAssessmentForm({ clients, exercises }: CreatePe
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
 
-    if (!clientId || !title.trim() || rows.length === 0) {
-      toast.error("Please fill in all required fields and add at least one exercise")
+    if (!title.trim() || rows.length === 0) {
+      toast.error("Please add a title and at least one exercise")
+      return
+    }
+    if (!isTemplate && !clientId) {
+      toast.error("Select a client, or tick “Save as a reusable template”")
       return
     }
 
@@ -98,7 +103,8 @@ export function CreatePerformanceAssessmentForm({ clients, exercises }: CreatePe
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          client_user_id: clientId,
+          client_user_id: isTemplate ? null : clientId,
+          is_template: isTemplate,
           title: title.trim(),
           notes: notes.trim() || null,
           exercises: rows.map((row) => ({
@@ -117,8 +123,13 @@ export function CreatePerformanceAssessmentForm({ clients, exercises }: CreatePe
       }
 
       const assessment = await res.json()
-      toast.success("Assessment created!")
-      router.push(`/admin/performance-assessments/${assessment.id}`)
+      if (isTemplate) {
+        toast.success("Template saved! Assign it to athletes from the Templates list.")
+        router.push("/admin/performance-assessments")
+      } else {
+        toast.success("Assessment created!")
+        router.push(`/admin/performance-assessments/${assessment.id}`)
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to create assessment")
     } finally {
@@ -137,16 +148,37 @@ export function CreatePerformanceAssessmentForm({ clients, exercises }: CreatePe
           </div>
         </div>
         <div className="p-6 space-y-5">
+          {/* Reusable template toggle */}
+          <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border bg-surface/40 p-3">
+            <input
+              type="checkbox"
+              checked={isTemplate}
+              onChange={(e) => setIsTemplate(e.target.checked)}
+              className="mt-0.5 rounded border-border"
+            />
+            <span className="text-sm">
+              <span className="font-medium text-foreground">Save as a reusable template</span>
+              <span className="block text-xs text-muted-foreground">
+                Build it once with no client, then assign it to any athlete (or many) from the Templates list.
+              </span>
+            </span>
+          </label>
+
           {/* Client & Title row */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             <div className="space-y-2">
               <Label className="flex items-center gap-1.5">
                 <User className="size-3.5 text-muted-foreground" />
-                Client *
+                Client{" "}
+                {isTemplate ? (
+                  <span className="text-xs font-normal text-muted-foreground">(not needed for a template)</span>
+                ) : (
+                  "*"
+                )}
               </Label>
-              <Select value={clientId} onValueChange={setClientId}>
+              <Select value={clientId} onValueChange={setClientId} disabled={isTemplate}>
                 <SelectTrigger className="h-11">
-                  <SelectValue placeholder="Select a client..." />
+                  <SelectValue placeholder={isTemplate ? "—" : "Select a client..."} />
                 </SelectTrigger>
                 <SelectContent>
                   {clients.map((c) => (

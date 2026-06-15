@@ -24,12 +24,18 @@ const exerciseSchema = z
 
 const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
 
-const createSchema = z.object({
-  client_user_id: z.string().regex(uuidRegex, "Invalid UUID"),
-  title: z.string().min(1).max(200),
-  notes: z.string().max(5000).nullable().optional(),
-  exercises: z.array(exerciseSchema).min(1, "At least one exercise is required"),
-})
+const createSchema = z
+  .object({
+    client_user_id: z.string().regex(uuidRegex, "Invalid UUID").nullable().optional(),
+    title: z.string().min(1).max(200),
+    notes: z.string().max(5000).nullable().optional(),
+    is_template: z.boolean().optional(),
+    exercises: z.array(exerciseSchema).min(1, "At least one exercise is required"),
+  })
+  .refine((d) => d.is_template || !!d.client_user_id, {
+    message: "A client is required unless saving as a reusable template",
+    path: ["client_user_id"],
+  })
 
 export async function GET() {
   try {
@@ -61,15 +67,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid data", details: parsed.error.flatten() }, { status: 400 })
     }
 
-    const { client_user_id, title, notes, exercises } = parsed.data
+    const { client_user_id, title, notes, exercises, is_template } = parsed.data
 
-    // Create the assessment
+    // Create the assessment (template = no specific client)
     const assessment = await createPerformanceAssessment({
-      client_user_id,
+      client_user_id: is_template ? null : (client_user_id as string),
       created_by: session.user.id,
       title,
       notes: notes ?? null,
       status: "draft",
+      is_template: is_template ?? false,
+      template_name: is_template ? title : null,
     })
 
     // Create exercise rows

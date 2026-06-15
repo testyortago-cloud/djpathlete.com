@@ -51,6 +51,7 @@ export async function getAllPerformanceAssessments(filters?: { status?: Performa
   let query = supabase
     .from("performance_assessments")
     .select("*, users!performance_assessments_client_user_id_fkey(first_name, last_name, email)")
+    .eq("is_template", false)
     .order("created_at", { ascending: false })
 
   if (filters?.status) {
@@ -60,6 +61,56 @@ export async function getAllPerformanceAssessments(filters?: { status?: Performa
   const { data, error } = await query
   if (error) throw error
   return data
+}
+
+/** Reusable assessment templates (no specific client), newest first, with exercise count. */
+export async function listAssessmentTemplates() {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("performance_assessments")
+    .select("*, performance_assessment_exercises(count)")
+    .eq("is_template", true)
+    .order("created_at", { ascending: false })
+  if (error) throw error
+  return data
+}
+
+/**
+ * Copy a template into a new draft assessment for a specific client (deep-copies
+ * the template's exercises). Returns the new assessment.
+ */
+export async function createAssessmentFromTemplate(templateId: string, clientUserId: string, adminId: string) {
+  const template = (await getPerformanceAssessmentById(templateId)) as PerformanceAssessment | null
+  if (!template || !template.is_template) throw new Error("Not a template")
+
+  const assessment = await createPerformanceAssessment({
+    client_user_id: clientUserId,
+    created_by: adminId,
+    title: template.title,
+    notes: template.notes,
+    status: "draft",
+    is_template: false,
+    template_name: null,
+  })
+
+  const templateExercises = await getAssessmentExercises(templateId)
+  if (templateExercises.length > 0) {
+    await createAssessmentExercises(
+      templateExercises.map((ex, i) => ({
+        assessment_id: assessment.id,
+        exercise_id: ex.exercise_id,
+        custom_name: ex.custom_name,
+        youtube_url: ex.youtube_url,
+        video_path: null,
+        admin_notes: ex.admin_notes,
+        result_value: null,
+        result_unit: ex.result_unit,
+        order_index: ex.order_index ?? i,
+      })),
+    )
+  }
+
+  return assessment
 }
 
 export async function updatePerformanceAssessment(
