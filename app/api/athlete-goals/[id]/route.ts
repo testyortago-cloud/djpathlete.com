@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { athleteGoalFormSchema } from "@/lib/validators/athlete-goal"
-import { archive, getById, update } from "@/lib/db/athlete-goals"
+import { archive, getById, markAchieved, update } from "@/lib/db/athlete-goals"
 import { withAudit } from "@/lib/audit/with-audit"
 
 export const PATCH = withAudit(
@@ -26,6 +26,10 @@ export const PATCH = withAudit(
     const body = await req.json()
     if (body.action === "archive") {
       const goal = await archive(id)
+      return NextResponse.json({ goal })
+    }
+    if (body.action === "achieve") {
+      const goal = await markAchieved(id, new Date().toISOString().slice(0, 10))
       return NextResponse.json({ goal })
     }
     const parsed = athleteGoalFormSchema.partial().safeParse(body)

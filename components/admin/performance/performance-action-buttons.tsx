@@ -1,6 +1,8 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
+import { Printer } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -51,6 +53,13 @@ export function PerformanceActionButtons({ clientUserId }: { clientUserId: strin
         clientUserId={clientUserId}
         trigger={<Button size="sm">+ Log test</Button>}
       />
+
+      <Button variant="outline" size="sm" asChild>
+        <Link href={`/admin/clients/${clientUserId}/performance/print`} target="_blank">
+          <Printer className="size-4" />
+          Print result page
+        </Link>
+      </Button>
     </div>
   )
 }

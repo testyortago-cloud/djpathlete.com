@@ -467,3 +467,34 @@
     cursor: pointer;
   }
 }
+
+/* Print: when a `.print-document` is present, print only it and strip app chrome
+   (admin sidebar, top bar, docks). Used by the athlete result page. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-document,
+  .print-document * {
+    visibility: visible;
+  }
+  .print-document {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    background: #fff;
+    color: #000;
+  }
+  /* Belt-and-braces for explicitly print-hidden chrome (e.g. the toolbar). */
+  .print-hide,
+  [data-print-hide] {
+    display: none !important;
+  }
+}
+
+@page {
+  margin: 1.5cm;
+}

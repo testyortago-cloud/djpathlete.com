@@ -9,7 +9,7 @@ import { listByUser, getActive } from "@/lib/db/injuries"
 import { getPRsByUser, listByUser as listTests } from "@/lib/db/performance-tests"
 import { listByUser as listTrainingSessions } from "@/lib/db/training-sessions"
 import { getOpenByUser } from "@/lib/db/risk-flags"
-import { getActive as activeGoals } from "@/lib/db/athlete-goals"
+import { listByUser as listGoals } from "@/lib/db/athlete-goals"
 import {
   dailyLoads,
   acuteLoad,
@@ -66,7 +66,7 @@ export default async function AdminPerformanceHubPage({
     listTests(id),
     listTrainingSessions(id, { from, to: today }),
     getOpenByUser(id),
-    activeGoals(id),
+    listGoals(id),
     listReadiness(id, { from, to: today }),
   ])
 

@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Combobox } from "@/components/ui/combobox"
 import type { SessionPackProduct } from "@/types/database"
 
 export function SellPackDialog({
@@ -197,19 +198,17 @@ export function SellPackDialog({
 
           <div className="space-y-2">
             <Label>Link a program (optional)</Label>
-            <Select value={programId} onValueChange={setProgramId}>
-              <SelectTrigger>
-                <SelectValue placeholder="No program" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No program</SelectItem>
-                {programs.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Combobox
+              value={programId}
+              onChange={setProgramId}
+              options={[
+                { value: "none", label: "No program" },
+                ...programs.map((p) => ({ value: p.id, label: p.name })),
+              ]}
+              placeholder="No program"
+              searchPlaceholder="Search programs…"
+              emptyText="No programs found"
+            />
             <p className="text-xs text-muted-foreground">
               If linked, each check-in marks the next workout in this program complete.
             </p>

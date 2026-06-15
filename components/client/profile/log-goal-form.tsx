@@ -19,7 +19,13 @@ import {
 } from "@/lib/validators/athlete-goal"
 import { TEST_TYPES, TEST_TYPE_LABELS } from "@/lib/validators/performance-test"
 
-export function LogGoalForm({ clientUserId }: { clientUserId?: string }) {
+export function LogGoalForm({
+  clientUserId,
+  onSuccess,
+}: {
+  clientUserId?: string
+  onSuccess?: () => void
+}) {
   const router = useRouter()
   const [submitting, setSubmitting] = useState(false)
 
@@ -49,7 +55,9 @@ export function LogGoalForm({ clientUserId }: { clientUserId?: string }) {
       })
       if (!res.ok) throw new Error("Save failed")
       toast.success("Goal added")
+      form.reset()
       router.refresh()
+      onSuccess?.()
     } catch (e) {
       toast.error((e as Error).message)
     } finally {

@@ -37,6 +37,8 @@ import { AthleteRadarCard } from "@/components/client/profile/athlete-radar-card
 import { TrainingStreakHeatmap } from "@/components/client/profile/training-streak-heatmap"
 import { BadgeShelfCard } from "@/components/client/profile/badge-shelf-card"
 import { OpenGoalsCard } from "@/components/client/profile/open-goals-card"
+import { CoachGoalsManager } from "./coach-goals-manager"
+import { latestTestValueByType, type GoalMetricContext } from "@/lib/goals/progress"
 import type {
   AthleteGoal,
   Badge as BadgeType,
@@ -101,6 +103,13 @@ export function AthletePerformanceHub({
   const sparkline = coachIntel.dailyLoadSeries.slice(-7)
 
   const alertCount = coachIntel.openFlags.length
+
+  const activeGoals = profile.goals.filter((g) => g.status === "active")
+  const goalMetricContext: GoalMetricContext = {
+    latestTestValueByType: latestTestValueByType(profile.tests),
+    latestReadiness: latestReadiness?.readiness_score ?? null,
+    currentWeekLoad: coachIntel.weeklyTotal,
+  }
 
   return (
     <div className="py-2">
@@ -211,7 +220,7 @@ export function AthletePerformanceHub({
           <ActiveInjuriesCard injuries={activeInjuries} clientUserId={clientUserId} />
           <RiskFlagsCard flags={coachIntel.openFlags} />
           <OpenGoalsCard
-            goals={profile.goals}
+            goals={activeGoals}
             goalsHref={`/admin/clients/${clientUserId}/performance?tab=profile`}
           />
           <PRsShelfCard prs={prs} />
@@ -262,9 +271,16 @@ export function AthletePerformanceHub({
           <TrainingStreakHeatmap sessions={profile.sessions} />
           <BadgeShelfCard badges={profile.badges} />
           <OpenGoalsCard
-            goals={profile.goals}
+            goals={activeGoals}
             goalsHref={`/admin/clients/${clientUserId}/performance?tab=profile`}
           />
+          <div className="md:col-span-2">
+            <CoachGoalsManager
+              clientUserId={clientUserId}
+              goals={profile.goals}
+              metricContext={goalMetricContext}
+            />
+          </div>
         </TabsContent>
 
         <TabsContent value="injuries" className="mt-6 space-y-6">
