@@ -199,6 +199,16 @@ function createInitialSetRows(numSets: number, defaultWeight: string, _defaultRe
 
 // ─── Exercise Card ──────────────────────────────────────────────────────────
 
+/** One labeled prescription value (e.g. "Sets 3") — bold so clients can't miss it. */
+function PrescriptionCell({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="leading-tight">
+      <span className="block text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{label}</span>
+      <span className="text-sm font-semibold text-foreground">{children}</span>
+    </div>
+  )
+}
+
 function ExerciseCard({
   programExercise: pe,
   exercise,
@@ -434,7 +444,7 @@ function ExerciseCard({
       ? duration !== "" && parseInt(duration, 10) > 0
       : true // plyometric without duration — just needs sets
 
-  // Auto-show duration & notes when all sets are filled
+  // Auto-show notes when all sets are filled
   const allSetsFilled = setRows.length > 0 && setRows.every((row) => parseInt(row.reps, 10) > 0)
   const autoShowTriggeredRef = useRef(false)
 
@@ -470,7 +480,13 @@ function ExerciseCard({
 
   return (
     <>
-      <div className={cn("px-4 py-3 transition-colors", loggedToday && "bg-success/5 border-l-[3px] border-l-success")}>
+      <div
+        className={cn(
+          "px-4 transition-colors",
+          exercise.is_bodyweight ? "py-2.5" : "py-3",
+          loggedToday && "bg-success/5 border-l-[3px] border-l-success",
+        )}
+      >
         {/* Collapsed row — tap anywhere to expand */}
         <button
           type="button"
@@ -497,42 +513,59 @@ function ExerciseCard({
                   <Video className="size-3" strokeWidth={2.5} /> Record
                 </span>
               )}
+              {!hideNotes && pe.notes && (
+                <Lightbulb
+                  className="ml-1.5 inline size-3 align-middle text-amber-500"
+                  strokeWidth={2.5}
+                  aria-label="Coach tip in Instructions"
+                />
+              )}
             </p>
-            {/* Compact summary line */}
-            <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
-              {pe.sets && pe.reps && (
-                <span>
-                  {pe.sets} x {pe.reps}
-                </span>
+            {/* Prescription — labeled + bold, always visible so clients never lose their sets/reps */}
+            <div className="mt-1.5 flex flex-wrap gap-x-3.5 gap-y-1">
+              {pe.sets != null && <PrescriptionCell label="Sets">{pe.sets}</PrescriptionCell>}
+              {fields.showReps && pe.reps && <PrescriptionCell label="Reps">{pe.reps}</PrescriptionCell>}
+              {fields.showDuration === "prominent" && pe.duration_seconds ? (
+                <PrescriptionCell label="Hold">{formatRestTime(pe.duration_seconds)}</PrescriptionCell>
+              ) : null}
+              {pe.rest_seconds ? (
+                <PrescriptionCell label="Rest">{formatRestTime(pe.rest_seconds)}</PrescriptionCell>
+              ) : null}
+              {pe.tempo && (
+                <PrescriptionCell label="Tempo">
+                  <span className="font-mono">{pe.tempo}</span>
+                </PrescriptionCell>
               )}
-              {pe.duration_seconds && <span>{formatRestTime(pe.duration_seconds)}</span>}
+              {pe.rpe_target != null && <PrescriptionCell label="Intensity">{pe.rpe_target}</PrescriptionCell>}
               {fields.showWeight && (rec.recommended_kg ?? pe.suggested_weight_kg) != null && (
-                <Badge variant="outline" className="gap-1 text-[10px] border-primary/20 text-primary">
-                  {rec.recommended_kg != null ? (
-                    <>
-                      <TrendIcon trend={rec.trend} />
-                      {formatWeightCompact(rec.recommended_kg)}
-                    </>
-                  ) : (
-                    formatWeightCompact(pe.suggested_weight_kg!)
-                  )}
-                </Badge>
-              )}
-              {liveDelta.direction !== "neutral" && liveDelta.pct != null && (
-                <span
-                  className={cn(
-                    "inline-flex items-center gap-0.5 text-[10px] font-semibold",
-                    liveDelta.direction === "up" ? "text-success" : "text-destructive",
-                  )}
-                  title="vs your last session of this exercise"
-                >
-                  {liveDelta.direction === "up" ? (
-                    <TrendingUp className="size-3" />
-                  ) : (
-                    <TrendingDown className="size-3" />
-                  )}
-                  {liveDelta.pct}%
-                </span>
+                <PrescriptionCell label="Weight">
+                  <span className="inline-flex items-center gap-1">
+                    {rec.recommended_kg != null ? (
+                      <>
+                        <TrendIcon trend={rec.trend} />
+                        {formatWeightCompact(rec.recommended_kg)}
+                      </>
+                    ) : (
+                      formatWeightCompact(pe.suggested_weight_kg!)
+                    )}
+                    {liveDelta.direction !== "neutral" && liveDelta.pct != null && (
+                      <span
+                        className={cn(
+                          "inline-flex items-center gap-0.5 text-[10px] font-semibold",
+                          liveDelta.direction === "up" ? "text-success" : "text-destructive",
+                        )}
+                        title="vs your last session of this exercise"
+                      >
+                        {liveDelta.direction === "up" ? (
+                          <TrendingUp className="size-3" />
+                        ) : (
+                          <TrendingDown className="size-3" />
+                        )}
+                        {liveDelta.pct}%
+                      </span>
+                    )}
+                  </span>
+                </PrescriptionCell>
               )}
             </div>
           </div>
@@ -543,13 +576,8 @@ function ExerciseCard({
           />
         </button>
 
-        {/* Coach note — always visible so clients actually read the coaching cue */}
-        {!hideNotes && pe.notes && (
-          <div className="ml-10 mr-2 mb-1 flex items-start gap-2 rounded-md bg-amber-50 px-2 py-1.5">
-            <Lightbulb className="size-3.5 shrink-0 text-amber-500 mt-0.5" strokeWidth={2} />
-            <p className="text-xs italic text-foreground/70 leading-relaxed whitespace-pre-line">{pe.notes}</p>
-          </div>
-        )}
+        {/* Coach note now lives inside the Instructions dropdown (below) — keeps the
+            card surface clean; a small lightbulb by the name flags that a tip exists. */}
 
         {/* Expanded log form */}
         <AnimatePresence>
@@ -570,10 +598,10 @@ function ExerciseCard({
                       type="button"
                       size="sm"
                       variant="outline"
-                      className="gap-1 text-primary/70 hover:text-primary h-7 text-xs"
+                      className="gap-1 h-7 text-xs font-semibold text-success border-success/40 bg-success/5 hover:bg-success/10 hover:text-success"
                       onClick={() => setShowVideo(true)}
                     >
-                      <Play className="size-3" />
+                      <Play className="size-3 fill-success" />
                       Watch
                     </Button>
                   )}
@@ -625,37 +653,28 @@ function ExerciseCard({
                     })()}
                 </div>
 
-                {/* Single consolidated Instructions dropdown (coach note now shown
-                    always-visible above; this holds the fuller how-to + tempo/RPE/rest) */}
-                {(displayExercise.instructions || pe.tempo || pe.rpe_target || pe.rest_seconds) && (
+                {/* Instructions dropdown — holds the coach note (the "yellow box") +
+                    the fuller how-to. Tempo/RPE/Rest now live in the always-visible grid. */}
+                {(displayExercise.instructions || (!hideNotes && pe.notes)) && (
                   <details className="group rounded-md border border-border/50 bg-muted/30">
                     <summary className="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-xs font-medium text-foreground/70 select-none list-none [&::-webkit-details-marker]:hidden">
                       <ChevronRight className="size-3 shrink-0 transition-transform group-open:rotate-90" />
                       <ListChecks className="size-3.5 shrink-0 text-primary/60" strokeWidth={2} />
                       Instructions
+                      {!hideNotes && pe.notes && (
+                        <span className="ml-1 inline-flex items-center gap-0.5 text-[10px] font-normal text-amber-600">
+                          <Lightbulb className="size-3" strokeWidth={2} /> coach tip
+                        </span>
+                      )}
                     </summary>
                     <div className="px-2.5 pb-2.5 pt-1 space-y-2">
-                      {/* Tempo / RPE / Rest — compact inline pills */}
-                      {(pe.tempo || pe.rpe_target || pe.rest_seconds) && (
-                        <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
-                          {pe.tempo && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-primary/5 px-2 py-0.5">
-                              <span className="font-medium text-foreground/50">Tempo</span>
-                              <span className="font-mono">{pe.tempo}</span>
-                            </span>
-                          )}
-                          {pe.rpe_target && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-primary/5 px-2 py-0.5">
-                              <span className="font-medium text-foreground/50">RPE</span>
-                              {pe.rpe_target}
-                            </span>
-                          )}
-                          {pe.rest_seconds && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-primary/5 px-2 py-0.5">
-                              <span className="font-medium text-foreground/50">Rest</span>
-                              {formatRestTime(pe.rest_seconds)}
-                            </span>
-                          )}
+                      {/* Coach note (the "yellow box") — now tucked inside Instructions */}
+                      {!hideNotes && pe.notes && (
+                        <div className="flex items-start gap-2 rounded-md bg-amber-50 px-2 py-1.5">
+                          <Lightbulb className="size-3.5 shrink-0 text-amber-500 mt-0.5" strokeWidth={2} />
+                          <p className="text-xs italic text-foreground/70 leading-relaxed whitespace-pre-line">
+                            {pe.notes}
+                          </p>
                         </div>
                       )}
                       {/* Exercise instructions */}
@@ -735,7 +754,7 @@ function ExerciseCard({
                     )}
                     <div className="overflow-x-auto">
                       <table
-                        className="w-full mt-1.5 min-w-[320px]"
+                        className={cn("w-full mt-1.5", fields.showWeight ? "min-w-[320px]" : "min-w-[180px]")}
                         style={{ borderCollapse: "separate", borderSpacing: "0 4px" }}
                       >
                         <thead>
@@ -882,7 +901,7 @@ function ExerciseCard({
                   className="text-xs text-muted-foreground hover:text-foreground transition-colors"
                   onClick={() => setShowExtra(!showExtra)}
                 >
-                  {showExtra ? "Hide" : "Show"} {fields.showDuration === "prominent" ? "notes" : "duration & notes"}
+                  {showExtra ? "Hide" : "Show"} notes
                 </button>
 
                 <AnimatePresence>
@@ -894,22 +913,6 @@ function ExerciseCard({
                       transition={{ duration: 0.15 }}
                       className="overflow-hidden space-y-3"
                     >
-                      {fields.showDuration !== "prominent" && (
-                        <div className="space-y-1.5">
-                          <Label htmlFor={`duration-${pe.id}`} className="text-xs">
-                            Duration (seconds)
-                          </Label>
-                          <Input
-                            id={`duration-${pe.id}`}
-                            type="number"
-                            min="0"
-                            placeholder="Optional"
-                            value={duration}
-                            onChange={(e) => setDuration(e.target.value)}
-                            className="h-9"
-                          />
-                        </div>
-                      )}
                       <div className="space-y-1.5">
                         <Label htmlFor={`notes-${pe.id}`} className="text-xs">
                           Notes

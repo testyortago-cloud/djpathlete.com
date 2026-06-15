@@ -1,8 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { cn } from "@/lib/utils"
-import { PRS_SCALE, PRS_TITLE, PRS_HELP } from "@/lib/workout/prs-scale"
+import { PRS_MIN, PRS_MAX, PRS_TITLE, PRS_HELP, prsBand } from "@/lib/workout/prs-scale"
 import { X } from "lucide-react"
 
 /** Client-local YYYY-MM-DD (not UTC) so "today" matches the client's calendar. */
@@ -12,10 +11,11 @@ function localToday(): string {
 }
 
 /**
- * Perceived Recovery Status check at the start of a session. Skippable, shown
- * once per day (dismissal remembered in sessionStorage). Submitting create-or-
- * finds the day's workout_session and records PRS at its start. Non-blocking:
- * any failure (e.g. before the migration is applied) just dismisses quietly.
+ * Perceived Recovery Status check at the start of a session — a 0–10 slider,
+ * colour-coded green→red, showing the recovery label + performance expectation
+ * for the picked number. Skippable, shown once per day (remembered in
+ * sessionStorage). Submitting creates-or-finds the day's workout_session and
+ * records PRS. Non-blocking: any failure just dismisses quietly.
  */
 export function SessionPrsPrompt({
   assignmentId,
@@ -36,13 +36,12 @@ export function SessionPrsPrompt({
     }
   })
   const [submitting, setSubmitting] = useState(false)
-  const [picked, setPicked] = useState<number | null>(null)
+  const [value, setValue] = useState(7)
 
   if (done) return null
 
   async function submit(prs: number | null) {
     setSubmitting(true)
-    setPicked(prs)
     try {
       await fetch("/api/client/workouts/session", {
         method: "POST",
@@ -68,6 +67,8 @@ export function SessionPrsPrompt({
     }
   }
 
+  const band = prsBand(value)
+
   return (
     <div className="mb-4 rounded-xl border border-primary/20 bg-primary/5 p-3">
       <div className="flex items-start justify-between gap-2">
@@ -85,25 +86,46 @@ export function SessionPrsPrompt({
           <X className="size-4" />
         </button>
       </div>
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        {PRS_SCALE.map((opt) => (
-          <button
-            key={opt.value}
-            type="button"
-            disabled={submitting}
-            onClick={() => submit(opt.value)}
-            title={opt.label}
-            className={cn(
-              "rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
-              picked === opt.value
-                ? "border-primary bg-primary text-primary-foreground"
-                : "border-border bg-background text-foreground hover:border-primary/40",
-            )}
-          >
-            {opt.value}
-          </button>
-        ))}
+
+      <div className="mt-3">
+        <div className="flex items-end justify-between gap-2">
+          <span className="text-3xl font-bold leading-none tabular-nums" style={{ color: band.color }}>
+            {value}
+            <span className="text-base font-medium text-muted-foreground">/{PRS_MAX}</span>
+          </span>
+          <span className="text-right text-xs font-semibold" style={{ color: band.color }}>
+            {band.expectation}
+          </span>
+        </div>
+
+        <input
+          type="range"
+          min={PRS_MIN}
+          max={PRS_MAX}
+          step={1}
+          value={value}
+          onChange={(e) => setValue(Number(e.target.value))}
+          disabled={submitting}
+          aria-label="Perceived recovery 0 to 10"
+          className="mt-2 w-full"
+          style={{ accentColor: band.color }}
+        />
+        <div className="flex justify-between text-[10px] text-muted-foreground">
+          <span>0 · Extremely tired</span>
+          <span>10 · Highly energetic</span>
+        </div>
+
+        <p className="mt-1 text-xs text-foreground/70">{band.label}</p>
       </div>
+
+      <button
+        type="button"
+        onClick={() => submit(value)}
+        disabled={submitting}
+        className="mt-3 w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+      >
+        {submitting ? "Saving..." : "Start session"}
+      </button>
     </div>
   )
 }
