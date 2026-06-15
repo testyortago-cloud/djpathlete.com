@@ -18,7 +18,10 @@ import {
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import type { Subscriber } from "@/lib/db/newsletter"
+import { auditCsvLines } from "@/lib/newsletter/audit"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+
+const IMPORT_CHUNK_SIZE = 2000
 
 interface SubscriberListProps {
   subscribers: Subscriber[]
@@ -33,14 +36,18 @@ export function SubscriberList({ subscribers }: SubscriberListProps) {
   const [search, setSearch] = useState("")
   const [importOpen, setImportOpen] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null)
   const [importResult, setImportResult] = useState<{
-    added: number
-    skipped: number
-    total: number
+    imported: number
     invalid: number
+    disposable: number
+    duplicates: number
+    total: number
   } | null>(null)
   const [parsedEmails, setParsedEmails] = useState<string[]>([])
   const [invalidLines, setInvalidLines] = useState<string[]>([])
+  const [disposableEmails, setDisposableEmails] = useState<string[]>([])
+  const [duplicateCount, setDuplicateCount] = useState(0)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
@@ -115,37 +122,14 @@ export function SubscriberList({ subscribers }: SubscriberListProps) {
   }
 
   function parseCsv(text: string) {
-    const lines = text
-      .split(/[\r\n]+/)
-      .map((l) => l.trim())
-      .filter(Boolean)
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    const valid: string[] = []
-    const invalid: string[] = []
-
-    for (const line of lines) {
-      // Skip header row
-      if (line.toLowerCase().startsWith("email") || line.toLowerCase().startsWith("name")) {
-        continue
-      }
-
-      // Handle CSV with commas — take the email column (first column or find email)
-      const parts = line.split(",").map((p) => p.trim().replace(/^"|"$/g, ""))
-      const email = parts.find((p) => emailRegex.test(p))
-
-      if (email) {
-        valid.push(email.toLowerCase())
-      } else {
-        invalid.push(line)
-      }
-    }
-
-    // Deduplicate
-    const unique = [...new Set(valid)]
-    setParsedEmails(unique)
-    setInvalidLines(invalid)
+    const lines = text.split(/[\r\n]+/)
+    const audit = auditCsvLines(lines)
+    setParsedEmails(audit.valid)
+    setInvalidLines(audit.invalidFormat)
+    setDisposableEmails(audit.disposable)
+    setDuplicateCount(audit.duplicates)
     setImportResult(null)
+    setImportProgress(null)
     setImportOpen(true)
   }
 
@@ -153,32 +137,50 @@ export function SubscriberList({ subscribers }: SubscriberListProps) {
     if (parsedEmails.length === 0) return
 
     setImporting(true)
+    setImportProgress({ done: 0, total: parsedEmails.length })
+    let imported = 0
     try {
-      const res = await fetch("/api/admin/newsletter/subscribers", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ emails: parsedEmails }),
-      })
-
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error ?? "Import failed")
+      // Chunk so any list size imports without hitting request body limits.
+      for (let i = 0; i < parsedEmails.length; i += IMPORT_CHUNK_SIZE) {
+        const chunk = parsedEmails.slice(i, i + IMPORT_CHUNK_SIZE)
+        const res = await fetch("/api/admin/newsletter/subscribers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ emails: chunk }),
+        })
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          throw new Error(data.error ?? "Import failed")
+        }
+        const result = await res.json()
+        imported += result.added ?? chunk.length
+        setImportProgress({ done: Math.min(i + chunk.length, parsedEmails.length), total: parsedEmails.length })
       }
 
-      const result = await res.json()
       setImportResult({
-        added: result.added,
-        skipped: result.skipped,
-        total: result.total,
+        imported,
         invalid: invalidLines.length,
+        disposable: disposableEmails.length,
+        duplicates: duplicateCount,
+        total: parsedEmails.length,
       })
-      toast.success(`Imported ${result.added} subscriber(s)`)
+      toast.success(`Imported ${imported} subscriber(s)`)
       router.refresh()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Import failed")
     } finally {
       setImporting(false)
+      setImportProgress(null)
     }
+  }
+
+  function resetImport() {
+    setImportOpen(false)
+    setImportResult(null)
+    setParsedEmails([])
+    setInvalidLines([])
+    setDisposableEmails([])
+    setDuplicateCount(0)
   }
 
   function handleDownloadTemplate() {
@@ -420,18 +422,18 @@ export function SubscriberList({ subscribers }: SubscriberListProps) {
                 <div className="text-sm">
                   <p className="font-medium text-foreground">Import complete</p>
                   <p className="text-muted-foreground mt-1">
-                    {importResult.added} added, {importResult.skipped} already existed
-                    {importResult.invalid > 0 && `, ${importResult.invalid} invalid rows skipped`}
+                    {importResult.imported} subscriber(s) imported
+                    {importResult.duplicates > 0 && `, ${importResult.duplicates} duplicate(s) removed`}
+                    {importResult.disposable > 0 && `, ${importResult.disposable} disposable excluded`}
+                    {importResult.invalid > 0 && `, ${importResult.invalid} invalid row(s) skipped`}
+                  </p>
+                  <p className="text-muted-foreground mt-1 text-xs">
+                    Tip: use “Sync GHL” to push these into GoHighLevel.
                   </p>
                 </div>
               </div>
               <button
-                onClick={() => {
-                  setImportOpen(false)
-                  setImportResult(null)
-                  setParsedEmails([])
-                  setInvalidLines([])
-                }}
+                onClick={resetImport}
                 className="w-full px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
               >
                 Done
@@ -440,10 +442,18 @@ export function SubscriberList({ subscribers }: SubscriberListProps) {
           ) : (
             <div className="space-y-3">
               {/* Parsed summary */}
-              <div className="p-3 rounded-lg bg-surface border border-border">
-                <p className="text-sm font-medium text-foreground">{parsedEmails.length} valid email(s) found</p>
+              <div className="p-3 rounded-lg bg-surface border border-border space-y-0.5">
+                <p className="text-sm font-medium text-foreground">{parsedEmails.length} valid email(s) ready to import</p>
+                {duplicateCount > 0 && (
+                  <p className="text-xs text-muted-foreground">{duplicateCount} duplicate(s) removed</p>
+                )}
+                {disposableEmails.length > 0 && (
+                  <p className="text-xs text-warning">
+                    {disposableEmails.length} disposable/throwaway address(es) excluded
+                  </p>
+                )}
                 {invalidLines.length > 0 && (
-                  <p className="text-xs text-warning mt-1">{invalidLines.length} invalid row(s) will be skipped</p>
+                  <p className="text-xs text-warning">{invalidLines.length} invalid row(s) will be skipped</p>
                 )}
               </div>
 
@@ -495,12 +505,9 @@ export function SubscriberList({ subscribers }: SubscriberListProps) {
               {/* Actions */}
               <div className="flex gap-2">
                 <button
-                  onClick={() => {
-                    setImportOpen(false)
-                    setParsedEmails([])
-                    setInvalidLines([])
-                  }}
-                  className="flex-1 px-4 py-2 rounded-lg border border-border text-sm font-medium text-muted-foreground hover:bg-surface transition-colors"
+                  onClick={resetImport}
+                  disabled={importing}
+                  className="flex-1 px-4 py-2 rounded-lg border border-border text-sm font-medium text-muted-foreground hover:bg-surface transition-colors disabled:opacity-50"
                 >
                   Cancel
                 </button>
@@ -510,7 +517,11 @@ export function SubscriberList({ subscribers }: SubscriberListProps) {
                   className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
                 >
                   {importing ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
-                  Import {parsedEmails.length} Email(s)
+                  {importing
+                    ? importProgress
+                      ? `Importing ${importProgress.done}/${importProgress.total}...`
+                      : "Importing..."
+                    : `Import ${parsedEmails.length} Email(s)`}
                 </button>
               </div>
             </div>

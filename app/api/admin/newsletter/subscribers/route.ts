@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { z } from "zod"
 import { importSubscribers } from "@/lib/db/newsletter"
-import { ghlCreateContact } from "@/lib/ghl"
 
+// Per-request cap. The admin UI chunks large lists into requests of ~2,000, so a
+// list of any size imports across multiple calls without hitting body-size limits.
 const importSchema = z.object({
-  emails: z.array(z.string().email()).min(1, "At least 1 email required").max(5000, "Maximum 5000 emails per import"),
+  emails: z.array(z.string().email()).min(1, "At least 1 email required").max(10000, "Maximum 10000 emails per request"),
 })
 
 export async function POST(request: NextRequest) {
@@ -32,14 +33,9 @@ export async function POST(request: NextRequest) {
 
     const result = await importSubscribers(parsed.data.emails)
 
-    // Sync new subscribers to GHL (fire-and-forget)
-    for (const email of parsed.data.emails) {
-      ghlCreateContact({
-        email,
-        tags: ["newsletter"],
-        source: "admin-import",
-      })
-    }
+    // NOTE: GHL sync is intentionally NOT done inline here — pushing one contact
+    // per email would fan out thousands of concurrent calls on a bulk import.
+    // The admin "Sync GHL" action handles that safely in its own batched flow.
 
     return NextResponse.json({
       success: true,
