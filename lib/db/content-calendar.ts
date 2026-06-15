@@ -15,6 +15,27 @@ export async function createCalendarEntry(
   return data as ContentCalendarEntry
 }
 
+/** Coach-authored topic suggestion (appears alongside the auto-scanned ones). */
+export async function createManualTopicSuggestion(
+  title: string,
+  scheduledFor: string,
+): Promise<ContentCalendarEntry> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("content_calendar")
+    .insert({
+      entry_type: "topic_suggestion",
+      title,
+      scheduled_for: scheduledFor,
+      status: "planned",
+      metadata: { source: "manual" },
+    })
+    .select()
+    .single()
+  if (error) throw error
+  return data as ContentCalendarEntry
+}
+
 export async function getCalendarEntryById(id: string): Promise<ContentCalendarEntry | null> {
   const supabase = getClient()
   const { data, error } = await supabase

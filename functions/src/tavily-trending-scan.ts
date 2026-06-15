@@ -50,6 +50,27 @@ export const EXCLUDED_DOMAINS: readonly string[] = [
 const MAX_RESULTS_PER_QUERY = 5
 const MAX_RESULTS_TO_RANK = 20
 
+// Admin-editable override: read the scan queries from system_settings
+// (key "blog_scan_queries", set via /admin/topic-suggestions). Falls back to the
+// TRENDING_QUERIES defaults when unset/empty/malformed.
+async function getScanQueries(): Promise<string[]> {
+  try {
+    const supabase = getSupabase()
+    const { data } = await supabase
+      .from("system_settings")
+      .select("value")
+      .eq("key", "blog_scan_queries")
+      .maybeSingle()
+    const value = data?.value
+    if (Array.isArray(value) && value.length > 0 && value.every((v) => typeof v === "string" && v.trim())) {
+      return value as string[]
+    }
+  } catch {
+    // fall through to defaults
+  }
+  return [...TRENDING_QUERIES]
+}
+
 export function buildRankingPrompt(results: TavilySearchResult[]): string {
   if (results.length === 0) {
     return [
@@ -134,8 +155,9 @@ export async function handleTavilyTrendingScan(jobId: string): Promise<void> {
   try {
     await jobRef.update({ status: "processing", updatedAt: FieldValue.serverTimestamp() })
 
+    const scanQueries = await getScanQueries()
     const searches = await Promise.all(
-      TRENDING_QUERIES.map((query) =>
+      scanQueries.map((query) =>
         tavilySearch({
           query,
           search_depth: "advanced",
