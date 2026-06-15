@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { Plus, Loader2, Search, Save } from "lucide-react"
+import { Plus, Loader2, Search, Save, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -19,6 +19,14 @@ export function BlogTopicControls({ initialQueries }: { initialQueries: string[]
   // Scan queries
   const [queriesText, setQueriesText] = useState(initialQueries.join("\n"))
   const [savingQueries, setSavingQueries] = useState(false)
+  const [scanning, setScanning] = useState(false)
+
+  function parsedQueries(): string[] {
+    return queriesText
+      .split(/\r?\n/)
+      .map((q) => q.trim())
+      .filter(Boolean)
+  }
 
   async function addTopic() {
     const title = topic.trim()
@@ -48,10 +56,7 @@ export function BlogTopicControls({ initialQueries }: { initialQueries: string[]
   }
 
   async function saveQueries() {
-    const queries = queriesText
-      .split(/\r?\n/)
-      .map((q) => q.trim())
-      .filter(Boolean)
+    const queries = parsedQueries()
     if (queries.length === 0) {
       toast.error("Add at least one search topic")
       return
@@ -71,6 +76,40 @@ export function BlogTopicControls({ initialQueries }: { initialQueries: string[]
       toast.error(e instanceof Error ? e.message : "Failed to save topics")
     } finally {
       setSavingQueries(false)
+    }
+  }
+
+  // Override the weekly schedule: save the current topics, then run the scan now.
+  async function runScanNow() {
+    const queries = parsedQueries()
+    if (queries.length === 0) {
+      toast.error("Add at least one search topic first")
+      return
+    }
+    setScanning(true)
+    try {
+      // Save current topics first so the scan uses exactly what's shown.
+      const saveRes = await fetch("/api/admin/topic-suggestions/queries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ queries }),
+      })
+      if (!saveRes.ok) {
+        const d = await saveRes.json().catch(() => ({}))
+        throw new Error(d.error ?? "Failed to save topics")
+      }
+      const scanRes = await fetch("/api/admin/topic-suggestions/scan", { method: "POST" })
+      if (!scanRes.ok) {
+        const d = await scanRes.json().catch(() => ({}))
+        throw new Error(d.error ?? "Failed to start scan")
+      }
+      toast.success("Scan started — fresh topics will appear here in a minute or two.")
+      // Surface the results without a manual reload once the job has had time to finish.
+      window.setTimeout(() => router.refresh(), 75000)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to start scan")
+    } finally {
+      setScanning(false)
     }
   }
 
@@ -111,8 +150,9 @@ export function BlogTopicControls({ initialQueries }: { initialQueries: string[]
           <h2 className="text-sm font-semibold text-primary">Weekly auto-scan topics</h2>
         </div>
         <p className="mb-2 text-xs text-muted-foreground">
-          One search topic per line. These drive the weekly automatic suggestions — broaden or replace them to steer
-          the content away from any single theme. Takes effect on the next weekly scan.
+          One search topic per line. These drive the automatic suggestions — broaden or replace them to steer the
+          content away from any single theme. Save applies to the next weekly scan, or hit{" "}
+          <span className="font-medium">Run scan now</span> to pull fresh topics immediately.
         </p>
         <Label htmlFor="scan-queries" className="sr-only">
           Scan topics
@@ -124,10 +164,14 @@ export function BlogTopicControls({ initialQueries }: { initialQueries: string[]
           rows={6}
           className="font-mono text-xs"
         />
-        <div className="mt-2 flex justify-end">
-          <Button size="sm" onClick={saveQueries} disabled={savingQueries}>
+        <div className="mt-2 flex justify-end gap-2">
+          <Button size="sm" variant="outline" onClick={saveQueries} disabled={savingQueries || scanning}>
             {savingQueries ? <Loader2 className="mr-1.5 size-4 animate-spin" /> : <Save className="mr-1.5 size-4" />}
             Save topics
+          </Button>
+          <Button size="sm" onClick={runScanNow} disabled={scanning || savingQueries}>
+            {scanning ? <Loader2 className="mr-1.5 size-4 animate-spin" /> : <Sparkles className="mr-1.5 size-4" />}
+            Run scan now
           </Button>
         </div>
       </div>
