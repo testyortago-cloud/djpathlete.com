@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 vi.mock("@/lib/ai/anthropic", () => ({
-  MODEL_SONNET: "claude-sonnet-4-20250514",
+  MODEL_SONNET: "claude-sonnet-4-6",
   callAgent: vi.fn(),
 }))
 

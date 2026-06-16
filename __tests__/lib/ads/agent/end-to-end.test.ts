@@ -51,7 +51,7 @@ const { validDecision } = vi.hoisted(() => ({
 }))
 
 vi.mock("@/lib/ai/anthropic", () => ({
-  MODEL_SONNET: "claude-sonnet-4-20250514",
+  MODEL_SONNET: "claude-sonnet-4-6",
   callAgent: vi.fn().mockResolvedValue({
     content: validDecision,
     tokens_used: 280,
