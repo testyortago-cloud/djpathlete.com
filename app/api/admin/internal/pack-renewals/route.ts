@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
           message: `${reminders.length} client pack${reminders.length === 1 ? "" : "s"} are low, empty, or expiring.`,
           type: "info",
           is_read: false,
-          link: "/admin/today",
+          link: "/admin/clients",
         })
       }
     } catch (err) {

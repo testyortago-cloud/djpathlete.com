@@ -1,15 +1,35 @@
+import QRCode from "qrcode"
 import { Users, UserPlus, UserCheck, ClipboardCheck } from "lucide-react"
+import { auth } from "@/lib/auth"
 import { getUsers } from "@/lib/db/users"
 import { getAssignments } from "@/lib/db/assignments"
 import { getAllProfiles } from "@/lib/db/client-profiles"
+import { signCheckinToken } from "@/lib/qr/checkin-token"
 import { ClientList } from "@/components/admin/ClientList"
 import { ClientsPageHeader } from "./ClientsPageHeader"
 import type { User, ProgramAssignment } from "@/types/database"
 
 export const metadata = { title: "Clients" }
 
+function baseUrl() {
+  return process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXTAUTH_URL ?? "https://www.darrenjpaul.com"
+}
+
 export default async function ClientsPage() {
-  const [users, assignments, profiles] = await Promise.all([getUsers(), getAssignments(), getAllProfiles()])
+  const [session, users, assignments, profiles] = await Promise.all([
+    auth(),
+    getUsers(),
+    getAssignments(),
+    getAllProfiles(),
+  ])
+
+  // Self check-in QR (coach displays it; clients scan to check themselves in).
+  let qrDataUrl: string | null = null
+  let checkinUrl: string | null = null
+  if (session?.user?.id) {
+    checkinUrl = `${baseUrl()}/checkin?token=${encodeURIComponent(signCheckinToken(session.user.id, new Date()))}`
+    qrDataUrl = await QRCode.toDataURL(checkinUrl, { width: 320, margin: 1 })
+  }
 
   const clients = (users as User[]).filter((u) => u.role === "client")
   const totalClients = clients.length
@@ -31,7 +51,7 @@ export default async function ClientsPage() {
 
   return (
     <div>
-      <ClientsPageHeader />
+      <ClientsPageHeader qrDataUrl={qrDataUrl} checkinUrl={checkinUrl} />
 
       {/* Summary Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
