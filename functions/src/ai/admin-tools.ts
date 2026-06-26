@@ -1284,7 +1284,7 @@ async function getContentOverview(): Promise<string> {
   const supabase = getSupabase()
   const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
 
-  const [blogRes, videoRes, socialRes, newsRes, subsRes] = await Promise.all([
+  const [blogRes, videoRes, socialRes, newsRes, subsTotalRes, subsActiveRes] = await Promise.all([
     supabase
       .from("blog_posts")
       .select("id, title, status, published_at, created_at")
@@ -1305,14 +1305,18 @@ async function getContentOverview(): Promise<string> {
       .select("id, subject, status, sent_at, sent_count")
       .order("created_at", { ascending: false })
       .limit(50),
-    supabase.from("newsletter_subscribers").select("id, unsubscribed_at"),
+    // Count-only (head:true) — a row fetch would cap at 1000 and under-report a large list.
+    supabase.from("newsletter_subscribers").select("id", { count: "exact", head: true }),
+    supabase
+      .from("newsletter_subscribers")
+      .select("id", { count: "exact", head: true })
+      .is("unsubscribed_at", null),
   ])
 
   const blogs = blogRes.data ?? []
   const videos = videoRes.data ?? []
   const socials = socialRes.data ?? []
   const newsletters = newsRes.data ?? []
-  const subscribers = subsRes.data ?? []
 
   const blogPublished = blogs.filter((b) => b.status === "published").length
   const blogDrafts = blogs.filter((b) => b.status === "draft").length
@@ -1334,8 +1338,8 @@ async function getContentOverview(): Promise<string> {
   const newslettersSent = newsletters.filter((n) => n.status === "sent").length
   const totalEmailsDelivered = newsletters.reduce((s, n) => s + (n.sent_count ?? 0), 0)
 
-  const subsActive = subscribers.filter((s) => !s.unsubscribed_at).length
-  const subsUnsubbed = subscribers.length - subsActive
+  const subsActive = subsActiveRes.count ?? 0
+  const subsUnsubbed = (subsTotalRes.count ?? 0) - subsActive
 
   const lines = [
     "Content Overview:",

@@ -31,15 +31,28 @@ export async function handleNewsletterSend(jobId: string): Promise<void> {
   const supabase = getSupabase()
 
   try {
-    // Fetch all active subscribers
-    const { data: subscribers, error: subError } = await supabase
-      .from("newsletter_subscribers")
-      .select("email")
-      .is("unsubscribed_at", null)
-      .order("subscribed_at", { ascending: true })
+    // Fetch ALL active subscribers. A single select caps at PostgREST's ~1000-row
+    // default (Supabase `max-rows`), which would silently send to only the first
+    // 1000 of a larger list — page through with .range() until exhausted. A stable
+    // total order (id tiebreaker) keeps page boundaries correct when a bulk import
+    // shares one subscribed_at.
+    const PAGE = 1000
+    const subscribers: { email: string }[] = []
+    for (let from = 0; ; from += PAGE) {
+      const { data, error: subError } = await supabase
+        .from("newsletter_subscribers")
+        .select("email")
+        .is("unsubscribed_at", null)
+        .order("subscribed_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, from + PAGE - 1)
+      if (subError) throw new Error(`Failed to fetch subscribers: ${subError.message}`)
+      const rows = (data ?? []) as { email: string }[]
+      subscribers.push(...rows)
+      if (rows.length < PAGE) break
+    }
 
-    if (subError) throw new Error(`Failed to fetch subscribers: ${subError.message}`)
-    if (!subscribers || subscribers.length === 0) {
+    if (subscribers.length === 0) {
       console.log("[newsletter-send] No active subscribers — skipping")
       await jobRef.update({
         status: "completed",

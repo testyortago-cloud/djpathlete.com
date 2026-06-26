@@ -6,6 +6,33 @@ function getClient() {
   return createServiceRoleClient()
 }
 
+/**
+ * PostgREST caps a single SELECT at ~1000 rows (Supabase default `max-rows`),
+ * silently. Page through with `.range()` until a short page signals the end, so
+ * subscriber lists, counts, exports, and — critically — the newsletter SEND are
+ * never truncated at 1000. `buildQuery` must return a FRESH query each call (a
+ * PostgREST builder can't be re-awaited) and MUST include a stable total
+ * ordering (e.g. an `id` tiebreaker), or rows with equal sort keys — like a bulk
+ * import that shares one `subscribed_at` — can be skipped/duplicated at page
+ * boundaries.
+ */
+const SUBSCRIBER_PAGE_SIZE = 1000
+async function fetchAllRows<T>(
+  buildQuery: () => {
+    range: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>
+  },
+): Promise<T[]> {
+  const all: T[] = []
+  for (let from = 0; ; from += SUBSCRIBER_PAGE_SIZE) {
+    const { data, error } = await buildQuery().range(from, from + SUBSCRIBER_PAGE_SIZE - 1)
+    if (error) throw error
+    const rows = data ?? []
+    all.push(...rows)
+    if (rows.length < SUBSCRIBER_PAGE_SIZE) break
+  }
+  return all
+}
+
 export async function addSubscriber(email: string, source = "website"): Promise<void> {
   const supabase = getClient()
   const { error } = await supabase
@@ -25,13 +52,15 @@ export async function removeSubscriber(email: string): Promise<void> {
 
 export async function getActiveSubscribers(): Promise<{ email: string }[]> {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("newsletter_subscribers")
-    .select("email")
-    .is("unsubscribed_at", null)
-    .order("subscribed_at", { ascending: true })
-  if (error) throw error
-  return data ?? []
+  // Paginated — a single query would cap at 1000, silently shrinking sends and counts.
+  return fetchAllRows<{ email: string }>(() =>
+    supabase
+      .from("newsletter_subscribers")
+      .select("email")
+      .is("unsubscribed_at", null)
+      .order("subscribed_at", { ascending: true })
+      .order("id", { ascending: true }),
+  )
 }
 
 export interface Subscriber {
@@ -48,12 +77,15 @@ export interface Subscriber {
 
 export async function getAllSubscribers(): Promise<Subscriber[]> {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("newsletter_subscribers")
-    .select("id, email, source, subscribed_at, unsubscribed_at, gclid, gbraid, wbraid, fbclid")
-    .order("subscribed_at", { ascending: false })
-  if (error) throw error
-  return (data ?? []) as Subscriber[]
+  // Paginated — a single query would cap at 1000, so the admin list/stats/export
+  // would under-report (e.g. show 1000 when 5894 exist).
+  return fetchAllRows<Subscriber>(() =>
+    supabase
+      .from("newsletter_subscribers")
+      .select("id, email, source, subscribed_at, unsubscribed_at, gclid, gbraid, wbraid, fbclid")
+      .order("subscribed_at", { ascending: false })
+      .order("id", { ascending: true }),
+  )
 }
 
 export async function importSubscribers(

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import {
   Search,
@@ -62,6 +62,13 @@ export function SubscriberList({ subscribers }: SubscriberListProps) {
     }
     return true
   })
+
+  // A full import can be thousands of rows — render incrementally so the table
+  // stays snappy. Search/filter span the FULL set; this only limits what's drawn.
+  const PAGE_SIZE = 100
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+  useEffect(() => setVisibleCount(PAGE_SIZE), [tab, search])
+  const visible = filtered.slice(0, visibleCount)
 
   function formatDate(dateString: string | null) {
     if (!dateString) return "—"
@@ -327,7 +334,7 @@ export function SubscriberList({ subscribers }: SubscriberListProps) {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((s) => (
+                {visible.map((s) => (
                   <tr key={s.id} className="border-b border-border last:border-0 hover:bg-surface/30 transition-colors">
                     <td className="px-4 py-3 font-medium text-primary">{s.email}</td>
                     <td className="px-4 py-3 hidden md:table-cell">
@@ -402,10 +409,19 @@ export function SubscriberList({ subscribers }: SubscriberListProps) {
               </tbody>
             </table>
           </div>
-          <div className="px-4 py-2 border-t border-border bg-surface/30">
+          <div className="px-4 py-2 border-t border-border bg-surface/30 flex items-center justify-between gap-3">
             <p className="text-xs text-muted-foreground">
-              Showing {filtered.length} of {subscribers.length} subscribers
+              Showing {visible.length} of {filtered.length}
+              {filtered.length !== subscribers.length && ` (filtered from ${subscribers.length} total)`}
             </p>
+            {visibleCount < filtered.length && (
+              <button
+                onClick={() => setVisibleCount((n) => n + 500)}
+                className="text-xs font-medium text-primary hover:underline shrink-0"
+              >
+                Load more
+              </button>
+            )}
           </div>
         </div>
       )}
