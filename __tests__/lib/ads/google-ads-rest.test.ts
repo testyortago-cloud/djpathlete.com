@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest"
-import { mutateResourcesRest } from "@/lib/ads/google-ads-rest"
+import { mutateResourcesRest, isRemovedResourceError } from "@/lib/ads/google-ads-rest"
 import type { MutationOperation } from "@/lib/ads/new-campaign-mutation"
 
 vi.mock("@/lib/db/platform-connections", () => ({
@@ -230,5 +230,22 @@ describe("mutateResourcesRest", () => {
         },
       ]),
     ).rejects.toThrow(/GOOGLE_ADS_DEVELOPER_TOKEN missing/)
+  })
+})
+
+describe("isRemovedResourceError", () => {
+  it("detects the removed-resource error in a real mutate error body", () => {
+    // The exact shape thrown by mutateResourcesRest for a removed campaign.
+    const message =
+      'googleAds:mutate failed (HTTP 400): {"error":{"code":400,"message":"Request contains an invalid argument.",' +
+      '"status":"INVALID_ARGUMENT","details":[{"errors":[{"errorCode":{"operationAccessDenied":' +
+      '"OPERATION_NOT_PERMITTED_FOR_REMOVED_RESOURCE"},"message":"The operation is not allowed for removed resources."}]}]}}'
+    expect(isRemovedResourceError(message)).toBe(true)
+  })
+
+  it("is false for unrelated mutate errors", () => {
+    expect(isRemovedResourceError("googleAds:mutate failed (HTTP 400): Invalid keyword text")).toBe(false)
+    expect(isRemovedResourceError("OAuth refresh failed: HTTP 401")).toBe(false)
+    expect(isRemovedResourceError("")).toBe(false)
   })
 })

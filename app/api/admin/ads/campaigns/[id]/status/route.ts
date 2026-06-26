@@ -13,7 +13,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { auth } from "@/lib/auth"
 import { recordAudit } from "@/lib/audit/record"
-import { mutateResourcesRest } from "@/lib/ads/google-ads-rest"
+import { mutateResourcesRest, isRemovedResourceError } from "@/lib/ads/google-ads-rest"
 import {
   getCampaignById,
   setCampaignStatus,
@@ -70,6 +70,20 @@ export async function POST(
     ])
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
+    // The local mirror was stale: Google has this campaign REMOVED while our row
+    // still said ENABLED/PAUSED (the nightly sync skips REMOVED campaigns). Flip
+    // the local status so the UI stops offering resume, and return a clear,
+    // actionable message instead of the raw API error.
+    const removedUpstream = isRemovedResourceError(message)
+    if (removedUpstream) {
+      try {
+        await setCampaignStatus(id, "REMOVED")
+      } catch (mirrorErr) {
+        console.warn(
+          `[ads/campaigns/${id}/status] failed to reconcile stale status to REMOVED: ${(mirrorErr as Error).message}`,
+        )
+      }
+    }
     await recordAudit({
       action: "ads.campaign_status_changed",
       category: "admin_write",
@@ -81,9 +95,20 @@ export async function POST(
         campaign_id: campaign.campaign_id,
         from: previousStatus,
         to: nextStatus,
+        removed_upstream: removedUpstream,
       },
       request,
     })
+    if (removedUpstream) {
+      return NextResponse.json(
+        {
+          error:
+            "This campaign was removed in Google Ads, so it can't be resumed. It's now marked as removed here too — create a new campaign to advertise again.",
+          removed: true,
+        },
+        { status: 409 },
+      )
+    }
     return NextResponse.json({ error: message }, { status: 502 })
   }
 

@@ -25,6 +25,21 @@ import type { MutationOperation } from "./new-campaign-mutation"
 const GOOGLE_ADS_API_VERSION = "v21"
 
 /**
+ * True when a `googleAds:mutate` error is Google rejecting an operation because
+ * the target resource has been REMOVED on their side (removal is permanent).
+ *
+ * Our local mirror can lag: the nightly sync filters out REMOVED campaigns, so a
+ * campaign removed in Google Ads keeps its last-synced status (e.g. PAUSED) here
+ * until reconciliation runs. An admin then tries to resume/edit it and the mutate
+ * 400s with `OPERATION_NOT_PERMITTED_FOR_REMOVED_RESOURCE`. Callers use this to
+ * self-heal the local status to REMOVED and show a clear message instead of the
+ * raw API error body.
+ */
+export function isRemovedResourceError(message: string): boolean {
+  return message.includes("OPERATION_NOT_PERMITTED_FOR_REMOVED_RESOURCE")
+}
+
+/**
  * snake_case → camelCase. Numbers and existing camelCase pass through.
  * Walks the value recursively (objects + arrays). Top-level "resource" gets
  * special-cased to "resourceName" by the caller — this helper just handles

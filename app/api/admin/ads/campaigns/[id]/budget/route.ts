@@ -18,10 +18,12 @@ import { recordAudit } from "@/lib/audit/record"
 import {
   mutateResourcesRest,
   searchGoogleAdsRest,
+  isRemovedResourceError,
 } from "@/lib/ads/google-ads-rest"
 import {
   getCampaignById,
   setCampaignBudgetMicros,
+  setCampaignStatus,
 } from "@/lib/db/google-ads-campaigns"
 
 const MIN_DAILY_DOLLARS = 1
@@ -142,6 +144,18 @@ export async function POST(
     ])
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
+    // Stale local mirror — Google has this campaign REMOVED. Reconcile and return
+    // a clear message (see the status route for the full rationale).
+    const removedUpstream = isRemovedResourceError(message)
+    if (removedUpstream) {
+      try {
+        await setCampaignStatus(id, "REMOVED")
+      } catch (mirrorErr) {
+        console.warn(
+          `[ads/campaigns/${id}/budget] failed to reconcile stale status to REMOVED: ${(mirrorErr as Error).message}`,
+        )
+      }
+    }
     await recordAudit({
       action: "ads.campaign_budget_changed",
       category: "admin_write",
@@ -156,9 +170,20 @@ export async function POST(
         to_micros: newMicros,
         shared_campaigns: lookup.sharedCampaignCount,
         stage: "mutate",
+        removed_upstream: removedUpstream,
       },
       request,
     })
+    if (removedUpstream) {
+      return NextResponse.json(
+        {
+          error:
+            "This campaign was removed in Google Ads, so its budget can't be changed. It's now marked as removed here too.",
+          removed: true,
+        },
+        { status: 409 },
+      )
+    }
     return NextResponse.json({ error: message }, { status: 502 })
   }
 

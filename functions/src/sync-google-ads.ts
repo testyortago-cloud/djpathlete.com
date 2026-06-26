@@ -16,6 +16,7 @@ import { getCustomerClient } from "./ads/client.js"
 import {
   getActiveGoogleAdsAccounts,
   getGoogleAdsRefreshToken,
+  markRemovedCampaignsNotIn,
   setGoogleAdsAccountSyncResult,
   upsertAd,
   upsertAdGroup,
@@ -176,6 +177,21 @@ export async function runSyncGoogleAds(
         const c = await upsertCampaign(input)
         localCampaignByExt.set(c.campaign_id, c.id)
         result.campaigns_upserted++
+      }
+
+      // Reconcile upstream removals: the query above excludes REMOVED campaigns,
+      // so any local campaign for this customer not in the live set has been
+      // removed in Google Ads. Flip it to REMOVED so the UI stops offering
+      // resume/edit (which would 400 OPERATION_NOT_PERMITTED_FOR_REMOVED_RESOURCE).
+      // Safe here because the campaign query succeeded (a throw skips to catch).
+      const markedRemoved = await markRemovedCampaignsNotIn(
+        account.customer_id,
+        [...localCampaignByExt.keys()],
+      )
+      if (markedRemoved > 0) {
+        console.log(
+          `[syncGoogleAds] ${account.customer_id}: marked ${markedRemoved} campaign(s) REMOVED (no longer in Google Ads)`,
+        )
       }
 
       // 2. Ad groups (per active campaign — short-circuits removed ones)

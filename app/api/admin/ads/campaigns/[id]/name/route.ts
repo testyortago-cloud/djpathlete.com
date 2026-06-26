@@ -11,10 +11,11 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { auth } from "@/lib/auth"
 import { recordAudit } from "@/lib/audit/record"
-import { mutateResourcesRest } from "@/lib/ads/google-ads-rest"
+import { mutateResourcesRest, isRemovedResourceError } from "@/lib/ads/google-ads-rest"
 import {
   getCampaignById,
   setCampaignName,
+  setCampaignStatus,
 } from "@/lib/db/google-ads-campaigns"
 
 const MAX_NAME_LENGTH = 255
@@ -76,6 +77,18 @@ export async function POST(
     ])
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
+    // Stale local mirror — Google has this campaign REMOVED. Reconcile and return
+    // a clear message (see the status route for the full rationale).
+    const removedUpstream = isRemovedResourceError(message)
+    if (removedUpstream) {
+      try {
+        await setCampaignStatus(id, "REMOVED")
+      } catch (mirrorErr) {
+        console.warn(
+          `[ads/campaigns/${id}/name] failed to reconcile stale status to REMOVED: ${(mirrorErr as Error).message}`,
+        )
+      }
+    }
     await recordAudit({
       action: "ads.campaign_renamed",
       category: "admin_write",
@@ -87,9 +100,20 @@ export async function POST(
         campaign_id: campaign.campaign_id,
         from: previousName,
         to: nextName,
+        removed_upstream: removedUpstream,
       },
       request,
     })
+    if (removedUpstream) {
+      return NextResponse.json(
+        {
+          error:
+            "This campaign was removed in Google Ads, so it can't be renamed. It's now marked as removed here too.",
+          removed: true,
+        },
+        { status: 409 },
+      )
+    }
     return NextResponse.json({ error: message }, { status: 502 })
   }
 

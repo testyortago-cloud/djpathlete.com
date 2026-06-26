@@ -62,8 +62,19 @@ export function CampaignStatusToggle({ campaignId, campaignName, initialStatus }
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ status: next }),
         })
-        const body = (await res.json().catch(() => ({}))) as { error?: string }
-        if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`)
+        const body = (await res.json().catch(() => ({}))) as { error?: string; removed?: boolean }
+        if (!res.ok) {
+          // Campaign was removed in Google Ads; the server reconciled our copy to
+          // REMOVED. Reflect that immediately (the REMOVED badge replaces the toggle)
+          // instead of reverting to the stale status.
+          if (body.removed) {
+            setStatus("REMOVED")
+            toast.error(body.error ?? "This campaign was removed in Google Ads.")
+            router.refresh()
+            return
+          }
+          throw new Error(body.error ?? `HTTP ${res.status}`)
+        }
         toast.success(`Campaign ${next === "PAUSED" ? "paused" : "resumed"}.`)
         router.refresh()
       } catch (err) {

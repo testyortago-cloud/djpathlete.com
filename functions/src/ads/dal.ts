@@ -67,6 +67,43 @@ export async function upsertCampaign(
   return data as { id: string; campaign_id: string }
 }
 
+/**
+ * Reconcile upstream removals. The nightly campaign query filters out REMOVED
+ * campaigns, so a campaign removed in Google Ads silently drops out of the sync
+ * and its local row keeps a stale status (e.g. PAUSED) — which later makes
+ * resume/edit attempts 400 with OPERATION_NOT_PERMITTED_FOR_REMOVED_RESOURCE.
+ *
+ * After upserting the live (non-REMOVED) set for a customer, flip any local
+ * campaign for that customer NOT in the live set to REMOVED. Returns the count
+ * flipped. Only call when the campaign query succeeded — never on a partial
+ * fetch, or live campaigns would be wrongly marked removed.
+ */
+export async function markRemovedCampaignsNotIn(
+  customer_id: string,
+  liveCampaignIds: string[],
+): Promise<number> {
+  const supabase = getSupabase()
+  const { data: localRows, error: selErr } = await supabase
+    .from("google_ads_campaigns")
+    .select("id, campaign_id, status")
+    .eq("customer_id", customer_id)
+    .neq("status", "REMOVED")
+  if (selErr) throw selErr
+
+  const live = new Set(liveCampaignIds.map(String))
+  const staleIds = ((localRows ?? []) as { id: string; campaign_id: string }[])
+    .filter((r) => !live.has(String(r.campaign_id)))
+    .map((r) => r.id)
+  if (staleIds.length === 0) return 0
+
+  const { error: updErr } = await supabase
+    .from("google_ads_campaigns")
+    .update({ status: "REMOVED" })
+    .in("id", staleIds)
+  if (updErr) throw updErr
+  return staleIds.length
+}
+
 export async function upsertAdGroup(
   input: UpsertAdGroupInput,
 ): Promise<{ id: string; ad_group_id: string }> {
