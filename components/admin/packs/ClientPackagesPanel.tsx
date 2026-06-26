@@ -1,13 +1,13 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { Ticket, Check, Plus, Undo2 } from "lucide-react"
+import { Ticket, Plus, Undo2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { SellPackDialog } from "./SellPackDialog"
-import type { ClientPackage, SessionCheckin } from "@/types/database"
-
-type PackWithCheckins = ClientPackage & { checkins: SessionCheckin[]; program_name?: string | null }
+import type { ClientPackage } from "@/types/database"
+import type { PackWithCheckins } from "@/lib/services/client-packs-view"
 
 const STATUS_COLORS: Record<string, string> = {
   active: "bg-success/10 text-success",
@@ -25,47 +25,16 @@ function fmtDate(s: string) {
   return new Date(s).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
 }
 
-export function ClientPackagesPanel({ clientUserId }: { clientUserId: string }) {
-  const [packages, setPackages] = useState<PackWithCheckins[]>([])
-  const [loading, setLoading] = useState(true)
+export function ClientPackagesPanel({
+  clientUserId,
+  initialPacks,
+}: {
+  clientUserId: string
+  initialPacks: PackWithCheckins[]
+}) {
+  const router = useRouter()
   const [busy, setBusy] = useState(false)
-
-  const load = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/admin/session-packs?clientUserId=${clientUserId}`)
-      const data = await res.json()
-      if (res.ok) setPackages(data.packages ?? [])
-    } finally {
-      setLoading(false)
-    }
-  }, [clientUserId])
-
-  useEffect(() => {
-    void load()
-  }, [load])
-
-  async function checkIn() {
-    setBusy(true)
-    try {
-      const res = await fetch("/api/admin/session-packs/checkin", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ clientUserId }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        toast.error(data.error ?? "Could not check in")
-        return
-      }
-      if (data.reason === "duplicate") toast.info("Already checked in recently")
-      else toast.success(`Checked in — ${data.remaining} left`)
-      await load()
-    } catch {
-      toast.error("Something went wrong")
-    } finally {
-      setBusy(false)
-    }
-  }
+  const packages = initialPacks
 
   async function voidCheckin(checkinId: string) {
     setBusy(true)
@@ -81,13 +50,11 @@ export function ClientPackagesPanel({ clientUserId }: { clientUserId: string }) 
         return
       }
       toast.success("Check-in undone, credit restored")
-      await load()
+      router.refresh()
     } finally {
       setBusy(false)
     }
   }
-
-  const activePacks = packages.filter((p) => p.status === "active")
 
   return (
     <div className="bg-white rounded-xl border border-border p-6">
@@ -96,31 +63,21 @@ export function ClientPackagesPanel({ clientUserId }: { clientUserId: string }) 
           <Ticket className="size-5" strokeWidth={1.5} />
           Session Packs
         </h2>
-        <div className="flex items-center gap-2">
-          {activePacks.length > 0 && (
-            <Button size="sm" onClick={checkIn} disabled={busy}>
-              <Check className="size-4" />
-              Check in
+        <SellPackDialog
+          clientUserId={clientUserId}
+          onSold={() => router.refresh()}
+          trigger={
+            <Button size="sm" variant="outline">
+              <Plus className="size-4" />
+              Sell pack
             </Button>
-          )}
-          <SellPackDialog
-            clientUserId={clientUserId}
-            onSold={load}
-            trigger={
-              <Button size="sm" variant="outline">
-                <Plus className="size-4" />
-                Sell pack
-              </Button>
-            }
-          />
-        </div>
+          }
+        />
       </div>
 
-      {loading ? (
-        <p className="text-sm text-muted-foreground">Loading…</p>
-      ) : packages.length === 0 ? (
+      {packages.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          No packs yet. Sell a pack and check the client in at the end of each session.
+          No packs yet. Sell a pack and check the client in from the button at the top of this page.
         </p>
       ) : (
         <div className="space-y-4">

@@ -21,6 +21,7 @@ import {
   Brain,
   Briefcase,
   Zap,
+  Ticket,
 } from "lucide-react"
 import { getUserById } from "@/lib/db/users"
 import { getProfileByUserId } from "@/lib/db/client-profiles"
@@ -49,6 +50,8 @@ import { parseProfileSummary, hasQuestionnaireData } from "@/lib/profile-utils"
 import { UnassignButton } from "@/components/admin/UnassignButton"
 import { EditAssignmentButton } from "@/components/admin/EditAssignmentButton"
 import { ClientPackagesPanel } from "@/components/admin/packs/ClientPackagesPanel"
+import { ClientCheckinButton } from "@/components/admin/packs/ClientCheckinButton"
+import { loadClientPacksView, summarizeClientPacks } from "@/lib/services/client-packs-view"
 import { ClientDetailHeader } from "./ClientDetailHeader"
 import type {
   Program,
@@ -207,7 +210,15 @@ function ProfileSection({ profile }: { profile: ClientProfile | null }) {
   )
 }
 
-function ProgramsSection({ assignments, clientName }: { assignments: AssignmentWithProgram[]; clientName: string }) {
+function ProgramsSection({
+  assignments,
+  clientName,
+  packByAssignment,
+}: {
+  assignments: AssignmentWithProgram[]
+  clientName: string
+  packByAssignment: Map<string, { remaining: number; total: number }>
+}) {
   return (
     <div className="bg-white rounded-xl border border-border p-6">
       <h2 className="text-lg font-semibold text-primary mb-4">Program Assignments</h2>
@@ -234,7 +245,16 @@ function ProgramsSection({ assignments, clientName }: { assignments: AssignmentW
                   className="border-b border-border last:border-b-0 hover:bg-surface/30 transition-colors"
                 >
                   <td className="px-4 py-3 font-medium text-foreground">
-                    {assignment.programs?.name ?? "Unknown Program"}
+                    <div className="flex flex-col">
+                      <span>{assignment.programs?.name ?? "Unknown Program"}</span>
+                      {packByAssignment.get(assignment.id) && (
+                        <span className="mt-0.5 flex items-center gap-1 text-xs font-normal text-accent">
+                          <Ticket className="size-3" strokeWidth={1.5} />
+                          {packByAssignment.get(assignment.id)!.remaining} / {packByAssignment.get(assignment.id)!.total}{" "}
+                          sessions · advances on check-in
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3">
                     <span
@@ -584,14 +604,17 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
     notFound()
   }
 
-  const [profile, assignments, payments, progressData, achievements, workoutStreak] = await Promise.all([
+  const [profile, assignments, payments, progressData, achievements, workoutStreak, packs] = await Promise.all([
     getProfileByUserId(id),
     getAssignments(id),
     getPayments(id),
     getProgress(id),
     getAchievements(id),
     getWorkoutStreak(id),
+    loadClientPacksView(id),
   ])
+
+  const packSummary = summarizeClientPacks(packs, new Date())
 
   // Build progress stats and shape data for the progress view
   type ProgressWithExercise = ExerciseProgress & { exercises?: Exercise | null }
@@ -693,7 +716,8 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
       </div>
 
       {/* Quick Actions */}
-      <div className="mb-6">
+      <div className="mb-6 flex flex-wrap items-center gap-3">
+        <ClientCheckinButton clientUserId={id} hasActiveCredits={packSummary.hasActiveCredits} />
         <Link
           href={`/admin/clients/${id}/assessments`}
           className="inline-flex items-center gap-2 rounded-lg border border-border bg-white px-4 py-2.5 text-sm font-medium text-foreground hover:bg-surface/50 transition-colors"
@@ -728,6 +752,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
         <ProgramsSection
           assignments={assignments as AssignmentWithProgram[]}
           clientName={`${user.first_name} ${user.last_name}`}
+          packByAssignment={packSummary.byAssignment}
         />
         <ClientProgressView
           userId={id}
@@ -741,7 +766,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
               programName: a.programs!.name,
             }))}
         />
-        <ClientPackagesPanel clientUserId={id} />
+        <ClientPackagesPanel clientUserId={id} initialPacks={packs} />
         <PaymentsSection payments={payments} />
       </div>
     </div>
