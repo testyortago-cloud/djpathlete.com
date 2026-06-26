@@ -15,7 +15,7 @@ import { WorkoutViewToggle } from "@/components/client/WorkoutViewToggle"
 import type { WorkoutCalendarDay } from "@/components/client/WorkoutCalendar"
 import { Dumbbell } from "lucide-react"
 import { isAssignmentExpired } from "@/lib/utils"
-import { effectiveTotalWeeks } from "@/lib/program-weeks"
+import { effectiveTotalWeeks, sourceWeekForDisplay } from "@/lib/program-weeks"
 import { WaiverGate } from "@/components/client/WaiverGate"
 import { PendingPaymentCard } from "@/components/client/PendingPaymentCard"
 import type { Program, ProgramAssignment, Exercise, ProgramExercise, ProgramWeekAccess } from "@/types/database"
@@ -202,11 +202,8 @@ export default async function ClientWorkoutsPage() {
 
       for (let w = 1; w <= totalWeeks; w++) {
         // Find the best source week: exact match, or the closest defined week <= w
-        let sourceWeek = definedWeeks[0] ?? 1
-        for (const dw of definedWeeks) {
-          if (dw <= w) sourceWeek = dw
-          else break
-        }
+        const sourceWeek = sourceWeekForDisplay(w, definedWeeks)
+        if (sourceWeek == null) continue
         const dayMap = weekMap.get(sourceWeek)
         if (dayMap) {
           const isCurrentWeek = w === currentWeek
@@ -314,11 +311,8 @@ export default async function ClientWorkoutsPage() {
 
     for (let w = 1; w <= totalWeeks; w++) {
       // Find the best source week
-      let sourceWeek = uniqueDefinedWeeks[0] ?? 1
-      for (const dw of uniqueDefinedWeeks) {
-        if (dw <= w) sourceWeek = dw
-        else break
-      }
+      const sourceWeek = sourceWeekForDisplay(w, uniqueDefinedWeeks)
+      if (sourceWeek == null) continue
 
       // Get all days for that source week
       for (const [key, entry] of dayMap) {

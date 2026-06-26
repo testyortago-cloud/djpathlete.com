@@ -26,7 +26,8 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Layers, DollarSign } from "lucide-react"
+import { Layers, DollarSign, Info, Copy } from "lucide-react"
+import { sourceWeekForDisplay } from "@/lib/program-weeks"
 import { WeekSelector } from "@/components/admin/WeekSelector"
 import { DayColumn } from "@/components/admin/DayColumn"
 import { AddExerciseDialog } from "@/components/admin/AddExerciseDialog"
@@ -83,6 +84,9 @@ export function ProgramBuilder({
   // Duplicate week dialog
   const [duplicateOpen, setDuplicateOpen] = useState(false)
   const [isDuplicating, setIsDuplicating] = useState(false)
+
+  // Fill a blank week from the week it currently repeats (one-tap "make this week different")
+  const [isFillingFromRepeat, setIsFillingFromRepeat] = useState(false)
 
   // Copy-from-another-program dialog
   const [copyFromOpen, setCopyFromOpen] = useState(false)
@@ -273,6 +277,42 @@ export function ProgramBuilder({
     }
   }
   const selectedWeekIsBlank = blankWeeks.has(selectedWeek)
+
+  // For each blank week, which built week the CLIENT actually sees there (the
+  // "repeating weekly template" the client workout view applies). Mirrors that
+  // logic exactly so the builder's "Repeats Week X" labels match what clients see.
+  const definedWeeks: number[] = []
+  for (let w = 1; w <= localTotalWeeks; w++) {
+    if (!blankWeeks.has(w)) definedWeeks.push(w)
+  }
+  const repeatSourceByWeek: Record<number, number> = {}
+  for (const w of blankWeeks) {
+    const src = sourceWeekForDisplay(w, definedWeeks)
+    if (src != null) repeatSourceByWeek[w] = src
+  }
+  const selectedRepeatSource: number | null = repeatSourceByWeek[selectedWeek] ?? null
+
+  async function handleFillFromRepeat() {
+    if (selectedRepeatSource == null || isFillingFromRepeat) return
+    setIsFillingFromRepeat(true)
+    try {
+      const response = await fetch(`/api/admin/programs/${programId}/duplicate-week`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceWeek: selectedRepeatSource, targetWeek: selectedWeek }),
+      })
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || "Failed to copy week")
+      }
+      toast.success(`Copied Week ${selectedRepeatSource} into Week ${selectedWeek} — now edit it to make it different`)
+      router.refresh()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to copy week")
+    } finally {
+      setIsFillingFromRepeat(false)
+    }
+  }
 
   // Group exercises for the selected week by day
   const weekExercises = localExercises.filter((pe) => pe.week_number === selectedWeek)
@@ -760,6 +800,7 @@ export function ProgramBuilder({
             onGenerateWeek={() => setGenerateWeekOpen(true)}
             canGenerateWeek={true}
             blankWeeks={blankWeeks}
+            repeatSourceByWeek={repeatSourceByWeek}
           />
         </div>
         <Button
@@ -779,6 +820,43 @@ export function ProgramBuilder({
           )}
         </Button>
       </div>
+
+      {/* Blank-week notice — make the client-side "repeating template" visible to the coach */}
+      {selectedWeekIsBlank && (
+        <div className="flex items-start gap-3 rounded-lg border border-accent/30 bg-accent/5 px-4 py-3">
+          <Info className="mt-0.5 size-4 shrink-0 text-accent" />
+          <div className="min-w-0 flex-1 text-sm">
+            {selectedRepeatSource ? (
+              <>
+                <p className="font-medium text-foreground">
+                  Week {selectedWeek} is empty — your client sees Week {selectedRepeatSource}&apos;s workout repeated
+                  here.
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Leave it blank to keep repeating Week {selectedRepeatSource}, or make this week different: add
+                  exercises below, use AI Fill, or copy Week {selectedRepeatSource} here and edit it.
+                </p>
+              </>
+            ) : (
+              <p className="font-medium text-foreground">
+                Week {selectedWeek} is empty. Add exercises below (or use AI Fill) to build it.
+              </p>
+            )}
+          </div>
+          {selectedRepeatSource && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0"
+              onClick={handleFillFromRepeat}
+              disabled={isFillingFromRepeat}
+            >
+              <Copy className="mr-1 size-3.5" />
+              {isFillingFromRepeat ? "Copying..." : `Copy Week ${selectedRepeatSource} here`}
+            </Button>
+          )}
+        </div>
+      )}
 
       {/* Day grid + Pool panel */}
       <DndContext

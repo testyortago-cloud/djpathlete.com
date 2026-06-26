@@ -1,6 +1,6 @@
 "use client"
 
-import { Copy, ClipboardCopy, Plus, Sparkles, Trash2 } from "lucide-react"
+import { Copy, ClipboardCopy, Plus, Sparkles, Trash2, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 interface WeekSelectorProps {
@@ -17,6 +17,8 @@ interface WeekSelectorProps {
   canGenerateWeek?: boolean
   /** Set of week numbers that have no exercises */
   blankWeeks?: Set<number>
+  /** For each blank week, the week whose workout the client actually sees there (the "repeats" source). */
+  repeatSourceByWeek?: Record<number, number>
 }
 
 export function WeekSelector({
@@ -32,12 +34,14 @@ export function WeekSelector({
   onGenerateWeek,
   canGenerateWeek = false,
   blankWeeks = new Set(),
+  repeatSourceByWeek = {},
 }: WeekSelectorProps) {
   const selectedIsBlank = blankWeeks.has(selectedWeek)
   return (
     <div className="flex items-center gap-2 flex-wrap">
       {Array.from({ length: totalWeeks }, (_, i) => i + 1).map((week) => {
         const isBlank = blankWeeks.has(week)
+        const repeatSrc = repeatSourceByWeek[week]
         return (
           <Button
             key={week}
@@ -47,10 +51,23 @@ export function WeekSelector({
             className={
               isBlank && week !== selectedWeek ? "border-dashed border-muted-foreground/40 text-muted-foreground" : ""
             }
-            title={isBlank ? `Week ${week} (blank)` : `Week ${week}`}
+            title={
+              isBlank
+                ? repeatSrc
+                  ? `Week ${week} is empty — client sees Week ${repeatSrc} repeated here`
+                  : `Week ${week} (blank)`
+                : `Week ${week}`
+            }
           >
             Week {week}
-            {isBlank && <span className="ml-1 text-[10px] opacity-60">(blank)</span>}
+            {isBlank &&
+              (repeatSrc ? (
+                <span className="ml-1 inline-flex items-center gap-0.5 text-[10px] opacity-70">
+                  <RefreshCw className="size-2.5" />W{repeatSrc}
+                </span>
+              ) : (
+                <span className="ml-1 text-[10px] opacity-60">(blank)</span>
+              ))}
           </Button>
         )
       })}
