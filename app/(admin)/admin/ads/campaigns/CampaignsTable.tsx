@@ -1,3 +1,6 @@
+"use client"
+
+import { useState } from "react"
 import type { GoogleAdsCampaign } from "@/types/database"
 import { AutomationModeSelector } from "./AutomationModeSelector"
 import { CampaignBudgetEdit } from "./CampaignBudgetEdit"
@@ -25,6 +28,8 @@ function fmtNumber(n: number): string {
 }
 
 export function CampaignsTable({ campaigns }: { campaigns: CampaignWithMetrics[] }) {
+  const [showRemoved, setShowRemoved] = useState(false)
+
   if (campaigns.length === 0) {
     return (
       <div className="border border-dashed border-border rounded-xl p-8 text-center bg-card">
@@ -37,9 +42,28 @@ export function CampaignsTable({ campaigns }: { campaigns: CampaignWithMetrics[]
     )
   }
 
+  // Removed campaigns can't be edited or revived from here — hide them by default
+  // so the list shows only actionable campaigns, with an opt-in toggle.
+  const removedCount = campaigns.filter((c) => c.status === "REMOVED").length
+  const visible = showRemoved ? campaigns : campaigns.filter((c) => c.status !== "REMOVED")
+
   return (
-    <div className="border border-border rounded-xl bg-card overflow-hidden">
-      <table className="w-full text-sm">
+    <div className="space-y-3">
+      {removedCount > 0 && (
+        <div className="flex items-center justify-end">
+          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={showRemoved}
+              onChange={(e) => setShowRemoved(e.target.checked)}
+              className="size-3.5 rounded border-border accent-primary"
+            />
+            Show removed ({removedCount})
+          </label>
+        </div>
+      )}
+      <div className="border border-border rounded-xl bg-card overflow-hidden">
+        <table className="w-full text-sm">
         <thead className="bg-surface text-xs font-mono uppercase tracking-wider text-muted-foreground">
           <tr>
             <th className="text-left p-3">Campaign</th>
@@ -54,7 +78,15 @@ export function CampaignsTable({ campaigns }: { campaigns: CampaignWithMetrics[]
           </tr>
         </thead>
         <tbody>
-          {campaigns.map((c) => (
+          {visible.length === 0 ? (
+            <tr>
+              <td colSpan={9} className="p-8 text-center text-sm text-muted-foreground">
+                All {removedCount} removed campaign{removedCount !== 1 ? "s" : ""} hidden — tick “Show removed” above to
+                view.
+              </td>
+            </tr>
+          ) : (
+            visible.map((c) => (
             <tr key={c.id} className="border-t border-border/60 align-top">
               <td className="p-3">
                 <CampaignNameEdit
@@ -97,9 +129,11 @@ export function CampaignsTable({ campaigns }: { campaigns: CampaignWithMetrics[]
                 <GenerateCopyButton campaignId={c.id} disabled={c.type === "PERFORMANCE_MAX"} />
               </td>
             </tr>
-          ))}
+            ))
+          )}
         </tbody>
       </table>
+      </div>
     </div>
   )
 }

@@ -40,6 +40,26 @@ describe("transformCampaignRow", () => {
     expect(out.status).toBe("REMOVED")
   })
 
+  it("maps numeric proto enum codes (the SDK returns enums as numbers for some campaigns)", () => {
+    // advertising_channel_type=2 → SEARCH, status=3 → PAUSED. Without code-mapping
+    // these fell through to UNKNOWN/REMOVED, hiding live PAUSED campaigns.
+    const out = transformCampaignRow(
+      { campaign: { id: 5, name: "n", advertising_channel_type: 2, status: 3 } },
+      "c1",
+    )
+    expect(out.type).toBe("SEARCH")
+    expect(out.status).toBe("PAUSED")
+  })
+
+  it("maps numeric enum codes delivered as strings (raw_data JSON round-trip)", () => {
+    const out = transformCampaignRow(
+      { campaign: { id: 6, name: "n", advertising_channel_type: "10", status: "4" } },
+      "c1",
+    )
+    expect(out.type).toBe("PERFORMANCE_MAX")
+    expect(out.status).toBe("REMOVED")
+  })
+
   it("handles missing campaign_budget gracefully", () => {
     const out = transformCampaignRow(
       { campaign: { id: 9, name: "n", advertising_channel_type: "VIDEO", status: "PAUSED" } },

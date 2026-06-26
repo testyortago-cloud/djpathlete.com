@@ -32,28 +32,68 @@ const CAMPAIGN_TYPE_VALUES: GoogleAdsCampaignType[] = [
 const STATUS_VALUES: GoogleAdsResourceStatus[] = ["ENABLED", "PAUSED", "REMOVED"]
 const MATCH_TYPE_VALUES: GoogleAdsKeywordMatchType[] = ["EXACT", "PHRASE", "BROAD"]
 
+// The google-ads-api SDK can return enum fields as their numeric proto codes
+// (e.g. advertising_channel_type=2, status=3) instead of string names — and it
+// does for some campaigns. Map the codes so they don't fall through to the
+// UNKNOWN/REMOVED defaults, which silently stored live PAUSED campaigns as
+// REMOVED (hiding them) and SEARCH campaigns as UNKNOWN. Codes accepted as
+// number or numeric-string (raw_data round-trips through JSON as strings).
+const CHANNEL_TYPE_BY_CODE: Record<number, GoogleAdsCampaignType> = {
+  2: "SEARCH",
+  3: "DISPLAY",
+  4: "SHOPPING",
+  5: "HOTEL",
+  6: "VIDEO",
+  7: "APP", // MULTI_CHANNEL
+  9: "SMART",
+  10: "PERFORMANCE_MAX",
+  11: "LOCAL_SERVICES",
+  12: "DEMAND_GEN", // DISCOVERY rebranded to Demand Gen
+}
+const STATUS_BY_CODE: Record<number, GoogleAdsResourceStatus> = {
+  2: "ENABLED",
+  3: "PAUSED",
+  4: "REMOVED",
+}
+const MATCH_TYPE_BY_CODE: Record<number, GoogleAdsKeywordMatchType> = {
+  2: "EXACT",
+  3: "PHRASE",
+  4: "BROAD",
+}
+
 function coerceCampaignType(raw: unknown): GoogleAdsCampaignType {
-  return CAMPAIGN_TYPE_VALUES.includes(raw as GoogleAdsCampaignType)
-    ? (raw as GoogleAdsCampaignType)
-    : "UNKNOWN"
+  if (typeof raw === "string" && CAMPAIGN_TYPE_VALUES.includes(raw as GoogleAdsCampaignType)) {
+    return raw as GoogleAdsCampaignType
+  }
+  const code = typeof raw === "number" ? raw : Number(raw)
+  if (Number.isFinite(code) && CHANNEL_TYPE_BY_CODE[code]) return CHANNEL_TYPE_BY_CODE[code]
+  return "UNKNOWN"
 }
 function coerceStatus(raw: unknown): GoogleAdsResourceStatus {
-  return STATUS_VALUES.includes(raw as GoogleAdsResourceStatus)
-    ? (raw as GoogleAdsResourceStatus)
-    : "REMOVED"
+  if (typeof raw === "string" && STATUS_VALUES.includes(raw as GoogleAdsResourceStatus)) {
+    return raw as GoogleAdsResourceStatus
+  }
+  const code = typeof raw === "number" ? raw : Number(raw)
+  if (Number.isFinite(code) && STATUS_BY_CODE[code]) return STATUS_BY_CODE[code]
+  return "REMOVED"
 }
 function coerceMatchType(raw: unknown): GoogleAdsKeywordMatchType {
-  return MATCH_TYPE_VALUES.includes(raw as GoogleAdsKeywordMatchType)
-    ? (raw as GoogleAdsKeywordMatchType)
-    : "BROAD"
+  if (typeof raw === "string" && MATCH_TYPE_VALUES.includes(raw as GoogleAdsKeywordMatchType)) {
+    return raw as GoogleAdsKeywordMatchType
+  }
+  const code = typeof raw === "number" ? raw : Number(raw)
+  if (Number.isFinite(code) && MATCH_TYPE_BY_CODE[code]) return MATCH_TYPE_BY_CODE[code]
+  return "BROAD"
 }
 
 interface CampaignRow {
   campaign?: {
     id?: string | number
     name?: string
-    advertising_channel_type?: string
-    status?: string
+    // Enum fields can arrive as the string name ("SEARCH") or the numeric proto
+    // code (2) depending on the SDK/response path — coerce* handles both.
+    advertising_channel_type?: string | number
+    status?: string | number
     bidding_strategy_type?: string
     start_date?: string | null
     end_date?: string | null
