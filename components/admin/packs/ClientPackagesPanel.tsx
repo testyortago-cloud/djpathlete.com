@@ -77,7 +77,7 @@ export function ClientPackagesPanel({
 
       {packages.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          No packs yet. Sell a pack and check the client in from the button at the top of this page.
+          No packs yet. Sell a pack below — once it&apos;s active, a Check in button appears at the top of this page.
         </p>
       ) : (
         <div className="space-y-4">

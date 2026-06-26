@@ -5,7 +5,14 @@ import { useState } from "react"
 import { toast } from "sonner"
 import { QrCode, Copy } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 
 /**
  * Self check-in QR for the Clients list header. Clients scan it, tap their name
@@ -26,10 +33,10 @@ export function SelfCheckinQrDialog({ qrDataUrl, checkinUrl }: { qrDataUrl: stri
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Self check-in QR</DialogTitle>
+          <DialogDescription>
+            Clients scan this, tap their name, and the credit comes off automatically.
+          </DialogDescription>
         </DialogHeader>
-        <p className="text-sm text-muted-foreground">
-          Clients scan this, tap their name, and the credit comes off automatically.
-        </p>
         <div className="flex flex-col items-center gap-3">
           <Image
             src={qrDataUrl}

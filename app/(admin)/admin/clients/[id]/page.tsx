@@ -247,7 +247,7 @@ function ProgramsSection({
                   <td className="px-4 py-3 font-medium text-foreground">
                     <div className="flex flex-col">
                       <span>{assignment.programs?.name ?? "Unknown Program"}</span>
-                      {packByAssignment.get(assignment.id) && (
+                      {assignment.status === "active" && packByAssignment.get(assignment.id) && (
                         <span className="mt-0.5 flex items-center gap-1 text-xs font-normal text-accent">
                           <Ticket className="size-3" strokeWidth={1.5} />
                           {packByAssignment.get(assignment.id)!.remaining} / {packByAssignment.get(assignment.id)!.total}{" "}

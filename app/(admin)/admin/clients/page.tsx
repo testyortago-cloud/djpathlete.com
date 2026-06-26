@@ -27,8 +27,16 @@ export default async function ClientsPage() {
   let qrDataUrl: string | null = null
   let checkinUrl: string | null = null
   if (session?.user?.id) {
-    checkinUrl = `${baseUrl()}/checkin?token=${encodeURIComponent(signCheckinToken(session.user.id, new Date()))}`
-    qrDataUrl = await QRCode.toDataURL(checkinUrl, { width: 320, margin: 1 })
+    // Guard so a QR-rendering hiccup degrades to "no QR button" rather than
+    // taking down the whole client roster (the header no-ops when both are null).
+    try {
+      checkinUrl = `${baseUrl()}/checkin?token=${encodeURIComponent(signCheckinToken(session.user.id, new Date()))}`
+      qrDataUrl = await QRCode.toDataURL(checkinUrl, { width: 320, margin: 1 })
+    } catch (err) {
+      console.error("Check-in QR generation failed:", err)
+      qrDataUrl = null
+      checkinUrl = null
+    }
   }
 
   const clients = (users as User[]).filter((u) => u.role === "client")

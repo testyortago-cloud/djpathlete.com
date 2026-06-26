@@ -47,7 +47,7 @@ export function ClientCheckinButton({
   }
 
   return (
-    <Button onClick={checkIn} disabled={busy} size="sm">
+    <Button onClick={checkIn} disabled={busy}>
       <Check className="size-4" />
       Check in
     </Button>

@@ -22,7 +22,7 @@ describe("<ClientCheckinButton>", () => {
     )
     render(<ClientCheckinButton clientUserId="c1" hasActiveCredits />)
     fireEvent.click(screen.getByRole("button", { name: /check in/i }))
-    await waitFor(() => expect(toast.success).toHaveBeenCalled())
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(expect.stringContaining("4")))
     expect(global.fetch).toHaveBeenCalledWith(
       "/api/admin/session-packs/checkin",
       expect.objectContaining({ method: "POST" }),

@@ -1,6 +1,24 @@
-import { describe, it, expect } from "vitest"
-import { summarizeClientPacks } from "@/lib/services/client-packs-view"
+import { describe, it, expect, vi, beforeEach } from "vitest"
+import { summarizeClientPacks, loadClientPacksView } from "@/lib/services/client-packs-view"
 import type { ClientPackage } from "@/types/database"
+
+const listPackagesForClientMock = vi.fn()
+const listCheckinsForPackageMock = vi.fn()
+const getAssignmentByIdMock = vi.fn()
+const getProgramByIdMock = vi.fn()
+
+vi.mock("@/lib/db/client-packages", () => ({
+  listPackagesForClient: (...a: unknown[]) => listPackagesForClientMock(...a),
+}))
+vi.mock("@/lib/db/session-checkins", () => ({
+  listCheckinsForPackage: (...a: unknown[]) => listCheckinsForPackageMock(...a),
+}))
+vi.mock("@/lib/db/assignments", () => ({
+  getAssignmentById: (...a: unknown[]) => getAssignmentByIdMock(...a),
+}))
+vi.mock("@/lib/db/programs", () => ({
+  getProgramById: (...a: unknown[]) => getProgramByIdMock(...a),
+}))
 
 const NOW = new Date("2026-06-26T12:00:00Z")
 
@@ -66,5 +84,50 @@ describe("summarizeClientPacks", () => {
   it("handles no packs", () => {
     const s = summarizeClientPacks([], NOW)
     expect(s).toEqual({ activeRemaining: 0, hasActiveCredits: false, byAssignment: new Map() })
+  })
+})
+
+describe("loadClientPacksView", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    listCheckinsForPackageMock.mockResolvedValue([])
+  })
+
+  it("dedups assignment lookups and attaches program_name + checkins", async () => {
+    listPackagesForClientMock.mockResolvedValue([
+      pack({ id: "p1", assignment_id: "a1" }),
+      pack({ id: "p2", assignment_id: "a1" }),
+      pack({ id: "p3", assignment_id: null }),
+    ])
+    getAssignmentByIdMock.mockResolvedValue({ id: "a1", program_id: "prog1" })
+    getProgramByIdMock.mockResolvedValue({ id: "prog1", name: "Rotational Reboot" })
+
+    const out = await loadClientPacksView("c1")
+
+    // One unique assignment_id across two packs → exactly one lookup.
+    expect(getAssignmentByIdMock).toHaveBeenCalledTimes(1)
+    expect(out.find((p) => p.id === "p1")!.program_name).toBe("Rotational Reboot")
+    expect(out.find((p) => p.id === "p2")!.program_name).toBe("Rotational Reboot")
+    expect(out.find((p) => p.id === "p3")!.program_name).toBeNull()
+    expect(out.every((p) => Array.isArray(p.checkins))).toBe(true)
+  })
+
+  it("falls back to program_name=null when the assignment/program lookup throws", async () => {
+    listPackagesForClientMock.mockResolvedValue([pack({ id: "p1", assignment_id: "a1" })])
+    getAssignmentByIdMock.mockRejectedValue(new Error("not found"))
+
+    const out = await loadClientPacksView("c1")
+
+    expect(out[0].program_name).toBeNull()
+  })
+
+  it("yields program_name=null when the linked program is missing", async () => {
+    listPackagesForClientMock.mockResolvedValue([pack({ id: "p1", assignment_id: "a1" })])
+    getAssignmentByIdMock.mockResolvedValue({ id: "a1", program_id: "prog1" })
+    getProgramByIdMock.mockResolvedValue(null)
+
+    const out = await loadClientPacksView("c1")
+
+    expect(out[0].program_name).toBeNull()
   })
 })
