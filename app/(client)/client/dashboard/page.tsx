@@ -15,6 +15,9 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import Link from "next/link"
 import type { Program, ProgramAssignment } from "@/types/database"
 import { PendingPaymentCard } from "@/components/client/PendingPaymentCard"
+import { clientPackBalanceEnabled } from "@/lib/packs/flags"
+import { loadMyPacksView } from "@/lib/services/client-packs-view"
+import { MySessionsCard } from "@/components/client/MySessionsCard"
 
 export const metadata = { title: "Dashboard | DJP Athlete" }
 
@@ -92,6 +95,8 @@ export default async function ClientDashboardPage() {
     // DB tables may not exist yet — render gracefully with empty data
   }
 
+  const packsView = (await clientPackBalanceEnabled()) ? await loadMyPacksView() : null
+
   return (
     <div>
       <PageHeader
@@ -100,6 +105,15 @@ export default async function ClientDashboardPage() {
       />
 
       {!emailVerified && <EmailVerificationBanner userId={userId} />}
+
+      {packsView && (
+        <div className="mb-6">
+          <MySessionsCard
+            activeRemaining={packsView.summary.activeRemaining}
+            nearestExpiry={packsView.nearestExpiry}
+          />
+        </div>
+      )}
 
       {expiredAssignments.length > 0 && (
         <div className="mb-6 space-y-2">
