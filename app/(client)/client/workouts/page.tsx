@@ -6,6 +6,7 @@ import { getLatestProgressByExercises } from "@/lib/db/progress"
 import { getProfileByUserId } from "@/lib/db/client-profiles"
 import { getWeekAccessByAssignments } from "@/lib/db/week-access"
 import { getFormReviewStatusByAssignments } from "@/lib/db/form-reviews"
+import { getFavoriteExerciseIds } from "@/lib/db/exercise-favorites"
 import type { FormReviewStatus } from "@/types/database"
 import { getWeightRecommendation } from "@/lib/weight-recommendation"
 import type { ClientContext } from "@/lib/weight-recommendation"
@@ -129,6 +130,14 @@ export default async function ClientWorkoutsPage() {
     }
   } catch {
     // Table/columns may not exist yet — render without status chips
+  }
+
+  // Favorite exercise IDs for the current client (hearts on the exercise cards)
+  let favoriteExerciseIds = new Set<string>()
+  try {
+    favoriteExerciseIds = await getFavoriteExerciseIds(userId)
+  } catch {
+    // Table may not exist yet — render without filled hearts
   }
 
   // Collect all unique exercise IDs across all programs
@@ -257,6 +266,7 @@ export default async function ClientWorkoutsPage() {
           // Most recent logged sets → rehydrate the form so data isn't "lost" on return.
           savedSetDetails: history[0]?.set_details ?? null,
           videoSubmission: formReviewStatusByPe.get(`${pe.id}:${weekNumber}`) ?? null,
+          isFavorited: favoriteExerciseIds.has(exercise.id),
         }
       })
   }

@@ -24,6 +24,7 @@ import {
   Upload,
   Clock,
 } from "lucide-react"
+import { FavoriteExerciseButton } from "@/components/client/FavoriteExerciseButton"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -71,6 +72,8 @@ export interface ExerciseWithRecommendation {
   savedSetDetails?: SetDetail[] | null
   /** Latest form-review submission for this program-exercise slot (null = none yet). */
   videoSubmission?: { id: string; status: FormReviewStatus } | null
+  /** Whether the client has favorited this exercise. */
+  isFavorited?: boolean
 }
 
 export interface ProgramContextData {
@@ -216,6 +219,7 @@ function ExerciseCard({
   loggedToday: initialLogged,
   savedSetDetails,
   videoSubmission,
+  isFavorited,
   assignmentId,
   userId,
   displayWeek,
@@ -487,94 +491,99 @@ function ExerciseCard({
           loggedToday && "bg-success/5 border-l-[3px] border-l-success",
         )}
       >
-        {/* Collapsed row — tap anywhere to expand */}
-        <button
-          type="button"
-          className="w-full flex items-center gap-3 text-left"
-          onClick={() => setExpanded(!expanded)}
-          aria-expanded={expanded}
-        >
-          {/* Numbered circle */}
-          <div
-            className={cn(
-              "size-7 shrink-0 rounded-full flex items-center justify-center text-xs font-semibold transition-colors",
-              loggedToday ? "bg-success text-white" : "bg-primary/10 text-primary",
-            )}
+        {/* Collapsed row — flex wrapper so the heart sits outside the expand button */}
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            className="flex-1 flex items-center gap-3 text-left"
+            onClick={() => setExpanded(!expanded)}
+            aria-expanded={expanded}
           >
-            {loggedToday ? <Check className="size-4" strokeWidth={2.5} /> : index + 1}
-          </div>
-
-          <div className="flex-1 min-w-0">
-            <p className={cn("font-medium text-sm", loggedToday ? "text-muted-foreground" : "text-foreground")}>
-              {displayExercise.name}
-              {swappedExercise && <span className="ml-1.5 text-[10px] font-normal text-accent">(swapped)</span>}
-              {pe.requires_video && (
-                <span className="ml-1.5 inline-flex items-center gap-0.5 align-middle text-[10px] font-semibold text-accent">
-                  <Video className="size-3" strokeWidth={2.5} /> Record
-                </span>
+            {/* Numbered circle */}
+            <div
+              className={cn(
+                "size-7 shrink-0 rounded-full flex items-center justify-center text-xs font-semibold transition-colors",
+                loggedToday ? "bg-success text-white" : "bg-primary/10 text-primary",
               )}
-              {!hideNotes && pe.notes && (
-                <Lightbulb
-                  className="ml-1.5 inline size-3 align-middle text-amber-500"
-                  strokeWidth={2.5}
-                  aria-label="Coach tip in Instructions"
-                />
-              )}
-            </p>
-            {/* Prescription — labeled + bold, always visible so clients never lose their sets/reps */}
-            <div className="mt-1.5 flex flex-wrap gap-x-3.5 gap-y-1">
-              {pe.sets != null && <PrescriptionCell label="Sets">{pe.sets}</PrescriptionCell>}
-              {fields.showReps && pe.reps && <PrescriptionCell label="Reps">{pe.reps}</PrescriptionCell>}
-              {fields.showDuration === "prominent" && pe.duration_seconds ? (
-                <PrescriptionCell label="Hold">{formatRestTime(pe.duration_seconds)}</PrescriptionCell>
-              ) : null}
-              {pe.rest_seconds ? (
-                <PrescriptionCell label="Rest">{formatRestTime(pe.rest_seconds)}</PrescriptionCell>
-              ) : null}
-              {pe.tempo && (
-                <PrescriptionCell label="Tempo">
-                  <span className="font-mono">{pe.tempo}</span>
-                </PrescriptionCell>
-              )}
-              {pe.rpe_target != null && <PrescriptionCell label="Intensity">{pe.rpe_target}</PrescriptionCell>}
-              {fields.showWeight && (rec.recommended_kg ?? pe.suggested_weight_kg) != null && (
-                <PrescriptionCell label="Weight">
-                  <span className="inline-flex items-center gap-1">
-                    {rec.recommended_kg != null ? (
-                      <>
-                        <TrendIcon trend={rec.trend} />
-                        {formatWeightCompact(rec.recommended_kg)}
-                      </>
-                    ) : (
-                      formatWeightCompact(pe.suggested_weight_kg!)
-                    )}
-                    {liveDelta.direction !== "neutral" && liveDelta.pct != null && (
-                      <span
-                        className={cn(
-                          "inline-flex items-center gap-0.5 text-[10px] font-semibold",
-                          liveDelta.direction === "up" ? "text-success" : "text-destructive",
-                        )}
-                        title="vs your last session of this exercise"
-                      >
-                        {liveDelta.direction === "up" ? (
-                          <TrendingUp className="size-3" />
-                        ) : (
-                          <TrendingDown className="size-3" />
-                        )}
-                        {liveDelta.pct}%
-                      </span>
-                    )}
-                  </span>
-                </PrescriptionCell>
-              )}
+            >
+              {loggedToday ? <Check className="size-4" strokeWidth={2.5} /> : index + 1}
             </div>
-          </div>
 
-          {/* Chevron arrow */}
-          <ChevronDown
-            className={cn("size-4 shrink-0 text-muted-foreground transition-transform", expanded && "rotate-180")}
-          />
-        </button>
+            <div className="flex-1 min-w-0">
+              <p className={cn("font-medium text-sm", loggedToday ? "text-muted-foreground" : "text-foreground")}>
+                {displayExercise.name}
+                {swappedExercise && <span className="ml-1.5 text-[10px] font-normal text-accent">(swapped)</span>}
+                {pe.requires_video && (
+                  <span className="ml-1.5 inline-flex items-center gap-0.5 align-middle text-[10px] font-semibold text-accent">
+                    <Video className="size-3" strokeWidth={2.5} /> Record
+                  </span>
+                )}
+                {!hideNotes && pe.notes && (
+                  <Lightbulb
+                    className="ml-1.5 inline size-3 align-middle text-amber-500"
+                    strokeWidth={2.5}
+                    aria-label="Coach tip in Instructions"
+                  />
+                )}
+              </p>
+              {/* Prescription — labeled + bold, always visible so clients never lose their sets/reps */}
+              <div className="mt-1.5 flex flex-wrap gap-x-3.5 gap-y-1">
+                {pe.sets != null && <PrescriptionCell label="Sets">{pe.sets}</PrescriptionCell>}
+                {fields.showReps && pe.reps && <PrescriptionCell label="Reps">{pe.reps}</PrescriptionCell>}
+                {fields.showDuration === "prominent" && pe.duration_seconds ? (
+                  <PrescriptionCell label="Hold">{formatRestTime(pe.duration_seconds)}</PrescriptionCell>
+                ) : null}
+                {pe.rest_seconds ? (
+                  <PrescriptionCell label="Rest">{formatRestTime(pe.rest_seconds)}</PrescriptionCell>
+                ) : null}
+                {pe.tempo && (
+                  <PrescriptionCell label="Tempo">
+                    <span className="font-mono">{pe.tempo}</span>
+                  </PrescriptionCell>
+                )}
+                {pe.rpe_target != null && <PrescriptionCell label="Intensity">{pe.rpe_target}</PrescriptionCell>}
+                {fields.showWeight && (rec.recommended_kg ?? pe.suggested_weight_kg) != null && (
+                  <PrescriptionCell label="Weight">
+                    <span className="inline-flex items-center gap-1">
+                      {rec.recommended_kg != null ? (
+                        <>
+                          <TrendIcon trend={rec.trend} />
+                          {formatWeightCompact(rec.recommended_kg)}
+                        </>
+                      ) : (
+                        formatWeightCompact(pe.suggested_weight_kg!)
+                      )}
+                      {liveDelta.direction !== "neutral" && liveDelta.pct != null && (
+                        <span
+                          className={cn(
+                            "inline-flex items-center gap-0.5 text-[10px] font-semibold",
+                            liveDelta.direction === "up" ? "text-success" : "text-destructive",
+                          )}
+                          title="vs your last session of this exercise"
+                        >
+                          {liveDelta.direction === "up" ? (
+                            <TrendingUp className="size-3" />
+                          ) : (
+                            <TrendingDown className="size-3" />
+                          )}
+                          {liveDelta.pct}%
+                        </span>
+                      )}
+                    </span>
+                  </PrescriptionCell>
+                )}
+              </div>
+            </div>
+
+            {/* Chevron arrow */}
+            <ChevronDown
+              className={cn("size-4 shrink-0 text-muted-foreground transition-transform", expanded && "rotate-180")}
+            />
+          </button>
+
+          {/* Heart favorite toggle — outside the expand button (valid HTML, no nested buttons) */}
+          <FavoriteExerciseButton exerciseId={exercise.id} initialFavorited={!!isFavorited} />
+        </div>
 
         {/* Coach note now lives inside the Instructions dropdown (below) — keeps the
             card surface clean; a small lightbulb by the name flags that a tip exists. */}
