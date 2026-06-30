@@ -29,7 +29,7 @@ import {
   filterByAvailableEquipment,
   formatExerciseLibrary,
 } from "./exercise-context.js"
-import { getCoachRecentUsageFromFn, getClientRecentUsageFromFn, recordUsageFromFn } from "./usage-history.js"
+import { getCoachRecentUsageFromFn, getClientRecentUsageFromFn, recordUsageFromFn, getClientFavoriteExerciseIds } from "./usage-history.js"
 import { getCoachPolicyFromFn, formatCoachPolicyAsInstructions } from "./coach-policy.js"
 import { getExercisesForAI } from "./program-chat-tools.js"
 import {
@@ -43,6 +43,7 @@ import {
 } from "./dedup-verify.js"
 import { retrieveSimilarContext, formatRagContext, buildRagAugmentedPrompt, embedConversationMessage } from "./rag.js"
 import { getSupabase } from "../lib/supabase.js"
+import { getSetting } from "../lib/system-settings.js"
 import {
   getClientProfile,
   getClientName,
@@ -337,7 +338,8 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     await updateJobProgress("analyzing_profile", 1, "Analyzing client profile & fetching exercises")
     await onProgress?.("Analyzing client profile", 1, 5)
     console.log("[orchestrator:sync] Running Agent 1 + exercise fetch...")
-    const [agent1Result, allExercises, coachUsage, clientUsage] = await Promise.all([
+    const favoritesEnabled = await getSetting<boolean>("exercise_favorites_ai_enabled", true)
+    const [agent1Result, allExercises, coachUsage, clientUsage, favoriteIds] = await Promise.all([
       callAgent<ProfileAnalysis>(augmentedAgent1Prompt, agent1UserMessage, profileAnalysisSchema, {
         model: MODEL_SONNET,
         cacheSystemPrompt: true,
@@ -353,6 +355,9 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
             return new Map<string, number>()
           })
         : Promise.resolve(new Map<string, number>()),
+      favoritesEnabled && request.client_id
+        ? getClientFavoriteExerciseIds(request.client_id).catch(() => new Set<string>())
+        : Promise.resolve(new Set<string>()),
     ])
     tokenUsage.agent1 = agent1Result.tokens_used
     tokenUsage.cache_creation += agent1Result.cache_creation_tokens ?? 0
@@ -543,6 +548,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
         coachUsage,
         clientUsage,
         preferredIds,
+        favoriteIds,
       })
     } catch {
       filtered = scoreAndFilterExercises(compressed, skeleton, availableEquipment, analysis, {
@@ -550,6 +556,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
         coachUsage,
         clientUsage,
         preferredIds,
+        favoriteIds,
       })
     }
     const poolNote = buildPoolNote(poolIds, filtered.length, poolMode, poolIds?.length)

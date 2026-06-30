@@ -64,3 +64,17 @@ function buildRecencyMap(rows: Array<{ exercise_id: string; assigned_at: string 
   }
   return out
 }
+
+export async function getClientFavoriteExerciseIds(clientId: string | null): Promise<Set<string>> {
+  if (!clientId) return new Set()
+  const supabase = getSupabase()
+  const { data, error } = await supabase
+    .from("exercise_favorites")
+    .select("exercise_id")
+    .eq("client_user_id", clientId)
+  if (error) {
+    console.warn("[usage-history] getClientFavoriteExerciseIds failed:", error.message)
+    return new Set()
+  }
+  return new Set((data ?? []).map((r: { exercise_id: string }) => r.exercise_id))
+}

@@ -13,8 +13,9 @@ import {
   verifyWithinWeekDuplicates,
 } from "./dedup-verify.js"
 import { getCoachPolicyFromFn, formatCoachPolicyAsInstructions } from "./coach-policy.js"
-import { getCoachRecentUsageFromFn, getClientRecentUsageFromFn, recordUsageFromFn } from "./usage-history.js"
+import { getCoachRecentUsageFromFn, getClientRecentUsageFromFn, recordUsageFromFn, getClientFavoriteExerciseIds } from "./usage-history.js"
 import { getSupabase } from "../lib/supabase.js"
+import { getSetting } from "../lib/system-settings.js"
 import {
   getProgramById,
   getClientProfile,
@@ -347,7 +348,8 @@ export async function generateWeekSync(
 
   await updateJobProgress("fetching_context", 1, "Loading program data & client logs")
 
-  const [program, existingExercises, fullLibrary, coachPolicy, coachUsage, clientUsage] = await Promise.all([
+  const favoritesEnabled = await getSetting<boolean>("exercise_favorites_ai_enabled", true)
+  const [program, existingExercises, fullLibrary, coachPolicy, coachUsage, clientUsage, favoriteIds] = await Promise.all([
     getProgramById(request.program_id),
     getProgramExercises(request.program_id),
     getExercisesForAI(),
@@ -359,6 +361,9 @@ export async function generateWeekSync(
     request.client_id
       ? getClientRecentUsageFromFn(request.client_id, 90).catch(() => new Map<string, number>())
       : Promise.resolve(new Map<string, number>()),
+    favoritesEnabled && request.client_id
+      ? getClientFavoriteExerciseIds(request.client_id).catch(() => new Set<string>())
+      : Promise.resolve(new Set<string>()),
   ])
   console.log(
     `[week-orchestrator] policy: ${coachPolicy ? "loaded" : "none"}, coach usage: ${coachUsage.size}, client usage: ${clientUsage.size}`,
@@ -799,6 +804,7 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
       clientUsage,
       excludeIds,
       preferredIds,
+      favoriteIds,
       mmrLambda: 0.7,
     })
   } catch {
@@ -808,6 +814,7 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
       clientUsage,
       excludeIds,
       preferredIds,
+      favoriteIds,
       mmrLambda: 0.7,
     })
   }

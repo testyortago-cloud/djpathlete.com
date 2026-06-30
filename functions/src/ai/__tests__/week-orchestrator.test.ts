@@ -15,6 +15,7 @@ vi.mock("../usage-history.js", () => ({
   recordUsageFromFn: recordUsageMock,
   getCoachRecentUsageFromFn: getCoachUsageMock,
   getClientRecentUsageFromFn: getClientUsageMock,
+  getClientFavoriteExerciseIds: vi.fn(async () => new Set<string>()),
 }))
 vi.mock("../coach-policy.js", () => ({
   getCoachPolicyFromFn: getCoachPolicyMock,
