@@ -13,15 +13,27 @@ interface RosterClient {
 
 type Status = "loading" | "ready" | "invalid" | "done" | "error"
 
-export function CheckinClient({ token }: { token: string }) {
+export function CheckinClient({
+  token,
+  me,
+}: {
+  token: string
+  me?: { firstName: string; remaining: number } | null
+}) {
   const [status, setStatus] = useState<Status>("loading")
   const [clients, setClients] = useState<RosterClient[]>([])
   const [query, setQuery] = useState("")
   const [submitting, setSubmitting] = useState<string | null>(null)
+  const [selfSubmitting, setSelfSubmitting] = useState(false)
   const [result, setResult] = useState<{ name: string; remaining: number } | null>(null)
   const [errorMsg, setErrorMsg] = useState("")
 
   useEffect(() => {
+    // Self mode (logged-in client): skip the roster entirely.
+    if (me) {
+      setStatus("ready")
+      return
+    }
     if (!token) {
       setStatus("invalid")
       return
@@ -41,7 +53,38 @@ export function CheckinClient({ token }: { token: string }) {
         setStatus("ready")
       })
       .catch(() => setStatus("error"))
-  }, [token])
+  }, [token, me])
+
+  async function checkSelf() {
+    setSelfSubmitting(true)
+    setErrorMsg("")
+    try {
+      const res = await fetch("/api/checkin/self", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token }),
+      })
+      const data = await res.json()
+      if (res.status === 401) {
+        setStatus("invalid")
+        return
+      }
+      if (res.status === 409) {
+        setErrorMsg(data.error ?? "No credits left on your pack.")
+        return
+      }
+      if (!res.ok) {
+        setErrorMsg(data.error ?? "Something went wrong.")
+        return
+      }
+      setResult({ name: me!.firstName, remaining: data.remaining ?? Math.max(0, me!.remaining - 1) })
+      setStatus("done")
+    } catch {
+      setErrorMsg("Something went wrong.")
+    } finally {
+      setSelfSubmitting(false)
+    }
+  }
 
   const filtered = useMemo(
     () => clients.filter((c) => c.name.toLowerCase().includes(query.toLowerCase())),
@@ -113,6 +156,22 @@ export function CheckinClient({ token }: { token: string }) {
         <p className="text-sm text-muted-foreground">
           {result.remaining} session{result.remaining === 1 ? "" : "s"} left on your pack.
         </p>
+      </div>
+    )
+  }
+
+  // Self mode (logged-in client): one tap, identity comes from the session.
+  if (me) {
+    return (
+      <div className={card}>
+        <h1 className="text-xl font-semibold text-primary mb-1">Check in</h1>
+        <p className="text-sm text-muted-foreground mb-5">
+          {me.remaining} session{me.remaining === 1 ? "" : "s"} left on your pack.
+        </p>
+        {errorMsg && <p className="text-sm text-destructive mb-3">{errorMsg}</p>}
+        <Button className="w-full h-12" onClick={checkSelf} disabled={selfSubmitting}>
+          Check in as {me.firstName}
+        </Button>
       </div>
     )
   }
