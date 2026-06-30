@@ -492,7 +492,7 @@ function ExerciseCard({
         )}
       >
         {/* Collapsed row — flex wrapper so the heart sits outside the expand button */}
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
           <button
             type="button"
             className="flex-1 flex items-center gap-3 text-left"

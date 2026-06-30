@@ -15,8 +15,8 @@ import { POST, DELETE } from "@/app/api/admin/clients/[id]/exercise-favorites/ro
 
 const UUID = "11111111-1111-1111-8111-111111111111"
 const params = Promise.resolve({ id: "client-9" })
-function req(body: unknown) {
-  return new Request("http://localhost/x", { method: "POST", body: JSON.stringify(body) })
+function req(body: unknown, method = "POST") {
+  return new Request("http://localhost/x", { method, body: JSON.stringify(body) })
 }
 
 beforeEach(() => {
@@ -41,14 +41,14 @@ describe("admin exercise-favorites route", () => {
 
   it("removes on behalf", async () => {
     authMock.mockResolvedValue({ user: { id: "admin-1", role: "admin" } })
-    const res = await DELETE(req({ exerciseId: UUID }), { params })
+    const res = await DELETE(req({ exerciseId: UUID }, "DELETE"), { params })
     expect(res.status).toBe(200)
     expect(removeFavorite).toHaveBeenCalledWith("client-9", UUID)
   })
 
   it("403s for non-admins on DELETE", async () => {
     authMock.mockResolvedValue(null)
-    const res = await DELETE(req({ exerciseId: UUID }), { params })
+    const res = await DELETE(req({ exerciseId: UUID }, "DELETE"), { params })
     expect(res.status).toBe(403)
   })
 })

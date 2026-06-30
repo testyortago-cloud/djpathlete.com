@@ -31,6 +31,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     category: "admin_write",
     target: { type: "user", id: clientUserId },
     metadata: { exercise_id: parsed.data.exerciseId, client_user_id: clientUserId, source: "admin" },
+    actor: { id: adminId, role: "admin" },
     request,
   })
   return NextResponse.json({ ok: true })
@@ -55,6 +56,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     category: "admin_write",
     target: { type: "user", id: clientUserId },
     metadata: { exercise_id: parsed.data.exerciseId, client_user_id: clientUserId, source: "admin" },
+    actor: { id: adminId, role: "admin" },
     request,
   })
   return NextResponse.json({ ok: true })

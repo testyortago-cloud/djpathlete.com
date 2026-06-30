@@ -16,12 +16,15 @@ describe("FavoriteExerciseButton", () => {
     expect(btn).toHaveAttribute("aria-pressed", "false")
     fireEvent.click(btn)
     expect(btn).toHaveAttribute("aria-pressed", "true") // optimistic
-    await waitFor(() =>
+    await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
         "/api/client/exercise-favorites",
         expect.objectContaining({ method: "POST" }),
-      ),
-    )
+      )
+      const [, init] = fetchMock.mock.calls[0]
+      const body = JSON.parse((init as RequestInit).body as string)
+      expect(body).toMatchObject({ exerciseId: "ex-1", favorited: true })
+    })
   })
 
   it("reverts on a failed request", async () => {

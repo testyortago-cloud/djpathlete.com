@@ -30,11 +30,14 @@ describe("ClientFavoriteExercisesPanel", () => {
   it("DELETEs when removing a favorite", async () => {
     render(<ClientFavoriteExercisesPanel clientId="c1" initialFavorites={[fav]} exerciseOptions={[]} />)
     fireEvent.click(screen.getByLabelText(/remove favorite/i))
-    await waitFor(() =>
+    await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
         "/api/admin/clients/c1/exercise-favorites",
         expect.objectContaining({ method: "DELETE" }),
-      ),
-    )
+      )
+      const [, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+      const body = JSON.parse((init as RequestInit).body as string)
+      expect(body).toMatchObject({ exerciseId: "e1" })
+    })
   })
 })

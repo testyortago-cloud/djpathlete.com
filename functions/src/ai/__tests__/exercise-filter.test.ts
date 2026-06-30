@@ -166,13 +166,15 @@ describe("diversifyByMMR", () => {
 
 describe("favoriteIds soft boost", () => {
   it("ranks a favorited exercise ahead of an identical non-favorite", () => {
-    // "low-ranker" uses movement_pattern "pull" and primary_muscles "lats" —
-    // it scores much lower than "push/chest" exercises against the SKELETON's
-    // push slot, so without a boost it ranks last.
+    // "low-ranker" is a valid push/chest exercise but scores ~18 pts lower than the
+    // top two (advanced difficulty penalty instead of exact match).  The FAVORITE_BOOST
+    // of 30 is larger than that gap, so it must move from last (index 2) to first.
     const exercises = [
-      ex("push-1", { movement_pattern: "push", primary_muscles: ["chest"] }),
-      ex("push-2", { movement_pattern: "push", primary_muscles: ["chest"] }),
-      ex("low-ranker", { movement_pattern: "pull", primary_muscles: ["lats"] }),
+      ex("push-1", { movement_pattern: "push", primary_muscles: ["chest"], difficulty: "intermediate" }),
+      ex("push-2", { movement_pattern: "push", primary_muscles: ["chest"], difficulty: "intermediate" }),
+      // "advanced" difficulty against an "intermediate" client: exact pattern + muscle match
+      // but only +2 for difficulty (above client level) instead of +20 — score gap < 30.
+      ex("low-ranker", { movement_pattern: "push", primary_muscles: ["chest"], difficulty: "advanced" }),
     ]
     const favId = "low-ranker"
 
@@ -184,9 +186,9 @@ describe("favoriteIds soft boost", () => {
     const rankBefore = resultNoFav.findIndex((e) => e.id === favId)
     const rankAfter = resultWithFav.findIndex((e) => e.id === favId)
 
-    // Favorited exercise must rank at least as well (lower index = better rank).
-    // Because low-ranker ranks last without the boost, this assertion is meaningful.
-    expect(rankAfter).toBeLessThanOrEqual(rankBefore)
+    // Favorited exercise must rank strictly better (lower index = better rank).
+    // Because low-ranker ranks last without the boost (index 2), the boost must strictly improve it.
+    expect(rankAfter).toBeLessThan(rankBefore)
     // Sanity: the no-favorites run really did rank it last (index 2).
     expect(rankBefore).toBe(2)
   })
