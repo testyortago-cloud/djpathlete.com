@@ -884,6 +884,25 @@ export interface FormReviewMessageAttachment {
   playback_url?: string | null
 }
 
+// Exercise favorites types
+export type ExerciseFavoriteSource = "client" | "admin"
+
+export interface ExerciseFavorite {
+  id: string
+  client_user_id: string
+  exercise_id: string
+  created_by: string | null
+  source: ExerciseFavoriteSource
+  created_at: string
+}
+
+export interface ExerciseFavoriteWithExercise extends ExerciseFavorite {
+  exercise: Pick<
+    Exercise,
+    "id" | "name" | "category" | "muscle_group" | "video_url" | "thumbnail_url" | "difficulty"
+  > | null
+}
+
 // Performance assessment types
 export type PerformanceAssessmentStatus = "draft" | "in_progress" | "completed"
 
