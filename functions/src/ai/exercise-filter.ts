@@ -8,6 +8,11 @@ const CLIENT_USAGE_PENALTY = 50
 const DIVERSITY_BOOST = 10
 /** Boost applied in "preferred" pool mode to exercises in the coach-curated pool. */
 const POOL_PREFERENCE_BOOST = 40
+/** Soft boost for a client's favorited exercises. Between DIVERSITY_BOOST (10)
+ *  and POOL_PREFERENCE_BOOST (40): meaningful but won't override hard filters
+ *  (injury/equipment/difficulty run BEFORE scoring) or weekly rotation
+ *  (clientUsage penalty is 50). */
+const FAVORITE_BOOST = 30
 
 /**
  * Apply usage-history penalties and a diversity boost to a base score.
@@ -46,6 +51,8 @@ export interface FilterOptions {
    * library available as fallback.
    */
   preferredIds?: Set<string>
+  /** Exercise IDs the CLIENT has favorited — a soft scoring boost (FAVORITE_BOOST). */
+  favoriteIds?: Set<string>
   /** MMR balance: 1.0 = pure relevance, 0.0 = pure diversity. Default 0.7. */
   mmrLambda?: number
 }
@@ -356,6 +363,14 @@ export function scoreAndFilterExercises(
     }
   }
 
+  // Favorites boost — soft bias toward client-favorited exercises.
+  const favoriteIds = options?.favoriteIds
+  if (favoriteIds && favoriteIds.size > 0) {
+    for (const [id, score] of exerciseMaxScores) {
+      if (favoriteIds.has(id)) exerciseMaxScores.set(id, score + FAVORITE_BOOST)
+    }
+  }
+
   const sorted = [...exercises].sort((a, b) => {
     return (exerciseMaxScores.get(b.id) ?? 0) - (exerciseMaxScores.get(a.id) ?? 0)
   })
@@ -461,6 +476,7 @@ export async function semanticFilterExercises(
       clientUsage: options?.clientUsage,
       excludeIds: options?.excludeIds,
       preferredIds: options?.preferredIds,
+      favoriteIds: options?.favoriteIds,
       mmrLambda: options?.mmrLambda,
     })
   }
@@ -477,10 +493,13 @@ export async function semanticFilterExercises(
   const clientUsage = options?.clientUsage ?? new Map<string, number>()
   const preferredIds = options?.preferredIds
   const hasPreferred = preferredIds && preferredIds.size > 0
-  if (coachUsage.size > 0 || clientUsage.size > 0 || hasPreferred) {
+  const favoriteIds = options?.favoriteIds
+  const hasFavorites = favoriteIds && favoriteIds.size > 0
+  if (coachUsage.size > 0 || clientUsage.size > 0 || hasPreferred || hasFavorites) {
     const scored = filtered.map((ex) => {
       let score = applyUsagePenalty(50, ex.id, coachUsage, clientUsage)
       if (hasPreferred && preferredIds!.has(ex.id)) score += POOL_PREFERENCE_BOOST
+      if (hasFavorites && favoriteIds!.has(ex.id)) score += FAVORITE_BOOST
       return { ex, score }
     })
     scored.sort((a, b) => b.score - a.score)
@@ -488,7 +507,7 @@ export async function semanticFilterExercises(
     console.log(
       `[semanticFilter] Applied usage-aware re-ranking (coach: ${coachUsage.size}, client: ${clientUsage.size}${
         hasPreferred ? `, pool preferred: ${preferredIds!.size}` : ""
-      })`,
+      }${hasFavorites ? `, favorites: ${favoriteIds!.size}` : ""})`,
     )
   }
 
@@ -516,7 +535,8 @@ export async function semanticFilterExercises(
       exercise: e,
       score:
         applyUsagePenalty(baseScore, e.id, coachUsage, clientUsage) +
-        (hasPreferred && preferredIds!.has(e.id) ? POOL_PREFERENCE_BOOST : 0),
+        (hasPreferred && preferredIds!.has(e.id) ? POOL_PREFERENCE_BOOST : 0) +
+        (hasFavorites && favoriteIds!.has(e.id) ? FAVORITE_BOOST : 0),
     }))
     filtered = diversifyByMMR(scoredFiltered, filtered.length, lambda)
   }
