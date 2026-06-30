@@ -13,3 +13,12 @@ export const PACK_REMINDER_EXPIRY_DEFAULT = 7
 
 export const packReminderLowAt = () => getSetting<number>(PACK_REMINDER_LOW_KEY, PACK_REMINDER_LOW_DEFAULT)
 export const packReminderExpiryDays = () => getSetting<number>(PACK_REMINDER_EXPIRY_KEY, PACK_REMINDER_EXPIRY_DEFAULT)
+
+// ── Client-facing pack feature flags (DB-backed, admin-togglable, default OFF) ──
+export const CLIENT_PACK_BALANCE_KEY = "client_pack_balance_enabled"
+export const CLIENT_SELF_CHECKIN_KEY = "client_self_checkin_enabled"
+export const CLIENT_SELF_PURCHASE_KEY = "client_self_purchase_enabled"
+
+export const clientPackBalanceEnabled = () => getSetting<boolean>(CLIENT_PACK_BALANCE_KEY, false)
+export const clientSelfCheckinEnabled = () => getSetting<boolean>(CLIENT_SELF_CHECKIN_KEY, false)
+export const clientSelfPurchaseEnabled = () => getSetting<boolean>(CLIENT_SELF_PURCHASE_KEY, false)
