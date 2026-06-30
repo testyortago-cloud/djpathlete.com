@@ -52,6 +52,9 @@ import { EditAssignmentButton } from "@/components/admin/EditAssignmentButton"
 import { ClientPackagesPanel } from "@/components/admin/packs/ClientPackagesPanel"
 import { ClientCheckinButton } from "@/components/admin/packs/ClientCheckinButton"
 import { loadClientPacksView, summarizeClientPacks } from "@/lib/services/client-packs-view"
+import { listFavoritesByClient } from "@/lib/db/exercise-favorites"
+import { getExercises } from "@/lib/db/exercises"
+import { ClientFavoriteExercisesPanel } from "@/components/admin/favorites/ClientFavoriteExercisesPanel"
 import { ClientDetailHeader } from "./ClientDetailHeader"
 import type {
   Program,
@@ -604,7 +607,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
     notFound()
   }
 
-  const [profile, assignments, payments, progressData, achievements, workoutStreak, packs] = await Promise.all([
+  const [profile, assignments, payments, progressData, achievements, workoutStreak, packs, favorites, allExercises] = await Promise.all([
     getProfileByUserId(id),
     getAssignments(id),
     getPayments(id),
@@ -612,9 +615,13 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
     getAchievements(id),
     getWorkoutStreak(id),
     loadClientPacksView(id),
+    listFavoritesByClient(id).catch(() => []),
+    getExercises().catch(() => []),
   ])
 
   const packSummary = summarizeClientPacks(packs, new Date())
+
+  const exerciseOptions = allExercises.map((e) => ({ value: e.id, label: e.name }))
 
   // Build progress stats and shape data for the progress view
   type ProgressWithExercise = ExerciseProgress & { exercises?: Exercise | null }
@@ -754,6 +761,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
           clientName={`${user.first_name} ${user.last_name}`}
           packByAssignment={packSummary.byAssignment}
         />
+        <ClientFavoriteExercisesPanel clientId={id} initialFavorites={favorites} exerciseOptions={exerciseOptions} />
         <ClientProgressView
           userId={id}
           achievements={formattedAchievements}
