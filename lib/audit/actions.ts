@@ -108,6 +108,8 @@ export const AUDIT_ACTIONS = [
 
   // client_action — profile + preferences + self-service billing
   { slug: "profile.updated", category: "client_action", description: "Client updated their own profile" },
+  { slug: "exercise_favorite.added", category: "client_action", description: "Exercise favorited" },
+  { slug: "exercise_favorite.removed", category: "client_action", description: "Exercise unfavorited" },
   {
     slug: "notification_preferences.changed",
     category: "client_action",
