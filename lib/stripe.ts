@@ -408,10 +408,13 @@ export async function createPackCheckoutSession(opts: {
   productId: string | null
   stripePriceId?: string | null
   returnUrl?: string
+  cancelUrl?: string
 }): Promise<Stripe.Checkout.Session> {
   const baseUrl = getBaseUrl()
   const successUrl = `${baseUrl}${opts.returnUrl ?? `/admin/clients/${opts.clientUserId}`}?pack=purchased`
-  const cancelUrl = `${baseUrl}/admin/clients/${opts.clientUserId}?pack=cancelled`
+  const cancelUrl = opts.cancelUrl
+    ? `${baseUrl}${opts.cancelUrl}?pack=cancelled`
+    : `${baseUrl}/admin/clients/${opts.clientUserId}?pack=cancelled`
 
   const line_items: Stripe.Checkout.SessionCreateParams.LineItem[] = opts.stripePriceId
     ? [{ price: opts.stripePriceId, quantity: 1 }]
