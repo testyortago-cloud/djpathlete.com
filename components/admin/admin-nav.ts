@@ -33,6 +33,7 @@ import {
   HelpCircle,
   UserSquare,
   GraduationCap,
+  Ticket,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 
@@ -144,6 +145,7 @@ export function getAdminNav(opts: { contentStudioEnabled: boolean }): AdminNav {
           { label: "Bookings", href: "/admin/bookings", icon: CalendarCheck },
           { label: "Events", href: "/admin/events", icon: CalendarDays },
           { label: "Payments", href: "/admin/payments", icon: CreditCard },
+          { label: "Session Packs", href: "/admin/session-packs/products", icon: Ticket },
           { label: "Analytics", href: "/admin/analytics", icon: BarChart3 },
           { label: "Audit Logs", href: "/admin/audit-logs", icon: Activity },
           { label: "Reviews", href: "/admin/reviews", icon: Star },
