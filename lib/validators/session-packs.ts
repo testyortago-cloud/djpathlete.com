@@ -41,6 +41,15 @@ export const voidCheckinSchema = z.object({
   reason: z.string().optional(),
 })
 
+/** Client-portal self check-in: only the token; identity comes from the session. */
+export const selfCheckinSchema = z.object({ token: z.string().min(1) })
+
+/** Client self-purchase: only the product; identity comes from the session. */
+export const selfCheckoutSchema = z.object({ productId: z.string().uuid() })
+
+/** Admin partial update of a catalogue product. */
+export const packProductUpdateSchema = packProductSchema.partial()
+
 export type SellPackInput = z.infer<typeof sellPackSchema>
 export type PackProductInput = z.infer<typeof packProductSchema>
 export type AdhocPackInput = z.infer<typeof adhocPackSchema>
