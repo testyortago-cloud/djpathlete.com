@@ -16,6 +16,7 @@ import {
   Settings,
   ClipboardList,
   Ticket,
+  Heart,
   LogOut,
   MoreHorizontal,
 } from "lucide-react"
@@ -30,6 +31,7 @@ const baseNavItems = [
   { label: "Dashboard", href: "/client/dashboard", icon: LayoutDashboard },
   { label: "Programs", href: "/client/programs", icon: ShoppingBag },
   { label: "Workouts", href: "/client/workouts", icon: Dumbbell },
+  { label: "Favorites", href: "/client/favorites", icon: Heart },
   { label: "Progress", href: "/client/progress", icon: TrendingUp },
   { label: "Achievements", href: "/client/achievements", icon: Trophy },
   { label: "Form Reviews", href: "/client/form-reviews", icon: Video },
