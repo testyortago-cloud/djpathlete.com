@@ -1,4 +1,5 @@
 import type { ClientPackage, SessionCheckin } from "@/types/database"
+import { auth } from "@/lib/auth"
 import { listPackagesForClient } from "@/lib/db/client-packages"
 import { listCheckinsForPackage } from "@/lib/db/session-checkins"
 import { getAssignmentById } from "@/lib/db/assignments"
@@ -70,4 +71,34 @@ export function summarizeClientPacks(packs: PackSlice[], now: Date): ClientPacks
   }
 
   return { activeRemaining, hasActiveCredits: activeRemaining > 0, byAssignment }
+}
+
+/** Earliest `expires_at` among packs that would actually deduct on check-in
+ *  (active, not expired, remaining > 0), or null when none/never expires. */
+export function nearestActiveExpiry(packs: PackSlice[], now: Date): string | null {
+  let earliest: string | null = null
+  for (const p of packs) {
+    if (p.status !== "active" || isExpired(p, now) || remainingCredits(p) <= 0) continue
+    if (!p.expires_at) continue
+    if (!earliest || new Date(p.expires_at) < new Date(earliest)) earliest = p.expires_at
+  }
+  return earliest
+}
+
+export interface MyPacksView {
+  packs: PackWithCheckins[]
+  summary: ClientPacksSummary
+  nearestExpiry: string | null
+}
+
+/**
+ * The logged-in client's own pack view (null for non-client sessions). The user
+ * id comes from the verified session, never from input — safe to use the
+ * service-role DALs underneath.
+ */
+export async function loadMyPacksView(now: Date = new Date()): Promise<MyPacksView | null> {
+  const session = await auth()
+  if (!session?.user?.id || session.user.role !== "client") return null
+  const packs = await loadClientPacksView(session.user.id)
+  return { packs, summary: summarizeClientPacks(packs, now), nearestExpiry: nearestActiveExpiry(packs, now) }
 }
