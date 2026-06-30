@@ -720,8 +720,12 @@ async function syncAndNotify(session: Stripe.Checkout.Session, programId: string
 async function handleSessionPackCheckout(session: Stripe.Checkout.Session) {
   const pkg = await getPackageByStripeSession(session.id)
   if (!pkg) {
-    console.error(`[webhook session_pack] no pack for session ${session.id}`)
-    return
+    // Throw (→ 500) instead of silently returning 200, so Stripe RETRIES this
+    // event. Covers the race where the `completed` webhook lands before the
+    // pending pack row is visible (read-replica lag). A pack that genuinely
+    // never existed just retries until Stripe gives up — logged, never a silent
+    // paid-but-no-credits loss.
+    throw new Error(`[webhook session_pack] no pack for completed session ${session.id}`)
   }
   // Idempotency: already promoted.
   if (pkg.payment_status === "paid") return
