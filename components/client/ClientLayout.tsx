@@ -15,6 +15,7 @@ import {
   User,
   Settings,
   ClipboardList,
+  Ticket,
   LogOut,
   MoreHorizontal,
 } from "lucide-react"
@@ -25,7 +26,7 @@ import { InstallPrompt } from "@/components/client/InstallPrompt"
 import { PullToRefresh } from "@/components/client/PullToRefresh"
 import { NotificationBell } from "@/components/shared/NotificationBell"
 
-const navItems = [
+const baseNavItems = [
   { label: "Dashboard", href: "/client/dashboard", icon: LayoutDashboard },
   { label: "Programs", href: "/client/programs", icon: ShoppingBag },
   { label: "Workouts", href: "/client/workouts", icon: Dumbbell },
@@ -38,19 +39,24 @@ const navItems = [
   { label: "Settings", href: "/client/settings", icon: Settings },
 ]
 
-// Bottom tab bar: Dashboard, Form Reviews, Workouts, Progress + More
-const bottomTabs = [
-  navItems[0], // Dashboard
-  navItems[5], // Form Reviews
-  navItems[2], // Workouts
-  navItems[3], // Progress
-]
-const bottomTabHrefs = new Set(bottomTabs.map((t) => t.href))
-const moreItems = navItems.filter((item) => !bottomTabHrefs.has(item.href))
-
-export function ClientLayout({ children }: { children: React.ReactNode }) {
+export function ClientLayout({ children, flags }: { children: React.ReactNode; flags?: { sessions?: boolean } }) {
   const pathname = usePathname()
   const [moreOpen, setMoreOpen] = useState(false)
+
+  // "My Sessions" appears (after Dashboard) only when the balance flag is on.
+  const navItems = flags?.sessions
+    ? [baseNavItems[0], { label: "My Sessions", href: "/client/sessions", icon: Ticket }, ...baseNavItems.slice(1)]
+    : baseNavItems
+
+  // Bottom tab bar: Dashboard, Form Reviews, Workouts, Progress + More.
+  const bottomTabs = [
+    navItems.find((n) => n.href === "/client/dashboard")!,
+    navItems.find((n) => n.href === "/client/form-reviews")!,
+    navItems.find((n) => n.href === "/client/workouts")!,
+    navItems.find((n) => n.href === "/client/progress")!,
+  ]
+  const bottomTabHrefs = new Set(bottomTabs.map((t) => t.href))
+  const moreItems = navItems.filter((item) => !bottomTabHrefs.has(item.href))
 
   // Close "More" sheet on navigation
   useEffect(() => {
