@@ -1,7 +1,11 @@
 import Link from "next/link"
+import { listAllAdGroups } from "@/lib/db/google-ads-ad-groups"
+import { listAllAds } from "@/lib/db/google-ads-ads"
 import { listAllCampaigns } from "@/lib/db/google-ads-campaigns"
 import { getCampaignRollup } from "@/lib/db/google-ads-metrics"
 import { listGoogleAdsAccounts } from "@/lib/db/google-ads-accounts"
+import type { GoogleAdsAd } from "@/types/database"
+import type { AdGroupWithAds } from "./AdGroupAdList"
 import { CampaignsTable, type CampaignWithMetrics } from "./CampaignsTable"
 import { SyncNowButton } from "./SyncNowButton"
 
@@ -13,9 +17,11 @@ function isoDate(daysAgo: number): string {
 }
 
 export default async function CampaignsPage() {
-  const [campaigns, accounts] = await Promise.all([
+  const [campaigns, accounts, adGroups, ads] = await Promise.all([
     listAllCampaigns(),
     listGoogleAdsAccounts(),
+    listAllAdGroups(),
+    listAllAds(),
   ])
 
   // Fetch 7-day rollup once per Customer ID, then merge into each campaign row
@@ -49,6 +55,21 @@ export default async function CampaignsPage() {
       .sort()
       .at(-1) ?? null
 
+  // Group ads under their ad group, then ad groups under their campaign, so
+  // the drill-down UI can render everything from a single lookup keyed by
+  // the (local UUID) campaign id.
+  const adsByAdGroup = new Map<string, GoogleAdsAd[]>()
+  for (const ad of ads) {
+    const arr = adsByAdGroup.get(ad.ad_group_id) ?? []
+    arr.push(ad)
+    adsByAdGroup.set(ad.ad_group_id, arr)
+  }
+  const adGroupsByCampaign: Record<string, AdGroupWithAds[]> = {}
+  for (const ag of adGroups) {
+    const group = { ...ag, ads: adsByAdGroup.get(ag.id) ?? [] }
+    ;(adGroupsByCampaign[ag.campaign_id] ??= []).push(group)
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
@@ -78,7 +99,7 @@ export default async function CampaignsPage() {
         <SyncNowButton />
       </div>
 
-      <CampaignsTable campaigns={enriched} />
+      <CampaignsTable campaigns={enriched} adGroupsByCampaign={adGroupsByCampaign} />
     </div>
   )
 }

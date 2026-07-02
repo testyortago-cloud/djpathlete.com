@@ -1,7 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { Fragment, useState } from "react"
+import { ChevronDown, ChevronRight } from "lucide-react"
 import type { GoogleAdsCampaign } from "@/types/database"
+import { AdGroupAdList, type AdGroupWithAds } from "./AdGroupAdList"
 import { AutomationModeSelector } from "./AutomationModeSelector"
 import { CampaignBudgetEdit } from "./CampaignBudgetEdit"
 import { CampaignNameEdit } from "./CampaignNameEdit"
@@ -27,8 +29,27 @@ function fmtNumber(n: number): string {
   return n.toLocaleString()
 }
 
-export function CampaignsTable({ campaigns }: { campaigns: CampaignWithMetrics[] }) {
+export function CampaignsTable({
+  campaigns,
+  adGroupsByCampaign,
+}: {
+  campaigns: CampaignWithMetrics[]
+  adGroupsByCampaign: Record<string, AdGroupWithAds[]>
+}) {
   const [showRemoved, setShowRemoved] = useState(false)
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+
+  function toggleExpanded(id: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }
 
   if (campaigns.length === 0) {
     return (
@@ -87,14 +108,32 @@ export function CampaignsTable({ campaigns }: { campaigns: CampaignWithMetrics[]
             </tr>
           ) : (
             visible.map((c) => (
-            <tr key={c.id} className="border-t border-border/60 align-top">
+            <Fragment key={c.id}>
+            <tr className="border-t border-border/60 align-top">
               <td className="p-3">
-                <CampaignNameEdit
-                  campaignId={c.id}
-                  customerId={c.customer_id}
-                  externalCampaignId={c.campaign_id}
-                  initialName={c.name}
-                />
+                <div className="flex items-start gap-2">
+                  <button
+                    type="button"
+                    onClick={() => toggleExpanded(c.id)}
+                    aria-expanded={expanded.has(c.id)}
+                    aria-label="Show ad groups"
+                    className="mt-1 shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {expanded.has(c.id) ? (
+                      <ChevronDown className="h-4 w-4" aria-hidden="true" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                    )}
+                  </button>
+                  <div className="min-w-0 flex-1">
+                    <CampaignNameEdit
+                      campaignId={c.id}
+                      customerId={c.customer_id}
+                      externalCampaignId={c.campaign_id}
+                      initialName={c.name}
+                    />
+                  </div>
+                </div>
               </td>
               <td className="p-3 text-xs font-mono">{c.type}</td>
               <td className="p-3">
@@ -129,6 +168,16 @@ export function CampaignsTable({ campaigns }: { campaigns: CampaignWithMetrics[]
                 <GenerateCopyButton campaignId={c.id} disabled={c.type === "PERFORMANCE_MAX"} />
               </td>
             </tr>
+            {expanded.has(c.id) && (
+              <tr>
+                <td colSpan={9} className="p-0">
+                  <div className="px-6 py-3 bg-surface/40">
+                    <AdGroupAdList adGroups={adGroupsByCampaign[c.id] ?? []} />
+                  </div>
+                </td>
+              </tr>
+            )}
+            </Fragment>
             ))
           )}
         </tbody>
