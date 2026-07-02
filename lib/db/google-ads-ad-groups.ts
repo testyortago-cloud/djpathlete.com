@@ -53,6 +53,46 @@ export async function resolveAdGroupByExternalId(
   return rest as unknown as GoogleAdsAdGroup
 }
 
+export interface AdGroupForMutation {
+  id: string
+  ad_group_id: string // external Google id
+  name: string
+  status: GoogleAdsResourceStatus
+  customer_id: string // from joined campaign
+}
+
+export async function getAdGroupForMutation(id: string): Promise<AdGroupForMutation | null> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("google_ads_ad_groups")
+    .select("id, ad_group_id, name, status, campaign:google_ads_campaigns!inner(customer_id)")
+    .eq("id", id)
+    .maybeSingle()
+  if (error) throw error
+  if (!data) return null
+  const row = data as unknown as {
+    id: string; ad_group_id: string; name: string; status: GoogleAdsResourceStatus
+    campaign: { customer_id: string }
+  }
+  return {
+    id: row.id, ad_group_id: row.ad_group_id, name: row.name, status: row.status,
+    customer_id: row.campaign.customer_id,
+  }
+}
+
+export async function setAdGroupStatus(id: string, status: GoogleAdsResourceStatus): Promise<void> {
+  const supabase = getClient()
+  const { error } = await supabase.from("google_ads_ad_groups").update({ status }).eq("id", id)
+  if (error) throw error
+}
+
+export async function listAllAdGroups(): Promise<GoogleAdsAdGroup[]> {
+  const supabase = getClient()
+  const { data, error } = await supabase.from("google_ads_ad_groups").select("*").order("name")
+  if (error) throw error
+  return (data ?? []) as GoogleAdsAdGroup[]
+}
+
 export async function upsertAdGroup(input: UpsertAdGroupInput): Promise<GoogleAdsAdGroup> {
   const supabase = getClient()
   const { data, error } = await supabase

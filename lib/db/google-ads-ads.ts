@@ -17,6 +17,50 @@ export interface UpsertAdInput {
   raw_data?: Record<string, unknown> | null
 }
 
+export interface AdForMutation {
+  id: string
+  ad_id: string // external Google id
+  status: GoogleAdsResourceStatus
+  ad_group_id_external: string // from joined ad_group
+  customer_id: string // from joined ad_group.campaign
+  headline: string | null // first headline text, for display/audit label
+}
+
+export async function getAdForMutation(id: string): Promise<AdForMutation | null> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("google_ads_ads")
+    .select("id, ad_id, status, headlines, ad_group:google_ads_ad_groups!inner(ad_group_id, campaign:google_ads_campaigns!inner(customer_id))")
+    .eq("id", id)
+    .maybeSingle()
+  if (error) throw error
+  if (!data) return null
+  const row = data as unknown as {
+    id: string; ad_id: string; status: GoogleAdsResourceStatus
+    headlines: Array<{ text: string }> | null
+    ad_group: { ad_group_id: string; campaign: { customer_id: string } }
+  }
+  return {
+    id: row.id, ad_id: row.ad_id, status: row.status,
+    ad_group_id_external: row.ad_group.ad_group_id,
+    customer_id: row.ad_group.campaign.customer_id,
+    headline: row.headlines?.[0]?.text ?? null,
+  }
+}
+
+export async function setAdStatus(id: string, status: GoogleAdsResourceStatus): Promise<void> {
+  const supabase = getClient()
+  const { error } = await supabase.from("google_ads_ads").update({ status }).eq("id", id)
+  if (error) throw error
+}
+
+export async function listAllAds(): Promise<GoogleAdsAd[]> {
+  const supabase = getClient()
+  const { data, error } = await supabase.from("google_ads_ads").select("*").order("ad_id")
+  if (error) throw error
+  return (data ?? []) as GoogleAdsAd[]
+}
+
 export async function upsertAd(input: UpsertAdInput): Promise<GoogleAdsAd> {
   const supabase = getClient()
   const { data, error } = await supabase
