@@ -61,6 +61,16 @@ export const AUDIT_ACTIONS = [
     description: "Google Ads campaign daily budget changed from admin UI",
   },
   { slug: "ads.campaign_renamed", category: "admin_write", description: "Google Ads campaign renamed from admin UI" },
+  {
+    slug: "ads.ad_group_status_changed",
+    category: "admin_write",
+    description: "Google Ads ad group paused or resumed from admin UI",
+  },
+  {
+    slug: "ads.ad_status_changed",
+    category: "admin_write",
+    description: "Google Ads ad paused or resumed from admin UI",
+  },
 
   // billing
   { slug: "stripe.checkout_completed", category: "billing", description: "Stripe Checkout session completed" },
