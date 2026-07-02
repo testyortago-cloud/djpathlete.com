@@ -116,7 +116,7 @@ export function CampaignsTable({
                     type="button"
                     onClick={() => toggleExpanded(c.id)}
                     aria-expanded={expanded.has(c.id)}
-                    aria-label="Show ad groups"
+                    aria-label={`${expanded.has(c.id) ? "Hide" : "Show"} ad groups for ${c.name}`}
                     className="mt-1 shrink-0 text-muted-foreground hover:text-foreground transition-colors"
                   >
                     {expanded.has(c.id) ? (
