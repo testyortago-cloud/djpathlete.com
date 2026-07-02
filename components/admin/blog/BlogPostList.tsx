@@ -3,7 +3,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Plus, Search, Pencil, Trash2, Loader2 } from "lucide-react"
+import { Plus, Search, Pencil, Trash2, Send, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import type { BlogPost } from "@/types/database"
@@ -21,6 +21,8 @@ export function BlogPostList({ posts }: BlogPostListProps) {
   const [search, setSearch] = useState("")
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [confirmId, setConfirmId] = useState<string | null>(null)
+  const [publishingId, setPublishingId] = useState<string | null>(null)
+  const [confirmPublishId, setConfirmPublishId] = useState<string | null>(null)
 
   const filtered = posts.filter((p) => {
     if (tab === "Draft" && p.status !== "draft") return false
@@ -33,6 +35,21 @@ export function BlogPostList({ posts }: BlogPostListProps) {
     }
     return true
   })
+
+  async function handlePublish(id: string) {
+    setPublishingId(id)
+    try {
+      const res = await fetch(`/api/admin/blog/${id}/publish`, { method: "POST" })
+      if (!res.ok) throw new Error("Failed to publish")
+      toast.success("Post published")
+      router.refresh()
+    } catch {
+      toast.error("Failed to publish post")
+    } finally {
+      setPublishingId(null)
+      setConfirmPublishId(null)
+    }
+  }
 
   async function handleDelete(id: string) {
     setDeletingId(id)
@@ -156,6 +173,32 @@ export function BlogPostList({ posts }: BlogPostListProps) {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
+                        {post.status === "draft" &&
+                          (confirmPublishId === post.id ? (
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => handlePublish(post.id)}
+                                disabled={publishingId === post.id}
+                                className="px-2 py-1 rounded-md text-xs font-medium bg-success text-white hover:bg-success/90 transition-colors disabled:opacity-50"
+                              >
+                                {publishingId === post.id ? <Loader2 className="size-3 animate-spin" /> : "Publish"}
+                              </button>
+                              <button
+                                onClick={() => setConfirmPublishId(null)}
+                                className="px-2 py-1 rounded-md text-xs font-medium text-muted-foreground hover:bg-surface transition-colors"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setConfirmPublishId(post.id)}
+                              className="p-1.5 rounded-md text-muted-foreground hover:text-success hover:bg-success/10 transition-colors"
+                              title="Publish"
+                            >
+                              <Send className="size-4" />
+                            </button>
+                          ))}
                         <Link
                           href={`/admin/blog/${post.id}/edit`}
                           className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
