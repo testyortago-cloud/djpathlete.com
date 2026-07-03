@@ -54,8 +54,11 @@ import { ClientCheckinButton } from "@/components/admin/packs/ClientCheckinButto
 import { loadClientPacksView, summarizeClientPacks } from "@/lib/services/client-packs-view"
 import QRCode from "qrcode"
 import { signPersonalCheckinToken } from "@/lib/qr/checkin-token"
-import { clientPersonalCheckinEnabled } from "@/lib/packs/flags"
+import { clientPersonalCheckinEnabled, recurringSessionsEnabled } from "@/lib/packs/flags"
 import { PersonalCheckinLinkDialog } from "@/components/admin/packs/PersonalCheckinLinkDialog"
+import { listRecurringForClient } from "@/lib/db/recurring-sessions"
+import { StandingSlotsPanel } from "@/components/admin/schedule/StandingSlotsPanel"
+import type { RecurringSession } from "@/types/database"
 import { listFavoritesByClient } from "@/lib/db/exercise-favorites"
 import { getExercises } from "@/lib/db/exercises"
 import { ClientFavoriteExercisesPanel } from "@/components/admin/favorites/ClientFavoriteExercisesPanel"
@@ -640,6 +643,12 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
     }
   }
 
+  const showStandingSlots = await recurringSessionsEnabled()
+  let standingSlots: RecurringSession[] = []
+  if (showStandingSlots) {
+    standingSlots = await listRecurringForClient(id).catch(() => [])
+  }
+
   const exerciseOptions = allExercises.map((e) => ({ value: e.id, label: e.name }))
 
   // Build progress stats and shape data for the progress view
@@ -762,6 +771,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
 
       {/* Sections */}
       <div className="space-y-6">
+        {showStandingSlots && <StandingSlotsPanel clientUserId={id} slots={standingSlots} />}
         <ProfileSection profile={profile} />
         <QuestionnaireSection profile={profile} />
 

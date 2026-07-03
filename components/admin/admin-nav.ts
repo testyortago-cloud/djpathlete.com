@@ -34,6 +34,7 @@ import {
   UserSquare,
   GraduationCap,
   Ticket,
+  CalendarClock,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 
@@ -106,6 +107,7 @@ export function getAdminNav(opts: { contentStudioEnabled: boolean }): AdminNav {
         pinned: true,
         items: [
           { label: "Clients", href: "/admin/clients", icon: Users },
+          { label: "Schedule", href: "/admin/schedule", icon: CalendarClock },
           { label: "Programs", href: "/admin/programs", icon: ClipboardList },
           { label: "Exercises", href: "/admin/exercises", icon: Dumbbell },
           { label: "Form Reviews", href: "/admin/form-reviews", icon: Video },
