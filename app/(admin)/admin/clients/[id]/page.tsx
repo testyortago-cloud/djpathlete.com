@@ -52,6 +52,10 @@ import { EditAssignmentButton } from "@/components/admin/EditAssignmentButton"
 import { ClientPackagesPanel } from "@/components/admin/packs/ClientPackagesPanel"
 import { ClientCheckinButton } from "@/components/admin/packs/ClientCheckinButton"
 import { loadClientPacksView, summarizeClientPacks } from "@/lib/services/client-packs-view"
+import QRCode from "qrcode"
+import { signPersonalCheckinToken } from "@/lib/qr/checkin-token"
+import { clientPersonalCheckinEnabled } from "@/lib/packs/flags"
+import { PersonalCheckinLinkDialog } from "@/components/admin/packs/PersonalCheckinLinkDialog"
 import { listFavoritesByClient } from "@/lib/db/exercise-favorites"
 import { getExercises } from "@/lib/db/exercises"
 import { ClientFavoriteExercisesPanel } from "@/components/admin/favorites/ClientFavoriteExercisesPanel"
@@ -621,6 +625,21 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
 
   const packSummary = summarizeClientPacks(packs, new Date())
 
+  // Personal (stable) check-in link + QR for this client — no daily QR to print.
+  let personalCheckinUrl: string | null = null
+  let personalCheckinQr: string | null = null
+  if (await clientPersonalCheckinEnabled()) {
+    try {
+      const base = process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXTAUTH_URL ?? "https://www.darrenjpaul.com"
+      personalCheckinUrl = `${base}/checkin/me?token=${encodeURIComponent(signPersonalCheckinToken(id))}`
+      personalCheckinQr = await QRCode.toDataURL(personalCheckinUrl, { width: 320, margin: 1 })
+    } catch (err) {
+      console.error("Personal check-in QR generation failed:", err)
+      personalCheckinUrl = null
+      personalCheckinQr = null
+    }
+  }
+
   const exerciseOptions = allExercises.map((e) => ({ value: e.id, label: e.name }))
 
   // Build progress stats and shape data for the progress view
@@ -725,6 +744,13 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
       {/* Quick Actions */}
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <ClientCheckinButton clientUserId={id} hasActiveCredits={packSummary.hasActiveCredits} />
+        {personalCheckinQr && personalCheckinUrl && (
+          <PersonalCheckinLinkDialog
+            qrDataUrl={personalCheckinQr}
+            checkinUrl={personalCheckinUrl}
+            clientName={`${user.first_name ?? ""} ${user.last_name ?? ""}`.trim() || user.email}
+          />
+        )}
         <Link
           href={`/admin/clients/${id}/assessments`}
           className="inline-flex items-center gap-2 rounded-lg border border-border bg-white px-4 py-2.5 text-sm font-medium text-foreground hover:bg-surface/50 transition-colors"
