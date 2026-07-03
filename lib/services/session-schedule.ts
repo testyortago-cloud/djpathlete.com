@@ -3,7 +3,13 @@
 // Naive session_date + start_time are interpreted as UTC for the no-show
 // comparison — the buffer absorbs the resulting slack.
 import { listActiveRecurringSessions } from "@/lib/db/recurring-sessions"
-import { upsertScheduledSession, updateScheduledSession, getScheduledById } from "@/lib/db/scheduled-sessions"
+import {
+  upsertScheduledSession,
+  updateScheduledSession,
+  getScheduledById,
+  findScheduledForClientOnDate,
+} from "@/lib/db/scheduled-sessions"
+import { recurringSessionsEnabled } from "@/lib/packs/flags"
 
 const DAY_MS = 86_400_000
 
@@ -130,4 +136,25 @@ export async function addAdhocSession(input: {
     notes: input.notes ?? null,
     created_by: input.created_by,
   })
+}
+
+/**
+ * Best-effort bridge: after a client checks in (any method), mark today's
+ * scheduled session attended and link the check-in. Flag-gated and fully
+ * swallowed — a scheduling failure must never affect the check-in itself.
+ */
+export async function bridgeCheckinToSchedule(
+  clientUserId: string,
+  checkinId: string | null,
+  now: Date,
+): Promise<void> {
+  try {
+    if (!(await recurringSessionsEnabled())) return
+    const date = now.toISOString().slice(0, 10)
+    const session = await findScheduledForClientOnDate(clientUserId, date)
+    if (!session) return
+    await markAttended(session.id, { by: null, checkinId })
+  } catch (err) {
+    console.error("[bridgeCheckinToSchedule] failed:", err)
+  }
 }

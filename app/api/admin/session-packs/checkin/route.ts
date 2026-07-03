@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 import { auth } from "@/lib/auth"
 import { checkInClient } from "@/lib/services/session-credits"
+import { bridgeCheckinToSchedule } from "@/lib/services/session-schedule"
 import { recordAudit } from "@/lib/audit/record"
 
 const bodySchema = z.object({ clientUserId: z.string().uuid() })
@@ -39,6 +40,11 @@ export async function POST(request: Request) {
         metadata: { client_user_id: parsed.data.clientUserId, method: "coach_tap", remaining: result.remaining },
         request,
       })
+    }
+
+    // Best-effort: also mark today's scheduled session attended (flag-gated).
+    if (result.ok) {
+      void bridgeCheckinToSchedule(parsed.data.clientUserId, result.checkin?.id ?? null, new Date())
     }
 
     return NextResponse.json(result)
