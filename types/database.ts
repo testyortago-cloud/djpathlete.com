@@ -2725,3 +2725,74 @@ export interface ScheduledSession {
   created_at: string
   updated_at: string
 }
+
+// ─── Card-on-file (00176) ────────────────────────────────────────────────────
+
+export interface UserPaymentMethod {
+  id: string
+  user_id: string
+  stripe_payment_method_id: string
+  brand: string | null
+  last4: string | null
+  exp_month: number | null
+  exp_year: number | null
+  is_default: boolean
+  created_at: string
+}
+
+// ─── Session memberships (00177) ─────────────────────────────────────────────
+
+export type MembershipBillingInterval = "week" | "month"
+export type ClientMembershipStatus =
+  | "active"
+  | "past_due"
+  | "canceled"
+  | "unpaid"
+  | "incomplete"
+  | "trialing"
+  | "paused"
+
+export interface MembershipPlan {
+  id: string
+  name: string
+  price_cents: number
+  billing_interval: MembershipBillingInterval
+  sessions_per_period: number | null
+  stripe_price_id: string | null
+  is_active: boolean
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
+export interface ClientMembership {
+  id: string
+  user_id: string
+  plan_id: string | null
+  stripe_subscription_id: string
+  stripe_customer_id: string | null
+  status: ClientMembershipStatus
+  current_period_start: string | null
+  current_period_end: string | null
+  cancel_at_period_end: boolean
+  canceled_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+// ─── Session fee charges (00178) ─────────────────────────────────────────────
+
+export type SessionFeeKind = "no_show" | "late_cancel"
+export type SessionFeeStatus = "pending" | "succeeded" | "failed" | "waived"
+
+export interface SessionFeeCharge {
+  id: string
+  scheduled_session_id: string
+  user_id: string
+  kind: SessionFeeKind
+  amount_cents: number
+  status: SessionFeeStatus
+  stripe_payment_intent_id: string | null
+  failure_reason: string | null
+  created_at: string
+}
