@@ -24,7 +24,7 @@ create table if not exists public.client_memberships (
   stripe_subscription_id text not null unique,
   stripe_customer_id text,
   status text not null default 'incomplete'
-    check (status in ('active','past_due','canceled','unpaid','incomplete','trialing','paused')),
+    check (status in ('active','past_due','canceled','unpaid','incomplete','incomplete_expired','trialing','paused')),
   current_period_start timestamptz,
   current_period_end timestamptz,
   cancel_at_period_end boolean not null default false,

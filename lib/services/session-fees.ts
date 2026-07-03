@@ -100,10 +100,18 @@ export async function chargeLateCancelFee(session: ScheduledSession, now: Date):
   return attemptFee(session, "late_cancel", await lateCancelFeeCents())
 }
 
-/** Re-attempt a previously failed fee charge (admin action). */
+/**
+ * Re-attempt a fee charge (admin action). Only retries a `failed` charge — never
+ * a `pending` one, whose Stripe outcome is unknown (a network error may have
+ * charged the card). Reuses the SESSION-STABLE idempotency key so a retry inside
+ * Stripe's idempotency window returns the original PaymentIntent instead of
+ * double-charging; the trade-off is that a same-window retry after a genuine
+ * decline replays the decline (waive + re-trigger for a truly new attempt).
+ */
 export async function retryFeeCharge(chargeId: string): Promise<FeeOutcome> {
+  if (!(await sessionFeesEnabled())) return { charged: false, reason: "disabled" }
   const charge = await getFeeChargeById(chargeId)
-  if (!charge || charge.status === "succeeded") return { charged: charge?.status === "succeeded", reason: "noop" }
+  if (!charge || charge.status !== "failed") return { charged: false, reason: "not_retryable" }
   const [user, card] = await Promise.all([
     getUserById(charge.user_id).catch(() => null),
     getDefaultPaymentMethod(charge.user_id).catch(() => null),
@@ -117,7 +125,7 @@ export async function retryFeeCharge(chargeId: string): Promise<FeeOutcome> {
     paymentMethodId: card.stripe_payment_method_id,
     amountCents: charge.amount_cents,
     description: `${charge.kind === "no_show" ? "No-show" : "Late-cancellation"} fee (retry)`,
-    idempotencyKey: `fee_retry_${charge.id}`,
+    idempotencyKey: `fee_${charge.scheduled_session_id}_${charge.kind}`,
   })
   if (result.ok) {
     await updateFeeCharge(charge.id, {

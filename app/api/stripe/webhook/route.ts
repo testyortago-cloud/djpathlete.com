@@ -7,6 +7,17 @@ import {
   getMembershipBySubscriptionId,
   updateMembershipBySubscriptionId,
 } from "@/lib/db/client-memberships"
+import { sessionMembershipsEnabled } from "@/lib/packs/flags"
+
+/**
+ * Membership lookup that is a no-op when the feature is off. Keeps the four
+ * subscription webhook handlers from touching `client_memberships` (which may
+ * not exist until the migration is applied) for existing PROGRAM subscriptions.
+ */
+async function membershipForSub(subscriptionId: string) {
+  if (!(await sessionMembershipsEnabled())) return null
+  return getMembershipBySubscriptionId(subscriptionId)
+}
 import { createPayment, getPaymentByStripeId, updatePayment } from "@/lib/db/payments"
 import { findAttributionByEmail } from "@/lib/db/marketing-attribution"
 import { createAssignment, getAssignmentByUserAndProgram, updateAssignment } from "@/lib/db/assignments"
@@ -410,6 +421,7 @@ async function handleWeekAccessCheckout(session: Stripe.Checkout.Session) {
 // ─── Session membership checkout (auto-withdrawal) ───────────────────────────
 
 async function handleMembershipCheckout(session: Stripe.Checkout.Session) {
+  if (!(await sessionMembershipsEnabled())) return
   const userId = session.metadata?.userId
   const planId = session.metadata?.planId ?? null
   const stripeSubscriptionId = session.subscription as string
@@ -597,7 +609,7 @@ async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
   if (invoice.billing_reason === "subscription_create") return
 
   // Session membership renewal — roll the period + reactivate, then done.
-  const membershipSucceeded = await getMembershipBySubscriptionId(subscriptionId)
+  const membershipSucceeded = await membershipForSub(subscriptionId)
   if (membershipSucceeded) {
     await updateMembershipBySubscriptionId(subscriptionId, {
       status: "active",
@@ -661,7 +673,7 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
   if (!subscriptionId) return
 
   // Session membership payment failed → past_due (grace, no revoke).
-  const membershipFailed = await getMembershipBySubscriptionId(subscriptionId)
+  const membershipFailed = await membershipForSub(subscriptionId)
   if (membershipFailed) {
     await updateMembershipBySubscriptionId(subscriptionId, { status: "past_due" })
     return
@@ -683,7 +695,7 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
 
 async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
   // Session membership status/period sync (before program-subscription logic).
-  const membershipUpd = await getMembershipBySubscriptionId(subscription.id)
+  const membershipUpd = await membershipForSub(subscription.id)
   if (membershipUpd) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sa = subscription as any
@@ -733,7 +745,7 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
 
 async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
   // Session membership fully cancelled.
-  const membershipDel = await getMembershipBySubscriptionId(subscription.id)
+  const membershipDel = await membershipForSub(subscription.id)
   if (membershipDel) {
     await updateMembershipBySubscriptionId(subscription.id, {
       status: "canceled",

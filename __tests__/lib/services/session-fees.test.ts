@@ -9,6 +9,7 @@ const getCardMock = vi.fn()
 const chargeMock = vi.fn()
 const createChargeMock = vi.fn()
 const updateChargeMock = vi.fn()
+const getChargeByIdMock = vi.fn()
 
 vi.mock("@/lib/packs/flags", () => ({
   sessionFeesEnabled: () => feesEnabledMock(),
@@ -22,11 +23,12 @@ vi.mock("@/lib/stripe", () => ({ chargeSavedCard: (...a: unknown[]) => chargeMoc
 vi.mock("@/lib/db/session-fee-charges", () => ({
   createFeeChargeIfAbsent: (...a: unknown[]) => createChargeMock(...a),
   updateFeeCharge: (...a: unknown[]) => updateChargeMock(...a),
+  getFeeChargeById: (...a: unknown[]) => getChargeByIdMock(...a),
 }))
 vi.mock("@/lib/db/payments", () => ({ createPayment: vi.fn(async () => ({ id: "pay-1" })) }))
 vi.mock("@/lib/audit/record", () => ({ recordAudit: vi.fn() }))
 
-import { chargeNoShowFee, chargeLateCancelFee } from "@/lib/services/session-fees"
+import { chargeNoShowFee, chargeLateCancelFee, retryFeeCharge } from "@/lib/services/session-fees"
 
 const session = {
   id: "occ-1",
@@ -89,6 +91,31 @@ describe("chargeNoShowFee", () => {
     createChargeMock.mockResolvedValue(null)
     await chargeNoShowFee(session)
     expect(chargeMock).not.toHaveBeenCalled()
+  })
+})
+
+describe("retryFeeCharge", () => {
+  const failedCharge = { id: "fee-1", user_id: "c1", scheduled_session_id: "occ-1", kind: "no_show", amount_cents: 2000, status: "failed" }
+
+  it("no-ops when fees are disabled (kill switch)", async () => {
+    feesEnabledMock.mockResolvedValue(false)
+    const r = await retryFeeCharge("fee-1")
+    expect(r.reason).toBe("disabled")
+    expect(getChargeByIdMock).not.toHaveBeenCalled()
+    expect(chargeMock).not.toHaveBeenCalled()
+  })
+
+  it("refuses to retry a pending charge (unknown outcome)", async () => {
+    getChargeByIdMock.mockResolvedValue({ ...failedCharge, status: "pending" })
+    const r = await retryFeeCharge("fee-1")
+    expect(r.reason).toBe("not_retryable")
+    expect(chargeMock).not.toHaveBeenCalled()
+  })
+
+  it("retries a failed charge with the SESSION-STABLE idempotency key", async () => {
+    getChargeByIdMock.mockResolvedValue(failedCharge)
+    await retryFeeCharge("fee-1")
+    expect(chargeMock).toHaveBeenCalledWith(expect.objectContaining({ idempotencyKey: "fee_occ-1_no_show" }))
   })
 })
 

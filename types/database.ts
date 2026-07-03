@@ -2749,6 +2749,7 @@ export type ClientMembershipStatus =
   | "canceled"
   | "unpaid"
   | "incomplete"
+  | "incomplete_expired"
   | "trialing"
   | "paused"
 

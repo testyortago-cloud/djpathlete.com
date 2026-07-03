@@ -104,7 +104,10 @@ export async function cancelSession(id: string, opts: { by: string | null; reaso
     cancelled_at: now.toISOString(),
     cancel_reason: opts.reason,
   })
-  if (existing) {
+  // Only a still-upcoming (scheduled) session can incur a late-cancel fee —
+  // never an already-attended or no-show one (those are in the past, so the
+  // window check would always "match" and could stack a second fee).
+  if (existing && existing.status === "scheduled") {
     try {
       await chargeLateCancelFee(existing, now)
     } catch (err) {

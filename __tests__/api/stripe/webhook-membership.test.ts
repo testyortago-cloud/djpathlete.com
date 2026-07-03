@@ -16,6 +16,7 @@ vi.mock("@/lib/db/client-memberships", () => ({
   getMembershipBySubscriptionId: (...a: unknown[]) => getMembershipMock(...a),
   updateMembershipBySubscriptionId: (...a: unknown[]) => updateMembershipMock(...a),
 }))
+vi.mock("@/lib/packs/flags", () => ({ sessionMembershipsEnabled: vi.fn(async () => true) }))
 vi.mock("@/lib/db/payment-methods", () => ({ upsertDefaultPaymentMethod: vi.fn() }))
 vi.mock("@/lib/db/client-packages", () => ({ getPackageByStripeSession: vi.fn(), getPackageByStripePaymentId: vi.fn(), updateClientPackage: vi.fn() }))
 vi.mock("@/lib/services/session-credits", () => ({ activatePaidPackage: vi.fn() }))
