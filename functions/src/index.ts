@@ -1632,6 +1632,37 @@ export const packRenewalScanCron = onSchedule(
   },
 )
 
+// ─── Session No-Show Scan Cron (hourly) ──────────────────────────────────────
+export const sessionNoShowScanCron = onSchedule(
+  {
+    schedule: "0 * * * *",
+    timeZone: "UTC",
+    timeoutSeconds: 300,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [internalCronToken, appUrl],
+  },
+  async () => {
+    const baseUrl = process.env.APP_URL
+    const token = process.env.INTERNAL_CRON_TOKEN
+    if (!baseUrl || !token) {
+      console.error("[sessionNoShowScanCron] APP_URL or INTERNAL_CRON_TOKEN missing — abort")
+      return
+    }
+    try {
+      const res = await fetch(`${baseUrl}/api/admin/internal/session-no-show`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: "{}",
+      })
+      const body = await res.json().catch(() => ({}))
+      console.log("[sessionNoShowScanCron]", res.status, body)
+    } catch (err) {
+      console.error("[sessionNoShowScanCron] failed:", err)
+    }
+  },
+)
+
 // ─── Social Outcome Tracker Cron (daily 04:45 UTC) ───────────────────────────
 export const socialOutcomeTrackerCron = onSchedule(
   {
