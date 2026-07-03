@@ -25,3 +25,23 @@ export const clientPackBalanceEnabled = () => getSetting<boolean>(CLIENT_PACK_BA
 export const clientSelfCheckinEnabled = () => getSetting<boolean>(CLIENT_SELF_CHECKIN_KEY, false)
 export const clientSelfPurchaseEnabled = () => getSetting<boolean>(CLIENT_SELF_PURCHASE_KEY, false)
 export const clientPersonalCheckinEnabled = () => getSetting<boolean>(CLIENT_PERSONAL_CHECKIN_KEY, false)
+
+// ── Recurring in-person sessions + billing (all DB-backed, default OFF) ────────
+export const RECURRING_SESSIONS_KEY = "recurring_sessions_enabled"
+export const CARD_ON_FILE_KEY = "card_on_file_enabled"
+export const SESSION_MEMBERSHIPS_KEY = "session_memberships_enabled"
+export const SESSION_FEES_KEY = "session_fees_enabled"
+
+export const recurringSessionsEnabled = () => getSetting<boolean>(RECURRING_SESSIONS_KEY, false)
+export const cardOnFileEnabled = () => getSetting<boolean>(CARD_ON_FILE_KEY, false)
+export const sessionMembershipsEnabled = () => getSetting<boolean>(SESSION_MEMBERSHIPS_KEY, false)
+export const sessionFeesEnabled = () => getSetting<boolean>(SESSION_FEES_KEY, false)
+
+// Fee policy — admin-configurable, all default to a no-op (0 / a safe window).
+export const NO_SHOW_FEE_CENTS_KEY = "no_show_fee_cents"
+export const LATE_CANCEL_FEE_CENTS_KEY = "late_cancel_fee_cents"
+export const CANCEL_WINDOW_HOURS_KEY = "cancel_window_hours"
+
+export const noShowFeeCents = () => getSetting<number>(NO_SHOW_FEE_CENTS_KEY, 0)
+export const lateCancelFeeCents = () => getSetting<number>(LATE_CANCEL_FEE_CENTS_KEY, 0)
+export const cancelWindowHours = () => getSetting<number>(CANCEL_WINDOW_HOURS_KEY, 12)
