@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import type Stripe from "stripe"
-import { verifyWebhookSignature, resolveSessionPaymentIntent, stripe } from "@/lib/stripe"
+import { verifyWebhookSignature, resolveSessionPaymentIntent, retrieveSetupCard, stripe } from "@/lib/stripe"
+import { upsertDefaultPaymentMethod } from "@/lib/db/payment-methods"
 import { createPayment, getPaymentByStripeId, updatePayment } from "@/lib/db/payments"
 import { findAttributionByEmail } from "@/lib/db/marketing-attribution"
 import { createAssignment, getAssignmentByUserAndProgram, updateAssignment } from "@/lib/db/assignments"
@@ -90,6 +91,11 @@ export async function POST(request: Request) {
 
         if (session.metadata?.type === "event_signup") {
           await handleEventSignupCheckout(session)
+          break
+        }
+
+        if (session.metadata?.type === "save_card") {
+          await handleSaveCardCheckout(session)
           break
         }
 
@@ -713,6 +719,24 @@ async function syncAndNotify(session: Stripe.Checkout.Session, programId: string
   } catch {
     // Coach notification failure should not affect payment processing
   }
+}
+
+// ─── Card-on-file: store the saved card from a setup Checkout ────────────────
+
+async function handleSaveCardCheckout(session: Stripe.Checkout.Session) {
+  const userId = session.metadata?.userId
+  if (!userId) return
+  const card = await retrieveSetupCard(session)
+  if (!card) return
+  await upsertDefaultPaymentMethod({
+    user_id: userId,
+    stripe_payment_method_id: card.paymentMethodId,
+    brand: card.brand,
+    last4: card.last4,
+    exp_month: card.expMonth,
+    exp_year: card.expYear,
+    is_default: true,
+  })
 }
 
 // ─── Session pack checkout ───────────────────────────────────────────────────

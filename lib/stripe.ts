@@ -445,3 +445,79 @@ export async function createPackCheckoutSession(opts: {
     cancel_url: cancelUrl,
   })
 }
+
+// ─── Card-on-file: save a card via hosted setup-mode Checkout ────────────────
+
+/** Hosted setup Checkout to collect + save a card for later off-session charges. */
+export async function createSetupCheckoutSession(opts: {
+  customerId: string
+  userId: string
+  returnUrl?: string
+  cancelUrl?: string
+}): Promise<Stripe.Checkout.Session> {
+  const baseUrl = getBaseUrl()
+  return stripe.checkout.sessions.create({
+    mode: "setup",
+    customer: opts.customerId,
+    metadata: { type: "save_card", userId: opts.userId },
+    success_url: `${baseUrl}${opts.returnUrl ?? `/admin/clients/${opts.userId}`}?card=saved`,
+    cancel_url: `${baseUrl}${opts.cancelUrl ?? `/admin/clients/${opts.userId}`}?card=cancelled`,
+  })
+}
+
+/** Resolve the saved card (payment-method id + display bits) from a completed setup session. */
+export async function retrieveSetupCard(session: Stripe.Checkout.Session): Promise<{
+  paymentMethodId: string
+  brand: string | null
+  last4: string | null
+  expMonth: number | null
+  expYear: number | null
+} | null> {
+  const setupIntentId = typeof session.setup_intent === "string" ? session.setup_intent : session.setup_intent?.id
+  if (!setupIntentId) return null
+  const si = await stripe.setupIntents.retrieve(setupIntentId)
+  const pmId = typeof si.payment_method === "string" ? si.payment_method : si.payment_method?.id
+  if (!pmId) return null
+  const pm = await stripe.paymentMethods.retrieve(pmId)
+  return {
+    paymentMethodId: pmId,
+    brand: pm.card?.brand ?? null,
+    last4: pm.card?.last4 ?? null,
+    expMonth: pm.card?.exp_month ?? null,
+    expYear: pm.card?.exp_year ?? null,
+  }
+}
+
+/**
+ * Charge a saved card OFF-SESSION for an ad-hoc amount (no-show / late-cancel
+ * fees). Real money — only ever called from the fee service, guarded by flag +
+ * configured amount + a saved default card. Returns a typed failure instead of
+ * throwing on a decline.
+ */
+export async function chargeSavedCard(opts: {
+  customerId: string
+  paymentMethodId: string
+  amountCents: number
+  description: string
+  idempotencyKey: string
+}): Promise<{ ok: true; paymentIntentId: string } | { ok: false; reason: "declined" | "error"; message: string }> {
+  try {
+    const pi = await stripe.paymentIntents.create(
+      {
+        amount: opts.amountCents,
+        currency: "usd",
+        customer: opts.customerId,
+        payment_method: opts.paymentMethodId,
+        off_session: true,
+        confirm: true,
+        description: opts.description,
+      },
+      { idempotencyKey: opts.idempotencyKey },
+    )
+    return { ok: true, paymentIntentId: pi.id }
+  } catch (err) {
+    const e = err as { type?: string; code?: string; message?: string }
+    const declined = e.type === "StripeCardError" || e.code === "card_declined"
+    return { ok: false, reason: declined ? "declined" : "error", message: e.message ?? "charge failed" }
+  }
+}
