@@ -10,6 +10,7 @@ vi.mock("@/lib/services/session-schedule", async () => {
   const actual = await vi.importActual<typeof import("@/lib/services/session-schedule")>("@/lib/services/session-schedule")
   return { scanNoShows: actual.scanNoShows, markNoShow: (...a: unknown[]) => markNoShowMock(...a) }
 })
+vi.mock("@/lib/services/session-fees", () => ({ chargeNoShowFee: vi.fn() }))
 
 import { POST } from "@/app/api/admin/internal/session-no-show/route"
 

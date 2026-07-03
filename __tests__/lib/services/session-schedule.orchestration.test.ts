@@ -13,6 +13,8 @@ vi.mock("@/lib/db/scheduled-sessions", () => ({
   updateScheduledSession: (...a: unknown[]) => updateMock(...a),
   getScheduledById: (...a: unknown[]) => getByIdMock(...a),
 }))
+vi.mock("@/lib/services/session-fees", () => ({ chargeLateCancelFee: vi.fn(), chargeNoShowFee: vi.fn() }))
+vi.mock("@/lib/packs/flags", () => ({ recurringSessionsEnabled: vi.fn(async () => true) }))
 
 import {
   ensureUpcomingSessions,

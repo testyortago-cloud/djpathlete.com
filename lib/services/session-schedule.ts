@@ -10,6 +10,7 @@ import {
   findScheduledForClientOnDate,
 } from "@/lib/db/scheduled-sessions"
 import { recurringSessionsEnabled } from "@/lib/packs/flags"
+import { chargeLateCancelFee } from "@/lib/services/session-fees"
 
 const DAY_MS = 86_400_000
 
@@ -93,16 +94,23 @@ export async function markNoShow(id: string, _by: string | null) {
   return updateScheduledSession(id, { status: "no_show" })
 }
 
-/** Cancel an occurrence. `now` is accepted for the late-cancel fee window (phase D). */
+/** Cancel an occurrence, then attempt a late-cancel fee (best-effort; the fee
+ *  service is fully guarded by flag + configured amount + saved card + window). */
 export async function cancelSession(id: string, opts: { by: string | null; reason: string | null; now?: Date }) {
+  const now = opts.now ?? new Date()
   const existing = await getScheduledById(id)
   const updated = await updateScheduledSession(id, {
     status: "cancelled",
-    cancelled_at: (opts.now ?? new Date()).toISOString(),
+    cancelled_at: now.toISOString(),
     cancel_reason: opts.reason,
   })
-  // Phase D wires the late-cancel fee here (guarded by flag + config + saved card).
-  void existing
+  if (existing) {
+    try {
+      await chargeLateCancelFee(existing, now)
+    } catch (err) {
+      console.error("[cancelSession] late-cancel fee failed:", err)
+    }
+  }
   return updated
 }
 

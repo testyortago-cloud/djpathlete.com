@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { isCronSkipped } from "@/lib/db/system-settings"
 import { listScheduledPending } from "@/lib/db/scheduled-sessions"
 import { scanNoShows, markNoShow } from "@/lib/services/session-schedule"
+import { chargeNoShowFee } from "@/lib/services/session-fees"
 
 export const runtime = "nodejs"
 export const maxDuration = 300
@@ -28,6 +29,7 @@ export async function POST(request: NextRequest) {
   const now = new Date()
   const toDate = now.toISOString().slice(0, 10)
   const pending = await listScheduledPending(toDate)
+  const byId = new Map(pending.map((s) => [s.id, s]))
   const ids = scanNoShows(pending, now, BUFFER_MINUTES)
 
   let marked = 0
@@ -36,6 +38,9 @@ export async function POST(request: NextRequest) {
     try {
       await markNoShow(id, null)
       marked += 1
+      // Best-effort no-show fee (fully guarded: flag + amount + saved card).
+      const s = byId.get(id)
+      if (s) await chargeNoShowFee(s)
     } catch (err) {
       errors += 1
       console.error(`[session-no-show] failed for ${id}:`, err)
