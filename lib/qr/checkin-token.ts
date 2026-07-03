@@ -34,3 +34,36 @@ export function verifyCheckinToken(token: string, now: Date, maxAgeDays = 1): Ve
   if (ageDays < 0 || ageDays > maxAgeDays) return { valid: false }
   return { valid: true, coachId }
 }
+
+// ─── Personal (stable, per-client) check-in token ───────────────────────────
+//
+// Unlike the coach QR (which rotates daily and lists everyone), a personal
+// token encodes ONE client id and never expires, so a regular can bookmark
+// their own "Check in, <name>" link and use it every session — no daily QR to
+// print, no roster. The `pc.` prefix keeps it from cross-validating with a
+// coach token even though the HMAC construction is identical.
+
+/** token = base64url("pc.<clientUserId>").hmac — a client's permanent check-in link. */
+export function signPersonalCheckinToken(clientUserId: string): string {
+  const b64 = Buffer.from(`pc.${clientUserId}`).toString("base64url")
+  const sig = createHmac("sha256", secret()).update(b64).digest("base64url")
+  return `${b64}.${sig}`
+}
+
+export type PersonalVerifyResult = { valid: true; clientUserId: string } | { valid: false }
+
+/** Verifies signature + the `pc.` marker. No expiry (stable link). */
+export function verifyPersonalCheckinToken(token: string): PersonalVerifyResult {
+  const parts = token.split(".")
+  if (parts.length !== 2) return { valid: false }
+  const [b64, sig] = parts
+  const expected = createHmac("sha256", secret()).update(b64).digest("base64url")
+  const a = Buffer.from(sig)
+  const b = Buffer.from(expected)
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return { valid: false }
+  const segs = Buffer.from(b64, "base64url").toString().split(".")
+  if (segs[0] !== "pc" || segs.length < 2) return { valid: false }
+  const clientUserId = segs.slice(1).join(".")
+  if (!clientUserId) return { valid: false }
+  return { valid: true, clientUserId }
+}

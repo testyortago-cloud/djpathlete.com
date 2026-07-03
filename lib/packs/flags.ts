@@ -18,7 +18,10 @@ export const packReminderExpiryDays = () => getSetting<number>(PACK_REMINDER_EXP
 export const CLIENT_PACK_BALANCE_KEY = "client_pack_balance_enabled"
 export const CLIENT_SELF_CHECKIN_KEY = "client_self_checkin_enabled"
 export const CLIENT_SELF_PURCHASE_KEY = "client_self_purchase_enabled"
+// Stable per-client "personal" check-in link (no daily QR, no roster, no login).
+export const CLIENT_PERSONAL_CHECKIN_KEY = "client_personal_checkin_enabled"
 
 export const clientPackBalanceEnabled = () => getSetting<boolean>(CLIENT_PACK_BALANCE_KEY, false)
 export const clientSelfCheckinEnabled = () => getSetting<boolean>(CLIENT_SELF_CHECKIN_KEY, false)
 export const clientSelfPurchaseEnabled = () => getSetting<boolean>(CLIENT_SELF_PURCHASE_KEY, false)
+export const clientPersonalCheckinEnabled = () => getSetting<boolean>(CLIENT_PERSONAL_CHECKIN_KEY, false)
