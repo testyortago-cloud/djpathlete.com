@@ -36,6 +36,7 @@ import {
   Ticket,
   CalendarClock,
   Repeat,
+  Ban,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 
@@ -150,6 +151,7 @@ export function getAdminNav(opts: { contentStudioEnabled: boolean }): AdminNav {
           { label: "Payments", href: "/admin/payments", icon: CreditCard },
           { label: "Session Packs", href: "/admin/session-packs/products", icon: Ticket },
           { label: "Memberships", href: "/admin/memberships/plans", icon: Repeat },
+          { label: "Session Fees", href: "/admin/sessions/fees", icon: Ban },
           { label: "Analytics", href: "/admin/analytics", icon: BarChart3 },
           { label: "Audit Logs", href: "/admin/audit-logs", icon: Activity },
           { label: "Reviews", href: "/admin/reviews", icon: Star },

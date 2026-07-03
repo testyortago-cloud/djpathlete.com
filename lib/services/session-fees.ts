@@ -7,7 +7,7 @@ import { sessionFeesEnabled, noShowFeeCents, lateCancelFeeCents, cancelWindowHou
 import { getUserById } from "@/lib/db/users"
 import { getDefaultPaymentMethod } from "@/lib/db/payment-methods"
 import { chargeSavedCard } from "@/lib/stripe"
-import { createFeeChargeIfAbsent, updateFeeCharge } from "@/lib/db/session-fee-charges"
+import { createFeeChargeIfAbsent, updateFeeCharge, getFeeChargeById } from "@/lib/db/session-fee-charges"
 import { createPayment } from "@/lib/db/payments"
 import { recordAudit } from "@/lib/audit/record"
 
@@ -98,4 +98,35 @@ export async function chargeLateCancelFee(session: ScheduledSession, now: Date):
   const hoursUntil = (start - now.getTime()) / 3_600_000
   if (hoursUntil > windowHours) return { charged: false, reason: "outside_window" } // cancelled early enough
   return attemptFee(session, "late_cancel", await lateCancelFeeCents())
+}
+
+/** Re-attempt a previously failed fee charge (admin action). */
+export async function retryFeeCharge(chargeId: string): Promise<FeeOutcome> {
+  const charge = await getFeeChargeById(chargeId)
+  if (!charge || charge.status === "succeeded") return { charged: charge?.status === "succeeded", reason: "noop" }
+  const [user, card] = await Promise.all([
+    getUserById(charge.user_id).catch(() => null),
+    getDefaultPaymentMethod(charge.user_id).catch(() => null),
+  ])
+  if (!user?.stripe_customer_id || !card) {
+    await updateFeeCharge(charge.id, { status: "waived", failure_reason: "no_card" })
+    return { charged: false, reason: "no_card" }
+  }
+  const result = await chargeSavedCard({
+    customerId: user.stripe_customer_id,
+    paymentMethodId: card.stripe_payment_method_id,
+    amountCents: charge.amount_cents,
+    description: `${charge.kind === "no_show" ? "No-show" : "Late-cancellation"} fee (retry)`,
+    idempotencyKey: `fee_retry_${charge.id}`,
+  })
+  if (result.ok) {
+    await updateFeeCharge(charge.id, {
+      status: "succeeded",
+      stripe_payment_intent_id: result.paymentIntentId,
+      failure_reason: null,
+    })
+    return { charged: true }
+  }
+  await updateFeeCharge(charge.id, { status: "failed", failure_reason: result.message })
+  return { charged: false, reason: result.reason }
 }
