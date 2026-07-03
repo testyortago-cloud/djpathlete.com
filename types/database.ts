@@ -2688,3 +2688,40 @@ export interface SessionCheckin {
   notes: string | null
   created_at: string
 }
+
+// ─── Recurring in-person sessions (00175) ────────────────────────────────────
+
+export type RecurringSessionStatus = "active" | "paused"
+export type ScheduledSessionStatus = "scheduled" | "attended" | "no_show" | "cancelled"
+
+export interface RecurringSession {
+  id: string
+  client_user_id: string
+  day_of_week: number // 0=Sun..6=Sat
+  start_time: string // "HH:MM:SS"
+  duration_minutes: number
+  location: string | null
+  notes: string | null
+  status: RecurringSessionStatus
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ScheduledSession {
+  id: string
+  client_user_id: string
+  recurring_session_id: string | null
+  session_date: string // "YYYY-MM-DD"
+  start_time: string // "HH:MM:SS"
+  duration_minutes: number
+  status: ScheduledSessionStatus
+  attended_at: string | null
+  checkin_id: string | null
+  cancelled_at: string | null
+  cancel_reason: string | null
+  notes: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
