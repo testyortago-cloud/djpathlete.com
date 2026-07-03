@@ -2,6 +2,11 @@ import { NextResponse } from "next/server"
 import type Stripe from "stripe"
 import { verifyWebhookSignature, resolveSessionPaymentIntent, retrieveSetupCard, stripe } from "@/lib/stripe"
 import { upsertDefaultPaymentMethod } from "@/lib/db/payment-methods"
+import {
+  createClientMembership,
+  getMembershipBySubscriptionId,
+  updateMembershipBySubscriptionId,
+} from "@/lib/db/client-memberships"
 import { createPayment, getPaymentByStripeId, updatePayment } from "@/lib/db/payments"
 import { findAttributionByEmail } from "@/lib/db/marketing-attribution"
 import { createAssignment, getAssignmentByUserAndProgram, updateAssignment } from "@/lib/db/assignments"
@@ -109,6 +114,11 @@ export async function POST(request: Request) {
         if (session.metadata?.type === "week_access") {
           await handleWeekAccessCheckout(session)
           await tryEnqueueAdsValueAdjustment(session)
+          break
+        }
+
+        if (session.metadata?.type === "session_membership") {
+          await handleMembershipCheckout(session)
           break
         }
 
@@ -397,6 +407,37 @@ async function handleWeekAccessCheckout(session: Stripe.Checkout.Session) {
   })
 }
 
+// ─── Session membership checkout (auto-withdrawal) ───────────────────────────
+
+async function handleMembershipCheckout(session: Stripe.Checkout.Session) {
+  const userId = session.metadata?.userId
+  const planId = session.metadata?.planId ?? null
+  const stripeSubscriptionId = session.subscription as string
+  if (!userId || !stripeSubscriptionId) return
+  if (await getMembershipBySubscriptionId(stripeSubscriptionId)) return // idempotent
+
+  await createClientMembership({
+    user_id: userId,
+    plan_id: planId,
+    stripe_subscription_id: stripeSubscriptionId,
+    stripe_customer_id: (session.customer as string) ?? null,
+    status: "active",
+    current_period_start: null,
+    current_period_end: null,
+    cancel_at_period_end: false,
+    canceled_at: null,
+  })
+
+  void recordAudit({
+    action: "membership.subscribed",
+    category: "commerce",
+    outcome: "success",
+    actor: { id: null, email: "stripe", role: "system" },
+    target: { type: "client_membership", id: stripeSubscriptionId },
+    metadata: { user_id: userId, plan_id: planId },
+  })
+}
+
 // ─── Subscription checkout ───────────────────────────────────────────────────
 
 async function handleSubscriptionCheckout(session: Stripe.Checkout.Session) {
@@ -555,6 +596,17 @@ async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
   // Skip the first invoice (handled by checkout.session.completed)
   if (invoice.billing_reason === "subscription_create") return
 
+  // Session membership renewal — roll the period + reactivate, then done.
+  const membershipSucceeded = await getMembershipBySubscriptionId(subscriptionId)
+  if (membershipSucceeded) {
+    await updateMembershipBySubscriptionId(subscriptionId, {
+      status: "active",
+      current_period_start: invoice.period_start ? new Date(invoice.period_start * 1000).toISOString() : null,
+      current_period_end: invoice.period_end ? new Date(invoice.period_end * 1000).toISOString() : null,
+    })
+    return
+  }
+
   const sub = await getSubscriptionByStripeId(subscriptionId)
   if (!sub) return
 
@@ -608,6 +660,13 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
     invoiceAny.parent?.subscription_details?.subscription ?? invoiceAny.subscription
   if (!subscriptionId) return
 
+  // Session membership payment failed → past_due (grace, no revoke).
+  const membershipFailed = await getMembershipBySubscriptionId(subscriptionId)
+  if (membershipFailed) {
+    await updateMembershipBySubscriptionId(subscriptionId, { status: "past_due" })
+    return
+  }
+
   const sub = await getSubscriptionByStripeId(subscriptionId)
   if (!sub) return
 
@@ -623,6 +682,23 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
 // ─── Subscription updated (status changes, cancellation scheduled) ───────────
 
 async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
+  // Session membership status/period sync (before program-subscription logic).
+  const membershipUpd = await getMembershipBySubscriptionId(subscription.id)
+  if (membershipUpd) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sa = subscription as any
+    const ps = sa.current_period_start ?? sa.items?.data?.[0]?.current_period_start
+    const pe = sa.current_period_end ?? sa.items?.data?.[0]?.current_period_end
+    await updateMembershipBySubscriptionId(subscription.id, {
+      status: subscription.status as never,
+      cancel_at_period_end: subscription.cancel_at_period_end,
+      canceled_at: subscription.canceled_at ? new Date(subscription.canceled_at * 1000).toISOString() : null,
+      current_period_start: ps ? new Date(ps * 1000).toISOString() : null,
+      current_period_end: pe ? new Date(pe * 1000).toISOString() : null,
+    })
+    return
+  }
+
   const sub = await getSubscriptionByStripeId(subscription.id)
   if (!sub) return
 
@@ -656,6 +732,24 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
 // ─── Subscription deleted (fully cancelled) ─────────────────────────────────
 
 async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
+  // Session membership fully cancelled.
+  const membershipDel = await getMembershipBySubscriptionId(subscription.id)
+  if (membershipDel) {
+    await updateMembershipBySubscriptionId(subscription.id, {
+      status: "canceled",
+      canceled_at: new Date().toISOString(),
+    })
+    void recordAudit({
+      action: "membership.canceled",
+      category: "commerce",
+      outcome: "success",
+      actor: { id: null, email: "stripe", role: "system" },
+      target: { type: "client_membership", id: subscription.id },
+      metadata: { user_id: membershipDel.user_id },
+    })
+    return
+  }
+
   const sub = await getSubscriptionByStripeId(subscription.id)
   if (!sub) return
 

@@ -521,3 +521,42 @@ export async function chargeSavedCard(opts: {
     return { ok: false, reason: declined ? "declined" : "error", message: e.message ?? "charge failed" }
   }
 }
+
+// ─── Session membership: recurring "auto-withdrawal" subscription ────────────
+
+/** Subscription-mode Checkout for an in-person membership plan. metadata.type =
+ *  "session_membership" (on both the session and the subscription) routes the
+ *  webhook to client_memberships. Uses a pre-made price when present, else an
+ *  inline recurring price. */
+export async function createMembershipCheckoutSession(opts: {
+  customerId: string
+  userId: string
+  plan: { id: string; name: string; price_cents: number; billing_interval: "week" | "month"; stripe_price_id?: string | null }
+  returnUrl?: string
+  cancelUrl?: string
+}): Promise<Stripe.Checkout.Session> {
+  const baseUrl = getBaseUrl()
+  const meta = { type: "session_membership", planId: opts.plan.id, userId: opts.userId }
+  const line_items: Stripe.Checkout.SessionCreateParams.LineItem[] = opts.plan.stripe_price_id
+    ? [{ price: opts.plan.stripe_price_id, quantity: 1 }]
+    : [
+        {
+          price_data: {
+            currency: "usd",
+            product_data: { name: opts.plan.name },
+            unit_amount: opts.plan.price_cents,
+            recurring: { interval: opts.plan.billing_interval },
+          },
+          quantity: 1,
+        },
+      ]
+  return stripe.checkout.sessions.create({
+    mode: "subscription",
+    customer: opts.customerId,
+    line_items,
+    metadata: meta,
+    subscription_data: { metadata: meta },
+    success_url: `${baseUrl}${opts.returnUrl ?? `/admin/clients/${opts.userId}`}?membership=active`,
+    cancel_url: `${baseUrl}${opts.cancelUrl ?? `/admin/clients/${opts.userId}`}?membership=cancelled`,
+  })
+}
