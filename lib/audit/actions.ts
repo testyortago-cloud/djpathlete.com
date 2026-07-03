@@ -214,6 +214,17 @@ export const AUDIT_ACTIONS = [
   { slug: "pack.checkin_voided", category: "client_action", description: "Check-in voided; credit restored" },
   { slug: "pack.refunded", category: "commerce", description: "Session pack refunded" },
   { slug: "pack.expired", category: "system", description: "Session pack expired" },
+  { slug: "session.slot_created", category: "admin_write", description: "Recurring session slot created" },
+  { slug: "session.slot_updated", category: "admin_write", description: "Recurring session slot updated" },
+  { slug: "session.attended", category: "client_action", description: "Scheduled session marked attended" },
+  { slug: "session.no_show", category: "client_action", description: "Scheduled session marked no-show" },
+  { slug: "session.cancelled", category: "client_action", description: "Scheduled session cancelled" },
+  { slug: "session.rescheduled", category: "admin_write", description: "Scheduled session rescheduled/reassigned" },
+  { slug: "session.fee_charged", category: "commerce", description: "No-show / late-cancel fee charged" },
+  { slug: "session.fee_failed", category: "commerce", description: "No-show / late-cancel fee charge failed" },
+  { slug: "membership.subscribed", category: "commerce", description: "Client subscribed to a session membership" },
+  { slug: "membership.canceled", category: "commerce", description: "Session membership canceled" },
+  { slug: "card.saved", category: "commerce", description: "Client card saved on file" },
 ] as const satisfies readonly AuditActionDef[]
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number]["slug"]
