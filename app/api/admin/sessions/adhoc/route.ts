@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     action: "session.slot_created",
     category: "admin_write",
     outcome: "success",
-    target: { type: "scheduled_session", id: created?.id ?? null },
+    target: { type: "scheduled_session", id: created?.id ?? "adhoc" },
     metadata: { adhoc: true, client_user_id: p.clientUserId, date: p.date },
     request,
   })
