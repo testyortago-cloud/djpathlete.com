@@ -20,6 +20,7 @@ export function ClientSessionsPanel({
   packs,
   showStandingSlots,
   standingSlots,
+  slotAssignments,
   showMemberships,
   membership,
   membershipPlans,
@@ -33,6 +34,8 @@ export function ClientSessionsPanel({
   packs: PackWithCheckins[]
   showStandingSlots: boolean
   standingSlots: RecurringSession[]
+  /** Active assignments for the per-slot "Advances program" link. */
+  slotAssignments?: { id: string; label: string }[]
   showMemberships: boolean
   membership: ClientMembership | null
   membershipPlans: MembershipPlan[]
@@ -44,7 +47,15 @@ export function ClientSessionsPanel({
 }) {
   const sections: React.ReactNode[] = []
   if (showStandingSlots) {
-    sections.push(<StandingSlotsPanel key="schedule" clientUserId={clientUserId} slots={standingSlots} bare />)
+    sections.push(
+      <StandingSlotsPanel
+        key="schedule"
+        clientUserId={clientUserId}
+        slots={standingSlots}
+        assignments={slotAssignments}
+        bare
+      />,
+    )
   }
   // Session packs are always available.
   sections.push(<ClientPackagesPanel key="packs" clientUserId={clientUserId} initialPacks={packs} bare />)

@@ -824,6 +824,9 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
           packs={packs}
           showStandingSlots={showStandingSlots}
           standingSlots={standingSlots}
+          slotAssignments={(assignments as AssignmentWithProgram[])
+            .filter((a) => a.status === "active")
+            .map((a) => ({ id: a.id, label: a.programs?.name ?? "Program" }))}
           showMemberships={showMemberships}
           membership={membership}
           membershipPlans={membershipPlans}
