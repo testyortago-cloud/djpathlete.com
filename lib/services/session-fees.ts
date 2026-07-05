@@ -10,6 +10,7 @@ import { chargeSavedCard } from "@/lib/stripe"
 import { createFeeChargeIfAbsent, updateFeeCharge, getFeeChargeById } from "@/lib/db/session-fee-charges"
 import { createPayment } from "@/lib/db/payments"
 import { recordAudit } from "@/lib/audit/record"
+import { resolveBillingUserId } from "@/lib/services/billing-payer"
 
 type FeeOutcome = { charged: boolean; reason?: string }
 
@@ -29,9 +30,13 @@ async function attemptFee(session: ScheduledSession, kind: SessionFeeKind, amoun
   })
   if (!charge) return { charged: false, reason: "already_charged" }
 
+  // Household billing: the charge records against the trainee (whose session it
+  // was), but the money comes from the resolved billing user's card (a payer, or
+  // themselves when none is set).
+  const billingUserId = await resolveBillingUserId(session.client_user_id)
   const [user, card] = await Promise.all([
-    getUserById(session.client_user_id).catch(() => null),
-    getDefaultPaymentMethod(session.client_user_id).catch(() => null),
+    getUserById(billingUserId).catch(() => null),
+    getDefaultPaymentMethod(billingUserId).catch(() => null),
   ])
   if (!user?.stripe_customer_id || !card) {
     await updateFeeCharge(charge.id, { status: "waived", failure_reason: "no_card" })
@@ -50,14 +55,14 @@ async function attemptFee(session: ScheduledSession, kind: SessionFeeKind, amoun
   if (result.ok) {
     await updateFeeCharge(charge.id, { status: "succeeded", stripe_payment_intent_id: result.paymentIntentId })
     await createPayment({
-      user_id: session.client_user_id,
+      user_id: billingUserId, // the card owner who actually paid
       stripe_payment_id: result.paymentIntentId,
       stripe_customer_id: user.stripe_customer_id,
       amount_cents: amountCents,
       currency: "usd",
       status: "succeeded",
       description: label,
-      metadata: { type: "session_fee", kind, scheduled_session_id: session.id },
+      metadata: { type: "session_fee", kind, scheduled_session_id: session.id, trainee_user_id: session.client_user_id },
       gclid: null,
       gbraid: null,
       wbraid: null,
@@ -112,9 +117,11 @@ export async function retryFeeCharge(chargeId: string): Promise<FeeOutcome> {
   if (!(await sessionFeesEnabled())) return { charged: false, reason: "disabled" }
   const charge = await getFeeChargeById(chargeId)
   if (!charge || charge.status !== "failed") return { charged: false, reason: "not_retryable" }
+  // Charge the same resolved billing user (payer or self) as the original attempt.
+  const billingUserId = await resolveBillingUserId(charge.user_id)
   const [user, card] = await Promise.all([
-    getUserById(charge.user_id).catch(() => null),
-    getDefaultPaymentMethod(charge.user_id).catch(() => null),
+    getUserById(billingUserId).catch(() => null),
+    getDefaultPaymentMethod(billingUserId).catch(() => null),
   ])
   if (!user?.stripe_customer_id || !card) {
     await updateFeeCharge(charge.id, { status: "waived", failure_reason: "no_card" })

@@ -10,7 +10,9 @@ const chargeMock = vi.fn()
 const createChargeMock = vi.fn()
 const updateChargeMock = vi.fn()
 const getChargeByIdMock = vi.fn()
+const resolveBillingMock = vi.fn()
 
+vi.mock("@/lib/services/billing-payer", () => ({ resolveBillingUserId: (...a: unknown[]) => resolveBillingMock(...a) }))
 vi.mock("@/lib/packs/flags", () => ({
   sessionFeesEnabled: () => feesEnabledMock(),
   noShowFeeCents: () => noShowCentsMock(),
@@ -47,6 +49,7 @@ beforeEach(() => {
   getCardMock.mockResolvedValue({ stripe_payment_method_id: "pm_1" })
   createChargeMock.mockResolvedValue({ id: "fee-1" })
   chargeMock.mockResolvedValue({ ok: true, paymentIntentId: "pi_1" })
+  resolveBillingMock.mockImplementation(async (id: string) => id) // default: self-pays
 })
 
 describe("chargeNoShowFee", () => {
@@ -78,6 +81,17 @@ describe("chargeNoShowFee", () => {
     )
     expect(updateChargeMock).toHaveBeenCalledWith("fee-1", expect.objectContaining({ status: "succeeded", stripe_payment_intent_id: "pi_1" }))
     expect(r.charged).toBe(true)
+  })
+
+  it("routes the charge to the billing PAYER's card when one is set", async () => {
+    resolveBillingMock.mockResolvedValue("dad") // wife's session, dad pays
+    await chargeNoShowFee(session)
+    expect(resolveBillingMock).toHaveBeenCalledWith("c1")
+    // The card + customer are loaded for the payer, not the trainee.
+    expect(getUserMock).toHaveBeenCalledWith("dad")
+    expect(getCardMock).toHaveBeenCalledWith("dad")
+    // The fee charge is still reserved against the trainee (whose session it was).
+    expect(createChargeMock).toHaveBeenCalledWith(expect.objectContaining({ user_id: "c1" }))
   })
 
   it("marks failed on a decline (no throw)", async () => {
