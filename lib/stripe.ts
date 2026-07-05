@@ -458,6 +458,8 @@ export async function createSetupCheckoutSession(opts: {
   const baseUrl = getBaseUrl()
   return stripe.checkout.sessions.create({
     mode: "setup",
+    // Setup mode has no line items to infer currency from, so Stripe requires it explicitly.
+    currency: "usd",
     customer: opts.customerId,
     metadata: { type: "save_card", userId: opts.userId },
     success_url: `${baseUrl}${opts.returnUrl ?? `/admin/clients/${opts.userId}`}?card=saved`,
