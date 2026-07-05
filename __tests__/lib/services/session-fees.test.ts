@@ -15,10 +15,12 @@ const resolveBillingMock = vi.fn()
 vi.mock("@/lib/services/billing-payer", () => ({ resolveBillingUserId: (...a: unknown[]) => resolveBillingMock(...a) }))
 vi.mock("@/lib/packs/flags", () => ({
   sessionFeesEnabled: () => feesEnabledMock(),
+  sessionFeePayerNotifyEnabled: async () => false, // payer emails covered in session-fees.payer-notify.test.ts
   noShowFeeCents: () => noShowCentsMock(),
   lateCancelFeeCents: () => lateCentsMock(),
   cancelWindowHours: () => windowHoursMock(),
 }))
+vi.mock("@/lib/email", () => ({ sendFeeChargedToPayerEmail: vi.fn(async () => undefined) }))
 vi.mock("@/lib/db/users", () => ({ getUserById: (...a: unknown[]) => getUserMock(...a) }))
 vi.mock("@/lib/db/payment-methods", () => ({ getDefaultPaymentMethod: (...a: unknown[]) => getCardMock(...a) }))
 vi.mock("@/lib/stripe", () => ({ chargeSavedCard: (...a: unknown[]) => chargeMock(...a) }))

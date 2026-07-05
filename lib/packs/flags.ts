@@ -37,6 +37,12 @@ export const cardOnFileEnabled = () => getSetting<boolean>(CARD_ON_FILE_KEY, fal
 export const sessionMembershipsEnabled = () => getSetting<boolean>(SESSION_MEMBERSHIPS_KEY, false)
 export const sessionFeesEnabled = () => getSetting<boolean>(SESSION_FEES_KEY, false)
 
+// Courtesy email to a household payer when their card covers someone else's
+// fee. Default ON (kill-switch convention) — it only ever fires after a real
+// successful charge, which is already behind the fee flag + amount + card gates.
+export const SESSION_FEE_PAYER_NOTIFY_KEY = "session_fee_payer_notify_enabled"
+export const sessionFeePayerNotifyEnabled = () => getSetting<boolean>(SESSION_FEE_PAYER_NOTIFY_KEY, true)
+
 // Fee policy — admin-configurable, all default to a no-op (0 / a safe window).
 export const NO_SHOW_FEE_CENTS_KEY = "no_show_fee_cents"
 export const LATE_CANCEL_FEE_CENTS_KEY = "late_cancel_fee_cents"

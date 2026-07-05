@@ -2325,3 +2325,72 @@ export async function sendPackRenewalEmail(opts: {
     console.error("[sendPackRenewalEmail] resend error:", error)
   }
 }
+
+/**
+ * Courtesy receipt for a household payer: their saved card just covered
+ * someone else's no-show / late-cancel fee. Transactional (money moved), so
+ * it does not check notification preferences.
+ */
+export async function sendFeeChargedToPayerEmail(opts: {
+  to: string
+  firstName: string
+  traineeName: string
+  kind: "no_show" | "late_cancel"
+  amountCents: number
+  sessionDate?: string
+}) {
+  const feeLabel = opts.kind === "no_show" ? "no-show fee" : "late-cancellation fee"
+  const amount = `$${(opts.amountCents / 100).toFixed(2)}`
+  const rows: { label: string; value: string }[] = [
+    { label: "For", value: opts.traineeName },
+    { label: "Charge", value: `${amount} — ${feeLabel}` },
+  ]
+  if (opts.sessionDate) {
+    rows.push({
+      label: "Session date",
+      value: new Date(`${opts.sessionDate}T00:00:00Z`).toLocaleDateString("en-US", {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        timeZone: "UTC",
+      }),
+    })
+  }
+
+  const html = emailLayout(`
+    ${heroBanner("Card Charged", "A session fee was billed to your card")}
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td style="padding:48px 48px 52px;">
+
+          <p style="margin:0 0 8px; font-family:'Lexend Exa', Georgia, 'Times New Roman', serif; font-size:22px; font-weight:400; color:#0E3F50;">
+            Hi ${opts.firstName},
+          </p>
+
+          <p style="margin:0 0 32px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:15px; color:#5c5750; line-height:1.8;">
+            As the billing contact for ${opts.traineeName}, your saved card was just charged a ${feeLabel} on their behalf.
+          </p>
+
+          ${infoCard(rows)}
+
+          <p style="margin:28px 0 0; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:15px; color:#5c5750; line-height:1.8;">
+            If this doesn't look right, just reply to this email and we'll sort it out.
+          </p>
+
+        </td>
+      </tr>
+    </table>
+  `)
+
+  const { error } = await resend.emails.send({
+    from: FROM_EMAIL,
+    to: opts.to,
+    subject: `Your card was charged ${amount} for ${opts.traineeName}'s ${feeLabel}`,
+    html,
+  })
+  if (error) {
+    console.error("[sendFeeChargedToPayerEmail] resend error:", error)
+  }
+}

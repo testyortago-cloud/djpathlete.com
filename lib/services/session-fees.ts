@@ -3,7 +3,13 @@
 // AND the client has a saved default card. The unique (session, kind) DB index
 // + a per-charge Stripe idempotency key make double-charging impossible.
 import type { ScheduledSession, SessionFeeKind } from "@/types/database"
-import { sessionFeesEnabled, noShowFeeCents, lateCancelFeeCents, cancelWindowHours } from "@/lib/packs/flags"
+import {
+  sessionFeesEnabled,
+  sessionFeePayerNotifyEnabled,
+  noShowFeeCents,
+  lateCancelFeeCents,
+  cancelWindowHours,
+} from "@/lib/packs/flags"
 import { getUserById } from "@/lib/db/users"
 import { getDefaultPaymentMethod } from "@/lib/db/payment-methods"
 import { chargeSavedCard } from "@/lib/stripe"
@@ -11,8 +17,41 @@ import { createFeeChargeIfAbsent, updateFeeCharge, getFeeChargeById } from "@/li
 import { createPayment } from "@/lib/db/payments"
 import { recordAudit } from "@/lib/audit/record"
 import { resolveBillingUserId } from "@/lib/services/billing-payer"
+import { sendFeeChargedToPayerEmail } from "@/lib/email"
 
 type FeeOutcome = { charged: boolean; reason?: string }
+
+/**
+ * Fire-and-forget courtesy email to a household payer whose card just covered
+ * someone ELSE's fee. Fully swallowed — a notification failure must never
+ * affect the money path. No-ops for self-payers.
+ */
+async function notifyPayerCharged(opts: {
+  payer: { id: string; email: string; first_name: string | null }
+  traineeUserId: string
+  kind: SessionFeeKind
+  amountCents: number
+  sessionDate?: string
+}): Promise<void> {
+  try {
+    if (opts.payer.id === opts.traineeUserId) return
+    if (!(await sessionFeePayerNotifyEnabled())) return
+    const trainee = await getUserById(opts.traineeUserId).catch(() => null)
+    const traineeName = trainee
+      ? `${trainee.first_name ?? ""} ${trainee.last_name ?? ""}`.trim() || trainee.email
+      : "a member of your household"
+    await sendFeeChargedToPayerEmail({
+      to: opts.payer.email,
+      firstName: opts.payer.first_name ?? "there",
+      traineeName,
+      kind: opts.kind,
+      amountCents: opts.amountCents,
+      sessionDate: opts.sessionDate,
+    })
+  } catch (err) {
+    console.error("[session-fees] payer charge notification failed:", err)
+  }
+}
 
 async function attemptFee(session: ScheduledSession, kind: SessionFeeKind, amountCents: number): Promise<FeeOutcome> {
   if (amountCents <= 0) return { charged: false, reason: "no_fee" }
@@ -74,6 +113,13 @@ async function attemptFee(session: ScheduledSession, kind: SessionFeeKind, amoun
       outcome: "success",
       target: { type: "session_fee_charge", id: charge.id },
       metadata: { kind, amount_cents: amountCents, user_id: session.client_user_id },
+    })
+    void notifyPayerCharged({
+      payer: { id: billingUserId, email: user.email, first_name: user.first_name },
+      traineeUserId: session.client_user_id,
+      kind,
+      amountCents,
+      sessionDate: session.session_date,
     })
     return { charged: true }
   }
@@ -139,6 +185,12 @@ export async function retryFeeCharge(chargeId: string): Promise<FeeOutcome> {
       status: "succeeded",
       stripe_payment_intent_id: result.paymentIntentId,
       failure_reason: null,
+    })
+    void notifyPayerCharged({
+      payer: { id: billingUserId, email: user.email, first_name: user.first_name },
+      traineeUserId: charge.user_id,
+      kind: charge.kind,
+      amountCents: charge.amount_cents,
     })
     return { charged: true }
   }
