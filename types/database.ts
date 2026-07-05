@@ -2797,3 +2797,13 @@ export interface SessionFeeCharge {
   failure_reason: string | null
   created_at: string
 }
+
+// ─── Household billing payer (00179) ─────────────────────────────────────────
+
+export interface ClientBillingPayer {
+  client_user_id: string
+  payer_user_id: string
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
