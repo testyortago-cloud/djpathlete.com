@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { selfCheckinSchema } from "@/lib/validators/session-packs"
 import { verifyCheckinToken } from "@/lib/qr/checkin-token"
 import { checkInClient } from "@/lib/services/session-credits"
+import { bridgeCheckinToSchedule } from "@/lib/services/session-schedule"
 import { clientSelfCheckinEnabled } from "@/lib/packs/flags"
 import { recordAudit } from "@/lib/audit/record"
 
@@ -52,6 +53,11 @@ export async function POST(request: Request) {
         },
         request,
       })
+    }
+
+    // Best-effort: also mark today's scheduled session attended (flag-gated).
+    if (result.ok) {
+      void bridgeCheckinToSchedule(clientUserId, result.checkin?.id ?? null, new Date())
     }
 
     return NextResponse.json({ ok: true, remaining: result.remaining, duplicate: result.reason === "duplicate" })

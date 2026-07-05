@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { verifyPersonalCheckinToken } from "@/lib/qr/checkin-token"
 import { checkInClient } from "@/lib/services/session-credits"
+import { bridgeCheckinToSchedule } from "@/lib/services/session-schedule"
 import { clientPersonalCheckinEnabled } from "@/lib/packs/flags"
 import { listPackagesForClient } from "@/lib/db/client-packages"
 import { getUserById } from "@/lib/db/users"
@@ -67,6 +68,11 @@ export async function POST(request: Request) {
         target: { type: "client_package", id: result.packageId!, label: "qr_self" },
         metadata: { client_user_id: clientUserId, method: "qr_self", personal_link: true, remaining: result.remaining },
       })
+    }
+
+    // Best-effort: also mark today's scheduled session attended (flag-gated).
+    if (result.ok) {
+      void bridgeCheckinToSchedule(clientUserId, result.checkin?.id ?? null, new Date())
     }
 
     return NextResponse.json({ ok: true, remaining: result.remaining, duplicate: result.reason === "duplicate" })

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { checkinSchema } from "@/lib/validators/session-packs"
 import { verifyCheckinToken } from "@/lib/qr/checkin-token"
 import { checkInClient } from "@/lib/services/session-credits"
+import { bridgeCheckinToSchedule } from "@/lib/services/session-schedule"
 import { recordAudit } from "@/lib/audit/record"
 
 /** Public QR self-check-in. Token-gated; can only deduct from the resolved client's own pack. */
@@ -33,6 +34,11 @@ export async function POST(request: Request) {
         metadata: { client_user_id: clientUserId, method: "qr_self", coach_id: verdict.coachId, remaining: result.remaining },
         request,
       })
+    }
+
+    // Best-effort: also mark today's scheduled session attended (flag-gated).
+    if (result.ok) {
+      void bridgeCheckinToSchedule(clientUserId, result.checkin?.id ?? null, new Date())
     }
 
     return NextResponse.json({ ok: true, remaining: result.remaining, duplicate: result.reason === "duplicate" })

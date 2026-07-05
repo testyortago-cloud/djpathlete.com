@@ -9,6 +9,10 @@ vi.mock("@/lib/qr/checkin-token", () => ({ verifyCheckinToken: (...a: unknown[])
 vi.mock("@/lib/services/session-credits", () => ({ checkInClient: (...a: unknown[]) => checkInMock(...a) }))
 vi.mock("@/lib/packs/flags", () => ({ clientSelfCheckinEnabled: () => flagMock() }))
 vi.mock("@/lib/audit/record", () => ({ recordAudit: vi.fn() }))
+const bridgeMock = vi.fn()
+vi.mock("@/lib/services/session-schedule", () => ({
+  bridgeCheckinToSchedule: (...a: unknown[]) => bridgeMock(...a),
+}))
 
 import { POST } from "@/app/api/checkin/self/route"
 
@@ -61,5 +65,12 @@ describe("POST /api/checkin/self", () => {
   it("409 when no credits", async () => {
     checkInMock.mockResolvedValue({ ok: false, reason: "no_credits" })
     expect((await POST(req({ token: "t" }))).status).toBe(409)
+    expect(bridgeMock).not.toHaveBeenCalled()
+  })
+
+  it("bridges the check-in to today's scheduled session", async () => {
+    checkInMock.mockResolvedValue({ ok: true, remaining: 5, packageId: "p1", checkin: { id: "chk-1" } })
+    await POST(req({ token: "t" }))
+    expect(bridgeMock).toHaveBeenCalledWith("c1", "chk-1", expect.any(Date))
   })
 })
