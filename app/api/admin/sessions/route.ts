@@ -48,6 +48,7 @@ export async function POST(request: Request) {
     location: p.location ?? null,
     notes: p.notes ?? null,
     status: "active",
+    assignment_id: null,
     created_by: session.user.id,
   })
   void recordAudit({

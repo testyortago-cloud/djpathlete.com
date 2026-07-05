@@ -74,6 +74,7 @@ export async function ensureUpcomingSessions(now: Date, horizonDays = 14): Promi
         cancelled_at: null,
         cancel_reason: null,
         notes: null,
+        workout_session_id: null,
         created_by: null,
       })
       touched++
@@ -145,6 +146,7 @@ export async function addAdhocSession(input: {
     cancelled_at: null,
     cancel_reason: null,
     notes: input.notes ?? null,
+    workout_session_id: null,
     created_by: input.created_by,
   })
 }

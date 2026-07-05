@@ -19,6 +19,8 @@ export const recurringSlotUpdateSchema = z.object({
   location: z.string().max(200).nullable().optional(),
   notes: z.string().max(1000).nullable().optional(),
   status: z.enum(["active", "paused"]).optional(),
+  // Hybrid link: attendance on this slot advances the linked assignment (null unlinks).
+  assignmentId: z.string().uuid().nullable().optional(),
 })
 
 /** Mutations against a concrete occurrence. */

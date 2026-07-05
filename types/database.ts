@@ -2703,6 +2703,8 @@ export interface RecurringSession {
   location: string | null
   notes: string | null
   status: RecurringSessionStatus
+  /** Hybrid link (00180): attendance on this slot advances this assignment. */
+  assignment_id: string | null
   created_by: string | null
   created_at: string
   updated_at: string
@@ -2721,6 +2723,8 @@ export interface ScheduledSession {
   cancelled_at: string | null
   cancel_reason: string | null
   notes: string | null
+  /** Which program day this attendance completed (00180), when a slot link advanced one. */
+  workout_session_id: string | null
   created_by: string | null
   created_at: string
   updated_at: string
