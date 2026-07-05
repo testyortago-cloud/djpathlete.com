@@ -6,7 +6,9 @@ const getPlanMock = vi.fn()
 const getUserMock = vi.fn()
 const custMock = vi.fn()
 const checkoutMock = vi.fn()
+const resolveBillingMock = vi.fn()
 
+vi.mock("@/lib/services/billing-payer", () => ({ resolveBillingUserId: (...a: unknown[]) => resolveBillingMock(...a) }))
 vi.mock("@/lib/auth", () => ({ auth: () => authMock() }))
 vi.mock("@/lib/packs/flags", () => ({ sessionMembershipsEnabled: () => flagMock() }))
 vi.mock("@/lib/db/membership-plans", () => ({ getMembershipPlanById: (...a: unknown[]) => getPlanMock(...a) }))
@@ -31,6 +33,7 @@ beforeEach(() => {
   getUserMock.mockResolvedValue({ id: USER, email: "c@example.com" })
   custMock.mockResolvedValue("cus_1")
   checkoutMock.mockResolvedValue({ id: "cs_sub", url: "https://stripe.test/sub" })
+  resolveBillingMock.mockImplementation(async (id: string) => id) // default: self-pays
 })
 
 describe("POST /api/admin/memberships/checkout", () => {
@@ -56,5 +59,14 @@ describe("POST /api/admin/memberships/checkout", () => {
     expect(checkoutMock).toHaveBeenCalledWith(
       expect.objectContaining({ customerId: "cus_1", userId: USER, plan: expect.objectContaining({ id: PLAN }) }),
     )
+  })
+
+  it("bills the PAYER's Stripe customer while the membership stays the trainee's", async () => {
+    resolveBillingMock.mockResolvedValue("dad") // wife's membership, dad's card
+    const res = await POST(req({ userId: USER, planId: PLAN }))
+    expect(res.status).toBe(200)
+    expect(resolveBillingMock).toHaveBeenCalledWith(USER)
+    expect(custMock).toHaveBeenCalledWith("dad", "c@example.com") // customer resolved to the payer
+    expect(checkoutMock).toHaveBeenCalledWith(expect.objectContaining({ userId: USER })) // membership is the trainee's
   })
 })
