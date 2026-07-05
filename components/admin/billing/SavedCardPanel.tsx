@@ -11,13 +11,21 @@ export function SavedCardPanel({
   clientUserId,
   card,
   bare = false,
+  payer,
 }: {
   clientUserId: string
   card: UserPaymentMethod | null
   bare?: boolean
+  /** When set, this client is billed to a payer — show that payer's card read-only. */
+  payer?: { name: string; card: UserPaymentMethod | null } | null
 }) {
   const router = useRouter()
   const [busy, setBusy] = useState(false)
+
+  function cardLabel(c: UserPaymentMethod): string {
+    const exp = c.exp_month && c.exp_year ? ` · exp ${String(c.exp_month).padStart(2, "0")}/${String(c.exp_year).slice(-2)}` : ""
+    return `${c.brand ?? "Card"} ···· ${c.last4 ?? "????"}${exp}`
+  }
 
   async function saveCard() {
     setBusy(true)
@@ -52,7 +60,16 @@ export function SavedCardPanel({
         <CreditCard className="size-5 text-primary" strokeWidth={1.5} />
         <h3 className="font-medium text-foreground">Card on file</h3>
       </div>
-      {card ? (
+      {payer ? (
+        <p className="text-sm text-foreground">
+          Billed to <span className="font-medium">{payer.name}</span> —{" "}
+          {payer.card ? (
+            cardLabel(payer.card)
+          ) : (
+            <span className="text-warning">{payer.name} has no card saved yet</span>
+          )}
+        </p>
+      ) : card ? (
         <div className="flex items-center justify-between">
           <p className="text-sm text-foreground">
             <span className="capitalize">{card.brand ?? "card"}</span> ···· {card.last4 ?? "????"}

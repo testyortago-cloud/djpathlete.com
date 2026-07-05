@@ -23,7 +23,8 @@ import {
   Zap,
   Ticket,
 } from "lucide-react"
-import { getUserById } from "@/lib/db/users"
+import { getUserById, getUsers } from "@/lib/db/users"
+import { getBillingPayer } from "@/lib/db/client-billing-payers"
 import { getProfileByUserId } from "@/lib/db/client-profiles"
 import { getAssignments } from "@/lib/db/assignments"
 import { getPayments } from "@/lib/db/payments"
@@ -672,6 +673,30 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
     ])
   }
 
+  // Household billing payer + candidate clients (shown with the card section).
+  let currentPayerId: string | null = null
+  let payerCandidates: { id: string; name: string }[] = []
+  let payer: { name: string; card: UserPaymentMethod | null } | null = null
+  if (showCardOnFile) {
+    const nameOf = (u: { first_name?: string | null; last_name?: string | null; email: string }) =>
+      `${u.first_name ?? ""} ${u.last_name ?? ""}`.trim() || u.email
+    const [link, allUsers] = await Promise.all([
+      getBillingPayer(id).catch(() => null),
+      getUsers().catch(() => []),
+    ])
+    payerCandidates = allUsers
+      .filter((u) => u.role === "client" && u.id !== id)
+      .map((u) => ({ id: u.id, name: nameOf(u) }))
+    currentPayerId = link?.payer_user_id ?? null
+    if (currentPayerId) {
+      const [payerUser, payerCard] = await Promise.all([
+        getUserById(currentPayerId).catch(() => null),
+        getDefaultPaymentMethod(currentPayerId).catch(() => null),
+      ])
+      payer = payerUser ? { name: nameOf(payerUser), card: payerCard } : null
+    }
+  }
+
   const exerciseOptions = allExercises.map((e) => ({ value: e.id, label: e.name }))
 
   // Build progress stats and shape data for the progress view
@@ -804,6 +829,9 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
           membershipPlans={membershipPlans}
           showCardOnFile={showCardOnFile}
           savedCard={savedCard}
+          currentPayerId={currentPayerId}
+          payerCandidates={payerCandidates}
+          payer={payer}
         />
         <ProfileSection profile={profile} />
         <QuestionnaireSection profile={profile} />

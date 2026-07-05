@@ -4,6 +4,7 @@ import { StandingSlotsPanel } from "@/components/admin/schedule/StandingSlotsPan
 import { ClientPackagesPanel } from "@/components/admin/packs/ClientPackagesPanel"
 import { MembershipPanel } from "@/components/admin/billing/MembershipPanel"
 import { SavedCardPanel } from "@/components/admin/billing/SavedCardPanel"
+import { BillingPayerControl, type PayerCandidate } from "@/components/admin/billing/BillingPayerControl"
 import type { PackWithCheckins } from "@/lib/services/client-packs-view"
 import type { RecurringSession, UserPaymentMethod, ClientMembership, MembershipPlan } from "@/types/database"
 
@@ -24,6 +25,9 @@ export function ClientSessionsPanel({
   membershipPlans,
   showCardOnFile,
   savedCard,
+  currentPayerId,
+  payerCandidates,
+  payer,
 }: {
   clientUserId: string
   packs: PackWithCheckins[]
@@ -34,6 +38,9 @@ export function ClientSessionsPanel({
   membershipPlans: MembershipPlan[]
   showCardOnFile: boolean
   savedCard: UserPaymentMethod | null
+  currentPayerId: string | null
+  payerCandidates: PayerCandidate[]
+  payer: { name: string; card: UserPaymentMethod | null } | null
 }) {
   const sections: React.ReactNode[] = []
   if (showStandingSlots) {
@@ -47,7 +54,12 @@ export function ClientSessionsPanel({
     )
   }
   if (showCardOnFile) {
-    sections.push(<SavedCardPanel key="card" clientUserId={clientUserId} card={savedCard} bare />)
+    sections.push(
+      <div key="card" className="space-y-3">
+        <SavedCardPanel clientUserId={clientUserId} card={savedCard} payer={payer} bare />
+        <BillingPayerControl clientUserId={clientUserId} currentPayerId={currentPayerId} candidates={payerCandidates} />
+      </div>,
+    )
   }
 
   return (
