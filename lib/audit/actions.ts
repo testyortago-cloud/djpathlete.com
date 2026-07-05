@@ -225,6 +225,7 @@ export const AUDIT_ACTIONS = [
   { slug: "membership.subscribed", category: "commerce", description: "Client subscribed to a session membership" },
   { slug: "membership.canceled", category: "commerce", description: "Session membership canceled" },
   { slug: "card.saved", category: "commerce", description: "Client card saved on file" },
+  { slug: "client.billing_payer_set", category: "admin_write", description: "Client billing payer set or cleared" },
 ] as const satisfies readonly AuditActionDef[]
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number]["slug"]
