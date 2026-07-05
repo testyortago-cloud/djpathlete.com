@@ -1,12 +1,15 @@
-import type { ProgramAssignment } from "@/types/database"
+import type { ProgramAssignment, ScheduledSession } from "@/types/database"
 import { getProgramDaySlots } from "@/lib/db/program-exercises"
 import {
   ensureSession,
   completeForCheckin,
   reopenForVoid,
   listCompletedDayKeys,
+  hasCompletedOnDate,
 } from "@/lib/db/workout-sessions"
 import { updateAssignment, getAssignmentById } from "@/lib/db/assignments"
+import { getRecurringSessionById } from "@/lib/db/recurring-sessions"
+import { updateScheduledSession } from "@/lib/db/scheduled-sessions"
 import { setWorkoutSession } from "@/lib/db/session-checkins"
 import { getProgramById } from "@/lib/db/programs"
 import { getUserById } from "@/lib/db/users"
@@ -127,6 +130,35 @@ export async function handleCheckinProgramAdvance(input: {
   if (workoutSessionId) await setWorkoutSession(input.checkinId, workoutSessionId)
   if (programCompleted) await notifyProgramCompleted(input.clientUserId, assignment.program_id)
   return { programCompleted }
+}
+
+/**
+ * Advance the standing slot's linked program when an occurrence is marked
+ * attended (hybrid clients: the in-person session IS their program workout).
+ * Inert unless the slot links an assignment. The (assignment, date)
+ * completed-day guard kills every double-advance path: pack check-in + bridge
+ * on the same day, re-marking attended, a client who already logged today's
+ * workout online, and twice-daily slots on one assignment.
+ */
+export async function handleAttendanceProgramAdvance(
+  session: Pick<ScheduledSession, "id" | "client_user_id" | "recurring_session_id" | "session_date">,
+): Promise<{ advanced: boolean }> {
+  if (!session.recurring_session_id) return { advanced: false }
+  const slot = await getRecurringSessionById(session.recurring_session_id)
+  if (!slot?.assignment_id) return { advanced: false }
+  const assignment = await getAssignmentById(slot.assignment_id)
+  if (!assignment || assignment.status !== "active") return { advanced: false }
+  // A reassigned occurrence must not advance the ORIGINAL client's program.
+  if (assignment.user_id !== session.client_user_id) return { advanced: false }
+  if (await hasCompletedOnDate(assignment.user_id, assignment.id, session.session_date)) return { advanced: false }
+
+  const { workoutSessionId, programCompleted } = await advanceProgramForCheckin({
+    assignment,
+    sessionDate: session.session_date,
+  })
+  if (workoutSessionId) await updateScheduledSession(session.id, { workout_session_id: workoutSessionId })
+  if (programCompleted) await notifyProgramCompleted(assignment.user_id, assignment.program_id)
+  return { advanced: workoutSessionId != null }
 }
 
 /** Reverse a voided check-in's program advance (reopen day + reactivate). No-op when missing. */
