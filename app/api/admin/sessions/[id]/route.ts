@@ -2,7 +2,8 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { recurringSessionsEnabled } from "@/lib/packs/flags"
 import { recurringSlotUpdateSchema } from "@/lib/validators/sessions"
-import { updateRecurringSession, deleteRecurringSession } from "@/lib/db/recurring-sessions"
+import { updateRecurringSession, deleteRecurringSession, getRecurringSessionById } from "@/lib/db/recurring-sessions"
+import { getAssignmentById } from "@/lib/db/assignments"
 import { recordAudit } from "@/lib/audit/record"
 
 async function guard() {
@@ -27,6 +28,18 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
   if (p.location !== undefined) patch.location = p.location
   if (p.notes !== undefined) patch.notes = p.notes
   if (p.status !== undefined) patch.status = p.status
+  if (p.assignmentId !== undefined) {
+    if (p.assignmentId === null) {
+      patch.assignment_id = null
+    } else {
+      // Hybrid link: only an assignment belonging to the slot's client may be linked.
+      const [slotRow, assignment] = await Promise.all([getRecurringSessionById(id), getAssignmentById(p.assignmentId)])
+      if (!slotRow || !assignment || assignment.user_id !== slotRow.client_user_id) {
+        return NextResponse.json({ error: "Assignment does not belong to this client" }, { status: 400 })
+      }
+      patch.assignment_id = p.assignmentId
+    }
+  }
   const slot = await updateRecurringSession(id, patch)
   void recordAudit({
     action: "session.slot_updated",
