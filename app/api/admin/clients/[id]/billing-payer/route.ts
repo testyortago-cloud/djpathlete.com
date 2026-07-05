@@ -28,6 +28,9 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
       }
       const payer = await getUserById(payerUserId).catch(() => null)
       if (!payer) return NextResponse.json({ error: "Payer not found" }, { status: 404 })
+      if (payer.role !== "client") {
+        return NextResponse.json({ error: "Payer must be a client" }, { status: 400 })
+      }
       await setBillingPayer(id, payerUserId, session.user.id)
     }
 

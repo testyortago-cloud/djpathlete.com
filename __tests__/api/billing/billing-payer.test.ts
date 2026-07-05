@@ -28,7 +28,7 @@ const req = (b: Record<string, unknown>) =>
 beforeEach(() => {
   vi.clearAllMocks()
   authMock.mockResolvedValue({ user: { id: "coach-1", role: "admin" } })
-  getUserMock.mockResolvedValue({ id: PAYER, email: "dad@example.com" })
+  getUserMock.mockResolvedValue({ id: PAYER, email: "dad@example.com", role: "client" })
 })
 
 describe("POST /api/admin/clients/[id]/billing-payer", () => {
@@ -46,6 +46,13 @@ describe("POST /api/admin/clients/[id]/billing-payer", () => {
   it("404 when the payer does not exist", async () => {
     getUserMock.mockResolvedValue(null)
     expect((await POST(req({ payerUserId: PAYER }), ctx)).status).toBe(404)
+  })
+
+  it("400 when the payer is not a client (e.g. an admin)", async () => {
+    getUserMock.mockResolvedValue({ id: PAYER, email: "coach@example.com", role: "admin" })
+    const res = await POST(req({ payerUserId: PAYER }), ctx)
+    expect(res.status).toBe(400)
+    expect(setMock).not.toHaveBeenCalled()
   })
 
   it("sets the payer", async () => {

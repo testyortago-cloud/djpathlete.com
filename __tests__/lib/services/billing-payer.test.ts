@@ -19,6 +19,11 @@ describe("resolveBillingUserId", () => {
     expect(getBillingPayerMock).toHaveBeenCalledWith("wife")
   })
 
+  it("fails safe to self-pay when the lookup throws (table missing / transient DB)", async () => {
+    getBillingPayerMock.mockRejectedValue(new Error("relation does not exist"))
+    expect(await resolveBillingUserId("wife")).toBe("wife")
+  })
+
   it("resolves ONE hop only — does not follow the payer's own payer", async () => {
     // wife -> dad; if dad had a payer it must NOT be followed. We only look up
     // the direct client, so a single call returns the direct payer.
