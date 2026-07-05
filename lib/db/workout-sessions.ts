@@ -105,6 +105,25 @@ export async function listCompletedDayKeys(userId: string, assignmentId: string)
   return (data as { week_number: number; day_of_week: number }[]).map((r) => `${r.week_number}-${r.day_of_week}`)
 }
 
+/**
+ * True when any completed workout session exists for (user, assignment, date).
+ * Day guard for the hybrid attendance advance: errors return true so a flaky
+ * read can only SKIP an advance, never double it.
+ */
+export async function hasCompletedOnDate(userId: string, assignmentId: string, sessionDate: string): Promise<boolean> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("workout_sessions")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("assignment_id", assignmentId)
+    .eq("session_date", sessionDate)
+    .eq("status", "completed")
+    .limit(1)
+  if (error) return true
+  return (data ?? []).length > 0
+}
+
 /** Mark a session completed from an in-person check-in (no metric entry required). */
 export async function completeForCheckin(sessionId: string, note: string): Promise<void> {
   const supabase = getClient()
