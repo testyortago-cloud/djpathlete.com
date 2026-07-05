@@ -7,25 +7,18 @@ import { CreditCard } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { UserPaymentMethod } from "@/types/database"
 
-export function SavedCardPanel({
-  clientUserId,
-  card,
-  bare = false,
-}: {
-  clientUserId: string
-  card: UserPaymentMethod | null
-  bare?: boolean
-}) {
+/** The athlete's own card-on-file management (on /client/sessions). */
+export function MyCardPanel({ card }: { card: UserPaymentMethod | null }) {
   const router = useRouter()
   const [busy, setBusy] = useState(false)
 
-  async function saveCard() {
+  async function addCard() {
     setBusy(true)
     try {
-      const res = await fetch(`/api/admin/clients/${clientUserId}/save-card`, { method: "POST" })
+      const res = await fetch("/api/client/save-card", { method: "POST" })
       const data = await res.json()
       if (!res.ok || !data.url) throw new Error()
-      window.location.href = data.url
+      window.location.href = data.url // Stripe hosted card page
     } catch {
       toast.error("Could not start card setup")
       setBusy(false)
@@ -35,7 +28,7 @@ export function SavedCardPanel({
   async function removeCard() {
     setBusy(true)
     try {
-      const res = await fetch(`/api/admin/clients/${clientUserId}/save-card`, { method: "DELETE" })
+      const res = await fetch("/api/client/save-card", { method: "DELETE" })
       if (!res.ok) throw new Error()
       toast.success("Card removed")
       router.refresh()
@@ -47,15 +40,15 @@ export function SavedCardPanel({
   }
 
   return (
-    <div className={bare ? "" : "rounded-xl border border-border bg-white p-6"}>
-      <div className="mb-4 flex items-center gap-2">
+    <div className="rounded-2xl border border-border bg-white p-5 shadow-sm">
+      <div className="mb-3 flex items-center gap-2">
         <CreditCard className="size-5 text-primary" strokeWidth={1.5} />
-        <h3 className="font-medium text-foreground">Card on file</h3>
+        <h2 className="font-medium text-foreground">Payment method</h2>
       </div>
       {card ? (
         <div className="flex items-center justify-between">
           <p className="text-sm text-foreground">
-            <span className="capitalize">{card.brand ?? "card"}</span> ···· {card.last4 ?? "????"}
+            <span className="capitalize">{card.brand ?? "Card"}</span> ···· {card.last4 ?? "????"}
             {card.exp_month && card.exp_year ? (
               <span className="text-muted-foreground">
                 {" "}
@@ -64,7 +57,7 @@ export function SavedCardPanel({
             ) : null}
           </p>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={saveCard} disabled={busy}>
+            <Button variant="outline" size="sm" onClick={addCard} disabled={busy}>
               Update
             </Button>
             <Button variant="ghost" size="sm" onClick={removeCard} disabled={busy}>
@@ -73,10 +66,13 @@ export function SavedCardPanel({
           </div>
         </div>
       ) : (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">No card saved. Needed for auto-withdrawal and no-show fees.</p>
-          <Button size="sm" onClick={saveCard} disabled={busy}>
-            Add card
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm text-muted-foreground">
+            Add a card so your coach can bill memberships and in-person sessions automatically. Entered securely on
+            Stripe.
+          </p>
+          <Button size="sm" onClick={addCard} disabled={busy}>
+            {busy ? "Opening…" : "Add card"}
           </Button>
         </div>
       )}
