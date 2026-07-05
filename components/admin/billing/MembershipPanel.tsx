@@ -10,10 +10,12 @@ export function MembershipPanel({
   clientUserId,
   membership,
   plans,
+  bare = false,
 }: {
   clientUserId: string
   membership: ClientMembership | null
   plans: MembershipPlan[]
+  bare?: boolean
 }) {
   const [planId, setPlanId] = useState(plans[0]?.id ?? "")
   const [busy, setBusy] = useState(false)
@@ -37,7 +39,7 @@ export function MembershipPanel({
   }
 
   return (
-    <div className="rounded-xl border border-border bg-white p-6">
+    <div className={bare ? "" : "rounded-xl border border-border bg-white p-6"}>
       <div className="mb-4 flex items-center gap-2">
         <Repeat className="size-5 text-primary" strokeWidth={1.5} />
         <h3 className="font-medium text-foreground">Membership (auto-withdrawal)</h3>

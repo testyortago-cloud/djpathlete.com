@@ -7,7 +7,15 @@ import { CreditCard } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { UserPaymentMethod } from "@/types/database"
 
-export function SavedCardPanel({ clientUserId, card }: { clientUserId: string; card: UserPaymentMethod | null }) {
+export function SavedCardPanel({
+  clientUserId,
+  card,
+  bare = false,
+}: {
+  clientUserId: string
+  card: UserPaymentMethod | null
+  bare?: boolean
+}) {
   const router = useRouter()
   const [busy, setBusy] = useState(false)
 
@@ -39,7 +47,7 @@ export function SavedCardPanel({ clientUserId, card }: { clientUserId: string; c
   }
 
   return (
-    <div className="rounded-xl border border-border bg-white p-6">
+    <div className={bare ? "" : "rounded-xl border border-border bg-white p-6"}>
       <div className="mb-4 flex items-center gap-2">
         <CreditCard className="size-5 text-primary" strokeWidth={1.5} />
         <h3 className="font-medium text-foreground">Card on file</h3>

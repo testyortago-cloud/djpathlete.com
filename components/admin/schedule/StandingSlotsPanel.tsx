@@ -13,9 +13,11 @@ const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", 
 export function StandingSlotsPanel({
   clientUserId,
   slots: initialSlots,
+  bare = false,
 }: {
   clientUserId: string
   slots: RecurringSession[]
+  bare?: boolean
 }) {
   const router = useRouter()
   const [slots, setSlots] = useState(initialSlots)
@@ -54,7 +56,7 @@ export function StandingSlotsPanel({
   }
 
   return (
-    <div className="rounded-xl border border-border bg-white p-6">
+    <div className={bare ? "" : "rounded-xl border border-border bg-white p-6"}>
       <div className="mb-4 flex items-center gap-2">
         <CalendarClock className="size-5 text-primary" strokeWidth={1.5} />
         <h3 className="font-medium text-foreground">Standing sessions</h3>

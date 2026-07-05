@@ -49,7 +49,7 @@ import {
 import { parseProfileSummary, hasQuestionnaireData } from "@/lib/profile-utils"
 import { UnassignButton } from "@/components/admin/UnassignButton"
 import { EditAssignmentButton } from "@/components/admin/EditAssignmentButton"
-import { ClientPackagesPanel } from "@/components/admin/packs/ClientPackagesPanel"
+import { ClientSessionsPanel } from "@/components/admin/clients/ClientSessionsPanel"
 import { ClientCheckinButton } from "@/components/admin/packs/ClientCheckinButton"
 import { loadClientPacksView, summarizeClientPacks } from "@/lib/services/client-packs-view"
 import QRCode from "qrcode"
@@ -62,12 +62,9 @@ import {
 } from "@/lib/packs/flags"
 import { PersonalCheckinLinkDialog } from "@/components/admin/packs/PersonalCheckinLinkDialog"
 import { listRecurringForClient } from "@/lib/db/recurring-sessions"
-import { StandingSlotsPanel } from "@/components/admin/schedule/StandingSlotsPanel"
 import { getDefaultPaymentMethod } from "@/lib/db/payment-methods"
-import { SavedCardPanel } from "@/components/admin/billing/SavedCardPanel"
 import { getActiveMembershipForUser } from "@/lib/db/client-memberships"
 import { listActiveMembershipPlans } from "@/lib/db/membership-plans"
-import { MembershipPanel } from "@/components/admin/billing/MembershipPanel"
 import type { RecurringSession, UserPaymentMethod, ClientMembership, MembershipPlan } from "@/types/database"
 import { listFavoritesByClient } from "@/lib/db/exercise-favorites"
 import { getExercises } from "@/lib/db/exercises"
@@ -797,11 +794,17 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
 
       {/* Sections */}
       <div className="space-y-6">
-        {showStandingSlots && <StandingSlotsPanel clientUserId={id} slots={standingSlots} />}
-        {showCardOnFile && <SavedCardPanel clientUserId={id} card={savedCard} />}
-        {showMemberships && (
-          <MembershipPanel clientUserId={id} membership={membership} plans={membershipPlans} />
-        )}
+        <ClientSessionsPanel
+          clientUserId={id}
+          packs={packs}
+          showStandingSlots={showStandingSlots}
+          standingSlots={standingSlots}
+          showMemberships={showMemberships}
+          membership={membership}
+          membershipPlans={membershipPlans}
+          showCardOnFile={showCardOnFile}
+          savedCard={savedCard}
+        />
         <ProfileSection profile={profile} />
         <QuestionnaireSection profile={profile} />
 
@@ -840,7 +843,6 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
               programName: a.programs!.name,
             }))}
         />
-        <ClientPackagesPanel clientUserId={id} initialPacks={packs} />
         <PaymentsSection payments={payments} />
       </div>
     </div>

@@ -28,9 +28,11 @@ function fmtDate(s: string) {
 export function ClientPackagesPanel({
   clientUserId,
   initialPacks,
+  bare = false,
 }: {
   clientUserId: string
   initialPacks: PackWithCheckins[]
+  bare?: boolean
 }) {
   const router = useRouter()
   const [busy, setBusy] = useState(false)
@@ -57,7 +59,7 @@ export function ClientPackagesPanel({
   }
 
   return (
-    <div className="bg-white rounded-xl border border-border p-6">
+    <div className={bare ? "" : "bg-white rounded-xl border border-border p-6"}>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-primary flex items-center gap-2">
           <Ticket className="size-5" strokeWidth={1.5} />
