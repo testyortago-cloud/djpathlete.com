@@ -15,7 +15,7 @@ vi.mock("@/lib/db/scheduled-sessions", () => ({
 }))
 vi.mock("@/lib/services/session-fees", () => ({ chargeLateCancelFee: vi.fn(), chargeNoShowFee: vi.fn() }))
 vi.mock("@/lib/packs/flags", () => ({ recurringSessionsEnabled: vi.fn(async () => true) }))
-const advanceMock = vi.fn(async () => ({ advanced: false }))
+const advanceMock = vi.fn(async (..._args: unknown[]) => ({ advanced: false }))
 vi.mock("@/lib/services/program-progression", () => ({
   handleAttendanceProgramAdvance: (...a: unknown[]) => advanceMock(...a),
 }))
