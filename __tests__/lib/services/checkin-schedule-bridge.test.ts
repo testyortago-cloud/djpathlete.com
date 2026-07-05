@@ -12,6 +12,9 @@ vi.mock("@/lib/db/scheduled-sessions", () => ({
   getScheduledById: vi.fn(),
   findScheduledForClientOnDate: (...a: unknown[]) => findMock(...a),
 }))
+vi.mock("@/lib/services/program-progression", () => ({
+  handleAttendanceProgramAdvance: vi.fn(async () => ({ advanced: false })),
+}))
 
 import { bridgeCheckinToSchedule } from "@/lib/services/session-schedule"
 

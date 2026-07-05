@@ -11,6 +11,7 @@ import {
 } from "@/lib/db/scheduled-sessions"
 import { recurringSessionsEnabled } from "@/lib/packs/flags"
 import { chargeLateCancelFee } from "@/lib/services/session-fees"
+import { handleAttendanceProgramAdvance } from "@/lib/services/program-progression"
 
 const DAY_MS = 86_400_000
 
@@ -84,11 +85,19 @@ export async function ensureUpcomingSessions(now: Date, horizonDays = 14): Promi
 }
 
 export async function markAttended(id: string, opts: { by: string | null; checkinId?: string | null }) {
-  return updateScheduledSession(id, {
+  const updated = await updateScheduledSession(id, {
     status: "attended",
     attended_at: new Date().toISOString(),
     checkin_id: opts.checkinId ?? null,
   })
+  // Hybrid link: advance the slot's linked program (fully guarded + swallowed —
+  // progression must never fail attendance).
+  try {
+    await handleAttendanceProgramAdvance(updated)
+  } catch (err) {
+    console.error("[markAttended] program advance failed:", err)
+  }
+  return updated
 }
 
 export async function markNoShow(id: string, _by: string | null) {

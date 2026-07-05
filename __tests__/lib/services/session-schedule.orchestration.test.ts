@@ -15,6 +15,10 @@ vi.mock("@/lib/db/scheduled-sessions", () => ({
 }))
 vi.mock("@/lib/services/session-fees", () => ({ chargeLateCancelFee: vi.fn(), chargeNoShowFee: vi.fn() }))
 vi.mock("@/lib/packs/flags", () => ({ recurringSessionsEnabled: vi.fn(async () => true) }))
+const advanceMock = vi.fn(async () => ({ advanced: false }))
+vi.mock("@/lib/services/program-progression", () => ({
+  handleAttendanceProgramAdvance: (...a: unknown[]) => advanceMock(...a),
+}))
 
 import {
   ensureUpcomingSessions,
@@ -57,6 +61,16 @@ describe("attendance transitions", () => {
       "s1",
       expect.objectContaining({ status: "attended", checkin_id: "chk1" }),
     )
+  })
+
+  it("markAttended advances the slot-linked program with the updated row", async () => {
+    await markAttended("s1", { by: "coach" })
+    expect(advanceMock).toHaveBeenCalledWith(expect.objectContaining({ id: "s1", status: "attended" }))
+  })
+
+  it("markAttended still resolves when the program advance throws (swallowed)", async () => {
+    advanceMock.mockRejectedValueOnce(new Error("progression down"))
+    await expect(markAttended("s1", { by: "coach" })).resolves.toMatchObject({ status: "attended" })
   })
 
   it("markNoShow sets status no_show", async () => {
