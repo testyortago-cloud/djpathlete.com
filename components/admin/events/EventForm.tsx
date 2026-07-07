@@ -40,6 +40,14 @@ const FIELD_LABELS: Record<string, string> = {
   type: "Event type",
   focus_areas: "Focus areas",
   audience: "Who it's for",
+  daily_start_time: "Daily start time",
+  daily_end_time: "Daily end time",
+}
+
+/** Time-of-day ("HH:MM") from a stored ISO, treating midnight as "not set". */
+const storedDailyTime = (iso?: string | null) => {
+  const t = iso?.slice(11, 16)
+  return t && t !== "00:00" ? t : ""
 }
 
 const humanizeError = (field: string, raw?: string) => humanizeFieldError(field, raw, FIELD_LABELS)
@@ -94,6 +102,14 @@ export function EventForm({ event }: EventFormProps) {
         ? event.end_date.slice(0, 16)
         : event.end_date.slice(0, 10)
       : "",
+  )
+  // Camps: the daily session window lives in the time-of-day of start/end
+  // (00:00 on both = no times set). Edited via separate time inputs.
+  const [dailyStartTime, setDailyStartTime] = useState(
+    event?.type === "camp" ? storedDailyTime(event.start_date) : "",
+  )
+  const [dailyEndTime, setDailyEndTime] = useState(
+    event?.type === "camp" ? storedDailyTime(event.end_date) : "",
   )
   const [sessionSchedule, setSessionSchedule] = useState(event?.session_schedule ?? "")
   const [priceDollars, setPriceDollars] = useState<number | "">(
@@ -175,6 +191,25 @@ export function EventForm({ event }: EventFormProps) {
     setFieldErrors({})
     setFormError(null)
 
+    if (type === "camp") {
+      const timeErrors: FieldErrors = {}
+      if (!!dailyStartTime !== !!dailyEndTime) {
+        const missing = dailyStartTime ? "daily_end_time" : "daily_start_time"
+        timeErrors[missing] = ["Set both daily times, or leave both blank to show dates only"]
+      } else if (dailyStartTime && dailyEndTime && dailyEndTime <= dailyStartTime) {
+        timeErrors.daily_end_time = ["Daily end time must be after the daily start time"]
+      }
+      if (Object.keys(timeErrors).length > 0) {
+        setFieldErrors(timeErrors)
+        setFormError("Fix the daily session times before saving.")
+        setSubmitting(false)
+        if (typeof window !== "undefined") {
+          window.scrollTo({ top: 0, behavior: "smooth" })
+        }
+        return
+      }
+    }
+
     // Treat the admin's wall-clock entry as UTC so the displayed time survives
     // any timezone difference between admin browser, server, and viewers. The
     // public surfaces format with timeZone: "UTC" to match.
@@ -203,7 +238,16 @@ export function EventForm({ event }: EventFormProps) {
       start_date: startDate ? toIsoWallClockUtc(startDate) : undefined,
     }
     if (type === "camp") {
-      payload.end_date = endDate ? toIsoWallClockUtc(endDate) : undefined
+      // Fold the daily session window into the time-of-day of start/end.
+      // Blank times → midnight (date-only camp, matching legacy rows).
+      const startDay = startDate.slice(0, 10)
+      const endDay = endDate.slice(0, 10)
+      payload.start_date = startDay
+        ? toIsoWallClockUtc(dailyStartTime ? `${startDay}T${dailyStartTime}` : startDay)
+        : undefined
+      payload.end_date = endDay
+        ? toIsoWallClockUtc(dailyEndTime ? `${endDay}T${dailyEndTime}` : endDay)
+        : undefined
       payload.session_schedule = sessionSchedule || null
     } else if (type === "clinic") {
       // null tells the DAL to drop any custom override and re-derive start + 2h.
@@ -545,7 +589,7 @@ export function EventForm({ event }: EventFormProps) {
         description={
           type === "clinic"
             ? "Set start time. Leave end blank to auto-set to start + 2 hours."
-            : "Camps run across a date range with repeating sessions."
+            : "Camps run across a date range with a repeating daily session time."
         }
       >
         {type === "clinic" ? (
@@ -604,14 +648,47 @@ export function EventForm({ event }: EventFormProps) {
                 )}
               </div>
             </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>
+                  Daily start time <span className="text-muted-foreground font-normal">(optional)</span>
+                </Label>
+                <Input
+                  type="time"
+                  value={dailyStartTime}
+                  onChange={(e) => setDailyStartTime(e.target.value)}
+                />
+                {fieldErrors.daily_start_time && (
+                  <p className="text-xs text-destructive">{fieldErrors.daily_start_time[0]}</p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label>
+                  Daily end time <span className="text-muted-foreground font-normal">(optional)</span>
+                </Label>
+                <Input
+                  type="time"
+                  value={dailyEndTime}
+                  onChange={(e) => setDailyEndTime(e.target.value)}
+                />
+                {fieldErrors.daily_end_time && (
+                  <p className="text-xs text-destructive">{fieldErrors.daily_end_time[0]}</p>
+                )}
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground -mt-2">
+              Shown publicly as e.g. &ldquo;9:00 AM – 11:00 AM daily&rdquo;. Leave both blank to show dates only.
+            </p>
             <div className="space-y-2">
-              <Label>Session Schedule</Label>
+              <Label>
+                Session Schedule <span className="text-muted-foreground font-normal">(optional)</span>
+              </Label>
               <Input
                 value={sessionSchedule}
                 onChange={(e) => setSessionSchedule(e.target.value)}
-                placeholder="M–F, 9–11am"
+                placeholder="e.g. Friday ends at noon"
               />
-              <p className="text-xs text-muted-foreground">Free-text description of daily session times.</p>
+              <p className="text-xs text-muted-foreground">Extra schedule notes shown on the camp page.</p>
               {fieldErrors.session_schedule && (
                 <p className="text-xs text-destructive">
                   {humanizeError("session_schedule", fieldErrors.session_schedule[0])}

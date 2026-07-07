@@ -8,6 +8,7 @@ import { getEventBySlug } from "@/lib/db/events"
 import { getEventSignupByStripeSessionId } from "@/lib/db/event-signups"
 import { ConversionTracker } from "@/components/shared/ConversionTracker"
 import { getSendTo } from "@/lib/ads/conversion-registry"
+import { formatEventWhen } from "@/lib/events/format"
 
 export const metadata: Metadata = {
   title: "Booking confirmed",
@@ -17,15 +18,6 @@ export const metadata: Metadata = {
 interface PageProps {
   params: Promise<{ slug: string }>
   searchParams: Promise<{ session_id?: string }>
-}
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  })
 }
 
 export default async function ClinicBookingSuccessPage({ params, searchParams }: PageProps) {
@@ -66,7 +58,7 @@ export default async function ClinicBookingSuccessPage({ params, searchParams }:
                 <div className="mt-8 grid gap-3 text-left">
                   <div className="flex items-center gap-3 rounded-xl border border-border p-4">
                     <CalendarDays className="h-5 w-5 flex-shrink-0 text-primary" />
-                    <span className="text-sm">{formatDate(event.start_date)}</span>
+                    <span className="text-sm">{formatEventWhen(event, "long")}</span>
                   </div>
                   <div className="flex items-start gap-3 rounded-xl border border-border p-4">
                     <MapPin className="mt-0.5 h-5 w-5 flex-shrink-0 text-primary" />

@@ -12,6 +12,7 @@ import { SemanticAnswerBlock } from "@/components/public/SemanticAnswerBlock"
 import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 import { CheckoutCancelledBanner } from "@/components/public/CheckoutCancelledBanner"
 import { getEventBySlug, getPublishedEvents } from "@/lib/db/events"
+import { campHasDailyTimes, formatEventTime } from "@/lib/events/format"
 import { getActiveDocument } from "@/lib/db/legal-documents"
 import { renderLegalContent } from "@/lib/legal-content"
 import { SITE_URL } from "@/lib/constants"
@@ -148,10 +149,18 @@ export default async function CampDetailPage({ params }: { params: Promise<{ slu
                 ))}
               </div>
 
-              {event.session_schedule && (
+              {(campHasDailyTimes(event) || event.session_schedule) && (
                 <div>
                   <h2 className="font-heading text-2xl font-semibold text-foreground">Schedule</h2>
-                  <p className="mt-2 text-muted-foreground">{event.session_schedule}</p>
+                  {campHasDailyTimes(event) && (
+                    <p className="mt-2 text-muted-foreground">
+                      Sessions run {formatEventTime(event.start_date)} –{" "}
+                      {formatEventTime(event.end_date ?? event.start_date)} each day.
+                    </p>
+                  )}
+                  {event.session_schedule && (
+                    <p className="mt-2 text-muted-foreground">{event.session_schedule}</p>
+                  )}
                 </div>
               )}
 

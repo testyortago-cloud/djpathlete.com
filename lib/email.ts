@@ -1,6 +1,7 @@
 import { Resend } from "resend"
 import { getPreferences } from "@/lib/db/notification-preferences"
 import { getActiveSubscribers } from "@/lib/db/newsletter"
+import { formatEventWhen } from "@/lib/events/format"
 import type { Event, EventSignup } from "@/types/database"
 
 const _resendClient = new Resend(process.env.RESEND_API_KEY)
@@ -1849,18 +1850,14 @@ export async function sendInquiryAutoReply({
 
 /** Event context block — reused in all three event email templates */
 function buildEventContextBlock(event: Event) {
-  const start = new Date(event.start_date).toLocaleString("en-US", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  })
   const location = event.location_address ? `${event.location_name} — ${event.location_address}` : event.location_name
   return infoCard([
     { label: "Event", value: event.title },
-    { label: "Date", value: start },
+    // Camp-aware: date range + daily session times; clinics keep date · start – end.
+    { label: "Date", value: formatEventWhen(event, "long") },
+    ...(event.type === "camp" && event.session_schedule
+      ? [{ label: "Schedule", value: event.session_schedule }]
+      : []),
     { label: "Location", value: location },
   ])
 }
@@ -2019,7 +2016,7 @@ export async function sendAdminNewSignupEmail(signup: EventSignup, event: Event)
 
           ${infoCard([
             { label: "Event", value: event.title },
-            { label: "Date", value: new Date(event.start_date).toLocaleString() },
+            { label: "Date", value: formatEventWhen(event, "long") },
             { label: "Location", value: event.location_name },
             { label: "Capacity", value: `${event.signup_count} / ${event.capacity} booked` },
           ])}

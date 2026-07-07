@@ -35,6 +35,15 @@ const clinicEvent = eventBase
   })
   .refine(ageRefine, { message: "age_max must be >= age_min", path: ["age_max"] })
 
+// Camps store their daily session window in the time-of-day of start/end
+// (start's time = daily start, end's time = daily end). 00:00 on both means
+// "no daily times set" (legacy date-only camps).
+const campDailyTimesOrdered = (d: { start_date: string; end_date: string }) => {
+  const start = d.start_date.slice(11, 16)
+  const end = d.end_date.slice(11, 16)
+  return (start === "00:00" && end === "00:00") || end > start
+}
+
 const campEvent = eventBase
   .extend({
     type: z.literal("camp"),
@@ -44,6 +53,14 @@ const campEvent = eventBase
     price_dollars: z.number().nonnegative().max(10000).optional().nullable(),
   })
   .refine(ageRefine, { message: "age_max must be >= age_min", path: ["age_max"] })
+  .refine((d) => d.end_date.slice(0, 10) >= d.start_date.slice(0, 10), {
+    message: "End date must be on or after the start date",
+    path: ["end_date"],
+  })
+  .refine(campDailyTimesOrdered, {
+    message: "Daily end time must be after the daily start time",
+    path: ["end_date"],
+  })
 
 export const createEventSchema = z.discriminatedUnion("type", [clinicEvent, campEvent])
 
@@ -56,6 +73,10 @@ export const updateEventSchema = eventBase
     price_dollars: z.number().nonnegative().max(10000).optional().nullable(),
   })
   .refine(ageRefine, { message: "age_max must be >= age_min", path: ["age_max"] })
+  .refine(
+    (d) => !d.start_date || !d.end_date || d.end_date.slice(0, 10) >= d.start_date.slice(0, 10),
+    { message: "End date must be on or after the start date", path: ["end_date"] },
+  )
 
 export type CreateEventInput = z.infer<typeof createEventSchema>
 export type UpdateEventInput = z.infer<typeof updateEventSchema>

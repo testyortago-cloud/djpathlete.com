@@ -3,6 +3,7 @@ import Link from "next/link"
 import { CalendarDays, MapPin } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { EventCardCta } from "@/components/public/EventCardCta"
+import { formatEventWhen } from "@/lib/events/format"
 import type { Event } from "@/types/database"
 
 interface EventCardProps {
@@ -17,54 +18,6 @@ function formatPrice(cents: number | null) {
   if (cents == null) return null
   const dollars = cents / 100
   return dollars % 1 === 0 ? `$${dollars}` : `$${dollars.toFixed(2)}`
-}
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    timeZone: "UTC",
-  })
-}
-
-function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: "UTC",
-  })
-}
-
-function formatEventWhen(event: Event) {
-  if (event.type === "clinic") {
-    const datePart = formatDate(event.start_date)
-    const startTime = formatTime(event.start_date)
-    if (event.end_date) {
-      return `${datePart} · ${startTime} – ${formatTime(event.end_date)}`
-    }
-    return `${datePart} · ${startTime}`
-  }
-  if (event.end_date) {
-    const start = new Date(event.start_date)
-    const end = new Date(event.end_date)
-    const sameYear = start.getUTCFullYear() === end.getUTCFullYear()
-    const startLabel = start.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      timeZone: "UTC",
-      ...(sameYear ? {} : { year: "numeric" }),
-    })
-    const endLabel = end.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      timeZone: "UTC",
-    })
-    return `${startLabel} – ${endLabel}`
-  }
-  return formatDate(event.start_date)
 }
 
 export function EventCard({ event, waiverContent }: EventCardProps) {

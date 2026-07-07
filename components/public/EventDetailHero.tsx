@@ -1,69 +1,10 @@
 import Link from "next/link"
 import { ChevronRight, CalendarDays, MapPin, Users, UserRound } from "lucide-react"
+import { formatEventDuration, formatEventWhen } from "@/lib/events/format"
 import type { Event } from "@/types/database"
 
 interface EventDetailHeroProps {
   event: Event
-}
-
-function formatDateLong(iso: string) {
-  return new Date(iso).toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-    timeZone: "UTC",
-  })
-}
-
-function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: "UTC",
-  })
-}
-
-function formatEventWhen(event: Event) {
-  if (event.type === "clinic") {
-    const datePart = formatDateLong(event.start_date)
-    const startTime = formatTime(event.start_date)
-    if (event.end_date) {
-      return `${datePart} · ${startTime} – ${formatTime(event.end_date)}`
-    }
-    return `${datePart} · ${startTime}`
-  }
-  if (event.end_date) {
-    const start = new Date(event.start_date)
-    const end = new Date(event.end_date)
-    const sameYear = start.getUTCFullYear() === end.getUTCFullYear()
-    const startLabel = start.toLocaleDateString("en-US", {
-      month: "long",
-      day: "numeric",
-      timeZone: "UTC",
-      ...(sameYear ? {} : { year: "numeric" }),
-    })
-    const endLabel = end.toLocaleDateString("en-US", {
-      month: "long",
-      day: "numeric",
-      year: "numeric",
-      timeZone: "UTC",
-    })
-    return `${startLabel} – ${endLabel}`
-  }
-  return formatDateLong(event.start_date)
-}
-
-function formatDuration(event: Event) {
-  if (event.type === "clinic") return "2-hour clinic"
-  if (event.end_date) {
-    const days = Math.max(
-      1,
-      Math.round((new Date(event.end_date).getTime() - new Date(event.start_date).getTime()) / (1000 * 60 * 60 * 24)),
-    )
-    return `${days}-day camp`
-  }
-  return "Performance camp"
 }
 
 function formatAgeRange(min: number | null, max: number | null): string | null {
@@ -99,13 +40,13 @@ export function EventDetailHero({ event }: EventDetailHeroProps) {
 
         <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-primary-foreground/85 md:text-base">
           <span className="inline-flex items-center gap-2">
-            <CalendarDays className="h-4 w-4" /> {formatEventWhen(event)}
+            <CalendarDays className="h-4 w-4" /> {formatEventWhen(event, "long")}
           </span>
           <span className="inline-flex items-center gap-2">
             <MapPin className="h-4 w-4" /> {event.location_name}
           </span>
           <span className="inline-flex items-center gap-2">
-            <Users className="h-4 w-4" /> {formatDuration(event)}
+            <Users className="h-4 w-4" /> {formatEventDuration(event)}
           </span>
         </div>
       </div>

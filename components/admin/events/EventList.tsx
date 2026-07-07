@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 import { Search, Pencil, Copy, Trash2, CalendarX, ImageIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { formatEventWhen } from "@/lib/events/format"
 import type { Event, EventStatus, EventType } from "@/types/database"
 
 interface EventListProps {
@@ -22,18 +23,6 @@ const STATUS_BADGE: Record<EventStatus, string> = {
 const TYPE_BADGE: Record<EventType, string> = {
   clinic: "bg-primary/10 text-primary",
   camp: "bg-accent/15 text-accent",
-}
-
-function formatStart(iso: string): string {
-  const d = new Date(iso)
-  return d.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: "UTC",
-  })
 }
 
 export function EventList({ initialEvents }: EventListProps) {
@@ -121,7 +110,7 @@ export function EventList({ initialEvents }: EventListProps) {
               <th className="text-left px-4 py-3 font-medium text-muted-foreground w-[80px]">Cover</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Title</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Type</th>
-              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Start</th>
+              <th className="text-left px-4 py-3 font-medium text-muted-foreground">When</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Location</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Signups</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
@@ -180,7 +169,7 @@ export function EventList({ initialEvents }: EventListProps) {
                         {e.type}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground">{formatStart(e.start_date)}</td>
+                    <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{formatEventWhen(e)}</td>
                     <td className="px-4 py-3 text-muted-foreground">{e.location_name}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2 min-w-[9rem]">
