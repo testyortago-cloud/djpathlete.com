@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import Link from "next/link"
@@ -18,6 +18,7 @@ import {
   Lock,
   Users,
   MessageSquare,
+  FileSpreadsheet,
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -33,8 +34,9 @@ import { EmptyState } from "@/components/ui/empty-state"
 import { ProgramFormDialog } from "@/components/admin/ProgramFormDialog"
 import { AiGenerateDialog } from "@/components/admin/AiGenerateDialog"
 import { AiProgramChatDialog } from "@/components/admin/AiProgramChatDialog"
+import { ExcelImportDialog } from "@/components/admin/ExcelImportDialog"
 import { PROGRAM_CATEGORIES, PROGRAM_DIFFICULTIES, PROGRAM_TIERS } from "@/lib/validators/program"
-import type { Program } from "@/types/database"
+import type { Program, User } from "@/types/database"
 
 interface ProgramListProps {
   programs: Program[]
@@ -94,9 +96,33 @@ export function ProgramList({ programs, athleteCounts = {} }: ProgramListProps) 
   const [formOpen, setFormOpen] = useState(false)
   const [aiDialogOpen, setAiDialogOpen] = useState(false)
   const [chatDialogOpen, setChatDialogOpen] = useState(false)
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [editingProgram, setEditingProgram] = useState<Program | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Program | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+
+  // Clients — fetched once for the Excel import dialog's client picker /
+  // post-import "Assign to Clients" step (mirrors AiGenerateDialog's own
+  // internal fetch, but ProgramList has no "open" gate to fetch lazily on).
+  const [clients, setClients] = useState<User[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    async function fetchClients() {
+      try {
+        const response = await fetch("/api/admin/users?role=client")
+        if (!response.ok || cancelled) return
+        const data = await response.json()
+        if (!cancelled) setClients(data.users ?? data ?? [])
+      } catch {
+        // Silently fail — client picker just shows "No client" option
+      }
+    }
+    fetchClients()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const filtered = programs.filter((prog) => {
     const matchesSearch =
@@ -168,10 +194,16 @@ export function ProgramList({ programs, athleteCounts = {} }: ProgramListProps) 
             <MessageSquare className="size-4" />
             Chat
           </Button>
+          <Button variant="outline" size="sm" onClick={() => setImportDialogOpen(true)}>
+            <FileSpreadsheet className="size-4" />
+            <span className="hidden sm:inline">Import Excel</span>
+            <span className="sm:hidden">Excel</span>
+          </Button>
         </div>
         <ProgramFormDialog open={formOpen} onOpenChange={setFormOpen} program={editingProgram} />
         <AiGenerateDialog open={aiDialogOpen} onOpenChange={setAiDialogOpen} />
         <AiProgramChatDialog open={chatDialogOpen} onOpenChange={setChatDialogOpen} />
+        <ExcelImportDialog open={importDialogOpen} onOpenChange={setImportDialogOpen} clients={clients} />
       </div>
     )
   }
@@ -193,6 +225,11 @@ export function ProgramList({ programs, athleteCounts = {} }: ProgramListProps) 
             <Sparkles className="size-4" />
             <span className="hidden sm:inline">AI Generate</span>
             <span className="sm:hidden">Generate</span>
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setImportDialogOpen(true)}>
+            <FileSpreadsheet className="size-4" />
+            <span className="hidden sm:inline">Import Excel</span>
+            <span className="sm:hidden">Excel</span>
           </Button>
           <Button size="sm" onClick={handleCreate}>
             <Plus className="size-4" />
@@ -471,6 +508,9 @@ export function ProgramList({ programs, athleteCounts = {} }: ProgramListProps) 
 
       {/* AI Chat Builder Dialog */}
       <AiProgramChatDialog open={chatDialogOpen} onOpenChange={setChatDialogOpen} />
+
+      {/* Excel Import Dialog */}
+      <ExcelImportDialog open={importDialogOpen} onOpenChange={setImportDialogOpen} clients={clients} />
     </div>
   )
 }
