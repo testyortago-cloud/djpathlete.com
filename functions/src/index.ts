@@ -84,6 +84,27 @@ export const programChat = onDocumentCreated(
   },
 )
 
+// ─── Program From Excel ─────────────────────────────────────────────────────────
+// Triggered when a new ai_jobs doc is created with type "program_from_excel"
+// Interprets an uploaded spreadsheet, resolves exercises, and builds a program
+
+export const programFromExcel = onDocumentCreated(
+  {
+    document: "ai_jobs/{jobId}",
+    timeoutSeconds: 540,
+    memory: "1GiB",
+    region: "us-central1",
+    secrets: allSecrets,
+  },
+  async (event) => {
+    const data = event.data?.data()
+    if (!data || data.type !== "program_from_excel") return
+
+    const { handleProgramFromExcel } = await import("./program-from-excel.js")
+    await handleProgramFromExcel(event.params.jobId)
+  },
+)
+
 // ─── Admin AI Chat ─────────────────────────────────────────────────────────────
 // Triggered when a new ai_jobs doc is created with type "admin_chat"
 // Streaming admin business intelligence chat
