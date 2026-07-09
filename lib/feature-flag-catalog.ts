@@ -25,6 +25,13 @@ export const FEATURE_FLAG_CATALOG: readonly FeatureFlag[] = [
       "Dynamic two-row reels: full-frame talking head that cuts to a face-tracked split with fal.ai b-roll at AI-selected moments.",
     defaultEnabled: false,
   },
+  {
+    key: "feature_program_excel_import_enabled",
+    label: "Import program from Excel",
+    description:
+      "Adds an 'Import from Excel' button to /admin/programs. Coaches upload a spreadsheet (full, partial, or messy); the AI reads it, matches exercises to the library, fills gaps, and creates a private review-ready program. Includes a downloadable template.",
+    defaultEnabled: true,
+  },
 ] as const
 
 export function isFeatureFlagKey(key: string): boolean {

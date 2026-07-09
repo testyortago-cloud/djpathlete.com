@@ -205,7 +205,13 @@ export interface CompressedExercise {
 
 // ─── AI Job types (Firestore) ────────────────────────────────────────────────
 
-export type AiJobType = "program_generation" | "program_chat" | "admin_chat" | "ai_coach" | "week_generation"
+export type AiJobType =
+  | "program_generation"
+  | "program_chat"
+  | "program_from_excel"
+  | "admin_chat"
+  | "ai_coach"
+  | "week_generation"
 export type AiJobStatus = "pending" | "processing" | "streaming" | "completed" | "failed" | "cancelled"
 
 export interface AiJob {

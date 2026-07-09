@@ -25,6 +25,7 @@ export const AUDIT_ACTIONS = [
 
   // programs / assignments
   { slug: "program.created", category: "admin_write", description: "Program created" },
+  { slug: "program.imported", category: "admin_write", description: "Program imported from Excel" },
   { slug: "program.updated", category: "admin_write", description: "Program updated" },
   { slug: "program.deleted", category: "admin_write", description: "Program deleted" },
   { slug: "program.published", category: "admin_write", description: "Program status moved to published" },

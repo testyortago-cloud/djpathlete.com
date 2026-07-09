@@ -13,6 +13,7 @@ export type AiJobType =
   // Existing types (already handled by live Firebase Functions)
   | "program_generation"
   | "program_chat"
+  | "program_from_excel"
   | "week_generation"
   | "blog_generation"
   | "newsletter_generation"
