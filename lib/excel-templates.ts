@@ -352,3 +352,212 @@ export async function generateExerciseTemplate(): Promise<Blob> {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   })
 }
+
+// ---------------------------------------------------------------------------
+// Program template
+// ---------------------------------------------------------------------------
+
+const SPLIT_OPTIONS = [
+  "full_body",
+  "upper_lower",
+  "push_pull_legs",
+  "push_pull",
+  "body_part",
+  "movement_pattern",
+  "custom",
+]
+const PERIODIZATION_OPTIONS = ["linear", "undulating", "block", "reverse_linear", "none"]
+const PROGRAM_DIFFICULTY_OPTIONS = ["beginner", "intermediate", "advanced", "elite"]
+const TIER_OPTIONS = ["generalize", "premium"]
+const DAY_OPTIONS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+const TECHNIQUE_OPTIONS = [
+  "straight_set",
+  "superset",
+  "dropset",
+  "giant_set",
+  "circuit",
+  "rest_pause",
+  "amrap",
+  "cluster_set",
+  "complex",
+  "emom",
+  "wave_loading",
+]
+
+interface InfoFieldDef {
+  field: string
+  hint: string
+  dropdown?: string[]
+}
+
+const INFO_FIELDS: InfoFieldDef[] = [
+  { field: "Program Name", hint: "e.g. 12-Week Strength Builder" },
+  { field: "Description", hint: "Short summary of the program's goal" },
+  { field: "Weeks", hint: "e.g. 12" },
+  { field: "Sessions per week", hint: "e.g. 4" },
+  { field: "Split", hint: "Select from dropdown", dropdown: SPLIT_OPTIONS },
+  { field: "Periodization", hint: "Select from dropdown", dropdown: PERIODIZATION_OPTIONS },
+  { field: "Difficulty", hint: "Select from dropdown", dropdown: PROGRAM_DIFFICULTY_OPTIONS },
+  { field: "Tier", hint: "Select from dropdown", dropdown: TIER_OPTIONS },
+  { field: "Public?", hint: "Select from dropdown", dropdown: BOOL_OPTIONS },
+]
+
+const WORKOUT_COLUMNS: ColumnDef[] = [
+  { header: "Week", key: "week", width: 8, hint: "Week number, e.g. 1" },
+  { header: "Day", key: "day", width: 14, hint: "Select from dropdown", dropdown: DAY_OPTIONS },
+  { header: "Exercise", key: "exercise", width: 30, hint: "Exercise name — matched to the library" },
+  { header: "Sets", key: "sets", width: 8, hint: "e.g. 4" },
+  { header: "Reps", key: "reps", width: 10, hint: "e.g. 6-8 or 10" },
+  { header: "Rest (s)", key: "rest", width: 10, hint: "Rest between sets, in seconds" },
+  { header: "RPE", key: "rpe", width: 8, hint: "Rate of perceived exertion, 1-10" },
+  { header: "Tempo", key: "tempo", width: 12, hint: "e.g. 3-1-1-0" },
+  { header: "Technique", key: "technique", width: 16, hint: "Select from dropdown", dropdown: TECHNIQUE_OPTIONS },
+  { header: "Group/Superset", key: "group", width: 16, hint: "Label to group superset/circuit exercises" },
+  { header: "Notes", key: "notes", width: 30, hint: "Coaching notes for this exercise" },
+]
+
+const WORKOUT_EXAMPLE_ROWS: Record<string, string | number>[] = [
+  {
+    week: 1,
+    day: "Monday",
+    exercise: "Barbell Back Squat",
+    sets: 4,
+    reps: "6-8",
+    rest: 120,
+    rpe: 8,
+    tempo: "3-1-1-0",
+    technique: "straight_set",
+    group: "",
+    notes: "Warm up first",
+  },
+  {
+    week: 1,
+    day: "Monday",
+    exercise: "Romanian Deadlift",
+    sets: 3,
+    reps: "8-10",
+    rest: 90,
+    rpe: 7,
+    tempo: "2-1-1-0",
+    technique: "straight_set",
+    group: "",
+    notes: "",
+  },
+]
+
+const PROGRAM_INSTRUCTION_ROWS = [
+  "This workbook is a starting point — fill in what you know and leave the rest blank. The AI fills the gaps.",
+  "",
+  "Workout sheet columns:",
+  "Week — the training week number. Repeats for every exercise scheduled in that week.",
+  "Day — the day of the week the session falls on. Repeats for every exercise in that session.",
+  "Exercise — the exercise name. Matched against the exercise library: close matches are auto-linked, and " +
+    "unmatched names are added to the library and flagged for review.",
+  "Sets — number of working sets.",
+  "Reps — reps per set, or a range (e.g. 6-8).",
+  "Rest (s) — rest between sets, in seconds.",
+  "RPE — rate of perceived exertion target, 1-10.",
+  "Tempo — eccentric-pause-concentric-pause timing, e.g. 3-1-1-0.",
+  "Technique — training technique for the set, e.g. straight_set, superset, dropset.",
+  "Group/Superset — a label used to group exercises performed together (e.g. supersets or circuits). Exercises " +
+    "sharing the same label are treated as one group.",
+  "Notes — free-text coaching notes for this exercise.",
+  "",
+  "Blank fields are okay — the AI will use the program details and exercise library to fill in reasonable defaults.",
+]
+
+function styleInstructionCell(cell: ExcelJS.Cell) {
+  cell.alignment = { vertical: "top", wrapText: true }
+  cell.border = BORDER
+}
+
+export async function generateProgramTemplate(): Promise<Buffer> {
+  const workbook = new ExcelJS.Workbook()
+  workbook.creator = "DJP Athlete"
+
+  // Info sheet
+  const infoSheet = workbook.addWorksheet("Info", {
+    properties: { tabColor: { argb: "FF0E3F50" } },
+  })
+  infoSheet.columns = [
+    { header: "Field", key: "field", width: 22 },
+    { header: "Value", key: "value", width: 45 },
+  ]
+
+  const infoHeaderRow = infoSheet.getRow(1)
+  infoHeaderRow.height = 28
+  infoHeaderRow.eachCell((cell) => {
+    cell.fill = HEADER_FILL
+    cell.font = HEADER_FONT
+    cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true }
+    cell.border = BORDER
+  })
+
+  const infoHintRow = infoSheet.getRow(2)
+  infoHintRow.getCell(1).value = "Fill in what you know — the AI fills the rest."
+  infoHintRow.getCell(2).value = ""
+  infoHintRow.eachCell((cell) => {
+    cell.fill = HINT_FILL
+    cell.font = HINT_FONT
+    cell.alignment = { vertical: "middle", wrapText: true }
+    cell.border = BORDER
+  })
+  infoHintRow.height = 22
+
+  INFO_FIELDS.forEach((def, i) => {
+    const row = infoSheet.getRow(i + 3)
+    row.getCell(1).value = def.field
+    row.getCell(2).value = ""
+    row.eachCell((cell) => {
+      cell.alignment = { vertical: "top", wrapText: true }
+      cell.border = BORDER
+    })
+    row.getCell(1).font = { bold: true }
+
+    if (def.dropdown) {
+      infoSheet.getCell(`B${i + 3}`).dataValidation = {
+        type: "list",
+        allowBlank: true,
+        formulae: [`"${def.dropdown.join(",")}"`],
+        showErrorMessage: true,
+        errorTitle: "Invalid value",
+        error: `Please select from: ${def.dropdown.join(", ")}`,
+      }
+    }
+  })
+
+  infoSheet.views = [{ state: "frozen", ySplit: 2, xSplit: 0 }]
+
+  // Workout sheet
+  const workoutSheet = workbook.addWorksheet("Workout", {
+    properties: { tabColor: { argb: "FFC49B7A" } },
+  })
+  applySheetFormatting(workoutSheet, WORKOUT_COLUMNS, WORKOUT_EXAMPLE_ROWS as unknown as Record<string, string>[])
+
+  // Instructions sheet
+  const instructionsSheet = workbook.addWorksheet("Instructions", {
+    properties: { tabColor: { argb: "FF6B7280" } },
+  })
+  instructionsSheet.columns = [{ header: "Instructions", key: "text", width: 100 }]
+
+  const instrHeaderRow = instructionsSheet.getRow(1)
+  instrHeaderRow.height = 28
+  instrHeaderRow.eachCell((cell) => {
+    cell.fill = HEADER_FILL
+    cell.font = HEADER_FONT
+    cell.alignment = { vertical: "middle", horizontal: "center" }
+    cell.border = BORDER
+  })
+
+  PROGRAM_INSTRUCTION_ROWS.forEach((text, i) => {
+    const row = instructionsSheet.getRow(i + 2)
+    const cell = row.getCell(1)
+    cell.value = text
+    styleInstructionCell(cell)
+  })
+
+  instructionsSheet.views = [{ state: "frozen", ySplit: 1, xSplit: 0 }]
+
+  const buffer = await workbook.xlsx.writeBuffer()
+  return Buffer.from(buffer)
+}
