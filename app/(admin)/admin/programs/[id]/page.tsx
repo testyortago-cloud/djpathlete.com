@@ -8,6 +8,7 @@ import { getClients } from "@/lib/db/users"
 import { getActiveAssignmentsForProgram, getFirstActiveAssignmentForProgram } from "@/lib/db/assignments"
 import { Badge } from "@/components/ui/badge"
 import { EditPricingAccessButton } from "@/components/admin/EditPricingAccessButton"
+import { ImportReportCard } from "@/components/admin/ImportReportCard"
 import { ProgramHeader } from "@/components/admin/ProgramHeader"
 import { ProgramBuilder } from "@/components/admin/ProgramBuilder"
 import { ProgramFeedbackForm } from "@/components/admin/ProgramFeedbackForm"
@@ -83,6 +84,10 @@ export default async function ProgramBuilderPage({ params }: { params: Promise<{
 
       {program.is_ai_generated && program.ai_generation_params && (
         <AiGenerationSummary params={program.ai_generation_params} />
+      )}
+
+      {program.ai_generation_params && (
+        <ImportReportCard params={program.ai_generation_params as Record<string, unknown>} />
       )}
 
       <ProgramBuilder
