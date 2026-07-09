@@ -19,4 +19,9 @@ describe("program-import validators", () => {
     const bad = programImportOptionsSchema.safeParse({ client_id: "not-a-uuid" })
     expect(bad.success).toBe(false)
   })
+  it("parses is_public string correctly (private unless explicitly true)", () => {
+    expect(programImportOptionsSchema.parse({ is_public: "false" }).is_public).toBe(false)
+    expect(programImportOptionsSchema.parse({ is_public: "true" }).is_public).toBe(true)
+    expect(programImportOptionsSchema.parse({}).is_public).toBe(false)
+  })
 })

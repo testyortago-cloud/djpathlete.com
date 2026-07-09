@@ -60,6 +60,27 @@ function mapProgressToStep(progress?: {
   return { step: idx >= 0 ? idx + 1 : progress.current_step, detail: progress.detail ?? null }
 }
 
+/** Firebase RTDB drops empty arrays, so matched/created/counts may be undefined after round-trip */
+function safeReport(v: unknown): ImportReport {
+  const fallback: ImportReport = {
+    counts: { days: 0, exercises: 0, weeks: 0 },
+    matched: [],
+    created: [],
+  }
+  if (!v || typeof v !== "object") return fallback
+  const obj = v as Record<string, unknown>
+  const counts = obj.counts && typeof obj.counts === "object" ? (obj.counts as Record<string, unknown>) : undefined
+  return {
+    counts: {
+      days: typeof counts?.days === "number" ? counts.days : fallback.counts.days,
+      exercises: typeof counts?.exercises === "number" ? counts.exercises : fallback.counts.exercises,
+      weeks: typeof counts?.weeks === "number" ? counts.weeks : fallback.counts.weeks,
+    },
+    matched: Array.isArray(obj.matched) ? (obj.matched as ImportReport["matched"]) : fallback.matched,
+    created: Array.isArray(obj.created) ? (obj.created as ImportReport["created"]) : fallback.created,
+  }
+}
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 interface ImportReport {
@@ -217,11 +238,7 @@ export function ExcelImportDialog({ open, onOpenChange, clients }: ExcelImportDi
               stopListening()
               setResult({
                 program_id: jobData.result.program_id,
-                report: jobData.result.report ?? {
-                  counts: { days: 0, exercises: 0, weeks: 0 },
-                  matched: [],
-                  created: [],
-                },
+                report: safeReport(jobData.result.report),
               })
               setIsImporting(false)
               toast.success("Program imported successfully!")

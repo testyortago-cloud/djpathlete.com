@@ -19,7 +19,10 @@ export const programImportOptionsSchema = z.object({
     .uuid("Invalid client ID")
     .nullish()
     .transform((v) => v ?? null),
-  is_public: z.coerce.boolean().default(false),
+  is_public: z
+    .union([z.boolean(), z.string()])
+    .nullish()
+    .transform((v) => v === true || v === "true" || v === "1"),
   name_override: z
     .string()
     .max(200)
