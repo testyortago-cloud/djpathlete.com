@@ -7,6 +7,7 @@ export function ImportReportCard({ params }: { params: Record<string, unknown> }
   const counts = (params.counts as { days?: number; exercises?: number; weeks?: number }) ?? {}
   const matched = (params.matched as { raw_name: string; exercise_name: string; method: string }[]) ?? []
   const created = (params.created as { raw_name: string; exercise_id: string }[]) ?? []
+  const unresolved = (params.unresolved as string[]) ?? []
   const gapsFilled = (params.gaps_filled as string[]) ?? []
   const assumptions = (params.assumptions as string[]) ?? []
   const notes = params.interpretation_notes as string | null | undefined
@@ -58,6 +59,23 @@ export function ImportReportCard({ params }: { params: Record<string, unknown> }
               <li key={`${item.exercise_id}-${idx}`} className="flex items-center gap-1.5">
                 <span className="size-1 rounded-full bg-warning" />
                 {item.raw_name}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {unresolved.length > 0 && (
+        <div className="mt-3 rounded-lg border border-warning/30 bg-warning/10 p-3">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-warning">
+            <AlertTriangle className="size-3.5" />
+            Couldn&apos;t be added — these exercise names could not be matched or created
+          </div>
+          <ul className="mt-2 space-y-1 text-xs text-foreground">
+            {unresolved.map((name, idx) => (
+              <li key={`${name}-${idx}`} className="flex items-center gap-1.5">
+                <span className="size-1 rounded-full bg-warning" />
+                {name}
               </li>
             ))}
           </ul>

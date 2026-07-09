@@ -41,6 +41,7 @@ import type { Program, User } from "@/types/database"
 interface ProgramListProps {
   programs: Program[]
   athleteCounts?: Record<string, number>
+  excelImportEnabled?: boolean
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -83,7 +84,7 @@ function formatPrice(cents: number | null): string {
   return `$${(cents / 100).toFixed(2)}`
 }
 
-export function ProgramList({ programs, athleteCounts = {} }: ProgramListProps) {
+export function ProgramList({ programs, athleteCounts = {}, excelImportEnabled = true }: ProgramListProps) {
   const router = useRouter()
   const [search, setSearch] = useState("")
   const [categoryFilter, setCategoryFilter] = useState<string>("all")
@@ -194,11 +195,13 @@ export function ProgramList({ programs, athleteCounts = {} }: ProgramListProps) 
             <MessageSquare className="size-4" />
             Chat
           </Button>
-          <Button variant="outline" size="sm" onClick={() => setImportDialogOpen(true)}>
-            <FileSpreadsheet className="size-4" />
-            <span className="hidden sm:inline">Import Excel</span>
-            <span className="sm:hidden">Excel</span>
-          </Button>
+          {excelImportEnabled && (
+            <Button variant="outline" size="sm" onClick={() => setImportDialogOpen(true)}>
+              <FileSpreadsheet className="size-4" />
+              <span className="hidden sm:inline">Import Excel</span>
+              <span className="sm:hidden">Excel</span>
+            </Button>
+          )}
         </div>
         <ProgramFormDialog open={formOpen} onOpenChange={setFormOpen} program={editingProgram} />
         <AiGenerateDialog open={aiDialogOpen} onOpenChange={setAiDialogOpen} />
@@ -226,11 +229,13 @@ export function ProgramList({ programs, athleteCounts = {} }: ProgramListProps) 
             <span className="hidden sm:inline">AI Generate</span>
             <span className="sm:hidden">Generate</span>
           </Button>
-          <Button variant="outline" size="sm" onClick={() => setImportDialogOpen(true)}>
-            <FileSpreadsheet className="size-4" />
-            <span className="hidden sm:inline">Import Excel</span>
-            <span className="sm:hidden">Excel</span>
-          </Button>
+          {excelImportEnabled && (
+            <Button variant="outline" size="sm" onClick={() => setImportDialogOpen(true)}>
+              <FileSpreadsheet className="size-4" />
+              <span className="hidden sm:inline">Import Excel</span>
+              <span className="sm:hidden">Excel</span>
+            </Button>
+          )}
           <Button size="sm" onClick={handleCreate}>
             <Plus className="size-4" />
             Add

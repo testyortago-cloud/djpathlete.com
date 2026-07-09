@@ -8,6 +8,7 @@ const params = {
   client_id: null,
   matched: [{ raw_name: "Squat", exercise_id: "e1", exercise_name: "Back Squat", method: "semantic", confidence: 0.8 }],
   created: [{ raw_name: "Sled Push", exercise_id: "e2" }],
+  unresolved: [],
   gaps_filled: ["assumed 4 weeks"],
   assumptions: [],
   interpretation_notes: null,
@@ -25,5 +26,11 @@ describe("ImportReportCard", () => {
   it("renders nothing for non-import params", () => {
     const { container } = render(<ImportReportCard params={{ validation: {} }} />)
     expect(container).toBeEmptyDOMElement()
+  })
+
+  it("renders a warning callout listing unresolved exercise names", () => {
+    render(<ImportReportCard params={{ ...params, unresolved: ["Bulgarian Death March"] }} />)
+    expect(screen.getByText(/couldn.t be added/i)).toBeInTheDocument()
+    expect(screen.getByText(/Bulgarian Death March/)).toBeInTheDocument()
   })
 })

@@ -1,16 +1,18 @@
 import { BarChart3, Brain, ClipboardCheck, CheckCircle } from "lucide-react"
 import { getPrograms } from "@/lib/db/programs"
 import { getAssignments, getAssignmentCountsByProgram } from "@/lib/db/assignments"
+import { getSetting } from "@/lib/db/system-settings"
 import { ProgramList } from "@/components/admin/ProgramList"
 import type { Program, ProgramAssignment } from "@/types/database"
 
 export const metadata = { title: "Programs" }
 
 export default async function ProgramsPage() {
-  const [programs, athleteCounts, assignments] = await Promise.all([
+  const [programs, athleteCounts, assignments, excelImportEnabled] = await Promise.all([
     getPrograms(),
     getAssignmentCountsByProgram(),
     getAssignments(),
+    getSetting<boolean>("feature_program_excel_import_enabled", true),
   ])
 
   const progList = programs as Program[]
@@ -72,7 +74,7 @@ export default async function ProgramsPage() {
         </div>
       </div>
 
-      <ProgramList programs={programs} athleteCounts={athleteCounts} />
+      <ProgramList programs={programs} athleteCounts={athleteCounts} excelImportEnabled={excelImportEnabled} />
     </div>
   )
 }

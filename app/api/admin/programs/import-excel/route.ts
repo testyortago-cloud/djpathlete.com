@@ -65,6 +65,14 @@ export const POST = withAudit(
         return NextResponse.json({ error: (e as Error).message }, { status: 400 })
       }
 
+      const payloadSize = JSON.stringify(parsedSheet).length
+      if (payloadSize > 800_000) {
+        return NextResponse.json(
+          { error: "This spreadsheet is too large or dense to process. Please split it into smaller files or trim empty columns." },
+          { status: 400 },
+        )
+      }
+
       const optResult = programImportOptionsSchema.safeParse({
         client_id: formData.get("client_id") || undefined,
         is_public: formData.get("is_public") || undefined,

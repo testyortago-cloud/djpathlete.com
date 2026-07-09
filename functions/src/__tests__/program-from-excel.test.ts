@@ -74,6 +74,7 @@ describe("buildProgramFromPlan", () => {
     expect(mystery.day_of_week).toBe(1)
     expect(report.created).toHaveLength(1)
     expect(report.matched).toHaveLength(1)
+    expect(report.unresolved).toEqual([])
     expect(report.counts.exercises).toBe(2)
   })
   it("uses name_override when provided", () => {

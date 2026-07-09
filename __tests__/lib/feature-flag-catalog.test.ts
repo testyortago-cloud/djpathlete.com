@@ -11,4 +11,9 @@ describe("feature flag catalog", () => {
     expect(isFeatureFlagKey("feature_captioned_cut_enabled")).toBe(true)
     expect(isFeatureFlagKey("feature_bogus")).toBe(false)
   })
+  it("declares the program-excel-import flag, default on", () => {
+    const flag = FEATURE_FLAG_CATALOG.find((f) => f.key === "feature_program_excel_import_enabled")
+    expect(flag?.defaultEnabled).toBe(true)
+    expect(isFeatureFlagKey("feature_program_excel_import_enabled")).toBe(true)
+  })
 })

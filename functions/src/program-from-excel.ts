@@ -30,6 +30,7 @@ export interface ImportReport {
   client_id: string | null
   matched: { raw_name: string; exercise_id: string; exercise_name: string; method: string; confidence: number }[]
   created: { raw_name: string; exercise_id: string }[]
+  unresolved: string[]
   gaps_filled: string[]
   assumptions: string[]
   interpretation_notes?: string | null
@@ -62,6 +63,7 @@ export function buildProgramFromPlan(
   const exerciseRows: Record<string, unknown>[] = []
   const matched: ImportReport["matched"] = []
   const created: ImportReport["created"] = []
+  const unresolved: string[] = []
   const seenResolved = new Set<string>()
   const weeks = new Set<number>()
 
@@ -69,7 +71,10 @@ export function buildProgramFromPlan(
     weeks.add(day.week_number)
     for (const ex of day.exercises) {
       const r = resolved.get(norm(ex.raw_name))
-      if (!r) continue
+      if (!r) {
+        unresolved.push(ex.raw_name)
+        continue
+      }
       exerciseRows.push({
         exercise_id: r.exercise_id,
         day_of_week: day.day_of_week,
@@ -107,11 +112,15 @@ export function buildProgramFromPlan(
     client_id: options.client_id,
     matched,
     created,
+    unresolved,
     gaps_filled: plan.gaps_filled ?? [],
     assumptions: plan.assumptions ?? [],
     interpretation_notes: plan.interpretation_notes ?? null,
     counts: { days: plan.days.length, exercises: exerciseRows.length, weeks: weeks.size },
   }
+
+  const durationWeeks =
+    weeks.size === 0 ? plan.program.duration_weeks : Math.max(plan.program.duration_weeks || 1, ...[...weeks])
 
   const programRow: Record<string, unknown> = {
     name: options.name_override ?? plan.program.name,
@@ -119,7 +128,7 @@ export function buildProgramFromPlan(
     category: plan.program.category?.length ? plan.program.category : ["strength"],
     difficulty: plan.program.difficulty ?? "intermediate",
     tier: plan.program.tier ?? "premium",
-    duration_weeks: plan.program.duration_weeks,
+    duration_weeks: durationWeeks,
     sessions_per_week: plan.program.sessions_per_week,
     split_type: plan.program.split_type ?? null,
     periodization: plan.program.periodization ?? null,
@@ -161,6 +170,17 @@ async function updateRtdb(jobId: string, data: Record<string, unknown>) {
     await rtdb.ref(`ai_jobs/${jobId}`).update({ ...data, updatedAt: Date.now() })
   } catch (e) {
     console.warn(`[program-from-excel] RTDB update failed:`, e)
+  }
+}
+
+/** Best-effort: mark the Supabase generation log as cancelled so it doesn't stay stuck "pending" */
+async function markLogCancelled(logId: string | undefined) {
+  if (!logId) return
+  try {
+    const supabase = getSupabase()
+    await supabase.from("ai_generation_log").update({ status: "cancelled" }).eq("id", logId)
+  } catch (e) {
+    console.warn(`[program-from-excel] Failed to mark log ${logId} cancelled:`, e)
   }
 }
 
@@ -215,7 +235,11 @@ export async function handleProgramFromExcel(jobId: string): Promise<void> {
     }
 
     await updateProgress("interpreting", 2)
-    if (await checkCancelled()) return
+    if (await checkCancelled()) {
+      await markLogCancelled(input.logId)
+      await updateRtdb(jobId, { status: "cancelled" })
+      return
+    }
     const agentRes = await callAgent<ProgramImportPlan>(
       PROGRAM_IMPORT_PROMPT,
       renderedText,
@@ -225,7 +249,11 @@ export async function handleProgramFromExcel(jobId: string): Promise<void> {
     const plan = agentRes.content
 
     await updateProgress("matching", 3)
-    if (await checkCancelled()) return
+    if (await checkCancelled()) {
+      await markLogCancelled(input.logId)
+      await updateRtdb(jobId, { status: "cancelled" })
+      return
+    }
     const rawNames = [...new Set(plan.days.flatMap((d) => d.exercises.map((e) => e.raw_name)))]
     const resolved = await resolveExerciseNames(rawNames)
 
