@@ -262,6 +262,55 @@ export function validateAssignmentAgainstCeiling(
   return { ok: violations.length === 0, violations }
 }
 
+// ─── Program Import (Excel → AI program) ─────────────────────────────────────
+
+const PROGRAM_DIFFICULTIES = ["beginner", "intermediate", "advanced", "elite"] as const
+const PROGRAM_TIERS = ["generalize", "premium"] as const
+
+export const parsedSheetSchema = z.object({
+  sheets: z.array(z.object({ name: z.string(), rows: z.array(z.array(z.string())) })).min(1),
+})
+
+const importExerciseSchema = z.object({
+  raw_name: z.string().min(1),
+  order_index: z.number().int().min(0),
+  sets: z.number().int().min(1).max(20).nullish(),
+  reps: z.string().max(40).nullish(),
+  rest_seconds: z.number().int().min(0).max(1200).nullish(),
+  rpe_target: z.number().min(1).max(10).nullish(),
+  tempo: z.string().max(20).nullish(),
+  technique: z.enum(TECHNIQUES).nullish(),
+  group_tag: z.string().max(40).nullish(),
+  notes: z.string().max(1000).nullish(),
+})
+
+const importDaySchema = z.object({
+  week_number: z.number().int().min(1).max(52),
+  day_of_week: z.number().int().min(1).max(7),
+  day_label: z.string().max(60).nullish(),
+  exercises: z.array(importExerciseSchema),
+})
+
+export const programImportSchema = z.object({
+  program: z.object({
+    name: z.string().min(1).max(200),
+    description: z.string().max(2000).nullish(),
+    duration_weeks: z.number().int().min(1).max(52),
+    sessions_per_week: z.number().int().min(1).max(7),
+    split_type: z.enum(SPLIT_TYPES).nullish(),
+    periodization: z.enum(PERIODIZATION_TYPES).nullish(),
+    difficulty: z.enum(PROGRAM_DIFFICULTIES).default("intermediate"),
+    category: z.array(z.string()).min(1).default(["strength"]),
+    tier: z.enum(PROGRAM_TIERS).default("premium"),
+  }),
+  days: z.array(importDaySchema).min(1),
+  interpretation_notes: z.string().max(4000).nullish(),
+  gaps_filled: z.array(z.string()).default([]),
+  assumptions: z.array(z.string()).default([]),
+})
+
+export type ProgramImportPlan = z.infer<typeof programImportSchema>
+
 // ─── Voice drift assessment (Phase 5e) ──
 // Used by voice-drift-monitor.ts to structure Claude's audit output.
 
