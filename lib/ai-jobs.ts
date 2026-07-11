@@ -131,10 +131,29 @@ export async function findInFlightSplitRender(videoUploadId: string): Promise<st
  * In-flight duplicate guards for blog generation. A rapid double-click on a
  * generate button enqueued two identical jobs 3 seconds apart in prod — two
  * full paid generations and twin draft posts. Keyed by input.promptHash
- * (sha256 of userId:prompt — Firestore can't index values >1500 bytes, so
- * the raw prompt can't be the key). Same composite-index note as
+ * (sha256 of the full request payload — Firestore can't index values >1500
+ * bytes, so the raw prompt can't be the key). Same composite-index note as
  * findInFlightCaptionRender.
+ *
+ * Limitations (accepted for a single-admin app): the check-then-create is
+ * not transactional, so two requests inside the ~100-300ms window can still
+ * both enqueue — this narrows the double-submit window, it doesn't seal it.
+ * A doc wedged in "processing" (function hard-killed, catch never ran) must
+ * not absorb submissions forever, so matches older than STALE_JOB_CUTOFF_MS
+ * are ignored.
  */
+const STALE_JOB_CUTOFF_MS = 20 * 60_000 // blog generation completes in ~1-2 min
+
+function freshJobIdOrNull(
+  snap: FirebaseFirestore.QuerySnapshot,
+): string | null {
+  if (snap.empty) return null
+  const doc = snap.docs[0]
+  const createdAt = (doc.get("createdAt") as { toMillis?: () => number } | null)?.toMillis?.()
+  if (createdAt != null && Date.now() - createdAt > STALE_JOB_CUTOFF_MS) return null
+  return doc.id
+}
+
 export async function findInFlightBlogGeneration(promptHash: string): Promise<string | null> {
   const db = getAdminFirestore()
   const snap = await db
@@ -144,7 +163,7 @@ export async function findInFlightBlogGeneration(promptHash: string): Promise<st
     .where("status", "in", ["pending", "processing"])
     .limit(1)
     .get()
-  return snap.empty ? null : snap.docs[0].id
+  return freshJobIdOrNull(snap)
 }
 
 /** Same guard for topic-suggestion drafts, keyed by the calendar entry. */
@@ -157,7 +176,7 @@ export async function findInFlightBlogSuggestionJob(calendarId: string): Promise
     .where("status", "in", ["pending", "processing"])
     .limit(1)
     .get()
-  return snap.empty ? null : snap.docs[0].id
+  return freshJobIdOrNull(snap)
 }
 
 export type AiJobStatus = "pending" | "processing" | "streaming" | "completed" | "failed" | "cancelled"

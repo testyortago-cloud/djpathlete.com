@@ -63,10 +63,11 @@ interface TopicCardProps {
   entry: ContentCalendarEntry
   isHero: boolean
   generatePost: (entry: ContentCalendarEntry) => Promise<void>
-  generating: boolean
+  /** id of the entry with a generate request in flight, or null */
+  generatingId: string | null
 }
 
-function TopicCard({ entry, isHero, generatePost, generating }: TopicCardProps) {
+function TopicCard({ entry, isHero, generatePost, generatingId }: TopicCardProps) {
   const [expanded, setExpanded] = useState(false)
   const meta = metadataOf(entry)
   const host = hostFromUrl(meta.tavily_url)
@@ -173,11 +174,11 @@ function TopicCard({ entry, isHero, generatePost, generating }: TopicCardProps) 
         <button
           type="button"
           onClick={() => generatePost(entry)}
-          disabled={generating}
+          disabled={generatingId !== null}
           className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md bg-primary text-white hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:pointer-events-none"
           title="Generate a full draft blog post with cover image"
         >
-          {generating ? (
+          {generatingId === entry.id ? (
             <>
               <Loader2 className="size-3.5 animate-spin" />
               Queuing…
@@ -324,7 +325,7 @@ export function TopicSuggestionsList({ suggestions }: TopicSuggestionsListProps)
                 entry={t}
                 isHero={false}
                 generatePost={generatePost}
-                generating={generatingId !== null}
+                generatingId={generatingId}
               />
             ))}
           </div>
@@ -359,7 +360,7 @@ export function TopicSuggestionsList({ suggestions }: TopicSuggestionsListProps)
                 entry={t}
                 isHero={idx === 0}
                 generatePost={generatePost}
-                generating={generatingId !== null}
+                generatingId={generatingId}
               />
             ))}
           </div>
@@ -400,7 +401,7 @@ export function TopicSuggestionsList({ suggestions }: TopicSuggestionsListProps)
                         entry={t}
                         isHero={false}
                         generatePost={generatePost}
-                        generating={generatingId !== null}
+                        generatingId={generatingId}
                       />
                     ))}
                   </div>

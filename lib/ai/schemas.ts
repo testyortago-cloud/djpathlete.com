@@ -2,17 +2,16 @@ import { z } from "zod"
 import { SPLIT_TYPES, PERIODIZATION_TYPES } from "@/lib/validators/program"
 import { MOVEMENT_PATTERNS } from "@/lib/validators/exercise"
 
-// ─── Anthropic Structured Output Compatibility Notes ─────────────────────────
-// The Vercel AI SDK passes Zod-generated JSON Schema directly to Anthropic's
-// output_format WITHOUT stripping unsupported features. We must avoid:
-//   - "integer" type entirely            → use z.number() not z.number()
-//     (Anthropic rejects minimum/maximum on integer, and zod-to-json-schema
-//      may add implicit safe-integer bounds when .int() is used)
-//   - minimum/maximum on numbers         → no .min()/.max() on z.number()
-//   - minLength/maxLength on strings     → no .min() on z.string()
-//   - minItems > 1 or any maxItems       → use z.array() with only .min(1) at most
-// Supported: enum, default, nullable, pattern (basic regex), minItems 0 or 1
-// Range/length constraints are enforced by the system prompts instead.
+// ─── Anthropic Structured Output Compatibility Notes (updated 2026-07-11) ────
+// callAgent (lib/ai/anthropic.ts) forces structuredOutputMode "jsonTool", so
+// schemas now travel as a tool input_schema — which ACCEPTS .int(), .min()/
+// .max(), minItems/maxItems etc., and Zod still validates client-side. The
+// old guidance to strip constraints applied to the output_format path (which
+// rejects those keywords) and is obsolete; constraints are safe and useful
+// again. Keep these schemas as-is or add constraints freely — but if anyone
+// ever flips callAgent back to "auto"/"outputFormat", constraint-carrying
+// schemas will 400 ("property 'maxItems' is not supported"). See
+// __tests__/lib/ai/anthropic-schema.test.ts.
 
 // ─── Agent 1: Profile Analysis Schema ────────────────────────────────────────
 

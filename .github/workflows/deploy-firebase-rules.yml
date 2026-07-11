@@ -51,11 +51,20 @@ jobs:
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2
 
-      # Firestore rules + composite indexes + Storage + Realtime Database rules
-      # (paths from firebase.json). Indexes back the ai_jobs in-flight dedupe
-      # queries in lib/ai-jobs.ts — those guards fail open until indexes build.
-      - name: Deploy security rules and indexes
-        run: npx --yes firebase-tools@latest deploy --only firestore:rules,firestore:indexes,storage,database --project darrenjpaulcom --non-interactive --force
+      # Firestore + Storage + Realtime Database security rules (paths from firebase.json).
+      - name: Deploy security rules
+        run: npx --yes firebase-tools@latest deploy --only firestore:rules,storage,database --project darrenjpaulcom --non-interactive --force
+
+      # Composite indexes — SEPARATE step WITHOUT --force: with --force,
+      # firebase-tools DELETES every prod index not declared in
+      # firestore.indexes.json (shouldDeleteIndexes = options.force), which
+      # would silently break any query whose index was created ad-hoc from a
+      # console link. Without --force, missing-from-file indexes are left
+      # alone and only additions are applied. Indexes back the ai_jobs
+      # in-flight dedupe queries (lib/ai-jobs.ts) and the automation-health
+      # status scans — those callers fail open/soft until indexes build.
+      - name: Deploy Firestore indexes (additive)
+        run: npx --yes firebase-tools@latest deploy --only firestore:indexes --project darrenjpaulcom --non-interactive
 
       # Bucket CORS — applied separately because it's GCS bucket config, not a Firebase
       # ruleset. cors.json is the source of truth for the public storage bucket.

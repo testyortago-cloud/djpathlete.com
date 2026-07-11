@@ -25,6 +25,9 @@ const BULK_SUBSCRIBER_SOURCES = ["csv_import", "ghl_sync"]
 
 // PostgREST silently caps any select at ~1000 rows. Page every range fetch —
 // an ordered .range() loop — so growth tables never truncate the funnel.
+// Every caller MUST order by a total order (timestamp + id tiebreaker):
+// rows sharing a boundary timestamp can otherwise be skipped or duplicated
+// between pages (Postgres sort is not stable across separate queries).
 const PAGE_SIZE = 1000
 
 interface PageQuery<T> {
@@ -120,7 +123,8 @@ async function fetchAttributionInRange({ rangeStart, rangeEnd }: RangeParams): P
       .select("gclid, gbraid, wbraid, fbclid, utm_source, utm_medium, utm_campaign")
       .gte("first_seen_at", isoDate(rangeStart))
       .lte("first_seen_at", isoDate(rangeEnd))
-      .order("first_seen_at", { ascending: true }),
+      .order("first_seen_at", { ascending: true })
+      .order("id", { ascending: true }),
   )
 }
 
@@ -134,7 +138,8 @@ async function fetchSignupsInRange({ rangeStart, rangeEnd }: RangeParams): Promi
       .not("source", "in", `(${BULK_SUBSCRIBER_SOURCES.join(",")})`)
       .gte("subscribed_at", isoDate(rangeStart))
       .lte("subscribed_at", isoDate(rangeEnd))
-      .order("subscribed_at", { ascending: true }),
+      .order("subscribed_at", { ascending: true })
+      .order("id", { ascending: true }),
   )
 }
 
@@ -146,7 +151,8 @@ async function fetchBookingsInRange({ rangeStart, rangeEnd }: RangeParams): Prom
       .select("gclid, gbraid, wbraid, fbclid")
       .gte("created_at", isoDate(rangeStart))
       .lte("created_at", isoDate(rangeEnd))
-      .order("created_at", { ascending: true }),
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true }),
   )
 }
 
@@ -163,7 +169,8 @@ async function fetchPaymentsInRange({ rangeStart, rangeEnd }: RangeParams): Prom
       .eq("status", "succeeded")
       .gte("created_at", isoDate(rangeStart))
       .lte("created_at", isoDate(rangeEnd))
-      .order("created_at", { ascending: true }),
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true }),
   )
 }
 

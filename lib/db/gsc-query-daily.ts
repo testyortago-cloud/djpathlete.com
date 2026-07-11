@@ -25,11 +25,19 @@ export interface GscRowInput {
 export async function upsertGscRows(rows: GscRowInput[]): Promise<number> {
   if (rows.length === 0) return 0
   const supabase = getClient()
+  // ingested_at must be set explicitly: the column DEFAULT now() only fires
+  // on INSERT, so conflict-updates of already-known (date,query,page) rows
+  // would keep their original stamp. The ads-agent preflight uses
+  // max(ingested_at) as "when did our GSC sync last run" — without this, a
+  // healthy nightly sync that only refreshes existing rows looks stalled
+  // and falsely trips the GSC-lag gate.
+  const ingested_at = new Date().toISOString()
+  const stamped = rows.map((r) => ({ ...r, ingested_at }))
   // chunked to stay well under PostgREST request size limits
   const CHUNK = 1000
   let total = 0
-  for (let i = 0; i < rows.length; i += CHUNK) {
-    const slice = rows.slice(i, i + CHUNK)
+  for (let i = 0; i < stamped.length; i += CHUNK) {
+    const slice = stamped.slice(i, i + CHUNK)
     const { error, count } = await supabase
       .from("gsc_query_daily")
       .upsert(slice, { onConflict: "date,query,page", count: "exact" })

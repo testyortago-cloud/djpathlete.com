@@ -505,23 +505,47 @@ async function fetchCampaignsAdapter(): Promise<AdsRawInputs["campaigns"]> {
   })
 }
 
+// PostgREST silently caps un-ranged selects at ~1000 rows, so JS-side
+// rollups over growth tables aggregate an arbitrary subset without erroring
+// (google_ads_search_terms already exceeds 1000 rows per 28-day window).
+// Page with an ordered .range() loop; ordering must be a total order or
+// boundary rows can be skipped/duplicated between pages.
+const AGENT_FETCH_PAGE = 1000
+
+interface AgentPageQuery {
+  range(from: number, to: number): PromiseLike<{ data: unknown[] | null; error: unknown }>
+}
+
+async function fetchAllAgentRows<T>(makeQuery: () => AgentPageQuery): Promise<T[]> {
+  const rows: T[] = []
+  for (let from = 0; ; from += AGENT_FETCH_PAGE) {
+    const { data, error } = await makeQuery().range(from, from + AGENT_FETCH_PAGE - 1)
+    if (error) throw error
+    const batch = (data ?? []) as T[]
+    rows.push(...batch)
+    if (batch.length < AGENT_FETCH_PAGE) return rows
+  }
+}
+
 async function fetchSearchTermsTopSpend(): Promise<AdsRawInputs["search_terms_top_spend"]> {
   const supabase = createServiceRoleClient()
   try {
     const fromDate = new Date(Date.now() - 28 * 86_400_000).toISOString().slice(0, 10)
     // TODO(ads-agent): aggregate by (campaign_id, search_term) in SQL when
     // volumes grow; for now JS-side rollup of the per-day rows is fine.
-    const { data } = await supabase
-      .from("google_ads_search_terms")
-      .select("campaign_id, search_term, cost_micros, clicks, conversions, date")
-      .gte("date", fromDate)
-    const rows = (data ?? []) as Array<{
+    const rows = await fetchAllAgentRows<{
       campaign_id: string
       search_term: string
       cost_micros: number | null
       clicks: number | null
       conversions: number | null
-    }>
+    }>(() =>
+      supabase
+        .from("google_ads_search_terms")
+        .select("campaign_id, search_term, cost_micros, clicks, conversions, date")
+        .gte("date", fromDate)
+        .order("id", { ascending: true }),
+    )
     const byKey = new Map<
       string,
       {
@@ -632,17 +656,22 @@ async function fetchGscOrganicTop10Adapter(): Promise<AdsRawInputs["gsc_organic_
   const supabase = createServiceRoleClient()
   try {
     const fromDate = new Date(Date.now() - 28 * 86_400_000).toISOString().slice(0, 10)
-    const { data } = await supabase
-      .from("gsc_query_daily")
-      .select("query, page, position, clicks, impressions, date")
-      .gte("date", fromDate)
-    const rows = (data ?? []) as Array<{
+    // (date, query, page) is the primary key — a total order for stable pages.
+    const rows = await fetchAllAgentRows<{
       query: string
       page: string
       position: number | null
       clicks: number | null
       impressions: number | null
-    }>
+    }>(() =>
+      supabase
+        .from("gsc_query_daily")
+        .select("query, page, position, clicks, impressions, date")
+        .gte("date", fromDate)
+        .order("date", { ascending: true })
+        .order("query", { ascending: true })
+        .order("page", { ascending: true }),
+    )
     // Aggregate over the window: pick the best (lowest) position per
     // (query, page) and sum clicks/impressions.
     const byKey = new Map<
@@ -656,7 +685,9 @@ async function fetchGscOrganicTop10Adapter(): Promise<AdsRawInputs["gsc_organic_
       }
     >()
     for (const r of rows) {
-      const key = `${r.query}0000${r.page}`
+      // query is free text — JSON.stringify keys unambiguously (a raw NUL
+      // separator used to live here and made grep treat the file as binary).
+      const key = JSON.stringify([r.query, r.page])
       const pos = Number(r.position ?? 100)
       const cur = byKey.get(key)
       if (!cur) {

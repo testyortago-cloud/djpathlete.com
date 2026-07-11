@@ -91,10 +91,26 @@ export async function POST(request: NextRequest) {
     }
 
     // Double-submit guard: a rapid second click (or a re-fired dialog) with
-    // the same prompt attaches to the in-flight job instead of paying for a
-    // second generation. Fails open — a missing Firestore index must never
+    // the same request attaches to the in-flight job instead of paying for a
+    // second generation. The hash covers the FULL payload so a deliberate
+    // re-run with different settings (register/length/keywords/references)
+    // is not absorbed. Fails open — a missing Firestore index must never
     // block generation.
-    const promptHash = createHash("sha256").update(`${userId}:${prompt}`).digest("hex")
+    const promptHash = createHash("sha256")
+      .update(
+        JSON.stringify({
+          userId,
+          prompt,
+          register: resolvedRegister,
+          length,
+          primary_keyword,
+          secondary_keywords,
+          search_intent: search_intent ?? null,
+          target_word_count: target_word_count ?? null,
+          references: references ?? null,
+        }),
+      )
+      .digest("hex")
     try {
       const existing = await findInFlightBlogGeneration(promptHash)
       if (existing) {

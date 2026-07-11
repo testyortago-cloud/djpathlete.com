@@ -355,15 +355,20 @@ export function BlogGenerateDialog({ open, onOpenChange, onGenerated, hasExistin
     onOpenChange(false)
   }
 
+  // "cancelled" is terminal too — dedupe can attach this dialog to a job
+  // started elsewhere (another tab), and if that job gets cancelled there,
+  // treating it as non-terminal would trap this viewer on the progress view.
+  const TERMINAL_JOB_STATUSES = ["completed", "failed", "cancelled"]
+
   function handleClose(open: boolean) {
-    if (jobId && aiJob.status !== "completed" && aiJob.status !== "failed") {
+    if (jobId && !TERMINAL_JOB_STATUSES.includes(aiJob.status ?? "")) {
       return // Don't close while generating (use cancel button instead)
     }
     if (!open) resetState()
     onOpenChange(open)
   }
 
-  const isGenerating = !!jobId && aiJob.status !== "completed" && aiJob.status !== "failed"
+  const isGenerating = !!jobId && !TERMINAL_JOB_STATUSES.includes(aiJob.status ?? "")
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
