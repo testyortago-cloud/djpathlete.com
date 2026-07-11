@@ -62,6 +62,9 @@ import {
   sessionMembershipsEnabled,
 } from "@/lib/packs/flags"
 import { PersonalCheckinLinkDialog } from "@/components/admin/packs/PersonalCheckinLinkDialog"
+import { signAthleteProfileToken } from "@/lib/profile-share/token"
+import { clientProfileShareEnabled } from "@/lib/profile-share/flags"
+import { AthleteProfileLinkDialog } from "@/components/admin/profile-share/AthleteProfileLinkDialog"
 import { listRecurringForClient } from "@/lib/db/recurring-sessions"
 import { getDefaultPaymentMethod } from "@/lib/db/payment-methods"
 import { getActiveMembershipForUser } from "@/lib/db/client-memberships"
@@ -651,6 +654,21 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
     }
   }
 
+  // Public athlete-profile share link + QR (permanent HMAC, minors excluded).
+  let athleteProfileUrl: string | null = null
+  let athleteProfileQr: string | null = null
+  if ((await clientProfileShareEnabled()) && profile && !profile.is_minor) {
+    try {
+      const base = process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXTAUTH_URL ?? "https://www.darrenjpaul.com"
+      athleteProfileUrl = `${base}/athlete/${signAthleteProfileToken(id)}`
+      athleteProfileQr = await QRCode.toDataURL(athleteProfileUrl, { width: 320, margin: 1 })
+    } catch (err) {
+      console.error("Athlete profile link generation failed:", err)
+      athleteProfileUrl = null
+      athleteProfileQr = null
+    }
+  }
+
   const showStandingSlots = await recurringSessionsEnabled()
   let standingSlots: RecurringSession[] = []
   if (showStandingSlots) {
@@ -805,6 +823,13 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
           <PersonalCheckinLinkDialog
             qrDataUrl={personalCheckinQr}
             checkinUrl={personalCheckinUrl}
+            clientName={`${user.first_name ?? ""} ${user.last_name ?? ""}`.trim() || user.email}
+          />
+        )}
+        {athleteProfileQr && athleteProfileUrl && (
+          <AthleteProfileLinkDialog
+            qrDataUrl={athleteProfileQr}
+            profileUrl={athleteProfileUrl}
             clientName={`${user.first_name ?? ""} ${user.last_name ?? ""}`.trim() || user.email}
           />
         )}
