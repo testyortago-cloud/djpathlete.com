@@ -17,6 +17,31 @@
 
 import { createServiceRoleClient } from "@/lib/supabase"
 
+// Bulk-loaded subscriber rows (CSV imports, GHL contact sync) carry the
+// import time as subscribed_at, so counting them as funnel "signups" inflates
+// the stage by thousands the moment a list is imported. Exclude bulk sources
+// rather than whitelisting so future organic sources still count.
+const BULK_SUBSCRIBER_SOURCES = ["csv_import", "ghl_sync"]
+
+// PostgREST silently caps any select at ~1000 rows. Page every range fetch —
+// an ordered .range() loop — so growth tables never truncate the funnel.
+const PAGE_SIZE = 1000
+
+interface PageQuery<T> {
+  range(from: number, to: number): PromiseLike<{ data: T[] | null; error: unknown }>
+}
+
+async function fetchAllPages<T>(makeQuery: () => PageQuery<T>): Promise<T[]> {
+  const rows: T[] = []
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await makeQuery().range(from, from + PAGE_SIZE - 1)
+    if (error) throw error
+    const batch = data ?? []
+    rows.push(...batch)
+    if (batch.length < PAGE_SIZE) return rows
+  }
+}
+
 type ClickIdSource = "gclid" | "gbraid" | "wbraid" | "fbclid"
 
 interface AttributionRow {
@@ -89,36 +114,40 @@ function isoDate(d: Date): string {
 
 async function fetchAttributionInRange({ rangeStart, rangeEnd }: RangeParams): Promise<AttributionRow[]> {
   const supabase = createServiceRoleClient()
-  const { data, error } = await supabase
-    .from("marketing_attribution")
-    .select("gclid, gbraid, wbraid, fbclid, utm_source, utm_medium, utm_campaign")
-    .gte("first_seen_at", isoDate(rangeStart))
-    .lte("first_seen_at", isoDate(rangeEnd))
-  if (error) throw error
-  return (data ?? []) as AttributionRow[]
+  return fetchAllPages<AttributionRow>(() =>
+    supabase
+      .from("marketing_attribution")
+      .select("gclid, gbraid, wbraid, fbclid, utm_source, utm_medium, utm_campaign")
+      .gte("first_seen_at", isoDate(rangeStart))
+      .lte("first_seen_at", isoDate(rangeEnd))
+      .order("first_seen_at", { ascending: true }),
+  )
 }
 
 async function fetchSignupsInRange({ rangeStart, rangeEnd }: RangeParams): Promise<ActionRow[]> {
   const supabase = createServiceRoleClient()
-  const { data, error } = await supabase
-    .from("newsletter_subscribers")
-    .select("gclid, gbraid, wbraid, fbclid")
-    .is("unsubscribed_at", null)
-    .gte("subscribed_at", isoDate(rangeStart))
-    .lte("subscribed_at", isoDate(rangeEnd))
-  if (error) throw error
-  return (data ?? []) as ActionRow[]
+  return fetchAllPages<ActionRow>(() =>
+    supabase
+      .from("newsletter_subscribers")
+      .select("gclid, gbraid, wbraid, fbclid")
+      .is("unsubscribed_at", null)
+      .not("source", "in", `(${BULK_SUBSCRIBER_SOURCES.join(",")})`)
+      .gte("subscribed_at", isoDate(rangeStart))
+      .lte("subscribed_at", isoDate(rangeEnd))
+      .order("subscribed_at", { ascending: true }),
+  )
 }
 
 async function fetchBookingsInRange({ rangeStart, rangeEnd }: RangeParams): Promise<ActionRow[]> {
   const supabase = createServiceRoleClient()
-  const { data, error } = await supabase
-    .from("bookings")
-    .select("gclid, gbraid, wbraid, fbclid")
-    .gte("created_at", isoDate(rangeStart))
-    .lte("created_at", isoDate(rangeEnd))
-  if (error) throw error
-  return (data ?? []) as ActionRow[]
+  return fetchAllPages<ActionRow>(() =>
+    supabase
+      .from("bookings")
+      .select("gclid, gbraid, wbraid, fbclid")
+      .gte("created_at", isoDate(rangeStart))
+      .lte("created_at", isoDate(rangeEnd))
+      .order("created_at", { ascending: true }),
+  )
 }
 
 interface PaymentRow extends ActionRow {
@@ -127,14 +156,15 @@ interface PaymentRow extends ActionRow {
 
 async function fetchPaymentsInRange({ rangeStart, rangeEnd }: RangeParams): Promise<PaymentRow[]> {
   const supabase = createServiceRoleClient()
-  const { data, error } = await supabase
-    .from("payments")
-    .select("gclid, gbraid, wbraid, fbclid, amount_cents")
-    .eq("status", "succeeded")
-    .gte("created_at", isoDate(rangeStart))
-    .lte("created_at", isoDate(rangeEnd))
-  if (error) throw error
-  return (data ?? []) as PaymentRow[]
+  return fetchAllPages<PaymentRow>(() =>
+    supabase
+      .from("payments")
+      .select("gclid, gbraid, wbraid, fbclid, amount_cents")
+      .eq("status", "succeeded")
+      .gte("created_at", isoDate(rangeStart))
+      .lte("created_at", isoDate(rangeEnd))
+      .order("created_at", { ascending: true }),
+  )
 }
 
 function buildAttributionMap(rows: AttributionRow[]): AttributionMap {

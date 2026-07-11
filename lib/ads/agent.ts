@@ -314,15 +314,19 @@ async function fetchPreflightInput(): Promise<PreflightInput> {
     // ignore
   }
   try {
-    // GSC freshness: max(date) in gsc_query_daily acts as a sync stamp.
+    // GSC freshness: when did OUR sync last write rows. max(date) is the
+    // wrong stamp — GSC Search Analytics data is inherently ~2-3 days
+    // behind, so comparing max(date) against the 48h threshold failed
+    // preflight even while the nightly ingest was perfectly healthy.
+    // ingested_at records the actual sync write time.
     const { data } = await supabase
       .from("gsc_query_daily")
-      .select("date")
-      .order("date", { ascending: false })
+      .select("ingested_at")
+      .order("ingested_at", { ascending: false })
       .limit(1)
       .maybeSingle()
-    const row = data as { date?: string } | null
-    if (row?.date) gscSyncedAt = new Date(`${row.date}T00:00:00Z`)
+    const row = data as { ingested_at?: string } | null
+    if (row?.ingested_at) gscSyncedAt = new Date(row.ingested_at)
   } catch {
     // ignore
   }
