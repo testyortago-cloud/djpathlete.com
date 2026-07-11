@@ -263,14 +263,24 @@ Return ONLY valid JSON matching the schema.`
       // dev console shows what the model actually returned and why it
       // failed — without this, both retries get the same opaque message.
       const errObj = err as { cause?: unknown; text?: string; response?: unknown }
+      // AI SDK v6 wraps schema failures as NoObjectGeneratedError → cause:
+      // TypeValidationError → cause: ZodError, so unwrap one level too — a
+      // direct `cause instanceof ZodError` check alone never matches.
       const cause = errObj?.cause
+      const nestedCause = (cause as { cause?: unknown } | undefined)?.cause
+      const zodCause =
+        cause instanceof z.ZodError
+          ? cause
+          : nestedCause instanceof z.ZodError
+            ? nestedCause
+            : null
       console.error(
         `[reasonAdsDecision] attempt ${attempt + 1} failed:`,
         err instanceof Error ? err.message : String(err),
       )
-      if (cause instanceof z.ZodError) {
-        console.error("[reasonAdsDecision] Zod issues:", JSON.stringify(cause.issues, null, 2))
-        lastError = cause
+      if (zodCause) {
+        console.error("[reasonAdsDecision] Zod issues:", JSON.stringify(zodCause.issues, null, 2))
+        lastError = zodCause
       } else {
         if (cause) {
           console.error("[reasonAdsDecision] non-Zod cause:", cause)

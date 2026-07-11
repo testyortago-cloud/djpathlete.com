@@ -72,6 +72,21 @@ export async function callAgent<T>(
       const res = await generateObject({
         model: provider(modelId),
         maxOutputTokens: maxTokens,
+        // Force the tool-based JSON path. The default ("auto") uses Anthropic
+        // structured outputs (output_format.schema) on supporting models, and
+        // that endpoint REJECTS schemas carrying minLength/maxLength/minimum/
+        // maximum/minItems/maxItems — which every Zod .min()/.max() in our
+        // schemas compiles to ("For 'array' type, property 'maxItems' is not
+        // supported"; broke strategist memos + nightly ad recommendations).
+        // It also constrained-decodes z.record(...) fields (action args,
+        // recommendation payloads) into EMPTY objects via forced
+        // additionalProperties:false. jsonTool sends the schema as a tool
+        // input_schema instead — same mechanism the functions/ runtime uses
+        // in production — which accepts all constraints; Zod still validates
+        // the response client-side.
+        providerOptions: {
+          anthropic: { structuredOutputMode: "jsonTool" },
+        },
         system: options?.cacheSystemPrompt
           ? [
               {

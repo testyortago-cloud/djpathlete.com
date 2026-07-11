@@ -533,7 +533,9 @@ async function fetchSearchTermsTopSpend(): Promise<AdsRawInputs["search_terms_to
       }
     >()
     for (const r of rows) {
-      const key = `${r.campaign_id} ${r.search_term}`
+      // campaign_id is numeric-only, so "|" cannot collide with the term.
+      // (Was a raw NUL byte, which made grep treat this file as binary.)
+      const key = `${r.campaign_id}|${r.search_term}`
       const cur = byKey.get(key) ?? {
         text: r.search_term,
         campaign_id: r.campaign_id,
@@ -654,7 +656,7 @@ async function fetchGscOrganicTop10Adapter(): Promise<AdsRawInputs["gsc_organic_
       }
     >()
     for (const r of rows) {
-      const key = `${r.query} ${r.page}`
+      const key = `${r.query}0000${r.page}`
       const pos = Number(r.position ?? 100)
       const cur = byKey.get(key)
       if (!cur) {
