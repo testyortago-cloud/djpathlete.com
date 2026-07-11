@@ -3,7 +3,7 @@ import Image from "next/image"
 /** Closing brand band — the card is a marketing surface every time it's shared. */
 export function FooterCta() {
   return (
-    <footer className="relative mt-16 overflow-hidden bg-primary py-10 text-center text-primary-foreground">
+    <footer className="relative mt-16 overflow-hidden bg-primary py-10 text-center text-primary-foreground [-webkit-print-color-adjust:exact] [print-color-adjust:exact]">
       <div
         className="pointer-events-none absolute inset-0"
         style={{

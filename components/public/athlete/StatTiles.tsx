@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
+import { flushSync } from "react-dom"
 import { useInView } from "framer-motion"
 import { Dumbbell, Flame, Trophy, Weight } from "lucide-react"
 import type { AthleteProfileData } from "@/lib/profile-share/data"
@@ -19,10 +20,14 @@ function Counter({ target, format }: { target: number; format: (n: number) => st
   const [printing, setPrinting] = useState(false)
 
   // Printing must always capture final values, not a mid-animation frame.
+  // flushSync: window.print() fires beforeprint synchronously, so the DOM
+  // update must land before the print snapshot is taken.
   useEffect(() => {
     const snap = () => {
-      setPrinting(true)
-      setCount(target)
+      flushSync(() => {
+        setPrinting(true)
+        setCount(target)
+      })
     }
     window.addEventListener("beforeprint", snap)
     return () => window.removeEventListener("beforeprint", snap)

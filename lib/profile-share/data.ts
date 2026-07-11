@@ -110,8 +110,12 @@ export async function getAthleteProfileData(clientUserId: string): Promise<Athle
 
   // Minor gate fails CLOSED: an absent or unreadable profile must never publish
   // a potential minor (and a card without sport/position/physicals is worthless).
+  // Belt-and-braces: the is_minor flag is not reliably maintained in real data,
+  // so a DOB that computes to under 18 blocks the card regardless of the flag.
   const profile = await getProfileByUserId(clientUserId).catch(() => null)
   if (!profile || profile.is_minor) return null
+  const age = computeAge(profile.date_of_birth ?? null)
+  if (age !== null && age < 18) return null
 
   const today = new Date().toISOString().slice(0, 10)
   const from = addDays(today, -90)
@@ -186,7 +190,7 @@ export async function getAthleteProfileData(clientUserId: string): Promise<Athle
     heightCm: profile?.height_cm ?? null,
     weightKg: profile?.weight_kg ?? null,
     weightUnit: profile?.weight_unit ?? "kg",
-    age: computeAge(profile?.date_of_birth ?? null),
+    age,
     memberSince: user.created_at,
     stats: {
       workouts: settle(workoutsR, 0),

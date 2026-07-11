@@ -64,6 +64,7 @@ import {
 import { PersonalCheckinLinkDialog } from "@/components/admin/packs/PersonalCheckinLinkDialog"
 import { signAthleteProfileToken } from "@/lib/profile-share/token"
 import { clientProfileShareEnabled } from "@/lib/profile-share/flags"
+import { computeAge } from "@/lib/profile-share/data"
 import { AthleteProfileLinkDialog } from "@/components/admin/profile-share/AthleteProfileLinkDialog"
 import { listRecurringForClient } from "@/lib/db/recurring-sessions"
 import { getDefaultPaymentMethod } from "@/lib/db/payment-methods"
@@ -655,9 +656,11 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
   }
 
   // Public athlete-profile share link + QR (permanent HMAC, minors excluded).
+  // Mirrors the public page's gate: the is_minor flag OR a DOB under 18 blocks it.
+  const shareAge = computeAge(profile?.date_of_birth ?? null)
   let athleteProfileUrl: string | null = null
   let athleteProfileQr: string | null = null
-  if ((await clientProfileShareEnabled()) && profile && !profile.is_minor) {
+  if ((await clientProfileShareEnabled()) && profile && !profile.is_minor && (shareAge === null || shareAge >= 18)) {
     try {
       const base = process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXTAUTH_URL ?? "https://www.darrenjpaul.com"
       athleteProfileUrl = `${base}/athlete/${signAthleteProfileToken(id)}`

@@ -162,6 +162,23 @@ describe("getAthleteProfileData", () => {
     expect(await getAthleteProfileData("u1")).toBeNull()
   })
 
+  it("blocks under-18s by DOB even when the is_minor flag is false", async () => {
+    armHappyPath()
+    const sixteenYearsAgo = new Date()
+    sixteenYearsAgo.setUTCFullYear(sixteenYearsAgo.getUTCFullYear() - 16)
+    mocks.getProfileByUserId.mockResolvedValue({
+      ...fullProfile,
+      is_minor: false,
+      date_of_birth: sixteenYearsAgo.toISOString().slice(0, 10),
+    })
+    expect(await getAthleteProfileData("u1")).toBeNull()
+
+    // No DOB at all → the is_minor flag remains the only (passing) signal.
+    armHappyPath()
+    mocks.getProfileByUserId.mockResolvedValue({ ...fullProfile, date_of_birth: null })
+    expect(await getAthleteProfileData("u1")).not.toBeNull()
+  })
+
   it("degrades failed sources to empty sections instead of throwing", async () => {
     armHappyPath()
     mocks.getPRsByUser.mockRejectedValue(new Error("view missing"))

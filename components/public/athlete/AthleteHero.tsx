@@ -28,7 +28,7 @@ export function AthleteHero({ data }: { data: AthleteProfileData }) {
   const weightLbs = data.weightKg !== null ? Math.round(data.weightKg * 2.20462) : null
 
   return (
-    <header className="relative overflow-hidden bg-primary pb-16 pt-8 text-primary-foreground md:pb-20 md:pt-10">
+    <header className="relative overflow-hidden bg-primary pb-16 pt-8 text-primary-foreground md:pb-20 md:pt-10 [-webkit-print-color-adjust:exact] [print-color-adjust:exact]">
       {/* Accent glow field (EventDetailHero recipe, warmed up for the card). */}
       <div
         className="pointer-events-none absolute inset-0"
