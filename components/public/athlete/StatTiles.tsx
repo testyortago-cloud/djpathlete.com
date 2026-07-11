@@ -7,7 +7,7 @@ import type { AthleteProfileData } from "@/lib/profile-share/data"
 
 /** 412300 → "412K", 1500000 → "1.5M", 840 → "840". */
 export function formatCompact(n: number): string {
-  if (n >= 1_000_000) return `${parseFloat((n / 1_000_000).toFixed(1))}M`
+  if (n >= 999_500) return `${parseFloat((n / 1_000_000).toFixed(1))}M`
   if (n >= 1_000) return `${Math.round(n / 1_000)}K`
   return String(Math.round(n))
 }
@@ -16,6 +16,17 @@ function Counter({ target, format }: { target: number; format: (n: number) => st
   const ref = useRef<HTMLSpanElement>(null)
   const isInView = useInView(ref, { once: true, margin: "-40px" })
   const [count, setCount] = useState(0)
+  const [printing, setPrinting] = useState(false)
+
+  // Printing must always capture final values, not a mid-animation frame.
+  useEffect(() => {
+    const snap = () => {
+      setPrinting(true)
+      setCount(target)
+    }
+    window.addEventListener("beforeprint", snap)
+    return () => window.removeEventListener("beforeprint", snap)
+  }, [target])
 
   const animate = useCallback(() => {
     if (typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
@@ -41,7 +52,7 @@ function Counter({ target, format }: { target: number; format: (n: number) => st
     if (isInView) return animate()
   }, [isInView, animate])
 
-  return <span ref={ref}>{format(isInView ? count : 0)}</span>
+  return <span ref={ref}>{format(printing || isInView ? count : 0)}</span>
 }
 
 const TILES = [
@@ -58,7 +69,7 @@ export function StatTiles({ stats }: { stats: AthleteProfileData["stats"] }) {
       {TILES.map(({ key, label, icon: Icon, format }) => (
         <div
           key={key}
-          className="rounded-xl border border-border bg-white p-4 text-center shadow-[0_8px_24px_-8px_oklch(0.30_0.04_220_/_0.25)]"
+          className="rounded-xl border border-border bg-card p-4 text-center shadow-lg shadow-primary/20"
         >
           <div className="mx-auto mb-2 flex size-8 items-center justify-center rounded-lg bg-primary/10">
             <Icon className="size-4 text-primary" strokeWidth={1.5} />

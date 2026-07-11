@@ -488,6 +488,12 @@
     background: #fff;
     color: #000;
   }
+  /* Scroll-reveal animations (FadeIn) leave unseen sections at opacity 0 /
+     translated — printed output must always show the final state. */
+  .print-document * {
+    opacity: 1 !important;
+    transform: none !important;
+  }
   /* Belt-and-braces for explicitly print-hidden chrome (e.g. the toolbar). */
   .print-hide,
   [data-print-hide] {

@@ -7,7 +7,9 @@ const MONTH_YEAR = new Intl.DateTimeFormat("en-GB", { month: "short", year: "num
 
 function isRecent(dateIso: string): boolean {
   const t = new Date(dateIso).getTime()
-  return !isNaN(t) && Date.now() - t <= 30 * DAY_MS
+  if (isNaN(t)) return false
+  const age = Date.now() - t
+  return age >= 0 && age <= 30 * DAY_MS
 }
 
 function RecordRow({ label, value, date }: { label: string; value: string; date: string }) {
