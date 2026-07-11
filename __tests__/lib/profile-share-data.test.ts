@@ -73,7 +73,14 @@ function armHappyPath() {
     { test_type: "cmj", custom_name: null, result_value: 48, result_unit: "cm", test_date: "2026-06-01", best_method: "highest" },
     { test_type: "custom", custom_name: "Med Ball Throw", result_value: 12.5, result_unit: "m", test_date: "2026-05-20", best_method: "highest" },
   ])
-  mocks.listTests.mockResolvedValue([{ test_type: "cmj", result_value: 48, test_date: "2026-06-01", body_weight_kg: null }])
+  mocks.listTests.mockResolvedValue([
+    {
+      test_type: "cmj", result_value: 48, test_date: "2026-06-01", body_weight_kg: null,
+      // Private fields that must NOT survive into the public object.
+      notes: "internal coach note", video_url: "https://storage.example/form-check.mp4",
+      created_by: "coach-1", client_user_id: "u1",
+    },
+  ])
   mocks.listTrainingSessions.mockResolvedValue([])
   mocks.listReadiness.mockResolvedValue([])
   mocks.getActiveAssignmentWithProgram.mockResolvedValue({
@@ -125,6 +132,14 @@ describe("getAthleteProfileData", () => {
     expect(d!.stats.prCount).toBe(6)
   })
 
+  it("scrubs radar test rows down to the four public keys", async () => {
+    armHappyPath()
+    const d = await getAthleteProfileData("u1")
+    expect(d!.radarTests).toHaveLength(1)
+    expect(Object.keys(d!.radarTests[0]).sort()).toEqual(["bodyWeightKg", "resultValue", "testDate", "testType"])
+    expect(d!.radarTests[0]).toEqual({ testType: "cmj", resultValue: 48, bodyWeightKg: null, testDate: "2026-06-01" })
+  })
+
   it("returns null for non-clients, inactive users, minors, and missing users", async () => {
     armHappyPath()
     mocks.getUserById.mockResolvedValue({ ...activeClient, role: "admin" })
@@ -141,6 +156,10 @@ describe("getAthleteProfileData", () => {
     armHappyPath()
     mocks.getUserById.mockRejectedValue(new Error("no row"))
     expect(await getAthleteProfileData("u1")).toBeNull()
+
+    armHappyPath()
+    mocks.getUserById.mockResolvedValue(null)
+    expect(await getAthleteProfileData("u1")).toBeNull()
   })
 
   it("degrades failed sources to empty sections instead of throwing", async () => {
@@ -155,13 +174,30 @@ describe("getAthleteProfileData", () => {
     expect(d!.program).toBeNull()
   })
 
-  it("renders with a missing client_profiles row (nulled physicals)", async () => {
+  it("fails closed when the client_profiles row is missing (minor gate)", async () => {
     armHappyPath()
     mocks.getProfileByUserId.mockResolvedValue(null)
+    expect(await getAthleteProfileData("u1")).toBeNull()
+  })
+
+  it("caps gymRecords at 6 and milestones at 8", async () => {
+    armHappyPath()
+    const prs = Array.from({ length: 8 }, (_, i) => ({
+      id: `a${i}`, title: "Weight PR!", exercise_id: `e${i}`,
+      metric_value: 100 + i, earned_at: "2026-05-01T00:00:00Z",
+    }))
+    mocks.getAchievementsByType.mockResolvedValue(prs)
+    mocks.getExerciseNamesByIds.mockResolvedValue(
+      Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`e${i}`, `Exercise ${i}`])),
+    )
+    mocks.getAchievements.mockResolvedValue(
+      Array.from({ length: 10 }, (_, i) => ({
+        id: `m${i}`, achievement_type: "milestone", title: `Milestone ${i}`,
+        description: null, earned_at: "2026-02-01T00:00:00Z",
+      })),
+    )
     const d = await getAthleteProfileData("u1")
-    expect(d).not.toBeNull()
-    expect(d!.age).toBeNull()
-    expect(d!.heightCm).toBeNull()
-    expect(d!.sport).toBeNull()
+    expect(d!.gymRecords).toHaveLength(6)
+    expect(d!.milestones).toHaveLength(8)
   })
 })

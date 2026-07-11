@@ -27,6 +27,19 @@ export interface FieldRecord {
   date: string
 }
 
+/**
+ * Scrubbed projection of a performance test for the PUBLIC card. Never expose
+ * raw PerformanceTest rows: they carry notes (internal coach notes), video_url
+ * (form-check footage), created_by and client_user_id — RSC serialization
+ * would embed all of it in the public page payload.
+ */
+export interface RadarTestPoint {
+  testType: TestType
+  resultValue: number
+  bodyWeightKg: number | null
+  testDate: string
+}
+
 export interface AthleteProfileData {
   name: { first: string; last: string }
   avatarUrl: string | null
@@ -41,7 +54,7 @@ export interface AthleteProfileData {
   stats: { workouts: number; streakDays: number; totalVolumeKg: number; prCount: number }
   gymRecords: GymRecord[]
   fieldRecords: FieldRecord[]
-  radarTests: PerformanceTest[]
+  radarTests: RadarTestPoint[]
   program: {
     name: string
     currentWeek: number
@@ -82,8 +95,9 @@ const MAX_CAREER = 8
 
 /**
  * Assembles everything the public card shows. Returns null when the user must
- * not have a public card (missing, not a client, not active, or a minor);
- * individual data sources fail soft to empty sections.
+ * not have a public card (missing, not a client, not active, a minor, or no
+ * readable client_profiles row); individual data sources fail soft to empty
+ * sections.
  */
 export async function getAthleteProfileData(clientUserId: string): Promise<AthleteProfileData | null> {
   let user
@@ -94,8 +108,10 @@ export async function getAthleteProfileData(clientUserId: string): Promise<Athle
   }
   if (!user || user.role !== "client" || user.status !== "active") return null
 
+  // Minor gate fails CLOSED: an absent or unreadable profile must never publish
+  // a potential minor (and a card without sport/position/physicals is worthless).
   const profile = await getProfileByUserId(clientUserId).catch(() => null)
-  if (profile?.is_minor) return null
+  if (!profile || profile.is_minor) return null
 
   const today = new Date().toISOString().slice(0, 10)
   const from = addDays(today, -90)
@@ -180,7 +196,14 @@ export async function getAthleteProfileData(clientUserId: string): Promise<Athle
     },
     gymRecords,
     fieldRecords,
-    radarTests: tests,
+    // Full rows feed computeBadges above (computation input); the public object
+    // only ever gets this scrubbed projection.
+    radarTests: tests.map((t) => ({
+      testType: t.test_type,
+      resultValue: t.result_value,
+      bodyWeightKg: t.body_weight_kg ?? null,
+      testDate: t.test_date,
+    })),
     program:
       assignment && assignment.programs
         ? {
