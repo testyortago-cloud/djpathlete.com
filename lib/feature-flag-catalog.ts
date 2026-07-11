@@ -32,6 +32,13 @@ export const FEATURE_FLAG_CATALOG: readonly FeatureFlag[] = [
       "Adds an 'Import from Excel' button to /admin/programs. Coaches upload a spreadsheet (full, partial, or messy); the AI reads it, matches exercises to the library, fills gaps, and creates a private review-ready program. Includes a downloadable template.",
     defaultEnabled: true,
   },
+  {
+    key: "client_profile_share_enabled",
+    label: "Shareable athlete profile links",
+    description:
+      "Adds a 'Share profile' action on client pages that links to a public FIBA-style athlete profile card (stats, PRs, program, badges). Links are permanent while this is on; minors are excluded. Off by default.",
+    defaultEnabled: false,
+  },
 ] as const
 
 export function isFeatureFlagKey(key: string): boolean {
