@@ -274,10 +274,13 @@ async function resolveCustomerId(): Promise<string | null> {
 async function fetchPreflightInput(): Promise<PreflightInput> {
   const supabase = createServiceRoleClient()
 
-  // mostRecentConversionAt — derived from google_ads_conversion_uploads.
-  // We treat any non-pending row as "tracking is alive". If nothing has
-  // ever been uploaded, the preflight gate will fail with "no conversions
-  // on record" — which is the right behaviour for a brand-new account.
+  // mostRecentConversionAt — "conversion tracking is alive" evidence from
+  // EITHER pipeline: our offline click uploads (google_ads_conversion_uploads)
+  // OR Google-side conversions in the synced daily metrics. The uploads table
+  // alone under-reports — Google records tag/website conversions we never
+  // uploaded, and the memo used to claim "no conversions on record" while the
+  // account had conversions that same week. If neither has anything, the gate
+  // fails with "no conversions on record" — right for a brand-new account.
   let mostRecentConversionAt: Date | null = null
   try {
     const { data } = await supabase
@@ -292,6 +295,26 @@ async function fetchPreflightInput(): Promise<PreflightInput> {
     }
   } catch {
     // Leave as null — preflight will fail safely.
+  }
+  try {
+    const { data } = await supabase
+      .from("google_ads_daily_metrics")
+      .select("date")
+      .gt("conversions", 0)
+      .order("date", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    const row = data as { date?: string } | null
+    if (row?.date) {
+      // segments.date has day granularity — use end-of-day UTC so a
+      // conversion "on Jul 10" isn't aged as if it happened at midnight.
+      const metricsConversionAt = new Date(`${row.date}T23:59:59Z`)
+      if (!mostRecentConversionAt || metricsConversionAt > mostRecentConversionAt) {
+        mostRecentConversionAt = metricsConversionAt
+      }
+    }
+  } catch {
+    // Keep whatever the uploads table gave us.
   }
 
   // ga4SyncedAt / gscSyncedAt — read from platform_connections.last_sync_at.
