@@ -154,3 +154,26 @@ export async function getCompletedSessionCount(userId: string): Promise<number> 
   if (error) return 0
   return count ?? 0
 }
+
+/** Lifetime volume (kg) across completed sessions. Paginates past the PostgREST ~1000-row cap. */
+export async function getTotalVolumeKg(userId: string): Promise<number> {
+  const supabase = getClient()
+  const PAGE = 1000
+  let from = 0
+  let total = 0
+  for (;;) {
+    const { data, error } = await supabase
+      .from("workout_sessions")
+      .select("volume_load_kg")
+      .eq("user_id", userId)
+      .eq("status", "completed")
+      .range(from, from + PAGE - 1)
+    if (error) return total
+    for (const row of (data ?? []) as { volume_load_kg: number | null }[]) {
+      total += row.volume_load_kg ?? 0
+    }
+    if (!data || data.length < PAGE) break
+    from += PAGE
+  }
+  return total
+}

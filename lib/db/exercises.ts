@@ -217,3 +217,14 @@ export async function getAlternativeExercises(
 
   return { linked, similar }
 }
+
+/** Batch-resolve exercise names. Missing ids are absent from the map. */
+export async function getExerciseNamesByIds(ids: string[]): Promise<Record<string, string>> {
+  if (ids.length === 0) return {}
+  const supabase = getClient()
+  const { data, error } = await supabase.from("exercises").select("id, name").in("id", ids)
+  if (error) return {}
+  const map: Record<string, string> = {}
+  for (const row of (data ?? []) as { id: string; name: string }[]) map[row.id] = row.name
+  return map
+}

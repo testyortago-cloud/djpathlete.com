@@ -1,6 +1,6 @@
 import { createServiceRoleClient } from "@/lib/supabase"
 import { effectiveTotalWeeks } from "@/lib/program-weeks"
-import type { ProgramAssignment } from "@/types/database"
+import type { ProgramAssignment, Program } from "@/types/database"
 
 /** Service-role client bypasses RLS — these functions are only called from server-side routes. */
 function getClient() {
@@ -181,4 +181,33 @@ export async function getAssignmentById(assignmentId: string) {
   const { data, error } = await supabase.from("program_assignments").select("*").eq("id", assignmentId).single()
   if (error) throw error
   return data as ProgramAssignment
+}
+
+/** Active assignment joined with its program row (public profile card). */
+export async function getActiveAssignmentWithProgram(userId: string) {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("program_assignments")
+    .select("*, programs(*)")
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .neq("payment_status", "pending")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  return data as (ProgramAssignment & { programs: Program | null }) | null
+}
+
+/** Completed assignments, newest first, joined with program rows — the athlete's "career". */
+export async function getCompletedAssignments(userId: string) {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("program_assignments")
+    .select("*, programs(*)")
+    .eq("user_id", userId)
+    .eq("status", "completed")
+    .order("updated_at", { ascending: false })
+  if (error) throw error
+  return data as (ProgramAssignment & { programs: Program | null })[]
 }
