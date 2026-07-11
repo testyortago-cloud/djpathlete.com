@@ -30,9 +30,9 @@ New `lib/profile-share/data.ts` exporting `getAthleteProfileData(clientUserId): 
 |---|---|
 | Identity | `getUserById` (name, `avatar_url`, `created_at`) + `getProfileByUserId` (sport, position, `experience_level`, `height_cm`, `weight_kg` + `weight_unit`, `date_of_birth` → **age only**, `training_years`, `is_minor`) |
 | Key stats | `getCompletedSessionCount`, `getWorkoutStreak`, Σ `workout_sessions.volume_load_kg` (paginate per PostgREST 1000-row cap or aggregate server-side), PR count |
-| Records — "In the Gym" | lift PRs via `lib/db/achievements.ts` (`getExercisePRs` / `getAchievementsByType(userId, "pr")`), deduped per exercise (best value), top 6, with dates |
-| Records — "On the Field" | `getPRsByUser` from `lib/db/performance-tests.ts` (already respects lowest-is-best), top 6, with dates |
-| Radar | `getLatestAssessmentResult` → `computed_levels` (same normalization as `athlete-radar-card.tsx`) |
+| Records — "In the Gym" | weight PRs via `getAchievementsByType(userId, "pr")` filtered to `title === "Weight PR!"`, deduped per exercise (max `metric_value`), top 6 with dates; exercise names batch-resolved from `exercises` (PR titles are generic — name lives behind `exercise_id`) |
+| Records — "On the Field" | `getPRsByUser` from `lib/db/performance-tests.ts` (already respects lowest-is-best), top 6, with dates; labels via `TEST_TYPE_LABELS` |
+| Radar | **correction (2026-07-11):** feeds from `PerformanceTest[]` (`listByUser`) normalized 0–100 via `lib/coach-intel/test-normalization` (`RADAR_CATEGORIES`: Speed/Power/Strength/Endurance/Mobility) — same as `athlete-radar-card.tsx`. NOT assessment `computed_levels` (that's the assessment engine's separate concept) |
 | Program | `getActiveAssignment` + `programs` join; progress = `current_week` / `effectiveTotalWeeks(...)` (**never** raw `total_weeks`); career = `program_assignments` with `status='completed'` (name + completed date) |
 | Badges | `computeBadges(BadgeInput)` from `lib/badges` (tiered shelf) + `achievements` rows of type `streak|milestone|completion` (dated milestone list, capped ~8 newest) |
 
@@ -42,7 +42,7 @@ New `lib/profile-share/data.ts` exporting `getAthleteProfileData(clientUserId): 
 
 ### Admin entry point
 
-"Share profile" action on `/admin/clients/[id]` (near the Check-in button): opens a dialog (modeled on `PersonalCheckinLinkDialog`) with the full URL (`${NEXT_PUBLIC_APP_URL ?? NEXTAUTH_URL ?? "https://www.darrenjpaul.com"}/athlete/<token>`), copy button, and QR data-URL (existing `qrcode` package). Visible only when the flag is ON and the client is not a minor. Link generation happens in a server action or API route that verifies admin session and calls `recordAudit()` (new action slug, e.g. `client.profile_share_link_generated`).
+"Share profile" action on `/admin/clients/[id]` (in the Quick Actions row, next to the Check-in button): opens a dialog (modeled on `PersonalCheckinLinkDialog`) with the full URL (`${NEXT_PUBLIC_APP_URL ?? NEXTAUTH_URL ?? "https://www.darrenjpaul.com"}/athlete/<token>`), copy button, and QR data-URL (existing `qrcode` package). Visible only when the flag is ON and the client is not a minor. **Correction (2026-07-11):** token signing is deterministic HMAC computed inline in the (admin-gated) server page — exactly like the personal check-in link block — so there is no discrete "generation" event to audit; no `recordAudit` call, matching the check-in precedent. Page views are already tracked by `captureAttribution`.
 
 ### OG share image
 
@@ -89,5 +89,5 @@ Client components only where interactivity/animation demands (count-up, Framer M
 3. **Badges = both systems**: computed tier shelf (`lib/badges`) + persisted milestone achievements — they complement, not conflict.
 4. **Live data** (not snapshot-at-share): a permanent link should show the athlete's current story.
 5. **No client-side "share my profile" surface** in v1 (coach-only was picked; client dashboard button is a later follow-up).
-6. **Audit on generation only**; page views are covered by existing `captureAttribution` (no per-view audit rows).
+6. **No audit rows** — HMAC signing is deterministic and inline in the admin server page (no generation event exists, matching the personal check-in link precedent); page views are covered by existing `captureAttribution`.
 7. **Flag default OFF** per project convention — flipping it on at `/admin/automation` is a post-deploy manual step.
