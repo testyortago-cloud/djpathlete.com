@@ -272,3 +272,29 @@ export function transformSearchTermRow(
     matched_keyword_id: row.segments?.keyword?.ad_group_criterion ?? null,
   }
 }
+
+/**
+ * The search-terms GAQL query is segmented by segments.keyword.ad_group_criterion,
+ * so one (customer, campaign, ad_group, term, date) — the table's unique key —
+ * arrives once per matching keyword. A single INSERT .. ON CONFLICT statement
+ * cannot touch the same row twice ("ON CONFLICT DO UPDATE command cannot affect
+ * row a second time"), so merge duplicates before upserting: sum the metrics,
+ * keep the first non-null matched keyword.
+ */
+export function mergeSearchTermRows(rows: UpsertSearchTermInput[]): UpsertSearchTermInput[] {
+  const byKey = new Map<string, UpsertSearchTermInput>()
+  for (const r of rows) {
+    const key = JSON.stringify([r.customer_id, r.campaign_id, r.ad_group_id, r.search_term, r.date])
+    const cur = byKey.get(key)
+    if (!cur) {
+      byKey.set(key, { ...r })
+      continue
+    }
+    cur.impressions += r.impressions
+    cur.clicks += r.clicks
+    cur.cost_micros += r.cost_micros
+    cur.conversions += r.conversions
+    cur.matched_keyword_id = cur.matched_keyword_id ?? r.matched_keyword_id
+  }
+  return [...byKey.values()]
+}

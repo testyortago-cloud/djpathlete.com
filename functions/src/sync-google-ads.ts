@@ -26,6 +26,7 @@ import {
   upsertSearchTerms,
 } from "./ads/dal.js"
 import {
+  mergeSearchTermRows,
   transformAdGroupRow,
   transformAdRow,
   transformCampaignRow,
@@ -275,8 +276,12 @@ export async function runSyncGoogleAds(
         WHERE segments.date >= '${fromDate}'
           AND segments.date <= '${toDate}'
       `)
-      const searchTerms = (searchTermRows as unknown[]).map((row) =>
-        transformSearchTermRow(row as never, account.customer_id),
+      // Merge keyword-segmented duplicates — one term can arrive once per
+      // matching keyword, and a single upsert can't hit the same row twice.
+      const searchTerms = mergeSearchTermRows(
+        (searchTermRows as unknown[]).map((row) =>
+          transformSearchTermRow(row as never, account.customer_id),
+        ),
       )
       result.search_terms_upserted += await upsertSearchTerms(searchTerms)
 

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest"
 import {
+  mergeSearchTermRows,
   transformCampaignRow,
   transformAdGroupRow,
   transformKeywordRow,
@@ -204,5 +205,61 @@ describe("transformSearchTermRow", () => {
     expect(out.search_term).toBe("best coach near me")
     expect(out.impressions).toBe(10)
     expect(out.matched_keyword_id).toBeNull()
+  })
+})
+
+describe("mergeSearchTermRows", () => {
+  const base = {
+    customer_id: "c1",
+    campaign_id: "111",
+    ad_group_id: "222",
+    search_term: "best coach near me",
+    date: "2026-05-01",
+    impressions: 10,
+    clicks: 1,
+    cost_micros: 500_000,
+    conversions: 0,
+    matched_keyword_id: null as string | null,
+  }
+
+  it("merges keyword-segmented duplicates of the same unique key, summing metrics", () => {
+    // Same term matched by two keywords → two GAQL rows, one table row.
+    const merged = mergeSearchTermRows([
+      { ...base, matched_keyword_id: null },
+      { ...base, impressions: 5, clicks: 2, cost_micros: 250_000, conversions: 1, matched_keyword_id: "kw-9" },
+    ])
+    expect(merged).toHaveLength(1)
+    expect(merged[0].impressions).toBe(15)
+    expect(merged[0].clicks).toBe(3)
+    expect(merged[0].cost_micros).toBe(750_000)
+    expect(merged[0].conversions).toBe(1)
+    expect(merged[0].matched_keyword_id).toBe("kw-9")
+  })
+
+  it("keeps the first non-null matched keyword", () => {
+    const merged = mergeSearchTermRows([
+      { ...base, matched_keyword_id: "kw-1" },
+      { ...base, matched_keyword_id: "kw-2" },
+    ])
+    expect(merged).toHaveLength(1)
+    expect(merged[0].matched_keyword_id).toBe("kw-1")
+  })
+
+  it("leaves distinct keys untouched", () => {
+    const merged = mergeSearchTermRows([
+      base,
+      { ...base, date: "2026-05-02" },
+      { ...base, search_term: "rotational power training" },
+      { ...base, ad_group_id: "333" },
+    ])
+    expect(merged).toHaveLength(4)
+  })
+
+  it("does not mutate its input rows", () => {
+    const a = { ...base }
+    const b = { ...base, impressions: 5 }
+    mergeSearchTermRows([a, b])
+    expect(a.impressions).toBe(10)
+    expect(b.impressions).toBe(5)
   })
 })
