@@ -127,6 +127,39 @@ export async function findInFlightSplitRender(videoUploadId: string): Promise<st
   return snap.empty ? null : snap.docs[0].id
 }
 
+/**
+ * In-flight duplicate guards for blog generation. A rapid double-click on a
+ * generate button enqueued two identical jobs 3 seconds apart in prod — two
+ * full paid generations and twin draft posts. Keyed by input.promptHash
+ * (sha256 of userId:prompt — Firestore can't index values >1500 bytes, so
+ * the raw prompt can't be the key). Same composite-index note as
+ * findInFlightCaptionRender.
+ */
+export async function findInFlightBlogGeneration(promptHash: string): Promise<string | null> {
+  const db = getAdminFirestore()
+  const snap = await db
+    .collection("ai_jobs")
+    .where("type", "==", "blog_generation")
+    .where("input.promptHash", "==", promptHash)
+    .where("status", "in", ["pending", "processing"])
+    .limit(1)
+    .get()
+  return snap.empty ? null : snap.docs[0].id
+}
+
+/** Same guard for topic-suggestion drafts, keyed by the calendar entry. */
+export async function findInFlightBlogSuggestionJob(calendarId: string): Promise<string | null> {
+  const db = getAdminFirestore()
+  const snap = await db
+    .collection("ai_jobs")
+    .where("type", "==", "blog_generation")
+    .where("input.sourceCalendarId", "==", calendarId)
+    .where("status", "in", ["pending", "processing"])
+    .limit(1)
+    .get()
+  return snap.empty ? null : snap.docs[0].id
+}
+
 export type AiJobStatus = "pending" | "processing" | "streaming" | "completed" | "failed" | "cancelled"
 
 export interface RecentCaptionRender {

@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { z } from "zod"
+import { createHash } from "node:crypto"
 import { getAdminFirestore } from "@/lib/firebase-admin"
 import { FieldValue } from "firebase-admin/firestore"
+import { findInFlightBlogGeneration } from "@/lib/ai-jobs"
 
 const RATE_LIMIT_MAX = 5
 const RATE_LIMIT_WINDOW_MS = 60_000
@@ -88,6 +90,21 @@ export async function POST(request: NextRequest) {
       console.warn(`[/api/admin/blog/generate] deprecated 'tone' used (${tone}) — mapped to register=${resolvedRegister}`)
     }
 
+    // Double-submit guard: a rapid second click (or a re-fired dialog) with
+    // the same prompt attaches to the in-flight job instead of paying for a
+    // second generation. Fails open — a missing Firestore index must never
+    // block generation.
+    const promptHash = createHash("sha256").update(`${userId}:${prompt}`).digest("hex")
+    try {
+      const existing = await findInFlightBlogGeneration(promptHash)
+      if (existing) {
+        console.warn(`[Blog Generate] duplicate submit absorbed — job ${existing} already in flight`)
+        return NextResponse.json({ jobId: existing, status: "pending", deduped: true }, { status: 202 })
+      }
+    } catch (err) {
+      console.warn("[Blog Generate] in-flight check failed (continuing):", (err as Error).message)
+    }
+
     const db = getAdminFirestore()
     const jobRef = db.collection("ai_jobs").doc()
 
@@ -96,6 +113,7 @@ export async function POST(request: NextRequest) {
       status: "pending",
       input: {
         prompt,
+        promptHash,
         register: resolvedRegister,
         length,
         primary_keyword,

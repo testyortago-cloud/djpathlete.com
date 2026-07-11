@@ -15,6 +15,7 @@ import { getAdminFirestore } from "@/lib/firebase-admin"
 import { isCronSkipped } from "@/lib/db/system-settings"
 import { proposePrimaryKeyword } from "@/lib/blog/keyword-proposal"
 import { extractContentAngle } from "@/lib/blog/content-angle"
+import { findInFlightBlogSuggestionJob } from "@/lib/ai-jobs"
 import { SYSTEM_USER_ID } from "@/lib/system-user"
 import type { ContentCalendarEntry } from "@/types/database"
 
@@ -77,6 +78,19 @@ export async function POST(request: NextRequest) {
     const meta = (best.metadata ?? {}) as TopicMetadata
     const promptLines = [best.title, meta.summary].filter(Boolean).join("\n\n")
     const referenceUrls = meta.tavily_url ? [meta.tavily_url] : []
+
+    // Duplicate guard: if a job for this topic is already pending/processing
+    // (e.g. the admin clicked "Generate draft" moments before the cron fired),
+    // attach to it instead of paying for a second generation. Fails open.
+    try {
+      const existing = await findInFlightBlogSuggestionJob(best.id)
+      if (existing) {
+        console.warn(`[auto-blog] duplicate absorbed — job ${existing} already in flight for topic ${best.id}`)
+        return NextResponse.json({ jobId: existing, topicId: best.id, deduped: true }, { status: 202 })
+      }
+    } catch (err) {
+      console.warn("[auto-blog] in-flight check failed (continuing):", (err as Error).message)
+    }
 
     // ── Run keyword + angle proposals in parallel ─────────────────────────
     const [proposedKeyword, contentAngle] = await Promise.all([

@@ -6,6 +6,7 @@ import { FieldValue } from "firebase-admin/firestore"
 import { getCalendarEntryById } from "@/lib/db/content-calendar"
 import { proposePrimaryKeyword } from "@/lib/blog/keyword-proposal"
 import { extractContentAngle } from "@/lib/blog/content-angle"
+import { findInFlightBlogSuggestionJob } from "@/lib/ai-jobs"
 
 const requestSchema = z.object({
   calendarId: z.string().uuid().or(z.string().min(1)),
@@ -42,6 +43,20 @@ export async function POST(request: NextRequest) {
     const { calendarId, tone, register, length } = parsed.data
     const resolvedRegister: "formal" | "casual" =
       register ?? (tone === "professional" ? "formal" : "casual")
+
+    // Double-submit guard — this button caused two identical paid generations
+    // 3 seconds apart in prod (the route's AI pre-calls below take seconds, so
+    // a second click lands before any UI feedback). Checked BEFORE the paid
+    // keyword/angle calls; fails open so a missing index never blocks.
+    try {
+      const existing = await findInFlightBlogSuggestionJob(calendarId)
+      if (existing) {
+        console.warn(`[generate-from-suggestion] duplicate submit absorbed — job ${existing} in flight`)
+        return NextResponse.json({ jobId: existing, status: "pending", deduped: true }, { status: 202 })
+      }
+    } catch (err) {
+      console.warn("[generate-from-suggestion] in-flight check failed (continuing):", (err as Error).message)
+    }
 
     const entry = await getCalendarEntryById(calendarId)
     if (!entry || entry.entry_type !== "topic_suggestion") {

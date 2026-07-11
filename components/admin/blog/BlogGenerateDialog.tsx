@@ -286,6 +286,7 @@ export function BlogGenerateDialog({ open, onOpenChange, onGenerated, hasExistin
   const hasReferences = urls.length > 0 || notes.trim().length > 0 || refFiles.length > 0
 
   async function handleGenerate() {
+    if (submitting) return
     if (hasExistingContent && !confirmed) {
       setConfirmed(true)
       return
@@ -822,9 +823,10 @@ export function BlogGenerateDialog({ open, onOpenChange, onGenerated, hasExistin
 
                 <button
                   type="button"
-                  disabled={!selectedVideoId || primaryKeyword.trim().length < 2}
+                  disabled={!selectedVideoId || primaryKeyword.trim().length < 2 || submitting}
                   onClick={async () => {
-                    if (!selectedVideoId) return
+                    if (!selectedVideoId || submitting) return
+                    setSubmitting(true)
                     setStartError(null)
                     try {
                       const res = await fetch("/api/admin/blog-posts/generate-from-video", {
@@ -845,6 +847,7 @@ export function BlogGenerateDialog({ open, onOpenChange, onGenerated, hasExistin
                         const { message } = summarizeApiError(res, data, "Failed to generate from video")
                         setStartError(message)
                         toast.error(message)
+                        setSubmitting(false)
                         return
                       }
                       const body = (await res.json()) as { jobId: string; blog_post_id: string }
@@ -854,6 +857,7 @@ export function BlogGenerateDialog({ open, onOpenChange, onGenerated, hasExistin
                       const message = "We couldn't reach the server. Please try again."
                       setStartError(message)
                       toast.error(message)
+                      setSubmitting(false)
                     }
                   }}
                   className={cn(
@@ -861,6 +865,7 @@ export function BlogGenerateDialog({ open, onOpenChange, onGenerated, hasExistin
                     "disabled:opacity-50 disabled:cursor-not-allowed",
                   )}
                 >
+                  {submitting ? <Loader2 className="size-4 animate-spin" /> : null}
                   Generate from video
                 </button>
               </div>

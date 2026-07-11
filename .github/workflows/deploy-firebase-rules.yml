@@ -13,6 +13,7 @@ on:
     branches: [main]
     paths:
       - "firestore.rules"
+      - "firestore.indexes.json"
       - "storage.rules"
       - "database.rules.json"
       - "firebase.json"
@@ -50,9 +51,11 @@ jobs:
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2
 
-      # Firestore + Storage + Realtime Database security rules (paths from firebase.json).
-      - name: Deploy security rules
-        run: npx --yes firebase-tools@latest deploy --only firestore:rules,storage,database --project darrenjpaulcom --non-interactive --force
+      # Firestore rules + composite indexes + Storage + Realtime Database rules
+      # (paths from firebase.json). Indexes back the ai_jobs in-flight dedupe
+      # queries in lib/ai-jobs.ts — those guards fail open until indexes build.
+      - name: Deploy security rules and indexes
+        run: npx --yes firebase-tools@latest deploy --only firestore:rules,firestore:indexes,storage,database --project darrenjpaulcom --non-interactive --force
 
       # Bucket CORS — applied separately because it's GCS bucket config, not a Firebase
       # ruleset. cors.json is the source of truth for the public storage bucket.

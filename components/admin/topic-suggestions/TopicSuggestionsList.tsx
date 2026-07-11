@@ -6,6 +6,7 @@ import {
   ChevronDown,
   ChevronRight,
   ExternalLink,
+  Loader2,
   Search,
   Sparkles,
 } from "lucide-react"
@@ -62,9 +63,10 @@ interface TopicCardProps {
   entry: ContentCalendarEntry
   isHero: boolean
   generatePost: (entry: ContentCalendarEntry) => Promise<void>
+  generating: boolean
 }
 
-function TopicCard({ entry, isHero, generatePost }: TopicCardProps) {
+function TopicCard({ entry, isHero, generatePost, generating }: TopicCardProps) {
   const [expanded, setExpanded] = useState(false)
   const meta = metadataOf(entry)
   const host = hostFromUrl(meta.tavily_url)
@@ -171,11 +173,21 @@ function TopicCard({ entry, isHero, generatePost }: TopicCardProps) {
         <button
           type="button"
           onClick={() => generatePost(entry)}
-          className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md bg-primary text-white hover:bg-primary/90 transition-colors"
+          disabled={generating}
+          className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md bg-primary text-white hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:pointer-events-none"
           title="Generate a full draft blog post with cover image"
         >
-          <Sparkles className="size-3.5" />
-          Generate draft
+          {generating ? (
+            <>
+              <Loader2 className="size-3.5 animate-spin" />
+              Queuing…
+            </>
+          ) : (
+            <>
+              <Sparkles className="size-3.5" />
+              Generate draft
+            </>
+          )}
         </button>
         {meta.tavily_url && (
           <a
@@ -196,6 +208,10 @@ function TopicCard({ entry, isHero, generatePost }: TopicCardProps) {
 export function TopicSuggestionsList({ suggestions }: TopicSuggestionsListProps) {
   const router = useRouter()
   const [search, setSearch] = useState("")
+  // Which entry has a generate request in flight. The route runs paid AI
+  // pre-calls before responding (seconds of dead air) — without this guard a
+  // second click enqueued a duplicate paid generation (happened in prod).
+  const [generatingId, setGeneratingId] = useState<string | null>(null)
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -225,6 +241,8 @@ export function TopicSuggestionsList({ suggestions }: TopicSuggestionsListProps)
   }, [filtered])
 
   async function generatePost(entry: ContentCalendarEntry) {
+    if (generatingId) return
+    setGeneratingId(entry.id)
     try {
       const res = await fetch("/api/admin/blog/generate-from-suggestion", {
         method: "POST",
@@ -234,12 +252,14 @@ export function TopicSuggestionsList({ suggestions }: TopicSuggestionsListProps)
       if (!res.ok) {
         const json = await res.json().catch(() => ({}))
         alert(`Failed to enqueue: ${json.error ?? res.status}`)
+        setGeneratingId(null)
         return
       }
       const { jobId } = (await res.json()) as { jobId: string }
       router.push(`/admin/blog?just_queued=${encodeURIComponent(jobId)}`)
     } catch (err) {
       alert(`Network error: ${(err as Error).message}`)
+      setGeneratingId(null)
     }
   }
 
@@ -304,6 +324,7 @@ export function TopicSuggestionsList({ suggestions }: TopicSuggestionsListProps)
                 entry={t}
                 isHero={false}
                 generatePost={generatePost}
+                generating={generatingId !== null}
               />
             ))}
           </div>
@@ -338,6 +359,7 @@ export function TopicSuggestionsList({ suggestions }: TopicSuggestionsListProps)
                 entry={t}
                 isHero={idx === 0}
                 generatePost={generatePost}
+                generating={generatingId !== null}
               />
             ))}
           </div>
@@ -378,6 +400,7 @@ export function TopicSuggestionsList({ suggestions }: TopicSuggestionsListProps)
                         entry={t}
                         isHero={false}
                         generatePost={generatePost}
+                        generating={generatingId !== null}
                       />
                     ))}
                   </div>
