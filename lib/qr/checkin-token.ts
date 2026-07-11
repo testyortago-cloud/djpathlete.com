@@ -30,8 +30,11 @@ export function verifyCheckinToken(token: string, now: Date, maxAgeDays = 1): Ve
   const decoded = Buffer.from(b64, "base64url").toString()
   const [coachId, day] = decoded.split(".")
   if (!coachId || !day) return { valid: false }
+  // NaN must fail closed: without this, other HMAC token families sharing the
+  // secret (pc. personal check-in, ap. athlete profile) would cross-validate
+  // here, since their non-date second segment yields NaN and NaN<0 is false.
   const ageDays = (now.getTime() - new Date(`${day}T00:00:00Z`).getTime()) / 86_400_000
-  if (ageDays < 0 || ageDays > maxAgeDays) return { valid: false }
+  if (Number.isNaN(ageDays) || ageDays < 0 || ageDays > maxAgeDays) return { valid: false }
   return { valid: true, coachId }
 }
 

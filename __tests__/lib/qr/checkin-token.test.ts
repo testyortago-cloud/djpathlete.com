@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll } from "vitest"
-import { signCheckinToken, verifyCheckinToken } from "@/lib/qr/checkin-token"
+import { signCheckinToken, verifyCheckinToken, signPersonalCheckinToken } from "@/lib/qr/checkin-token"
+import { signAthleteProfileToken } from "@/lib/profile-share/token"
 
 beforeAll(() => {
   process.env.NEXTAUTH_SECRET = "test-secret"
@@ -29,6 +30,18 @@ describe("checkin token", () => {
   })
   it("rejects a stale token", () => {
     const t = signCheckinToken("coach-1", new Date("2026-06-01T00:00:00Z"))
+    expect(verifyCheckinToken(t, new Date("2026-06-13T00:00:00Z")).valid).toBe(false)
+  })
+
+  // Other HMAC token families share the secret; their non-date second segment
+  // yields NaN age. The coach verifier must never cross-validate them —
+  // it gates the public roster + check-in endpoints.
+  it("rejects an athlete-profile (ap.) token", () => {
+    const t = signAthleteProfileToken("3f9a2b6c-1d4e-4f7a-9b0c-8d5e6f7a8b9c")
+    expect(verifyCheckinToken(t, new Date("2026-06-13T00:00:00Z")).valid).toBe(false)
+  })
+  it("rejects a personal check-in (pc.) token", () => {
+    const t = signPersonalCheckinToken("3f9a2b6c-1d4e-4f7a-9b0c-8d5e6f7a8b9c")
     expect(verifyCheckinToken(t, new Date("2026-06-13T00:00:00Z")).valid).toBe(false)
   })
 })

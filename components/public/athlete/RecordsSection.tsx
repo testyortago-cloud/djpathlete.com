@@ -1,6 +1,7 @@
 import { ArrowUp } from "lucide-react"
 import { FadeIn } from "@/components/shared/FadeIn"
 import type { GymRecord, FieldRecord } from "@/lib/profile-share/data"
+import type { WeightUnit } from "@/types/database"
 
 const DAY_MS = 86_400_000
 const MONTH_YEAR = new Intl.DateTimeFormat("en-GB", { month: "short", year: "numeric", timeZone: "UTC" })
@@ -31,8 +32,17 @@ function RecordRow({ label, value, date }: { label: string; value: string; date:
 }
 
 /** Best lifts + field-test bests, side by side. A column with no rows collapses. */
-export function RecordsSection({ gym, field }: { gym: GymRecord[]; field: FieldRecord[] }) {
+export function RecordsSection({
+  gym,
+  field,
+  weightUnit,
+}: {
+  gym: GymRecord[]
+  field: FieldRecord[]
+  weightUnit: WeightUnit
+}) {
   const both = gym.length > 0 && field.length > 0
+  const lift = (kg: number) => (weightUnit === "lbs" ? `${Math.round(kg * 2.20462)} lbs` : `${kg} kg`)
   return (
     <FadeIn>
       <section aria-label="Personal records" className="mt-12">
@@ -45,7 +55,7 @@ export function RecordsSection({ gym, field }: { gym: GymRecord[]; field: FieldR
               </h2>
               <ul>
                 {gym.map((r) => (
-                  <RecordRow key={r.exercise} label={r.exercise} value={`${r.valueKg} kg`} date={r.date} />
+                  <RecordRow key={r.exercise} label={r.exercise} value={lift(r.valueKg)} date={r.date} />
                 ))}
               </ul>
             </div>

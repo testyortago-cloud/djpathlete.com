@@ -24,7 +24,7 @@ export function AthleteProfileCard({ data }: { data: AthleteProfileData }) {
       <AthleteHero data={data} />
       <div className="relative z-10 mx-auto w-full max-w-3xl px-4 md:px-6">
         <StatTiles stats={data.stats} />
-        {hasRecords && <RecordsSection gym={data.gymRecords} field={data.fieldRecords} />}
+        {hasRecords && <RecordsSection gym={data.gymRecords} field={data.fieldRecords} weightUnit={data.weightUnit} />}
         <AthleteRadarSection tests={data.radarTests} />
         {hasProgram && <ProgramSection program={data.program} career={data.career} />}
         {hasBadges && <BadgesSection badges={data.badges} milestones={data.milestones} />}

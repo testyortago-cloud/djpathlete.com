@@ -91,8 +91,9 @@ describe("AthleteProfileCard", () => {
     expect(screen.queryByText(/84 KG/)).not.toBeInTheDocument()
   })
 
-  it("shows weight in lbs when that is the client's unit", () => {
+  it("shows weight and gym records in lbs when that is the client's unit", () => {
     render(<AthleteProfileCard data={{ ...base, weightUnit: "lbs" }} />)
     expect(screen.getByText(/185 LBS/)).toBeInTheDocument()
+    expect(screen.getByText(/309 lbs/)).toBeInTheDocument() // 140 kg back squat
   })
 })

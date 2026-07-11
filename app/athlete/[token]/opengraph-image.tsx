@@ -3,6 +3,8 @@ import { verifyAthleteProfileToken } from "@/lib/profile-share/token"
 import { clientProfileShareEnabled } from "@/lib/profile-share/flags"
 import { getAthleteProfileData } from "@/lib/profile-share/data"
 
+export const dynamic = "force-dynamic"
+
 export const size = { width: 1200, height: 630 }
 export const contentType = "image/png"
 export const alt = "DJP Athlete Profile"
