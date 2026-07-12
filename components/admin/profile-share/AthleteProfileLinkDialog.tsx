@@ -43,8 +43,8 @@ export function AthleteProfileLinkDialog({
         <DialogHeader>
           <DialogTitle>{first}&apos;s public profile</DialogTitle>
           <DialogDescription>
-            Anyone with this link can view {first}&apos;s public athlete card. Links stay live while the feature is
-            enabled.
+            Anyone with this link can view {first}&apos;s public athlete card. The link is permanent — share it
+            with people who should see it.
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col items-center gap-3">

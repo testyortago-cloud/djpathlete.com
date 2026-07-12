@@ -1,6 +1,5 @@
 import { ImageResponse } from "next/og"
 import { verifyAthleteProfileToken } from "@/lib/profile-share/token"
-import { clientProfileShareEnabled } from "@/lib/profile-share/flags"
 import { getAthleteProfileData } from "@/lib/profile-share/data"
 
 export const dynamic = "force-dynamic"
@@ -19,10 +18,8 @@ export default async function OgImage({ params }: { params: Promise<{ token: str
   const { token } = await params
   let data = null
   try {
-    if (await clientProfileShareEnabled()) {
-      const v = verifyAthleteProfileToken(token)
-      if (v.valid) data = await getAthleteProfileData(v.clientUserId)
-    }
+    const v = verifyAthleteProfileToken(token)
+    if (v.valid) data = await getAthleteProfileData(v.clientUserId)
   } catch {
     data = null
   }

@@ -2,7 +2,6 @@ import { cache } from "react"
 import { notFound } from "next/navigation"
 import type { Metadata } from "next"
 import { verifyAthleteProfileToken } from "@/lib/profile-share/token"
-import { clientProfileShareEnabled } from "@/lib/profile-share/flags"
 import { getAthleteProfileData, type AthleteProfileData } from "@/lib/profile-share/data"
 import { AthleteProfileCard } from "@/components/public/athlete/AthleteProfileCard"
 
@@ -10,7 +9,6 @@ export const dynamic = "force-dynamic"
 
 // cache() dedupes the assembly between generateMetadata and the page render.
 const resolveData = cache(async (token: string): Promise<AthleteProfileData | null> => {
-  if (!(await clientProfileShareEnabled())) return null
   const v = verifyAthleteProfileToken(token)
   if (!v.valid) return null
   return getAthleteProfileData(v.clientUserId)
