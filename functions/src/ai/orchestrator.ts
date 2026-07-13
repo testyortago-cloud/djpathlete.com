@@ -57,6 +57,8 @@ import {
   buildSlotLookups,
   buildExerciseRows,
   dedupeSkeletonDaysInPlace,
+  remapUncoveredSlotPatterns,
+  buildPoolPatternSection,
 } from "./shared-helpers.js"
 
 const MAX_RETRIES = 2
@@ -413,9 +415,12 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     // Filter by text difficulty level (beginner/intermediate/advanced) to prevent
     // advanced exercises from reaching beginners. Skip when profile is ignored so
     // the full exercise library is available for coach-directed programs.
+    // Also skipped in strict pool mode — the coach hand-picked these exact
+    // exercises, so difficulty pruning would starve the curated pool.
     const clientDifficultyLevel = profile?.experience_level ?? (request.ignore_profile ? "elite" : "beginner")
-    let compressed = filterByDifficultyLevel(poolFiltered, clientDifficultyLevel)
-    if (assessmentContext) compressed = filterByDifficultyScore(compressed, assessmentContext.maxDifficultyScore)
+    let compressed = poolActive ? poolFiltered : filterByDifficultyLevel(poolFiltered, clientDifficultyLevel)
+    if (!poolActive && assessmentContext)
+      compressed = filterByDifficultyScore(compressed, assessmentContext.maxDifficultyScore)
 
     // Extract injured joints from client profile for joint-loading filter
     const injuredJoints = extractInjuredJoints(profile?.injury_details)
@@ -431,8 +436,10 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     // equipment list the validator enforces, so the candidate pool and
     // validateProgram always agree (no spurious equipment_violation errors).
     // Bodyweight/no-equipment exercises are always kept; full-gym clients skip.
+    // Skipped in strict pool mode — honor the coach's curated pool over the
+    // (often empty) equipment profile.
     const availableEquipment = request.equipment_override ?? profile?.available_equipment ?? []
-    {
+    if (!poolActive) {
       const beforeCount = compressed.length
       compressed = filterByAvailableEquipment(compressed, availableEquipment)
       if (compressed.length !== beforeCount) {
@@ -445,6 +452,23 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     console.log(
       `[orchestrator:sync] Exercise filtering: ${allCompressed.length} total → ${compressed.length} after all filters (level: ${clientDifficultyLevel})${poolActive ? ` [pool: ${poolIds!.length}]` : ""}`,
     )
+
+    // A strict pool that matched no usable exercises is a dead end — fail with
+    // an actionable message instead of letting the selector run on an empty
+    // library and silently persisting a blank program.
+    if (poolActive && compressed.length === 0) {
+      throw new Error(
+        `Exercise Pool matched no usable exercises: the ${poolIds!.length} pool selections may reference removed exercises, or every pool exercise is excluded for this client (injury filter). Update the pool or switch it to Preferred mode.`,
+      )
+    }
+
+    // In strict pool mode the validator must not enforce the client's equipment
+    // profile against exercises the coach deliberately put in the pool — treat
+    // the pool's own equipment as available so input filters and validateProgram
+    // agree (the input equipment filter is skipped above for the same reason).
+    const validatorEquipment = poolActive
+      ? [...new Set([...availableEquipment, ...compressed.flatMap((e) => e.equipment_required)])]
+      : availableEquipment
 
     if (request.split_type) analysis.recommended_split = request.split_type as typeof analysis.recommended_split
     if (request.periodization)
@@ -468,7 +492,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     // Agent 2
     await updateJobProgress("designing_structure", 3, "Designing program structure & weekly layout")
     await onProgress?.("Designing program structure", 2, 5)
-    const agent2UserMessage = `Profile Analysis:\n${JSON.stringify(analysis)}\n\nTraining Parameters:\n- Duration: ${request.duration_weeks} weeks\n- Sessions per week: ${request.sessions_per_week}\n- Session length: ${request.session_minutes ?? 60} minutes\n- Split type: ${analysis.recommended_split}\n- Periodization: ${analysis.recommended_periodization}\n- Goals: ${request.goals.join(", ")}${coachInstructionsSection}`
+    const agent2UserMessage = `Profile Analysis:\n${JSON.stringify(analysis)}\n\nTraining Parameters:\n- Duration: ${request.duration_weeks} weeks\n- Sessions per week: ${request.sessions_per_week}\n- Session length: ${request.session_minutes ?? 60} minutes\n- Split type: ${analysis.recommended_split}\n- Periodization: ${analysis.recommended_periodization}\n- Goals: ${request.goals.join(", ")}${coachInstructionsSection}${buildPoolPatternSection(compressed, poolActive)}`
 
     console.log("[orchestrator:sync] Running Agent 2 (program architect)...")
     const agent2Result = await callAgent<ProgramSkeleton>(
@@ -541,6 +565,19 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
       client_difficulty: profile?.experience_level ?? "beginner",
     })
 
+    // Strict pool: coerce architect-planned patterns the pool can't fill onto
+    // the nearest pattern it CAN, so a small curated pool never dead-ends the
+    // selector (mirrors the week-orchestrator).
+    if (poolActive) {
+      const remaps = remapUncoveredSlotPatterns(skeleton.weeks, compressed)
+      if (remaps.length > 0) {
+        console.log(
+          `[orchestrator:sync] Strict pool: remapped ${remaps.length} slot pattern(s) to pool coverage:`,
+          remaps.map((r) => `${r.slot_id} ${r.from}→${r.to}`).join(", "),
+        )
+      }
+    }
+
     let filtered: CompressedExercise[]
     try {
       filtered = await semanticFilterExercises(compressed, skeleton, availableEquipment, analysis, {
@@ -611,8 +648,10 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
         `[orchestrator:sync] Week ${weekNum}/${skeleton.weeks.length} (${weekTotalSlots} slots, ${completedWeeksSync.length} prior weeks)`,
       )
 
-      // Per-week progression filter — tightens library for early weeks
-      const thisWeekLibrary = filterByProgressionPhase(filtered, clientDifficultySync, weekNum)
+      // Per-week progression filter — tightens library for early weeks.
+      // Skipped in strict pool mode (mirrors the input-filter skips): pruning
+      // the curated pool per week can empty it entirely for beginner clients.
+      const thisWeekLibrary = poolActive ? filtered : filterByProgressionPhase(filtered, clientDifficultySync, weekNum)
       const thisWeekLibraryText = formatExerciseLibrary(thisWeekLibrary)
 
       // Check cancellation between weeks
@@ -699,7 +738,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
             weekAssignment,
             analysis,
             compressed,
-            availableEquipment,
+            validatorEquipment,
             clientDifficultySync,
             assessmentContext?.maxDifficultyScore,
           )
@@ -847,7 +886,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
       assignment,
       analysis,
       compressed,
-      availableEquipment,
+      validatorEquipment,
       clientDifficultySync,
       assessmentContext?.maxDifficultyScore,
     )

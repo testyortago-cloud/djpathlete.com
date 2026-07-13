@@ -467,7 +467,7 @@ Given a program skeleton (with slots) and an exercise library, you must output a
       "slot_id": string (matching a slot_id from the skeleton),
       "exercise_id": string (UUID from the exercise library),
       "exercise_name": string (name of the exercise for readability),
-      "notes": string | null (any specific instructions for this slot, e.g., "explosive on concentric", "3 each side", "pause at bottom")
+      "notes": string | null (any specific instructions for this slot, e.g., "explosive on concentric", "3 each side", "pause at bottom". Notes are shown to the CLIENT — NEVER reference internal slot_ids like "w2d1s9"; refer to paired/superset exercises by their exercise NAME, e.g. "Superset with Single Leg RDL")
     }
   ],
   "substitution_notes": [string] (explain any notable exercise choices or substitutions)
@@ -535,6 +535,7 @@ Rules:
    - Sport-specific context when relevant (e.g., "think about your first step out of a split step", "mimic the deceleration pattern from your sport")
    - Modification notes for exercises near injury areas (e.g., "use neutral grip if shoulder feels tight", "reduce depth if lower back rounds")
    - Technique-specific notes (e.g., for circuits: "maintain movement quality — slow down if form breaks")
+   - CRITICAL: notes are displayed verbatim to the CLIENT. Never mention internal identifiers (slot_ids like "w2d1s9", exercise UUIDs). When a note references another exercise (supersets, complexes, circuits), use that exercise's NAME: "Superset with Goblet Squat", never "Superset with w2d1s3".
 17. WEEK-BY-WEEK GENERATION MODE — you may receive a SINGLE week's skeleton at a time, along with a "PREVIOUSLY ASSIGNED EXERCISES" section and "COACH INSTRUCTIONS" section. When these sections are present:
    - EVERY WORKING EXERCISE (compounds, accessories, isolations) MUST be DIFFERENT from prior weeks. You will receive an "AVOID" list — you MUST NOT reuse ANY exercise_id from that list. This is NON-NEGOTIABLE and applies to ALL working slots including primary_compound and secondary_compound.
    - For COMPOUND slots: pick a DIFFERENT exercise that trains the SAME movement pattern and muscles. Example: if Week 1 used Barbell Back Squat for a squat/quad slot, Week 2 should use Front Squat or Goblet Squat — still a squat compound, but a different exercise.

@@ -9,6 +9,8 @@ import {
   filterCandidateEquipment,
   resolveCrossDayExcludeIds,
   findUncoveredPatterns,
+  remapUncoveredSlotPatterns,
+  buildPoolPatternSection,
 } from "../shared-helpers.js"
 import type { PriorWeekContext } from "../dedup-verify.js"
 import type { ProgramWeek, CompressedExercise } from "../types.js"
@@ -165,6 +167,228 @@ describe("findUncoveredPatterns flags patterns the candidate pool cannot fill", 
     const weeks = [weekWithPatterns(["rotation"])]
     const candidates = [{ movement_pattern: "rotation" }] as unknown as CompressedExercise[]
     expect(findUncoveredPatterns(weeks, candidates)).toEqual([])
+  })
+})
+
+describe("remapUncoveredSlotPatterns coerces skeleton patterns onto pool coverage", () => {
+  function weekWithPatterns(patterns: string[]): ProgramWeek {
+    return {
+      week_number: 10,
+      phase: "x",
+      intensity_modifier: "moderate",
+      days: [
+        {
+          day_of_week: 4,
+          label: "Thu",
+          focus: "f",
+          slots: patterns.map((p, i) => ({
+            slot_id: `w10d4s${i + 1}`,
+            role: "primary_compound",
+            movement_pattern: p,
+            target_muscles: [],
+            sets: 3,
+            reps: "5",
+            rest_seconds: 60,
+            rpe_target: 7,
+            tempo: null,
+            group_tag: null,
+            technique: "straight_set",
+            intensity_pct: null,
+          })),
+        },
+      ],
+    } as ProgramWeek
+  }
+
+  it("remaps uncovered patterns to the nearest neighbor the pool has", () => {
+    // Pool covers squat + push only; skeleton demands carry + locomotion + squat.
+    const weeks = [weekWithPatterns(["carry", "locomotion", "squat"])]
+    const pool = [
+      { movement_pattern: "squat" },
+      { movement_pattern: "squat" },
+      { movement_pattern: "push" },
+    ] as unknown as CompressedExercise[]
+
+    const remaps = remapUncoveredSlotPatterns(weeks, pool)
+
+    expect(remaps).toHaveLength(2)
+    const patterns = weeks[0].days[0].slots.map((s) => s.movement_pattern)
+    // Every slot now maps to something the pool covers…
+    for (const p of patterns) expect(["squat", "push"]).toContain(p)
+    // …and the covered slot was left untouched.
+    expect(patterns[2]).toBe("squat")
+    // Coverage check now passes — the exact scenario that used to throw.
+    expect(findUncoveredPatterns(weeks, pool)).toEqual([])
+  })
+
+  it("falls back to the pool's most common pattern when no neighbor matches", () => {
+    const weeks = [weekWithPatterns(["carry"])]
+    // None of carry's neighbors (hinge/isometric/locomotion/pull) present.
+    const pool = [
+      { movement_pattern: "rotation" },
+      { movement_pattern: "rotation" },
+      { movement_pattern: "conditioning" },
+    ] as unknown as CompressedExercise[]
+
+    const remaps = remapUncoveredSlotPatterns(weeks, pool)
+    expect(remaps).toEqual([{ slot_id: "w10d4s1", from: "carry", to: "rotation" }])
+  })
+
+  it("is a no-op when the pool has no patterned exercises", () => {
+    const weeks = [weekWithPatterns(["carry"])]
+    const pool = [{ movement_pattern: null }] as unknown as CompressedExercise[]
+    expect(remapUncoveredSlotPatterns(weeks, pool)).toEqual([])
+    expect(weeks[0].days[0].slots[0].movement_pattern).toBe("carry")
+  })
+
+  it("is a no-op when every slot is already covered", () => {
+    const weeks = [weekWithPatterns(["squat", "push"])]
+    const pool = [
+      { movement_pattern: "squat" },
+      { movement_pattern: "push" },
+    ] as unknown as CompressedExercise[]
+    expect(remapUncoveredSlotPatterns(weeks, pool)).toEqual([])
+  })
+})
+
+describe("buildPoolPatternSection tells the architect what the pool covers", () => {
+  const pool = [
+    { name: "Goblet Squat", movement_pattern: "squat" },
+    { name: "Push-up", movement_pattern: "push" },
+  ] as unknown as CompressedExercise[]
+
+  it("lists the pool's patterns and exercises in strict mode", () => {
+    const section = buildPoolPatternSection(pool, true)
+    expect(section).toMatch(/STRICT EXERCISE POOL/)
+    expect(section).toMatch(/squat, push|push, squat/)
+    expect(section).toMatch(/Goblet Squat \(squat\)/)
+  })
+
+  it("returns empty string when the pool is not active", () => {
+    expect(buildPoolPatternSection(pool, false)).toBe("")
+  })
+
+  it("returns empty string for an empty or unpatterned pool", () => {
+    expect(buildPoolPatternSection([], true)).toBe("")
+    expect(
+      buildPoolPatternSection([{ name: "X", movement_pattern: null }] as unknown as CompressedExercise[], true),
+    ).toBe("")
+  })
+})
+
+describe("buildExerciseRows sanitizes internal slot refs out of notes", () => {
+  function slotsForWeek(): ProgramWeek[] {
+    return [
+      {
+        week_number: 2,
+        phase: "x",
+        intensity_modifier: "moderate",
+        days: [
+          {
+            day_of_week: 1,
+            label: "Mon",
+            focus: "f",
+            slots: [1, 2].map((i) => ({
+              slot_id: `w2d1s${i}`,
+              role: "accessory",
+              movement_pattern: "hinge",
+              target_muscles: ["glutes"],
+              sets: 3,
+              reps: "8",
+              rest_seconds: 60,
+              rpe_target: 7,
+              tempo: null,
+              group_tag: "A",
+              technique: "superset",
+              intensity_pct: null,
+            })),
+          },
+        ],
+      } as ProgramWeek,
+    ]
+  }
+
+  it("replaces slot ids in notes with the paired exercise's name", () => {
+    const { slotLookup, slotDetailsLookup } = buildSlotLookups(slotsForWeek())
+    const rows = buildExerciseRows(
+      [
+        {
+          slot_id: "w2d1s1",
+          exercise_id: "ex-1",
+          exercise_name: "Single Leg Hip Thrust",
+          notes: "Superset with w2d1s2. 4-second eccentric.",
+        },
+        { slot_id: "w2d1s2", exercise_id: "ex-2", exercise_name: "Single Leg RDL", notes: "Superset with W2D1S1" },
+      ],
+      slotLookup,
+      slotDetailsLookup,
+      "prog-1",
+    )
+    expect(rows[0].notes).toBe("Superset with Single Leg RDL. 4-second eccentric.")
+    // Case-insensitive replacement.
+    expect(rows[1].notes).toBe("Superset with Single Leg Hip Thrust")
+  })
+
+  it("degrades unresolvable slot refs to a generic phrase", () => {
+    const { slotLookup, slotDetailsLookup } = buildSlotLookups(slotsForWeek())
+    const rows = buildExerciseRows(
+      [{ slot_id: "w2d1s1", exercise_id: "ex-1", exercise_name: "Hip Thrust", notes: "Superset with w9d9s9" }],
+      slotLookup,
+      slotDetailsLookup,
+      "prog-1",
+    )
+    expect(rows[0].notes).toBe("Superset with the paired exercise")
+  })
+
+  it("strips parenthesized exercise-id fragments", () => {
+    const { slotLookup, slotDetailsLookup } = buildSlotLookups(slotsForWeek())
+    const rows = buildExerciseRows(
+      [
+        {
+          slot_id: "w2d1s1",
+          exercise_id: "ex-1",
+          exercise_name: "A",
+          notes: "Different from Week 1's wall drops (81e06b26) — freestanding (3fa85f64-5717-4562-b3fc-2c963f66afa6) now.",
+        },
+      ],
+      slotLookup,
+      slotDetailsLookup,
+      "prog-1",
+    )
+    expect(rows[0].notes).toBe("Different from Week 1's wall drops — freestanding now.")
+  })
+
+  it("preserves legitimate parenthesized numbers (only hex-lettered fragments are ids)", () => {
+    const { slotLookup, slotDetailsLookup } = buildSlotLookups(slotsForWeek())
+    const rows = buildExerciseRows(
+      [
+        {
+          slot_id: "w2d1s1",
+          exercise_id: "ex-1",
+          exercise_name: "A",
+          notes: "Tempo (3-1-2-0), target 8 reps (20260713) session marker.",
+        },
+      ],
+      slotLookup,
+      slotDetailsLookup,
+      "prog-1",
+    )
+    expect(rows[0].notes).toBe("Tempo (3-1-2-0), target 8 reps (20260713) session marker.")
+  })
+
+  it("leaves plain notes and null notes untouched", () => {
+    const { slotLookup, slotDetailsLookup } = buildSlotLookups(slotsForWeek())
+    const rows = buildExerciseRows(
+      [
+        { slot_id: "w2d1s1", exercise_id: "ex-1", exercise_name: "A", notes: "Slow eccentric, brace hard." },
+        { slot_id: "w2d1s2", exercise_id: "ex-2", exercise_name: "B", notes: null },
+      ],
+      slotLookup,
+      slotDetailsLookup,
+      "prog-1",
+    )
+    expect(rows[0].notes).toBe("Slow eccentric, brace hard.")
+    expect(rows[1].notes).toBeNull()
   })
 })
 

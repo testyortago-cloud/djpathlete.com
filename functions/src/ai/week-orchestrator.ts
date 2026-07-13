@@ -33,6 +33,8 @@ import {
   resolveCrossDayExcludeIds,
   filterCandidateEquipment,
   findUncoveredPatterns,
+  remapUncoveredSlotPatterns,
+  buildPoolPatternSection,
 } from "./shared-helpers.js"
 import type { ProfileAnalysis } from "./types.js"
 import { z } from "zod"
@@ -559,7 +561,17 @@ ${isSingleDay ? `${targetDayName} (day_of_week=${request.target_day_of_week}) in
 
 ## Coach Instructions (HIGHEST PRIORITY — these override ALL default rules)
 ${request.admin_instructions || "No specific instructions — use standard progression logic based on the client's performance data."}
-${request.admin_instructions ? "\nYou MUST follow these instructions. If they conflict with default technique, structure, or progression rules, the coach's instructions WIN." : ""}
+${request.admin_instructions ? "\nYou MUST follow these instructions. If they conflict with default technique, structure, or progression rules, the coach's instructions WIN." : ""}${buildPoolPatternSection(
+    // Mirror the injury filter the selector applies below, so the architect is
+    // never told the pool covers a pattern whose only exercises get injury-pruned.
+    poolActive
+      ? filterByInjuredJoints(
+          allExercises,
+          extractInjuredJoints(profile?.injury_details as Array<{ area?: string }> | undefined),
+        )
+      : allExercises,
+    poolActive,
+  )}
 
 ${
   isSingleDay
@@ -732,10 +744,14 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
   // Apply hard-exclusion difficulty filter + earned-progression filter for this week.
   // Mirrors the main orchestrator — beginners never see intermediate/advanced
   // exercises in weeks 1-2; low-score intermediates unlock from week 3.
-  let exercisesForSelection = filterByDifficultyLevel(allExercises, clientDifficultyLevel)
-  exercisesForSelection = filterByProgressionPhase(exercisesForSelection, clientDifficultyLevel, newWeekNumber)
+  // Skipped in strict pool mode: the coach hand-picked these exact exercises for
+  // this client, so pruning them by difficulty would starve an already-small pool.
+  let exercisesForSelection = poolActive ? allExercises : filterByDifficultyLevel(allExercises, clientDifficultyLevel)
+  if (!poolActive) {
+    exercisesForSelection = filterByProgressionPhase(exercisesForSelection, clientDifficultyLevel, newWeekNumber)
+  }
   console.log(
-    `[week-orchestrator] Difficulty filter (${clientDifficultyLevel}, week ${newWeekNumber}): ${allExercises.length} -> ${exercisesForSelection.length}`,
+    `[week-orchestrator] Difficulty filter (${clientDifficultyLevel}, week ${newWeekNumber}): ${allExercises.length} -> ${exercisesForSelection.length}${poolActive ? " (skipped — strict pool)" : ""}`,
   )
 
   // Apply injury-aware joint filtering
@@ -761,6 +777,15 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
         `[week-orchestrator] Equipment filter skipped (strict pool) — honoring ${exercisesForSelection.length} curated exercises`,
       )
     }
+  }
+
+  // A strict pool that matched no usable exercises is a dead end — fail with an
+  // actionable message instead of letting the selector run on an empty library
+  // and silently persisting a blank day/week.
+  if (poolActive && exercisesForSelection.length === 0) {
+    throw new Error(
+      `Exercise Pool matched no usable exercises for ${isSingleDay ? targetDayName : `Week ${newWeekNumber}`}: the pool selections may reference removed exercises, or every pool exercise is excluded for this client (injury filter). Update the pool or switch it to Preferred mode.`,
+    )
   }
 
   // Build dedup context from ALL existing program exercises (not just last 2 weeks)
@@ -796,6 +821,20 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
     `[week-orchestrator] excludeIds: ${excludeIds.size} ids hard-pruned from candidate library${poolActive ? " (cross-day exclusion relaxed for strict pool)" : ""}`,
   )
 
+  // In strict pool mode, coerce any slot pattern the pool can't fill onto the
+  // nearest pattern it CAN — the architect plans from split conventions and can
+  // demand patterns (carry, locomotion, …) a small curated pool simply lacks.
+  // Without this the generation hard-fails even though the coach's pool is fine.
+  if (poolActive) {
+    const remaps = remapUncoveredSlotPatterns(skeleton.weeks, exercisesForSelection)
+    if (remaps.length > 0) {
+      console.log(
+        `[week-orchestrator] Strict pool: remapped ${remaps.length} slot pattern(s) to pool coverage:`,
+        remaps.map((r) => `${r.slot_id} ${r.from}→${r.to}`).join(", "),
+      )
+    }
+  }
+
   let filtered: CompressedExercise[]
   try {
     filtered = await semanticFilterExercises(exercisesForSelection, skeleton, availableEquipment, analysis, {
@@ -818,10 +857,13 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
       mmrLambda: 0.7,
     })
   }
-  // Fail loudly in strict pool mode when the curated pool can't cover a required
-  // movement pattern — an actionable message beats a duplicate-laden day or a
-  // cryptic empty-selection error surfacing downstream as a Zod failure.
-  if (poolActive) {
+  // Last-resort guard in strict pool mode. After the architect is told the
+  // pool's patterns AND uncovered slots are remapped above, this should never
+  // fire — but if it somehow does, an actionable message beats a
+  // duplicate-laden day or a cryptic empty-selection Zod failure. Skipped when
+  // the pool has no patterned exercises at all (nothing to match against —
+  // let the selector pick by name/role instead).
+  if (poolActive && exercisesForSelection.some((e) => e.movement_pattern)) {
     const uncovered = findUncoveredPatterns(skeleton.weeks, filtered)
     if (uncovered.length > 0) {
       throw new Error(

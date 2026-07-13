@@ -263,6 +263,107 @@ export function findUncoveredPatterns(
   return [...missing]
 }
 
+/**
+ * Nearest-neighbor substitutes per movement pattern, most-similar first.
+ * Used to coerce architect-planned patterns onto what a strict pool actually
+ * contains, so a curated pool never hard-fails generation just because the
+ * architect dreamed up a pattern (carry, locomotion, …) the pool lacks.
+ */
+const PATTERN_NEIGHBORS: Record<string, string[]> = {
+  push: ["pull", "isometric", "squat", "conditioning"],
+  pull: ["push", "hinge", "isometric", "rotation"],
+  squat: ["lunge", "hinge", "push", "isometric"],
+  hinge: ["squat", "lunge", "pull", "isometric"],
+  lunge: ["squat", "hinge", "locomotion", "isometric"],
+  carry: ["hinge", "isometric", "locomotion", "pull"],
+  rotation: ["isometric", "pull", "push", "carry"],
+  isometric: ["rotation", "carry", "squat", "push"],
+  locomotion: ["conditioning", "lunge", "carry", "squat"],
+  conditioning: ["locomotion", "squat", "push", "lunge"],
+}
+
+export interface PatternRemap {
+  slot_id: string
+  from: string
+  to: string
+}
+
+/**
+ * The set of movement patterns a candidate library can actually fill, plus the
+ * single most-represented pattern (used as a last-resort remap target).
+ */
+export function availablePatterns(candidates: Array<{ movement_pattern?: string | null }>): {
+  patterns: Set<string>
+  mostCommon: string | null
+} {
+  const counts = new Map<string, number>()
+  for (const c of candidates) {
+    if (!c.movement_pattern) continue
+    counts.set(c.movement_pattern, (counts.get(c.movement_pattern) ?? 0) + 1)
+  }
+  let mostCommon: string | null = null
+  let best = 0
+  for (const [p, n] of counts) {
+    if (n > best) {
+      best = n
+      mostCommon = p
+    }
+  }
+  return { patterns: new Set(counts.keys()), mostCommon }
+}
+
+/**
+ * Remap skeleton slots whose movement_pattern the candidate pool cannot fill to
+ * the nearest pattern the pool DOES cover (falling back to the pool's most
+ * common pattern). Strict-pool mode only: the coach curated a deliberately
+ * small set, so the day must be built FROM the pool rather than failing
+ * against an idealized split. Mutates `weeks` in place; returns the remaps
+ * made for logging. No-op when the pool has no patterned exercises at all.
+ */
+export function remapUncoveredSlotPatterns(
+  weeks: ProgramWeek[],
+  candidates: Array<{ movement_pattern?: string | null }>,
+): PatternRemap[] {
+  const { patterns, mostCommon } = availablePatterns(candidates)
+  if (patterns.size === 0 || !mostCommon) return []
+
+  const remaps: PatternRemap[] = []
+  for (const week of weeks) {
+    for (const day of week.days) {
+      for (const slot of day.slots) {
+        if (patterns.has(slot.movement_pattern)) continue
+        const neighbors = PATTERN_NEIGHBORS[slot.movement_pattern] ?? []
+        const to = neighbors.find((p) => patterns.has(p)) ?? mostCommon
+        remaps.push({ slot_id: slot.slot_id, from: slot.movement_pattern, to })
+        slot.movement_pattern = to as ExerciseSlot["movement_pattern"]
+      }
+    }
+  }
+  return remaps
+}
+
+/**
+ * Architect-message section describing what a strict pool can cover, so the
+ * architect designs slots the pool can actually fill instead of an idealized
+ * split that hard-fails downstream. Empty string outside strict pool mode.
+ */
+export function buildPoolPatternSection(
+  candidates: Array<{ name?: string; movement_pattern?: string | null }>,
+  poolActive: boolean,
+): string {
+  if (!poolActive || candidates.length === 0) return ""
+  const { patterns } = availablePatterns(candidates)
+  if (patterns.size === 0) return ""
+  const list = candidates
+    .slice(0, 40)
+    .map((c) => `${c.name ?? "?"} (${c.movement_pattern ?? "unspecified"})`)
+    .join(", ")
+  return `\n\n## STRICT EXERCISE POOL (HARD CONSTRAINT)
+The coach restricted this generation to a curated pool of ${candidates.length} exercises. The pool ONLY covers these movement patterns: ${[...patterns].join(", ")}.
+Every slot's movement_pattern MUST be one of those values — do NOT plan slots for any other movement pattern (locomotion, carry, etc. have NO matching exercise and would make the day impossible to fill). Design the day FROM this pool:
+${list}${candidates.length > 40 ? `, … and ${candidates.length - 40} more` : ""}`
+}
+
 // ─── Slot Lookup Building ──────────────────────────────────────────────────
 
 import type { ExerciseSlot, ProgramWeek } from "./types.js"
@@ -384,12 +485,39 @@ const VALID_TECHNIQUES = new Set([
   "wave_loading",
 ])
 
+// Internal slot ids (w2d1s9) that the selector sometimes writes into notes —
+// meaningless to clients, so replace them with the exercise NAME assigned to
+// that slot (or a generic phrase when the slot isn't in this batch).
+const SLOT_REF_RE = /\bw\d{1,2}d\d{1,2}s\d{1,2}\b/gi
+// Parenthesized exercise-id fragments the selector copies from the AVOID list,
+// e.g. "(81e06b26)" or a full UUID — pure noise to clients, strip entirely.
+// The short 8-char form requires at least one hex LETTER so legitimate
+// parenthesized numbers ("(20260713)") survive.
+const ID_FRAGMENT_RE = /\s*\((?:[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}|(?=[0-9]*[a-f])[0-9a-f]{8})\)/gi
+
+export function sanitizeSlotRefsInNotes(
+  notes: string | null,
+  nameBySlotId: Map<string, string>,
+): string | null {
+  if (!notes) return notes
+  const cleaned = notes
+    .replace(SLOT_REF_RE, (ref) => nameBySlotId.get(ref.toLowerCase()) ?? "the paired exercise")
+    .replace(ID_FRAGMENT_RE, "")
+  if (cleaned === notes) return notes
+  // Stripping a fragment can leave doubled spaces or a leading/trailing gap.
+  return cleaned.replace(/ {2,}/g, " ").trim()
+}
+
 export function buildExerciseRows(
-  assignments: Array<{ slot_id: string; exercise_id: string; notes: string | null }>,
+  assignments: Array<{ slot_id: string; exercise_id: string; notes: string | null; exercise_name?: string }>,
   slotLookup: Map<string, SlotLocation>,
   slotDetailsLookup: Map<string, SlotDetails>,
   programId: string,
 ): Record<string, unknown>[] {
+  const nameBySlotId = new Map<string, string>()
+  for (const a of assignments) {
+    if (a.exercise_name) nameBySlotId.set(a.slot_id.toLowerCase(), a.exercise_name)
+  }
   return assignments
     .map((assigned) => {
       const location = slotLookup.get(assigned.slot_id)
@@ -405,7 +533,7 @@ export function buildExerciseRows(
         reps: details.reps,
         duration_seconds: null,
         rest_seconds: details.rest_seconds,
-        notes: assigned.notes,
+        notes: sanitizeSlotRefsInNotes(assigned.notes, nameBySlotId),
         rpe_target: details.rpe_target,
         intensity_pct: null,
         tempo: details.tempo,
