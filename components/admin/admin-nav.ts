@@ -37,6 +37,7 @@ import {
   CalendarClock,
   Repeat,
   Ban,
+  BookOpen,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 
@@ -160,7 +161,10 @@ export function getAdminNav(opts: { contentStudioEnabled: boolean }): AdminNav {
         ],
       },
     ],
-    standaloneLinks: [{ label: "Strategy", href: "/admin/strategy", icon: Compass }],
+    standaloneLinks: [
+      { label: "Strategy", href: "/admin/strategy", icon: Compass },
+      { label: "How-to Guide", href: "/admin/guide", icon: BookOpen },
+    ],
   }
 }
 

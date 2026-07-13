@@ -429,9 +429,21 @@ export async function createPackCheckoutSession(opts: {
         },
       ]
 
+  // Pin checkout to the CLIENT's email so the payment page is addressed to
+  // them — without this, Stripe Link autofills whichever account lives in the
+  // browser that opens the link (the coach's own card/email when he previews it).
+  let customerEmail: string | undefined
+  try {
+    const client = await getUserById(opts.clientUserId)
+    customerEmail = client?.email ?? undefined
+  } catch {
+    // Non-fatal — checkout still works, just without the prefilled email.
+  }
+
   return stripe.checkout.sessions.create({
     mode: "payment",
     line_items,
+    customer_email: customerEmail,
     metadata: {
       type: "session_pack",
       clientUserId: opts.clientUserId,

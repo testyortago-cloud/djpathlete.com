@@ -44,6 +44,8 @@ export function SellPackDialog({
   const [validityDays, setValidityDays] = useState("")
   const [paymentMethod, setPaymentMethod] = useState<"stripe" | "cash" | "comp">("stripe")
   const [submitting, setSubmitting] = useState(false)
+  const [createdLink, setCreatedLink] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -101,8 +103,17 @@ export function SellPackDialog({
         return
       }
       if (data.url) {
-        // Stripe — hand the payment link to the client.
-        window.location.href = data.url as string
+        // Stripe — show the payment link for the coach to SEND to the client.
+        // Never navigate there ourselves: opening checkout in the coach's own
+        // browser makes Stripe Link autofill the coach's email and card.
+        setCreatedLink(data.url as string)
+        try {
+          await navigator.clipboard.writeText(data.url as string)
+          setCopied(true)
+        } catch {
+          setCopied(false)
+        }
+        onSold()
         return
       }
       toast.success("Pack added")
@@ -115,8 +126,62 @@ export function SellPackDialog({
     }
   }
 
+  async function copyLink() {
+    if (!createdLink) return
+    try {
+      await navigator.clipboard.writeText(createdLink)
+      setCopied(true)
+      toast.success("Link copied")
+    } catch {
+      window.prompt("Copy the payment link:", createdLink)
+    }
+  }
+
+  function handleOpenChange(next: boolean) {
+    setOpen(next)
+    // Reset on OPEN, not close — clearing during close would swap the link
+    // screen back to the sell form mid fade-out (Radix keeps content mounted
+    // through the exit animation).
+    if (next) {
+      setCreatedLink(null)
+      setCopied(false)
+    }
+  }
+
+  if (createdLink) {
+    return (
+      <Dialog open={open} onOpenChange={handleOpenChange}>
+        <DialogTrigger asChild>{trigger}</DialogTrigger>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Payment link ready</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Send this link to the client (WhatsApp, text, email). It&apos;s addressed to their email, so their own
+              card details come up — not yours. Don&apos;t pay through it yourself.
+            </p>
+            <div className="flex gap-2">
+              <Input readOnly value={createdLink} onFocus={(e) => e.currentTarget.select()} />
+              <Button type="button" onClick={copyLink}>
+                {copied ? "Copied" : "Copy"}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              The pack shows as &quot;awaiting payment&quot; until they pay, then flips to paid automatically. You can
+              re-copy this link any time from the pack&apos;s &quot;Copy payment link&quot; button.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => handleOpenChange(false)}>Done</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    )
+  }
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent>
         <DialogHeader>

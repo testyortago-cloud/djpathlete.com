@@ -3,8 +3,18 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { Ticket, Plus, Undo2 } from "lucide-react"
+import { Ticket, Plus, Undo2, Link2, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { SellPackDialog } from "./SellPackDialog"
 import type { ClientPackage } from "@/types/database"
 import type { PackWithCheckins } from "@/lib/services/client-packs-view"
@@ -36,6 +46,7 @@ export function ClientPackagesPanel({
 }) {
   const router = useRouter()
   const [busy, setBusy] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<PackWithCheckins | null>(null)
   const packages = initialPacks
 
   async function voidCheckin(checkinId: string) {
@@ -53,6 +64,52 @@ export function ClientPackagesPanel({
       }
       toast.success("Check-in undone, credit restored")
       router.refresh()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function copyPaymentLink(packId: string) {
+    setBusy(true)
+    try {
+      const res = await fetch(`/api/admin/session-packs/${packId}/payment-link`, { method: "POST" })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok || !d.url) {
+        toast.error(d.error ?? "Could not get payment link")
+        return
+      }
+      try {
+        await navigator.clipboard.writeText(d.url as string)
+        toast.success(
+          d.refreshed
+            ? "New payment link copied — the old one had expired. Send it to the client."
+            : "Payment link copied — send it to the client.",
+        )
+      } catch {
+        // Clipboard can be blocked (non-HTTPS/permissions) — show the link instead.
+        window.prompt("Copy the payment link:", d.url as string)
+      }
+    } catch {
+      toast.error("Network error — could not get the payment link")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function deletePack(packId: string) {
+    setBusy(true)
+    try {
+      const res = await fetch(`/api/admin/session-packs/${packId}`, { method: "DELETE" })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        toast.error(d.error ?? "Could not delete pack")
+        return
+      }
+      toast.success("Pack deleted")
+      setDeleteTarget(null)
+      router.refresh()
+    } catch {
+      toast.error("Network error — pack not deleted")
     } finally {
       setBusy(false)
     }
@@ -112,14 +169,39 @@ export function ClientPackagesPanel({
                     </p>
                   )}
                 </div>
-                <div className="text-right">
-                  <p className="text-2xl font-semibold text-primary">
-                    {remaining(p)}
-                    <span className="text-sm text-muted-foreground font-normal"> / {p.credits_total}</span>
-                  </p>
-                  <p className="text-xs text-muted-foreground">sessions left</p>
+                <div className="flex items-center gap-3">
+                  <div className="text-right">
+                    <p className="text-2xl font-semibold text-primary">
+                      {remaining(p)}
+                      <span className="text-sm text-muted-foreground font-normal"> / {p.credits_total}</span>
+                    </p>
+                    <p className="text-xs text-muted-foreground">sessions left</p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 px-2 text-muted-foreground hover:text-error"
+                    onClick={() => setDeleteTarget(p)}
+                    disabled={busy}
+                    aria-label="Delete pack"
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
                 </div>
               </div>
+
+              {p.payment_method === "stripe" && p.payment_status === "pending" && (
+                <div className="mt-3">
+                  <Button size="sm" variant="outline" onClick={() => copyPaymentLink(p.id)} disabled={busy}>
+                    <Link2 className="size-3.5" />
+                    Copy payment link
+                  </Button>
+                  <p className="text-xs text-muted-foreground mt-1.5">
+                    Send this link to the client — it&apos;s addressed to their email. The pack shows as paid
+                    automatically once they pay.
+                  </p>
+                </div>
+              )}
 
               {p.checkins.length > 0 && (
                 <div className="mt-3 border-t border-border pt-3 space-y-1.5">
@@ -148,6 +230,40 @@ export function ClientPackagesPanel({
           ))}
         </div>
       )}
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this pack?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget && (
+                <>
+                  {deleteTarget.session_type} — {remaining(deleteTarget)}/{deleteTarget.credits_total} sessions left.
+                  {deleteTarget.checkins.some((c) => !c.voided)
+                    ? " Its check-in history is deleted with it."
+                    : ""}
+                  {deleteTarget.payment_status === "paid"
+                    ? " This pack was PAID — deleting removes the purchase record from this page (the Stripe payment itself is untouched; refund separately in Stripe if needed)."
+                    : " Any unpaid payment link for this pack stops working."}
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busy}>Keep pack</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault()
+                if (deleteTarget) void deletePack(deleteTarget.id)
+              }}
+              disabled={busy}
+              variant="destructive"
+            >
+              Delete pack
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

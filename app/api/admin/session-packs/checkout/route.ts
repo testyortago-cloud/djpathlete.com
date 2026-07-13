@@ -94,7 +94,10 @@ export async function POST(request: Request) {
         validityDays,
         productId,
         stripePriceId,
-        returnUrl: input.returnUrl,
+        // The link is sent to and paid by the CLIENT — land them on their own
+        // packs page, never the coach's admin client page.
+        returnUrl: input.returnUrl ?? "/client/sessions",
+        cancelUrl: "/client/sessions",
       })
       const pkg = await createClientPackage(
         buildPackageInsert({

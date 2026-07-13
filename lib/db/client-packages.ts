@@ -72,6 +72,13 @@ export async function getActivePackageForClient(clientUserId: string, nowIso: st
   return (data as ClientPackage[]).find((p) => p.credits_used < p.credits_total) ?? null
 }
 
+/** Hard-delete a pack. session_checkins rows cascade (FK on delete cascade). */
+export async function deleteClientPackage(id: string) {
+  const supabase = getClient()
+  const { error } = await supabase.from("client_packages").delete().eq("id", id)
+  if (error) throw error
+}
+
 export async function updateClientPackage(id: string, patch: Partial<ClientPackage>) {
   const supabase = getClient()
   const { data, error } = await supabase.from("client_packages").update(patch).eq("id", id).select().single()

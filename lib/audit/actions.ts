@@ -215,6 +215,8 @@ export const AUDIT_ACTIONS = [
   { slug: "pack.checkin_voided", category: "client_action", description: "Check-in voided; credit restored" },
   { slug: "pack.refunded", category: "commerce", description: "Session pack refunded" },
   { slug: "pack.expired", category: "system", description: "Session pack expired" },
+  { slug: "pack.deleted", category: "commerce", description: "Session pack deleted by admin" },
+  { slug: "pack.payment_link_refreshed", category: "commerce", description: "Session pack payment link retrieved/regenerated" },
   { slug: "session.slot_created", category: "admin_write", description: "Recurring session slot created" },
   { slug: "session.slot_updated", category: "admin_write", description: "Recurring session slot updated" },
   { slug: "session.attended", category: "client_action", description: "Scheduled session marked attended" },
