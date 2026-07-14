@@ -16,6 +16,7 @@ export const EXPECTED_CRONS: ExpectedCron[] = [
   { name: "autoBlogCron", sla_hours: 96 },             // Tue + Thu
   { name: "syncPlatformAnalytics", sla_hours: 30 },    // daily 03:00
   { name: "syncGoogleAds", sla_hours: 30 },            // daily 06:00
+  { name: "runAgentStrategist", sla_hours: 192 },      // weekly Wed 13:00
   { name: "chiefStrategistCron", sla_hours: 192 },     // weekly Sun
   { name: "seoAgentCron", sla_hours: 192 },            // weekly Sun
   { name: "performanceLearningLoop", sla_hours: 192 }, // weekly Mon

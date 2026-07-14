@@ -30,6 +30,42 @@ export interface PreflightInput {
   gscSyncedAt: Date | null
   tokensValid: { googleAds: boolean; ga4: boolean; gsc: boolean }
   activeCampaignClicks7d: number
+  /**
+   * Diagnostic context for the clicks gate. Optional so existing callers and
+   * tests keep working — when omitted the message degrades to the old form.
+   *
+   * These exist because "0 clicks" has three very different causes that used
+   * to produce one identical, misleading sentence: no ENABLED campaigns in the
+   * mirror (status drift), no metric rows at all (the sync isn't writing), or
+   * genuinely no traffic. The first two are outages; the third is a quiet week.
+   * google_ads_daily_metrics sat empty for ~2 months behind an upsert bug while
+   * this gate reported "0 clicks across active campaigns" every single week.
+   */
+  activeCampaignCount?: number
+  metricRows7d?: number
+}
+
+/**
+ * Turns a clicks shortfall into a message that names the actual cause. The
+ * caller may not have supplied diagnostics (older callers, tests), in which
+ * case this degrades to the original wording.
+ */
+function describeClicksShortfall(input: PreflightInput): string {
+  const window = T.RECENT_CLICKS_WINDOW_DAYS
+  const suffix = `(threshold ${T.MIN_RECENT_CLICKS})`
+
+  if (input.activeCampaignCount === 0) {
+    return `No ENABLED campaigns in the local mirror, so there are no clicks to measure ${suffix}. This is a data problem, not an ads problem — check google_ads_campaigns for status drift and re-run syncGoogleAds.`
+  }
+  if (input.metricRows7d === 0) {
+    return `No metric rows at all for the last ${window}d across ${input.activeCampaignCount ?? "the"} ENABLED campaign(s) ${suffix}. The account may be fine — google_ads_daily_metrics simply has nothing written for this window, so suspect the sync before the campaigns.`
+  }
+
+  const scope =
+    input.activeCampaignCount !== undefined
+      ? `across ${input.activeCampaignCount} ENABLED campaign(s)`
+      : "across active campaigns"
+  return `Insufficient clicks: ${input.activeCampaignClicks7d} clicks ${scope} in last ${window}d ${suffix}.`
 }
 
 export async function runPreflight(input: PreflightInput): Promise<PreflightResult> {
@@ -48,9 +84,7 @@ export async function runPreflight(input: PreflightInput): Promise<PreflightResu
   }
 
   if (input.activeCampaignClicks7d < T.MIN_RECENT_CLICKS) {
-    reasons.push(
-      `Insufficient clicks: ${input.activeCampaignClicks7d} clicks across active campaigns in last ${T.RECENT_CLICKS_WINDOW_DAYS}d (threshold ${T.MIN_RECENT_CLICKS}).`,
-    )
+    reasons.push(describeClicksShortfall(input))
   }
 
   if (!input.tokensValid.googleAds) reasons.push("Google Ads OAuth token invalid or missing.")

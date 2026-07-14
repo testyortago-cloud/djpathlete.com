@@ -46,22 +46,45 @@ export interface SyncGoogleAdsResult {
   search_terms_upserted: number
   recommendations_triggered: number
   recommendations_failed: number
+  // A trigger that returns 200 having produced nothing is NOT the same as one
+  // that produced ten — but for months both landed here as a single
+  // `recommendations_triggered++`, so a dead generator was indistinguishable
+  // from a quiet week. These carry the generator's own counts outward so
+  // cron_runs.detail can answer "why zero?" without a redeploy.
+  recommendations_persisted: number
+  recommendations_campaigns_scored: number
+  recommendations_campaigns_skipped: number
+  recommendations_last_error?: string
   not_connected?: true
+}
+
+export interface RecommendationsTriggerResult {
+  ok: boolean
+  status?: number
+  error?: string
+  campaigns_scored?: number
+  campaigns_skipped?: number
+  recommendations_generated?: number
+  recommendations_persisted?: number
 }
 
 /**
  * POSTs the recommendations trigger to the Next.js side. Fire-and-soft-fail —
  * a recommendations failure for one account shouldn't block the next account
  * from syncing. INTERNAL_CRON_TOKEN gates the endpoint.
+ *
+ * Returns the generator's counts rather than a bare boolean so the caller can
+ * record what actually happened.
  */
-async function triggerRecommendations(customerId: string): Promise<boolean> {
+async function triggerRecommendations(
+  customerId: string,
+): Promise<RecommendationsTriggerResult> {
   const appUrl = process.env.APP_URL
   const token = process.env.INTERNAL_CRON_TOKEN
   if (!appUrl || !token) {
-    console.warn(
-      "[syncGoogleAds] APP_URL or INTERNAL_CRON_TOKEN missing — skipping recommendations trigger",
-    )
-    return false
+    const error = "APP_URL or INTERNAL_CRON_TOKEN missing — skipping recommendations trigger"
+    console.warn(`[syncGoogleAds] ${error}`)
+    return { ok: false, error }
   }
   try {
     const res = await fetch(`${appUrl}/api/admin/internal/ads/recommendations`, {
@@ -72,16 +95,27 @@ async function triggerRecommendations(customerId: string): Promise<boolean> {
       },
       body: JSON.stringify({ customer_id: customerId }),
     })
+    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>
     if (!res.ok) {
+      const error =
+        typeof body.error === "string" ? body.error : `HTTP ${res.status}`
       console.error(
-        `[syncGoogleAds] recommendations trigger failed for ${customerId}: HTTP ${res.status}`,
+        `[syncGoogleAds] recommendations trigger failed for ${customerId}: ${error}`,
       )
-      return false
+      return { ok: false, status: res.status, error }
     }
-    return true
+    return {
+      ok: true,
+      status: res.status,
+      campaigns_scored: Number(body.campaigns_scored ?? 0),
+      campaigns_skipped: Number(body.campaigns_skipped ?? 0),
+      recommendations_generated: Number(body.recommendations_generated ?? 0),
+      recommendations_persisted: Number(body.recommendations_persisted ?? 0),
+    }
   } catch (err) {
-    console.error(`[syncGoogleAds] recommendations trigger error for ${customerId}:`, err)
-    return false
+    const error = serializeAdsError(err)
+    console.error(`[syncGoogleAds] recommendations trigger error for ${customerId}:`, error)
+    return { ok: false, error }
   }
 }
 
@@ -146,6 +180,9 @@ export async function runSyncGoogleAds(
     search_terms_upserted: 0,
     recommendations_triggered: 0,
     recommendations_failed: 0,
+    recommendations_persisted: 0,
+    recommendations_campaigns_scored: 0,
+    recommendations_campaigns_skipped: 0,
   }
 
   const refreshToken = await getRefreshToken()
@@ -290,9 +327,16 @@ export async function runSyncGoogleAds(
 
       // 7. Plan 1.2: trigger AI recommendations for this account. Fails soft
       // — recommendations failure shouldn't poison the next account's sync.
-      const ok = await triggerRecommendations(account.customer_id)
-      if (ok) result.recommendations_triggered++
-      else result.recommendations_failed++
+      const recs = await triggerRecommendations(account.customer_id)
+      if (recs.ok) {
+        result.recommendations_triggered++
+        result.recommendations_persisted += recs.recommendations_persisted ?? 0
+        result.recommendations_campaigns_scored += recs.campaigns_scored ?? 0
+        result.recommendations_campaigns_skipped += recs.campaigns_skipped ?? 0
+      } else {
+        result.recommendations_failed++
+        if (recs.error) result.recommendations_last_error = recs.error
+      }
     } catch (err) {
       const message = serializeAdsError(err)
       console.error(`[syncGoogleAds] account ${account.customer_id} failed:`, message)

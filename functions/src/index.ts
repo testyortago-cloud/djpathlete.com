@@ -797,9 +797,24 @@ export const syncGoogleAds = onSchedule(
     secrets: googleAdsSecrets,
   },
   async () => {
+    const { getSupabase } = await import("./lib/supabase.js")
+    const { logCronStart, logCronEnd } = await import("./lib/cron-runs.js")
     const { runSyncGoogleAds } = await import("./sync-google-ads.js")
-    const result = await runSyncGoogleAds()
-    console.log("[syncGoogleAds]", result)
+
+    // syncGoogleAds has been in the health scanner's EXPECTED_CRONS all along,
+    // but never wrote a cron_runs row — and the scanner skips crons with no
+    // recorded success ("never run yet — don't false-alert"), so it was
+    // invisible by construction. Without this the watchdog cannot ever fire.
+    const supabase = getSupabase()
+    const runId = await logCronStart(supabase, "syncGoogleAds")
+    try {
+      const result = await runSyncGoogleAds()
+      await logCronEnd(supabase, runId, "success", result as unknown as Record<string, unknown>)
+      console.log("[syncGoogleAds]", result)
+    } catch (err) {
+      await logCronEnd(supabase, runId, "failed", { message: (err as Error).message })
+      throw err
+    }
   },
 )
 
@@ -819,10 +834,17 @@ export const runAgentStrategist = onSchedule(
     secrets: [internalCronToken, appUrl],
   },
   async () => {
+    const { getSupabase } = await import("./lib/supabase.js")
+    const { logCronStart, logCronEnd } = await import("./lib/cron-runs.js")
+    const supabase = getSupabase()
+    const runId = await logCronStart(supabase, "runAgentStrategist")
+
     const baseUrl = process.env.APP_URL
     const token = process.env.INTERNAL_CRON_TOKEN
     if (!baseUrl || !token) {
-      console.error("[runAgentStrategist] APP_URL or INTERNAL_CRON_TOKEN missing — abort")
+      const message = "APP_URL or INTERNAL_CRON_TOKEN missing — abort"
+      console.error(`[runAgentStrategist] ${message}`)
+      await logCronEnd(supabase, runId, "failed", { message })
       return
     }
     try {
@@ -831,10 +853,22 @@ export const runAgentStrategist = onSchedule(
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: "{}",
       })
-      const body = await res.json().catch(() => ({}))
+      const body = (await res.json().catch(() => ({}))) as Record<string, unknown>
+      // Previously this neither checked res.ok nor rethrew, so a 500 from the
+      // route logged to console and the run still counted as healthy. A memo
+      // blocked by preflight is a *successful run with a degraded outcome* —
+      // record the reasons in detail rather than throwing, so a permanently
+      // stale memo is visible in /admin/insights instead of only on screen.
+      if (!res.ok) {
+        await logCronEnd(supabase, runId, "failed", { http_status: res.status, ...body })
+        throw new Error(`agent-strategist returned HTTP ${res.status}`)
+      }
+      await logCronEnd(supabase, runId, "success", { http_status: res.status, ...body })
       console.log("[runAgentStrategist]", res.status, body)
     } catch (err) {
+      await logCronEnd(supabase, runId, "failed", { message: (err as Error).message })
       console.error("[runAgentStrategist] failed:", err)
+      throw err
     }
   },
 )

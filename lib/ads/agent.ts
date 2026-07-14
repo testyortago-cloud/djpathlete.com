@@ -379,7 +379,12 @@ async function fetchPreflightInput(): Promise<PreflightInput> {
   }
 
   // activeCampaignClicks7d — sum clicks across enabled campaigns in last 7d.
+  // activeCampaignCount / metricRows7d are diagnostics only: they let the
+  // preflight message distinguish "the sync wrote nothing" from "nobody
+  // clicked", which used to read identically as a bare "0 clicks".
   let activeCampaignClicks7d = 0
+  let activeCampaignCount: number | undefined
+  let metricRows7d: number | undefined
   try {
     const sevenDaysAgo = new Date(Date.now() - 7 * 86_400_000)
       .toISOString()
@@ -389,6 +394,7 @@ async function fetchPreflightInput(): Promise<PreflightInput> {
       .select("campaign_id, customer_id")
       .eq("status", "ENABLED")
     const enabledRows = (enabled ?? []) as Array<{ campaign_id: string; customer_id: string }>
+    activeCampaignCount = enabledRows.length
     if (enabledRows.length > 0) {
       const ids = enabledRows.map((r) => r.campaign_id)
       const { data: metrics } = await supabase
@@ -399,10 +405,18 @@ async function fetchPreflightInput(): Promise<PreflightInput> {
         .is("ad_group_id", null)
         .is("keyword_criterion_id", null)
       const rows = (metrics ?? []) as Array<{ clicks: number | null }>
+      metricRows7d = rows.length
       activeCampaignClicks7d = rows.reduce((sum, r) => sum + Number(r.clicks ?? 0), 0)
+    } else {
+      metricRows7d = 0
     }
   } catch {
+    // Leave the diagnostics undefined — an exception here means we don't know
+    // whether the data is missing or the query failed, and claiming either
+    // would be worse than the generic message.
     activeCampaignClicks7d = 0
+    activeCampaignCount = undefined
+    metricRows7d = undefined
   }
 
   return {
@@ -415,6 +429,8 @@ async function fetchPreflightInput(): Promise<PreflightInput> {
       gsc: gscValid,
     },
     activeCampaignClicks7d,
+    activeCampaignCount,
+    metricRows7d,
   }
 }
 

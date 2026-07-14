@@ -65,6 +65,88 @@ describe("ads agent preflight", () => {
   })
 })
 
+// Regression cover for the two-month outage: google_ads_daily_metrics sat empty
+// behind a broken upsert while preflight reported a bare "0 clicks across
+// active campaigns" every week. The sentence blamed the ads account for what
+// was actually a sync failure, so nobody looked at the sync. A zero has to say
+// WHICH zero it is.
+describe("preflight clicks-shortfall diagnostics", () => {
+  const healthy = {
+    mostRecentConversionAt: new Date("2026-05-13T06:00:00Z"),
+    ga4SyncedAt: new Date("2026-05-13T06:00:00Z"),
+    gscSyncedAt: new Date("2026-05-13T06:00:00Z"),
+    tokensValid: { googleAds: true, ga4: true, gsc: true },
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers().setSystemTime(new Date("2026-05-13T12:00:00Z"))
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it("blames the mirror, not the account, when no campaigns are ENABLED", async () => {
+    const result = await runPreflight({
+      ...healthy,
+      activeCampaignClicks7d: 0,
+      activeCampaignCount: 0,
+      metricRows7d: 0,
+    })
+    expect(result.ok).toBe(false)
+    const reason = result.reasons.find((r) => /ENABLED campaigns/i.test(r))
+    expect(reason).toBeDefined()
+    expect(reason).toMatch(/data problem, not an ads problem/i)
+  })
+
+  it("blames the sync when campaigns are ENABLED but no metric rows exist", async () => {
+    const result = await runPreflight({
+      ...healthy,
+      activeCampaignClicks7d: 0,
+      activeCampaignCount: 6,
+      metricRows7d: 0,
+    })
+    expect(result.ok).toBe(false)
+    const reason = result.reasons.find((r) => /no metric rows/i.test(r))
+    expect(reason).toBeDefined()
+    expect(reason).toMatch(/suspect the sync/i)
+    // Must NOT read as a plain traffic shortfall — that was the original bug.
+    expect(reason).not.toMatch(/^Insufficient clicks/)
+  })
+
+  it("reports a genuine traffic shortfall when rows exist but clicks are low", async () => {
+    const result = await runPreflight({
+      ...healthy,
+      activeCampaignClicks7d: 5,
+      activeCampaignCount: 6,
+      metricRows7d: 42,
+    })
+    expect(result.ok).toBe(false)
+    const reason = result.reasons.find((r) => /^Insufficient clicks/.test(r))
+    expect(reason).toBeDefined()
+    expect(reason).toMatch(/5 clicks across 6 ENABLED campaign\(s\)/)
+  })
+
+  it("does not fire the clicks gate at all once the threshold is met", async () => {
+    const result = await runPreflight({
+      ...healthy,
+      activeCampaignClicks7d: 115,
+      activeCampaignCount: 6,
+      metricRows7d: 16,
+    })
+    expect(result.ok).toBe(true)
+    expect(result.reasons).toEqual([])
+  })
+
+  it("degrades to the generic message when diagnostics are omitted", async () => {
+    const result = await runPreflight({
+      ...healthy,
+      activeCampaignClicks7d: 5,
+    })
+    expect(result.ok).toBe(false)
+    expect(result.reasons.some((r) => /across active campaigns/i.test(r))).toBe(true)
+  })
+})
+
 describe("gatherRawInputs", () => {
   it("returns a JSON-serializable AdsRawInputs shape with all key sources", async () => {
     const result = await gatherRawInputs({
