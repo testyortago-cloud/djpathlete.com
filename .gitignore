@@ -68,3 +68,6 @@ Screenshot*.png
 .worktrees/
 
 .playwright-mcp/
+
+# demo/tutorial videos (local deliverables, never committed)
+*.mp4

@@ -2,10 +2,27 @@
 import { Composition } from "remotion"
 import { CaptionedCut, type CaptionedCutProps } from "./CaptionedCut.js"
 import { SplitReel, type SplitReelProps } from "./SplitReel.js"
+import {
+  AiBookkeeperPromo,
+  type AiBookkeeperPromoProps,
+} from "./promo/AiBookkeeperPromo.js"
+import {
+  FPS as PROMO_FPS,
+  HEIGHT as PROMO_HEIGHT,
+  TOTAL_FRAMES as PROMO_FRAMES,
+  WIDTH as PROMO_WIDTH,
+} from "./promo/theme.js"
 
 const FPS = 30
 const WIDTH = 1080
 const HEIGHT = 1920
+
+// Marketing promo for the AI Bookkeeper proposal — rendered locally, never
+// invoked by the Cloud Run job (which renders by composition id).
+// Silent by request: set musicTrack to a filename under public/music to score it.
+const PROMO_SAMPLE: AiBookkeeperPromoProps = {
+  musicTrack: "",
+}
 
 const SAMPLE: CaptionedCutProps = {
   videoSrc:
@@ -87,6 +104,15 @@ export function RemotionRoot() {
         width={WIDTH}
         height={HEIGHT}
         defaultProps={SPLIT_SAMPLE}
+      />
+      <Composition
+        id="AiBookkeeperPromo"
+        component={AiBookkeeperPromo}
+        durationInFrames={PROMO_FRAMES}
+        fps={PROMO_FPS}
+        width={PROMO_WIDTH}
+        height={PROMO_HEIGHT}
+        defaultProps={PROMO_SAMPLE}
       />
     </>
   )
