@@ -63,6 +63,60 @@ export const negativeKeywordPayloadSchema = z.object({
   match_type: googleAdsKeywordMatchTypeSchema,
 })
 
+/**
+ * The strategist agent's `propose_negative_keywords` tool is BULK by design —
+ * one approval click should add every negative it proposes (hence
+ * BULK_NEGATIVE_KEYWORD_THRESHOLD in thresholds.ts). It writes N keywords × M
+ * match types nested under `args`, which is a different shape from the nightly
+ * generator's single `{ text, match_type }`. Both land in
+ * google_ads_recommendations under recommendation_type='add_negative_keyword'.
+ */
+export const bulkNegativeKeywordPayloadSchema = z.object({
+  args: z.object({
+    negative_keywords: z.array(z.string().min(1).max(80)).min(1),
+    match_types: z.array(googleAdsKeywordMatchTypeSchema).min(1),
+  }),
+})
+
+export type NegativeKeywordSpec = {
+  text: string
+  match_type: z.infer<typeof googleAdsKeywordMatchTypeSchema>
+}
+
+/**
+ * Accepts either producer's shape and returns the flat list of negatives to
+ * create. The bulk shape is a cross-product: every keyword at every requested
+ * match type, deduped.
+ */
+export function normalizeNegativeKeywordPayload(
+  payload: unknown,
+): { ok: true; keywords: NegativeKeywordSpec[] } | { ok: false; error: string } {
+  const single = negativeKeywordPayloadSchema.safeParse(payload)
+  if (single.success) {
+    return { ok: true, keywords: [single.data] }
+  }
+
+  const bulk = bulkNegativeKeywordPayloadSchema.safeParse(payload)
+  if (bulk.success) {
+    const { negative_keywords, match_types } = bulk.data.args
+    const seen = new Set<string>()
+    const keywords: NegativeKeywordSpec[] = []
+    for (const text of negative_keywords) {
+      for (const match_type of match_types) {
+        const key = `${match_type}:${text.toLowerCase()}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        keywords.push({ text, match_type })
+      }
+    }
+    return { ok: true, keywords }
+  }
+
+  // Report against the single shape — it's the simpler contract and its errors
+  // read better than a union's.
+  return { ok: false, error: single.error.message }
+}
+
 export const bidAdjustmentPayloadSchema = z.object({
   current_micros: z.number().int().nonnegative(),
   proposed_micros: z.number().int().nonnegative(),

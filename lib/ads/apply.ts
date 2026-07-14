@@ -23,7 +23,7 @@ import {
   adVariantPayloadSchema,
   bidAdjustmentPayloadSchema,
   keywordRefPayloadSchema,
-  negativeKeywordPayloadSchema,
+  normalizeNegativeKeywordPayload,
   newKeywordPayloadSchema,
 } from "@/lib/validators/ads"
 import { campaignBlueprintArgsSchema } from "@/lib/ads/agent/decision-schema"
@@ -49,6 +49,23 @@ export interface ApplyResult {
   error?: string
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * Resolve a rec's campaign scope_id to the EXTERNAL Google campaign id.
+ *
+ * The agent reasons over the local mirror, so it scopes its recommendations by
+ * our internal campaign UUID — but Google resource names need the numeric
+ * external id. Passing a UUID through built
+ * `customers/123/campaigns/b5d033e6-…`, which is not a real resource. Accepts
+ * either form so both producers work.
+ */
+async function resolveCampaignExternalId(scopeId: string): Promise<string | null> {
+  if (!UUID_RE.test(scopeId)) return scopeId // already an external id
+  const campaign = await getCampaignById(scopeId)
+  return campaign?.campaign_id ?? null
+}
+
 /**
  * Builds the mutation operation for a recommendation. Returns a string error
  * message if the rec is malformed or its referenced entity is missing from
@@ -61,21 +78,28 @@ async function buildMutation(
 
   switch (rec.recommendation_type) {
     case "add_negative_keyword": {
-      const parsed = negativeKeywordPayloadSchema.safeParse(rec.payload)
-      if (!parsed.success) return { ok: false, error: `Invalid payload: ${parsed.error.message}` }
+      // Two producers write this type with different payload shapes: the
+      // nightly generator emits one { text, match_type }, the strategist agent
+      // emits a bulk { args: { negative_keywords[], match_types[] } }.
+      const parsed = normalizeNegativeKeywordPayload(rec.payload)
+      if (!parsed.ok) return { ok: false, error: `Invalid payload: ${parsed.error}` }
       if (rec.scope_type !== "campaign") {
         return { ok: false, error: "add_negative_keyword expects scope_type=campaign" }
       }
-      // scope_id here is the external campaign_id; -1 = "create" placeholder
-      const op: MutationOperation = {
+      const externalCampaignId = await resolveCampaignExternalId(rec.scope_id)
+      if (!externalCampaignId) {
+        return { ok: false, error: `Campaign ${rec.scope_id} not found in mirror` }
+      }
+      // -1 = "create" placeholder in the criterion resource name.
+      const ops: MutationOperation[] = parsed.keywords.map((kw) => ({
         entity: "campaign_criterion",
         operation: "create",
-        resource: ResourceNames.campaignCriterion(customerId, rec.scope_id, "-1"),
-        campaign: ResourceNames.campaign(customerId, rec.scope_id),
+        resource: ResourceNames.campaignCriterion(customerId, externalCampaignId, "-1"),
+        campaign: ResourceNames.campaign(customerId, externalCampaignId),
         negative: true,
-        keyword: { text: parsed.data.text, match_type: parsed.data.match_type },
-      }
-      return { ok: true, ops: [op] }
+        keyword: { text: kw.text, match_type: kw.match_type },
+      }))
+      return { ok: true, ops }
     }
 
     case "adjust_bid": {
