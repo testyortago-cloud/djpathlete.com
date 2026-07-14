@@ -8,6 +8,11 @@ import { ghlCreateContact, ghlTriggerWorkflow } from "@/lib/ghl"
 import { getActiveDocument } from "@/lib/db/legal-documents"
 import { createConsent } from "@/lib/db/consents"
 import { recordAudit } from "@/lib/audit/record"
+import { parseAttrCookie } from "@/lib/marketing/cookies"
+import {
+  getAttributionBySession,
+  claimAttribution,
+} from "@/lib/db/marketing-attribution"
 import type { User } from "@/types/database"
 
 export async function POST(request: Request) {
@@ -118,6 +123,28 @@ export async function POST(request: Request) {
     if (profileError) {
       console.error("Failed to create client profile:", profileError)
       // User was created but profile failed — don't block registration
+    }
+
+    // Link this visitor's ad click to the account they just made (non-blocking).
+    //
+    // Without this, marketing_attribution.user_id stays NULL forever — and
+    // findAttributionByEmail joins `users!inner`, so the Stripe webhook's
+    // email fallback can never match a row and no payment ever gets a gclid.
+    // Net effect: zero offline conversions upload and Google Ads bids blind.
+    // The design always called for claiming at signup; only the newsletter
+    // path ever implemented it, which is why newsletter_subscribers is the one
+    // table in the schema with a gclid on it.
+    try {
+      const attrSessionId = parseAttrCookie(request.headers.get("cookie"))
+      if (attrSessionId) {
+        const attr = await getAttributionBySession(attrSessionId)
+        if (attr && !attr.claimed_at) {
+          await claimAttribution(attr.id, typedUser.id)
+        }
+      }
+    } catch (attrError) {
+      // Never block registration for an analytics link.
+      console.error("Failed to claim marketing attribution:", attrError)
     }
 
     // Record legal consents (non-blocking)

@@ -7,7 +7,7 @@ import { getActiveSubscription } from "@/lib/db/subscriptions"
 import { isAssignmentExpired } from "@/lib/utils"
 import { createCheckoutSession, createSubscriptionCheckoutSession, getOrCreateStripeCustomer } from "@/lib/stripe"
 import { parseAttrCookie } from "@/lib/marketing/cookies"
-import { getUnclaimedAttribution } from "@/lib/db/marketing-attribution"
+import { getAttributionBySession } from "@/lib/db/marketing-attribution"
 
 export async function POST(request: Request) {
   try {
@@ -57,7 +57,7 @@ export async function POST(request: Request) {
 
     // Resolve visitor tracking params from djp_attr cookie
     const sessionId = parseAttrCookie(request.headers.get("cookie"))
-    const attr = sessionId ? await getUnclaimedAttribution(sessionId).catch(() => null) : null
+    const attr = sessionId ? await getAttributionBySession(sessionId).catch(() => null) : null
     const tracking = attr
       ? { gclid: attr.gclid, gbraid: attr.gbraid, wbraid: attr.wbraid, fbclid: attr.fbclid }
       : undefined

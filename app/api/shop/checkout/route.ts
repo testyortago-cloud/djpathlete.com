@@ -8,7 +8,7 @@ import { createOrder, updateOrder } from "@/lib/db/shop-orders"
 import { stripe } from "@/lib/stripe"
 import type { ShopOrderItem } from "@/types/database"
 import { parseAttrCookie } from "@/lib/marketing/cookies"
-import { getUnclaimedAttribution } from "@/lib/db/marketing-attribution"
+import { getAttributionBySession } from "@/lib/db/marketing-attribution"
 import { recordAudit } from "@/lib/audit/record"
 
 export async function POST(request: Request) {
@@ -71,7 +71,7 @@ export async function POST(request: Request) {
 
   // Resolve visitor tracking params from djp_attr cookie
   const shopAttrSessionId = parseAttrCookie(request.headers.get("cookie"))
-  const shopAttr = shopAttrSessionId ? await getUnclaimedAttribution(shopAttrSessionId).catch(() => null) : null
+  const shopAttr = shopAttrSessionId ? await getAttributionBySession(shopAttrSessionId).catch(() => null) : null
 
   const origin = new URL(request.url).origin
   const stripeSession = await stripe.checkout.sessions.create({

@@ -6,7 +6,7 @@ import { getActiveDocument } from "@/lib/db/legal-documents"
 import { createEventCheckoutSession } from "@/lib/stripe"
 import { createServiceRoleClient } from "@/lib/supabase"
 import { parseAttrCookie } from "@/lib/marketing/cookies"
-import { getUnclaimedAttribution } from "@/lib/db/marketing-attribution"
+import { getAttributionBySession } from "@/lib/db/marketing-attribution"
 
 function getBaseUrl() {
   return process.env.NEXTAUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
@@ -57,7 +57,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
     // signup row so gclid is persisted on event_signups (not just on the
     // downstream payments row from the Stripe webhook).
     const attrSessionId = parseAttrCookie(request.headers.get("cookie"))
-    const attrRow = attrSessionId ? await getUnclaimedAttribution(attrSessionId).catch(() => null) : null
+    const attrRow = attrSessionId ? await getAttributionBySession(attrSessionId).catch(() => null) : null
     const tracking = attrRow
       ? { gclid: attrRow.gclid, gbraid: attrRow.gbraid, wbraid: attrRow.wbraid, fbclid: attrRow.fbclid }
       : undefined

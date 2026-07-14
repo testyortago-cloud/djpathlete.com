@@ -86,6 +86,30 @@ export async function getUnclaimedAttribution(
 }
 
 /**
+ * Read the attribution row for a session REGARDLESS of claim status.
+ *
+ * Use this anywhere you only need the tracking params (gclid/utm) — e.g.
+ * stamping a checkout. `getUnclaimedAttribution` exists to find a row that is
+ * still available to CLAIM; using it to read tracking params means the row
+ * silently disappears the moment anything claims it, which would drop the gclid
+ * off every checkout a registered user makes.
+ */
+export async function getAttributionBySession(
+  session_id: string,
+): Promise<MarketingAttribution | null> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("marketing_attribution")
+    .select("*")
+    .eq("session_id", session_id)
+    .order("last_seen_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  return (data as MarketingAttribution | null) ?? null
+}
+
+/**
  * Mark an attribution row as claimed by a user. Idempotent.
  */
 export async function claimAttribution(
