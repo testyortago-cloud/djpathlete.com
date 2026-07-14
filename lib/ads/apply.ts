@@ -70,8 +70,11 @@ async function resolveCampaignExternalId(scopeId: string): Promise<string | null
  * Builds the mutation operation for a recommendation. Returns a string error
  * message if the rec is malformed or its referenced entity is missing from
  * our local mirror (likely sync lag — caller should retry after next sync).
+ *
+ * Exported for tests: this function had no direct coverage, and three bugs
+ * stacked up in the add_negative_keyword branch before anyone ran it.
  */
-async function buildMutation(
+export async function buildMutation(
   rec: GoogleAdsRecommendation,
 ): Promise<{ ok: true; ops: MutationOperation[] } | { ok: false; error: string }> {
   const customerId = rec.customer_id
@@ -90,11 +93,18 @@ async function buildMutation(
       if (!externalCampaignId) {
         return { ok: false, error: `Campaign ${rec.scope_id} not found in mirror` }
       }
-      // -1 = "create" placeholder in the criterion resource name.
+      // Each create needs its OWN temp id. Google rejects a batch that reuses
+      // one (DUPLICATE_TEMP_IDS) — the single-op version could hardcode "-1",
+      // but a fanned-out batch must count down, same as new-campaign-mutation.
+      let nextTempId = -1
       const ops: MutationOperation[] = parsed.keywords.map((kw) => ({
         entity: "campaign_criterion",
         operation: "create",
-        resource: ResourceNames.campaignCriterion(customerId, externalCampaignId, "-1"),
+        resource: ResourceNames.campaignCriterion(
+          customerId,
+          externalCampaignId,
+          String(nextTempId--),
+        ),
         campaign: ResourceNames.campaign(customerId, externalCampaignId),
         negative: true,
         keyword: { text: kw.text, match_type: kw.match_type },
