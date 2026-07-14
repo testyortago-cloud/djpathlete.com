@@ -271,7 +271,12 @@ async function resolveCustomerId(): Promise<string | null> {
 // source from a real DAL falls back to a conservative default that
 // makes the preflight gate trip rather than letting a stale-data memo
 // ship.
-async function fetchPreflightInput(): Promise<PreflightInput> {
+/**
+ * Exported so the gate can be inspected without spending tokens on a full
+ * reasoning pass — scripts/run-strategist.ts --check reads it to answer "will
+ * Wednesday's memo pass?" against live data.
+ */
+export async function fetchPreflightInput(): Promise<PreflightInput> {
   const supabase = createServiceRoleClient()
 
   // mostRecentConversionAt — "conversion tracking is alive" evidence from
