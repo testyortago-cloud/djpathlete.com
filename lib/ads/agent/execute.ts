@@ -283,7 +283,17 @@ export async function executeAdsActions(
         applied_at: null,
         clamped: guardrail.annotations.clamped,
       })
-    } catch {
+    } catch (err) {
+      // This used to be a bare `catch {}`. An action that threw here became a
+      // status:"failed" row with NO reason recorded anywhere — it simply never
+      // showed up in the queue and nothing said why. That hid a structurally
+      // dead tool (propose_ad_copy_test demands args.ad_group_id, which the
+      // agent cannot supply because its raw inputs contain no ad groups) for
+      // as long as the agent has existed.
+      const failure_reason = err instanceof Error ? err.message : String(err)
+      console.error(
+        `[ads-agent] action rank=${guardrail.action.rank} tool=${guardrail.action.tool} failed to execute: ${failure_reason}`,
+      )
       actions.push({
         rank: guardrail.action.rank,
         tool: guardrail.action.tool,
@@ -299,6 +309,7 @@ export async function executeAdsActions(
         recommendation_id: null,
         applied_at: null,
         clamped: guardrail.annotations.clamped,
+        failure_reason,
       })
     }
   }

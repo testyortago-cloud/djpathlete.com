@@ -359,4 +359,35 @@ describe("executeAdsActions (batch)", () => {
     expect(out.actions.map((a) => a.status)).toEqual(["failed", "queued"])
     expect(inserted).toHaveLength(1) // only the good one reached the table
   })
+
+  // The coach asked "why aren't these appearing in the recommendations?" — and
+  // nothing could answer, because the catch was bare. status:"failed" was the
+  // only trace: no reason on the memo, no console line, no rejection row. The
+  // action just wasn't there. A dropped action must always say why it dropped.
+  it("records WHY an action failed instead of dropping it silently", async () => {
+    const bad = makeAction({ rank: 4, tool: "propose_ad_copy_test", args: { campaign_id: "c1" } })
+    const pairs: PreExecutionPair[] = [{ originalAction: bad, guardrail: makePass(bad) }]
+
+    const out = await executeAdsActions(pairs, { memo_id: "memo-1", customer_id: "cust-1" })
+
+    expect(out.actions[0].status).toBe("failed")
+    expect(out.actions[0].failure_reason).toBeTruthy()
+    // Names the tool and the missing arg — enough to act on without a redeploy.
+    expect(out.actions[0].failure_reason).toContain("propose_ad_copy_test")
+    expect(out.actions[0].failure_reason).toContain("ad_group_id")
+  })
+
+  it("leaves failure_reason unset on actions that succeed", async () => {
+    const good = makeAction({
+      rank: 1,
+      tool: "propose_negative_keywords",
+      args: { campaign_id: "c1", negatives: [{ text: "x", match_type: "phrase", scope: "campaign" }] },
+    })
+    const out = await executeAdsActions([{ originalAction: good, guardrail: makePass(good) }], {
+      memo_id: "memo-1",
+      customer_id: "cust-1",
+    })
+    expect(out.actions[0].status).toBe("queued")
+    expect(out.actions[0].failure_reason).toBeUndefined()
+  })
 })

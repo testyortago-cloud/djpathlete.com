@@ -2078,6 +2078,13 @@ export interface GoogleAdsAgentMemoAction {
   recommendation_id: string | null
   applied_at: string | null
   clamped: boolean
+  /**
+   * Why a `status: "failed"` action never became a recommendation. Guardrail
+   * rejections carry their reason in guardrail_rejections; execution failures
+   * had nowhere to put one, so they vanished from the queue with no trace
+   * anywhere — the action just silently wasn't there.
+   */
+  failure_reason?: string | null
 }
 
 export interface GoogleAdsAgentMemoGuardrailRejection {
