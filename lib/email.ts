@@ -3,6 +3,8 @@ import { getPreferences } from "@/lib/db/notification-preferences"
 import { getActiveSubscribers } from "@/lib/db/newsletter"
 import { formatEventWhen } from "@/lib/events/format"
 import type { Event, EventSignup } from "@/types/database"
+import type { LeadAnalysisResult } from "@/lib/ai/lead-analysis"
+import { buildLeadMailtoLink, buildTelLink } from "@/lib/leads/build-mailto-link"
 
 const _resendClient = new Resend(process.env.RESEND_API_KEY)
 
@@ -1650,6 +1652,12 @@ export async function sendContactFormEmail({
   }
 }
 
+const PRIORITY_STYLES: Record<LeadAnalysisResult["priority"], { bg: string; color: string; label: string }> = {
+  high: { bg: "#dcfce7", color: "#166534", label: "High Priority" },
+  medium: { bg: "#fef3c7", color: "#92400e", label: "Medium Priority" },
+  low: { bg: "#ede9e3", color: "#78736c", label: "Low Priority" },
+}
+
 export async function sendInquiryEmail({
   name,
   email,
@@ -1660,6 +1668,7 @@ export async function sendInquiryEmail({
   goals,
   injuries,
   how_heard,
+  aiAnalysis,
 }: {
   name: string
   email: string
@@ -1670,6 +1679,7 @@ export async function sendInquiryEmail({
   goals: string
   injuries?: string | null
   how_heard?: string | null
+  aiAnalysis?: LeadAnalysisResult | null
 }) {
   const infoRows: { label: string; value: string }[] = [
     { label: "Name", value: name },
@@ -1680,6 +1690,59 @@ export async function sendInquiryEmail({
   if (sport) infoRows.push({ label: "Sport", value: sport })
   if (experience) infoRows.push({ label: "Experience", value: experience })
   if (how_heard) infoRows.push({ label: "How They Heard About Us", value: how_heard })
+
+  const firstName = name.split(" ")[0]
+  const priorityStyle = aiAnalysis ? PRIORITY_STYLES[aiAnalysis.priority] : null
+
+  const aiSectionHtml = aiAnalysis
+    ? `
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:28px;">
+            <tr>
+              <td>
+                <span style="display:inline-block; background-color:${priorityStyle!.bg}; color:${priorityStyle!.color}; font-size:11px; font-weight:600; padding:4px 14px; border-radius:2px; letter-spacing:0.5px;">
+                  ${priorityStyle!.label}
+                </span>
+                <p style="margin:8px 0 0; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:14px; color:#5c5750; line-height:1.7;">
+                  ${aiAnalysis.priority_reason}
+                </p>
+              </td>
+            </tr>
+          </table>
+
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:20px; background-color:#faf9f7; border-radius:2px; border-left:3px solid #0E3F50;">
+            <tr>
+              <td style="padding:24px 28px;">
+                <p style="margin:0 0 8px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:10px; font-weight:600; color:#a09b94; text-transform:uppercase; letter-spacing:2px;">
+                  Suggested Reply
+                </p>
+                <p style="margin:0; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:15px; color:#5c5750; line-height:1.8; white-space:pre-wrap;">
+                  ${aiAnalysis.draft_reply}
+                </p>
+              </td>
+            </tr>
+          </table>
+
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:24px;">
+            <tr>
+              <td style="padding-right:12px;">
+                ${ctaButton(
+                  buildLeadMailtoLink({
+                    email,
+                    subject: `Re: Your ${serviceLabel} Application`,
+                    body: aiAnalysis.draft_reply,
+                  }),
+                  `Email ${firstName}`,
+                )}
+              </td>
+              ${phone ? `<td>${ctaButton(buildTelLink(phone), `Call ${firstName}`, "secondary")}</td>` : ""}
+            </tr>
+          </table>
+    `
+    : `
+          <p style="margin:32px 0 0; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:13px; color:#a09b94;">
+            Reply directly to <a href="mailto:${email}" style="color:#0E3F50; text-decoration:underline;">${email}</a>
+          </p>
+    `
 
   const html = emailLayout(`
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
@@ -1730,9 +1793,7 @@ export async function sendInquiryEmail({
               : ""
           }
 
-          <p style="margin:32px 0 0; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:13px; color:#a09b94;">
-            Reply directly to <a href="mailto:${email}" style="color:#0E3F50; text-decoration:underline;">${email}</a>
-          </p>
+          ${aiSectionHtml}
 
         </td>
       </tr>
