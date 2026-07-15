@@ -661,6 +661,30 @@ export interface AiGenerationLog {
   completed_at: string | null
 }
 
+export type LeadPriority = "high" | "medium" | "low"
+
+export interface LeadInquiry {
+  id: string
+  lead_user_id: string | null
+  name: string
+  email: string
+  phone: string | null
+  service: string
+  sport: string | null
+  experience: string | null
+  goals: string
+  injuries: string | null
+  how_heard: string | null
+  gclid: string | null
+  ai_priority: LeadPriority | null
+  ai_priority_reason: string | null
+  ai_summary: string | null
+  ai_draft_reply: string | null
+  ai_generated_at: string | null
+  ai_generation_log_id: string | null
+  created_at: string
+}
+
 export interface TrackedExercise {
   id: string
   assignment_id: string
