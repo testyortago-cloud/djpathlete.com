@@ -87,6 +87,7 @@ export const AUDIT_ACTIONS = [
   { slug: "agent.run", category: "automation", description: "Strategy team agent completed a run" },
   { slug: "ai.generation_started", category: "automation", description: "AI program generation started" },
   { slug: "ai.generation_completed", category: "automation", description: "AI program generation completed" },
+  { slug: "lead.ai_analysis_generated", category: "automation", description: "AI priority/summary/draft-reply generated for a lead inquiry" },
   {
     slug: "ai.feedback_submitted",
     category: "automation",
