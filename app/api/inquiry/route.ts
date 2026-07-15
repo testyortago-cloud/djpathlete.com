@@ -10,6 +10,20 @@ import { generateLeadAnalysis, type LeadAnalysisResult } from "@/lib/ai/lead-ana
 import { createGenerationLog, updateGenerationLog } from "@/lib/db/ai-generation-log"
 import { MODEL_SONNET } from "@/lib/ai/anthropic"
 
+export const maxDuration = 45
+
+async function withTimeout<T>(promise: Promise<T>, ms: number, timeoutMessage: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(timeoutMessage)), ms)
+  })
+  try {
+    return await Promise.race([promise, timeout])
+  } finally {
+    clearTimeout(timer!)
+  }
+}
+
 export const POST = withAudit(
   { action: "contact.submitted", category: "marketing" },
   async (request) => {
@@ -123,15 +137,19 @@ export const POST = withAudit(
         })
         logId = log.id
 
-        const { content, tokens_used, cache_creation_tokens, cache_read_tokens } = await generateLeadAnalysis({
-          name,
-          serviceLabel,
-          sport,
-          experience,
-          goals,
-          injuries,
-          howHeard: how_heard,
-        })
+        const { content, tokens_used, cache_creation_tokens, cache_read_tokens } = await withTimeout(
+          generateLeadAnalysis({
+            name,
+            serviceLabel,
+            sport,
+            experience,
+            goals,
+            injuries,
+            howHeard: how_heard,
+          }),
+          20_000,
+          "Lead analysis generation timed out",
+        )
         aiAnalysis = content
 
         await updateGenerationLog(logId, {

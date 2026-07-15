@@ -1073,6 +1073,20 @@ function formatAudioDuration(seconds: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`
 }
 
+/**
+ * Escapes HTML special characters in free text before interpolating it into
+ * an email template literal. Defense-in-depth for user-submitted (and
+ * AI-generated, which may echo user input) content rendered as HTML.
+ */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+}
+
 export async function sendFormReviewFeedbackEmail({
   clientEmail,
   clientFirstName,
@@ -1682,14 +1696,14 @@ export async function sendInquiryEmail({
   aiAnalysis?: LeadAnalysisResult | null
 }) {
   const infoRows: { label: string; value: string }[] = [
-    { label: "Name", value: name },
-    { label: "Email", value: email },
-    { label: "Service", value: serviceLabel },
+    { label: "Name", value: escapeHtml(name) },
+    { label: "Email", value: escapeHtml(email) },
+    { label: "Service", value: escapeHtml(serviceLabel) },
   ]
-  if (phone) infoRows.push({ label: "Phone", value: phone })
-  if (sport) infoRows.push({ label: "Sport", value: sport })
-  if (experience) infoRows.push({ label: "Experience", value: experience })
-  if (how_heard) infoRows.push({ label: "How They Heard About Us", value: how_heard })
+  if (phone) infoRows.push({ label: "Phone", value: escapeHtml(phone) })
+  if (sport) infoRows.push({ label: "Sport", value: escapeHtml(sport) })
+  if (experience) infoRows.push({ label: "Experience", value: escapeHtml(experience) })
+  if (how_heard) infoRows.push({ label: "How They Heard About Us", value: escapeHtml(how_heard) })
 
   const firstName = name.split(" ")[0]
   const priorityStyle = aiAnalysis ? PRIORITY_STYLES[aiAnalysis.priority] : null
@@ -1703,7 +1717,7 @@ export async function sendInquiryEmail({
                   ${priorityStyle!.label}
                 </span>
                 <p style="margin:8px 0 0; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:14px; color:#5c5750; line-height:1.7;">
-                  ${aiAnalysis.priority_reason}
+                  ${escapeHtml(aiAnalysis.priority_reason)}
                 </p>
               </td>
             </tr>
@@ -1716,7 +1730,7 @@ export async function sendInquiryEmail({
                   Suggested Reply
                 </p>
                 <p style="margin:0; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:15px; color:#5c5750; line-height:1.8; white-space:pre-wrap;">
-                  ${aiAnalysis.draft_reply}
+                  ${escapeHtml(aiAnalysis.draft_reply)}
                 </p>
               </td>
             </tr>
@@ -1726,11 +1740,13 @@ export async function sendInquiryEmail({
             <tr>
               <td style="padding-right:12px;">
                 ${ctaButton(
-                  buildLeadMailtoLink({
-                    email,
-                    subject: `Re: Your ${serviceLabel} Application`,
-                    body: aiAnalysis.draft_reply,
-                  }),
+                  escapeHtml(
+                    buildLeadMailtoLink({
+                      email,
+                      subject: `Re: Your ${serviceLabel} Application`,
+                      body: aiAnalysis.draft_reply,
+                    }),
+                  ),
                   `Email ${firstName}`,
                 )}
               </td>
@@ -1768,7 +1784,7 @@ export async function sendInquiryEmail({
                   Goals
                 </p>
                 <p style="margin:0; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:15px; color:#5c5750; line-height:1.8; white-space:pre-wrap;">
-                  ${goals}
+                  ${escapeHtml(goals)}
                 </p>
               </td>
             </tr>
@@ -1784,7 +1800,7 @@ export async function sendInquiryEmail({
                   Injuries / Limitations
                 </p>
                 <p style="margin:0; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:15px; color:#5c5750; line-height:1.8; white-space:pre-wrap;">
-                  ${injuries}
+                  ${escapeHtml(injuries)}
                 </p>
               </td>
             </tr>
