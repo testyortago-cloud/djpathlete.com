@@ -53,6 +53,7 @@ import { EditAssignmentButton } from "@/components/admin/EditAssignmentButton"
 import { ClientSessionsPanel } from "@/components/admin/clients/ClientSessionsPanel"
 import { ClientCheckinButton } from "@/components/admin/packs/ClientCheckinButton"
 import { loadClientPacksView, summarizeClientPacks } from "@/lib/services/client-packs-view"
+import { getLeadInquiryByUserId } from "@/lib/db/lead-inquiries"
 import QRCode from "qrcode"
 import { signPersonalCheckinToken } from "@/lib/qr/checkin-token"
 import {
@@ -73,6 +74,7 @@ import type { RecurringSession, UserPaymentMethod, ClientMembership, MembershipP
 import { listFavoritesByClient } from "@/lib/db/exercise-favorites"
 import { getExercises } from "@/lib/db/exercises"
 import { ClientFavoriteExercisesPanel } from "@/components/admin/favorites/ClientFavoriteExercisesPanel"
+import { LeadInquiryPanel } from "@/components/admin/clients/LeadInquiryPanel"
 import { ClientDetailHeader } from "./ClientDetailHeader"
 import type {
   Program,
@@ -625,7 +627,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
     notFound()
   }
 
-  const [profile, assignments, payments, progressData, achievements, workoutStreak, packs, favorites, allExercises] = await Promise.all([
+  const [profile, assignments, payments, progressData, achievements, workoutStreak, packs, favorites, allExercises, leadInquiry] = await Promise.all([
     getProfileByUserId(id),
     getAssignments(id),
     getPayments(id),
@@ -635,6 +637,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
     loadClientPacksView(id),
     listFavoritesByClient(id).catch(() => []),
     getExercises().catch(() => []),
+    getLeadInquiryByUserId(id).catch(() => null),
   ])
 
   const packSummary = summarizeClientPacks(packs, new Date())
@@ -846,6 +849,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
 
       {/* Sections */}
       <div className="space-y-6">
+        {leadInquiry && <LeadInquiryPanel leadInquiry={leadInquiry} phone={user.phone ?? leadInquiry.phone} />}
         <ClientSessionsPanel
           clientUserId={id}
           packs={packs}
