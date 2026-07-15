@@ -4,6 +4,11 @@ import { createServiceRoleClient } from "@/lib/supabase"
 import { ghlCreateContact, ghlTriggerWorkflow } from "@/lib/ghl"
 import { sendInquiryEmail, sendInquiryAutoReply } from "@/lib/email"
 import { withAudit } from "@/lib/audit/with-audit"
+import { recordAudit } from "@/lib/audit/record"
+import { createLeadInquiry, updateLeadInquiryAiFields } from "@/lib/db/lead-inquiries"
+import { generateLeadAnalysis, type LeadAnalysisResult } from "@/lib/ai/lead-analysis"
+import { createGenerationLog, updateGenerationLog } from "@/lib/db/ai-generation-log"
+import { MODEL_SONNET } from "@/lib/ai/anthropic"
 
 export const POST = withAudit(
   { action: "contact.submitted", category: "marketing" },
@@ -67,6 +72,115 @@ export const POST = withAudit(
     // Notify all admins
     const { data: admins } = await supabase.from("users").select("id").eq("role", "admin")
 
+    // Persist the raw submission — previously these fields only ever existed
+    // transiently in the notification email body.
+    let leadInquiryId: string | null = null
+    try {
+      const inquiryRow = await createLeadInquiry({
+        lead_user_id: leadUserId,
+        name,
+        email,
+        phone,
+        service,
+        sport,
+        experience,
+        goals,
+        injuries,
+        how_heard,
+        gclid,
+      })
+      leadInquiryId = inquiryRow.id
+    } catch (err) {
+      console.error("Failed to persist lead inquiry:", err)
+    }
+
+    // Generate AI priority/summary/draft-reply (non-blocking — falls back to
+    // the plain notification below if this fails, same pattern as the email
+    // sends further down).
+    let aiAnalysis: LeadAnalysisResult | null = null
+    const firstAdminId = admins?.[0]?.id ?? null
+    if (leadInquiryId && firstAdminId) {
+      const startTime = Date.now()
+      let logId: string | null = null
+      try {
+        const log = await createGenerationLog({
+          program_id: null,
+          client_id: leadUserId,
+          requested_by: firstAdminId,
+          status: "pending",
+          input_params: { feature: "lead_inquiry_analysis", name, service, sport, experience, goals, injuries, how_heard },
+          output_summary: null,
+          error_message: null,
+          model_used: MODEL_SONNET,
+          tokens_used: null,
+          cache_creation_tokens: null,
+          cache_read_tokens: null,
+          duration_ms: null,
+          completed_at: null,
+          current_step: 0,
+          total_steps: 1,
+          generation_trigger: "lead_inquiry",
+        })
+        logId = log.id
+
+        const { content, tokens_used, cache_creation_tokens, cache_read_tokens } = await generateLeadAnalysis({
+          name,
+          serviceLabel,
+          sport,
+          experience,
+          goals,
+          injuries,
+          howHeard: how_heard,
+        })
+        aiAnalysis = content
+
+        await updateGenerationLog(logId, {
+          status: "completed",
+          output_summary: { priority: content.priority, summary: content.summary },
+          tokens_used,
+          cache_creation_tokens: cache_creation_tokens ?? null,
+          cache_read_tokens: cache_read_tokens ?? null,
+          duration_ms: Date.now() - startTime,
+          completed_at: new Date().toISOString(),
+        })
+
+        await updateLeadInquiryAiFields(leadInquiryId, {
+          ai_priority: content.priority,
+          ai_priority_reason: content.priority_reason,
+          ai_summary: content.summary,
+          ai_draft_reply: content.draft_reply,
+          ai_generation_log_id: logId,
+          ai_generated_at: new Date().toISOString(),
+        })
+
+        await recordAudit({
+          action: "lead.ai_analysis_generated",
+          category: "automation",
+          actor: { id: firstAdminId, role: "system" },
+          target: { type: "lead_inquiry", id: leadInquiryId, label: name },
+          metadata: { priority: content.priority },
+        })
+      } catch (err) {
+        console.error("Failed to generate lead AI analysis — continuing without it:", err)
+        if (logId) {
+          await updateGenerationLog(logId, {
+            status: "failed",
+            error_message: err instanceof Error ? err.message : "Unknown error",
+            duration_ms: Date.now() - startTime,
+            completed_at: new Date().toISOString(),
+          }).catch(() => {})
+        }
+        await recordAudit({
+          action: "lead.ai_analysis_generated",
+          category: "automation",
+          outcome: "failure",
+          actor: { id: firstAdminId, role: "system" },
+          target: { type: "lead_inquiry", id: leadInquiryId, label: name },
+          error: { message: err instanceof Error ? err.message : "Unknown error" },
+        }).catch(() => {})
+      }
+    }
+
     if (admins && admins.length > 0) {
       const details = [
         `Service: ${serviceLabel}`,
@@ -110,6 +224,7 @@ export const POST = withAudit(
         goals,
         injuries,
         how_heard,
+        aiAnalysis,
       })
     } catch {
       console.error("Failed to send inquiry email — continuing")
