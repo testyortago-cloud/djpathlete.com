@@ -522,6 +522,57 @@ export interface Payment {
   fbclid: string | null
 }
 
+// ── AI Bookkeeper (Phase 1) ───────────────────────────────────────────────
+export type BookKind = "business" | "household"
+export type LedgerDirection = "income" | "expense"
+export type LedgerAccountType = "income" | "expense"
+export type LedgerSource = "manual" | "platform_import" | "statement_import" | "receipt"
+
+export interface BookkeepingBook {
+  id: string
+  name: string
+  book_kind: BookKind
+  owner_label: string | null
+  is_primary: boolean
+  currency: string
+  sort_order: number
+  archived_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface BookkeepingAccount {
+  id: string
+  book_id: string
+  name: string
+  account_type: LedgerAccountType
+  service_line: string | null
+  is_deductible_candidate: boolean
+  tax_category: string | null
+  sort_order: number
+  archived_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface BookkeepingLedgerEntry {
+  id: string
+  book_id: string
+  account_id: string | null
+  direction: LedgerDirection
+  amount_cents: number
+  currency: string
+  occurred_on: string
+  memo: string | null
+  business_purpose: string | null
+  counterparty: string | null
+  source: LedgerSource
+  source_ref: string | null
+  import_batch_id: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface Subscription {
   id: string
   user_id: string | null
