@@ -69,6 +69,9 @@ export async function POST(request: Request) {
     if (file.size > MAX_SIZE) {
       return NextResponse.json({ error: "File too large. Maximum 10 MB" }, { status: 400 })
     }
+    if (file.size === 0) {
+      return NextResponse.json({ error: "Empty file" }, { status: 400 })
+    }
 
     const buffer = Buffer.from(await file.arrayBuffer())
     const sha256 = createHash("sha256").update(buffer).digest("hex")
@@ -78,6 +81,10 @@ export async function POST(request: Request) {
     let rowsForJob: RowForJob[] | undefined
     let rawText: string | undefined
     let rowCount: number | null
+    // Parse warnings + hard-truncation notice surfaced at upload time (csv_structured
+    // only — the AI job itself derives these independently for pdf/csv_raw).
+    let uploadWarnings: string[] = []
+    let uploadTruncated = false
 
     if (isCsv) {
       const text = buffer.toString("utf8")
@@ -85,14 +92,24 @@ export async function POST(request: Request) {
       const map = detectStatementColumns(headers, rows)
 
       if (map) {
-        const normalized = normalizeStatementRows(rows, map).rows
-        let norm = dropNonTransactionRows(normalized).rows
-        if (norm.length > ROW_CAP) {
-          norm = norm.slice(0, ROW_CAP)
+        const normResult = normalizeStatementRows(rows, map)
+        const cleaned = dropNonTransactionRows(normResult.rows).rows
+        uploadWarnings = [...normResult.warnings]
+        const fullCount = cleaned.length
+        let norm = cleaned
+        if (fullCount > ROW_CAP) {
+          uploadTruncated = true
+          uploadWarnings.push(
+            `This statement has ${fullCount} transactions; only the first ${ROW_CAP} were imported. Split the file and re-upload the rest so nothing is missed.`,
+          )
+          norm = cleaned.slice(0, ROW_CAP)
         }
         kind = "csv_structured"
         rowsForJob = norm.map((row, i) => ({ ...row, ref: String(i) }))
-        rowCount = norm.length
+        // Record the TRUE row count on the document — not the post-cap number —
+        // so the document row reflects reality even though only ROW_CAP rows
+        // were sent to the AI job.
+        rowCount = fullCount
       } else {
         kind = "csv_raw"
         rawText = text.slice(0, 200_000)
@@ -170,6 +187,8 @@ export async function POST(request: Request) {
         documentId: doc.id,
         logId: log.id,
         requestedBy: session.user.id,
+        uploadWarnings,
+        uploadTruncated,
       },
       result: null,
       error: null,

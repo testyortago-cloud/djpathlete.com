@@ -59,6 +59,12 @@ export interface StatementImportJobInput {
   documentId: string
   logId?: string
   requestedBy: string
+  /** csv_structured only — parse warnings + hard-truncation notice computed
+   *  at upload time by the deterministic parser (Next.js route). Always
+   *  merged ahead of the AI's own warnings so a silently over-500-row
+   *  statement still surfaces a truncation notice on the review screen. */
+  uploadWarnings?: string[]
+  uploadTruncated?: boolean
 }
 
 export interface StatementImportOutputRow {
@@ -212,9 +218,18 @@ async function finalizeStatementImport(args: {
 
   const supabase = getSupabase()
 
+  // csv_structured: the route already wrote the TRUE full row count on the
+  // document at upload time (before the 500-row cap was applied here) — never
+  // overwrite it with the capped `rows.length`. pdf/csv_raw: the document was
+  // created with row_count: null, so this is the first and only write.
+  const docUpdate: Record<string, unknown> = { period_start: periodStart, period_end: periodEnd }
+  if (input.kind !== "csv_structured") {
+    docUpdate.row_count = rowCount
+  }
+
   const { error: docError } = await supabase
     .from("bookkeeping_documents")
-    .update({ row_count: rowCount, period_start: periodStart, period_end: periodEnd })
+    .update(docUpdate)
     .eq("id", input.documentId)
   if (docError) {
     console.warn(`[statement-import] Failed to back-fill document ${input.documentId}:`, docError.message)
@@ -313,8 +328,11 @@ export async function handleStatementImport(jobId: string): Promise<void> {
       )
 
       const rows = joinCategorizedRows(inputRows, res.content.rows)
-      const warnings = [...res.content.warnings]
-      const truncated = res.content.truncated
+      // Upload-time parse warnings (dropped/ambiguous rows, hard 500-row
+      // truncation) are authoritative and must reach the review screen —
+      // prepend them ahead of whatever the AI reported.
+      const warnings = [...(input.uploadWarnings ?? []), ...res.content.warnings]
+      const truncated = (input.uploadTruncated ?? false) || res.content.truncated
 
       await updateProgress("finalizing", 2)
       await finalizeStatementImport({
@@ -366,8 +384,11 @@ export async function handleStatementImport(jobId: string): Promise<void> {
       confidence: r.confidence,
     }))
 
-    const warnings = [...res.content.warnings]
-    let truncated = res.content.truncated
+    // uploadWarnings/uploadTruncated are always empty/false for pdf/csv_raw
+    // (set explicitly by the route) — merged here anyway so the two branches
+    // share the same shape/behavior.
+    const warnings = [...(input.uploadWarnings ?? []), ...res.content.warnings]
+    let truncated = (input.uploadTruncated ?? false) || res.content.truncated
     if (res.content.truncated) {
       warnings.push("the AI reported it could not fully process the statement text — the import may be incomplete")
     }

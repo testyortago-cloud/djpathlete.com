@@ -59,6 +59,16 @@ function fakeRequest(fields: Record<string, unknown>): Request {
   return { formData: async () => map } as unknown as Request
 }
 
+/** CSV with `n` distinct, non-transfer, non-balance transaction rows. */
+function bigCsv(n: number): string {
+  const header = "date,description,amount"
+  const lines = Array.from({ length: n }, (_, i) => {
+    const day = String((i % 28) + 1).padStart(2, "0")
+    return `2026-01-${day},Txn ${i},-1.00`
+  })
+  return [header, ...lines].join("\n") + "\n"
+}
+
 beforeEach(() => {
   authMock.mockReset()
   createDocumentMock.mockReset()
@@ -166,5 +176,28 @@ describe("POST /api/admin/bookkeeping/statement-import", () => {
     const json = await res.json()
     expect(json.error).toMatch(/statement storage not configured/i)
     vi.unstubAllEnvs()
+  })
+
+  it("400s on an empty file", async () => {
+    const res = await POST(fakeRequest({ file: fileLike({ text: "" }), book_id: BOOK }) as never)
+    expect(res.status).toBe(400)
+    expect(createDocumentMock).not.toHaveBeenCalled()
+  })
+
+  it("caps csv_structured rows at 500, surfaces a truncation warning, and records the TRUE row_count on the document", async () => {
+    const res = await POST(fakeRequest({ file: fileLike({ text: bigCsv(640) }), book_id: BOOK }) as never)
+    expect(res.status).toBe(202)
+
+    expect(createDocumentMock).toHaveBeenCalledWith(expect.objectContaining({ row_count: 640 }))
+
+    const jobDoc = jobSet.mock.calls[0][0] as {
+      input: { kind: string; rows: unknown[]; uploadWarnings: string[]; uploadTruncated: boolean }
+    }
+    expect(jobDoc.input.kind).toBe("csv_structured")
+    expect(jobDoc.input.rows).toHaveLength(500)
+    expect(jobDoc.input.uploadTruncated).toBe(true)
+    expect(
+      jobDoc.input.uploadWarnings.some((w) => w.includes("640") && w.includes("500")),
+    ).toBe(true)
   })
 })
