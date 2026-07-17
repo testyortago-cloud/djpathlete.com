@@ -19,10 +19,11 @@ export function AthleteProfileCard({ data }: { data: AthleteProfileData }) {
   const hasBadges = data.badges.length > 0 || data.milestones.length > 0
 
   return (
-    <main className="print-document min-h-screen bg-background font-body text-foreground">
+    <main className="print-document flex min-h-screen flex-col bg-background font-body text-foreground">
       <ProfilePrintButton />
       <AthleteHero data={data} />
-      <div className="relative z-10 mx-auto w-full max-w-3xl px-4 md:px-6">
+      {/* flex-1 pins the footer to the viewport bottom on sparse cards. */}
+      <div className="relative z-10 mx-auto w-full max-w-3xl flex-1 px-4 md:px-6">
         <StatTiles stats={data.stats} />
         {hasRecords && <RecordsSection gym={data.gymRecords} field={data.fieldRecords} weightUnit={data.weightUnit} />}
         <AthleteRadarSection tests={data.radarTests} />
