@@ -239,6 +239,10 @@ export const AUDIT_ACTIONS = [
   { slug: "bookkeeping.account_created", category: "commerce", description: "Chart-of-accounts category created" },
   { slug: "bookkeeping.account_updated", category: "commerce", description: "Chart-of-accounts category updated" },
   { slug: "bookkeeping.platform_income_imported", category: "commerce", description: "Platform income posted to the ledger" },
+  { slug: "bookkeeping.statement_uploaded", category: "commerce", description: "Bank/Venmo statement uploaded" },
+  { slug: "bookkeeping.statement_imported", category: "commerce", description: "Bank/Venmo statement posted to the ledger" },
+  { slug: "bookkeeping.document_deleted", category: "commerce", description: "Bookkeeping document deleted" },
+  { slug: "bookkeeping.document_downloaded", category: "admin_read_sensitive", description: "Bookkeeping document downloaded" },
 ] as const satisfies readonly AuditActionDef[]
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number]["slug"]

@@ -40,6 +40,7 @@ export type AiJobType =
   | "social_outcome_tracker_run"
   | "broll_generation"
   | "split_reel_render"
+  | "statement_import"
 
 export interface CreateAiJobOptions {
   type: AiJobType

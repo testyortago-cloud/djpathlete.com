@@ -61,3 +61,20 @@ export const importCommitSchema = z.object({
     account_id: z.string().uuid().nullable().optional(),
   })).min(1).max(2000),
 })
+
+export const statementDedupeSchema = z.object({
+  book_id: z.string().uuid(),
+  rows: z.array(z.object({
+    occurred_on: DATE,
+    amount_cents: z.number().int().nonnegative(),
+    direction: z.enum(["income", "expense"]),
+    description: z.string(),
+    suggested_category: z.string().nullable(),
+    is_transfer: z.boolean(),
+    confidence: z.enum(["low", "medium", "high"]),
+  })).max(500),
+})
+
+export const statementCommitSchema = importCommitSchema.extend({
+  document_id: z.string().uuid().optional(),
+})
