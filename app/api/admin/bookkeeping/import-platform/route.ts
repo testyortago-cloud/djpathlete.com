@@ -17,7 +17,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Date range too large (max ~2 years per import) or reversed" }, { status: 400 })
     }
     const sources = await listPlatformIncome(from, to)
-    const { drafts, warnings } = buildIncomeDrafts(sources)
+    const { drafts, warnings } = buildIncomeDrafts(sources, { from, to })
     return NextResponse.json({ drafts, warnings })
   } catch (error) {
     console.error("Import platform income preview error:", error)

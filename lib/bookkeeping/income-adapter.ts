@@ -26,7 +26,7 @@ function paymentServiceLine(description: string | null, metadata: Record<string,
   return "other"
 }
 
-export function buildIncomeDrafts(input: IncomeSourceRows): IncomeAdapterResult {
+export function buildIncomeDrafts(input: IncomeSourceRows, window?: { from: string; to: string }): IncomeAdapterResult {
   const drafts: LedgerEntryDraft[] = []
   const warnings: string[] = []
 
@@ -103,11 +103,12 @@ export function buildIncomeDrafts(input: IncomeSourceRows): IncomeAdapterResult 
     })
   }
 
-  for (const m of input.memberships) {
-    if (!MEMBERSHIP_ACTIVE.has(m.status)) continue
+  const activeInWindow = input.memberships.filter((m) => MEMBERSHIP_ACTIVE.has(m.status))
+  if (activeInWindow.length > 0) {
+    const w = window ? ` during ${window.from}…${window.to}` : ""
     warnings.push(
-      `Membership ${m.id} recurring revenue is not recorded in the database ` +
-      `(lives in Stripe invoices) — import via statement/payout ingestion (Phase 6).`,
+      `${activeInWindow.length} membership(s) were active${w}, but recurring membership revenue is not in the database ` +
+      `(it lives in Stripe invoices) — import it via statement/payout ingestion (Phase 6).`,
     )
   }
 

@@ -147,7 +147,7 @@ describe("buildIncomeDrafts — packs, shop, events", () => {
 })
 
 describe("buildIncomeDrafts — memberships gap", () => {
-  it("emits no drafts but warns for each active membership", () => {
+  it("emits no drafts but warns once for active memberships", () => {
     const input = base()
     input.memberships = [{
       id: "44444444-4444-4444-8444-444444444441", user_id: "u1", plan_id: "pl1",
@@ -158,7 +158,33 @@ describe("buildIncomeDrafts — memberships gap", () => {
     } as never]
     const { drafts, warnings } = buildIncomeDrafts(input)
     expect(drafts).toHaveLength(0)
-    expect(warnings.some((w) => w.includes("recurring revenue is not recorded"))).toBe(true)
+    expect(warnings.some((w) => w.includes("recurring membership revenue is not in the database"))).toBe(true)
+  })
+
+  it("emits exactly one window-scoped warning for multiple active memberships, naming the count and window dates", () => {
+    const input = base()
+    input.memberships = [
+      {
+        id: "44444444-4444-4444-8444-444444444441", user_id: "u1", plan_id: "pl1",
+        status: "active", current_period_start: null, current_period_end: null,
+        cancel_at_period_end: false, canceled_at: null, stripe_subscription_id: "sub_1",
+        stripe_customer_id: null, created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z",
+        plan_name: "Monthly", plan_price_cents: 9900, plan_interval: "month",
+      } as never,
+      {
+        id: "44444444-4444-4444-8444-444444444442", user_id: "u2", plan_id: "pl1",
+        status: "trialing", current_period_start: null, current_period_end: null,
+        cancel_at_period_end: false, canceled_at: null, stripe_subscription_id: "sub_2",
+        stripe_customer_id: null, created_at: "2026-01-05T00:00:00Z", updated_at: "2026-01-05T00:00:00Z",
+        plan_name: "Monthly", plan_price_cents: 9900, plan_interval: "month",
+      } as never,
+    ]
+    const { drafts, warnings } = buildIncomeDrafts(input, { from: "2026-01-01", to: "2026-01-31" })
+    expect(drafts).toHaveLength(0)
+    const membershipWarnings = warnings.filter((w) => w.includes("recurring membership revenue is not in the database"))
+    expect(membershipWarnings).toHaveLength(1)
+    expect(membershipWarnings[0]).toContain("2 membership(s)")
+    expect(membershipWarnings[0]).toContain("2026-01-01…2026-01-31")
   })
 })
 

@@ -2,7 +2,7 @@ import { createServiceRoleClient } from "@/lib/supabase"
 import { fetchAllRows } from "@/lib/db/paginate"
 import type {
   BookkeepingBook, BookkeepingAccount, BookkeepingLedgerEntry,
-  LedgerDirection, LedgerSource,
+  LedgerDirection, LedgerSource, BookkeepingDocument, NewDocument,
 } from "@/types/database"
 import type { IncomeSourceRows, LedgerEntryDraft } from "@/lib/bookkeeping/types"
 
@@ -68,7 +68,7 @@ function applyEntryFilters<Q extends { eq: (c: string, v: unknown) => Q; gte: (c
   if (p.accountId) out = out.eq("account_id", p.accountId)
   if (p.source) out = out.eq("source", p.source)
   if (p.search) {
-    const esc = p.search.replace(/[%_]/g, (m) => `\\${m}`).replace(/[,()]/g, " ")
+    const esc = p.search.replace(/[%_]/g, (m) => `\\${m}`).replace(/[,().]/g, " ")
     out = out.or(`memo.ilike.%${esc}%,counterparty.ilike.%${esc}%`)
   }
   return out
@@ -158,7 +158,8 @@ export async function listPlatformIncome(from: string, to: string): Promise<Inco
     safeAll<IncomeSourceRows["eventSignups"][number]>((f, t) =>
       db().from("event_signups").select("*, events(title,type)").gte("created_at", fromTs).lte("created_at", toTs).range(f, t)),
     safeAll<IncomeSourceRows["memberships"][number]>((f, t) =>
-      db().from("client_memberships").select("*, membership_plans(name,price_cents,billing_interval)").range(f, t)),
+      db().from("client_memberships").select("*, membership_plans(name,price_cents,billing_interval)")
+        .lte("created_at", toTs).or(`canceled_at.is.null,canceled_at.gte.${fromTs}`).range(f, t)),
   ])
   // Flatten embedded names so the pure adapter stays schema-light.
   return {
@@ -171,4 +172,60 @@ export async function listPlatformIncome(from: string, to: string): Promise<Inco
       return { ...r, plan_name: pl?.name ?? null, plan_price_cents: pl?.price_cents ?? null, plan_interval: pl?.billing_interval ?? null }
     }),
   }
+}
+
+// ── Documents + Phase-2 helpers ────────────────────────────────────────────
+export async function getEntry(id: string): Promise<BookkeepingLedgerEntry | null> {
+  const { data, error } = await db().from("bookkeeping_ledger_entries").select("*").eq("id", id).maybeSingle()
+  if (error) throw error
+  return (data as BookkeepingLedgerEntry) ?? null
+}
+
+export interface AccountScopeError extends Error { code: "ACCOUNT_NOT_FOUND" | "WRONG_BOOK" | "WRONG_TYPE" }
+export async function assertAccountInBook(accountId: string, bookId: string, direction: LedgerDirection): Promise<void> {
+  const { data, error } = await db().from("bookkeeping_accounts").select("book_id,account_type").eq("id", accountId).maybeSingle()
+  if (error) throw error
+  const mk = (code: AccountScopeError["code"], msg: string) => Object.assign(new Error(msg), { code }) as AccountScopeError
+  if (!data) throw mk("ACCOUNT_NOT_FOUND", "account not found")
+  if ((data as { book_id: string }).book_id !== bookId) throw mk("WRONG_BOOK", "account belongs to a different book")
+  if ((data as { account_type: string }).account_type !== direction) throw mk("WRONG_TYPE", "account type does not match entry direction")
+}
+
+export interface PostedRefRow { id: string; occurred_on: string; amount_cents: number; direction: LedgerDirection; memo: string | null; source: LedgerSource }
+export async function listPostedForDedupe(bookId: string, from: string, to: string): Promise<PostedRefRow[]> {
+  return fetchAllRows<PostedRefRow>((f, t) =>
+    db().from("bookkeeping_ledger_entries")
+      .select("id,occurred_on,amount_cents,direction,memo,source")
+      .eq("book_id", bookId).gte("occurred_on", from).lte("occurred_on", to)
+      .in("source", ["platform_import", "manual", "statement_import"])
+      .range(f, t) as never)
+}
+
+export async function createDocument(input: NewDocument): Promise<BookkeepingDocument> {
+  const { data, error } = await db().from("bookkeeping_documents").insert(input).select().single()
+  if (error) throw error
+  return data as BookkeepingDocument
+}
+export async function getDocument(id: string): Promise<BookkeepingDocument | null> {
+  const { data, error } = await db().from("bookkeeping_documents").select("*").eq("id", id).maybeSingle()
+  if (error) throw error
+  return (data as BookkeepingDocument) ?? null
+}
+export async function findDocumentBySha256(bookId: string, sha256: string): Promise<BookkeepingDocument | null> {
+  const { data, error } = await db().from("bookkeeping_documents").select("*").eq("book_id", bookId).eq("sha256", sha256)
+    .order("created_at", { ascending: false }).limit(1).maybeSingle()
+  if (error) throw error
+  return (data as BookkeepingDocument) ?? null
+}
+export async function listDocuments(bookId: string): Promise<BookkeepingDocument[]> {
+  return fetchAllRows<BookkeepingDocument>((f, t) =>
+    db().from("bookkeeping_documents").select("*").eq("book_id", bookId).order("created_at", { ascending: false }).range(f, t) as never)
+}
+export async function linkDocumentBatch(id: string, importBatchId: string, postedCount: number): Promise<void> {
+  const { error } = await db().from("bookkeeping_documents").update({ import_batch_id: importBatchId, posted_count: postedCount, updated_at: new Date().toISOString() }).eq("id", id)
+  if (error) throw error
+}
+export async function deleteDocument(id: string): Promise<void> {
+  const { error } = await db().from("bookkeeping_documents").delete().eq("id", id)
+  if (error) throw error
 }
