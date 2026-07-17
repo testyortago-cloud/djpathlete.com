@@ -131,8 +131,10 @@ create table bookkeeping_documents (
   retain_until date not null,          -- upload year + 7 (D12, §2)
   uploaded_by uuid,
   import_batch_id uuid,                -- links to the posted ledger batch; null until committed / on fail
-  row_count integer,                   -- set at create for csv_structured; back-filled for pdf/csv_raw
+  row_count integer,                   -- set at create for csv_structured; back-filled at job completion for pdf/csv_raw
   posted_count integer,                -- set at commit via linkDocumentBatch
+  period_start date,                   -- min(occurred_on) of parsed rows; set at job completion. Powers the layer-3 document-overlap warning.
+  period_end date,                     -- max(occurred_on) of parsed rows; set at job completion.
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -152,6 +154,7 @@ export interface BookkeepingDocument {
   file_size_bytes: number | null; sha256: string | null; retain_until: string
   uploaded_by: string | null; import_batch_id: string | null
   row_count: number | null; posted_count: number | null
+  period_start: string | null; period_end: string | null
   created_at: string; updated_at: string
 }
 export type NewDocument = Pick<BookkeepingDocument,
@@ -186,7 +189,7 @@ export function parseCsvStatement(text: string): { headers: string[]; rows: stri
 export function detectStatementColumns(headers: string[], rows: string[][]): StatementColumnMap | null
 export function normalizeStatementRows(rows: string[][], map: StatementColumnMap): { rows: NormalizedStatementRow[]; warnings: string[] }
 export function dropNonTransactionRows(rows: NormalizedStatementRow[]): { rows: NormalizedStatementRow[]; dropped: number }
-export function flagLikelyTransfers(rows: NormalizedStatementRow[]): boolean[]   // deterministic keyword backstop
+export function transferSuspicion(row: NormalizedStatementRow): "hard" | "soft" | null   // deterministic backstop, two tiers
 export function computeStatementSourceRef(row: NormalizedStatementRow, occurrenceIndex: number): string
 export function assignOccurrenceIndexes(rows: NormalizedStatementRow[]): number[]  // stable, over the FULL set
 ```
@@ -194,6 +197,7 @@ export function assignOccurrenceIndexes(rows: NormalizedStatementRow[]): number[
 - **Column detection** — a date-like column, a description/note column, and **either** one signed amount **or** a debit/credit pair. Recognizes the Venmo export (`Datetime`, `Type`, `Note`, `From`, `To`, `Amount (total)`). Returns `null` (→ AI fallback) when not confident — never guesses on the money path.
 - **Sign / direction rules** (money-path critical): in `debit_credit` mode choose the column by **non-zero magnitude** (treat `0.00`/blank as absent); if **both** are non-zero → push a warning and don't guess (skip or flag the row). **Preserve sign within a column** — a negative/parenthesized value in the *credit* column is an income *reversal* (posts as expense-direction), and vice-versa. Parse `CR`/`DR` suffixes (`"500.00 CR"`). `signConvention` is consulted **only** in `signed` mode.
 - **Non-transaction filtering** — `dropNonTransactionRows` drops rows whose description matches balance/total/subtotal/header markers (`beginning balance`, `ending balance`, `total`, `subtotal`, running-balance headers) and zero-magnitude rows. (For pdf/csv_raw the AI is *also* instructed to skip these.)
+- **Transfer suspicion** (money-path — closes the expense-default-include asymmetry) — `transferSuspicion` returns `"hard"` for explicit keywords (`transfer`, `xfer`, `zelle`, `wire`, `ach`, `online transfer`, `to savings`/`to checking`, `credit card payment`/`cc payment`/`card payment`, `loan payment`, `owner draw`, `atm`/`cash withdrawal`, `payment - thank you`) → forces `is_transfer`; `"soft"` for an outbound (expense) row with a person-name-like counterparty and no merchant tokens, or a large exact-round outbound with a sparse description → pre-unchecked + a "possible transfer — verify" badge (still postable). Effective `is_transfer = ai.is_transfer || hard`. This makes an undetected transfer **fail toward exclusion** rather than post as a fake expense.
 - **Dates** — parse `MM/DD/YYYY`, `M/D/YY`, `YYYY-MM-DD`, ISO datetimes → `occurred_on` via the tz-independent slice (§4).
 - Test fixtures: Venmo, generic `Date,Description,Amount`, debit/credit-pair, **both-columns-populated (warn)**, **negative-in-credit reversal**, **CR/DR suffixes**, quoted-comma, embedded-newline, multiple date formats, parenthesized negatives, BOM/CRLF, **balance+total summary lines (excluded)**, garbage→null; `computeStatementSourceRef` stability + occurrence-index distinctness + unchecked-subset re-import; cents boundary (`1234.56→123456`); tz-invariance.
 
@@ -204,13 +208,18 @@ export interface PostedRef {
   id: string; occurred_on: string; amount_cents: number; direction: LedgerDirection
   memo: string | null; source: LedgerSource
 }
-export interface DedupeInputRow extends NormalizedStatementRow { source_ref: string; is_transfer: boolean }
+export interface DedupeInputRow extends NormalizedStatementRow {
+  source_ref: string; is_transfer: boolean
+  suggested_category: string | null; confidence: "low" | "medium" | "high"  // pass-through: the review grid reads these keyed by source_ref
+  transferSuspect?: boolean          // soft-suspect (§6.1)
+}
 export interface AnnotatedStatementRow {
-  row: DedupeInputRow
+  row: DedupeInputRow                 // carries source_ref + suggested_category + confidence (nothing discarded)
   possibleDuplicate: boolean
   matchedEntry: { id: string; occurred_on: string; memo: string | null; source: LedgerSource } | null
   reason: string | null
   defaultInclude: boolean
+  newCandidate: boolean               // income row with no dedupe match — likely genuinely new (§9 surfaces these)
 }
 export function flagStatementDuplicates(
   rows: DedupeInputRow[],
@@ -219,27 +228,28 @@ export function flagStatementDuplicates(
 ): AnnotatedStatementRow[]
 ```
 
-- **Iteration order** fixed (by `occurred_on`, then input order) for determinism. Greedy "closest-by-date wins, ties→first, mark posted-entry consumed" — documented as a best-effort advisory heuristic (flags are advisory, coach confirms).
-- **Income rows**: exact amount+date-window match (vs `platform_import`/`manual` income) → `possibleDuplicate`, reason. Aggregate-payout: line ≈ sum of `platform_import` income in the trailing window ± `feeTolerancePct` → reason. Period-overlap: any income row in a span containing platform income → softer caution. **All income rows default `include=false`** (§1.1); a matched reason strengthens the message.
-- **Expense rows**: match vs already-posted `statement_import`/`manual` expense within window+direction → `possibleDuplicate`, pre-exclude. Otherwise `include=true` (unless `is_transfer`).
-- **Transfers** (`is_transfer` from AI or `flagLikelyTransfers`): `include=false`, reason "internal transfer / card payment — excluded from P&L".
+- **Iteration + return order** fixed: process by `occurred_on` then input order, but **return rows in INPUT order** so the client can zip annotations back by index (belt-and-suspenders alongside the per-row `source_ref` key; a unit test asserts input-order return). Greedy "closest-by-date wins, ties→first, mark posted-entry consumed" — a best-effort advisory heuristic (flags advisory, coach confirms).
+- **Income rows** — all default `include=false` (§1.1). Reasons, strongest first: exact amount+date-window match vs `platform_import`/`manual` income; aggregate-payout (line ≈ sum of `platform_import` income in the trailing window ± `feeTolerancePct`); period-overlap (row falls in a span containing platform income). An income row with **no** matched reason is tagged `newCandidate: true` so §9 can surface the handful that are genuinely new (a direct Venmo/cash payment) apart from the likely-already-recorded pile.
+- **Expense rows** — default `include=true` **unless** `is_transfer`, `transferSuspect`, or a cross-statement duplicate. Cross-statement match requires amount + date-window + direction **and normalized-description similarity** (so two different same-amount charges a few days apart — daily Ads billing, metered SaaS — are not false-flagged); a match → `possibleDuplicate`, pre-exclude with reason.
+- **Transfers** (`is_transfer`): `include=false`, reason "internal transfer / card payment — excluded from P&L". **Soft suspects** (`transferSuspect`): `include=false` + "possible transfer — verify" (still postable).
 - **Self-match note**: `posted` includes prior `statement_import` rows so an overlapping re-import can match its own earlier post — intended (layer 3). Documented.
-- Pure, zero mocks. Lives in `lib/` (run app-side in the dedupe route) — no `functions/` twin.
+- Pure, zero mocks. Lives in `lib/` (run app-side in the dedupe route) — no `functions/` twin. The route (not the pure fn) derives the **excluded-transfer total** (sum of excluded transfer amounts) and the **document-overlap warning** (§8) since both need IO.
 
 ### 6.3 DAL additions — `lib/db/bookkeeping.ts`
 
 ```ts
+export async function getEntry(id: string): Promise<BookkeepingLedgerEntry | null>          // M5 pre-image (mirror getBook)
 export async function listPostedForDedupe(bookId: string, from: string, to: string): Promise<PostedRef[]>  // income+expense, sources platform_import|manual|statement_import, paginated (fetchAllRows)
 export async function assertAccountInBook(accountId: string, bookId: string, direction: LedgerDirection): Promise<void>  // M5; throws typed error on mismatch
 export async function createDocument(input: NewDocument): Promise<BookkeepingDocument>
 export async function getDocument(id: string): Promise<BookkeepingDocument | null>
-export async function listDocuments(bookId: string): Promise<BookkeepingDocument[]>          // paginated
-export async function updateDocumentRowCount(id: string, rowCount: number): Promise<void>    // pdf/csv_raw back-fill
+export async function findDocumentBySha256(bookId: string, sha256: string): Promise<BookkeepingDocument | null>  // "already uploaded this file" hint
+export async function listDocuments(bookId: string): Promise<BookkeepingDocument[]>          // paginated; carries period_start/end for the overlap warning
 export async function linkDocumentBatch(id: string, importBatchId: string, postedCount: number): Promise<void>
 export async function deleteDocument(id: string): Promise<void>                              // row only; caller deletes the object
 ```
 
-Every read paginates via `fetchAllRows` (PostgREST silently caps `.select()` at ~1000 rows).
+Every read paginates via `fetchAllRows` (PostgREST silently caps `.select()` at ~1000 rows). **`row_count` + `period_start`/`period_end` are back-filled at job completion by the *function* (functions/ supabase write), not a lib/ setter** — the dedupe route reads them via `listDocuments`.
 
 ### 6.4 Storage helper — `lib/bookkeeping/documents.ts`
 
@@ -264,10 +274,11 @@ Object path: `bookkeeping/statements/${bookId}/${documentId}/${safeStatementName
 ### 7.2 Handler — `functions/src/statement-import.ts` (mirrors `program-from-excel.ts`)
 
 - `functions/src/index.ts` — new `onDocumentCreated("ai_jobs/{jobId}")` export guarding `data.type === "statement_import"`, dynamic-importing `./statement-import.js` → `handleStatementImport(jobId)` (`timeoutSeconds: 540`, `memory: "1GiB"`, `secrets: allSecrets`, `region: "us-central1"`).
-- **Exact Firestore doc + RTDB seed shape** (written by the upload route, mirroring import-excel so pickup/cancel/progress don't drift): Firestore `{ type:"statement_import", status:"pending", input:{ kind, rows?, rawText?, accounts, bookName, bookKind, documentId, logId, requestedBy }, result:null, error:null, userId, createdAt/updatedAt: serverTimestamp() }`; RTDB seed `{ status:"pending", progress:{ status:"queued", current_step:0, total_steps:3 }, result:null, error:null, updatedAt: Date.now() }`.
+- **Exact Firestore doc + RTDB seed shape** (written by the upload route, mirroring import-excel so pickup/cancel/progress don't drift): Firestore `{ type:"statement_import", status:"pending", input:{ kind, rows?, rawText?, accounts, bookName, bookKind, documentId, logId, requestedBy }, result:null, error:null, userId, createdAt/updatedAt: serverTimestamp() }`; RTDB seed `{ status:"pending", progress:{ status:"queued", current_step:0, total_steps: (kind==="csv_structured" ? 2 : 3) }, result:null, error:null, updatedAt: Date.now() }`.
 - Functions-side `callAgent` (raw `@anthropic-ai/sdk` tool_use, `MODEL_SONNET`, `cacheSystemPrompt: true`) — no `jsonTool` concern (that's the lib/ AI-SDK path). Twin `statementImportSchema` + `STATEMENT_IMPORT_PROMPT` in `functions/src/ai/`, `.js`-suffixed imports.
-- **Progress statuses (pinned, N=3):** csv_structured emits `categorizing → finalizing`; pdf/csv_raw emits `parsing → categorizing → finalizing`. The dialog's step map keys must match 1:1. Progress via `createJobProgressUpdater`, cancellation via `createCancellationChecker`; write-back to Firestore + RTDB; RTDB drops empty arrays (client `safeRows` rebuild).
-- **`ai_generation_log` lifecycle:** create at upload with `program_id:null`, `input_params:{ source:"statement_import", document_id, kind }`, `total_steps:3`. On completion: `status:"completed"`, `output_summary:{ row_count, warnings, truncated, document_id }`, `tokens_used`; `program_id` stays null. On cancel/fail: `markLogCancelled`/failed twin.
+- **Progress statuses (pinned):** the dialog's step map is the **union keyed by status name** — `parsing → categorizing → finalizing`. csv_structured emits `categorizing → finalizing` (`total_steps:2`); pdf/csv_raw emits all three (`total_steps:3`). Progress via `createJobProgressUpdater`, cancellation via `createCancellationChecker`; write-back to Firestore + RTDB; RTDB drops empty arrays (client `safeRows` rebuild).
+- **Document back-fill:** at completion the function writes `row_count`, `period_start = min(occurred_on)`, `period_end = max(occurred_on)` onto the `bookkeeping_documents` row (functions/ supabase) so the layer-3 document-overlap warning has data.
+- **`ai_generation_log` lifecycle:** create at upload with `program_id:null`, `input_params:{ source:"statement_import", document_id, kind }`, `total_steps: (kind==="csv_structured" ? 2 : 3)`. On completion: `status:"completed"`, `output_summary:{ row_count, warnings, truncated, document_id }`, `tokens_used`; `program_id` stays null. On cancel/fail: `markLogCancelled`/failed twin.
 - **Failure/cancel:** the `bookkeeping_documents` row + stored object persist (deletable via §9 list; `retain_until` applies). Dialog reuses the ExcelImportDialog error-banner + toast on `status:"failed"`/`"cancelled"`.
 
 ### 7.3 Job input (embedded at create time)
@@ -301,7 +312,7 @@ Object path: `bookkeeping/statements/${bookId}/${documentId}/${safeStatementName
 ```
 
 - **`csv_structured` — AI annotates only, never alters the row set.** The function joins AI rows to the deterministic input rows by `ref`; deterministic `occurred_on/amount_cents/direction` are authoritative (AI's copies ignored). AI contributes only `suggested_category`, `is_transfer`, `confidence`. An AI row with an unknown `ref` is ignored; an input `ref` absent from AI output → uncategorized, not transfer, **never dropped**. (This closes the "AI drops one $50 + duplicates another $50" tripwire hole — the row set is fixed by construction, not by a count check.)
-- **`pdf`/`csv_raw` — AI structures from text.** AI emits `occurred_on/amount/direction/description`; instructed to skip balance/total/subtotal/header lines and set `is_transfer` for transfers/card-payments. **Control-total reconciliation:** compare `sum(imported deposits)` / `sum(imported withdrawals)` (or opening→closing balance delta) against `control_totals`; on mismatch push a loud warning (surfaced in review) — the standard guardrail against silent under-count.
+- **`pdf`/`csv_raw` — AI structures from text.** AI emits `occurred_on/amount/direction/description`; instructed to skip balance/total/subtotal/header lines and set `is_transfer` for transfers/card-payments. **Control-total reconciliation:** compare `sum(imported deposits)` / `sum(imported withdrawals)` (or opening→closing balance delta) against `control_totals`; on mismatch push a loud warning. **Completeness never rests on totals alone:** when `control_totals` come back **all-null** (many exports state none), push an explicit **"completeness unverified — no statement totals found; review carefully"** warning; **additionally warn whenever the returned row count hits the 500 cap** (a hard truncation signal independent of totals). A pdf/csv_raw job never completes silently.
 - **`service_line`** is derived from the *resolved account*, not the AI — the AI does not emit `service_line` (avoids an unvalidated free-text field).
 - **Caps:** `MAX_STATEMENT_ROWS = 500`. csv_structured is capped **deterministically at embed time** in the upload route (exact count vs 500 → hard truncation warning; keeps the Firestore doc < 1 MB). pdf/csv_raw is single-call; the control-total mismatch is the truncation signal (the "obviously more rows" heuristic alone is unreliable).
 - App resolves `suggested_category` → `account_id` by case-insensitive name match at review; unmatched → uncategorized. AI never creates categories.
@@ -314,9 +325,9 @@ All under `app/api/admin/bookkeeping/`, all **self-gate** (`const s = await auth
 
 | Route | Method | Body / params | Behavior |
 |---|---|---|---|
-| `statement-import` | POST | multipart `file` + `book_id` | storage-configured guard → gauntlet (size/type) → parse (CSV det.+filter+cap / PDF text) → `storeStatementFile` + `createDocument` → create job (Firestore doc + `createGenerationLog` + RTDB seed) → `202 {jobId, documentId, log_id}`. Audit `bookkeeping.statement_uploaded`. |
-| `statement-import/dedupe` | POST | `statementDedupeSchema` | compute source_ref/occurrenceIndex over full set → span = `[min,max]` of income+expense rows, **widened ±windowDays** → `listPostedForDedupe` → `flagStatementDuplicates` → `{ rows: AnnotatedStatementRow[] }`. Short-circuit (no DAL read) when rows empty. No audit (read-only). |
-| `statement-import/commit` | POST | `statementCommitSchema` | drop excluded/transfer rows client-side; `insertImportedEntries` → `{ inserted, batchId }`; `linkDocumentBatch(document_id, batchId, posted_count)`. Audit `bookkeeping.statement_imported`. |
+| `statement-import` | POST | multipart `file` + `book_id` | storage-configured guard → gauntlet (size/type) → parse (CSV det.+filter+cap / PDF text) → compute sha256; `findDocumentBySha256(book_id, sha256)` → if a prior identical file exists, still proceed but return a non-blocking `duplicateUploadHint` (prior date) → `storeStatementFile` + `createDocument` → create job (Firestore doc + `createGenerationLog` + RTDB seed) → `202 {jobId, documentId, log_id, duplicateUploadHint?}`. Audit `bookkeeping.statement_uploaded`. |
+| `statement-import/dedupe` | POST | `statementDedupeSchema` | compute source_ref/occurrenceIndex over full set → span = `[min,max]` of income+expense rows, **widened ±windowDays** → `listPostedForDedupe` → `flagStatementDuplicates` → the route also sums the excluded-transfer total and, via `listDocuments`, warns when the new span overlaps a prior statement's `period_start..period_end` → `{ rows, excludedTransferTotalCents, documentOverlapWarning }`. Short-circuit (no DAL read) when rows empty. No audit (read-only). |
+| `statement-import/commit` | POST | `statementCommitSchema` | drop excluded/transfer rows client-side; **reject any `statement_import` entry whose `source_ref` doesn't match `^statement:[0-9a-f]{40}$`** (defends layer-1 idempotency against a mangled/out-of-flow client); `insertImportedEntries` → `{ inserted, batchId }`; `linkDocumentBatch(document_id, batchId, posted_count)`. Audit `bookkeeping.statement_imported`. |
 | `documents` | GET | `?book_id=` | `listDocuments` → `{ documents }`. |
 | `documents/[id]` | DELETE | — | load doc (scope) → `deleteStatementFile` + `deleteDocument`. Audit `bookkeeping.document_deleted`. |
 | `documents/[id]/download` | GET | — | `signStatementDownload` → `{ url }`. Audit `bookkeeping.document_downloaded` (category `admin_read_sensitive`). |
@@ -341,7 +352,11 @@ All under `app/api/admin/bookkeeping/`, all **self-gate** (`const s = await auth
 - **`components/admin/bookkeeping/StatementImportDialog.tsx`** (new) = ImportPlatformDialog's review grid + ExcelImportDialog's RTDB polling. Steps: `upload → processing → review → done`.
   - **Upload:** file input (CSV/PDF), book context, submit → `POST statement-import` (FormData), on `202` subscribe to `ai_jobs/${jobId}` via RTDB `onValue`; register with the dock (`addJob({ kind:"statement_import", ... })` — **extend `AiJobKind` in `hooks/use-ai-jobs-dock.tsx` with `"statement_import"` + a dock-card icon/label**; the card has no Open deep-link, which is fine). Cancel reuses the shared cancel route.
   - **Processing:** step progress from the pinned statuses (§7.2), reusing ExcelImportDialog's checklist/progress bar. Error banner + toast on `failed`/`cancelled`.
-  - **Review:** on completion, `safeRows`-rebuild the result (RTDB drops empty arrays), POST to `statement-import/dedupe`, render the grid. Reuse the **warnings banner** (now also carries control-total + truncation warnings), the account `<select>` filtered `account_type === row.direction` (default = resolved AI suggestion), the **non-business-book confirm gate**, and `formatOccurredOn`. Add: a **prominent income caution banner** ("Bank/Venmo income is likely already recorded as platform income — leave these unchecked unless this is money that never went through the platform"); duplicate/transfer/payout rows show a badge + reason and are **pre-excluded** per `defaultInclude`; `confidence==="low"` rows visually flagged.
+  - **Review:** on completion, `safeRows`-rebuild the result (RTDB drops empty arrays), POST to `statement-import/dedupe`, render the grid. Reuse the **warnings banner** (now also carries control-total + truncation + document-overlap warnings), the account `<select>` filtered `account_type === row.direction` (default = resolved AI suggestion, keyed by `source_ref`), the **non-business-book confirm gate**, and `formatOccurredOn`. Add:
+    - a **prominent income caution banner** ("Bank/Venmo income is likely already recorded as platform income — leave these unchecked unless this is money that never went through the platform");
+    - income rows tagged `newCandidate` are **visually separated** ("New — opt-in candidate") from the flagged-duplicate pile so the coach's attention lands on the handful that are genuinely new;
+    - when `excludedTransferTotalCents > 0`, a caution: "We excluded $X of transfers/card payments. If any is a credit-card payment, **import that card's statement** so its purchases are counted (excluding without importing loses those deductions).";
+    - duplicate/transfer/soft-suspect/payout rows show a badge + reason and are **pre-excluded** per `defaultInclude`; `confidence==="low"` rows visually flagged.
   - **Post:** `POST statement-import/commit` with included rows (+ `document_id`); excluded/transfer rows omitted; toast `posted N (M already recorded — skipped)`; `onSaved()` + close.
   - **Zero-row / image-PDF state:** friendly "No transactions detected — is this a scanned image PDF? OCR arrives in Phase 3" (the handler pushes a warning when parsed text is empty).
   - **Closed-dialog contract:** closing mid-job **abandons the in-flight review** (candidate rows post client-side, so there is no server-side resume in Phase 2). The file + `bookkeeping_documents` row persist; re-importing is safe (source_ref dedupe). Documented in the dialog copy; no resume path this phase.
@@ -359,7 +374,7 @@ All under `app/api/admin/bookkeeping/`, all **self-gate** (`const s = await auth
 |---|---|---|
 | **M3** | Date-filter `client_memberships` in `listPlatformIncome` (currently `.range()` only); drive the membership-gap warning by the import window (`buildIncomeDrafts` takes an optional window; warn about memberships overlapping it). | `lib/db/bookkeeping.ts`; `lib/bookkeeping/income-adapter.ts` |
 | **M4** | Validate `direction`/`source` query params against the enums in `entries` GET → `400` on invalid (today blind-cast → 0 rows). | `app/api/admin/bookkeeping/entries/route.ts` |
-| **M5** | Book-scoped guard on **`entries/[id]` PATCH only** (accounts PATCH cannot move book/type — its schema exposes neither, so no cross-book mutation is possible): load the entry; if the patch sets `account_id`, assert the target account's `book_id === entry.book_id` **and** `account_type === effective direction` → `409` on mismatch. Helper `assertAccountInBook(accountId, bookId, direction)` in the DAL (§6.3). | `app/api/admin/bookkeeping/entries/[id]/route.ts`; `lib/db/bookkeeping.ts` |
+| **M5** | Book-scoped guard on **`entries/[id]` PATCH only** (accounts PATCH cannot move book/type — its schema exposes neither, so no cross-book mutation is possible): load the pre-image via new `getEntry(id)`; if the patch sets `account_id`, assert the target account's `book_id === entry.book_id` **and** `account_type === effective direction` (`patch.direction ?? entry.direction`) → `409` on mismatch (`404` if the entry is gone). Helper `assertAccountInBook(accountId, bookId, direction)` in the DAL (§6.3). | `app/api/admin/bookkeeping/entries/[id]/route.ts`; `lib/db/bookkeeping.ts` |
 | **M6** | Add `.` to the `.or()` search-escaping set in `applyEntryFilters`. | `lib/db/bookkeeping.ts` |
 | **M7** | `statement_import` wired end-to-end (this feature). | — |
 
@@ -368,10 +383,10 @@ All under `app/api/admin/bookkeeping/`, all **self-gate** (`const s = await auth
 ## 11. Testing strategy
 
 - **Pure, zero mocks (`__tests__/lib/bookkeeping/…`):**
-  - `statement-parse.test.ts` — all §6.1 fixtures incl. both-columns-populated/negative-credit/CR-DR/summary-line-exclusion; `computeStatementSourceRef` stability + occurrence-index + **unchecked-subset re-import still dedupes**; cents boundary; tz-invariance.
-  - `statement-dedupe.test.ts` — exact/aggregate-payout/period-overlap income flags; expense cross-statement match; transfer pre-exclude; span-window boundaries; income `defaultInclude=false`; greedy determinism; self-match.
+  - `statement-parse.test.ts` — all §6.1 fixtures incl. both-columns-populated/negative-credit/CR-DR/summary-line-exclusion; `transferSuspicion` hard/soft/null tiers; `computeStatementSourceRef` stability + occurrence-index + **unchecked-subset re-import still dedupes**; cents boundary; tz-invariance.
+  - `statement-dedupe.test.ts` — exact/aggregate-payout/period-overlap income flags; `newCandidate` on unmatched income; expense cross-statement match **requires description similarity** (near-daily different charges not false-flagged); transfer + soft-suspect pre-exclude; span-window boundaries; income `defaultInclude=false`; **input-order return**; greedy determinism; self-match.
   - `income-adapter.test.ts` — extend for the M3 window-driven membership warning.
-- **Route tests** — `vi.mock('@/lib/db/bookkeeping')` (+ storage/job helpers); import handler after mocks; `Request as never`; async `params`. Cover: 403 self-gate every route; M4 `400`; **M5 `409`** on cross-book / wrong-type account pointer; dedupe span-widening + empty-rows short-circuit; commit omits excluded rows.
+- **Route tests** — `vi.mock('@/lib/db/bookkeeping')` (+ storage/job helpers); import handler after mocks; `Request as never`; async `params`. Cover: 403 self-gate every route; M4 `400`; **M5 `409`/`404`** on cross-book / wrong-type account pointer / missing entry; dedupe span-widening + empty-rows short-circuit + overlap warning; **commit rejects a mangled `source_ref`** and omits excluded rows; upload returns `duplicateUploadHint` on a repeat sha256.
 - **M6** — a small `.or()` escaping test.
 - **Functions-side** — twin `statementImportSchema` parse test + the csv_structured `ref`-join (unknown ref ignored, missing ref → uncategorized never dropped) (RFC-4122 UUID fixtures; Zod v4 strict UUIDs).
 - **Money-path proof** — one throwaway live-DB test: commit statement drafts twice → second inserts 0 (source_ref idempotency); then **deleted**. Never `__tests__/db/`.
@@ -384,7 +399,7 @@ All under `app/api/admin/bookkeeping/`, all **self-gate** (`const s = await auth
 1. **Book isolation is application-only** (RLS decorative) — every new DAL/route scopes `book_id`; **M5** closes the Phase-1 `entries/[id]` PATCH gap.
 2. **PostgREST 1000-row cap** — every ledger/income/document read paginates via `fetchAllRows`.
 3. **Statement income cannot be auto-deduped against Stripe payouts in Phase 2** (aggregate/net) — income is pre-excluded + flagged; real reconciliation is Phase 6 (§1.1, D6).
-4. **Credit-card / transfer double-count** — mitigated by the transfer/exclude classification; residual risk documented in §13.
+4. **Credit-card / transfer classification** — mitigated by the AI `is_transfer` + `transferSuspicion` hard/soft tiers (undetected transfers now fail toward exclusion, not toward a fake expense). Residual under-count risks — a transfer both detectors miss, new income left unchecked, a card payment excluded without importing the card — are surfaced in review and documented in §13.
 5. **Financial docs → private bucket only** — `getPrivateBucket()`, signed URLs, upload-year+7 `retain_until`, deletion path day one (D12). **Deployment precondition:** `FIREBASE_PRIVATE_BUCKET` (and Firebase admin creds) must be set in the **Vercel runtime**, not only Firebase Secret Manager (`split_reel_vercel_env`) — verify before the owner ships; the upload route fails friendly if unset.
 6. **functions/ ↔ lib/ twin copy** — the AI schema/prompt duplicate into `functions/src/ai/`; the parser + fuzzy matcher stay in `lib/` (run app-side) to avoid extra copies. `source_ref` is computed app-side (dedupe route), so no crypto twin.
 7. **AI must not silently truncate/alter** — csv_structured row set is fixed by construction (ref-join); pdf/csv_raw reconciles against control totals; caps warn deterministically.
@@ -395,7 +410,7 @@ All under `app/api/admin/bookkeeping/`, all **self-gate** (`const s = await auth
 
 - Every AI category is a **candidate the coach confirms** — nothing posts unreviewed.
 - Duplicates are **flagged, never auto-dropped**; statement **income is pre-excluded** because Phase-2 flagging cannot fully protect against aggregated Stripe payouts (§1.1) — the review UI says so plainly.
-- **Known hazard — credit-card-payment double-count:** a "PAYMENT TO CREDIT CARD" on a bank statement and the card's own purchases are the same money; the transfer/exclude classification pre-excludes the bank-side payment, but the coach must not include both. Stated in the income/transfer caution copy.
+- **Known hazard — credit-card payments cut both ways.** A "PAYMENT TO CREDIT CARD" on a bank statement and the card's own purchases are the same money — the transfer/exclude classification pre-excludes the bank-side payment so it is not double-counted. **But excluding it without importing that card's statement silently drops the card's real (deductible) purchases** — the review surfaces the excluded-transfer total and prompts the coach to import the card statement. Both directions are stated in the caution copy so the coach neither double-counts nor under-counts.
 - Venmo/bank = **statement-file import**, never implied live sync (no Venmo API, no Plaid).
 - Statements retained **7 years** (upload-year basis), private bucket, working deletion path (D12).
 - Business and personal **stay in separate books** — a statement imports into exactly one selected book.
