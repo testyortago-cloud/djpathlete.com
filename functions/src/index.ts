@@ -105,6 +105,28 @@ export const programFromExcel = onDocumentCreated(
   },
 )
 
+// ─── Statement Import ───────────────────────────────────────────────────────────
+// Triggered when a new ai_jobs doc is created with type "statement_import"
+// AI Bookkeeper Phase 2: categorizes/structures an uploaded bank/Venmo
+// statement (CSV or PDF) into ledger-ready rows for review.
+
+export const statementImport = onDocumentCreated(
+  {
+    document: "ai_jobs/{jobId}",
+    timeoutSeconds: 540,
+    memory: "1GiB",
+    region: "us-central1",
+    secrets: allSecrets,
+  },
+  async (event) => {
+    const data = event.data?.data()
+    if (!data || data.type !== "statement_import") return
+
+    const { handleStatementImport } = await import("./statement-import.js")
+    await handleStatementImport(event.params.jobId)
+  },
+)
+
 // ─── Admin AI Chat ─────────────────────────────────────────────────────────────
 // Triggered when a new ai_jobs doc is created with type "admin_chat"
 // Streaming admin business intelligence chat
