@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { formatCents } from "@/lib/bookkeeping/money"
-import type { BookkeepingAccount } from "@/types/database"
+import type { BookkeepingAccount, BookKind } from "@/types/database"
 import type { LedgerEntryDraft } from "@/lib/bookkeeping/types"
 
 function todayIso(): string {
@@ -35,12 +35,18 @@ function formatOccurredOn(dateStr: string): string {
 
 export function ImportPlatformDialog({
   bookId,
+  bookKind,
+  bookIsPrimary,
+  bookName,
   accounts,
   open,
   onOpenChange,
   onSaved,
 }: {
   bookId: string
+  bookKind: BookKind
+  bookIsPrimary: boolean
+  bookName: string
   accounts: BookkeepingAccount[]
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -53,6 +59,11 @@ export function ImportPlatformDialog({
   const [rows, setRows] = useState<DraftRow[]>([])
   const [warnings, setWarnings] = useState<string[]>([])
   const [posting, setPosting] = useState(false)
+  // Platform income (Stripe/packs/camps/shop) is almost always Darren's
+  // primary business book — importing into a household/non-primary book is
+  // very likely a mis-click, so require an explicit confirmation there.
+  const [confirmNonBusiness, setConfirmNonBusiness] = useState(false)
+  const isNonBusinessBook = bookKind === "household" || !bookIsPrimary
 
   // Reset to the range step whenever the dialog is (re)opened — matches the
   // reset-on-open convention used elsewhere so closing mid-review never shows
@@ -64,6 +75,7 @@ export function ImportPlatformDialog({
     setTo(todayIso())
     setRows([])
     setWarnings([])
+    setConfirmNonBusiness(false)
   }, [open])
 
   function defaultAccountFor(draft: LedgerEntryDraft): string {
@@ -259,6 +271,34 @@ export function ImportPlatformDialog({
                 </table>
               </div>
             )}
+
+            {isNonBusinessBook && (
+              <div className="rounded-xl border border-warning/40 bg-warning/5 p-3 space-y-2">
+                <div className="flex items-center gap-2 text-sm font-medium text-warning">
+                  <AlertTriangle className="size-4" />
+                  Non-business book selected
+                </div>
+                <p className="text-xs text-warning/90">
+                  You&apos;re importing platform business income into the &ldquo;{bookName}&rdquo; book. Platform
+                  income (Stripe, packs, camps, shop) normally belongs in your primary business book. Post here only
+                  if you&apos;re sure.
+                </p>
+                <div className="flex items-start gap-2 pt-1">
+                  <Checkbox
+                    id="ip-confirm-non-business"
+                    checked={confirmNonBusiness}
+                    onCheckedChange={(v) => setConfirmNonBusiness(v === true)}
+                    className="mt-0.5"
+                  />
+                  <Label
+                    htmlFor="ip-confirm-non-business"
+                    className="text-xs text-warning/90 leading-relaxed cursor-pointer"
+                  >
+                    I understand — post into this non-business book
+                  </Label>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -277,7 +317,10 @@ export function ImportPlatformDialog({
               <Button variant="outline" onClick={() => setStep("range")} disabled={posting}>
                 Back
               </Button>
-              <Button onClick={commit} disabled={posting || includedRows.length === 0}>
+              <Button
+                onClick={commit}
+                disabled={posting || includedRows.length === 0 || (isNonBusinessBook && !confirmNonBusiness)}
+              >
                 {posting ? "Posting…" : `Post ${includedRows.length} ${includedRows.length === 1 ? "entry" : "entries"}`}
               </Button>
             </>

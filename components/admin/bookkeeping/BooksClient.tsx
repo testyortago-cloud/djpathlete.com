@@ -157,6 +157,7 @@ export function BooksClient({
 
   const net = data.totals.income_cents - data.totals.expense_cents
   const totalPages = Math.max(1, Math.ceil(data.total / (data.perPage || 50)))
+  const selectedBook = books.find((b) => b.id === bookId)
 
   if (books.length === 0) {
     return (
@@ -337,6 +338,9 @@ export function BooksClient({
       />
       <ImportPlatformDialog
         bookId={bookId}
+        bookKind={selectedBook?.book_kind ?? "business"}
+        bookIsPrimary={selectedBook?.is_primary ?? true}
+        bookName={selectedBook?.name ?? ""}
         accounts={accounts}
         open={importOpen}
         onOpenChange={setImportOpen}
