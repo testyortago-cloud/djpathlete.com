@@ -36,6 +36,15 @@ export function buildIncomeDrafts(input: IncomeSourceRows): IncomeAdapterResult 
       continue
     }
     if (p.status !== "succeeded") continue
+    // Stripe-paid session packs and event signups write a `payments` row
+    // (revenue mirror) IN ADDITION TO their own client_packages / event_signups
+    // row. Those source tables carry the product/event name + correct service
+    // line, so we count them there and skip the mirror here — otherwise a single
+    // Stripe pack/camp sale posts TWICE (the payments source_ref differs from the
+    // pack/event source_ref, so the ledger UNIQUE cannot dedupe it). Cash/offline
+    // packs never create a payments row, so they are unaffected.
+    const mirrorType = p.metadata?.type
+    if (mirrorType === "session_pack" || mirrorType === "event_signup") continue
     const email = typeof p.metadata?.customerEmail === "string" ? p.metadata.customerEmail : null
     if (!p.user_id && !email) {
       warnings.push(`Payment ${p.id} has no user and no customer email — counterparty unknown.`)

@@ -37,6 +37,50 @@ describe("buildIncomeDrafts — payments", () => {
     expect(drafts).toHaveLength(0)
     expect(warnings.some((w) => w.includes("refunded"))).toBe(true)
   })
+  it("does NOT double-count a Stripe pack that also has a payments mirror row", () => {
+    // A Stripe-paid pack writes BOTH a payments row (metadata.type=session_pack)
+    // and a client_packages row. Only the richer pack row should become a draft.
+    const input = base()
+    input.payments = [{
+      id: "11111111-1111-4111-8111-111111111199", user_id: "u1", stripe_payment_id: "pi_pack",
+      stripe_customer_id: null, amount_cents: 50000, currency: "usd", status: "succeeded",
+      description: "Session pack", metadata: { type: "session_pack", client_package_id: "22222222-2222-4222-8222-222222222221" },
+      created_at: "2026-04-01T00:00:00Z", updated_at: "2026-04-01T00:00:00Z",
+      gclid: null, gbraid: null, wbraid: null, fbclid: null,
+    }]
+    input.clientPackages = [{
+      id: "22222222-2222-4222-8222-222222222221",
+      client_user_id: "22222222-2222-4222-8222-2222222222aa",
+      product_id: null, session_type: "1-on-1", credits_total: 10, credits_used: 0,
+      price_cents: 50000, payment_method: "stripe", payment_status: "paid", status: "active",
+      stripe_session_id: null, stripe_payment_id: "pi_pack", assignment_id: null,
+      purchased_at: "2026-04-01T00:00:00Z", created_by: null,
+      created_at: "2026-04-01T00:00:00Z", updated_at: "2026-04-01T00:00:00Z",
+      product_name: "10-Pack",
+    } as never]
+    const { drafts } = buildIncomeDrafts(input)
+    expect(drafts).toHaveLength(1)
+    expect(drafts[0].source_ref).toBe("client_packages:22222222-2222-4222-8222-222222222221")
+    expect(drafts.reduce((s, d) => s + d.amount_cents, 0)).toBe(50000)
+  })
+  it("does NOT double-count a Stripe event signup that also has a payments mirror row", () => {
+    const input = base()
+    input.payments = [{
+      id: "11111111-1111-4111-8111-1111111111a9", user_id: null, stripe_payment_id: "pi_evt",
+      stripe_customer_id: null, amount_cents: 12000, currency: "usd", status: "succeeded",
+      description: "Event signup", metadata: { type: "event_signup", signup_id: "33333333-3333-4333-8333-333333333331" },
+      created_at: "2026-05-01T00:00:00Z", updated_at: "2026-05-01T00:00:00Z",
+      gclid: null, gbraid: null, wbraid: null, fbclid: null,
+    }]
+    input.eventSignups = [{ id: "33333333-3333-4333-8333-333333333331", event_id: "e1", signup_type: "paid",
+      status: "confirmed", amount_paid_cents: 12000, parent_name: "Pat", parent_email: "p@x.com",
+      athlete_name: "Kid", user_id: null, stripe_session_id: null, stripe_payment_intent_id: "pi_evt",
+      created_at: "2026-05-01T00:00:00Z", updated_at: "2026-05-01T00:00:00Z",
+      event_title: "Summer Camp", event_type: "camp" } as never]
+    const { drafts } = buildIncomeDrafts(input)
+    expect(drafts).toHaveLength(1)
+    expect(drafts[0].source_ref).toBe("event_signups:33333333-3333-4333-8333-333333333331")
+  })
   it("silently skips pending/failed payments (no income leak, no warning)", () => {
     const input = base()
     input.payments = ["pending", "failed"].map((status, i) => ({
