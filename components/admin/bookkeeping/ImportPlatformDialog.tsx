@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { formatCents } from "@/lib/bookkeeping/money"
+import { formatOccurredOn } from "@/lib/bookkeeping/format"
 import type { BookkeepingAccount, BookKind } from "@/types/database"
 import type { LedgerEntryDraft } from "@/lib/bookkeeping/types"
 
@@ -23,14 +24,6 @@ function defaultFrom(): string {
 interface DraftRow extends LedgerEntryDraft {
   include: boolean
   accountId: string
-}
-
-/** occurred_on is a plain YYYY-MM-DD date (no time) — parse as local parts, same
- * convention as LedgerTable, to avoid the UTC-midnight-rolls-back-a-day bug. */
-function formatOccurredOn(dateStr: string): string {
-  const [y, m, d] = dateStr.split("-").map(Number)
-  if (!y || !m || !d) return dateStr
-  return new Date(y, m - 1, d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
 }
 
 export function ImportPlatformDialog({

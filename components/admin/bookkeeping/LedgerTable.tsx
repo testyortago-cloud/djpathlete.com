@@ -6,6 +6,7 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { formatCents } from "@/lib/bookkeeping/money"
+import { formatOccurredOn } from "@/lib/bookkeeping/format"
 import type { BookkeepingAccount, BookkeepingLedgerEntry, LedgerSource } from "@/types/database"
 
 const SOURCE_LABELS: Record<LedgerSource, string> = {
@@ -20,14 +21,6 @@ const SOURCE_TONE: Record<LedgerSource, string> = {
   platform_import: "bg-accent/10 text-accent",
   statement_import: "bg-primary/10 text-primary",
   receipt: "bg-warning/10 text-warning",
-}
-
-/** occurred_on is a plain YYYY-MM-DD date (no time). Parse as local y/m/d parts
- * to avoid the UTC-midnight-rolls-back-a-day bug from `new Date(dateString)`. */
-function formatOccurredOn(dateStr: string): string {
-  const [y, m, d] = dateStr.split("-").map(Number)
-  if (!y || !m || !d) return dateStr
-  return new Date(y, m - 1, d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
 }
 
 export function LedgerTable({
