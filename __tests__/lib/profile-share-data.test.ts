@@ -140,17 +140,13 @@ describe("getAthleteProfileData", () => {
     expect(d!.radarTests[0]).toEqual({ testType: "cmj", resultValue: 48, bodyWeightKg: null, testDate: "2026-06-01" })
   })
 
-  it("returns null for non-clients, inactive users, minors, and missing users", async () => {
+  it("returns null for non-clients, inactive users, and missing users", async () => {
     armHappyPath()
     mocks.getUserById.mockResolvedValue({ ...activeClient, role: "admin" })
     expect(await getAthleteProfileData("u1")).toBeNull()
 
     armHappyPath()
     mocks.getUserById.mockResolvedValue({ ...activeClient, status: "inactive" })
-    expect(await getAthleteProfileData("u1")).toBeNull()
-
-    armHappyPath()
-    mocks.getProfileByUserId.mockResolvedValue({ ...fullProfile, is_minor: true })
     expect(await getAthleteProfileData("u1")).toBeNull()
 
     armHappyPath()
@@ -162,7 +158,11 @@ describe("getAthleteProfileData", () => {
     expect(await getAthleteProfileData("u1")).toBeNull()
   })
 
-  it("blocks under-18s by DOB even when the is_minor flag is false", async () => {
+  it("does not exclude minors: is_minor flag and under-18 DOB still get a card", async () => {
+    armHappyPath()
+    mocks.getProfileByUserId.mockResolvedValue({ ...fullProfile, is_minor: true })
+    expect(await getAthleteProfileData("u1")).not.toBeNull()
+
     armHappyPath()
     const sixteenYearsAgo = new Date()
     sixteenYearsAgo.setUTCFullYear(sixteenYearsAgo.getUTCFullYear() - 16)
@@ -171,12 +171,9 @@ describe("getAthleteProfileData", () => {
       is_minor: false,
       date_of_birth: sixteenYearsAgo.toISOString().slice(0, 10),
     })
-    expect(await getAthleteProfileData("u1")).toBeNull()
-
-    // No DOB at all → the is_minor flag remains the only (passing) signal.
-    armHappyPath()
-    mocks.getProfileByUserId.mockResolvedValue({ ...fullProfile, date_of_birth: null })
-    expect(await getAthleteProfileData("u1")).not.toBeNull()
+    const d = await getAthleteProfileData("u1")
+    expect(d).not.toBeNull()
+    expect(d!.age).toBe(16)
   })
 
   it("degrades failed sources to empty sections instead of throwing", async () => {
@@ -191,10 +188,19 @@ describe("getAthleteProfileData", () => {
     expect(d!.program).toBeNull()
   })
 
-  it("fails closed when the client_profiles row is missing (minor gate)", async () => {
+  it("renders a card without a client_profiles row (bio fields empty)", async () => {
     armHappyPath()
     mocks.getProfileByUserId.mockResolvedValue(null)
-    expect(await getAthleteProfileData("u1")).toBeNull()
+    const d = await getAthleteProfileData("u1")
+    expect(d).not.toBeNull()
+    expect(d!.sport).toBeNull()
+    expect(d!.position).toBeNull()
+    expect(d!.heightCm).toBeNull()
+    expect(d!.weightKg).toBeNull()
+    expect(d!.age).toBeNull()
+    expect(d!.weightUnit).toBe("kg")
+    // Non-profile data still populates.
+    expect(d!.stats.workouts).toBe(247)
   })
 
   it("caps gymRecords at 6 and milestones at 8", async () => {

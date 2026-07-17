@@ -95,9 +95,9 @@ const MAX_CAREER = 8
 
 /**
  * Assembles everything the public card shows. Returns null when the user must
- * not have a public card (missing, not a client, not active, a minor, or no
- * readable client_profiles row); individual data sources fail soft to empty
- * sections.
+ * not have a public card (missing, not a client, or not active); individual
+ * data sources fail soft to empty sections, and a missing client_profiles row
+ * just leaves the bio fields empty.
  */
 export async function getAthleteProfileData(clientUserId: string): Promise<AthleteProfileData | null> {
   let user
@@ -108,14 +108,11 @@ export async function getAthleteProfileData(clientUserId: string): Promise<Athle
   }
   if (!user || user.role !== "client" || user.status !== "active") return null
 
-  // Minor gate fails CLOSED: an absent or unreadable profile must never publish
-  // a potential minor (and a card without sport/position/physicals is worthless).
-  // Belt-and-braces: the is_minor flag is not reliably maintained in real data,
-  // so a DOB that computes to under 18 blocks the card regardless of the flag.
+  // The profile row is optional: without one the card still renders, just with
+  // empty sport/position/physicals. Minors are NOT excluded — the coach decides
+  // who gets a share link (deactivating the client kills an issued link).
   const profile = await getProfileByUserId(clientUserId).catch(() => null)
-  if (!profile || profile.is_minor) return null
-  const age = computeAge(profile.date_of_birth ?? null)
-  if (age !== null && age < 18) return null
+  const age = computeAge(profile?.date_of_birth ?? null)
 
   const today = new Date().toISOString().slice(0, 10)
   const from = addDays(today, -90)
