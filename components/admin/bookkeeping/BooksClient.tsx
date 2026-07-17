@@ -8,6 +8,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { EmptyState } from "@/components/ui/empty-state"
 import { LedgerTable } from "@/components/admin/bookkeeping/LedgerTable"
+import { ManualEntryDialog } from "@/components/admin/bookkeeping/ManualEntryDialog"
+import { ImportPlatformDialog } from "@/components/admin/bookkeeping/ImportPlatformDialog"
 import { formatCents } from "@/lib/bookkeeping/money"
 import type {
   BookkeepingBook,
@@ -62,6 +64,9 @@ export function BooksClient({
   const [accounts, setAccounts] = useState<BookkeepingAccount[]>(initialAccounts)
   const [loading, setLoading] = useState(false)
   const isFirstAccountsLoad = useRef(true)
+  const [manualEntryOpen, setManualEntryOpen] = useState(false)
+  const [editingEntry, setEditingEntry] = useState<BookkeepingLedgerEntry | null>(null)
+  const [importOpen, setImportOpen] = useState(false)
 
   const fetchEntries = useCallback(async () => {
     if (!bookId) return
@@ -132,6 +137,16 @@ export function BooksClient({
     setFilters((f) => ({ ...f, page }))
   }
 
+  function openAddEntry() {
+    setEditingEntry(null)
+    setManualEntryOpen(true)
+  }
+
+  function openEditEntry(entry: BookkeepingLedgerEntry) {
+    setEditingEntry(entry)
+    setManualEntryOpen(true)
+  }
+
   const net = data.totals.income_cents - data.totals.expense_cents
   const totalPages = Math.max(1, Math.ceil(data.total / (data.perPage || 50)))
 
@@ -186,22 +201,11 @@ export function BooksClient({
 
           {/* Toolbar */}
           <div className="flex flex-wrap items-center gap-2">
-            <Button
-              size="sm"
-              disabled
-              title="Add entry — coming in Task 13"
-              // TODO(task-13): wire ManualEntryDialog (opens on click, refetches via fetchEntries on save)
-            >
+            <Button size="sm" onClick={openAddEntry}>
               <Plus className="size-4" />
               Add entry
             </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled
-              title="Import platform income — coming in Task 13"
-              // TODO(task-13): wire ImportPlatformDialog (opens on click, refetches via fetchEntries on commit)
-            >
+            <Button size="sm" variant="outline" onClick={() => setImportOpen(true)}>
               <Upload className="size-4" />
               Import platform income
             </Button>
@@ -283,7 +287,7 @@ export function BooksClient({
             />
           ) : (
             <>
-              <LedgerTable rows={data.rows} accounts={accounts} onChanged={fetchEntries} />
+              <LedgerTable rows={data.rows} accounts={accounts} onChanged={fetchEntries} onEdit={openEditEntry} />
               <div className="flex items-center justify-between text-sm text-muted-foreground">
                 <p>
                   {data.total} entr{data.total === 1 ? "y" : "ies"}
@@ -314,6 +318,22 @@ export function BooksClient({
           )}
         </TabsContent>
       </Tabs>
+
+      <ManualEntryDialog
+        bookId={bookId}
+        accounts={accounts}
+        entry={editingEntry}
+        open={manualEntryOpen}
+        onOpenChange={setManualEntryOpen}
+        onSaved={fetchEntries}
+      />
+      <ImportPlatformDialog
+        bookId={bookId}
+        accounts={accounts}
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        onSaved={fetchEntries}
+      />
     </div>
   )
 }

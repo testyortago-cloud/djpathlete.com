@@ -34,10 +34,12 @@ export function LedgerTable({
   rows,
   accounts,
   onChanged,
+  onEdit,
 }: {
   rows: BookkeepingLedgerEntry[]
   accounts: BookkeepingAccount[]
   onChanged: () => void
+  onEdit: (entry: BookkeepingLedgerEntry) => void
 }) {
   const [busyId, setBusyId] = useState<string | null>(null)
 
@@ -143,9 +145,9 @@ export function LedgerTable({
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    disabled
-                    title="Edit — coming in Task 13"
-                    // TODO(task-13): wire ManualEntryDialog prefilled with this row's data
+                    onClick={() => onEdit(row)}
+                    disabled={busyId === row.id}
+                    title="Edit entry"
                   >
                     <Pencil className="size-3.5" />
                   </Button>
