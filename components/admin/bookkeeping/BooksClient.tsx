@@ -64,12 +64,18 @@ export function BooksClient({
   const [accounts, setAccounts] = useState<BookkeepingAccount[]>(initialAccounts)
   const [loading, setLoading] = useState(false)
   const isFirstAccountsLoad = useRef(true)
+  // Guards against a stale in-flight response overwriting a newer one when
+  // filters/page change rapidly — mirrors the `cancelled` flag pattern used
+  // by the accounts-fetch effect below, but as a ref since fetchEntries is
+  // also invoked imperatively (onSaved/onChanged) outside of an effect.
+  const fetchRequestIdRef = useRef(0)
   const [manualEntryOpen, setManualEntryOpen] = useState(false)
   const [editingEntry, setEditingEntry] = useState<BookkeepingLedgerEntry | null>(null)
   const [importOpen, setImportOpen] = useState(false)
 
   const fetchEntries = useCallback(async () => {
     if (!bookId) return
+    const requestId = ++fetchRequestIdRef.current
     setLoading(true)
     try {
       const params = new URLSearchParams()
@@ -84,11 +90,13 @@ export function BooksClient({
       const res = await fetch(`/api/admin/bookkeeping/entries?${params.toString()}`)
       if (!res.ok) throw new Error((await res.text()) || "Failed to load entries")
       const body = (await res.json()) as EntriesData
+      if (requestId !== fetchRequestIdRef.current) return // a newer request superseded this one
       setData(body)
     } catch (error) {
+      if (requestId !== fetchRequestIdRef.current) return
       toast.error(`Failed to load entries: ${(error as Error).message}`)
     } finally {
-      setLoading(false)
+      if (requestId === fetchRequestIdRef.current) setLoading(false)
     }
   }, [bookId, filters])
 

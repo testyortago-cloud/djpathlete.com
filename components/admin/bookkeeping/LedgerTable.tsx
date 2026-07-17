@@ -118,11 +118,13 @@ export function LedgerTable({
                   aria-label={`Category for ${row.memo ?? "entry"}`}
                 >
                   <option value="">Uncategorized</option>
-                  {accounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
+                  {accounts
+                    .filter((a) => a.account_type === row.direction)
+                    .map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name}
+                      </option>
+                    ))}
                 </select>
               )}
             </TableCell>
