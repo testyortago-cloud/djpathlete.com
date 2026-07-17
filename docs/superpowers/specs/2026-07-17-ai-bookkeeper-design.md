@@ -122,7 +122,7 @@ All money is `integer` cents (`amount_cents`), never numeric/float (convention f
 - `source text not null check (source in ('manual','platform_import','statement_import','receipt'))` default `'manual'`
 - `source_ref text` (dedupe key back to origin: `payments:<id>`, `shop_orders:<id>`, `client_packages:<id>`, `event_signups:<id>`, `client_memberships:<id>`; null for manual)
 - `import_batch_id uuid` (groups one import run; nullable)
-- `unique (book_id, source, source_ref)` **`nulls not distinct`** — the dedupe guard so re-running the platform import never double-posts, while allowing many manual entries (null `source_ref`). Verified PG15+ supports `NULLS NOT DISTINCT`.
+- `unique (book_id, source, source_ref)` — **plain** UNIQUE (SQL-standard NULL-distinct). Corrected in migration 00184: the original 00183 used `NULLS NOT DISTINCT`, which made every NULL `source_ref` collide and so allowed only ONE manual entry (source_ref = NULL) per book — a bug. Plain UNIQUE allows unlimited manual entries (NULLs distinct) while still deduping the non-null platform `source_ref`s so re-running the import never double-posts.
 - Indexes: `(book_id, occurred_on)`, `(book_id, account_id)`, `(source, source_ref)`.
 
 ### 4.3 Income adapter (`lib/bookkeeping/income-adapter.ts` — pure)
