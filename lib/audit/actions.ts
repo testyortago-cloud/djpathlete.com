@@ -231,6 +231,14 @@ export const AUDIT_ACTIONS = [
   { slug: "membership.canceled", category: "commerce", description: "Session membership canceled" },
   { slug: "card.saved", category: "commerce", description: "Client card saved on file" },
   { slug: "client.billing_payer_set", category: "admin_write", description: "Client billing payer set or cleared" },
+
+  // bookkeeping
+  { slug: "bookkeeping.entry_created", category: "commerce", description: "Ledger entry created" },
+  { slug: "bookkeeping.entry_updated", category: "commerce", description: "Ledger entry updated" },
+  { slug: "bookkeeping.entry_deleted", category: "commerce", description: "Ledger entry deleted" },
+  { slug: "bookkeeping.account_created", category: "commerce", description: "Chart-of-accounts category created" },
+  { slug: "bookkeeping.account_updated", category: "commerce", description: "Chart-of-accounts category updated" },
+  { slug: "bookkeeping.platform_income_imported", category: "commerce", description: "Platform income posted to the ledger" },
 ] as const satisfies readonly AuditActionDef[]
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number]["slug"]
