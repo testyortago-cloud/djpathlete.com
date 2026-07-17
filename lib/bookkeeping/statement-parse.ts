@@ -244,7 +244,7 @@ export function normalizeStatementRows(
 }
 
 const NON_TRANSACTION_RE =
-  /(beginning|ending) balance|^balance|subtotal|^total (deposits|withdrawals|credits|debits)|running balance/
+  /(beginning|ending) balance|^balance\s*(forward|due)?\s*$|subtotal|^total (deposits|withdrawals|credits|debits)|running balance/
 
 /** Drop balance/total/subtotal summary lines and zero-amount lines. */
 export function dropNonTransactionRows(
@@ -264,7 +264,7 @@ export function dropNonTransactionRows(
 }
 
 const HARD_TRANSFER_RE =
-  /transfer|xfer|zelle|wire| ach |to savings|to checking|credit card|cc payment|card payment|loan payment|owner draw|\batm\b|cash withdrawal|payment - thank you|payment thank you/
+  /transfer|xfer|zelle|wire| ach |to savings|to checking|payment.*credit card|credit card.*payment|cc payment|card payment|loan payment|owner draw|\batm\b|cash withdrawal|payment - thank you|payment thank you/
 
 const MERCHANT_MARKER_RE = /[#*]|\b(llc|inc|corp|co|ltd)\b/i
 
@@ -300,7 +300,10 @@ export function transferSuspicion(row: NormalizedStatementRow): "hard" | "soft" 
   if (HARD_TRANSFER_RE.test(normalized)) return "hard"
 
   if (row.direction === "expense") {
-    if (isPersonLikeName(row.description)) return "soft"
+    // Person-to-person transfers (Zelle/Venmo-style) are typically ≥ $100 —
+    // gate on amount so small person-named merchants (e.g. "Blue Bottle")
+    // aren't pre-excluded from the ledger.
+    if (row.amount_cents >= 10000 && isPersonLikeName(row.description)) return "soft"
     if (row.amount_cents % 10000 === 0 && isSparseNoMerchant(row.description)) return "soft"
   }
 

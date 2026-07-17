@@ -106,6 +106,14 @@ describe("dropNonTransactionRows", () => {
     expect(kept.map((r) => r.description)).toEqual(["COFFEE"])
     expect(dropped).toBe(3)
   })
+  it("keeps a real transaction whose description merely starts with 'Balance'", () => {
+    const rows = [
+      { occurred_on: "2026-07-02", description: "Balance Gym Membership", amount_cents: 5000, direction: "expense" as const },
+    ]
+    const { rows: kept, dropped } = dropNonTransactionRows(rows)
+    expect(kept.map((r) => r.description)).toEqual(["Balance Gym Membership"])
+    expect(dropped).toBe(0)
+  })
 })
 
 describe("transferSuspicion", () => {
@@ -114,8 +122,14 @@ describe("transferSuspicion", () => {
     expect(transferSuspicion({ occurred_on: "2026-07-04", description: "Online Transfer to Savings", amount_cents: 20000, direction: "expense" })).toBe("hard")
     expect(transferSuspicion({ occurred_on: "2026-07-04", description: "ATM Withdrawal", amount_cents: 10000, direction: "expense" })).toBe("hard")
   })
+  it("does not hard-flag a credit-card fee/interest charge (no 'payment' co-occurrence)", () => {
+    expect(transferSuspicion({ occurred_on: "2026-07-04", description: "CREDIT CARD ANNUAL FEE", amount_cents: 9500, direction: "expense" })).not.toBe("hard")
+  })
   it("soft-flags a round outbound to a person-like name with no merchant tokens", () => {
     expect(transferSuspicion({ occurred_on: "2026-07-04", description: "John Smith", amount_cents: 100000, direction: "expense" })).toBe("soft")
+  })
+  it("does not soft-flag a small person-named merchant (amount below the $100 person-transfer gate)", () => {
+    expect(transferSuspicion({ occurred_on: "2026-07-04", description: "Blue Bottle", amount_cents: 542, direction: "expense" })).toBeNull()
   })
   it("returns null for an ordinary merchant expense", () => {
     expect(transferSuspicion({ occurred_on: "2026-07-04", description: "STARBUCKS #123", amount_cents: 542, direction: "expense" })).toBeNull()
