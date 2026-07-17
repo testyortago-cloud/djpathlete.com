@@ -51,7 +51,7 @@ describe("buildIncomeDrafts — packs, shop, events", () => {
       purchased_at: "2026-04-01T00:00:00Z", created_by: null,
       created_at: "2026-04-01T00:00:00Z", updated_at: "2026-04-01T00:00:00Z",
       product_name: "10-Pack",
-    }]
+    } as never]
     const { drafts } = buildIncomeDrafts(input)
     expect(drafts[0]).toMatchObject({
       amount_cents: 50000, service_line: "session_packs", occurred_on: "2026-04-01",
