@@ -573,6 +573,30 @@ export interface BookkeepingLedgerEntry {
   updated_at: string
 }
 
+export interface BookkeepingDocument {
+  id: string
+  book_id: string
+  kind: "statement" | "receipt"
+  original_filename: string | null
+  storage_path: string
+  mime_type: string | null
+  file_size_bytes: number | null
+  sha256: string | null
+  retain_until: string
+  uploaded_by: string | null
+  import_batch_id: string | null
+  row_count: number | null
+  posted_count: number | null
+  period_start: string | null
+  period_end: string | null
+  created_at: string
+  updated_at: string
+}
+export type NewDocument = Pick<
+  BookkeepingDocument,
+  "book_id" | "kind" | "original_filename" | "storage_path" | "mime_type" | "file_size_bytes" | "sha256" | "retain_until" | "uploaded_by" | "row_count"
+>
+
 export interface Subscription {
   id: string
   user_id: string | null
