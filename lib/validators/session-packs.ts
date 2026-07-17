@@ -24,6 +24,8 @@ export const sellPackSchema = z
     productId: z.string().uuid().optional(),
     adhoc: adhocPackSchema.optional(),
     paymentMethod: z.enum(["stripe", "cash", "comp"]),
+    /** Cash sales only: the pack is handed out now but payment (Venmo etc.) hasn't arrived yet. */
+    owed: z.boolean().optional(),
     programId: z.string().uuid().optional(),
     returnUrl: z.string().optional(),
     notes: z.string().optional(),

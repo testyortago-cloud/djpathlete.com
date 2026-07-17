@@ -77,6 +77,8 @@ export function buildPackageInsert(opts: {
   priceCents: number
   validityDays: number | null
   paymentMethod: PackPaymentMethod
+  /** Cash sales only: credits are usable now, payment (Venmo etc.) still owed. */
+  owed?: boolean
   createdBy: string | null
   now: Date
   stripeSessionId?: string | null
@@ -84,7 +86,13 @@ export function buildPackageInsert(opts: {
 }): Omit<ClientPackage, "id" | "created_at" | "updated_at"> {
   const purchasedAt = opts.now.toISOString()
   const paymentStatus: PackPaymentStatus =
-    opts.paymentMethod === "comp" ? "not_required" : opts.paymentMethod === "cash" ? "paid" : "pending"
+    opts.paymentMethod === "comp"
+      ? "not_required"
+      : opts.paymentMethod === "cash"
+        ? opts.owed
+          ? "pending"
+          : "paid"
+        : "pending"
   return {
     client_user_id: opts.clientUserId,
     product_id: opts.productId,

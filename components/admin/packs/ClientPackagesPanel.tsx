@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { Ticket, Plus, Undo2, Link2, Trash2 } from "lucide-react"
+import { Ticket, Plus, Undo2, Link2, Trash2, BadgeCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   AlertDialog,
@@ -96,6 +96,24 @@ export function ClientPackagesPanel({
     }
   }
 
+  async function markPaid(packId: string) {
+    setBusy(true)
+    try {
+      const res = await fetch(`/api/admin/session-packs/${packId}/mark-paid`, { method: "POST" })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        toast.error(d.error ?? "Could not mark paid")
+        return
+      }
+      toast.success("Pack marked paid")
+      router.refresh()
+    } catch {
+      toast.error("Network error — pack not updated")
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function deletePack(packId: string) {
     setBusy(true)
     try {
@@ -153,11 +171,16 @@ export function ClientPackagesPanel({
                     >
                       {p.status}
                     </span>
-                    {p.payment_status === "pending" && (
-                      <span className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-warning/10 text-warning">
-                        awaiting payment
-                      </span>
-                    )}
+                    {p.payment_status === "pending" &&
+                      (p.payment_method === "stripe" ? (
+                        <span className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-warning/10 text-warning">
+                          awaiting payment
+                        </span>
+                      ) : (
+                        <span className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-error/10 text-error">
+                          owes payment
+                        </span>
+                      ))}
                   </p>
                   <p className="text-xs text-muted-foreground mt-0.5">
                     Bought {fmtDate(p.purchased_at)}
@@ -192,13 +215,31 @@ export function ClientPackagesPanel({
 
               {p.payment_method === "stripe" && p.payment_status === "pending" && (
                 <div className="mt-3">
-                  <Button size="sm" variant="outline" onClick={() => copyPaymentLink(p.id)} disabled={busy}>
-                    <Link2 className="size-3.5" />
-                    Copy payment link
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" variant="outline" onClick={() => copyPaymentLink(p.id)} disabled={busy}>
+                      <Link2 className="size-3.5" />
+                      Copy payment link
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => markPaid(p.id)} disabled={busy}>
+                      <BadgeCheck className="size-3.5" />
+                      Mark paid (received offline)
+                    </Button>
+                  </div>
                   <p className="text-xs text-muted-foreground mt-1.5">
                     Send this link to the client — it&apos;s addressed to their email. The pack shows as paid
-                    automatically once they pay.
+                    automatically once they pay, or mark it paid yourself if the money came another way.
+                  </p>
+                </div>
+              )}
+
+              {p.payment_method !== "stripe" && p.payment_status === "pending" && (
+                <div className="mt-3">
+                  <Button size="sm" variant="outline" onClick={() => markPaid(p.id)} disabled={busy}>
+                    <BadgeCheck className="size-3.5" />
+                    Mark paid
+                  </Button>
+                  <p className="text-xs text-muted-foreground mt-1.5">
+                    Sessions still work — tap this when the Venmo/cash actually arrives so the debt stops showing.
                   </p>
                 </div>
               )}

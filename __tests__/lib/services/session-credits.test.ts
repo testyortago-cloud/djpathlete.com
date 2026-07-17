@@ -5,6 +5,7 @@ import {
   packStatusAfter,
   reminderThreshold,
   expiresAtFrom,
+  buildPackageInsert,
 } from "@/lib/services/session-credits"
 
 describe("remainingCredits", () => {
@@ -67,5 +68,32 @@ describe("expiresAtFrom", () => {
   })
   it("adds the validity window in days", () => {
     expect(expiresAtFrom("2026-06-13T00:00:00.000Z", 90)).toBe("2026-09-11T00:00:00.000Z")
+  })
+})
+
+describe("buildPackageInsert payment_status", () => {
+  const base = {
+    clientUserId: "c1",
+    productId: null,
+    sessionType: "1-on-1",
+    credits: 10,
+    priceCents: 50000,
+    validityDays: null,
+    createdBy: "coach-1",
+    now: new Date("2026-07-17T00:00:00Z"),
+  }
+  it("cash defaults to paid", () => {
+    expect(buildPackageInsert({ ...base, paymentMethod: "cash" }).payment_status).toBe("paid")
+  })
+  it("cash with owed stays pending (usable but debt tracked)", () => {
+    const row = buildPackageInsert({ ...base, paymentMethod: "cash", owed: true })
+    expect(row.payment_status).toBe("pending")
+    expect(row.status).toBe("active") // credits usable immediately
+  })
+  it("comp is not_required even if owed is passed", () => {
+    expect(buildPackageInsert({ ...base, paymentMethod: "comp", owed: true }).payment_status).toBe("not_required")
+  })
+  it("stripe is pending until the webhook promotes it", () => {
+    expect(buildPackageInsert({ ...base, paymentMethod: "stripe" }).payment_status).toBe("pending")
   })
 })

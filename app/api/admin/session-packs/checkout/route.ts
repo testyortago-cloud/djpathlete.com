@@ -118,7 +118,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ url: checkout.url, packageId: pkg.id })
     }
 
-    // cash / comp — create the pack directly
+    // cash / comp — create the pack directly. `owed` keeps a cash pack usable
+    // now but flagged "pending" until the offline payment (Venmo etc.) lands.
+    const owed = input.paymentMethod === "cash" && input.owed === true
     const pkg = await createClientPackage(
       buildPackageInsert({
         clientUserId: input.clientUserId,
@@ -129,6 +131,7 @@ export async function POST(request: Request) {
         priceCents,
         validityDays,
         paymentMethod: input.paymentMethod,
+        owed,
         createdBy: session.user.id,
         now,
         notes: input.notes ?? null,
@@ -140,7 +143,13 @@ export async function POST(request: Request) {
       category: "commerce",
       outcome: "success",
       target: { type: "client_package", id: pkg.id, label: name },
-      metadata: { payment_method: input.paymentMethod, credits, price_cents: priceCents, client_user_id: input.clientUserId },
+      metadata: {
+        payment_method: input.paymentMethod,
+        payment_status: pkg.payment_status,
+        credits,
+        price_cents: priceCents,
+        client_user_id: input.clientUserId,
+      },
       request,
     })
 

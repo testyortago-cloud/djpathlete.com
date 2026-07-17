@@ -42,7 +42,9 @@ export function SellPackDialog({
   const [credits, setCredits] = useState("10")
   const [price, setPrice] = useState("") // dollars
   const [validityDays, setValidityDays] = useState("")
-  const [paymentMethod, setPaymentMethod] = useState<"stripe" | "cash" | "comp">("stripe")
+  // "cash_owed" is UI-only: it submits as paymentMethod "cash" + owed true
+  // (credits usable now, pack flagged until the Venmo/cash actually arrives).
+  const [paymentMethod, setPaymentMethod] = useState<"stripe" | "cash" | "cash_owed" | "comp">("stripe")
   const [submitting, setSubmitting] = useState(false)
   const [createdLink, setCreatedLink] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
@@ -69,7 +71,10 @@ export function SellPackDialog({
   async function submit() {
     setSubmitting(true)
     try {
-      const body: Record<string, unknown> = { clientUserId, paymentMethod }
+      const body: Record<string, unknown> =
+        paymentMethod === "cash_owed"
+          ? { clientUserId, paymentMethod: "cash", owed: true }
+          : { clientUserId, paymentMethod }
       if (programId !== "none") body.programId = programId
       if (mode === "catalogue") {
         if (!productId) {
@@ -256,9 +261,16 @@ export function SellPackDialog({
               <SelectContent>
                 <SelectItem value="stripe">Card (Stripe link)</SelectItem>
                 <SelectItem value="cash">Cash / paid offline</SelectItem>
+                <SelectItem value="cash_owed">Offline — payment owed</SelectItem>
                 <SelectItem value="comp">Complimentary</SelectItem>
               </SelectContent>
             </Select>
+            {paymentMethod === "cash_owed" && (
+              <p className="text-xs text-muted-foreground">
+                Sessions can be used right away. The pack shows an &quot;owes payment&quot; badge until you mark it
+                paid (e.g. when the Venmo arrives).
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">
