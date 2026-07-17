@@ -65,6 +65,19 @@ describe("POST /api/admin/bookkeeping/statement-import/dedupe", () => {
     expect(listPostedForDedupeMock).not.toHaveBeenCalled()
   })
 
+  // Regression for C1: RTDB strips `null` leaf values on write, so an
+  // uncategorized row's `suggested_category` comes back with the key
+  // entirely absent, not `null`. Previously the schema's `.nullable()` (no
+  // `.optional()`) rejected this with a 400, blocking every statement that
+  // contained ANY uncategorized row from ever reaching review.
+  it("does not 400 a row with suggested_category key entirely missing (RTDB null-stripping)", async () => {
+    const { suggested_category: _drop, ...rowWithoutCategory } = row()
+    const res = await POST(req({ book_id: BOOK, rows: [rowWithoutCategory] }) as never)
+    expect(res.status).toBe(200)
+    const json = await res.json()
+    expect(json.rows).toHaveLength(1)
+  })
+
   it("short-circuits on empty rows with NO DAL read", async () => {
     const res = await POST(req({ book_id: BOOK, rows: [] }) as never)
     expect(res.status).toBe(200)

@@ -183,8 +183,10 @@ export function detectStatementColumns(headers: string[], rows: string[][]): Sta
 /**
  * Normalize raw CSV rows into `{ occurred_on, description, amount_cents,
  * direction }` per the detected column map. Rows with an unparseable date or
- * amount are silently dropped; ambiguous debit/credit rows (both non-zero)
- * are dropped WITH a warning.
+ * amount are dropped and rolled up into a single aggregated warning (never
+ * silent — §13 honesty: no under-import without telling the coach); ambiguous
+ * debit/credit rows (both non-zero) are dropped WITH their own per-row
+ * warning, as before.
  */
 export function normalizeStatementRows(
   rows: string[][],
@@ -192,16 +194,23 @@ export function normalizeStatementRows(
 ): { rows: NormalizedStatementRow[]; warnings: string[] } {
   const warnings: string[] = []
   const out: NormalizedStatementRow[] = []
+  let unparseableCount = 0
 
   rows.forEach((row, i) => {
     const occurred_on = parseStatementDate(row[map.date] ?? "")
-    if (!occurred_on) return // unparseable date — skip
+    if (!occurred_on) {
+      unparseableCount++
+      return // unparseable date — skip
+    }
 
     const description = (row[map.description] ?? "").trim()
 
     if (map.amountMode === "signed") {
       const parsed = parseAmountToCents(row[map.amount!] ?? "")
-      if (!parsed) return // unparseable amount — skip
+      if (!parsed) {
+        unparseableCount++
+        return // unparseable amount — skip
+      }
       const signConvention = map.signConvention ?? "negative_is_expense"
       const direction: "income" | "expense" =
         signConvention === "negative_is_expense"
@@ -227,7 +236,15 @@ export function normalizeStatementRows(
       warnings.push(`Row ${i + 1}: both debit and credit columns are non-zero (ambiguous) — skipped`)
       return
     }
-    if (!debitNonZero && !creditNonZero) return // neither present — skip silently
+    if (!debitNonZero && !creditNonZero) {
+      // A non-blank value that failed to parse is a genuine unparseable-amount
+      // skip (counted below); both columns blank/zero is a legitimate "no
+      // transaction on this line" row and stays silent.
+      const debitUnparseable = debitRaw !== "" && debitParsed === null
+      const creditUnparseable = creditRaw !== "" && creditParsed === null
+      if (debitUnparseable || creditUnparseable) unparseableCount++
+      return
+    }
 
     if (debitNonZero) {
       // Debit's natural direction is expense; a negative value flips it to income.
@@ -239,6 +256,12 @@ export function normalizeStatementRows(
       out.push({ occurred_on, description, amount_cents: creditParsed!.cents, direction })
     }
   })
+
+  if (unparseableCount > 0) {
+    warnings.push(
+      `${unparseableCount} row(s) were skipped because their date or amount could not be read — check the statement for an unusual format.`,
+    )
+  }
 
   return { rows: out, warnings }
 }

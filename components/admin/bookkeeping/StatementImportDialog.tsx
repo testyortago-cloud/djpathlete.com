@@ -54,10 +54,20 @@ function mapProgressToStep(progress?: {
   return { step: idx >= 0 ? idx + 1 : progress.current_step, detail: progress.detail ?? null }
 }
 
-/** Firebase RTDB drops empty arrays, so `result.rows`/`result.warnings` may be
- *  undefined after round-trip even though the job wrote a non-empty array. */
+/** Firebase RTDB drops empty arrays AND `null` leaf values, so `result.rows`/
+ *  `result.warnings` may be undefined after round-trip even though the job
+ *  wrote a non-empty array, and an uncategorized row's `suggested_category`
+ *  (written as `null`) may be missing entirely on read-back. Coalesce it back
+ *  to `null` here — the single boundary where RTDB-shaped data enters the
+ *  component — so every downstream consumer (the dedupe POST body, the
+ *  review-grid render) can keep assuming the field is always present. */
 function safeResultRows(v: unknown): JobResultRow[] {
-  return Array.isArray(v) ? (v as JobResultRow[]) : []
+  if (!Array.isArray(v)) return []
+  return (v as JobResultRow[]).map((r) => ({
+    ...r,
+    suggested_category: r.suggested_category ?? null,
+    confidence: r.confidence ?? "low",
+  }))
 }
 
 function safeResultWarnings(v: unknown): string[] {

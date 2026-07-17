@@ -92,6 +92,43 @@ describe("normalizeStatementRows", () => {
     const { rows } = normalizeStatementRows([["07/04/2026", "CHARGEBACK", "0.00", "(50.00)"]], map)
     expect(rows[0]).toMatchObject({ amount_cents: 5000, direction: "expense" })
   })
+
+  // I1: an unparseable date/amount must never be dropped silently — the coach
+  // has to be told rows were skipped, or a real expense/income can vanish
+  // from the import with no trace.
+  it("signed: an unparseable amount is dropped AND surfaced in an aggregated warning", () => {
+    const map = { date: 0, description: 1, amountMode: "signed" as const, amount: 2, signConvention: "negative_is_expense" as const }
+    const { rows, warnings } = normalizeStatementRows(
+      [
+        ["07/04/2026", "COFFEE", "-5.00"],
+        ["07/05/2026", "GARBLED", "PENDING"],
+        ["07/06/2026", "BLANK", ""],
+      ],
+      map,
+    )
+    expect(rows).toHaveLength(1)
+    expect(rows[0].description).toBe("COFFEE")
+    expect(warnings.some((w) => /2 row\(s\) were skipped/.test(w))).toBe(true)
+  })
+
+  it("signed: an unparseable date is counted in the same aggregated warning", () => {
+    const map = { date: 0, description: 1, amountMode: "signed" as const, amount: 2, signConvention: "negative_is_expense" as const }
+    const { rows, warnings } = normalizeStatementRows(
+      [
+        ["not-a-date", "MYSTERY", "5.00"],
+        ["07/05/2026", "OK", "5.00"],
+      ],
+      map,
+    )
+    expect(rows).toHaveLength(1)
+    expect(warnings.some((w) => /1 row\(s\) were skipped/.test(w))).toBe(true)
+  })
+
+  it("does not emit an unparseable-skip warning when every row parses cleanly", () => {
+    const map = { date: 0, description: 1, amountMode: "signed" as const, amount: 2, signConvention: "negative_is_expense" as const }
+    const { warnings } = normalizeStatementRows([["07/04/2026", "COFFEE", "-5.00"]], map)
+    expect(warnings.some((w) => /were skipped/.test(w))).toBe(false)
+  })
 })
 
 describe("dropNonTransactionRows", () => {

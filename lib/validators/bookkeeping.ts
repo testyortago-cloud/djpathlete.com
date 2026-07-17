@@ -69,7 +69,7 @@ export const statementDedupeSchema = z.object({
     amount_cents: z.number().int().nonnegative(),
     direction: z.enum(["income", "expense"]),
     description: z.string(),
-    suggested_category: z.string().nullable(),
+    suggested_category: z.string().nullable().optional(),
     is_transfer: z.boolean(),
     confidence: z.enum(["low", "medium", "high"]),
   })).max(500),
