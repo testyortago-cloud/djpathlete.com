@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import type { BookkeepingBook, BookkeepingAccount, LedgerAccountType } from "@/types/database"
+import { StatementsList } from "@/components/admin/bookkeeping/StatementsList"
+import type { BookkeepingBook, BookkeepingAccount, BookkeepingDocument, LedgerAccountType } from "@/types/database"
 
 interface NewAccountForm {
   name: string
@@ -37,10 +38,12 @@ export function AccountsManager({
   books,
   initialBookId,
   initialAccounts,
+  initialDocuments,
 }: {
   books: BookkeepingBook[]
   initialBookId: string
   initialAccounts: BookkeepingAccount[]
+  initialDocuments: BookkeepingDocument[]
 }) {
   const [bookId, setBookId] = useState(initialBookId)
   const [accounts, setAccounts] = useState<BookkeepingAccount[]>(initialAccounts)
@@ -356,6 +359,8 @@ export function AccountsManager({
                 Add account
               </Button>
             </div>
+
+            <StatementsList bookId={bookId} initialDocuments={initialDocuments} />
           </TabsContent>
         </Tabs>
       )}

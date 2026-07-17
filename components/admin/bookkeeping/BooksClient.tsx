@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/ui/empty-state"
 import { LedgerTable } from "@/components/admin/bookkeeping/LedgerTable"
 import { ManualEntryDialog } from "@/components/admin/bookkeeping/ManualEntryDialog"
 import { ImportPlatformDialog } from "@/components/admin/bookkeeping/ImportPlatformDialog"
+import { StatementImportDialog } from "@/components/admin/bookkeeping/StatementImportDialog"
 import { formatCents } from "@/lib/bookkeeping/money"
 import type {
   BookkeepingBook,
@@ -72,6 +73,7 @@ export function BooksClient({
   const [manualEntryOpen, setManualEntryOpen] = useState(false)
   const [editingEntry, setEditingEntry] = useState<BookkeepingLedgerEntry | null>(null)
   const [importOpen, setImportOpen] = useState(false)
+  const [statementOpen, setStatementOpen] = useState(false)
 
   const fetchEntries = useCallback(async () => {
     if (!bookId) return
@@ -218,6 +220,10 @@ export function BooksClient({
               <Upload className="size-4" />
               Import platform income
             </Button>
+            <Button size="sm" variant="outline" onClick={() => setStatementOpen(true)}>
+              <Upload className="size-4" />
+              Import statement
+            </Button>
             <Link
               href="/admin/books/accounts"
               className="ml-auto text-sm text-muted-foreground hover:text-accent underline-offset-4 hover:underline"
@@ -344,6 +350,16 @@ export function BooksClient({
         accounts={accounts}
         open={importOpen}
         onOpenChange={setImportOpen}
+        onSaved={fetchEntries}
+      />
+      <StatementImportDialog
+        bookId={bookId}
+        bookKind={selectedBook?.book_kind ?? "business"}
+        bookIsPrimary={selectedBook?.is_primary ?? true}
+        bookName={selectedBook?.name ?? ""}
+        accounts={accounts}
+        open={statementOpen}
+        onOpenChange={setStatementOpen}
         onSaved={fetchEntries}
       />
     </div>

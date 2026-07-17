@@ -227,8 +227,9 @@ export function StatementImportDialog({
   function handleOpenChange(newOpen: boolean) {
     // Block dismissal (Escape/backdrop/X) while a job is in flight — the user
     // must use the Cancel button so the RTDB listener + job are torn down
-    // cleanly instead of orphaned.
-    if (!newOpen && isImporting) return
+    // cleanly instead of orphaned. Also block mid-commit (posting) so closing
+    // the review dialog can't orphan the in-flight POST.
+    if (!newOpen && (isImporting || posting)) return
     onOpenChange(newOpen)
   }
 
