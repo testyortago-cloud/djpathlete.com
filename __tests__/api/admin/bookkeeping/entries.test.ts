@@ -27,6 +27,8 @@ describe("GET /api/admin/bookkeeping/entries", () => {
     authMock.mockResolvedValue({ user: { id: "u", role: "client" } })
     const res = await GET(new Request(`http://x/api?book_id=${BOOK}`) as never)
     expect(res.status).toBe(403)
+    expect(listEntriesMock).not.toHaveBeenCalled()
+    expect(entryTotalsMock).not.toHaveBeenCalled()
   })
   it("400s without book_id", async () => {
     const res = await GET(new Request("http://x/api") as never)
@@ -54,18 +56,39 @@ describe("GET /api/admin/bookkeeping/entries", () => {
     entryTotalsMock.mockResolvedValue({ income_cents: 0, expense_cents: 0 })
     const res = await GET(new Request(`http://x/api?book_id=${BOOK}&page=abc`) as never)
     expect(res.status).toBe(200)
+    const json = await res.json()
+    expect(json.page).toBe(1)
   })
 })
 
 describe("POST /api/admin/bookkeeping/entries", () => {
+  it("403s a non-admin", async () => {
+    authMock.mockResolvedValue({ user: { id: "u", role: "client" } })
+    const res = await POST(new Request("http://x/api", {
+      method: "POST",
+      body: JSON.stringify({ book_id: BOOK, direction: "expense", amount_cents: 4200, occurred_on: "2026-07-01" }),
+    }) as never)
+    expect(res.status).toBe(403)
+    expect(createEntryMock).not.toHaveBeenCalled()
+  })
   it("creates a manual entry", async () => {
-    createEntryMock.mockResolvedValue({ id: "e9", memo: "Bands" })
+    const returnedEntry = { id: "e9", memo: "Bands", direction: "expense", amount_cents: 4200, occurred_on: "2026-07-01" }
+    createEntryMock.mockResolvedValue(returnedEntry)
     const res = await POST(new Request("http://x/api", {
       method: "POST",
       body: JSON.stringify({ book_id: BOOK, direction: "expense", amount_cents: 4200, occurred_on: "2026-07-01" }),
     }) as never)
     expect(res.status).toBe(201)
     expect(createEntryMock).toHaveBeenCalledOnce()
+    expect(createEntryMock).toHaveBeenCalledWith(expect.objectContaining({
+      source: "manual",
+      source_ref: null,
+      direction: "expense",
+      amount_cents: 4200,
+      occurred_on: "2026-07-01",
+    }))
+    const json = await res.json()
+    expect(json.entry).toEqual(returnedEntry)
   })
   it("400s invalid input", async () => {
     const res = await POST(new Request("http://x/api", {

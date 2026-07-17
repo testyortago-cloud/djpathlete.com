@@ -26,6 +26,7 @@ describe("import-platform preview", () => {
     authMock.mockResolvedValue({ user: { id: "u", role: "client" } })
     const res = await PREVIEW(new Request("http://x", { method: "POST", body: "{}" }) as never)
     expect(res.status).toBe(403)
+    expect(listPlatformIncomeMock).not.toHaveBeenCalled()
   })
   it("returns drafts + warnings from real sources", async () => {
     listPlatformIncomeMock.mockResolvedValue({
@@ -52,16 +53,34 @@ describe("import-platform preview", () => {
 })
 
 describe("import-platform commit", () => {
-  it("posts reviewed drafts and returns inserted count", async () => {
-    insertImportedEntriesMock.mockResolvedValue({ inserted: 2 })
+  it("403s non-admin", async () => {
+    authMock.mockResolvedValue({ user: { id: "u", role: "client" } })
     const res = await COMMIT(new Request("http://x", { method: "POST", body: JSON.stringify({
       book_id: BOOK, entries: [
         { direction: "income", amount_cents: 9900, occurred_on: "2026-03-02", memo: "x",
           counterparty: "a@b.com", service_line: "performance_training", source: "platform_import", source_ref: "payments:1" },
-        { direction: "income", amount_cents: 100, occurred_on: "2026-03-03", memo: "y",
-          counterparty: null, service_line: "shop", source: "platform_import", source_ref: "shop_orders:2" },
       ] }) }) as never)
+    expect(res.status).toBe(403)
+    expect(insertImportedEntriesMock).not.toHaveBeenCalled()
+  })
+  it("400s an empty entries array", async () => {
+    const res = await COMMIT(new Request("http://x", { method: "POST", body: JSON.stringify({
+      book_id: BOOK, entries: [] }) }) as never)
+    expect(res.status).toBe(400)
+    expect(insertImportedEntriesMock).not.toHaveBeenCalled()
+  })
+  it("posts reviewed drafts and returns inserted count", async () => {
+    insertImportedEntriesMock.mockResolvedValue({ inserted: 2 })
+    const entries = [
+      { direction: "income", amount_cents: 9900, occurred_on: "2026-03-02", memo: "x",
+        counterparty: "a@b.com", service_line: "performance_training", source: "platform_import", source_ref: "payments:1" },
+      { direction: "income", amount_cents: 100, occurred_on: "2026-03-03", memo: "y",
+        counterparty: null, service_line: "shop", source: "platform_import", source_ref: "shop_orders:2" },
+    ]
+    const res = await COMMIT(new Request("http://x", { method: "POST", body: JSON.stringify({
+      book_id: BOOK, entries }) }) as never)
     expect(res.status).toBe(200)
+    expect(insertImportedEntriesMock).toHaveBeenCalledWith(BOOK, expect.any(String), entries)
     expect((await res.json()).inserted).toBe(2)
   })
 })
