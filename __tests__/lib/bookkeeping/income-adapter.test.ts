@@ -37,6 +37,18 @@ describe("buildIncomeDrafts — payments", () => {
     expect(drafts).toHaveLength(0)
     expect(warnings.some((w) => w.includes("refunded"))).toBe(true)
   })
+  it("silently skips pending/failed payments (no income leak, no warning)", () => {
+    const input = base()
+    input.payments = ["pending", "failed"].map((status, i) => ({
+      id: `11111111-1111-4111-8111-11111111112${i}`, user_id: null, stripe_payment_id: `pi_s${i}`,
+      stripe_customer_id: null, amount_cents: 7000, currency: "usd", status,
+      description: "x", metadata: {}, created_at: "2026-03-02T10:00:00Z",
+      updated_at: "2026-03-02T10:00:00Z", gclid: null, gbraid: null, wbraid: null, fbclid: null,
+    })) as never
+    const { drafts, warnings } = buildIncomeDrafts(input)
+    expect(drafts).toHaveLength(0)
+    expect(warnings).toHaveLength(0)
+  })
 })
 
 describe("buildIncomeDrafts — packs, shop, events", () => {
@@ -57,6 +69,18 @@ describe("buildIncomeDrafts — packs, shop, events", () => {
       amount_cents: 50000, service_line: "session_packs", occurred_on: "2026-04-01",
       source_ref: "client_packages:22222222-2222-4222-8222-222222222221", memo: "10-Pack",
     })
+  })
+  it("skips shop orders in excluded statuses (canceled/refunded/pending)", () => {
+    const input = base()
+    input.shopOrders = ["canceled", "refunded", "pending"].map((status, i) => ({
+      id: `55555555-5555-4555-8555-55555555556${i}`, total_cents: 9999, subtotal_cents: 9999,
+      shipping_cents: 0, status, customer_name: "C", customer_email: "c@c.com", user_id: null,
+      order_number: `ox${i}`, stripe_session_id: null, stripe_payment_intent_id: null,
+      refund_amount_cents: null, items: [], created_at: "2026-06-01T00:00:00Z",
+      updated_at: "2026-06-01T00:00:00Z", shipped_at: null,
+    })) as never
+    const { drafts } = buildIncomeDrafts(input)
+    expect(drafts).toHaveLength(0)
   })
   it("emits a confirmed paid event signup, skips interest rows", () => {
     const input = base()

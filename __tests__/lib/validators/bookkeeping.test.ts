@@ -24,6 +24,20 @@ describe("createEntrySchema", () => {
     })
     expect(r.success).toBe(false)
   })
+  it("rejects a malformed occurred_on date", () => {
+    for (const bad of ["07/01/2026", "2026-7-1", "nope", "2026-13-01T00:00:00Z"]) {
+      const r = createEntrySchema.safeParse({
+        book_id: BOOK, direction: "income", amount_cents: 1, occurred_on: bad,
+      })
+      expect(r.success, `expected reject for ${bad}`).toBe(false)
+    }
+  })
+  it("rejects a non-UUID book_id", () => {
+    const r = createEntrySchema.safeParse({
+      book_id: "not-a-uuid", direction: "income", amount_cents: 1, occurred_on: "2026-07-01",
+    })
+    expect(r.success).toBe(false)
+  })
 })
 
 describe("importPreviewSchema", () => {
