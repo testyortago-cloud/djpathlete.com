@@ -106,6 +106,14 @@ describe("POST /api/admin/bookkeeping/statement-import", () => {
     expect(createDocumentMock).not.toHaveBeenCalled()
   })
 
+  it("400s on a malformed book_id", async () => {
+    const res = await POST(fakeRequest({ file: fileLike(), book_id: "not-a-uuid" }) as never)
+    expect(res.status).toBe(400)
+    const json = await res.json()
+    expect(json.error).toMatch(/invalid book_id/i)
+    expect(createDocumentMock).not.toHaveBeenCalled()
+  })
+
   it("400s on an unsupported file type", async () => {
     const res = await POST(
       fakeRequest({ file: fileLike({ name: "statement.zip", type: "application/zip" }), book_id: BOOK }) as never,

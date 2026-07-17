@@ -12,15 +12,24 @@ export async function GET(request: Request) {
     const sp = new URL(request.url).searchParams
     const bookId = sp.get("book_id")
     if (!bookId) return NextResponse.json({ error: "book_id required" }, { status: 400 })
+    const dirRaw = sp.get("direction")
+    if (dirRaw !== null && dirRaw !== "income" && dirRaw !== "expense") {
+      return NextResponse.json({ error: "invalid direction" }, { status: 400 })
+    }
+    const srcRaw = sp.get("source")
+    const SOURCES = ["manual", "platform_import", "statement_import", "receipt"]
+    if (srcRaw !== null && !SOURCES.includes(srcRaw)) {
+      return NextResponse.json({ error: "invalid source" }, { status: 400 })
+    }
     const pageRaw = Number(sp.get("page") ?? "1")
     const page = Number.isFinite(pageRaw) && pageRaw >= 1 ? Math.floor(pageRaw) : 1
     const params = {
       bookId,
       from: sp.get("from") ?? undefined,
       to: sp.get("to") ?? undefined,
-      direction: (sp.get("direction") as LedgerDirection) ?? undefined,
+      direction: (dirRaw ?? undefined) as LedgerDirection | undefined,
       accountId: sp.get("account_id") ?? undefined,
-      source: (sp.get("source") as LedgerSource) ?? undefined,
+      source: (srcRaw ?? undefined) as LedgerSource | undefined,
       search: sp.get("q") ?? undefined,
       page,
       perPage: 50,

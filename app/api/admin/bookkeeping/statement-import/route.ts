@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { createHash, randomUUID } from "node:crypto"
+import { z } from "zod"
 import { auth } from "@/lib/auth"
 import { createDocument, findDocumentBySha256, getBook, listAccounts } from "@/lib/db/bookkeeping"
 import { createGenerationLog } from "@/lib/db/ai-generation-log"
@@ -51,6 +52,9 @@ export async function POST(request: Request) {
 
     if (!bookId) {
       return NextResponse.json({ error: "book_id is required" }, { status: 400 })
+    }
+    if (!z.string().uuid().safeParse(bookId).success) {
+      return NextResponse.json({ error: "invalid book_id" }, { status: 400 })
     }
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 })
