@@ -68,7 +68,7 @@ function applyEntryFilters<Q extends { eq: (c: string, v: unknown) => Q; gte: (c
   if (p.accountId) out = out.eq("account_id", p.accountId)
   if (p.source) out = out.eq("source", p.source)
   if (p.search) {
-    const esc = p.search.replace(/[%_]/g, (m) => `\\${m}`)
+    const esc = p.search.replace(/[%_]/g, (m) => `\\${m}`).replace(/[,()]/g, " ")
     out = out.or(`memo.ilike.%${esc}%,counterparty.ilike.%${esc}%`)
   }
   return out
