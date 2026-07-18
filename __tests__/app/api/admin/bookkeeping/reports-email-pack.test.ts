@@ -69,4 +69,10 @@ describe("POST /api/admin/bookkeeping/reports/email-pack", () => {
     await POST(body({ ...okBody, remember: true }))
     expect(setSetting).toHaveBeenCalledWith("bookkeeping_accountant_email", "cpa@firm.com", UUID)
   })
+  it("remember=true + send failure does NOT persist the address", async () => {
+    ;(sendAccountantPack as ReturnType<typeof vi.fn>).mockResolvedValue({ error: "boom" })
+    const res = await POST(body({ ...okBody, remember: true }))
+    expect(res.status).toBe(502)
+    expect(setSetting).not.toHaveBeenCalled()
+  })
 })

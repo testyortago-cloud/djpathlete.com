@@ -97,4 +97,17 @@ describe("sendAccountantPack", () => {
     expect(res.error).toMatch(/RESEND_API_KEY/)
     expect(send).not.toHaveBeenCalled()
   })
+
+  it("sends without cc when COACH_EMAIL is unset (and does not crash)", async () => {
+    delete process.env.COACH_EMAIL
+    send.mockResolvedValue({ data: { id: "email_1" }, error: null })
+    const res = await sendAccountantPack({
+      recipient: "cpa@firm.com",
+      from: "2026-01-01",
+      to: "2026-03-31",
+      buffer: Buffer.from("xlsx-bytes"),
+    })
+    expect(res.error).toBeNull()
+    expect(send.mock.calls[0][0].cc).toBeUndefined()
+  })
 })
