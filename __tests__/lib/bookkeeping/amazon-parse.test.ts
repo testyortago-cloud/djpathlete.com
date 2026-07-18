@@ -45,4 +45,11 @@ describe("parseAmazonCsv", () => {
     expect(rows).toEqual([])
     expect(warnings[0]).toMatch(/could not detect/i)
   })
+
+  it("skips a negative/refund amount with a warning (never posts a wrong-signed expense)", () => {
+    const csv = `Order Date,Order ID,Title,Item Total\n2026-06-15,111-1,Refund,-$5.00\n2026-06-16,111-2,Credit,($3.00)`
+    const { rows, warnings } = parseAmazonCsv(csv)
+    expect(rows).toHaveLength(0)
+    expect(warnings.length).toBeGreaterThanOrEqual(2)
+  })
 })

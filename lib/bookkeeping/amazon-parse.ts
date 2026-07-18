@@ -14,7 +14,7 @@ export interface AmazonRow {
 }
 
 const DATE_HEADERS = ["order date", "date"]
-const ORDER_HEADERS = ["order id", "order id ", "orderid"]
+const ORDER_HEADERS = ["order id", "orderid"]
 const TITLE_HEADERS = ["title", "product name", "item name", "name"]
 const AMOUNT_HEADERS = ["item total", "total owed", "item subtotal", "purchase price per unit", "total charged"]
 
@@ -51,7 +51,7 @@ export function parseAmazonCsv(text: string): { rows: AmazonRow[]; warnings: str
 
     if (!orderId) { warnings.push(`Row ${i + 1}: missing Order ID — skipped.`); continue }
     if (!occurred_on) { warnings.push(`Row ${i + 1} (${orderId}): unreadable date — skipped.`); continue }
-    if (!amt || amt.cents <= 0) { warnings.push(`Row ${i + 1} (${orderId}): unreadable amount — skipped.`); continue }
+    if (!amt || amt.negative || amt.cents <= 0) { warnings.push(`Row ${i + 1} (${orderId}): unreadable or negative amount (refund/credit) — skipped.`); continue }
 
     const lineIndex = lineByOrder.get(orderId) ?? 0
     lineByOrder.set(orderId, lineIndex + 1)
