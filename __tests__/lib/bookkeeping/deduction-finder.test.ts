@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
-import { deductionFindings } from "@/lib/bookkeeping/deduction-finder"
+import { deductionFindings, homeOfficeCandidate, HOME_OFFICE_ACCOUNT_NAMES } from "@/lib/bookkeeping/deduction-finder"
 import type { InsightAccount, InsightEntry } from "@/lib/bookkeeping/insight-types"
+import type { BookkeepingBook } from "@/types/database"
 
 const BOOK_BIZ = "b0000000-0000-4000-8000-000000000001"
 const BOOK_OTHER = "b0000000-0000-4000-8000-000000000002"
@@ -140,5 +141,80 @@ describe("deductionFindings — uncategorized sweep", () => {
     expect(r.substantiation_gaps).toEqual([])
     expect(r.uncategorized).toEqual({ total_cents: 0, entry_count: 0, entries: [] })
     expect(r.watchlist.every((w) => w.total_cents === 0)).toBe(true)
+  })
+})
+
+const BOOK_HH = "b0000000-0000-4000-8000-000000000003"
+const ACC_HH_RENT = "a0000000-0000-4000-8000-000000000010"
+const ACC_HH_UTIL = "a0000000-0000-4000-8000-000000000011"
+const ACC_HH_INS = "a0000000-0000-4000-8000-000000000012"
+const ACC_HH_GROC = "a0000000-0000-4000-8000-000000000013"
+
+const books = [
+  { id: BOOK_BIZ, name: "Darren — DJP Athlete", book_kind: "business", is_primary: true },
+  { id: BOOK_OTHER, name: "Spouse — Business", book_kind: "business", is_primary: false },
+  { id: BOOK_HH, name: "Household & Personal", book_kind: "household", is_primary: false },
+] as BookkeepingBook[]
+
+const hhAccounts: InsightAccount[] = [
+  account({ id: ACC_HH_RENT, book_id: BOOK_HH, name: "Rent", is_deductible_candidate: false }),
+  account({ id: ACC_HH_UTIL, book_id: BOOK_HH, name: "  utilities ", is_deductible_candidate: false }),
+  account({ id: ACC_HH_INS, book_id: BOOK_HH, name: "Renter's Insurance", is_deductible_candidate: false }),
+  account({ id: ACC_HH_GROC, book_id: BOOK_HH, name: "Groceries", is_deductible_candidate: false }),
+]
+
+describe("homeOfficeCandidate", () => {
+  it("matches allowlist names case/whitespace-insensitively, nets income, excludes the rest", () => {
+    const r = homeOfficeCandidate([
+      entry({ book_id: BOOK_HH, account_id: ACC_HH_RENT, amount_cents: 200000 }),
+      entry({ book_id: BOOK_HH, account_id: ACC_HH_UTIL, amount_cents: 15000 }),
+      entry({ book_id: BOOK_HH, account_id: ACC_HH_UTIL, direction: "income", amount_cents: 3000 }), // utility credit
+      entry({ book_id: BOOK_HH, account_id: ACC_HH_GROC, amount_cents: 40000 }), // excluded
+      entry({ book_id: BOOK_HH, account_id: null, amount_cents: 500 }),          // excluded (uncategorized)
+      entry({ book_id: BOOK_BIZ, amount_cents: 77777 }),                          // business book — ignored entirely
+    ], [...accounts, ...hhAccounts], books, 25)
+    expect(r.target_book_id).toBe(BOOK_BIZ)
+    expect(r.household_books).toEqual([{ id: BOOK_HH, name: "Household & Personal" }])
+    expect(r.input_total_cents).toBe(212000)
+    expect(r.inputs.find((i) => i.account_id === ACC_HH_RENT)).toMatchObject({ total_cents: 200000, proposed_cents: 50000 })
+    expect(r.inputs.find((i) => i.account_id === ACC_HH_UTIL)).toMatchObject({ total_cents: 12000, proposed_cents: 3000 })
+    expect(r.proposed_total_cents).toBe(53000)
+    expect(r.excluded_household_expense_cents).toBe(40500)
+    // matched-but-empty allowlist accounts still itemized (Renter's Insurance)
+    expect(r.inputs.find((i) => i.account_id === ACC_HH_INS)).toMatchObject({ total_cents: 0, entry_count: 0, proposed_cents: 0 })
+    // non-matched Groceries never becomes an input
+    expect(r.inputs.find((i) => i.account_id === ACC_HH_GROC)).toBeUndefined()
+  })
+
+  it("percent null → itemized inputs with null proposals", () => {
+    const r = homeOfficeCandidate([entry({ book_id: BOOK_HH, account_id: ACC_HH_RENT, amount_cents: 100000 })], [...accounts, ...hhAccounts], books, null)
+    expect(r.percent).toBeNull()
+    expect(r.proposed_total_cents).toBeNull()
+    expect(r.inputs.find((i) => i.account_id === ACC_HH_RENT)?.proposed_cents).toBeNull()
+  })
+
+  it("pins Math.round at awkward boundaries: 33.33% of odd cents; negative half-cent rounds toward +∞", () => {
+    const r = homeOfficeCandidate([
+      entry({ book_id: BOOK_HH, account_id: ACC_HH_RENT, amount_cents: 10001 }),
+      entry({ book_id: BOOK_HH, account_id: ACC_HH_UTIL, direction: "income", amount_cents: 99 }), // net −99
+    ], [...accounts, ...hhAccounts], books, 33.33)
+    expect(r.inputs.find((i) => i.account_id === ACC_HH_RENT)?.proposed_cents).toBe(3333) // 3333.3333 → 3333
+    // −99 × 50% would be −49.5 → −49; here −99 × 33.33% = −32.9967 → −33
+    expect(r.inputs.find((i) => i.account_id === ACC_HH_UTIL)?.proposed_cents).toBe(-33)
+    expect(r.proposed_total_cents).toBe(3300) // sum of rounded inputs, NOT round of sum
+  })
+
+  it("Math.round(−49.5) rounds toward +∞ (pinned)", () => {
+    const r = homeOfficeCandidate([
+      entry({ book_id: BOOK_HH, account_id: ACC_HH_UTIL, direction: "income", amount_cents: 99 }),
+    ], [...accounts, ...hhAccounts], books, 50)
+    expect(r.inputs.find((i) => i.account_id === ACC_HH_UTIL)?.proposed_cents).toBe(-49)
+  })
+
+  it("no business book → target null; household 'Vehicles' never matches business 'Vehicle' semantics", () => {
+    const hhOnly = [{ id: BOOK_HH, name: "Household & Personal", book_kind: "household", is_primary: false }] as BookkeepingBook[]
+    const r = homeOfficeCandidate([], hhAccounts, hhOnly, 20)
+    expect(r.target_book_id).toBeNull()
+    expect(HOME_OFFICE_ACCOUNT_NAMES).not.toContain("vehicles")
   })
 })

@@ -1,6 +1,6 @@
 // Pure deduction finders (Phase 5). Zero IO; integer cents; direction carries sign.
 // Every output is a CANDIDATE the accountant confirms — never a filed decision.
-import type { LedgerDirection, LedgerSource } from "@/types/database"
+import type { BookkeepingBook, LedgerDirection, LedgerSource } from "@/types/database"
 import type { InsightAccount, InsightEntry } from "./insight-types"
 import { normalizeCounterparty } from "./insight-types"
 
@@ -160,5 +160,89 @@ export function deductionFindings(
     substantiation_gaps: substantiationGaps,
     gap_total_cents: gapTotal,
     uncategorized,
+  }
+}
+
+// --- Home-office allocation candidate (D1: reads Household, WRITES NOTHING — a labeled proposal) ---
+
+export const HOME_OFFICE_ACCOUNT_NAMES = [
+  "rent",
+  "utilities",
+  "internet",
+  "renter's insurance",
+  "home repairs & maintenance",
+] as const
+
+export interface HomeOfficeInput {
+  account_id: string
+  name: string
+  entry_count: number
+  total_cents: number
+  proposed_cents: number | null
+}
+
+export interface HomeOfficeCandidate {
+  percent: number | null
+  target_book_id: string | null
+  household_books: { id: string; name: string }[]
+  inputs: HomeOfficeInput[]
+  input_total_cents: number
+  proposed_total_cents: number | null
+  excluded_household_expense_cents: number
+}
+
+export function homeOfficeCandidate(
+  entries: InsightEntry[],
+  accounts: InsightAccount[],
+  books: BookkeepingBook[],
+  percent: number | null,
+): HomeOfficeCandidate {
+  const householdBooks = books.filter((b) => b.book_kind === "household")
+  const householdIds = new Set(householdBooks.map((b) => b.id))
+  const businessBooks = books.filter((b) => b.book_kind === "business")
+  const target = businessBooks.find((b) => b.is_primary) ?? businessBooks[0] ?? null
+
+  const allowlist = new Set<string>(HOME_OFFICE_ACCOUNT_NAMES)
+  const matched = accounts.filter(
+    (a) => householdIds.has(a.book_id) && allowlist.has(normalizeCounterparty(a.name) ?? ""),
+  )
+  const matchedIds = new Set(matched.map((a) => a.id))
+
+  const netByAccount = new Map<string, { total_cents: number; entry_count: number }>()
+  let excluded = 0
+  for (const e of entries) {
+    if (!householdIds.has(e.book_id)) continue
+    if (e.account_id !== null && matchedIds.has(e.account_id)) {
+      const agg = netByAccount.get(e.account_id) ?? { total_cents: 0, entry_count: 0 }
+      agg.total_cents += e.direction === "expense" ? e.amount_cents : -e.amount_cents
+      agg.entry_count += 1
+      netByAccount.set(e.account_id, agg)
+    } else if (e.direction === "expense") {
+      excluded += e.amount_cents
+    }
+  }
+
+  const inputs: HomeOfficeInput[] = matched
+    .map((a) => {
+      const agg = netByAccount.get(a.id) ?? { total_cents: 0, entry_count: 0 }
+      return {
+        account_id: a.id,
+        name: a.name,
+        entry_count: agg.entry_count,
+        total_cents: agg.total_cents,
+        proposed_cents: percent === null ? null : Math.round((agg.total_cents * percent) / 100),
+      }
+    })
+    .sort((a, b) => b.total_cents - a.total_cents || a.name.localeCompare(b.name))
+
+  return {
+    percent,
+    target_book_id: target?.id ?? null,
+    household_books: householdBooks.map((b) => ({ id: b.id, name: b.name })),
+    inputs,
+    input_total_cents: inputs.reduce((sum, i) => sum + i.total_cents, 0),
+    proposed_total_cents:
+      percent === null ? null : inputs.reduce((sum, i) => sum + (i.proposed_cents ?? 0), 0),
+    excluded_household_expense_cents: excluded,
   }
 }
