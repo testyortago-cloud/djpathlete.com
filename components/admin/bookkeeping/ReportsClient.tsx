@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { toast } from "sonner"
-import { BarChart3, Download, FileSpreadsheet, Printer } from "lucide-react"
+import { BarChart3, Download, FileSpreadsheet, Mail, Printer } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { EmptyState } from "@/components/ui/empty-state"
+import { EmailPackDialog } from "@/components/admin/bookkeeping/EmailPackDialog"
 import { formatCents } from "@/lib/bookkeeping/money"
 import { presetRange, PERIOD_PRESET_LABELS, type PeriodPreset } from "@/lib/bookkeeping/period"
 import type { BookkeepingBook } from "@/types/database"
@@ -27,7 +28,15 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
-export function ReportsClient({ books }: { books: BookkeepingBook[] }) {
+export function ReportsClient({
+  books,
+  emailPackEnabled,
+  defaultAccountantEmail,
+}: {
+  books: BookkeepingBook[]
+  emailPackEnabled: boolean
+  defaultAccountantEmail: string
+}) {
   const initial = presetRange("this_year", todayIso())
   const [preset, setPreset] = useState<PeriodPreset | "custom">("this_year")
   const [from, setFrom] = useState(initial.from)
@@ -35,6 +44,7 @@ export function ReportsClient({ books }: { books: BookkeepingBook[] }) {
   const [data, setData] = useState<ReportData | null>(null)
   const [loading, setLoading] = useState(true)
   const [bookId, setBookId] = useState(books.find((b) => b.is_primary)?.id ?? books[0]?.id ?? "")
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false)
   const fetchRequestIdRef = useRef(0)
 
   const fetchReport = useCallback(async () => {
@@ -175,6 +185,12 @@ export function ReportsClient({ books }: { books: BookkeepingBook[] }) {
                 Print view
               </a>
             </Button>
+            {emailPackEnabled ? (
+              <Button size="sm" variant="outline" onClick={() => setEmailDialogOpen(true)}>
+                <Mail className="size-4" />
+                Email to accountant
+              </Button>
+            ) : null}
             {active && active.row_count > QBO_LINE_CAP ? (
               <p className="text-xs text-warning">
                 QuickBooks caps CSV imports at {QBO_LINE_CAP.toLocaleString()} rows — this period has {active.row_count.toLocaleString()}. Consider exporting a shorter period.
@@ -262,6 +278,16 @@ export function ReportsClient({ books }: { books: BookkeepingBook[] }) {
           </Tabs>
         </>
       )}
+
+      {emailPackEnabled ? (
+        <EmailPackDialog
+          open={emailDialogOpen}
+          onOpenChange={setEmailDialogOpen}
+          from={from}
+          to={to}
+          defaultRecipient={defaultAccountantEmail}
+        />
+      ) : null}
     </div>
   )
 }
