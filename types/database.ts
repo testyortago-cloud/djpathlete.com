@@ -575,6 +575,21 @@ export interface BookkeepingLedgerEntry {
   document_id: string | null
 }
 
+export interface BookkeepingPeriodClose {
+  id: string
+  book_id: string
+  period: string
+  closed_at: string
+  closed_by: string | null
+  income_cents: number
+  expense_cents: number
+  net_cents: number
+  entry_count: number
+  email_sent_at: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface BookkeepingDocument {
   id: string
   book_id: string

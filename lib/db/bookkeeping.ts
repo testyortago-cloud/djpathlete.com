@@ -4,6 +4,7 @@ import { deleteStatementFile } from "@/lib/bookkeeping/documents"
 import type {
   BookkeepingBook, BookkeepingAccount, BookkeepingLedgerEntry,
   LedgerDirection, LedgerSource, BookkeepingDocument, NewDocument,
+  BookkeepingPeriodClose,
 } from "@/types/database"
 import type { IncomeSourceRows, LedgerEntryDraft } from "@/lib/bookkeeping/types"
 import type { ReportEntry, ReportAccount } from "@/lib/bookkeeping/reports"
@@ -440,6 +441,51 @@ export async function listEntriesForInsights(from: string, to: string): Promise<
       .order("id", { ascending: true })
       .range(f, t) as never
   )
+}
+
+// ── Phase 6a: close CRUD ────────────────────────────────────────────────────
+export async function listCloses(bookId?: string): Promise<BookkeepingPeriodClose[]> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see listEntries: Supabase builder generics fight conditional chaining
+  let q: any = db().from("bookkeeping_period_closes").select("*")
+  if (bookId) q = q.eq("book_id", bookId)
+  const { data, error } = await q.order("period", { ascending: false })
+  if (error) throw error
+  return (data ?? []) as BookkeepingPeriodClose[]
+}
+
+export async function getClose(bookId: string, period: string): Promise<BookkeepingPeriodClose | null> {
+  const { data, error } = await db()
+    .from("bookkeeping_period_closes").select("*").eq("book_id", bookId).eq("period", period).maybeSingle()
+  if (error) throw error
+  return (data as BookkeepingPeriodClose) ?? null
+}
+
+export async function getCloseById(id: string): Promise<BookkeepingPeriodClose | null> {
+  const { data, error } = await db().from("bookkeeping_period_closes").select("*").eq("id", id).maybeSingle()
+  if (error) throw error
+  return (data as BookkeepingPeriodClose) ?? null
+}
+
+export async function insertClose(input: {
+  book_id: string; period: string; closed_by: string | null
+  income_cents: number; expense_cents: number; net_cents: number; entry_count: number
+}): Promise<BookkeepingPeriodClose> {
+  const { data, error } = await db().from("bookkeeping_period_closes").insert(input).select().single()
+  if (error) throw error
+  return data as BookkeepingPeriodClose
+}
+
+export async function deleteClose(id: string): Promise<void> {
+  const { error } = await db().from("bookkeeping_period_closes").delete().eq("id", id)
+  if (error) throw error
+}
+
+export async function stampCloseEmailSent(id: string): Promise<void> {
+  const { error } = await db()
+    .from("bookkeeping_period_closes")
+    .update({ email_sent_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq("id", id)
+  if (error) throw error
 }
 
 /**
