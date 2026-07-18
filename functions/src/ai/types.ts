@@ -213,6 +213,7 @@ export type AiJobType =
   | "ai_coach"
   | "week_generation"
   | "statement_import"
+  | "receipt_scan"
 export type AiJobStatus = "pending" | "processing" | "streaming" | "completed" | "failed" | "cancelled"
 
 export interface AiJob {

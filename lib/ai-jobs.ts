@@ -41,6 +41,7 @@ export type AiJobType =
   | "broll_generation"
   | "split_reel_render"
   | "statement_import"
+  | "receipt_scan"
 
 export interface CreateAiJobOptions {
   type: AiJobType

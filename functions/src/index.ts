@@ -127,6 +127,28 @@ export const statementImport = onDocumentCreated(
   },
 )
 
+// ─── Receipt Scan ───────────────────────────────────────────────────────────────
+// Triggered when a new ai_jobs doc is created with type "receipt_scan"
+// AI Bookkeeper Phase 3: downloads a photographed receipt from the private
+// bucket, sharp-resizes it for vision, and extracts vendor/amount/date/category.
+
+export const receiptScan = onDocumentCreated(
+  {
+    document: "ai_jobs/{jobId}",
+    timeoutSeconds: 540,
+    memory: "1GiB",
+    region: "us-central1",
+    secrets: allSecrets,
+  },
+  async (event) => {
+    const data = event.data?.data()
+    if (!data || data.type !== "receipt_scan") return
+
+    const { handleReceiptScan } = await import("./receipt-scan.js")
+    await handleReceiptScan(event.params.jobId)
+  },
+)
+
 // ─── Admin AI Chat ─────────────────────────────────────────────────────────────
 // Triggered when a new ai_jobs doc is created with type "admin_chat"
 // Streaming admin business intelligence chat

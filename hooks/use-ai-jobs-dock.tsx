@@ -21,7 +21,7 @@ import {
  * dock just needs to re-subscribe).
  */
 
-export type AiJobKind = "full_program" | "week" | "day" | "excel_import" | "statement_import"
+export type AiJobKind = "full_program" | "week" | "day" | "excel_import" | "statement_import" | "receipt_scan"
 
 export interface DockedJob {
   /** Firestore doc id — same id used in RTDB path `ai_jobs/{jobId}`. */
