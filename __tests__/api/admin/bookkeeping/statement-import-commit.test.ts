@@ -67,7 +67,7 @@ describe("statement-import commit", () => {
     expect(res.status).toBe(200)
     expect(insertImportedEntriesMock).toHaveBeenCalledWith(BOOK, expect.any(String), entries)
     const batchIdArg = insertImportedEntriesMock.mock.calls[0][1]
-    expect(linkDocumentBatchMock).toHaveBeenCalledWith(DOC, batchIdArg, 1)
+    expect(linkDocumentBatchMock).toHaveBeenCalledWith(DOC, BOOK, batchIdArg, 1)
     const json = await res.json()
     expect(json.inserted).toBe(1)
     expect(json.batchId).toBe(batchIdArg)
