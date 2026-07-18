@@ -243,8 +243,14 @@ export function BooksClient({
               Import Amazon
             </Button>
             <Link
-              href="/admin/books/accounts"
+              href="/admin/books/reports"
               className="ml-auto text-sm text-muted-foreground hover:text-accent underline-offset-4 hover:underline"
+            >
+              Reports
+            </Link>
+            <Link
+              href="/admin/books/accounts"
+              className="text-sm text-muted-foreground hover:text-accent underline-offset-4 hover:underline"
             >
               Manage categories
             </Link>
