@@ -553,6 +553,7 @@ export interface BookkeepingAccount {
   archived_at: string | null
   created_at: string
   updated_at: string
+  requires_business_purpose: boolean
 }
 
 export interface BookkeepingLedgerEntry {
@@ -571,6 +572,7 @@ export interface BookkeepingLedgerEntry {
   import_batch_id: string | null
   created_at: string
   updated_at: string
+  document_id?: string | null
 }
 
 export interface BookkeepingDocument {
