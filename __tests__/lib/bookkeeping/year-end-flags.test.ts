@@ -24,6 +24,22 @@ describe("yearEndFlags", () => {
     expect(flags.find((f) => f.id === "substantiation_gaps")?.title).toContain("3")
     expect(flags.find((f) => f.id === "uncategorized_expenses")?.title).toContain("1")
   })
+  it("substantiation_gaps pluralizes: 1 → 'entry is', 2 → 'entries are'", () => {
+    expect(yearEndFlags(input({ gap_count: 1 })).find((f) => f.id === "substantiation_gaps")?.title).toContain(
+      "entry is",
+    )
+    expect(yearEndFlags(input({ gap_count: 2 })).find((f) => f.id === "substantiation_gaps")?.title).toContain(
+      "entries are",
+    )
+  })
+  it("uncategorized_expenses pluralizes: 1 → 'entry has', 2 → 'entries have'", () => {
+    expect(
+      yearEndFlags(input({ uncategorized_expense_count: 1 })).find((f) => f.id === "uncategorized_expenses")?.title,
+    ).toContain("entry has")
+    expect(
+      yearEndFlags(input({ uncategorized_expense_count: 2 })).find((f) => f.id === "uncategorized_expenses")?.title,
+    ).toContain("entries have")
+  })
   it("home_office_unset fires only when percent unset AND household tenancy spend exists", () => {
     expect(yearEndFlags(input({ home_office_percent_set: false, home_office_input_total_cents: 5000 })).map((f) => f.id)).toContain("home_office_unset")
     expect(yearEndFlags(input({ home_office_percent_set: false, home_office_input_total_cents: 0 })).map((f) => f.id)).not.toContain("home_office_unset")

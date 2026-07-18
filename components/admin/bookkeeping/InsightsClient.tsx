@@ -516,7 +516,6 @@ export function InsightsClient({
                         <tr className="border-b text-left text-xs text-muted-foreground uppercase tracking-wide">
                           <th className="py-1 pr-4 font-medium">Vendor</th>
                           <th className="py-1 pr-4 font-medium">Account</th>
-                          <th className="py-1 pr-4 font-medium" />
                         </tr>
                       </thead>
                       <tbody>
@@ -534,7 +533,6 @@ export function InsightsClient({
                               ) : null}
                             </td>
                             <td className="py-1.5 pr-4 text-muted-foreground">{v.account_name}</td>
-                            <td />
                           </tr>
                         ))}
                       </tbody>

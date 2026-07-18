@@ -149,6 +149,7 @@ const ACC_HH_RENT = "a0000000-0000-4000-8000-000000000010"
 const ACC_HH_UTIL = "a0000000-0000-4000-8000-000000000011"
 const ACC_HH_INS = "a0000000-0000-4000-8000-000000000012"
 const ACC_HH_GROC = "a0000000-0000-4000-8000-000000000013"
+const ACC_HH_INTERNET = "a0000000-0000-4000-8000-000000000014"
 
 const books = [
   { id: BOOK_BIZ, name: "Darren — DJP Athlete", book_kind: "business", is_primary: true },
@@ -216,5 +217,36 @@ describe("homeOfficeCandidate", () => {
     const r = homeOfficeCandidate([], hhAccounts, hhOnly, 20)
     expect(r.target_book_id).toBeNull()
     expect(HOME_OFFICE_ACCOUNT_NAMES).not.toContain("vehicles")
+  })
+
+  it("pins sum-of-rounded-inputs (not round-of-sum) when the two diverge", () => {
+    const r = homeOfficeCandidate([
+      entry({ book_id: BOOK_HH, account_id: ACC_HH_RENT, amount_cents: 101 }),
+      entry({ book_id: BOOK_HH, account_id: ACC_HH_UTIL, amount_cents: 101 }),
+    ], [...accounts, ...hhAccounts], books, 50)
+    // Each input rounds independently: Math.round(101 * 50 / 100) = Math.round(50.5) = 51 (JS half-up).
+    expect(r.inputs.find((i) => i.account_id === ACC_HH_RENT)?.proposed_cents).toBe(51)
+    expect(r.inputs.find((i) => i.account_id === ACC_HH_UTIL)?.proposed_cents).toBe(51)
+    // Sum-of-rounds = 51 + 51 = 102. Round-of-sum would be Math.round(202 * 50 / 100) = Math.round(101) = 101.
+    // The two diverge here — proposed_total_cents must be the SUM OF ROUNDED INPUTS (102), not round-of-sum (101).
+    expect(r.proposed_total_cents).toBe(102)
+  })
+
+  it("no primary business book, two business books → target is the first business book in array order; equal-total inputs tie-break name asc", () => {
+    const booksNoPrimary = [
+      { id: BOOK_OTHER, name: "Spouse — Business", book_kind: "business", is_primary: false },
+      { id: BOOK_BIZ, name: "Darren — DJP Athlete", book_kind: "business", is_primary: false },
+      { id: BOOK_HH, name: "Household & Personal", book_kind: "household", is_primary: false },
+    ] as BookkeepingBook[]
+    const internetAccount = account({ id: ACC_HH_INTERNET, book_id: BOOK_HH, name: "Internet", is_deductible_candidate: false })
+    const r = homeOfficeCandidate([
+      entry({ book_id: BOOK_HH, account_id: ACC_HH_RENT, amount_cents: 500 }),
+      entry({ book_id: BOOK_HH, account_id: ACC_HH_INTERNET, amount_cents: 500 }),
+    ], [...accounts, ...hhAccounts, internetAccount], booksNoPrimary, 25)
+    // Neither business book is is_primary → fallback is businessBooks[0], the first business
+    // book in `books` array order (BOOK_OTHER is listed before BOOK_BIZ here).
+    expect(r.target_book_id).toBe(BOOK_OTHER)
+    // "Internet" and "Rent" net to the same total_cents (500) — tie-break must be name asc.
+    expect(r.inputs.filter((i) => i.total_cents === 500).map((i) => i.name)).toEqual(["Internet", "Rent"])
   })
 })

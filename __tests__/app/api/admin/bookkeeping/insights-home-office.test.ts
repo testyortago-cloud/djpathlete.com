@@ -41,6 +41,7 @@ describe("PATCH /api/admin/bookkeeping/insights/home-office", () => {
       expect.objectContaining({
         action: "bookkeeping.home_office_percent_set",
         category: "commerce",
+        target: { type: "system_setting", id: "bookkeeping_home_office_percent" },
         metadata: expect.objectContaining({ previous_value: 10, new_value: 33.33 }),
       }),
     )
