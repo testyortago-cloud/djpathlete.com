@@ -68,3 +68,73 @@ export function snapshotTotals(entries: Array<{ direction: LedgerDirection; amou
   }
   return { income_cents: income, expense_cents: expense, net_cents: income - expense, entry_count: entries.length }
 }
+
+// --- Closed-period guard primitives (D-2: consumed inside lib/db/bookkeeping.ts) ---
+
+/** Coded error the DAL throws for closed-period writes; routes duck-type
+ *  `.code === "PERIOD_CLOSED"` (the AccountScopeError precedent) and never
+ *  import this class. */
+export class PeriodClosedError extends Error {
+  readonly code = "PERIOD_CLOSED" as const
+  constructor(
+    public readonly book_id: string,
+    public readonly period: string,
+  ) {
+    super(`Period ${period} is closed for book ${book_id}`)
+    this.name = "PeriodClosedError"
+  }
+}
+
+/** Single-row guard: no-op when the closed set is empty. */
+export function assertPeriodOpen(closed: ReadonlySet<string>, bookId: string, occurredOn: string): void {
+  const period = periodOf(occurredOn)
+  if (closed.has(period)) throw new PeriodClosedError(bookId, period)
+}
+
+export const REJECTED_ROW_CAP = 50
+
+export interface RejectedClosedRow {
+  occurred_on: string
+  amount_cents: number
+  memo: string | null
+  counterparty: string | null
+  source_ref: string | null
+}
+
+export interface ClosedPartition<T> {
+  open: T[]
+  rejected_closed: number
+  rejected_closed_rows: RejectedClosedRow[]
+}
+
+/** D-4: batch rejects happen BEFORE the upsert so they are never conflated
+ *  with the silent duplicate-skip. Order preserved in both halves; the row
+ *  list caps at REJECTED_ROW_CAP while the count stays exact. */
+export function partitionByClosedPeriods<
+  T extends {
+    occurred_on: string
+    amount_cents: number
+    memo?: string | null
+    counterparty?: string | null
+    source_ref?: string | null
+  },
+>(drafts: T[], closed: ReadonlySet<string>): ClosedPartition<T> {
+  if (closed.size === 0) return { open: drafts, rejected_closed: 0, rejected_closed_rows: [] }
+  const open: T[] = []
+  const rejected: T[] = []
+  for (const d of drafts) {
+    if (closed.has(periodOf(d.occurred_on))) rejected.push(d)
+    else open.push(d)
+  }
+  return {
+    open,
+    rejected_closed: rejected.length,
+    rejected_closed_rows: rejected.slice(0, REJECTED_ROW_CAP).map((d) => ({
+      occurred_on: d.occurred_on,
+      amount_cents: d.amount_cents,
+      memo: d.memo ?? null,
+      counterparty: d.counterparty ?? null,
+      source_ref: d.source_ref ?? null,
+    })),
+  }
+}

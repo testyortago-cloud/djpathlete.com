@@ -2,10 +2,14 @@ import { describe, expect, it } from "vitest"
 import {
   PERIOD_CLOSED_MESSAGE,
   PERIOD_RE,
+  PeriodClosedError,
+  REJECTED_ROW_CAP,
+  assertPeriodOpen,
   closableMonthOptions,
   formatPeriodLabel,
   isClosablePeriod,
   monthBounds,
+  partitionByClosedPeriods,
   periodOf,
   snapshotTotals,
 } from "@/lib/bookkeeping/period-close"
@@ -107,5 +111,87 @@ describe("PERIOD_CLOSED_MESSAGE", () => {
     expect(PERIOD_CLOSED_MESSAGE).toBe(
       "That month is closed for this book. Post an adjustment entry in the current open month instead (it can reference the closed month).",
     )
+  })
+})
+
+const BOOK = "b0000000-0000-4000-8000-000000000001"
+
+describe("assertPeriodOpen", () => {
+  it("no closes exist → no-op for any date (the whole-suite invariant)", () => {
+    expect(() => assertPeriodOpen(new Set(), BOOK, "2019-01-15")).not.toThrow()
+  })
+  it("throws a coded error carrying book_id + period for a closed month", () => {
+    try {
+      assertPeriodOpen(new Set(["2019-01"]), BOOK, "2019-01-15")
+      expect.unreachable("should have thrown")
+    } catch (e) {
+      expect(e).toBeInstanceOf(PeriodClosedError)
+      expect((e as PeriodClosedError).code).toBe("PERIOD_CLOSED")
+      expect((e as PeriodClosedError).book_id).toBe(BOOK)
+      expect((e as PeriodClosedError).period).toBe("2019-01")
+    }
+  })
+  it("inclusive month bounds: first and last day rejected, adjacent months pass", () => {
+    const closed = new Set(["2019-01"])
+    expect(() => assertPeriodOpen(closed, BOOK, "2019-01-01")).toThrow(PeriodClosedError)
+    expect(() => assertPeriodOpen(closed, BOOK, "2019-01-31")).toThrow(PeriodClosedError)
+    expect(() => assertPeriodOpen(closed, BOOK, "2018-12-31")).not.toThrow()
+    expect(() => assertPeriodOpen(closed, BOOK, "2019-02-01")).not.toThrow()
+  })
+})
+
+describe("partitionByClosedPeriods", () => {
+  const draft = (occurred_on: string, amount_cents = 1000) => ({
+    occurred_on,
+    amount_cents,
+    memo: `m-${occurred_on}`,
+    counterparty: null as string | null,
+    source_ref: `ref-${occurred_on}-${amount_cents}`,
+  })
+
+  it("empty closed set → everything open, zero rejects (guard no-op)", () => {
+    const r = partitionByClosedPeriods([draft("2019-01-15")], new Set<string>())
+    expect(r.open).toHaveLength(1)
+    expect(r.rejected_closed).toBe(0)
+    expect(r.rejected_closed_rows).toEqual([])
+  })
+  it("splits on month membership, preserving input order in BOTH halves", () => {
+    const input = [draft("2019-01-02"), draft("2019-02-01"), draft("2019-01-31"), draft("2019-03-01")]
+    const r = partitionByClosedPeriods(input, new Set(["2019-01"]))
+    expect(r.open.map((d) => d.occurred_on)).toEqual(["2019-02-01", "2019-03-01"])
+    expect(r.rejected_closed).toBe(2)
+    expect(r.rejected_closed_rows.map((d) => d.occurred_on)).toEqual(["2019-01-02", "2019-01-31"])
+  })
+  it("rejected rows carry the review fields", () => {
+    const r = partitionByClosedPeriods([draft("2019-01-15", 4200)], new Set(["2019-01"]))
+    expect(r.rejected_closed_rows[0]).toEqual({
+      occurred_on: "2019-01-15",
+      amount_cents: 4200,
+      memo: "m-2019-01-15",
+      counterparty: null,
+      source_ref: "ref-2019-01-15-4200",
+    })
+  })
+  it("caps rejected_closed_rows at 50 while the COUNT stays honest", () => {
+    const input = Array.from({ length: 60 }, (_, i) =>
+      draft(`2019-01-${String((i % 28) + 1).padStart(2, "0")}`, i + 1),
+    )
+    const r = partitionByClosedPeriods(input, new Set(["2019-01"]))
+    expect(r.rejected_closed).toBe(60) // count is NOT the capped list length
+    expect(r.rejected_closed_rows).toHaveLength(REJECTED_ROW_CAP)
+    expect(REJECTED_ROW_CAP).toBe(50)
+  })
+  it("missing memo/counterparty/source_ref coalesce to null in rejected rows", () => {
+    const r = partitionByClosedPeriods(
+      [{ occurred_on: "2019-01-15", amount_cents: 100 }],
+      new Set(["2019-01"]),
+    )
+    expect(r.rejected_closed_rows[0]).toEqual({
+      occurred_on: "2019-01-15",
+      amount_cents: 100,
+      memo: null,
+      counterparty: null,
+      source_ref: null,
+    })
   })
 })

@@ -8,6 +8,12 @@ import type {
 import type { IncomeSourceRows, LedgerEntryDraft } from "@/lib/bookkeeping/types"
 import type { ReportEntry, ReportAccount } from "@/lib/bookkeeping/reports"
 import type { InsightEntry, InsightAccount } from "@/lib/bookkeeping/insight-types"
+import {
+  PeriodClosedError,
+  assertPeriodOpen,
+  partitionByClosedPeriods,
+  type RejectedClosedRow,
+} from "@/lib/bookkeeping/period-close"
 
 function db() {
   return createServiceRoleClient()
@@ -107,27 +113,50 @@ export async function entryTotals(p: Omit<ListEntriesParams, "page" | "perPage">
 }
 
 export async function createEntry(input: Omit<BookkeepingLedgerEntry, "id" | "created_at" | "updated_at">): Promise<BookkeepingLedgerEntry> {
+  const closed = new Set(await listClosedPeriods(input.book_id))
+  assertPeriodOpen(closed, input.book_id, input.occurred_on)
   const { data, error } = await db().from("bookkeeping_ledger_entries").insert(input).select().single()
   if (error) throw error
   return data as BookkeepingLedgerEntry
 }
 
 export async function updateEntry(id: string, updates: Partial<Omit<BookkeepingLedgerEntry, "id" | "created_at">>): Promise<BookkeepingLedgerEntry> {
+  // UNCONDITIONAL old-row fetch (spec §3.3 row 2): the route only fetches when
+  // account_id is in the payload, so an occurred_on-only edit would otherwise
+  // bypass the guard. Book comes from the row — book_id can't change by route.
+  const existing = await getEntry(id)
+  if (existing) {
+    const closed = new Set(await listClosedPeriods(existing.book_id))
+    assertPeriodOpen(closed, existing.book_id, existing.occurred_on)
+    if (updates.occurred_on) assertPeriodOpen(closed, existing.book_id, updates.occurred_on)
+  }
   const { data, error } = await db().from("bookkeeping_ledger_entries").update(updates).eq("id", id).select().single()
   if (error) throw error
   return data as BookkeepingLedgerEntry
 }
 
 export async function deleteEntry(id: string): Promise<void> {
+  // Fetch-first (today it never fetches): a closed-period row must not vanish.
+  // A missing row keeps today's silent no-op delete behavior.
+  const existing = await getEntry(id)
+  if (existing) {
+    const closed = new Set(await listClosedPeriods(existing.book_id))
+    assertPeriodOpen(closed, existing.book_id, existing.occurred_on)
+  }
   const { error } = await db().from("bookkeeping_ledger_entries").delete().eq("id", id)
   if (error) throw error
 }
 
 export async function insertImportedEntries(
   bookId: string, importBatchId: string, drafts: Array<LedgerEntryDraft & { account_id?: string | null }>,
-): Promise<{ inserted: number }> {
-  if (drafts.length === 0) return { inserted: 0 }
-  const rows = drafts.map((d) => ({
+): Promise<{ inserted: number; rejected_closed: number; rejected_closed_rows: RejectedClosedRow[] }> {
+  if (drafts.length === 0) return { inserted: 0, rejected_closed: 0, rejected_closed_rows: [] }
+  // Partition BEFORE the upsert (D-4): closed-period rows must never ride the
+  // silent duplicate-skip, or the dialogs' "already imported" arithmetic lies.
+  const closed = new Set(await listClosedPeriods(bookId))
+  const { open, rejected_closed, rejected_closed_rows } = partitionByClosedPeriods(drafts, closed)
+  if (open.length === 0) return { inserted: 0, rejected_closed, rejected_closed_rows }
+  const rows = open.map((d) => ({
     book_id: bookId, account_id: d.account_id ?? null, direction: d.direction,
     amount_cents: d.amount_cents, occurred_on: d.occurred_on, memo: d.memo,
     counterparty: d.counterparty, source: d.source, source_ref: d.source_ref,
@@ -138,7 +167,7 @@ export async function insertImportedEntries(
     .upsert(rows, { onConflict: "book_id,source,source_ref", ignoreDuplicates: true })
     .select("id")
   if (error) throw error
-  return { inserted: (data ?? []).length }
+  return { inserted: (data ?? []).length, rejected_closed, rejected_closed_rows }
 }
 
 // ── Platform income reads (each paginated; missing table → [] + noop) ──────
@@ -250,6 +279,8 @@ export async function insertReceiptEntry(input: {
   counterparty: string | null; business_purpose: string | null; memo: string | null
   source_ref: string; document_id: string | null; import_batch_id: string | null
 }): Promise<{ inserted: number; id: string | null }> {
+  const closed = new Set(await listClosedPeriods(input.book_id))
+  assertPeriodOpen(closed, input.book_id, input.occurred_on)
   const row = {
     book_id: input.book_id, account_id: input.account_id, direction: "expense" as const,
     amount_cents: input.amount_cents, occurred_on: input.occurred_on, memo: input.memo,
@@ -268,9 +299,12 @@ export async function insertReceiptEntry(input: {
 export async function insertAmazonEntries(
   bookId: string, importBatchId: string,
   drafts: Array<{ direction: LedgerDirection; amount_cents: number; occurred_on: string; memo: string | null; counterparty: string | null; business_purpose?: string | null; source_ref: string; account_id?: string | null }>,
-): Promise<{ inserted: number }> {
-  if (drafts.length === 0) return { inserted: 0 }
-  const rows = drafts.map((d) => ({
+): Promise<{ inserted: number; rejected_closed: number; rejected_closed_rows: RejectedClosedRow[] }> {
+  if (drafts.length === 0) return { inserted: 0, rejected_closed: 0, rejected_closed_rows: [] }
+  const closed = new Set(await listClosedPeriods(bookId))
+  const { open, rejected_closed, rejected_closed_rows } = partitionByClosedPeriods(drafts, closed)
+  if (open.length === 0) return { inserted: 0, rejected_closed, rejected_closed_rows }
+  const rows = open.map((d) => ({
     book_id: bookId, account_id: d.account_id ?? null, direction: d.direction,
     amount_cents: d.amount_cents, occurred_on: d.occurred_on, memo: d.memo,
     counterparty: d.counterparty, business_purpose: d.business_purpose ?? null,
@@ -281,7 +315,7 @@ export async function insertAmazonEntries(
     .upsert(rows, { onConflict: "book_id,source,source_ref", ignoreDuplicates: true })
     .select("id")
   if (error) throw error
-  return { inserted: (data ?? []).length }
+  return { inserted: (data ?? []).length, rejected_closed, rejected_closed_rows }
 }
 
 export async function updateDocumentRetainUntil(id: string, retainUntil: string): Promise<void> {
@@ -331,6 +365,20 @@ export async function pruneExpiredDocuments(today: string): Promise<{ deleted: n
     ids.push(r.id)
   }
   return { deleted: ids.length, ids }
+}
+
+// ── Phase 6a: closed-period write guard (D-2 choke point) ───────────────────
+// The spec's "exported from the DAL" surface — the class itself lives in the
+// pure module so period-close.ts stays zero-IO.
+export { PeriodClosedError }
+
+/** All closed YYYY-MM periods for one book. One indexed select (the plain
+ *  UNIQUE (book_id, period) doubles as the index). Empty ledger → [] → every
+ *  guard below no-ops. */
+export async function listClosedPeriods(bookId: string): Promise<string[]> {
+  const { data, error } = await db().from("bookkeeping_period_closes").select("period").eq("book_id", bookId)
+  if (error) throw error
+  return (data ?? []).map((r) => (r as { period: string }).period)
 }
 
 // ── Reports (Phase 4) ────────────────────────────────────────────────────
