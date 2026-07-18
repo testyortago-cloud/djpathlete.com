@@ -1,5 +1,6 @@
 import { createServiceRoleClient } from "@/lib/supabase"
 import { fetchAllRows } from "@/lib/db/paginate"
+import { deleteStatementFile } from "@/lib/bookkeeping/documents"
 import type {
   BookkeepingBook, BookkeepingAccount, BookkeepingLedgerEntry,
   LedgerDirection, LedgerSource, BookkeepingDocument, NewDocument,
@@ -295,4 +296,34 @@ export async function assertAccountsInBook(
     const [accountId, direction] = p.split("|")
     await assertAccountInBook(accountId, bookId, direction as LedgerDirection)
   }
+}
+
+// ── Retention pruning (Phase 3, Task 15) ────────────────────────────────────
+// Pure date-string compare: works off `retain_until date` (YYYY-MM-DD) columns,
+// so no timezone conversion — a doc is expired once retain_until is strictly
+// before today, not on the day it expires.
+export function isDocumentExpired(retainUntil: string, today: string): boolean {
+  return retainUntil < today
+}
+
+// Twin of functions/src/lib/bookkeeping-retention.ts:pruneExpiredDocuments — kept in
+// sync deliberately because functions/ has rootDir: "src" and can't import from lib/.
+// Deletes the bucket object first (best-effort — errors are swallowed + warned, since
+// a missing/already-gone object shouldn't block the row prune), then the row.
+// bookkeeping_ledger_entries.document_id is ON DELETE SET NULL (migration 00186), so a
+// linked ledger entry survives with its document_id nulled out.
+export async function pruneExpiredDocuments(today: string): Promise<{ deleted: number; ids: string[] }> {
+  const rows = await fetchAllRows<{ id: string; storage_path: string }>((f, t) =>
+    db().from("bookkeeping_documents").select("id, storage_path").lt("retain_until", today).range(f, t) as never)
+  const ids: string[] = []
+  for (const r of rows) {
+    try {
+      await deleteStatementFile(r.storage_path)
+    } catch (err) {
+      console.warn(`[bookkeeping] retention: object delete failed for ${r.storage_path}:`, (err as Error).message)
+    }
+    await deleteDocument(r.id)
+    ids.push(r.id)
+  }
+  return { deleted: ids.length, ids }
 }

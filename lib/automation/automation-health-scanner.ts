@@ -28,6 +28,7 @@ export const EXPECTED_CRONS: ExpectedCron[] = [
   { name: "revenueDigestCron", sla_hours: 192 },       // weekly Mon
   { name: "auditLogRetentionCron", sla_hours: 30 },    // daily 03:00
   { name: "packRenewalScanCron", sla_hours: 30 },      // daily 09:00
+  { name: "bookkeepingRetentionCron", sla_hours: 30 }, // daily 04:00
 ]
 
 export interface ScannerInput {

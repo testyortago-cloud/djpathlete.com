@@ -1842,3 +1842,59 @@ export const auditLogRetentionCron = onSchedule(
     }
   },
 )
+
+// ─── Bookkeeping Retention (daily 04:00 UTC) ────────────────────────────────
+// AI Bookkeeper Phase 3, Task 15. Prunes bookkeeping_documents (statements +
+// receipts) whose retain_until has passed — deletes the private-bucket object
+// first, then the row. bookkeeping_ledger_entries.document_id is ON DELETE SET
+// NULL (migration 00186), so a linked ledger entry survives with document_id
+// nulled. Gated by system_settings.cron_bookkeeping_retention_enabled (default
+// false — destructive). 04:00 UTC is clear of auditLogRetentionCron (03:00)
+// and syncPlatformAnalytics (03:00); both operate on disjoint tables anyway.
+
+export const bookkeepingRetentionCron = onSchedule(
+  {
+    schedule: "0 4 * * *",
+    timeZone: "UTC",
+    timeoutSeconds: 300,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [supabaseUrl, supabaseServiceRoleKey],
+  },
+  async () => {
+    const { getSupabase } = await import("./lib/supabase.js")
+    const { logCronStart, logCronEnd } = await import("./lib/cron-runs.js")
+    const { pruneExpiredDocuments } = await import("./lib/bookkeeping-retention.js")
+    const { getStorage } = await import("firebase-admin/storage")
+
+    const supabase = getSupabase()
+
+    const { data: enabledRow } = await supabase
+      .from("system_settings")
+      .select("value")
+      .eq("key", "cron_bookkeeping_retention_enabled")
+      .single()
+    if (enabledRow?.value !== true) {
+      console.log("[bookkeepingRetentionCron] disabled via flag, skipping")
+      return
+    }
+
+    const bucketName = process.env.FIREBASE_PRIVATE_BUCKET
+    if (!bucketName) {
+      console.warn("[bookkeepingRetentionCron] FIREBASE_PRIVATE_BUCKET not set, skipping")
+      return
+    }
+    const bucket = getStorage().bucket(bucketName)
+    const today = new Date().toISOString().slice(0, 10)
+
+    const runId = await logCronStart(supabase, "bookkeepingRetentionCron")
+    try {
+      const { deleted, ids } = await pruneExpiredDocuments(supabase, bucket, today)
+      await logCronEnd(supabase, runId, "success", { deleted, ids: ids.slice(0, 50) })
+      console.log(`[bookkeepingRetentionCron] pruned ${deleted} document(s) past retain_until`)
+    } catch (err) {
+      await logCronEnd(supabase, runId, "failed", { message: (err as Error).message })
+      throw err
+    }
+  },
+)
