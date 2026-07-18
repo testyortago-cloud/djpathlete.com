@@ -20,7 +20,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 import { formatOccurredOn } from "@/lib/bookkeeping/format"
-import { accountRequiresBusinessPurpose } from "@/lib/bookkeeping/receipts"
+import { formatCents } from "@/lib/bookkeeping/money"
+import { accountRequiresBusinessPurpose, receiptSourceRef } from "@/lib/bookkeeping/receipts"
 import { useAiJobsDock } from "@/hooks/use-ai-jobs-dock"
 import { summarizeApiError } from "@/lib/errors/humanize"
 import type { BookkeepingAccount } from "@/types/database"
@@ -360,7 +361,10 @@ export function ReceiptUploadDialog({
   const purposeMissing = purposeRequired && (reviewForm?.businessPurpose.trim().length ?? 0) === 0
 
   async function commit() {
-    if (!reviewForm || !documentId) return
+    if (!reviewForm || !documentId) {
+      toast.error("Something went wrong — please re-upload the receipt.")
+      return
+    }
     const cents = Math.round(parseFloat(reviewForm.amount || "0") * 100)
     if (!reviewForm.amount || !Number.isFinite(cents) || cents <= 0) {
       toast.error("Enter a valid amount")
@@ -389,7 +393,7 @@ export function ReceiptUploadDialog({
           counterparty: reviewForm.counterparty.trim() || null,
           business_purpose: reviewForm.businessPurpose.trim() || null,
           memo: null,
-          source_ref: `receipt:${documentId}`,
+          source_ref: receiptSourceRef(documentId),
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -574,6 +578,9 @@ export function ReceiptUploadDialog({
                   onChange={(e) => setReviewForm((f) => (f ? { ...f, amount: e.target.value } : f))}
                   placeholder="0.00"
                 />
+                <p className="text-xs text-muted-foreground font-mono">
+                  AI scanned: {result.amount_cents != null ? formatCents(result.amount_cents) : "—"}
+                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="ru-date">Date</Label>
