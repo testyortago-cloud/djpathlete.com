@@ -243,6 +243,9 @@ export const AUDIT_ACTIONS = [
   { slug: "bookkeeping.statement_imported", category: "commerce", description: "Bank/Venmo statement posted to the ledger" },
   { slug: "bookkeeping.document_deleted", category: "commerce", description: "Bookkeeping document deleted" },
   { slug: "bookkeeping.document_downloaded", category: "admin_read_sensitive", description: "Bookkeeping document downloaded" },
+  { slug: "bookkeeping.receipt_cash_recorded", category: "commerce", description: "Cash receipt recorded to the ledger" },
+  { slug: "bookkeeping.receipt_uploaded", category: "commerce", description: "Receipt image / Amazon CSV uploaded" },
+  { slug: "bookkeeping.receipt_imported", category: "commerce", description: "Receipt posted to the ledger" },
 ] as const satisfies readonly AuditActionDef[]
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number]["slug"]

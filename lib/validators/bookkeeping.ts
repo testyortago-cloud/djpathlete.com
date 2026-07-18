@@ -78,3 +78,42 @@ export const statementDedupeSchema = z.object({
 export const statementCommitSchema = importCommitSchema.extend({
   document_id: z.string().uuid().optional(),
 })
+
+export const receiptCashSchema = z.object({
+  book_id: z.string().uuid(),
+  account_id: z.string().uuid(),
+  amount_cents: z.number().int().nonnegative(),
+  occurred_on: DATE,
+  counterparty: z.string().max(200).nullable().optional(),
+  business_purpose: z.string().max(1000).nullable().optional(),
+  memo: z.string().max(500).nullable().optional(),
+})
+
+export const receiptCommitSchema = z.object({
+  book_id: z.string().uuid(),
+  document_id: z.string().uuid(),
+  account_id: z.string().uuid().nullable().optional(),
+  amount_cents: z.number().int().nonnegative(),
+  occurred_on: DATE,
+  counterparty: z.string().max(200).nullable().optional(),
+  business_purpose: z.string().max(1000).nullable().optional(),
+  memo: z.string().max(500).nullable().optional(),
+  source_ref: z.string().min(1),
+})
+
+export const amazonCommitSchema = z.object({
+  book_id: z.string().uuid(),
+  document_id: z.string().uuid().optional(),
+  entries: z.array(z.object({
+    direction: z.enum(["income", "expense"]),
+    amount_cents: z.number().int().nonnegative(),
+    occurred_on: DATE,
+    memo: z.string().nullable(),
+    counterparty: z.string().nullable(),
+    business_purpose: z.string().max(1000).nullable().optional(),
+    service_line: z.string().nullable(),
+    source: z.literal("receipt"),
+    source_ref: z.string().min(1),
+    account_id: z.string().uuid().nullable().optional(),
+  })).min(1).max(2000),
+})
