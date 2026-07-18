@@ -137,3 +137,7 @@ export const emailPackSchema = z.object({
 })
   .refine((v) => v.from <= v.to, { message: "from must be on or before to" })
   .refine(withinFiveYears, { message: "window too large (max 5 years)" })
+
+export const homeOfficePercentSchema = z.object({
+  percent: z.number().min(0.01).max(100).nullable(),
+})

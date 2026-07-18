@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { reportQuerySchema, quickbooksQuerySchema, emailPackSchema } from "@/lib/validators/bookkeeping"
+import { reportQuerySchema, quickbooksQuerySchema, emailPackSchema, homeOfficePercentSchema } from "@/lib/validators/bookkeeping"
 
 describe("reportQuerySchema", () => {
   it("accepts a sane window", () => {
@@ -35,5 +35,20 @@ describe("emailPackSchema", () => {
   })
   it("remember is optional boolean", () => {
     expect(emailPackSchema.safeParse({ from: "2026-01-01", to: "2026-03-31", recipient_email: "cpa@firm.com", remember: true }).success).toBe(true)
+  })
+})
+
+describe("homeOfficePercentSchema", () => {
+  it("accepts in-range numbers and null", () => {
+    expect(homeOfficePercentSchema.safeParse({ percent: 12.5 }).success).toBe(true)
+    expect(homeOfficePercentSchema.safeParse({ percent: 100 }).success).toBe(true)
+    expect(homeOfficePercentSchema.safeParse({ percent: 12.345 }).success).toBe(true) // route rounds to 2dp
+    expect(homeOfficePercentSchema.safeParse({ percent: null }).success).toBe(true)
+  })
+  it("rejects 0, negatives, >100, strings, missing key", () => {
+    for (const percent of [0, -1, 100.01, "25"]) {
+      expect(homeOfficePercentSchema.safeParse({ percent }).success).toBe(false)
+    }
+    expect(homeOfficePercentSchema.safeParse({}).success).toBe(false)
   })
 })
