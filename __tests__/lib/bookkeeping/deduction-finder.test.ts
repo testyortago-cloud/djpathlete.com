@@ -53,6 +53,13 @@ describe("deductionFindings — watchlist", () => {
     // non-deductible account never appears
     expect(r.watchlist.find((w) => w.account_id === ACC_RENT)).toBeUndefined()
     expect(r.watchlist_total_cents).toBe(3000)
+    // full sort order: total desc, then name asc — including the zero-total tie
+    // between "Meals (business purpose)" and "Old Gear" (localeCompare asc).
+    expect(r.watchlist.map((w) => w.name)).toEqual([
+      "Equipment",
+      "Meals (business purpose)",
+      "Old Gear",
+    ])
   })
 
   it("top counterparties: top 3 by total, normalized grouping, null bucket ties last", () => {
@@ -68,6 +75,20 @@ describe("deductionFindings — watchlist", () => {
       { counterparty: "rogue fitness", total_cents: 900, entry_count: 2 },
       { counterparty: "amazon", total_cents: 800, entry_count: 1 },
       { counterparty: "titan", total_cents: 700, entry_count: 1 },
+    ])
+  })
+
+  it("top counterparties: null bucket ties a named counterparty last on total_cents", () => {
+    const r = deductionFindings(BOOK_BIZ, [
+      entry({ amount_cents: 900, counterparty: "alpha" }),
+      entry({ amount_cents: 500, counterparty: "zeta" }),
+      entry({ amount_cents: 500, counterparty: null }),
+    ], accounts)
+    const equip = r.watchlist.find((w) => w.account_id === ACC_EQUIP)!
+    expect(equip.top_counterparties).toEqual([
+      { counterparty: "alpha", total_cents: 900, entry_count: 1 },
+      { counterparty: "zeta", total_cents: 500, entry_count: 1 },
+      { counterparty: null, total_cents: 500, entry_count: 1 },
     ])
   })
 
