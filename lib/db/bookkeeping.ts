@@ -7,6 +7,7 @@ import type {
 } from "@/types/database"
 import type { IncomeSourceRows, LedgerEntryDraft } from "@/lib/bookkeeping/types"
 import type { ReportEntry, ReportAccount } from "@/lib/bookkeeping/reports"
+import type { InsightEntry, InsightAccount } from "@/lib/bookkeeping/insight-types"
 
 function db() {
   return createServiceRoleClient()
@@ -371,4 +372,38 @@ export async function listAllDocuments(): Promise<BookkeepingDocument[]> {
       .order("id", { ascending: true })
       .range(f, t) as never
   )
+}
+
+// ---- Phase-5 insight readers (mirror the ForReports discipline exactly) ----
+
+/**
+ * Windowed ledger entries widened for the insight finders (entry id, business_purpose,
+ * document_id on top of the report columns). Paginated: a year of ledger can exceed the
+ * ~1000-row PostgREST cap. Deterministic order for stable pages.
+ */
+export async function listEntriesForInsights(from: string, to: string): Promise<InsightEntry[]> {
+  return fetchAllRows<InsightEntry>((f, t) =>
+    db()
+      .from("bookkeeping_ledger_entries")
+      .select("id,book_id,account_id,direction,amount_cents,occurred_on,counterparty,memo,source,business_purpose,document_id")
+      .gte("occurred_on", from)
+      .lte("occurred_on", to)
+      .order("occurred_on", { ascending: true })
+      .order("id", { ascending: true })
+      .range(f, t) as never
+  )
+}
+
+/**
+ * All accounts across all books INCLUDING archived (same re-bucketing hazard as
+ * listAccountsForReports: filtering archived would re-bucket historical money).
+ */
+export async function listAccountsForInsights(): Promise<InsightAccount[]> {
+  const { data, error } = await db()
+    .from("bookkeeping_accounts")
+    .select("id,book_id,name,account_type,service_line,tax_category,sort_order,is_deductible_candidate,requires_business_purpose,archived_at")
+    .order("book_id", { ascending: true })
+    .order("sort_order", { ascending: true })
+  if (error) throw error
+  return (data ?? []) as InsightAccount[]
 }
