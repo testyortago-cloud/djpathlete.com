@@ -57,6 +57,21 @@ describe("incomeByServiceLine", () => {
   it("empty period → zero rows, zero total", () => {
     expect(incomeByServiceLine([], accounts)).toEqual({ rows: [], total_cents: 0 })
   })
+  it("sorts rows across ≥3 service lines by total_cents descending", () => {
+    const ACC_CAMPS = "a0000000-0000-4000-8000-000000000010"
+    const ACC_PACKS = "a0000000-0000-4000-8000-000000000011"
+    const localAccounts: ReportAccount[] = [
+      ...accounts,
+      { id: ACC_CAMPS, book_id: BOOK_A, name: "Camps Income", account_type: "income", service_line: "camps", tax_category: null, sort_order: 3 },
+      { id: ACC_PACKS, book_id: BOOK_A, name: "Packs Income", account_type: "income", service_line: "session_packs", tax_category: null, sort_order: 4 },
+    ]
+    const r = incomeByServiceLine([
+      entry({ account_id: ACC_PT, amount_cents: 1000 }),    // Performance Training: 1000
+      entry({ account_id: ACC_CAMPS, amount_cents: 3000 }), // Camps & Clinics: 3000
+      entry({ account_id: ACC_PACKS, amount_cents: 2000 }), // Session Packs: 2000
+    ], localAccounts)
+    expect(r.rows.map((row) => row.label)).toEqual(["Camps & Clinics", "Session Packs", "Performance Training"])
+  })
 })
 
 describe("profitAndLossByCategory", () => {
@@ -93,6 +108,18 @@ describe("profitAndLossByCategory", () => {
     expect(profitAndLossByCategory([], accounts)).toEqual({
       income: [], expense: [], income_total_cents: 0, expense_total_cents: 0, net_cents: 0,
     })
+  })
+  it("ties in total_cents fall back to alphabetical name order", () => {
+    const ACC_APPAREL = "a0000000-0000-4000-8000-000000000012"
+    const localAccounts: ReportAccount[] = [
+      ...accounts,
+      { id: ACC_APPAREL, book_id: BOOK_A, name: "Apparel", account_type: "expense", service_line: null, tax_category: null, sort_order: 4 },
+    ]
+    const r = profitAndLossByCategory([
+      entry({ direction: "expense", account_id: ACC_EQUIP, amount_cents: 500 }),
+      entry({ direction: "expense", account_id: ACC_APPAREL, amount_cents: 500 }),
+    ], localAccounts)
+    expect(r.expense.map((row) => row.name)).toEqual(["Apparel", "Equipment"])
   })
 })
 

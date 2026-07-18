@@ -66,7 +66,10 @@ describe("buildQuickBooksCsv", () => {
     expect(lines[2]).toContain("'+1 555 0100")
     expect(lines[3]).toContain("'-lead")
     expect(lines[4]).toContain("'@handle")
-    for (const l of lines.slice(1)) expect(l.endsWith("1500.00")).toBe(true) // Debit column unprefixed
+    for (const l of lines.slice(1)) {
+      expect(l.endsWith("1500.00")).toBe(true) // Debit column unprefixed
+      expect(l.split(",").at(-1)!.startsWith("'")).toBe(false) // amount cell itself carries no apostrophe prefix
+    }
   })
   it("empty entry list → header only", () => {
     expect(buildQuickBooksCsv([], accounts)).toBe("Date,Description,Credit,Debit")
