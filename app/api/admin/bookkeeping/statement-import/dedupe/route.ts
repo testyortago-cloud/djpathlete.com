@@ -50,6 +50,10 @@ export async function POST(request: Request) {
       const suspicion = transferSuspicion(row)
       return {
         ...row,
+        // RTDB drops null leaves, so statementDedupeSchema makes suggested_category
+        // .nullable().optional() (Phase-2 C1). DedupeInputRow requires string|null —
+        // coalesce the possibly-undefined value so the spread type-checks.
+        suggested_category: row.suggested_category ?? null,
         source_ref: computeStatementSourceRef(row, occ[i]),
         is_transfer: row.is_transfer || suspicion === "hard",
         transferSuspect: suspicion === "soft",
