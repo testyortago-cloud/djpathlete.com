@@ -22,6 +22,8 @@ const accounts: ReportAccount[] = [
 const entries: ReportEntry[] = [
   { book_id: B1, account_id: ACC, direction: "income", amount_cents: 150200, occurred_on: "2026-07-02", counterparty: "Client A", memo: null, source: "platform_import" },
   { book_id: B3, account_id: null, direction: "expense", amount_cents: 120000, occurred_on: "2026-07-03", counterparty: "Landlord", memo: "July rent", source: "statement_import" },
+  // Household-only amount — must never leak into Darren's (or any other book's) sheet.
+  { book_id: B3, account_id: null, direction: "expense", amount_cents: 99999, occurred_on: "2026-07-04", counterparty: "Misc Vendor", memo: "household misc", source: "manual" },
 ]
 
 const documents = [
@@ -73,5 +75,38 @@ describe("buildAccountantPack", () => {
     const text = JSON.stringify(docs.getSheetValues())
     expect(text).toContain("hd-receipt.jpg")
     expect(text).toContain("/api/admin/bookkeeping/documents/d0000000-0000-4000-8000-000000000001/download")
+  })
+  it("Darren's P&L sheet contains only Darren's amounts — no cross-book leakage", async () => {
+    const buf = await buildAccountantPack({ from: "2026-07-01", to: "2026-07-31", books, accounts, entries, documents })
+    const wb = await load(buf)
+    const darren = wb.getWorksheet("P&L — Darren")!
+    const text = JSON.stringify(darren.getSheetValues())
+    expect(text).toContain("$1,502.00") // Darren's own income
+    expect(text).not.toContain("$999.99") // household-only expense must not leak in
+    expect(text).not.toContain("$1,200.00") // household-only rent must not leak in
+  })
+  it("Income by Service reflects only the primary book — no cross-book leakage", async () => {
+    const buf = await buildAccountantPack({ from: "2026-07-01", to: "2026-07-31", books, accounts, entries, documents })
+    const wb = await load(buf)
+    const svc = wb.getWorksheet("Income by Service")!
+    const text = JSON.stringify(svc.getSheetValues())
+    expect(text).toContain("Session Packs")
+    expect(text).toContain("$1,502.00")
+    expect(text).not.toContain("$999.99")
+    expect(text).not.toContain("$1,200.00")
+  })
+  it("de-dupes a triple sheet-name collision by suffixing from the base name each time", async () => {
+    const triple = [
+      { id: B1, name: "Darren Co", book_kind: "business", owner_label: "Darren", is_primary: true, currency: "usd", sort_order: 0 },
+      { id: B2, name: "Darren Co 2", book_kind: "business", owner_label: "Darren", is_primary: false, currency: "usd", sort_order: 1 },
+      { id: B3, name: "Darren Co 3", book_kind: "business", owner_label: "Darren", is_primary: false, currency: "usd", sort_order: 2 },
+    ] as BookkeepingBook[]
+    const buf = await buildAccountantPack({ from: "2026-07-01", to: "2026-07-31", books: triple, accounts: [], entries: [], documents: [] })
+    const wb = await load(buf)
+    const names = wb.worksheets.map((w) => w.name)
+    expect(names).toEqual([
+      "Read Me", "Summary", "Income by Service",
+      "P&L — Darren", "P&L — Darren (2)", "P&L — Darren (3)", "Documents",
+    ])
   })
 })

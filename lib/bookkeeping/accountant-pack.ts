@@ -34,9 +34,10 @@ export function sanitizeSheetName(name: string): string {
 }
 
 function addSheet(wb: ExcelJS.Workbook, name: string, tabColor: string, used: Set<string>): ExcelJS.Worksheet {
-  let candidate = sanitizeSheetName(name)
+  const base = sanitizeSheetName(name)
+  let candidate = base
   let n = 2
-  while (used.has(candidate.toLowerCase())) candidate = sanitizeSheetName(`${candidate.slice(0, 27)} (${n++})`)
+  while (used.has(candidate.toLowerCase())) candidate = sanitizeSheetName(`${base.slice(0, 26)} (${n++})`)
   used.add(candidate.toLowerCase())
   return wb.addWorksheet(candidate, { properties: { tabColor: { argb: tabColor } } })
 }
