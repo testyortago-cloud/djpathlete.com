@@ -76,6 +76,9 @@ function applyEntryFilters<Q extends { eq: (c: string, v: unknown) => Q; gte: (c
 }
 
 export async function listEntries(p: ListEntriesParams): Promise<{ rows: BookkeepingLedgerEntry[]; total: number }> {
+  // select("*") is wildcard, not an explicit column list — document_id (added by
+  // migration 00186) already comes through, which is what LedgerTable's 📎
+  // receipt-indicator button (Phase 3, Task 17) relies on.
   const base = db().from("bookkeeping_ledger_entries").select("*", { count: "exact" })
   const q = applyEntryFilters(base as any, p) // eslint-disable-line @typescript-eslint/no-explicit-any -- Supabase builder generics fight applyEntryFilters<Q>; `never` collapses the chained return, `any` keeps it chainable
     .order("occurred_on", { ascending: false })

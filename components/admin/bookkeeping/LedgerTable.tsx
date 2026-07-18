@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Pencil, Trash2 } from "lucide-react"
+import { Pencil, Trash2, Paperclip } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -35,9 +35,24 @@ export function LedgerTable({
   onEdit: (entry: BookkeepingLedgerEntry) => void
 }) {
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [attachmentBusyId, setAttachmentBusyId] = useState<string | null>(null)
 
   const accountName = (accountId: string | null): string | null =>
     accountId ? (accounts.find((a) => a.id === accountId)?.name ?? null) : null
+
+  async function handleOpenAttachment(documentId: string) {
+    setAttachmentBusyId(documentId)
+    try {
+      const res = await fetch(`/api/admin/bookkeeping/documents/${documentId}/download`)
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? "Failed to sign download")
+      if (typeof data.url === "string") window.open(data.url, "_blank")
+    } catch (error) {
+      toast.error((error as Error).message)
+    } finally {
+      setAttachmentBusyId(null)
+    }
+  }
 
   async function handleDelete(id: string) {
     const confirmed = window.confirm("Delete this entry? This cannot be undone.")
@@ -135,28 +150,41 @@ export function LedgerTable({
               </span>
             </TableCell>
             <TableCell className="text-right">
-              {row.source === "manual" ? (
-                <div className="flex items-center justify-end gap-1">
+              <div className="flex items-center justify-end gap-1">
+                {row.document_id && (
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    onClick={() => onEdit(row)}
-                    disabled={busyId === row.id}
-                    title="Edit entry"
+                    onClick={() => handleOpenAttachment(row.document_id as string)}
+                    disabled={attachmentBusyId === row.document_id}
+                    title="View attached receipt/statement"
                   >
-                    <Pencil className="size-3.5" />
+                    <Paperclip className="size-3.5" />
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    onClick={() => handleDelete(row.id)}
-                    disabled={busyId === row.id}
-                    title="Delete entry"
-                  >
-                    <Trash2 className="size-3.5" />
-                  </Button>
-                </div>
-              ) : null}
+                )}
+                {row.source === "manual" && (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => onEdit(row)}
+                      disabled={busyId === row.id}
+                      title="Edit entry"
+                    >
+                      <Pencil className="size-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => handleDelete(row.id)}
+                      disabled={busyId === row.id}
+                      title="Delete entry"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  </>
+                )}
+              </div>
             </TableCell>
           </TableRow>
         ))}

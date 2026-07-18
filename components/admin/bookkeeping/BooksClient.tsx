@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
-import { Plus, Upload, BookOpen, Banknote, Camera } from "lucide-react"
+import { Plus, Upload, BookOpen, Banknote, Camera, ShoppingCart } from "lucide-react"
 import { toast } from "sonner"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
@@ -13,6 +13,7 @@ import { ImportPlatformDialog } from "@/components/admin/bookkeeping/ImportPlatf
 import { StatementImportDialog } from "@/components/admin/bookkeeping/StatementImportDialog"
 import { ReceiptCashDialog } from "@/components/admin/bookkeeping/ReceiptCashDialog"
 import { ReceiptUploadDialog } from "@/components/admin/bookkeeping/ReceiptUploadDialog"
+import { AmazonImportDialog } from "@/components/admin/bookkeeping/AmazonImportDialog"
 import { formatCents } from "@/lib/bookkeeping/money"
 import type {
   BookkeepingBook,
@@ -78,6 +79,7 @@ export function BooksClient({
   const [statementOpen, setStatementOpen] = useState(false)
   const [cashReceiptOpen, setCashReceiptOpen] = useState(false)
   const [uploadReceiptOpen, setUploadReceiptOpen] = useState(false)
+  const [amazonOpen, setAmazonOpen] = useState(false)
 
   const fetchEntries = useCallback(async () => {
     if (!bookId) return
@@ -236,6 +238,10 @@ export function BooksClient({
               <Camera className="size-4" />
               Upload receipt
             </Button>
+            <Button size="sm" variant="outline" onClick={() => setAmazonOpen(true)}>
+              <ShoppingCart className="size-4" />
+              Import Amazon
+            </Button>
             <Link
               href="/admin/books/accounts"
               className="ml-auto text-sm text-muted-foreground hover:text-accent underline-offset-4 hover:underline"
@@ -387,6 +393,13 @@ export function BooksClient({
         accounts={accounts}
         open={uploadReceiptOpen}
         onOpenChange={setUploadReceiptOpen}
+        onSaved={fetchEntries}
+      />
+      <AmazonImportDialog
+        bookId={bookId}
+        accounts={accounts}
+        open={amazonOpen}
+        onOpenChange={setAmazonOpen}
         onSaved={fetchEntries}
       />
     </div>

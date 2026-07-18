@@ -98,7 +98,16 @@ export function StatementsList({
           {documents.map((doc) => (
             <li key={doc.id} className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
               <div>
-                <p className="font-medium text-foreground">{doc.original_filename ?? "Untitled statement"}</p>
+                <div className="flex items-center gap-2">
+                  <p className="font-medium text-foreground">{doc.original_filename ?? "Untitled statement"}</p>
+                  <span
+                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                      doc.kind === "receipt" ? "bg-warning/10 text-warning" : "bg-primary/10 text-primary"
+                    }`}
+                  >
+                    {doc.kind === "receipt" ? "Receipt" : "Statement"}
+                  </span>
+                </div>
                 <p className="text-xs text-muted-foreground">
                   Uploaded {formatOccurredOn(doc.created_at.slice(0, 10))}
                   {typeof doc.row_count === "number" ? ` · ${doc.row_count} rows` : ""}
