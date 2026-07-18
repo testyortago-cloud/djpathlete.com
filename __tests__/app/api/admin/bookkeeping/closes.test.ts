@@ -12,6 +12,8 @@ vi.mock("@/lib/db/bookkeeping", () => ({
   listEntriesForReports: vi.fn(),
   stampCloseEmailSent: vi.fn(),
 }))
+vi.mock("@/lib/db/system-settings", () => ({ getSetting: vi.fn() }))
+vi.mock("@/lib/bookkeeping/email-close", () => ({ sendBooksClosedEmail: vi.fn() }))
 
 import { GET, POST } from "@/app/api/admin/bookkeeping/closes/route"
 import { DELETE } from "@/app/api/admin/bookkeeping/closes/[id]/route"
@@ -25,7 +27,10 @@ import {
   insertClose,
   listCloses,
   listEntriesForReports,
+  stampCloseEmailSent,
 } from "@/lib/db/bookkeeping"
+import { getSetting } from "@/lib/db/system-settings"
+import { sendBooksClosedEmail } from "@/lib/bookkeeping/email-close"
 
 const BOOK = "b0000000-0000-4000-8000-000000000001"
 const CLOSE = "c0000000-0000-4000-8000-000000000001"
@@ -48,6 +53,8 @@ beforeEach(() => {
   ;(listEntriesForReports as ReturnType<typeof vi.fn>).mockResolvedValue([])
   ;(listCloses as ReturnType<typeof vi.fn>).mockResolvedValue([closeRow])
   ;(getCloseById as ReturnType<typeof vi.fn>).mockResolvedValue(closeRow)
+  ;(getSetting as ReturnType<typeof vi.fn>).mockImplementation(async (_key: string, fallback: unknown) => fallback)
+  ;(sendBooksClosedEmail as ReturnType<typeof vi.fn>).mockResolvedValue({ error: null })
 })
 
 describe("GET /api/admin/bookkeeping/closes", () => {
@@ -121,6 +128,81 @@ describe("POST /api/admin/bookkeeping/closes", () => {
     expect(insertClose).toHaveBeenCalledWith(
       expect.objectContaining({ income_cents: 0, expense_cents: 0, net_cents: 0, entry_count: 0 }),
     )
+  })
+})
+
+describe("POST /closes — books-closed email (D-15)", () => {
+  const flagOn = (accountant = "") =>
+    (getSetting as ReturnType<typeof vi.fn>).mockImplementation(async (key: string, fallback: unknown) => {
+      if (key === "bookkeeping_close_email_enabled") return true
+      if (key === "bookkeeping_accountant_email") return accountant
+      return fallback
+    })
+  const settle = () => new Promise((r) => setTimeout(r, 0))
+
+  it("flag OFF (default) → close succeeds, no send attempted", async () => {
+    const res = await POST(body({ book_id: BOOK, period: "2019-01" }))
+    expect(res.status).toBe(201)
+    await settle()
+    expect(sendBooksClosedEmail).not.toHaveBeenCalled()
+    expect(stampCloseEmailSent).not.toHaveBeenCalled()
+  })
+
+  it("flag ON + stored accountant → sends to the accountant, stamps email_sent_at, audits success", async () => {
+    flagOn("cpa@example.com")
+    const res = await POST(body({ book_id: BOOK, period: "2019-01" }))
+    expect(res.status).toBe(201) // response never waits on the send
+    await vi.waitFor(() => expect(sendBooksClosedEmail).toHaveBeenCalled())
+    expect(sendBooksClosedEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ recipient: "cpa@example.com", bookName: "Darren — DJP Athlete", period: "2019-01" }),
+    )
+    await vi.waitFor(() => expect(stampCloseEmailSent).toHaveBeenCalledWith(CLOSE))
+    await vi.waitFor(() =>
+      expect(recordAudit).toHaveBeenCalledWith(
+        expect.objectContaining({ action: "bookkeeping.close_emailed", outcome: "success" }),
+      ),
+    )
+  })
+
+  it("flag ON + empty accountant → falls back to the coach alone", async () => {
+    // Save/restore idiom (email-pack.test.ts:14-35 precedent) — .env.local
+    // defines a real COACH_EMAIL, so an unconditional delete would leak into
+    // later tests in this file/worker; this stubs it for one test only.
+    const origCoachEmail = process.env.COACH_EMAIL
+    flagOn("")
+    process.env.COACH_EMAIL = "darren@darrenjpaul.com"
+    try {
+      const res = await POST(body({ book_id: BOOK, period: "2019-01" }))
+      expect(res.status).toBe(201)
+      await vi.waitFor(() =>
+        expect(sendBooksClosedEmail).toHaveBeenCalledWith(
+          expect.objectContaining({ recipient: "darren@darrenjpaul.com" }),
+        ),
+      )
+    } finally {
+      if (origCoachEmail !== undefined) {
+        process.env.COACH_EMAIL = origCoachEmail
+      } else {
+        delete process.env.COACH_EMAIL
+      }
+    }
+  })
+
+  it("send failure → close STILL 201, close_emailed audited as failure, no stamp", async () => {
+    flagOn("cpa@example.com")
+    ;(sendBooksClosedEmail as ReturnType<typeof vi.fn>).mockResolvedValue({ error: "boom" })
+    const res = await POST(body({ book_id: BOOK, period: "2019-01" }))
+    expect(res.status).toBe(201)
+    await vi.waitFor(() =>
+      expect(recordAudit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "bookkeeping.close_emailed",
+          outcome: "failure",
+          metadata: expect.objectContaining({ error: "boom" }),
+        }),
+      ),
+    )
+    expect(stampCloseEmailSent).not.toHaveBeenCalled()
   })
 })
 
