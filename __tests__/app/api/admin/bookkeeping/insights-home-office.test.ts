@@ -45,6 +45,13 @@ describe("PATCH /api/admin/bookkeeping/insights/home-office", () => {
       }),
     )
   })
+  it("uses Math.round (not trunc) to round halves up: 12.555 -> 12.56", async () => {
+    ;(getSetting as ReturnType<typeof vi.fn>).mockResolvedValue(null)
+    const res = await PATCH(body({ percent: 12.555 }))
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ percent: 12.56 })
+    expect(setSetting).toHaveBeenCalledWith("bookkeeping_home_office_percent", 12.56, ADMIN.user.id)
+  })
   it("null clears the setting", async () => {
     const res = await PATCH(body({ percent: null }))
     expect(res.status).toBe(200)
