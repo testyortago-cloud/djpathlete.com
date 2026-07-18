@@ -16,6 +16,7 @@ const BOOK_BIZ = "b0000000-0000-4000-8000-000000000001"
 const BOOK_HH = "b0000000-0000-4000-8000-000000000003"
 const ACC_MEALS = "a0000000-0000-4000-8000-000000000002"
 const ACC_RENT = "a0000000-0000-4000-8000-000000000010"
+const ACC_HH_SENSITIVE = "a0000000-0000-4000-8000-000000000011"
 
 const books = [
   { id: BOOK_BIZ, name: "Darren — DJP Athlete", book_kind: "business", is_primary: true, currency: "usd", owner_label: null, sort_order: 0, archived_at: null, created_at: "", updated_at: "" },
@@ -24,10 +25,13 @@ const books = [
 const accounts = [
   { id: ACC_MEALS, book_id: BOOK_BIZ, name: "Meals (business purpose)", account_type: "expense", service_line: null, tax_category: null, sort_order: 0, is_deductible_candidate: true, requires_business_purpose: true, archived_at: null },
   { id: ACC_RENT, book_id: BOOK_HH, name: "Rent", account_type: "expense", service_line: null, tax_category: null, sort_order: 0, is_deductible_candidate: false, requires_business_purpose: false, archived_at: null },
+  { id: ACC_HH_SENSITIVE, book_id: BOOK_HH, name: "HH Sensitive", account_type: "expense", service_line: null, tax_category: null, sort_order: 1, is_deductible_candidate: true, requires_business_purpose: true, archived_at: null },
 ]
 const entries = [
   { id: "e0000000-0000-4000-8000-000000000001", book_id: BOOK_BIZ, account_id: ACC_MEALS, direction: "expense", amount_cents: 2500, occurred_on: "2026-03-05", counterparty: "Chipotle", memo: null, source: "manual", business_purpose: null, document_id: null },
   { id: "e0000000-0000-4000-8000-000000000002", book_id: BOOK_HH, account_id: ACC_RENT, direction: "expense", amount_cents: 200000, occurred_on: "2026-03-01", counterparty: "Landlord", memo: null, source: "manual", business_purpose: null, document_id: null },
+  { id: "e0000000-0000-4000-8000-000000000003", book_id: BOOK_HH, account_id: ACC_HH_SENSITIVE, direction: "expense", amount_cents: 5000, occurred_on: "2026-04-15", counterparty: "Privacy Vendor", memo: null, source: "manual", business_purpose: null, document_id: null },
+  { id: "e0000000-0000-4000-8000-000000000004", book_id: BOOK_HH, account_id: null, direction: "expense", amount_cents: 1500, occurred_on: "2026-05-20", counterparty: "Unknown", memo: null, source: "manual", business_purpose: null, document_id: null },
 ]
 
 const req = (qs: string) => new Request(`http://x/api/admin/bookkeeping/insights?${qs}`)
@@ -59,6 +63,7 @@ describe("GET /api/admin/bookkeeping/insights", () => {
     expect(body.home_office_percent).toBe(25)
     expect(body.books).toHaveLength(2)
     const biz = body.books.find((b: { book: { id: string } }) => b.book.id === BOOK_BIZ)
+    const hh = body.books.find((b: { book: { id: string } }) => b.book.id === BOOK_HH)
     expect(biz.deductions.substantiation_gaps).toHaveLength(1)
     expect(biz.row_count).toBe(1)
     // cross-book regression: household rent never in the business watchlist
@@ -66,8 +71,14 @@ describe("GET /api/admin/bookkeeping/insights", () => {
     expect(body.home_office.input_total_cents).toBe(200000)
     expect(body.home_office.proposed_total_cents).toBe(50000)
     expect(body.home_office.target_book_id).toBe(BOOK_BIZ)
-    // gaps flag derives from BUSINESS books
-    expect(body.year_end_flags.map((f: { id: string }) => f.id)).toContain("substantiation_gaps")
+    // year_end_flags must exclude household pollution: substantiation_gaps flag counts only business gaps (1, not 2)
+    const gapsFlag = body.year_end_flags.find((f: { id: string }) => f.id === "substantiation_gaps")
+    expect(gapsFlag).toBeDefined()
+    expect(gapsFlag.title).toContain("1")
+    // uncategorized_expenses should not be in flags (only household entry is uncategorized, filtered out)
+    expect(body.year_end_flags.map((f: { id: string }) => f.id)).not.toContain("uncategorized_expenses")
+    // but household book's own payload still reports its gap (fixture is live)
+    expect(hh.deductions.substantiation_gaps).toHaveLength(1)
   })
   it("junk stored percent is coerced to null (no proposal)", async () => {
     ;(getSetting as ReturnType<typeof vi.fn>).mockResolvedValue("25")
