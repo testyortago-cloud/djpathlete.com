@@ -113,3 +113,100 @@ describe("vendorSweep — annual, duplicates, unattributed, sorting", () => {
     })
   })
 })
+
+// Review follow-up: the six invariants below were pinned in the implementation and
+// self-review write-up but had no discriminating test — every prior fixture either used an
+// odd-length array (median's even branch never ran) or never produced a genuine tie. Each
+// test here is built so a plausible-but-wrong implementation of its invariant flips the
+// assertion. See the red-proof note in the task-5 fix report for the median cases.
+describe("vendorSweep — pinned invariant discrimination", () => {
+  it("even-n median for amounts: [1000,1000,1100,1100] -> Math.round(avg) = 1050, not the lower-middle element", () => {
+    // gaps 30,30,30 (median 30, monthly); amounts sorted are already [1000,1000,1100,1100]
+    const r = vendorSweep(
+      charges("MedAmt", ["2026-01-01", "2026-01-31", "2026-03-02", "2026-04-01"], [1000, 1000, 1100, 1100]),
+      accounts,
+    )
+    expect(r.recurring).toHaveLength(1)
+    expect(r.recurring[0]).toMatchObject({
+      cadence: "monthly", charge_count: 4,
+      typical_amount_cents: 1050, annualized_cents: 12600,
+    })
+  })
+
+  it("even-n median for gaps: sorted gaps [10,20,44,90] -> Math.round(avg of 20,44) = 32 (monthly); the lower-middle element (20) would misclassify it out of range entirely", () => {
+    const r = vendorSweep(
+      charges("MedGap", ["2026-01-01", "2026-01-11", "2026-01-31", "2026-03-16", "2026-06-14"], 1000),
+      accounts,
+    )
+    expect(r.recurring).toHaveLength(1)
+    expect(r.recurring[0]).toMatchObject({ cadence: "monthly", charge_count: 5 })
+  })
+
+  it("dominant-account tie-break: equal totals on two accounts -> lexicographically smaller account name wins", () => {
+    // "Ties" charged twice on ACC_SOFT and twice on ACC_PHONE, 1000 each -> 2000 vs 2000 tie.
+    // "Phone & Internet" < "Software & Subscriptions" alphabetically.
+    const r = vendorSweep(
+      [
+        ...charges("Ties", ["2026-01-01", "2026-03-02"], 1000, ACC_SOFT),
+        ...charges("Ties", ["2026-01-31", "2026-04-01"], 1000, ACC_PHONE),
+      ],
+      accounts,
+    )
+    expect(r.recurring).toHaveLength(1)
+    expect(r.recurring[0]).toMatchObject({
+      cadence: "monthly", charge_count: 4,
+      account_id: ACC_PHONE, account_name: "Phone & Internet",
+    })
+  })
+
+  it("duplicate_group is tagged only on MONTHLY vendors sharing a dominant account; an annual vendor on the same account stays null", () => {
+    const r = vendorSweep(
+      [
+        ...charges("AnnualCo", ["2025-01-01", "2026-01-01"], 9900, ACC_SOFT), // gap 365 -> annual
+        ...charges("MonA", ["2026-01-01", "2026-01-31", "2026-03-02"], 1000, ACC_SOFT), // gaps 30,30 -> monthly
+        ...charges("MonB", ["2026-01-05", "2026-02-04", "2026-03-06"], 1200, ACC_SOFT), // gaps 30,30 -> monthly
+      ],
+      accounts,
+    )
+    const annual = r.recurring.find((v) => v.key === "annualco")
+    const monA = r.recurring.find((v) => v.key === "mona")
+    const monB = r.recurring.find((v) => v.key === "monb")
+    expect(annual).toMatchObject({ cadence: "annual", duplicate_group: null })
+    expect(monA?.duplicate_group).toBe(ACC_SOFT)
+    expect(monB?.duplicate_group).toBe(ACC_SOFT)
+  })
+
+  it("display_name keeps the casing of the first entry in array order (\"TRAINERIZE\"), not a later-cased duplicate (\"trainerize\")", () => {
+    const r = vendorSweep(
+      [
+        entry({ counterparty: "TRAINERIZE", occurred_on: "2026-01-01", amount_cents: 1000 }),
+        entry({ counterparty: "trainerize", occurred_on: "2026-01-31", amount_cents: 1000 }),
+        entry({ counterparty: "trainerize", occurred_on: "2026-03-02", amount_cents: 1000 }),
+      ],
+      accounts,
+    )
+    expect(r.recurring).toHaveLength(1)
+    expect(r.recurring[0].display_name).toBe("TRAINERIZE")
+  })
+
+  it("an account_id not present in the accounts list falls back to account_id null / account_name \"(uncategorized)\"", () => {
+    const UNKNOWN_ACC = "a0000000-0000-4000-8000-000000000099"
+    const r = vendorSweep(
+      charges("Ghost", ["2026-01-01", "2026-01-31", "2026-03-02"], 1000, UNKNOWN_ACC),
+      accounts,
+    )
+    expect(r.recurring).toHaveLength(1)
+    expect(r.recurring[0]).toMatchObject({ account_id: null, account_name: "(uncategorized)" })
+  })
+
+  it("sort tie-break: equal annualized_cents -> ordered by display_name asc (the Big/Small fixture never ties, so this was undiscriminated)", () => {
+    const r = vendorSweep(
+      [
+        ...charges("beta", ["2026-01-01", "2026-01-31", "2026-03-02"], 1000), // annualized 12000
+        ...charges("alpha", ["2026-01-05", "2026-02-04", "2026-03-06"], 1000), // annualized 12000, tie
+      ],
+      accounts,
+    )
+    expect(r.recurring.map((v) => v.display_name)).toEqual(["alpha", "beta"])
+  })
+})
