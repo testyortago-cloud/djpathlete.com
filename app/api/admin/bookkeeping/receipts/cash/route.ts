@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { receiptCashSchema } from "@/lib/validators/bookkeeping"
-import { getAccount, createEntry, type AccountScopeError } from "@/lib/db/bookkeeping"
+import { getAccount, createEntry } from "@/lib/db/bookkeeping"
 import { businessPurposeMissing } from "@/lib/bookkeeping/receipts"
 import { recordAudit } from "@/lib/audit/record"
 
@@ -35,9 +35,6 @@ export async function POST(request: Request) {
     })
     return NextResponse.json({ entry }, { status: 201 })
   } catch (error) {
-    const code = (error as AccountScopeError)?.code
-    if (code === "ACCOUNT_NOT_FOUND") return NextResponse.json({ error: "account not found" }, { status: 404 })
-    if (code === "WRONG_BOOK" || code === "WRONG_TYPE") return NextResponse.json({ error: "account scope" }, { status: 409 })
     console.error("receipt cash error:", error)
     return NextResponse.json({ error: "Failed to record receipt" }, { status: 500 })
   }

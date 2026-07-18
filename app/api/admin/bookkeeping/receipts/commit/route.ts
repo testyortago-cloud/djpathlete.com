@@ -9,7 +9,6 @@ import {
   insertReceiptEntry,
   updateDocumentRetainUntil,
   linkDocumentBatch,
-  type AccountScopeError,
 } from "@/lib/db/bookkeeping"
 import { recordAudit } from "@/lib/audit/record"
 
@@ -66,9 +65,6 @@ export async function POST(request: Request) {
     })
     return NextResponse.json({ inserted, batchId })
   } catch (error) {
-    const code = (error as AccountScopeError)?.code
-    if (code === "ACCOUNT_NOT_FOUND") return NextResponse.json({ error: "account not found" }, { status: 404 })
-    if (code === "WRONG_BOOK" || code === "WRONG_TYPE") return NextResponse.json({ error: "account scope" }, { status: 409 })
     console.error("receipt commit error:", error)
     return NextResponse.json({ error: "Failed to post receipt" }, { status: 500 })
   }
