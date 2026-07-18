@@ -74,7 +74,7 @@ export default async function AccountantPackPrintPage({ searchParams }: { search
   const today = new Date().toISOString().slice(0, 10)
   const fallback = presetRange("this_year", today)
   // A print surface should always render — invalid/missing dates fall back to this-year.
-  const valid = sp.from && sp.to && isValidIsoDate(sp.from) && isValidIsoDate(sp.to) && sp.from <= sp.to
+  const valid = sp.from && sp.to && isValidIsoDate(sp.from) && isValidIsoDate(sp.to) && sp.from <= sp.to && Number(sp.to.slice(0, 4)) - Number(sp.from.slice(0, 4)) <= 5
   let from = valid ? sp.from! : fallback.from
   let to = valid ? sp.to! : fallback.to
 
@@ -169,7 +169,7 @@ export default async function AccountantPackPrintPage({ searchParams }: { search
           const bookEntries = entries.filter((e) => e.book_id === book.id)
           return (
             <section key={book.id} className="mb-8">
-              <h2 className="font-heading mb-3 text-lg font-semibold">P&amp;L — {book.name}</h2>
+              <h2 className="font-heading mb-3 text-lg font-semibold">P&amp;L — {book.owner_label ?? book.name}</h2>
               {bookEntries.length === 0 ? (
                 <p className="text-sm">
                   No entries recorded for this period. This book exists to keep its finances separate — if it has no activity, it stays empty by design.
