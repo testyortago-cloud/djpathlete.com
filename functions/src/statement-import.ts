@@ -161,7 +161,7 @@ async function markLogCancelled(logId: string | undefined) {
  * never reaches here — the AI is told to always return control_totals: null
  * for that shape since there's no statement-level summary text to read.
  */
-function reconcileControlTotals(
+export function reconcileControlTotals(
   rows: StatementImportOutputRow[],
   controlTotals: StatementImportResult["control_totals"] | null | undefined,
   warnings: string[],
@@ -194,6 +194,28 @@ function reconcileControlTotals(
       )
     }
   }
+}
+
+/**
+ * Enforce MAX_STATEMENT_ROWS on the pdf/csv_raw branch, mutating nothing —
+ * returns the (possibly sliced) rows and updated truncated flag, and pushes
+ * a warning onto `warnings` in place when the cap is hit.
+ */
+export function applyRowCap(
+  rows: StatementImportOutputRow[],
+  warnings: string[],
+  truncatedIn: boolean,
+): { rows: StatementImportOutputRow[]; truncated: boolean } {
+  let out = rows
+  let truncated = truncatedIn
+  if (out.length > MAX_STATEMENT_ROWS) {
+    out = out.slice(0, MAX_STATEMENT_ROWS)
+    truncated = true
+  }
+  if (out.length === MAX_STATEMENT_ROWS) {
+    warnings.push("hit the 500-row cap — statement may be truncated")
+  }
+  return { rows: out, truncated }
 }
 
 /** Back-fill bookkeeping_documents, complete the ai_generation_log, and write
@@ -392,13 +414,9 @@ export async function handleStatementImport(jobId: string): Promise<void> {
     if (res.content.truncated) {
       warnings.push("the AI reported it could not fully process the statement text — the import may be incomplete")
     }
-    if (rows.length > MAX_STATEMENT_ROWS) {
-      rows = rows.slice(0, MAX_STATEMENT_ROWS)
-      truncated = true
-    }
-    if (rows.length === MAX_STATEMENT_ROWS) {
-      warnings.push("hit the 500-row cap — statement may be truncated")
-    }
+    const capped = applyRowCap(rows, warnings, truncated)
+    rows = capped.rows
+    truncated = capped.truncated
 
     const controlTotals = res.content.control_totals ?? null
     reconcileControlTotals(rows, controlTotals, warnings)
