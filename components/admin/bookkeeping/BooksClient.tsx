@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
-import { Plus, Upload, BookOpen } from "lucide-react"
+import { Plus, Upload, BookOpen, Banknote, Camera } from "lucide-react"
 import { toast } from "sonner"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
@@ -11,6 +11,8 @@ import { LedgerTable } from "@/components/admin/bookkeeping/LedgerTable"
 import { ManualEntryDialog } from "@/components/admin/bookkeeping/ManualEntryDialog"
 import { ImportPlatformDialog } from "@/components/admin/bookkeeping/ImportPlatformDialog"
 import { StatementImportDialog } from "@/components/admin/bookkeeping/StatementImportDialog"
+import { ReceiptCashDialog } from "@/components/admin/bookkeeping/ReceiptCashDialog"
+import { ReceiptUploadDialog } from "@/components/admin/bookkeeping/ReceiptUploadDialog"
 import { formatCents } from "@/lib/bookkeeping/money"
 import type {
   BookkeepingBook,
@@ -74,6 +76,8 @@ export function BooksClient({
   const [editingEntry, setEditingEntry] = useState<BookkeepingLedgerEntry | null>(null)
   const [importOpen, setImportOpen] = useState(false)
   const [statementOpen, setStatementOpen] = useState(false)
+  const [cashReceiptOpen, setCashReceiptOpen] = useState(false)
+  const [uploadReceiptOpen, setUploadReceiptOpen] = useState(false)
 
   const fetchEntries = useCallback(async () => {
     if (!bookId) return
@@ -224,6 +228,14 @@ export function BooksClient({
               <Upload className="size-4" />
               Import statement
             </Button>
+            <Button size="sm" variant="outline" onClick={() => setCashReceiptOpen(true)}>
+              <Banknote className="size-4" />
+              Add cash receipt
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setUploadReceiptOpen(true)}>
+              <Camera className="size-4" />
+              Upload receipt
+            </Button>
             <Link
               href="/admin/books/accounts"
               className="ml-auto text-sm text-muted-foreground hover:text-accent underline-offset-4 hover:underline"
@@ -360,6 +372,21 @@ export function BooksClient({
         accounts={accounts}
         open={statementOpen}
         onOpenChange={setStatementOpen}
+        onSaved={fetchEntries}
+      />
+      <ReceiptCashDialog
+        bookId={bookId}
+        accounts={accounts}
+        open={cashReceiptOpen}
+        onOpenChange={setCashReceiptOpen}
+        onSaved={fetchEntries}
+      />
+      <ReceiptUploadDialog
+        bookId={bookId}
+        bookName={selectedBook?.name ?? ""}
+        accounts={accounts}
+        open={uploadReceiptOpen}
+        onOpenChange={setUploadReceiptOpen}
         onSaved={fetchEntries}
       />
     </div>
