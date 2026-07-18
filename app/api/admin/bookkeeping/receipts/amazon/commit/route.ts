@@ -2,8 +2,8 @@ import { NextResponse } from "next/server"
 import { randomUUID } from "node:crypto"
 import { auth } from "@/lib/auth"
 import { amazonCommitSchema } from "@/lib/validators/bookkeeping"
-import { AMAZON_SOURCE_REF } from "@/lib/bookkeeping/receipts"
-import { assertAccountsInBook, insertAmazonEntries, linkDocumentBatch, type AccountScopeError } from "@/lib/db/bookkeeping"
+import { AMAZON_SOURCE_REF, businessPurposeMissing } from "@/lib/bookkeeping/receipts"
+import { assertAccountsInBook, getAccount, insertAmazonEntries, linkDocumentBatch, type AccountScopeError } from "@/lib/db/bookkeeping"
 import { recordAudit } from "@/lib/audit/record"
 
 /**
@@ -34,6 +34,24 @@ export async function POST(request: Request) {
       book_id,
       entries.map((e) => ({ accountId: e.account_id ?? null, direction: e.direction })),
     )
+
+    // Business-purpose substantiation gate (mirrors receipts/commit + receipts/cash):
+    // any entry aimed at an IRS-sensitive account (Meals/Travel/Vehicle) must carry a
+    // non-blank business_purpose before anything posts. Dedupe account_ids first so a
+    // large batch doesn't fire one getAccount per row.
+    const accountIds = Array.from(new Set(entries.map((e) => e.account_id).filter((id): id is string => !!id)))
+    const accounts = await Promise.all(accountIds.map((id) => getAccount(id)))
+    const accountById = new Map(accountIds.map((id, i) => [id, accounts[i]] as const))
+    for (const e of entries) {
+      if (!e.account_id) continue
+      const account = accountById.get(e.account_id)
+      if (account && businessPurposeMissing(account, e.business_purpose ?? null)) {
+        return NextResponse.json(
+          { error: "business_purpose required for one or more IRS-sensitive categories" },
+          { status: 422 },
+        )
+      }
+    }
 
     const batchId = randomUUID()
     const { inserted } = await insertAmazonEntries(

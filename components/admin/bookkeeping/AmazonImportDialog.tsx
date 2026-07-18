@@ -19,6 +19,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { cn } from "@/lib/utils"
 import { formatCents } from "@/lib/bookkeeping/money"
 import { formatOccurredOn } from "@/lib/bookkeeping/format"
+import { accountRequiresBusinessPurpose } from "@/lib/bookkeeping/receipts"
 import { useAiJobsDock } from "@/hooks/use-ai-jobs-dock"
 import { summarizeApiError } from "@/lib/errors/humanize"
 import type { BookkeepingAccount } from "@/types/database"
@@ -97,6 +98,7 @@ interface DraftRow extends JobResultRow {
   source_ref: string
   include: boolean
   accountId: string
+  businessPurpose: string
 }
 
 /** Case-insensitive match against an expense account. Every Amazon row
@@ -121,7 +123,17 @@ function zipRowsToRefs(rows: JobResultRow[], refs: string[], accounts: Bookkeepi
     source_ref: refs[i],
     include: !r.is_transfer,
     accountId: resolveExpenseAccount(r.suggested_category, accounts),
+    businessPurpose: "",
   }))
+}
+
+/** Whether a row's currently-selected category is an IRS-sensitive account
+ *  (Meals/Travel/Vehicle) that requires a business_purpose before posting —
+ *  mirrors the server-side gate in receipts/amazon/commit/route.ts. */
+function rowRequiresBusinessPurpose(row: DraftRow, accounts: BookkeepingAccount[]): boolean {
+  if (!row.accountId) return false
+  const account = accounts.find((a) => a.id === row.accountId)
+  return account ? accountRequiresBusinessPurpose(account) : false
 }
 
 type Step = "upload" | "empty" | "review"
@@ -348,10 +360,17 @@ export function AmazonImportDialog({ bookId, accounts, open, onOpenChange, onSav
 
   const includedRows = rows.filter((r) => r.include)
   const expenseAccounts = accounts.filter((a) => a.account_type === "expense")
+  const purposeMissingRows = includedRows.filter(
+    (r) => rowRequiresBusinessPurpose(r, accounts) && r.businessPurpose.trim().length === 0,
+  )
 
   async function commit() {
     if (includedRows.length === 0) {
       toast.error("Select at least one entry to post")
+      return
+    }
+    if (purposeMissingRows.length > 0) {
+      toast.error("Add a business purpose for every sensitive-category entry before posting")
       return
     }
     setPosting(true)
@@ -368,7 +387,7 @@ export function AmazonImportDialog({ bookId, accounts, open, onOpenChange, onSav
             occurred_on: r.occurred_on,
             memo: r.description,
             counterparty: "Amazon",
-            business_purpose: null,
+            business_purpose: r.businessPurpose.trim() || null,
             service_line: null,
             source: "receipt",
             source_ref: r.source_ref,
@@ -558,6 +577,20 @@ export function AmazonImportDialog({ bookId, accounts, open, onOpenChange, onSav
               </option>
             ))}
           </select>
+          {rowRequiresBusinessPurpose(row, accounts) && (
+            <input
+              type="text"
+              value={row.businessPurpose}
+              onChange={(e) => updateRow(row.source_ref, { businessPurpose: e.currentTarget.value })}
+              disabled={!row.include}
+              placeholder="Business purpose (required)"
+              aria-label={`Business purpose for ${row.description}`}
+              className={cn(
+                "mt-1 w-full rounded-md border bg-transparent px-1.5 py-1 text-xs",
+                row.include && row.businessPurpose.trim().length === 0 ? "border-warning" : "border-border",
+              )}
+            />
+          )}
         </td>
       </tr>
     )
@@ -594,13 +627,21 @@ export function AmazonImportDialog({ bookId, accounts, open, onOpenChange, onSav
                 <tbody>{rows.map(renderRow)}</tbody>
               </table>
             </div>
+
+            {purposeMissingRows.length > 0 && (
+              <p className="text-xs text-warning">
+                Add a business purpose for {purposeMissingRows.length}{" "}
+                {purposeMissingRows.length === 1 ? "entry" : "entries"} in a sensitive category (Meals/Travel/Vehicle)
+                before posting.
+              </p>
+            )}
           </div>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={posting}>
               Cancel
             </Button>
-            <Button onClick={commit} disabled={posting || includedRows.length === 0}>
+            <Button onClick={commit} disabled={posting || includedRows.length === 0 || purposeMissingRows.length > 0}>
               {posting ? "Posting…" : `Post ${includedRows.length} ${includedRows.length === 1 ? "entry" : "entries"}`}
             </Button>
           </DialogFooter>
