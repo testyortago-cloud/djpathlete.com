@@ -100,12 +100,18 @@ export async function POST(request: Request) {
     }
 
     // 1. Run PR detection for this exercise
-    const prs = await detectPRs(userId, exercise_id, exerciseName, {
-      weight_kg: weight_kg ?? null,
-      reps_completed,
-      sets_completed,
-      set_details: set_details ?? null,
-    })
+    const prs = await detectPRs(
+      userId,
+      exercise_id,
+      exerciseName,
+      {
+        weight_kg: weight_kg ?? null,
+        reps_completed,
+        sets_completed,
+        set_details: set_details ?? null,
+      },
+      record.id,
+    )
 
     // 2. For each PR found, create an achievement and mark the progress record
     for (const pr of prs) {

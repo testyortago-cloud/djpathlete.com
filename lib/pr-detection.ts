@@ -28,15 +28,27 @@ function parseReps(reps: string | null): number | null {
 /**
  * Fetch all previous progress entries for a user + exercise combo.
  * Single query — all PR comparison logic runs in JS.
+ *
+ * `excludeProgressId` must be the row the caller just wrote. The log route
+ * inserts the new set BEFORE running detection, so without this the set is
+ * compared against a history that already contains it — and `new > max` is
+ * never true when max includes new. That silently disabled every PR.
  */
-async function fetchExerciseHistory(userId: string, exerciseId: string): Promise<ExerciseProgress[]> {
+async function fetchExerciseHistory(
+  userId: string,
+  exerciseId: string,
+  excludeProgressId?: string | null,
+): Promise<ExerciseProgress[]> {
   const supabase = getClient()
-  const { data, error } = await supabase
+  let query = supabase
     .from("exercise_progress")
     .select("*")
     .eq("user_id", userId)
     .eq("exercise_id", exerciseId)
-    .order("completed_at", { ascending: false })
+  if (excludeProgressId) {
+    query = query.neq("id", excludeProgressId)
+  }
+  const { data, error } = await query.order("completed_at", { ascending: false })
   if (error) throw error
   return (data ?? []) as ExerciseProgress[]
 }
@@ -255,8 +267,9 @@ export async function detectPRs(
     sets_completed: number | null
     set_details?: SetDetail[] | null
   },
+  excludeProgressId?: string | null,
 ): Promise<PrCheckResult[]> {
-  const history = await fetchExerciseHistory(userId, exerciseId)
+  const history = await fetchExerciseHistory(userId, exerciseId, excludeProgressId)
 
   // Need at least 1 previous entry for anything to count as a PR
   if (history.length === 0) return []
