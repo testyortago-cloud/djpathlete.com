@@ -128,3 +128,12 @@ export const reportQuerySchema = z.object({ from: DATE, to: DATE })
 export const quickbooksQuerySchema = z.object({ from: DATE, to: DATE, book_id: z.string().uuid() })
   .refine((v) => v.from <= v.to, { message: "from must be on or before to" })
   .refine(withinFiveYears, { message: "window too large (max 5 years)" })
+
+export const emailPackSchema = z.object({
+  from: DATE,
+  to: DATE,
+  recipient_email: z.string().email().max(200),
+  remember: z.boolean().optional(),
+})
+  .refine((v) => v.from <= v.to, { message: "from must be on or before to" })
+  .refine(withinFiveYears, { message: "window too large (max 5 years)" })
