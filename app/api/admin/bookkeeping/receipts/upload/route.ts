@@ -40,6 +40,14 @@ interface ReceiptScanJobInput {
   requestedBy: string
 }
 
+function resolveImageMime(file: File): string {
+  if (ALLOWED_TYPES.includes(file.type)) return file.type
+  const n = file.name.toLowerCase()
+  if (n.endsWith(".png")) return "image/png"
+  if (n.endsWith(".webp")) return "image/webp"
+  return "image/jpeg"
+}
+
 export async function POST(request: Request) {
   try {
     const session = await auth()
@@ -65,6 +73,9 @@ export async function POST(request: Request) {
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 })
     }
+    if (!(file instanceof File)) {
+      return NextResponse.json({ error: "file required" }, { status: 400 })
+    }
 
     const nameLower = file.name.toLowerCase()
     const isImage = ALLOWED_TYPES.includes(file.type) || /\.(jpe?g|png|webp)$/i.test(nameLower)
@@ -86,7 +97,13 @@ export async function POST(request: Request) {
     const sha256 = createHash("sha256").update(buffer).digest("hex")
     const dup = await findDocumentBySha256(bookId, sha256)
 
-    const mimeType = ALLOWED_TYPES.includes(file.type) ? file.type : "image/jpeg"
+    const [accountRows, book] = await Promise.all([listAccounts(bookId), getBook(bookId)])
+    if (!book) {
+      return NextResponse.json({ error: "book not found" }, { status: 404 })
+    }
+    const accounts = accountRows.map((a) => ({ name: a.name, account_type: a.account_type }))
+
+    const mimeType = resolveImageMime(file)
     const documentId = randomUUID()
     const storagePath = `bookkeeping/receipts/${bookId}/${documentId}/${safeStatementName(file.name)}`
     await storeStatementFile(storagePath, buffer, mimeType)
@@ -105,12 +122,6 @@ export async function POST(request: Request) {
       uploaded_by: session.user.id,
       row_count: 1,
     })
-
-    const [accountRows, book] = await Promise.all([listAccounts(bookId), getBook(bookId)])
-    if (!book) {
-      return NextResponse.json({ error: "book not found" }, { status: 404 })
-    }
-    const accounts = accountRows.map((a) => ({ name: a.name, account_type: a.account_type }))
 
     const log = await createGenerationLog({
       program_id: null,

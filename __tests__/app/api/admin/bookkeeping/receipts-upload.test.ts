@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 
 /**
  * AI Bookkeeper Phase 3, Task 11 — receipt image upload route.
@@ -18,8 +18,9 @@ vi.mock("@/lib/db/bookkeeping", () => ({
 }))
 vi.mock("@/lib/bookkeeping/documents", () => ({ storeStatementFile: vi.fn(), safeStatementName: (n: string) => n }))
 vi.mock("@/lib/db/ai-generation-log", () => ({ createGenerationLog: vi.fn().mockResolvedValue({ id: "log1" }) }))
+const { jobSet } = vi.hoisted(() => ({ jobSet: vi.fn() }))
 vi.mock("@/lib/firebase-admin", () => ({
-  getAdminFirestore: () => ({ collection: () => ({ doc: () => ({ id: "job1", set: vi.fn() }) }) }),
+  getAdminFirestore: () => ({ collection: () => ({ doc: () => ({ id: "job1", set: jobSet }) }) }),
   getAdminRtdb: () => ({ ref: () => ({ set: vi.fn() }) }),
 }))
 vi.mock("@/lib/audit/record", () => ({ recordAudit: vi.fn() }))
@@ -30,10 +31,14 @@ import { createDocument } from "@/lib/db/bookkeeping"
 import { POST } from "@/app/api/admin/bookkeeping/receipts/upload/route"
 
 const UUID = "11111111-2222-4333-8444-555555555555"
+const ORIGINAL_BUCKET = process.env.FIREBASE_PRIVATE_BUCKET
 beforeEach(() => {
   vi.clearAllMocks()
   ;(auth as ReturnType<typeof vi.fn>).mockResolvedValue({ user: { id: UUID, role: "admin" } })
   process.env.FIREBASE_PRIVATE_BUCKET = "bucket"
+})
+afterEach(() => {
+  process.env.FIREBASE_PRIVATE_BUCKET = ORIGINAL_BUCKET
 })
 
 function form(fileBytes = "JPEGDATA", type = "image/jpeg", name = "r.jpg", bookId = UUID) {
@@ -65,5 +70,29 @@ describe("POST /api/admin/bookkeeping/receipts/upload", () => {
     const json = await res.json()
     expect(json).toMatchObject({ jobId: "job1", documentId: "d1", log_id: "log1" })
     expect((createDocument as ReturnType<typeof vi.fn>).mock.calls[0][0]).toMatchObject({ kind: "receipt" })
+
+    expect(jobSet).toHaveBeenCalledTimes(1)
+    const jobPayload = jobSet.mock.calls[0][0]
+    expect(jobPayload.type).toBe("receipt_scan")
+    expect(jobPayload.input).toMatchObject({
+      mimeType: "image/jpeg",
+      accounts: [{ name: "Equipment", account_type: "expense" }],
+      bookName: "Darren",
+      bookKind: "business",
+      documentId: "d1",
+      logId: "log1",
+      requestedBy: UUID,
+    })
+    expect(typeof jobPayload.input.storagePath).toBe("string")
+    expect(jobPayload.input.storagePath).toContain("bookkeeping/receipts/")
+  })
+
+  it("returns 500 with a friendly error and skips document creation when storage is unconfigured", async () => {
+    delete process.env.FIREBASE_PRIVATE_BUCKET
+    const res = await POST(form())
+    expect(res.status).toBe(500)
+    const json = await res.json()
+    expect(json.error).toMatch(/not configured/i)
+    expect(createDocument).not.toHaveBeenCalled()
   })
 })
