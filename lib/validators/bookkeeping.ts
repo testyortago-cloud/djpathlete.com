@@ -117,3 +117,14 @@ export const amazonCommitSchema = z.object({
     account_id: z.string().uuid().nullable().optional(),
   })).min(1).max(2000),
 })
+
+const withinFiveYears = (v: { from: string; to: string }) =>
+  Number(v.to.slice(0, 4)) - Number(v.from.slice(0, 4)) <= 5
+
+export const reportQuerySchema = z.object({ from: DATE, to: DATE })
+  .refine((v) => v.from <= v.to, { message: "from must be on or before to" })
+  .refine(withinFiveYears, { message: "window too large (max 5 years)" })
+
+export const quickbooksQuerySchema = z.object({ from: DATE, to: DATE, book_id: z.string().uuid() })
+  .refine((v) => v.from <= v.to, { message: "from must be on or before to" })
+  .refine(withinFiveYears, { message: "window too large (max 5 years)" })

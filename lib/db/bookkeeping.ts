@@ -6,6 +6,7 @@ import type {
   LedgerDirection, LedgerSource, BookkeepingDocument, NewDocument,
 } from "@/types/database"
 import type { IncomeSourceRows, LedgerEntryDraft } from "@/lib/bookkeeping/types"
+import type { ReportEntry, ReportAccount } from "@/lib/bookkeeping/reports"
 
 function db() {
   return createServiceRoleClient()
@@ -329,4 +330,45 @@ export async function pruneExpiredDocuments(today: string): Promise<{ deleted: n
     ids.push(r.id)
   }
   return { deleted: ids.length, ids }
+}
+
+// ── Reports (Phase 4) ────────────────────────────────────────────────────
+/** Slim windowed ledger read for reports. fetchAllRows-paginated (a year can
+ *  exceed the ~1000-row PostgREST cap); deterministic order for stable pages. */
+export async function listEntriesForReports(from: string, to: string, bookId?: string): Promise<ReportEntry[]> {
+  return fetchAllRows<ReportEntry>((f, t) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let q: any = db()
+      .from("bookkeeping_ledger_entries")
+      .select("book_id,account_id,direction,amount_cents,occurred_on,counterparty,memo,source")
+      .gte("occurred_on", from)
+      .lte("occurred_on", to)
+    if (bookId) q = q.eq("book_id", bookId)
+    return q.order("occurred_on", { ascending: true }).order("id", { ascending: true }).range(f, t) as never
+  })
+}
+
+/** ALL accounts across books, INCLUDING archived — report grouping must keep
+ *  archived accounts joinable or their historical entries re-bucket as
+ *  Uncategorized (a wrong report). Small coach-managed table (~25 rows). */
+export async function listAccountsForReports(): Promise<ReportAccount[]> {
+  const { data, error } = await db()
+    .from("bookkeeping_accounts")
+    .select("id,book_id,name,account_type,service_line,tax_category,sort_order")
+    .order("book_id", { ascending: true })
+    .order("sort_order", { ascending: true })
+  if (error) throw error
+  return (data ?? []) as ReportAccount[]
+}
+
+/** Every document across books for the pack's Document Index (paginated — grows). */
+export async function listAllDocuments(): Promise<BookkeepingDocument[]> {
+  return fetchAllRows<BookkeepingDocument>((f, t) =>
+    db()
+      .from("bookkeeping_documents")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: true })
+      .range(f, t) as never
+  )
 }
