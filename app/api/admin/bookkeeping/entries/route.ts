@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { listEntries, entryTotals, createEntry } from "@/lib/db/bookkeeping"
 import { createEntrySchema } from "@/lib/validators/bookkeeping"
 import { recordAudit } from "@/lib/audit/record"
+import { PERIOD_CLOSED_MESSAGE } from "@/lib/bookkeeping/period-close"
 import type { LedgerDirection, LedgerSource } from "@/types/database"
 
 export async function GET(request: Request) {
@@ -61,6 +62,9 @@ export async function POST(request: Request) {
       metadata: { book_id: d.book_id, amount_cents: d.amount_cents, direction: d.direction }, request })
     return NextResponse.json({ entry }, { status: 201 })
   } catch (error) {
+    if ((error as { code?: string }).code === "PERIOD_CLOSED") {
+      return NextResponse.json({ error: PERIOD_CLOSED_MESSAGE }, { status: 409 })
+    }
     console.error("Create bookkeeping entry error:", error)
     return NextResponse.json({ error: "Failed to create entry" }, { status: 500 })
   }

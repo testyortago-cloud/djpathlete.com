@@ -11,6 +11,7 @@ import {
   linkDocumentBatch,
 } from "@/lib/db/bookkeeping"
 import { recordAudit } from "@/lib/audit/record"
+import { PERIOD_CLOSED_MESSAGE } from "@/lib/bookkeeping/period-close"
 
 export async function POST(request: Request) {
   try {
@@ -65,6 +66,9 @@ export async function POST(request: Request) {
     })
     return NextResponse.json({ inserted, batchId })
   } catch (error) {
+    if ((error as { code?: string }).code === "PERIOD_CLOSED") {
+      return NextResponse.json({ error: PERIOD_CLOSED_MESSAGE }, { status: 409 })
+    }
     console.error("receipt commit error:", error)
     return NextResponse.json({ error: "Failed to post receipt" }, { status: 500 })
   }

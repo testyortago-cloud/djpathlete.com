@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { updateEntry, deleteEntry, getEntry, assertAccountInBook } from "@/lib/db/bookkeeping"
 import { updateEntrySchema } from "@/lib/validators/bookkeeping"
 import { recordAudit } from "@/lib/audit/record"
+import { PERIOD_CLOSED_MESSAGE } from "@/lib/bookkeeping/period-close"
 
 export async function PATCH(request: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
@@ -30,6 +31,9 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
       target: { type: "bookkeeping_entry", id }, request })
     return NextResponse.json({ entry })
   } catch (error) {
+    if ((error as { code?: string }).code === "PERIOD_CLOSED") {
+      return NextResponse.json({ error: PERIOD_CLOSED_MESSAGE }, { status: 409 })
+    }
     console.error("Update bookkeeping entry error:", error)
     return NextResponse.json({ error: "Failed to update entry" }, { status: 500 })
   }
@@ -45,6 +49,9 @@ export async function DELETE(request: Request, ctx: { params: Promise<{ id: stri
       target: { type: "bookkeeping_entry", id }, request })
     return NextResponse.json({ ok: true })
   } catch (error) {
+    if ((error as { code?: string }).code === "PERIOD_CLOSED") {
+      return NextResponse.json({ error: PERIOD_CLOSED_MESSAGE }, { status: 409 })
+    }
     console.error("Delete bookkeeping entry error:", error)
     return NextResponse.json({ error: "Failed to delete entry" }, { status: 500 })
   }

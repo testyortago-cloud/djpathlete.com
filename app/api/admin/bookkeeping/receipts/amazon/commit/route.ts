@@ -54,7 +54,7 @@ export async function POST(request: Request) {
     }
 
     const batchId = randomUUID()
-    const { inserted } = await insertAmazonEntries(
+    const { inserted, rejected_closed, rejected_closed_rows } = await insertAmazonEntries(
       book_id,
       batchId,
       entries.map((e) => ({
@@ -78,11 +78,11 @@ export async function POST(request: Request) {
       category: "commerce",
       outcome: "success",
       target: { type: "bookkeeping_book", id: book_id },
-      metadata: { requested: entries.length, inserted, import_batch_id: batchId, document_id: document_id ?? null, source: "amazon" },
+      metadata: { requested: entries.length, inserted, rejected_closed: rejected_closed ?? 0, import_batch_id: batchId, document_id: document_id ?? null, source: "amazon" },
       request,
     })
 
-    return NextResponse.json({ inserted, batchId })
+    return NextResponse.json({ inserted, batchId, rejected_closed: rejected_closed ?? 0, rejected_closed_rows: rejected_closed_rows ?? [] })
   } catch (error) {
     const code = (error as AccountScopeError)?.code
     if (code === "ACCOUNT_NOT_FOUND") return NextResponse.json({ error: "account not found" }, { status: 404 })

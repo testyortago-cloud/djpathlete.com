@@ -27,12 +27,12 @@ export async function POST(request: Request) {
       throw err
     }
     const batchId = crypto.randomUUID()
-    const { inserted } = await insertImportedEntries(book_id, batchId, entries)
+    const { inserted, rejected_closed, rejected_closed_rows } = await insertImportedEntries(book_id, batchId, entries)
     if (document_id) await linkDocumentBatch(document_id, book_id, batchId, inserted)
     void recordAudit({ action: "bookkeeping.statement_imported", category: "commerce", outcome: "success",
       target: { type: "bookkeeping_book", id: book_id },
-      metadata: { requested: entries.length, inserted, import_batch_id: batchId, document_id }, request })
-    return NextResponse.json({ inserted, batchId })
+      metadata: { requested: entries.length, inserted, rejected_closed: rejected_closed ?? 0, import_batch_id: batchId, document_id }, request })
+    return NextResponse.json({ inserted, batchId, rejected_closed: rejected_closed ?? 0, rejected_closed_rows: rejected_closed_rows ?? [] })
   } catch (error) {
     console.error("Commit statement import error:", error)
     return NextResponse.json({ error: "Failed to import entries" }, { status: 500 })

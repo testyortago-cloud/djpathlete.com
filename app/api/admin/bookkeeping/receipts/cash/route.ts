@@ -4,6 +4,7 @@ import { receiptCashSchema } from "@/lib/validators/bookkeeping"
 import { getAccount, createEntry } from "@/lib/db/bookkeeping"
 import { businessPurposeMissing } from "@/lib/bookkeeping/receipts"
 import { recordAudit } from "@/lib/audit/record"
+import { PERIOD_CLOSED_MESSAGE } from "@/lib/bookkeeping/period-close"
 
 export async function POST(request: Request) {
   try {
@@ -35,6 +36,9 @@ export async function POST(request: Request) {
     })
     return NextResponse.json({ entry }, { status: 201 })
   } catch (error) {
+    if ((error as { code?: string }).code === "PERIOD_CLOSED") {
+      return NextResponse.json({ error: PERIOD_CLOSED_MESSAGE }, { status: 409 })
+    }
     console.error("receipt cash error:", error)
     return NextResponse.json({ error: "Failed to record receipt" }, { status: 500 })
   }
