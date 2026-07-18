@@ -127,6 +127,39 @@ describe("POST /api/admin/bookkeeping/receipts/amazon", () => {
     expect(json.refs[0]).toBe("amazon:112-1:0")
     expect(json.refs[json.refs.length - 1]).toBe("amazon:114-3:0")
   })
+
+  it("caps at ROW_CAP=500, keeps refs index-aligned with input.rows, and surfaces a truncation warning", async () => {
+    // Money-critical regression: the route truncates allRows to ROW_CAP BEFORE
+    // emitting both the HTTP `refs` array and the Firestore job's `input.rows`
+    // from the same post-truncation array — so a 501-line upload must produce
+    // exactly 500 of each, still index-aligned, plus a warning naming the cap.
+    // Reuses this file's established 4-column Amazon CSV fixture shape (see
+    // AMAZON_CSV above), repeated 501 times with distinct Order IDs so every
+    // row parses to its own amazon:<orderId>:0 ref (lineByOrder never repeats).
+    const header = "Order Date,Order ID,Title,Item Total"
+    const line = (i: number) => `2026-07-01,ORDER-${i},Item ${i},$10.00`
+    const csv = [header, ...Array.from({ length: 501 }, (_, i) => line(i))].join("\n")
+
+    const res = await UPLOAD(form(csv))
+    expect(res.status).toBe(202)
+    const json = await res.json()
+    expect(json.refs).toHaveLength(500)
+
+    expect(jobSet).toHaveBeenCalledTimes(1)
+    const jobPayload = jobSet.mock.calls[0][0]
+    expect(jobPayload.input.rows).toHaveLength(500)
+
+    for (const i of [0, 250, 499]) {
+      expect(json.refs[i]).toBe(jobPayload.input.rows[i].ref)
+    }
+    expect(json.refs[0]).toBe("amazon:ORDER-0:0")
+    expect(json.refs[499]).toBe("amazon:ORDER-499:0")
+
+    expect(jobPayload.input.uploadTruncated).toBe(true)
+    expect(jobPayload.input.uploadWarnings).toEqual(
+      expect.arrayContaining([expect.stringContaining("first 500")]),
+    )
+  })
 })
 
 describe("POST /api/admin/bookkeeping/receipts/amazon/commit", () => {
