@@ -128,6 +128,37 @@ function isTransientError(error: unknown): boolean {
 
 // ─── callAgent: structured output via raw Anthropic SDK ─────────────────────
 
+/**
+ * Pure content-builder for the Anthropic user message. Backward-compatible:
+ * when `images` is absent/empty and `cachedUserPrefix` is unset, returns the
+ * bare `userMessage` string (identical to prior behavior). When `cachedUserPrefix`
+ * is set (and no images), returns the prior `[cachedPrefix, text]` block array.
+ * When `images` is present, image blocks are prepended, ahead of an optional
+ * cached-prefix text block, ahead of the final user-message text block.
+ */
+export function buildUserContent(
+  userMessage: string,
+  cachedUserPrefix: string | undefined,
+  images: Array<{ media_type: string; data: string }> | undefined,
+): Anthropic.Messages.ContentBlockParam[] | string {
+  const hasImages = !!images && images.length > 0
+  if (!hasImages && !cachedUserPrefix) return userMessage
+  const blocks: Anthropic.Messages.ContentBlockParam[] = []
+  if (hasImages) {
+    for (const img of images!) {
+      blocks.push({
+        type: "image",
+        source: { type: "base64", media_type: img.media_type as "image/jpeg", data: img.data },
+      })
+    }
+  }
+  if (cachedUserPrefix) {
+    blocks.push({ type: "text", text: cachedUserPrefix, cache_control: { type: "ephemeral" } })
+  }
+  blocks.push({ type: "text", text: userMessage })
+  return blocks
+}
+
 function callAgentWithModel<T>(
   modelId: string,
   systemPrompt: string,
@@ -143,6 +174,12 @@ function callAgentWithModel<T>(
      * The block must be ≥ 1024 tokens to actually cache.
      */
     cachedUserPrefix?: string
+    /**
+     * Optional image blocks prepended to the user content (e.g. receipt photos).
+     * When present, image blocks are sent ahead of the cached prefix (if any) and
+     * the user message text.
+     */
+    images?: Array<{ media_type: string; data: string }>
   },
 ): Promise<AgentCallResult<T>> {
   const maxTokens = options?.maxTokens ?? DEFAULT_MAX_TOKENS
@@ -165,16 +202,7 @@ function callAgentWithModel<T>(
       let cache_creation_tokens = 0
       let cache_read_tokens = 0
 
-      const userContent: Anthropic.Messages.ContentBlockParam[] | string = options?.cachedUserPrefix
-        ? [
-            {
-              type: "text" as const,
-              text: options.cachedUserPrefix,
-              cache_control: { type: "ephemeral" as const },
-            },
-            { type: "text" as const, text: userMessage },
-          ]
-        : userMessage
+      const userContent = buildUserContent(userMessage, options?.cachedUserPrefix, options?.images)
 
       if (toolSchema) {
         // ── Primary path: structured output via tool_use (streaming to avoid 10min timeout) ──
@@ -217,16 +245,7 @@ function callAgentWithModel<T>(
 
         const fallbackUserText =
           userMessage + "\n\nYou MUST respond with valid JSON matching this schema. Output ONLY the JSON object."
-        const fallbackUserContent: Anthropic.Messages.ContentBlockParam[] | string = options?.cachedUserPrefix
-          ? [
-              {
-                type: "text" as const,
-                text: options.cachedUserPrefix,
-                cache_control: { type: "ephemeral" as const },
-              },
-              { type: "text" as const, text: fallbackUserText },
-            ]
-          : fallbackUserText
+        const fallbackUserContent = buildUserContent(fallbackUserText, options?.cachedUserPrefix, options?.images)
 
         const stream = client.messages.stream({
           model: modelId,
@@ -298,6 +317,7 @@ export async function callAgent<T>(
     model?: string
     cacheSystemPrompt?: boolean
     cachedUserPrefix?: string
+    images?: Array<{ media_type: string; data: string }>
   },
 ): Promise<AgentCallResult<T>> {
   const modelId = options?.model ?? MODEL_SONNET
