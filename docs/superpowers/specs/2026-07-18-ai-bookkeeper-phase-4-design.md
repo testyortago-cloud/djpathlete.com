@@ -67,8 +67,8 @@ Whether the spouse runs a business or is W-2 salaried is STILL unconfirmed (carr
 ### 3.5 "Reports tab" → sibling page `/admin/books/reports` (structural correction to the kickoff wording)
 Verified: the Tabs in `BooksClient` ARE the book switcher (`value` = book UUID, one trigger per book) — a "Reports" TabsTrigger would collide with book switching. The established sub-surface pattern is a sibling route + toolbar link (`/admin/books/accounts` ← "Manage categories"). **Reports get `app/(admin)/admin/books/reports/page.tsx` + a `ReportsClient` with its own per-book Tabs, linked from the BooksClient toolbar ("Reports").**
 
-### 3.6 Phase-3 dead-catch: switch the routes onto `assertAccountInBook` (option B, consistently)
-Verified TRUE: `receipts/cash` + `receipts/commit` catch `AccountScopeError` but only do inline `getAccount` checks that can never throw it (the catch is dead); `receipts/amazon/commit`, `statement-import/commit`, `entries/[id]` all use the real `assertAccountInBook`/`assertAccountsInBook` guard. **Resolution: make cash + commit call `assertAccountInBook(accountId, bookId, "expense")` and drop the inline checks — the catches become live and all five mutation routes share one canonical guard.** Behavior delta (documented, tests updated): missing account returns 404 "account not found" (was 409 "account not in book"); wrong-book/wrong-type stay 409.
+### 3.6 Phase-3 dead-catch: DELETE the dead catch mappings (option A, consistently)
+Verified TRUE: `receipts/cash` + `receipts/commit` catch `AccountScopeError` but only do inline `getAccount` checks that can never throw it (the catch is dead); `receipts/amazon/commit`, `statement-import/commit`, `entries/[id]` use the real `assertAccountInBook`/`assertAccountsInBook` guard. The kickoff offered "switch to assertAccountInBook" as the alternative — rejected on inspection: **both routes need the `getAccount` row anyway to feed `businessPurposeMissing(account, …)`**, so the switch would add a second DB read per request purely for consistency theater. **Resolution: keep the inline checks (they are semantically correct and feed the purpose gate); delete the unreachable `AccountScopeError` code-mapping lines from both catches and the now-unused `type AccountScopeError` imports.** Zero behavior change; existing tests keep passing unmodified.
 
 ### 3.7 Workbook money cells are `formatCents` strings, not numeric cells
 Numeric xlsx cells would require `cents / 100` floats. All money in the workbook and print page renders as `formatCents` strings ("$1,234.56") — zero float, consistent with every other surface. The accountant reads; nothing downstream re-computes from the workbook.
@@ -187,7 +187,7 @@ Async server component; `searchParams: Promise<{ from?: string; to?: string }>` 
 
 ## 12. Folded-in Phase-3 minors (verified §3.6)
 
-1. `receipts/cash/route.ts` + `receipts/commit/route.ts`: replace inline `getAccount` book/type checks with `await assertAccountInBook(accountId, bookId, "expense")` — the existing catches become live; delete the now-duplicate inline logic; update the two routes' tests (404 for missing account, 409 wrong-book/wrong-type).
+1. `receipts/cash/route.ts` + `receipts/commit/route.ts`: delete the unreachable `AccountScopeError` mapping lines from both catch blocks (and the unused `type AccountScopeError` imports); the inline `getAccount` checks stay (they also feed `businessPurposeMissing`). Zero behavior change; existing tests unmodified (§3.6).
 2. Amazon `ROW_CAP` regression test in `__tests__/app/api/admin/bookkeeping/receipts-amazon.test.ts`: a 501-row CSV → `refs.length === 500`, `refs[i] === input.rows[i].ref` for sampled i (the money-critical index-zip), truncation warning present in the job input. Locks today's correct behavior.
 
 ## 13. Phase-4b spec — outbound tails (NOT built this session)
@@ -201,7 +201,7 @@ Async server component; `searchParams: Promise<{ from?: string; to?: string }>` 
 
 - **Pure, zero mocks (`__tests__/lib/bookkeeping/`):** `reports.test.ts` (§4 edge list), `period.test.ts` (§5 boundaries), `quickbooks-csv.test.ts` — injection cases (`=cmd()`, `+1 555…`, `-lead`, `@x` in counterparty/memo → `'`-prefixed in output), decimal strings (0→"0.00", 1→"0.01", 99→"0.99", 123456→"1234.56"), date format, credit/debit placement, CRLF + header, empty-entry list → header-only. `accountant-pack.test.ts` — build from fixtures, re-open via `new ExcelJS.Workbook().xlsx.load(buffer)`, assert sheet names (incl. sanitized long/invalid book name), spouse empty-note row, a sampled `formatCents` cell, document-index row count.
 - **Route tests** (mock the DAL module, import handler after mocks, `Request as never`, awaited params): 403 self-gate × 3 new routes; param validation 400s; unknown book 404; CSV response headers + body spot-check; xlsx response headers; reports JSON shape.
-- **Folded minors:** updated cash/commit route tests (§12.1); the ROW_CAP test (§12.2).
+- **Folded minors:** cash/commit tests must still pass unmodified after the dead-catch deletion (§12.1 — zero behavior change is the assertion); the ROW_CAP test (§12.2).
 - **Live-DB proof (throwaway, then deleted):** READ-ONLY — run the real DAL + aggregators against prod for a known window, assert per-book totals equal a hand-run SQL `SUM(amount_cents) GROUP BY direction`, zero writes. Never `__tests__/db/`.
 - **Baseline:** snapshotted pre-build (2786 pass / 11 fail / 5 files: uploads-shop, webhook-external, import-excel-route, admin-nav, events — the known-red family + suspected flake). Compare after; stash-test any suspicious new red. `npm run build` after the LAST fix (`npm_build_vs_tsc` — the build is the deploy gate, tsc is not).
 - Fixtures use RFC-4122 UUIDs (Zod v4 strict).
