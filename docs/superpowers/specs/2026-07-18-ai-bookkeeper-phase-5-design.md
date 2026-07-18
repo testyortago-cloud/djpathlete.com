@@ -168,7 +168,9 @@ export interface DeductionFindings {
   gap_total_cents: number
   uncategorized: UncategorizedSweep
 }
-export function deductionFindings(entries: InsightEntry[], accounts: InsightAccount[]): DeductionFindings
+export function deductionFindings(bookId: string, entries: InsightEntry[], accounts: InsightAccount[]): DeductionFindings
+// bookId explicit (not derived from entries): zero-entry watch accounts must still be listed,
+// so the finder filters BOTH entries and accounts to the book itself (defensive re-filter of entries).
 ```
 
 Pinned semantics:
