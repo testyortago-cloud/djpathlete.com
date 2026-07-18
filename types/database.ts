@@ -572,7 +572,7 @@ export interface BookkeepingLedgerEntry {
   import_batch_id: string | null
   created_at: string
   updated_at: string
-  document_id?: string | null
+  document_id: string | null
 }
 
 export interface BookkeepingDocument {
