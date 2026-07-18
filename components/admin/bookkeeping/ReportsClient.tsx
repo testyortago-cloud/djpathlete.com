@@ -93,9 +93,14 @@ export function ReportsClient({
             Gross figures from the posted ledger — Stripe fees &amp; payouts land in a later phase. Estimates for planning; your CPA files.
           </p>
         </div>
-        <Link href="/admin/books" className="text-sm text-muted-foreground hover:text-accent underline-offset-4 hover:underline">
-          Back to ledger
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link href="/admin/books/insights" className="text-sm text-muted-foreground hover:text-accent underline-offset-4 hover:underline">
+            Insights
+          </Link>
+          <Link href="/admin/books" className="text-sm text-muted-foreground hover:text-accent underline-offset-4 hover:underline">
+            Back to ledger
+          </Link>
+        </div>
       </div>
 
       {/* Period bar */}
