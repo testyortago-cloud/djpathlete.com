@@ -20,7 +20,7 @@ export async function POST(request: Request) {
     if (hasMangledStatementRef) return NextResponse.json({ error: "invalid statement source_ref" }, { status: 400 })
     const batchId = crypto.randomUUID()
     const { inserted } = await insertImportedEntries(book_id, batchId, entries)
-    if (document_id) await linkDocumentBatch(document_id, batchId, inserted)
+    if (document_id) await linkDocumentBatch(document_id, book_id, batchId, inserted)
     void recordAudit({ action: "bookkeeping.statement_imported", category: "commerce", outcome: "success",
       target: { type: "bookkeeping_book", id: book_id },
       metadata: { requested: entries.length, inserted, import_batch_id: batchId, document_id }, request })

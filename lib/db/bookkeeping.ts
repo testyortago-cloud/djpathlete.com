@@ -221,11 +221,78 @@ export async function listDocuments(bookId: string): Promise<BookkeepingDocument
   return fetchAllRows<BookkeepingDocument>((f, t) =>
     db().from("bookkeeping_documents").select("*").eq("book_id", bookId).order("created_at", { ascending: false }).range(f, t) as never)
 }
-export async function linkDocumentBatch(id: string, importBatchId: string, postedCount: number): Promise<void> {
-  const { error } = await db().from("bookkeeping_documents").update({ import_batch_id: importBatchId, posted_count: postedCount, updated_at: new Date().toISOString() }).eq("id", id)
+export async function linkDocumentBatch(id: string, bookId: string, importBatchId: string, postedCount: number): Promise<void> {
+  const { error } = await db().from("bookkeeping_documents")
+    .update({ import_batch_id: importBatchId, posted_count: postedCount, updated_at: new Date().toISOString() })
+    .eq("id", id).eq("book_id", bookId)
   if (error) throw error
 }
 export async function deleteDocument(id: string): Promise<void> {
   const { error } = await db().from("bookkeeping_documents").delete().eq("id", id)
   if (error) throw error
+}
+
+// ── Receipts + Phase-3 helpers ──────────────────────────────────────────────
+export async function getAccount(id: string): Promise<BookkeepingAccount | null> {
+  const { data, error } = await db().from("bookkeeping_accounts").select("*").eq("id", id).maybeSingle()
+  if (error) throw error
+  return (data as BookkeepingAccount) ?? null
+}
+
+export async function insertReceiptEntry(input: {
+  book_id: string; account_id: string | null; amount_cents: number; occurred_on: string
+  counterparty: string | null; business_purpose: string | null; memo: string | null
+  source_ref: string; document_id: string | null; import_batch_id: string | null
+}): Promise<{ inserted: number; id: string | null }> {
+  const row = {
+    book_id: input.book_id, account_id: input.account_id, direction: "expense" as const,
+    amount_cents: input.amount_cents, occurred_on: input.occurred_on, memo: input.memo,
+    business_purpose: input.business_purpose, counterparty: input.counterparty,
+    source: "receipt" as const, source_ref: input.source_ref,
+    import_batch_id: input.import_batch_id, document_id: input.document_id,
+  }
+  const { data, error } = await db()
+    .from("bookkeeping_ledger_entries")
+    .upsert([row], { onConflict: "book_id,source,source_ref", ignoreDuplicates: true })
+    .select("id")
+  if (error) throw error
+  return { inserted: (data ?? []).length, id: (data?.[0] as { id: string } | undefined)?.id ?? null }
+}
+
+export async function insertAmazonEntries(
+  bookId: string, importBatchId: string,
+  drafts: Array<{ direction: LedgerDirection; amount_cents: number; occurred_on: string; memo: string | null; counterparty: string | null; business_purpose?: string | null; source_ref: string; account_id?: string | null }>,
+): Promise<{ inserted: number }> {
+  if (drafts.length === 0) return { inserted: 0 }
+  const rows = drafts.map((d) => ({
+    book_id: bookId, account_id: d.account_id ?? null, direction: d.direction,
+    amount_cents: d.amount_cents, occurred_on: d.occurred_on, memo: d.memo,
+    counterparty: d.counterparty, business_purpose: d.business_purpose ?? null,
+    source: "receipt" as const, source_ref: d.source_ref, import_batch_id: importBatchId,
+  }))
+  const { data, error } = await db()
+    .from("bookkeeping_ledger_entries")
+    .upsert(rows, { onConflict: "book_id,source,source_ref", ignoreDuplicates: true })
+    .select("id")
+  if (error) throw error
+  return { inserted: (data ?? []).length }
+}
+
+export async function updateDocumentRetainUntil(id: string, retainUntil: string): Promise<void> {
+  const { error } = await db()
+    .from("bookkeeping_documents")
+    .update({ retain_until: retainUntil, updated_at: new Date().toISOString() })
+    .eq("id", id)
+  if (error) throw error
+}
+
+export async function assertAccountsInBook(
+  bookId: string, items: Array<{ accountId: string | null; direction: LedgerDirection }>,
+): Promise<void> {
+  const pairs = new Set<string>()
+  for (const it of items) if (it.accountId) pairs.add(`${it.accountId}|${it.direction}`)
+  for (const p of pairs) {
+    const [accountId, direction] = p.split("|")
+    await assertAccountInBook(accountId, bookId, direction as LedgerDirection)
+  }
 }
