@@ -1898,3 +1898,49 @@ export const bookkeepingRetentionCron = onSchedule(
     }
   },
 )
+
+// ─── Bookkeeping Quarterly Accountant Pack (Jan/Apr/Jul/Oct 1, 09:00 UTC) ────
+// AI Bookkeeper Phase 4b. POSTs to /api/admin/internal/bookkeeping-quarterly-pack,
+// which builds and emails the prior calendar quarter's accountant pack to the
+// stored recipient. Gated by system_settings.cron_bookkeeping_quarterly_pack_enabled
+// (default false). The route already owns logCronStart/logCronEnd under
+// "bookkeepingQuarterlyPackCron" — this function must NOT log cron_runs itself,
+// or every run would produce two rows. (Checked sibling POST-delegating crons:
+// revenueDigestCron does not log cron_runs on either side; runAgentStrategist
+// logs functions-side only, but its target route (/ads/agent-strategist) does
+// not log at all either — no sibling double-logs, so single-owner logging —
+// here, route-side, since the route already does it — is the pattern.)
+
+export const bookkeepingQuarterlyPackCron = onSchedule(
+  {
+    schedule: "0 9 1 1,4,7,10 *",
+    timeZone: "Etc/UTC",
+    timeoutSeconds: 180,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [supabaseUrl, supabaseServiceRoleKey, internalCronToken, appUrl],
+  },
+  async () => {
+    const baseUrl = process.env.APP_URL
+    const token = process.env.INTERNAL_CRON_TOKEN
+    if (!baseUrl || !token) {
+      console.error("[bookkeepingQuarterlyPackCron] APP_URL or INTERNAL_CRON_TOKEN missing — abort")
+      return
+    }
+    try {
+      const res = await fetch(`${baseUrl}/api/admin/internal/bookkeeping-quarterly-pack`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: "{}",
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        console.error("[bookkeepingQuarterlyPackCron]", res.status, body)
+        return
+      }
+      console.log("[bookkeepingQuarterlyPackCron]", res.status, body)
+    } catch (err) {
+      console.error("[bookkeepingQuarterlyPackCron] failed:", err)
+    }
+  },
+)
