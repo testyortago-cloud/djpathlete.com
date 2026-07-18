@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { insertImportedEntries, linkDocumentBatch } from "@/lib/db/bookkeeping"
+import { insertImportedEntries, linkDocumentBatch, assertAccountsInBook } from "@/lib/db/bookkeeping"
 import { statementCommitSchema } from "@/lib/validators/bookkeeping"
 import { recordAudit } from "@/lib/audit/record"
 
@@ -18,6 +18,14 @@ export async function POST(request: Request) {
       (entry) => entry.source === "statement_import" && !STATEMENT_SOURCE_REF.test(entry.source_ref),
     )
     if (hasMangledStatementRef) return NextResponse.json({ error: "invalid statement source_ref" }, { status: 400 })
+    try {
+      await assertAccountsInBook(book_id, entries.map((e) => ({ accountId: e.account_id ?? null, direction: e.direction })))
+    } catch (err) {
+      const code = (err as { code?: string })?.code
+      if (code === "ACCOUNT_NOT_FOUND") return NextResponse.json({ error: "account not found" }, { status: 404 })
+      if (code === "WRONG_BOOK" || code === "WRONG_TYPE") return NextResponse.json({ error: "account scope" }, { status: 409 })
+      throw err
+    }
     const batchId = crypto.randomUUID()
     const { inserted } = await insertImportedEntries(book_id, batchId, entries)
     if (document_id) await linkDocumentBatch(document_id, book_id, batchId, inserted)

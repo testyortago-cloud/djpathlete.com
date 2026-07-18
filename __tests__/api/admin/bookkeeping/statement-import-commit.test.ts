@@ -4,12 +4,14 @@ const authMock = vi.fn()
 const insertImportedEntriesMock = vi.fn()
 const linkDocumentBatchMock = vi.fn()
 const recordAuditMock = vi.fn()
+const assertAccountsInBookMock = vi.fn()
 
 vi.mock("@/lib/auth", () => ({ auth: () => authMock() }))
 vi.mock("@/lib/audit/record", () => ({ recordAudit: (...a: unknown[]) => recordAuditMock(...a) }))
 vi.mock("@/lib/db/bookkeeping", () => ({
   insertImportedEntries: (...a: unknown[]) => insertImportedEntriesMock(...a),
   linkDocumentBatch: (...a: unknown[]) => linkDocumentBatchMock(...a),
+  assertAccountsInBook: (...a: unknown[]) => assertAccountsInBookMock(...a),
 }))
 
 import { POST as COMMIT } from "@/app/api/admin/bookkeeping/statement-import/commit/route"
@@ -29,7 +31,9 @@ function makeEntry(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   authMock.mockReset(); insertImportedEntriesMock.mockReset(); linkDocumentBatchMock.mockReset(); recordAuditMock.mockReset()
+  assertAccountsInBookMock.mockReset()
   authMock.mockResolvedValue({ user: { id: "admin-1", role: "admin" } })
+  assertAccountsInBookMock.mockResolvedValue(undefined)
 })
 
 describe("statement-import commit", () => {
