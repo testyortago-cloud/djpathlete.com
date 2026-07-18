@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
     await logCronEnd(supabase, runId, "success", { sentTo: recipient, from, to, entry_count: entries.length })
     return NextResponse.json({ ok: true, sentTo: recipient, from, to })
   } catch (err) {
-    const message = (err as Error).message
+    const message = err instanceof Error ? err.message : String(err)
     console.error("[bookkeeping-quarterly-pack] failed:", err)
     await logCronEnd(supabase, runId, "failed", { message })
     return NextResponse.json({ error: message }, { status: 500 })

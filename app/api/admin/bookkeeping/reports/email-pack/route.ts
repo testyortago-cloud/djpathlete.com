@@ -38,7 +38,7 @@ export async function POST(request: Request) {
 
     void recordAudit({
       action: "bookkeeping.report_emailed", category: "commerce", outcome: "success",
-      metadata: { recipient_email, from, to, entry_count: entries.length }, request,
+      metadata: { recipient_email, from, to, entry_count: entries.length, trigger: "manual" }, request,
     })
     return NextResponse.json({ ok: true, sentTo: recipient_email })
   } catch (error) {
