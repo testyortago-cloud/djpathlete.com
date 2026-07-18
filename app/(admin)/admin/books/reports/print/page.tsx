@@ -15,6 +15,23 @@ export const metadata = { title: "Accountant pack | DJP Athlete" }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
+// Shape-only regex accepts calendar-invalid values like 2026-13-01; round-trip
+// through Date.UTC to reject those before they reach a Postgres date column.
+function isValidIsoDate(s: string): boolean {
+  if (!DATE_RE.test(s)) return false
+  const [y, m, d] = s.split("-").map(Number)
+  const dt = new Date(Date.UTC(y, m - 1, d))
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d
+}
+
+async function loadPrintData(from: string, to: string) {
+  const [{ books, accounts, entries }, documents] = await Promise.all([
+    loadReportBundle(from, to),
+    listAllDocuments(),
+  ])
+  return { books, accounts, entries, documents }
+}
+
 function PnlBlock({ pnl }: { pnl: ProfitAndLoss }) {
   return (
     <>
@@ -57,11 +74,22 @@ export default async function AccountantPackPrintPage({ searchParams }: { search
   const today = new Date().toISOString().slice(0, 10)
   const fallback = presetRange("this_year", today)
   // A print surface should always render — invalid/missing dates fall back to this-year.
-  const valid = sp.from && sp.to && DATE_RE.test(sp.from) && DATE_RE.test(sp.to) && sp.from <= sp.to
-  const from = valid ? sp.from! : fallback.from
-  const to = valid ? sp.to! : fallback.to
+  const valid = sp.from && sp.to && isValidIsoDate(sp.from) && isValidIsoDate(sp.to) && sp.from <= sp.to
+  let from = valid ? sp.from! : fallback.from
+  let to = valid ? sp.to! : fallback.to
 
-  const [{ books, accounts, entries }, documents] = await Promise.all([loadReportBundle(from, to), listAllDocuments()])
+  let bundle
+  try {
+    bundle = await loadPrintData(from, to)
+  } catch {
+    // Belt and suspenders: any residual bad input (or a transient shape issue)
+    // still renders this-year rather than crashing to the admin error boundary.
+    // If the fallback window ALSO throws, that's a real outage — let it propagate.
+    from = fallback.from
+    to = fallback.to
+    bundle = await loadPrintData(from, to)
+  }
+  const { books, accounts, entries, documents } = bundle
   const summaries = perBookSummary(entries, books)
   const primary = books.find((b) => b.is_primary) ?? books[0]
   const bookName = new Map(books.map((b) => [b.id, b.name]))
