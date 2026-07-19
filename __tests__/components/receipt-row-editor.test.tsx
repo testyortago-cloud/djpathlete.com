@@ -46,6 +46,7 @@ describe("ReceiptRowEditor", () => {
     )
     await waitFor(() => expect(onPreviewLoaded).toHaveBeenCalledWith("https://signed/img"))
     expect(fetchMock).toHaveBeenCalledWith("/api/admin/bookkeeping/documents/d1/download")
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
   it("skips the fetch when previewUrl is already cached and renders it", () => {
@@ -118,5 +119,7 @@ describe("ReceiptRowEditor", () => {
     expect(screen.getByLabelText(/amount/i)).toBeDisabled()
     expect(screen.getByLabelText(/date/i)).toBeDisabled()
     expect(screen.getByLabelText(/counterparty/i)).toBeDisabled()
+    expect(screen.getByLabelText(/business purpose/i)).toBeDisabled()
+    expect(screen.getByLabelText(/category/i)).toBeDisabled()
   })
 })

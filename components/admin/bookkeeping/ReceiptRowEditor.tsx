@@ -140,13 +140,13 @@ export function ReceiptRowEditor({ row, accounts, disabled, onEdit, onPreviewLoa
       </div>
 
       <div className="space-y-2">
-        <Label>Category</Label>
+        <Label htmlFor={`ru-category-${row.clientId}`}>Category</Label>
         <Select
           value={row.accountId || "none"}
           disabled={disabled}
           onValueChange={(v) => onEdit({ accountId: v === "none" ? "" : v })}
         >
-          <SelectTrigger className="w-full">
+          <SelectTrigger id={`ru-category-${row.clientId}`} className="w-full">
             <SelectValue placeholder="Uncategorized" />
           </SelectTrigger>
           <SelectContent>
