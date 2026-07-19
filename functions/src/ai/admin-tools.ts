@@ -1,5 +1,12 @@
 import type Anthropic from "@anthropic-ai/sdk"
 import { getSupabase } from "../lib/supabase.js"
+import { fetchAllRows } from "../lib/paginate.js"
+import {
+  incomeByServiceLine,
+  perBookSummary,
+  topCounterparties,
+  type AggAccount,
+} from "../lib/bookkeeping-aggregate.js"
 
 // ─── Tool Definitions ───────────────────────────────────────────────────────
 
@@ -243,6 +250,68 @@ export const ADMIN_TOOLS: Anthropic.Tool[] = [
       required: [],
     },
   },
+  {
+    name: "bookkeeping_summary",
+    description:
+      "Get bookkeeping ledger totals per book from DJP's internal books: income, expenses, net, entry count (integer cents). Omit book for every book. Window defaults to calendar year-to-date. Business and household are SEPARATE books (separate tax contexts) — never combine them in one number.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        book: { type: "string", description: "Exact book name, case-insensitive. Omit for all books." },
+        from: { type: "string", description: "Window start, YYYY-MM-DD. Default: Jan 1 of the current year." },
+        to: { type: "string", description: "Window end, YYYY-MM-DD. Default: today." },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "bookkeeping_income_by_service",
+    description:
+      "Break one book's bookkeeping income down by service line (performance training, session packs, camps, memberships, shop, other, uncategorized). Defaults to the primary business book and calendar year-to-date. Money is integer cents.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        book: { type: "string", description: "Exact book name, case-insensitive. Default: the primary business book." },
+        from: { type: "string", description: "Window start, YYYY-MM-DD. Default: Jan 1 of the current year." },
+        to: { type: "string", description: "Window end, YYYY-MM-DD. Default: today." },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "bookkeeping_top_vendors",
+    description:
+      "Rank bookkeeping counterparties by total integer cents in the window, with entry counts — vendors when direction=expense (default), payers when direction=income. A null counterparty bucket means entries with no vendor name recorded. Defaults to all books and calendar year-to-date.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        book: { type: "string", description: "Exact book name, case-insensitive. Omit for all books." },
+        from: { type: "string", description: "Window start, YYYY-MM-DD. Default: Jan 1 of the current year." },
+        to: { type: "string", description: "Window end, YYYY-MM-DD. Default: today." },
+        direction: { type: "string", enum: ["expense", "income"], description: "Which side to rank. Default: expense." },
+        limit: { type: "number", description: "Max counterparties to return (default 10, max 20)." },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "bookkeeping_find_entries",
+    description:
+      "Search individual bookkeeping ledger entries (date, integer-cents amount, direction, account, counterparty, memo, source, book). query is a case-insensitive substring match on memo and counterparty. Returns total_count and a 'showing X of Y' note; page with offset. limit max 50 (default 20). Defaults to all books and calendar year-to-date.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        book: { type: "string", description: "Exact book name, case-insensitive. Omit for all books." },
+        from: { type: "string", description: "Window start, YYYY-MM-DD. Default: Jan 1 of the current year." },
+        to: { type: "string", description: "Window end, YYYY-MM-DD. Default: today." },
+        query: { type: "string", description: "Substring to match against memo and counterparty." },
+        direction: { type: "string", enum: ["expense", "income"], description: "Optional direction filter." },
+        limit: { type: "number", description: "Rows to return (default 20, max 50)." },
+        offset: { type: "number", description: "Rows to skip for paging (default 0)." },
+      },
+      required: [],
+    },
+  },
 ]
 
 // ─── Tool Display Labels ────────────────────────────────────────────────────
@@ -266,6 +335,10 @@ export const TOOL_LABELS: Record<string, string> = {
   get_bookings: "Loading bookings",
   get_reviews_summary: "Summarizing reviews",
   get_form_reviews_queue: "Checking form-review queue",
+  bookkeeping_summary: "Reading your books",
+  bookkeeping_income_by_service: "Breaking income down by service",
+  bookkeeping_top_vendors: "Ranking vendors",
+  bookkeeping_find_entries: "Searching ledger entries",
 }
 
 // ─── Tool Executor ──────────────────────────────────────────────────────────
@@ -309,6 +382,36 @@ export async function executeAdminTool(name: string, input: Record<string, unkno
         return await getReviewsSummary()
       case "get_form_reviews_queue":
         return await getFormReviewsQueue()
+      case "bookkeeping_summary":
+        return await getBookkeepingSummary(
+          input.book as string | undefined,
+          input.from as string | undefined,
+          input.to as string | undefined,
+        )
+      case "bookkeeping_income_by_service":
+        return await getBookkeepingIncomeByService(
+          input.book as string | undefined,
+          input.from as string | undefined,
+          input.to as string | undefined,
+        )
+      case "bookkeeping_top_vendors":
+        return await getBookkeepingTopVendors(
+          input.book as string | undefined,
+          input.from as string | undefined,
+          input.to as string | undefined,
+          input.direction as string | undefined,
+          input.limit as number | undefined,
+        )
+      case "bookkeeping_find_entries":
+        return await getBookkeepingFindEntries(
+          input.book as string | undefined,
+          input.from as string | undefined,
+          input.to as string | undefined,
+          input.query as string | undefined,
+          input.direction as string | undefined,
+          input.limit as number | undefined,
+          input.offset as number | undefined,
+        )
       default:
         return `Unknown tool: ${name}`
     }
@@ -1547,4 +1650,289 @@ async function getFormReviewsQueue(): Promise<string> {
   }
 
   return lines.join("\n")
+}
+
+// ─── Bookkeeping tools (Phase 6c) ───────────────────────────────────────────
+// Read-only ask-your-books tools (spec §5.1, D-11). Every result self-cites
+// book name(s) + from/to and carries the cents note. Aggregates paginate
+// through the 20k hard stop (never the silent ~1000-row PostgREST cap) and
+// say so via partial/partial_note. NO tool here writes anything.
+
+const LEDGER_MAX_AGGREGATE_ROWS = 20000
+const LEDGER_CENTS_NOTE = "All money values are integer cents — divide by 100 for dollars."
+const LEDGER_PARTIAL_NOTE =
+  "Row cap hit: this result covers only the first 20,000 entries in the window (oldest first). Narrow the from/to window for exact numbers."
+const LEDGER_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+
+interface LedgerBookRow {
+  id: string
+  name: string
+  book_kind: string
+  is_primary: boolean
+}
+
+interface LedgerEntryRow {
+  book_id: string
+  account_id: string | null
+  direction: "income" | "expense"
+  amount_cents: number
+  occurred_on: string
+  counterparty: string | null
+  memo: string | null
+  source: string
+}
+
+async function listLedgerBooks(): Promise<LedgerBookRow[]> {
+  const supabase = getSupabase()
+  const { data, error } = await supabase
+    .from("bookkeeping_books")
+    .select("id, name, book_kind, is_primary")
+    .is("archived_at", null)
+    .order("sort_order", { ascending: true })
+  if (error) throw new Error(error.message)
+  return (data ?? []) as LedgerBookRow[]
+}
+
+/** ALL accounts including archived — filtering archived would re-bucket
+ *  historical money as Uncategorized (the listAccountsForReports hazard). */
+async function listLedgerAccounts(): Promise<Array<AggAccount & { name: string }>> {
+  const supabase = getSupabase()
+  const { data, error } = await supabase.from("bookkeeping_accounts").select("id, name, service_line")
+  if (error) throw new Error(error.message)
+  return (data ?? []) as Array<AggAccount & { name: string }>
+}
+
+/** Case-insensitive book resolve. Unknown name → the real names, so the model
+ *  corrects itself instead of guessing (D-11: never guess a book). */
+function resolveLedgerBook(
+  books: LedgerBookRow[],
+  name: string,
+): LedgerBookRow | { error: string; available_books: string[] } {
+  const target = name.trim().toLowerCase()
+  const match = books.find((b) => b.name.trim().toLowerCase() === target)
+  if (match) return match
+  return {
+    error: `Unknown book "${name}". Use one of the exact book names in available_books.`,
+    available_books: books.map((b) => b.name),
+  }
+}
+
+/** Window default: calendar YTD (Jan 1 → today, UTC). */
+function resolveLedgerWindow(fromIn?: string, toIn?: string): { from: string; to: string } | { error: string } {
+  const today = new Date().toISOString().slice(0, 10)
+  const from = fromIn ?? `${today.slice(0, 4)}-01-01`
+  const to = toIn ?? today
+  if (!LEDGER_DATE_RE.test(from) || !LEDGER_DATE_RE.test(to)) {
+    return { error: "from/to must be YYYY-MM-DD dates." }
+  }
+  if (from > to) return { error: `from (${from}) must be on or before to (${to}).` }
+  return { from, to }
+}
+
+function clampLedgerInt(value: number | undefined, fallback: number, min: number, max: number): number {
+  const n = typeof value === "number" && Number.isFinite(value) ? Math.floor(value) : fallback
+  return Math.min(Math.max(n, min), max)
+}
+
+/** Windowed slim ledger read through the hard-stop paginator (D-11). */
+async function fetchLedgerEntries(
+  from: string,
+  to: string,
+  bookId?: string,
+): Promise<{ rows: LedgerEntryRow[]; partial: boolean }> {
+  const supabase = getSupabase()
+  return fetchAllRows<LedgerEntryRow>((f, t) => {
+    let q = supabase
+      .from("bookkeeping_ledger_entries")
+      .select("book_id, account_id, direction, amount_cents, occurred_on, counterparty, memo, source")
+      .gte("occurred_on", from)
+      .lte("occurred_on", to)
+    if (bookId) q = q.eq("book_id", bookId)
+    return q.order("occurred_on", { ascending: true }).order("id", { ascending: true }).range(f, t)
+  }, LEDGER_MAX_AGGREGATE_ROWS)
+}
+
+function ledgerBookCitation(books: LedgerBookRow[]): { book_name: string } | { book_names: string[] } {
+  return books.length === 1 ? { book_name: books[0].name } : { book_names: books.map((b) => b.name) }
+}
+
+async function getBookkeepingSummary(book?: string, fromIn?: string, toIn?: string): Promise<string> {
+  const books = await listLedgerBooks()
+  if (books.length === 0) return JSON.stringify({ error: "No bookkeeping books exist yet." })
+  const window = resolveLedgerWindow(fromIn, toIn)
+  if ("error" in window) return JSON.stringify(window)
+  let targetBooks = books
+  if (book !== undefined) {
+    const resolved = resolveLedgerBook(books, book)
+    if ("error" in resolved) return JSON.stringify(resolved)
+    targetBooks = [resolved]
+  }
+  const { rows, partial } = await fetchLedgerEntries(
+    window.from,
+    window.to,
+    targetBooks.length === 1 ? targetBooks[0].id : undefined,
+  )
+  const summary = perBookSummary(rows, targetBooks)
+  return JSON.stringify({
+    from: window.from,
+    to: window.to,
+    books: summary.map((s) => ({
+      book_name: s.name,
+      book_kind: s.book_kind,
+      income_cents: s.income_cents,
+      expense_cents: s.expense_cents,
+      net_cents: s.net_cents,
+      entry_count: s.entry_count,
+    })),
+    partial,
+    ...(partial ? { partial_note: LEDGER_PARTIAL_NOTE } : {}),
+    note: LEDGER_CENTS_NOTE,
+  })
+}
+
+async function getBookkeepingIncomeByService(book?: string, fromIn?: string, toIn?: string): Promise<string> {
+  const books = await listLedgerBooks()
+  if (books.length === 0) return JSON.stringify({ error: "No bookkeeping books exist yet." })
+  const window = resolveLedgerWindow(fromIn, toIn)
+  if ("error" in window) return JSON.stringify(window)
+  let target: LedgerBookRow
+  if (book !== undefined) {
+    const resolved = resolveLedgerBook(books, book)
+    if ("error" in resolved) return JSON.stringify(resolved)
+    target = resolved
+  } else {
+    // Income-by-service is a primary-business-book concept (print-report semantics:
+    // reports/print/page.tsx:139-143 restricts this section to the primary book;
+    // the interactive reports API computes it per-book instead).
+    target = books.find((b) => b.book_kind === "business" && b.is_primary) ?? books[0]
+  }
+  const [{ rows, partial }, accounts] = await Promise.all([
+    fetchLedgerEntries(window.from, window.to, target.id),
+    listLedgerAccounts(),
+  ])
+  const breakdown = incomeByServiceLine(rows, accounts)
+  return JSON.stringify({
+    book_name: target.name,
+    from: window.from,
+    to: window.to,
+    rows: breakdown.rows,
+    income_total_cents: breakdown.total_cents,
+    partial,
+    ...(partial ? { partial_note: LEDGER_PARTIAL_NOTE } : {}),
+    note: LEDGER_CENTS_NOTE,
+  })
+}
+
+async function getBookkeepingTopVendors(
+  book?: string,
+  fromIn?: string,
+  toIn?: string,
+  directionIn?: string,
+  limitIn?: number,
+): Promise<string> {
+  const books = await listLedgerBooks()
+  if (books.length === 0) return JSON.stringify({ error: "No bookkeeping books exist yet." })
+  const direction = directionIn ?? "expense"
+  if (direction !== "expense" && direction !== "income") {
+    return JSON.stringify({ error: 'direction must be "expense" or "income".' })
+  }
+  const window = resolveLedgerWindow(fromIn, toIn)
+  if ("error" in window) return JSON.stringify(window)
+  let targetBooks = books
+  if (book !== undefined) {
+    const resolved = resolveLedgerBook(books, book)
+    if ("error" in resolved) return JSON.stringify(resolved)
+    targetBooks = [resolved]
+  }
+  const limit = clampLedgerInt(limitIn, 10, 1, 20)
+  const { rows, partial } = await fetchLedgerEntries(
+    window.from,
+    window.to,
+    targetBooks.length === 1 ? targetBooks[0].id : undefined,
+  )
+  const vendors = topCounterparties(rows, { direction, limit })
+  return JSON.stringify({
+    ...ledgerBookCitation(targetBooks),
+    from: window.from,
+    to: window.to,
+    direction,
+    vendors,
+    partial,
+    ...(partial ? { partial_note: LEDGER_PARTIAL_NOTE } : {}),
+    note: `${LEDGER_CENTS_NOTE} A null counterparty groups entries with no vendor name recorded.`,
+  })
+}
+
+async function getBookkeepingFindEntries(
+  book?: string,
+  fromIn?: string,
+  toIn?: string,
+  query?: string,
+  directionIn?: string,
+  limitIn?: number,
+  offsetIn?: number,
+): Promise<string> {
+  const books = await listLedgerBooks()
+  if (books.length === 0) return JSON.stringify({ error: "No bookkeeping books exist yet." })
+  const window = resolveLedgerWindow(fromIn, toIn)
+  if ("error" in window) return JSON.stringify(window)
+  let targetBooks = books
+  if (book !== undefined) {
+    const resolved = resolveLedgerBook(books, book)
+    if ("error" in resolved) return JSON.stringify(resolved)
+    targetBooks = [resolved]
+  }
+  if (directionIn !== undefined && directionIn !== "expense" && directionIn !== "income") {
+    return JSON.stringify({ error: 'direction must be "expense" or "income".' })
+  }
+  const limit = clampLedgerInt(limitIn, 20, 1, 50)
+  const offset = clampLedgerInt(offsetIn, 0, 0, Number.MAX_SAFE_INTEGER)
+
+  const supabase = getSupabase()
+  let q = supabase
+    .from("bookkeeping_ledger_entries")
+    .select("book_id, account_id, direction, amount_cents, occurred_on, counterparty, memo, source", {
+      count: "exact",
+    })
+    .gte("occurred_on", window.from)
+    .lte("occurred_on", window.to)
+  if (targetBooks.length === 1) q = q.eq("book_id", targetBooks[0].id)
+  if (directionIn) q = q.eq("direction", directionIn)
+  if (query && query.trim() !== "") {
+    // Escape idiom from lib/db/bookkeeping.ts applyEntryFilters: %/_ escaped,
+    // or-syntax metacharacters flattened so user text can't break the filter.
+    const esc = query.replace(/[%_]/g, (m) => `\\${m}`).replace(/[,().]/g, " ")
+    q = q.or(`memo.ilike.%${esc}%,counterparty.ilike.%${esc}%`)
+  }
+  const { data, error, count } = await q
+    .order("occurred_on", { ascending: false })
+    .order("id", { ascending: true })
+    .range(offset, offset + limit - 1)
+  if (error) throw new Error(error.message)
+  const accounts = await listLedgerAccounts()
+  const accountName = new Map(accounts.map((a) => [a.id, a.name]))
+  const bookName = new Map(books.map((b) => [b.id, b.name]))
+  const rows = (data ?? []) as LedgerEntryRow[]
+  const total = count ?? 0
+  return JSON.stringify({
+    ...ledgerBookCitation(targetBooks),
+    from: window.from,
+    to: window.to,
+    ...(query && query.trim() !== "" ? { query } : {}),
+    ...(directionIn ? { direction: directionIn } : {}),
+    ...(offset > 0 ? { offset } : {}),
+    total_count: total,
+    showing: `showing ${rows.length} of ${total} matching entries`,
+    rows: rows.map((r) => ({
+      occurred_on: r.occurred_on,
+      amount_cents: r.amount_cents,
+      direction: r.direction,
+      account: r.account_id === null ? null : (accountName.get(r.account_id) ?? null),
+      counterparty: r.counterparty,
+      memo: r.memo,
+      source: r.source,
+      book_name: bookName.get(r.book_id) ?? null,
+    })),
+    note: LEDGER_CENTS_NOTE,
+  })
 }
