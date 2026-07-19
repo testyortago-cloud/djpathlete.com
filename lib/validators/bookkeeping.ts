@@ -153,3 +153,28 @@ export const closePeriodSchema = z.object({
   book_id: z.string().uuid(),
   period: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "expected YYYY-MM"),
 })
+
+export const createAssetSchema = z
+  .object({
+    book_id: z.string().uuid(),
+    name: z.string().min(1).max(200),
+    basis_cents: z.number().int().nonnegative(),
+    salvage_cents: z.number().int().nonnegative().default(0),
+    in_service_on: DATE,
+    method: z.enum(["straight_line"]),
+    convention: z.enum(["full_month", "half_year"]),
+    recovery_years: z.number().int().min(1).max(50),
+    accountant_note: z.string().max(2000).nullable().optional(),
+  })
+  .refine((v) => v.salvage_cents <= v.basis_cents, { message: "salvage cannot exceed basis" })
+
+export const updateAssetSchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  basis_cents: z.number().int().nonnegative().optional(),
+  salvage_cents: z.number().int().nonnegative().optional(),
+  in_service_on: DATE.optional(),
+  method: z.enum(["straight_line"]).optional(),
+  convention: z.enum(["full_month", "half_year"]).optional(),
+  recovery_years: z.number().int().min(1).max(50).optional(),
+  accountant_note: z.string().max(2000).nullable().optional(),
+})

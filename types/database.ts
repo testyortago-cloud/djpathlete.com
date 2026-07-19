@@ -615,6 +615,26 @@ export type NewDocument = Pick<
   "book_id" | "kind" | "original_filename" | "storage_path" | "mime_type" | "file_size_bytes" | "sha256" | "retain_until" | "uploaded_by" | "row_count"
 >
 
+// ── AI Bookkeeper Phase 6d: depreciable-asset register ────────────────────
+export type DepreciationMethod = "straight_line"
+export type DepreciationConvention = "full_month" | "half_year"
+
+export interface BookkeepingAsset {
+  id: string
+  book_id: string
+  name: string
+  basis_cents: number
+  salvage_cents: number
+  in_service_on: string
+  method: DepreciationMethod
+  convention: DepreciationConvention
+  recovery_years: number
+  accountant_note: string | null
+  created_at: string
+  updated_at: string
+}
+export type NewBookkeepingAsset = Omit<BookkeepingAsset, "id" | "created_at" | "updated_at">
+
 export interface Subscription {
   id: string
   user_id: string | null

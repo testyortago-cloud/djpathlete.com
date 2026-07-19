@@ -4,7 +4,7 @@ import { deleteStatementFile } from "@/lib/bookkeeping/documents"
 import type {
   BookkeepingBook, BookkeepingAccount, BookkeepingLedgerEntry,
   LedgerDirection, LedgerSource, BookkeepingDocument, NewDocument,
-  BookkeepingPeriodClose,
+  BookkeepingPeriodClose, BookkeepingAsset, NewBookkeepingAsset,
 } from "@/types/database"
 import type { IncomeSourceRows, LedgerEntryDraft } from "@/lib/bookkeeping/types"
 import type { ReportEntry, ReportAccount } from "@/lib/bookkeeping/reports"
@@ -500,4 +500,48 @@ export async function listAccountsForInsights(): Promise<InsightAccount[]> {
     .order("sort_order", { ascending: true })
   if (error) throw error
   return (data ?? []) as InsightAccount[]
+}
+
+// ── Assets (Phase 6d — depreciation is REPORT-LAYER only, never a ledger row: D-12) ──
+/** Small coach-managed register (like accounts) — unpaginated read is safe; the
+ *  optional bookId scopes the /admin/books/assets page, absent = all books (pack). */
+export async function listAssets(bookId?: string): Promise<BookkeepingAsset[]> {
+  const base = db().from("bookkeeping_assets").select("*")
+  const filtered = bookId ? base.eq("book_id", bookId) : base
+  const { data, error } = await filtered
+    .order("in_service_on", { ascending: true })
+    .order("created_at", { ascending: true })
+  if (error) throw error
+  return (data ?? []) as BookkeepingAsset[]
+}
+
+export async function getAsset(id: string): Promise<BookkeepingAsset | null> {
+  const { data, error } = await db().from("bookkeeping_assets").select("*").eq("id", id).maybeSingle()
+  if (error) throw error
+  return (data as BookkeepingAsset) ?? null
+}
+
+export async function createAsset(input: NewBookkeepingAsset): Promise<BookkeepingAsset> {
+  const { data, error } = await db().from("bookkeeping_assets").insert(input).select().single()
+  if (error) throw error
+  return data as BookkeepingAsset
+}
+
+export async function updateAsset(
+  id: string,
+  updates: Partial<Omit<BookkeepingAsset, "id" | "book_id" | "created_at">>,
+): Promise<BookkeepingAsset> {
+  const { data, error } = await db()
+    .from("bookkeeping_assets")
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .select()
+    .single()
+  if (error) throw error
+  return data as BookkeepingAsset
+}
+
+export async function deleteAsset(id: string): Promise<void> {
+  const { error } = await db().from("bookkeeping_assets").delete().eq("id", id)
+  if (error) throw error
 }
