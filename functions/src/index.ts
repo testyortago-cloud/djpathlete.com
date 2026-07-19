@@ -1944,3 +1944,46 @@ export const bookkeepingQuarterlyPackCron = onSchedule(
     }
   },
 )
+
+// ─── Bookkeeping Receipt Watchdog (weekly Tue 07:00 UTC) ─────────────────────
+// AI Bookkeeper Phase 6b. POSTs to /api/admin/internal/bookkeeping-receipt-watchdog,
+// which scans the trailing 365 days for aged expense entries missing receipts /
+// business purposes and emails the coach the chore list. Gated by
+// system_settings.cron_bookkeeping_receipt_watchdog_enabled (default false, seeded
+// by migration 00188). The route owns logCronStart/logCronEnd under
+// "bookkeepingReceiptWatchdogCron" — this function must NOT log cron_runs itself
+// (single-owner rule; the quarterly-pack precedent). Pure fetch-delegator: only
+// internalCronToken + appUrl are used, so only those secrets are declared.
+export const bookkeepingReceiptWatchdogCron = onSchedule(
+  {
+    schedule: "0 7 * * 2",
+    timeZone: "Etc/UTC",
+    timeoutSeconds: 120,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [internalCronToken, appUrl],
+  },
+  async () => {
+    const baseUrl = process.env.APP_URL
+    const token = process.env.INTERNAL_CRON_TOKEN
+    if (!baseUrl || !token) {
+      console.error("[bookkeepingReceiptWatchdogCron] APP_URL or INTERNAL_CRON_TOKEN missing — abort")
+      return
+    }
+    try {
+      const res = await fetch(`${baseUrl}/api/admin/internal/bookkeeping-receipt-watchdog`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: "{}",
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        console.error("[bookkeepingReceiptWatchdogCron]", res.status, body)
+        return
+      }
+      console.log("[bookkeepingReceiptWatchdogCron]", res.status, body)
+    } catch (err) {
+      console.error("[bookkeepingReceiptWatchdogCron] failed:", err)
+    }
+  },
+)

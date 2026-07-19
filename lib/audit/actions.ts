@@ -253,6 +253,7 @@ export const AUDIT_ACTIONS = [
   { slug: "bookkeeping.period_closed", category: "commerce", description: "Bookkeeping month closed — totals snapshot frozen" },
   { slug: "bookkeeping.period_reopened", category: "commerce", description: "Closed bookkeeping month reopened (snapshot preserved in this audit row)" },
   { slug: "bookkeeping.close_emailed", category: "commerce", description: "Books-closed statement emailed" },
+  { slug: "bookkeeping.receipt_watchdog_emailed", category: "commerce", description: "Weekly missing-receipt watchdog email sent to the coach" },
 ] as const satisfies readonly AuditActionDef[]
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number]["slug"]
