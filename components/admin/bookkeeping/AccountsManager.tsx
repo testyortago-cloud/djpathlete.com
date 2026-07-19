@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
-import { ArrowLeft } from "lucide-react"
+import { Archive, ArrowLeft, Pencil, Plus } from "lucide-react"
 import { toast } from "sonner"
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -54,6 +55,12 @@ export function AccountsManager({
 
   const [form, setForm] = useState<NewAccountForm>(EMPTY_FORM)
   const [adding, setAdding] = useState(false)
+  const [addOpen, setAddOpen] = useState(false)
+
+  function openAdd(type: LedgerAccountType) {
+    setForm({ ...EMPTY_FORM, account_type: type })
+    setAddOpen(true)
+  }
 
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editForm, setEditForm] = useState<EditForm | null>(null)
@@ -123,6 +130,7 @@ export function AccountsManager({
       const { account } = (await res.json()) as { account: BookkeepingAccount }
       setAccounts((list) => [...list, account])
       setForm(EMPTY_FORM)
+      setAddOpen(false)
       toast.success("Account added")
     } catch (error) {
       toast.error((error as Error).message)
@@ -241,7 +249,7 @@ export function AccountsManager({
       )
     }
     return (
-      <li key={a.id} className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
+      <li key={a.id} className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card p-3">
         <div>
           <p className="font-medium text-foreground">{a.name}</p>
           <p className="text-xs text-muted-foreground">
@@ -250,11 +258,13 @@ export function AccountsManager({
             {a.tax_category ? ` · ${a.tax_category}` : ""}
           </p>
         </div>
-        <div className="flex items-center gap-1 shrink-0">
-          <Button variant="ghost" size="sm" onClick={() => startEdit(a)} disabled={busyId === a.id}>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <Button variant="outline" size="sm" onClick={() => startEdit(a)} disabled={busyId === a.id}>
+            <Pencil className="size-3.5" />
             Edit
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => archiveAccount(a.id)} disabled={busyId === a.id}>
+          <Button variant="outline" size="sm" onClick={() => archiveAccount(a.id)} disabled={busyId === a.id}>
+            <Archive className="size-3.5" />
             Archive
           </Button>
         </div>
@@ -283,9 +293,13 @@ export function AccountsManager({
         <p className="text-sm text-muted-foreground">No books configured.</p>
       ) : (
         <Tabs value={bookId} onValueChange={handleBookChange}>
-          <TabsList>
+          <TabsList className="h-auto flex-wrap gap-1 rounded-lg border border-border bg-muted p-1">
             {books.map((book) => (
-              <TabsTrigger key={book.id} value={book.id}>
+              <TabsTrigger
+                key={book.id}
+                value={book.id}
+                className="rounded-md px-4 py-2 text-sm font-medium text-muted-foreground transition-colors data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
+              >
                 {book.name}
               </TabsTrigger>
             ))}
@@ -294,80 +308,108 @@ export function AccountsManager({
           <TabsContent value={bookId} className="space-y-6 mt-4">
             <div className="grid gap-6 sm:grid-cols-2">
               <div className="space-y-3">
-                <h2 className="text-sm font-heading text-success uppercase tracking-wide">Income accounts</h2>
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="text-sm font-heading text-success uppercase tracking-wide">
+                    Income accounts <span className="text-muted-foreground normal-case font-body">· {incomeAccounts.length}</span>
+                  </h2>
+                  <Button variant="outline" size="sm" onClick={() => openAdd("income")}>
+                    <Plus className="size-3.5" />
+                    Add income account
+                  </Button>
+                </div>
                 {incomeAccounts.length === 0 && !loading ? (
-                  <p className="text-sm text-muted-foreground">No income accounts yet.</p>
+                  <p className="text-sm text-muted-foreground">No income accounts yet — add one above.</p>
                 ) : (
                   <ul className="space-y-2">{incomeAccounts.map(renderRow)}</ul>
                 )}
               </div>
               <div className="space-y-3">
-                <h2 className="text-sm font-heading text-error uppercase tracking-wide">Expense accounts</h2>
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="text-sm font-heading text-error uppercase tracking-wide">
+                    Expense accounts <span className="text-muted-foreground normal-case font-body">· {expenseAccounts.length}</span>
+                  </h2>
+                  <Button variant="outline" size="sm" onClick={() => openAdd("expense")}>
+                    <Plus className="size-3.5" />
+                    Add expense account
+                  </Button>
+                </div>
                 {expenseAccounts.length === 0 && !loading ? (
-                  <p className="text-sm text-muted-foreground">No expense accounts yet.</p>
+                  <p className="text-sm text-muted-foreground">No expense accounts yet — add one above.</p>
                 ) : (
                   <ul className="space-y-2">{expenseAccounts.map(renderRow)}</ul>
                 )}
               </div>
             </div>
 
-            <div className="space-y-3 rounded-lg border border-border bg-card p-4">
-              <h2 className="font-heading text-foreground">New account</h2>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="na-name">Name</Label>
-                  <Input
-                    id="na-name"
-                    value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    placeholder="e.g. Coaching income"
+            <Dialog open={addOpen} onOpenChange={setAddOpen}>
+              <DialogContent className="sm:max-w-lg">
+                <DialogHeader>
+                  <DialogTitle className="font-heading">
+                    New {form.account_type} account
+                  </DialogTitle>
+                </DialogHeader>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="na-name">Name</Label>
+                    <Input
+                      id="na-name"
+                      value={form.name}
+                      onChange={(e) => setForm({ ...form, name: e.target.value })}
+                      placeholder={form.account_type === "income" ? "e.g. Coaching income" : "e.g. Facility rental"}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Type</Label>
+                    <Select
+                      value={form.account_type}
+                      onValueChange={(v) => setForm({ ...form, account_type: v as LedgerAccountType })}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="income">Income</SelectItem>
+                        <SelectItem value="expense">Expense</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="na-service-line">Service line (optional)</Label>
+                    <Input
+                      id="na-service-line"
+                      value={form.service_line}
+                      onChange={(e) => setForm({ ...form, service_line: e.target.value })}
+                      placeholder="e.g. performance_training"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="na-tax-category">Tax category (optional)</Label>
+                    <Input
+                      id="na-tax-category"
+                      value={form.tax_category}
+                      onChange={(e) => setForm({ ...form, tax_category: e.target.value })}
+                      placeholder="e.g. Schedule C line 8"
+                    />
+                  </div>
+                </div>
+                <label className="flex items-center gap-2 text-sm text-foreground">
+                  <Switch
+                    checked={form.is_deductible_candidate}
+                    onCheckedChange={(v) => setForm({ ...form, is_deductible_candidate: v })}
                   />
-                </div>
-                <div className="space-y-2">
-                  <Label>Type</Label>
-                  <Select
-                    value={form.account_type}
-                    onValueChange={(v) => setForm({ ...form, account_type: v as LedgerAccountType })}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="income">Income</SelectItem>
-                      <SelectItem value="expense">Expense</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="na-service-line">Service line (optional)</Label>
-                  <Input
-                    id="na-service-line"
-                    value={form.service_line}
-                    onChange={(e) => setForm({ ...form, service_line: e.target.value })}
-                    placeholder="e.g. performance_training"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="na-tax-category">Tax category (optional)</Label>
-                  <Input
-                    id="na-tax-category"
-                    value={form.tax_category}
-                    onChange={(e) => setForm({ ...form, tax_category: e.target.value })}
-                    placeholder="e.g. Schedule C line 8"
-                  />
-                </div>
-              </div>
-              <label className="flex items-center gap-2 text-sm text-foreground">
-                <Switch
-                  checked={form.is_deductible_candidate}
-                  onCheckedChange={(v) => setForm({ ...form, is_deductible_candidate: v })}
-                />
-                Deductible candidate
-              </label>
-              <Button onClick={addAccount} disabled={adding || !form.name.trim()}>
-                Add account
-              </Button>
-            </div>
+                  Deductible candidate
+                </label>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setAddOpen(false)} disabled={adding}>
+                    Cancel
+                  </Button>
+                  <Button onClick={addAccount} disabled={adding || !form.name.trim()}>
+                    <Plus className="size-4" />
+                    Add account
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
 
             <StatementsList bookId={bookId} initialDocuments={initialDocuments} />
           </TabsContent>
