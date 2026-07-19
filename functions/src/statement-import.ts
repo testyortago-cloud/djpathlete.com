@@ -33,16 +33,14 @@ import { getSupabase } from "./lib/supabase.js"
 // BookkeepingAccount/LedgerDirection types in types/database.ts.
 
 export type StatementImportKind = "csv_structured" | "pdf" | "csv_raw"
-export type StatementDirection = "income" | "expense"
-export type StatementConfidence = "low" | "medium" | "high"
 
-export interface StatementImportInputRow {
-  ref: string
-  occurred_on: string
-  description: string
-  amount_cents: number
-  direction: StatementDirection
-}
+// Money-critical join + its row shapes moved to the pure leaf
+// lib/statement-join.ts (root-side tests import THAT file — importing this
+// job module from the Next.js root program drags functions-only deps into
+// the Vercel typecheck and breaks the deploy). Re-exported for internal use.
+import { joinCategorizedRows, type StatementImportInputRow, type StatementImportOutputRow, type StatementDirection, type StatementConfidence } from "./lib/statement-join.js"
+export { joinCategorizedRows }
+export type { StatementImportInputRow, StatementImportOutputRow, StatementDirection, StatementConfidence }
 
 export interface StatementImportAccount {
   name: string
@@ -67,56 +65,9 @@ export interface StatementImportJobInput {
   uploadTruncated?: boolean
 }
 
-export interface StatementImportOutputRow {
-  occurred_on: string
-  description: string
-  amount_cents: number
-  direction: StatementDirection
-  suggested_category: string | null
-  is_transfer: boolean
-  confidence: StatementConfidence
-}
-
 /** Hard cap on AI-structured rows (pdf/csv_raw only) — csv_structured is
  *  bounded by whatever the deterministic parser already produced. */
 export const MAX_STATEMENT_ROWS = 500
-
-// ─── Money-critical join (pure, exported for isolated testing) ─────────────
-
-/**
- * The DETERMINISTIC input rows are authoritative. For each input row, take
- * ONLY suggested_category/is_transfer/confidence from the AI row sharing its
- * `ref`. occurred_on/amount_cents/direction/description come from the input,
- * UNCHANGED, regardless of what the AI echoed back.
- *
- * - An AI row with a ref that doesn't match any input row is ignored.
- * - An input row with no matching AI row is NEVER dropped — it gets
- *   suggested_category:null, is_transfer:false, confidence:"low".
- * - The AI can never add, remove, or reorder a csv_structured row: the
- *   output has exactly one row per input row, in input order.
- */
-export function joinCategorizedRows(
-  inputRows: StatementImportInputRow[],
-  aiRows: StatementImportResult["rows"],
-): StatementImportOutputRow[] {
-  const aiByRef = new Map<string, StatementImportResult["rows"][number]>()
-  for (const row of aiRows) {
-    if (row.ref) aiByRef.set(row.ref, row)
-  }
-
-  return inputRows.map((input) => {
-    const ai = aiByRef.get(input.ref)
-    return {
-      occurred_on: input.occurred_on,
-      description: input.description,
-      amount_cents: input.amount_cents,
-      direction: input.direction,
-      suggested_category: ai?.suggested_category ?? null,
-      is_transfer: ai?.is_transfer ?? false,
-      confidence: ai?.confidence ?? "low",
-    }
-  })
-}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 

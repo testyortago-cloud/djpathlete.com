@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest"
 import {
   joinCategorizedRows,
   type StatementImportInputRow,
-} from "../../../functions/src/statement-import"
+} from "../../../functions/src/lib/statement-join"
 
 // Money-critical join (AI Bookkeeper Phase 2, Task 9): the deterministic
 // csv_structured input rows are authoritative. The AI may only contribute
