@@ -128,13 +128,14 @@ describe("PATCH /api/admin/bookkeeping/entries/[id] — M5 book/type scoping", (
   })
 
   it("skips the book/type guard entirely when no account_id is in the patch", async () => {
+    getEntryMock.mockResolvedValue({ id: ENTRY, book_id: BOOK, direction: "expense", source: "manual" })
     updateEntryMock.mockResolvedValue({ id: ENTRY, memo: "updated" })
     const res = await PATCH(
       new Request("http://x/api", { method: "PATCH", body: JSON.stringify({ memo: "updated" }) }) as never,
       { params: Promise.resolve({ id: ENTRY }) },
     )
     expect(res.status).toBe(200)
-    expect(getEntryMock).not.toHaveBeenCalled()
+    expect(getEntryMock).toHaveBeenCalled()
     expect(assertAccountInBookMock).not.toHaveBeenCalled()
     expect(updateEntryMock).toHaveBeenCalledWith(ENTRY, expect.objectContaining({ memo: "updated" }))
   })

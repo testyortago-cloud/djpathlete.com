@@ -5,6 +5,8 @@ import { updateEntrySchema } from "@/lib/validators/bookkeeping"
 import { recordAudit } from "@/lib/audit/record"
 import { PERIOD_CLOSED_MESSAGE } from "@/lib/bookkeeping/period-close"
 
+const LOCKED_IMPORT_FIELDS = ["direction", "amount_cents", "occurred_on", "adjusts_period"] as const
+
 export async function PATCH(request: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
@@ -13,12 +15,18 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
     const body = await request.json().catch(() => null)
     const parsed = updateEntrySchema.safeParse(body)
     if (!parsed.success) return NextResponse.json({ error: "Invalid input" }, { status: 400 })
+    const existing = await getEntry(id)
+    if (!existing) return NextResponse.json({ error: "entry not found" }, { status: 404 })
+    if (existing.source !== "manual") {
+      const locked = LOCKED_IMPORT_FIELDS.filter((f) => f in parsed.data && parsed.data[f] !== undefined)
+      if (locked.length > 0) {
+        return NextResponse.json({ error: "amount, date and direction are locked on imported entries" }, { status: 422 })
+      }
+    }
     if (parsed.data.account_id) {
-      const entry = await getEntry(id)
-      if (!entry) return NextResponse.json({ error: "entry not found" }, { status: 404 })
-      const effectiveDirection = parsed.data.direction ?? entry.direction
+      const effectiveDirection = parsed.data.direction ?? existing.direction
       try {
-        await assertAccountInBook(parsed.data.account_id, entry.book_id, effectiveDirection)
+        await assertAccountInBook(parsed.data.account_id, existing.book_id, effectiveDirection)
       } catch (e) {
         const code = (e as { code?: string }).code
         if (code === "ACCOUNT_NOT_FOUND") return NextResponse.json({ error: "account not found" }, { status: 404 })
