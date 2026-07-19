@@ -109,6 +109,11 @@ export function LedgerTable({
               {row.counterparty ? (
                 <div className="text-xs text-muted-foreground">{row.counterparty}</div>
               ) : null}
+              {row.adjusts_period ? (
+                <span className="mt-0.5 inline-flex items-center rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent">
+                  adjusts {row.adjusts_period}
+                </span>
+              ) : null}
             </TableCell>
             <TableCell>
               {row.source === "manual" ? (

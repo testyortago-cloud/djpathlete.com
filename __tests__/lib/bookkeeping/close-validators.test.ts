@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { closePeriodSchema } from "@/lib/validators/bookkeeping"
+import { closePeriodSchema, createEntrySchema, updateEntrySchema } from "@/lib/validators/bookkeeping"
 
 const BOOK = "b0000000-0000-4000-8000-000000000001"
 
@@ -14,5 +14,21 @@ describe("closePeriodSchema", () => {
     }
     expect(closePeriodSchema.safeParse({ period: "2026-01" }).success).toBe(false)
     expect(closePeriodSchema.safeParse({ book_id: "not-a-uuid", period: "2026-01" }).success).toBe(false)
+  })
+})
+
+describe("adjusts_period on entry schemas", () => {
+  const base = { book_id: BOOK, direction: "expense" as const, amount_cents: 100, occurred_on: "2026-02-01" }
+  it("optional/nullable and regex-validated on create", () => {
+    expect(createEntrySchema.safeParse(base).success).toBe(true)
+    expect(createEntrySchema.safeParse({ ...base, adjusts_period: null }).success).toBe(true)
+    expect(createEntrySchema.safeParse({ ...base, adjusts_period: "2019-01" }).success).toBe(true)
+    expect(createEntrySchema.safeParse({ ...base, adjusts_period: "2019-13" }).success).toBe(false)
+    expect(createEntrySchema.safeParse({ ...base, adjusts_period: "2019-01-15" }).success).toBe(false)
+  })
+  it("same on update", () => {
+    expect(updateEntrySchema.safeParse({ adjusts_period: "2019-12" }).success).toBe(true)
+    expect(updateEntrySchema.safeParse({ adjusts_period: null }).success).toBe(true)
+    expect(updateEntrySchema.safeParse({ adjusts_period: "2019-00" }).success).toBe(false)
   })
 })

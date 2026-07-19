@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { formatPeriodLabel } from "@/lib/bookkeeping/period-close"
 import type { BookkeepingAccount, BookkeepingLedgerEntry, LedgerDirection } from "@/types/database"
 
 function todayIso(): string {
@@ -22,6 +23,7 @@ interface FormState {
   memo: string
   counterparty: string
   businessPurpose: string
+  adjustsPeriod: string // "" = none
 }
 
 function emptyForm(): FormState {
@@ -33,6 +35,7 @@ function emptyForm(): FormState {
     memo: "",
     counterparty: "",
     businessPurpose: "",
+    adjustsPeriod: "",
   }
 }
 
@@ -45,6 +48,7 @@ function formFromEntry(entry: BookkeepingLedgerEntry): FormState {
     memo: entry.memo ?? "",
     counterparty: entry.counterparty ?? "",
     businessPurpose: entry.business_purpose ?? "",
+    adjustsPeriod: entry.adjusts_period ?? "",
   }
 }
 
@@ -55,6 +59,7 @@ export function ManualEntryDialog({
   open,
   onOpenChange,
   onSaved,
+  closedPeriods = [],
 }: {
   bookId: string
   accounts: BookkeepingAccount[]
@@ -62,6 +67,7 @@ export function ManualEntryDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
   onSaved: () => void
+  closedPeriods?: string[]
 }) {
   const isEdit = Boolean(entry)
   const [form, setForm] = useState<FormState>(emptyForm())
@@ -97,6 +103,7 @@ export function ManualEntryDialog({
         memo: form.memo.trim() || null,
         counterparty: form.counterparty.trim() || null,
         business_purpose: form.businessPurpose.trim() || null,
+        adjusts_period: form.adjustsPeriod || null,
       }
       const res = isEdit
         ? await fetch(`/api/admin/bookkeeping/entries/${entry!.id}`, {
@@ -194,6 +201,31 @@ export function ManualEntryDialog({
               </SelectContent>
             </Select>
           </div>
+
+          {closedPeriods.length > 0 && (
+            <div className="space-y-2">
+              <Label>Adjusts closed month</Label>
+              <Select
+                value={form.adjustsPeriod || "none"}
+                onValueChange={(v) => setForm((f) => ({ ...f, adjustsPeriod: v === "none" ? "" : v }))}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="None" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
+                  {closedPeriods.map((p) => (
+                    <SelectItem key={p} value={p}>
+                      {formatPeriodLabel(p)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Posts in this entry&apos;s own (open) month but is labeled as a correction to the closed month.
+              </p>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">

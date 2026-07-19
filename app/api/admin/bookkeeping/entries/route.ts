@@ -56,6 +56,7 @@ export async function POST(request: Request) {
       amount_cents: d.amount_cents, currency: d.currency ?? "usd", occurred_on: d.occurred_on,
       memo: d.memo ?? null, business_purpose: d.business_purpose ?? null, counterparty: d.counterparty ?? null,
       source: "manual", source_ref: null, import_batch_id: null, document_id: null,
+      adjusts_period: d.adjusts_period ?? null,
     })
     void recordAudit({ action: "bookkeeping.entry_created", category: "commerce", outcome: "success",
       target: { type: "bookkeeping_entry", id: entry.id, label: entry.memo ?? "" },

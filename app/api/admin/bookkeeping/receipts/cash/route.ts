@@ -28,6 +28,7 @@ export async function POST(request: Request) {
       memo: d.memo ?? null, business_purpose: d.business_purpose ?? null,
       counterparty: d.counterparty ?? null,
       source: "receipt", source_ref: null, import_batch_id: null, document_id: null,
+      adjusts_period: null,
     })
     void recordAudit({
       action: "bookkeeping.receipt_cash_recorded", category: "commerce", outcome: "success",

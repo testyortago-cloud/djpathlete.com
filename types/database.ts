@@ -573,6 +573,7 @@ export interface BookkeepingLedgerEntry {
   created_at: string
   updated_at: string
   document_id: string | null
+  adjusts_period: string | null
 }
 
 export interface BookkeepingPeriodClose {
