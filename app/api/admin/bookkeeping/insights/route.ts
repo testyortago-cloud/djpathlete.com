@@ -1,13 +1,19 @@
 // JSON screen-read: self-gated, unflagged (D10), UNAUDITED (reports-route precedent).
 // Everything recomputes per request (D4) — no persistence, no cache.
+// Phase 6b adds two sections: `forecast` (calendar-YTD per business book, D-8/D-9 —
+// its OWN dedicated YTD read, independent of the page window) and `watchdog`
+// (missing receipts/purposes over the page window, D-10).
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { deductionFindings, homeOfficeCandidate } from "@/lib/bookkeeping/deduction-finder"
 import { loadInsightsBundle } from "@/lib/bookkeeping/insight-data"
-import { coerceHomeOfficePercent } from "@/lib/bookkeeping/insight-types"
+import { coerceHomeOfficePercent, coerceTaxRatePercent } from "@/lib/bookkeeping/insight-types"
+import { MIN_AGE_DAYS, receiptWatchdogFindings } from "@/lib/bookkeeping/receipt-watchdog"
 import { serviceLineProfit } from "@/lib/bookkeeping/service-line-profit"
+import { bookYtdTotals, taxForecast } from "@/lib/bookkeeping/tax-forecast"
 import { vendorSweep } from "@/lib/bookkeeping/vendor-sweep"
 import { yearEndFlags } from "@/lib/bookkeeping/year-end-flags"
+import { listEntriesForInsights } from "@/lib/db/bookkeeping"
 import { getSetting } from "@/lib/db/system-settings"
 import { reportQuerySchema } from "@/lib/validators/bookkeeping"
 
@@ -23,12 +29,17 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Invalid input", issues: parsed.error.issues }, { status: 400 })
     }
     const { from, to } = parsed.data
+    const today = new Date().toISOString().slice(0, 10)
+    const ytdFrom = `${today.slice(0, 4)}-01-01` // D-9: pinned calendar YTD, never the page window
 
-    const [bundle, storedPercent] = await Promise.all([
+    const [bundle, storedPercent, storedRate, ytdEntries] = await Promise.all([
       loadInsightsBundle(from, to),
       getSetting<number | null>("bookkeeping_home_office_percent", null),
+      getSetting<number | null>("bookkeeping_tax_rate_percent", null),
+      listEntriesForInsights(ytdFrom, today),
     ])
     const percent = coerceHomeOfficePercent(storedPercent)
+    const rate = coerceTaxRatePercent(storedRate)
     const homeOffice = homeOfficeCandidate(bundle.entries, bundle.accounts, bundle.books, percent)
 
     const bookPayloads = bundle.books.map((book) => {
@@ -57,13 +68,41 @@ export async function GET(request: Request) {
     })
 
     const flags = yearEndFlags({
-      today: new Date().toISOString().slice(0, 10),
+      today,
       from,
       to,
       gap_count: gapCount,
       uncategorized_expense_count: uncategorizedCount,
       home_office_percent_set: percent !== null,
       home_office_input_total_cents: homeOffice.input_total_cents,
+    })
+
+    // Forecast (D-8/D-9): per BUSINESS book, from the dedicated YTD read. The
+    // home-office proposal is recomputed on the YTD window and applies ONLY to
+    // its target (primary business) book. Household books get no forecast.
+    const ytdHomeOffice = homeOfficeCandidate(ytdEntries, bundle.accounts, bundle.books, percent)
+    const forecastBooks = bundle.books
+      .filter((book) => book.book_kind === "business")
+      .map((book) => {
+        const totals = bookYtdTotals(ytdEntries, book.id)
+        return {
+          book_id: book.id,
+          book_name: book.name,
+          forecast: taxForecast({
+            ytd_income_cents: totals.ytd_income_cents,
+            ytd_expense_cents: totals.ytd_expense_cents,
+            home_office_deduction_cents:
+              book.id === ytdHomeOffice.target_book_id ? ytdHomeOffice.proposed_total_cents : null,
+            rate_percent: rate,
+            today,
+          }),
+        }
+      })
+
+    // Watchdog (D-10): the PAGE window, all books; the client filters per tab.
+    const watchdog = receiptWatchdogFindings(bundle.entries, bundle.accounts, {
+      today,
+      minAgeDays: MIN_AGE_DAYS,
     })
 
     return NextResponse.json({
@@ -73,6 +112,8 @@ export async function GET(request: Request) {
       books: bookPayloads,
       home_office: homeOffice,
       year_end_flags: flags,
+      forecast: { ytd_from: ytdFrom, ytd_to: today, rate_percent: rate, books: forecastBooks },
+      watchdog,
     })
   } catch (error) {
     console.error("bookkeeping insights:", error)
