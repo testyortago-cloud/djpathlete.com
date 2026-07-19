@@ -52,6 +52,12 @@ export function ImportPlatformDialog({
   const [rows, setRows] = useState<DraftRow[]>([])
   const [warnings, setWarnings] = useState<string[]>([])
   const [posting, setPosting] = useState(false)
+  // D-4 follow-up: closed-month rejections must not vanish with a transient
+  // toast. This dialog has no persistent post-commit result screen (it just
+  // toasts + closes), so we keep the dialog open and surface a persistent
+  // amber line above the action buttons whenever the commit returns
+  // rejected_closed > 0.
+  const [rejectedClosedCount, setRejectedClosedCount] = useState(0)
   // Platform income (Stripe/packs/camps/shop) is almost always Darren's
   // primary business book — importing into a household/non-primary book is
   // very likely a mis-click, so require an explicit confirmation there.
@@ -69,6 +75,7 @@ export function ImportPlatformDialog({
     setRows([])
     setWarnings([])
     setConfirmNonBusiness(false)
+    setRejectedClosedCount(0)
   }, [open])
 
   function defaultAccountFor(draft: LedgerEntryDraft): string {
@@ -151,6 +158,7 @@ export function ImportPlatformDialog({
       const data = (await res.json()) as { inserted: number; batchId: string; rejected_closed?: number }
       const rejectedClosed = data.rejected_closed ?? 0
       const skipped = includedRows.length - data.inserted - rejectedClosed
+      setRejectedClosedCount(rejectedClosed)
       if (rejectedClosed > 0) {
         toast.warning(
           `${rejectedClosed} row${rejectedClosed === 1 ? " falls" : "s fall"} in closed months — post them as adjustment entries in an open month.`,
@@ -163,8 +171,13 @@ export function ImportPlatformDialog({
       } else {
         toast.success(`Posted ${data.inserted} ${data.inserted === 1 ? "entry" : "entries"}.`)
       }
-      onOpenChange(false)
       onSaved()
+      // Keep the dialog open when rows were rejected for a closed month so
+      // the coach sees the persistent amber line below instead of it
+      // vanishing with the transient toast.
+      if (rejectedClosed === 0) {
+        onOpenChange(false)
+      }
     } catch {
       toast.error("Something went wrong")
     } finally {
@@ -299,6 +312,14 @@ export function ImportPlatformDialog({
               </div>
             )}
           </div>
+        )}
+
+        {rejectedClosedCount > 0 && (
+          <p className="text-sm font-medium text-warning">
+            {rejectedClosedCount} row{rejectedClosedCount === 1 ? "" : "s"}{" "}
+            {rejectedClosedCount === 1 ? "falls" : "fall"} in closed months — post them as adjustment entries in the
+            current open month.
+          </p>
         )}
 
         <DialogFooter>

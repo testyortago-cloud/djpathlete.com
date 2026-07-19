@@ -165,6 +165,12 @@ export function AmazonImportDialog({ bookId, accounts, open, onOpenChange, onSav
 
   const [rows, setRows] = useState<DraftRow[]>([])
   const [posting, setPosting] = useState(false)
+  // D-4 follow-up: closed-month rejections must not vanish with a transient
+  // toast. This dialog has no persistent post-commit result screen (it just
+  // toasts + closes), so we keep the dialog open and surface a persistent
+  // amber line above the action buttons whenever the commit returns
+  // rejected_closed > 0.
+  const [rejectedClosedCount, setRejectedClosedCount] = useState(0)
 
   const jobRefRef = useRef<ReturnType<typeof ref> | null>(null)
 
@@ -193,6 +199,7 @@ export function AmazonImportDialog({ bookId, accounts, open, onOpenChange, onSav
     setError(null)
     setRows([])
     setPosting(false)
+    setRejectedClosedCount(0)
   }
 
   // Reset every time the dialog is (re)opened so a prior run never leaks into
@@ -404,6 +411,7 @@ export function AmazonImportDialog({ bookId, accounts, open, onOpenChange, onSav
       const inserted = typeof data.inserted === "number" ? data.inserted : 0
       const rejectedClosed = typeof data.rejected_closed === "number" ? data.rejected_closed : 0
       const skipped = includedRows.length - inserted - rejectedClosed
+      setRejectedClosedCount(rejectedClosed)
       if (rejectedClosed > 0) {
         toast.warning(
           `${rejectedClosed} row${rejectedClosed === 1 ? " falls" : "s fall"} in closed months — post them as adjustment entries in an open month.`,
@@ -414,8 +422,13 @@ export function AmazonImportDialog({ bookId, accounts, open, onOpenChange, onSav
       } else {
         toast.success(`Posted ${inserted} ${inserted === 1 ? "entry" : "entries"}.`)
       }
-      onOpenChange(false)
       onSaved()
+      // Keep the dialog open when rows were rejected for a closed month so
+      // the coach sees the persistent amber line below instead of it
+      // vanishing with the transient toast.
+      if (rejectedClosed === 0) {
+        onOpenChange(false)
+      }
     } catch {
       toast.error("Something went wrong")
     } finally {
@@ -642,6 +655,14 @@ export function AmazonImportDialog({ bookId, accounts, open, onOpenChange, onSav
               </p>
             )}
           </div>
+
+          {rejectedClosedCount > 0 && (
+            <p className="text-sm font-medium text-warning">
+              {rejectedClosedCount} row{rejectedClosedCount === 1 ? "" : "s"}{" "}
+              {rejectedClosedCount === 1 ? "falls" : "fall"} in closed months — post them as adjustment entries in
+              the current open month.
+            </p>
+          )}
 
           <DialogFooter>
             <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={posting}>

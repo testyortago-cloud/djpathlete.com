@@ -3,6 +3,7 @@
 // Phase 6a (D-1/D-5/D-7): per-book close list + close/reopen actions.
 // The close freezes TOTALS, not documents — retention may still prune links.
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { Lock, Unlock } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -21,6 +22,7 @@ export function CloseMonthCard({
   closes: BookkeepingPeriodClose[]
   onChanged: () => void
 }) {
+  const router = useRouter()
   const [selectedPeriod, setSelectedPeriod] = useState("")
   const [busy, setBusy] = useState(false)
 
@@ -47,6 +49,7 @@ export function CloseMonthCard({
       )
       setSelectedPeriod("")
       onChanged()
+      router.refresh()
     } catch {
       toast.error("Something went wrong")
     } finally {
@@ -69,6 +72,7 @@ export function CloseMonthCard({
       }
       toast.success(`${formatPeriodLabel(close.period)} reopened`)
       onChanged()
+      router.refresh()
     } catch {
       toast.error("Something went wrong")
     } finally {
