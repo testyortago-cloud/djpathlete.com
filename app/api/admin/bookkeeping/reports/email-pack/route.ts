@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth"
 import { emailPackSchema } from "@/lib/validators/bookkeeping"
 import { getSetting, setSetting } from "@/lib/db/system-settings"
 import { loadReportBundle } from "@/lib/bookkeeping/report-data"
-import { listAllDocuments } from "@/lib/db/bookkeeping"
+import { listAllDocuments, listAssets } from "@/lib/db/bookkeeping"
 import { buildAccountantPack } from "@/lib/bookkeeping/accountant-pack"
 import { sendAccountantPack } from "@/lib/bookkeeping/email-pack"
 import { recordAudit } from "@/lib/audit/record"
@@ -22,8 +22,8 @@ export async function POST(request: Request) {
     if (!parsed.success) return NextResponse.json({ error: "Invalid input", issues: parsed.error.issues }, { status: 400 })
     const { from, to, recipient_email, remember } = parsed.data
 
-    const [{ books, accounts, entries }, documents] = await Promise.all([loadReportBundle(from, to), listAllDocuments()])
-    const buffer = await buildAccountantPack({ from, to, books, accounts, entries, documents })
+    const [{ books, accounts, entries }, documents, assets] = await Promise.all([loadReportBundle(from, to), listAllDocuments(), listAssets()])
+    const buffer = await buildAccountantPack({ from, to, books, accounts, entries, documents, assets })
 
     const { error } = await sendAccountantPack({ recipient: recipient_email, from, to, buffer })
     if (error) {

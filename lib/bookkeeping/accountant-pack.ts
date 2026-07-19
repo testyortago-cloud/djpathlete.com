@@ -8,7 +8,8 @@ import {
   incomeByServiceLine, profitAndLossByCategory, perBookSummary,
   type ReportAccount, type ReportEntry,
 } from "@/lib/bookkeeping/reports"
-import type { BookkeepingBook, BookkeepingDocument } from "@/types/database"
+import { depreciationAsOf } from "@/lib/bookkeeping/depreciation"
+import type { BookkeepingAsset, BookkeepingBook, BookkeepingDocument } from "@/types/database"
 
 export interface AccountantPackInput {
   from: string
@@ -17,6 +18,7 @@ export interface AccountantPackInput {
   accounts: ReportAccount[]
   entries: ReportEntry[]
   documents: BookkeepingDocument[]
+  assets: BookkeepingAsset[]
 }
 
 const HEADER_FILL: ExcelJS.Fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0E3F50" } }
@@ -84,8 +86,39 @@ function addPnlSheet(wb: ExcelJS.Workbook, used: Set<string>, book: BookkeepingB
   net.eachCell((c) => { c.font = { bold: true, size: 12 } })
 }
 
+/** Depreciation register (Phase 6d, spec §6.4). Report-layer only — never a ledger
+ *  row (D-12). Omitted ENTIRELY when no assets exist (honest empty-state). */
+function addDepreciationSheet(
+  wb: ExcelJS.Workbook, used: Set<string>, books: BookkeepingBook[],
+  assets: BookkeepingAsset[], endYear: number,
+) {
+  if (assets.length === 0) return
+  const sheet = addSheet(wb, "Depreciation", TAB_ACCENT, used)
+  headerRow(
+    sheet,
+    ["Asset", "Book", "In service", "Basis", "Salvage", "Method", "Convention", "Years", `Depreciation ${endYear}`, `Accumulated thru ${endYear}`, "Note"],
+    [28, 24, 12, 14, 12, 14, 12, 8, 18, 20, 32],
+  )
+  const bookName = new Map(books.map((b) => [b.id, b.name]))
+  for (const a of assets) {
+    const asOf = depreciationAsOf(a, endYear)
+    // `books` (arg) comes from listBooks(), which filters archived_at IS NULL — an
+    // asset on an archived book won't resolve here. Fall back to "—" (never the raw
+    // UUID) for parity with the print page's identical fallback below.
+    sheet.addRow([
+      a.name, bookName.get(a.book_id) ?? "—", a.in_service_on,
+      formatCents(a.basis_cents), formatCents(a.salvage_cents),
+      a.method, a.convention, a.recovery_years,
+      formatCents(asOf.year_cents), formatCents(asOf.accumulated_cents),
+      a.accountant_note ?? "",
+    ])
+  }
+  sheet.addRow([])
+  noteRow(sheet, "Depreciation is tracked, not decided — straight-line book depreciation from accountant-supplied basis, method, and life. For your CPA, not a filing.")
+}
+
 export async function buildAccountantPack(input: AccountantPackInput): Promise<Buffer> {
-  const { from, to, books, accounts, entries, documents } = input
+  const { from, to, books, accounts, entries, documents, assets } = input
   const wb = new ExcelJS.Workbook()
   wb.creator = "DJP Athlete"
   const used = new Set<string>()
@@ -128,6 +161,9 @@ export async function buildAccountantPack(input: AccountantPackInput): Promise<B
   for (const book of books) {
     addPnlSheet(wb, used, book, entries.filter((e) => e.book_id === book.id), accounts)
   }
+
+  // 6b. Depreciation register (Phase 6d) — after the P&L loop, before Documents.
+  addDepreciationSheet(wb, used, books, assets, Number(to.slice(0, 4)))
 
   // 7. Document Index
   const docs = addSheet(wb, "Documents", TAB_GRAY, used)

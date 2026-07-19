@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { reportQuerySchema } from "@/lib/validators/bookkeeping"
 import { loadReportBundle } from "@/lib/bookkeeping/report-data"
-import { listAllDocuments } from "@/lib/db/bookkeeping"
+import { listAllDocuments, listAssets } from "@/lib/db/bookkeeping"
 import { buildAccountantPack } from "@/lib/bookkeeping/accountant-pack"
 import { recordAudit } from "@/lib/audit/record"
 
@@ -16,8 +16,8 @@ export async function GET(request: Request) {
     if (!parsed.success) return NextResponse.json({ error: "Invalid input", issues: parsed.error.issues }, { status: 400 })
     const { from, to } = parsed.data
 
-    const [{ books, accounts, entries }, documents] = await Promise.all([loadReportBundle(from, to), listAllDocuments()])
-    const buf = await buildAccountantPack({ from, to, books, accounts, entries, documents })
+    const [{ books, accounts, entries }, documents, assets] = await Promise.all([loadReportBundle(from, to), listAllDocuments(), listAssets()])
+    const buf = await buildAccountantPack({ from, to, books, accounts, entries, documents, assets })
 
     void recordAudit({
       action: "bookkeeping.report_exported", category: "admin_read_sensitive", outcome: "success",

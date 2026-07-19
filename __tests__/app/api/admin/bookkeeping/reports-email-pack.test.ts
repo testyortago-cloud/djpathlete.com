@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
 vi.mock("@/lib/db/system-settings", () => ({ getSetting: vi.fn(), setSetting: vi.fn() }))
 vi.mock("@/lib/bookkeeping/report-data", () => ({ loadReportBundle: vi.fn() }))
-vi.mock("@/lib/db/bookkeeping", () => ({ listAllDocuments: vi.fn() }))
+vi.mock("@/lib/db/bookkeeping", () => ({ listAllDocuments: vi.fn(), listAssets: vi.fn() }))
 vi.mock("@/lib/bookkeeping/accountant-pack", () => ({ buildAccountantPack: vi.fn() }))
 vi.mock("@/lib/bookkeeping/email-pack", () => ({ sendAccountantPack: vi.fn() }))
 vi.mock("@/lib/audit/record", () => ({ recordAudit: vi.fn() }))
@@ -11,7 +11,7 @@ vi.mock("@/lib/audit/record", () => ({ recordAudit: vi.fn() }))
 import { auth } from "@/lib/auth"
 import { getSetting, setSetting } from "@/lib/db/system-settings"
 import { loadReportBundle } from "@/lib/bookkeeping/report-data"
-import { listAllDocuments } from "@/lib/db/bookkeeping"
+import { listAllDocuments, listAssets } from "@/lib/db/bookkeeping"
 import { buildAccountantPack } from "@/lib/bookkeeping/accountant-pack"
 import { sendAccountantPack } from "@/lib/bookkeeping/email-pack"
 import { recordAudit } from "@/lib/audit/record"
@@ -28,6 +28,7 @@ beforeEach(() => {
   ;(getSetting as ReturnType<typeof vi.fn>).mockResolvedValue(true) // flag ON
   ;(loadReportBundle as ReturnType<typeof vi.fn>).mockResolvedValue({ books: [], accounts: [], entries: [] })
   ;(listAllDocuments as ReturnType<typeof vi.fn>).mockResolvedValue([])
+  ;(listAssets as ReturnType<typeof vi.fn>).mockResolvedValue([])
   ;(buildAccountantPack as ReturnType<typeof vi.fn>).mockResolvedValue(Buffer.from("xlsx"))
   ;(sendAccountantPack as ReturnType<typeof vi.fn>).mockResolvedValue({ error: null })
 })

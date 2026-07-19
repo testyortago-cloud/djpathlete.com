@@ -20,6 +20,7 @@ vi.mock("@/lib/bookkeeping/report-data", () => ({
 }))
 vi.mock("@/lib/db/bookkeeping", () => ({
   listAllDocuments: vi.fn(),
+  listAssets: vi.fn(),
 }))
 vi.mock("@/lib/bookkeeping/accountant-pack", () => ({
   buildAccountantPack: vi.fn(),
@@ -35,7 +36,7 @@ import { isCronSkipped, getSetting } from "@/lib/db/system-settings"
 import { logCronStart, logCronEnd } from "@/lib/db/cron-runs"
 import { presetRange } from "@/lib/bookkeeping/period"
 import { loadReportBundle } from "@/lib/bookkeeping/report-data"
-import { listAllDocuments } from "@/lib/db/bookkeeping"
+import { listAllDocuments, listAssets } from "@/lib/db/bookkeeping"
 import { buildAccountantPack } from "@/lib/bookkeeping/accountant-pack"
 import { sendAccountantPack } from "@/lib/bookkeeping/email-pack"
 import { recordAudit } from "@/lib/audit/record"
@@ -65,6 +66,7 @@ beforeEach(() => {
     entries: [{ id: "e1" }, { id: "e2" }],
   })
   ;(listAllDocuments as ReturnType<typeof vi.fn>).mockResolvedValue([])
+  ;(listAssets as ReturnType<typeof vi.fn>).mockResolvedValue([])
   ;(buildAccountantPack as ReturnType<typeof vi.fn>).mockResolvedValue(Buffer.from("xlsx"))
   ;(sendAccountantPack as ReturnType<typeof vi.fn>).mockResolvedValue({ error: null })
 })

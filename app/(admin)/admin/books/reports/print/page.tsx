@@ -1,11 +1,12 @@
 import { redirect } from "next/navigation"
 import { auth } from "@/lib/auth"
 import { loadReportBundle } from "@/lib/bookkeeping/report-data"
-import { listAllDocuments } from "@/lib/db/bookkeeping"
+import { listAllDocuments, listAssets } from "@/lib/db/bookkeeping"
 import {
   incomeByServiceLine, profitAndLossByCategory, perBookSummary,
   type ProfitAndLoss,
 } from "@/lib/bookkeeping/reports"
+import { depreciationAsOf } from "@/lib/bookkeeping/depreciation"
 import { formatCents } from "@/lib/bookkeeping/money"
 import { formatOccurredOn } from "@/lib/bookkeeping/format"
 import { presetRange } from "@/lib/bookkeeping/period"
@@ -25,11 +26,12 @@ function isValidIsoDate(s: string): boolean {
 }
 
 async function loadPrintData(from: string, to: string) {
-  const [{ books, accounts, entries }, documents] = await Promise.all([
+  const [{ books, accounts, entries }, documents, assets] = await Promise.all([
     loadReportBundle(from, to),
     listAllDocuments(),
+    listAssets(),
   ])
-  return { books, accounts, entries, documents }
+  return { books, accounts, entries, documents, assets }
 }
 
 function PnlBlock({ pnl }: { pnl: ProfitAndLoss }) {
@@ -89,7 +91,7 @@ export default async function AccountantPackPrintPage({ searchParams }: { search
     to = fallback.to
     bundle = await loadPrintData(from, to)
   }
-  const { books, accounts, entries, documents } = bundle
+  const { books, accounts, entries, documents, assets } = bundle
   const summaries = perBookSummary(entries, books)
   const primary = books.find((b) => b.is_primary) ?? books[0]
   const bookName = new Map(books.map((b) => [b.id, b.name]))
@@ -180,6 +182,46 @@ export default async function AccountantPackPrintPage({ searchParams }: { search
             </section>
           )
         })}
+
+        {assets.length > 0 ? (
+          <section className="mb-8">
+            <h2 className="font-heading mb-3 text-lg font-semibold">Depreciation register — {Number(to.slice(0, 4))}</h2>
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="border-b text-left">
+                  <th className="py-1 pr-4 font-medium">Asset</th>
+                  <th className="py-1 pr-4 font-medium">Book</th>
+                  <th className="py-1 pr-4 font-medium">In service</th>
+                  <th className="py-1 pr-4 font-medium text-right">Basis</th>
+                  <th className="py-1 pr-4 font-medium text-right">Salvage</th>
+                  <th className="py-1 pr-4 font-medium">Life</th>
+                  <th className="py-1 pr-4 font-medium text-right">This year</th>
+                  <th className="py-1 pr-4 font-medium text-right">Accumulated</th>
+                </tr>
+              </thead>
+              <tbody>
+                {assets.map((a) => {
+                  const asOf = depreciationAsOf(a, Number(to.slice(0, 4)))
+                  return (
+                    <tr key={a.id} className="border-b">
+                      <td className="py-1 pr-4">{a.name}</td>
+                      <td className="py-1 pr-4">{bookName.get(a.book_id) ?? "—"}</td>
+                      <td className="py-1 pr-4">{formatOccurredOn(a.in_service_on)}</td>
+                      <td className="py-1 pr-4 text-right">{formatCents(a.basis_cents)}</td>
+                      <td className="py-1 pr-4 text-right">{formatCents(a.salvage_cents)}</td>
+                      <td className="py-1 pr-4">{a.recovery_years} yr {a.convention === "half_year" ? "half-year" : "full-month"}</td>
+                      <td className="py-1 pr-4 text-right">{formatCents(asOf.year_cents)}</td>
+                      <td className="py-1 pr-4 text-right">{formatCents(asOf.accumulated_cents)}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+            <p className="mt-2 text-xs">
+              Depreciation is tracked, not decided — straight-line book depreciation from accountant-supplied basis, method, and life. For your CPA, not a filing.
+            </p>
+          </section>
+        ) : null}
 
         <section className="mb-8">
           <h2 className="font-heading mb-3 text-lg font-semibold">Document index</h2>

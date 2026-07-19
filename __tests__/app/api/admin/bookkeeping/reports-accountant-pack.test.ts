@@ -2,13 +2,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
 vi.mock("@/lib/bookkeeping/report-data", () => ({ loadReportBundle: vi.fn() }))
-vi.mock("@/lib/db/bookkeeping", () => ({ listAllDocuments: vi.fn() }))
+vi.mock("@/lib/db/bookkeeping", () => ({ listAllDocuments: vi.fn(), listAssets: vi.fn() }))
 vi.mock("@/lib/bookkeeping/accountant-pack", () => ({ buildAccountantPack: vi.fn() }))
 vi.mock("@/lib/audit/record", () => ({ recordAudit: vi.fn() }))
 
 import { auth } from "@/lib/auth"
 import { loadReportBundle } from "@/lib/bookkeeping/report-data"
-import { listAllDocuments } from "@/lib/db/bookkeeping"
+import { listAllDocuments, listAssets } from "@/lib/db/bookkeeping"
 import { buildAccountantPack } from "@/lib/bookkeeping/accountant-pack"
 import { recordAudit } from "@/lib/audit/record"
 import { GET } from "@/app/api/admin/bookkeeping/reports/accountant-pack/route"
@@ -22,6 +22,7 @@ beforeEach(() => {
   ;(auth as ReturnType<typeof vi.fn>).mockResolvedValue(admin)
   ;(loadReportBundle as ReturnType<typeof vi.fn>).mockResolvedValue({ books: [], accounts: [], entries: [] })
   ;(listAllDocuments as ReturnType<typeof vi.fn>).mockResolvedValue([])
+  ;(listAssets as ReturnType<typeof vi.fn>).mockResolvedValue([])
   ;(buildAccountantPack as ReturnType<typeof vi.fn>).mockResolvedValue(Buffer.from("xlsx-bytes"))
 })
 

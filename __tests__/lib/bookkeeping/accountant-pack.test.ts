@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest"
 import ExcelJS from "exceljs"
 import { buildAccountantPack, sanitizeSheetName } from "@/lib/bookkeeping/accountant-pack"
 import type { ReportEntry, ReportAccount } from "@/lib/bookkeeping/reports"
-import type { BookkeepingBook, BookkeepingDocument } from "@/types/database"
+import type { BookkeepingAsset, BookkeepingBook, BookkeepingDocument } from "@/types/database"
 
 const B1 = "b0000000-0000-4000-8000-000000000001"
 const B2 = "b0000000-0000-4000-8000-000000000002"
@@ -46,13 +46,14 @@ describe("sanitizeSheetName", () => {
 
 describe("buildAccountantPack", () => {
   it("builds the expected tabs with formatCents money and the honesty sheet", async () => {
-    const buf = await buildAccountantPack({ from: "2026-07-01", to: "2026-07-31", books, accounts, entries, documents })
+    const buf = await buildAccountantPack({ from: "2026-07-01", to: "2026-07-31", books, accounts, entries, documents, assets: [] })
     const wb = await load(buf)
     const names = wb.worksheets.map((w) => w.name)
     expect(names).toEqual([
       "Read Me", "Summary", "Income by Service",
       "P&L — Darren", "P&L — Spouse", "P&L — Household", "Documents",
     ])
+    expect(names).not.toContain("Depreciation") // no assets → no sheet, no empty tab
     const summary = wb.getWorksheet("Summary")!
     // header + 3 book rows
     expect(summary.actualRowCount).toBe(4)
@@ -63,13 +64,13 @@ describe("buildAccountantPack", () => {
     expect(readmeText).toContain("CPA")
   })
   it("spouse sheet carries the explicit empty note when the book has no entries", async () => {
-    const buf = await buildAccountantPack({ from: "2026-07-01", to: "2026-07-31", books, accounts, entries, documents })
+    const buf = await buildAccountantPack({ from: "2026-07-01", to: "2026-07-31", books, accounts, entries, documents, assets: [] })
     const wb = await load(buf)
     const spouse = wb.getWorksheet("P&L — Spouse")!
     expect(JSON.stringify(spouse.getSheetValues())).toContain("No entries recorded for this period")
   })
   it("document index lists every document with a download ref", async () => {
-    const buf = await buildAccountantPack({ from: "2026-07-01", to: "2026-07-31", books, accounts, entries, documents })
+    const buf = await buildAccountantPack({ from: "2026-07-01", to: "2026-07-31", books, accounts, entries, documents, assets: [] })
     const wb = await load(buf)
     const docs = wb.getWorksheet("Documents")!
     const text = JSON.stringify(docs.getSheetValues())
@@ -77,7 +78,7 @@ describe("buildAccountantPack", () => {
     expect(text).toContain("/api/admin/bookkeeping/documents/d0000000-0000-4000-8000-000000000001/download")
   })
   it("Darren's P&L sheet contains only Darren's amounts — no cross-book leakage", async () => {
-    const buf = await buildAccountantPack({ from: "2026-07-01", to: "2026-07-31", books, accounts, entries, documents })
+    const buf = await buildAccountantPack({ from: "2026-07-01", to: "2026-07-31", books, accounts, entries, documents, assets: [] })
     const wb = await load(buf)
     const darren = wb.getWorksheet("P&L — Darren")!
     const text = JSON.stringify(darren.getSheetValues())
@@ -86,7 +87,7 @@ describe("buildAccountantPack", () => {
     expect(text).not.toContain("$1,200.00") // household-only rent must not leak in
   })
   it("Income by Service reflects only the primary book — no cross-book leakage", async () => {
-    const buf = await buildAccountantPack({ from: "2026-07-01", to: "2026-07-31", books, accounts, entries, documents })
+    const buf = await buildAccountantPack({ from: "2026-07-01", to: "2026-07-31", books, accounts, entries, documents, assets: [] })
     const wb = await load(buf)
     const svc = wb.getWorksheet("Income by Service")!
     const text = JSON.stringify(svc.getSheetValues())
@@ -101,12 +102,68 @@ describe("buildAccountantPack", () => {
       { id: B2, name: "Darren Co 2", book_kind: "business", owner_label: "Darren", is_primary: false, currency: "usd", sort_order: 1 },
       { id: B3, name: "Darren Co 3", book_kind: "business", owner_label: "Darren", is_primary: false, currency: "usd", sort_order: 2 },
     ] as BookkeepingBook[]
-    const buf = await buildAccountantPack({ from: "2026-07-01", to: "2026-07-31", books: triple, accounts: [], entries: [], documents: [] })
+    const buf = await buildAccountantPack({ from: "2026-07-01", to: "2026-07-31", books: triple, accounts: [], entries: [], documents: [], assets: [] })
     const wb = await load(buf)
     const names = wb.worksheets.map((w) => w.name)
     expect(names).toEqual([
       "Read Me", "Summary", "Income by Service",
       "P&L — Darren", "P&L — Darren (2)", "P&L — Darren (3)", "Documents",
     ])
+  })
+})
+
+describe("buildAccountantPack — Depreciation sheet (Phase 6d)", () => {
+  const assets = [
+    { // Darren: 10000¢/3yr full-month Jan-2024 → 3333/3333/3334; 2026 is the final (remainder) year
+      id: "ad000000-0000-4000-8000-000000000001", book_id: B1, name: "Squat Rack",
+      basis_cents: 10000, salvage_cents: 0, in_service_on: "2024-01-15",
+      method: "straight_line", convention: "full_month", recovery_years: 3,
+      accountant_note: "life per CPA", created_at: "2026-07-18T00:00:00Z", updated_at: "2026-07-18T00:00:00Z",
+    },
+    { // Household: 240000¢/5yr full-month Jun-2025 → 2025 = round(48000·7/12) = 28000; 2026 = 48000; thru 2026 = 76000
+      id: "ad000000-0000-4000-8000-000000000002", book_id: B3, name: "Garage Shelving",
+      basis_cents: 240000, salvage_cents: 0, in_service_on: "2025-06-10",
+      method: "straight_line", convention: "full_month", recovery_years: 5,
+      accountant_note: null, created_at: "2026-07-18T00:00:00Z", updated_at: "2026-07-18T00:00:00Z",
+    },
+  ] as BookkeepingAsset[]
+
+  it("sits after the per-book P&L sheets and before Documents", async () => {
+    const buf = await buildAccountantPack({ from: "2026-01-01", to: "2026-07-31", books, accounts, entries, documents, assets })
+    const wb = await load(buf)
+    expect(wb.worksheets.map((w) => w.name)).toEqual([
+      "Read Me", "Summary", "Income by Service",
+      "P&L — Darren", "P&L — Spouse", "P&L — Household", "Depreciation", "Documents",
+    ])
+  })
+
+  it("computes this-year + accumulated for the window's END year, per row, with the right book label", async () => {
+    const buf = await buildAccountantPack({ from: "2026-01-01", to: "2026-07-31", books, accounts, entries, documents, assets })
+    const wb = await load(buf)
+    const sheet = wb.getWorksheet("Depreciation")!
+    // Row 2 = Squat Rack (as passed): final-remainder year 2026 → $33.34 this year, $100.00 accumulated.
+    const darren = sheet.getRow(2)
+    expect(String(darren.getCell(1).value)).toBe("Squat Rack")
+    expect(String(darren.getCell(2).value)).toBe("Darren — DJP Athlete")
+    expect(String(darren.getCell(9).value)).toBe("$33.34")
+    expect(String(darren.getCell(10).value)).toBe("$100.00")
+    // Row 3 = Garage Shelving, labeled with ITS book — cross-book rows never merge or swap.
+    const household = sheet.getRow(3)
+    expect(String(household.getCell(1).value)).toBe("Garage Shelving")
+    expect(String(household.getCell(2).value)).toBe("Household & Personal")
+    expect(String(household.getCell(9).value)).toBe("$480.00")
+    expect(String(household.getCell(10).value)).toBe("$760.00")
+    // Cross-book exclusion at row level (the Phase-4 lesson): the household numbers
+    // must not appear anywhere in Darren's row.
+    expect(JSON.stringify(darren.values)).not.toContain("$480.00")
+    expect(JSON.stringify(darren.values)).not.toContain("$760.00")
+  })
+
+  it("carries the tracked-not-decided honesty line", async () => {
+    const buf = await buildAccountantPack({ from: "2026-01-01", to: "2026-07-31", books, accounts, entries, documents, assets })
+    const wb = await load(buf)
+    const text = JSON.stringify(wb.getWorksheet("Depreciation")!.getSheetValues())
+    expect(text).toContain("tracked, not decided")
+    expect(text).toContain("not a filing")
   })
 })
