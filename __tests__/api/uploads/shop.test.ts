@@ -1,3 +1,8 @@
+// @vitest-environment node
+// Server-route test: must run under the node environment. jsdom shadows
+// File/FormData, and Node 24's undici multipart parser brand-checks the Files
+// it builds against its own class — under jsdom, parsing ANY file part throws
+// (webidl.is.File assert) or hangs. Node env keeps every web global coherent.
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 vi.mock("@/lib/auth", () => ({
@@ -15,6 +20,11 @@ vi.mock("@/lib/firebase-admin", () => ({
 
 import { auth } from "@/lib/auth"
 import { POST } from "@/app/api/uploads/shop/route"
+// jsdom's File hangs Node-undici's request-body serializer (multipart header is
+// set but formData() never resolves under Node 24). node:buffer's File is the
+// runtime's real implementation and streams correctly; jsdom's FormData wrapper
+// itself is fine. Probe-verified 2026-07-19.
+import { File as NodeFile } from "node:buffer"
 
 const mockAuth = vi.mocked(auth)
 
@@ -40,7 +50,7 @@ function makeRequest(formData: FormData): Request {
 describe("POST /api/uploads/shop", () => {
   it("returns 403 when there is no session", async () => {
     mockAuth.mockResolvedValue(null as never)
-    const fd = makeFormData(new File([Buffer.from("hi")], "x.png", { type: "image/png" }))
+    const fd = makeFormData(new NodeFile([Buffer.from("hi")], "x.png", { type: "image/png" }))
     const res = await POST(makeRequest(fd))
     expect(res.status).toBe(403)
     const body = await res.json()
@@ -49,7 +59,7 @@ describe("POST /api/uploads/shop", () => {
 
   it("returns 403 when the user is not an admin", async () => {
     mockAuth.mockResolvedValue({ user: { id: "user-1", role: "client" } } as never)
-    const fd = makeFormData(new File([Buffer.from("hi")], "x.png", { type: "image/png" }))
+    const fd = makeFormData(new NodeFile([Buffer.from("hi")], "x.png", { type: "image/png" }))
     const res = await POST(makeRequest(fd))
     expect(res.status).toBe(403)
   })
@@ -83,7 +93,7 @@ describe("POST /api/uploads/shop", () => {
 
   it("returns 415 when content type is not allowed", async () => {
     mockAuth.mockResolvedValue({ user: { id: "admin-1", role: "admin" } } as never)
-    const fd = makeFormData(new File([Buffer.from("gif89a")], "x.gif", { type: "image/gif" }))
+    const fd = makeFormData(new NodeFile([Buffer.from("gif89a")], "x.gif", { type: "image/gif" }))
     const res = await POST(makeRequest(fd))
     expect(res.status).toBe(415)
     const body = await res.json()
@@ -92,7 +102,7 @@ describe("POST /api/uploads/shop", () => {
 
   it("returns 200 with a public storage URL on success", async () => {
     mockAuth.mockResolvedValue({ user: { id: "admin-1", role: "admin" } } as never)
-    const fd = makeFormData(new File([Buffer.from("png-data")], "photo.png", { type: "image/png" }))
+    const fd = makeFormData(new NodeFile([Buffer.from("png-data")], "photo.png", { type: "image/png" }))
     const res = await POST(makeRequest(fd))
     expect(res.status).toBe(200)
     const body = await res.json()
@@ -103,7 +113,7 @@ describe("POST /api/uploads/shop", () => {
 
   it("returns 200 with .jpg extension for image/jpeg uploads", async () => {
     mockAuth.mockResolvedValue({ user: { id: "admin-1", role: "admin" } } as never)
-    const fd = makeFormData(new File([Buffer.from("jpeg-data")], "photo.jpg", { type: "image/jpeg" }))
+    const fd = makeFormData(new NodeFile([Buffer.from("jpeg-data")], "photo.jpg", { type: "image/jpeg" }))
     const res = await POST(makeRequest(fd))
     expect(res.status).toBe(200)
     const body = await res.json()
@@ -112,7 +122,7 @@ describe("POST /api/uploads/shop", () => {
 
   it("returns 200 with .webp extension for image/webp uploads", async () => {
     mockAuth.mockResolvedValue({ user: { id: "admin-1", role: "admin" } } as never)
-    const fd = makeFormData(new File([Buffer.from("webp-data")], "photo.webp", { type: "image/webp" }))
+    const fd = makeFormData(new NodeFile([Buffer.from("webp-data")], "photo.webp", { type: "image/webp" }))
     const res = await POST(makeRequest(fd))
     expect(res.status).toBe(200)
     const body = await res.json()

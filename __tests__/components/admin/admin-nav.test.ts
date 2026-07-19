@@ -12,9 +12,12 @@ describe("getAdminNav", () => {
     expect(nav.groupedSections).toHaveLength(6)
   })
 
-  it("returns the expected standalone-link count", () => {
+  it("returns the expected standalone links", () => {
     const nav = getAdminNav({ contentStudioEnabled: false })
-    expect(nav.standaloneLinks).toHaveLength(1)
+    // Pin labels, not just count: "How-to Guide" shipped with the pack
+    // payment-links work (fc918bac); the next addition should be a
+    // conscious edit here, not a mystery red.
+    expect(nav.standaloneLinks.map((l) => l.label)).toEqual(["Strategy", "How-to Guide"])
   })
 
   it("has no empty sections", () => {

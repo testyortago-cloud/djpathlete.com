@@ -1,3 +1,6 @@
+// @vitest-environment node
+// Server-route test: must run under the node environment (see shop.test.ts —
+// Node 24's undici multipart parser cannot parse file parts under jsdom).
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 const authMock = vi.fn()
@@ -15,16 +18,15 @@ vi.mock("@/lib/audit/with-audit", () => ({ withAudit: (_o: unknown, h: (req: Req
 import { POST } from "@/app/api/admin/programs/import-excel/route"
 import ExcelJS from "exceljs"
 // NOTE: the Vitest environment is "jsdom", which shadows the global `File`
-// and `FormData` with jsdom's own implementations. Those don't survive a
-// round-trip through the platform (undici-backed) `Request`/`request.formData()`
-// used by Next.js route handlers — the file silently corrupts to
-// name="blob", content="undefined" (verified experimentally). Building the
-// multipart body from `node:buffer`'s `File` + `undici`'s `FormData` (paired
-// with the ambient global `Request`, which IS undici's) round-trips
-// correctly, so the test uses those instead of the bare `File`/`FormData`
-// globals.
+// and `FormData`. jsdom's File hangs/corrupts through the platform
+// (Node-undici) `Request`/`request.formData()` used by Next.js route
+// handlers, so files are built with `node:buffer`'s File (the runtime's
+// real implementation). The FormData WRAPPER must be the ambient global:
+// under Node 24 the platform Request no longer recognizes the undici npm
+// package's FormData (serializes as text/plain → multipart TypeError).
+// jsdom's FormData wrapper + NodeFile entries round-trip correctly.
+// Probe-verified 2026-07-19.
 import { File as NodeFile } from "node:buffer"
-import { FormData as UndiciFormData } from "undici"
 
 async function xlsxFile(): Promise<File> {
   const wb = new ExcelJS.Workbook()
@@ -37,7 +39,7 @@ async function xlsxFile(): Promise<File> {
   }) as unknown as File
 }
 function req(file: File | null, fields: Record<string, string> = {}): Request {
-  const fd = new UndiciFormData()
+  const fd = new FormData()
   if (file) fd.set("file", file as unknown as Blob)
   for (const [k, v] of Object.entries(fields)) fd.set(k, v)
   return new Request("http://localhost/api/admin/programs/import-excel", {
