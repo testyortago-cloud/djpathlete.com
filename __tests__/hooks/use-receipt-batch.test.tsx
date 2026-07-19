@@ -133,6 +133,7 @@ describe("startScan + review transition", () => {
     })
     await waitFor(() => expect(hook.result.current.phase).toBe("select"))
     expect(hook.result.current.files).toHaveLength(1) // kept for retry
+    expect(hook.result.current.scanError).toBeTruthy()
   })
 
   it("routes scan failure and listener error to scan_failed", async () => {

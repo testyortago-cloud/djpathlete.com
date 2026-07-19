@@ -53,6 +53,7 @@ export function useReceiptBatch({ bookId, accounts, onAllPosted }: UseReceiptBat
   const [posting, setPosting] = useState(false)
   const [cancelling, setCancelling] = useState(false)
   const [postedCount, setPostedCount] = useState(0)
+  const [scanError, setScanError] = useState<string | null>(null)
 
   // Refs so RTDB callbacks and the post loop never read stale closures.
   const rowsRef = useRef(rows)
@@ -144,6 +145,7 @@ export function useReceiptBatch({ bookId, accounts, onAllPosted }: UseReceiptBat
       if (files.length === 0 || scanInFlightRef.current) return
       scanInFlightRef.current = true
       cancelRequestedRef.current = false
+      setScanError(null)
       // A retry re-mints thumbnails — revoke the prior batch's object URLs first.
       for (const row of rowsRef.current) {
         if (row.thumbUrl && typeof URL !== "undefined" && typeof URL.revokeObjectURL === "function") {
@@ -227,6 +229,7 @@ export function useReceiptBatch({ bookId, accounts, onAllPosted }: UseReceiptBat
       })
       setPhase("review")
     } else {
+      setScanError(rows.find((r) => r.error)?.error ?? "Upload failed")
       setPhase("select")
     }
   }, [phase, uploading, rows])
@@ -342,6 +345,7 @@ export function useReceiptBatch({ bookId, accounts, onAllPosted }: UseReceiptBat
     setPosting(false)
     setCancelling(false)
     setPostedCount(0)
+    setScanError(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -359,6 +363,7 @@ export function useReceiptBatch({ bookId, accounts, onAllPosted }: UseReceiptBat
     posting,
     cancelling,
     postedCount,
+    scanError,
     busy,
     addFiles,
     removeFile,

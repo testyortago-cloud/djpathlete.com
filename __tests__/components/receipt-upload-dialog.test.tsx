@@ -135,4 +135,57 @@ describe("ReceiptUploadDialog (batch)", () => {
     await waitFor(() => expect(props.onSaved).toHaveBeenCalled())
     expect(props.onOpenChange).toHaveBeenCalledWith(false)
   })
+
+  it("shows a persistent Upload Failed banner when every upload fails", async () => {
+    renderDialog()
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 400, json: async () => ({ error: "File too large. Maximum 10 MB" }) })
+    pickFiles([makeFile("huge.jpg")])
+    fireEvent.click(screen.getByRole("button", { name: /upload & scan/i }))
+    await waitFor(() => expect(screen.getByText(/upload failed/i)).toBeInTheDocument())
+    expect(screen.getByText(/file too large/i)).toBeInTheDocument()
+  })
+
+  it("fires onSaved exactly once when closing after a partial post, and never with zero posted", async () => {
+    const { props, unmount } = renderDialog()
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, status: 202, json: async () => ({ jobId: "j1", documentId: "d1", duplicateUploadHint: null }) })
+      .mockResolvedValueOnce({ ok: true, status: 202, json: async () => ({ jobId: "j2", documentId: "d2", duplicateUploadHint: null }) })
+    pickFiles([makeFile("a.jpg"), makeFile("b.jpg")])
+    fireEvent.click(screen.getByRole("button", { name: /upload & scan/i }))
+    await waitFor(() => expect(listeners.has("ai_jobs/j2")).toBe(true))
+    act(() => {
+      listeners.get("ai_jobs/j1")!.cb({ val: () => ({ status: "completed", result: { vendor: "Chevron", amount_cents: 4512, occurred_on: "2026-07-01", suggested_category: "Fuel" } }) })
+    })
+    act(() => {
+      listeners.get("ai_jobs/j2")!.cb({ val: () => ({ status: "completed", result: { vendor: "HEB", amount_cents: 2000, occurred_on: "2026-07-02", suggested_category: "Fuel" } }) })
+    })
+    await waitFor(() => expect(screen.getByRole("button", { name: /post 2 receipts/i })).toBeEnabled())
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ inserted: 1 }) })
+      .mockResolvedValueOnce({ ok: false, status: 422, json: async () => ({ error: "business_purpose required for this category" }) })
+    fireEvent.click(screen.getByRole("button", { name: /post 2 receipts/i }))
+    await waitFor(() => expect(screen.getByRole("button", { name: /retry remaining \(1\)/i })).toBeInTheDocument())
+    expect(props.onSaved).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole("button", { name: /^cancel$/i }))
+    expect(props.onSaved).toHaveBeenCalledTimes(1)
+    expect(props.onOpenChange).toHaveBeenCalledWith(false)
+    unmount()
+
+    // zero-posted control: fresh dialog straight to review, close without posting
+    vi.clearAllMocks()
+    listeners.clear()
+    const second = renderDialog()
+    fetchMock.mockResolvedValueOnce({ ok: true, status: 202, json: async () => ({ jobId: "j9", documentId: "d9", duplicateUploadHint: null }) })
+    pickFiles([makeFile("c.jpg")])
+    fireEvent.click(screen.getByRole("button", { name: /upload & scan/i }))
+    await waitFor(() => expect(listeners.has("ai_jobs/j9")).toBe(true))
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ url: "https://signed/img" }) })
+    act(() => {
+      listeners.get("ai_jobs/j9")!.cb({ val: () => ({ status: "completed", result: { vendor: "HEB", amount_cents: 2000, occurred_on: "2026-07-02", suggested_category: "Fuel" } }) })
+    })
+    await waitFor(() => expect(screen.getByRole("button", { name: /post 1 receipt/i })).toBeEnabled())
+    fireEvent.click(screen.getByRole("button", { name: /^cancel$/i }))
+    expect(second.props.onSaved).not.toHaveBeenCalled()
+    expect(second.props.onOpenChange).toHaveBeenCalledWith(false)
+  })
 })
