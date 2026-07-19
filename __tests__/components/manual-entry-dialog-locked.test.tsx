@@ -47,4 +47,32 @@ describe("ManualEntryDialog locked (imported) mode", () => {
     expect(screen.getByText("Edit entry")).toBeInTheDocument()
     expect(screen.getByLabelText(/amount/i)).toBeEnabled()
   })
+
+  it("shows the source-aware caption for a receipt-source entry (title still 'Edit imported entry')", () => {
+    render(
+      <ManualEntryDialog
+        bookId="b1"
+        accounts={accounts}
+        entry={{ ...imported, source: "receipt" } as BookkeepingLedgerEntry}
+        open
+        onOpenChange={() => {}}
+        onSaved={() => {}}
+      />,
+    )
+    expect(screen.getByText("Edit imported entry")).toBeInTheDocument()
+    expect(screen.getByText(/locked — from a posted receipt/i)).toBeInTheDocument()
+  })
+
+  it("saves a $0 locked entry — amount validation is skipped and the PATCH fires", async () => {
+    const zeroAmountImported = { ...imported, amount_cents: 0 } as BookkeepingLedgerEntry
+    render(
+      <ManualEntryDialog bookId="b1" accounts={accounts} entry={zeroAmountImported} open onOpenChange={() => {}} onSaved={() => {}} />,
+    )
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(String(url)).toBe("/api/admin/bookkeeping/entries/e1")
+    const body = JSON.parse((init as RequestInit).body as string)
+    expect(Object.keys(body).sort()).toEqual(["account_id", "business_purpose", "counterparty", "memo"])
+  })
 })

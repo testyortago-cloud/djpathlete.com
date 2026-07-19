@@ -61,6 +61,7 @@ export const importCommitSchema = z.object({
     service_line: z.string().nullable(),
     source: z.enum(["manual", "platform_import", "statement_import", "receipt"]),
     source_ref: z.string(),
+    alt_ref: z.string().nullable().optional(),
     account_id: z.string().uuid().nullable().optional(),
   })).min(1).max(2000),
 })

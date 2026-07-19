@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { formatPeriodLabel } from "@/lib/bookkeeping/period-close"
-import type { BookkeepingAccount, BookkeepingLedgerEntry, LedgerDirection } from "@/types/database"
+import type { BookkeepingAccount, BookkeepingLedgerEntry, LedgerDirection, LedgerSource } from "@/types/database"
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10)
@@ -37,6 +37,14 @@ function emptyForm(): FormState {
     businessPurpose: "",
     adjustsPeriod: "",
   }
+}
+
+/** Source-aware locked caption (F3.1) — title stays "Edit imported entry" for
+ *  every locked source; only the caption's provenance clause changes. */
+function lockedCaption(source: LedgerSource): string {
+  if (source === "statement_import") return "Amount, date and direction are locked — imported from a bank statement."
+  if (source === "receipt") return "Amount, date and direction are locked — from a posted receipt."
+  return "Amount, date and direction are locked — imported from platform records."
 }
 
 function formFromEntry(entry: BookkeepingLedgerEntry): FormState {
@@ -84,14 +92,19 @@ export function ManualEntryDialog({
   const eligibleAccounts = accounts.filter((a) => a.account_type === form.direction)
 
   async function submit() {
+    // Locked entries never send amount/date (disabled fields, stripped from
+    // the PATCH body below) — a $0 imported row must still be saveable, so
+    // this validation only applies to the unlocked add/edit form.
     const cents = Math.round(parseFloat(form.amount || "0") * 100)
-    if (!form.amount || !Number.isFinite(cents) || cents <= 0) {
-      toast.error("Enter a valid amount")
-      return
-    }
-    if (!form.occurredOn) {
-      toast.error("Pick a date")
-      return
+    if (!locked) {
+      if (!form.amount || !Number.isFinite(cents) || cents <= 0) {
+        toast.error("Enter a valid amount")
+        return
+      }
+      if (!form.occurredOn) {
+        toast.error("Pick a date")
+        return
+      }
     }
     setSubmitting(true)
     try {
@@ -196,7 +209,7 @@ export function ManualEntryDialog({
 
           {locked && (
             <p className="text-xs text-muted-foreground">
-              Amount, date and direction are locked — imported from platform records.
+              {lockedCaption(entry!.source)}
             </p>
           )}
 

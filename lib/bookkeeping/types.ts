@@ -12,6 +12,10 @@ export interface LedgerEntryDraft {
   service_line: string | null
   source: LedgerSource
   source_ref: string
+  /** The OTHER ref this sale could have posted under (mirror payments ref for
+   *  a source-table draft; deleted source-table ref for an orphan-mirror
+   *  draft); used for cross-run dedupe. */
+  alt_ref?: string | null
 }
 
 export interface IncomeSourceRows {

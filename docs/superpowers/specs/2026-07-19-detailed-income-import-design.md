@@ -44,24 +44,42 @@ Memo formats (pinned):
 | Orphaned mirror `session_pack` | `Session pack (record deleted)` |
 | Orphaned mirror `event_signup` | `Camp/event signup (record deleted)` |
 
-Counterparty (pinned fallback chains): payments → `payer_name ?? metadata.customerEmail ?? payer_email ?? description ?? null`; packages → `client_name ?? null`; signups → `parent_name ?? null`; shop → `customer_name` (unchanged). Service lines unchanged.
+Counterparty (pinned fallback chains): payments → `payer_name ?? metadata.customerEmail ?? payer_email ?? description ?? null`; packages → `client_name ?? null`; signups → `parent_name ?? null`; shop → `customer_name` (unchanged). Service lines unchanged, **except** (F3.2, final review 2026-07-20): the non-mirror payments draft's `service_line` is now `p.program_name ? "performance_training" : paymentServiceLine(p.description, meta)` — a program-linked payment (e.g. description "Subscription renewal", which matches neither `program` nor `week`) always prefills Performance Training instead of falling through to Other.
 
 ### 3.3 Deterministic category tie-break
 New pure helper `matchAccountForServiceLine(direction, serviceLine, accounts)` in `lib/bookkeeping/account-match.ts`: filter `account_type === direction && service_line === serviceLine && !archived`; when multiple match, prefer name containing `stripe` (case-insensitive), then alphabetical; return first or null. `ImportPlatformDialog.tsx:82` swaps its inline `find` for this helper (fixes the two-Performance-Training-accounts array-order lottery). StatementImportDialog untouched.
 
-## 4. Feature 2 — Orphaned-mirror fallback
+## 4. Feature 2 — Orphaned-mirror fallback + id-first pairing
 
-In `buildIncomeDrafts`, process source tables FIRST (packages, signups), building per-type candidate lists `{amount_cents, occurred_on, consumed}`. **Amendment (final-review escalation, 2026-07-19): only Stripe-paid packages join the candidate list** (`stripe_session_id` or `stripe_payment_id` present) — cash/offline packs never write a mirror payment, so letting them absorb one would silently drop the orphan's revenue (and is the only reachable input for the greedy-vs-optimal over-count). All paid packs still produce income drafts regardless; the filter affects pairing only. Paid event signups are all Stripe-originated (the webhook is the only writer), so no equivalent filter is needed there. Then in the payments loop, a succeeded mirror payment (`metadata.type` `session_pack`/`event_signup`):
-- **Pairs** with an unconsumed same-type candidate with **equal `amount_cents` and |date diff| ≤ 7 days** (smallest diff wins; tie → earliest candidate). Paired → mirror skipped exactly as today; candidate consumed (one-to-one).
-- **Unpaired** → the mirror becomes an income draft itself: `source_ref: payments:<id>` (same ref convention the dev fix used — never double-posts), `service_line` `session_packs`/`camps`, memo per §3.2, counterparty from the payment's payer chain.
-- Per-type warning when fallbacks occurred: `"<n> event-signup payment(s) counted directly — the signup records no longer exist."` / same for packs. Dialog already renders `warnings[]`.
+**Rewritten 2026-07-20 (final-review whole-branch escalation).** §1 finding #2 above ("Mirrors carry no packageId/signupId, so precise pairing is impossible") was **false** — every mirror payment has carried the exact source id in `metadata` (`client_package_id` for pack mirrors, `event_signup_id` for event mirrors) since the mirrors' introducing commits. The amount±7day heuristic below was built on that false premise; it is now a **legacy fallback only**, for mirrors that (for whatever reason) carry no id. Credit: caught in the whole-branch final review, not the original build.
 
-Edge semantics (pinned): two mirrors + one candidate at equal amount in-window → one pairs, one falls back (total correct). Refunded/non-succeeded payments unchanged. Non-mirror payments unchanged.
+In `buildIncomeDrafts`, process source tables FIRST (packages, signups), building per-type candidate lists `{sourceId, amount_cents, occurred_on, consumed, heuristicEligible}` — every paid pack/signup is a candidate (keyed by its own row id), `heuristicEligible` stays Stripe-only for packs (`stripe_session_id` or `stripe_payment_id` present — cash/offline packs never write a mirror payment, so letting them absorb an id-less orphaned mirror via the heuristic would silently drop that mirror's revenue) and always-true for signups (the webhook is the only writer). Then, for a succeeded mirror payment (`metadata.type` `session_pack`/`event_signup`):
+
+1. **id present, candidate with that `sourceId` exists** → pair. id-based pairing ignores amount and date entirely (a promo-code/price-edit divergence still pairs) — mark the candidate consumed, stamp `alt_ref: payments:<mirror id>` back onto the already-emitted source-table draft, mirror skipped.
+2. **id present, no candidate with that `sourceId`** → orphan-with-id: the mirror becomes an income draft itself — `source_ref: payments:<id>` (never double-posts on re-import), `alt_ref: client_packages:<id>` / `event_signups:<id>` (the deleted source ref — see §6a dedupe), `service_line` `session_packs`/`camps`, memo per §3.2, counterparty from the payment's payer chain. Counts toward the per-type warning.
+3. **id absent (legacy)** → the amount±7day heuristic over unconsumed, `heuristicEligible` candidates only: equal `amount_cents` and |date diff| ≤ 7 days (smallest diff wins; tie → earliest candidate). Paired → mirror skipped, candidate consumed. Unpaired → orphan fallback draft as in (2) but with `alt_ref: null` (no id to point at).
+- Per-type warning when fallbacks occurred (paths 2+3 combined): `"<n> event-signup payment(s) counted directly — the signup records no longer exist."` / same for packs. Dialog already renders `warnings[]`.
+
+Edge semantics (pinned): two id-less mirrors + one candidate at equal amount in-window → one pairs, one falls back (total correct). An id-based pairing at a DIFFERENT amount and a 20-day gap still pairs (ignores both). Refunded/non-succeeded payments unchanged. Non-mirror payments unchanged.
+
+### 4a. `alt_ref` cross-run dedupe
+
+`alt_ref` on a draft names the OTHER `source_ref` form this exact sale could have posted under. `insertImportedEntries` (`lib/db/bookkeeping.ts`) pre-checks every draft's `alt_ref` against already-posted `(book_id, source='platform_import', source_ref)` rows before the upsert; a match drops that draft (`skipped_alt_ref` count) instead of letting it ride the ordinary same-ref `ignoreDuplicates` upsert — which would miss it, since the two refs differ. This closes the double-post hole where a source row existed on one import, then got deleted before a re-import flipped its draft's `source_ref` from `client_packages:<id>` to `payments:<mirror id>` (or the reverse, if the mirror's row somehow vanished and the source row reappeared).
 
 ## 5. Feature 3 — Editable imported rows
 
 - **`LedgerTable.tsx`:** Edit button renders for ALL sources; Delete stays `manual`-only. (Deleting an imported row would just resurrect on next import — the source_ref uniqueness row is gone.)
-- **`ManualEntryDialog.tsx`:** edit mode gains a locked variant when `entry.source !== "manual"`: direction / amount / date / adjusts-period rendered disabled with caption "Locked — imported from platform records"; category, memo, counterparty, business purpose stay editable. On submit in locked mode the PATCH body contains ONLY `{account_id, memo, counterparty, business_purpose}` (no locked keys at all). Dialog title: "Edit imported entry".
+- **`ManualEntryDialog.tsx`:** edit mode gains a locked variant when `entry.source !== "manual"`: direction / amount / date / adjusts-period rendered disabled; category, memo, counterparty, business purpose stay editable. On submit in locked mode the PATCH body contains ONLY `{account_id, memo, counterparty, business_purpose}` (no locked keys at all). Dialog title: "Edit imported entry" for every locked source.
+
+  Caption is source-aware (F3.1, final review 2026-07-20):
+
+  | `entry.source` | Caption |
+  | --- | --- |
+  | `platform_import` | "Amount, date and direction are locked — imported from platform records." |
+  | `statement_import` | "Amount, date and direction are locked — imported from a bank statement." |
+  | `receipt` | "Amount, date and direction are locked — from a posted receipt." |
+
+  The client-side amount/date validation (`Enter a valid amount` / `Pick a date`) is skipped entirely when `locked` — those fields are disabled and never sent, and a legitimately $0 imported row (e.g. a fully-discounted pack) must still be saveable.
 - **PATCH `/api/admin/bookkeeping/entries/[id]`:** always `getEntry` first (404 when missing — currently fetched only when `account_id` present). When `entry.source !== "manual"` and the parsed body CONTAINS any of `direction`, `amount_cents`, `occurred_on`, `adjusts_period` (presence, not value-change) → **422** `{"error":"amount, date and direction are locked on imported entries"}`. Manual entries unchanged. Closed-period 409 and account-scope checks unchanged (account check now reuses the already-fetched entry).
 
 ## 6. Files touched

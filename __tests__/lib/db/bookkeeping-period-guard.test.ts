@@ -13,6 +13,10 @@ type Row = Record<string, unknown>
 const state = {
   closedPeriods: {} as Record<string, string[]>, // book_id -> closed YYYY-MM periods
   entriesById: {} as Record<string, Row>, // fixture rows returned by getEntry()
+  // F1: source_refs already posted, for insertImportedEntries' alt_ref
+  // cross-run dedupe pre-check (a plain .select("source_ref")....in(...) query
+  // — distinct from the by-id getEntry() lookup above).
+  existingSourceRefs: [] as string[],
   insertCalled: false,
   insertPayloads: [] as Row[],
   updateCalled: false,
@@ -26,6 +30,7 @@ const state = {
 function resetState() {
   state.closedPeriods = {}
   state.entriesById = {}
+  state.existingSourceRefs = []
   state.insertCalled = false
   state.insertPayloads = []
   state.updateCalled = false
@@ -40,6 +45,7 @@ function makeBuilder(table: string) {
   let op: "select" | "insert" | "update" | "delete" | "upsert" | null = null
   let payload: Row | Row[] | undefined
   const eqMap: Record<string, string> = {}
+  let inVals: string[] | null = null
 
   const resolve = (): Promise<{ data: unknown; error: unknown }> => {
     if (table === "bookkeeping_period_closes") {
@@ -47,6 +53,13 @@ function makeBuilder(table: string) {
       return Promise.resolve({ data: periods.map((period) => ({ period })), error: null })
     }
     // table === "bookkeeping_ledger_entries"
+    if (op === "select" && inVals != null) {
+      // alt_ref pre-check: plain select("source_ref")...in("source_ref", [...]) —
+      // returns every fixture ref that's both already-posted AND requested.
+      const requested = new Set(inVals)
+      const rows = state.existingSourceRefs.filter((r) => requested.has(r)).map((r) => ({ source_ref: r }))
+      return Promise.resolve({ data: rows, error: null })
+    }
     if (op === "select") {
       const row = state.entriesById[eqMap.id] ?? null
       return Promise.resolve({ data: row, error: null })
@@ -108,6 +121,11 @@ function makeBuilder(table: string) {
       if (table === "bookkeeping_ledger_entries" && col === "id" && op === "delete") {
         state.deleteCalls.push(val)
       }
+      return builder
+    },
+    in: (_col: string, vals: string[]) => {
+      if (op === null) op = "select"
+      inVals = vals
       return builder
     },
     maybeSingle: () => resolve(),
@@ -286,6 +304,35 @@ describe("insertImportedEntries", () => {
     expect(call.rows).toHaveLength(2)
     expect(call.rows.map((r) => r.source_ref)).toEqual(["ref-open-1", "ref-open-2"])
     expect(call.rows.every((r) => r.occurred_on !== "2026-03-02" && r.occurred_on !== "2026-03-04")).toBe(true)
+  })
+
+  // F1: cross-run dedupe. A draft's alt_ref names the OTHER source_ref form
+  // this exact sale could have posted under — if that alt form is already
+  // posted, drop the draft (the plain source_ref uniqueness constraint
+  // wouldn't catch it, since the two refs differ).
+  it("drops a draft whose alt_ref already exists in the ledger; others insert; skipped_alt_ref reflects the drop", async () => {
+    state.existingSourceRefs = ["payments:already-posted-1"]
+    const drafts = [
+      { direction: "income" as const, amount_cents: 500, occurred_on: "2026-04-01", memo: "dup-via-alt", counterparty: null, service_line: null, source: "platform_import" as const, source_ref: "client_packages:cp-1", alt_ref: "payments:already-posted-1", account_id: null },
+      { direction: "income" as const, amount_cents: 600, occurred_on: "2026-04-02", memo: "keep", counterparty: null, service_line: null, source: "platform_import" as const, source_ref: "client_packages:cp-2", alt_ref: "payments:not-posted", account_id: null },
+    ]
+
+    const result = await insertImportedEntries(BOOK_ID, IMPORT_BATCH_ID, drafts)
+
+    expect(result.skipped_alt_ref).toBe(1)
+    expect(result.inserted).toBe(1)
+    expect(state.upsertCalled).toBe(true)
+    const call = state.upsertCalls.at(-1)!
+    expect(call.rows.map((r) => r.source_ref)).toEqual(["client_packages:cp-2"])
+  })
+
+  it("skips the alt_ref pre-check entirely when no draft carries an alt_ref (no-op, unchanged behavior)", async () => {
+    const drafts = [
+      { direction: "income" as const, amount_cents: 700, occurred_on: "2026-04-05", memo: "no-alt", counterparty: null, service_line: null, source: "platform_import" as const, source_ref: "shop_orders:so-1", account_id: null },
+    ]
+    const result = await insertImportedEntries(BOOK_ID, IMPORT_BATCH_ID, drafts)
+    expect(result.skipped_alt_ref).toBe(0)
+    expect(result.inserted).toBe(1)
   })
 })
 

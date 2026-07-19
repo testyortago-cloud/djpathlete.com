@@ -144,6 +144,7 @@ export function ImportPlatformDialog({
             service_line: r.service_line,
             source: r.source,
             source_ref: r.source_ref,
+            alt_ref: r.alt_ref ?? null,
             account_id: r.accountId || null,
           })),
         }),
@@ -155,22 +156,27 @@ export function ImportPlatformDialog({
       }
       // Additive server fields: rejected_closed rows are CLOSED-month rejects,
       // never "already imported" — exclude them from the skipped arithmetic (D-4).
-      const data = (await res.json()) as { inserted: number; batchId: string; rejected_closed?: number }
+      // skipped_alt_ref rows are F1's cross-run dedupe (same sale, posted
+      // earlier under the OTHER ref form) — also excluded from the plain
+      // same-ref "already imported" count and reported as its own toast suffix.
+      const data = (await res.json()) as { inserted: number; batchId: string; rejected_closed?: number; skipped_alt_ref?: number }
       const rejectedClosed = data.rejected_closed ?? 0
-      const skipped = includedRows.length - data.inserted - rejectedClosed
+      const skippedAltRef = data.skipped_alt_ref ?? 0
+      const skipped = includedRows.length - data.inserted - rejectedClosed - skippedAltRef
       setRejectedClosedCount(rejectedClosed)
       if (rejectedClosed > 0) {
         toast.warning(
           `${rejectedClosed} row${rejectedClosed === 1 ? " falls" : "s fall"} in closed months — post them as adjustment entries in an open month.`,
         )
       }
-      if (skipped > 0) {
-        toast.success(
-          `Posted ${data.inserted} ${data.inserted === 1 ? "entry" : "entries"} (${skipped} already imported — skipped).`,
-        )
-      } else {
-        toast.success(`Posted ${data.inserted} ${data.inserted === 1 ? "entry" : "entries"}.`)
+      let successMessage =
+        skipped > 0
+          ? `Posted ${data.inserted} ${data.inserted === 1 ? "entry" : "entries"} (${skipped} already imported — skipped).`
+          : `Posted ${data.inserted} ${data.inserted === 1 ? "entry" : "entries"}.`
+      if (skippedAltRef > 0) {
+        successMessage += ` (${skippedAltRef} already imported under a previous form — skipped)`
       }
+      toast.success(successMessage)
       onSaved()
       // Keep the dialog open when rows were rejected for a closed month so
       // the coach sees the persistent amber line below instead of it

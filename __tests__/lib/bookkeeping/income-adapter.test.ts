@@ -251,6 +251,16 @@ describe("enriched memos and counterparties (2026-07-19)", () => {
     expect(drafts[2].counterparty).toBe("sf@x.com")
   })
 
+  it("prefills Performance Training for a program-linked payment even when the description doesn't say so (F3.2)", () => {
+    // "Subscription renewal" contains neither "program" nor "week", so
+    // paymentServiceLine's text match alone would land on "other" — the
+    // program_name link must win.
+    const { drafts } = buildIncomeDrafts(src({
+      payments: [pay({ id: P1, amount_cents: 9900, description: "Subscription renewal", metadata: { programId: PRG }, program_name: "Cannon Baller!" })],
+    }))
+    expect(drafts[0].service_line).toBe("performance_training")
+  })
+
   it("details pack and signup drafts", () => {
     const { drafts } = buildIncomeDrafts(src({
       clientPackages: [pack({ id: C1, price_cents: 150000, product_name: "1-On-1", credits_total: 10, client_name: "Sandeep Chennadi" })],
@@ -323,5 +333,68 @@ describe("orphaned-mirror fallback (2026-07-19)", () => {
     expect(drafts).toHaveLength(2)
     expect(drafts.map((d) => d.source_ref).sort()).toEqual([`client_packages:${C1}`, `payments:${P1}`].sort())
     expect(warnings).toContain("1 session-pack payment(s) counted directly — the pack records no longer exist.")
+  })
+})
+
+describe("id-first mirror pairing + alt_ref cross-run dedupe (final review 2026-07-20)", () => {
+  it("pairs by client_package_id even when amount and date diverge — id pairing ignores both", () => {
+    // A DIFFERENT amount (promo/price-edit) and a 20-day gap would both fail
+    // the legacy amount±7day heuristic, but the mirror carries the exact
+    // client_package_id, so it must still pair.
+    const { drafts } = buildIncomeDrafts(src({
+      payments: [
+        pay({ id: P1, amount_cents: 99900, created_at: "2026-07-26T10:00:00Z", metadata: { type: "session_pack", client_package_id: C1 } }),
+      ],
+      clientPackages: [pack({ id: C1, price_cents: 50000, purchased_at: "2026-07-06T09:00:00Z", credits_total: 10 })],
+    }))
+    expect(drafts).toHaveLength(1)
+    expect(drafts[0].source_ref).toBe(`client_packages:${C1}`)
+    expect(drafts[0].amount_cents).toBe(50000) // the source-table draft's own amount, untouched by the mirror's
+    expect(drafts[0].alt_ref).toBe(`payments:${P1}`)
+  })
+
+  it("orphan-with-id: event_signup_id matching no signup falls back, alt_ref points at the deleted source ref", () => {
+    const { drafts } = buildIncomeDrafts(src({
+      payments: [pay({ id: P1, amount_cents: 8500, created_at: "2026-07-12T10:00:00Z", metadata: { type: "event_signup", event_signup_id: S1 } })],
+    }))
+    expect(drafts).toHaveLength(1)
+    expect(drafts[0].source_ref).toBe(`payments:${P1}`)
+    expect(drafts[0].alt_ref).toBe(`event_signups:${S1}`)
+  })
+
+  it("permutation invariance: reversing the payments array yields identical sorted source_ref/alt_ref sets", () => {
+    const buildFixture = (): IncomeSourceRows =>
+      src({
+        payments: [
+          pay({ id: P1, amount_cents: 50000, created_at: "2026-07-06T10:00:00Z", metadata: { type: "session_pack", client_package_id: C1 } }),
+          pay({ id: P2, amount_cents: 8500, created_at: "2026-07-12T10:00:00Z", metadata: { type: "event_signup", event_signup_id: S1 } }),
+        ],
+        clientPackages: [pack({ id: C1, price_cents: 50000, purchased_at: "2026-07-06T09:00:00Z", credits_total: 10 })],
+      })
+    const forward = buildIncomeDrafts(buildFixture())
+    const reversedInput = buildFixture()
+    reversedInput.payments = [...reversedInput.payments].reverse()
+    const reversed = buildIncomeDrafts(reversedInput)
+
+    const refSet = (result: typeof forward) => result.drafts.map((d) => `${d.source_ref}|${d.alt_ref ?? ""}`).sort()
+    expect(refSet(reversed)).toEqual(refSet(forward))
+  })
+
+  it("legacy id-less mirror still pairs by amount±7d (id-first pairing doesn't regress the fallback path)", () => {
+    const { drafts } = buildIncomeDrafts(src({
+      payments: [mirror({ id: P1, amount_cents: 12000, created_at: "2026-05-03T10:00:00Z", mtype: "event_signup" })],
+      eventSignups: [signup({ id: S1, amount_paid_cents: 12000, created_at: "2026-05-01T10:00:00Z" })],
+    }))
+    expect(drafts).toHaveLength(1)
+    expect(drafts[0].source_ref).toBe(`event_signups:${S1}`)
+  })
+
+  it("orphan session-pack draft: literal memo and payer-chain counterparty (F3.4)", () => {
+    const { drafts } = buildIncomeDrafts(src({
+      payments: [pay({ id: P1, amount_cents: 45000, created_at: "2026-07-12T10:00:00Z", metadata: { type: "session_pack" }, payer_name: "Riley Cole" })],
+    }))
+    expect(drafts).toHaveLength(1)
+    expect(drafts[0].memo).toBe("Session pack (record deleted)")
+    expect(drafts[0].counterparty).toBe("Riley Cole")
   })
 })

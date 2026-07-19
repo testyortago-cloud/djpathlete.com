@@ -151,14 +151,38 @@ export async function deleteEntry(id: string): Promise<void> {
 
 export async function insertImportedEntries(
   bookId: string, importBatchId: string, drafts: Array<LedgerEntryDraft & { account_id?: string | null }>,
-): Promise<{ inserted: number; rejected_closed: number; rejected_closed_rows: RejectedClosedRow[] }> {
-  if (drafts.length === 0) return { inserted: 0, rejected_closed: 0, rejected_closed_rows: [] }
+): Promise<{ inserted: number; rejected_closed: number; rejected_closed_rows: RejectedClosedRow[]; skipped_alt_ref: number }> {
+  if (drafts.length === 0) return { inserted: 0, rejected_closed: 0, rejected_closed_rows: [], skipped_alt_ref: 0 }
   // Partition BEFORE the upsert (D-4): closed-period rows must never ride the
   // silent duplicate-skip, or the dialogs' "already imported" arithmetic lies.
   const closed = new Set(await listClosedPeriods(bookId))
   const { open, rejected_closed, rejected_closed_rows } = partitionByClosedPeriods(drafts, closed)
-  if (open.length === 0) return { inserted: 0, rejected_closed, rejected_closed_rows }
-  const rows = open.map((d) => ({
+  if (open.length === 0) return { inserted: 0, rejected_closed, rejected_closed_rows, skipped_alt_ref: 0 }
+
+  // Cross-run dedupe (F1): a draft's alt_ref names the OTHER source_ref form
+  // this exact sale could have posted under (mirror payments ref for a
+  // source-table draft, or the deleted source-table ref for an orphan-mirror
+  // draft). If that alt form was already posted, this draft is the SAME sale
+  // seen through a different pairing outcome (e.g. the source row existed on
+  // the first import and got deleted before a re-import) — drop it, or the
+  // plain (book_id,source,source_ref) uniqueness constraint won't catch the
+  // duplicate since the two refs differ.
+  const altRefs = open.map((d) => d.alt_ref).filter((r): r is string => typeof r === "string" && r.length > 0)
+  let skippedAlt = 0
+  let insertable = open
+  if (altRefs.length > 0) {
+    const existing = new Set<string>()
+    for (let i = 0; i < altRefs.length; i += 200) {
+      const { data, error } = await db().from("bookkeeping_ledger_entries")
+        .select("source_ref").eq("book_id", bookId).eq("source", "platform_import").in("source_ref", altRefs.slice(i, i + 200))
+      if (error) throw error
+      for (const r of (data ?? []) as Array<{ source_ref: string | null }>) if (r.source_ref) existing.add(r.source_ref)
+    }
+    insertable = open.filter((d) => !(d.alt_ref && existing.has(d.alt_ref)))
+    skippedAlt = open.length - insertable.length
+  }
+
+  const rows = insertable.map((d) => ({
     book_id: bookId, account_id: d.account_id ?? null, direction: d.direction,
     amount_cents: d.amount_cents, occurred_on: d.occurred_on, memo: d.memo,
     counterparty: d.counterparty, source: d.source, source_ref: d.source_ref,
@@ -169,7 +193,7 @@ export async function insertImportedEntries(
     .upsert(rows, { onConflict: "book_id,source,source_ref", ignoreDuplicates: true })
     .select("id")
   if (error) throw error
-  return { inserted: (data ?? []).length, rejected_closed, rejected_closed_rows }
+  return { inserted: (data ?? []).length, rejected_closed, rejected_closed_rows, skipped_alt_ref: skippedAlt }
 }
 
 // ── Platform income reads (each paginated; missing table → [] + noop) ──────

@@ -7,6 +7,16 @@
 // deleted is counted from the payment itself instead of silently dropped
 // (real $340 undercount found in prod-cloned data). Every draft carries a
 // stable source_ref so re-running the import never double-posts.
+//
+// Final-review upgrade (2026-07-20): id-first pairing. Every mirror payment
+// has carried the exact source id in metadata (client_package_id / event_
+// signup_id) since the mirrors' introducing commits — the amount±7day
+// heuristic below is a legacy fallback for mirrors written before that (or
+// missing the id for any other reason). id-based pairing ignores amount and
+// date entirely (a promo-code/price-edit divergence still pairs), and stamps
+// `alt_ref` on both sides of a pairing so a re-import after the OTHER side's
+// deletion can be recognized as the same sale by the DAL's cross-run dedupe
+// instead of double-posting.
 
 import type { IncomeSourceRows, IncomeAdapterResult, LedgerEntryDraft } from "./types"
 
@@ -30,6 +40,13 @@ function paymentServiceLine(description: string | null, metadata: Record<string,
   return "other"
 }
 
+/** service_line for the non-mirror payments draft: a program-linked payment
+ *  (e.g. a "Subscription renewal" description) always prefills Performance
+ *  Training, even when the description text alone wouldn't match. */
+function nonMirrorServiceLine(p: EnrichedPayment, meta: Record<string, unknown>): string {
+  return p.program_name ? "performance_training" : paymentServiceLine(p.description, meta)
+}
+
 type EnrichedPayment = IncomeSourceRows["payments"][number]
 
 function paymentMemo(p: EnrichedPayment, meta: Record<string, unknown>): string {
@@ -48,11 +65,16 @@ function paymentCounterparty(p: EnrichedPayment, meta: Record<string, unknown>):
   return p.payer_name ?? email ?? p.payer_email ?? p.description ?? null
 }
 
-/** Mutable pairing candidate for the orphaned-mirror check. */
+/** Mutable pairing candidate for the orphaned-mirror check. `sourceId` (the
+ *  client_packages/event_signups row id) drives id-first pairing;
+ *  `heuristicEligible` gates the legacy amount±7day fallback only —
+ *  id-based pairing (step b in buildIncomeDrafts) ignores it entirely. */
 interface MirrorCandidate {
+  sourceId: string
   amount_cents: number
   occurred_on: string
   consumed: boolean
+  heuristicEligible: boolean
 }
 
 function dayDiff(a: string, b: string): number {
@@ -60,13 +82,16 @@ function dayDiff(a: string, b: string): number {
 }
 
 /** Greedy one-to-one pairing: equal cents, ≤7 days; smallest diff wins,
- *  tie → earliest candidate date. Returns true when a candidate was consumed. */
+ *  tie → earliest candidate date. Only considers unconsumed, heuristic-
+ *  eligible candidates (id-less legacy mirrors only — id-based pairing in
+ *  buildIncomeDrafts never calls this). Returns true when a candidate was
+ *  consumed. */
 function consumeCandidate(candidates: MirrorCandidate[], amountCents: number, date: string): boolean {
   let best = -1
   let bestDiff = Infinity
   for (let i = 0; i < candidates.length; i++) {
     const c = candidates[i]
-    if (c.consumed || c.amount_cents !== amountCents) continue
+    if (c.consumed || !c.heuristicEligible || c.amount_cents !== amountCents) continue
     const diff = dayDiff(c.occurred_on, date)
     if (diff > ORPHAN_PAIR_WINDOW_DAYS) continue
     if (diff < bestDiff || (diff === bestDiff && best >= 0 && c.occurred_on < candidates[best].occurred_on)) {
@@ -84,17 +109,24 @@ export function buildIncomeDrafts(input: IncomeSourceRows, window?: { from: stri
   const warnings: string[] = []
 
   // Source tables FIRST — they are both the richer record and the pairing
-  // candidates the mirror check consumes.
+  // candidates the mirror check consumes. draftIndexBySourceRef lets the
+  // mirror loop below stamp `alt_ref` back onto the already-emitted
+  // source-table draft when an id-based pairing succeeds.
+  const draftIndexBySourceRef = new Map<string, number>()
+
   const packCandidates: MirrorCandidate[] = []
   for (const pk of input.clientPackages) {
     if (pk.payment_status !== "paid") continue
     const occurred = isoDate(pk.purchased_at)
-    // Only Stripe-paid packs ever wrote a mirror payment — cash/offline packs
-    // must not absorb an orphaned mirror's pairing slot (silent undercount).
-    if (pk.stripe_session_id != null || pk.stripe_payment_id != null) {
-      packCandidates.push({ amount_cents: pk.price_cents, occurred_on: occurred, consumed: false })
-    }
+    // Every paid pack is an id-pairing candidate (a mirror's client_package_id
+    // can reference it regardless of payment method). heuristicEligible stays
+    // Stripe-only: cash/offline packs never wrote a mirror payment, so letting
+    // them absorb an id-LESS orphaned mirror via the amount/date heuristic
+    // would silently drop that mirror's revenue.
+    const heuristicEligible = pk.stripe_session_id != null || pk.stripe_payment_id != null
+    packCandidates.push({ sourceId: pk.id, amount_cents: pk.price_cents, occurred_on: occurred, consumed: false, heuristicEligible })
     const base = pk.product_name ?? pk.session_type ?? "Session pack"
+    const source_ref = `client_packages:${pk.id}`
     drafts.push({
       direction: "income",
       amount_cents: pk.price_cents,
@@ -103,15 +135,18 @@ export function buildIncomeDrafts(input: IncomeSourceRows, window?: { from: stri
       counterparty: pk.client_name ?? null,
       service_line: "session_packs",
       source: "platform_import",
-      source_ref: `client_packages:${pk.id}`,
+      source_ref,
+      alt_ref: null,
     })
+    draftIndexBySourceRef.set(source_ref, drafts.length - 1)
   }
 
   const signupCandidates: MirrorCandidate[] = []
   for (const s of input.eventSignups) {
     if (s.signup_type !== "paid" || s.status !== "confirmed" || s.amount_paid_cents == null) continue
     const occurred = isoDate(s.created_at)
-    signupCandidates.push({ amount_cents: s.amount_paid_cents, occurred_on: occurred, consumed: false })
+    signupCandidates.push({ sourceId: s.id, amount_cents: s.amount_paid_cents, occurred_on: occurred, consumed: false, heuristicEligible: true })
+    const source_ref = `event_signups:${s.id}`
     drafts.push({
       direction: "income",
       amount_cents: s.amount_paid_cents,
@@ -120,8 +155,10 @@ export function buildIncomeDrafts(input: IncomeSourceRows, window?: { from: stri
       counterparty: s.parent_name ?? null,
       service_line: "camps",
       source: "platform_import",
-      source_ref: `event_signups:${s.id}`,
+      source_ref,
+      alt_ref: null,
     })
+    draftIndexBySourceRef.set(source_ref, drafts.length - 1)
   }
 
   let orphanPacks = 0
@@ -137,23 +174,64 @@ export function buildIncomeDrafts(input: IncomeSourceRows, window?: { from: stri
     if (mirrorType === "session_pack" || mirrorType === "event_signup") {
       // Mirror row: normally the source table carries this sale — but when the
       // pack/signup row was deleted, dropping the mirror silently undercounts
-      // revenue. Pair one-to-one; unpaired mirrors post from the payment.
-      const paired =
-        mirrorType === "session_pack"
-          ? consumeCandidate(packCandidates, p.amount_cents, isoDate(p.created_at))
-          : consumeCandidate(signupCandidates, p.amount_cents, isoDate(p.created_at))
+      // revenue. Prefer id-based pairing (exact — ignores amount/date, so a
+      // promo-code/price-edit divergence still pairs); fall back to the
+      // legacy amount±7day heuristic only when the mirror carries no id.
+      const isPack = mirrorType === "session_pack"
+      const candidates = isPack ? packCandidates : signupCandidates
+      const sourceRefPrefix = isPack ? "client_packages" : "event_signups"
+      const srcId =
+        typeof meta.client_package_id === "string" ? meta.client_package_id
+        : typeof meta.event_signup_id === "string" ? meta.event_signup_id
+        : null
+
+      if (srcId != null) {
+        const candidate = candidates.find((c) => c.sourceId === srcId)
+        if (candidate) {
+          // id pairing ignores amount/date — mark consumed regardless of the
+          // heuristic-eligibility flag (that flag only gates the id-LESS path).
+          candidate.consumed = true
+          const sourceRef = `${sourceRefPrefix}:${srcId}`
+          const idx = draftIndexBySourceRef.get(sourceRef)
+          if (idx != null) drafts[idx].alt_ref = `payments:${p.id}`
+          continue
+        }
+        // Orphan WITH an id: the source row was deleted after the mirror was
+        // written. alt_ref points at the (now-gone) source ref so a re-import
+        // after the source row somehow reappears — or after this exact orphan
+        // draft was already posted under a prior form — never double-posts.
+        if (isPack) orphanPacks++
+        else orphanSignups++
+        drafts.push({
+          direction: "income",
+          amount_cents: p.amount_cents,
+          occurred_on: isoDate(p.created_at),
+          memo: isPack ? "Session pack (record deleted)" : "Camp/event signup (record deleted)",
+          counterparty: paymentCounterparty(p, meta),
+          service_line: isPack ? "session_packs" : "camps",
+          source: "platform_import",
+          source_ref: `payments:${p.id}`,
+          alt_ref: `${sourceRefPrefix}:${srcId}`,
+        })
+        continue
+      }
+
+      // Legacy id-less mirror: amount±7day heuristic over unconsumed,
+      // heuristic-eligible candidates only.
+      const paired = consumeCandidate(candidates, p.amount_cents, isoDate(p.created_at))
       if (paired) continue
-      if (mirrorType === "session_pack") orphanPacks++
+      if (isPack) orphanPacks++
       else orphanSignups++
       drafts.push({
         direction: "income",
         amount_cents: p.amount_cents,
         occurred_on: isoDate(p.created_at),
-        memo: mirrorType === "session_pack" ? "Session pack (record deleted)" : "Camp/event signup (record deleted)",
+        memo: isPack ? "Session pack (record deleted)" : "Camp/event signup (record deleted)",
         counterparty: paymentCounterparty(p, meta),
-        service_line: mirrorType === "session_pack" ? "session_packs" : "camps",
+        service_line: isPack ? "session_packs" : "camps",
         source: "platform_import",
         source_ref: `payments:${p.id}`,
+        alt_ref: null,
       })
       continue
     }
@@ -166,7 +244,7 @@ export function buildIncomeDrafts(input: IncomeSourceRows, window?: { from: stri
       occurred_on: isoDate(p.created_at),
       memo: paymentMemo(p, meta),
       counterparty: paymentCounterparty(p, meta),
-      service_line: paymentServiceLine(p.description, meta),
+      service_line: nonMirrorServiceLine(p, meta),
       source: "platform_import",
       source_ref: `payments:${p.id}`,
     })

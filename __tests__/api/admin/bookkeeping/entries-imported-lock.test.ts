@@ -52,6 +52,20 @@ describe("PATCH locked fields on imported entries", () => {
     expect(updateEntryMock).not.toHaveBeenCalled()
   })
 
+  // F3.3: lock-source coverage — the 422 applies to every non-manual source,
+  // not just platform_import (statement_import/receipt entries lock the same
+  // fields).
+  it.each([
+    ["statement_import"],
+    ["receipt"],
+  ])("422 when amount_cents is present on a %s entry", async (source) => {
+    getEntryMock.mockResolvedValue(entry({ source }))
+    const res = await PATCH(req({ amount_cents: 5000 }), ctx)
+    expect(res.status).toBe(422)
+    expect((await res.json()).error).toBe("amount, date and direction are locked on imported entries")
+    expect(updateEntryMock).not.toHaveBeenCalled()
+  })
+
   it("allows the editable fields on an imported entry", async () => {
     getEntryMock.mockResolvedValue(entry())
     const res = await PATCH(req({ account_id: ACC, memo: "Cannon Baller! — program purchase", counterparty: "Cannon Kremer", business_purpose: null }), ctx)
