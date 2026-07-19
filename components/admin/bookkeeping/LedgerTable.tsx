@@ -168,27 +168,25 @@ export function LedgerTable({
                     <Paperclip className="size-3.5" />
                   </Button>
                 )}
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => onEdit(row)}
+                  disabled={busyId === row.id}
+                  title={row.source === "manual" ? "Edit entry" : "Edit imported entry"}
+                >
+                  <Pencil className="size-3.5" />
+                </Button>
                 {row.source === "manual" && (
-                  <>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={() => onEdit(row)}
-                      disabled={busyId === row.id}
-                      title="Edit entry"
-                    >
-                      <Pencil className="size-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={() => handleDelete(row.id)}
-                      disabled={busyId === row.id}
-                      title="Delete entry"
-                    >
-                      <Trash2 className="size-3.5" />
-                    </Button>
-                  </>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => handleDelete(row.id)}
+                    disabled={busyId === row.id}
+                    title="Delete entry"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </Button>
                 )}
               </div>
             </TableCell>

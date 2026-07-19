@@ -70,6 +70,7 @@ export function ManualEntryDialog({
   closedPeriods?: string[]
 }) {
   const isEdit = Boolean(entry)
+  const locked = isEdit && entry!.source !== "manual"
   const [form, setForm] = useState<FormState>(emptyForm())
   const [submitting, setSubmitting] = useState(false)
 
@@ -94,17 +95,24 @@ export function ManualEntryDialog({
     }
     setSubmitting(true)
     try {
-      const body = {
-        book_id: bookId,
-        account_id: form.accountId || null,
-        direction: form.direction,
-        amount_cents: cents,
-        occurred_on: form.occurredOn,
-        memo: form.memo.trim() || null,
-        counterparty: form.counterparty.trim() || null,
-        business_purpose: form.businessPurpose.trim() || null,
-        adjusts_period: form.adjustsPeriod || null,
-      }
+      const body = locked
+        ? {
+            account_id: form.accountId || null,
+            memo: form.memo.trim() || null,
+            counterparty: form.counterparty.trim() || null,
+            business_purpose: form.businessPurpose.trim() || null,
+          }
+        : {
+            book_id: bookId,
+            account_id: form.accountId || null,
+            direction: form.direction,
+            amount_cents: cents,
+            occurred_on: form.occurredOn,
+            memo: form.memo.trim() || null,
+            counterparty: form.counterparty.trim() || null,
+            business_purpose: form.businessPurpose.trim() || null,
+            adjusts_period: form.adjustsPeriod || null,
+          }
       const res = isEdit
         ? await fetch(`/api/admin/bookkeeping/entries/${entry!.id}`, {
             method: "PATCH",
@@ -135,7 +143,7 @@ export function ManualEntryDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{isEdit ? "Edit entry" : "Add entry"}</DialogTitle>
+          <DialogTitle>{locked ? "Edit imported entry" : isEdit ? "Edit entry" : "Add entry"}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -145,6 +153,7 @@ export function ManualEntryDialog({
               variant={form.direction === "income" ? "default" : "outline"}
               size="sm"
               onClick={() => setForm((f) => ({ ...f, direction: "income", accountId: "" }))}
+              disabled={locked}
             >
               Income
             </Button>
@@ -153,6 +162,7 @@ export function ManualEntryDialog({
               variant={form.direction === "expense" ? "default" : "outline"}
               size="sm"
               onClick={() => setForm((f) => ({ ...f, direction: "expense", accountId: "" }))}
+              disabled={locked}
             >
               Expense
             </Button>
@@ -169,6 +179,7 @@ export function ManualEntryDialog({
                 value={form.amount}
                 onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
                 placeholder="0.00"
+                disabled={locked}
               />
             </div>
             <div className="space-y-2">
@@ -178,9 +189,16 @@ export function ManualEntryDialog({
                 type="date"
                 value={form.occurredOn}
                 onChange={(e) => setForm((f) => ({ ...f, occurredOn: e.target.value }))}
+                disabled={locked}
               />
             </div>
           </div>
+
+          {locked && (
+            <p className="text-xs text-muted-foreground">
+              Amount, date and direction are locked — imported from platform records.
+            </p>
+          )}
 
           <div className="space-y-2">
             <Label>Category</Label>
@@ -208,6 +226,7 @@ export function ManualEntryDialog({
               <Select
                 value={form.adjustsPeriod || "none"}
                 onValueChange={(v) => setForm((f) => ({ ...f, adjustsPeriod: v === "none" ? "" : v }))}
+                disabled={locked}
               >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="None" />
