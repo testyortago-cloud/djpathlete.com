@@ -286,6 +286,12 @@ export function BooksClient({
               Insights
             </Link>
             <Link
+              href="/admin/books/assets"
+              className="text-sm text-muted-foreground hover:text-accent underline-offset-4 hover:underline"
+            >
+              Assets
+            </Link>
+            <Link
               href="/admin/books/accounts"
               className="text-sm text-muted-foreground hover:text-accent underline-offset-4 hover:underline"
             >
