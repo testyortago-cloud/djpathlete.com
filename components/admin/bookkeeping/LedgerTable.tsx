@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { formatCents } from "@/lib/bookkeeping/money"
 import { formatOccurredOn } from "@/lib/bookkeeping/format"
+import { formatPeriodLabel } from "@/lib/bookkeeping/period-close"
 import type { BookkeepingAccount, BookkeepingLedgerEntry, LedgerSource } from "@/types/database"
 
 const SOURCE_LABELS: Record<LedgerSource, string> = {
@@ -111,7 +112,7 @@ export function LedgerTable({
               ) : null}
               {row.adjusts_period ? (
                 <span className="mt-0.5 inline-flex items-center rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent">
-                  adjusts {row.adjusts_period}
+                  adjusts {formatPeriodLabel(row.adjusts_period)}
                 </span>
               ) : null}
             </TableCell>

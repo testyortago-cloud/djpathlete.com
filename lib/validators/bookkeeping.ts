@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { PERIOD_RE } from "@/lib/bookkeeping/period-close"
 
 const DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD")
 
@@ -12,7 +13,7 @@ export const createEntrySchema = z.object({
   memo: z.string().max(500).nullable().optional(),
   business_purpose: z.string().max(1000).nullable().optional(),
   counterparty: z.string().max(200).nullable().optional(),
-  adjusts_period: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "expected YYYY-MM").nullable().optional(),
+  adjusts_period: z.string().regex(PERIOD_RE, "expected YYYY-MM").nullable().optional(),
 })
 
 export const updateEntrySchema = z.object({
@@ -23,7 +24,7 @@ export const updateEntrySchema = z.object({
   memo: z.string().max(500).nullable().optional(),
   business_purpose: z.string().max(1000).nullable().optional(),
   counterparty: z.string().max(200).nullable().optional(),
-  adjusts_period: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "expected YYYY-MM").nullable().optional(),
+  adjusts_period: z.string().regex(PERIOD_RE, "expected YYYY-MM").nullable().optional(),
 })
 
 export const createAccountSchema = z.object({
