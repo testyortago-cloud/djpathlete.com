@@ -55,7 +55,10 @@ export async function POST(request: Request) {
     // D-15: fire-and-forget AFTER the row persists — email failure never
     // fails the close. Flag default OFF; recipient = stored accountant
     // (cc coach inside sendBooksClosedEmail) else the coach alone.
-    const emailEnabled = await getSetting<boolean>("bookkeeping_close_email_enabled", false)
+    // .catch(() => false): a flag-read failure must never turn an already-
+    // persisted close into a 500 (the admin would retry into a confusing
+    // 409) — default to "don't send", matching the fire-and-forget posture.
+    const emailEnabled = await getSetting<boolean>("bookkeeping_close_email_enabled", false).catch(() => false)
     if (emailEnabled) {
       void (async () => {
         try {
@@ -80,10 +83,12 @@ export async function POST(request: Request) {
             metadata: { book_id, period, recipient },
           })
         } catch (err) {
+          const message =
+            err instanceof Error ? err.message : String((err as { message?: unknown })?.message ?? err)
           void recordAudit({
             action: "bookkeeping.close_emailed", category: "commerce", outcome: "failure",
             target: { type: "bookkeeping_period_close", id: close.id },
-            metadata: { book_id, period, error: (err as Error).message },
+            metadata: { book_id, period, error: message },
           })
         }
       })()

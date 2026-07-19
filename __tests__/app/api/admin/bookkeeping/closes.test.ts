@@ -188,6 +188,19 @@ describe("POST /closes — books-closed email (D-15)", () => {
     }
   })
 
+  it("flag read REJECTS → close STILL 201, no send attempted, no stamp", async () => {
+    ;(getSetting as ReturnType<typeof vi.fn>).mockImplementation(async (key: string, fallback: unknown) => {
+      if (key === "bookkeeping_close_email_enabled") throw new Error("db unreachable")
+      return fallback
+    })
+    const res = await POST(body({ book_id: BOOK, period: "2019-01" }))
+    expect(res.status).toBe(201)
+    expect((await res.json()).close).toEqual(closeRow)
+    await settle()
+    expect(sendBooksClosedEmail).not.toHaveBeenCalled()
+    expect(stampCloseEmailSent).not.toHaveBeenCalled()
+  })
+
   it("send failure → close STILL 201, close_emailed audited as failure, no stamp", async () => {
     flagOn("cpa@example.com")
     ;(sendBooksClosedEmail as ReturnType<typeof vi.fn>).mockResolvedValue({ error: "boom" })
