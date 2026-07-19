@@ -10,7 +10,9 @@ import { Button } from "@/components/ui/button"
 import type { DeductionFindings, HomeOfficeCandidate } from "@/lib/bookkeeping/deduction-finder"
 import { formatCents } from "@/lib/bookkeeping/money"
 import { PERIOD_PRESET_LABELS, presetRange, type PeriodPreset } from "@/lib/bookkeeping/period"
+import type { WatchdogFinding } from "@/lib/bookkeeping/receipt-watchdog"
 import type { ServiceLineProfit } from "@/lib/bookkeeping/service-line-profit"
+import type { TaxForecast } from "@/lib/bookkeeping/tax-forecast"
 import type { VendorSweep } from "@/lib/bookkeeping/vendor-sweep"
 import type { YearEndFlag } from "@/lib/bookkeeping/year-end-flags"
 import type { BookkeepingBook } from "@/types/database"
@@ -22,6 +24,11 @@ interface BookInsights {
   vendors: VendorSweep
   row_count: number
 }
+interface ForecastBookRow {
+  book_id: string
+  book_name: string
+  forecast: TaxForecast
+}
 interface InsightsData {
   from: string
   to: string
@@ -29,6 +36,8 @@ interface InsightsData {
   books: BookInsights[]
   home_office: HomeOfficeCandidate
   year_end_flags: YearEndFlag[]
+  forecast: { ytd_from: string; ytd_to: string; rate_percent: number | null; books: ForecastBookRow[] }
+  watchdog: WatchdogFinding[]
 }
 
 const VISIBLE_ROW_CAP = 25
@@ -62,6 +71,8 @@ export function InsightsClient({
   const [bookId, setBookId] = useState(books.find((b) => b.is_primary)?.id ?? books[0]?.id ?? "")
   const [percentInput, setPercentInput] = useState(initialHomeOfficePercent?.toString() ?? "")
   const [savingPercent, setSavingPercent] = useState(false)
+  const [rateInput, setRateInput] = useState("")
+  const [savingRate, setSavingRate] = useState(false)
   const fetchRequestIdRef = useRef(0)
 
   const fetchInsights = useCallback(async () => {
@@ -75,6 +86,7 @@ export function InsightsClient({
       if (requestId === fetchRequestIdRef.current) {
         setData(body)
         setPercentInput(body.home_office_percent?.toString() ?? "")
+        setRateInput(body.forecast.rate_percent?.toString() ?? "")
       }
     } catch {
       if (requestId === fetchRequestIdRef.current) toast.error("Failed to load insights")
@@ -129,6 +141,36 @@ export function InsightsClient({
     void savePercent(Math.round(parsed * 100) / 100)
   }
 
+  const saveRate = useCallback(
+    async (value: number | null) => {
+      setSavingRate(true)
+      try {
+        const res = await fetch("/api/admin/bookkeeping/insights/tax-rate", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ percent: value }),
+        })
+        if (!res.ok) throw new Error("failed")
+        toast.success(value === null ? "Tax rate cleared" : "Tax rate saved")
+        void fetchInsights()
+      } catch {
+        toast.error("Failed to save the tax rate")
+      } finally {
+        setSavingRate(false)
+      }
+    },
+    [fetchInsights],
+  )
+
+  const handleSaveRate = () => {
+    const parsed = Number(rateInput)
+    if (!Number.isFinite(parsed) || parsed < 0.01 || parsed > 100) {
+      toast.error("Enter a percent between 0.01 and 100")
+      return
+    }
+    void saveRate(Math.round(parsed * 100) / 100)
+  }
+
   if (books.length === 0) {
     return (
       <EmptyState
@@ -143,6 +185,9 @@ export function InsightsClient({
   const active = data?.books.find((b) => b.book.id === bookId)
   const targetBook = data ? books.find((b) => b.id === data.home_office.target_book_id) : undefined
   const targetCurrency = targetBook?.currency ?? "usd"
+  const watchdogRows = data && active ? data.watchdog.filter((f) => f.book_id === active.book.id) : []
+  const forecastForBook =
+    data && active ? (data.forecast.books.find((f) => f.book_id === active.book.id) ?? null) : null
 
   const homeOfficeCard = data ? (
     <div className="rounded-lg border border-border bg-card p-4 overflow-x-auto">
@@ -542,6 +587,155 @@ export function InsightsClient({
                     {active.vendors.vendor_count} vendors seen · {active.vendors.unattributed_expense_count} entries without a vendor name
                   </p>
                 </div>
+
+                {/* Missing receipts & purposes (Phase 6b watchdog, D-10 — a chore list, no flag) */}
+                <div className="rounded-lg border border-border bg-card p-4 overflow-x-auto">
+                  <h2 className="text-sm font-heading text-primary mb-3">Missing receipts &amp; purposes</h2>
+                  <p
+                    className={`text-sm font-medium mb-3 inline-block rounded-md px-3 py-2 ${
+                      watchdogRows.length > 0 ? "bg-warning/10 text-warning" : "text-muted-foreground"
+                    }`}
+                  >
+                    {watchdogRows.length} entries ·{" "}
+                    {formatCents(
+                      watchdogRows.reduce((sum, f) => sum + f.amount_cents, 0),
+                      active.book.currency,
+                    )}
+                  </p>
+                  {watchdogRows.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Nothing is missing a receipt or business purpose (entries 14+ days old).
+                    </p>
+                  ) : (
+                    <>
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b text-left text-xs text-muted-foreground uppercase tracking-wide">
+                            <th className="py-1 pr-4 font-medium">Date</th>
+                            <th className="py-1 pr-4 font-medium">Amount</th>
+                            <th className="py-1 pr-4 font-medium">Counterparty</th>
+                            <th className="py-1 pr-4 font-medium">Category</th>
+                            <th className="py-1 pr-4 font-medium">Missing</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {watchdogRows.slice(0, VISIBLE_ROW_CAP).map((f) => (
+                            <tr key={f.entry_id} className="border-b last:border-0">
+                              <td className="py-1.5 pr-4">{f.occurred_on}</td>
+                              <td className="py-1.5 pr-4">{formatCents(f.amount_cents, active.book.currency)}</td>
+                              <td className="py-1.5 pr-4">{f.counterparty ?? "—"}</td>
+                              <td className="py-1.5 pr-4">{f.account_name}</td>
+                              <td className="py-1.5 pr-4">
+                                <span className="flex flex-wrap gap-1">
+                                  {f.reasons.map((r) => (
+                                    <span
+                                      key={r}
+                                      className="inline-flex items-center rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning"
+                                    >
+                                      {r === "no_document" ? "no receipt" : "no purpose"}
+                                    </span>
+                                  ))}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {watchdogRows.length > VISIBLE_ROW_CAP ? (
+                        <p className="text-xs text-muted-foreground mt-2">
+                          and {watchdogRows.length - VISIBLE_ROW_CAP} more
+                        </p>
+                      ) : null}
+                    </>
+                  )}
+                </div>
+
+                {/* Rolling tax forecast (Phase 6b, D-8/D-9 — business books only) */}
+                {data && forecastForBook && active.book.book_kind === "business" ? (
+                  <div className="rounded-lg border border-border bg-card p-4 overflow-x-auto">
+                    <div className="flex items-center gap-2 mb-1">
+                      <h2 className="text-sm font-heading text-primary">Rolling tax forecast</h2>
+                      <span className="inline-flex items-center rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent">
+                        ESTIMATE
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mb-1">
+                      Estimate only — gross, cash-basis, flat rate you/your CPA entered; no entity/SE/QBI nuance. Your
+                      CPA files.
+                    </p>
+                    <p className="text-xs text-muted-foreground mb-3">
+                      Year-to-date {data.forecast.ytd_from} → {data.forecast.ytd_to} — independent of the period
+                      selected above.
+                    </p>
+                    <div className="space-y-1 text-sm">
+                      <p>
+                        YTD income{" "}
+                        <span className="font-semibold text-success">
+                          {formatCents(forecastForBook.forecast.ytd_income_cents, active.book.currency)}
+                        </span>
+                      </p>
+                      <p>
+                        YTD expenses{" "}
+                        <span className="font-semibold text-error">
+                          {formatCents(forecastForBook.forecast.ytd_expense_cents, active.book.currency)}
+                        </span>
+                      </p>
+                      {forecastForBook.forecast.home_office_deduction_cents !== null ? (
+                        <p>
+                          Home-office proposal{" "}
+                          <span className="font-semibold">
+                            −{formatCents(forecastForBook.forecast.home_office_deduction_cents, active.book.currency)}
+                          </span>
+                        </p>
+                      ) : null}
+                      <p>
+                        YTD net{" "}
+                        <span
+                          className={`font-semibold ${
+                            forecastForBook.forecast.estimated_net_cents >= 0 ? "text-success" : "text-error"
+                          }`}
+                        >
+                          {formatCents(forecastForBook.forecast.estimated_net_cents, active.book.currency)}
+                        </span>
+                      </p>
+                      {forecastForBook.forecast.estimated_tax_cents === null ? (
+                        <p className="text-muted-foreground">
+                          No tax rate set — ask your CPA for a safe-harbor rate, then enter it below.
+                        </p>
+                      ) : (
+                        <p>
+                          Estimated tax at {forecastForBook.forecast.rate_percent}%{" "}
+                          <span className="font-semibold">
+                            {formatCents(forecastForBook.forecast.estimated_tax_cents, active.book.currency)}
+                          </span>
+                        </p>
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        Next quarterly safe-harbor date: {forecastForBook.forecast.next_safe_harbor.label} (generic IRS
+                        calendar — your CPA confirms your dates).
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 mt-4">
+                      <input
+                        type="number"
+                        min={0.01}
+                        max={100}
+                        step={0.01}
+                        value={rateInput}
+                        onChange={(e) => setRateInput(e.currentTarget.value)}
+                        disabled={savingRate}
+                        className="border-border rounded-md border px-3 py-2 text-sm w-28"
+                        aria-label="Effective tax rate percent"
+                      />
+                      <Button size="sm" disabled={savingRate} onClick={handleSaveRate}>
+                        Save
+                      </Button>
+                      <Button size="sm" variant="outline" disabled={savingRate} onClick={() => void saveRate(null)}>
+                        Clear
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
 
                 {data && bookId === data.home_office.target_book_id ? homeOfficeCard : null}
               </>
