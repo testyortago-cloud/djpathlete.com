@@ -38,6 +38,7 @@ import {
   deleteEntry,
   getAccount,
   getDocument,
+  getEntry,
   insertAmazonEntries,
   insertImportedEntries,
   insertReceiptEntry,
@@ -74,6 +75,9 @@ describe("single-row paths → 409 with the exact spec message", () => {
   })
 
   it("PATCH /entries/[id] — occurred_on-only edit, no account_id (pair 2)", async () => {
+    ;(getEntry as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: ENTRY, book_id: BOOK, direction: "expense", source: "manual",
+    })
     ;(updateEntry as ReturnType<typeof vi.fn>).mockRejectedValue(periodClosed())
     const res = await ENTRY_PATCH(
       new Request("http://x/api", { method: "PATCH", body: JSON.stringify({ occurred_on: "2019-01-15" }) }) as never,
