@@ -89,7 +89,11 @@ export function buildIncomeDrafts(input: IncomeSourceRows, window?: { from: stri
   for (const pk of input.clientPackages) {
     if (pk.payment_status !== "paid") continue
     const occurred = isoDate(pk.purchased_at)
-    packCandidates.push({ amount_cents: pk.price_cents, occurred_on: occurred, consumed: false })
+    // Only Stripe-paid packs ever wrote a mirror payment — cash/offline packs
+    // must not absorb an orphaned mirror's pairing slot (silent undercount).
+    if (pk.stripe_session_id != null || pk.stripe_payment_id != null) {
+      packCandidates.push({ amount_cents: pk.price_cents, occurred_on: occurred, consumed: false })
+    }
     const base = pk.product_name ?? pk.session_type ?? "Session pack"
     drafts.push({
       direction: "income",

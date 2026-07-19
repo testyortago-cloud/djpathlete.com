@@ -51,7 +51,7 @@ New pure helper `matchAccountForServiceLine(direction, serviceLine, accounts)` i
 
 ## 4. Feature 2 — Orphaned-mirror fallback
 
-In `buildIncomeDrafts`, process source tables FIRST (packages, signups), building per-type candidate lists `{amount_cents, occurred_on, consumed}`. Then in the payments loop, a succeeded mirror payment (`metadata.type` `session_pack`/`event_signup`):
+In `buildIncomeDrafts`, process source tables FIRST (packages, signups), building per-type candidate lists `{amount_cents, occurred_on, consumed}`. **Amendment (final-review escalation, 2026-07-19): only Stripe-paid packages join the candidate list** (`stripe_session_id` or `stripe_payment_id` present) — cash/offline packs never write a mirror payment, so letting them absorb one would silently drop the orphan's revenue (and is the only reachable input for the greedy-vs-optimal over-count). All paid packs still produce income drafts regardless; the filter affects pairing only. Paid event signups are all Stripe-originated (the webhook is the only writer), so no equivalent filter is needed there. Then in the payments loop, a succeeded mirror payment (`metadata.type` `session_pack`/`event_signup`):
 - **Pairs** with an unconsumed same-type candidate with **equal `amount_cents` and |date diff| ≤ 7 days** (smallest diff wins; tie → earliest candidate). Paired → mirror skipped exactly as today; candidate consumed (one-to-one).
 - **Unpaired** → the mirror becomes an income draft itself: `source_ref: payments:<id>` (same ref convention the dev fix used — never double-posts), `service_line` `session_packs`/`camps`, memo per §3.2, counterparty from the payment's payer chain.
 - Per-type warning when fallbacks occurred: `"<n> event-signup payment(s) counted directly — the signup records no longer exist."` / same for packs. Dialog already renders `warnings[]`.
@@ -91,3 +91,28 @@ No migrations, no flags, no functions/, no new deps.
 ## 8. Open items
 
 None.
+
+## 9. Fix pass (Stripe-only pairing candidates)
+
+**Date:** 2026-07-19 (post-review amendment)
+
+**What changed:** In `buildIncomeDrafts` (lib/bookkeeping/income-adapter.ts), the clientPackages loop now gates the orphan-pairing-candidate push on Stripe payment presence: only packages with `stripe_session_id != null || stripe_payment_id != null` join packCandidates. The pack DRAFT itself still emits for every paid pack (regardless of payment method); only the candidate slot for pairing is gated.
+
+**Rationale:** Cash/offline packs never write a mirror payment row, so allowing them to absorb an orphaned mirror would silently drop that mirror's revenue (test case: a $200 cash pack + a $200 orphaned session-pack mirror both emit drafts, but the mirror is not consumed by the cash pack, so both count correctly).
+
+**Test added:** `"cash packs never absorb an orphan mirror's pairing slot"` in the orphaned-mirror fallback describe block:
+```ts
+it("cash packs never absorb an orphan mirror's pairing slot", () => {
+  const { drafts, warnings } = buildIncomeDrafts(src({
+    payments: [mirror({ id: P1, amount_cents: 20000, created_at: "2026-07-06T10:00:00Z", mtype: "session_pack" })],
+    clientPackages: [
+      pack({ id: C1, price_cents: 20000, purchased_at: "2026-07-05T10:00:00Z", credits_total: 5, stripe_session_id: null, stripe_payment_id: null }),
+    ],
+  }))
+  expect(drafts).toHaveLength(2)
+  expect(drafts.map((d) => d.source_ref).sort()).toEqual([`client_packages:${C1}`, `payments:${P1}`].sort())
+  expect(warnings).toContain("1 session-pack payment(s) counted directly — the pack records no longer exist.")
+})
+```
+
+**Fixture update:** The `pack()` helper now defaults `stripe_session_id: "cs_test_1", stripe_payment_id: "pi_test_1"` so existing pairing tests preserve their Stripe-paired semantics; the new cash-pack test overrides both to null explicitly.

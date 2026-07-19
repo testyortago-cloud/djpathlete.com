@@ -25,7 +25,7 @@ function mirror(over: Record<string, unknown> & { mtype: string }) {
   return pay({ metadata: { type: mtype }, ...rest })
 }
 function pack(over: Record<string, unknown>) {
-  return { id: C1, payment_status: "paid", price_cents: 1000, purchased_at: "2026-07-01T10:00:00Z", session_type: "1-on-1", product_name: null, credits_total: null, client_name: null, ...over } as never
+  return { id: C1, payment_status: "paid", price_cents: 1000, purchased_at: "2026-07-01T10:00:00Z", session_type: "1-on-1", product_name: null, credits_total: null, client_name: null, stripe_session_id: "cs_test_1", stripe_payment_id: "pi_test_1", ...over } as never
 }
 function signup(over: Record<string, unknown>) {
   return { id: S1, signup_type: "paid", status: "confirmed", amount_paid_cents: 1000, created_at: "2026-07-01T10:00:00Z", parent_name: null, event_title: null, ...over } as never
@@ -311,5 +311,17 @@ describe("orphaned-mirror fallback (2026-07-19)", () => {
     }))
     expect(eight.drafts).toHaveLength(2)
     expect(eight.warnings).toContain("1 session-pack payment(s) counted directly — the pack records no longer exist.")
+  })
+
+  it("cash packs never absorb an orphan mirror's pairing slot", () => {
+    const { drafts, warnings } = buildIncomeDrafts(src({
+      payments: [mirror({ id: P1, amount_cents: 20000, created_at: "2026-07-06T10:00:00Z", mtype: "session_pack" })],
+      clientPackages: [
+        pack({ id: C1, price_cents: 20000, purchased_at: "2026-07-05T10:00:00Z", credits_total: 5, stripe_session_id: null, stripe_payment_id: null }),
+      ],
+    }))
+    expect(drafts).toHaveLength(2)
+    expect(drafts.map((d) => d.source_ref).sort()).toEqual([`client_packages:${C1}`, `payments:${P1}`].sort())
+    expect(warnings).toContain("1 session-pack payment(s) counted directly — the pack records no longer exist.")
   })
 })
