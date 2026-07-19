@@ -146,10 +146,16 @@ export function ImportPlatformDialog({
         toast.error(data.error ?? "Failed to import entries")
         return
       }
-      // The commit route only returns { inserted, batchId } — "skipped" isn't
-      // reported server-side, so it's derived here from what was requested.
-      const data = (await res.json()) as { inserted: number; batchId: string }
-      const skipped = includedRows.length - data.inserted
+      // Additive server fields: rejected_closed rows are CLOSED-month rejects,
+      // never "already imported" — exclude them from the skipped arithmetic (D-4).
+      const data = (await res.json()) as { inserted: number; batchId: string; rejected_closed?: number }
+      const rejectedClosed = data.rejected_closed ?? 0
+      const skipped = includedRows.length - data.inserted - rejectedClosed
+      if (rejectedClosed > 0) {
+        toast.warning(
+          `${rejectedClosed} row${rejectedClosed === 1 ? " falls" : "s fall"} in closed months — post them as adjustment entries in an open month.`,
+        )
+      }
       if (skipped > 0) {
         toast.success(
           `Posted ${data.inserted} ${data.inserted === 1 ? "entry" : "entries"} (${skipped} already imported — skipped).`,

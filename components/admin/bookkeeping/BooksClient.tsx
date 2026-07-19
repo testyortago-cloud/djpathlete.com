@@ -14,11 +14,13 @@ import { StatementImportDialog } from "@/components/admin/bookkeeping/StatementI
 import { ReceiptCashDialog } from "@/components/admin/bookkeeping/ReceiptCashDialog"
 import { ReceiptUploadDialog } from "@/components/admin/bookkeeping/ReceiptUploadDialog"
 import { AmazonImportDialog } from "@/components/admin/bookkeeping/AmazonImportDialog"
+import { CloseMonthCard } from "@/components/admin/bookkeeping/CloseMonthCard"
 import { formatCents } from "@/lib/bookkeeping/money"
 import type {
   BookkeepingBook,
   BookkeepingAccount,
   BookkeepingLedgerEntry,
+  BookkeepingPeriodClose,
   LedgerDirection,
   LedgerSource,
 } from "@/types/database"
@@ -80,6 +82,7 @@ export function BooksClient({
   const [cashReceiptOpen, setCashReceiptOpen] = useState(false)
   const [uploadReceiptOpen, setUploadReceiptOpen] = useState(false)
   const [amazonOpen, setAmazonOpen] = useState(false)
+  const [closes, setCloses] = useState<BookkeepingPeriodClose[]>([])
 
   const fetchEntries = useCallback(async () => {
     if (!bookId) return
@@ -139,6 +142,25 @@ export function BooksClient({
       cancelled = true
     }
   }, [bookId])
+
+  const fetchCloses = useCallback(async () => {
+    if (!bookId) {
+      setCloses([])
+      return
+    }
+    try {
+      const res = await fetch(`/api/admin/bookkeeping/closes?book_id=${bookId}`)
+      if (!res.ok) throw new Error("Failed to load closed months")
+      const body = (await res.json()) as { closes: BookkeepingPeriodClose[] }
+      setCloses(body.closes ?? [])
+    } catch (error) {
+      toast.error((error as Error).message)
+    }
+  }, [bookId])
+
+  useEffect(() => {
+    void fetchCloses()
+  }, [fetchCloses])
 
   function handleBookChange(newBookId: string) {
     setBookId(newBookId)
@@ -215,6 +237,15 @@ export function BooksClient({
               </p>
             </div>
           </div>
+
+          <CloseMonthCard
+            bookId={bookId}
+            closes={closes}
+            onChanged={() => {
+              void fetchCloses()
+              void fetchEntries()
+            }}
+          />
 
           {/* Toolbar */}
           <div className="flex flex-wrap items-center gap-2">
@@ -371,6 +402,7 @@ export function BooksClient({
         open={manualEntryOpen}
         onOpenChange={setManualEntryOpen}
         onSaved={fetchEntries}
+        closedPeriods={closes.map((c) => c.period)}
       />
       <ImportPlatformDialog
         bookId={bookId}

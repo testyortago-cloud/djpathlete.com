@@ -446,7 +446,13 @@ export function StatementImportDialog({
         return
       }
       const inserted = typeof data.inserted === "number" ? data.inserted : 0
-      const skipped = includedRows.length - inserted
+      const rejectedClosed = typeof data.rejected_closed === "number" ? data.rejected_closed : 0
+      const skipped = includedRows.length - inserted - rejectedClosed
+      if (rejectedClosed > 0) {
+        toast.warning(
+          `${rejectedClosed} row${rejectedClosed === 1 ? " falls" : "s fall"} in closed months — post them as adjustment entries in an open month.`,
+        )
+      }
       if (skipped > 0) {
         toast.success(`Posted ${inserted} ${inserted === 1 ? "entry" : "entries"} (${skipped} already recorded — skipped).`)
       } else {
