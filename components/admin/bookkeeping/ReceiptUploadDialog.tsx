@@ -22,6 +22,12 @@ import { cn } from "@/lib/utils"
 import { formatOccurredOn } from "@/lib/bookkeeping/format"
 import { formatCents } from "@/lib/bookkeeping/money"
 import { accountRequiresBusinessPurpose, receiptSourceRef } from "@/lib/bookkeeping/receipts"
+import {
+  safeReceiptResult,
+  resolveExpenseAccount,
+  todayIso,
+  type ReceiptResult,
+} from "@/lib/bookkeeping/receipt-batch"
 import { useAiJobsDock } from "@/hooks/use-ai-jobs-dock"
 import { summarizeApiError } from "@/lib/errors/humanize"
 import type { BookkeepingAccount } from "@/types/database"
@@ -44,19 +50,6 @@ const RECEIPT_STEPS = [
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-/** Shape of the completed job's `result` — mirrors ReceiptScanResult
- *  (functions/src/ai/receipt-schema.ts) field-for-field. */
-interface ReceiptResult {
-  vendor: string | null
-  amount_cents: number | null
-  occurred_on: string | null
-  suggested_category: string | null
-  business_purpose_hint: string | null
-  currency: string | null
-  confidence: "low" | "medium" | "high"
-  warnings: string[]
-}
-
 interface ReviewForm {
   counterparty: string
   amount: string // dollars, as typed
@@ -78,10 +71,6 @@ interface ReceiptUploadDialogProps {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10)
-}
-
 function mapProgressToStep(progress?: {
   status: string
   current_step: number
@@ -91,34 +80,6 @@ function mapProgressToStep(progress?: {
   if (!progress) return { step: 0, detail: null }
   const idx = RECEIPT_STEPS.findIndex((s) => s.key === progress.status)
   return { step: idx >= 0 ? idx + 1 : progress.current_step, detail: progress.detail ?? null }
-}
-
-/** Firebase RTDB drops empty arrays AND `null` leaf values, so a blurry-photo
- *  result with every field null may come back missing those keys entirely
- *  (Phase-2 C1 / Phase-3 receipt-scan's coalesceReceiptResult server twin).
- *  Coalesce it back to an explicit-null shape here — the single boundary
- *  where RTDB-shaped data enters the component. */
-function safeReceiptResult(v: unknown): ReceiptResult {
-  const r = (v ?? {}) as Partial<ReceiptResult>
-  return {
-    vendor: r.vendor ?? null,
-    amount_cents: typeof r.amount_cents === "number" ? r.amount_cents : null,
-    occurred_on: r.occurred_on ?? null,
-    suggested_category: r.suggested_category ?? null,
-    business_purpose_hint: r.business_purpose_hint ?? null,
-    currency: r.currency ?? null,
-    confidence: r.confidence === "medium" || r.confidence === "high" ? r.confidence : "low",
-    warnings: Array.isArray(r.warnings) ? r.warnings : [],
-  }
-}
-
-/** Case-insensitive match against an expense account — receipts always post
- *  as direction:"expense". Falls back to "" (Uncategorized) with no match. */
-function resolveExpenseAccount(suggestedCategory: string | null, accounts: BookkeepingAccount[]): string {
-  if (!suggestedCategory) return ""
-  const needle = suggestedCategory.trim().toLowerCase()
-  const match = accounts.find((a) => a.account_type === "expense" && a.name.trim().toLowerCase() === needle)
-  return match?.id ?? ""
 }
 
 function reviewFormFromResult(result: ReceiptResult): ReviewForm {
