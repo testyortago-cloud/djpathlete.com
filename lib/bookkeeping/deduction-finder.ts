@@ -2,7 +2,7 @@
 // Every output is a CANDIDATE the accountant confirms — never a filed decision.
 import type { BookkeepingBook, LedgerDirection, LedgerSource } from "@/types/database"
 import type { InsightAccount, InsightEntry } from "./insight-types"
-import { normalizeCounterparty } from "./insight-types"
+import { isBlankPurpose, normalizeCounterparty } from "./insight-types"
 
 export interface WatchlistCounterparty {
   counterparty: string | null
@@ -54,10 +54,6 @@ export interface DeductionFindings {
   substantiation_gaps: SubstantiationGap[]
   gap_total_cents: number
   uncategorized: UncategorizedSweep
-}
-
-function isBlank(value: string | null): boolean {
-  return value === null || value.trim() === ""
 }
 
 function newestFirst(a: { occurred_on: string; entry_id: string }, b: { occurred_on: string; entry_id: string }): number {
@@ -121,7 +117,7 @@ export function deductionFindings(
   for (const e of bookEntries) {
     if (e.account_id === null) continue
     const account = accountById.get(e.account_id)
-    if (!account?.requires_business_purpose || !isBlank(e.business_purpose)) continue
+    if (!account?.requires_business_purpose || !isBlankPurpose(e.business_purpose)) continue
     substantiationGaps.push({
       entry_id: e.id,
       account_id: account.id,

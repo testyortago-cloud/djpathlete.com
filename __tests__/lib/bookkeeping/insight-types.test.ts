@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { coerceHomeOfficePercent, normalizeCounterparty } from "@/lib/bookkeeping/insight-types"
+import { coerceHomeOfficePercent, isBlankPurpose, normalizeCounterparty } from "@/lib/bookkeeping/insight-types"
 
 describe("normalizeCounterparty", () => {
   it("trims, lowercases, collapses internal whitespace", () => {
@@ -24,5 +24,14 @@ describe("coerceHomeOfficePercent", () => {
     for (const v of [null, undefined, "12.5", Number.NaN, Number.POSITIVE_INFINITY, 0, -5, 100.01, {}, true]) {
       expect(coerceHomeOfficePercent(v)).toBeNull()
     }
+  })
+})
+
+describe("isBlankPurpose (shared by deduction finder + receipt watchdog)", () => {
+  it("null, empty, and whitespace-only are blank; real text is not", () => {
+    expect(isBlankPurpose(null)).toBe(true)
+    expect(isBlankPurpose("")).toBe(true)
+    expect(isBlankPurpose("   ")).toBe(true)
+    expect(isBlankPurpose("client lunch")).toBe(false)
   })
 })

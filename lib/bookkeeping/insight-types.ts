@@ -28,3 +28,10 @@ export function coerceHomeOfficePercent(value: unknown): number | null {
     ? value
     : null
 }
+
+/** Blank-business-purpose predicate. Extracted (Phase 6b) from the Phase-5 deduction
+ *  finder so the receipt watchdog shares ONE definition of "blank" — null / empty /
+ *  whitespace-only. Behavior is byte-identical to the finder's old local isBlank. */
+export function isBlankPurpose(value: string | null): boolean {
+  return value === null || value.trim() === ""
+}
