@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { formatCents } from "@/lib/bookkeeping/money"
 import { formatOccurredOn } from "@/lib/bookkeeping/format"
+import { matchAccountForServiceLine } from "@/lib/bookkeeping/account-match"
 import type { BookkeepingAccount, BookKind } from "@/types/database"
 import type { LedgerEntryDraft } from "@/lib/bookkeeping/types"
 
@@ -79,8 +80,7 @@ export function ImportPlatformDialog({
   }, [open])
 
   function defaultAccountFor(draft: LedgerEntryDraft): string {
-    const match = accounts.find((a) => a.account_type === draft.direction && a.service_line === draft.service_line)
-    return match?.id ?? ""
+    return matchAccountForServiceLine(draft.direction, draft.service_line, accounts)?.id ?? ""
   }
 
   async function loadPreview() {
