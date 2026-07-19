@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
-import { ArrowLeft, Lightbulb } from "lucide-react"
+import { ArrowLeft, BarChart3, Lightbulb } from "lucide-react"
 import { toast } from "sonner"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -285,12 +285,13 @@ export function InsightsClient({
             your CPA files.
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <Link href="/admin/books/reports" className="text-sm text-muted-foreground hover:text-accent underline-offset-4 hover:underline">
+        <div className="flex items-center gap-2">
+          <Link
+            href="/admin/books/reports"
+            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground shadow-xs transition-colors hover:border-accent hover:text-accent"
+          >
+            <BarChart3 className="size-4" />
             Reports
-          </Link>
-          <Link href="/admin/books" className="text-sm text-muted-foreground hover:text-accent underline-offset-4 hover:underline">
-            Back to ledger
           </Link>
         </div>
       </div>

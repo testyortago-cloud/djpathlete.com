@@ -3,12 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { toast } from "sonner"
-import { ArrowLeft, BarChart3, Download, FileSpreadsheet, Mail, Printer } from "lucide-react"
+import { ArrowLeft, BarChart3, CalendarRange, Download, FileSpreadsheet, Lightbulb, Mail, Printer } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { EmptyState } from "@/components/ui/empty-state"
 import { EmailPackDialog } from "@/components/admin/bookkeeping/EmailPackDialog"
 import { formatCents } from "@/lib/bookkeeping/money"
+import { formatOccurredOn } from "@/lib/bookkeeping/format"
 import { presetRange, PERIOD_PRESET_LABELS, type PeriodPreset } from "@/lib/bookkeeping/period"
 import type { BookkeepingBook } from "@/types/database"
 import type { IncomeByServiceLine, ProfitAndLoss, BookSummaryRow } from "@/lib/bookkeeping/reports"
@@ -100,39 +101,58 @@ export function ReportsClient({
             Gross figures from the posted ledger — Stripe fees &amp; payouts land in a later phase. Estimates for planning; your CPA files.
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <Link href="/admin/books/insights" className="text-sm text-muted-foreground hover:text-accent underline-offset-4 hover:underline">
+        <div className="flex items-center gap-2">
+          <Link
+            href="/admin/books/insights"
+            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground shadow-xs transition-colors hover:border-accent hover:text-accent"
+          >
+            <Lightbulb className="size-4" />
             Insights
-          </Link>
-          <Link href="/admin/books" className="text-sm text-muted-foreground hover:text-accent underline-offset-4 hover:underline">
-            Back to ledger
           </Link>
         </div>
       </div>
 
-      {/* Period bar */}
-      <div className="flex flex-wrap items-center gap-3">
-        <select
-          value={preset}
-          onChange={(e) => applyPreset(e.currentTarget.value)}
-          className="border-border rounded-md border px-3 py-2 text-sm"
-          aria-label="Period preset"
-        >
-          {Object.entries(PERIOD_PRESET_LABELS).map(([value, label]) => (
-            <option key={value} value={value}>{label}</option>
-          ))}
-          <option value="custom">Custom range</option>
-        </select>
-        <input
-          type="date" value={from}
-          onChange={(e) => { setPreset("custom"); setFrom(e.currentTarget.value) }}
-          className="border-border rounded-md border px-3 py-2 text-sm" aria-label="From date"
-        />
-        <input
-          type="date" value={to}
-          onChange={(e) => { setPreset("custom"); setTo(e.currentTarget.value) }}
-          className="border-border rounded-md border px-3 py-2 text-sm" aria-label="To date"
-        />
+      {/* Period bar — labeled; raw dates only for a custom range */}
+      <div className="rounded-lg border border-border bg-card p-3">
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-muted-foreground">Period</span>
+            <select
+              value={preset}
+              onChange={(e) => applyPreset(e.currentTarget.value)}
+              className="border-border bg-background rounded-md border px-3 py-2 text-sm"
+            >
+              {Object.entries(PERIOD_PRESET_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+              <option value="custom">Custom range…</option>
+            </select>
+          </label>
+          {preset === "custom" && (
+            <>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-muted-foreground">From</span>
+                <input
+                  type="date" value={from}
+                  onChange={(e) => setFrom(e.currentTarget.value)}
+                  className="border-border bg-background rounded-md border px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-muted-foreground">To</span>
+                <input
+                  type="date" value={to}
+                  onChange={(e) => setTo(e.currentTarget.value)}
+                  className="border-border bg-background rounded-md border px-3 py-2 text-sm"
+                />
+              </label>
+            </>
+          )}
+          <p className="mb-2 inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+            <CalendarRange className="size-4" />
+            {formatOccurredOn(from)} — {formatOccurredOn(to)}
+          </p>
+        </div>
       </div>
 
       {!loading && data && totalEntries === 0 ? (
