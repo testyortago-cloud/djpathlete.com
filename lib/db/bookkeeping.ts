@@ -1,6 +1,7 @@
 import { createServiceRoleClient } from "@/lib/supabase"
 import { fetchAllRows } from "@/lib/db/paginate"
 import { deleteStatementFile } from "@/lib/bookkeeping/documents"
+import { collectEnrichmentIds, stampIncomeEnrichment, type EnrichmentUser } from "@/lib/bookkeeping/income-enrich"
 import type {
   BookkeepingBook, BookkeepingAccount, BookkeepingLedgerEntry,
   LedgerDirection, LedgerSource, BookkeepingDocument, NewDocument,
@@ -181,6 +182,36 @@ async function safeAll<T>(builder: (from: number, to: number) => unknown): Promi
   }
 }
 
+async function lookupUsers(ids: string[]): Promise<Map<string, EnrichmentUser>> {
+  const map = new Map<string, EnrichmentUser>()
+  for (let i = 0; i < ids.length; i += 200) {
+    const chunk = ids.slice(i, i + 200)
+    try {
+      const { data, error } = await db().from("users").select("id, first_name, last_name, email").in("id", chunk)
+      if (error) throw error
+      for (const u of (data ?? []) as Array<{ id: string } & EnrichmentUser>) map.set(u.id, u)
+    } catch (err) {
+      console.warn("[bookkeeping] user lookup failed (names omitted):", (err as Error).message)
+    }
+  }
+  return map
+}
+
+async function lookupProgramNames(ids: string[]): Promise<Map<string, string>> {
+  const map = new Map<string, string>()
+  for (let i = 0; i < ids.length; i += 200) {
+    const chunk = ids.slice(i, i + 200)
+    try {
+      const { data, error } = await db().from("programs").select("id, name").in("id", chunk)
+      if (error) throw error
+      for (const p of (data ?? []) as Array<{ id: string; name: string }>) map.set(p.id, p.name)
+    } catch (err) {
+      console.warn("[bookkeeping] program lookup failed (names omitted):", (err as Error).message)
+    }
+  }
+  return map
+}
+
 export async function listPlatformIncome(from: string, to: string): Promise<IncomeSourceRows> {
   const fromTs = `${from}T00:00:00Z`
   const toTs = `${to}T23:59:59Z`
@@ -198,7 +229,7 @@ export async function listPlatformIncome(from: string, to: string): Promise<Inco
         .lte("created_at", toTs).or(`canceled_at.is.null,canceled_at.gte.${fromTs}`).range(f, t)),
   ])
   // Flatten embedded names so the pure adapter stays schema-light.
-  return {
+  const base: IncomeSourceRows = {
     payments,
     shopOrders,
     clientPackages: clientPackages.map((r) => ({ ...r, product_name: (r as { session_pack_products?: { name?: string } }).session_pack_products?.name ?? null })),
@@ -208,6 +239,9 @@ export async function listPlatformIncome(from: string, to: string): Promise<Inco
       return { ...r, plan_name: pl?.name ?? null, plan_price_cents: pl?.price_cents ?? null, plan_interval: pl?.billing_interval ?? null }
     }),
   }
+  const { userIds, programIds } = collectEnrichmentIds(base)
+  const [usersById, programNamesById] = await Promise.all([lookupUsers(userIds), lookupProgramNames(programIds)])
+  return stampIncomeEnrichment(base, usersById, programNamesById)
 }
 
 // ── Documents + Phase-2 helpers ────────────────────────────────────────────

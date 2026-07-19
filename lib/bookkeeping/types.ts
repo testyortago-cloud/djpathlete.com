@@ -15,9 +15,9 @@ export interface LedgerEntryDraft {
 }
 
 export interface IncomeSourceRows {
-  payments: Payment[]
+  payments: Array<Payment & { payer_name?: string | null; payer_email?: string | null; program_name?: string | null }>
   shopOrders: ShopOrder[]
-  clientPackages: Array<ClientPackage & { product_name?: string | null }>
+  clientPackages: Array<ClientPackage & { product_name?: string | null; client_name?: string | null }>
   eventSignups: Array<EventSignup & { event_title?: string | null; event_type?: string | null }>
   memberships: Array<ClientMembership & { plan_name?: string | null; plan_price_cents?: number | null; plan_interval?: string | null }>
 }
