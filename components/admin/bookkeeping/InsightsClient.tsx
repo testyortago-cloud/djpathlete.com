@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
-import { ArrowLeft, BarChart3, Lightbulb } from "lucide-react"
+import { ArrowLeft, BarChart3, CalendarRange, Lightbulb } from "lucide-react"
 import { toast } from "sonner"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import type { DeductionFindings, HomeOfficeCandidate } from "@/lib/bookkeeping/deduction-finder"
 import { formatCents } from "@/lib/bookkeeping/money"
+import { formatOccurredOn } from "@/lib/bookkeeping/format"
 import { PERIOD_PRESET_LABELS, presetRange, type PeriodPreset } from "@/lib/bookkeeping/period"
 import type { WatchdogFinding } from "@/lib/bookkeeping/receipt-watchdog"
 import type { ServiceLineProfit } from "@/lib/bookkeeping/service-line-profit"
@@ -296,41 +297,51 @@ export function InsightsClient({
         </div>
       </div>
 
-      {/* Period bar */}
-      <div className="flex flex-wrap items-center gap-3">
-        <select
-          value={preset}
-          onChange={(e) => applyPreset(e.currentTarget.value)}
-          className="border-border rounded-md border px-3 py-2 text-sm"
-          aria-label="Period preset"
-        >
-          {Object.entries(PERIOD_PRESET_LABELS).map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-          <option value="custom">Custom range</option>
-        </select>
-        <input
-          type="date"
-          value={from}
-          onChange={(e) => {
-            setPreset("custom")
-            setFrom(e.currentTarget.value)
-          }}
-          className="border-border rounded-md border px-3 py-2 text-sm"
-          aria-label="From date"
-        />
-        <input
-          type="date"
-          value={to}
-          onChange={(e) => {
-            setPreset("custom")
-            setTo(e.currentTarget.value)
-          }}
-          className="border-border rounded-md border px-3 py-2 text-sm"
-          aria-label="To date"
-        />
+      {/* Period bar — labeled card; raw dates only for a custom range */}
+      <div className="rounded-lg border border-border bg-card p-3">
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-muted-foreground">Period</span>
+            <select
+              value={preset}
+              onChange={(e) => applyPreset(e.currentTarget.value)}
+              className="border-border bg-background rounded-md border px-3 py-2 text-sm"
+            >
+              {Object.entries(PERIOD_PRESET_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+              <option value="custom">Custom range…</option>
+            </select>
+          </label>
+          {preset === "custom" && (
+            <>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-muted-foreground">From</span>
+                <input
+                  type="date"
+                  value={from}
+                  onChange={(e) => setFrom(e.currentTarget.value)}
+                  className="border-border bg-background rounded-md border px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-muted-foreground">To</span>
+                <input
+                  type="date"
+                  value={to}
+                  onChange={(e) => setTo(e.currentTarget.value)}
+                  className="border-border bg-background rounded-md border px-3 py-2 text-sm"
+                />
+              </label>
+            </>
+          )}
+          <p className="mb-2 inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+            <CalendarRange className="size-4" />
+            {formatOccurredOn(from)} — {formatOccurredOn(to)}
+          </p>
+        </div>
       </div>
 
       {/* Year-end flags strip */}
