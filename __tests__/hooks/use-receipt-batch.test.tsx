@@ -153,6 +153,38 @@ describe("startScan + review transition", () => {
     expect(b.status).toBe("scan_failed")
     expect(b.error).toBe("Lost connection to scan updates")
   })
+
+  it("ignores a second startScan while one is in flight (no duplicate uploads)", async () => {
+    const { hook } = renderBatch()
+    fetchMock.mockResolvedValue(uploadOk("j1", "d1"))
+    act(() => {
+      hook.result.current.addFiles([makeFile("a.jpg")])
+    })
+    await act(async () => {
+      const p1 = hook.result.current.startScan()
+      const p2 = hook.result.current.startScan()
+      await Promise.all([p1, p2])
+    })
+    const uploads = fetchMock.mock.calls.filter((c) => String(c[0]).includes("/receipts/upload"))
+    expect(uploads).toHaveLength(1)
+  })
+
+  it("revokes prior thumbnails when a retry rebuilds the rows", async () => {
+    const { hook } = renderBatch()
+    fetchMock.mockRejectedValueOnce(new Error("network"))
+    act(() => {
+      hook.result.current.addFiles([makeFile("a.jpg")])
+    })
+    await act(async () => {
+      await hook.result.current.startScan()
+    })
+    await waitFor(() => expect(hook.result.current.phase).toBe("select"))
+    fetchMock.mockRejectedValueOnce(new Error("network"))
+    await act(async () => {
+      await hook.result.current.startScan()
+    })
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:mock")
+  })
 })
 
 describe("cancelRemaining", () => {

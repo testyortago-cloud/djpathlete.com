@@ -61,6 +61,7 @@ export function useReceiptBatch({ bookId, accounts, onAllPosted }: UseReceiptBat
   accountsRef.current = accounts
   const listenersRef = useRef(new Map<string, ReturnType<typeof ref>>())
   const cancelRequestedRef = useRef(false)
+  const scanInFlightRef = useRef(false)
 
   function patchRow(clientId: string, patch: Partial<ReceiptBatchRow>) {
     setRows((prev) => prev.map((r) => (r.clientId === clientId ? { ...r, ...patch } : r)))
@@ -140,50 +141,65 @@ export function useReceiptBatch({ bookId, accounts, onAllPosted }: UseReceiptBat
 
   const startScan = useCallback(
     async () => {
-      if (files.length === 0) return
+      if (files.length === 0 || scanInFlightRef.current) return
+      scanInFlightRef.current = true
       cancelRequestedRef.current = false
+      // A retry re-mints thumbnails — revoke the prior batch's object URLs first.
+      for (const row of rowsRef.current) {
+        if (row.thumbUrl && typeof URL !== "undefined" && typeof URL.revokeObjectURL === "function") {
+          try {
+            URL.revokeObjectURL(row.thumbUrl)
+          } catch {
+            // noop — object URL may already be gone
+          }
+        }
+      }
       const initial = files.map((f) => newReceiptRow(crypto.randomUUID(), f.name, makeThumbUrl(f)))
       setRows(initial)
       setPhase("scanning")
       setUploading(true)
-      // Sequential on purpose: file k's document exists before file k+1 is
-      // hashed, so the route's sha256 hint also catches within-batch dupes.
-      for (let i = 0; i < files.length; i++) {
-        const { clientId } = initial[i]
-        if (cancelRequestedRef.current) {
-          patchRow(clientId, { status: "cancelled", error: "Scan cancelled" })
-          continue
-        }
-        patchRow(clientId, { status: "uploading" })
-        try {
-          const fd = new FormData()
-          fd.append("file", files[i])
-          fd.append("book_id", bookId)
-          const res = await fetch("/api/admin/bookkeeping/receipts/upload", { method: "POST", body: fd })
-          const data = await res.json().catch(() => ({}))
-          if (!res.ok || !data.jobId) {
-            const { message } = summarizeApiError(res, data, "Upload failed")
-            patchRow(clientId, { status: "scan_failed", error: message })
+      try {
+        // Sequential on purpose: file k's document exists before file k+1 is
+        // hashed, so the route's sha256 hint also catches within-batch dupes.
+        for (let i = 0; i < files.length; i++) {
+          const { clientId } = initial[i]
+          if (cancelRequestedRef.current) {
+            patchRow(clientId, { status: "cancelled", error: "Scan cancelled" })
             continue
           }
-          const jobId = String(data.jobId)
-          patchRow(clientId, {
-            status: "scanning",
-            jobId,
-            documentId: typeof data.documentId === "string" ? data.documentId : null,
-            duplicateUploadHint: data.duplicateUploadHint ? String(data.duplicateUploadHint) : null,
-          })
-          addJob({
-            jobId,
-            kind: "receipt_scan",
-            label: files.length === 1 ? "Receipt scan" : `Receipt scan (${i + 1}/${files.length})`,
-          })
-          listenToJob(clientId, jobId)
-        } catch {
-          patchRow(clientId, { status: "scan_failed", error: "Upload failed — network error" })
+          patchRow(clientId, { status: "uploading" })
+          try {
+            const fd = new FormData()
+            fd.append("file", files[i])
+            fd.append("book_id", bookId)
+            const res = await fetch("/api/admin/bookkeeping/receipts/upload", { method: "POST", body: fd })
+            const data = await res.json().catch(() => ({}))
+            if (!res.ok || !data.jobId) {
+              const { message } = summarizeApiError(res, data, "Upload failed")
+              patchRow(clientId, { status: "scan_failed", error: message })
+              continue
+            }
+            const jobId = String(data.jobId)
+            patchRow(clientId, {
+              status: "scanning",
+              jobId,
+              documentId: typeof data.documentId === "string" ? data.documentId : null,
+              duplicateUploadHint: data.duplicateUploadHint ? String(data.duplicateUploadHint) : null,
+            })
+            addJob({
+              jobId,
+              kind: "receipt_scan",
+              label: files.length === 1 ? "Receipt scan" : `Receipt scan (${i + 1}/${files.length})`,
+            })
+            listenToJob(clientId, jobId)
+          } catch {
+            patchRow(clientId, { status: "scan_failed", error: "Upload failed — network error" })
+          }
         }
+      } finally {
+        setUploading(false)
+        scanInFlightRef.current = false
       }
-      setUploading(false)
     },
     // listenToJob/patchRow are stable module-pattern fns using refs
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -309,6 +325,7 @@ export function useReceiptBatch({ bookId, accounts, onAllPosted }: UseReceiptBat
   const reset = useCallback(() => {
     stopAllListeners()
     cancelRequestedRef.current = false
+    scanInFlightRef.current = false
     for (const row of rowsRef.current) {
       if (row.thumbUrl && typeof URL !== "undefined" && typeof URL.revokeObjectURL === "function") {
         try {
