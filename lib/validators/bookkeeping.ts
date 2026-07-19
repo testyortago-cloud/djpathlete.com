@@ -145,6 +145,10 @@ export const homeOfficePercentSchema = z.object({
   percent: z.number().min(0.01).max(100).nullable(),
 })
 
+export const taxRatePercentSchema = z.object({
+  percent: z.number().min(0.01).max(100).nullable(),
+})
+
 export const closePeriodSchema = z.object({
   book_id: z.string().uuid(),
   period: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "expected YYYY-MM"),

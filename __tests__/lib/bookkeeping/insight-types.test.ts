@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { coerceHomeOfficePercent, isBlankPurpose, normalizeCounterparty } from "@/lib/bookkeeping/insight-types"
+import { coerceHomeOfficePercent, coerceTaxRatePercent, isBlankPurpose, normalizeCounterparty } from "@/lib/bookkeeping/insight-types"
 
 describe("normalizeCounterparty", () => {
   it("trims, lowercases, collapses internal whitespace", () => {
@@ -23,6 +23,18 @@ describe("coerceHomeOfficePercent", () => {
   it("rejects junk: null, strings, NaN, Infinity, 0, negatives, >100", () => {
     for (const v of [null, undefined, "12.5", Number.NaN, Number.POSITIVE_INFINITY, 0, -5, 100.01, {}, true]) {
       expect(coerceHomeOfficePercent(v)).toBeNull()
+    }
+  })
+})
+
+describe("coerceTaxRatePercent", () => {
+  it("passes a valid number through", () => {
+    expect(coerceTaxRatePercent(22.5)).toBe(22.5)
+    expect(coerceTaxRatePercent(100)).toBe(100)
+  })
+  it("rejects junk: null, strings, NaN, Infinity, 0, negatives, >100", () => {
+    for (const v of [null, undefined, "22.5", Number.NaN, Number.POSITIVE_INFINITY, 0, -5, 100.01, {}, true]) {
+      expect(coerceTaxRatePercent(v)).toBeNull()
     }
   })
 })

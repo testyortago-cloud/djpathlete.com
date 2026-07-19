@@ -29,6 +29,15 @@ export function coerceHomeOfficePercent(value: unknown): number | null {
     : null
 }
 
+/** Same junk-defense as coerceHomeOfficePercent, for the flat effective tax rate
+ *  (bookkeeping_tax_rate_percent). Kept as its own function so the two settings can
+ *  diverge without cross-contamination. */
+export function coerceTaxRatePercent(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 && value <= 100
+    ? value
+    : null
+}
+
 /** Blank-business-purpose predicate. Extracted (Phase 6b) from the Phase-5 deduction
  *  finder so the receipt watchdog shares ONE definition of "blank" — null / empty /
  *  whitespace-only. Behavior is byte-identical to the finder's old local isBlank. */

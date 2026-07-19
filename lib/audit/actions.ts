@@ -249,6 +249,7 @@ export const AUDIT_ACTIONS = [
   { slug: "bookkeeping.report_exported", category: "admin_read_sensitive", description: "Bookkeeping report exported" },
   { slug: "bookkeeping.report_emailed", category: "commerce", description: "Accountant pack emailed" },
   { slug: "bookkeeping.home_office_percent_set", category: "commerce", description: "Home-office share percentage set for the deduction proposal" },
+  { slug: "bookkeeping.tax_rate_percent_set", category: "commerce", description: "Flat effective tax rate set for the rolling forecast" },
   { slug: "bookkeeping.period_closed", category: "commerce", description: "Bookkeeping month closed — totals snapshot frozen" },
   { slug: "bookkeeping.period_reopened", category: "commerce", description: "Closed bookkeeping month reopened (snapshot preserved in this audit row)" },
   { slug: "bookkeeping.close_emailed", category: "commerce", description: "Books-closed statement emailed" },
