@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
-import { Lightbulb } from "lucide-react"
+import { ArrowLeft, Lightbulb } from "lucide-react"
 import { toast } from "sonner"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -272,6 +272,13 @@ export function InsightsClient({
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
+          <Link
+            href="/admin/books"
+            className="mb-3 inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground shadow-xs transition-colors hover:border-accent hover:text-accent"
+          >
+            <ArrowLeft className="size-4" />
+            Back to Accounting
+          </Link>
           <h1 className="text-2xl font-heading text-primary">Insights</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Every finding on this page is a candidate for your accountant to confirm — never a filed decision. Dollar figures are estimates;

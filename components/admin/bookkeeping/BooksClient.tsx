@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
-import { Plus, Upload, BookOpen, Banknote, Camera, ShoppingCart } from "lucide-react"
+import { Plus, Upload, BookOpen, Banknote, Camera, ShoppingCart, BarChart3, Lightbulb, Package, Tags, FilterX } from "lucide-react"
 import { toast } from "sonner"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
@@ -16,6 +16,7 @@ import { ReceiptUploadDialog } from "@/components/admin/bookkeeping/ReceiptUploa
 import { AmazonImportDialog } from "@/components/admin/bookkeeping/AmazonImportDialog"
 import { CloseMonthCard } from "@/components/admin/bookkeeping/CloseMonthCard"
 import { formatCents } from "@/lib/bookkeeping/money"
+import { PERIOD_PRESET_LABELS, presetRange, type PeriodPreset } from "@/lib/bookkeeping/period"
 import type {
   BookkeepingBook,
   BookkeepingAccount,
@@ -171,6 +172,30 @@ export function BooksClient({
     setFilters((f) => ({ ...f, ...patch, page: 1 }))
   }
 
+  // Period preset drives from/to; "custom" reveals the raw date inputs.
+  const [preset, setPreset] = useState<"all" | "custom" | PeriodPreset>("all")
+
+  function handlePresetChange(value: string) {
+    const next = value as "all" | "custom" | PeriodPreset
+    setPreset(next)
+    if (next === "all") updateFilter({ from: "", to: "" })
+    else if (next !== "custom") updateFilter(presetRange(next, new Date().toISOString().slice(0, 10)))
+  }
+
+  const hasActiveFilters =
+    filters.from !== "" || filters.to !== "" || filters.direction !== "" ||
+    filters.accountId !== "" || filters.source !== "" || filters.q !== ""
+
+  function clearFilters() {
+    setPreset("all")
+    setFilters(EMPTY_FILTERS)
+  }
+
+  // Stat cards toggle the direction filter (Net = all activity).
+  function toggleDirection(direction: LedgerDirection | "") {
+    updateFilter({ direction: filters.direction === direction ? "" : direction })
+  }
+
   function goToPage(page: number) {
     setFilters((f) => ({ ...f, page }))
   }
@@ -192,7 +217,7 @@ export function BooksClient({
   if (books.length === 0) {
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-heading text-primary">Books</h1>
+        <h1 className="text-2xl font-heading text-primary">Accounting</h1>
         <EmptyState
           icon={BookOpen}
           heading="No books configured"
@@ -205,37 +230,115 @@ export function BooksClient({
   return (
     <div className="space-y-6">
       <Tabs value={bookId} onValueChange={handleBookChange}>
-        <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-heading text-primary">Books</h1>
+            <h1 className="text-2xl font-heading text-primary">Accounting</h1>
             <p className="text-sm text-muted-foreground mt-1">Income and expense ledger.</p>
           </div>
-          <TabsList>
-            {books.map((book) => (
-              <TabsTrigger key={book.id} value={book.id}>
-                {book.name}
-              </TabsTrigger>
-            ))}
-          </TabsList>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href="/admin/books/reports"
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground shadow-xs transition-colors hover:border-accent hover:text-accent"
+            >
+              <BarChart3 className="size-4" />
+              Reports
+            </Link>
+            <Link
+              href="/admin/books/insights"
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground shadow-xs transition-colors hover:border-accent hover:text-accent"
+            >
+              <Lightbulb className="size-4" />
+              Insights
+            </Link>
+            <Link
+              href="/admin/books/assets"
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground shadow-xs transition-colors hover:border-accent hover:text-accent"
+            >
+              <Package className="size-4" />
+              Assets
+            </Link>
+            <Link
+              href="/admin/books/accounts"
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground shadow-xs transition-colors hover:border-accent hover:text-accent"
+            >
+              <Tags className="size-4" />
+              Categories
+            </Link>
+          </div>
         </div>
 
+        {/* Book switcher — contained, high-contrast (each book is a separate tax context) */}
+        <TabsList className="mt-4 h-auto flex-wrap gap-1 rounded-lg border border-border bg-muted p-1">
+          {books.map((book) => (
+            <TabsTrigger
+              key={book.id}
+              value={book.id}
+              className="rounded-md px-4 py-2 text-sm font-medium text-muted-foreground transition-colors data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
+            >
+              {book.name}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+
         <TabsContent value={bookId} className="space-y-6 mt-4">
-          {/* Totals strip */}
-          <div className="flex flex-wrap gap-4 rounded-lg border border-border bg-card p-4">
-            <div>
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">Income</p>
-              <p className="text-lg font-heading text-success">{formatCents(data.totals.income_cents)}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">Expenses</p>
-              <p className="text-lg font-heading text-error">{formatCents(data.totals.expense_cents)}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">Net</p>
-              <p className={`text-lg font-heading ${net >= 0 ? "text-success" : "text-error"}`}>
+          {/* Stat cards — click to filter the ledger below */}
+          <div className="grid gap-3 sm:grid-cols-3">
+            <button
+              type="button"
+              onClick={() => toggleDirection("income")}
+              aria-pressed={filters.direction === "income"}
+              title="Show income entries only"
+              className={`rounded-xl border bg-card p-4 text-left transition-all hover:border-success/60 ${
+                filters.direction === "income" ? "border-success ring-1 ring-success" : "border-border"
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Income</p>
+                {filters.direction === "income" && (
+                  <span className="rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-medium text-success">filtering</span>
+                )}
+              </div>
+              <p className="mt-1 text-2xl font-heading text-success">{formatCents(data.totals.income_cents)}</p>
+              <p className="mt-1 text-xs text-muted-foreground">Click to show only income</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => toggleDirection("expense")}
+              aria-pressed={filters.direction === "expense"}
+              title="Show expense entries only"
+              className={`rounded-xl border bg-card p-4 text-left transition-all hover:border-error/60 ${
+                filters.direction === "expense" ? "border-error ring-1 ring-error" : "border-border"
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Expenses</p>
+                {filters.direction === "expense" && (
+                  <span className="rounded-full bg-error/10 px-2 py-0.5 text-[10px] font-medium text-error">filtering</span>
+                )}
+              </div>
+              <p className="mt-1 text-2xl font-heading text-error">{formatCents(data.totals.expense_cents)}</p>
+              <p className="mt-1 text-xs text-muted-foreground">Click to show only expenses</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => toggleDirection("")}
+              aria-pressed={filters.direction === ""}
+              title="Show all activity"
+              className={`rounded-xl border bg-card p-4 text-left transition-all hover:border-accent/60 ${
+                filters.direction === "" ? "border-accent ring-1 ring-accent" : "border-border"
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Net</p>
+                {filters.direction === "" && (
+                  <span className="rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent">all activity</span>
+                )}
+              </div>
+              <p className={`mt-1 text-2xl font-heading ${net >= 0 ? "text-success" : "text-error"}`}>
                 {formatCents(net)}
               </p>
-            </div>
+              <p className="mt-1 text-xs text-muted-foreground">Click to show everything</p>
+            </button>
           </div>
 
           <CloseMonthCard
@@ -273,91 +376,99 @@ export function BooksClient({
               <ShoppingCart className="size-4" />
               Import Amazon
             </Button>
-            <Link
-              href="/admin/books/reports"
-              className="ml-auto text-sm text-muted-foreground hover:text-accent underline-offset-4 hover:underline"
-            >
-              Reports
-            </Link>
-            <Link
-              href="/admin/books/insights"
-              className="text-sm text-muted-foreground hover:text-accent underline-offset-4 hover:underline"
-            >
-              Insights
-            </Link>
-            <Link
-              href="/admin/books/assets"
-              className="text-sm text-muted-foreground hover:text-accent underline-offset-4 hover:underline"
-            >
-              Assets
-            </Link>
-            <Link
-              href="/admin/books/accounts"
-              className="text-sm text-muted-foreground hover:text-accent underline-offset-4 hover:underline"
-            >
-              Manage categories
-            </Link>
           </div>
 
-          {/* Filter bar */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-            <input
-              type="date"
-              value={filters.from}
-              onChange={(e) => updateFilter({ from: e.currentTarget.value })}
-              className="border-border rounded-md border px-3 py-2 text-sm"
-              aria-label="From date"
-            />
-            <input
-              type="date"
-              value={filters.to}
-              onChange={(e) => updateFilter({ to: e.currentTarget.value })}
-              className="border-border rounded-md border px-3 py-2 text-sm"
-              aria-label="To date"
-            />
-            <select
-              value={filters.direction}
-              onChange={(e) => updateFilter({ direction: e.currentTarget.value as LedgerDirection | "" })}
-              className="border-border rounded-md border px-3 py-2 text-sm"
-              aria-label="Direction"
-            >
-              <option value="">All</option>
-              <option value="income">Income</option>
-              <option value="expense">Expense</option>
-            </select>
-            <select
-              value={filters.accountId}
-              onChange={(e) => updateFilter({ accountId: e.currentTarget.value })}
-              className="border-border rounded-md border px-3 py-2 text-sm"
-              aria-label="Category"
-            >
-              <option value="">All categories</option>
-              {accounts.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
-            </select>
-            <select
-              value={filters.source}
-              onChange={(e) => updateFilter({ source: e.currentTarget.value as LedgerSource | "" })}
-              className="border-border rounded-md border px-3 py-2 text-sm"
-              aria-label="Source"
-            >
-              {SOURCE_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-            <input
-              type="text"
-              defaultValue={filters.q}
-              onBlur={(e) => updateFilter({ q: e.currentTarget.value })}
-              placeholder="Search memo / counterparty..."
-              className="border-border rounded-md border px-3 py-2 text-sm"
-              aria-label="Search"
-            />
+          {/* Filter bar — labeled controls; the period preset drives from/to */}
+          <div className="rounded-lg border border-border bg-card p-3">
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-muted-foreground">Period</span>
+                <select
+                  value={preset}
+                  onChange={(e) => handlePresetChange(e.currentTarget.value)}
+                  className="border-border bg-background rounded-md border px-3 py-2 text-sm"
+                >
+                  <option value="all">All time</option>
+                  {(Object.keys(PERIOD_PRESET_LABELS) as PeriodPreset[]).map((p) => (
+                    <option key={p} value={p}>
+                      {PERIOD_PRESET_LABELS[p]}
+                    </option>
+                  ))}
+                  <option value="custom">Custom range…</option>
+                </select>
+              </label>
+              {preset === "custom" && (
+                <>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-xs font-medium text-muted-foreground">From</span>
+                    <input
+                      type="date"
+                      value={filters.from}
+                      onChange={(e) => updateFilter({ from: e.currentTarget.value })}
+                      className="border-border bg-background rounded-md border px-3 py-2 text-sm"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-xs font-medium text-muted-foreground">To</span>
+                    <input
+                      type="date"
+                      value={filters.to}
+                      onChange={(e) => updateFilter({ to: e.currentTarget.value })}
+                      className="border-border bg-background rounded-md border px-3 py-2 text-sm"
+                    />
+                  </label>
+                </>
+              )}
+              <label className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-muted-foreground">Category</span>
+                <select
+                  value={filters.accountId}
+                  onChange={(e) => updateFilter({ accountId: e.currentTarget.value })}
+                  className="border-border bg-background rounded-md border px-3 py-2 text-sm"
+                >
+                  <option value="">All categories</option>
+                  {accounts.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-muted-foreground">Source</span>
+                <select
+                  value={filters.source}
+                  onChange={(e) => updateFilter({ source: e.currentTarget.value as LedgerSource | "" })}
+                  className="border-border bg-background rounded-md border px-3 py-2 text-sm"
+                >
+                  {SOURCE_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex min-w-[200px] flex-1 flex-col gap-1">
+                <span className="text-xs font-medium text-muted-foreground">Search</span>
+                <input
+                  key={filters.q}
+                  type="text"
+                  defaultValue={filters.q}
+                  onBlur={(e) => updateFilter({ q: e.currentTarget.value })}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") updateFilter({ q: e.currentTarget.value })
+                  }}
+                  placeholder="Memo or counterparty…"
+                  className="border-border bg-background rounded-md border px-3 py-2 text-sm"
+                />
+              </label>
+              {hasActiveFilters && (
+                <Button size="sm" variant="ghost" onClick={clearFilters} className="mb-0.5">
+                  <FilterX className="size-4" />
+                  Clear filters
+                </Button>
+              )}
+            </div>
           </div>
 
           {/* Body */}

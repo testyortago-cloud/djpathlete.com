@@ -23,20 +23,23 @@ export function CloseMonthCard({
   onChanged: () => void
 }) {
   const router = useRouter()
-  const [selectedPeriod, setSelectedPeriod] = useState("")
+  // null = "auto": the most recent closable month (usually last month) is
+  // pre-selected so the common case is a single click on "Close month".
+  const [selectedPeriod, setSelectedPeriod] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   const closedSet = new Set(closes.map((c) => c.period))
-  const options = closableMonthOptions(new Date().toISOString().slice(0, 10), closedSet)
+  const options = closableMonthOptions(new Date().toISOString().slice(0, 10), closedSet, 12)
+  const effectivePeriod = selectedPeriod ?? options[0] ?? ""
 
   async function closeMonth() {
-    if (!selectedPeriod) return
+    if (!effectivePeriod) return
     setBusy(true)
     try {
       const res = await fetch("/api/admin/bookkeeping/closes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ book_id: bookId, period: selectedPeriod }),
+        body: JSON.stringify({ book_id: bookId, period: effectivePeriod }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
@@ -47,7 +50,7 @@ export function CloseMonthCard({
       toast.success(
         `${formatPeriodLabel(c.period)} closed — income ${formatCents(c.income_cents)}, expenses ${formatCents(c.expense_cents)}, net ${formatCents(c.net_cents)} (${c.entry_count} entries).`,
       )
-      setSelectedPeriod("")
+      setSelectedPeriod(null) // snap back to auto = next most recent closable month
       onChanged()
       router.refresh()
     } catch {
@@ -88,21 +91,22 @@ export function CloseMonthCard({
           Monthly close
         </h2>
         <div className="flex items-center gap-2">
-          <Select value={selectedPeriod || "none"} onValueChange={(v) => setSelectedPeriod(v === "none" ? "" : v)}>
+          <Select value={effectivePeriod} onValueChange={(v) => setSelectedPeriod(v)}>
             <SelectTrigger className="w-44" aria-label="Month to close">
-              <SelectValue placeholder="Pick a month" />
+              <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="none">Pick a month…</SelectItem>
-              {options.map((p) => (
+              {options.map((p, i) => (
                 <SelectItem key={p} value={p}>
                   {formatPeriodLabel(p)}
+                  {i === 0 ? " · latest" : ""}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-          <Button size="sm" onClick={closeMonth} disabled={busy || !selectedPeriod}>
-            Close month
+          <Button size="sm" onClick={closeMonth} disabled={busy || !effectivePeriod}>
+            <Lock className="size-3.5" />
+            Close {effectivePeriod ? formatPeriodLabel(effectivePeriod) : "month"}
           </Button>
         </div>
       </div>

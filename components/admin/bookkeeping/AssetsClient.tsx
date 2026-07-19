@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
+import { ArrowLeft } from "lucide-react"
 import { toast } from "sonner"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
@@ -340,6 +341,13 @@ export function AssetsClient({ books, initialBookId, initialAssets }: {
   return (
     <div className="space-y-6">
       <div>
+        <Link
+          href="/admin/books"
+          className="mb-3 inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground shadow-xs transition-colors hover:border-accent hover:text-accent"
+        >
+          <ArrowLeft className="size-4" />
+          Back to Accounting
+        </Link>
         <h1 className="text-2xl font-heading text-primary">Equipment &amp; assets</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Depreciation is tracked, not decided — enter the basis, method, and life your accountant supplies. Book depreciation for your CPA, not a filing.

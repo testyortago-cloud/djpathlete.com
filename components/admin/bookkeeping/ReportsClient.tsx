@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { toast } from "sonner"
-import { BarChart3, Download, FileSpreadsheet, Mail, Printer } from "lucide-react"
+import { ArrowLeft, BarChart3, Download, FileSpreadsheet, Mail, Printer } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { EmptyState } from "@/components/ui/empty-state"
@@ -88,6 +88,13 @@ export function ReportsClient({
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
+          <Link
+            href="/admin/books"
+            className="mb-3 inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground shadow-xs transition-colors hover:border-accent hover:text-accent"
+          >
+            <ArrowLeft className="size-4" />
+            Back to Accounting
+          </Link>
           <h1 className="text-2xl font-heading text-primary">Reports</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Gross figures from the posted ledger — Stripe fees &amp; payouts land in a later phase. Estimates for planning; your CPA files.

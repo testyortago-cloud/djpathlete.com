@@ -1,7 +1,7 @@
 import { listBooks, listAccounts } from "@/lib/db/bookkeeping"
 import { BooksClient } from "@/components/admin/bookkeeping/BooksClient"
 
-export const metadata = { title: "Books — Admin" }
+export const metadata = { title: "Accounting — Admin" }
 
 export default async function BooksPage() {
   const books = await listBooks()

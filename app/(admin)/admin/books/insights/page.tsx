@@ -3,7 +3,7 @@ import { coerceHomeOfficePercent } from "@/lib/bookkeeping/insight-types"
 import { listBooks } from "@/lib/db/bookkeeping"
 import { getSetting } from "@/lib/db/system-settings"
 
-export const metadata = { title: "Insights — Books — Admin" }
+export const metadata = { title: "Insights — Accounting — Admin" }
 
 export default async function InsightsPage() {
   const [books, storedPercent] = await Promise.all([

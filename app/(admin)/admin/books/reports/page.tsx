@@ -2,7 +2,7 @@ import { listBooks } from "@/lib/db/bookkeeping"
 import { getSetting } from "@/lib/db/system-settings"
 import { ReportsClient } from "@/components/admin/bookkeeping/ReportsClient"
 
-export const metadata = { title: "Reports — Books — Admin" }
+export const metadata = { title: "Reports — Accounting — Admin" }
 
 export default async function BooksReportsPage() {
   const [books, emailPackEnabled, accountantEmail] = await Promise.all([

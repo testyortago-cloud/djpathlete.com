@@ -150,7 +150,7 @@ export function getAdminNav(opts: { contentStudioEnabled: boolean }): AdminNav {
           { label: "Bookings", href: "/admin/bookings", icon: CalendarCheck },
           { label: "Events", href: "/admin/events", icon: CalendarDays },
           { label: "Payments", href: "/admin/payments", icon: CreditCard },
-          { label: "Books", href: "/admin/books", icon: BookOpen },
+          { label: "Accounting", href: "/admin/books", icon: BookOpen },
           { label: "Session Packs", href: "/admin/session-packs/products", icon: Ticket },
           { label: "Memberships", href: "/admin/memberships/plans", icon: Repeat },
           { label: "Session Fees", href: "/admin/sessions/fees", icon: Ban },

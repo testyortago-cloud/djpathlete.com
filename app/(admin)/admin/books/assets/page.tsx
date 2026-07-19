@@ -1,7 +1,7 @@
 import { listBooks, listAssets } from "@/lib/db/bookkeeping"
 import { AssetsClient } from "@/components/admin/bookkeeping/AssetsClient"
 
-export const metadata = { title: "Equipment & Assets — Books — Admin" }
+export const metadata = { title: "Equipment & Assets — Accounting — Admin" }
 
 export default async function AssetsPage() {
   const books = await listBooks()

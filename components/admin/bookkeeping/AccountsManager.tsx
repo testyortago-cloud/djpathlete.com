@@ -1,6 +1,8 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
+import Link from "next/link"
+import { ArrowLeft } from "lucide-react"
 import { toast } from "sonner"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
@@ -266,6 +268,13 @@ export function AccountsManager({
   return (
     <div className="space-y-6">
       <div>
+        <Link
+          href="/admin/books"
+          className="mb-3 inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground shadow-xs transition-colors hover:border-accent hover:text-accent"
+        >
+          <ArrowLeft className="size-4" />
+          Back to Accounting
+        </Link>
         <h1 className="text-2xl font-heading text-primary">Chart of accounts</h1>
         <p className="text-sm text-muted-foreground mt-1">Income and expense categories for the ledger.</p>
       </div>
