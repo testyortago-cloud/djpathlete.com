@@ -1,9 +1,12 @@
 // lib/bookkeeping/income-adapter.ts
 // Pure: unions the platform's money-of-record tables into reviewable ledger
-// drafts. Zero IO — the caller reads rows (paginated) and passes plain arrays.
-// Encodes the design's D3 rules: gross amounts, refund-aware, honest about the
-// membership gap. Every draft carries a stable source_ref so re-running the
-// import never double-posts (the ledger's UNIQUE(book_id,source,source_ref)).
+// drafts. Zero IO. Encodes the design's D3 rules (gross amounts, refund-aware,
+// honest membership gap) plus two 2026-07-19 upgrades: maximally-detailed
+// memos/counterparties (program + athlete + pack product), and the
+// orphaned-mirror fallback — a pack/event mirror payment whose source row was
+// deleted is counted from the payment itself instead of silently dropped
+// (real $340 undercount found in prod-cloned data). Every draft carries a
+// stable source_ref so re-running the import never double-posts.
 
 import type { IncomeSourceRows, IncomeAdapterResult, LedgerEntryDraft } from "./types"
 
@@ -11,6 +14,7 @@ const SHOP_REVENUE_STATUSES = new Set([
   "paid", "draft", "confirmed", "in_production", "shipped", "fulfilled_digital",
 ])
 const MEMBERSHIP_ACTIVE = new Set(["active", "trialing", "past_due"])
+const ORPHAN_PAIR_WINDOW_DAYS = 7
 
 /** YYYY-MM-DD from an ISO timestamp. */
 function isoDate(ts: string): string {
@@ -26,39 +30,149 @@ function paymentServiceLine(description: string | null, metadata: Record<string,
   return "other"
 }
 
+type EnrichedPayment = IncomeSourceRows["payments"][number]
+
+function paymentMemo(p: EnrichedPayment, meta: Record<string, unknown>): string {
+  if (p.program_name) {
+    const week = meta.weekNumber
+    return week != null && week !== ""
+      ? `${p.program_name} — week ${week} access`
+      : `${p.program_name} — program purchase`
+  }
+  if (meta.type === "session_fee") return "Session fee"
+  return p.description ?? "Platform payment"
+}
+
+function paymentCounterparty(p: EnrichedPayment, meta: Record<string, unknown>): string | null {
+  const email = typeof meta.customerEmail === "string" ? meta.customerEmail : null
+  return p.payer_name ?? email ?? p.payer_email ?? p.description ?? null
+}
+
+/** Mutable pairing candidate for the orphaned-mirror check. */
+interface MirrorCandidate {
+  amount_cents: number
+  occurred_on: string
+  consumed: boolean
+}
+
+function dayDiff(a: string, b: string): number {
+  return Math.abs(Math.round((Date.parse(a) - Date.parse(b)) / 86_400_000))
+}
+
+/** Greedy one-to-one pairing: equal cents, ≤7 days; smallest diff wins,
+ *  tie → earliest candidate date. Returns true when a candidate was consumed. */
+function consumeCandidate(candidates: MirrorCandidate[], amountCents: number, date: string): boolean {
+  let best = -1
+  let bestDiff = Infinity
+  for (let i = 0; i < candidates.length; i++) {
+    const c = candidates[i]
+    if (c.consumed || c.amount_cents !== amountCents) continue
+    const diff = dayDiff(c.occurred_on, date)
+    if (diff > ORPHAN_PAIR_WINDOW_DAYS) continue
+    if (diff < bestDiff || (diff === bestDiff && best >= 0 && c.occurred_on < candidates[best].occurred_on)) {
+      best = i
+      bestDiff = diff
+    }
+  }
+  if (best < 0) return false
+  candidates[best].consumed = true
+  return true
+}
+
 export function buildIncomeDrafts(input: IncomeSourceRows, window?: { from: string; to: string }): IncomeAdapterResult {
   const drafts: LedgerEntryDraft[] = []
   const warnings: string[] = []
 
+  // Source tables FIRST — they are both the richer record and the pairing
+  // candidates the mirror check consumes.
+  const packCandidates: MirrorCandidate[] = []
+  for (const pk of input.clientPackages) {
+    if (pk.payment_status !== "paid") continue
+    const occurred = isoDate(pk.purchased_at)
+    packCandidates.push({ amount_cents: pk.price_cents, occurred_on: occurred, consumed: false })
+    const base = pk.product_name ?? pk.session_type ?? "Session pack"
+    drafts.push({
+      direction: "income",
+      amount_cents: pk.price_cents,
+      occurred_on: occurred,
+      memo: pk.credits_total != null ? `${base} (${pk.credits_total} sessions)` : base,
+      counterparty: pk.client_name ?? null,
+      service_line: "session_packs",
+      source: "platform_import",
+      source_ref: `client_packages:${pk.id}`,
+    })
+  }
+
+  const signupCandidates: MirrorCandidate[] = []
+  for (const s of input.eventSignups) {
+    if (s.signup_type !== "paid" || s.status !== "confirmed" || s.amount_paid_cents == null) continue
+    const occurred = isoDate(s.created_at)
+    signupCandidates.push({ amount_cents: s.amount_paid_cents, occurred_on: occurred, consumed: false })
+    drafts.push({
+      direction: "income",
+      amount_cents: s.amount_paid_cents,
+      occurred_on: occurred,
+      memo: `${s.event_title ?? "Event"} — signup`,
+      counterparty: s.parent_name ?? null,
+      service_line: "camps",
+      source: "platform_import",
+      source_ref: `event_signups:${s.id}`,
+    })
+  }
+
+  let orphanPacks = 0
+  let orphanSignups = 0
   for (const p of input.payments) {
     if (p.status === "refunded") {
       warnings.push(`Payment ${p.id} is refunded — skipped (gross income reversed).`)
       continue
     }
     if (p.status !== "succeeded") continue
-    // Stripe-paid session packs and event signups write a `payments` row
-    // (revenue mirror) IN ADDITION TO their own client_packages / event_signups
-    // row. Those source tables carry the product/event name + correct service
-    // line, so we count them there and skip the mirror here — otherwise a single
-    // Stripe pack/camp sale posts TWICE (the payments source_ref differs from the
-    // pack/event source_ref, so the ledger UNIQUE cannot dedupe it). Cash/offline
-    // packs never create a payments row, so they are unaffected.
-    const mirrorType = p.metadata?.type
-    if (mirrorType === "session_pack" || mirrorType === "event_signup") continue
-    const email = typeof p.metadata?.customerEmail === "string" ? p.metadata.customerEmail : null
-    if (!p.user_id && !email) {
+    const meta = (p.metadata ?? {}) as Record<string, unknown>
+    const mirrorType = meta.type
+    if (mirrorType === "session_pack" || mirrorType === "event_signup") {
+      // Mirror row: normally the source table carries this sale — but when the
+      // pack/signup row was deleted, dropping the mirror silently undercounts
+      // revenue. Pair one-to-one; unpaired mirrors post from the payment.
+      const paired =
+        mirrorType === "session_pack"
+          ? consumeCandidate(packCandidates, p.amount_cents, isoDate(p.created_at))
+          : consumeCandidate(signupCandidates, p.amount_cents, isoDate(p.created_at))
+      if (paired) continue
+      if (mirrorType === "session_pack") orphanPacks++
+      else orphanSignups++
+      drafts.push({
+        direction: "income",
+        amount_cents: p.amount_cents,
+        occurred_on: isoDate(p.created_at),
+        memo: mirrorType === "session_pack" ? "Session pack (record deleted)" : "Camp/event signup (record deleted)",
+        counterparty: paymentCounterparty(p, meta),
+        service_line: mirrorType === "session_pack" ? "session_packs" : "camps",
+        source: "platform_import",
+        source_ref: `payments:${p.id}`,
+      })
+      continue
+    }
+    if (!p.user_id && typeof meta.customerEmail !== "string") {
       warnings.push(`Payment ${p.id} has no user and no customer email — counterparty unknown.`)
     }
     drafts.push({
       direction: "income",
       amount_cents: p.amount_cents,
       occurred_on: isoDate(p.created_at),
-      memo: p.description ?? "Platform payment",
-      counterparty: email ?? p.description ?? null,
-      service_line: paymentServiceLine(p.description, p.metadata ?? {}),
+      memo: paymentMemo(p, meta),
+      counterparty: paymentCounterparty(p, meta),
+      service_line: paymentServiceLine(p.description, meta),
       source: "platform_import",
       source_ref: `payments:${p.id}`,
     })
+  }
+
+  if (orphanPacks > 0) {
+    warnings.push(`${orphanPacks} session-pack payment(s) counted directly — the pack records no longer exist.`)
+  }
+  if (orphanSignups > 0) {
+    warnings.push(`${orphanSignups} event-signup payment(s) counted directly — the signup records no longer exist.`)
   }
 
   for (const o of input.shopOrders) {
@@ -72,34 +186,6 @@ export function buildIncomeDrafts(input: IncomeSourceRows, window?: { from: stri
       service_line: "shop",
       source: "platform_import",
       source_ref: `shop_orders:${o.id}`,
-    })
-  }
-
-  for (const pk of input.clientPackages) {
-    if (pk.payment_status !== "paid") continue
-    drafts.push({
-      direction: "income",
-      amount_cents: pk.price_cents,
-      occurred_on: isoDate(pk.purchased_at),
-      memo: pk.product_name ?? pk.session_type ?? "Session pack",
-      counterparty: null,
-      service_line: "session_packs",
-      source: "platform_import",
-      source_ref: `client_packages:${pk.id}`,
-    })
-  }
-
-  for (const s of input.eventSignups) {
-    if (s.signup_type !== "paid" || s.status !== "confirmed" || s.amount_paid_cents == null) continue
-    drafts.push({
-      direction: "income",
-      amount_cents: s.amount_paid_cents,
-      occurred_on: isoDate(s.created_at),
-      memo: s.event_title ?? "Event signup",
-      counterparty: s.parent_name ?? null,
-      service_line: "camps",
-      source: "platform_import",
-      source_ref: `event_signups:${s.id}`,
     })
   }
 

@@ -6,6 +6,31 @@ function base(): IncomeSourceRows {
   return { payments: [], shopOrders: [], clientPackages: [], eventSignups: [], memberships: [] }
 }
 
+const P1 = "aaaaaaa1-0000-4000-8000-000000000001"
+const P2 = "aaaaaaa2-0000-4000-8000-000000000002"
+const P3 = "aaaaaaa3-0000-4000-8000-000000000003"
+const P4 = "aaaaaaa4-0000-4000-8000-000000000004"
+const C1 = "ccccccc1-0000-4000-8000-000000000001"
+const S1 = "sssssss1-0000-4000-8000-000000000001"
+const PRG = "ddddddd1-0000-4000-8000-000000000001"
+
+function src(over: Partial<IncomeSourceRows>): IncomeSourceRows {
+  return { payments: [], shopOrders: [], clientPackages: [], eventSignups: [], memberships: [], ...over } as IncomeSourceRows
+}
+function pay(over: Record<string, unknown>) {
+  return { id: P1, status: "succeeded", amount_cents: 1000, created_at: "2026-07-01T10:00:00Z", description: null, metadata: {}, user_id: null, payer_name: null, payer_email: null, program_name: null, ...over } as never
+}
+function mirror(over: Record<string, unknown> & { mtype: string }) {
+  const { mtype, ...rest } = over
+  return pay({ metadata: { type: mtype }, ...rest })
+}
+function pack(over: Record<string, unknown>) {
+  return { id: C1, payment_status: "paid", price_cents: 1000, purchased_at: "2026-07-01T10:00:00Z", session_type: "1-on-1", product_name: null, credits_total: null, client_name: null, ...over } as never
+}
+function signup(over: Record<string, unknown>) {
+  return { id: S1, signup_type: "paid", status: "confirmed", amount_paid_cents: 1000, created_at: "2026-07-01T10:00:00Z", parent_name: null, event_title: null, ...over } as never
+}
+
 describe("buildIncomeDrafts — payments", () => {
   it("emits a succeeded payment as gross income with a dedupe ref", () => {
     const input = base()
@@ -111,7 +136,7 @@ describe("buildIncomeDrafts — packs, shop, events", () => {
     const { drafts } = buildIncomeDrafts(input)
     expect(drafts[0]).toMatchObject({
       amount_cents: 50000, service_line: "session_packs", occurred_on: "2026-04-01",
-      source_ref: "client_packages:22222222-2222-4222-8222-222222222221", memo: "10-Pack",
+      source_ref: "client_packages:22222222-2222-4222-8222-222222222221", memo: "10-Pack (10 sessions)",
     })
   })
   it("skips shop orders in excluded statuses (canceled/refunded/pending)", () => {
@@ -142,7 +167,7 @@ describe("buildIncomeDrafts — packs, shop, events", () => {
     ]
     const { drafts } = buildIncomeDrafts(input)
     expect(drafts).toHaveLength(1)
-    expect(drafts[0]).toMatchObject({ amount_cents: 12000, service_line: "camps", memo: "Summer Camp" })
+    expect(drafts[0]).toMatchObject({ amount_cents: 12000, service_line: "camps", memo: "Summer Camp — signup" })
   })
 })
 
@@ -205,5 +230,86 @@ describe("buildIncomeDrafts — ordering", () => {
     ]
     const { drafts } = buildIncomeDrafts(input)
     expect(drafts.map((d) => d.occurred_on)).toEqual(["2026-06-01", "2026-06-05"])
+  })
+})
+
+describe("enriched memos and counterparties (2026-07-19)", () => {
+  it("composes program memos and athlete counterparties", () => {
+    const { drafts } = buildIncomeDrafts(src({
+      payments: [
+        pay({ id: P1, amount_cents: 32000, description: "program", metadata: { programId: PRG }, program_name: "Cannon Baller!", payer_name: "Cannon Kremer" }),
+        pay({ id: P2, amount_cents: 8000, description: "program week", metadata: { programId: PRG, weekNumber: 3 }, program_name: "Cannon Baller!", payer_name: "Cannon Kremer" }),
+        pay({ id: P3, amount_cents: 5000, metadata: { type: "session_fee" }, payer_name: null, payer_email: "sf@x.com" }),
+      ],
+    }))
+    expect(drafts.map((d) => d.memo)).toEqual([
+      "Cannon Baller! — program purchase",
+      "Cannon Baller! — week 3 access",
+      "Session fee",
+    ])
+    expect(drafts[0].counterparty).toBe("Cannon Kremer")
+    expect(drafts[2].counterparty).toBe("sf@x.com")
+  })
+
+  it("details pack and signup drafts", () => {
+    const { drafts } = buildIncomeDrafts(src({
+      clientPackages: [pack({ id: C1, price_cents: 150000, product_name: "1-On-1", credits_total: 10, client_name: "Sandeep Chennadi" })],
+      eventSignups: [signup({ id: S1, amount_paid_cents: 8500, event_title: "Summer Speed Camp", parent_name: "A Parent" })],
+    }))
+    expect(drafts.map((d) => d.memo)).toEqual(["1-On-1 (10 sessions)", "Summer Speed Camp — signup"])
+    expect(drafts.map((d) => d.counterparty)).toEqual(["Sandeep Chennadi", "A Parent"])
+  })
+})
+
+describe("orphaned-mirror fallback (2026-07-19)", () => {
+  it("counts the real 4×$85 case: event mirrors with zero signup rows", () => {
+    const { drafts, warnings } = buildIncomeDrafts(src({
+      payments: [
+        mirror({ id: P1, amount_cents: 8500, created_at: "2026-05-04T10:00:00Z", mtype: "event_signup" }),
+        mirror({ id: P2, amount_cents: 8500, created_at: "2026-05-09T10:00:00Z", mtype: "event_signup" }),
+        mirror({ id: P3, amount_cents: 8500, created_at: "2026-05-09T11:00:00Z", mtype: "event_signup" }),
+        mirror({ id: P4, amount_cents: 8500, created_at: "2026-05-14T10:00:00Z", mtype: "event_signup" }),
+      ],
+    }))
+    expect(drafts).toHaveLength(4)
+    expect(drafts.every((d) => d.memo === "Camp/event signup (record deleted)" && d.service_line === "camps")).toBe(true)
+    expect(drafts.map((d) => d.source_ref).sort()).toEqual([P1, P2, P3, P4].map((id) => `payments:${id}`).sort())
+    expect(warnings).toContain("4 event-signup payment(s) counted directly — the signup records no longer exist.")
+  })
+
+  it("still skips mirrors whose source rows exist (double-count regression pin)", () => {
+    const { drafts, warnings } = buildIncomeDrafts(src({
+      payments: [mirror({ id: P1, amount_cents: 150000, created_at: "2026-07-17T10:00:00Z", mtype: "session_pack" })],
+      clientPackages: [pack({ id: C1, price_cents: 150000, purchased_at: "2026-07-10T10:00:00Z", product_name: "1-On-1", credits_total: 10 })],
+    }))
+    expect(drafts).toHaveLength(1)
+    expect(drafts[0].source_ref).toBe(`client_packages:${C1}`)
+    expect(warnings.some((w) => w.includes("counted directly"))).toBe(false)
+  })
+
+  it("pairs one-to-one: two equal mirrors, one candidate → one skip + one fallback", () => {
+    const { drafts } = buildIncomeDrafts(src({
+      payments: [
+        mirror({ id: P1, amount_cents: 20000, created_at: "2026-07-06T10:00:00Z", mtype: "session_pack" }),
+        mirror({ id: P2, amount_cents: 20000, created_at: "2026-07-07T10:00:00Z", mtype: "session_pack" }),
+      ],
+      clientPackages: [pack({ id: C1, price_cents: 20000, purchased_at: "2026-07-06T09:00:00Z", credits_total: 5 })],
+    }))
+    expect(drafts).toHaveLength(2)
+    expect(drafts.map((d) => d.source_ref).sort()).toEqual([`client_packages:${C1}`, `payments:${P2}`].sort())
+  })
+
+  it("respects the ±7-day window boundary: 7 pairs, 8 falls back", () => {
+    const seven = buildIncomeDrafts(src({
+      payments: [mirror({ id: P1, amount_cents: 150000, created_at: "2026-07-17T10:00:00Z", mtype: "session_pack" })],
+      clientPackages: [pack({ id: C1, price_cents: 150000, purchased_at: "2026-07-10T10:00:00Z", credits_total: 10 })],
+    }))
+    expect(seven.drafts).toHaveLength(1)
+    const eight = buildIncomeDrafts(src({
+      payments: [mirror({ id: P1, amount_cents: 150000, created_at: "2026-07-18T10:00:00Z", mtype: "session_pack" })],
+      clientPackages: [pack({ id: C1, price_cents: 150000, purchased_at: "2026-07-10T10:00:00Z", credits_total: 10 })],
+    }))
+    expect(eight.drafts).toHaveLength(2)
+    expect(eight.warnings).toContain("1 session-pack payment(s) counted directly — the pack records no longer exist.")
   })
 })
