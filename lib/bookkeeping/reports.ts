@@ -3,6 +3,9 @@
  *  Sign discipline: amount_cents is a magnitude; `direction` carries sign.
  *  Sums are per-direction; net = income − expense is the only subtraction. */
 import type { BookkeepingBook, BookKind, LedgerAccountType, LedgerDirection, LedgerSource } from "@/types/database"
+// insight-types imports only TYPES from this file (insight-types.ts:4), so this
+// runtime import cannot form a cycle — one lib-side normalizer, not a third copy.
+import { normalizeCounterparty } from "./insight-types"
 
 export interface ReportEntry {
   book_id: string
@@ -132,4 +135,43 @@ export function perBookSummary(entries: ReportEntry[], books: BookkeepingBook[])
   }
   for (const s of rows) s.net_cents = s.income_cents - s.expense_cents
   return rows // caller passes books in sort_order (listBooks order)
+}
+
+// ── Counterparty rollup (Phase 6c — chat tools; reusable by future UI) ──────
+// Twin: functions/src/lib/bookkeeping-aggregate.ts — keep in lockstep; the
+// fixture-parity test (__tests__/lib/bookkeeping/chat-tools-parity.test.ts)
+// pins the two to identical outputs.
+
+export interface CounterpartyRow {
+  counterparty: string | null
+  total_cents: number
+  entry_count: number
+}
+
+/** Rank counterparties for ONE direction by total cents. Grouping key is the
+ *  normalized (trim/lowercase/collapse-ws) name; blank/missing names share the
+ *  null bucket. Sort: total desc, tie name asc with null last. Sliced to
+ *  `limit` AFTER sorting; limit ≤ 0 → empty (clamped — never slice(0, -1)). */
+export function topCounterparties(
+  entries: ReportEntry[],
+  opts: { direction: LedgerDirection; limit: number },
+): CounterpartyRow[] {
+  const limit = Math.max(0, Math.floor(opts.limit))
+  const buckets = new Map<string | null, CounterpartyRow>()
+  for (const e of entries) {
+    if (e.direction !== opts.direction) continue
+    const key = normalizeCounterparty(e.counterparty)
+    const row = buckets.get(key) ?? { counterparty: key, total_cents: 0, entry_count: 0 }
+    row.total_cents += e.amount_cents
+    row.entry_count += 1
+    buckets.set(key, row)
+  }
+  return [...buckets.values()]
+    .sort((a, b) => {
+      if (b.total_cents !== a.total_cents) return b.total_cents - a.total_cents
+      if (a.counterparty === null) return 1
+      if (b.counterparty === null) return -1
+      return a.counterparty.localeCompare(b.counterparty)
+    })
+    .slice(0, limit)
 }
