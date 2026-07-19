@@ -8,7 +8,7 @@ import { Lock, Unlock } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { closableMonthOptions, formatPeriodLabel } from "@/lib/bookkeeping/period-close"
+import { closableMonthOptions, formatPeriodLabel, periodOf } from "@/lib/bookkeeping/period-close"
 import { formatCents } from "@/lib/bookkeeping/money"
 import { formatOccurredOn } from "@/lib/bookkeeping/format"
 import type { BookkeepingPeriodClose } from "@/types/database"
@@ -29,7 +29,8 @@ export function CloseMonthCard({
   const [busy, setBusy] = useState(false)
 
   const closedSet = new Set(closes.map((c) => c.period))
-  const options = closableMonthOptions(new Date().toISOString().slice(0, 10), closedSet, 12)
+  const today = new Date().toISOString().slice(0, 10)
+  const options = closableMonthOptions(today, closedSet, 12)
   const effectivePeriod = selectedPeriod ?? options[0] ?? ""
 
   async function closeMonth() {
@@ -110,6 +111,11 @@ export function CloseMonthCard({
           </Button>
         </div>
       </div>
+
+      <p className="text-xs text-muted-foreground">
+        {formatPeriodLabel(periodOf(today))} is still in progress — a month becomes closable once it ends
+        {options[0] ? `, so the latest you can close today is ${formatPeriodLabel(options[0])}` : ""}.
+      </p>
 
       {closes.length === 0 ? (
         <p className="text-sm text-muted-foreground">
