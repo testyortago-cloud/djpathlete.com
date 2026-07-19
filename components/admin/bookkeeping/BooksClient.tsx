@@ -480,8 +480,9 @@ export function BooksClient({
             />
           ) : (
             <>
-              <LedgerTable rows={data.rows} accounts={accounts} onChanged={fetchEntries} onEdit={openEditEntry} />
-              <div className="flex items-center justify-between text-sm text-muted-foreground">
+              <div className="rounded-lg border border-border bg-card p-4 space-y-4 overflow-x-auto">
+                <LedgerTable rows={data.rows} accounts={accounts} onChanged={fetchEntries} onEdit={openEditEntry} />
+                <div className="flex items-center justify-between border-t border-border pt-3 text-sm text-muted-foreground">
                 <p>
                   {data.total} entr{data.total === 1 ? "y" : "ies"}
                 </p>
@@ -505,6 +506,7 @@ export function BooksClient({
                   >
                     Next
                   </Button>
+                </div>
                 </div>
               </div>
             </>
