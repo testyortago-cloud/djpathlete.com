@@ -3,6 +3,17 @@ import { getDatabase } from "firebase-admin/database"
 import { generateWeekSync } from "./ai/week-orchestrator.js"
 import type { WeekGenerationRequest } from "./ai/week-orchestrator.js"
 import { notifyJobCompleted, notifyJobFailed } from "./lib/notify-job-done.js"
+import { createDeadline, DeadlineExceededError } from "./lib/deadline.js"
+
+/**
+ * Wall-clock budget for the orchestration, strictly inside the function's
+ * `timeoutSeconds` (1500s — see index.ts weekGeneration). The gap is deliberate:
+ * when the budget blows we still need live container time to write
+ * status="failed" to Firestore + RTDB and send the failure email. A hard
+ * platform kill skips all of that and leaves the job wedged in "processing"
+ * forever, unrecoverable because the trigger guard skips non-"pending" docs.
+ */
+const WEEK_GENERATION_BUDGET_MS = 1_200_000 // 20 min
 
 /** Write real-time status to RTDB so the client can listen for instant updates */
 async function updateRtdb(jobId: string, data: Record<string, unknown>) {
@@ -52,9 +63,11 @@ export async function handleWeekGeneration(jobId: string): Promise<void> {
   const isDayJob = typeof input.request.target_day_of_week === "number"
   const isTargetedWeek = typeof input.request.target_week_number === "number"
 
+  const deadline = createDeadline(WEEK_GENERATION_BUDGET_MS, "Week generation")
+
   try {
     console.log(`[week-generation] Starting for job ${jobId}`)
-    const result = await generateWeekSync(input.request, input.requestedBy, jobId)
+    const result = await generateWeekSync(input.request, input.requestedBy, jobId, deadline)
 
     const resultPayload = {
       new_week_number: result.new_week_number,
@@ -88,7 +101,13 @@ export async function handleWeekGeneration(jobId: string): Promise<void> {
       summary: `${result.exercises_added} exercises added in ${Math.round(result.duration_ms / 1000)}s.`,
     })
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error"
+    let errorMessage = error instanceof Error ? error.message : "Unknown error"
+    // A timeout is the one failure the coach can act on directly, so say how.
+    if (error instanceof DeadlineExceededError) {
+      errorMessage +=
+        " No exercises were written. Retry with a smaller exercise pool (or none)," +
+        " fewer exercises per day, or generate one day at a time."
+    }
     console.error(`[week-generation] Job ${jobId} failed:`, errorMessage)
 
     await jobRef.update({
@@ -105,5 +124,9 @@ export async function handleWeekGeneration(jobId: string): Promise<void> {
       jobLabel: isDayJob ? "Day generation" : "Week generation",
       error: errorMessage,
     })
+  } finally {
+    // Release the timer on every path — a live timer could otherwise abort a
+    // reused container's next invocation.
+    deadline.dispose()
   }
 }

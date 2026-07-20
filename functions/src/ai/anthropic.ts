@@ -3,6 +3,7 @@ import { toJSONSchema, type ZodSchema } from "zod"
 import type { AgentCallResult } from "./types.js"
 import pRetry from "p-retry"
 import { jsonrepair } from "jsonrepair"
+import { isAbortError } from "../lib/deadline.js"
 
 export { Anthropic }
 
@@ -180,6 +181,11 @@ function callAgentWithModel<T>(
      * the user message text.
      */
     images?: Array<{ media_type: string; data: string }>
+    /**
+     * Aborts in-flight requests when the caller's wall-clock budget is spent.
+     * See lib/deadline.ts — an abort is never retried and never falls back.
+     */
+    signal?: AbortSignal
   },
 ): Promise<AgentCallResult<T>> {
   const maxTokens = options?.maxTokens ?? DEFAULT_MAX_TOKENS
@@ -219,7 +225,7 @@ function callAgentWithModel<T>(
           ],
           tool_choice: { type: "tool" as const, name: "structured_output" },
           messages: [{ role: "user", content: userContent }],
-        })
+        }, { signal: options?.signal })
 
         const response = await stream.finalMessage()
 
@@ -252,7 +258,7 @@ function callAgentWithModel<T>(
           max_tokens: maxTokens,
           system: systemContent,
           messages: [{ role: "user", content: fallbackUserContent }],
-        })
+        }, { signal: options?.signal })
 
         const response = await stream.finalMessage()
 
@@ -290,6 +296,12 @@ function callAgentWithModel<T>(
       maxTimeout: 30_000,
       shouldRetry: (ctx) => {
         const err = ctx.error
+        // The caller's time budget is gone — retrying spends wall-clock we do
+        // not have and is the exact loop that wedged jobs in "processing".
+        if (isAbortError(err)) {
+          console.log(`[callAgent] Aborted by caller deadline — not retrying (model: ${modelId})`)
+          return false
+        }
         // Retry on transient API errors (429, 529, 5xx)
         if (isTransientError(err)) return true
         // Retry on JSON parse errors (model produced malformed JSON)
@@ -318,6 +330,7 @@ export async function callAgent<T>(
     cacheSystemPrompt?: boolean
     cachedUserPrefix?: string
     images?: Array<{ media_type: string; data: string }>
+    signal?: AbortSignal
   },
 ): Promise<AgentCallResult<T>> {
   const modelId = options?.model ?? MODEL_SONNET
@@ -325,6 +338,9 @@ export async function callAgent<T>(
   try {
     return await callAgentWithModel(modelId, systemPrompt, userMessage, schema, options)
   } catch (error) {
+    // An aborted call means the caller is out of time. A Haiku fallback here
+    // would start a WHOLE NEW request (up to 5 more attempts) past the budget.
+    if (isAbortError(error)) throw error
     // If primary model exhausted all retries on a transient error, fall back to Haiku
     if (modelId !== MODEL_HAIKU && isTransientError(error)) {
       console.warn(`[callAgent] ${modelId} exhausted all retries — falling back to ${MODEL_HAIKU}`)

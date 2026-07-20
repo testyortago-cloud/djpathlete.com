@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth"
 import { getAdminFirestore, getAdminRtdb } from "@/lib/firebase-admin"
 import { FieldValue } from "firebase-admin/firestore"
 import { getActiveUserIdsForProgram } from "@/lib/db/assignments"
+import { findInFlightWeekGeneration } from "@/lib/ai-jobs"
 
 const generateWeekSchema = z.object({
   assignment_id: z.string().uuid().optional(),
@@ -27,6 +28,46 @@ const generateWeekSchema = z.object({
   /** When set, the Firebase function emails this address on completion / failure. */
   notify_email: z.string().email().optional().nullable(),
 })
+
+/**
+ * Is a generation already running for this program/week/day?
+ * The dialogs call this on open so a reload or a reopened dialog re-attaches to
+ * the running job (spinner) instead of offering a form that would double-queue.
+ * Query params: target_week_number, target_day_of_week (both optional).
+ */
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const session = await auth()
+    if (!session?.user?.id || session.user.role !== "admin") {
+      return NextResponse.json({ error: "Unauthorized. Admin access required." }, { status: 403 })
+    }
+
+    const { id: programId } = await params
+    const url = new URL(request.url)
+    const rawWeek = url.searchParams.get("target_week_number")
+    const rawDay = url.searchParams.get("target_day_of_week")
+
+    // Reject junk rather than coercing NaN, which would silently never match.
+    const parseOptionalInt = (raw: string | null): number | null | undefined => {
+      if (raw === null || raw === "") return null
+      const n = Number(raw)
+      return Number.isInteger(n) ? n : undefined
+    }
+
+    const targetWeekNumber = parseOptionalInt(rawWeek)
+    const targetDayOfWeek = parseOptionalInt(rawDay)
+    if (targetWeekNumber === undefined || targetDayOfWeek === undefined) {
+      return NextResponse.json({ error: "target_week_number/target_day_of_week must be integers" }, { status: 400 })
+    }
+
+    const inFlight = await findInFlightWeekGeneration(programId, targetWeekNumber, targetDayOfWeek)
+    return NextResponse.json({ inFlight })
+  } catch (error) {
+    console.error("[generate-week] in-flight lookup failed:", error)
+    // Fail open: a lookup outage must not block the coach from generating.
+    return NextResponse.json({ inFlight: null })
+  }
+}
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -58,6 +99,21 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       }
     }
 
+    const targetWeekNumber = result.data.target_week_number ?? null
+    const targetDayOfWeek = result.data.target_day_of_week ?? null
+
+    // Never queue a second generation over a running one. The dialog's own
+    // guard is component state, so a reload or a reopened dialog brings the
+    // form back — this is the check that actually holds. Returns the existing
+    // job so the caller attaches to it instead of getting an error.
+    const inFlight = await findInFlightWeekGeneration(programId, targetWeekNumber, targetDayOfWeek)
+    if (inFlight) {
+      return NextResponse.json(
+        { jobId: inFlight.jobId, status: inFlight.status, deduped: true, startedAt: inFlight.startedAt },
+        { status: 202 },
+      )
+    }
+
     // Create Firestore job doc — Firebase Function picks it up via onDocumentCreated
     const firestoreDb = getAdminFirestore()
     const jobRef = firestoreDb.collection("ai_jobs").doc()
@@ -71,8 +127,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           assignment_id: result.data.assignment_id ?? null,
           client_id: result.data.client_id ?? null,
           admin_instructions: result.data.admin_instructions ?? null,
-          target_week_number: result.data.target_week_number ?? null,
-          target_day_of_week: result.data.target_day_of_week ?? null,
+          target_week_number: targetWeekNumber,
+          target_day_of_week: targetDayOfWeek,
           pool_exercise_ids: result.data.pool_exercise_ids ?? null,
           pool_mode: result.data.pool_mode ?? "preferred",
           ignore_profile: result.data.ignore_profile ?? false,

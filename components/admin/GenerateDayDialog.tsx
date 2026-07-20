@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { COACH_EMAIL } from "@/lib/constants"
@@ -18,6 +18,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { useAiJob } from "@/hooks/use-ai-job"
+import { useInFlightWeekGeneration } from "@/hooks/use-in-flight-week-generation"
 import { TemplateSelector } from "@/components/admin/TemplateSelector"
 import { EnhanceTextareaButton } from "@/components/admin/ai-templates/enhance-textarea-button"
 import { NotifyWhenDoneToggle } from "@/components/admin/NotifyWhenDoneToggle"
@@ -57,6 +58,19 @@ export function GenerateDayDialog({
   const [notifyWhenDone, setNotifyWhenDone] = useState(true)
 
   const { status, result, error, reset } = useAiJob(jobId)
+
+  // Re-attach to a generation already running for this day — component state
+  // resets on reload/reopen, so without this the form reappears and the coach
+  // can queue a duplicate.
+  const { inFlightJobId } = useInFlightWeekGeneration({
+    open,
+    programId,
+    targetWeekNumber: weekNumber,
+    targetDayOfWeek: dayOfWeek,
+  })
+  useEffect(() => {
+    if (inFlightJobId && !jobId) setJobId(inFlightJobId)
+  }, [inFlightJobId, jobId])
 
   const isGenerating = jobId !== null && (status === "pending" || status === "processing")
   const isComplete = status === "completed"

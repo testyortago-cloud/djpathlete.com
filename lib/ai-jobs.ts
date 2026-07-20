@@ -181,6 +181,76 @@ export async function findInFlightBlogSuggestionJob(calendarId: string): Promise
   return freshJobIdOrNull(snap)
 }
 
+/**
+ * In-flight guard for week/day generation.
+ *
+ * The dialogs already hide the form while `isGenerating`, but that lives in
+ * component state — closing the dialog or reloading the page resets it and the
+ * form comes back, so a second job can be queued over a running one. This is the
+ * authoritative check: it runs on the server, survives reloads, and is shared by
+ * every caller.
+ *
+ * Scope is program + target week + target day, because generating week 5 while
+ * week 4 runs is legitimate. An "append a new week" request has a null
+ * target_week_number, and two of those DO collide — which is correct, they would
+ * both append to the same program.
+ *
+ * Staleness: matches older than the cutoff are ignored so a wedged doc can never
+ * block generation forever. Mirrors DEFAULT_STALE_MS in
+ * functions/src/lib/stale-ai-jobs.ts (the reaper that fails such docs) — these
+ * are twin copies because functions/ has rootDir "src" and cannot import lib/.
+ */
+const WEEK_GENERATION_STALE_MS = 45 * 60_000
+
+export interface InFlightWeekGeneration {
+  jobId: string
+  status: AiJobStatus
+  /** ISO start time so the UI can anchor an elapsed timer. */
+  startedAt: string | null
+}
+
+export async function findInFlightWeekGeneration(
+  programId: string,
+  targetWeekNumber: number | null,
+  targetDayOfWeek: number | null,
+): Promise<InFlightWeekGeneration | null> {
+  const db = getAdminFirestore()
+
+  // Queried by (type, createdAt) — the SAME composite index listRecentCaptionRenders
+  // already requires, so this needs no new index. Status / program / week / day are
+  // filtered in JS: the in-flight set is tiny, and a nested-field index would have to
+  // be created in prod before the first call could succeed.
+  const snap = await db
+    .collection("ai_jobs")
+    .where("type", "==", "week_generation")
+    .orderBy("createdAt", "desc")
+    .limit(30)
+    .get()
+
+  for (const doc of snap.docs) {
+    const data = doc.data()
+    if (data.status !== "pending" && data.status !== "processing") continue
+
+    const req = data.input?.request
+    if (!req || req.program_id !== programId) continue
+    if ((req.target_week_number ?? null) !== targetWeekNumber) continue
+    if ((req.target_day_of_week ?? null) !== targetDayOfWeek) continue
+
+    // A doc whose serverTimestamp has not materialized yet reads as null. Treat it
+    // as fresh — it was written moments ago, which is exactly a double-submit.
+    const createdAtMs = (data.createdAt as { toMillis?: () => number } | null)?.toMillis?.() ?? null
+    if (createdAtMs != null && Date.now() - createdAtMs > WEEK_GENERATION_STALE_MS) continue
+
+    return {
+      jobId: doc.id,
+      status: data.status as AiJobStatus,
+      startedAt: createdAtMs != null ? new Date(createdAtMs).toISOString() : null,
+    }
+  }
+
+  return null
+}
+
 export type AiJobStatus = "pending" | "processing" | "streaming" | "completed" | "failed" | "cancelled"
 
 export interface RecentCaptionRender {

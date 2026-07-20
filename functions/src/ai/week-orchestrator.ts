@@ -1,5 +1,6 @@
 import type { CompressedExercise, ExerciseSlot, ProgramWeek, ExerciseAssignment, ValidationResult } from "./types.js"
 import { callAgent, MODEL_OPUS, MODEL_SONNET } from "./anthropic.js"
+import { isAbortError, type Deadline } from "../lib/deadline.js"
 import { scoreAndFilterExercises, semanticFilterExercises, filterByInjuredJoints } from "./exercise-filter.js"
 import { profileAnalysisSchema, programSkeletonSchema, exerciseAssignmentSchema } from "./schemas.js"
 import { EXERCISE_SELECTOR_PROMPT, WEEK_PROFILE_ANALYZER_PROMPT } from "./prompts.js"
@@ -333,6 +334,13 @@ export async function generateWeekSync(
   request: WeekGenerationRequest,
   requestedBy: string,
   firebaseJobId?: string,
+  /**
+   * Optional wall-clock budget. When supplied, every model call is abortable and
+   * each expensive stage is gated on remaining time, so an over-long run fails
+   * loudly instead of being hard-killed mid-flight (which left the job wedged in
+   * "processing" forever — see lib/deadline.ts).
+   */
+  deadline?: Deadline,
 ): Promise<WeekGenerationResult> {
   console.log("[week-orchestrator] Starting generateWeekSync", {
     program_id: request.program_id,
@@ -581,11 +589,12 @@ ${
 
 IMPORTANT: Review the full program progression summary above. If the coach's instructions reference themes, focus areas, or progressions from previous weeks, ensure this ${isSingleDay ? "day" : "week"} builds on that trajectory logically. The coach may ask to maintain a theme while shifting emphasis (e.g., "keep lower leg focus but add glute work") — honor this by blending continuity with the new direction.`
 
+  deadline?.assertLive("program architect")
   const architectResult = await callAgent<z.infer<typeof weekSkeletonSchema>>(
     buildArchitectPrompt(isSingleDay ? "day" : "week"),
     architectMessage,
     weekSkeletonSchema,
-    { model: MODEL_OPUS, cacheSystemPrompt: true },
+    { model: MODEL_OPUS, cacheSystemPrompt: true, signal: deadline?.signal },
   )
   tokenUsage.architect = architectResult.tokens_used
   tokenUsage.cache_creation += architectResult.cache_creation_tokens ?? 0
@@ -688,11 +697,12 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
 
   let analysis: ProfileAnalysis
   try {
+    deadline?.assertLive("profile analyzer")
     const analyzerResult = await callAgent<ProfileAnalysis>(
       WEEK_PROFILE_ANALYZER_PROMPT,
       analyzerMessage,
       profileAnalysisSchema,
-      { model: MODEL_SONNET, cacheSystemPrompt: true },
+      { model: MODEL_SONNET, cacheSystemPrompt: true, signal: deadline?.signal },
     )
     tokenUsage.architect += analyzerResult.tokens_used // reuse architect bucket; no schema change
     tokenUsage.cache_creation += analyzerResult.cache_creation_tokens ?? 0
@@ -919,13 +929,15 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
     // Variable suffix — feedback only present on retries.
     const selectorVariableSuffix = feedbackSection.trim() || "Begin."
 
+    // Outside the try: a spent budget must end the loop, not become another attempt.
+    deadline?.assertLive(`exercise selector (attempt ${attempt + 1}/${MAX_RETRIES + 1})`)
     try {
       console.log(`[week-orchestrator] Exercise selector attempt ${attempt + 1}/${MAX_RETRIES + 1}...`)
       const selectorResult = await callAgent<ExerciseAssignment>(
         EXERCISE_SELECTOR_PROMPT,
         selectorVariableSuffix,
         exerciseAssignmentSchema,
-        { cacheSystemPrompt: true, cachedUserPrefix: selectorStablePrefix },
+        { cacheSystemPrompt: true, cachedUserPrefix: selectorStablePrefix, signal: deadline?.signal },
       )
       tokenUsage.selector += selectorResult.tokens_used
       tokenUsage.cache_creation += selectorResult.cache_creation_tokens ?? 0
@@ -959,6 +971,9 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
 
       console.log(`[week-orchestrator] Dedup failed, retrying...`)
     } catch (agentError) {
+      // An abort is terminal — swallowing it here would start another attempt
+      // with no time left, which is how runs used to overrun the platform kill.
+      if (isAbortError(agentError)) throw agentError
       console.error(
         `[week-orchestrator] Selector attempt ${attempt + 1} error:`,
         agentError instanceof Error ? agentError.message : agentError,

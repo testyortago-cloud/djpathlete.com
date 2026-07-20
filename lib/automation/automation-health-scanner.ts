@@ -31,6 +31,7 @@ export const EXPECTED_CRONS: ExpectedCron[] = [
   { name: "bookkeepingRetentionCron", sla_hours: 30 }, // daily 04:00
   { name: "bookkeepingQuarterlyPackCron", sla_hours: 2280 }, // quarterly Jan/Apr/Jul/Oct 1
   { name: "bookkeepingReceiptWatchdogCron", sla_hours: 204 }, // weekly Tue 07:00 (+ slack)
+  { name: "reapStaleAiJobsCron", sla_hours: 1 },       // every 15 min
 ]
 
 export interface ScannerInput {

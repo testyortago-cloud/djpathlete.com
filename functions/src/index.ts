@@ -366,10 +366,15 @@ export const newsletterSend = onDocumentCreated(
 // Triggered when a new ai_jobs doc is created with type "week_generation"
 // Generates a single new week for an existing assigned program
 
+// timeoutSeconds 1500 (25 min) with a 20-min wall-clock budget inside the handler
+// (WEEK_GENERATION_BUDGET_MS). Heavy runs — deep programs with a curated exercise
+// pool — legitimately exceeded the old 540s and were HARD-KILLED, which skipped
+// the catch block and left jobs wedged in "processing" forever. The 5-min gap is
+// the room the failure path needs to record status + email the coach.
 export const weekGeneration = onDocumentCreated(
   {
     document: "ai_jobs/{jobId}",
-    timeoutSeconds: 540,
+    timeoutSeconds: 1500,
     memory: "1GiB",
     region: "us-central1",
     secrets: allSecrets,
@@ -1984,6 +1989,50 @@ export const bookkeepingReceiptWatchdogCron = onSchedule(
       console.log("[bookkeepingReceiptWatchdogCron]", res.status, body)
     } catch (err) {
       console.error("[bookkeepingReceiptWatchdogCron] failed:", err)
+    }
+  },
+)
+
+// ─── Stale AI Job Reaper (every 15 min) ──────────────────────────────────────
+// A hard-killed function (platform timeout, OOM, crash) never runs its catch
+// block, so its ai_jobs doc keeps its in-flight status forever — and the
+// onDocumentCreated guard (`status !== "pending"` → return) makes it
+// unrecoverable, so no trigger retry can ever finish it. Observed in prod as a
+// week_generation job stuck in "processing" for 13 hours with the UI spinning.
+//
+// Handlers with their own wall-clock budget (lib/deadline.ts) now fail cleanly
+// on their own; this is the safety net for every other handler and for failure
+// modes no in-process guard can catch (OOM). Grace periods live in
+// lib/stale-ai-jobs.ts — long ones for job types completed by an external
+// worker or webhook, which legitimately sit idle in "processing".
+//
+// Deliberately NOT feature-flagged: it only ever moves already-dead jobs to
+// "failed", so there is no money or mass-email risk to gate (per the
+// no-default-feature-flags convention). It works Firestore directly rather than
+// delegating to a route, so it owns its own cron_runs row (single-owner rule).
+export const reapStaleAiJobsCron = onSchedule(
+  {
+    schedule: "*/15 * * * *",
+    timeZone: "Etc/UTC",
+    timeoutSeconds: 300,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [supabaseUrl, supabaseServiceRoleKey],
+  },
+  async () => {
+    const { getSupabase } = await import("./lib/supabase.js")
+    const { logCronStart, logCronEnd } = await import("./lib/cron-runs.js")
+    const { reapStaleAiJobs } = await import("./reap-stale-ai-jobs.js")
+
+    const supabase = getSupabase()
+    const runId = await logCronStart(supabase, "reapStaleAiJobsCron")
+    try {
+      const result = await reapStaleAiJobs()
+      await logCronEnd(supabase, runId, "success", result as unknown as Record<string, unknown>)
+      console.log("[reapStaleAiJobsCron]", result)
+    } catch (err) {
+      await logCronEnd(supabase, runId, "failed", { message: (err as Error).message })
+      throw err
     }
   },
 )
