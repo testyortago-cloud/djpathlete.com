@@ -7,13 +7,14 @@ import { createDeadline, DeadlineExceededError } from "./lib/deadline.js"
 
 /**
  * Wall-clock budget for the orchestration, strictly inside the function's
- * `timeoutSeconds` (1500s — see index.ts weekGeneration). The gap is deliberate:
- * when the budget blows we still need live container time to write
- * status="failed" to Firestore + RTDB and send the failure email. A hard
- * platform kill skips all of that and leaves the job wedged in "processing"
- * forever, unrecoverable because the trigger guard skips non-"pending" docs.
+ * `timeoutSeconds` (540s — the hard Eventarc ceiling for event-triggered gen2
+ * functions; see index.ts weekGeneration). The ~90s gap is deliberate: when the
+ * budget blows we still need live container time to write status="failed" to
+ * Firestore + RTDB and send the failure email. A hard platform kill skips all of
+ * that and leaves the job wedged in "processing" forever, unrecoverable because
+ * the trigger guard skips non-"pending" docs.
  */
-const WEEK_GENERATION_BUDGET_MS = 1_200_000 // 20 min
+const WEEK_GENERATION_BUDGET_MS = 450_000 // 7.5 min
 
 /** Write real-time status to RTDB so the client can listen for instant updates */
 async function updateRtdb(jobId: string, data: Record<string, unknown>) {

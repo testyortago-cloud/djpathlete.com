@@ -18,8 +18,9 @@ const REAPABLE_STATUSES = new Set(["pending", "processing", "streaming"])
 
 /**
  * Default grace for handlers that finish inside their own function invocation.
- * The longest such timeout is weekGeneration at 1500s (25 min), so 45 min leaves
- * a wide margin — the reaper must never race a job that is genuinely still running.
+ * 540s (9 min) is the Eventarc ceiling for event-triggered gen2 functions, so no
+ * such handler can legitimately run longer; 45 min leaves a wide margin — the
+ * reaper must never race a job that is genuinely still running.
  */
 export const DEFAULT_STALE_MS = 45 * 60_000
 

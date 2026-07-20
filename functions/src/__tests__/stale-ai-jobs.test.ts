@@ -63,7 +63,8 @@ describe("selectStaleJobs", () => {
   })
 
   it("leaves a job that is still inside its grace", () => {
-    // 25-min run = weekGeneration at its platform limit. Must not be touched.
+    // 25 min is already past the 9-min Eventarc ceiling, but still inside the
+    // grace — the reaper stays conservative rather than racing a live job.
     expect(selectStaleJobs([job({ updatedAtMs: NOW - 25 * MIN })], NOW)).toEqual([])
   })
 

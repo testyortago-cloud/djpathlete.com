@@ -366,15 +366,20 @@ export const newsletterSend = onDocumentCreated(
 // Triggered when a new ai_jobs doc is created with type "week_generation"
 // Generates a single new week for an existing assigned program
 
-// timeoutSeconds 1500 (25 min) with a 20-min wall-clock budget inside the handler
-// (WEEK_GENERATION_BUDGET_MS). Heavy runs — deep programs with a curated exercise
-// pool — legitimately exceeded the old 540s and were HARD-KILLED, which skipped
-// the catch block and left jobs wedged in "processing" forever. The 5-min gap is
-// the room the failure path needs to record status + email the coach.
+// 540s is the HARD CEILING for event-triggered (Eventarc) gen2 functions — only
+// HTTP functions can go to 3600s, and deploy rejects anything higher here. So the
+// fix for over-long runs is not more time; it is failing cleanly inside the time
+// we have. WEEK_GENERATION_BUDGET_MS (450s) blows first and leaves ~90s for the
+// catch path to record status="failed" and email the coach. Previously the
+// platform kill landed first, skipping the catch and wedging the job forever.
+//
+// If heavy runs (deep programs + a curated exercise pool) genuinely need more
+// than 7.5 min, the trigger has to move to Cloud Tasks (onTaskDispatched, 1800s)
+// — raising timeoutSeconds here cannot work.
 export const weekGeneration = onDocumentCreated(
   {
     document: "ai_jobs/{jobId}",
-    timeoutSeconds: 1500,
+    timeoutSeconds: 540,
     memory: "1GiB",
     region: "us-central1",
     secrets: allSecrets,
