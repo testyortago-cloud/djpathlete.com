@@ -14,7 +14,12 @@ import {
   verifyWithinWeekDuplicates,
 } from "./dedup-verify.js"
 import { getCoachPolicyFromFn, formatCoachPolicyAsInstructions } from "./coach-policy.js"
-import { getCoachRecentUsageFromFn, getClientRecentUsageFromFn, recordUsageFromFn, getClientFavoriteExerciseIds } from "./usage-history.js"
+import {
+  getCoachRecentUsageFromFn,
+  getClientRecentUsageFromFn,
+  recordUsageFromFn,
+  getClientFavoriteExerciseIds,
+} from "./usage-history.js"
 import { getSupabase } from "../lib/supabase.js"
 import { getSetting } from "../lib/system-settings.js"
 import {
@@ -41,6 +46,17 @@ import type { ProfileAnalysis } from "./types.js"
 import { z } from "zod"
 
 const MAX_RETRIES = 2
+
+// How far (in weeks, either direction) the dedup AVOID-list looks from the
+// target week. Bounds the prompt size regardless of program length — full-
+// history dedup scaled linearly with week number, so a Week 11+ generation
+// carried 10 weeks of "AVOID: ..." entries into the selector prompt. That's
+// both a bigger prompt AND a harder constraint to satisfy, so late-program
+// generations burned through all MAX_RETRIES selector attempts and blew the
+// 450s WEEK_GENERATION_BUDGET_MS ceiling (functions/src/week-generation.ts).
+// A window still catches the repetition a coach would actually notice
+// (recent weeks) without unbounded growth over a program's lifetime.
+const DEDUP_CONTEXT_WINDOW_WEEKS = 6
 
 // ─── Module-scope constants ──────────────────────────────────────────────────
 
@@ -258,9 +274,10 @@ const weekSkeletonSchema = programSkeletonSchema
  * Used to decide whether the AI should autoregulate or fall back to fixed progression.
  * Returns 1.0 when there are no logs (no signal to lose).
  */
-export function computeRpeLogQuality(
-  logs: Array<{ rpe?: number | null; weight_kg?: number | null }>,
-): { quality: number; sample_size: number } {
+export function computeRpeLogQuality(logs: Array<{ rpe?: number | null; weight_kg?: number | null }>): {
+  quality: number
+  sample_size: number
+} {
   if (logs.length === 0) return { quality: 1.0, sample_size: 0 }
   const withRpe = logs.filter((l) => l.rpe != null && l.rpe >= 1 && l.rpe <= 10).length
   return { quality: withRpe / logs.length, sample_size: logs.length }
@@ -328,6 +345,42 @@ function buildWeekFocusSummary(exercises: Record<string, unknown>[]): {
     }))
 }
 
+/**
+ * Windows existingExercises to `windowWeeks` of `targetWeekNumber` (both
+ * directions — so filling an earlier blank week still sees later weeks that
+ * already exist) and maps each row into the shape
+ * `buildPriorContextFromExistingExercises` expects. Exported for direct unit
+ * testing of the window boundary; see DEDUP_CONTEXT_WINDOW_WEEKS for why the
+ * dedup context is windowed rather than pulling full program history.
+ */
+export function buildDedupSourceExercises(
+  existingExercises: Record<string, unknown>[],
+  targetWeekNumber: number,
+  windowWeeks: number = DEDUP_CONTEXT_WINDOW_WEEKS,
+): { exercise_id: string; exercise_name: string; week_number: number; role: string; slot_group: string }[] {
+  return existingExercises
+    .filter((pe) => Math.abs((pe.week_number as number) - targetWeekNumber) <= windowWeeks)
+    .map((pe) => {
+      const ex = pe.exercises as { name?: string; movement_pattern?: string; primary_muscles?: string[] } | undefined
+      const orderIdx = pe.order_index as number
+      // Prefer DB-stored slot_role; fall back to inference for legacy rows.
+      let inferredRole = (pe.slot_role as string | null) ?? null
+      if (!inferredRole) {
+        if (orderIdx === 0) inferredRole = "warm_up"
+        else if (orderIdx <= 2) inferredRole = "primary_compound"
+        else inferredRole = "accessory"
+      }
+      const slotGroup = `${inferredRole}|${ex?.movement_pattern ?? "unknown"}|${(ex?.primary_muscles ?? []).sort().join(",")}`
+      return {
+        exercise_id: pe.exercise_id as string,
+        exercise_name: ex?.name ?? "Unknown",
+        week_number: pe.week_number as number,
+        role: inferredRole,
+        slot_group: slotGroup,
+      }
+    })
+}
+
 // ─── Pipeline ───────────────────────────────────────────────────────────────
 
 export async function generateWeekSync(
@@ -359,22 +412,23 @@ export async function generateWeekSync(
   await updateJobProgress("fetching_context", 1, "Loading program data & client logs")
 
   const favoritesEnabled = await getSetting<boolean>("exercise_favorites_ai_enabled", true)
-  const [program, existingExercises, fullLibrary, coachPolicy, coachUsage, clientUsage, favoriteIds] = await Promise.all([
-    getProgramById(request.program_id),
-    getProgramExercises(request.program_id),
-    getExercisesForAI(),
-    getCoachPolicyFromFn(requestedBy).catch((e) => {
-      console.warn("[week-orchestrator] coach policy fetch failed:", e instanceof Error ? e.message : e)
-      return null
-    }),
-    getCoachRecentUsageFromFn(requestedBy, 60).catch(() => new Map<string, number>()),
-    request.client_id
-      ? getClientRecentUsageFromFn(request.client_id, 90).catch(() => new Map<string, number>())
-      : Promise.resolve(new Map<string, number>()),
-    favoritesEnabled && request.client_id
-      ? getClientFavoriteExerciseIds(request.client_id).catch(() => new Set<string>())
-      : Promise.resolve(new Set<string>()),
-  ])
+  const [program, existingExercises, fullLibrary, coachPolicy, coachUsage, clientUsage, favoriteIds] =
+    await Promise.all([
+      getProgramById(request.program_id),
+      getProgramExercises(request.program_id),
+      getExercisesForAI(),
+      getCoachPolicyFromFn(requestedBy).catch((e) => {
+        console.warn("[week-orchestrator] coach policy fetch failed:", e instanceof Error ? e.message : e)
+        return null
+      }),
+      getCoachRecentUsageFromFn(requestedBy, 60).catch(() => new Map<string, number>()),
+      request.client_id
+        ? getClientRecentUsageFromFn(request.client_id, 90).catch(() => new Map<string, number>())
+        : Promise.resolve(new Map<string, number>()),
+      favoritesEnabled && request.client_id
+        ? getClientFavoriteExerciseIds(request.client_id).catch(() => new Set<string>())
+        : Promise.resolve(new Set<string>()),
+    ])
   console.log(
     `[week-orchestrator] policy: ${coachPolicy ? "loaded" : "none"}, coach usage: ${coachUsage.size}, client usage: ${clientUsage.size}`,
   )
@@ -385,8 +439,7 @@ export async function generateWeekSync(
   const poolIds = request.pool_exercise_ids
   const poolMode = request.pool_mode ?? "preferred"
   const allExercises = applyPoolFilter(fullLibrary, poolIds, "week-orchestrator", poolMode)
-  const preferredIds =
-    poolIds && poolIds.length > 0 && poolMode === "preferred" ? new Set(poolIds) : undefined
+  const preferredIds = poolIds && poolIds.length > 0 && poolMode === "preferred" ? new Set(poolIds) : undefined
   // poolActive only when STRICT — preferred mode keeps the full library available.
   // Declared early because the equipment + cross-day-dedup filters below branch on it.
   const poolActive = !!poolIds && poolIds.length > 0 && poolMode === "strict"
@@ -428,9 +481,7 @@ export async function generateWeekSync(
   const programExerciseIds = [...new Set(existingExercises.map((pe: { exercise_id: string }) => pe.exercise_id))]
   const recentProgress = request.client_id ? await getRecentProgress(request.client_id, programExerciseIds) : []
 
-  const logQuality = computeRpeLogQuality(
-    recentProgress as Array<{ rpe?: number | null; weight_kg?: number | null }>,
-  )
+  const logQuality = computeRpeLogQuality(recentProgress as Array<{ rpe?: number | null; weight_kg?: number | null }>)
   const lowQuality = logQuality.sample_size > 0 && logQuality.quality < 0.5
   console.log(
     `[week-orchestrator] log quality: ${(logQuality.quality * 100).toFixed(0)}% (n=${logQuality.sample_size})${lowQuality ? " — LOW: skip autoregulation" : ""}`,
@@ -798,26 +849,11 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
     )
   }
 
-  // Build dedup context from ALL existing program exercises (not just last 2 weeks)
-  const priorExercisesForDedup = existingExercises.map((pe: Record<string, unknown>) => {
-    const ex = pe.exercises as { name?: string; movement_pattern?: string; primary_muscles?: string[] } | undefined
-    const orderIdx = pe.order_index as number
-    // Prefer DB-stored slot_role; fall back to inference for legacy rows.
-    let inferredRole = (pe.slot_role as string | null) ?? null
-    if (!inferredRole) {
-      if (orderIdx === 0) inferredRole = "warm_up"
-      else if (orderIdx <= 2) inferredRole = "primary_compound"
-      else inferredRole = "accessory"
-    }
-    const slotGroup = `${inferredRole}|${ex?.movement_pattern ?? "unknown"}|${(ex?.primary_muscles ?? []).sort().join(",")}`
-    return {
-      exercise_id: pe.exercise_id as string,
-      exercise_name: ex?.name ?? "Unknown",
-      week_number: pe.week_number as number,
-      role: inferredRole,
-      slot_group: slotGroup,
-    }
-  })
+  // Build dedup context from exercises within DEDUP_CONTEXT_WINDOW_WEEKS of the
+  // target week (both directions, so filling an earlier blank week still sees
+  // later weeks that already exist) — see constant comment for why this is
+  // windowed rather than the full program history.
+  const priorExercisesForDedup = buildDedupSourceExercises(existingExercises, newWeekNumber)
 
   const priorContext = buildPriorContextFromExistingExercises(priorExercisesForDedup)
   console.log(
@@ -905,9 +941,7 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
       const dedupResult = verifyWeekAgainstExisting(assignment.assignments, skeleton.weeks[0], priorContext)
       const withinResult = verifyWithinWeekDuplicates(assignment.assignments, skeleton.weeks[0])
 
-      const crossWeekIssues = dedupResult.issues
-        .filter((i) => i.severity === "error")
-        .map((i) => `- ${i.message}`)
+      const crossWeekIssues = dedupResult.issues.filter((i) => i.severity === "error").map((i) => `- ${i.message}`)
       const withinWeekIssues = withinResult.issues.map((i) => `- ${i.message}`)
 
       const sections: string[] = []
@@ -955,9 +989,7 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
       // Verify dedup compliance — both cross-week AND within-week duplicates
       const dedupResult = verifyWeekAgainstExisting(assignment.assignments, skeleton.weeks[0], priorContext)
       const withinResult = verifyWithinWeekDuplicates(assignment.assignments, skeleton.weeks[0])
-      console.log(
-        `[week-orchestrator] Dedup verification: ${dedupResult.summary} | ${withinResult.summary}`,
-      )
+      console.log(`[week-orchestrator] Dedup verification: ${dedupResult.summary} | ${withinResult.summary}`)
 
       if (dedupResult.pass && withinResult.pass) break
 
@@ -1075,10 +1107,7 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
       .update({ ai_generation_params: { ...params, log_quality_history } })
       .eq("id", request.program_id)
   } catch (e) {
-    console.warn(
-      "[week-orchestrator] log_quality stamp failed (non-blocking):",
-      e instanceof Error ? e.message : e,
-    )
+    console.warn("[week-orchestrator] log_quality stamp failed (non-blocking):", e instanceof Error ? e.message : e)
   }
 
   // Only bump duration_weeks and total_weeks when appending a new week (not filling a blank or single day)

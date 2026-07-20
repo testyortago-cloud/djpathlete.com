@@ -56,6 +56,74 @@ vi.mock("../lib/supabase.js", () => {
   }
 })
 
+describe("buildDedupSourceExercises", () => {
+  function row(weekNumber: number, exerciseId: string) {
+    return {
+      exercise_id: exerciseId,
+      week_number: weekNumber,
+      order_index: 1,
+      slot_role: "accessory",
+      exercises: { name: exerciseId, movement_pattern: "push", primary_muscles: ["chest"] },
+    }
+  }
+
+  it("keeps only weeks within the window, in both directions", async () => {
+    const { buildDedupSourceExercises } = await import("../week-orchestrator.js")
+    const existing = [
+      row(1, "too-old"),
+      row(4, "in-window-before"),
+      row(10, "target-week-itself"),
+      row(16, "in-window-after"),
+      row(20, "too-new"),
+    ]
+
+    // Target week 10, window 6 → keeps weeks 4-16 inclusive, drops 1 and 20.
+    const result = buildDedupSourceExercises(existing, 10, 6)
+
+    expect(result.map((r) => r.exercise_id).sort()).toEqual(
+      ["in-window-after", "in-window-before", "target-week-itself"].sort(),
+    )
+  })
+
+  it("bounds context size regardless of how many weeks the program has run", async () => {
+    const { buildDedupSourceExercises } = await import("../week-orchestrator.js")
+    // A 20-week-deep program — full history would carry all 20 rows into the
+    // dedup prompt; the window should cap it well below that no matter how
+    // long the program gets.
+    const existing = Array.from({ length: 20 }, (_, i) => row(i + 1, `ex-${i + 1}`))
+
+    const result = buildDedupSourceExercises(existing, 20, 6)
+
+    expect(result.length).toBeLessThan(existing.length)
+    expect(result.length).toBe(7) // weeks 14-20 inclusive
+  })
+
+  it("maps role and slot_group the same way the previous full-history version did", async () => {
+    const { buildDedupSourceExercises } = await import("../week-orchestrator.js")
+    const existing = [
+      {
+        exercise_id: "ex-1",
+        week_number: 5,
+        order_index: 0,
+        slot_role: null,
+        exercises: { name: "Squat", movement_pattern: "squat", primary_muscles: ["quads", "glutes"] },
+      },
+    ]
+
+    const result = buildDedupSourceExercises(existing, 5)
+
+    expect(result).toEqual([
+      {
+        exercise_id: "ex-1",
+        exercise_name: "Squat",
+        week_number: 5,
+        role: "warm_up", // order_index 0, no slot_role → inferred
+        slot_group: "warm_up|squat|glutes,quads",
+      },
+    ])
+  })
+})
+
 describe("generateWeekSync wiring", () => {
   beforeEach(() => {
     callAgentMock.mockReset()
@@ -144,10 +212,7 @@ describe("generateWeekSync wiring", () => {
       })
 
     const { generateWeekSync } = await import("../week-orchestrator.js")
-    await generateWeekSync(
-      { program_id: "prog-1", client_id: "client-1" },
-      "coach-1",
-    ).catch(() => null) // ignore downstream Supabase failures; we're checking pre-generate fetches
+    await generateWeekSync({ program_id: "prog-1", client_id: "client-1" }, "coach-1").catch(() => null) // ignore downstream Supabase failures; we're checking pre-generate fetches
 
     expect(getCoachPolicyMock).toHaveBeenCalledWith("coach-1")
     expect(getCoachUsageMock).toHaveBeenCalledWith("coach-1", 60)
