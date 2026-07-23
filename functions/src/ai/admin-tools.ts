@@ -1,4 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk"
+import { stringSimilarity } from "string-similarity-js"
 import { getSupabase } from "../lib/supabase.js"
 import { fetchAllRows } from "../lib/paginate.js"
 import {
@@ -7,6 +8,12 @@ import {
   topCounterparties,
   type AggAccount,
 } from "../lib/bookkeeping-aggregate.js"
+
+// Typo tolerance for get_client_details. Names are short, so the bigram
+// similarity resolve-exercise.ts uses (FUZZY_MIN 0.72) is too strict here —
+// even a single adjacent-letter transposition ("vikarm" vs "vikram") scores
+// only ~0.4. 0.32 still scores unrelated common first names at 0.
+const FUZZY_CLIENT_MIN = 0.32
 
 // ─── Tool Definitions ───────────────────────────────────────────────────────
 
@@ -528,10 +535,35 @@ async function getClientDetails(clientName: string): Promise<string> {
     .eq("role", "client")
     .limit(500)
 
-  const matches = (clients ?? []).filter((c) => {
+  const allClients = clients ?? []
+
+  let matches = allClients.filter((c) => {
     const fullName = `${c.first_name} ${c.last_name}`.toLowerCase()
     return searchTerms.every((term) => fullName.includes(term))
   })
+
+  // Exact substring match found nothing — a typo (missing/swapped letter)
+  // shouldn't be a dead end, so fall back to closest name by similarity.
+  let fuzzyNote = ""
+  if (matches.length === 0 && allClients.length > 0) {
+    const query = clientName.toLowerCase().trim()
+    const scored = allClients
+      .map((c) => {
+        const first = (c.first_name ?? "").toLowerCase()
+        const last = (c.last_name ?? "").toLowerCase()
+        // A typo'd query is usually just the first (or last) name on its own,
+        // so scoring the full "first last" string alone would dilute the match.
+        const score = Math.max(stringSimilarity(query, `${first} ${last}`), stringSimilarity(query, first), stringSimilarity(query, last))
+        return { client: c, score }
+      })
+      .filter((s) => s.score >= FUZZY_CLIENT_MIN)
+      .sort((a, b) => b.score - a.score)
+
+    if (scored.length > 0) {
+      matches = scored.slice(0, 3).map((s) => s.client)
+      fuzzyNote = `(No exact match for "${clientName}" — showing the closest name match${matches.length > 1 ? "es" : ""} found. Confirm with Darren if this isn't who he meant.)\n\n`
+    }
+  }
 
   if (matches.length === 0) return `No client found matching "${clientName}".`
 
@@ -626,7 +658,7 @@ async function getClientDetails(clientName: string): Promise<string> {
     sections.push(`... and ${matches.length - 3} more matching clients`)
   }
 
-  return sections.join("\n\n")
+  return fuzzyNote + sections.join("\n\n")
 }
 
 async function getRevenue(): Promise<string> {
