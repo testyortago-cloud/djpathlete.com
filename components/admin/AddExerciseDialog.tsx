@@ -31,6 +31,7 @@ import {
   type TrainingTechniqueOption,
 } from "@/lib/validators/program-exercise"
 import { ExerciseLinker } from "@/components/admin/ExerciseLinker"
+import { ExerciseInstructionsHint } from "@/components/admin/ExerciseInstructionsHint"
 import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
 import { humanizeFieldError, summarizeApiError, type FieldErrors } from "@/lib/errors/humanize"
 
@@ -565,6 +566,8 @@ export function AddExerciseDialog({
                         Client must record a video of this exercise
                       </Label>
                     </div>
+
+                    <ExerciseInstructionsHint instructions={selectedExercise!.instructions} />
 
                     <div className="space-y-2">
                       <Label htmlFor="notes">Notes</Label>
