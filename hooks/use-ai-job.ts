@@ -70,11 +70,36 @@ export function useAiJob(jobId: string | null): AiJobResult & { reset: () => voi
     processedIndices.current.clear()
   }, [])
 
+  // Reset synchronously the instant `jobId` changes, DURING render — not in
+  // an effect. An effect-based reset runs after commit, so on the render
+  // where `jobId` first flips to a new job, `status`/`text` still reflect the
+  // PREVIOUS (often already-`completed`, fully-populated) job for one paint.
+  // A consumer reading `status`/`text` on that render — e.g. the "apply job
+  // update" effect in AdminAiChat, which fires on every `status`/`text`
+  // change — sees "new jobId, old job's finished answer" and immediately
+  // marks the new placeholder "done" with the stale content: the answer
+  // appears instantly, with no tool-search indicator, because nothing new
+  // was ever actually rendered. Adjusting state directly in the render body
+  // (React's documented pattern for resetting state on a prop change) makes
+  // React redo this render with fresh state before anything downstream sees
+  // the mismatched pair.
+  const jobIdRef = useRef(jobId)
+  if (jobIdRef.current !== jobId) {
+    jobIdRef.current = jobId
+    setStatus("pending")
+    setText("")
+    setChunks([])
+    setAnalysis(null)
+    setProgramCreated(null)
+    setMessageId(null)
+    setError(null)
+    setResult(null)
+    setActiveTools([])
+    processedIndices.current.clear()
+  }
+
   useEffect(() => {
     if (!jobId) return
-
-    // Reset state for new job
-    reset()
 
     let cancelled = false
     const jobRef = doc(db, "ai_jobs", jobId)
@@ -177,7 +202,7 @@ export function useAiJob(jobId: string | null): AiJobResult & { reset: () => voi
       jobUnsub()
       chunksUnsub()
     }
-  }, [jobId, reset])
+  }, [jobId])
 
   return { status, text, chunks, analysis, programCreated, messageId, error, result, activeTools, reset }
 }
