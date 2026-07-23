@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import { ClientLayout } from "@/components/client/ClientLayout"
 import { QuestionnaireGate } from "@/components/client/QuestionnaireGate"
+import { SessionExpiryGuard } from "@/components/auth/SessionExpiryGuard"
 import { WeightUnitProvider } from "@/hooks/use-weight-unit"
 import { getProfileByUserId } from "@/lib/db/client-profiles"
 import { clientPackBalanceEnabled } from "@/lib/packs/flags"
@@ -30,6 +31,7 @@ export default async function ClientRootLayout({ children }: { children: React.R
 
   return (
     <WeightUnitProvider initialUnit={weightUnit}>
+      <SessionExpiryGuard />
       <QuestionnaireGate hasCompleted={hasCompletedQuestionnaire}>
         <ClientLayout flags={{ sessions: showSessions }}>{children}</ClientLayout>
       </QuestionnaireGate>

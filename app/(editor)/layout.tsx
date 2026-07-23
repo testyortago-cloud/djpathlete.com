@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import { EditorShell } from "@/components/editor/EditorShell"
+import { SessionExpiryGuard } from "@/components/auth/SessionExpiryGuard"
 
 export default async function EditorLayout({ children }: { children: React.ReactNode }) {
   const session = await auth()
@@ -9,8 +10,11 @@ export default async function EditorLayout({ children }: { children: React.React
     redirect("/client/dashboard")
   }
   return (
-    <EditorShell user={{ name: session.user.name ?? "Editor", email: session.user.email ?? "" }}>
-      {children}
-    </EditorShell>
+    <>
+      <SessionExpiryGuard />
+      <EditorShell user={{ name: session.user.name ?? "Editor", email: session.user.email ?? "" }}>
+        {children}
+      </EditorShell>
+    </>
   )
 }

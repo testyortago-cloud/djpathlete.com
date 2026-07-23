@@ -4,7 +4,7 @@ import { useState } from "react"
 import { signIn } from "next-auth/react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
-import { Eye, EyeOff } from "lucide-react"
+import { Eye, EyeOff, Clock } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
@@ -13,6 +13,7 @@ export function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const callbackUrl = searchParams.get("callbackUrl")
+  const sessionExpired = searchParams.get("expired") === "1"
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
@@ -82,6 +83,16 @@ export function LoginForm() {
         <h1 className="text-2xl font-semibold text-primary tracking-tight">Welcome back</h1>
         <p className="mt-2 text-sm text-muted-foreground">Log in to your DJP Athlete account</p>
       </div>
+
+      {sessionExpired && !error && (
+        <div
+          role="status"
+          className="mb-4 flex items-start gap-2 rounded-xl border border-accent/40 bg-accent/10 p-4 text-sm text-foreground"
+        >
+          <Clock className="size-4 mt-0.5 shrink-0 text-accent" />
+          <p>Your session ended, so we signed you out to keep your account safe. Log in again to pick up where you left off.</p>
+        </div>
+      )}
 
       <div className="mb-4">
         <FormErrorBanner message={error} />

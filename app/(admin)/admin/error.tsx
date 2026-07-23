@@ -1,7 +1,10 @@
 "use client"
 
 import { useEffect } from "react"
+import { getSession } from "next-auth/react"
 import { ErrorState } from "@/components/shared/ErrorState"
+import { loginRedirectUrl } from "@/components/auth/SessionExpiryGuard"
+import { hardNavigate } from "@/lib/hard-navigate"
 
 export default function AdminError({
   error,
@@ -13,6 +16,22 @@ export default function AdminError({
   useEffect(() => {
     console.error("[admin] Unhandled error:", error)
   }, [error])
+
+  // A stale tab whose session expired can crash into this boundary before the
+  // SessionExpiryGuard reacts. If the session is gone, this was never a real
+  // page error — send them to log back in instead.
+  useEffect(() => {
+    let cancelled = false
+    getSession()
+      .then((session) => {
+        if (cancelled || session) return
+        hardNavigate(loginRedirectUrl(window.location.pathname, window.location.search))
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   return (
     <div className="p-6">
