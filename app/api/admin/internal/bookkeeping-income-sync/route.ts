@@ -46,7 +46,10 @@ export async function POST(request: NextRequest) {
     const watermark = await latestPlatformImportDate(book.id)
     const { from, to } = computeSyncWindow(watermark, today)
 
-    const sources = await listPlatformIncome(from, to)
+    // strict: a source-table read failure here must fail the run (throw → logCronEnd
+    // "failed" + 500 → health watchdog) rather than silently degrading to [] and
+    // letting the watermark advance past that table's unread income.
+    const sources = await listPlatformIncome(from, to, { strict: true })
     const { drafts, warnings } = buildIncomeDrafts(sources, { from, to })
     const accounts = await listAccounts(book.id)
     const withAccounts = drafts.map((d) => ({

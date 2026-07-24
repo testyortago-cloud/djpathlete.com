@@ -211,11 +211,13 @@ export async function latestPlatformImportDate(bookId: string): Promise<string |
   return (data as { occurred_on: string } | null)?.occurred_on ?? null
 }
 
-// ── Platform income reads (each paginated; missing table → [] + noop) ──────
-async function safeAll<T>(builder: (from: number, to: number) => unknown): Promise<T[]> {
+// ── Platform income reads (each paginated; missing table → [] + noop, unless
+//    strict — see listPlatformIncome's opts.strict) ────────────────────────
+async function safeAll<T>(builder: (from: number, to: number) => unknown, strict = false): Promise<T[]> {
   try {
     return await fetchAllRows<T>(builder as never)
   } catch (err) {
+    if (strict) throw err
     console.warn("[bookkeeping] platform-income source read failed (skipped):", (err as Error).message)
     return []
   }
@@ -251,21 +253,31 @@ async function lookupProgramNames(ids: string[]): Promise<Map<string, string>> {
   return map
 }
 
-export async function listPlatformIncome(from: string, to: string): Promise<IncomeSourceRows> {
+export async function listPlatformIncome(
+  from: string,
+  to: string,
+  opts?: { strict?: boolean },
+): Promise<IncomeSourceRows> {
   const fromTs = `${from}T00:00:00Z`
   const toTs = `${to}T23:59:59Z`
+  const strict = opts?.strict ?? false
   const [payments, shopOrders, clientPackages, eventSignups, memberships] = await Promise.all([
     safeAll<IncomeSourceRows["payments"][number]>((f, t) =>
-      db().from("payments").select("*").gte("created_at", fromTs).lte("created_at", toTs).range(f, t)),
+      db().from("payments").select("*").gte("created_at", fromTs).lte("created_at", toTs).range(f, t), strict),
     safeAll<IncomeSourceRows["shopOrders"][number]>((f, t) =>
-      db().from("shop_orders").select("*").gte("created_at", fromTs).lte("created_at", toTs).range(f, t)),
+      db().from("shop_orders").select("*").gte("created_at", fromTs).lte("created_at", toTs).range(f, t), strict),
+    // .or() widens the window to also catch offline packs (Venmo/cash) whose
+    // pending→paid flip happens well after purchased_at — set_updated_at bumps
+    // updated_at on that flip (DB trigger), so a late paid-flip is still caught
+    // once updated_at falls in-window, even though purchased_at is stale.
     safeAll<IncomeSourceRows["clientPackages"][number]>((f, t) =>
-      db().from("client_packages").select("*, session_pack_products(name)").gte("purchased_at", fromTs).lte("purchased_at", toTs).range(f, t)),
+      db().from("client_packages").select("*, session_pack_products(name)")
+        .lte("purchased_at", toTs).or(`purchased_at.gte.${fromTs},updated_at.gte.${fromTs}`).range(f, t), strict),
     safeAll<IncomeSourceRows["eventSignups"][number]>((f, t) =>
-      db().from("event_signups").select("*, events(title,type)").gte("created_at", fromTs).lte("created_at", toTs).range(f, t)),
+      db().from("event_signups").select("*, events(title,type)").gte("created_at", fromTs).lte("created_at", toTs).range(f, t), strict),
     safeAll<IncomeSourceRows["memberships"][number]>((f, t) =>
       db().from("client_memberships").select("*, membership_plans(name,price_cents,billing_interval)")
-        .lte("created_at", toTs).or(`canceled_at.is.null,canceled_at.gte.${fromTs}`).range(f, t)),
+        .lte("created_at", toTs).or(`canceled_at.is.null,canceled_at.gte.${fromTs}`).range(f, t), strict),
   ])
   // Flatten embedded names so the pure adapter stays schema-light.
   const base: IncomeSourceRows = {

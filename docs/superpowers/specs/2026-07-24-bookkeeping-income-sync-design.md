@@ -149,3 +149,25 @@ computeSyncWindow(latestPlatformImportDate: string | null, today: string):
   warning stands until Phase 6e statement/payout ingestion.
 - Spouse / Household books — platform income is inherently the primary business's.
 - Any change to the manual import UI or `insertImportedEntries`.
+
+## 2026-07-24 final-review amendments
+
+Two Important findings from the final review closed out post-approval. **Amends D4:**
+`listPlatformIncome` gained an optional third parameter, `opts?: { strict?: boolean }`;
+default behavior (degrade a failing source-table read to `[]`) is byte-identical and
+the manual import route's call is untouched, but the cron route now passes
+`{ strict: true }` so a source-table failure throws instead of silently dropping
+that table's income while the watermark still advances — `safeAll` threads the
+flag and rethrows on error in strict mode. Composition is otherwise unchanged; one
+shared helper gained an opt-in strict mode, nothing was forked. **Amends D2/section
+5's coverage claim:** the `client_packages` arm's window is widened from
+`purchased_at` alone to `purchased_at.gte OR updated_at.gte` (still `AND
+purchased_at.lte`), matching the memberships arm's existing `.or()` pattern, so an
+owed offline pack (Venmo/cash) whose `pending → paid` flip lands more than 14 days
+after `purchased_at` — bumping `updated_at` via the `set_updated_at` trigger — is
+still caught by a later run instead of falling out of every future window. The
+adapter needs no change: it already filters to `payment_status === 'paid'` and
+keys drafts on the stable `client_packages:{id}` source_ref, so nightly
+re-emission while `updated_at` stays in-window is idempotent (upsert
+`ignoreDuplicates`). This widening also benefits the manual import (strictly more
+complete, dedupe-safe).

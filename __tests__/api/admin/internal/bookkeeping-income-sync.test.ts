@@ -88,9 +88,13 @@ describe("POST /api/admin/internal/bookkeeping-income-sync", () => {
     // Byte-identical cron name (single-owner contract)
     expect(logCronStart).toHaveBeenCalledWith(expect.anything(), "bookkeepingIncomeSyncCron")
     // Window derived from the watermark: from is deterministic (watermark − 14d)
-    const [from, to] = (listPlatformIncome as ReturnType<typeof vi.fn>).mock.calls[0]
+    const [from, to, opts] = (listPlatformIncome as ReturnType<typeof vi.fn>).mock.calls[0]
     expect(from).toBe("2026-07-06")
     expect(to).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    // Cron path opts into strict source reads — a failing table must fail the
+    // run rather than silently degrade to [] and let the watermark advance
+    // past unread income (finding 1).
+    expect(opts).toEqual({ strict: true })
     // The REAL adapter emitted the pack draft; the REAL matcher assigned the account
     const [bookId, batchId, drafts] = (insertImportedEntries as ReturnType<typeof vi.fn>).mock.calls[0]
     expect(bookId).toBe(BOOK)
@@ -144,6 +148,17 @@ describe("POST /api/admin/internal/bookkeeping-income-sync", () => {
     await POST(makeRequest())
     const detail = (logCronEnd as ReturnType<typeof vi.fn>).mock.calls[0][3]
     expect(detail.warnings.some((w: string) => w.includes("refunded"))).toBe(true)
+  })
+
+  it("a strict source-table read failure (listPlatformIncome rejects) → 500 + logCronEnd failed", async () => {
+    ;(listPlatformIncome as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("payments boom"))
+    const res = await POST(makeRequest())
+    expect(res.status).toBe(500)
+    expect(insertImportedEntries).not.toHaveBeenCalled()
+    expect(logCronEnd).toHaveBeenCalledWith(
+      expect.anything(), "run-1", "failed",
+      expect.objectContaining({ message: expect.stringContaining("payments boom") }),
+    )
   })
 
   it("no primary business book → 500 + logCronEnd failed", async () => {
