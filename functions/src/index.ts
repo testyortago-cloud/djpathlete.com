@@ -1998,6 +1998,48 @@ export const bookkeepingReceiptWatchdogCron = onSchedule(
   },
 )
 
+// Bookkeeping income sync. POSTs to /api/admin/internal/bookkeeping-income-sync,
+// which sweeps the money-of-record tables through the manual import's exact
+// pipeline and posts new income to the primary business book (idempotent —
+// UNIQUE(book_id,source,source_ref) + alt_ref dedupe). Gated by
+// system_settings.cron_bookkeeping_income_sync_enabled (default false, seeded
+// by migration 00190). The route owns logCronStart/logCronEnd under
+// "bookkeepingIncomeSyncCron" — this function must NOT log cron_runs itself
+// (single-owner rule). Pure fetch-delegator: only internalCronToken + appUrl.
+export const bookkeepingIncomeSyncCron = onSchedule(
+  {
+    schedule: "30 4 * * *",
+    timeZone: "Etc/UTC",
+    timeoutSeconds: 120,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [internalCronToken, appUrl],
+  },
+  async () => {
+    const baseUrl = process.env.APP_URL
+    const token = process.env.INTERNAL_CRON_TOKEN
+    if (!baseUrl || !token) {
+      console.error("[bookkeepingIncomeSyncCron] APP_URL or INTERNAL_CRON_TOKEN missing — abort")
+      return
+    }
+    try {
+      const res = await fetch(`${baseUrl}/api/admin/internal/bookkeeping-income-sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: "{}",
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        console.error("[bookkeepingIncomeSyncCron]", res.status, body)
+        return
+      }
+      console.log("[bookkeepingIncomeSyncCron]", res.status, body)
+    } catch (err) {
+      console.error("[bookkeepingIncomeSyncCron] failed:", err)
+    }
+  },
+)
+
 // ─── Stale AI Job Reaper (every 15 min) ──────────────────────────────────────
 // A hard-killed function (platform timeout, OOM, crash) never runs its catch
 // block, so its ai_jobs doc keeps its in-flight status forever — and the
