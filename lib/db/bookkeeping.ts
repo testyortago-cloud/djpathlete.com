@@ -196,6 +196,21 @@ export async function insertImportedEntries(
   return { inserted: (data ?? []).length, rejected_closed, rejected_closed_rows, skipped_alt_ref: skippedAlt }
 }
 
+/** Latest occurred_on among the book's posted platform-import entries —
+ *  the income-sync cron's watermark (spec D2). Null when none exist. */
+export async function latestPlatformImportDate(bookId: string): Promise<string | null> {
+  const { data, error } = await db()
+    .from("bookkeeping_ledger_entries")
+    .select("occurred_on")
+    .eq("book_id", bookId)
+    .eq("source", "platform_import")
+    .order("occurred_on", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  return (data as { occurred_on: string } | null)?.occurred_on ?? null
+}
+
 // ── Platform income reads (each paginated; missing table → [] + noop) ──────
 async function safeAll<T>(builder: (from: number, to: number) => unknown): Promise<T[]> {
   try {
