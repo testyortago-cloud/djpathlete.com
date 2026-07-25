@@ -96,6 +96,20 @@ describe("flagStatementDuplicates — exact payout layer (Track A)", () => {
     expect(miss.possibleDuplicate).toBe(false)
     expect(miss.matchedPayoutId).toBeUndefined()
   })
+  it("±2d window is SYMMETRIC: bank dates BEFORE arrival_date match too (−1, −2 in; −3 out)", () => {
+    // Banks routinely post a Stripe ACH deposit a day or two before Stripe's
+    // stated arrival_date. Only probing dates at/after arrival would leave a
+    // one-sided `rowDate - arrival` window passing every test.
+    const opts = { payouts: [payout()] } // arrival 2026-07-04
+    const [minus1] = flagStatementDuplicates([inc({ occurred_on: "2026-07-03" })], [], opts)
+    expect(minus1.matchedPayoutId).toBe("bp-1")
+    const [minus2] = flagStatementDuplicates([inc({ occurred_on: "2026-07-02" })], [], opts)
+    expect(minus2.matchedPayoutId).toBe("bp-1")
+    const [minus3] = flagStatementDuplicates([inc({ occurred_on: "2026-07-01" })], [], opts)
+    expect(minus3.matchedPayoutId).toBeUndefined()
+    expect(minus3.possibleDuplicate).toBe(false)
+    expect(minus3.newCandidate).toBe(true)
+  })
   it("non-paid payouts are never matched (in_transit excluded)", () => {
     const [r] = flagStatementDuplicates([inc()], [], { payouts: [payout({ status: "in_transit" })] })
     expect(r.possibleDuplicate).toBe(false)
@@ -131,12 +145,89 @@ describe("flagStatementDuplicates — exact payout layer (Track A)", () => {
     expect(out[1].possibleDuplicate).toBe(false)
     expect(out[1].newCandidate).toBe(true)
   })
-  it("payout layer does not consume posted entries: layer-2 pool stays intact for other rows", () => {
-    // row 1 matches the payout; row 2 (different amount ≈ platform sum) still aggregate-matches
-    const rows = [inc(), inc({ amount_cents: 9600, occurred_on: "2026-07-05" })]
-    const platform = [posted({ id: "a", amount_cents: 6000 }), posted({ id: "b", amount_cents: 4000 })]
-    const out = flagStatementDuplicates(rows, platform, { payouts: [payout()] })
+  it("a claimed payout also consumes the platform income it is COMPOSED OF — a later unrelated deposit is not re-flagged off the same batch", () => {
+    // bp-1 = $500 net arriving 07-04, composed of the $200 (07-02) + $300 (07-03)
+    // platform_import entries. If the payout layer leaves those entries in the
+    // pool, the aggregate layer re-spends the very same $500 batch against the
+    // genuine, unrelated $500 client cheque banked on 07-05 and pre-excludes it
+    // as a "probable Stripe payout of $500.00" — real income dropped silently.
+    const platform = [
+      posted({ id: "a", amount_cents: 20000, occurred_on: "2026-07-02" }),
+      posted({ id: "b", amount_cents: 30000, occurred_on: "2026-07-03" }),
+    ]
+    const rows = [
+      inc({ amount_cents: 50000, occurred_on: "2026-07-04", description: "STRIPE PAYOUT" }),
+      inc({ amount_cents: 50000, occurred_on: "2026-07-05", description: "CHECK DEPOSIT 1042" }),
+    ]
+    const out = flagStatementDuplicates(rows, platform, { payouts: [payout({ net_cents: 50000, arrival_date: "2026-07-04" })] })
     expect(out[0].matchedPayoutId).toBe("bp-1")
+    expect(out[1].possibleDuplicate).toBe(false)
+    expect(out[1].matchedEntry).toBeNull()
+    expect(out[1].reason ?? "").not.toMatch(/probable Stripe payout/)
+    expect(out[1].newCandidate).toBe(true)
+  })
+  it("payout consumption is SCOPED to its own window — platform income outside it still aggregate-matches", () => {
+    // Guards the opposite over-correction: claiming a payout must not drain the
+    // whole posted pool, only the entries inside the payout's own trailing window.
+    const platform = [
+      posted({ id: "a", amount_cents: 20000, occurred_on: "2026-07-02" }),
+      posted({ id: "b", amount_cents: 30000, occurred_on: "2026-07-03" }),
+      posted({ id: "c", amount_cents: 6000, occurred_on: "2026-07-18" }),
+      posted({ id: "d", amount_cents: 4000, occurred_on: "2026-07-19" }),
+    ]
+    const rows = [
+      inc({ amount_cents: 50000, occurred_on: "2026-07-04" }),
+      inc({ amount_cents: 9700, occurred_on: "2026-07-20" }), // ≈ $100 gross minus fees
+    ]
+    const out = flagStatementDuplicates(rows, platform, { payouts: [payout({ net_cents: 50000, arrival_date: "2026-07-04" })] })
+    expect(out[0].matchedPayoutId).toBe("bp-1")
+    expect(out[1].possibleDuplicate).toBe(true)
     expect(out[1].reason).toMatch(/probable Stripe payout/)
+  })
+  it("payout constituents are claimed off the payout's ARRIVAL date, not the bank row's date", () => {
+    // Bank posted the deposit 2 days EARLY (07-02) for a payout arriving 07-04.
+    // Anchoring the consumption window on the bank row would look back from
+    // 07-02 and miss the 07-03 constituent, leaving it re-spendable.
+    const platform = [
+      posted({ id: "a", amount_cents: 20000, occurred_on: "2026-07-03" }),
+      posted({ id: "b", amount_cents: 30000, occurred_on: "2026-07-04" }),
+    ]
+    const rows = [
+      inc({ amount_cents: 50000, occurred_on: "2026-07-02", description: "STRIPE PAYOUT" }),
+      inc({ amount_cents: 50000, occurred_on: "2026-07-06", description: "CHECK DEPOSIT 1042" }),
+    ]
+    const out = flagStatementDuplicates(rows, platform, { payouts: [payout({ net_cents: 50000, arrival_date: "2026-07-04" })] })
+    expect(out[0].matchedPayoutId).toBe("bp-1")
+    expect(out[1].possibleDuplicate).toBe(false)
+    expect(out[1].newCandidate).toBe(true)
+  })
+  it("nearest-arrival matching is greedy per row in (occurred_on, index) order — NOT a global assignment", () => {
+    // Documented limitation, pinned deliberately. bp-1 arrives 07-05; the 07-03
+    // coincidental cheque is matched FIRST (earlier occurred_on) and is 2d away,
+    // so it claims the payout the 07-05 line actually needed. Output order still
+    // follows INPUT order, so out[0] is the 07-05 row.
+    const rows = [
+      inc({ occurred_on: "2026-07-05", description: "STRIPE PAYOUT" }),
+      inc({ occurred_on: "2026-07-03", description: "CHECK DEPOSIT 1042" }),
+    ]
+    const out = flagStatementDuplicates(rows, [], { payouts: [payout({ arrival_date: "2026-07-05" })] })
+    expect(out[1].matchedPayoutId).toBe("bp-1")
+    expect(out[0].matchedPayoutId).toBeUndefined()
+    expect(out[0].possibleDuplicate).toBe(false)
+  })
+  it("a hard internal-transfer income row never reaches the payout layer, and leaves the payout unconsumed", () => {
+    // Stripe's own ACH company entry description is literally "STRIPE TRANSFER",
+    // which HARD_TRANSFER_RE classifies as `is_transfer` upstream — so the payout
+    // layer does not annotate it. The money default is identical (excluded), and
+    // critically the payout stays available for a real bank line.
+    const rows = [
+      inc({ is_transfer: true, description: "STRIPE TRANSFER ST-A1B2C3" }),
+      inc({ description: "DEPOSIT" }),
+    ]
+    const out = flagStatementDuplicates(rows, [], { payouts: [payout()] })
+    expect(out[0].matchedPayoutId).toBeUndefined()
+    expect(out[0].reason).toMatch(/internal transfer/)
+    expect(out[0].defaultInclude).toBe(false)
+    expect(out[1].matchedPayoutId).toBe("bp-1")
   })
 })

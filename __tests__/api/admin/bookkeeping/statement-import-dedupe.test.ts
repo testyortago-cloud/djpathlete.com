@@ -140,6 +140,30 @@ describe("POST /api/admin/bookkeeping/statement-import/dedupe", () => {
     expect(json.rows[0].reason).toContain("po_1")
   })
 
+  // Pins the documented limitation of the payout layer. Stripe's own ACH company
+  // entry description is literally "STRIPE TRANSFER", and HARD_TRANSFER_RE matches
+  // the bare word `transfer` — so this row is HARD-classified as an internal
+  // transfer upstream of the dedupe layers and never reaches the payout matcher.
+  // The money outcome is unchanged (income always defaults to excluded); what is
+  // lost is only the matchedPayoutId annotation. Note also that `transferSuspect`
+  // (the SOFT signal) is unreachable for income at all — transferSuspicion() only
+  // returns "soft" for expense rows — so a payout-vs-soft-suspect precedence race
+  // cannot occur through this route.
+  it("a 'STRIPE TRANSFER' income deposit is hard-classified, so the payout layer never annotates it", async () => {
+    listPayoutsForDedupeMock.mockResolvedValue([
+      { id: "bp-1", stripe_payout_id: "po_1", net_cents: 5000, arrival_date: "2026-01-05", status: "paid" },
+    ])
+    const incomeRow = row({ direction: "income", amount_cents: 5000, description: "STRIPE TRANSFER ST-A1B2C3D4", occurred_on: "2026-01-05" })
+    const res = await POST(req({ book_id: BOOK, rows: [incomeRow] }) as never)
+    expect(res.status).toBe(200)
+    const json = await res.json()
+    expect(json.rows[0].row.is_transfer).toBe(true)
+    expect(json.rows[0].row.transferSuspect).toBe(false)
+    expect(json.rows[0].matchedPayoutId).toBeUndefined()
+    expect(json.rows[0].reason).toMatch(/internal transfer/)
+    expect(json.rows[0].defaultInclude).toBe(false)
+  })
+
   it("empty rows short-circuit still makes NO payout DAL read", async () => {
     await POST(req({ book_id: BOOK, rows: [] }) as never)
     expect(listPayoutsForDedupeMock).not.toHaveBeenCalled()

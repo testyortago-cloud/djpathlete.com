@@ -154,11 +154,19 @@ function annotateIncome(
   }
 
   // 1b. Exact payout-net (Decision A-8): the bank line IS a Stripe payout
-  // deposit — net match ±0¢, arrival ±2d, status 'paid' only. SEPARATE
-  // consumedPayouts set: one bank line consumes one payout, and this layer
-  // never touches the posted-entry pool (layers 1/2 keep their pool intact
-  // for other rows). Flags, never drops — the coach can still include the
-  // row (the membership-revenue escape hatch).
+  // deposit — net match ±0¢, arrival ±2d (SYMMETRIC: the bank may post the
+  // deposit before or after Stripe's stated arrival_date), status 'paid' only.
+  // SEPARATE consumedPayouts set so payouts and posted entries stay distinct
+  // pools: one bank line consumes one payout, one payout satisfies one bank
+  // line. Flags, never drops — the coach can still include the row (the
+  // membership-revenue escape hatch).
+  //
+  // Nearest-arrival-wins is greedy PER ROW, evaluated in (occurred_on, index)
+  // order — not a global optimal assignment. A coincidental earlier deposit at
+  // the same amount can therefore claim the payout that a later, genuine payout
+  // deposit needed. Deliberate + pinned: a global assignment is out of scope,
+  // and every income row defaults to include=false either way, so the worst
+  // case is a mis-attributed annotation, never an auto-posted dollar.
   let bestPayout: PayoutRef | null = null
   let bestPayoutDiff = Infinity
   for (const po of payouts) {
@@ -174,6 +182,22 @@ function annotateIncome(
   }
   if (bestPayout) {
     consumedPayouts.add(bestPayout.id)
+    // Claim the platform_import income this payout is COMPOSED OF as well.
+    // Without this the constituent entries stay in the unconsumed pool and
+    // layers 1/2 can re-spend that same batch against a LATER, unrelated bank
+    // deposit — e.g. a $500 payout matched here on 07-04 leaves its $200+$300
+    // platform entries free, and a genuine $500 client cheque banked 07-05 then
+    // aggregate-matches them and is flagged "probable Stripe payout of $500.00"
+    // (real income quietly pre-excluded from the books).
+    //
+    // Anchored on the payout's OWN arrival_date, not the bank row's date: a
+    // payout's constituents occur in the days BEFORE it arrives, so the trailing
+    // window must hang off the arrival date even when the bank posted the
+    // deposit up to 2 days early. Same helper + window as layer 2 so both layers
+    // agree on what "inside the payout window" means.
+    for (const p of platformIncomeInWindow(bestPayout.arrival_date, posted, consumed, windowDays)) {
+      consumed.add(p.id)
+    }
     return {
       row,
       possibleDuplicate: true,
@@ -329,8 +353,10 @@ export function flagStatementDuplicates(
   const payouts = opts?.payouts ?? []
 
   const consumed = new Set<string>()
-  // Deliberately SEPARATE from `consumed` — the payout layer must never remove
-  // a posted entry from layers 1/2's pool (Decision A-8).
+  // Deliberately SEPARATE from `consumed` — payouts and posted ledger entries
+  // are distinct pools (a payout is not an entry). The payout layer DOES also
+  // consume the platform_import entries inside its own window, so a payout's
+  // constituents can never be double-spent by layers 1/2 on a later row.
   const consumedPayouts = new Set<string>()
   const results: AnnotatedStatementRow[] = new Array(rows.length)
 
