@@ -1,10 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
-vi.mock("@/lib/db/system-settings", () => ({ isCronSkipped: vi.fn(), getSetting: vi.fn() }))
+vi.mock("@/lib/db/system-settings", () => ({
+  isCronSkipped: vi.fn(),
+  getSetting: vi.fn(),
+  setSetting: vi.fn(),
+}))
 vi.mock("@/lib/supabase", () => ({ createServiceRoleClient: vi.fn(() => ({})) }))
 vi.mock("@/lib/db/cron-runs", () => ({ logCronStart: vi.fn(), logCronEnd: vi.fn() }))
 vi.mock("@/lib/db/bookkeeping", () => ({
-  listBooks: vi.fn(), listAccounts: vi.fn(), hasDocumentsForExternalRefPrefix: vi.fn(),
+  listBooks: vi.fn(), listAccounts: vi.fn(), listExternalRefsWithPrefix: vi.fn(),
 }))
 vi.mock("@/lib/gmail/client", () => {
   class GmailNotConnectedError extends Error {
@@ -22,15 +26,17 @@ vi.mock("@/lib/gmail/client", () => {
 vi.mock("@/lib/bookkeeping/receipt-ingest", () => ({ ingestReceiptDocument: vi.fn() }))
 vi.mock("@/lib/audit/record", () => ({ recordAudit: vi.fn() }))
 
-import { isCronSkipped, getSetting } from "@/lib/db/system-settings"
+import { isCronSkipped, getSetting, setSetting } from "@/lib/db/system-settings"
 import { logCronStart, logCronEnd } from "@/lib/db/cron-runs"
-import { listBooks, listAccounts, hasDocumentsForExternalRefPrefix } from "@/lib/db/bookkeeping"
+import { listBooks, listAccounts, listExternalRefsWithPrefix } from "@/lib/db/bookkeeping"
 import {
   GmailNotConnectedError, getAccessTokenForConnection, listLabels, listMessages, getMessage, getAttachment,
 } from "@/lib/gmail/client"
 import { ingestReceiptDocument } from "@/lib/bookkeeping/receipt-ingest"
 import { recordAudit } from "@/lib/audit/record"
-import { POST, MAX_MESSAGES_PER_RUN } from "@/app/api/admin/internal/bookkeeping-gmail-receipts/route"
+import {
+  POST, MAX_MESSAGES_PER_RUN, SETTLED_IDS_KEY,
+} from "@/app/api/admin/internal/bookkeeping-gmail-receipts/route"
 
 const TOKEN = "test-cron-token"
 const AUTH = `Bearer ${TOKEN}`
@@ -41,8 +47,10 @@ const books = [
   { id: BOOK, name: "Darren — DJP Athlete", book_kind: "business", is_primary: true, owner_label: "Darren", sort_order: 0, archived_at: null },
 ]
 
-// format=full payload: inline text part (no attachmentId), a real PDF
-// attachment, and a calendar invite the mime filter must drop.
+// format=full payload: an inline text part (no attachmentId), an
+// application/pdf the scanner cannot decode (must be counted, never ingested,
+// and must NOT occupy external_ref index 0), the real jpeg receipt, and a
+// calendar invite the mime filter must drop entirely.
 // collectReceiptAttachments is REAL in this suite (separate pure module).
 const fullMessage = (id: string) => ({
   id,
@@ -52,7 +60,34 @@ const fullMessage = (id: string) => ({
     parts: [
       { mimeType: "text/plain", body: { size: 20, data: "aGk" } },
       { mimeType: "application/pdf", filename: "invoice.pdf", body: { size: 4096, attachmentId: `att-${id}-pdf` } },
+      { mimeType: "image/jpeg", filename: "receipt.jpg", body: { size: 4096, attachmentId: `att-${id}-jpg` } },
       { mimeType: "text/calendar", filename: "invite.ics", body: { size: 512, attachmentId: `att-${id}-ics` } },
+    ],
+  },
+})
+
+/** Body-only HTML receipt (Uber/Amazon shape) — yields nothing (Decision C-7). */
+const bodyOnlyMessage = (id: string) => ({
+  id,
+  threadId: `t-${id}`,
+  payload: {
+    mimeType: "multipart/alternative",
+    parts: [
+      { mimeType: "text/plain", body: { size: 20, data: "aGk" } },
+      { mimeType: "text/html", body: { size: 900, data: "aGk" } },
+    ],
+  },
+})
+
+/** Two scannable attachments — exercises per-attachment isolation. */
+const twoImageMessage = (id: string) => ({
+  id,
+  threadId: `t-${id}`,
+  payload: {
+    mimeType: "multipart/mixed",
+    parts: [
+      { mimeType: "image/jpeg", filename: "front.jpg", body: { size: 2048, attachmentId: `att-${id}-0` } },
+      { mimeType: "image/png", filename: "back.png", body: { size: 2048, attachmentId: `att-${id}-1` } },
     ],
   },
 })
@@ -64,11 +99,22 @@ function makeRequest(authHeader = AUTH): Request {
   })
 }
 
+/** Live system_settings stand-in so multi-run tests see the durable
+ *  settled-message marker the way production would. */
+let settings: Record<string, unknown>
+
 beforeEach(() => {
   vi.clearAllMocks()
   process.env.INTERNAL_CRON_TOKEN = TOKEN
+  settings = { bookkeeping_gmail_receipt_label: "DJP Receipts" }
   ;(isCronSkipped as ReturnType<typeof vi.fn>).mockResolvedValue({ skipped: false })
-  ;(getSetting as ReturnType<typeof vi.fn>).mockResolvedValue("DJP Receipts")
+  ;(getSetting as ReturnType<typeof vi.fn>).mockImplementation(async (key: string, fallback: unknown) =>
+    key in settings ? settings[key] : fallback,
+  )
+  ;(setSetting as ReturnType<typeof vi.fn>).mockImplementation(async (key: string, value: unknown) => {
+    settings[key] = value
+    return { key, value }
+  })
   ;(logCronStart as ReturnType<typeof vi.fn>).mockResolvedValue("run-1")
   ;(logCronEnd as ReturnType<typeof vi.fn>).mockResolvedValue(undefined)
   ;(listBooks as ReturnType<typeof vi.fn>).mockResolvedValue(books)
@@ -82,8 +128,8 @@ beforeEach(() => {
   ])
   ;(listMessages as ReturnType<typeof vi.fn>).mockResolvedValue({ messages: [{ id: "m1", threadId: "t1" }] })
   ;(getMessage as ReturnType<typeof vi.fn>).mockImplementation(async (_tok: string, id: string) => fullMessage(id))
-  ;(getAttachment as ReturnType<typeof vi.fn>).mockResolvedValue(Buffer.from("PDFDATA"))
-  ;(hasDocumentsForExternalRefPrefix as ReturnType<typeof vi.fn>).mockResolvedValue(false)
+  ;(getAttachment as ReturnType<typeof vi.fn>).mockResolvedValue(Buffer.from("JPEGDATA"))
+  ;(listExternalRefsWithPrefix as ReturnType<typeof vi.fn>).mockResolvedValue([])
   ;(ingestReceiptDocument as ReturnType<typeof vi.fn>).mockResolvedValue({ documentId: "d1", jobId: "j1", logId: "l1", sha256: "x" })
 })
 
@@ -101,7 +147,10 @@ describe("POST /api/admin/internal/bookkeeping-gmail-receipts", () => {
     ;(isCronSkipped as ReturnType<typeof vi.fn>).mockResolvedValue({ skipped: true, reason: "disabled" })
     const res = await POST(makeRequest() as never)
     expect(res.status).toBe(200)
-    expect((await res.json()).skipped).toBe("disabled")
+    const json = await res.json()
+    expect(json.skipped).toBe("disabled")
+    // typed alias so a dashboard never has to read the dual-typed `skipped`
+    expect(json.skipped_reason).toBe("disabled")
     expect(logCronStart).not.toHaveBeenCalled()
   })
 
@@ -126,17 +175,21 @@ describe("POST /api/admin/internal/bookkeeping-gmail-receipts", () => {
     expect(listMessages).not.toHaveBeenCalled()
   })
 
-  it("happy path: label-only listing, PDF ingested as gmail:<id>:0, ics filtered, audit recorded", async () => {
+  it("happy path: jpeg ingested as gmail:<id>:0, pdf reported unsupported, ics filtered, audit recorded", async () => {
     const res = await POST(makeRequest() as never)
     expect(res.status).toBe(200)
-    expect(await res.json()).toMatchObject({ ok: true, fetch_status: "ok", processed: 1, ingested: 1, more_pending: false })
+    expect(await res.json()).toMatchObject({
+      ok: true, fetch_status: "ok", processed: 1, ingested: 1, failed: 0,
+      unsupported_attachments: 1, more_pending: false,
+    })
     expect(logCronStart).toHaveBeenCalledWith(expect.anything(), "bookkeepingGmailReceiptsCron")
     expect((listMessages as ReturnType<typeof vi.fn>).mock.calls[0][1]).toMatchObject({ labelIds: ["L1"] })
-    expect(getAttachment).toHaveBeenCalledWith("tok", "m1", "att-m1-pdf")
+    expect(getAttachment).toHaveBeenCalledWith("tok", "m1", "att-m1-jpg")
+    expect(getAttachment).not.toHaveBeenCalledWith("tok", "m1", "att-m1-pdf")
     expect(ingestReceiptDocument).toHaveBeenCalledTimes(1)
     expect((ingestReceiptDocument as ReturnType<typeof vi.fn>).mock.calls[0][0]).toMatchObject({
       bookId: BOOK, externalRef: "gmail:m1:0", uploadedBy: null,
-      mimeType: "application/pdf", originalFilename: "invoice.pdf",
+      mimeType: "image/jpeg", originalFilename: "receipt.jpg",
       bookName: "Darren — DJP Athlete", bookKind: "business",
       accounts: [{ name: "Equipment", account_type: "expense" }],
     })
@@ -151,16 +204,18 @@ describe("POST /api/admin/internal/bookkeeping-gmail-receipts", () => {
       .mockResolvedValueOnce({ messages: [{ id: "m1", threadId: "t1" }], nextPageToken: "p2" })
       .mockResolvedValueOnce({ messages: [{ id: "m2", threadId: "t2" }] })
     const res = await POST(makeRequest() as never)
-    expect((await res.json()).processed).toBe(2)
+    const json = await res.json()
+    expect(json.processed).toBe(2)
+    expect(json.listed).toBe(2)
     expect((listMessages as ReturnType<typeof vi.fn>).mock.calls[1][1]).toMatchObject({ pageToken: "p2" })
   })
 
-  it("already-ingested message (external_ref prefix hit) → skipped without a full fetch, no audit", async () => {
-    ;(hasDocumentsForExternalRefPrefix as ReturnType<typeof vi.fn>).mockResolvedValue(true)
+  it("a settled message is skipped without any Gmail fetch or DB probe, no audit", async () => {
+    settings[SETTLED_IDS_KEY] = ["m1"]
     const res = await POST(makeRequest() as never)
-    expect(await res.json()).toMatchObject({ ok: true, skipped: 1, ingested: 0 })
-    expect(hasDocumentsForExternalRefPrefix).toHaveBeenCalledWith("gmail:m1:")
+    expect(await res.json()).toMatchObject({ ok: true, skipped: 1, processed: 0, ingested: 0 })
     expect(getMessage).not.toHaveBeenCalled()
+    expect(listExternalRefsWithPrefix).not.toHaveBeenCalled()
     expect(recordAudit).not.toHaveBeenCalled()
   })
 
@@ -172,6 +227,84 @@ describe("POST /api/admin/internal/bookkeeping-gmail-receipts", () => {
     expect(json.processed).toBe(MAX_MESSAGES_PER_RUN)
     expect(json.more_pending).toBe(true)
     expect(getMessage).toHaveBeenCalledTimes(MAX_MESSAGES_PER_RUN)
+  })
+
+  // ── Review finding 1 (Critical): nothing-usable messages must not starve ──
+  it("body-only messages settle durably so an older attachment message is not starved forever", async () => {
+    // 26 body-only HTML receipts (newest-first, Gmail's list order) sitting in
+    // front of ONE older email that actually carries the receipt image.
+    const bodyOnlyIds = Array.from({ length: MAX_MESSAGES_PER_RUN + 1 }, (_, i) => `b${i}`)
+    const ids = [...bodyOnlyIds, "withImage"]
+    ;(listMessages as ReturnType<typeof vi.fn>).mockResolvedValue({ messages: ids.map((id) => ({ id, threadId: `t-${id}` })) })
+    ;(getMessage as ReturnType<typeof vi.fn>).mockImplementation(async (_tok: string, id: string) =>
+      id === "withImage" ? fullMessage(id) : bodyOnlyMessage(id),
+    )
+
+    const first = await (await POST(makeRequest() as never)).json()
+    expect(first.processed).toBe(MAX_MESSAGES_PER_RUN)
+    expect(first.attachmentless).toBe(MAX_MESSAGES_PER_RUN)
+    expect(first.ingested).toBe(0)
+    // The whole first batch is now durably settled — it must never be fetched again.
+    expect(settings[SETTLED_IDS_KEY]).toEqual(bodyOnlyIds.slice(0, MAX_MESSAGES_PER_RUN))
+
+    ;(getMessage as ReturnType<typeof vi.fn>).mockClear()
+    ;(ingestReceiptDocument as ReturnType<typeof vi.fn>).mockClear()
+
+    const second = await (await POST(makeRequest() as never)).json()
+    expect(second.skipped).toBe(MAX_MESSAGES_PER_RUN)
+    expect(second.ingested).toBe(1)
+    expect(second.more_pending).toBe(false)
+    expect((ingestReceiptDocument as ReturnType<typeof vi.fn>).mock.calls[0][0]).toMatchObject({
+      externalRef: "gmail:withImage:0",
+    })
+    // The settled set never re-fetches what it already answered for.
+    expect((getMessage as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[1])).toEqual(["b25", "withImage"])
+  })
+
+  it("a pdf-only email settles as unsupported instead of burning the fetch budget forever", async () => {
+    ;(getMessage as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "m1", threadId: "t1",
+      payload: { mimeType: "multipart/mixed", parts: [
+        { mimeType: "application/pdf", filename: "invoice.pdf", body: { size: 4096, attachmentId: "att-m1-pdf" } },
+      ] },
+    })
+    const json = await (await POST(makeRequest() as never)).json()
+    expect(json).toMatchObject({ ingested: 0, attachmentless: 1, unsupported_attachments: 1 })
+    expect(ingestReceiptDocument).not.toHaveBeenCalled()
+    expect(settings[SETTLED_IDS_KEY]).toEqual(["m1"])
+  })
+
+  // ── Review finding 2 (Important): per-attachment isolation + exact retry ──
+  it("one failing attachment neither fails the run nor orphans its siblings; the next run retries only the missing index", async () => {
+    ;(getMessage as ReturnType<typeof vi.fn>).mockImplementation(async (_tok: string, id: string) => twoImageMessage(id))
+    ;(getAttachment as ReturnType<typeof vi.fn>).mockImplementation(async (_tok: string, _id: string, attId: string) => {
+      if (attId.endsWith("-1")) throw new Error("Gmail getAttachment failed: HTTP 503")
+      return Buffer.from("JPEGDATA")
+    })
+
+    const res = await POST(makeRequest() as never)
+    expect(res.status).toBe(200)
+    const first = await res.json()
+    expect(first).toMatchObject({ ingested: 1, failed: 1 })
+    expect(logCronEnd).toHaveBeenCalledWith(
+      expect.anything(), "run-1", "success", expect.objectContaining({ failed: 1 }),
+    )
+    // NOT settled — the message still has unfinished work.
+    expect(settings[SETTLED_IDS_KEY] ?? []).not.toContain("m1")
+
+    ;(ingestReceiptDocument as ReturnType<typeof vi.fn>).mockClear()
+    ;(getAttachment as ReturnType<typeof vi.fn>).mockResolvedValue(Buffer.from("PNGDATA"))
+    // Attachment 0 already landed last run.
+    ;(listExternalRefsWithPrefix as ReturnType<typeof vi.fn>).mockResolvedValue(["gmail:m1:0"])
+
+    const second = await (await POST(makeRequest() as never)).json()
+    expect(second).toMatchObject({ ingested: 1, failed: 0 })
+    expect(listExternalRefsWithPrefix).toHaveBeenCalledWith("gmail:m1:")
+    expect(ingestReceiptDocument).toHaveBeenCalledTimes(1)
+    expect((ingestReceiptDocument as ReturnType<typeof vi.fn>).mock.calls[0][0]).toMatchObject({
+      externalRef: "gmail:m1:1", mimeType: "image/png", originalFilename: "back.png",
+    })
+    expect(settings[SETTLED_IDS_KEY]).toContain("m1")
   })
 
   it("a non-connection Gmail failure (listLabels rejects) → 500 + logCronEnd failed", async () => {

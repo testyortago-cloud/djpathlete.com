@@ -387,9 +387,25 @@ export async function linkDocumentBatch(id: string, bookId: string, importBatchI
     .eq("id", id).eq("book_id", bookId)
   if (error) throw error
 }
+/** Every external_ref under `prefix` (e.g. 'gmail:<messageId>:') — the
+ *  PER-ATTACHMENT side of the 00193 check-then-insert discipline. The poller
+ *  needs the exact refs, not a boolean: a message whose attachment 0 ingested
+ *  and whose attachment 1 threw must retry ONLY index 1 next run, and a
+ *  message-level "any row exists" answer would strand it forever.
+ *  NOTE: `prefix` is passed to PostgREST `.like` as a PATTERN — callers must
+ *  not pass user-controlled strings containing % or _ (Gmail message ids are
+ *  hex, so the poller is safe). */
+export async function listExternalRefsWithPrefix(prefix: string): Promise<string[]> {
+  const rows = await fetchAllRows<{ external_ref: string | null }>((f, t) =>
+    db().from("bookkeeping_documents").select("external_ref").like("external_ref", `${prefix}%`).range(f, t) as never)
+  return rows.map((r) => r.external_ref).filter((r): r is string => typeof r === "string")
+}
 /** True when any document carries external_ref starting with `prefix`
- *  (poller skip check, e.g. 'gmail:<messageId>:'). Check-then-insert side of
- *  the 00193 discipline — external_ref is NEVER an onConflict target. */
+ *  (e.g. 'gmail:<messageId>:'). Check-then-insert side of the 00193
+ *  discipline — external_ref is NEVER an onConflict target. Same PATTERN
+ *  caveat as listExternalRefsWithPrefix.
+ *  The poller itself uses listExternalRefsWithPrefix (it needs the indices);
+ *  this boolean is the cheap probe for the Track-C live-proof / ad-hoc checks. */
 export async function hasDocumentsForExternalRefPrefix(prefix: string): Promise<boolean> {
   const { count, error } = await db()
     .from("bookkeeping_documents")
