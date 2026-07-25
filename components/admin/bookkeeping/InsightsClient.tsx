@@ -1,13 +1,14 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import Link from "next/link"
-import { ArrowLeft, BarChart3, CalendarRange, Lightbulb } from "lucide-react"
+import { ArrowLeft, BarChart3, CalendarRange, Lightbulb, X } from "lucide-react"
 import { toast } from "sonner"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import type { DeductionFindings, HomeOfficeCandidate } from "@/lib/bookkeeping/deduction-finder"
+import { findingFingerprint } from "@/lib/bookkeeping/finding-fingerprint"
 import { formatCents } from "@/lib/bookkeeping/money"
 import { formatOccurredOn } from "@/lib/bookkeeping/format"
 import { PERIOD_PRESET_LABELS, presetRange, type PeriodPreset } from "@/lib/bookkeeping/period"
@@ -24,6 +25,7 @@ interface BookInsights {
   profit: ServiceLineProfit
   vendors: VendorSweep
   row_count: number
+  dismissed_fingerprints: string[]
 }
 interface ForecastBookRow {
   book_id: string
@@ -56,6 +58,66 @@ function ReceiptDot({ present }: { present: boolean }) {
   )
 }
 
+function partitionDismissed<T>(rows: T[], dismissed: (row: T) => boolean): { visible: T[]; hidden: T[] } {
+  const visible: T[] = []
+  const hidden: T[] = []
+  for (const row of rows) (dismissed(row) ? hidden : visible).push(row)
+  return { visible, hidden }
+}
+
+function DismissButton({ onClick, label }: { onClick: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className="text-muted-foreground transition-colors hover:text-error"
+    >
+      <X className="size-3.5" />
+    </button>
+  )
+}
+
+/** Collapsed dismissed rows: compact summary lines + a Restore button each. */
+function DismissedReveal({
+  count,
+  open,
+  onToggle,
+  children,
+}: {
+  count: number
+  open: boolean
+  onToggle: () => void
+  children: ReactNode
+}) {
+  if (count === 0) return null
+  return (
+    <div className="mt-2">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="text-xs text-muted-foreground underline-offset-4 hover:underline"
+      >
+        {count} dismissed — {open ? "hide" : "show"}
+      </button>
+      {open ? <div className="mt-2 space-y-1 opacity-70">{children}</div> : null}
+    </div>
+  )
+}
+
+/** Compact restore line inside a DismissedReveal. */
+function RestoreRow({ label, onRestore }: { label: string; onRestore: () => void }) {
+  return (
+    <div className="flex items-center justify-between gap-2 text-sm">
+      <span className="text-muted-foreground">{label}</span>
+      <button type="button" className="text-xs underline-offset-4 hover:underline" onClick={onRestore}>
+        Restore
+      </button>
+    </div>
+  )
+}
+
 export function InsightsClient({
   books,
   initialHomeOfficePercent,
@@ -76,6 +138,28 @@ export function InsightsClient({
   const [savingRate, setSavingRate] = useState(false)
   const fetchRequestIdRef = useRef(0)
 
+  // Dismissals (5b): optimistic overrides keyed `${bookId}|${fingerprint}`,
+  // cleared whenever a fresh GET lands (server truth wins). Reveal open-state
+  // is per card key.
+  const [dismissOverrides, setDismissOverrides] = useState<Record<string, "dismissed" | "active">>({})
+  const [revealOpen, setRevealOpen] = useState<Record<string, boolean>>({})
+
+  const setDismissed = useCallback(async (rowBookId: string, fingerprint: string, dismissed: boolean) => {
+    const key = `${rowBookId}|${fingerprint}`
+    setDismissOverrides((o) => ({ ...o, [key]: dismissed ? "dismissed" : "active" }))
+    try {
+      const res = await fetch("/api/admin/bookkeeping/insights/dismissals", {
+        method: dismissed ? "POST" : "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ book_id: rowBookId, fingerprint }),
+      })
+      if (!res.ok) throw new Error("failed")
+    } catch {
+      setDismissOverrides((o) => ({ ...o, [key]: dismissed ? "active" : "dismissed" }))
+      toast.error(dismissed ? "Failed to dismiss the finding" : "Failed to restore the finding")
+    }
+  }, [])
+
   const fetchInsights = useCallback(async () => {
     const requestId = ++fetchRequestIdRef.current
     setLoading(true)
@@ -86,6 +170,8 @@ export function InsightsClient({
       const body = (await res.json()) as InsightsData
       if (requestId === fetchRequestIdRef.current) {
         setData(body)
+        // Server truth wins: a landed refetch retires every optimistic override.
+        setDismissOverrides({})
         setPercentInput(body.home_office_percent?.toString() ?? "")
         setRateInput(body.forecast.rate_percent?.toString() ?? "")
       }
@@ -189,6 +275,42 @@ export function InsightsClient({
   const watchdogRows = data && active ? data.watchdog.filter((f) => f.book_id === active.book.id) : []
   const forecastForBook =
     data && active ? (data.forecast.books.find((f) => f.book_id === active.book.id) ?? null) : null
+
+  // Dismissal partitions (5b). Card headline chips keep the FULL recompute
+  // totals — dismissals collapse rows, they never alter computed numbers.
+  const isDismissed = (rowBookId: string, fingerprint: string, serverList: string[]) => {
+    const override = dismissOverrides[`${rowBookId}|${fingerprint}`]
+    if (override) return override === "dismissed"
+    return serverList.includes(fingerprint)
+  }
+  const activeDismissed = active?.dismissed_fingerprints ?? []
+  const activeBookId = active?.book.id ?? ""
+  const watchlistParts = partitionDismissed(active?.deductions.watchlist ?? [], (w) =>
+    isDismissed(activeBookId, findingFingerprint("watchlist", w.account_id), activeDismissed),
+  )
+  const gapParts = partitionDismissed(active?.deductions.substantiation_gaps ?? [], (g) =>
+    isDismissed(activeBookId, findingFingerprint("substantiation_gap", g.entry_id), activeDismissed),
+  )
+  const uncatParts = partitionDismissed(active?.deductions.uncategorized.entries ?? [], (u) =>
+    isDismissed(activeBookId, findingFingerprint("uncategorized", u.entry_id), activeDismissed),
+  )
+  const vendorParts = partitionDismissed(active?.vendors.recurring ?? [], (v) =>
+    isDismissed(activeBookId, findingFingerprint("vendor", v.key), activeDismissed),
+  )
+  const watchdogParts = partitionDismissed(watchdogRows, (f) =>
+    isDismissed(activeBookId, findingFingerprint("watchdog", f.entry_id), activeDismissed),
+  )
+  // Year-end flags are cross-book: dismissals scope to the primary book.
+  const primaryPayload = data?.books.find((b) => b.book.is_primary) ?? data?.books[0]
+  const flagParts = partitionDismissed(data?.year_end_flags ?? [], (flag) =>
+    primaryPayload
+      ? isDismissed(
+          primaryPayload.book.id,
+          findingFingerprint("year_end", flag.id),
+          primaryPayload.dismissed_fingerprints,
+        )
+      : false,
+  )
 
   const homeOfficeCard = data ? (
     <div className="rounded-lg border border-border bg-card p-4 overflow-x-auto">
@@ -345,14 +467,37 @@ export function InsightsClient({
       </div>
 
       {/* Year-end flags strip */}
-      {data && data.year_end_flags.length > 0 ? (
+      {data && data.year_end_flags.length > 0 && primaryPayload ? (
         <div className="space-y-2">
-          {data.year_end_flags.map((flag) => (
+          {flagParts.visible.map((flag) => (
             <div key={flag.id} className="rounded-lg border border-border bg-primary/5 p-3 text-sm">
-              <p className="font-medium text-primary">{flag.title}</p>
+              <div className="flex items-start justify-between gap-2">
+                <p className="font-medium text-primary">{flag.title}</p>
+                <DismissButton
+                  label={`Dismiss flag: ${flag.title}`}
+                  onClick={() =>
+                    void setDismissed(primaryPayload.book.id, findingFingerprint("year_end", flag.id), true)
+                  }
+                />
+              </div>
               <p className="text-muted-foreground">{flag.detail}</p>
             </div>
           ))}
+          <DismissedReveal
+            count={flagParts.hidden.length}
+            open={revealOpen["year_end"] ?? false}
+            onToggle={() => setRevealOpen((r) => ({ ...r, year_end: !r.year_end }))}
+          >
+            {flagParts.hidden.map((flag) => (
+              <RestoreRow
+                key={flag.id}
+                label={flag.title}
+                onRestore={() =>
+                  void setDismissed(primaryPayload.book.id, findingFingerprint("year_end", flag.id), false)
+                }
+              />
+            ))}
+          </DismissedReveal>
         </div>
       ) : null}
 
@@ -393,10 +538,11 @@ export function InsightsClient({
                           <th className="py-1 pr-4 font-medium">Total</th>
                           <th className="py-1 pr-4 font-medium">Entries</th>
                           <th className="py-1 pr-4 font-medium">Top counterparties</th>
+                          <th className="py-1" />
                         </tr>
                       </thead>
                       <tbody>
-                        {active.deductions.watchlist.map((w) => (
+                        {watchlistParts.visible.map((w) => (
                           <tr key={w.account_id} className="border-b last:border-0">
                             <td className="py-1.5 pr-4">
                               {w.name}
@@ -413,6 +559,18 @@ export function InsightsClient({
                                 .map((c) => `${c.counterparty ?? "—"} ${formatCents(c.total_cents, active.book.currency)}`)
                                 .join(" · ")}
                             </td>
+                            <td className="py-1.5">
+                              <DismissButton
+                                label={`Dismiss watchlist row: ${w.name}`}
+                                onClick={() =>
+                                  void setDismissed(
+                                    active.book.id,
+                                    findingFingerprint("watchlist", w.account_id),
+                                    true,
+                                  )
+                                }
+                              />
+                            </td>
                           </tr>
                         ))}
                         <tr>
@@ -420,10 +578,26 @@ export function InsightsClient({
                           <td className="py-1.5 pr-4 font-semibold">{formatCents(active.deductions.watchlist_total_cents, active.book.currency)}</td>
                           <td />
                           <td />
+                          <td />
                         </tr>
                       </tbody>
                     </table>
                   )}
+                  <DismissedReveal
+                    count={watchlistParts.hidden.length}
+                    open={revealOpen["watchlist"] ?? false}
+                    onToggle={() => setRevealOpen((r) => ({ ...r, watchlist: !r.watchlist }))}
+                  >
+                    {watchlistParts.hidden.map((w) => (
+                      <RestoreRow
+                        key={w.account_id}
+                        label={`${w.name} · ${formatCents(w.total_cents, active.book.currency)}`}
+                        onRestore={() =>
+                          void setDismissed(active.book.id, findingFingerprint("watchlist", w.account_id), false)
+                        }
+                      />
+                    ))}
+                  </DismissedReveal>
                 </div>
 
                 {/* Substantiation gaps */}
@@ -449,10 +623,11 @@ export function InsightsClient({
                             <th className="py-1 pr-4 font-medium">Account</th>
                             <th className="py-1 pr-4 font-medium">Memo</th>
                             <th className="py-1 pr-4 font-medium">Receipt</th>
+                            <th className="py-1" />
                           </tr>
                         </thead>
                         <tbody>
-                          {active.deductions.substantiation_gaps.slice(0, VISIBLE_ROW_CAP).map((gap) => (
+                          {gapParts.visible.slice(0, VISIBLE_ROW_CAP).map((gap) => (
                             <tr key={gap.entry_id} className="border-b last:border-0">
                               <td className="py-1.5 pr-4">{gap.occurred_on}</td>
                               <td className="py-1.5 pr-4">{formatCents(gap.amount_cents, active.book.currency)}</td>
@@ -462,15 +637,46 @@ export function InsightsClient({
                               <td className="py-1.5 pr-4">
                                 <ReceiptDot present={gap.has_document} />
                               </td>
+                              <td className="py-1.5">
+                                <DismissButton
+                                  label={`Dismiss gap: ${gap.counterparty ?? gap.occurred_on}`}
+                                  onClick={() =>
+                                    void setDismissed(
+                                      active.book.id,
+                                      findingFingerprint("substantiation_gap", gap.entry_id),
+                                      true,
+                                    )
+                                  }
+                                />
+                              </td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
-                      {active.deductions.substantiation_gaps.length > VISIBLE_ROW_CAP ? (
+                      {gapParts.visible.length > VISIBLE_ROW_CAP ? (
                         <p className="text-xs text-muted-foreground mt-2">
-                          and {active.deductions.substantiation_gaps.length - VISIBLE_ROW_CAP} more
+                          and {gapParts.visible.length - VISIBLE_ROW_CAP} more
                         </p>
                       ) : null}
+                      <DismissedReveal
+                        count={gapParts.hidden.length}
+                        open={revealOpen["gaps"] ?? false}
+                        onToggle={() => setRevealOpen((r) => ({ ...r, gaps: !r.gaps }))}
+                      >
+                        {gapParts.hidden.map((gap) => (
+                          <RestoreRow
+                            key={gap.entry_id}
+                            label={`${gap.occurred_on} · ${gap.counterparty ?? "—"} · ${formatCents(gap.amount_cents, active.book.currency)}`}
+                            onRestore={() =>
+                              void setDismissed(
+                                active.book.id,
+                                findingFingerprint("substantiation_gap", gap.entry_id),
+                                false,
+                              )
+                            }
+                          />
+                        ))}
+                      </DismissedReveal>
                       <Link
                         href="/admin/books"
                         className="mt-2 inline-block text-xs text-muted-foreground hover:text-accent underline-offset-4 hover:underline"
@@ -502,24 +708,56 @@ export function InsightsClient({
                             <th className="py-1 pr-4 font-medium">Amount</th>
                             <th className="py-1 pr-4 font-medium">Counterparty</th>
                             <th className="py-1 pr-4 font-medium">Memo</th>
+                            <th className="py-1" />
                           </tr>
                         </thead>
                         <tbody>
-                          {active.deductions.uncategorized.entries.slice(0, VISIBLE_ROW_CAP).map((entry) => (
+                          {uncatParts.visible.slice(0, VISIBLE_ROW_CAP).map((entry) => (
                             <tr key={entry.entry_id} className="border-b last:border-0">
                               <td className="py-1.5 pr-4">{entry.occurred_on}</td>
                               <td className="py-1.5 pr-4">{formatCents(entry.amount_cents, active.book.currency)}</td>
                               <td className="py-1.5 pr-4">{entry.counterparty ?? "—"}</td>
                               <td className="py-1.5 pr-4 text-muted-foreground">{entry.memo ?? ""}</td>
+                              <td className="py-1.5">
+                                <DismissButton
+                                  label={`Dismiss uncategorized: ${entry.counterparty ?? entry.occurred_on}`}
+                                  onClick={() =>
+                                    void setDismissed(
+                                      active.book.id,
+                                      findingFingerprint("uncategorized", entry.entry_id),
+                                      true,
+                                    )
+                                  }
+                                />
+                              </td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
-                      {active.deductions.uncategorized.entries.length > VISIBLE_ROW_CAP ? (
+                      {uncatParts.visible.length > VISIBLE_ROW_CAP ? (
                         <p className="text-xs text-muted-foreground mt-2">
-                          and {active.deductions.uncategorized.entries.length - VISIBLE_ROW_CAP} more
+                          and {uncatParts.visible.length - VISIBLE_ROW_CAP} more
                         </p>
                       ) : null}
+                      <DismissedReveal
+                        count={uncatParts.hidden.length}
+                        open={revealOpen["uncategorized"] ?? false}
+                        onToggle={() => setRevealOpen((r) => ({ ...r, uncategorized: !r.uncategorized }))}
+                      >
+                        {uncatParts.hidden.map((entry) => (
+                          <RestoreRow
+                            key={entry.entry_id}
+                            label={`${entry.occurred_on} · ${entry.counterparty ?? "—"} · ${formatCents(entry.amount_cents, active.book.currency)}`}
+                            onRestore={() =>
+                              void setDismissed(
+                                active.book.id,
+                                findingFingerprint("uncategorized", entry.entry_id),
+                                false,
+                              )
+                            }
+                          />
+                        ))}
+                      </DismissedReveal>
                     </>
                   )}
                 </div>
@@ -580,10 +818,11 @@ export function InsightsClient({
                         <tr className="border-b text-left text-xs text-muted-foreground uppercase tracking-wide">
                           <th className="py-1 pr-4 font-medium">Vendor</th>
                           <th className="py-1 pr-4 font-medium">Account</th>
+                          <th className="py-1" />
                         </tr>
                       </thead>
                       <tbody>
-                        {active.vendors.recurring.map((v) => (
+                        {vendorParts.visible.map((v) => (
                           <tr key={v.key} className="border-b last:border-0">
                             <td className="py-1.5 pr-4">
                               {v.display_name} —{" "}
@@ -597,11 +836,34 @@ export function InsightsClient({
                               ) : null}
                             </td>
                             <td className="py-1.5 pr-4 text-muted-foreground">{v.account_name}</td>
+                            <td className="py-1.5">
+                              <DismissButton
+                                label={`Dismiss vendor: ${v.display_name}`}
+                                onClick={() =>
+                                  void setDismissed(active.book.id, findingFingerprint("vendor", v.key), true)
+                                }
+                              />
+                            </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   )}
+                  <DismissedReveal
+                    count={vendorParts.hidden.length}
+                    open={revealOpen["vendors"] ?? false}
+                    onToggle={() => setRevealOpen((r) => ({ ...r, vendors: !r.vendors }))}
+                  >
+                    {vendorParts.hidden.map((v) => (
+                      <RestoreRow
+                        key={v.key}
+                        label={`${v.display_name} · ${formatCents(v.annualized_cents, active.book.currency)}/yr`}
+                        onRestore={() =>
+                          void setDismissed(active.book.id, findingFingerprint("vendor", v.key), false)
+                        }
+                      />
+                    ))}
+                  </DismissedReveal>
                   <p className="text-xs text-muted-foreground mt-2">
                     {active.vendors.vendor_count} vendors seen · {active.vendors.unattributed_expense_count} entries without a vendor name
                   </p>
@@ -635,10 +897,11 @@ export function InsightsClient({
                             <th className="py-1 pr-4 font-medium">Counterparty</th>
                             <th className="py-1 pr-4 font-medium">Category</th>
                             <th className="py-1 pr-4 font-medium">Missing</th>
+                            <th className="py-1" />
                           </tr>
                         </thead>
                         <tbody>
-                          {watchdogRows.slice(0, VISIBLE_ROW_CAP).map((f) => (
+                          {watchdogParts.visible.slice(0, VISIBLE_ROW_CAP).map((f) => (
                             <tr key={f.entry_id} className="border-b last:border-0">
                               <td className="py-1.5 pr-4">{f.occurred_on}</td>
                               <td className="py-1.5 pr-4">{formatCents(f.amount_cents, active.book.currency)}</td>
@@ -656,15 +919,42 @@ export function InsightsClient({
                                   ))}
                                 </span>
                               </td>
+                              <td className="py-1.5">
+                                <DismissButton
+                                  label={`Dismiss missing-receipt row: ${f.counterparty ?? f.occurred_on}`}
+                                  onClick={() =>
+                                    void setDismissed(
+                                      active.book.id,
+                                      findingFingerprint("watchdog", f.entry_id),
+                                      true,
+                                    )
+                                  }
+                                />
+                              </td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
-                      {watchdogRows.length > VISIBLE_ROW_CAP ? (
+                      {watchdogParts.visible.length > VISIBLE_ROW_CAP ? (
                         <p className="text-xs text-muted-foreground mt-2">
-                          and {watchdogRows.length - VISIBLE_ROW_CAP} more
+                          and {watchdogParts.visible.length - VISIBLE_ROW_CAP} more
                         </p>
                       ) : null}
+                      <DismissedReveal
+                        count={watchdogParts.hidden.length}
+                        open={revealOpen["watchdog"] ?? false}
+                        onToggle={() => setRevealOpen((r) => ({ ...r, watchdog: !r.watchdog }))}
+                      >
+                        {watchdogParts.hidden.map((f) => (
+                          <RestoreRow
+                            key={f.entry_id}
+                            label={`${f.occurred_on} · ${f.counterparty ?? "—"} · ${formatCents(f.amount_cents, active.book.currency)}`}
+                            onRestore={() =>
+                              void setDismissed(active.book.id, findingFingerprint("watchdog", f.entry_id), false)
+                            }
+                          />
+                        ))}
+                      </DismissedReveal>
                     </>
                   )}
                 </div>
