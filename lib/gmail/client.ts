@@ -194,6 +194,84 @@ export async function getMessageMetadata(
   return (await res.json()) as GmailMessage
 }
 
+// ─── Receipt-poller helpers (Track C) ─────────────────────────────────────
+
+export interface GmailLabel {
+  id: string
+  name: string
+  type?: string
+}
+
+export async function listLabels(accessToken: string): Promise<GmailLabel[]> {
+  const res = await gmailFetch(accessToken, "/labels")
+  if (!res.ok) {
+    const text = await res.text().catch(() => "")
+    throw new Error(`Gmail listLabels failed: HTTP ${res.status} ${text}`)
+  }
+  const json = (await res.json()) as { labels?: GmailLabel[] }
+  return json.labels ?? []
+}
+
+export interface GmailMessageListItem {
+  id: string
+  threadId: string
+}
+
+export interface ListMessagesResponse {
+  messages?: GmailMessageListItem[]
+  nextPageToken?: string
+  resultSizeEstimate?: number
+}
+
+export async function listMessages(
+  accessToken: string,
+  opts: { labelIds?: string[]; pageToken?: string; maxResults?: number; q?: string } = {},
+): Promise<ListMessagesResponse> {
+  const params = new URLSearchParams()
+  if (opts.q) params.set("q", opts.q)
+  if (opts.pageToken) params.set("pageToken", opts.pageToken)
+  params.set("maxResults", String(opts.maxResults ?? 25))
+  for (const id of opts.labelIds ?? []) params.append("labelIds", id)
+  const res = await gmailFetch(accessToken, `/messages?${params.toString()}`)
+  if (!res.ok) {
+    const text = await res.text().catch(() => "")
+    throw new Error(`Gmail listMessages failed: HTTP ${res.status} ${text}`)
+  }
+  return (await res.json()) as ListMessagesResponse
+}
+
+/** Full-format single message — payload parts + attachment ids included.
+ *  (getMessageMetadata above is format=metadata and has neither.) */
+export async function getMessage(accessToken: string, messageId: string): Promise<GmailMessage> {
+  const res = await gmailFetch(accessToken, `/messages/${encodeURIComponent(messageId)}?format=full`)
+  if (!res.ok) {
+    const text = await res.text().catch(() => "")
+    throw new Error(`Gmail getMessage failed: HTTP ${res.status} ${text}`)
+  }
+  return (await res.json()) as GmailMessage
+}
+
+/** users.messages.attachments.get — Gmail returns base64url body data. */
+export async function getAttachment(
+  accessToken: string,
+  messageId: string,
+  attachmentId: string,
+): Promise<Buffer> {
+  const res = await gmailFetch(
+    accessToken,
+    `/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`,
+  )
+  if (!res.ok) {
+    const text = await res.text().catch(() => "")
+    throw new Error(`Gmail getAttachment failed: HTTP ${res.status} ${text}`)
+  }
+  const json = (await res.json()) as { size?: number; data?: string }
+  const data = json.data ?? ""
+  const normalized = data.replace(/-/g, "+").replace(/_/g, "/")
+  const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), "=")
+  return Buffer.from(padded, "base64")
+}
+
 export async function modifyThreadLabels(
   accessToken: string,
   threadId: string,
