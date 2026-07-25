@@ -607,13 +607,18 @@ export interface BookkeepingDocument {
   posted_count: number | null
   period_start: string | null
   period_end: string | null
+  /** Poller idempotency key 'gmail:<messageId>:<attachmentIndex>'.
+   *  Check-then-insert only — never a PostgREST onConflict target (00193). */
+  external_ref: string | null
+  /** Durable coalesced vision result, written by functions/src/receipt-scan.ts. */
+  scan_result: Record<string, unknown> | null
   created_at: string
   updated_at: string
 }
 export type NewDocument = Pick<
   BookkeepingDocument,
   "book_id" | "kind" | "original_filename" | "storage_path" | "mime_type" | "file_size_bytes" | "sha256" | "retain_until" | "uploaded_by" | "row_count"
->
+> & { external_ref?: string | null }
 
 // ── AI Bookkeeper Phase 6d: depreciable-asset register ────────────────────
 export type DepreciationMethod = "straight_line"
