@@ -517,7 +517,8 @@ export async function listPayoutsForDedupe(bookId: string, from: string, to: str
     db().from("bookkeeping_payouts")
       .select("id,stripe_payout_id,net_cents:amount_cents,arrival_date,status")
       .eq("book_id", bookId).gte("arrival_date", from).lte("arrival_date", to)
-      .order("arrival_date", { ascending: true }).range(f, t) as never)
+      .order("arrival_date", { ascending: true }).order("id", { ascending: true })
+      .range(f, t) as never)
 }
 
 /** Stored payouts whose status can still change — the sync route re-pulls
@@ -526,7 +527,8 @@ export async function listNonTerminalPayouts(bookId: string): Promise<Bookkeepin
   return fetchAllRows<BookkeepingPayout>((f, t) =>
     db().from("bookkeeping_payouts").select("*")
       .eq("book_id", bookId).in("status", ["pending", "in_transit"])
-      .order("arrival_date", { ascending: true }).range(f, t) as never)
+      .order("arrival_date", { ascending: true }).order("id", { ascending: true })
+      .range(f, t) as never)
 }
 
 // ── Phase 6a: closed-period write guard (D-2 choke point) ───────────────────
