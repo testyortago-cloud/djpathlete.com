@@ -6,6 +6,7 @@ import type {
   BookkeepingBook, BookkeepingAccount, BookkeepingLedgerEntry,
   LedgerDirection, LedgerSource, BookkeepingDocument, NewDocument,
   BookkeepingPeriodClose, BookkeepingAsset, NewBookkeepingAsset,
+  BookkeepingPayout, NewBookkeepingPayout, NewBookkeepingPayoutLine, BookkeepingPayoutStatus,
 } from "@/types/database"
 import type { IncomeSourceRows, LedgerEntryDraft } from "@/lib/bookkeeping/types"
 import type { ReportEntry, ReportAccount } from "@/lib/bookkeeping/reports"
@@ -451,6 +452,81 @@ export async function pruneExpiredDocuments(today: string): Promise<{ deleted: n
     ids.push(r.id)
   }
   return { deleted: ids.length, ids }
+}
+
+// ── Track A (6e): Stripe payout mirror (read model — NEVER the ledger) ─────
+// Merge-mode upserts (no ignoreDuplicates): a re-pulled payout whose status
+// flipped (in_transit→paid, paid→failed) must overwrite the stored row (A-6).
+export async function upsertPayouts(rows: NewBookkeepingPayout[]): Promise<BookkeepingPayout[]> {
+  if (rows.length === 0) return []
+  const now = new Date().toISOString()
+  const { data, error } = await db()
+    .from("bookkeeping_payouts")
+    .upsert(rows.map((r) => ({ ...r, updated_at: now })), { onConflict: "stripe_payout_id" })
+    .select()
+  if (error) throw error
+  return (data ?? []) as BookkeepingPayout[]
+}
+
+export async function upsertPayoutLines(rows: NewBookkeepingPayoutLine[]): Promise<number> {
+  if (rows.length === 0) return 0
+  const now = new Date().toISOString()
+  const { data, error } = await db()
+    .from("bookkeeping_payout_lines")
+    .upsert(rows.map((r) => ({ ...r, updated_at: now })), { onConflict: "stripe_balance_txn_id" })
+    .select("id")
+  if (error) throw error
+  return (data ?? []).length
+}
+
+/** Latest arrival_date among the book's stored payouts — the payout-sync
+ *  cron's watermark (mirrors latestPlatformImportDate). Null when none. */
+export async function latestPayoutArrivalDate(bookId: string): Promise<string | null> {
+  const { data, error } = await db()
+    .from("bookkeeping_payouts")
+    .select("arrival_date")
+    .eq("book_id", bookId)
+    .order("arrival_date", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  return (data as { arrival_date: string } | null)?.arrival_date ?? null
+}
+
+export interface PayoutLineWindowRow {
+  txn_date: string; fee_cents: number; net_cents: number; amount_cents: number; type: string
+}
+/** Windowed payout lines for the net-revenue report layer. fetchAllRows —
+ *  growth table (blanket rule: no bare .select() over growth tables). */
+export async function listPayoutLinesForWindow(from: string, to: string): Promise<PayoutLineWindowRow[]> {
+  return fetchAllRows<PayoutLineWindowRow>((f, t) =>
+    db().from("bookkeeping_payout_lines")
+      .select("txn_date,fee_cents,net_cents,amount_cents,type")
+      .gte("txn_date", from).lte("txn_date", to)
+      .order("txn_date", { ascending: true }).order("id", { ascending: true })
+      .range(f, t) as never)
+}
+
+export interface PayoutDedupeRow {
+  id: string; stripe_payout_id: string; net_cents: number; arrival_date: string; status: BookkeepingPayoutStatus
+}
+/** Payouts for the statement-dedupe exact layer. PostgREST column alias maps
+ *  amount_cents (payout NET) → net_cents to match PayoutRef. Paginated. */
+export async function listPayoutsForDedupe(bookId: string, from: string, to: string): Promise<PayoutDedupeRow[]> {
+  return fetchAllRows<PayoutDedupeRow>((f, t) =>
+    db().from("bookkeeping_payouts")
+      .select("id,stripe_payout_id,net_cents:amount_cents,arrival_date,status")
+      .eq("book_id", bookId).gte("arrival_date", from).lte("arrival_date", to)
+      .order("arrival_date", { ascending: true }).range(f, t) as never)
+}
+
+/** Stored payouts whose status can still change — the sync route re-pulls
+ *  these by id every run (eligibility arm; income-sync watermark lesson). */
+export async function listNonTerminalPayouts(bookId: string): Promise<BookkeepingPayout[]> {
+  return fetchAllRows<BookkeepingPayout>((f, t) =>
+    db().from("bookkeeping_payouts").select("*")
+      .eq("book_id", bookId).in("status", ["pending", "in_transit"])
+      .order("arrival_date", { ascending: true }).range(f, t) as never)
 }
 
 // ── Phase 6a: closed-period write guard (D-2 choke point) ───────────────────

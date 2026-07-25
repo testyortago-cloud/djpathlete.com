@@ -635,6 +635,41 @@ export interface BookkeepingAsset {
 }
 export type NewBookkeepingAsset = Omit<BookkeepingAsset, "id" | "created_at" | "updated_at">
 
+// ── AI Bookkeeper Track A (6e): Stripe payout mirror ──────────────────────
+export type BookkeepingPayoutStatus = "in_transit" | "paid" | "failed" | "canceled" | "pending"
+
+export interface BookkeepingPayout {
+  id: string
+  stripe_payout_id: string
+  book_id: string
+  amount_cents: number // Stripe payout `amount` = NET
+  gross_cents: number
+  fee_cents: number
+  arrival_date: string
+  status: BookkeepingPayoutStatus
+  currency: string
+  raw: Record<string, unknown> | null
+  created_at: string
+  updated_at: string
+}
+export type NewBookkeepingPayout = Omit<BookkeepingPayout, "id" | "created_at" | "updated_at">
+
+export interface BookkeepingPayoutLine {
+  id: string
+  payout_id: string
+  stripe_balance_txn_id: string
+  type: string
+  amount_cents: number // signed gross
+  fee_cents: number
+  net_cents: number
+  txn_date: string // balance-txn `created`, UTC date
+  description: string | null
+  source_ref: string | null
+  created_at: string
+  updated_at: string
+}
+export type NewBookkeepingPayoutLine = Omit<BookkeepingPayoutLine, "id" | "created_at" | "updated_at">
+
 export interface Subscription {
   id: string
   user_id: string | null
