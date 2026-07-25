@@ -97,7 +97,11 @@ export async function deleteDismissal(bookId: string, fingerprint: string): Prom
 // ── Ledger entries ───────────────────────────────────────────────────────
 export interface ListEntriesParams {
   bookId: string; from?: string; to?: string; direction?: LedgerDirection
-  accountId?: string; source?: LedgerSource; search?: string; page: number; perPage: number
+  /** A uuid, OR the literal `"none"` sentinel meaning "uncategorized" (account_id IS NULL).
+   *  Only `applyEntryFilters` understands `"none"` — never pass it to an FK lookup
+   *  (e.g. `assertAccountInBook`), Postgres would reject it as an invalid uuid (22P02). */
+  accountId?: string | "none"
+  source?: LedgerSource; search?: string; page: number; perPage: number
 }
 
 /** Exported for the builder-recorder test (bookkeeping-entries-filters.test.ts). */

@@ -66,6 +66,9 @@ describe("GET /api/admin/bookkeeping/entries", () => {
     const res = await GET(new Request(`http://x/api?book_id=${BOOK}&account_id=none`) as never)
     expect(res.status).toBe(200)
     expect(listEntriesMock).toHaveBeenCalledWith(expect.objectContaining({ accountId: "none" }))
+    // The stat cards read entryTotals — it must see the same filter or the
+    // income/expense totals would not match the rows below them.
+    expect(entryTotalsMock).toHaveBeenCalledWith(expect.objectContaining({ accountId: "none" }))
   })
 })
 

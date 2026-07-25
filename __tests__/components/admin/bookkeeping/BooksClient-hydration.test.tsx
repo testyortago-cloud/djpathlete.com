@@ -57,6 +57,12 @@ describe("<BooksClient> deep-link hydration", () => {
     })
     expect(screen.getByRole("option", { name: "Uncategorized" })).toBeInTheDocument()
     expect((screen.getByDisplayValue("Uncategorized") as HTMLSelectElement).value).toBe("none")
+    // The preset must hydrate to "custom" so the window is VISIBLE and clearable.
+    // The From/To date inputs only render when preset === "custom"; if the preset
+    // initializer regressed to "all" the ledger would be silently date-filtered
+    // with the Period select reading "All time" and no way to see the window.
+    expect(screen.getByDisplayValue("2026-01-01")).toBeInTheDocument()
+    expect(screen.getByDisplayValue("2026-06-30")).toBeInTheDocument()
   })
 
   it("without initialFilters the first entries fetch carries no filter params", async () => {
@@ -68,5 +74,8 @@ describe("<BooksClient> deep-link hydration", () => {
     expect(entriesUrl).not.toContain("account_id=")
     expect(entriesUrl).not.toContain("direction=")
     expect(entriesUrl).not.toContain("from=")
+    // ...and the preset stays "all", so the custom-range date inputs stay hidden.
+    expect(screen.queryByDisplayValue("2026-01-01")).toBeNull()
+    expect(screen.queryByText("From")).toBeNull()
   })
 })
