@@ -13,7 +13,7 @@ import { formatCents } from "@/lib/bookkeeping/money"
 import { formatOccurredOn } from "@/lib/bookkeeping/format"
 import { PERIOD_PRESET_LABELS, presetRange, type PeriodPreset } from "@/lib/bookkeeping/period"
 import type { WatchdogFinding } from "@/lib/bookkeeping/receipt-watchdog"
-import type { ServiceLineProfit } from "@/lib/bookkeeping/service-line-profit"
+import { allocateSharedCosts, type ServiceLineProfit } from "@/lib/bookkeeping/service-line-profit"
 import type { TaxForecast } from "@/lib/bookkeeping/tax-forecast"
 import type { VendorSweep } from "@/lib/bookkeeping/vendor-sweep"
 import type { YearEndFlag } from "@/lib/bookkeeping/year-end-flags"
@@ -143,6 +143,9 @@ export function InsightsClient({
   // is per card key.
   const [dismissOverrides, setDismissOverrides] = useState<Record<string, "dismissed" | "active">>({})
   const [revealOpen, setRevealOpen] = useState<Record<string, boolean>>({})
+
+  // Proportional shared-cost allocation (5b, B-4) — display-only estimate.
+  const [allocateShared, setAllocateShared] = useState(false)
 
   const setDismissed = useCallback(async (rowBookId: string, fingerprint: string, dismissed: boolean) => {
     const key = `${rowBookId}|${fingerprint}`
@@ -275,6 +278,7 @@ export function InsightsClient({
   const watchdogRows = data && active ? data.watchdog.filter((f) => f.book_id === active.book.id) : []
   const forecastForBook =
     data && active ? (data.forecast.books.find((f) => f.book_id === active.book.id) ?? null) : null
+  const allocation = allocateShared && active ? allocateSharedCosts(active.profit) : null
 
   // Dismissal partitions (5b). Card headline chips keep the FULL recompute
   // totals — dismissals collapse rows, they never alter computed numbers.
@@ -794,19 +798,39 @@ export function InsightsClient({
                           <th className="py-1 pr-4 font-medium">Income</th>
                           <th className="py-1 pr-4 font-medium">Direct costs</th>
                           <th className="py-1 pr-4 font-medium">Net</th>
+                          {allocation ? (
+                            <>
+                              <th className="py-1 pr-4 font-medium">Allocated share</th>
+                              <th className="py-1 pr-4 font-medium">Net after share</th>
+                            </>
+                          ) : null}
                         </tr>
                       </thead>
                       <tbody>
-                        {active.profit.rows.map((r) => (
-                          <tr key={r.service_line ?? "uncategorized"} className="border-b last:border-0">
-                            <td className="py-1.5 pr-4">{r.label}</td>
-                            <td className="py-1.5 pr-4 text-success">{formatCents(r.income_cents, active.book.currency)}</td>
-                            <td className="py-1.5 pr-4 text-error">{formatCents(r.direct_cost_cents, active.book.currency)}</td>
-                            <td className={`py-1.5 pr-4 ${r.net_estimate_cents >= 0 ? "text-success" : "text-error"}`}>
-                              {formatCents(r.net_estimate_cents, active.book.currency)}
-                            </td>
-                          </tr>
-                        ))}
+                        {active.profit.rows.map((r, i) => {
+                          // allocateSharedCosts maps over profit.rows in order, so index pairs.
+                          const alloc = allocation ? allocation.rows[i] : null
+                          return (
+                            <tr key={r.service_line ?? "uncategorized"} className="border-b last:border-0">
+                              <td className="py-1.5 pr-4">{r.label}</td>
+                              <td className="py-1.5 pr-4 text-success">{formatCents(r.income_cents, active.book.currency)}</td>
+                              <td className="py-1.5 pr-4 text-error">{formatCents(r.direct_cost_cents, active.book.currency)}</td>
+                              <td className={`py-1.5 pr-4 ${r.net_estimate_cents >= 0 ? "text-success" : "text-error"}`}>
+                                {formatCents(r.net_estimate_cents, active.book.currency)}
+                              </td>
+                              {alloc ? (
+                                <>
+                                  <td className="py-1.5 pr-4 text-error">
+                                    {formatCents(alloc.allocated_shared_cents, active.book.currency)}
+                                  </td>
+                                  <td className={`py-1.5 pr-4 ${alloc.net_after_allocated_cents >= 0 ? "text-success" : "text-error"}`}>
+                                    {formatCents(alloc.net_after_allocated_cents, active.book.currency)}
+                                  </td>
+                                </>
+                              ) : null}
+                            </tr>
+                          )
+                        })}
                       </tbody>
                     </table>
                   )}
@@ -814,6 +838,18 @@ export function InsightsClient({
                     <p>Shared / overhead {formatCents(active.profit.shared_cost_cents, active.book.currency)}</p>
                     <p>Uncategorized {formatCents(active.profit.uncategorized_expense_cents, active.book.currency)}</p>
                   </div>
+                  <label className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      checked={allocateShared}
+                      disabled={active.profit.shared_cost_cents === 0}
+                      onChange={(e) => setAllocateShared(e.currentTarget.checked)}
+                    />
+                    Allocate shared costs by revenue share — estimate
+                  </label>
+                  {active.profit.shared_cost_cents === 0 ? (
+                    <p className="text-xs text-muted-foreground mt-1">No shared costs to allocate yet.</p>
+                  ) : null}
                   {active.profit.shared_cost_cents > 0 && active.profit.rows.every((r) => r.direct_cost_cents === 0) ? (
                     <p className="text-xs text-warning mt-2">
                       Tag expense categories with a service line (Manage categories) to attribute costs.

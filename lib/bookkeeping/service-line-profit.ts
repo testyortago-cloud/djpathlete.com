@@ -75,3 +75,52 @@ export function serviceLineProfit(entries: InsightEntry[], accounts: InsightAcco
     uncategorized_expense_cents: uncategorized,
   }
 }
+
+export interface AllocatedServiceLineRow extends ServiceLineProfitRow {
+  allocated_shared_cents: number
+  net_after_allocated_cents: number
+}
+
+/** Largest-remainder allocation of shared_cost_cents by income share (5b, B-4).
+ *  Floors every raw share, then hands out the leftover cents by fractional
+ *  remainder desc (tie → row order) so allocated cents sum EXACTLY to
+ *  shared_cost_cents — naive per-row rounding loses or invents cents.
+ *  Zero-income lines get 0; income_total 0 → no allocation. This file's first
+ *  division: labeled an ESTIMATE in the UI, never a ledger write. */
+export function allocateSharedCosts(profit: ServiceLineProfit): {
+  rows: AllocatedServiceLineRow[]
+  allocated_total_cents: number
+} {
+  const shared = profit.shared_cost_cents
+  const total = profit.income_total_cents
+  if (shared <= 0 || total <= 0) {
+    return {
+      rows: profit.rows.map((r) => ({
+        ...r,
+        allocated_shared_cents: 0,
+        net_after_allocated_cents: r.net_estimate_cents,
+      })),
+      allocated_total_cents: 0,
+    }
+  }
+  const raw = profit.rows.map((r) => (r.income_cents > 0 ? (shared * r.income_cents) / total : 0))
+  const alloc = raw.map(Math.floor)
+  let leftover = shared - alloc.reduce((s, v) => s + v, 0)
+  const byRemainder = raw
+    .map((v, i) => ({ i, frac: v - Math.floor(v) }))
+    .filter((x) => profit.rows[x.i].income_cents > 0)
+    .sort((a, b) => b.frac - a.frac || a.i - b.i)
+  for (const { i } of byRemainder) {
+    if (leftover <= 0) break
+    alloc[i] += 1
+    leftover -= 1
+  }
+  return {
+    rows: profit.rows.map((r, i) => ({
+      ...r,
+      allocated_shared_cents: alloc[i],
+      net_after_allocated_cents: r.net_estimate_cents - alloc[i],
+    })),
+    allocated_total_cents: alloc.reduce((s, v) => s + v, 0),
+  }
+}

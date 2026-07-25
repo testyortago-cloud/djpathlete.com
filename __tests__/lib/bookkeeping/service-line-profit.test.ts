@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest"
 import type { InsightAccount, InsightEntry } from "@/lib/bookkeeping/insight-types"
-import { serviceLineProfit } from "@/lib/bookkeeping/service-line-profit"
+import {
+  allocateSharedCosts,
+  serviceLineProfit,
+  type ServiceLineProfitRow,
+} from "@/lib/bookkeeping/service-line-profit"
 
 const BOOK = "b0000000-0000-4000-8000-000000000001"
 const ACC_PT_INCOME = "a0000000-0000-4000-8000-000000000001"
@@ -99,5 +103,70 @@ describe("serviceLineProfit", () => {
     expect(r.rows.find((row) => row.service_line === "consulting")).toMatchObject({
       label: "consulting", income_cents: 0, direct_cost_cents: 300, net_estimate_cents: -300,
     })
+  })
+})
+
+describe("allocateSharedCosts", () => {
+  const row = (over: Partial<ServiceLineProfitRow>): ServiceLineProfitRow => ({
+    service_line: "performance_training", label: "Performance Training",
+    income_cents: 0, direct_cost_cents: 0, net_estimate_cents: 0, ...over,
+  })
+  const profit = (rows: ServiceLineProfitRow[], shared: number) => ({
+    rows,
+    income_total_cents: rows.reduce((s, r) => s + r.income_cents, 0),
+    direct_cost_total_cents: rows.reduce((s, r) => s + r.direct_cost_cents, 0),
+    shared_cost_cents: shared,
+    uncategorized_expense_cents: 0,
+  })
+
+  it("100 cents over three equal lines allocates 34/33/33 — largest-remainder, not per-row rounding", () => {
+    // Discriminator: naive Math.round per row gives 33/33/33 (sum 99, loses a
+    // cent); round-half-up-all gives 34/34/34 (sum 102, invents cents).
+    const r = allocateSharedCosts(profit([
+      row({ service_line: "a", label: "A", income_cents: 1000, net_estimate_cents: 1000 }),
+      row({ service_line: "b", label: "B", income_cents: 1000, net_estimate_cents: 1000 }),
+      row({ service_line: "c", label: "C", income_cents: 1000, net_estimate_cents: 1000 }),
+    ], 100))
+    expect(r.rows.map((x) => x.allocated_shared_cents)).toEqual([34, 33, 33]) // frac tie → row order
+    expect(r.allocated_total_cents).toBe(100)
+  })
+
+  it("remainder cents go to the LARGEST fractional remainder, not the first row", () => {
+    // shares of 10¢ over incomes 1000/2000: raw 3.333 / 6.667 → floors 3/6,
+    // leftover 1 goes to the .667 row. First-row mutation would give 4/6.
+    const r = allocateSharedCosts(profit([
+      row({ service_line: "a", label: "A", income_cents: 1000, net_estimate_cents: 1000 }),
+      row({ service_line: "b", label: "B", income_cents: 2000, net_estimate_cents: 2000 }),
+    ], 10))
+    expect(r.rows.map((x) => x.allocated_shared_cents)).toEqual([3, 7])
+  })
+
+  it("allocated cents always sum EXACTLY to shared_cost_cents (odd split, 12.555-style)", () => {
+    const r = allocateSharedCosts(profit([
+      row({ service_line: "a", label: "A", income_cents: 12555, net_estimate_cents: 12555 }),
+      row({ service_line: "b", label: "B", income_cents: 33333, net_estimate_cents: 33333 }),
+      row({ service_line: "c", label: "C", income_cents: 707, net_estimate_cents: 707 }),
+    ], 9999))
+    expect(r.rows.reduce((s, x) => s + x.allocated_shared_cents, 0)).toBe(9999)
+    expect(r.allocated_total_cents).toBe(9999)
+  })
+
+  it("zero-income lines get 0 and net_after_allocated subtracts the share", () => {
+    const r = allocateSharedCosts(profit([
+      row({ service_line: "a", label: "A", income_cents: 5000, direct_cost_cents: 1000, net_estimate_cents: 4000 }),
+      row({ service_line: "b", label: "B", income_cents: 0, direct_cost_cents: 400, net_estimate_cents: -400 }),
+    ], 500))
+    expect(r.rows[0].allocated_shared_cents).toBe(500)
+    expect(r.rows[0].net_after_allocated_cents).toBe(3500)
+    expect(r.rows[1].allocated_shared_cents).toBe(0)
+    expect(r.rows[1].net_after_allocated_cents).toBe(-400)
+  })
+
+  it("income_total 0 → no allocation at all (everything stays shared)", () => {
+    const r = allocateSharedCosts(profit([
+      row({ service_line: "a", label: "A", income_cents: 0, direct_cost_cents: 300, net_estimate_cents: -300 }),
+    ], 700))
+    expect(r.rows[0].allocated_shared_cents).toBe(0)
+    expect(r.allocated_total_cents).toBe(0)
   })
 })
