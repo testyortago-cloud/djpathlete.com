@@ -258,6 +258,7 @@ export const AUDIT_ACTIONS = [
   { slug: "bookkeeping.asset_updated", category: "commerce", description: "Depreciable asset updated" },
   { slug: "bookkeeping.asset_deleted", category: "commerce", description: "Depreciable asset deleted from the register" },
   { slug: "bookkeeping.income_synced", category: "commerce", description: "Nightly cron posted new platform income to the ledger" },
+  { slug: "bookkeeping.payout_synced", category: "commerce", description: "Nightly cron ingested Stripe payouts into the payout mirror" },
 ] as const satisfies readonly AuditActionDef[]
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number]["slug"]
