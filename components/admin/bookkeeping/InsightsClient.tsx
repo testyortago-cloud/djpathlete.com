@@ -157,6 +157,10 @@ export function InsightsClient({
         body: JSON.stringify({ book_id: rowBookId, fingerprint }),
       })
       if (!res.ok) throw new Error("failed")
+      // A generated summary describes the finding set as it stood; dismissing or
+      // restoring changes that set, so retire the cached narrative rather than
+      // leave a bullet naming a finding the page no longer shows.
+      setNarratives({})
     } catch {
       setDismissOverrides((o) => ({ ...o, [key]: dismissed ? "active" : "dismissed" }))
       toast.error(dismissed ? "Failed to dismiss the finding" : "Failed to restore the finding")
@@ -564,7 +568,7 @@ export function InsightsClient({
           variant="outline"
           className="mt-3"
           onClick={() => void explainFindings()}
-          disabled={narrativeLoading || loading}
+          disabled={narrativeLoading || loading || !data || totalEntries === 0}
         >
           {narrativeLoading ? "Explaining…" : narrative ? "Regenerate" : "Explain these findings"}
         </Button>

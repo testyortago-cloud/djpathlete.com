@@ -31,6 +31,7 @@ const SYSTEM_PROMPT = [
   "Write 3-5 short observations in plain words. Cite the real numbers, converted to dollars.",
   "Never give tax or legal advice — every finding is a candidate the accountant confirms.",
   "Do not invent trends the data does not show; if the ledger is nearly empty, say so plainly.",
+  "net_before_shared_costs_cents is income minus DIRECT costs only — shared/overhead costs are reported separately as shared_cost_cents and are NOT subtracted from any line; never present a single line's figure as total profit.",
   "Your output is labeled AI-generated in the UI.",
 ].join(" ")
 
@@ -76,10 +77,15 @@ export async function POST(request: Request) {
           profit: {
             income_total_cents: profit.income_total_cents,
             shared_cost_cents: profit.shared_cost_cents,
+            // Renamed from the finder's `net_estimate_cents`: that number is
+            // income MINUS DIRECT COSTS ONLY (service-line-profit.ts:56-63) and
+            // shared/overhead is never subtracted from it. A bare "net" key
+            // invites the model to quote a line as total profit, overstating it
+            // by the whole shared bucket.
             rows: profit.rows.map((r) => ({
               label: r.label,
               income_cents: r.income_cents,
-              net_estimate_cents: r.net_estimate_cents,
+              net_before_shared_costs_cents: r.net_estimate_cents,
             })),
           },
           recurring_vendors: recurring.slice(0, 10).map((v) => ({
@@ -110,7 +116,12 @@ export async function POST(request: Request) {
         completed_at: null,
         current_step: 0,
         total_steps: 1,
-        generation_trigger: "bookkeeping_insights_narrative",
+        // NO generation_trigger: migration 00034 was never applied to this
+        // project, so the live ai_generation_log has no such column and
+        // PostgREST rejects the whole insert (PGRST204) on an unknown key —
+        // which would have killed the AI leg on every request. The feature
+        // marker lives losslessly in input_params.feature, exactly like every
+        // caller that demonstrably works in prod (statement-import, receipts).
       })
       logId = log.id
 

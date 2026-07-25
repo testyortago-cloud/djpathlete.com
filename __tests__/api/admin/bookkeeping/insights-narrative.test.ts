@@ -27,7 +27,11 @@ import { POST } from "@/app/api/admin/bookkeeping/insights/narrative/route"
 
 const BOOK_ID = "b0000000-0000-4000-8000-000000000001"
 const ACCOUNT_ID = "a0000000-0000-4000-8000-000000000001"
+const SOFTWARE_ACCOUNT_ID = "a0000000-0000-4000-8000-000000000002"
+const INCOME_ACCOUNT_ID = "a0000000-0000-4000-8000-000000000003"
 const GAP_ENTRY_ID = "e0000000-0000-4000-8000-000000000001"
+const UNCAT_ENTRY_ID = "e0000000-0000-4000-8000-000000000002"
+const VENDOR_KEY = "adobe"
 
 const BOOK = {
   id: BOOK_ID,
@@ -68,6 +72,77 @@ const GAP_ENTRY = {
   business_purpose: null,
   document_id: "d0000000-0000-4000-8000-000000000001",
 }
+// Non-watch, purpose-free expense account: carries the recurring vendor without
+// adding a second watchlist row or a second substantiation gap.
+const SOFTWARE_ACCOUNT = {
+  id: SOFTWARE_ACCOUNT_ID,
+  book_id: BOOK_ID,
+  name: "Software",
+  account_type: "expense",
+  service_line: null,
+  tax_category: null,
+  sort_order: 1,
+  is_deductible_candidate: false,
+  requires_business_purpose: false,
+  archived_at: null,
+}
+// Service-lined INCOME account ⇒ serviceLineProfit emits one real row whose net
+// excludes the (untagged, therefore shared) $72.00 of expenses below.
+const INCOME_ACCOUNT = {
+  id: INCOME_ACCOUNT_ID,
+  book_id: BOOK_ID,
+  name: "Performance training income",
+  account_type: "income",
+  service_line: "performance_training",
+  tax_category: null,
+  sort_order: 2,
+  is_deductible_candidate: false,
+  requires_business_purpose: false,
+  archived_at: null,
+}
+const INCOME_ENTRY = {
+  id: "e0000000-0000-4000-8000-000000000003",
+  book_id: BOOK_ID,
+  account_id: INCOME_ACCOUNT_ID,
+  direction: "income",
+  amount_cents: 100_000,
+  occurred_on: "2026-02-10",
+  counterparty: "Client A",
+  memo: null,
+  source: "manual",
+  business_purpose: null,
+  document_id: null,
+}
+// Three equal monthly charges (gaps 31 / 28 ⇒ median 30 days) ⇒ ONE real
+// recurring vendor out of the REAL vendorSweep run.
+const VENDOR_ENTRIES = ["2026-01-05", "2026-02-05", "2026-03-05"].map((day, i) => ({
+  id: `e0000000-0000-4000-8000-00000000001${i}`,
+  book_id: BOOK_ID,
+  account_id: SOFTWARE_ACCOUNT_ID,
+  direction: "expense",
+  amount_cents: 1000,
+  occurred_on: day,
+  counterparty: "Adobe",
+  memo: null,
+  source: "manual",
+  business_purpose: null,
+  document_id: null,
+}))
+// Expense with no account ⇒ ONE real uncategorized entry; a single charge, so it
+// can never be picked up as a recurring vendor.
+const UNCAT_ENTRY = {
+  id: UNCAT_ENTRY_ID,
+  book_id: BOOK_ID,
+  account_id: null,
+  direction: "expense",
+  amount_cents: 2500,
+  occurred_on: "2026-04-02",
+  counterparty: "Costco",
+  memo: null,
+  source: "manual",
+  business_purpose: null,
+  document_id: null,
+}
 
 function req(body: unknown): Request {
   return new Request("http://x/api/admin/bookkeeping/insights/narrative", {
@@ -84,7 +159,11 @@ beforeEach(() => {
   updateGenerationLogMock.mockReset()
   callAgentMock.mockReset()
   authMock.mockResolvedValue({ user: { id: "admin-1", role: "admin" } })
-  loadInsightsBundleMock.mockResolvedValue({ books: [BOOK], accounts: [ACCOUNT], entries: [GAP_ENTRY] })
+  loadInsightsBundleMock.mockResolvedValue({
+    books: [BOOK],
+    accounts: [ACCOUNT, SOFTWARE_ACCOUNT, INCOME_ACCOUNT],
+    entries: [GAP_ENTRY, INCOME_ENTRY, ...VENDOR_ENTRIES, UNCAT_ENTRY],
+  })
   listDismissedFingerprintsMock.mockResolvedValue([])
   createGenerationLogMock.mockResolvedValue({ id: "log-1" })
   updateGenerationLogMock.mockResolvedValue({ id: "log-1" })
@@ -126,6 +205,16 @@ describe("POST /api/admin/bookkeeping/insights/narrative", () => {
     expect(options).toMatchObject({ model: "sonnet", maxTokens: 1200 })
   })
 
+  // The live ai_generation_log has NO generation_trigger column (00034 was never
+  // applied to this project); PostgREST rejects an unknown body key outright, so
+  // sending it would kill the AI leg on every request in production.
+  it("never sends a generation_trigger key on the log insert", async () => {
+    await POST(req({ from: "2026-01-01", to: "2026-06-30" }) as never)
+    const payload = createGenerationLogMock.mock.calls[0][0] as Record<string, unknown>
+    expect(Object.keys(payload)).not.toContain("generation_trigger")
+    expect(payload.input_params).toMatchObject({ feature: "bookkeeping_insights_narrative" })
+  })
+
   it("a dismissed finding is filtered BEFORE compaction — the AI never sees it", async () => {
     listDismissedFingerprintsMock.mockResolvedValue([`substantiation_gap:${GAP_ENTRY_ID}`])
     await POST(req({ from: "2026-01-01", to: "2026-06-30" }) as never)
@@ -134,11 +223,54 @@ describe("POST /api/admin/bookkeeping/insights/narrative", () => {
     expect(userMessage.books[0].substantiation_gap_cents).toBe(0)
   })
 
-  it("an undismissed run keeps the gap in the compacted summary (discriminator pair)", async () => {
+  it("a dismissed watchlist account is filtered BEFORE compaction", async () => {
+    listDismissedFingerprintsMock.mockResolvedValue([`watchlist:${ACCOUNT_ID}`])
     await POST(req({ from: "2026-01-01", to: "2026-06-30" }) as never)
     const userMessage = JSON.parse(callAgentMock.mock.calls[0][1] as string)
-    expect(userMessage.books[0].substantiation_gap_count).toBe(1)
-    expect(userMessage.books[0].substantiation_gap_cents).toBe(4200)
+    expect(userMessage.books[0].watchlist).toEqual([])
+  })
+
+  it("a dismissed uncategorized entry is filtered BEFORE compaction", async () => {
+    listDismissedFingerprintsMock.mockResolvedValue([`uncategorized:${UNCAT_ENTRY_ID}`])
+    await POST(req({ from: "2026-01-01", to: "2026-06-30" }) as never)
+    const userMessage = JSON.parse(callAgentMock.mock.calls[0][1] as string)
+    expect(userMessage.books[0].uncategorized_count).toBe(0)
+    expect(userMessage.books[0].uncategorized_cents).toBe(0)
+  })
+
+  it("a dismissed recurring vendor is filtered BEFORE compaction", async () => {
+    listDismissedFingerprintsMock.mockResolvedValue([`vendor:${VENDOR_KEY}`])
+    await POST(req({ from: "2026-01-01", to: "2026-06-30" }) as never)
+    const userMessage = JSON.parse(callAgentMock.mock.calls[0][1] as string)
+    expect(userMessage.books[0].recurring_vendors).toEqual([])
+  })
+
+  it("an undismissed run keeps every finder's rows in the compacted summary (discriminator pairs)", async () => {
+    await POST(req({ from: "2026-01-01", to: "2026-06-30" }) as never)
+    const userMessage = JSON.parse(callAgentMock.mock.calls[0][1] as string)
+    const book = userMessage.books[0]
+    expect(book.substantiation_gap_count).toBe(1)
+    expect(book.substantiation_gap_cents).toBe(4200)
+    expect(book.watchlist).toEqual([{ name: "Meals (business purpose)", total_cents: 4200, entries: 1 }])
+    expect(book.uncategorized_count).toBe(1)
+    expect(book.uncategorized_cents).toBe(2500)
+    expect(book.recurring_vendors).toEqual([{ name: "Adobe", cadence: "monthly", annualized_cents: 12_000 }])
+  })
+
+  // serviceLineProfit's per-row net subtracts DIRECT costs only — shared/overhead
+  // sits outside it. The payload must not hand the model a bare "net".
+  it("labels the per-line net as before-shared-costs and warns the model in the prompt", async () => {
+    await POST(req({ from: "2026-01-01", to: "2026-06-30" }) as never)
+    const systemPrompt = callAgentMock.mock.calls[0][0] as string
+    const userMessage = JSON.parse(callAgentMock.mock.calls[0][1] as string)
+    const profit = userMessage.books[0].profit
+    expect(profit.shared_cost_cents).toBe(7200)
+    expect(profit.rows).toEqual([
+      { label: "Performance Training", income_cents: 100_000, net_before_shared_costs_cents: 100_000 },
+    ])
+    expect(JSON.stringify(profit)).not.toContain("net_estimate_cents")
+    expect(systemPrompt).toContain("net_before_shared_costs_cents")
+    expect(systemPrompt).toContain("shared_cost_cents")
   })
 
   it("AI timeout falls back honestly: 200, observations null, log failed", async () => {
