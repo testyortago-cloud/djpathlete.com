@@ -387,6 +387,17 @@ export async function linkDocumentBatch(id: string, bookId: string, importBatchI
     .eq("id", id).eq("book_id", bookId)
   if (error) throw error
 }
+/** True when any document carries external_ref starting with `prefix`
+ *  (poller skip check, e.g. 'gmail:<messageId>:'). Check-then-insert side of
+ *  the 00193 discipline — external_ref is NEVER an onConflict target. */
+export async function hasDocumentsForExternalRefPrefix(prefix: string): Promise<boolean> {
+  const { count, error } = await db()
+    .from("bookkeeping_documents")
+    .select("id", { count: "exact", head: true })
+    .like("external_ref", `${prefix}%`)
+  if (error) throw error
+  return (count ?? 0) > 0
+}
 export async function deleteDocument(id: string): Promise<void> {
   const { error } = await db().from("bookkeeping_documents").delete().eq("id", id)
   if (error) throw error

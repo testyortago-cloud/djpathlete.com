@@ -2040,6 +2040,45 @@ export const bookkeepingIncomeSyncCron = onSchedule(
   },
 )
 
+// ─── Bookkeeping Gmail Receipt Poller (hourly :20) ───────────────────────────
+// Thin delegator (gscSyncCron shape): the route owns the cron_runs row + the
+// cron_bookkeeping_gmail_receipts_enabled gate (default OFF) and degrades to
+// a successful no-op while Gmail is unconnected. Zero new Firebase secrets —
+// the Gmail refresh token lives in platform_connections, read Vercel-side.
+export const bookkeepingGmailReceiptsCron = onSchedule(
+  {
+    schedule: "20 * * * *",
+    timeZone: "Etc/UTC",
+    timeoutSeconds: 330,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [internalCronToken, appUrl],
+  },
+  async () => {
+    const baseUrl = process.env.APP_URL
+    const token = process.env.INTERNAL_CRON_TOKEN
+    if (!baseUrl || !token) {
+      console.error("[bookkeepingGmailReceiptsCron] APP_URL or INTERNAL_CRON_TOKEN missing — abort")
+      return
+    }
+    try {
+      const res = await fetch(`${baseUrl}/api/admin/internal/bookkeeping-gmail-receipts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: "{}",
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        console.error("[bookkeepingGmailReceiptsCron]", res.status, body)
+        return
+      }
+      console.log("[bookkeepingGmailReceiptsCron]", res.status, body)
+    } catch (err) {
+      console.error("[bookkeepingGmailReceiptsCron] failed:", err)
+    }
+  },
+)
+
 // ─── Stale AI Job Reaper (every 15 min) ──────────────────────────────────────
 // A hard-killed function (platform timeout, OOM, crash) never runs its catch
 // block, so its ai_jobs doc keeps its in-flight status forever — and the
