@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { rowFromEmailDocument } from "@/lib/bookkeeping/email-receipts"
+import { rowFromEmailDocument, SCAN_INCOMPLETE_MESSAGE } from "@/lib/bookkeeping/email-receipts"
 import type { BookkeepingAccount, BookkeepingDocument } from "@/types/database"
 
 const ACCOUNTS = [
@@ -46,10 +46,33 @@ describe("rowFromEmailDocument", () => {
     expect(row.result?.confidence).toBe("high")
   })
 
-  it("no scan_result yet (vision job pending/failed) → editable blank row defaulting to today", () => {
+  // Migration 00193 states this requirement in writing: the poller's
+  // external_ref key means "already INGESTED", not "already SCANNED", so a
+  // document whose receipt_scan job never landed is skipped by every later
+  // poll forever. Reporting it as "scanned" makes it pixel-identical to a real
+  // scan that found nothing, and the receipt is silently lost.
+  it("no scan_result → status scan_failed (NOT scanned) with the retry message", () => {
     const row = rowFromEmailDocument({ ...DOC, scan_result: null } as BookkeepingDocument, ACCOUNTS)
-    expect(row).toMatchObject({ status: "scanned", included: true, amount: "", counterparty: "", accountId: "" })
+    expect(row.status).toBe("scan_failed")
+    expect(row.status).not.toBe("scanned")
+    expect(row.error).toBe(SCAN_INCOMPLETE_MESSAGE)
+    // Still fully editable so the coach can key it in by hand and post.
+    expect(row).toMatchObject({ included: false, amount: "", counterparty: "", accountId: "", documentId: DOC.id })
     expect(row.occurredOn).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+  })
+
+  it("a scanned receipt where the AI found nothing stays 'scanned' — the two cases must differ", () => {
+    const blankScan = {
+      ...DOC,
+      scan_result: {
+        vendor: null, amount_cents: null, occurred_on: null, suggested_category: null,
+        business_purpose_hint: null, currency: null, confidence: "low", warnings: [],
+      },
+    } as unknown as BookkeepingDocument
+    const row = rowFromEmailDocument(blankScan, ACCOUNTS)
+    expect(row.status).toBe("scanned")
+    expect(row.error).toBeNull()
+    expect(row.amount).toBe("")
   })
 
   it("falls back to a friendly file name when the document has none", () => {

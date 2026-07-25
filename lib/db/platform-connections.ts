@@ -73,6 +73,26 @@ export async function disconnectPlatform(
   return rows[0]
 }
 
+/** Flips a connection back out of 'error' after credentials demonstrably work
+ *  again, clearing last_error. WITHOUT this, setConnectionError below is a
+ *  one-way door: nothing in the codebase writes status back to 'connected'
+ *  except fn_connect_platform (a full interactive OAuth consent re-run), so a
+ *  single transient Google 5xx during a token refresh silently retired the
+ *  integration until a human noticed and reconnected. Deliberately a no-op for
+ *  'paused' / 'disconnected' — those are intentional human states and must not
+ *  be resurrected by a background job. */
+export async function clearConnectionError(
+  pluginName: PlatformPluginName,
+): Promise<void> {
+  const supabase = getClient()
+  const { error } = await supabase
+    .from("platform_connections")
+    .update({ status: "connected", last_error: null })
+    .eq("plugin_name", pluginName)
+    .eq("status", "error")
+  if (error) throw error
+}
+
 export async function setConnectionError(
   pluginName: PlatformPluginName,
   errorMessage: string,

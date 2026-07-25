@@ -18,7 +18,7 @@ function makeBuilder() {
 }
 vi.mock("@/lib/supabase", () => ({ createServiceRoleClient: () => ({ from: () => makeBuilder() }) }))
 
-import { listPendingEmailReceiptDocuments } from "@/lib/db/bookkeeping"
+import { listExternalRefsWithPrefix, listPendingEmailReceiptDocuments } from "@/lib/db/bookkeeping"
 
 beforeEach(() => {
   calls.length = 0
@@ -50,6 +50,32 @@ describe("listPendingEmailReceiptDocuments filter chain", () => {
   it("orders newest first and reads through the paginator", async () => {
     await listPendingEmailReceiptDocuments()
     expect(has("order", "created_at")).toBe(true)
+    expect(has("range", 0, 999)).toBe(true)
+  })
+
+  // A .range()-paginated read whose ORDER BY is not a total order can hand the
+  // same row back on two pages while another row is never returned at all.
+  // created_at is NOT unique here — one poller run inserts several receipt
+  // documents inside the same millisecond.
+  it("breaks created_at ties on id so the paginated sort is a TOTAL order", async () => {
+    await listPendingEmailReceiptDocuments()
+    const orders = calls.filter((c) => c.method === "order").map((c) => c.args[0])
+    expect(orders).toEqual(["created_at", "id"])
+  })
+})
+
+describe("listExternalRefsWithPrefix", () => {
+  it("orders by the UNIQUE external_ref before paginating", async () => {
+    await listExternalRefsWithPrefix("gmail:m1:")
+    expect(has("like", "external_ref", "gmail:m1:%")).toBe(true)
+    // Without an ORDER BY, PostgREST guarantees nothing about which rows land
+    // in which .range() window — a ref missed at a page boundary reads as
+    // "not yet ingested" and the poller re-ingests the attachment (duplicate
+    // document + a second vision spend). external_ref is UNIQUE (00193), so
+    // ordering on it alone is already a total order.
+    const orders = calls.filter((c) => c.method === "order")
+    expect(orders.length).toBeGreaterThan(0)
+    expect(orders[0].args[0]).toBe("external_ref")
     expect(has("range", 0, 999)).toBe(true)
   })
 })

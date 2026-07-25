@@ -35,8 +35,12 @@ import {
 import { ingestReceiptDocument } from "@/lib/bookkeeping/receipt-ingest"
 import { recordAudit } from "@/lib/audit/record"
 import {
-  POST, MAX_MESSAGES_PER_RUN, SETTLED_IDS_KEY,
+  POST, MAX_MESSAGES_PER_RUN, MAX_MESSAGE_ATTEMPTS, MAX_LIST_PAGES, SETTLED_IDS_KEY,
 } from "@/app/api/admin/internal/bookkeeping-gmail-receipts/route"
+import {
+  GMAIL_UNREADABLE_IDS_KEY, GMAIL_SCANNABLE_MIMES_KEY, GMAIL_MESSAGE_ATTEMPTS_KEY,
+} from "@/lib/bookkeeping/email-receipts"
+import { SCANNABLE_MIMES, MAX_ATTACHMENT_BYTES } from "@/lib/bookkeeping/receipt-attachments"
 
 const TOKEN = "test-cron-token"
 const AUTH = `Bearer ${TOKEN}`
@@ -49,8 +53,10 @@ const books = [
 
 // format=full payload: an inline text part (no attachmentId), an
 // application/pdf the scanner cannot decode (must be counted, never ingested,
-// and must NOT occupy external_ref index 0), the real jpeg receipt, and a
-// calendar invite the mime filter must drop entirely.
+// and must NOT take the jpeg's external_ref key), the real jpeg receipt, and a
+// calendar invite the mime filter must drop entirely. partIds are Gmail's real
+// shape — they are the external_ref key, so 'receipt.jpg' is always
+// 'gmail:<id>:2' no matter what the mime allow-list does.
 // collectReceiptAttachments is REAL in this suite (separate pure module).
 const fullMessage = (id: string) => ({
   id,
@@ -58,10 +64,27 @@ const fullMessage = (id: string) => ({
   payload: {
     mimeType: "multipart/mixed",
     parts: [
-      { mimeType: "text/plain", body: { size: 20, data: "aGk" } },
-      { mimeType: "application/pdf", filename: "invoice.pdf", body: { size: 4096, attachmentId: `att-${id}-pdf` } },
-      { mimeType: "image/jpeg", filename: "receipt.jpg", body: { size: 4096, attachmentId: `att-${id}-jpg` } },
-      { mimeType: "text/calendar", filename: "invite.ics", body: { size: 512, attachmentId: `att-${id}-ics` } },
+      { partId: "0", mimeType: "text/plain", body: { size: 20, data: "aGk" } },
+      { partId: "1", mimeType: "application/pdf", filename: "invoice.pdf", body: { size: 4096, attachmentId: `att-${id}-pdf` } },
+      { partId: "2", mimeType: "image/jpeg", filename: "receipt.jpg", body: { size: 4096, attachmentId: `att-${id}-jpg` } },
+      { partId: "3", mimeType: "text/calendar", filename: "invite.ics", body: { size: 512, attachmentId: `att-${id}-ics` } },
+    ],
+  },
+})
+
+/** One image the scanner CAN read but that is over the size cap — dropped by
+ *  collectReceiptAttachments and invisible to a mime-only unsupported count. */
+const oversizedImageMessage = (id: string) => ({
+  id,
+  threadId: `t-${id}`,
+  payload: {
+    mimeType: "multipart/mixed",
+    parts: [
+      { partId: "0", mimeType: "text/plain", body: { size: 20, data: "aGk" } },
+      {
+        partId: "1", mimeType: "image/jpeg", filename: "huge.jpg",
+        body: { size: MAX_ATTACHMENT_BYTES + 1, attachmentId: `att-${id}-big` },
+      },
     ],
   },
 })
@@ -86,8 +109,8 @@ const twoImageMessage = (id: string) => ({
   payload: {
     mimeType: "multipart/mixed",
     parts: [
-      { mimeType: "image/jpeg", filename: "front.jpg", body: { size: 2048, attachmentId: `att-${id}-0` } },
-      { mimeType: "image/png", filename: "back.png", body: { size: 2048, attachmentId: `att-${id}-1` } },
+      { partId: "0", mimeType: "image/jpeg", filename: "front.jpg", body: { size: 2048, attachmentId: `att-${id}-0` } },
+      { partId: "1", mimeType: "image/png", filename: "back.png", body: { size: 2048, attachmentId: `att-${id}-1` } },
     ],
   },
 })
@@ -175,12 +198,33 @@ describe("POST /api/admin/internal/bookkeeping-gmail-receipts", () => {
     expect(listMessages).not.toHaveBeenCalled()
   })
 
-  it("happy path: jpeg ingested as gmail:<id>:0, pdf reported unsupported, ics filtered, audit recorded", async () => {
+  it("a plain token-refresh failure is a degraded success, not a 500 that pages the watchdog", async () => {
+    // getAccessTokenForConnection writes platform_connections.status='error' on
+    // ANY refresh throw. Failing the run on top of that turns one transient
+    // Google blip into a cron_runs failure + an automation-health page, for a
+    // condition that self-heals on the next hourly refresh.
+    ;(getAccessTokenForConnection as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("Token refresh failed: HTTP 503"),
+    )
+    const res = await POST(makeRequest() as never)
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({
+      ok: true, fetch_status: "degraded", fetch_detail: "gmail_auth_failed",
+      message: "Token refresh failed: HTTP 503",
+    })
+    expect(logCronEnd).toHaveBeenCalledWith(
+      expect.anything(), "run-1", "success", expect.objectContaining({ fetch_detail: "gmail_auth_failed" }),
+    )
+    expect(listLabels).not.toHaveBeenCalled()
+  })
+
+  it("happy path: jpeg ingested as gmail:<id>:<partId>, pdf reported unsupported, ics filtered, audit recorded", async () => {
     const res = await POST(makeRequest() as never)
     expect(res.status).toBe(200)
     expect(await res.json()).toMatchObject({
       ok: true, fetch_status: "ok", processed: 1, ingested: 1, failed: 0,
-      unsupported_attachments: 1, more_pending: false,
+      unsupported_attachments: 1, oversized_attachments: 0, needs_manual_upload: 0,
+      poisoned: 0, more_pending: false,
     })
     expect(logCronStart).toHaveBeenCalledWith(expect.anything(), "bookkeepingGmailReceiptsCron")
     expect((listMessages as ReturnType<typeof vi.fn>).mock.calls[0][1]).toMatchObject({ labelIds: ["L1"] })
@@ -188,7 +232,7 @@ describe("POST /api/admin/internal/bookkeeping-gmail-receipts", () => {
     expect(getAttachment).not.toHaveBeenCalledWith("tok", "m1", "att-m1-pdf")
     expect(ingestReceiptDocument).toHaveBeenCalledTimes(1)
     expect((ingestReceiptDocument as ReturnType<typeof vi.fn>).mock.calls[0][0]).toMatchObject({
-      bookId: BOOK, externalRef: "gmail:m1:0", uploadedBy: null,
+      bookId: BOOK, externalRef: "gmail:m1:2", uploadedBy: null,
       mimeType: "image/jpeg", originalFilename: "receipt.jpg",
       bookName: "Darren — DJP Athlete", bookKind: "business",
       accounts: [{ name: "Equipment", account_type: "expense" }],
@@ -255,23 +299,149 @@ describe("POST /api/admin/internal/bookkeeping-gmail-receipts", () => {
     expect(second.ingested).toBe(1)
     expect(second.more_pending).toBe(false)
     expect((ingestReceiptDocument as ReturnType<typeof vi.fn>).mock.calls[0][0]).toMatchObject({
-      externalRef: "gmail:withImage:0",
+      externalRef: "gmail:withImage:2",
     })
     // The settled set never re-fetches what it already answered for.
     expect((getMessage as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[1])).toEqual(["b25", "withImage"])
   })
 
-  it("a pdf-only email settles as unsupported instead of burning the fetch budget forever", async () => {
+  // ── Review finding: a message we could not read must never just vanish ──
+  it("a pdf-only email is recorded as NEEDS MANUAL UPLOAD, not counted as attachmentless", async () => {
     ;(getMessage as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "m1", threadId: "t1",
       payload: { mimeType: "multipart/mixed", parts: [
-        { mimeType: "application/pdf", filename: "invoice.pdf", body: { size: 4096, attachmentId: "att-m1-pdf" } },
+        { partId: "0", mimeType: "application/pdf", filename: "invoice.pdf", body: { size: 4096, attachmentId: "att-m1-pdf" } },
       ] },
     })
     const json = await (await POST(makeRequest() as never)).json()
-    expect(json).toMatchObject({ ingested: 0, attachmentless: 1, unsupported_attachments: 1 })
+    expect(json).toMatchObject({
+      ingested: 0, unsupported_attachments: 1, needs_manual_upload: 1, unreadable_backlog: 1,
+      // "attachmentless" means body-only. This email DID carry a receipt; the
+      // old count made a dropped receipt indistinguishable from a newsletter.
+      attachmentless: 0,
+    })
     expect(ingestReceiptDocument).not.toHaveBeenCalled()
+    // Still settled (starvation protection) but durably remembered, so the
+    // review surface can tell the coach to upload it by photo.
     expect(settings[SETTLED_IDS_KEY]).toEqual(["m1"])
+    expect(settings[GMAIL_UNREADABLE_IDS_KEY]).toEqual(["m1"])
+  })
+
+  it("an OVERSIZED but readable image is accounted for instead of disappearing", async () => {
+    // The size filter drops it from the ingest list and the mime-only
+    // unsupported count cannot see it, so before `oversized` existed this run
+    // reported a plain body-only email and settled the message for good.
+    ;(getMessage as ReturnType<typeof vi.fn>).mockImplementation(async (_t: string, id: string) =>
+      oversizedImageMessage(id),
+    )
+    const json = await (await POST(makeRequest() as never)).json()
+    expect(json).toMatchObject({
+      ingested: 0, oversized_attachments: 1, unsupported_attachments: 0,
+      needs_manual_upload: 1, attachmentless: 0,
+    })
+    expect(settings[GMAIL_UNREADABLE_IDS_KEY]).toEqual(["m1"])
+  })
+
+  it("widening the readable-mime list re-opens every message settled only because it was unreadable", async () => {
+    ;(getMessage as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "m1", threadId: "t1",
+      payload: { mimeType: "multipart/mixed", parts: [
+        { partId: "0", mimeType: "application/pdf", filename: "invoice.pdf", body: { size: 4096, attachmentId: "att-m1-pdf" } },
+      ] },
+    })
+    await POST(makeRequest() as never)
+    expect(settings[SETTLED_IDS_KEY]).toEqual(["m1"])
+    expect(settings[GMAIL_SCANNABLE_MIMES_KEY]).toBe([...SCANNABLE_MIMES].join(","))
+
+    // Simulate a future release that taught the vision path to read PDFs: the
+    // fingerprint no longer matches what we settled under.
+    settings[GMAIL_SCANNABLE_MIMES_KEY] = "image/jpeg"
+    const second = await (await POST(makeRequest() as never)).json()
+    expect(second.reconsidered).toBe(1)
+    // Re-fetched, not skipped — it is no longer in the settled set on entry.
+    expect((getMessage as ReturnType<typeof vi.fn>)).toHaveBeenCalledTimes(2)
+    expect(second.processed).toBe(1)
+  })
+
+  // ── Review finding: getMessage must sit INSIDE the per-message isolation ──
+  it("a message whose getMessage fails neither 500s the run nor settles, and its siblings still ingest", async () => {
+    ;(listMessages as ReturnType<typeof vi.fn>).mockResolvedValue({
+      messages: [{ id: "bad", threadId: "t1" }, { id: "good", threadId: "t2" }],
+    })
+    ;(getMessage as ReturnType<typeof vi.fn>).mockImplementation(async (_t: string, id: string) => {
+      if (id === "bad") throw new Error("Gmail getMessage(full) failed: HTTP 404")
+      return fullMessage(id)
+    })
+    const res = await POST(makeRequest() as never)
+    expect(res.status).toBe(200)
+    const json = await res.json()
+    expect(json).toMatchObject({ processed: 2, ingested: 1, failed: 1 })
+    expect(json.failures[0]).toContain("gmail:bad getMessage")
+    expect((ingestReceiptDocument as ReturnType<typeof vi.fn>).mock.calls[0][0]).toMatchObject({
+      externalRef: "gmail:good:2",
+    })
+    expect(settings[SETTLED_IDS_KEY]).toEqual(["good"])
+    expect(settings[GMAIL_MESSAGE_ATTEMPTS_KEY]).toEqual({ bad: 1 })
+  })
+
+  // ── Review finding: a permanently-failing message needs a poison-pill escape ──
+  it("force-settles a message after MAX_MESSAGE_ATTEMPTS failed runs instead of burning a slot forever", async () => {
+    ;(getMessage as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("Gmail getMessage(full) failed: HTTP 400"))
+    for (let run = 1; run < MAX_MESSAGE_ATTEMPTS; run++) {
+      const json = await (await POST(makeRequest() as never)).json()
+      expect(json).toMatchObject({ processed: 1, failed: 1, poisoned: 0 })
+      expect(settings[GMAIL_MESSAGE_ATTEMPTS_KEY]).toEqual({ m1: run })
+      expect(settings[SETTLED_IDS_KEY] ?? []).not.toContain("m1")
+    }
+    const last = await (await POST(makeRequest() as never)).json()
+    expect(last).toMatchObject({ poisoned: 1, failed: 1 })
+    expect(settings[SETTLED_IDS_KEY]).toEqual(["m1"])
+    // Recorded as needing a human, and the retry counter is released.
+    expect(settings[GMAIL_UNREADABLE_IDS_KEY]).toEqual(["m1"])
+    expect(settings[GMAIL_MESSAGE_ATTEMPTS_KEY]).toEqual({})
+
+    // Next run costs nothing at all.
+    ;(getMessage as ReturnType<typeof vi.fn>).mockClear()
+    const after = await (await POST(makeRequest() as never)).json()
+    expect(after).toMatchObject({ processed: 0, skipped: 1 })
+    expect(getMessage).not.toHaveBeenCalled()
+  })
+
+  it("a transient failure that later succeeds clears the retry counter without poisoning", async () => {
+    ;(getMessage as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("HTTP 503"))
+    await POST(makeRequest() as never)
+    expect(settings[GMAIL_MESSAGE_ATTEMPTS_KEY]).toEqual({ m1: 1 })
+    const second = await (await POST(makeRequest() as never)).json()
+    expect(second).toMatchObject({ ingested: 1, failed: 0, poisoned: 0 })
+    expect(settings[GMAIL_MESSAGE_ATTEMPTS_KEY]).toEqual({})
+  })
+
+  // ── Review finding: the label listing loop was unbounded ──
+  it("stops listing once it has more unsettled ids than one run can consume", async () => {
+    ;(listMessages as ReturnType<typeof vi.fn>).mockImplementation(async (_t: string, opts: { pageToken?: string }) => ({
+      messages: Array.from({ length: MAX_MESSAGES_PER_RUN + 1 }, (_, i) => ({
+        id: `${opts.pageToken ?? "p1"}-${i}`, threadId: "t",
+      })),
+      nextPageToken: "next",
+    }))
+    const json = await (await POST(makeRequest() as never)).json()
+    // One page was enough to fill the budget — it must not walk the rest of
+    // the mailbox building an id array it can never consume.
+    expect((listMessages as ReturnType<typeof vi.fn>).mock.calls.length).toBe(1)
+    expect(json.listed).toBe(MAX_MESSAGES_PER_RUN + 1)
+    expect(json.more_pending).toBe(true)
+  })
+
+  it("hard-stops the listing loop at MAX_LIST_PAGES even when every page is already settled", async () => {
+    // Pathological shape: a huge label where everything is settled, so the
+    // "enough unsettled ids" brake never trips.
+    settings[SETTLED_IDS_KEY] = ["s0"]
+    ;(listMessages as ReturnType<typeof vi.fn>).mockResolvedValue({
+      messages: [{ id: "s0", threadId: "t" }], nextPageToken: "always-more",
+    })
+    const json = await (await POST(makeRequest() as never)).json()
+    expect((listMessages as ReturnType<typeof vi.fn>).mock.calls.length).toBe(MAX_LIST_PAGES)
+    expect(json.more_pending).toBe(true)
   })
 
   // ── Review finding 2 (Important): per-attachment isolation + exact retry ──

@@ -9,7 +9,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
  */
 
 vi.mock("@/lib/db/bookkeeping", () => ({ createDocument: vi.fn().mockResolvedValue({ id: "d1" }) }))
-vi.mock("@/lib/bookkeeping/documents", () => ({ storeStatementFile: vi.fn(), safeStatementName: (n: string) => n }))
+vi.mock("@/lib/bookkeeping/documents", () => ({
+  storeStatementFile: vi.fn(), deleteStatementFile: vi.fn(), safeStatementName: (n: string) => n,
+}))
 vi.mock("@/lib/db/ai-generation-log", () => ({ createGenerationLog: vi.fn().mockResolvedValue({ id: "log1" }) }))
 const { jobSet, rtdbSet } = vi.hoisted(() => ({ jobSet: vi.fn(), rtdbSet: vi.fn() }))
 vi.mock("@/lib/firebase-admin", () => ({
@@ -20,7 +22,7 @@ vi.mock("firebase-admin/firestore", () => ({ FieldValue: { serverTimestamp: () =
 
 import { createDocument } from "@/lib/db/bookkeeping"
 import { createGenerationLog } from "@/lib/db/ai-generation-log"
-import { storeStatementFile } from "@/lib/bookkeeping/documents"
+import { deleteStatementFile, storeStatementFile } from "@/lib/bookkeeping/documents"
 import { ingestReceiptDocument } from "@/lib/bookkeeping/receipt-ingest"
 
 const BOOK = "b0000000-0000-4000-8000-000000000001"
@@ -44,6 +46,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   ;(createDocument as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "d1" })
   ;(createGenerationLog as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "log1" })
+  ;(deleteStatementFile as ReturnType<typeof vi.fn>).mockResolvedValue(undefined)
 })
 
 describe("ingestReceiptDocument", () => {
@@ -100,6 +103,31 @@ describe("ingestReceiptDocument", () => {
     expect((createGenerationLog as ReturnType<typeof vi.fn>).mock.calls[0][0]).not.toHaveProperty("requested_by")
     expect(jobSet.mock.calls[0][0].input.requestedBy).toBe("bookkeepingGmailReceiptsCron")
     expect(jobSet.mock.calls[0][0].userId).toBe("bookkeepingGmailReceiptsCron")
+  })
+
+  // The bucket write happens BEFORE the row that references it. Without a
+  // compensating delete the bytes are unreachable forever: the retention cron
+  // only deletes objects it can find through bookkeeping_documents.storage_path.
+  // For a receipt that is billed-forever storage AND undeleted PII. The
+  // realistic trigger is the poller retrying a message whose external_ref
+  // UNIQUE (00193) already exists.
+  it("deletes the stored object when the document insert fails, and rethrows the original error", async () => {
+    ;(createDocument as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error('duplicate key value violates unique constraint "bookkeeping_documents_external_ref_key"'),
+    )
+    await expect(ingestReceiptDocument({ ...baseArgs, externalRef: "gmail:m1:2" })).rejects.toThrow(
+      /duplicate key/,
+    )
+    const storedPath = (storeStatementFile as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(deleteStatementFile).toHaveBeenCalledWith(storedPath)
+    // No job may be queued for a document row that does not exist.
+    expect(jobSet).not.toHaveBeenCalled()
+  })
+
+  it("a failing cleanup never masks the insert error", async () => {
+    ;(createDocument as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("insert exploded"))
+    ;(deleteStatementFile as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("bucket down"))
+    await expect(ingestReceiptDocument(baseArgs)).rejects.toThrow("insert exploded")
   })
 
   it("survives an RTDB seed failure (best-effort, same as the route's try/catch)", async () => {

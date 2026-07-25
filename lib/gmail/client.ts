@@ -4,7 +4,9 @@
 // below). Message bodies are decoded from base64url; multipart messages walk
 // to the first text/plain or text/html part.
 
-import { getPlatformConnection, connectPlatform, setConnectionError } from "@/lib/db/platform-connections"
+import {
+  getPlatformConnection, connectPlatform, setConnectionError, clearConnectionError,
+} from "@/lib/db/platform-connections"
 import { refreshAccessToken } from "@/lib/gmail/oauth"
 
 const GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/me"
@@ -86,13 +88,23 @@ interface ConnectionCredentials {
  * Fetches the stored Gmail connection, refreshes its access token, and
  * returns the access token plus the connected email address. Throws if no
  * connection exists or the refresh fails (also marks the connection 'error').
+ *
+ * STATUS LIFECYCLE: 'error' is RETRYABLE, not terminal. The refresh token is
+ * still on the row, and the overwhelmingly common cause of 'error' is a
+ * transient Google blip during a refresh — not a revoked grant. Because
+ * fn_connect_platform (interactive OAuth consent) was the only writer of
+ * status='connected', treating 'error' as unusable meant one blip retired the
+ * whole integration (inbox AND the hourly receipt poller) until a human
+ * noticed. So: attempt the refresh from 'error' too, and clear the flag the
+ * moment it succeeds. 'paused' and 'disconnected' remain hard stops — those
+ * are deliberate human states.
  */
 export async function getAccessTokenForConnection(): Promise<{
   accessToken: string
   emailAddress: string | null
 }> {
   const conn = await getPlatformConnection("gmail")
-  if (!conn || conn.status !== "connected") {
+  if (!conn || (conn.status !== "connected" && conn.status !== "error")) {
     throw new GmailNotConnectedError()
   }
   const creds = (conn.credentials ?? {}) as ConnectionCredentials
@@ -111,6 +123,11 @@ export async function getAccessTokenForConnection(): Promise<{
       client_id: clientId,
       client_secret: clientSecret,
     })
+    if (conn.status === "error") {
+      // Self-heal: best-effort so a flaky write never turns a working refresh
+      // into a thrown request.
+      await clearConnectionError("gmail").catch(() => {})
+    }
     return { accessToken: tokens.access_token, emailAddress: conn.account_handle }
   } catch (err) {
     await setConnectionError("gmail", (err as Error).message).catch(() => {})

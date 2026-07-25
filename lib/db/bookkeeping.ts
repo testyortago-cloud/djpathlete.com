@@ -403,6 +403,12 @@ export async function listPendingEmailReceiptDocuments(): Promise<BookkeepingDoc
       .like("external_ref", "gmail:%")
       .is("posted_count", null)
       .order("created_at", { ascending: false })
+      // id tiebreaker makes the sort a TOTAL order. created_at alone is not
+      // unique (a single poller run inserts several documents inside the same
+      // millisecond), and PostgREST gives no stability guarantee for ties, so
+      // paginating on it can hand back the same row twice across .range()
+      // windows while another row is never returned at all.
+      .order("id", { ascending: false })
       .range(f, t) as never)
 }
 export async function linkDocumentBatch(id: string, bookId: string, importBatchId: string, postedCount: number): Promise<void> {
@@ -421,7 +427,14 @@ export async function linkDocumentBatch(id: string, bookId: string, importBatchI
  *  hex, so the poller is safe). */
 export async function listExternalRefsWithPrefix(prefix: string): Promise<string[]> {
   const rows = await fetchAllRows<{ external_ref: string | null }>((f, t) =>
-    db().from("bookkeeping_documents").select("external_ref").like("external_ref", `${prefix}%`).range(f, t) as never)
+    db().from("bookkeeping_documents").select("external_ref").like("external_ref", `${prefix}%`)
+      // external_ref is UNIQUE (00193), so ordering on it is a TOTAL order and
+      // the .range() windows below tile the result set exactly once. An
+      // unordered paginated read has no such guarantee — a ref missed at a page
+      // boundary reads as "not yet ingested" and re-ingests the attachment,
+      // duplicating the document and paying for the vision scan twice.
+      .order("external_ref", { ascending: true })
+      .range(f, t) as never)
   return rows.map((r) => r.external_ref).filter((r): r is string => typeof r === "string")
 }
 /** True when any document carries external_ref starting with `prefix`

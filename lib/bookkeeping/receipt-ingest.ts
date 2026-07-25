@@ -9,7 +9,7 @@
 import { createHash, randomUUID } from "node:crypto"
 import { createDocument } from "@/lib/db/bookkeeping"
 import { createGenerationLog } from "@/lib/db/ai-generation-log"
-import { safeStatementName, storeStatementFile } from "@/lib/bookkeeping/documents"
+import { deleteStatementFile, safeStatementName, storeStatementFile } from "@/lib/bookkeeping/documents"
 import { receiptRetainUntil } from "@/lib/bookkeeping/receipts"
 import { getAdminFirestore, getAdminRtdb } from "@/lib/firebase-admin"
 import { FieldValue } from "firebase-admin/firestore"
@@ -63,19 +63,34 @@ export async function ingestReceiptDocument(args: IngestReceiptArgs): Promise<In
   // document with receiptRetainUntil(occurred_on); both must move together.
   const retainUntil = receiptRetainUntil(new Date().toISOString().slice(0, 10))
 
-  const doc = await createDocument({
-    book_id: args.bookId,
-    kind: "receipt",
-    original_filename: args.originalFilename,
-    storage_path: storagePath,
-    mime_type: args.mimeType,
-    file_size_bytes: args.buffer.length,
-    sha256,
-    retain_until: retainUntil,
-    uploaded_by: args.uploadedBy,
-    row_count: 1,
-    external_ref: args.externalRef ?? null,
-  })
+  // The bucket object is written BEFORE the row that references it, so a failed
+  // insert would leave bytes nobody can ever reach: the retention cron only
+  // deletes objects it finds via bookkeeping_documents.storage_path, so an
+  // orphan is billed forever and — for a receipt — is undeleted PII. Both
+  // realistic failure modes hit here: the poller retries a message whose
+  // external_ref UNIQUE (00193) already exists, and any transient PostgREST
+  // error. Compensate best-effort, then rethrow the ORIGINAL error.
+  let doc: Awaited<ReturnType<typeof createDocument>>
+  try {
+    doc = await createDocument({
+      book_id: args.bookId,
+      kind: "receipt",
+      original_filename: args.originalFilename,
+      storage_path: storagePath,
+      mime_type: args.mimeType,
+      file_size_bytes: args.buffer.length,
+      sha256,
+      retain_until: retainUntil,
+      uploaded_by: args.uploadedBy,
+      row_count: 1,
+      external_ref: args.externalRef ?? null,
+    })
+  } catch (err) {
+    await deleteStatementFile(storagePath).catch((cleanupErr) => {
+      console.warn("[receipt-ingest] orphan cleanup failed for", storagePath, cleanupErr)
+    })
+    throw err
+  }
 
   // ai_generation_log.requested_by is a NULLABLE uuid in Postgres (00037 dropped
   // the NOT NULL) but AiGenerationLog types it as required — for cron ingestion

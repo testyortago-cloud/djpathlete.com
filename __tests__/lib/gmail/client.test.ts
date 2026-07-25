@@ -5,10 +5,18 @@ vi.mock("@/lib/db/platform-connections", () => ({
   getPlatformConnection: vi.fn(),
   connectPlatform: vi.fn(),
   setConnectionError: vi.fn(),
+  clearConnectionError: vi.fn(),
 }))
 vi.mock("@/lib/gmail/oauth", () => ({ refreshAccessToken: vi.fn() }))
 
-import { listLabels, listMessages, getMessage, getAttachment } from "@/lib/gmail/client"
+import {
+  getPlatformConnection, setConnectionError, clearConnectionError,
+} from "@/lib/db/platform-connections"
+import { refreshAccessToken } from "@/lib/gmail/oauth"
+import {
+  listLabels, listMessages, getMessage, getAttachment,
+  getAccessTokenForConnection, GmailNotConnectedError,
+} from "@/lib/gmail/client"
 
 const fetchMock = vi.fn()
 vi.stubGlobal("fetch", fetchMock)
@@ -112,5 +120,67 @@ describe("getAttachment", () => {
     await expect(getAttachment("tok", "m1", "att1")).rejects.toThrow(
       /getAttachment returned no data for m1\/att1/,
     )
+  })
+})
+
+// ─── connection status lifecycle ──────────────────────────────────────────
+// setConnectionError used to be a ONE-WAY DOOR: it writes status='error' on any
+// refresh throw, and the only writer of status='connected' anywhere in the repo
+// is fn_connect_platform — i.e. a full interactive OAuth consent re-run. One
+// transient Google 5xx therefore retired Gmail (inbox AND the hourly receipt
+// poller) until a human noticed and reconnected by hand.
+describe("getAccessTokenForConnection status lifecycle", () => {
+  const conn = (status: string) => ({
+    plugin_name: "gmail",
+    status,
+    account_handle: "darren@darrenjpaul.com",
+    credentials: { refresh_token: "rt" },
+  })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    process.env.GMAIL_CLIENT_ID = "cid"
+    process.env.GMAIL_CLIENT_SECRET = "secret"
+    ;(refreshAccessToken as ReturnType<typeof vi.fn>).mockResolvedValue({ access_token: "at" })
+    ;(clearConnectionError as ReturnType<typeof vi.fn>).mockResolvedValue(undefined)
+    ;(setConnectionError as ReturnType<typeof vi.fn>).mockResolvedValue(undefined)
+  })
+
+  it("refreshes from a 'connected' row without touching the status", async () => {
+    ;(getPlatformConnection as ReturnType<typeof vi.fn>).mockResolvedValue(conn("connected"))
+    expect(await getAccessTokenForConnection()).toEqual({
+      accessToken: "at", emailAddress: "darren@darrenjpaul.com",
+    })
+    expect(clearConnectionError).not.toHaveBeenCalled()
+    expect(setConnectionError).not.toHaveBeenCalled()
+  })
+
+  it("treats 'error' as RETRYABLE and clears it once the refresh succeeds", async () => {
+    ;(getPlatformConnection as ReturnType<typeof vi.fn>).mockResolvedValue(conn("error"))
+    expect((await getAccessTokenForConnection()).accessToken).toBe("at")
+    expect(clearConnectionError).toHaveBeenCalledWith("gmail")
+  })
+
+  it("a failing clearConnectionError never breaks the caller", async () => {
+    ;(getPlatformConnection as ReturnType<typeof vi.fn>).mockResolvedValue(conn("error"))
+    ;(clearConnectionError as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("db down"))
+    expect((await getAccessTokenForConnection()).accessToken).toBe("at")
+  })
+
+  it("still marks 'error' when the refresh itself fails", async () => {
+    ;(getPlatformConnection as ReturnType<typeof vi.fn>).mockResolvedValue(conn("connected"))
+    ;(refreshAccessToken as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("invalid_grant"))
+    await expect(getAccessTokenForConnection()).rejects.toThrow("invalid_grant")
+    expect(setConnectionError).toHaveBeenCalledWith("gmail", "invalid_grant")
+  })
+
+  it("'paused' and 'disconnected' stay hard stops — deliberate human states", async () => {
+    for (const status of ["paused", "disconnected"]) {
+      ;(getPlatformConnection as ReturnType<typeof vi.fn>).mockResolvedValue(conn(status))
+      await expect(getAccessTokenForConnection()).rejects.toBeInstanceOf(GmailNotConnectedError)
+    }
+    ;(getPlatformConnection as ReturnType<typeof vi.fn>).mockResolvedValue(null)
+    await expect(getAccessTokenForConnection()).rejects.toBeInstanceOf(GmailNotConnectedError)
+    expect(refreshAccessToken).not.toHaveBeenCalled()
   })
 })
