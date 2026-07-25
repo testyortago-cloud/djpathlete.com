@@ -3,14 +3,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
 vi.mock("@/lib/bookkeeping/insight-data", () => ({ loadInsightsBundle: vi.fn() }))
 vi.mock("@/lib/db/system-settings", () => ({ getSetting: vi.fn() }))
-vi.mock("@/lib/db/bookkeeping", () => ({ listEntriesForInsights: vi.fn() }))
+vi.mock("@/lib/db/bookkeeping", () => ({ listEntriesForInsights: vi.fn(), listDismissedFingerprints: vi.fn() }))
 vi.mock("@/lib/audit/record", () => ({ recordAudit: vi.fn() }))
 
 import { GET } from "@/app/api/admin/bookkeeping/insights/route"
 import { auth } from "@/lib/auth"
 import { loadInsightsBundle } from "@/lib/bookkeeping/insight-data"
 import { recordAudit } from "@/lib/audit/record"
-import { listEntriesForInsights } from "@/lib/db/bookkeeping"
+import { listDismissedFingerprints, listEntriesForInsights } from "@/lib/db/bookkeeping"
 import { getSetting } from "@/lib/db/system-settings"
 
 const ADMIN = { user: { id: "11111111-2222-4333-8444-555555555555", role: "admin" } }
@@ -56,6 +56,7 @@ beforeEach(() => {
   ;(auth as ReturnType<typeof vi.fn>).mockResolvedValue(ADMIN)
   ;(loadInsightsBundle as ReturnType<typeof vi.fn>).mockResolvedValue({ books, accounts, entries })
   ;(listEntriesForInsights as ReturnType<typeof vi.fn>).mockResolvedValue(ytdEntries)
+  ;(listDismissedFingerprints as ReturnType<typeof vi.fn>).mockResolvedValue([])
   settings(25, 25)
 })
 
@@ -67,6 +68,7 @@ describe("GET /api/admin/bookkeeping/insights", () => {
     expect((await GET(req("from=2026-01-01&to=2026-12-31"))).status).toBe(403)
     expect(loadInsightsBundle).not.toHaveBeenCalled()
     expect(listEntriesForInsights).not.toHaveBeenCalled()
+    expect(listDismissedFingerprints).not.toHaveBeenCalled()
   })
   it("400 on a bad window", async () => {
     expect((await GET(req("from=2026-12-31&to=2026-01-01"))).status).toBe(400)
@@ -108,6 +110,27 @@ describe("GET /api/admin/bookkeeping/insights", () => {
     expect(recordAudit).not.toHaveBeenCalled()
     ;(loadInsightsBundle as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("boom"))
     expect((await GET(req("from=2026-01-01&to=2026-12-31"))).status).toBe(500)
+  })
+
+  // ─── 5b: per-book dismissed fingerprints ───────────────────────────────────
+  it("dismissed_fingerprints are resolved PER BOOK id (never a shared/positional array)", async () => {
+    ;(listDismissedFingerprints as ReturnType<typeof vi.fn>).mockImplementation(async (bookId: string) =>
+      bookId === BOOK_BIZ ? ["vendor:adobe inc"] : [`watchlist:${ACC_HH_SENSITIVE}`],
+    )
+    const body = await (await GET(req("from=2026-01-01&to=2026-12-31"))).json()
+    const biz = body.books.find((b: { book: { id: string } }) => b.book.id === BOOK_BIZ)
+    const hh = body.books.find((b: { book: { id: string } }) => b.book.id === BOOK_HH)
+    // Each payload carries ITS OWN book's dismissals — a desync would cross-feed
+    // the household list into the business book (hiding real business findings).
+    expect(biz.dismissed_fingerprints).toEqual(["vendor:adobe inc"])
+    expect(hh.dismissed_fingerprints).toEqual([`watchlist:${ACC_HH_SENSITIVE}`])
+    expect(listDismissedFingerprints).toHaveBeenCalledWith(BOOK_BIZ)
+    expect(listDismissedFingerprints).toHaveBeenCalledWith(BOOK_HH)
+    expect(listDismissedFingerprints).toHaveBeenCalledTimes(2)
+  })
+  it("dismissed_fingerprints is always an array, even for a book with none", async () => {
+    const body = await (await GET(req("from=2026-01-01&to=2026-12-31"))).json()
+    for (const b of body.books) expect(b.dismissed_fingerprints).toEqual([])
   })
 
   // ─── Phase 6b: forecast + watchdog sections ────────────────────────────────

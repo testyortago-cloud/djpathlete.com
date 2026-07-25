@@ -72,6 +72,9 @@ export async function listDismissedFingerprints(bookId: string): Promise<string[
     (from, to) =>
       db().from("bookkeeping_finding_dismissals").select("fingerprint")
         .eq("book_id", bookId).order("dismissed_at", { ascending: true })
+        // unique tiebreaker: dismissed_at ties across a .range() page boundary
+        // would otherwise duplicate or skip rows.
+        .order("id", { ascending: true })
         .range(from, to) as never,
   )
   return rows.map((r) => r.fingerprint)

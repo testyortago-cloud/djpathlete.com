@@ -7,7 +7,10 @@ import { auth } from "@/lib/auth"
 import { recordAudit } from "@/lib/audit/record"
 import { deleteDismissal, insertDismissal } from "@/lib/db/bookkeeping"
 
-const dismissalBodySchema = z.object({ book_id: z.string().uuid(), fingerprint: z.string().min(1) })
+// Upper bound on the fingerprint: the column is unbounded TEXT and the value is
+// echoed into audit_logs.target_label (uncapped). 512 is far above any real
+// "<finder>:<uuid>" or normalized vendor descriptor.
+const dismissalBodySchema = z.object({ book_id: z.string().uuid(), fingerprint: z.string().min(1).max(512) })
 
 async function handle(request: Request, mode: "dismiss" | "undismiss") {
   try {

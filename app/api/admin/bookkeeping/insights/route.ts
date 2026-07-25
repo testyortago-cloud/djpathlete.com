@@ -43,10 +43,16 @@ export async function GET(request: Request) {
     const homeOffice = homeOfficeCandidate(bundle.entries, bundle.accounts, bundle.books, percent)
 
     // Dismissals (5b, B-2) gate DISPLAY only — the recompute above/below is
-    // untouched; the client filters rows by these fingerprints.
-    const dismissedPerBook = await Promise.all(bundle.books.map((b) => listDismissedFingerprints(b.id)))
+    // untouched; the client filters rows by these fingerprints. Keyed by book id
+    // (never positional) so a later filter on either pass cannot cross-feed one
+    // book's dismissals into another and silently hide real findings.
+    const dismissedByBook = new Map(
+      await Promise.all(
+        bundle.books.map(async (b) => [b.id, await listDismissedFingerprints(b.id)] as const),
+      ),
+    )
 
-    const bookPayloads = bundle.books.map((book, i) => {
+    const bookPayloads = bundle.books.map((book) => {
       const bookEntries = bundle.entries.filter((e) => e.book_id === book.id)
       return {
         book: {
@@ -60,7 +66,7 @@ export async function GET(request: Request) {
         profit: serviceLineProfit(bookEntries, bundle.accounts),
         vendors: vendorSweep(bookEntries, bundle.accounts),
         row_count: bookEntries.length,
-        dismissed_fingerprints: dismissedPerBook[i],
+        dismissed_fingerprints: dismissedByBook.get(book.id) ?? [],
       }
     })
 
