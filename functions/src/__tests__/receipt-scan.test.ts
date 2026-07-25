@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { resizeReceiptForVision, coalesceReceiptResult } from "../receipt-scan.js"
+import { resizeReceiptForVision, coalesceReceiptResult, documentBackfillPayload } from "../receipt-scan.js"
 
 describe("resizeReceiptForVision", () => {
   it("produces a base64 jpeg under the vision size budget", async () => {
@@ -28,6 +28,41 @@ describe("coalesceReceiptResult", () => {
       currency: null,
       confidence: "low",
       warnings: [],
+    })
+  })
+})
+
+describe("documentBackfillPayload", () => {
+  it("stamps occurred_on on both period bounds and persists the coalesced scan_result", () => {
+    const result = coalesceReceiptResult({
+      vendor: "Home Depot",
+      amount_cents: 12555,
+      occurred_on: "2026-07-20",
+      confidence: "high",
+    } as never)
+    expect(documentBackfillPayload(result)).toEqual({
+      period_start: "2026-07-20",
+      period_end: "2026-07-20",
+      row_count: 1,
+      scan_result: result,
+    })
+    // The stored object is the coalesced shape — every field explicit,
+    // never undefined leaves (RTDB discipline carried into the jsonb column).
+    expect(documentBackfillPayload(result).scan_result).toMatchObject({
+      suggested_category: null,
+      business_purpose_hint: null,
+      currency: null,
+      warnings: [],
+    })
+  })
+
+  it("null occurred_on (blurry read) → null period bounds, scan_result still stored", () => {
+    const result = coalesceReceiptResult(null)
+    expect(documentBackfillPayload(result)).toMatchObject({
+      period_start: null,
+      period_end: null,
+      row_count: 1,
+      scan_result: result,
     })
   })
 })

@@ -71,6 +71,27 @@ export function coalesceReceiptResult(r: Partial<ReceiptScanResult> | null | und
   }
 }
 
+/** Update payload for the post-scan bookkeeping_documents back-fill: period
+ *  bounds from occurred_on (as before) + the coalesced result persisted to
+ *  scan_result (00193) so the email-receipts review surface can rehydrate it
+ *  after the RTDB/browser session is gone. */
+export function documentBackfillPayload(result: ReceiptScanResult): {
+  period_start: string | null
+  period_end: string | null
+  row_count: number
+  scan_result: ReceiptScanResult
+} {
+  // `?? null`: ReceiptScanResult.occurred_on is nullable().optional() in the
+  // schema, so the static type is `string | null | undefined` even though a
+  // coalesced result never carries undefined. Never write undefined to jsonb.
+  return {
+    period_start: result.occurred_on ?? null,
+    period_end: result.occurred_on ?? null,
+    row_count: 1,
+    scan_result: result,
+  }
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
 /** Write real-time status to RTDB so the client can listen for instant updates */
@@ -159,7 +180,7 @@ export async function handleReceiptScan(jobId: string): Promise<void> {
     const supabase = getSupabase()
     const { error: docError } = await supabase
       .from("bookkeeping_documents")
-      .update({ period_start: result.occurred_on, period_end: result.occurred_on, row_count: 1 })
+      .update(documentBackfillPayload(result))
       .eq("id", input.documentId)
     if (docError) {
       console.warn(`[receipt-scan] Failed to back-fill document ${input.documentId}:`, docError.message)
