@@ -8,7 +8,7 @@ import { statementDedupeSchema } from "@/lib/validators/bookkeeping"
 /**
  * AI Bookkeeper Phase 2, Task 11 — statement dedupe route (money-critical).
  * Computes source_ref + occurrence indexes over the FULL row set, runs the
- * pure 3-layer flagger exactly once (its `consumed` set is per-call — never
+ * pure 4-layer flagger exactly once (its `consumed` set is per-call — never
  * split across pages or a posted entry could be matched more than once), and
  * returns annotated rows + the excluded-transfer total + a document-overlap
  * caution. Read-only: no audit log entry.

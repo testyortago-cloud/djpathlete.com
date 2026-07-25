@@ -110,9 +110,26 @@ describe("flagStatementDuplicates — exact payout layer (Track A)", () => {
   })
   it("layer-1 precedence: an exact posted-entry match wins and does NOT consume the payout", () => {
     const out = flagStatementDuplicates([inc(), inc()], [posted()], { payouts: [payout()] })
-    // first (in match order) row consumed the posted entry; second row still matched the payout
-    expect(out.filter((r) => r.matchedEntry?.id === "p1")).toHaveLength(1)
-    expect(out.filter((r) => r.matchedPayoutId === "bp-1")).toHaveLength(1)
+    // Positional, not counts: both rows are same-date so match order === input order.
+    // Row 0 MUST take layer 1 (posted entry) — if the payout layer were hoisted above
+    // it, row 0 would take the payout and row 1 the entry, and count-only assertions
+    // would still be 1/1 while the consumption pools had silently swapped.
+    expect(out[0].matchedEntry?.id).toBe("p1")
+    expect(out[0].matchedPayoutId).toBeUndefined()
+    expect(out[1].matchedPayoutId).toBe("bp-1")
+    expect(out[1].matchedEntry).toBeNull()
+  })
+  it("nearest-date unconsumed payout wins (spec §1.5) — not first-in-list", () => {
+    // Two identical $50 paid payouts; the bank line is 0d from bp-2 and 2d from bp-1.
+    // First-match-wins would take bp-1 (earlier in the array) and leave bp-2 free to
+    // flag the second, genuinely-unrelated line.
+    const payouts = [payout({ id: "bp-1", stripe_payout_id: "po_1", arrival_date: "2026-07-02" }), payout({ id: "bp-2", stripe_payout_id: "po_2", arrival_date: "2026-07-04" })]
+    const out = flagStatementDuplicates([inc({ occurred_on: "2026-07-04" }), inc({ occurred_on: "2026-07-06" })], [], { payouts })
+    expect(out[0].matchedPayoutId).toBe("bp-2")
+    // bp-1 is now 4d away (out of the ±2d window) so row 1 gets nothing.
+    expect(out[1].matchedPayoutId).toBeUndefined()
+    expect(out[1].possibleDuplicate).toBe(false)
+    expect(out[1].newCandidate).toBe(true)
   })
   it("payout layer does not consume posted entries: layer-2 pool stays intact for other rows", () => {
     // row 1 matches the payout; row 2 (different amount ≈ platform sum) still aggregate-matches
