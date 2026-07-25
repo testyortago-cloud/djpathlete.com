@@ -64,6 +64,33 @@ export async function updateAccount(
   return data as BookkeepingAccount
 }
 
+// ── Finding dismissals (5b) ──────────────────────────────────────────────
+// Identity fingerprints ("<finder>:<key>", lib/bookkeeping/finding-fingerprint.ts).
+// Dismissals gate DISPLAY only — the insight recompute (D4) never reads them.
+export async function listDismissedFingerprints(bookId: string): Promise<string[]> {
+  const rows = await fetchAllRows<{ fingerprint: string }>(
+    (from, to) =>
+      db().from("bookkeeping_finding_dismissals").select("fingerprint")
+        .eq("book_id", bookId).order("dismissed_at", { ascending: true })
+        .range(from, to) as never,
+  )
+  return rows.map((r) => r.fingerprint)
+}
+
+export async function insertDismissal(input: { book_id: string; fingerprint: string; dismissed_by: string | null }): Promise<void> {
+  // Idempotent: re-dismissing is a no-op. onConflict targets the PLAIN unique
+  // constraint (book_id, fingerprint) from 00192 — never an expression index.
+  const { error } = await db().from("bookkeeping_finding_dismissals")
+    .upsert(input, { onConflict: "book_id,fingerprint", ignoreDuplicates: true })
+  if (error) throw error
+}
+
+export async function deleteDismissal(bookId: string, fingerprint: string): Promise<void> {
+  const { error } = await db().from("bookkeeping_finding_dismissals")
+    .delete().eq("book_id", bookId).eq("fingerprint", fingerprint)
+  if (error) throw error
+}
+
 // ── Ledger entries ───────────────────────────────────────────────────────
 export interface ListEntriesParams {
   bookId: string; from?: string; to?: string; direction?: LedgerDirection

@@ -13,7 +13,7 @@ import { serviceLineProfit } from "@/lib/bookkeeping/service-line-profit"
 import { bookYtdTotals, taxForecast } from "@/lib/bookkeeping/tax-forecast"
 import { vendorSweep } from "@/lib/bookkeeping/vendor-sweep"
 import { yearEndFlags } from "@/lib/bookkeeping/year-end-flags"
-import { listEntriesForInsights } from "@/lib/db/bookkeeping"
+import { listDismissedFingerprints, listEntriesForInsights } from "@/lib/db/bookkeeping"
 import { getSetting } from "@/lib/db/system-settings"
 import { reportQuerySchema } from "@/lib/validators/bookkeeping"
 
@@ -42,7 +42,11 @@ export async function GET(request: Request) {
     const rate = coerceTaxRatePercent(storedRate)
     const homeOffice = homeOfficeCandidate(bundle.entries, bundle.accounts, bundle.books, percent)
 
-    const bookPayloads = bundle.books.map((book) => {
+    // Dismissals (5b, B-2) gate DISPLAY only — the recompute above/below is
+    // untouched; the client filters rows by these fingerprints.
+    const dismissedPerBook = await Promise.all(bundle.books.map((b) => listDismissedFingerprints(b.id)))
+
+    const bookPayloads = bundle.books.map((book, i) => {
       const bookEntries = bundle.entries.filter((e) => e.book_id === book.id)
       return {
         book: {
@@ -56,6 +60,7 @@ export async function GET(request: Request) {
         profit: serviceLineProfit(bookEntries, bundle.accounts),
         vendors: vendorSweep(bookEntries, bundle.accounts),
         row_count: bookEntries.length,
+        dismissed_fingerprints: dismissedPerBook[i],
       }
     })
 
