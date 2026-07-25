@@ -2083,3 +2083,47 @@ export const reapStaleAiJobsCron = onSchedule(
     }
   },
 )
+
+// Bookkeeping payout sync. POSTs to /api/admin/internal/bookkeeping-payout-sync,
+// which READS Stripe payouts + balance transactions into the
+// bookkeeping_payouts mirror (idempotent merge upserts on plain UNIQUE
+// stripe_payout_id / stripe_balance_txn_id) — never the webhook, never the
+// ledger. Gated by system_settings.cron_bookkeeping_payout_sync_enabled
+// (default false, seeded by migration 00191). 05:15 UTC — after income-sync
+// (04:30) so payout-net dedupe sees the night's freshly posted income. The
+// route owns logCronStart/logCronEnd under "bookkeepingPayoutSyncCron" —
+// this function must NOT log cron_runs itself (single-owner rule). Pure
+// fetch-delegator: only internalCronToken + appUrl (Stripe key stays Vercel-side).
+export const bookkeepingPayoutSyncCron = onSchedule(
+  {
+    schedule: "15 5 * * *",
+    timeZone: "Etc/UTC",
+    timeoutSeconds: 120,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [internalCronToken, appUrl],
+  },
+  async () => {
+    const baseUrl = process.env.APP_URL
+    const token = process.env.INTERNAL_CRON_TOKEN
+    if (!baseUrl || !token) {
+      console.error("[bookkeepingPayoutSyncCron] APP_URL or INTERNAL_CRON_TOKEN missing — abort")
+      return
+    }
+    try {
+      const res = await fetch(`${baseUrl}/api/admin/internal/bookkeeping-payout-sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: "{}",
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        console.error("[bookkeepingPayoutSyncCron]", res.status, body)
+        return
+      }
+      console.log("[bookkeepingPayoutSyncCron]", res.status, body)
+    } catch (err) {
+      console.error("[bookkeepingPayoutSyncCron] failed:", err)
+    }
+  },
+)
