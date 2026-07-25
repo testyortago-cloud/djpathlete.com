@@ -36,6 +36,9 @@ interface Filters {
   page: number
 }
 
+/** Deep-link hydration payload (5b): every filter except the page cursor. */
+export type BooksClientInitialFilters = Omit<Filters, "page">
+
 interface EntriesData {
   rows: BookkeepingLedgerEntry[]
   total: number
@@ -60,13 +63,20 @@ export function BooksClient({
   books,
   initialBookId,
   initialAccounts,
+  initialFilters,
 }: {
   books: BookkeepingBook[]
   initialBookId: string
   initialAccounts: BookkeepingAccount[]
+  initialFilters?: BooksClientInitialFilters
 }) {
   const [bookId, setBookId] = useState(initialBookId)
-  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS)
+  // Deep-link hydration (5b): useState initializers only — no effect, no reset
+  // guard needed (the accountId reset lives in handleBookChange, which is
+  // user-event-only and never fires on mount).
+  const [filters, setFilters] = useState<Filters>(() =>
+    initialFilters ? { ...EMPTY_FILTERS, ...initialFilters } : EMPTY_FILTERS,
+  )
   const [data, setData] = useState<EntriesData>(EMPTY_DATA)
   const [accounts, setAccounts] = useState<BookkeepingAccount[]>(initialAccounts)
   const [loading, setLoading] = useState(false)
@@ -173,7 +183,9 @@ export function BooksClient({
   }
 
   // Period preset drives from/to; "custom" reveals the raw date inputs.
-  const [preset, setPreset] = useState<"all" | "custom" | PeriodPreset>("all")
+  const [preset, setPreset] = useState<"all" | "custom" | PeriodPreset>(() =>
+    initialFilters && (initialFilters.from || initialFilters.to) ? "custom" : "all",
+  )
 
   function handlePresetChange(value: string) {
     const next = value as "all" | "custom" | PeriodPreset
@@ -427,6 +439,9 @@ export function BooksClient({
                   className="border-border bg-background rounded-md border px-3 py-2 text-sm"
                 >
                   <option value="">All categories</option>
+                  {/* "none" sentinel — uncategorized entries (account_id NULL);
+                      the DAL maps it to .is("account_id", null). */}
+                  <option value="none">Uncategorized</option>
                   {accounts.map((a) => (
                     <option key={a.id} value={a.id}>
                       {a.name}

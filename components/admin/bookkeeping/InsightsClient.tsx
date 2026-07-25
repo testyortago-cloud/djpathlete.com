@@ -632,7 +632,14 @@ export function InsightsClient({
                               <td className="py-1.5 pr-4">{gap.occurred_on}</td>
                               <td className="py-1.5 pr-4">{formatCents(gap.amount_cents, active.book.currency)}</td>
                               <td className="py-1.5 pr-4">{gap.counterparty ?? "—"}</td>
-                              <td className="py-1.5 pr-4">{gap.account_name}</td>
+                              <td className="py-1.5 pr-4">
+                                <Link
+                                  href={`/admin/books?book_id=${active.book.id}&account_id=${gap.account_id}&from=${from}&to=${to}`}
+                                  className="hover:text-accent underline-offset-4 hover:underline"
+                                >
+                                  {gap.account_name}
+                                </Link>
+                              </td>
                               <td className="py-1.5 pr-4 text-muted-foreground">{gap.memo ?? ""}</td>
                               <td className="py-1.5 pr-4">
                                 <ReceiptDot present={gap.has_document} />
@@ -678,7 +685,7 @@ export function InsightsClient({
                         ))}
                       </DismissedReveal>
                       <Link
-                        href="/admin/books"
+                        href={`/admin/books?book_id=${active.book.id}&from=${from}&to=${to}`}
                         className="mt-2 inline-block text-xs text-muted-foreground hover:text-accent underline-offset-4 hover:underline"
                       >
                         Open ledger
@@ -714,7 +721,14 @@ export function InsightsClient({
                         <tbody>
                           {uncatParts.visible.slice(0, VISIBLE_ROW_CAP).map((entry) => (
                             <tr key={entry.entry_id} className="border-b last:border-0">
-                              <td className="py-1.5 pr-4">{entry.occurred_on}</td>
+                              <td className="py-1.5 pr-4">
+                                <Link
+                                  href={`/admin/books?book_id=${active.book.id}&account_id=none&direction=expense&from=${from}&to=${to}`}
+                                  className="hover:text-accent underline-offset-4 hover:underline"
+                                >
+                                  {entry.occurred_on}
+                                </Link>
+                              </td>
                               <td className="py-1.5 pr-4">{formatCents(entry.amount_cents, active.book.currency)}</td>
                               <td className="py-1.5 pr-4">{entry.counterparty ?? "—"}</td>
                               <td className="py-1.5 pr-4 text-muted-foreground">{entry.memo ?? ""}</td>

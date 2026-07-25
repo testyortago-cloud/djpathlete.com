@@ -100,14 +100,18 @@ export interface ListEntriesParams {
   accountId?: string; source?: LedgerSource; search?: string; page: number; perPage: number
 }
 
-function applyEntryFilters<Q extends { eq: (c: string, v: unknown) => Q; gte: (c: string, v: unknown) => Q; lte: (c: string, v: unknown) => Q; or: (s: string) => Q }>(
+/** Exported for the builder-recorder test (bookkeeping-entries-filters.test.ts). */
+export function applyEntryFilters<Q extends { eq: (c: string, v: unknown) => Q; gte: (c: string, v: unknown) => Q; lte: (c: string, v: unknown) => Q; or: (s: string) => Q; is: (c: string, v: unknown) => Q }>(
   q: Q, p: ListEntriesParams,
 ): Q {
   let out = q.eq("book_id", p.bookId)
   if (p.from) out = out.gte("occurred_on", p.from)
   if (p.to) out = out.lte("occurred_on", p.to)
   if (p.direction) out = out.eq("direction", p.direction)
-  if (p.accountId) out = out.eq("account_id", p.accountId)
+  // "none" sentinel (design B-3): uncategorized entries have account_id NULL,
+  // which eq() can never match — deep-links from the insights page need it.
+  if (p.accountId === "none") out = out.is("account_id", null)
+  else if (p.accountId) out = out.eq("account_id", p.accountId)
   if (p.source) out = out.eq("source", p.source)
   if (p.search) {
     const esc = p.search.replace(/[%_]/g, (m) => `\\${m}`).replace(/[,().]/g, " ")

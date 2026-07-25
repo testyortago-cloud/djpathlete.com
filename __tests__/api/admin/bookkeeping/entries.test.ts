@@ -60,6 +60,13 @@ describe("GET /api/admin/bookkeeping/entries", () => {
     const json = await res.json()
     expect(json.page).toBe(1)
   })
+  it("passes the account_id=none sentinel through to listEntries untouched", async () => {
+    listEntriesMock.mockResolvedValue({ rows: [], total: 0 })
+    entryTotalsMock.mockResolvedValue({ income_cents: 0, expense_cents: 0 })
+    const res = await GET(new Request(`http://x/api?book_id=${BOOK}&account_id=none`) as never)
+    expect(res.status).toBe(200)
+    expect(listEntriesMock).toHaveBeenCalledWith(expect.objectContaining({ accountId: "none" }))
+  })
 })
 
 describe("POST /api/admin/bookkeeping/entries", () => {
