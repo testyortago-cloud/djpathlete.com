@@ -9,7 +9,7 @@ import { presetRange } from "@/lib/bookkeeping/period"
 import { loadReportBundle } from "@/lib/bookkeeping/report-data"
 import { listAllDocuments, listAssets } from "@/lib/db/bookkeeping"
 import { buildAccountantPack } from "@/lib/bookkeeping/accountant-pack"
-import { stripeFeesInWindow } from "@/lib/bookkeeping/payout-fees"
+import { stripeFeeWindow } from "@/lib/bookkeeping/payout-fees"
 import { sendAccountantPack } from "@/lib/bookkeeping/email-pack"
 import { recordAudit } from "@/lib/audit/record"
 
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
     const { books, accounts, entries } = bundle
     const buffer = await buildAccountantPack({
       from, to, books, accounts, entries, documents, assets,
-      stripe_fee_cents: stripeFeesInWindow(bundle.payoutLines ?? [], from, to),
+      stripe_fees: stripeFeeWindow(bundle.payoutLines ?? [], bundle.payouts ?? [], from, to),
     })
     const { error } = await sendAccountantPack({ recipient, from, to, buffer })
     if (error) throw new Error(error)

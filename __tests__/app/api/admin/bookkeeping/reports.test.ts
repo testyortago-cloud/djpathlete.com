@@ -22,7 +22,8 @@ beforeEach(() => {
       { book_id: BOOK, account_id: null, direction: "income", amount_cents: 1500, occurred_on: "2026-07-02", counterparty: null, memo: null, source: "manual" },
       { book_id: BOOK, account_id: null, direction: "expense", amount_cents: 400, occurred_on: "2026-07-03", counterparty: null, memo: null, source: "manual" },
     ],
-    payoutLines: [{ txn_date: "2026-07-02", fee_cents: 73, net_cents: 1427, amount_cents: 1500, type: "charge" }],
+    payoutLines: [{ txn_date: "2026-07-02", fee_cents: 73, net_cents: 1427, amount_cents: 1500, type: "charge", payout_id: "bp-1", fees_reconciled: true }],
+    payouts: [{ id: "bp-1", fees_reconciled: true }],
   })
 })
 
@@ -80,7 +81,9 @@ describe("GET /api/admin/bookkeeping/reports", () => {
     // (the spouse's) must never have the coach's Stripe fees netted out of it.
     expect(a.stripe_fee_cents).toBe(73)
     expect(b.stripe_fee_cents).toBe(0)
-    expect(b.net_income_cents).toBe(77700)
+    // …and a book with NO fee data must not restate its gross under a net_ key.
+    expect(b.net_income_cents).toBeNull()
+    expect(b.net_income_available).toBe(false)
   })
   it("a primary HOUSEHOLD book carries no fee (pins the book_kind half of the guard)", async () => {
     ;(loadReportBundle as ReturnType<typeof vi.fn>).mockResolvedValue({
@@ -89,12 +92,13 @@ describe("GET /api/admin/bookkeeping/reports", () => {
       entries: [
         { book_id: BOOK, account_id: null, direction: "income", amount_cents: 1500, occurred_on: "2026-07-02", counterparty: null, memo: null, source: "manual" },
       ],
-      payoutLines: [{ txn_date: "2026-07-02", fee_cents: 73, net_cents: 1427, amount_cents: 1500, type: "charge" }],
+      payoutLines: [{ txn_date: "2026-07-02", fee_cents: 73, net_cents: 1427, amount_cents: 1500, type: "charge", payout_id: "bp-1", fees_reconciled: true }],
+      payouts: [{ id: "bp-1", fees_reconciled: true }],
     })
     const res = await GET(req("from=2026-07-01&to=2026-07-31"))
     const body = await res.json()
     expect(body.books[0].stripe_fee_cents).toBe(0)
-    expect(body.books[0].net_income_cents).toBe(1500)
+    expect(body.books[0].net_income_cents).toBeNull()
   })
   it("attaches stripe_fee_cents + net_income_cents to the primary business book only", async () => {
     const res = await GET(req("from=2026-07-01&to=2026-07-31"))
@@ -104,6 +108,8 @@ describe("GET /api/admin/bookkeeping/reports", () => {
     // no other fixture arithmetic produces it)
     expect(body.books[0].stripe_fee_cents).toBe(73)
     expect(body.books[0].net_income_cents).toBe(1427)
+    expect(body.books[0].net_income_available).toBe(true)
+    expect(body.books[0].stripe_fees).toEqual({ fee_cents: 73, payout_count: 1, unreconciled_count: 0 })
   })
   it("a line dated outside the window contributes no fee", async () => {
     ;(loadReportBundle as ReturnType<typeof vi.fn>).mockResolvedValue({
@@ -112,11 +118,87 @@ describe("GET /api/admin/bookkeeping/reports", () => {
       entries: [
         { book_id: BOOK, account_id: null, direction: "income", amount_cents: 1500, occurred_on: "2026-07-02", counterparty: null, memo: null, source: "manual" },
       ],
-      payoutLines: [{ txn_date: "2026-08-02", fee_cents: 73, net_cents: 1427, amount_cents: 1500, type: "charge" }],
+      payoutLines: [{ txn_date: "2026-08-02", fee_cents: 73, net_cents: 1427, amount_cents: 1500, type: "charge", payout_id: "bp-1", fees_reconciled: true }],
+      payouts: [],
     })
     const res = await GET(req("from=2026-07-01&to=2026-07-31"))
     const body = await res.json()
     expect(body.books[0].stripe_fee_cents).toBe(0)
+    expect(body.books[0].net_income_cents).toBeNull()
+  })
+
+  // ── net_ must never restate gross ────────────────────────────────────────
+  // The default state on arrival is flag-OFF / zero ingested payouts. Emitting
+  // net_income_cents === gross there hands every non-UI consumer (chat tools,
+  // scripts) a gross figure labelled "net" — exactly what netAfterFeesDisplay
+  // refuses to do on screen.
+  it("no ingested payout lines → net_income_cents null, not the gross total", async () => {
+    ;(loadReportBundle as ReturnType<typeof vi.fn>).mockResolvedValue({
+      books: [{ id: BOOK, name: "Darren — DJP Athlete", book_kind: "business", is_primary: true, currency: "usd", sort_order: 0 }],
+      accounts: [],
+      entries: [
+        { book_id: BOOK, account_id: null, direction: "income", amount_cents: 1500, occurred_on: "2026-07-02", counterparty: null, memo: null, source: "manual" },
+      ],
+      payoutLines: [],
+      payouts: [],
+    })
+    const body = await (await GET(req("from=2026-07-01&to=2026-07-31"))).json()
+    expect(body.books[0].net_income_cents).toBeNull()
+    expect(body.books[0].net_income_available).toBe(false)
+    expect(body.books[0].stripe_fees).toEqual({ fee_cents: 0, payout_count: 0, unreconciled_count: 0 })
+  })
+  it("ingested payouts that summed to zero fees DO yield a net (0 fees is data, not absence)", async () => {
+    ;(loadReportBundle as ReturnType<typeof vi.fn>).mockResolvedValue({
+      books: [{ id: BOOK, name: "Darren — DJP Athlete", book_kind: "business", is_primary: true, currency: "usd", sort_order: 0 }],
+      accounts: [],
+      entries: [
+        { book_id: BOOK, account_id: null, direction: "income", amount_cents: 1500, occurred_on: "2026-07-02", counterparty: null, memo: null, source: "manual" },
+      ],
+      payoutLines: [{ txn_date: "2026-07-02", fee_cents: 0, net_cents: 1500, amount_cents: 1500, type: "charge", payout_id: "bp-1", fees_reconciled: true }],
+      payouts: [{ id: "bp-1", fees_reconciled: true }],
+    })
+    const body = await (await GET(req("from=2026-07-01&to=2026-07-31"))).json()
+    expect(body.books[0].net_income_available).toBe(true)
     expect(body.books[0].net_income_cents).toBe(1500)
+  })
+  it("a MANUAL payout that produced no fee lines at all is still ingested data", async () => {
+    // Stripe enumerates constituent balance transactions for automatic payouts
+    // only. Nothing lands in payoutLines, so a line-derived count would report
+    // the zero-state and print a clean net for a window whose fees are unknown.
+    ;(loadReportBundle as ReturnType<typeof vi.fn>).mockResolvedValue({
+      books: [{ id: BOOK, name: "Darren — DJP Athlete", book_kind: "business", is_primary: true, currency: "usd", sort_order: 0 }],
+      accounts: [],
+      entries: [
+        { book_id: BOOK, account_id: null, direction: "income", amount_cents: 1500, occurred_on: "2026-07-02", counterparty: null, memo: null, source: "manual" },
+      ],
+      payoutLines: [],
+      payouts: [{ id: "bp-manual", fees_reconciled: false }],
+    })
+    const body = await (await GET(req("from=2026-07-01&to=2026-07-31"))).json()
+    expect(body.books[0].stripe_fees).toEqual({ fee_cents: 0, payout_count: 1, unreconciled_count: 1 })
+    expect(body.books[0].net_income_available).toBe(false)
+    expect(body.books[0].net_income_cents).toBeNull()
+  })
+  it("surfaces unreconciled payouts so a consumer can tell a partial net from a complete one", async () => {
+    ;(loadReportBundle as ReturnType<typeof vi.fn>).mockResolvedValue({
+      books: [{ id: BOOK, name: "Darren — DJP Athlete", book_kind: "business", is_primary: true, currency: "usd", sort_order: 0 }],
+      accounts: [],
+      entries: [
+        { book_id: BOOK, account_id: null, direction: "income", amount_cents: 1500, occurred_on: "2026-07-02", counterparty: null, memo: null, source: "manual" },
+      ],
+      payoutLines: [
+        { txn_date: "2026-07-02", fee_cents: 73, net_cents: 1427, amount_cents: 1500, type: "charge", payout_id: "bp-1", fees_reconciled: true },
+        { txn_date: "2026-07-09", fee_cents: 0, net_cents: 0, amount_cents: 0, type: "charge", payout_id: "bp-manual", fees_reconciled: false },
+      ],
+      payouts: [{ id: "bp-1", fees_reconciled: true }, { id: "bp-manual", fees_reconciled: false }],
+    })
+    const body = await (await GET(req("from=2026-07-01&to=2026-07-31"))).json()
+    expect(body.books[0].stripe_fees).toEqual({ fee_cents: 73, payout_count: 2, unreconciled_count: 1 })
+    // A partial fee picture cannot be labelled "net": the screen may show the
+    // estimate with a caveat, a JSON field has nowhere to put one.
+    expect(body.books[0].net_income_available).toBe(false)
+    expect(body.books[0].net_income_cents).toBeNull()
+    // …but what IS known stays available so a caller can decide knowingly.
+    expect(body.books[0].stripe_fee_cents).toBe(73)
   })
 })

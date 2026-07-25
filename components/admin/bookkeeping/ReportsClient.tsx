@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/ui/empty-state"
 import { EmailPackDialog } from "@/components/admin/bookkeeping/EmailPackDialog"
 import { formatCents } from "@/lib/bookkeeping/money"
 import { feeLineDisplay, netAfterFeesDisplay } from "@/lib/bookkeeping/fee-lines"
+import type { StripeFeeWindow } from "@/lib/bookkeeping/payout-fees"
 import { formatOccurredOn } from "@/lib/bookkeeping/format"
 import { presetRange, PERIOD_PRESET_LABELS, type PeriodPreset } from "@/lib/bookkeeping/period"
 import type { BookkeepingBook } from "@/types/database"
@@ -22,7 +23,12 @@ interface BookReport {
   pnl: ProfitAndLoss
   row_count: number
   stripe_fee_cents: number
-  net_income_cents: number
+  /** Sum PLUS how many payouts produced it — "$0.00 of fees" and "no payout
+   *  data" are different claims and only this shape can tell them apart. */
+  stripe_fees: StripeFeeWindow
+  /** null when no payout has been ingested — the route refuses to restate gross
+   *  under a net_ key, so this really can be absent. */
+  net_income_cents: number | null
 }
 interface ReportData { from: string; to: string; books: BookReport[] }
 
@@ -252,7 +258,7 @@ export function ReportsClient({
                         screen would say "no income" while the xlsx for the same window
                         shows a fee total. */}
                     {active.income_by_service.rows.length === 0
-                      && !(active.book.is_primary && active.book.book_kind === "business" && active.stripe_fee_cents !== 0) ? (
+                      && !(active.book.is_primary && active.book.book_kind === "business" && active.stripe_fees.payout_count !== 0) ? (
                       <p className="text-sm text-muted-foreground">No income in this period.</p>
                     ) : (
                       <table className="w-full text-sm">
@@ -282,7 +288,7 @@ export function ReportsClient({
                                 <td className="py-1.5 pr-4 text-muted-foreground">Stripe processing fees (est., from ingested payouts)</td>
                                 <td />
                                 <td className="py-1.5 pr-4 text-muted-foreground">
-                                  {feeLineDisplay(active.stripe_fee_cents)}
+                                  {feeLineDisplay(active.stripe_fees)}
                                 </td>
                               </tr>
                               <tr>
@@ -290,8 +296,8 @@ export function ReportsClient({
                                 <td />
                                 {/* Never restates gross under a "net" label when no payout
                                     has been ingested — the hedge lives in the number too. */}
-                                <td className={`py-1.5 pr-4 ${active.stripe_fee_cents === 0 ? "text-muted-foreground" : "font-semibold"}`}>
-                                  {netAfterFeesDisplay(active.income_by_service.total_cents, active.stripe_fee_cents)}
+                                <td className={`py-1.5 pr-4 ${active.stripe_fees.payout_count === 0 ? "text-muted-foreground" : "font-semibold"}`}>
+                                  {netAfterFeesDisplay(active.income_by_service.total_cents, active.stripe_fees)}
                                 </td>
                               </tr>
                             </>

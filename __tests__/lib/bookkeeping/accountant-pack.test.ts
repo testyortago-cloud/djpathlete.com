@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest"
 import ExcelJS from "exceljs"
 import { buildAccountantPack, sanitizeSheetName } from "@/lib/bookkeeping/accountant-pack"
+import { NO_FEE_DATA } from "@/lib/bookkeeping/payout-fees"
 import type { ReportEntry, ReportAccount } from "@/lib/bookkeeping/reports"
 import type { BookkeepingAsset, BookkeepingBook, BookkeepingDocument } from "@/types/database"
 
@@ -49,7 +50,7 @@ describe("sanitizeSheetName", () => {
 
 describe("buildAccountantPack", () => {
   it("builds the expected tabs with formatCents money and the honesty sheet", async () => {
-    const buf = await buildAccountantPack({ from: "2026-07-01", to: "2026-07-31", books, accounts, entries, documents, assets: [], stripe_fee_cents: 4550 })
+    const buf = await buildAccountantPack({ from: "2026-07-01", to: "2026-07-31", books, accounts, entries, documents, assets: [], stripe_fees: { fee_cents: 4550, payout_count: 3, unreconciled_count: 0 } })
     const wb = await load(buf)
     const names = wb.worksheets.map((w) => w.name)
     expect(names).toEqual([
@@ -83,7 +84,7 @@ describe("buildAccountantPack", () => {
     expect(summary.getRow(1).getCell(8).value).toBe("Income after fees (est.)")
   })
   it("fee columns attach to the PRIMARY BUSINESS book only — spouse/household stay blank", async () => {
-    const buf = await buildAccountantPack({ from: "2026-07-01", to: "2026-07-31", books, accounts, entries, documents, assets: [], stripe_fee_cents: 4550 })
+    const buf = await buildAccountantPack({ from: "2026-07-01", to: "2026-07-31", books, accounts, entries, documents, assets: [], stripe_fees: { fee_cents: 4550, payout_count: 3, unreconciled_count: 0 } })
     const wb = await load(buf)
     const summary = wb.getWorksheet("Summary")!
     // Row 3 = Spouse — Business (business, NOT primary): widening the guard to
@@ -94,10 +95,43 @@ describe("buildAccountantPack", () => {
     }
     expect(String(summary.getRow(3).getCell(1).value)).toBe("Spouse — Business")
   })
-  it("zero fees never assert '$0.00 fees' — both sheets hedge and the Read Me says why", async () => {
+  it("ingested payouts that summed to zero fees print $0.00 — the workbook must not claim nothing was ingested", async () => {
+    // The lie this pins out: the hedge used to fire on "fee sum === 0", so a
+    // window whose payouts WERE ingested printed "no payouts ingested for this
+    // period" into the pack that gets emailed to the CPA.
+    const buf = await buildAccountantPack({
+      from: "2026-07-01", to: "2026-07-31", books, accounts, entries, documents, assets: [],
+      stripe_fees: { fee_cents: 0, payout_count: 2, unreconciled_count: 0 },
+    })
+    const wb = await load(buf)
+    const summary = wb.getWorksheet("Summary")!
+    expect(String(summary.getRow(2).getCell(7).value)).toBe("$0.00")
+    expect(String(summary.getRow(2).getCell(7).value)).not.toContain("no payouts ingested")
+    // Fees really are zero here, so income after fees IS gross — honest, not a hedge.
+    expect(String(summary.getRow(2).getCell(8).value)).toBe("$1,502.00")
+    const svcText = JSON.stringify(wb.getWorksheet("Income by Service")!.getSheetValues())
+    expect(svcText).not.toContain("no payouts ingested")
+  })
+  it("a window holding an unexplained payout (manual 'Pay out now') never prints a clean net", async () => {
+    const buf = await buildAccountantPack({
+      from: "2026-07-01", to: "2026-07-31", books, accounts, entries, documents, assets: [],
+      stripe_fees: { fee_cents: 4550, payout_count: 4, unreconciled_count: 1 },
+    })
+    const wb = await load(buf)
+    const summary = wb.getWorksheet("Summary")!
+    expect(String(summary.getRow(2).getCell(7).value)).toContain("fees incomplete for 1 of 4 payouts")
+    expect(String(summary.getRow(2).getCell(8).value)).toContain("fees incomplete for 1 of 4 payouts")
+    // …and the caveat rides alongside the number, never replaces it.
+    expect(String(summary.getRow(2).getCell(8).value)).toContain("$1,456.50")
+    const svcText = JSON.stringify(wb.getWorksheet("Income by Service")!.getSheetValues())
+    expect(svcText).toContain("fees incomplete for 1 of 4 payouts")
+    // The Read Me explains the caveat instead of leaving the CPA to guess.
+    expect(JSON.stringify(wb.getWorksheet("Read Me")!.getSheetValues())).toContain("a floor, not the whole bill")
+  })
+  it("NO ingested payouts never asserts '$0.00 fees' — both sheets hedge and the Read Me says why", async () => {
     // The payout-sync flag ships OFF, so this is the state on arrival: the pack
     // is the artifact that leaves the building (Resend → CPA).
-    const buf = await buildAccountantPack({ from: "2026-07-01", to: "2026-07-31", books, accounts, entries, documents, assets: [], stripe_fee_cents: 0 })
+    const buf = await buildAccountantPack({ from: "2026-07-01", to: "2026-07-31", books, accounts, entries, documents, assets: [], stripe_fees: NO_FEE_DATA })
     const wb = await load(buf)
     const summary = wb.getWorksheet("Summary")!
     expect(String(summary.getRow(2).getCell(7).value)).toContain("no payouts ingested")
@@ -111,13 +145,13 @@ describe("buildAccountantPack", () => {
     expect(readmeText).toContain("not a claim that no fees were charged")
   })
   it("spouse sheet carries the explicit empty note when the book has no entries", async () => {
-    const buf = await buildAccountantPack({ from: "2026-07-01", to: "2026-07-31", books, accounts, entries, documents, assets: [], stripe_fee_cents: 0 })
+    const buf = await buildAccountantPack({ from: "2026-07-01", to: "2026-07-31", books, accounts, entries, documents, assets: [], stripe_fees: NO_FEE_DATA })
     const wb = await load(buf)
     const spouse = wb.getWorksheet("P&L — Spouse")!
     expect(JSON.stringify(spouse.getSheetValues())).toContain("No entries recorded for this period")
   })
   it("document index lists every document with a download ref", async () => {
-    const buf = await buildAccountantPack({ from: "2026-07-01", to: "2026-07-31", books, accounts, entries, documents, assets: [], stripe_fee_cents: 0 })
+    const buf = await buildAccountantPack({ from: "2026-07-01", to: "2026-07-31", books, accounts, entries, documents, assets: [], stripe_fees: NO_FEE_DATA })
     const wb = await load(buf)
     const docs = wb.getWorksheet("Documents")!
     const text = JSON.stringify(docs.getSheetValues())
@@ -125,7 +159,7 @@ describe("buildAccountantPack", () => {
     expect(text).toContain("/api/admin/bookkeeping/documents/d0000000-0000-4000-8000-000000000001/download")
   })
   it("Darren's P&L sheet contains only Darren's amounts — no cross-book leakage", async () => {
-    const buf = await buildAccountantPack({ from: "2026-07-01", to: "2026-07-31", books, accounts, entries, documents, assets: [], stripe_fee_cents: 0 })
+    const buf = await buildAccountantPack({ from: "2026-07-01", to: "2026-07-31", books, accounts, entries, documents, assets: [], stripe_fees: NO_FEE_DATA })
     const wb = await load(buf)
     const darren = wb.getWorksheet("P&L — Darren")!
     const text = JSON.stringify(darren.getSheetValues())
@@ -134,7 +168,7 @@ describe("buildAccountantPack", () => {
     expect(text).not.toContain("$1,200.00") // household-only rent must not leak in
   })
   it("Income by Service reflects only the primary book — no cross-book leakage", async () => {
-    const buf = await buildAccountantPack({ from: "2026-07-01", to: "2026-07-31", books, accounts, entries, documents, assets: [], stripe_fee_cents: 0 })
+    const buf = await buildAccountantPack({ from: "2026-07-01", to: "2026-07-31", books, accounts, entries, documents, assets: [], stripe_fees: NO_FEE_DATA })
     const wb = await load(buf)
     const svc = wb.getWorksheet("Income by Service")!
     const text = JSON.stringify(svc.getSheetValues())
@@ -149,7 +183,7 @@ describe("buildAccountantPack", () => {
       { id: B2, name: "Darren Co 2", book_kind: "business", owner_label: "Darren", is_primary: false, currency: "usd", sort_order: 1 },
       { id: B3, name: "Darren Co 3", book_kind: "business", owner_label: "Darren", is_primary: false, currency: "usd", sort_order: 2 },
     ] as BookkeepingBook[]
-    const buf = await buildAccountantPack({ from: "2026-07-01", to: "2026-07-31", books: triple, accounts: [], entries: [], documents: [], assets: [], stripe_fee_cents: 0 })
+    const buf = await buildAccountantPack({ from: "2026-07-01", to: "2026-07-31", books: triple, accounts: [], entries: [], documents: [], assets: [], stripe_fees: NO_FEE_DATA })
     const wb = await load(buf)
     const names = wb.worksheets.map((w) => w.name)
     expect(names).toEqual([
@@ -176,7 +210,7 @@ describe("buildAccountantPack — Depreciation sheet (Phase 6d)", () => {
   ] as BookkeepingAsset[]
 
   it("sits after the per-book P&L sheets and before Documents", async () => {
-    const buf = await buildAccountantPack({ from: "2026-01-01", to: "2026-07-31", books, accounts, entries, documents, assets, stripe_fee_cents: 0 })
+    const buf = await buildAccountantPack({ from: "2026-01-01", to: "2026-07-31", books, accounts, entries, documents, assets, stripe_fees: NO_FEE_DATA })
     const wb = await load(buf)
     expect(wb.worksheets.map((w) => w.name)).toEqual([
       "Read Me", "Summary", "Income by Service",
@@ -185,7 +219,7 @@ describe("buildAccountantPack — Depreciation sheet (Phase 6d)", () => {
   })
 
   it("computes this-year + accumulated for the window's END year, per row, with the right book label", async () => {
-    const buf = await buildAccountantPack({ from: "2026-01-01", to: "2026-07-31", books, accounts, entries, documents, assets, stripe_fee_cents: 0 })
+    const buf = await buildAccountantPack({ from: "2026-01-01", to: "2026-07-31", books, accounts, entries, documents, assets, stripe_fees: NO_FEE_DATA })
     const wb = await load(buf)
     const sheet = wb.getWorksheet("Depreciation")!
     // Row 2 = Squat Rack (as passed): final-remainder year 2026 → $33.34 this year, $100.00 accumulated.
@@ -207,7 +241,7 @@ describe("buildAccountantPack — Depreciation sheet (Phase 6d)", () => {
   })
 
   it("carries the tracked-not-decided honesty line", async () => {
-    const buf = await buildAccountantPack({ from: "2026-01-01", to: "2026-07-31", books, accounts, entries, documents, assets, stripe_fee_cents: 0 })
+    const buf = await buildAccountantPack({ from: "2026-01-01", to: "2026-07-31", books, accounts, entries, documents, assets, stripe_fees: NO_FEE_DATA })
     const wb = await load(buf)
     const text = JSON.stringify(wb.getWorksheet("Depreciation")!.getSheetValues())
     expect(text).toContain("tracked, not decided")

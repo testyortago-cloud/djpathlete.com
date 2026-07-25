@@ -653,6 +653,12 @@ export interface BookkeepingPayout {
   arrival_date: string
   status: BookkeepingPayoutStatus
   currency: string
+  /** gross_cents − fee_cents === amount_cents. False for MANUAL payouts — Stripe
+   *  enumerates constituent balance transactions for automatic payouts only, so
+   *  their fees never enter the mirror (00194). */
+  fees_reconciled: boolean
+  /** Signed (gross_cents − fee_cents) − amount_cents; 0 when reconciled. */
+  reconcile_delta_cents: number
   raw: Record<string, unknown> | null
   created_at: string
   updated_at: string

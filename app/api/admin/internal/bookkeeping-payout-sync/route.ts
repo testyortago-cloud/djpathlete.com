@@ -93,7 +93,20 @@ export async function POST(request: NextRequest) {
 
     let upserted = 0
     let upsertedLines = 0
+    let unreconciled = 0
+    let skippedCurrency = 0
+    const bookCurrency = (book.currency ?? "usd").toLowerCase()
     for (const p of batch) {
+      // amount_cents is a bare integer of the payout's own MINOR UNITS. A CAD or
+      // JPY payout summed into a USD book would add unconverted minor units to
+      // the fee total (and JPY has no cents at all). No FX rate lives in this
+      // system, so the only correct move is to skip and say so — before spending
+      // a Stripe call on lines we would have to throw away anyway.
+      if (p.currency.toLowerCase() !== bookCurrency) {
+        skippedCurrency += 1
+        warnings.push(`payout ${p.id}: currency ${p.currency} ≠ book currency ${bookCurrency} — skipped (no FX conversion in this system)`)
+        continue
+      }
       const txns: Stripe.BalanceTransaction[] = await stripe.balanceTransactions
         .list({ payout: p.id, limit: 100 })
         .autoPagingToArray({ limit: 10000 })
@@ -102,9 +115,19 @@ export async function POST(request: NextRequest) {
       const lines = txns.filter((t) => t.type !== "payout")
       const gross = lines.reduce((s, t) => s + t.amount, 0)
       const fee = lines.reduce((s, t) => s + t.fee, 0)
-      if (gross - fee !== p.amount) {
-        // The gross−fee−net reconciliation trace — warn, never fail the run.
-        warnings.push(`payout ${p.id}: gross ${gross} − fee ${fee} = ${gross - fee} ≠ payout net ${p.amount}`)
+      // The gross−fee−net reconciliation identity, now PERSISTED (00194) rather
+      // than only whispered into cron_runs.detail. Stripe's per-payout balance
+      // transaction filter is documented as working "for automatic Stripe
+      // payouts only", so a MANUAL payout ("Pay out now") returns zero lines and
+      // its real fees never enter the mirror. Storing that as fees_reconciled
+      // false is what lets the report layer say "fees incomplete for N of M
+      // payouts" instead of printing a clean — and false — net number.
+      const delta = gross - fee - p.amount
+      if (delta !== 0) {
+        unreconciled += 1
+        warnings.push(lines.length === 0
+          ? `payout ${p.id}: no constituent balance transactions (Stripe enumerates them for automatic payouts only) — fees unknown for net ${p.amount}`
+          : `payout ${p.id}: gross ${gross} − fee ${fee} = ${gross - fee} ≠ payout net ${p.amount}`)
       }
       const status: BookkeepingPayoutStatus = PAYOUT_STATUSES.includes(p.status)
         ? (p.status as BookkeepingPayoutStatus)
@@ -113,7 +136,9 @@ export async function POST(request: NextRequest) {
         stripe_payout_id: p.id, book_id: book.id, amount_cents: p.amount,
         gross_cents: gross, fee_cents: fee,
         arrival_date: epochToIsoDate(p.arrival_date), status,
-        currency: p.currency, raw: p as unknown as Record<string, unknown>,
+        currency: p.currency,
+        fees_reconciled: delta === 0, reconcile_delta_cents: delta,
+        raw: p as unknown as Record<string, unknown>,
       }
       // Write ONE payout with its own lines before moving on. A two-phase batch
       // write (all payouts, then all lines) would commit the payout rows —
@@ -145,9 +170,14 @@ export async function POST(request: NextRequest) {
 
     const detail = {
       upserted, upserted_lines: upsertedLines,
+      unreconciled, skipped_currency: skippedCurrency,
       listed: listed.length, more_pending: morePending,
       window_from: syncWindow.fromDate, window_to: syncWindow.to,
+      // The cap keeps one bad night from writing a megabyte into cron_runs, but a
+      // silent truncation understates the blast radius to the watchdog reading it.
       warnings: warnings.slice(0, WARNINGS_CAP),
+      warnings_total: warnings.length,
+      warnings_truncated: warnings.length > WARNINGS_CAP,
     }
     if (upserted > 0) {
       void recordAudit({

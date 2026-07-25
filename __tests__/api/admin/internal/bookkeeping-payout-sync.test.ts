@@ -29,8 +29,8 @@ const AUTH = `Bearer ${TOKEN}`
 const BOOK = "b0000000-0000-4000-8000-000000000001"
 
 const books = [
-  { id: "b0000000-0000-4000-8000-000000000003", name: "Household & Personal", book_kind: "household", is_primary: false, owner_label: "Shared", sort_order: 2, archived_at: null },
-  { id: BOOK, name: "Darren — DJP Athlete", book_kind: "business", is_primary: true, owner_label: "Darren", sort_order: 0, archived_at: null },
+  { id: "b0000000-0000-4000-8000-000000000003", name: "Household & Personal", book_kind: "household", is_primary: false, owner_label: "Shared", sort_order: 2, archived_at: null, currency: "usd" },
+  { id: BOOK, name: "Darren — DJP Athlete", book_kind: "business", is_primary: true, owner_label: "Darren", sort_order: 0, archived_at: null, currency: "usd" },
 ]
 // 2026-07-07T00:00:00Z = 1783382400 s; 2026-07-03 = 1783036800 s
 const stripePayout = { id: "po_1", amount: 9600, arrival_date: 1783382400, status: "paid", currency: "usd", created: 1783036800 }
@@ -294,5 +294,88 @@ describe("POST /api/admin/internal/bookkeeping-payout-sync", () => {
     const expected = (Date.parse(`${today}T00:00:00Z`) - 14 * 86_400_000) / 1000
     await POST(makeRequest())
     expect(stripe.payouts.list).toHaveBeenCalledWith({ limit: 100, arrival_date: { gte: expected } })
+  })
+
+  // ── MANUAL payouts: Stripe enumerates constituent balance transactions for ──
+  // AUTOMATIC payouts only, so a dashboard "Pay out now" returns [] and its real
+  // processing fees never enter the mirror. That state must be PERSISTED, not
+  // just whispered into cron_runs.detail.warnings, because the report layer
+  // otherwise cannot tell "$0.00 of fees" from "we have no idea".
+  it("a payout whose lines never arrive is stored UNRECONCILED with the signed miss", async () => {
+    mockFn(stripe.balanceTransactions.list).mockReturnValue(pager([])) // manual payout
+    const res = await POST(makeRequest())
+    expect(res.status).toBe(200)
+    const row = mockFn(upsertPayouts).mock.calls[0][0][0]
+    expect(row).toMatchObject({
+      stripe_payout_id: "po_1", gross_cents: 0, fee_cents: 0,
+      fees_reconciled: false, reconcile_delta_cents: -9600, // (0 − 0) − 9600
+    })
+    const body = await res.json()
+    expect(body.unreconciled).toBe(1)
+    expect(body.warnings.some((w: string) => w.includes("po_1") && w.toLowerCase().includes("automatic"))).toBe(true)
+  })
+
+  it("a fully explained payout is stored RECONCILED with a zero delta", async () => {
+    const res = await POST(makeRequest())
+    expect(res.status).toBe(200)
+    expect(mockFn(upsertPayouts).mock.calls[0][0][0]).toMatchObject({
+      fees_reconciled: true, reconcile_delta_cents: 0,
+    })
+    expect((await res.json()).unreconciled).toBe(0)
+  })
+
+  it("a partially explained payout is unreconciled with the exact signed delta", async () => {
+    // 10000 − 500 = 9500 vs net 9600 → delta −100
+    mockFn(stripe.balanceTransactions.list).mockReturnValue(pager([{ ...chargeTxn, fee: 500, net: 9500 }, selfTxn]))
+    await POST(makeRequest())
+    expect(mockFn(upsertPayouts).mock.calls[0][0][0]).toMatchObject({
+      fees_reconciled: false, reconcile_delta_cents: -100,
+    })
+  })
+
+  // ── Foreign-currency payouts must never be summed into a USD book ─────────
+  it("a payout in another currency is SKIPPED with a warning — its minor units are not the book's", async () => {
+    mockFn(stripe.payouts.list).mockReturnValue(pager([
+      { ...stripePayout, id: "po_cad", currency: "cad" },
+      stripePayout,
+    ]))
+    const res = await POST(makeRequest())
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.skipped_currency).toBe(1)
+    expect(body.upserted).toBe(1)
+    // Never even fetched — an unconvertible payout is not worth a Stripe call.
+    expect(stripe.balanceTransactions.list).not.toHaveBeenCalledWith(expect.objectContaining({ payout: "po_cad" }))
+    const written = mockFn(upsertPayouts).mock.calls.flatMap((c) => c[0]).map((r: { stripe_payout_id: string }) => r.stripe_payout_id)
+    expect(written).toEqual(["po_1"])
+    expect(body.warnings.some((w: string) => w.includes("po_cad") && w.includes("cad"))).toBe(true)
+  })
+
+  it("currency comparison is case-insensitive (Stripe lowercases; the book column may not)", async () => {
+    mockFn(listBooks).mockResolvedValue([books[0], { ...books[1], currency: "USD" }])
+    const res = await POST(makeRequest())
+    expect((await res.json()).skipped_currency).toBe(0)
+    expect(mockFn(upsertPayouts).mock.calls[0][0][0]).toMatchObject({ stripe_payout_id: "po_1" })
+  })
+
+  // ── Truncated warnings must announce the truncation ───────────────────────
+  it("more warnings than the cap → capped list PLUS a total and a truncation marker", async () => {
+    mockFn(latestPayoutArrivalDate).mockResolvedValue(null)
+    mockFn(stripe.payouts.list).mockReturnValue(pager(manyPayouts(25)))
+    mockFn(stripe.balanceTransactions.list).mockReturnValue(pager([])) // every payout warns
+    mockFn(upsertPayouts).mockImplementation(async (rows: Array<{ stripe_payout_id: string }>) =>
+      rows.map((r) => ({ id: `bp-${r.stripe_payout_id}`, stripe_payout_id: r.stripe_payout_id })))
+
+    const body = await (await POST(makeRequest())).json()
+    expect(body.warnings).toHaveLength(20)
+    expect(body.warnings_total).toBe(25)
+    expect(body.warnings_truncated).toBe(true)
+    expect(body.unreconciled).toBe(25)
+  })
+
+  it("warnings under the cap are not marked truncated", async () => {
+    const body = await (await POST(makeRequest())).json()
+    expect(body.warnings_total).toBe(0)
+    expect(body.warnings_truncated).toBe(false)
   })
 })

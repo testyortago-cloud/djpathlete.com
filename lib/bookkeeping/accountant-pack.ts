@@ -5,6 +5,7 @@
 import ExcelJS from "exceljs"
 import { formatCents } from "@/lib/bookkeeping/money"
 import { feeLineDisplay, netAfterFeesDisplay } from "@/lib/bookkeeping/fee-lines"
+import type { StripeFeeWindow } from "@/lib/bookkeeping/payout-fees"
 import {
   incomeByServiceLine, profitAndLossByCategory, perBookSummary,
   type ReportAccount, type ReportEntry,
@@ -21,8 +22,11 @@ export interface AccountantPackInput {
   documents: BookkeepingDocument[]
   assets: BookkeepingAsset[]
   /** Windowed Stripe processing fees (Track A §1.4). Report-layer only — never
-   *  a ledger row. Attaches to the primary business book alone. */
-  stripe_fee_cents: number
+   *  a ledger row. Attaches to the primary business book alone. Carries the
+   *  ingested-payout COUNT alongside the sum: a workbook leaves the building, so
+   *  it must never state "no payouts ingested" merely because the sum is zero,
+   *  nor print a clean net over payouts whose fees never arrived. */
+  stripe_fees: StripeFeeWindow
 }
 
 const HEADER_FILL: ExcelJS.Fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0E3F50" } }
@@ -122,7 +126,7 @@ function addDepreciationSheet(
 }
 
 export async function buildAccountantPack(input: AccountantPackInput): Promise<Buffer> {
-  const { from, to, books, accounts, entries, documents, assets, stripe_fee_cents } = input
+  const { from, to, books, accounts, entries, documents, assets, stripe_fees } = input
   const wb = new ExcelJS.Workbook()
   wb.creator = "DJP Athlete"
   const used = new Set<string>()
@@ -136,6 +140,7 @@ export async function buildAccountantPack(input: AccountantPackInput): Promise<B
     ``,
     `PRIMARY FIGURES ARE GROSS — Stripe processing fees (from ingested payouts) appear only as labeled "net after fees (est.)" lines; fees never post to the ledger.`,
     `Stripe fee lines cover only payouts already ingested; a period with no ingested payouts shows no fees, which is not a claim that no fees were charged.`,
+    `Manual "Pay out now" transfers do not expose their constituent fees to Stripe's API. Where that happened the fee cells read "fees incomplete for N of M payouts" — the fee total for that period is a floor, not the whole bill.`,
     `Every number here is an ESTIMATE for planning. The CPA files; nothing in this workbook is a filed return.`,
     `This pack is a CANDIDATE for the accountant's review — categories were coach-confirmed but not accountant-confirmed.`,
     `Business and personal finances live in SEPARATE books; no sheet mixes them into one total.`,
@@ -163,8 +168,8 @@ export async function buildAccountantPack(input: AccountantPackInput): Promise<B
     const isFeeBook = feeBook?.id === s.book_id
     summary.addRow([
       s.name, s.book_kind, formatCents(s.income_cents), formatCents(s.expense_cents), formatCents(s.net_cents), s.entry_count,
-      isFeeBook ? feeLineDisplay(stripe_fee_cents) : "",
-      isFeeBook ? netAfterFeesDisplay(s.income_cents, stripe_fee_cents) : "",
+      isFeeBook ? feeLineDisplay(stripe_fees) : "",
+      isFeeBook ? netAfterFeesDisplay(s.income_cents, stripe_fees) : "",
     ])
   }
 
@@ -180,8 +185,8 @@ export async function buildAccountantPack(input: AccountantPackInput): Promise<B
     // Only when the sheet's book IS the fee book — otherwise this sheet would
     // net the coach's fees out of some other book's income.
     if (feeBook && primary.id === feeBook.id) {
-      svc.addRow(["Stripe processing fees (est., from ingested payouts)", "", feeLineDisplay(stripe_fee_cents)])
-      const netRow = svc.addRow(["Net income after Stripe fees (est.)", "", netAfterFeesDisplay(ibs.total_cents, stripe_fee_cents)])
+      svc.addRow(["Stripe processing fees (est., from ingested payouts)", "", feeLineDisplay(stripe_fees)])
+      const netRow = svc.addRow(["Net income after Stripe fees (est.)", "", netAfterFeesDisplay(ibs.total_cents, stripe_fees)])
       netRow.eachCell((c) => { c.font = { bold: true } })
     }
   }

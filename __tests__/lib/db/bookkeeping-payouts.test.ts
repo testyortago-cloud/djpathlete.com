@@ -124,6 +124,7 @@ import {
   listPayoutsForDedupe,
   listNonTerminalPayouts,
   listPayoutLinesForWindow,
+  listPayoutRefsForWindow,
 } from "@/lib/db/bookkeeping"
 
 const BOOK = "b0000000-0000-4000-8000-000000000001"
@@ -136,6 +137,8 @@ const payoutRow = {
   arrival_date: "2026-07-07",
   status: "paid" as const,
   currency: "usd",
+  fees_reconciled: true,
+  reconcile_delta_cents: 0,
   raw: null,
 }
 const lineRow = {
@@ -302,11 +305,14 @@ describe("listNonTerminalPayouts", () => {
 })
 
 describe("listPayoutLinesForWindow", () => {
+  const embeddedLine = (over: Row = {}) => ({
+    txn_date: "2026-07-03", fee_cents: 400, net_cents: 9600, amount_cents: 10000, type: "charge",
+    payout_id: "bp-1", bookkeeping_payouts: { book_id: BOOK, fees_reconciled: true }, ...over,
+  })
+
   it("windows on txn_date inclusive and projects the fee columns the report layer sums", async () => {
-    state.selectRows = [
-      { txn_date: "2026-07-03", fee_cents: 400, net_cents: 9600, amount_cents: 10000, type: "charge" },
-    ]
-    const rows = await listPayoutLinesForWindow("2026-07-01", "2026-07-31")
+    state.selectRows = [embeddedLine()]
+    const rows = await listPayoutLinesForWindow(BOOK, "2026-07-01", "2026-07-31")
     expect(rows).toHaveLength(1)
     const call = state.selectCalls.at(-1)!
     expect(call.gteMap.txn_date).toBe("2026-07-01")
@@ -315,8 +321,32 @@ describe("listPayoutLinesForWindow", () => {
     expect(call.cols).toContain("net_cents")
     expect(call.cols).toContain("amount_cents")
   })
+  it("SCOPES to the book through the payout join — bookkeeping_payout_lines carries no book_id, so an unscoped read attributes a second book's fees to the primary business book", async () => {
+    state.selectRows = [embeddedLine()]
+    await listPayoutLinesForWindow(BOOK, "2026-07-01", "2026-07-31")
+    const call = state.selectCalls.at(-1)!
+    expect(call.eqMap["bookkeeping_payouts.book_id"]).toBe(BOOK)
+    // !inner — a left join would keep lines whose payout belongs to another book.
+    expect(call.cols).toContain("bookkeeping_payouts!inner")
+  })
+  it("flattens the joined reconciliation flag so the report layer can tell 'no data' from '$0.00'", async () => {
+    state.selectRows = [
+      embeddedLine({ payout_id: "bp-ok" }),
+      embeddedLine({ payout_id: "bp-manual", fee_cents: 0, bookkeeping_payouts: { book_id: BOOK, fees_reconciled: false } }),
+    ]
+    const rows = await listPayoutLinesForWindow(BOOK, "2026-07-01", "2026-07-31")
+    expect(rows.map((r) => r.fees_reconciled)).toEqual([true, false])
+    expect(rows.map((r) => r.payout_id)).toEqual(["bp-ok", "bp-manual"])
+    // The nested embed must not leak into the row shape the pure layer consumes.
+    expect(rows[0]).not.toHaveProperty("bookkeeping_payouts")
+  })
+  it("a row with no joined payout reads as UNreconciled (fails loud, never silently 'complete')", async () => {
+    state.selectRows = [{ txn_date: "2026-07-03", fee_cents: 400, net_cents: 9600, amount_cents: 10000, type: "charge", payout_id: "bp-1" }]
+    const rows = await listPayoutLinesForWindow(BOOK, "2026-07-01", "2026-07-31")
+    expect(rows[0].fees_reconciled).toBe(false)
+  })
   it("orders by txn_date ASC then id ASC", async () => {
-    await listPayoutLinesForWindow("2026-07-01", "2026-07-31")
+    await listPayoutLinesForWindow(BOOK, "2026-07-01", "2026-07-31")
     expect(state.selectCalls.at(-1)!.orderArgs).toEqual([
       ["txn_date", { ascending: true }],
       ["id", { ascending: true }],
@@ -324,18 +354,44 @@ describe("listPayoutLinesForWindow", () => {
   })
   it("paginates past the 1000-row cap — a bare .select() would silently truncate a year of balance transactions", async () => {
     state.pages = [
-      fill(1000, () => ({
-        txn_date: "2026-07-03",
-        fee_cents: 400,
-        net_cents: 9600,
-        amount_cents: 10000,
-        type: "charge",
-      })),
-      fill(12, () => ({ txn_date: "2026-07-04", fee_cents: 30, net_cents: 970, amount_cents: 1000, type: "charge" })),
+      fill(1000, () => embeddedLine()),
+      fill(12, () => embeddedLine({ fee_cents: 30, net_cents: 970, amount_cents: 1000, txn_date: "2026-07-04" })),
     ]
-    const rows = await listPayoutLinesForWindow("2026-07-01", "2026-07-31")
+    const rows = await listPayoutLinesForWindow(BOOK, "2026-07-01", "2026-07-31")
     expect(rows).toHaveLength(1012)
     expect(rows.reduce((s, r) => s + r.fee_cents, 0)).toBe(1000 * 400 + 12 * 30)
+    expect(state.rangeCalls).toEqual([
+      [0, 999],
+      [1000, 1999],
+    ])
+  })
+})
+
+describe("listPayoutRefsForWindow", () => {
+  it("windows on ARRIVAL date, scoped to the book, projecting the reconciliation flag", async () => {
+    state.selectRows = [
+      { id: "bp-1", fees_reconciled: true },
+      { id: "bp-manual", fees_reconciled: false },
+    ]
+    const rows = await listPayoutRefsForWindow(BOOK, "2026-07-01", "2026-07-31")
+    expect(rows.map((r) => r.fees_reconciled)).toEqual([true, false])
+    const call = state.selectCalls.at(-1)!
+    expect(call.table).toBe("bookkeeping_payouts")
+    expect(call.eqMap.book_id).toBe(BOOK)
+    // Lines window on txn_date; a payout with NO lines can only be found by
+    // arrival_date, which is the whole reason this reader exists.
+    expect(call.gteMap.arrival_date).toBe("2026-07-01")
+    expect(call.lteMap.arrival_date).toBe("2026-07-31")
+    expect(call.cols).toContain("fees_reconciled")
+  })
+  it("paginates past the 1000-row cap", async () => {
+    state.pages = [
+      fill(1000, (i) => ({ id: `bp-${i}`, fees_reconciled: true })),
+      fill(7, (i) => ({ id: `bp-b${i}`, fees_reconciled: false })),
+    ]
+    const rows = await listPayoutRefsForWindow(BOOK, "2026-01-01", "2026-12-31")
+    expect(rows).toHaveLength(1007)
+    expect(rows.filter((r) => !r.fees_reconciled)).toHaveLength(7)
     expect(state.rangeCalls).toEqual([
       [0, 999],
       [1000, 1999],

@@ -7,7 +7,7 @@ import {
   type ProfitAndLoss,
 } from "@/lib/bookkeeping/reports"
 import { depreciationAsOf } from "@/lib/bookkeeping/depreciation"
-import { stripeFeesInWindow } from "@/lib/bookkeeping/payout-fees"
+import { stripeFeeWindow } from "@/lib/bookkeeping/payout-fees"
 import { formatCents } from "@/lib/bookkeeping/money"
 import { feeLineDisplay, netAfterFeesDisplay } from "@/lib/bookkeeping/fee-lines"
 import { formatOccurredOn } from "@/lib/bookkeeping/format"
@@ -35,7 +35,7 @@ async function loadPrintData(from: string, to: string) {
   ])
   const { books, accounts, entries } = bundle
   // ?? [] tolerates pre-payoutLines bundle doubles; the real bundle always supplies it.
-  return { books, accounts, entries, payoutLines: bundle.payoutLines ?? [], documents, assets }
+  return { books, accounts, entries, payoutLines: bundle.payoutLines ?? [], payouts: bundle.payouts ?? [], documents, assets }
 }
 
 function PnlBlock({ pnl }: { pnl: ProfitAndLoss }) {
@@ -95,8 +95,8 @@ export default async function AccountantPackPrintPage({ searchParams }: { search
     to = fallback.to
     bundle = await loadPrintData(from, to)
   }
-  const { books, accounts, entries, payoutLines, documents, assets } = bundle
-  const stripeFees = stripeFeesInWindow(payoutLines, from, to)
+  const { books, accounts, entries, payoutLines, payouts, documents, assets } = bundle
+  const stripeFees = stripeFeeWindow(payoutLines, payouts, from, to)
   const summaries = perBookSummary(entries, books)
   const primary = books.find((b) => b.is_primary) ?? books[0]
   // Fees belong to the primary BUSINESS book alone (same resolution as the pack
@@ -156,7 +156,7 @@ export default async function AccountantPackPrintPage({ searchParams }: { search
               const ibs = incomeByServiceLine(entries.filter((e) => e.book_id === primary.id), accounts)
               // Ingested fees with no posted income still print — the xlsx for the
               // same window would otherwise disclose a fee total this page hides.
-              return ibs.rows.length === 0 && !(showFees && stripeFees !== 0) ? (
+              return ibs.rows.length === 0 && !(showFees && stripeFees.payout_count !== 0) ? (
                 <p className="text-sm">No income recorded in this period.</p>
               ) : (
                 <table className="w-full border-collapse text-sm">
@@ -183,7 +183,7 @@ export default async function AccountantPackPrintPage({ searchParams }: { search
                         <tr>
                           <td className="py-1 pr-4 font-semibold">Net income after Stripe fees (est.)</td>
                           <td />
-                          <td className={`py-1 pr-4 text-right ${stripeFees === 0 ? "" : "font-semibold"}`}>
+                          <td className={`py-1 pr-4 text-right ${stripeFees.payout_count === 0 ? "" : "font-semibold"}`}>
                             {netAfterFeesDisplay(ibs.total_cents, stripeFees)}
                           </td>
                         </tr>

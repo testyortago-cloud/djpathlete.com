@@ -584,15 +584,48 @@ export async function latestPayoutArrivalDate(bookId: string): Promise<string | 
 
 export interface PayoutLineWindowRow {
   txn_date: string; fee_cents: number; net_cents: number; amount_cents: number; type: string
+  payout_id: string
+  /** Joined from the parent payout — false when the payout's lines do not
+   *  explain its net (manual payouts ingest with no lines at all). */
+  fees_reconciled: boolean
+}
+interface PayoutLineJoinRow extends Omit<PayoutLineWindowRow, "fees_reconciled"> {
+  bookkeeping_payouts?: { book_id: string; fees_reconciled: boolean } | null
 }
 /** Windowed payout lines for the net-revenue report layer. fetchAllRows —
- *  growth table (blanket rule: no bare .select() over growth tables). */
-export async function listPayoutLinesForWindow(from: string, to: string): Promise<PayoutLineWindowRow[]> {
-  return fetchAllRows<PayoutLineWindowRow>((f, t) =>
+ *  growth table (blanket rule: no bare .select() over growth tables).
+ *  BOOK-SCOPED through the payout join: bookkeeping_payout_lines carries no
+ *  book_id of its own, and the reports route attributes this sum wholly to the
+ *  primary business book — an unscoped read would hand a second book's Stripe
+ *  fees to the coach. !inner, so a line whose payout belongs elsewhere is
+ *  dropped by the database rather than filtered (or not) in JS. */
+export async function listPayoutLinesForWindow(bookId: string, from: string, to: string): Promise<PayoutLineWindowRow[]> {
+  const rows = await fetchAllRows<PayoutLineJoinRow>((f, t) =>
     db().from("bookkeeping_payout_lines")
-      .select("txn_date,fee_cents,net_cents,amount_cents,type")
+      .select("txn_date,fee_cents,net_cents,amount_cents,type,payout_id,bookkeeping_payouts!inner(book_id,fees_reconciled)")
+      .eq("bookkeeping_payouts.book_id", bookId)
       .gte("txn_date", from).lte("txn_date", to)
       .order("txn_date", { ascending: true }).order("id", { ascending: true })
+      .range(f, t) as never)
+  // Flatten the embed away — the pure fee layer must never see PostgREST shape.
+  // A missing embed reads as UNreconciled: "we could not confirm" is the honest
+  // default, and it surfaces as a visible caveat rather than a silent clean net.
+  return rows.map(({ bookkeeping_payouts, ...line }) => ({
+    ...line, fees_reconciled: bookkeeping_payouts?.fees_reconciled === true,
+  }))
+}
+
+export interface PayoutWindowRefRow { id: string; fees_reconciled: boolean }
+/** Payouts that ARRIVED in the window, with their reconciliation state. The
+ *  report layer unions these with the line-derived set: a MANUAL payout produces
+ *  no balance-transaction lines at all, so a line-only count would report "no
+ *  payouts ingested" for a window made entirely of them. Book-scoped, paginated. */
+export async function listPayoutRefsForWindow(bookId: string, from: string, to: string): Promise<PayoutWindowRefRow[]> {
+  return fetchAllRows<PayoutWindowRefRow>((f, t) =>
+    db().from("bookkeeping_payouts")
+      .select("id,fees_reconciled")
+      .eq("book_id", bookId).gte("arrival_date", from).lte("arrival_date", to)
+      .order("arrival_date", { ascending: true }).order("id", { ascending: true })
       .range(f, t) as never)
 }
 

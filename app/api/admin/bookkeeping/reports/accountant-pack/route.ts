@@ -4,7 +4,7 @@ import { reportQuerySchema } from "@/lib/validators/bookkeeping"
 import { loadReportBundle } from "@/lib/bookkeeping/report-data"
 import { listAllDocuments, listAssets } from "@/lib/db/bookkeeping"
 import { buildAccountantPack } from "@/lib/bookkeeping/accountant-pack"
-import { stripeFeesInWindow } from "@/lib/bookkeeping/payout-fees"
+import { stripeFeeWindow } from "@/lib/bookkeeping/payout-fees"
 import { recordAudit } from "@/lib/audit/record"
 
 export async function GET(request: Request) {
@@ -22,7 +22,7 @@ export async function GET(request: Request) {
     const buf = await buildAccountantPack({
       from, to, books, accounts, entries, documents, assets,
       // ?? [] tolerates pre-payoutLines bundle doubles; the real bundle always supplies it.
-      stripe_fee_cents: stripeFeesInWindow(bundle.payoutLines ?? [], from, to),
+      stripe_fees: stripeFeeWindow(bundle.payoutLines ?? [], bundle.payouts ?? [], from, to),
     })
 
     void recordAudit({
