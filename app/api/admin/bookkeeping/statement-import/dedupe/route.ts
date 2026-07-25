@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { listPostedForDedupe, listDocuments } from "@/lib/db/bookkeeping"
+import { listPostedForDedupe, listPayoutsForDedupe, listDocuments } from "@/lib/db/bookkeeping"
 import { assignOccurrenceIndexes, computeStatementSourceRef, transferSuspicion } from "@/lib/bookkeeping/statement-parse"
 import { flagStatementDuplicates, type DedupeInputRow } from "@/lib/bookkeeping/statement-dedupe"
 import { statementDedupeSchema } from "@/lib/validators/bookkeeping"
@@ -72,9 +72,11 @@ export async function POST(request: Request) {
     const toWide = fromUtcDays(toUtcDays(maxOccurred) + WINDOW_DAYS)
 
     const posted = await listPostedForDedupe(book_id, fromWide, toWide)
-    // Exactly ONE call — `consumed` inside is per-call, so a posted entry can
-    // only be matched once across this whole batch.
-    const annotated = flagStatementDuplicates(dedupeRows, posted, {})
+    // Same ±WINDOW_DAYS-widened span covers the payout layer's ±2d rule.
+    const payouts = await listPayoutsForDedupe(book_id, fromWide, toWide)
+    // Exactly ONE call — `consumed`/`consumedPayouts` inside are per-call, so a
+    // posted entry or payout can only be matched once across this whole batch.
+    const annotated = flagStatementDuplicates(dedupeRows, posted, { payouts })
 
     const excludedTransferTotalCents = annotated.reduce(
       (sum, r) => (r.row.is_transfer || r.row.transferSuspect ? sum + r.row.amount_cents : sum),

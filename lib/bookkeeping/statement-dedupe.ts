@@ -28,6 +28,15 @@ export interface PostedRef {
   source: LedgerSource
 }
 
+/** Track A exact payout layer — a stored Stripe payout the bank line may BE. */
+export interface PayoutRef {
+  id: string
+  stripe_payout_id: string
+  net_cents: number
+  arrival_date: string
+  status: string
+}
+
 export interface DedupeInputRow extends NormalizedStatementRow {
   source_ref: string
   is_transfer: boolean
@@ -40,6 +49,8 @@ export interface AnnotatedStatementRow {
   row: DedupeInputRow
   possibleDuplicate: boolean
   matchedEntry: { id: string; occurred_on: string; memo: string | null; source: LedgerSource } | null
+  /** Set only by the exact payout layer — the `bookkeeping_payouts.id` this bank line IS. */
+  matchedPayoutId?: string | null
   reason: string | null
   defaultInclude: boolean
   newCandidate: boolean
@@ -47,6 +58,7 @@ export interface AnnotatedStatementRow {
 
 const DEFAULT_WINDOW_DAYS = 4
 const DEFAULT_FEE_TOLERANCE_PCT = 4
+const PAYOUT_WINDOW_DAYS = 2
 
 /** `YYYY-MM-DD` → whole UTC days since epoch (tz-independent, never local `Date` math). */
 function toUtcDays(dateStr: string): number {
@@ -112,6 +124,8 @@ function annotateIncome(
   consumed: Set<string>,
   windowDays: number,
   feeTolerancePct: number,
+  payouts: PayoutRef[],
+  consumedPayouts: Set<string>,
 ): AnnotatedStatementRow {
   // 1. Exact match: nearest unconsumed posted income at the same amount, within window.
   let best: PostedRef | null = null
@@ -134,6 +148,38 @@ function annotateIncome(
       possibleDuplicate: true,
       matchedEntry: toMatchedEntry(best),
       reason: `matches ${best.source} entry on ${best.occurred_on}`,
+      defaultInclude: false,
+      newCandidate: false,
+    }
+  }
+
+  // 1b. Exact payout-net (Decision A-8): the bank line IS a Stripe payout
+  // deposit — net match ±0¢, arrival ±2d, status 'paid' only. SEPARATE
+  // consumedPayouts set: one bank line consumes one payout, and this layer
+  // never touches the posted-entry pool (layers 1/2 keep their pool intact
+  // for other rows). Flags, never drops — the coach can still include the
+  // row (the membership-revenue escape hatch).
+  let bestPayout: PayoutRef | null = null
+  let bestPayoutDiff = Infinity
+  for (const po of payouts) {
+    if (consumedPayouts.has(po.id)) continue
+    if (po.status !== "paid") continue
+    if (po.net_cents !== row.amount_cents) continue
+    const diff = dayDiff(row.occurred_on, po.arrival_date)
+    if (diff > PAYOUT_WINDOW_DAYS) continue
+    if (diff < bestPayoutDiff) {
+      bestPayout = po
+      bestPayoutDiff = diff
+    }
+  }
+  if (bestPayout) {
+    consumedPayouts.add(bestPayout.id)
+    return {
+      row,
+      possibleDuplicate: true,
+      matchedEntry: null,
+      matchedPayoutId: bestPayout.id,
+      reason: `Stripe payout deposit — net ${formatCents(bestPayout.net_cents)} arriving ${bestPayout.arrival_date} (${bestPayout.stripe_payout_id})`,
       defaultInclude: false,
       newCandidate: false,
     }
@@ -235,6 +281,8 @@ function annotateRow(
   consumed: Set<string>,
   windowDays: number,
   feeTolerancePct: number,
+  payouts: PayoutRef[],
+  consumedPayouts: Set<string>,
 ): AnnotatedStatementRow {
   if (row.is_transfer) {
     return {
@@ -258,14 +306,15 @@ function annotateRow(
   }
 
   return row.direction === "income"
-    ? annotateIncome(row, posted, consumed, windowDays, feeTolerancePct)
+    ? annotateIncome(row, posted, consumed, windowDays, feeTolerancePct, payouts, consumedPayouts)
     : annotateExpense(row, posted, consumed, windowDays)
 }
 
 /**
- * Flag likely duplicates across three signals (exact match, aggregate payout,
- * period-overlap for income; exact+description-similarity for expense) and
- * compute a sane default include/exclude verdict per row.
+ * Flag likely duplicates across four signals (exact match, exact Stripe-payout
+ * net, aggregate payout, period-overlap for income; exact+description-
+ * similarity for expense) and compute a sane default include/exclude verdict
+ * per row.
  *
  * Rows are matched in `(occurred_on, inputIndex)` order so a posted entry is
  * consumed deterministically, but the returned array preserves INPUT order.
@@ -273,12 +322,16 @@ function annotateRow(
 export function flagStatementDuplicates(
   rows: DedupeInputRow[],
   posted: PostedRef[],
-  opts?: { windowDays?: number; feeTolerancePct?: number },
+  opts?: { windowDays?: number; feeTolerancePct?: number; payouts?: PayoutRef[] },
 ): AnnotatedStatementRow[] {
   const windowDays = opts?.windowDays ?? DEFAULT_WINDOW_DAYS
   const feeTolerancePct = opts?.feeTolerancePct ?? DEFAULT_FEE_TOLERANCE_PCT
+  const payouts = opts?.payouts ?? []
 
   const consumed = new Set<string>()
+  // Deliberately SEPARATE from `consumed` — the payout layer must never remove
+  // a posted entry from layers 1/2's pool (Decision A-8).
+  const consumedPayouts = new Set<string>()
   const results: AnnotatedStatementRow[] = new Array(rows.length)
 
   const matchOrder = rows
@@ -289,7 +342,7 @@ export function flagStatementDuplicates(
     })
 
   for (const idx of matchOrder) {
-    results[idx] = annotateRow(rows[idx], posted, consumed, windowDays, feeTolerancePct)
+    results[idx] = annotateRow(rows[idx], posted, consumed, windowDays, feeTolerancePct, payouts, consumedPayouts)
   }
 
   return results

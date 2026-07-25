@@ -2,11 +2,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 
 const authMock = vi.fn()
 const listPostedForDedupeMock = vi.fn()
+const listPayoutsForDedupeMock = vi.fn()
 const listDocumentsMock = vi.fn()
 
 vi.mock("@/lib/auth", () => ({ auth: () => authMock() }))
 vi.mock("@/lib/db/bookkeeping", () => ({
   listPostedForDedupe: (...a: unknown[]) => listPostedForDedupeMock(...a),
+  listPayoutsForDedupe: (...a: unknown[]) => listPayoutsForDedupeMock(...a),
   listDocuments: (...a: unknown[]) => listDocumentsMock(...a),
 }))
 
@@ -44,9 +46,11 @@ function req(body: unknown): Request {
 beforeEach(() => {
   authMock.mockReset()
   listPostedForDedupeMock.mockReset()
+  listPayoutsForDedupeMock.mockReset()
   listDocumentsMock.mockReset()
   authMock.mockResolvedValue({ user: { id: "admin-1", role: "admin" } })
   listPostedForDedupeMock.mockResolvedValue([])
+  listPayoutsForDedupeMock.mockResolvedValue([])
   listDocumentsMock.mockResolvedValue([])
 })
 
@@ -120,6 +124,25 @@ describe("POST /api/admin/bookkeeping/statement-import/dedupe", () => {
     const json = await res.json()
     expect(json.documentOverlapWarning).not.toBeNull()
     expect(json.documentOverlapWarning).toContain("jan-statement.csv")
+  })
+
+  it("fetches payouts over the widened window and flags an exact payout-net deposit", async () => {
+    listPayoutsForDedupeMock.mockResolvedValue([
+      { id: "bp-1", stripe_payout_id: "po_1", net_cents: 5000, arrival_date: "2026-01-05", status: "paid" },
+    ])
+    const incomeRow = row({ direction: "income", amount_cents: 5000, description: "STRIPE PAYOUT", occurred_on: "2026-01-05" })
+    const res = await POST(req({ book_id: BOOK, rows: [incomeRow] }) as never)
+    expect(res.status).toBe(200)
+    expect(listPayoutsForDedupeMock).toHaveBeenCalledWith(BOOK, "2026-01-01", "2026-01-09")
+    const json = await res.json()
+    expect(json.rows[0].possibleDuplicate).toBe(true)
+    expect(json.rows[0].matchedPayoutId).toBe("bp-1")
+    expect(json.rows[0].reason).toContain("po_1")
+  })
+
+  it("empty rows short-circuit still makes NO payout DAL read", async () => {
+    await POST(req({ book_id: BOOK, rows: [] }) as never)
+    expect(listPayoutsForDedupeMock).not.toHaveBeenCalled()
   })
 
   it("returns a null documentOverlapWarning when no prior document period overlaps", async () => {
