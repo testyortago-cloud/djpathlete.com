@@ -382,15 +382,26 @@ export async function listDocuments(bookId: string): Promise<BookkeepingDocument
     db().from("bookkeeping_documents").select("*").eq("book_id", bookId).order("created_at", { ascending: false }).range(f, t) as never)
 }
 /** Pending email receipts for /admin/books/email-receipts: polled Gmail docs
- *  not yet posted. posted_count is NULL until linkDocumentBatch runs after a
- *  commit — the IS NULL arm is required (a bare = 0 would match nothing,
- *  permanently emptying the page). */
+ *  not yet posted. posted_count has no default and is written ONLY by
+ *  linkDocumentBatch after a commit, so IS NULL is exactly "never committed".
+ *
+ *  DESIGN AMENDMENT (design §3.4 says `posted_count IS NULL OR posted_count =
+ *  0`): the `= 0` arm is dropped. For these documents 0 has no true-positive
+ *  meaning — unlike a statement (where a commit can legitimately post zero
+ *  rows), a receipt commit writes 0 only when insertReceiptEntry deduped on
+ *  (book_id, source, source_ref), i.e. the ledger entry ALREADY exists. Keeping
+ *  the arm pinned such a document in the queue permanently: the UI drops the
+ *  row client-side on the "already posted" response, but every page load
+ *  brought it back and no further action could ever clear it (re-posting always
+ *  re-writes 0). Reachable whenever a commit half-completes — e.g.
+ *  insertReceiptEntry succeeds but updateDocumentRetainUntil throws → 500 with
+ *  posted_count still NULL → the coach's retry dedupes to 0. */
 export async function listPendingEmailReceiptDocuments(): Promise<BookkeepingDocument[]> {
   return fetchAllRows<BookkeepingDocument>((f, t) =>
     db().from("bookkeeping_documents").select("*")
       .eq("kind", "receipt")
       .like("external_ref", "gmail:%")
-      .or("posted_count.is.null,posted_count.eq.0")
+      .is("posted_count", null)
       .order("created_at", { ascending: false })
       .range(f, t) as never)
 }
