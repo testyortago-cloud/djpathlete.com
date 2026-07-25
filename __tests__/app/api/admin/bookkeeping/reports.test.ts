@@ -59,6 +59,7 @@ describe("GET /api/admin/bookkeeping/reports", () => {
         { book_id: BOOK, account_id: null, direction: "expense", amount_cents: 400, occurred_on: "2026-07-03", counterparty: null, memo: null, source: "manual" },
         { book_id: BOOK_B, account_id: null, direction: "income", amount_cents: 77700, occurred_on: "2026-07-04", counterparty: null, memo: null, source: "manual" },
       ],
+      payoutLines: [{ txn_date: "2026-07-02", fee_cents: 73, net_cents: 1427, amount_cents: 1500, type: "charge" }],
     })
     const res = await GET(req("from=2026-07-01&to=2026-07-31"))
     expect(res.status).toBe(200)
@@ -75,6 +76,25 @@ describe("GET /api/admin/bookkeeping/reports", () => {
     expect(b.pnl.income_total_cents).toBe(77700)
     expect(b.income_by_service.total_cents).toBe(77700)
     expect(b.row_count).toBe(1)
+    // The whole fee bill belongs to the PRIMARY book; a second business book
+    // (the spouse's) must never have the coach's Stripe fees netted out of it.
+    expect(a.stripe_fee_cents).toBe(73)
+    expect(b.stripe_fee_cents).toBe(0)
+    expect(b.net_income_cents).toBe(77700)
+  })
+  it("a primary HOUSEHOLD book carries no fee (pins the book_kind half of the guard)", async () => {
+    ;(loadReportBundle as ReturnType<typeof vi.fn>).mockResolvedValue({
+      books: [{ id: BOOK, name: "Household & Personal", book_kind: "household", is_primary: true, currency: "usd", sort_order: 0 }],
+      accounts: [],
+      entries: [
+        { book_id: BOOK, account_id: null, direction: "income", amount_cents: 1500, occurred_on: "2026-07-02", counterparty: null, memo: null, source: "manual" },
+      ],
+      payoutLines: [{ txn_date: "2026-07-02", fee_cents: 73, net_cents: 1427, amount_cents: 1500, type: "charge" }],
+    })
+    const res = await GET(req("from=2026-07-01&to=2026-07-31"))
+    const body = await res.json()
+    expect(body.books[0].stripe_fee_cents).toBe(0)
+    expect(body.books[0].net_income_cents).toBe(1500)
   })
   it("attaches stripe_fee_cents + net_income_cents to the primary business book only", async () => {
     const res = await GET(req("from=2026-07-01&to=2026-07-31"))

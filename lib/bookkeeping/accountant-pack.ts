@@ -4,6 +4,7 @@
  *  Styling follows the lib/excel-templates.ts ARGB conventions. */
 import ExcelJS from "exceljs"
 import { formatCents } from "@/lib/bookkeeping/money"
+import { feeLineDisplay, netAfterFeesDisplay } from "@/lib/bookkeeping/fee-lines"
 import {
   incomeByServiceLine, profitAndLossByCategory, perBookSummary,
   type ReportAccount, type ReportEntry,
@@ -134,6 +135,7 @@ export async function buildAccountantPack(input: AccountantPackInput): Promise<B
     `Period: ${from} to ${to} (occurred-on dates, inclusive)`,
     ``,
     `PRIMARY FIGURES ARE GROSS — Stripe processing fees (from ingested payouts) appear only as labeled "net after fees (est.)" lines; fees never post to the ledger.`,
+    `Stripe fee lines cover only payouts already ingested; a period with no ingested payouts shows no fees, which is not a claim that no fees were charged.`,
     `Every number here is an ESTIMATE for planning. The CPA files; nothing in this workbook is a filed return.`,
     `This pack is a CANDIDATE for the accountant's review — categories were coach-confirmed but not accountant-confirmed.`,
     `Business and personal finances live in SEPARATE books; no sheet mixes them into one total.`,
@@ -143,20 +145,26 @@ export async function buildAccountantPack(input: AccountantPackInput): Promise<B
   readme.getRow(1).font = { bold: true, size: 14 }
 
   // 2. Summary — one row per book, NO cross-book grand total (separation principle)
+  // Fees only ever belong to the primary BUSINESS book (payout sync ingests
+  // nowhere else). One resolution, shared with the Income-by-Service block below,
+  // so a single workbook can never name two different fee-bearing books.
+  const feeBook = books.find((b) => b.is_primary && b.book_kind === "business")
   const summary = addSheet(wb, "Summary", TAB_PRIMARY, used)
   headerRow(
     summary,
-    ["Book", "Kind", "Income", "Expenses", "Net", "Entries", "Stripe fees (est.)", "Net after fees (est.)"],
-    [30, 12, 16, 16, 16, 10, 18, 20],
+    // "Income after fees", NOT "Net after fees": this column nets fees off the
+    // INCOME side (spec §1.4), so it is deliberately not derived from the "Net"
+    // column two cells to its left (income − expenses).
+    ["Book", "Kind", "Income", "Expenses", "Net", "Entries", "Stripe fees (est.)", "Income after fees (est.)"],
+    [30, 12, 16, 16, 16, 10, 18, 24],
   )
   for (const s of perBookSummary(entries, books)) {
-    // Fees only ever belong to the primary business book (payout sync ingests
-    // nowhere else); other books leave the two columns blank rather than $0.00.
-    const isFeeBook = books.some((b) => b.id === s.book_id && b.is_primary && b.book_kind === "business")
+    // Other books leave the two columns blank rather than $0.00.
+    const isFeeBook = feeBook?.id === s.book_id
     summary.addRow([
       s.name, s.book_kind, formatCents(s.income_cents), formatCents(s.expense_cents), formatCents(s.net_cents), s.entry_count,
-      isFeeBook ? formatCents(stripe_fee_cents) : "",
-      isFeeBook ? formatCents(s.income_cents - stripe_fee_cents) : "",
+      isFeeBook ? feeLineDisplay(stripe_fee_cents) : "",
+      isFeeBook ? netAfterFeesDisplay(s.income_cents, stripe_fee_cents) : "",
     ])
   }
 
@@ -169,9 +177,13 @@ export async function buildAccountantPack(input: AccountantPackInput): Promise<B
     for (const r of ibs.rows) svc.addRow([r.label, r.entry_count, formatCents(r.total_cents)])
     const tot = svc.addRow(["Total gross income", "", formatCents(ibs.total_cents)])
     tot.eachCell((c) => { c.font = { bold: true } })
-    svc.addRow(["Stripe processing fees (est., from ingested payouts)", "", formatCents(stripe_fee_cents)])
-    const netRow = svc.addRow(["Net income after Stripe fees (est.)", "", formatCents(ibs.total_cents - stripe_fee_cents)])
-    netRow.eachCell((c) => { c.font = { bold: true } })
+    // Only when the sheet's book IS the fee book — otherwise this sheet would
+    // net the coach's fees out of some other book's income.
+    if (feeBook && primary.id === feeBook.id) {
+      svc.addRow(["Stripe processing fees (est., from ingested payouts)", "", feeLineDisplay(stripe_fee_cents)])
+      const netRow = svc.addRow(["Net income after Stripe fees (est.)", "", netAfterFeesDisplay(ibs.total_cents, stripe_fee_cents)])
+      netRow.eachCell((c) => { c.font = { bold: true } })
+    }
   }
 
   // 4-6. P&L per book (primary, spouse, household — driven by the books list)

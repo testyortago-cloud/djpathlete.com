@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { EmptyState } from "@/components/ui/empty-state"
 import { EmailPackDialog } from "@/components/admin/bookkeeping/EmailPackDialog"
 import { formatCents } from "@/lib/bookkeeping/money"
+import { feeLineDisplay, netAfterFeesDisplay } from "@/lib/bookkeeping/fee-lines"
 import { formatOccurredOn } from "@/lib/bookkeeping/format"
 import { presetRange, PERIOD_PRESET_LABELS, type PeriodPreset } from "@/lib/bookkeeping/period"
 import type { BookkeepingBook } from "@/types/database"
@@ -247,7 +248,11 @@ export function ReportsClient({
                   {/* Income by service */}
                   <div className="rounded-lg border border-border bg-card p-4 overflow-x-auto">
                     <h2 className="text-sm font-heading text-primary mb-3">Income by service line</h2>
-                    {active.income_by_service.rows.length === 0 ? (
+                    {/* Ingested fees with no posted income still render — otherwise the
+                        screen would say "no income" while the xlsx for the same window
+                        shows a fee total. */}
+                    {active.income_by_service.rows.length === 0
+                      && !(active.book.is_primary && active.book.book_kind === "business" && active.stripe_fee_cents !== 0) ? (
                       <p className="text-sm text-muted-foreground">No income in this period.</p>
                     ) : (
                       <table className="w-full text-sm">
@@ -277,13 +282,17 @@ export function ReportsClient({
                                 <td className="py-1.5 pr-4 text-muted-foreground">Stripe processing fees (est., from ingested payouts)</td>
                                 <td />
                                 <td className="py-1.5 pr-4 text-muted-foreground">
-                                  {active.stripe_fee_cents === 0 ? "$0.00 recorded" : `−${formatCents(active.stripe_fee_cents)}`}
+                                  {feeLineDisplay(active.stripe_fee_cents)}
                                 </td>
                               </tr>
                               <tr>
                                 <td className="py-1.5 pr-4 font-semibold">Net income after Stripe fees (est.)</td>
                                 <td />
-                                <td className="py-1.5 pr-4 font-semibold">{formatCents(active.net_income_cents)}</td>
+                                {/* Never restates gross under a "net" label when no payout
+                                    has been ingested — the hedge lives in the number too. */}
+                                <td className={`py-1.5 pr-4 ${active.stripe_fee_cents === 0 ? "text-muted-foreground" : "font-semibold"}`}>
+                                  {netAfterFeesDisplay(active.income_by_service.total_cents, active.stripe_fee_cents)}
+                                </td>
                               </tr>
                             </>
                           ) : null}

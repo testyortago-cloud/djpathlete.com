@@ -21,6 +21,9 @@ const accounts: ReportAccount[] = [
 
 const entries: ReportEntry[] = [
   { book_id: B1, account_id: ACC, direction: "income", amount_cents: 150200, occurred_on: "2026-07-02", counterparty: "Client A", memo: null, source: "platform_import" },
+  // Primary-book EXPENSE: makes income (150200) ≠ net (100200) so the Summary's
+  // "Income after fees" column discriminates income−fee from net−fee.
+  { book_id: B1, account_id: null, direction: "expense", amount_cents: 50000, occurred_on: "2026-07-05", counterparty: "Gym Rent", memo: null, source: "manual" },
   { book_id: B3, account_id: null, direction: "expense", amount_cents: 120000, occurred_on: "2026-07-03", counterparty: "Landlord", memo: "July rent", source: "statement_import" },
   // Household-only amount — must never leak into Darren's (or any other book's) sheet.
   { book_id: B3, account_id: null, direction: "expense", amount_cents: 99999, occurred_on: "2026-07-04", counterparty: "Misc Vendor", memo: "household misc", source: "manual" },
@@ -62,17 +65,50 @@ describe("buildAccountantPack", () => {
     const readmeText = JSON.stringify(readme.getSheetValues())
     expect(readmeText).toContain("GROSS")
     expect(readmeText).toContain("CPA")
-    // Fee 4550 is a mutation discriminator: $45.50 and net $1,456.50
-    // (1502.00 − 45.50) appear nowhere else in the fixture arithmetic.
+    // Fee 4550 is a mutation discriminator: $45.50 and income-after-fees
+    // $1,456.50 (1502.00 − 45.50) appear nowhere else in the fixture arithmetic.
     const svcText = JSON.stringify(wb.getWorksheet("Income by Service")!.getSheetValues())
     expect(svcText).toContain("Stripe processing fees")
     expect(svcText).toContain("$45.50")
     expect(svcText).toContain("Net income after Stripe fees")
     expect(svcText).toContain("$1,456.50")
-    const summaryText = JSON.stringify(summary.getSheetValues())
-    expect(summaryText).toContain("$45.50")   // fee column on the primary row
-    expect(summaryText).toContain("$1,456.50") // net-after-fees column
     expect(readmeText).toContain("net after fees")
+    // Summary columns by ADDRESS — the fee columns are income-side and must not
+    // be confusable with column 5 "Net" (income − expenses = $1,002.00). If the
+    // fee column ever computed net−fee it would read $956.50 here.
+    const darrenRow = summary.getRow(2)
+    expect(String(darrenRow.getCell(5).value)).toBe("$1,002.00")
+    expect(String(darrenRow.getCell(7).value)).toBe("−$45.50")
+    expect(String(darrenRow.getCell(8).value)).toBe("$1,456.50")
+    expect(summary.getRow(1).getCell(8).value).toBe("Income after fees (est.)")
+  })
+  it("fee columns attach to the PRIMARY BUSINESS book only — spouse/household stay blank", async () => {
+    const buf = await buildAccountantPack({ from: "2026-07-01", to: "2026-07-31", books, accounts, entries, documents, assets: [], stripe_fee_cents: 4550 })
+    const wb = await load(buf)
+    const summary = wb.getWorksheet("Summary")!
+    // Row 3 = Spouse — Business (business, NOT primary): widening the guard to
+    // book_kind alone would hand it the coach's entire Stripe fee bill.
+    for (const rowNo of [3, 4]) {
+      expect(summary.getRow(rowNo).getCell(7).value ?? "").toBe("")
+      expect(summary.getRow(rowNo).getCell(8).value ?? "").toBe("")
+    }
+    expect(String(summary.getRow(3).getCell(1).value)).toBe("Spouse — Business")
+  })
+  it("zero fees never assert '$0.00 fees' — both sheets hedge and the Read Me says why", async () => {
+    // The payout-sync flag ships OFF, so this is the state on arrival: the pack
+    // is the artifact that leaves the building (Resend → CPA).
+    const buf = await buildAccountantPack({ from: "2026-07-01", to: "2026-07-31", books, accounts, entries, documents, assets: [], stripe_fee_cents: 0 })
+    const wb = await load(buf)
+    const summary = wb.getWorksheet("Summary")!
+    expect(String(summary.getRow(2).getCell(7).value)).toContain("no payouts ingested")
+    expect(String(summary.getRow(2).getCell(8).value)).toContain("available after the first payout sync")
+    // Never restates gross income under an after-fees label.
+    expect(String(summary.getRow(2).getCell(8).value)).not.toContain("$1,502.00")
+    const svcText = JSON.stringify(wb.getWorksheet("Income by Service")!.getSheetValues())
+    expect(svcText).toContain("no payouts ingested")
+    expect(svcText).toContain("available after the first payout sync")
+    const readmeText = JSON.stringify(wb.getWorksheet("Read Me")!.getSheetValues())
+    expect(readmeText).toContain("not a claim that no fees were charged")
   })
   it("spouse sheet carries the explicit empty note when the book has no entries", async () => {
     const buf = await buildAccountantPack({ from: "2026-07-01", to: "2026-07-31", books, accounts, entries, documents, assets: [], stripe_fee_cents: 0 })
