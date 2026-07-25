@@ -1,7 +1,19 @@
 import { describe, expect, it } from "vitest"
-import { findingFingerprint } from "@/lib/bookkeeping/finding-fingerprint"
+import { findingFingerprint, type FinderKind } from "@/lib/bookkeeping/finding-fingerprint"
 
 const ENTRY = "e0000000-0000-4000-8000-000000000001"
+
+/** Every finder the union admits. Kept explicit so adding a member without a
+ *  dismiss control anywhere (or dropping one that has one) is a compile error
+ *  here, not a fingerprint nothing ever writes. */
+const ALL_FINDERS: Record<FinderKind, true> = {
+  watchlist: true,
+  substantiation_gap: true,
+  uncategorized: true,
+  vendor: true,
+  year_end: true,
+  watchdog: true,
+}
 
 describe("findingFingerprint", () => {
   it("is <finder>:<key> for id-keyed finders, key untouched", () => {
@@ -11,7 +23,24 @@ describe("findingFingerprint", () => {
 
   it("distinct finders over the SAME key never collide (same entry can be a gap AND a watchdog finding)", () => {
     expect(findingFingerprint("substantiation_gap", ENTRY)).not.toBe(findingFingerprint("watchdog", ENTRY))
-    expect(findingFingerprint("watchlist", ENTRY)).not.toBe(findingFingerprint("home_office", ENTRY))
+    expect(findingFingerprint("watchlist", ENTRY)).not.toBe(findingFingerprint("uncategorized", ENTRY))
+    const all = (Object.keys(ALL_FINDERS) as FinderKind[]).map((f) => findingFingerprint(f, ENTRY))
+    expect(new Set(all).size).toBe(all.length)
+  })
+
+  it("admits exactly the finders that have a dismiss control", () => {
+    // home_office was in the union with no producer and no consumer — a type
+    // advertising a capability the UI does not have. If a card gains a dismiss
+    // button, add it here AND to the union; the Record above makes the pair
+    // impossible to forget.
+    expect(Object.keys(ALL_FINDERS).sort()).toEqual([
+      "substantiation_gap",
+      "uncategorized",
+      "vendor",
+      "watchdog",
+      "watchlist",
+      "year_end",
+    ])
   })
 
   it("vendor keys collapse case + whitespace runs via normalizeCounterparty", () => {

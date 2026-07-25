@@ -53,9 +53,17 @@ test.describe("Bookkeeping surfaces — authed click-through", () => {
     await expect(page.getByRole("heading", { name: /books|ledger/i }).first()).toBeVisible()
     await page.screenshot({ path: "test-results/bookkeeping/01-ledger.png", fullPage: true })
 
-    // Deep-link hydration: the uncategorized sentinel must survive into the filter UI.
+    // Deep-link hydration: the uncategorized sentinel must survive into the
+    // filter UI. This is the whole point of the insights → ledger links, so it
+    // is asserted, not photographed — a server page that silently dropped the
+    // sentinel would still produce a perfectly innocent screenshot.
     await page.goto("/admin/books?direction=expense&account_id=none")
     await page.waitForLoadState("networkidle")
+    await expect(page.getByLabel("Category")).toHaveValue("none")
+    await expect(page.getByRole("button", { name: /show expense entries only/i })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    )
     await page.screenshot({ path: "test-results/bookkeeping/02-ledger-deeplink.png", fullPage: true })
   })
 
@@ -68,9 +76,15 @@ test.describe("Bookkeeping surfaces — authed click-through", () => {
     await page.screenshot({ path: "test-results/bookkeeping/03-reports.png", fullPage: true })
   })
 
-  test("print view renders", async ({ page }) => {
+  test("print view renders the pack header and the same fee/net block as the web report", async ({ page }) => {
     await page.goto("/admin/books/reports/print")
     await page.waitForLoadState("networkidle")
+    await expect(page.getByRole("heading", { name: "Accountant Pack" })).toBeVisible()
+    await expect(page.getByText(/total gross income/i).first()).toBeVisible()
+    // Same contract as the web report: the fee line exists at zero payouts and
+    // reads honestly rather than as a bare $0.00. (The per-branch behaviour is
+    // pinned in __tests__/app/admin/books-reports-print-page.test.tsx.)
+    await expect(page.getByText(/stripe processing fees/i).first()).toBeVisible()
     await page.screenshot({ path: "test-results/bookkeeping/04-reports-print.png", fullPage: true })
   })
 
@@ -89,14 +103,25 @@ test.describe("Bookkeeping surfaces — authed click-through", () => {
     await page.screenshot({ path: "test-results/bookkeeping/06-email-receipts.png", fullPage: true })
   })
 
-  test("receipt dialogs open from the ledger (photo / cash / amazon)", async ({ page }) => {
+  test("receipt dialogs open from the ledger (cash / photo / amazon)", async ({ page }) => {
     await page.goto("/admin/books")
     await page.waitForLoadState("networkidle")
-    const cash = page.getByRole("button", { name: /cash/i }).first()
-    if (await cash.isVisible().catch(() => false)) {
-      await cash.click()
-      await page.screenshot({ path: "test-results/bookkeeping/07-receipt-cash.png", fullPage: true })
+
+    // No isVisible() guard: these three buttons are unconditional on the ledger
+    // toolbar. Wrapping the clicks in "if it happens to be there" made this test
+    // incapable of failing — a toolbar that stopped rendering would have passed.
+    for (const [name, title, shot] of [
+      [/^add cash receipt$/i, /^add cash receipt$/i, "07-receipt-cash"],
+      [/^upload receipt$/i, /^upload receipt photos$/i, "08-receipt-photo"],
+      [/^import amazon$/i, /^import amazon orders$/i, "09-receipt-amazon"],
+    ] as const) {
+      await page.getByRole("button", { name }).click()
+      const dialog = page.getByRole("dialog")
+      await expect(dialog).toBeVisible()
+      await expect(dialog.getByRole("heading", { name: title })).toBeVisible()
+      await page.screenshot({ path: `test-results/bookkeeping/${shot}.png`, fullPage: true })
       await page.keyboard.press("Escape")
+      await expect(dialog).toBeHidden()
     }
   })
 })

@@ -88,10 +88,14 @@ export async function insertDismissal(input: { book_id: string; fingerprint: str
   if (error) throw error
 }
 
-export async function deleteDismissal(bookId: string, fingerprint: string): Promise<void> {
-  const { error } = await db().from("bookkeeping_finding_dismissals")
-    .delete().eq("book_id", bookId).eq("fingerprint", fingerprint)
+/** @returns rows actually removed. The caller audits a restore only when this is
+ *  > 0 — a DELETE for a fingerprint that was never dismissed is a no-op, and
+ *  auditing it would invent a state change that never happened. */
+export async function deleteDismissal(bookId: string, fingerprint: string): Promise<number> {
+  const { data, error } = await db().from("bookkeeping_finding_dismissals")
+    .delete().eq("book_id", bookId).eq("fingerprint", fingerprint).select("id")
   if (error) throw error
+  return (data ?? []).length
 }
 
 // ── Ledger entries ───────────────────────────────────────────────────────

@@ -6,6 +6,8 @@ import { recordAudit } from "@/lib/audit/record"
 import { PERIOD_CLOSED_MESSAGE } from "@/lib/bookkeeping/period-close"
 import type { LedgerDirection, LedgerSource } from "@/types/database"
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export async function GET(request: Request) {
   try {
     const session = await auth()
@@ -21,6 +23,16 @@ export async function GET(request: Request) {
     const SOURCES = ["manual", "platform_import", "statement_import", "receipt"]
     if (srcRaw !== null && !SOURCES.includes(srcRaw)) {
       return NextResponse.json({ error: "invalid source" }, { status: 400 })
+    }
+    // account_id is now part of a shareable deep link (the "none" = uncategorized
+    // sentinel), so it arrives from links, not just from the select. Validate it
+    // to the SAME shape the server page does (app/(admin)/admin/books/page.tsx):
+    // anything else is a bad request, not a 22P02 the DAL turns into a 500.
+    // "" keeps its long-standing meaning of "no filter"; only a non-empty value
+    // that is neither the sentinel nor a uuid is rejected.
+    const accountRaw = sp.get("account_id")
+    if (accountRaw && accountRaw !== "none" && !UUID_RE.test(accountRaw)) {
+      return NextResponse.json({ error: "invalid account_id" }, { status: 400 })
     }
     const pageRaw = Number(sp.get("page") ?? "1")
     const page = Number.isFinite(pageRaw) && pageRaw >= 1 ? Math.floor(pageRaw) : 1

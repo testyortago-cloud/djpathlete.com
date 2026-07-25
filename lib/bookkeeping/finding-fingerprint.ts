@@ -1,10 +1,18 @@
 // Pure identity fingerprint for insight-finding dismissals (5b, decision B-1).
 // "<finder>:<key>" — identity only, NEVER amounts: aggregate totals grow nightly
 // (income-sync) and an amount-bearing hash would resurface every dismissal
-// within a day. Keys per finder (design §2.1): watchlist/home_office →
-// account uuid; substantiation_gap/uncategorized/watchdog → entry uuid;
+// within a day. Keys per finder (design §2.1): watchlist → account uuid;
+// substantiation_gap/uncategorized/watchdog → entry uuid;
 // vendor → normalizeCounterparty(vendor key); year_end → literal flag id.
 // Client-safe: zero IO, imported by both the routes and InsightsClient.
+//
+// The union is exactly the set of finders that HAVE a dismiss control. The
+// design also sketched a "home_office" member, but the home-office card is a
+// PROPOSAL the coach tunes with a percent, not a finding anyone can dismiss —
+// no call site ever produced or consumed that fingerprint, so the type no
+// longer advertises it. Re-add it (here and in the dismissable-card list in
+// InsightsClient + the narrative route's filter) the day that card grows a
+// dismiss button; an unused member only invites a fingerprint nothing reads.
 import { normalizeCounterparty } from "./insight-types"
 
 export type FinderKind =
@@ -12,7 +20,6 @@ export type FinderKind =
   | "substantiation_gap"
   | "uncategorized"
   | "vendor"
-  | "home_office"
   | "year_end"
   | "watchdog"
 

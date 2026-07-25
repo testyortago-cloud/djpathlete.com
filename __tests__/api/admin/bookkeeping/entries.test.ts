@@ -70,6 +70,28 @@ describe("GET /api/admin/bookkeeping/entries", () => {
     // income/expense totals would not match the rows below them.
     expect(entryTotalsMock).toHaveBeenCalledWith(expect.objectContaining({ accountId: "none" }))
   })
+  it("400s a malformed account_id instead of letting Postgres 22P02 become a 500", async () => {
+    // account_id travels in shareable deep links now, so it arrives from links
+    // and hand-edited URLs, not just from the select. The server page validates
+    // the same parameter (app/(admin)/admin/books/page.tsx); an unvalidated
+    // pass-through here reached the uuid column and surfaced as "Failed to load
+    // entries".
+    listEntriesMock.mockResolvedValue({ rows: [], total: 0 })
+    entryTotalsMock.mockResolvedValue({ income_cents: 0, expense_cents: 0 })
+    const res = await GET(new Request(`http://x/api?book_id=${BOOK}&account_id=Uncategorized`) as never)
+    expect(res.status).toBe(400)
+    expect(listEntriesMock).not.toHaveBeenCalled()
+    expect(entryTotalsMock).not.toHaveBeenCalled()
+  })
+  it("still accepts a real uuid account_id and an omitted one", async () => {
+    listEntriesMock.mockResolvedValue({ rows: [], total: 0 })
+    entryTotalsMock.mockResolvedValue({ income_cents: 0, expense_cents: 0 })
+    const acct = "a0000000-0000-4000-8000-00000000000f"
+    expect((await GET(new Request(`http://x/api?book_id=${BOOK}&account_id=${acct}`) as never)).status).toBe(200)
+    expect(listEntriesMock).toHaveBeenCalledWith(expect.objectContaining({ accountId: acct }))
+    // An empty value keeps its long-standing "no filter" meaning.
+    expect((await GET(new Request(`http://x/api?book_id=${BOOK}&account_id=`) as never)).status).toBe(200)
+  })
 })
 
 describe("POST /api/admin/bookkeeping/entries", () => {

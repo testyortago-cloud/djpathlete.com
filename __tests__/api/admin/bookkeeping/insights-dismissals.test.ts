@@ -28,7 +28,7 @@ beforeEach(() => {
   authMock.mockReset(); insertDismissalMock.mockReset(); deleteDismissalMock.mockReset(); recordAuditMock.mockReset()
   authMock.mockResolvedValue({ user: { id: "admin-1", role: "admin" } })
   insertDismissalMock.mockResolvedValue(undefined)
-  deleteDismissalMock.mockResolvedValue(undefined)
+  deleteDismissalMock.mockResolvedValue(1)
 })
 
 describe("POST /api/admin/bookkeeping/insights/dismissals", () => {
@@ -73,5 +73,16 @@ describe("DELETE /api/admin/bookkeeping/insights/dismissals", () => {
     const res = await DELETE(req("DELETE", { book_id: BOOK, fingerprint: FP }) as never)
     expect(res.status).toBe(403)
     expect(deleteDismissalMock).not.toHaveBeenCalled()
+  })
+  it("does NOT audit a restore that removed nothing", async () => {
+    // The audit trail is the record of what CHANGED. A DELETE for a fingerprint
+    // that was never dismissed (double-click, stale tab, replayed link) removes
+    // no row — writing finding_undismissed anyway invents a restore that never
+    // happened, and the row it names may still be dismissed.
+    deleteDismissalMock.mockResolvedValue(0)
+    const res = await DELETE(req("DELETE", { book_id: BOOK, fingerprint: FP }) as never)
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ ok: true, deleted: 0 })
+    expect(recordAuditMock).not.toHaveBeenCalled()
   })
 })

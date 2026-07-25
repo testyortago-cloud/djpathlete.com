@@ -24,20 +24,27 @@ async function handle(request: Request, mode: "dismiss" | "undismiss") {
       return NextResponse.json({ error: "Invalid input", issues: parsed.error.issues }, { status: 400 })
     }
     const { book_id, fingerprint } = parsed.data
+    // insert is an ignoreDuplicates upsert (re-dismissing is a no-op we still
+    // want on the trail — the owner asserted the intent). A delete that removed
+    // nothing changed no state, so it gets no "restored" row: the audit log is
+    // the record of what changed, not of what was clicked.
+    let deleted = 0
     if (mode === "dismiss") {
       await insertDismissal({ book_id, fingerprint, dismissed_by: session.user.id })
     } else {
-      await deleteDismissal(book_id, fingerprint)
+      deleted = await deleteDismissal(book_id, fingerprint)
     }
-    void recordAudit({
-      action: mode === "dismiss" ? "bookkeeping.finding_dismissed" : "bookkeeping.finding_undismissed",
-      category: "commerce",
-      outcome: "success",
-      target: { type: "bookkeeping_finding", id: fingerprint, label: fingerprint },
-      metadata: { book_id, fingerprint },
-      request,
-    })
-    return NextResponse.json({ ok: true })
+    if (mode === "dismiss" || deleted > 0) {
+      void recordAudit({
+        action: mode === "dismiss" ? "bookkeeping.finding_dismissed" : "bookkeeping.finding_undismissed",
+        category: "commerce",
+        outcome: "success",
+        target: { type: "bookkeeping_finding", id: fingerprint, label: fingerprint },
+        metadata: { book_id, fingerprint },
+        request,
+      })
+    }
+    return NextResponse.json(mode === "dismiss" ? { ok: true } : { ok: true, deleted })
   } catch (error) {
     console.error("bookkeeping finding dismissal:", error)
     return NextResponse.json({ error: "Failed to update the dismissal" }, { status: 500 })

@@ -62,8 +62,12 @@ export function EmailPackDialog({
         </DialogHeader>
 
         <div className="space-y-4">
+          {/* Same sentence as the pack's own cover copy (email-pack.ts) and the
+              Reports header — the dialog must not describe the workbook it is
+              about to send as gross-only when it carries a net-after-fees line. */}
           <p className="text-sm text-muted-foreground">
-            Sends the accountant pack for {from} – {to}. Gross figures, estimates — the CPA files.
+            Sends the accountant pack for {from} – {to}. Gross figures stay primary; Stripe processing fees from
+            ingested payouts appear as a labeled net line (est.). Estimates — the CPA files.
           </p>
 
           <div className="space-y-2">

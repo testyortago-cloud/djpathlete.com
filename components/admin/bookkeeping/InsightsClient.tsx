@@ -58,6 +58,13 @@ function ReceiptDot({ present }: { present: boolean }) {
   )
 }
 
+/** The headline chips report the UNFILTERED recompute (dismissals collapse rows,
+ *  they never change a computed number). When rows ARE hidden the chip must say
+ *  so, or the same screen shows a count the table below it contradicts. */
+export function dismissedNote(hiddenCount: number): string {
+  return hiddenCount === 0 ? "" : ` · includes ${hiddenCount} dismissed`
+}
+
 function partitionDismissed<T>(rows: T[], dismissed: (row: T) => boolean): { visible: T[]; hidden: T[] } {
   const visible: T[] = []
   const hidden: T[] = []
@@ -143,6 +150,11 @@ export function InsightsClient({
   // is per card key.
   const [dismissOverrides, setDismissOverrides] = useState<Record<string, "dismissed" | "active">>({})
   const [revealOpen, setRevealOpen] = useState<Record<string, boolean>>({})
+  // Writes still in flight. Their result cannot be in a payload the server built
+  // before they landed, so "server truth wins" must not apply to them — see
+  // fetchInsights. The year-end strip is the card that makes this reachable: it
+  // stays interactive during a refetch while every other card shows "Loading…".
+  const pendingDismissalsRef = useRef<Set<string>>(new Set())
 
   // Proportional shared-cost allocation (5b, B-4) — display-only estimate.
   const [allocateShared, setAllocateShared] = useState(false)
@@ -150,6 +162,7 @@ export function InsightsClient({
   const setDismissed = useCallback(async (rowBookId: string, fingerprint: string, dismissed: boolean) => {
     const key = `${rowBookId}|${fingerprint}`
     setDismissOverrides((o) => ({ ...o, [key]: dismissed ? "dismissed" : "active" }))
+    pendingDismissalsRef.current.add(key)
     try {
       const res = await fetch("/api/admin/bookkeeping/insights/dismissals", {
         method: dismissed ? "POST" : "DELETE",
@@ -164,6 +177,8 @@ export function InsightsClient({
     } catch {
       setDismissOverrides((o) => ({ ...o, [key]: dismissed ? "active" : "dismissed" }))
       toast.error(dismissed ? "Failed to dismiss the finding" : "Failed to restore the finding")
+    } finally {
+      pendingDismissalsRef.current.delete(key)
     }
   }, [])
 
@@ -205,8 +220,15 @@ export function InsightsClient({
       const body = (await res.json()) as InsightsData
       if (requestId === fetchRequestIdRef.current) {
         setData(body)
-        // Server truth wins: a landed refetch retires every optimistic override.
-        setDismissOverrides({})
+        // Server truth wins: a landed refetch retires every optimistic override
+        // EXCEPT the ones whose write is still in flight — this payload was built
+        // before those landed, so dropping them would bounce the row back visibly
+        // and then re-hide it a moment later.
+        setDismissOverrides((o) => {
+          const kept: Record<string, "dismissed" | "active"> = {}
+          for (const key of pendingDismissalsRef.current) if (o[key]) kept[key] = o[key]
+          return kept
+        })
         setPercentInput(body.home_office_percent?.toString() ?? "")
         setRateInput(body.forecast.rate_percent?.toString() ?? "")
       }
@@ -320,7 +342,10 @@ export function InsightsClient({
       : null
 
   // Dismissal partitions (5b). Card headline chips keep the FULL recompute
-  // totals — dismissals collapse rows, they never alter computed numbers.
+  // totals — dismissals collapse rows, they never alter computed numbers — so
+  // every chip whose card can hide rows says so out loud (dismissedNote below).
+  // Silently pairing an unfiltered chip with a filtered table put two
+  // contradictory counts on one screen.
   const isDismissed = (rowBookId: string, fingerprint: string, serverList: string[]) => {
     const override = dismissOverrides[`${rowBookId}|${fingerprint}`]
     if (override) return override === "dismissed"
@@ -682,6 +707,7 @@ export function InsightsClient({
                     }`}
                   >
                     {active.deductions.substantiation_gaps.length} entries · {formatCents(active.deductions.gap_total_cents, active.book.currency)}
+                    {dismissedNote(gapParts.hidden.length)}
                   </p>
                   {active.deductions.substantiation_gaps.length === 0 ? (
                     <p className="text-sm text-muted-foreground">Every purpose-required entry has a business purpose.</p>
@@ -776,6 +802,7 @@ export function InsightsClient({
                     }`}
                   >
                     {active.deductions.uncategorized.entry_count} entries · {formatCents(active.deductions.uncategorized.total_cents, active.book.currency)}
+                    {dismissedNote(uncatParts.hidden.length)}
                   </p>
                   {active.deductions.uncategorized.entries.length === 0 ? (
                     <p className="text-sm text-muted-foreground">No uncategorized expenses in this period.</p>
@@ -1001,6 +1028,7 @@ export function InsightsClient({
                       watchdogRows.reduce((sum, f) => sum + f.amount_cents, 0),
                       active.book.currency,
                     )}
+                    {dismissedNote(watchdogParts.hidden.length)}
                   </p>
                   {watchdogRows.length === 0 ? (
                     <p className="text-sm text-muted-foreground">

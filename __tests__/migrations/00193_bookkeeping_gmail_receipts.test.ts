@@ -47,26 +47,67 @@ describe("00193_bookkeeping_gmail_receipts.sql", () => {
 // applied. These probe the real database, in the style of the sibling migration
 // tests (00078, 00093), so drift between the file and the DB goes red.
 //
-// TWO PROJECTS, ON PURPOSE: migrations are applied to PRODUCTION through
-// mcp__supabase__apply_migration (the .env.prod project), while vitest loads
-// .env.local — a separate, older project that trails prod by the whole
-// 00191/00192/00193 wave. A bare live assertion here would therefore be red for
-// an environment reason that has nothing to do with 00193, so the probe below
-// discriminates the two cases:
+// READ THIS BEFORE TRUSTING A GREEN RUN OF THIS FILE.
+//
+// As shipped, these three probes DO NOT EXECUTE on a normal `npm test`, and the
+// drift guard they represent is therefore INERT. The reason is an environment
+// split, not a code bug:
+//   * vitest.config.ts loads `.env.local`, whose Supabase project has NOT been
+//     migrated past ~00191 (it answers PGRST205 for 00192's table);
+//   * the 00191/00192/00193 wave was applied through
+//     `mcp__supabase__apply_migration`, which targets the PRODUCTION project in
+//     `.env.prod` — a DIFFERENT project ref.
+// So the beforeAll probe below finds 00192's table missing and every assertion
+// skips. Vitest reports the file as PASSED with "3 skipped"; the skips are the
+// only signal, which is why they shout on stderr.
+//
+// TO ACTUALLY RUN THEM, one of these must become true:
+//   a. point `.env.local`'s NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY
+//      at the project the migrations were applied to (the `.env.prod` ref), or
+//   b. replay `supabase/migrations/` into the `.env.local` project (00193 is
+//      re-runnable — pinned by the idempotency test above), or
+//   c. run them against a Supabase branch seeded from `supabase/migrations/`.
+// Once the connected DB is caught up to 00192, these become unconditional and a
+// missing 00193 column goes RED — which is the whole point.
+//
+// The probe deliberately discriminates three cases rather than skipping blindly:
 //   * 00192's table present, 00193's columns missing → genuine 00193 drift → FAIL
-//   * 00192's table missing too                      → whole-DB lag        → skip
-// Against prod (or any DB caught up to 00192) these assertions are unconditional.
+//   * 00192's table missing (PGRST205/42P01)         → whole-DB lag        → loud skip
+//   * any other error (bad key, no network, RLS)     → broken harness      → FAIL
 describe("migration 00193 — live schema", () => {
   const supabase = createServiceRoleClient()
   const SKIP_NOTE =
-    "connected Supabase project predates migration 00192 — not the DB 00193 was applied to"
+    "INERT: connected Supabase project predates migration 00192 — this is NOT the DB 00193 was applied to, so nothing about 00193 was verified. See the block comment above this describe for how to make these run."
   let dbIsCurrent = false
 
   beforeAll(async () => {
     // 00192 created bookkeeping_finding_dismissals. Its presence means this DB
     // is caught up to the migration immediately before 00193.
     const { error } = await supabase.from("bookkeeping_finding_dismissals").select("id").limit(1)
-    dbIsCurrent = error === null
+    if (!error) {
+      dbIsCurrent = true
+      return
+    }
+    const relationMissing =
+      error.code === "PGRST205" ||
+      error.code === "42P01" ||
+      /could not find the table|does not exist/i.test(error.message)
+    if (!relationMissing) {
+      // Not "this DB trails prod" — the connection itself is broken. Dressing
+      // that up as a skip is how a suite quietly stops testing anything.
+      throw new Error(
+        `00193 live probes could not reach Supabase (${error.code ?? "no code"}): ${error.message}. ` +
+          `Fix the connection — do not read this file's other 4 passing tests as schema verification.`,
+      )
+    }
+    console.warn(
+      "\n" +
+        "!! 00193 LIVE-SCHEMA PROBES SKIPPED — DRIFT GUARD INERT !!\n" +
+        "   The Supabase project vitest is connected to (via .env.local) does not have\n" +
+        "   migration 00192's table, so it is not the project 00193 was applied to.\n" +
+        "   Nothing below verified that external_ref / scan_result / the poller seeds\n" +
+        "   actually exist in any database. See the comment above the describe block.\n",
+    )
   })
 
   it("exposes external_ref + scan_result on bookkeeping_documents", async (ctx) => {
