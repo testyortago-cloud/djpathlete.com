@@ -381,6 +381,19 @@ export async function listDocuments(bookId: string): Promise<BookkeepingDocument
   return fetchAllRows<BookkeepingDocument>((f, t) =>
     db().from("bookkeeping_documents").select("*").eq("book_id", bookId).order("created_at", { ascending: false }).range(f, t) as never)
 }
+/** Pending email receipts for /admin/books/email-receipts: polled Gmail docs
+ *  not yet posted. posted_count is NULL until linkDocumentBatch runs after a
+ *  commit — the IS NULL arm is required (a bare = 0 would match nothing,
+ *  permanently emptying the page). */
+export async function listPendingEmailReceiptDocuments(): Promise<BookkeepingDocument[]> {
+  return fetchAllRows<BookkeepingDocument>((f, t) =>
+    db().from("bookkeeping_documents").select("*")
+      .eq("kind", "receipt")
+      .like("external_ref", "gmail:%")
+      .or("posted_count.is.null,posted_count.eq.0")
+      .order("created_at", { ascending: false })
+      .range(f, t) as never)
+}
 export async function linkDocumentBatch(id: string, bookId: string, importBatchId: string, postedCount: number): Promise<void> {
   const { error } = await db().from("bookkeeping_documents")
     .update({ import_batch_id: importBatchId, posted_count: postedCount, updated_at: new Date().toISOString() })

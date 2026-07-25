@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
-import { Plus, Upload, BookOpen, Banknote, Camera, ShoppingCart, BarChart3, Lightbulb, Package, Tags, FilterX } from "lucide-react"
+import { Plus, Upload, BookOpen, Banknote, Camera, ShoppingCart, BarChart3, Lightbulb, Package, Tags, FilterX, Mail } from "lucide-react"
 import { toast } from "sonner"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
@@ -248,6 +248,13 @@ export function BooksClient({
             <p className="text-sm text-muted-foreground mt-1">Income and expense ledger.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href="/admin/books/email-receipts"
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground shadow-xs transition-colors hover:border-accent hover:text-accent"
+            >
+              <Mail className="size-4" />
+              Email Receipts
+            </Link>
             <Link
               href="/admin/books/reports"
               className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground shadow-xs transition-colors hover:border-accent hover:text-accent"
