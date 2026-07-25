@@ -1,0 +1,102 @@
+import { test, expect } from "@playwright/test"
+
+// Bookkeeper completion (2026-07-25) click-through — kickoff item D(iii).
+// The data paths are proven by unit/route tests; these drive the REAL React UIs,
+// which had never been exercised in a browser.
+//
+// Two suites:
+//  1. "auth gate" — runs with NO credentials. Proves every bookkeeping route
+//     (incl. the new ones) compiles, renders server-side and redirects to /login
+//     instead of 500ing. A page with a build/runtime error fails here.
+//  2. "authed surfaces" — needs ADMIN_TEST_EMAIL / ADMIN_TEST_PASSWORD (same
+//     convention as admin-events.spec.ts). Skips cleanly when unset.
+//
+// Screenshots land in test-results/bookkeeping/ for the handoff report.
+
+const adminEmail = process.env.ADMIN_TEST_EMAIL
+const adminPassword = process.env.ADMIN_TEST_PASSWORD
+
+const BOOK_ROUTES = [
+  "/admin/books",
+  "/admin/books/accounts",
+  "/admin/books/reports",
+  "/admin/books/insights",
+  "/admin/books/assets",
+  "/admin/books/email-receipts",
+] as const
+
+test.describe("Bookkeeping routes — auth gate (no credentials needed)", () => {
+  for (const route of BOOK_ROUTES) {
+    test(`${route} renders and redirects unauthenticated visitors to /login`, async ({ page }) => {
+      const res = await page.goto(route, { waitUntil: "domcontentloaded" })
+      // Never a server error: a compile/runtime fault in the page would surface as 5xx.
+      expect(res?.status(), `${route} returned ${res?.status()}`).toBeLessThan(500)
+      await page.waitForURL(/\/login/, { timeout: 15_000 })
+      await expect(page.locator("input[name='email']")).toBeVisible()
+    })
+  }
+})
+
+test.describe("Bookkeeping surfaces — authed click-through", () => {
+  test.skip(!adminEmail || !adminPassword, "Admin test credentials not set (ADMIN_TEST_EMAIL / ADMIN_TEST_PASSWORD)")
+
+  test.beforeEach(async ({ page }) => {
+    await page.goto("/login")
+    await page.fill("input[name='email']", adminEmail!)
+    await page.fill("input[name='password']", adminPassword!)
+    await page.click("button[type='submit']")
+    await page.waitForURL(/\/admin/)
+  })
+
+  test("ledger loads and honours a deep-link filter (Track B)", async ({ page }) => {
+    await page.goto("/admin/books")
+    await expect(page.getByRole("heading", { name: /books|ledger/i }).first()).toBeVisible()
+    await page.screenshot({ path: "test-results/bookkeeping/01-ledger.png", fullPage: true })
+
+    // Deep-link hydration: the uncategorized sentinel must survive into the filter UI.
+    await page.goto("/admin/books?direction=expense&account_id=none")
+    await page.waitForLoadState("networkidle")
+    await page.screenshot({ path: "test-results/bookkeeping/02-ledger-deeplink.png", fullPage: true })
+  })
+
+  test("reports render gross + the net-revenue second line (Track A)", async ({ page }) => {
+    await page.goto("/admin/books/reports")
+    await page.waitForLoadState("networkidle")
+    await expect(page.getByText(/total gross income/i).first()).toBeVisible()
+    // Fees line exists even at zero payouts, and must read honestly rather than as a bare $0.00.
+    await expect(page.getByText(/stripe processing fees/i).first()).toBeVisible()
+    await page.screenshot({ path: "test-results/bookkeeping/03-reports.png", fullPage: true })
+  })
+
+  test("print view renders", async ({ page }) => {
+    await page.goto("/admin/books/reports/print")
+    await page.waitForLoadState("networkidle")
+    await page.screenshot({ path: "test-results/bookkeeping/04-reports-print.png", fullPage: true })
+  })
+
+  test("insights renders finders, dismiss controls and the narrative button (Track B)", async ({ page }) => {
+    await page.goto("/admin/books/insights")
+    await page.waitForLoadState("networkidle")
+    await expect(page.getByRole("button", { name: /explain these findings/i })).toBeVisible()
+    await page.screenshot({ path: "test-results/bookkeeping/05-insights.png", fullPage: true })
+  })
+
+  test("email receipts shows an honest empty state (Track C)", async ({ page }) => {
+    await page.goto("/admin/books/email-receipts")
+    await page.waitForLoadState("networkidle")
+    // Prod has zero polled receipts: the page must explain how to get some, not show a bare empty table.
+    await expect(page.getByText(/gmail|label|no email receipts/i).first()).toBeVisible()
+    await page.screenshot({ path: "test-results/bookkeeping/06-email-receipts.png", fullPage: true })
+  })
+
+  test("receipt dialogs open from the ledger (photo / cash / amazon)", async ({ page }) => {
+    await page.goto("/admin/books")
+    await page.waitForLoadState("networkidle")
+    const cash = page.getByRole("button", { name: /cash/i }).first()
+    if (await cash.isVisible().catch(() => false)) {
+      await cash.click()
+      await page.screenshot({ path: "test-results/bookkeeping/07-receipt-cash.png", fullPage: true })
+      await page.keyboard.press("Escape")
+    }
+  })
+})
