@@ -108,6 +108,8 @@ export function allocateSharedCosts(profit: ServiceLineProfit): {
   let leftover = shared - alloc.reduce((s, v) => s + v, 0)
   const byRemainder = raw
     .map((v, i) => ({ i, frac: v - Math.floor(v) }))
+    // Redundant guard: zero-income rows have frac 0 and sort last, and
+    // leftover < count(frac > 0), so they can never reach a leftover cent.
     .filter((x) => profit.rows[x.i].income_cents > 0)
     .sort((a, b) => b.frac - a.frac || a.i - b.i)
   for (const { i } of byRemainder) {

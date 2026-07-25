@@ -147,6 +147,11 @@ describe("allocateSharedCosts", () => {
       row({ service_line: "b", label: "B", income_cents: 33333, net_estimate_cents: 33333 }),
       row({ service_line: "c", label: "C", income_cents: 707, net_estimate_cents: 707 }),
     ], 9999))
+    // Per-row pin, not just the sum: raw shares are 2694.2257 / 7153.0565 /
+    // 151.7178, so the ONE leftover cent belongs to C (largest FRACTIONAL
+    // REMAINDER, spec B-4) — not to B (largest income share). Both variants
+    // sum to 9999, so only this assertion discriminates them.
+    expect(r.rows.map((x) => x.allocated_shared_cents)).toEqual([2694, 7153, 152])
     expect(r.rows.reduce((s, x) => s + x.allocated_shared_cents, 0)).toBe(9999)
     expect(r.allocated_total_cents).toBe(9999)
   })

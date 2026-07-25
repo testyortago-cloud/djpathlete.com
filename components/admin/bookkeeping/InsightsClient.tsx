@@ -278,7 +278,14 @@ export function InsightsClient({
   const watchdogRows = data && active ? data.watchdog.filter((f) => f.book_id === active.book.id) : []
   const forecastForBook =
     data && active ? (data.forecast.books.find((f) => f.book_id === active.book.id) ?? null) : null
-  const allocation = allocateShared && active ? allocateSharedCosts(active.profit) : null
+  // shared_cost_cents > 0 is part of the gate, not just the toggle's disabled
+  // state: the toggle can be left ON while the user switches to a book/period
+  // with no shared costs, which would otherwise render two all-$0.00 columns
+  // next to "No shared costs to allocate yet."
+  const allocation =
+    allocateShared && active && active.profit.shared_cost_cents > 0
+      ? allocateSharedCosts(active.profit)
+      : null
 
   // Dismissal partitions (5b). Card headline chips keep the FULL recompute
   // totals — dismissals collapse rows, they never alter computed numbers.
