@@ -23,12 +23,15 @@ describe("reconcileControlTotals", () => {
       { total_deposits_cents: null, total_withdrawals_cents: 5050, opening_balance_cents: null, closing_balance_cents: null }, w)
     expect(w.some((s) => /mismatch/i.test(s))).toBe(false)
   })
-  it("warns on a withdrawal-total mismatch beyond tolerance", () => {
+  it("warns on a withdrawal-total mismatch beyond tolerance, summing only expense rows", () => {
     const w: string[] = []
-    reconcileControlTotals([row({ direction: "expense", amount_cents: 7300 })],
+    reconcileControlTotals(
+      [row({ direction: "expense", amount_cents: 7300 }), row({ direction: "income", amount_cents: 99999 })],
       { total_deposits_cents: null, total_withdrawals_cents: 12555, opening_balance_cents: null, closing_balance_cents: null }, w)
     expect(w.some((s) => /withdrawal total mismatch/i.test(s))).toBe(true)
     expect(w.some((s) => /deposit total mismatch/i.test(s))).toBe(false)
+    // stated total then parsed sum — the income row must not be summed in
+    expect(w.some((s) => /\$125\.55.*\$73\.00/.test(s))).toBe(true)
   })
   it("stays silent on deposit drift of exactly 100 cents (boundary is strictly >100)", () => {
     const w: string[] = []
@@ -41,6 +44,30 @@ describe("reconcileControlTotals", () => {
     const w: string[] = []
     reconcileControlTotals([row({ direction: "income", amount_cents: 5000 })],
       { total_deposits_cents: null, total_withdrawals_cents: null, opening_balance_cents: null, closing_balance_cents: null }, w)
+    expect(w.some((s) => /completeness unverified/i.test(s))).toBe(true)
+    expect(w).toHaveLength(1)
+  })
+  it("warns when opening + deposits - withdrawals misses the stated closing balance", () => {
+    const w: string[] = []
+    reconcileControlTotals(
+      [row({ direction: "income", amount_cents: 62555 }), row({ direction: "expense", amount_cents: 12455 })],
+      { total_deposits_cents: null, total_withdrawals_cents: null, opening_balance_cents: 120455, closing_balance_cents: 98600 }, w)
+    // 120455 + 62555 - 12455 = 170555, statement says 98600
+    expect(w.some((s) => /balance mismatch/i.test(s))).toBe(true)
+    expect(w.some((s) => /\$986\.00.*\$1705\.55/.test(s))).toBe(true)
+    expect(w.some((s) => /completeness unverified/i.test(s))).toBe(false)
+  })
+  it("stays silent on a balance drift of exactly 100 cents (boundary is strictly >100)", () => {
+    const w: string[] = []
+    reconcileControlTotals(
+      [row({ direction: "income", amount_cents: 62555 }), row({ direction: "expense", amount_cents: 12455 })],
+      { total_deposits_cents: null, total_withdrawals_cents: null, opening_balance_cents: 120455, closing_balance_cents: 170655 }, w)
+    expect(w).toEqual([])
+  })
+  it("warns 'completeness unverified' when only one balance is stated (nothing is reconcilable)", () => {
+    const w: string[] = []
+    reconcileControlTotals([row({ direction: "income", amount_cents: 62555 })],
+      { total_deposits_cents: null, total_withdrawals_cents: null, opening_balance_cents: 120455, closing_balance_cents: null }, w)
     expect(w.some((s) => /completeness unverified/i.test(s))).toBe(true)
     expect(w).toHaveLength(1)
   })

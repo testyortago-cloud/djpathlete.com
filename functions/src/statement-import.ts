@@ -117,33 +117,42 @@ export function reconcileControlTotals(
   controlTotals: StatementImportResult["control_totals"] | null | undefined,
   warnings: string[],
 ): void {
-  const allNull =
-    !controlTotals ||
-    (controlTotals.total_deposits_cents == null &&
-      controlTotals.total_withdrawals_cents == null &&
-      controlTotals.opening_balance_cents == null &&
-      controlTotals.closing_balance_cents == null)
+  const sumDeposits = rows.filter((r) => r.direction === "income").reduce((s, r) => s + r.amount_cents, 0)
+  const sumWithdrawals = rows.filter((r) => r.direction === "expense").reduce((s, r) => s + r.amount_cents, 0)
 
-  if (allNull) {
-    warnings.push("completeness unverified — no statement totals found; review carefully")
-    return
-  }
+  // Track whether ANY check actually ran. A statement that states only an
+  // opening balance (or only a closing one) is not reconcilable, so it must
+  // still get the "completeness unverified" signal rather than a silent pass.
+  let reconciled = false
 
-  if (controlTotals.total_deposits_cents != null) {
-    const sumDeposits = rows.filter((r) => r.direction === "income").reduce((s, r) => s + r.amount_cents, 0)
+  if (controlTotals?.total_deposits_cents != null) {
+    reconciled = true
     if (Math.abs(sumDeposits - controlTotals.total_deposits_cents) > 100) {
       warnings.push(
         `deposit total mismatch — statement states ${formatCents(controlTotals.total_deposits_cents)} but parsed rows sum to ${formatCents(sumDeposits)}`,
       )
     }
   }
-  if (controlTotals.total_withdrawals_cents != null) {
-    const sumWithdrawals = rows.filter((r) => r.direction === "expense").reduce((s, r) => s + r.amount_cents, 0)
+  if (controlTotals?.total_withdrawals_cents != null) {
+    reconciled = true
     if (Math.abs(sumWithdrawals - controlTotals.total_withdrawals_cents) > 100) {
       warnings.push(
         `withdrawal total mismatch — statement states ${formatCents(controlTotals.total_withdrawals_cents)} but parsed rows sum to ${formatCents(sumWithdrawals)}`,
       )
     }
+  }
+  if (controlTotals?.opening_balance_cents != null && controlTotals.closing_balance_cents != null) {
+    reconciled = true
+    const impliedClosing = controlTotals.opening_balance_cents + sumDeposits - sumWithdrawals
+    if (Math.abs(impliedClosing - controlTotals.closing_balance_cents) > 100) {
+      warnings.push(
+        `balance mismatch — statement closes at ${formatCents(controlTotals.closing_balance_cents)} but opening balance ${formatCents(controlTotals.opening_balance_cents)} plus parsed rows lands at ${formatCents(impliedClosing)}`,
+      )
+    }
+  }
+
+  if (!reconciled) {
+    warnings.push("completeness unverified — no statement totals found; review carefully")
   }
 }
 
