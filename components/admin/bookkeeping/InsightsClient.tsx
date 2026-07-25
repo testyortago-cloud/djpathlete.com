@@ -307,7 +307,7 @@ export function InsightsClient({
       ? isDismissed(
           primaryPayload.book.id,
           findingFingerprint("year_end", flag.id),
-          primaryPayload.dismissed_fingerprints,
+          primaryPayload.dismissed_fingerprints ?? [],
         )
       : false,
   )
