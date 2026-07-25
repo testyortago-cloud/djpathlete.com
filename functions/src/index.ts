@@ -2098,7 +2098,13 @@ export const bookkeepingPayoutSyncCron = onSchedule(
   {
     schedule: "15 5 * * *",
     timeZone: "Etc/UTC",
-    timeoutSeconds: 120,
+    // Must be >= the route's maxDuration (300). A cold start has no
+    // arrival_date lower bound (Decision A-4) and can walk up to
+    // MAX_PAYOUTS_PER_RUN = 200 payouts, each with its own auto-paged
+    // balanceTransactions.list — the route is budgeted 300s for that backlog,
+    // so a 120s delegator would be killed mid-flight and strand the
+    // route-owned cron_runs row without its logCronEnd.
+    timeoutSeconds: 300,
     memory: "256MiB",
     region: "us-central1",
     secrets: [internalCronToken, appUrl],
