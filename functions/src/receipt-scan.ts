@@ -71,22 +71,42 @@ export function coalesceReceiptResult(r: Partial<ReceiptScanResult> | null | und
   }
 }
 
+/** A real calendar day (YYYY-MM-DD) or null.
+ *
+ *  receiptScanSchema only REGEX-validates occurred_on, so a hallucinated but
+ *  well-shaped day ("2026-02-30", "2026-04-31", "2026-13-01") survives
+ *  callAgent's schema.parse. period_start/period_end are `date` columns —
+ *  Postgres aborts the WHOLE update statement with 22008 ("date/time field
+ *  value out of range"), which since scan_result joined that statement would
+ *  silently drop the vision payload along with period bounds nothing reads.
+ *  The round-trip comparison is required: bare Date.parse happily rolls
+ *  2026-02-30 forward to 2026-03-02. */
+export function calendarDayOrNull(day: string | null | undefined): string | null {
+  if (!day || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return null
+  const parsed = new Date(`${day}T00:00:00Z`)
+  if (Number.isNaN(parsed.getTime())) return null
+  return parsed.toISOString().slice(0, 10) === day ? day : null
+}
+
 /** Update payload for the post-scan bookkeeping_documents back-fill: period
- *  bounds from occurred_on (as before) + the coalesced result persisted to
- *  scan_result (00193) so the email-receipts review surface can rehydrate it
- *  after the RTDB/browser session is gone. */
+ *  bounds from occurred_on (as before, now date-guarded) + the coalesced result
+ *  persisted to scan_result (00193) so the email-receipts review surface can
+ *  rehydrate it after the RTDB/browser session is gone. The raw occurred_on
+ *  string always survives inside scan_result for the human reviewer, even when
+ *  it is too malformed to bind to a `date` column. */
 export function documentBackfillPayload(result: ReceiptScanResult): {
   period_start: string | null
   period_end: string | null
   row_count: number
   scan_result: ReceiptScanResult
 } {
-  // `?? null`: ReceiptScanResult.occurred_on is nullable().optional() in the
-  // schema, so the static type is `string | null | undefined` even though a
-  // coalesced result never carries undefined. Never write undefined to jsonb.
+  // calendarDayOrNull also absorbs the static `string | null | undefined`
+  // (occurred_on is nullable().optional() in the schema) — never write
+  // undefined to jsonb, never write an unbindable string to a date column.
+  const day = calendarDayOrNull(result.occurred_on)
   return {
-    period_start: result.occurred_on ?? null,
-    period_end: result.occurred_on ?? null,
+    period_start: day,
+    period_end: day,
     row_count: 1,
     scan_result: result,
   }
