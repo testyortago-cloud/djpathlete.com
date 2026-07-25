@@ -9,6 +9,7 @@ vi.mock("@/lib/audit/record", () => ({ recordAudit: vi.fn() }))
 vi.mock("@/lib/db/bookkeeping", () => ({
   listPlatformIncome: (...a: unknown[]) => listPlatformIncomeMock(...a),
   insertImportedEntries: (...a: unknown[]) => insertImportedEntriesMock(...a),
+  assertAccountsInBook: vi.fn(),
 }))
 
 import { POST as PREVIEW } from "@/app/api/admin/bookkeeping/import-platform/route"

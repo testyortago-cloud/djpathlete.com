@@ -11,6 +11,7 @@ vi.mock("@/lib/db/bookkeeping", () => ({
   listEntries: (...a: unknown[]) => listEntriesMock(...a),
   entryTotals: (...a: unknown[]) => entryTotalsMock(...a),
   createEntry: (...a: unknown[]) => createEntryMock(...a),
+  assertAccountInBook: vi.fn(),
 }))
 
 import { GET, POST } from "@/app/api/admin/bookkeeping/entries/route"

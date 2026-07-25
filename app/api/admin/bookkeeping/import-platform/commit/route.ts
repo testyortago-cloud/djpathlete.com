@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { insertImportedEntries } from "@/lib/db/bookkeeping"
+import { insertImportedEntries, assertAccountsInBook } from "@/lib/db/bookkeeping"
 import { importCommitSchema } from "@/lib/validators/bookkeeping"
 import { recordAudit } from "@/lib/audit/record"
 
@@ -11,6 +11,14 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => null)
     const parsed = importCommitSchema.safeParse(body)
     if (!parsed.success) return NextResponse.json({ error: "Invalid input", issues: parsed.error.issues }, { status: 400 })
+    try {
+      await assertAccountsInBook(parsed.data.book_id, parsed.data.entries.map((e) => ({ accountId: e.account_id ?? null, direction: e.direction })))
+    } catch (err) {
+      const code = (err as { code?: string })?.code
+      if (code === "ACCOUNT_NOT_FOUND") return NextResponse.json({ error: "account not found" }, { status: 404 })
+      if (code === "WRONG_BOOK" || code === "WRONG_TYPE") return NextResponse.json({ error: "account scope" }, { status: 409 })
+      throw err
+    }
     const batchId = crypto.randomUUID()
     const { inserted, rejected_closed, rejected_closed_rows, skipped_alt_ref } = await insertImportedEntries(parsed.data.book_id, batchId, parsed.data.entries)
     void recordAudit({ action: "bookkeeping.platform_income_imported", category: "commerce", outcome: "success",

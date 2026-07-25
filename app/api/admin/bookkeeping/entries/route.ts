@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { listEntries, entryTotals, createEntry } from "@/lib/db/bookkeeping"
+import { listEntries, entryTotals, createEntry, assertAccountInBook } from "@/lib/db/bookkeeping"
 import { createEntrySchema } from "@/lib/validators/bookkeeping"
 import { recordAudit } from "@/lib/audit/record"
 import { PERIOD_CLOSED_MESSAGE } from "@/lib/bookkeeping/period-close"
@@ -51,6 +51,16 @@ export async function POST(request: Request) {
     const parsed = createEntrySchema.safeParse(body)
     if (!parsed.success) return NextResponse.json({ error: "Invalid input", issues: parsed.error.issues }, { status: 400 })
     const d = parsed.data
+    if (d.account_id) {
+      try {
+        await assertAccountInBook(d.account_id, d.book_id, d.direction)
+      } catch (err) {
+        const code = (err as { code?: string })?.code
+        if (code === "ACCOUNT_NOT_FOUND") return NextResponse.json({ error: "account not found" }, { status: 404 })
+        if (code === "WRONG_BOOK" || code === "WRONG_TYPE") return NextResponse.json({ error: "account scope" }, { status: 409 })
+        throw err
+      }
+    }
     const entry = await createEntry({
       book_id: d.book_id, account_id: d.account_id ?? null, direction: d.direction,
       amount_cents: d.amount_cents, currency: d.currency ?? "usd", occurred_on: d.occurred_on,
