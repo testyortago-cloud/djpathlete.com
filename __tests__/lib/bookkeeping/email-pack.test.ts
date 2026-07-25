@@ -41,6 +41,7 @@ describe("accountantPackEmailHtml", () => {
     expect(html).toContain("CPA")
     expect(html).toContain("candidate")
     expect(html).toContain("2026-01-01")
+    expect(html).toContain("net-after-fees")
   })
 })
 
@@ -62,6 +63,7 @@ describe("sendAccountantPack", () => {
       { filename: "djp-accountant-pack-2026-01-01-2026-03-31.xlsx", content: buffer.toString("base64") },
     ])
     expect(arg.subject).toContain("Accountant pack")
+    expect(arg.subject).toContain("net-after-fees")
   })
 
   it("does not cc when the recipient IS the coach", async () => {

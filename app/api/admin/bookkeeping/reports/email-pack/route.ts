@@ -5,6 +5,7 @@ import { getSetting, setSetting } from "@/lib/db/system-settings"
 import { loadReportBundle } from "@/lib/bookkeeping/report-data"
 import { listAllDocuments, listAssets } from "@/lib/db/bookkeeping"
 import { buildAccountantPack } from "@/lib/bookkeeping/accountant-pack"
+import { stripeFeesInWindow } from "@/lib/bookkeeping/payout-fees"
 import { sendAccountantPack } from "@/lib/bookkeeping/email-pack"
 import { recordAudit } from "@/lib/audit/record"
 
@@ -22,8 +23,12 @@ export async function POST(request: Request) {
     if (!parsed.success) return NextResponse.json({ error: "Invalid input", issues: parsed.error.issues }, { status: 400 })
     const { from, to, recipient_email, remember } = parsed.data
 
-    const [{ books, accounts, entries }, documents, assets] = await Promise.all([loadReportBundle(from, to), listAllDocuments(), listAssets()])
-    const buffer = await buildAccountantPack({ from, to, books, accounts, entries, documents, assets })
+    const [bundle, documents, assets] = await Promise.all([loadReportBundle(from, to), listAllDocuments(), listAssets()])
+    const { books, accounts, entries } = bundle
+    const buffer = await buildAccountantPack({
+      from, to, books, accounts, entries, documents, assets,
+      stripe_fee_cents: stripeFeesInWindow(bundle.payoutLines ?? [], from, to),
+    })
 
     const { error } = await sendAccountantPack({ recipient: recipient_email, from, to, buffer })
     if (error) {

@@ -22,6 +22,7 @@ beforeEach(() => {
       { book_id: BOOK, account_id: null, direction: "income", amount_cents: 1500, occurred_on: "2026-07-02", counterparty: null, memo: null, source: "manual" },
       { book_id: BOOK, account_id: null, direction: "expense", amount_cents: 400, occurred_on: "2026-07-03", counterparty: null, memo: null, source: "manual" },
     ],
+    payoutLines: [{ txn_date: "2026-07-02", fee_cents: 73, net_cents: 1427, amount_cents: 1500, type: "charge" }],
   })
 })
 
@@ -74,5 +75,28 @@ describe("GET /api/admin/bookkeeping/reports", () => {
     expect(b.pnl.income_total_cents).toBe(77700)
     expect(b.income_by_service.total_cents).toBe(77700)
     expect(b.row_count).toBe(1)
+  })
+  it("attaches stripe_fee_cents + net_income_cents to the primary business book only", async () => {
+    const res = await GET(req("from=2026-07-01&to=2026-07-31"))
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    // 1500 gross income − 73 fee = 1427 net (fee 73 is a mutation discriminator:
+    // no other fixture arithmetic produces it)
+    expect(body.books[0].stripe_fee_cents).toBe(73)
+    expect(body.books[0].net_income_cents).toBe(1427)
+  })
+  it("a line dated outside the window contributes no fee", async () => {
+    ;(loadReportBundle as ReturnType<typeof vi.fn>).mockResolvedValue({
+      books: [{ id: BOOK, name: "Darren — DJP Athlete", book_kind: "business", is_primary: true, currency: "usd", sort_order: 0 }],
+      accounts: [],
+      entries: [
+        { book_id: BOOK, account_id: null, direction: "income", amount_cents: 1500, occurred_on: "2026-07-02", counterparty: null, memo: null, source: "manual" },
+      ],
+      payoutLines: [{ txn_date: "2026-08-02", fee_cents: 73, net_cents: 1427, amount_cents: 1500, type: "charge" }],
+    })
+    const res = await GET(req("from=2026-07-01&to=2026-07-31"))
+    const body = await res.json()
+    expect(body.books[0].stripe_fee_cents).toBe(0)
+    expect(body.books[0].net_income_cents).toBe(1500)
   })
 })

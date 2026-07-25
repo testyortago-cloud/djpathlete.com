@@ -18,7 +18,7 @@ export function accountantPackEmailHtml(from: string, to: string): string {
     <h2>DJP Athlete — Accountant Pack</h2>
     <p>Attached: the bookkeeping workbook for <strong>${from}</strong> to <strong>${to}</strong> (occurred-on dates, inclusive).</p>
     <ul style="font-size: 13px; color: #444;">
-      <li>All figures are <strong>GROSS</strong> — Stripe fees and payouts are not netted.</li>
+      <li>Primary figures are <strong>GROSS</strong> — Stripe processing fees appear as a labeled <strong>net-after-fees (est.)</strong> line in the Summary and Income by Service sheets.</li>
       <li>Every number is an <strong>estimate for planning; the CPA files</strong>.</li>
       <li>This pack is a <strong>candidate for the accountant's review</strong>, never a filed return.</li>
       <li>Business and personal finances live in separate books; no sheet mixes them.</li>
@@ -34,7 +34,7 @@ export async function sendAccountantPack(input: SendAccountantPackInput): Promis
     from: FROM_EMAIL,
     to: input.recipient,
     ...(coach && coach !== input.recipient ? { cc: coach } : {}),
-    subject: `Accountant pack — ${input.from} to ${input.to} (gross, estimates)`,
+    subject: `Accountant pack — ${input.from} to ${input.to} (gross + net-after-fees, estimates)`,
     html: accountantPackEmailHtml(input.from, input.to),
     attachments: [
       { filename: `djp-accountant-pack-${input.from}-${input.to}.xlsx`, content: input.buffer.toString("base64") },

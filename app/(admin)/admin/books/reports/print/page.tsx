@@ -7,6 +7,7 @@ import {
   type ProfitAndLoss,
 } from "@/lib/bookkeeping/reports"
 import { depreciationAsOf } from "@/lib/bookkeeping/depreciation"
+import { stripeFeesInWindow } from "@/lib/bookkeeping/payout-fees"
 import { formatCents } from "@/lib/bookkeeping/money"
 import { formatOccurredOn } from "@/lib/bookkeeping/format"
 import { presetRange } from "@/lib/bookkeeping/period"
@@ -26,12 +27,14 @@ function isValidIsoDate(s: string): boolean {
 }
 
 async function loadPrintData(from: string, to: string) {
-  const [{ books, accounts, entries }, documents, assets] = await Promise.all([
+  const [bundle, documents, assets] = await Promise.all([
     loadReportBundle(from, to),
     listAllDocuments(),
     listAssets(),
   ])
-  return { books, accounts, entries, documents, assets }
+  const { books, accounts, entries } = bundle
+  // ?? [] tolerates pre-payoutLines bundle doubles; the real bundle always supplies it.
+  return { books, accounts, entries, payoutLines: bundle.payoutLines ?? [], documents, assets }
 }
 
 function PnlBlock({ pnl }: { pnl: ProfitAndLoss }) {
@@ -91,7 +94,8 @@ export default async function AccountantPackPrintPage({ searchParams }: { search
     to = fallback.to
     bundle = await loadPrintData(from, to)
   }
-  const { books, accounts, entries, documents, assets } = bundle
+  const { books, accounts, entries, payoutLines, documents, assets } = bundle
+  const stripeFees = stripeFeesInWindow(payoutLines, from, to)
   const summaries = perBookSummary(entries, books)
   const primary = books.find((b) => b.is_primary) ?? books[0]
   const bookName = new Map(books.map((b) => [b.id, b.name]))
@@ -107,7 +111,7 @@ export default async function AccountantPackPrintPage({ searchParams }: { search
             Period {formatOccurredOn(from)} – {formatOccurredOn(to)} · Generated {formatOccurredOn(today)}
           </p>
           <p className="mt-2 text-xs">
-            GROSS figures from the posted ledger (Stripe fees &amp; payouts not netted). Estimates for planning — the CPA files.
+            GROSS figures stay primary; Stripe processing fees from ingested payouts appear as a labeled net line (est.). Estimates for planning — the CPA files.
             A candidate for the accountant&apos;s review, never a filed return. Business and personal stay in separate books.
           </p>
         </header>
@@ -159,6 +163,16 @@ export default async function AccountantPackPrintPage({ searchParams }: { search
                       <td className="py-1 pr-4 font-semibold">Total gross income</td>
                       <td />
                       <td className="py-1 pr-4 text-right font-semibold">{formatCents(ibs.total_cents)}</td>
+                    </tr>
+                    <tr>
+                      <td className="py-1 pr-4">Stripe processing fees (est., from ingested payouts)</td>
+                      <td />
+                      <td className="py-1 pr-4 text-right">{stripeFees === 0 ? "$0.00 recorded" : `−${formatCents(stripeFees)}`}</td>
+                    </tr>
+                    <tr>
+                      <td className="py-1 pr-4 font-semibold">Net income after Stripe fees (est.)</td>
+                      <td />
+                      <td className="py-1 pr-4 text-right font-semibold">{formatCents(ibs.total_cents - stripeFees)}</td>
                     </tr>
                   </tbody>
                 </table>

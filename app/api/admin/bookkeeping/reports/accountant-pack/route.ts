@@ -4,6 +4,7 @@ import { reportQuerySchema } from "@/lib/validators/bookkeeping"
 import { loadReportBundle } from "@/lib/bookkeeping/report-data"
 import { listAllDocuments, listAssets } from "@/lib/db/bookkeeping"
 import { buildAccountantPack } from "@/lib/bookkeeping/accountant-pack"
+import { stripeFeesInWindow } from "@/lib/bookkeeping/payout-fees"
 import { recordAudit } from "@/lib/audit/record"
 
 export async function GET(request: Request) {
@@ -16,8 +17,13 @@ export async function GET(request: Request) {
     if (!parsed.success) return NextResponse.json({ error: "Invalid input", issues: parsed.error.issues }, { status: 400 })
     const { from, to } = parsed.data
 
-    const [{ books, accounts, entries }, documents, assets] = await Promise.all([loadReportBundle(from, to), listAllDocuments(), listAssets()])
-    const buf = await buildAccountantPack({ from, to, books, accounts, entries, documents, assets })
+    const [bundle, documents, assets] = await Promise.all([loadReportBundle(from, to), listAllDocuments(), listAssets()])
+    const { books, accounts, entries } = bundle
+    const buf = await buildAccountantPack({
+      from, to, books, accounts, entries, documents, assets,
+      // ?? [] tolerates pre-payoutLines bundle doubles; the real bundle always supplies it.
+      stripe_fee_cents: stripeFeesInWindow(bundle.payoutLines ?? [], from, to),
+    })
 
     void recordAudit({
       action: "bookkeeping.report_exported", category: "admin_read_sensitive", outcome: "success",

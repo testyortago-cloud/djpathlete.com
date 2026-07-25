@@ -20,6 +20,8 @@ interface BookReport {
   income_by_service: IncomeByServiceLine
   pnl: ProfitAndLoss
   row_count: number
+  stripe_fee_cents: number
+  net_income_cents: number
 }
 interface ReportData { from: string; to: string; books: BookReport[] }
 
@@ -98,7 +100,7 @@ export function ReportsClient({
           </Link>
           <h1 className="text-2xl font-heading text-primary">Reports</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Gross figures from the posted ledger — Stripe fees &amp; payouts land in a later phase. Estimates for planning; your CPA files.
+            Gross figures stay primary; Stripe processing fees from ingested payouts appear as a labeled net line (est.). Estimates for planning; your CPA files.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -269,6 +271,22 @@ export function ReportsClient({
                             <td />
                             <td className="py-1.5 pr-4 font-semibold">{formatCents(active.income_by_service.total_cents)}</td>
                           </tr>
+                          {active.book.is_primary && active.book.book_kind === "business" ? (
+                            <>
+                              <tr>
+                                <td className="py-1.5 pr-4 text-muted-foreground">Stripe processing fees (est., from ingested payouts)</td>
+                                <td />
+                                <td className="py-1.5 pr-4 text-muted-foreground">
+                                  {active.stripe_fee_cents === 0 ? "$0.00 recorded" : `−${formatCents(active.stripe_fee_cents)}`}
+                                </td>
+                              </tr>
+                              <tr>
+                                <td className="py-1.5 pr-4 font-semibold">Net income after Stripe fees (est.)</td>
+                                <td />
+                                <td className="py-1.5 pr-4 font-semibold">{formatCents(active.net_income_cents)}</td>
+                              </tr>
+                            </>
+                          ) : null}
                         </tbody>
                       </table>
                     )}
