@@ -2,7 +2,7 @@ import Stripe from "stripe"
 import type { Program, PaymentType, BillingInterval, Event, EventSignup } from "@/types/database"
 import { updateUser, getUserById } from "@/lib/db/users"
 
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!)
+export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: "2026-01-28.clover" })
 
 function getBaseUrl() {
   return (
