@@ -23,6 +23,27 @@ describe("reconcileControlTotals", () => {
       { total_deposits_cents: null, total_withdrawals_cents: 5050, opening_balance_cents: null, closing_balance_cents: null }, w)
     expect(w.some((s) => /mismatch/i.test(s))).toBe(false)
   })
+  it("warns on a withdrawal-total mismatch beyond tolerance", () => {
+    const w: string[] = []
+    reconcileControlTotals([row({ direction: "expense", amount_cents: 7300 })],
+      { total_deposits_cents: null, total_withdrawals_cents: 12555, opening_balance_cents: null, closing_balance_cents: null }, w)
+    expect(w.some((s) => /withdrawal total mismatch/i.test(s))).toBe(true)
+    expect(w.some((s) => /deposit total mismatch/i.test(s))).toBe(false)
+  })
+  it("stays silent on deposit drift of exactly 100 cents (boundary is strictly >100)", () => {
+    const w: string[] = []
+    reconcileControlTotals([row({ direction: "income", amount_cents: 12455 })],
+      { total_deposits_cents: 12555, total_withdrawals_cents: null, opening_balance_cents: null, closing_balance_cents: null }, w)
+    expect(w.some((s) => /mismatch/i.test(s))).toBe(false)
+    expect(w.some((s) => /completeness unverified/i.test(s))).toBe(false)
+  })
+  it("treats an object with all-null fields the same as a null totals object", () => {
+    const w: string[] = []
+    reconcileControlTotals([row({ direction: "income", amount_cents: 5000 })],
+      { total_deposits_cents: null, total_withdrawals_cents: null, opening_balance_cents: null, closing_balance_cents: null }, w)
+    expect(w.some((s) => /completeness unverified/i.test(s))).toBe(true)
+    expect(w).toHaveLength(1)
+  })
 })
 
 describe("applyRowCap", () => {
