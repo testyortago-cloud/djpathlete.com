@@ -163,6 +163,34 @@ export function InsightsClient({
     }
   }, [])
 
+  // AI narrative (B-5): owner-initiated spend, cached in client state per
+  // (from, to) window. No persistence — one-user, button-gated tool.
+  const [narratives, setNarratives] = useState<Record<string, string[]>>({})
+  const [narrativeLoading, setNarrativeLoading] = useState(false)
+  const narrative = narratives[`${from}|${to}`]
+
+  const explainFindings = useCallback(async () => {
+    setNarrativeLoading(true)
+    try {
+      const res = await fetch("/api/admin/bookkeeping/insights/narrative", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ from, to }),
+      })
+      if (!res.ok) throw new Error("failed")
+      const body = (await res.json()) as { observations: string[] | null; fallback: string | null }
+      if (body.observations) {
+        setNarratives((n) => ({ ...n, [`${from}|${to}`]: body.observations! }))
+      } else {
+        toast.error(body.fallback ?? "AI summary unavailable")
+      }
+    } catch {
+      toast.error("AI summary unavailable — the live numbers above are unaffected.")
+    } finally {
+      setNarrativeLoading(false)
+    }
+  }, [from, to])
+
   const fetchInsights = useCallback(async () => {
     const requestId = ++fetchRequestIdRef.current
     setLoading(true)
@@ -511,6 +539,36 @@ export function InsightsClient({
           </DismissedReveal>
         </div>
       ) : null}
+
+      {/* Plain-English AI summary (B-5): nothing generates until the button is clicked. */}
+      <div className="rounded-lg border border-border bg-card p-4">
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-heading text-primary">Plain-English summary</h2>
+          <span className="inline-flex items-center rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent">
+            AI-generated
+          </span>
+        </div>
+        {narrative ? (
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
+            {narrative.map((obs, i) => (
+              <li key={i}>{obs}</li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-2 text-sm text-muted-foreground">
+            One AI pass over the findings below — nothing is generated until you ask.
+          </p>
+        )}
+        <Button
+          size="sm"
+          variant="outline"
+          className="mt-3"
+          onClick={() => void explainFindings()}
+          disabled={narrativeLoading || loading}
+        >
+          {narrativeLoading ? "Explaining…" : narrative ? "Regenerate" : "Explain these findings"}
+        </Button>
+      </div>
 
       {!loading && data && totalEntries === 0 ? (
         <>
