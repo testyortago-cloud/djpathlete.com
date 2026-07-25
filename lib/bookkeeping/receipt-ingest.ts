@@ -10,6 +10,7 @@ import { createHash, randomUUID } from "node:crypto"
 import { createDocument } from "@/lib/db/bookkeeping"
 import { createGenerationLog } from "@/lib/db/ai-generation-log"
 import { safeStatementName, storeStatementFile } from "@/lib/bookkeeping/documents"
+import { receiptRetainUntil } from "@/lib/bookkeeping/receipts"
 import { getAdminFirestore, getAdminRtdb } from "@/lib/firebase-admin"
 import { FieldValue } from "firebase-admin/firestore"
 
@@ -58,7 +59,9 @@ export async function ingestReceiptDocument(args: IngestReceiptArgs): Promise<In
   const storagePath = `bookkeeping/receipts/${args.bookId}/${storageId}/${safeStatementName(args.originalFilename)}`
   await storeStatementFile(storagePath, args.buffer, args.mimeType)
 
-  const retainUntil = `${new Date().getUTCFullYear() + 7}-12-31`
+  // Single owner for the IRS 7-year rule — receipts/commit re-stamps the same
+  // document with receiptRetainUntil(occurred_on); both must move together.
+  const retainUntil = receiptRetainUntil(new Date().toISOString().slice(0, 10))
 
   const doc = await createDocument({
     book_id: args.bookId,

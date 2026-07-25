@@ -25,6 +25,10 @@ import { ingestReceiptDocument } from "@/lib/bookkeeping/receipt-ingest"
 
 const BOOK = "b0000000-0000-4000-8000-000000000001"
 const ADMIN = "11111111-2222-4333-8444-555555555555"
+/** sha256("PDFDATA") — pinned literally so a swapped digest algorithm or a
+ *  hash of the wrong input can never ship green (findDocumentBySha256 is the
+ *  only duplicate-upload defence and the poller has no second hash). */
+const SHA_PDFDATA = "1ad9615552126eb88b27e3f5c20c9932a9efafe7a58a790bf8d0d92d0fdc5661"
 const baseArgs = {
   bookId: BOOK,
   buffer: Buffer.from("PDFDATA"),
@@ -45,9 +49,13 @@ beforeEach(() => {
 describe("ingestReceiptDocument", () => {
   it("stores under bookkeeping/receipts/<bookId>/<uuid>/<safeName> and creates a receipt document", async () => {
     const out = await ingestReceiptDocument(baseArgs)
-    expect(out).toMatchObject({ documentId: "d1", jobId: "job1", logId: "log1" })
+    expect(out).toMatchObject({ documentId: "d1", jobId: "job1", logId: "log1", sha256: SHA_PDFDATA })
     const [path, buf, mime] = (storeStatementFile as ReturnType<typeof vi.fn>).mock.calls[0]
-    expect(path).toMatch(new RegExp(`^bookkeeping/receipts/${BOOK}/[0-9a-f-]{36}/receipt\\.pdf$`))
+    const m = (path as string).match(new RegExp(`^bookkeeping/receipts/${BOOK}/([0-9a-f-]{36})/receipt\\.pdf$`))
+    expect(m).not.toBeNull()
+    // The middle segment must be a FRESH uuid, not the bookId reused — otherwise
+    // every receipt in a book shares one prefix and same-named files overwrite.
+    expect(m![1]).not.toBe(BOOK)
     expect((buf as Buffer).equals(Buffer.from("PDFDATA"))).toBe(true)
     expect(mime).toBe("application/pdf")
     expect((createDocument as ReturnType<typeof vi.fn>).mock.calls[0][0]).toMatchObject({
@@ -58,6 +66,11 @@ describe("ingestReceiptDocument", () => {
       row_count: 1,
       file_size_bytes: 7,
       mime_type: "application/pdf",
+      sha256: SHA_PDFDATA,
+      // IRS 7-year retention. The daily retention cron hard-deletes the bucket
+      // object AND the row once retain_until < today, so a wrong year here is
+      // silent, irreversible loss — pin it.
+      retain_until: `${new Date().getUTCFullYear() + 7}-12-31`,
     })
     // Job payload is the exact upload-route recipe
     const jobPayload = jobSet.mock.calls[0][0]
