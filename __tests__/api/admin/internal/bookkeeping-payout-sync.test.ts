@@ -37,7 +37,16 @@ const stripePayout = { id: "po_1", amount: 9600, arrival_date: 1783382400, statu
 const chargeTxn = { id: "txn_1", type: "charge", amount: 10000, fee: 400, net: 9600, created: 1783036800, description: "Client payment", source: "ch_1" }
 // The payout's OWN balance txn shows up in the per-payout listing — must be filtered out of lines.
 const selfTxn = { id: "txn_self", type: "payout", amount: -9600, fee: 0, net: -9600, created: 1783382400, description: "STRIPE PAYOUT", source: "po_1" }
+const refundTxn = { id: "txn_2", type: "refund", amount: -2500, fee: -50, net: -2450, created: 1783036800, description: "Refund", source: "re_1" }
 const pager = <T,>(items: T[]) => ({ autoPagingToArray: vi.fn().mockResolvedValue(items) })
+const mockFn = (f: unknown) => f as ReturnType<typeof vi.fn>
+/** N payouts, po_000 = OLDEST, returned by Stripe NEWEST-first (as the API does). */
+function manyPayouts(n: number) {
+  const base = 1783382400 - n * 86400
+  return Array.from({ length: n }, (_, i) => ({
+    ...stripePayout, id: `po_${String(i).padStart(3, "0")}`, arrival_date: base + i * 86400,
+  })).reverse()
+}
 
 function makeRequest(authHeader = AUTH): Request {
   return new Request("http://localhost/api/admin/internal/bookkeeping-payout-sync", {
@@ -87,6 +96,9 @@ describe("POST /api/admin/internal/bookkeeping-payout-sync", () => {
     expect(logCronStart).toHaveBeenCalledWith(expect.anything(), "bookkeepingPayoutSyncCron")
     // Window from the watermark: 2026-07-20 − 14d = 2026-07-06 = 1783296000 s
     expect(stripe.payouts.list).toHaveBeenCalledWith({ limit: 100, arrival_date: { gte: 1783296000 } })
+    // Balance txns MUST be scoped to the single payout — an unscoped list would
+    // attach the whole account's history to every payout row.
+    expect(stripe.balanceTransactions.list).toHaveBeenCalledWith({ payout: "po_1", limit: 100 })
     // Payout row: amount is NET; gross/fee are Σ over NON-payout lines only
     const payoutRows = (upsertPayouts as ReturnType<typeof vi.fn>).mock.calls[0][0]
     expect(payoutRows).toEqual([expect.objectContaining({
@@ -172,5 +184,115 @@ describe("POST /api/admin/internal/bookkeeping-payout-sync", () => {
       expect.anything(), "run-1", "failed",
       expect.objectContaining({ message: expect.stringContaining("primary business book") }),
     )
+  })
+
+  it("multi-line payout: signed gross/fee summed over EVERY non-payout line (refund included)", async () => {
+    // 10000 + (−2500) = 7500 gross; 400 + (−50) = 350 fee; 7500 − 350 = 7150 ≠ 9600 → warn
+    mockFn(stripe.balanceTransactions.list).mockReturnValue(pager([chargeTxn, refundTxn, selfTxn]))
+    const res = await POST(makeRequest())
+    expect(res.status).toBe(200)
+    const payoutRows = mockFn(upsertPayouts).mock.calls[0][0]
+    expect(payoutRows[0]).toMatchObject({ gross_cents: 7500, fee_cents: 350 })
+    const lineRows = mockFn(upsertPayoutLines).mock.calls[0][0]
+    expect(lineRows.map((r: { stripe_balance_txn_id: string }) => r.stripe_balance_txn_id)).toEqual(["txn_1", "txn_2"])
+    expect(lineRows[1]).toMatchObject({ amount_cents: -2500, fee_cents: -50, net_cents: -2450 })
+  })
+
+  // ── Finding 1: per-payout write, not a two-phase batch write ──────────────
+  it("writes each payout's row and its lines together — a line failure cannot strand earlier committed payouts", async () => {
+    const p2 = { ...stripePayout, id: "po_2", arrival_date: 1783382400 + 86400 }
+    mockFn(stripe.payouts.list).mockReturnValue(pager([stripePayout, p2]))
+    mockFn(upsertPayouts).mockImplementation(async (rows: Array<{ stripe_payout_id: string }>) =>
+      rows.map((r) => ({ id: `bp-${r.stripe_payout_id}`, stripe_payout_id: r.stripe_payout_id })))
+    mockFn(upsertPayoutLines).mockRejectedValueOnce(new Error("lines boom"))
+
+    const res = await POST(makeRequest())
+    expect(res.status).toBe(500)
+    // Exactly ONE payout row may be committed before the line write is attempted.
+    expect(mockFn(upsertPayouts).mock.calls[0][0]).toHaveLength(1)
+    expect(mockFn(upsertPayouts).mock.calls[0][0][0]).toMatchObject({ stripe_payout_id: "po_1" })
+    // po_2's row must NOT have been committed — its fee lines would be unrecoverable.
+    expect(mockFn(upsertPayouts).mock.calls.flatMap((c) => c[0]).map((r: { stripe_payout_id: string }) => r.stripe_payout_id))
+      .toEqual(["po_1"])
+    expect(logCronEnd).toHaveBeenCalledWith(
+      expect.anything(), "run-1", "failed",
+      expect.objectContaining({ message: expect.stringContaining("lines boom") }),
+    )
+  })
+
+  // ── Finding 2: a balance txn shared by two payouts must never collide in ──
+  // one upsert (Postgres 21000 "cannot affect row a second time").
+  it("a balance txn claimed by two payouts in one batch never lands twice in a single upsert call", async () => {
+    const failed = { ...stripePayout, id: "po_old", arrival_date: 1783382400, status: "failed" }
+    const replacement = { ...stripePayout, id: "po_new", arrival_date: 1783382400 + 86400 }
+    mockFn(stripe.payouts.list).mockReturnValue(pager([failed, replacement]))
+    mockFn(stripe.balanceTransactions.list).mockReturnValue(pager([chargeTxn, selfTxn])) // same txn_1 for both
+    mockFn(upsertPayouts).mockImplementation(async (rows: Array<{ stripe_payout_id: string }>) =>
+      rows.map((r) => ({ id: `bp-${r.stripe_payout_id}`, stripe_payout_id: r.stripe_payout_id })))
+    mockFn(upsertPayoutLines).mockResolvedValue(1)
+
+    const res = await POST(makeRequest())
+    expect(res.status).toBe(200)
+    for (const call of mockFn(upsertPayoutLines).mock.calls) {
+      const ids = call[0].map((r: { stripe_balance_txn_id: string }) => r.stripe_balance_txn_id)
+      expect(new Set(ids).size).toBe(ids.length)
+    }
+    // Oldest-first ⇒ the NEWER payout writes last and owns the shared txn.
+    const lastCall = mockFn(upsertPayoutLines).mock.calls.at(-1)![0]
+    expect(lastCall[0]).toMatchObject({ stripe_balance_txn_id: "txn_1", payout_id: "bp-po_new" })
+  })
+
+  // ── Finding 3: an unresolvable stored payout id must not wedge the cron ───
+  it("eligibility re-pull failure → warning + run continues (never a permanent 500 loop)", async () => {
+    mockFn(listNonTerminalPayouts).mockResolvedValue([
+      { id: "bp-gone", stripe_payout_id: "po_gone", status: "pending", book_id: BOOK, arrival_date: "2026-05-01" },
+    ])
+    mockFn(stripe.payouts.retrieve).mockRejectedValue(new Error("No such payout: 'po_gone'"))
+
+    const res = await POST(makeRequest())
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.ok).toBe(true)
+    expect(body.warnings.some((w: string) => w.includes("po_gone"))).toBe(true)
+    // The listed payout is still synced — one bad stored id cannot block the run.
+    expect(mockFn(upsertPayouts).mock.calls[0][0][0]).toMatchObject({ stripe_payout_id: "po_1" })
+  })
+
+  // ── Finding 5: oldest-first ordering + the 200 cap ARE the backlog guarantee ──
+  it("cold start with 250 payouts: oldest-first batch of 200, more_pending true", async () => {
+    mockFn(latestPayoutArrivalDate).mockResolvedValue(null)
+    mockFn(stripe.payouts.list).mockReturnValue(pager(manyPayouts(250)))
+    mockFn(upsertPayouts).mockImplementation(async (rows: Array<{ stripe_payout_id: string }>) =>
+      rows.map((r) => ({ id: `bp-${r.stripe_payout_id}`, stripe_payout_id: r.stripe_payout_id })))
+
+    const res = await POST(makeRequest())
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ ok: true, listed: 250, more_pending: true, upserted: 200 })
+    const written = mockFn(upsertPayouts).mock.calls
+      .flatMap((c) => c[0]).map((r: { stripe_payout_id: string }) => r.stripe_payout_id)
+    expect(written).toHaveLength(200)
+    expect(written[0]).toBe("po_000")   // OLDEST first — a newest-first batch would strand the backlog
+    expect(written[199]).toBe("po_199")
+    expect(written).not.toContain("po_249")
+  })
+
+  // ── Finding 6: a payout whose upsert returns no row must not drop lines silently ──
+  it("upsert returning no row → warning naming the payout (never a silent line drop)", async () => {
+    mockFn(upsertPayouts).mockResolvedValue([])
+    const res = await POST(makeRequest())
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.upserted).toBe(0)
+    expect(body.warnings.some((w: string) => w.includes("po_1"))).toBe(true)
+    expect(upsertPayoutLines).not.toHaveBeenCalled()
+  })
+
+  // ── Finding 8: a pending payout's ESTIMATED FUTURE arrival_date must not eat the overlap ──
+  it("a future watermark is clamped to today so the 14-day overlap is never shortened", async () => {
+    mockFn(latestPayoutArrivalDate).mockResolvedValue("2099-01-01")
+    const today = new Date().toISOString().slice(0, 10)
+    const expected = (Date.parse(`${today}T00:00:00Z`) - 14 * 86_400_000) / 1000
+    await POST(makeRequest())
+    expect(stripe.payouts.list).toHaveBeenCalledWith({ limit: 100, arrival_date: { gte: expected } })
   })
 })

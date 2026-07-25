@@ -53,8 +53,11 @@ export async function POST(request: NextRequest) {
     if (!book) throw new Error("No primary business book found")
 
     const today = new Date().toISOString().slice(0, 10)
+    // A pending/in_transit payout's arrival_date is Stripe's ESTIMATED FUTURE
+    // date, so max(arrival_date) can sit ahead of today; clamping keeps the
+    // full 14-day overlap instead of silently shortening (or collapsing) it.
     const watermark = await latestPayoutArrivalDate(book.id)
-    const syncWindow = computePayoutSyncWindow(watermark, today)
+    const syncWindow = computePayoutSyncWindow(watermark && watermark > today ? today : watermark, today)
 
     const listed: Stripe.Payout[] = await stripe.payouts
       .list({
@@ -72,17 +75,24 @@ export async function POST(request: NextRequest) {
     const nonTerminal = await listNonTerminalPayouts(book.id)
     for (const stored of nonTerminal) {
       if (listedIds.has(stored.stripe_payout_id)) continue
-      const fresh = await stripe.payouts.retrieve(stored.stripe_payout_id)
-      listed.push(fresh)
-      listedIds.add(fresh.id)
+      try {
+        const fresh = await stripe.payouts.retrieve(stored.stripe_payout_id)
+        listed.push(fresh)
+        listedIds.add(fresh.id)
+      } catch (e) {
+        // One unresolvable stored id (key rotation, account change, a row from
+        // a historical backfill) must NOT wedge the cron: nothing ever updates
+        // that row's status, so a throw here would fail every run forever.
+        warnings.push(`payout ${stored.stripe_payout_id}: retrieve failed — ${e instanceof Error ? e.message : String(e)}`)
+      }
     }
 
     listed.sort((a, b) => a.arrival_date - b.arrival_date) // oldest-first
     const morePending = listed.length > MAX_PAYOUTS_PER_RUN
     const batch = listed.slice(0, MAX_PAYOUTS_PER_RUN)
 
-    const payoutRows: NewBookkeepingPayout[] = []
-    const lineRowsByPayout = new Map<string, Array<Omit<NewBookkeepingPayoutLine, "payout_id">>>()
+    let upserted = 0
+    let upsertedLines = 0
     for (const p of batch) {
       const txns: Stripe.BalanceTransaction[] = await stripe.balanceTransactions
         .list({ payout: p.id, limit: 100 })
@@ -99,37 +109,47 @@ export async function POST(request: NextRequest) {
       const status: BookkeepingPayoutStatus = PAYOUT_STATUSES.includes(p.status)
         ? (p.status as BookkeepingPayoutStatus)
         : "pending"
-      payoutRows.push({
+      const payoutRow: NewBookkeepingPayout = {
         stripe_payout_id: p.id, book_id: book.id, amount_cents: p.amount,
         gross_cents: gross, fee_cents: fee,
         arrival_date: epochToIsoDate(p.arrival_date), status,
         currency: p.currency, raw: p as unknown as Record<string, unknown>,
-      })
-      lineRowsByPayout.set(p.id, lines.map((t) => ({
+      }
+      // Write ONE payout with its own lines before moving on. A two-phase batch
+      // write (all payouts, then all lines) would commit the payout rows —
+      // which ARE the watermark — while losing the whole batch's fee lines if
+      // the line write failed; those payouts are then terminal + stored, so
+      // neither the arrival-date window nor the eligibility arm ever re-lists
+      // them and the fees are gone for good. Oldest-first + per-payout means a
+      // mid-run failure leaves a consistent prefix, and the failing payout's
+      // own arrival_date becomes the watermark, so the 14-day overlap re-lists
+      // it on the next run. It also keeps a balance txn shared by two payouts
+      // (failed payout re-paid on a replacement) in SEPARATE upsert calls —
+      // one statement can only touch a conflict key once (Postgres 21000) —
+      // with the newer payout writing last, which is the correct attribution.
+      const [stored] = await upsertPayouts([payoutRow])
+      if (!stored) {
+        warnings.push(`payout ${p.id}: upsert returned no row — ${lines.length} line(s) dropped`)
+        continue
+      }
+      upserted += 1
+      const lineRows: NewBookkeepingPayoutLine[] = lines.map((t) => ({
+        payout_id: stored.id,
         stripe_balance_txn_id: t.id, type: t.type, amount_cents: t.amount,
         fee_cents: t.fee, net_cents: t.net, txn_date: epochToIsoDate(t.created),
         description: t.description ?? null,
         source_ref: typeof t.source === "string" ? t.source : (t.source?.id ?? null),
-      })))
+      }))
+      upsertedLines += await upsertPayoutLines(lineRows)
     }
-
-    const upserted = await upsertPayouts(payoutRows)
-    const idByStripeId = new Map(upserted.map((r) => [r.stripe_payout_id, r.id]))
-    const lineRows: NewBookkeepingPayoutLine[] = []
-    for (const [stripePayoutId, rows] of lineRowsByPayout) {
-      const payoutId = idByStripeId.get(stripePayoutId)
-      if (!payoutId) continue
-      for (const r of rows) lineRows.push({ ...r, payout_id: payoutId })
-    }
-    const upsertedLines = await upsertPayoutLines(lineRows)
 
     const detail = {
-      upserted: upserted.length, upserted_lines: upsertedLines,
+      upserted, upserted_lines: upsertedLines,
       listed: listed.length, more_pending: morePending,
       window_from: syncWindow.fromDate, window_to: syncWindow.to,
       warnings: warnings.slice(0, WARNINGS_CAP),
     }
-    if (upserted.length > 0) {
+    if (upserted > 0) {
       void recordAudit({
         action: "bookkeeping.payout_synced",
         category: "commerce",
