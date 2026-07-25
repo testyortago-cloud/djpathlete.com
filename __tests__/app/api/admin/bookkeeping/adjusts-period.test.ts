@@ -7,6 +7,7 @@ vi.mock("@/lib/db/bookkeeping", () => ({
   entryTotals: vi.fn(),
   createEntry: vi.fn(),
   getAccount: vi.fn(),
+  assertAccountInBook: vi.fn(),
 }))
 
 import { POST as ENTRIES_POST } from "@/app/api/admin/bookkeeping/entries/route"
