@@ -38,13 +38,22 @@ describe("listMessages", () => {
     fetchMock.mockResolvedValue(
       jsonResponse({ messages: [{ id: "m1", threadId: "t1" }], nextPageToken: "p2" }),
     )
-    const out = await listMessages("tok", { labelIds: ["L1"], pageToken: "abc" })
+    const out = await listMessages("tok", { labelIds: ["L1", "L2"], pageToken: "abc" })
     expect(out.messages).toEqual([{ id: "m1", threadId: "t1" }])
     expect(out.nextPageToken).toBe("p2")
     const url = fetchMock.mock.calls[0][0] as string
     expect(url).toContain("/messages?")
+    // append, not set — every label id must survive into the query string
     expect(url).toContain("labelIds=L1")
+    expect(url).toContain("labelIds=L2")
     expect(url).toContain("pageToken=abc")
+  })
+  it("defaults maxResults to 25 and passes q through", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ messages: [] }))
+    await listMessages("tok", { q: "has:attachment" })
+    const url = fetchMock.mock.calls[0][0] as string
+    expect(url).toContain("maxResults=25")
+    expect(url).toContain("q=has%3Aattachment")
   })
 })
 
@@ -59,10 +68,16 @@ describe("getMessage", () => {
       "https://gmail.googleapis.com/gmail/v1/users/me/messages/m1?format=full",
     )
   })
+  it("errors are distinguishable from the format=metadata fetch", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({}, false, 403))
+    // getMessageMetadata throws "Gmail getMessage failed: ..." — this one must not
+    // collide with it, or a cron_runs failure detail is ambiguous.
+    await expect(getMessage("tok", "m1")).rejects.toThrow(/getMessage\(full\) failed: HTTP 403/)
+  })
 })
 
 describe("getAttachment", () => {
-  it("decodes base64url (unpadded, -/_ alphabet) to the original bytes", async () => {
+  it("decodes Gmail's base64url payload to the original bytes", async () => {
     const bytes = Buffer.from([0xfb, 0xff, 0xef, 0x01, 0x3e])
     const b64url = bytes
       .toString("base64")
@@ -79,5 +94,23 @@ describe("getAttachment", () => {
   it("throws with status on a non-ok response", async () => {
     fetchMock.mockResolvedValue(jsonResponse({}, false, 404))
     await expect(getAttachment("tok", "m1", "att1")).rejects.toThrow(/getAttachment failed: HTTP 404/)
+  })
+
+  // The poller's idempotency key (external_ref 'gmail:<msgId>:<i>') is written the
+  // moment ingest runs, and later polls skip the whole message on a prefix hit. A
+  // 0-byte buffer would therefore burn the key on an empty document forever, so a
+  // 200 without usable bytes must fail the message loudly instead of degrading.
+  it("throws instead of returning an empty Buffer when data is absent", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ size: 34567 }))
+    await expect(getAttachment("tok", "m1", "att1")).rejects.toThrow(
+      /getAttachment returned no data for m1\/att1/,
+    )
+  })
+
+  it("throws when data is present but decodes to zero bytes", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ size: 0, data: "" }))
+    await expect(getAttachment("tok", "m1", "att1")).rejects.toThrow(
+      /getAttachment returned no data for m1\/att1/,
+    )
   })
 })

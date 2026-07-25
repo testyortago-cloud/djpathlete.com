@@ -246,7 +246,9 @@ export async function getMessage(accessToken: string, messageId: string): Promis
   const res = await gmailFetch(accessToken, `/messages/${encodeURIComponent(messageId)}?format=full`)
   if (!res.ok) {
     const text = await res.text().catch(() => "")
-    throw new Error(`Gmail getMessage failed: HTTP ${res.status} ${text}`)
+    // "(full)" keeps this distinguishable from getMessageMetadata's failure above
+    // when it lands in a cron_runs detail.
+    throw new Error(`Gmail getMessage(full) failed: HTTP ${res.status} ${text}`)
   }
   return (await res.json()) as GmailMessage
 }
@@ -269,7 +271,15 @@ export async function getAttachment(
   const data = json.data ?? ""
   const normalized = data.replace(/-/g, "+").replace(/_/g, "/")
   const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), "=")
-  return Buffer.from(padded, "base64")
+  const buf = Buffer.from(padded, "base64")
+  // Never degrade to 0 bytes: the poller writes its idempotency key (external_ref
+  // 'gmail:<messageId>:<i>') as soon as it ingests, and later polls skip the whole
+  // message on a prefix hit — an empty document would burn that key permanently.
+  // A 200 without usable bytes must fail the message loudly instead.
+  if (buf.length === 0) {
+    throw new Error(`Gmail getAttachment returned no data for ${messageId}/${attachmentId}`)
+  }
+  return buf
 }
 
 export async function modifyThreadLabels(
