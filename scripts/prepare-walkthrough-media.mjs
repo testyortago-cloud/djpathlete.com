@@ -58,10 +58,23 @@ async function main() {
       mp4,
     ])
     const { size } = fs.statSync(mp4)
-    console.log(`${(size / 1e6).toFixed(1)} MB`)
+
+    // Record the ENCODED duration. The recorder's wall-clock measurement
+    // overruns the actual media by ~0.1-0.2s (recording stops on context close,
+    // and the tail fraction does not survive encoding), which made the
+    // composition ask the compositor for a frame past the end of the clip:
+    // "No frame found at position ...". The edit clamps to this.
+    const { stdout } = await execFileP(ffmpegPath.replace(/ffmpeg(\.exe)?$/i, (m) => m.replace("ffmpeg", "ffprobe")), [
+      "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", mp4,
+    ]).catch(() => ({ stdout: "" }))
+    const mediaMs = Math.floor(parseFloat(String(stdout).trim() || "0") * 1000)
+    if (!mediaMs) throw new Error(`could not probe duration of ${key}.mp4`)
+    timeline[key].mediaMs = mediaMs
+
+    console.log(`${(size / 1e6).toFixed(1)} MB  (${(mediaMs / 1000).toFixed(1)}s)`)
   }
 
-  fs.copyFileSync(timelinePath, path.join(DEST, "timeline.json"))
+  fs.writeFileSync(path.join(DEST, "timeline.json"), JSON.stringify(timeline, null, 2))
   console.log(`\nstaged ${Object.keys(timeline).length} chapters -> ${DEST}`)
 }
 

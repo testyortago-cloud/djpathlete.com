@@ -30,8 +30,22 @@ export interface Chapter {
    * must be started this far in or every caption runs ahead of its footage.
    */
   leadInMs: number
+  /** Encoded length of the staged mp4, probed at prepare time. */
+  mediaMs?: number
   file: string
   beats: Beat[]
+}
+
+/**
+ * Frames a chapter can actually show. The recorder's wall-clock duration
+ * overruns the encoded media slightly, and asking the compositor for a frame
+ * past the end of a clip is a hard render failure, not a dropped frame.
+ */
+export function chapterFrames(c: Chapter): number {
+  const wanted = msToFrames(c.durationMs)
+  if (!c.mediaMs) return wanted
+  const available = msToFrames(c.mediaMs - c.leadInMs)
+  return Math.max(1, Math.min(wanted, available))
 }
 
 /** Playback order. Chapters missing from timeline.json are skipped, not faked. */
@@ -62,12 +76,12 @@ export function chapterStarts(): number[] {
   let acc = 0
   for (const c of CHAPTERS) {
     starts.push(acc)
-    acc += msToFrames(c.durationMs)
+    acc += chapterFrames(c)
   }
   return starts
 }
 
 export const TOTAL_FRAMES = Math.max(
   1,
-  CHAPTERS.reduce((a, c) => a + msToFrames(c.durationMs), 0),
+  CHAPTERS.reduce((a, c) => a + chapterFrames(c), 0),
 )

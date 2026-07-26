@@ -21,7 +21,8 @@
         "startMs": 21042,
         "endMs": 28282
       }
-    ]
+    ],
+    "mediaMs": 33033
   },
   "02-three-books": {
     "id": "02-three-books",
@@ -55,7 +56,8 @@
         "startMs": 33213,
         "endMs": 42990
       }
-    ]
+    ],
+    "mediaMs": 47033
   },
   "03-income": {
     "id": "03-income",
@@ -84,7 +86,8 @@
         "startMs": 24529,
         "endMs": 33286
       }
-    ]
+    ],
+    "mediaMs": 37633
   },
   "04-statements": {
     "id": "04-statements",
@@ -118,7 +121,8 @@
         "startMs": 34061,
         "endMs": 43616
       }
-    ]
+    ],
+    "mediaMs": 47933
   },
   "05-receipts": {
     "id": "05-receipts",
@@ -167,7 +171,8 @@
         "startMs": 59168,
         "endMs": 66024
       }
-    ]
+    ],
+    "mediaMs": 70366
   },
   "06-categories": {
     "id": "06-categories",
@@ -191,7 +196,8 @@
         "startMs": 19834,
         "endMs": 29328
       }
-    ]
+    ],
+    "mediaMs": 33833
   },
   "07-payouts": {
     "id": "07-payouts",
@@ -225,7 +231,8 @@
         "startMs": 34260,
         "endMs": 41890
       }
-    ]
+    ],
+    "mediaMs": 46200
   },
   "08-insights": {
     "id": "08-insights",
@@ -294,7 +301,8 @@
         "startMs": 98064,
         "endMs": 104543
       }
-    ]
+    ],
+    "mediaMs": 109066
   },
   "09-close": {
     "id": "09-close",
@@ -318,7 +326,8 @@
         "startMs": 16408,
         "endMs": 24045
       }
-    ]
+    ],
+    "mediaMs": 28233
   },
   "10-reports": {
     "id": "10-reports",
@@ -347,7 +356,8 @@
         "startMs": 27820,
         "endMs": 34619
       }
-    ]
+    ],
+    "mediaMs": 38800
   },
   "11-assets": {
     "id": "11-assets",
@@ -366,7 +376,8 @@
         "startMs": 7624,
         "endMs": 16737
       }
-    ]
+    ],
+    "mediaMs": 21000
   },
   "12-wrap": {
     "id": "12-wrap",
@@ -395,6 +406,7 @@
         "startMs": 25591,
         "endMs": 28195
       }
-    ]
+    ],
+    "mediaMs": 32466
   }
 }

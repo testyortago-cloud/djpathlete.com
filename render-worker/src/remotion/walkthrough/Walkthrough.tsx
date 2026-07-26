@@ -2,7 +2,7 @@ import React from "react"
 import { AbsoluteFill, OffthreadVideo, Sequence, staticFile } from "remotion"
 import { COLORS } from "../promo/theme.js"
 import { PromoBug } from "../promo/ui.js"
-import { CHAPTERS, chapterStarts, HEIGHT, msToFrames, TAKE_H, TAKE_W, WIDTH } from "./config.js"
+import { CHAPTERS, chapterFrames, chapterStarts, HEIGHT, msToFrames, TAKE_H, TAKE_W, WIDTH } from "./config.js"
 import { Caption } from "./Caption.js"
 import { ChapterTitle } from "./ChapterTitle.js"
 
@@ -13,7 +13,7 @@ const scale = HEIGHT / TAKE_H
 const videoW = Math.round(TAKE_W * scale)
 
 const ChapterClip: React.FC<{ index: number; chapter: (typeof CHAPTERS)[number] }> = ({ index, chapter }) => {
-  const chapterFrames = msToFrames(chapter.durationMs)
+  const frames = chapterFrames(chapter)
   return (
     <AbsoluteFill style={{ backgroundColor: COLORS.primaryDeep }}>
       <AbsoluteFill style={{ justifyContent: "center", alignItems: "center" }}>
@@ -29,7 +29,7 @@ const ChapterClip: React.FC<{ index: number; chapter: (typeof CHAPTERS)[number] 
 
       {chapter.beats.map((beat, i) => {
         const from = msToFrames(beat.startMs)
-        const to = Math.min(msToFrames(beat.endMs), chapterFrames)
+        const to = Math.min(msToFrames(beat.endMs), frames)
         const dur = Math.max(1, to - from)
         return (
           <Sequence key={i} from={from} durationInFrames={dur} name={`caption-${i}`}>
@@ -49,7 +49,7 @@ export const Walkthrough: React.FC = () => {
         <Sequence
           key={chapter.id}
           from={starts[i]}
-          durationInFrames={msToFrames(chapter.durationMs)}
+          durationInFrames={chapterFrames(chapter)}
           name={chapter.id}
         >
           <ChapterClip index={i + 1} chapter={chapter} />
