@@ -50,7 +50,9 @@ test.describe("Bookkeeping surfaces — authed click-through", () => {
 
   test("ledger loads and honours a deep-link filter (Track B)", async ({ page }) => {
     await page.goto("/admin/books")
-    await expect(page.getByRole("heading", { name: /books|ledger/i }).first()).toBeVisible()
+    // The page is titled "Accounting" — not "Books"/"Ledger", which is what this
+    // assertion originally guessed while the suite was skipping for want of creds.
+    await expect(page.getByRole("heading", { name: "Accounting", level: 1 })).toBeVisible()
     await page.screenshot({ path: "test-results/bookkeeping/01-ledger.png", fullPage: true })
 
     // Deep-link hydration: the uncategorized sentinel must survive into the
@@ -59,8 +61,12 @@ test.describe("Bookkeeping surfaces — authed click-through", () => {
     // sentinel would still produce a perfectly innocent screenshot.
     await page.goto("/admin/books?direction=expense&account_id=none")
     await page.waitForLoadState("networkidle")
-    await expect(page.getByLabel("Category")).toHaveValue("none")
-    await expect(page.getByRole("button", { name: /show expense entries only/i })).toHaveAttribute(
+    // exact: true — every ledger row's dropdown is labelled "Category for <memo>",
+    // so a loose match resolves to dozens of elements.
+    await expect(page.getByLabel("Category", { exact: true })).toHaveValue("none")
+    // The stat tile's accessible name comes from its content ("Expenses", the
+    // amount), not its title attribute — match the title directly instead.
+    await expect(page.locator('button[title="Show expense entries only"]')).toHaveAttribute(
       "aria-pressed",
       "true",
     )
