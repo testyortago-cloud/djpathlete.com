@@ -19,6 +19,8 @@ const ChapterClip: React.FC<{ index: number; chapter: (typeof CHAPTERS)[number] 
       <AbsoluteFill style={{ justifyContent: "center", alignItems: "center" }}>
         <OffthreadVideo
           src={staticFile(`walkthrough/${chapter.file.replace(/\.webm$/, ".mp4")}`)}
+          // Skip the pre-login lead-in; beat timings start after sign-in.
+          trimBefore={msToFrames(chapter.leadInMs ?? 0)}
           style={{ width: videoW, height: HEIGHT }}
         />
       </AbsoluteFill>

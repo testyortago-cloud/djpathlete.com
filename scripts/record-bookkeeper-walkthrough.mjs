@@ -114,6 +114,10 @@ async function main() {
       fs.rmSync(dir, { recursive: true, force: true })
       fs.mkdirSync(dir, { recursive: true })
 
+      // Playwright starts recording at context creation, which is BEFORE login.
+      // Measure that lead-in so the edit can skip it; otherwise every caption
+      // sits ahead of its footage by however long signing in took.
+      const contextStart = Date.now()
       const context = await browser.newContext({
         viewport: VIEWPORT,
         recordVideo: { dir, size: VIEWPORT }, // MUST equal viewport
@@ -129,6 +133,7 @@ async function main() {
       await wait(page, 900)
 
       const t0 = Date.now()
+      const leadInMs = t0 - contextStart
       const beats = []
       for (const b of ch.beats) {
         const startMs = Date.now() - t0
@@ -147,9 +152,9 @@ async function main() {
       }
       fs.rmSync(dir, { recursive: true, force: true })
 
-      timeline[ch.id] = { id: ch.id, title: ch.title, durationMs, file: `${ch.id}.webm`, beats }
+      timeline[ch.id] = { id: ch.id, title: ch.title, durationMs, leadInMs, file: `${ch.id}.webm`, beats }
       fs.writeFileSync(timelinePath, JSON.stringify(timeline, null, 2))
-      console.log(`${(durationMs / 1000).toFixed(1)}s  (${beats.length} beats)`)
+      console.log(`${(durationMs / 1000).toFixed(1)}s  (${beats.length} beats, lead-in ${(leadInMs / 1000).toFixed(1)}s)`)
     }
   } finally {
     await browser.close()

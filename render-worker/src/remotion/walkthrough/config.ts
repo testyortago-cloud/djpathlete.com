@@ -24,6 +24,12 @@ export interface Chapter {
   id: string
   title: string
   durationMs: number
+  /**
+   * Playwright starts recording at context creation, i.e. BEFORE the login the
+   * recorder performs. Beat timings are measured from AFTER login, so the clip
+   * must be started this far in or every caption runs ahead of its footage.
+   */
+  leadInMs: number
   file: string
   beats: Beat[]
 }
