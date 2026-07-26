@@ -12,6 +12,16 @@ import {
   TOTAL_FRAMES as PROMO_FRAMES,
   WIDTH as PROMO_WIDTH,
 } from "./promo/theme.js"
+import { ClientPromo } from "./client-promo/ClientPromo.js"
+import {
+  FPS as CLIENT_FPS,
+  TOTAL_FRAMES as CLIENT_FRAMES,
+} from "./client-promo/config.js"
+import { Walkthrough } from "./walkthrough/Walkthrough.js"
+import {
+  FPS as WALKTHROUGH_FPS,
+  TOTAL_FRAMES as WALKTHROUGH_FRAMES,
+} from "./walkthrough/config.js"
 
 const FPS = 30
 const WIDTH = 1080
@@ -113,6 +123,38 @@ export function RemotionRoot() {
         width={PROMO_WIDTH}
         height={PROMO_HEIGHT}
         defaultProps={PROMO_SAMPLE}
+      />
+      {/* Client-app promo. Same take, two shapes: 9:16 for social, 16:9 for the
+          site. Marketing only -- the Cloud Run job renders by composition id and
+          never invokes these. */}
+      <Composition
+        id="ClientPromoVertical"
+        component={ClientPromo}
+        durationInFrames={CLIENT_FRAMES}
+        fps={CLIENT_FPS}
+        width={1080}
+        height={1920}
+        defaultProps={{ orientation: "vertical" as const }}
+      />
+      <Composition
+        id="ClientPromoWide"
+        component={ClientPromo}
+        durationInFrames={CLIENT_FRAMES}
+        fps={CLIENT_FPS}
+        width={1920}
+        height={1080}
+        defaultProps={{ orientation: "wide" as const }}
+      />
+      {/* Long-form captioned product walkthrough. Duration and caption timings
+          come from the recorder's measured timeline.json, so re-recording a
+          chapter reshapes this composition without touching code. */}
+      <Composition
+        id="BookkeeperWalkthrough"
+        component={Walkthrough}
+        durationInFrames={WALKTHROUGH_FRAMES}
+        fps={WALKTHROUGH_FPS}
+        width={1920}
+        height={1080}
       />
     </>
   )

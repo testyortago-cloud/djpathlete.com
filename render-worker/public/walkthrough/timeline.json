@@ -1,0 +1,388 @@
+{
+  "01-problem": {
+    "id": "01-problem",
+    "title": "The problem",
+    "durationMs": 28270,
+    "file": "01-problem.webm",
+    "beats": [
+      {
+        "text": "Every coaching business runs on money it barely tracks. Card receipts in a glovebox, Stripe payouts in one tab, a bank statement nobody opens until April.",
+        "startMs": 0,
+        "endMs": 10708
+      },
+      {
+        "text": "This is the AI Bookkeeper. It turns all of that into one ledger you can hand to an accountant — without you doing data entry.",
+        "startMs": 10708,
+        "endMs": 21024
+      },
+      {
+        "text": "Everything you're about to see is real software running on real data. Nothing here is a mockup.",
+        "startMs": 21024,
+        "endMs": 28270
+      }
+    ]
+  },
+  "02-three-books": {
+    "id": "02-three-books",
+    "title": "The three books",
+    "durationMs": 42735,
+    "file": "02-three-books.webm",
+    "beats": [
+      {
+        "text": "Start with the ledger. Income on the left, expenses in the middle, and what's actually yours on the right.",
+        "startMs": 0,
+        "endMs": 8013
+      },
+      {
+        "text": "There are three separate books. Keeping business and household money apart is the single thing accountants ask for most.",
+        "startMs": 8013,
+        "endMs": 16029
+      },
+      {
+        "text": "This is the spouse's business — its own books, its own totals, never mixed in.",
+        "startMs": 16029,
+        "endMs": 24219
+      },
+      {
+        "text": "And the household book. Personal spending lives here, which matters later when we calculate a home-office deduction.",
+        "startMs": 24219,
+        "endMs": 33117
+      },
+      {
+        "text": "Back to the main business book. Every number you'll see from here is scoped to whichever book is selected.",
+        "startMs": 33117,
+        "endMs": 42735
+      }
+    ]
+  },
+  "03-income": {
+    "id": "03-income",
+    "title": "Income, automatically",
+    "durationMs": 33062,
+    "file": "03-income.webm",
+    "beats": [
+      {
+        "text": "Income is the easy half, because the platform already knows about it — session packs, camps, memberships, shop orders.",
+        "startMs": 0,
+        "endMs": 8019
+      },
+      {
+        "text": "Import platform income pulls straight from the money-of-record tables and drafts ledger entries for review.",
+        "startMs": 8019,
+        "endMs": 16305
+      },
+      {
+        "text": "It matches each payment to the right service line, so revenue is categorised before you ever look at it.",
+        "startMs": 16305,
+        "endMs": 24325
+      },
+      {
+        "text": "And a nightly job runs this automatically at 4:30 UTC — so new payments post themselves while you sleep.",
+        "startMs": 24325,
+        "endMs": 33062
+      }
+    ]
+  },
+  "04-statements": {
+    "id": "04-statements",
+    "title": "Bank statements",
+    "durationMs": 43398,
+    "file": "04-statements.webm",
+    "beats": [
+      {
+        "text": "Expenses are the hard half. This is where most bookkeeping tools ask you to type. This one doesn't.",
+        "startMs": 0,
+        "endMs": 7633
+      },
+      {
+        "text": "Upload a bank or card statement — CSV or PDF — and the AI reads every row.",
+        "startMs": 7633,
+        "endMs": 16712
+      },
+      {
+        "text": "It proposes a category for each line, flags internal transfers so they never hit your profit and loss, and catches duplicates.",
+        "startMs": 16712,
+        "endMs": 25496
+      },
+      {
+        "text": "Crucially it never posts anything silently. You review, you uncheck what's wrong, and only then does it commit.",
+        "startMs": 25496,
+        "endMs": 33844
+      },
+      {
+        "text": "Here are the rows that came in from statements — tagged at the source, so you always know where a number came from.",
+        "startMs": 33844,
+        "endMs": 43398
+      }
+    ]
+  },
+  "05-receipts": {
+    "id": "05-receipts",
+    "title": "Receipts, four ways",
+    "durationMs": 66257,
+    "file": "05-receipts.webm",
+    "beats": [
+      {
+        "text": "A statement tells you money left. A receipt proves what it bought. The IRS cares about the difference.",
+        "startMs": 0,
+        "endMs": 7625
+      },
+      {
+        "text": "Paid cash? Two taps. Amount, category, done — no photo required.",
+        "startMs": 7625,
+        "endMs": 14380
+      },
+      {
+        "text": "Got a paper receipt? Photograph it. Vision AI reads the vendor, the date and the total, then drops it into a review queue.",
+        "startMs": 14380,
+        "endMs": 26545
+      },
+      {
+        "text": "You can shoot up to fifteen at once — a whole shoebox in a single pass.",
+        "startMs": 26545,
+        "endMs": 34149
+      },
+      {
+        "text": "Amazon is its own special misery, so it gets its own importer that reads the order CSV directly.",
+        "startMs": 34149,
+        "endMs": 43553
+      },
+      {
+        "text": "And the fourth way needs no app at all.",
+        "startMs": 43553,
+        "endMs": 48461
+      },
+      {
+        "text": "Label a receipt email in Gmail, and an hourly job collects the attachment, scans it, and queues it here.",
+        "startMs": 48461,
+        "endMs": 59394
+      },
+      {
+        "text": "It's read-only against your inbox — it never marks mail read, never moves anything, never deletes.",
+        "startMs": 59394,
+        "endMs": 66257
+      }
+    ]
+  },
+  "06-categories": {
+    "id": "06-categories",
+    "title": "Categories & business purpose",
+    "durationMs": 29326,
+    "file": "06-categories.webm",
+    "beats": [
+      {
+        "text": "Categories are your chart of accounts. Each one carries a tax category, so the report at the end is already in your accountant's language.",
+        "startMs": 0,
+        "endMs": 9938
+      },
+      {
+        "text": "Some categories demand more. Meals, travel and vehicle require a stated business purpose — because those are the deductions that get challenged.",
+        "startMs": 9938,
+        "endMs": 19842
+      },
+      {
+        "text": "Write down why a lunch was a business lunch at the time, and you'll still have the answer eighteen months later.",
+        "startMs": 19842,
+        "endMs": 29326
+      }
+    ]
+  },
+  "07-payouts": {
+    "id": "07-payouts",
+    "title": "Stripe payouts & net revenue",
+    "durationMs": 41864,
+    "file": "07-payouts.webm",
+    "beats": [
+      {
+        "text": "Now the part almost every coaching business gets wrong: the difference between what clients paid and what actually landed.",
+        "startMs": 0,
+        "endMs": 8011
+      },
+      {
+        "text": "Stripe takes a fee on every charge. Your gross income and your real income are not the same number.",
+        "startMs": 8011,
+        "endMs": 16734
+      },
+      {
+        "text": "A daily job pulls every payout and its underlying transactions, so fees are read from Stripe rather than estimated.",
+        "startMs": 16734,
+        "endMs": 24748
+      },
+      {
+        "text": "Gross stays the headline — that's what your accountant files on. Underneath it, the fees, and the net you actually received.",
+        "startMs": 24748,
+        "endMs": 34239
+      },
+      {
+        "text": "If a payout hasn't been ingested yet, this line says so plainly instead of quietly showing zero fees.",
+        "startMs": 34239,
+        "endMs": 41864
+      }
+    ]
+  },
+  "08-insights": {
+    "id": "08-insights",
+    "title": "Insights",
+    "durationMs": 104451,
+    "file": "08-insights.webm",
+    "beats": [
+      {
+        "text": "This is where it stops being a ledger and starts being a bookkeeper.",
+        "startMs": 0,
+        "endMs": 5707
+      },
+      {
+        "text": "Every finding here is a candidate for your accountant to confirm — never a filed decision. That distinction is deliberate.",
+        "startMs": 5707,
+        "endMs": 14821
+      },
+      {
+        "text": "The deduction watchlist totals what you've spent in each deductible category, with the vendors behind it.",
+        "startMs": 14821,
+        "endMs": 22394
+      },
+      {
+        "text": "Substantiation gaps are the dangerous ones: money spent in a category that legally needs a stated purpose, with no purpose written down.",
+        "startMs": 22394,
+        "endMs": 32270
+      },
+      {
+        "text": "Uncategorized expenses can't be matched to a deduction at all. Until you categorise them, they're invisible money.",
+        "startMs": 32270,
+        "endMs": 40223
+      },
+      {
+        "text": "Profit by service line shows which part of the business actually makes money — camps versus team work versus one-to-one training.",
+        "startMs": 40223,
+        "endMs": 49717
+      },
+      {
+        "text": "Costs that don't belong to one line sit in a shared bucket. Turn on allocation and they're split by each line's share of revenue.",
+        "startMs": 49717,
+        "endMs": 61927
+      },
+      {
+        "text": "The vendor sweep finds recurring charges. These two are both video tools on the same category — flagged as a possible overlap you're paying twice for.",
+        "startMs": 61927,
+        "endMs": 73343
+      },
+      {
+        "text": "Missing receipts and purposes is the pre-audit checklist: every entry that would be hard to defend, listed in one place.",
+        "startMs": 73343,
+        "endMs": 82458
+      },
+      {
+        "text": "A rolling tax forecast estimates what to set aside, using your own rate.",
+        "startMs": 82458,
+        "endMs": 88876
+      },
+      {
+        "text": "And home-office allocation reads your household rent and utilities, then proposes a business share — a proposal, not a filing.",
+        "startMs": 88876,
+        "endMs": 97980
+      },
+      {
+        "text": "Anything you disagree with, dismiss. It stays dismissed even as the numbers underneath keep changing.",
+        "startMs": 97980,
+        "endMs": 104451
+      }
+    ]
+  },
+  "09-close": {
+    "id": "09-close",
+    "title": "Monthly close",
+    "durationMs": 24089,
+    "file": "09-close.webm",
+    "beats": [
+      {
+        "text": "When a month is done, close it. That freezes its totals — no edits, no imports, no accidental changes to a number you've already reported.",
+        "startMs": 0,
+        "endMs": 10318
+      },
+      {
+        "text": "Closed months show here with the option to reopen if something genuinely needs correcting.",
+        "startMs": 10318,
+        "endMs": 16411
+      },
+      {
+        "text": "It's record-keeping, not filing. Your accountant still files — this just means the ground stops moving under them.",
+        "startMs": 16411,
+        "endMs": 24089
+      }
+    ]
+  },
+  "10-reports": {
+    "id": "10-reports",
+    "title": "Reports & the accountant pack",
+    "durationMs": 34281,
+    "file": "10-reports.webm",
+    "beats": [
+      {
+        "text": "At the end of the quarter, everything comes out in the formats an accountant actually wants.",
+        "startMs": 0,
+        "endMs": 6861
+      },
+      {
+        "text": "A QuickBooks-ready CSV. A full Excel pack with profit and loss, income by service line, depreciation, and a document index.",
+        "startMs": 6861,
+        "endMs": 15259
+      },
+      {
+        "text": "Or a print view for a PDF. And the pack can be emailed to your accountant automatically, every quarter, without you remembering.",
+        "startMs": 15259,
+        "endMs": 27478
+      },
+      {
+        "text": "Same numbers as the screen, laid out for someone who's never seen this software.",
+        "startMs": 27478,
+        "endMs": 34281
+      }
+    ]
+  },
+  "11-assets": {
+    "id": "11-assets",
+    "title": "Assets & depreciation",
+    "durationMs": 16744,
+    "file": "11-assets.webm",
+    "beats": [
+      {
+        "text": "Big purchases aren't expenses — they're assets that depreciate over years. Force plates, camera rigs, a turf build-out.",
+        "startMs": 0,
+        "endMs": 7637
+      },
+      {
+        "text": "Record it once with its in-service date and useful life, and the depreciation schedule writes itself into the accountant pack.",
+        "startMs": 7637,
+        "endMs": 16744
+      }
+    ]
+  },
+  "12-wrap": {
+    "id": "12-wrap",
+    "title": "Automation & wrap",
+    "durationMs": 28220,
+    "file": "12-wrap.webm",
+    "beats": [
+      {
+        "text": "Most of this runs without you. Income posts nightly. Receipts arrive hourly from your inbox. Payouts and fees sync daily.",
+        "startMs": 0,
+        "endMs": 8413
+      },
+      {
+        "text": "A watchdog emails you if a receipt is missing for too long, and the quarterly pack goes to your accountant on schedule.",
+        "startMs": 8413,
+        "endMs": 17584
+      },
+      {
+        "text": "What's left for you is the judgement: categorise what's ambiguous, write down why, and confirm what the AI proposes.",
+        "startMs": 17584,
+        "endMs": 25609
+      },
+      {
+        "text": "That's the AI Bookkeeper.",
+        "startMs": 25609,
+        "endMs": 28220
+      }
+    ]
+  }
+}
