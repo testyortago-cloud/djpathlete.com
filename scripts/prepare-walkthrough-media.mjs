@@ -51,9 +51,16 @@ async function main() {
       "-preset", "medium",
       "-crf", "20",
       "-pix_fmt", "yuv420p",
-      // Playwright's webm can carry a variable frame rate; pin it so Remotion's
-      // frame math and the measured beat timings stay in agreement.
+      // Playwright writes VARIABLE-frame-rate webm. "-r 30" alone does not make
+      // the result reliably seekable — Remotion's compositor then fails with
+      // "No frame found at position ..." partway through a clip. Force true CFR
+      // and put a keyframe every second so any seek lands on one.
+      "-fps_mode", "cfr",
       "-r", "30",
+      "-g", "30",
+      "-keyint_min", "30",
+      "-sc_threshold", "0",
+      "-movflags", "+faststart",
       "-an",
       mp4,
     ])
