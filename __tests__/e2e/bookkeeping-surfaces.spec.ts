@@ -39,6 +39,10 @@ test.describe("Bookkeeping routes — auth gate (no credentials needed)", () => 
 
 test.describe("Bookkeeping surfaces — authed click-through", () => {
   test.skip(!adminEmail || !adminPassword, "Admin test credentials not set (ADMIN_TEST_EMAIL / ADMIN_TEST_PASSWORD)")
+  // Serial: playwright.config sets fullyParallel, and six concurrent credential
+  // logins against one dev server make NextAuth fail the sign-in — every authed
+  // test then dies in beforeEach. Verified: 6 failed in parallel, 12/12 serial.
+  test.describe.configure({ mode: "serial" })
 
   test.beforeEach(async ({ page }) => {
     await page.goto("/login")
@@ -61,9 +65,11 @@ test.describe("Bookkeeping surfaces — authed click-through", () => {
     // sentinel would still produce a perfectly innocent screenshot.
     await page.goto("/admin/books?direction=expense&account_id=none")
     await page.waitForLoadState("networkidle")
-    // exact: true — every ledger row's dropdown is labelled "Category for <memo>",
-    // so a loose match resolves to dozens of elements.
-    await expect(page.getByLabel("Category", { exact: true })).toHaveValue("none")
+    // Target the filter <select> structurally. getByLabel is unusable here: the
+    // <label> WRAPS the select, so its text is "Category" plus every option's
+    // text ("All categories", "Uncategorized", …) — exact:true matches nothing,
+    // and a loose "Category" also matches each row's "Category for <memo>".
+    await expect(page.locator('label:has(> span:text-is("Category")) > select')).toHaveValue("none")
     // The stat tile's accessible name comes from its content ("Expenses", the
     // amount), not its title attribute — match the title directly instead.
     await expect(page.locator('button[title="Show expense entries only"]')).toHaveAttribute(
