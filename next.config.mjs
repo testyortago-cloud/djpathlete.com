@@ -117,7 +117,13 @@ const nextConfig = {
       // this the preview falls back to a system font and drifts from the render.
       "font-src 'self' data: https://fonts.gstatic.com",
       "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.google-analytics.com https://www.googletagmanager.com https://www.google.com https://*.googleadservices.com https://stats.g.doubleclick.net https://api.stripe.com https://storage.googleapis.com https://*.firebasestorage.app https://firebasestorage.googleapis.com https://firestore.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.firebasedatabase.app wss://*.firebasedatabase.app https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firebaseinstallations.googleapis.com",
-      "frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://www.youtube.com https://www.youtube-nocookie.com",
+      // storage.googleapis.com: the bookkeeping receipt reviewer frames the
+      // SIGNED private-bucket URL for PDF receipts so the browser's native
+      // viewer renders the invoice next to the editable fields
+      // (ReceiptRowEditor). Without it the iframe is CSP-blocked in production
+      // and only the "Open in new tab" fallback works — and no test catches it,
+      // because jsdom does not enforce CSP.
+      "frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://www.youtube.com https://www.youtube-nocookie.com https://storage.googleapis.com",
       // data:: @remotion/player primes audio playback with a tiny silent
       // data:audio/mp3 URI (the reel-editor preview's Audio/Video layers); without
       // data: the browser blocks it and audio preview is silent.
