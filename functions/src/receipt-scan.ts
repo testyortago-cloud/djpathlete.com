@@ -213,8 +213,13 @@ export async function handleReceiptScan(jobId: string): Promise<void> {
       return
     }
 
-    const bucketName = process.env.FIREBASE_PRIVATE_BUCKET
-    if (!bucketName) throw new Error("FIREBASE_PRIVATE_BUCKET not set")
+    // FIREBASE_PRIVATE_BUCKET is the Next.js/Vercel name for this bucket, but
+    // it has never been reachable here: it is not a defineSecret param and
+    // Firebase rejects FIREBASE_-prefixed keys in functions/.env, so every scan
+    // threw before reaching the download. The deployed value now arrives as
+    // PRIVATE_STORAGE_BUCKET from functions/.env.<projectId>.
+    const bucketName = process.env.FIREBASE_PRIVATE_BUCKET || process.env.PRIVATE_STORAGE_BUCKET
+    if (!bucketName) throw new Error("PRIVATE_STORAGE_BUCKET not set")
     const [buffer] = await getStorage().bucket(bucketName).file(input.storagePath).download()
     const payload = await buildReceiptVisionPayload(buffer, input.mimeType ?? "")
 

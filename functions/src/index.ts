@@ -1890,9 +1890,11 @@ export const bookkeepingRetentionCron = onSchedule(
       return
     }
 
-    const bucketName = process.env.FIREBASE_PRIVATE_BUCKET
+    // See receipt-scan.ts — the deployed value arrives as
+    // PRIVATE_STORAGE_BUCKET from functions/.env.<projectId>.
+    const bucketName = process.env.FIREBASE_PRIVATE_BUCKET || process.env.PRIVATE_STORAGE_BUCKET
     if (!bucketName) {
-      console.warn("[bookkeepingRetentionCron] FIREBASE_PRIVATE_BUCKET not set, skipping")
+      console.warn("[bookkeepingRetentionCron] PRIVATE_STORAGE_BUCKET not set, skipping")
       return
     }
     const bucket = getStorage().bucket(bucketName)
