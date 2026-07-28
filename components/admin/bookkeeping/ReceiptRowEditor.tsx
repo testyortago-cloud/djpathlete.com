@@ -5,7 +5,7 @@
 // signed-URL preview). Field ids are suffixed with clientId so several
 // expanded rows never collide.
 import { useEffect, useState } from "react"
-import { AlertTriangle, Loader2 } from "lucide-react"
+import { AlertTriangle, FileText, Loader2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -57,7 +57,11 @@ export function ReceiptRowEditor({ row, accounts, disabled, onEdit, onPreviewLoa
   const purposeRequired = selectedAccount ? accountRequiresBusinessPurpose(selectedAccount) : false
   const purposeMissing = selectedAccount ? businessPurposeMissing(selectedAccount, row.businessPurpose) : false
   const result = row.result
-  const imageSrc = row.previewUrl ?? row.thumbUrl
+  const imageSrc = row.isPdf ? null : (row.previewUrl ?? row.thumbUrl)
+  // Only the signed URL is framed. A blob object URL is not reliably
+  // renderable in an iframe, and the GCS object carries contentType
+  // application/pdf, so the browser's native viewer handles the signed one.
+  const pdfSrc = row.isPdf ? row.previewUrl : null
 
   return (
     <div className="space-y-4 pt-3">
@@ -88,16 +92,41 @@ export function ReceiptRowEditor({ row, accounts, disabled, onEdit, onPreviewLoa
         </div>
       )}
 
-      <div className="rounded-lg border border-border bg-muted/30 overflow-hidden flex items-center justify-center min-h-32">
-        {previewLoading ? (
-          <Loader2 className="size-5 text-muted-foreground animate-spin my-8" />
-        ) : imageSrc ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={imageSrc} alt="Receipt" className="max-h-80 w-full object-contain" />
-        ) : (
-          <p className="text-xs text-muted-foreground py-8">Preview unavailable</p>
-        )}
-      </div>
+      {pdfSrc ? (
+        <div className="space-y-1.5">
+          <iframe
+            src={pdfSrc}
+            title={`Receipt PDF — ${row.fileName}`}
+            className="w-full h-80 rounded-lg border border-border bg-muted/30"
+          />
+          {/* Fallback for a browser that refuses to frame the signed URL. */}
+          <a
+            href={pdfSrc}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-primary underline underline-offset-2"
+          >
+            <FileText className="size-3" />
+            Open in new tab
+          </a>
+        </div>
+      ) : (
+        <div className="rounded-lg border border-border bg-muted/30 overflow-hidden flex items-center justify-center min-h-32">
+          {previewLoading ? (
+            <Loader2 className="size-5 text-muted-foreground animate-spin my-8" />
+          ) : imageSrc ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={imageSrc} alt="Receipt" className="max-h-80 w-full object-contain" />
+          ) : row.isPdf ? (
+            <p className="flex items-center gap-2 text-xs text-muted-foreground py-8">
+              <FileText className="size-4" />
+              {row.fileName}
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground py-8">Preview unavailable</p>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-2">

@@ -37,6 +37,81 @@ beforeEach(() => {
   vi.stubGlobal("fetch", fetchMock)
 })
 
+describe("ReceiptRowEditor PDF preview", () => {
+  it("renders a PDF in an iframe, not an img, with an open-in-new-tab fallback", () => {
+    render(
+      <ReceiptRowEditor
+        row={row({ isPdf: true, fileName: "invoice.pdf", previewUrl: "https://signed/doc.pdf" })}
+        accounts={accounts}
+        disabled={false}
+        onEdit={() => {}}
+        onPreviewLoaded={() => {}}
+      />,
+    )
+    expect(document.querySelector('iframe[src="https://signed/doc.pdf"]')).not.toBeNull()
+    expect(document.querySelector('img[src="https://signed/doc.pdf"]')).toBeNull()
+    expect(screen.getByRole("link", { name: /open in new tab/i })).toHaveAttribute(
+      "href",
+      "https://signed/doc.pdf",
+    )
+  })
+
+  it("never frames a blob thumbUrl while the signed URL is still loading", () => {
+    // previewUrl null means the lazy signed-URL fetch fires; leave it pending
+    // so this asserts the state BEFORE the signed URL arrives.
+    fetchMock.mockReturnValue(new Promise(() => {}))
+    render(
+      <ReceiptRowEditor
+        row={row({ isPdf: true, fileName: "invoice.pdf", previewUrl: null, thumbUrl: "blob:mock" })}
+        accounts={accounts}
+        disabled={false}
+        onEdit={() => {}}
+        onPreviewLoaded={() => {}}
+      />,
+    )
+    expect(document.querySelector("iframe")).toBeNull()
+    // The blob URL must never reach an <img> either — a PDF there is a
+    // broken-image box, which is the bug this whole branch exists to avoid.
+    expect(document.querySelector('img[src="blob:mock"]')).toBeNull()
+  })
+
+  it("falls back to the filename when a PDF has no signed URL to frame", () => {
+    // documentId null → no fetch, so previewLoading stays false.
+    render(
+      <ReceiptRowEditor
+        row={row({
+          isPdf: true,
+          fileName: "invoice.pdf",
+          documentId: null,
+          previewUrl: null,
+          thumbUrl: "blob:mock",
+        })}
+        accounts={accounts}
+        disabled={false}
+        onEdit={() => {}}
+        onPreviewLoaded={() => {}}
+      />,
+    )
+    expect(document.querySelector("iframe")).toBeNull()
+    expect(document.querySelector('img[src="blob:mock"]')).toBeNull()
+    expect(screen.getByText("invoice.pdf")).toBeInTheDocument()
+  })
+
+  it("still renders an img for a photo row", () => {
+    render(
+      <ReceiptRowEditor
+        row={row({ isPdf: false, previewUrl: "https://signed/img" })}
+        accounts={accounts}
+        disabled={false}
+        onEdit={() => {}}
+        onPreviewLoaded={() => {}}
+      />,
+    )
+    expect(document.querySelector('img[src="https://signed/img"]')).not.toBeNull()
+    expect(document.querySelector("iframe")).toBeNull()
+  })
+})
+
 describe("ReceiptRowEditor", () => {
   it("fetches the signed preview once on mount and reports it up", async () => {
     fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ url: "https://signed/img" }) })

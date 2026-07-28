@@ -9,6 +9,7 @@ import {
   ChevronDown,
   ChevronUp,
   Copy,
+  FileText,
   Loader2,
   XCircle,
 } from "lucide-react"
@@ -123,7 +124,10 @@ export function ReceiptBatchReview({
                   aria-label={`Include ${row.fileName}`}
                 />
                 <div className="size-10 rounded-md border border-border bg-muted/30 overflow-hidden flex items-center justify-center shrink-0">
-                  {row.thumbUrl ? (
+                  {row.isPdf ? (
+                    // A blob URL of a PDF in an <img> is a broken-image box.
+                    <FileText className="size-4 text-muted-foreground" aria-label="PDF" />
+                  ) : row.thumbUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={row.thumbUrl} alt="" className="size-full object-cover" />
                   ) : (

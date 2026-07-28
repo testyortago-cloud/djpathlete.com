@@ -44,6 +44,22 @@ function renderReview(rows: ReceiptBatchRow[], over: Partial<Parameters<typeof R
   return { ...render(<ReceiptBatchReview {...props} />), props }
 }
 
+describe("ReceiptBatchReview PDF rows", () => {
+  it("shows a file tile instead of a broken image for a PDF row", () => {
+    renderReview([
+      row({ clientId: "p1", fileName: "invoice.pdf", isPdf: true, thumbUrl: "blob:mock" }),
+    ])
+    // A blob URL of a PDF in an <img> renders as a broken-image box.
+    expect(document.querySelector('img[src="blob:mock"]')).toBeNull()
+    expect(screen.getByLabelText("PDF")).toBeInTheDocument()
+  })
+
+  it("still renders the thumbnail for an image row", () => {
+    renderReview([row({ clientId: "i1", fileName: "r.jpg", isPdf: false, thumbUrl: "blob:mock" })])
+    expect(document.querySelector('img[src="blob:mock"]')).not.toBeNull()
+  })
+})
+
 describe("ReceiptBatchReview", () => {
   it("summarizes count, ticked total, date range, and dupe count in the header", () => {
     renderReview([
