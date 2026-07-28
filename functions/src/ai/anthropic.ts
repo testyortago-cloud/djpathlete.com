@@ -136,15 +136,26 @@ function isTransientError(error: unknown): boolean {
  * is set (and no images), returns the prior `[cachedPrefix, text]` block array.
  * When `images` is present, image blocks are prepended, ahead of an optional
  * cached-prefix text block, ahead of the final user-message text block.
+ * `documents` (base64 PDFs) lead the whole array when present.
  */
 export function buildUserContent(
   userMessage: string,
   cachedUserPrefix: string | undefined,
   images: Array<{ media_type: string; data: string }> | undefined,
+  documents?: Array<{ media_type: string; data: string }>,
 ): Anthropic.Messages.ContentBlockParam[] | string {
   const hasImages = !!images && images.length > 0
-  if (!hasImages && !cachedUserPrefix) return userMessage
+  const hasDocuments = !!documents && documents.length > 0
+  if (!hasImages && !hasDocuments && !cachedUserPrefix) return userMessage
   const blocks: Anthropic.Messages.ContentBlockParam[] = []
+  if (hasDocuments) {
+    for (const doc of documents!) {
+      blocks.push({
+        type: "document",
+        source: { type: "base64", media_type: doc.media_type as "application/pdf", data: doc.data },
+      })
+    }
+  }
   if (hasImages) {
     for (const img of images!) {
       blocks.push({
@@ -182,6 +193,13 @@ function callAgentWithModel<T>(
      */
     images?: Array<{ media_type: string; data: string }>
     /**
+     * Optional base64 document blocks (currently application/pdf — receipt
+     * invoices). Claude reads a PDF's text layer AND its page images, which is
+     * why the receipt path sends PDFs here instead of rasterizing them before
+     * sharp. Sent ahead of images, the cached prefix, and the user message.
+     */
+    documents?: Array<{ media_type: string; data: string }>
+    /**
      * Aborts in-flight requests when the caller's wall-clock budget is spent.
      * See lib/deadline.ts — an abort is never retried and never falls back.
      */
@@ -208,7 +226,12 @@ function callAgentWithModel<T>(
       let cache_creation_tokens = 0
       let cache_read_tokens = 0
 
-      const userContent = buildUserContent(userMessage, options?.cachedUserPrefix, options?.images)
+      const userContent = buildUserContent(
+        userMessage,
+        options?.cachedUserPrefix,
+        options?.images,
+        options?.documents,
+      )
 
       if (toolSchema) {
         // ── Primary path: structured output via tool_use (streaming to avoid 10min timeout) ──
@@ -251,7 +274,15 @@ function callAgentWithModel<T>(
 
         const fallbackUserText =
           userMessage + "\n\nYou MUST respond with valid JSON matching this schema. Output ONLY the JSON object."
-        const fallbackUserContent = buildUserContent(fallbackUserText, options?.cachedUserPrefix, options?.images)
+        // options.documents MUST be threaded here too. Omitting it sends the
+        // retry with no PDF attached, and the model answers confidently from
+        // the prompt alone instead of erroring — a silent wrong result.
+        const fallbackUserContent = buildUserContent(
+          fallbackUserText,
+          options?.cachedUserPrefix,
+          options?.images,
+          options?.documents,
+        )
 
         const stream = client.messages.stream({
           model: modelId,
@@ -330,6 +361,8 @@ export async function callAgent<T>(
     cacheSystemPrompt?: boolean
     cachedUserPrefix?: string
     images?: Array<{ media_type: string; data: string }>
+    /** Base64 PDFs sent as Anthropic document blocks — see callAgentWithModel. */
+    documents?: Array<{ media_type: string; data: string }>
     signal?: AbortSignal
   },
 ): Promise<AgentCallResult<T>> {
