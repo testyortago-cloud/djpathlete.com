@@ -65,6 +65,10 @@ export function useReceiptBatch({ bookId, accounts, onAllPosted }: UseReceiptBat
   const listenersRef = useRef(new Map<string, ReturnType<typeof ref>>())
   const cancelRequestedRef = useRef(false)
   const scanInFlightRef = useRef(false)
+  // The upload POST currently on the wire. Cancel aborts it — without this a
+  // row sits in "uploading" until the server answers, and the dialog refuses
+  // to close for as long as any row is non-terminal.
+  const uploadAbortRef = useRef<AbortController | null>(null)
 
   function patchRow(clientId: string, patch: Partial<ReceiptBatchRow>) {
     setRows((prev) => prev.map((r) => (r.clientId === clientId ? { ...r, ...patch } : r)))
@@ -183,11 +187,17 @@ export function useReceiptBatch({ bookId, accounts, onAllPosted }: UseReceiptBat
             continue
           }
           patchRow(clientId, { status: "uploading" })
+          const controller = new AbortController()
+          uploadAbortRef.current = controller
           try {
             const fd = new FormData()
             fd.append("file", files[i])
             fd.append("book_id", bookId)
-            const res = await fetch("/api/admin/bookkeeping/receipts/upload", { method: "POST", body: fd })
+            const res = await fetch("/api/admin/bookkeeping/receipts/upload", {
+              method: "POST",
+              body: fd,
+              signal: controller.signal,
+            })
             const data = await res.json().catch(() => ({}))
             if (!res.ok || !data.jobId) {
               const { message } = summarizeApiError(res, data, "Upload failed")
@@ -208,7 +218,15 @@ export function useReceiptBatch({ bookId, accounts, onAllPosted }: UseReceiptBat
             })
             listenToJob(clientId, jobId)
           } catch {
-            patchRow(clientId, { status: "scan_failed", error: "Upload failed — network error" })
+            // An aborted upload is the user's own Cancel, not a failure.
+            patchRow(
+              clientId,
+              cancelRequestedRef.current
+                ? { status: "cancelled", error: "Scan cancelled" }
+                : { status: "scan_failed", error: "Upload failed — network error" },
+            )
+          } finally {
+            if (uploadAbortRef.current === controller) uploadAbortRef.current = null
           }
         }
       } finally {
@@ -251,6 +269,11 @@ export function useReceiptBatch({ bookId, accounts, onAllPosted }: UseReceiptBat
     if (cancelling) return
     setCancelling(true)
     cancelRequestedRef.current = true
+    // Stop the upload still on the wire first — a row in "uploading" has no
+    // jobId yet, so the server-side cancel below cannot reach it.
+    uploadAbortRef.current?.abort()
+    uploadAbortRef.current = null
+
     const inFlight = rowsRef.current.filter((r) => r.status === "scanning" && r.jobId)
     for (const row of inFlight) {
       try {
@@ -259,10 +282,26 @@ export function useReceiptBatch({ bookId, accounts, onAllPosted }: UseReceiptBat
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ jobId: row.jobId }),
         })
+        // Deliberately not branching on res.ok: 404 (job gone) and 409 (job
+        // already terminal) both mean "nothing left to stop", and a 500 still
+        // leaves the user entitled to stop waiting. The row is cancelled
+        // locally below either way.
       } catch {
-        // Job keeps running server-side; its listener will still resolve the row.
+        // Network error — same reasoning.
       }
     }
+
+    // Cancel MUST land every row in a terminal state. `busy` stays true while
+    // any row is non-terminal and the dialog refuses to close while busy, so
+    // relying on the RTDB listener to deliver "cancelled" traps the user
+    // whenever the server never sends it (job already failed, cancel refused,
+    // listener torn down). Settle locally instead.
+    stopAllListeners()
+    setRows((prev) =>
+      prev.map((r) =>
+        TERMINAL_SCAN.includes(r.status) ? r : { ...r, status: "cancelled", error: "Scan cancelled" },
+      ),
+    )
     setCancelling(false)
   }, [cancelling])
 

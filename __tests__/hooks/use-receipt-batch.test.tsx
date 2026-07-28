@@ -238,6 +238,62 @@ describe("cancelRemaining", () => {
     await waitFor(() => expect(hook.result.current.phase).toBe("review")) // d1 stored → manual row
     expect(hook.result.current.rows[0].status).toBe("cancelled")
   })
+
+  // The test above hand-fires the RTDB "cancelled" event. Production often
+  // never sends one — the job already failed, so the cancel route answers 409
+  // and nothing further arrives. The dialog blocks dismissal while any row is
+  // non-terminal, so that combination trapped the user with no way out.
+  it("settles the row locally when the server never reports it terminal", async () => {
+    const { hook } = renderBatch()
+    fetchMock.mockResolvedValueOnce(uploadOk("j1", "d1"))
+    act(() => {
+      hook.result.current.addFiles([makeFile("a.jpg")])
+    })
+    await act(async () => {
+      await hook.result.current.startScan()
+    })
+    expect(hook.result.current.rows[0].status).toBe("scanning")
+
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 409, json: async () => ({ error: "Job already failed" }) })
+    await act(async () => {
+      await hook.result.current.cancelRemaining()
+    })
+
+    // No fireJob() here on purpose — that is the whole point.
+    expect(hook.result.current.rows[0].status).toBe("cancelled")
+    expect(hook.result.current.busy).toBe(false)
+  })
+
+  it("aborts an upload still on the wire, which has no jobId to cancel yet", async () => {
+    const { hook } = renderBatch()
+    // Models a real hanging upload: resolves only by abort.
+    fetchMock.mockImplementation(
+      (_url: string, init: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(Object.assign(new Error("Aborted"), { name: "AbortError" })),
+          )
+        }),
+    )
+    act(() => {
+      hook.result.current.addFiles([makeFile("a.jpg"), makeFile("b.jpg")])
+    })
+    let scan!: Promise<void>
+    act(() => {
+      scan = hook.result.current.startScan()
+    })
+    await waitFor(() => expect(hook.result.current.rows[0].status).toBe("uploading"))
+
+    await act(async () => {
+      await hook.result.current.cancelRemaining()
+      await scan
+    })
+
+    // Row 1 was aborted mid-flight; row 2 never left the queue. Both must be
+    // terminal or the dialog stays locked.
+    expect(hook.result.current.rows.map((r) => r.status)).toEqual(["cancelled", "cancelled"])
+    expect(hook.result.current.busy).toBe(false)
+  })
 })
 
 describe("postIncluded", () => {
