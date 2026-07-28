@@ -8,12 +8,13 @@ import { isPdfMime, isPdfUpload, pdfRejectionReasonForBuffer } from "@/lib/bookk
 import { recordAudit } from "@/lib/audit/record"
 
 /**
- * AI Bookkeeper Phase 3, Task 11 — receipt image upload route.
+ * AI Bookkeeper Phase 3, Task 11 — receipt upload route.
  *
  * Clones statement-import/route.ts's money-path entry point (sha256 dedupe
  * hint, self-gated admin check, fire-and-forget audit) but accepts a single
- * photographed receipt image instead of a bank statement: image
- * mime/extension gate (jpeg/png/webp) then delegation to
+ * receipt instead of a bank statement: a mime/extension gate
+ * (jpeg/png/webp/pdf, with PDFs additionally page-capped by
+ * lib/bookkeeping/receipt-pdf.ts) then delegation to
  * lib/bookkeeping/receipt-ingest.ts, which owns the shared recipe
  * (private-bucket storage → kind:"receipt" document → generation log →
  * Firestore receipt_scan job → RTDB seed). Track C extracted that recipe so

@@ -129,8 +129,9 @@ export const statementImport = onDocumentCreated(
 
 // ─── Receipt Scan ───────────────────────────────────────────────────────────────
 // Triggered when a new ai_jobs doc is created with type "receipt_scan"
-// AI Bookkeeper Phase 3: downloads a photographed receipt from the private
-// bucket, sharp-resizes it for vision, and extracts vendor/amount/date/category.
+// AI Bookkeeper Phase 3: downloads a receipt from the private bucket and
+// extracts vendor/amount/date/category. Images are sharp-resized for vision;
+// PDF invoices skip sharp and go to Claude as a document block.
 
 export const receiptScan = onDocumentCreated(
   {
