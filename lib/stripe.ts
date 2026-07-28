@@ -1,6 +1,7 @@
 import Stripe from "stripe"
 import type { Program, PaymentType, BillingInterval, Event, EventSignup } from "@/types/database"
 import { updateUser, getUserById } from "@/lib/db/users"
+import { resolveBillingUserId } from "@/lib/services/billing-payer"
 
 export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: "2026-01-28.clover" })
 
@@ -429,13 +430,24 @@ export async function createPackCheckoutSession(opts: {
         },
       ]
 
-  // Pin checkout to the CLIENT's email so the payment page is addressed to
-  // them — without this, Stripe Link autofills whichever account lives in the
-  // browser that opens the link (the coach's own card/email when he previews it).
+  // Pin checkout to the PAYER's email so the payment page is addressed to
+  // whoever actually pays — without pinning, Stripe Link autofills whichever
+  // account lives in the browser that opens the link (the coach's own
+  // card/email when he previews it).
+  //
+  // Household billing: resolveBillingUserId returns the "Charges paid by"
+  // payer, else the client themselves. The pack is still FOR the trainee —
+  // metadata.clientUserId below is unchanged and is what the webhook credits.
+  // Only the addressee changes. Before this, a parent/spouse set as payer
+  // opened the link and found the trainee's email locked in (Stripe makes a
+  // provided customer_email read-only), so the receipt landed in the wrong
+  // inbox. Memberships and no-show/late-cancel fees already resolve the payer;
+  // pack checkout was the one money path that did not.
   let customerEmail: string | undefined
   try {
-    const client = await getUserById(opts.clientUserId)
-    customerEmail = client?.email ?? undefined
+    const billingUserId = await resolveBillingUserId(opts.clientUserId)
+    const payer = await getUserById(billingUserId)
+    customerEmail = payer?.email ?? undefined
   } catch {
     // Non-fatal — checkout still works, just without the prefilled email.
   }
