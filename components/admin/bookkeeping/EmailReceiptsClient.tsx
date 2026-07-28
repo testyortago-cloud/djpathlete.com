@@ -26,7 +26,8 @@ interface EmailReceiptsClientProps {
   label: string
   /** cron_bookkeeping_gmail_receipts_enabled. 00193 seeds it FALSE. */
   pollerEnabled: boolean
-  /** Labeled emails the poller could not read (PDF/HEIC, or over the size cap). */
+  /** Labeled emails the poller could not read (HEIC, an over-cap PDF, or over
+   *  the size cap). */
   needsManualUpload: number
 }
 
@@ -135,7 +136,7 @@ export function EmailReceiptsClient({
             <AlertTriangle className="size-4 mt-0.5 shrink-0" />
             <span>
               {needsManualUpload} labeled email{needsManualUpload === 1 ? "" : "s"} carried an attachment this importer
-              can&apos;t read — a PDF, a HEIC photo, or a file over 10&nbsp;MB. Nothing was imported from{" "}
+              can&apos;t read — a HEIC photo, a PDF over 10 pages, or a file over 10&nbsp;MB. Nothing was imported from{" "}
               {needsManualUpload === 1 ? "it" : "them"}. Open{" "}
               {needsManualUpload === 1 ? "that email" : "those emails"} and photo-upload the receipt from{" "}
               <Link href="/admin/books" className="underline">
@@ -162,8 +163,8 @@ export function EmailReceiptsClient({
               </p>
             ) : (
               <p className="text-sm text-muted-foreground max-w-xl mx-auto">
-                No email receipts pending. Label an email that has a {formats} image attached with &lsquo;{label}&rsquo;
-                {pollerEnabled ? " and it appears within the hour" : ""}. PDF attachments, HEIC photos and body-only
+                No email receipts pending. Label an email that has a {formats} attachment with &lsquo;{label}&rsquo;
+                {pollerEnabled ? " and it appears within the hour" : ""}. HEIC photos, PDFs over 10 pages and body-only
                 emails (no attachment) aren&apos;t imported — photo-upload those from{" "}
                 <Link href="/admin/books" className="underline text-primary">
                   Accounting

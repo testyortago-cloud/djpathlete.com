@@ -15,12 +15,18 @@ describe("isReceiptMime", () => {
     expect(isReceiptMime("application/octet-stream")).toBe(false)
   })
 
-  it("rejects application/pdf and image/heic — sharp 0.33.5 cannot decode either", () => {
-    // functions/src/receipt-scan.ts pipes every ingested buffer through
-    // sharp(buffer); sharp reports format.pdf.input all-false and heif
-    // fileSuffix ['.avif'] only. Ingesting these would guarantee a failed
-    // receipt_scan job + a blank review row with no explanation.
-    expect(isReceiptMime("application/pdf")).toBe(false)
+  it("accepts application/pdf now that the vision path branches on mime", () => {
+    // functions/src/receipt-scan.ts:buildReceiptVisionPayload sends PDFs to
+    // Claude as a document block instead of through sharp, so ingesting one
+    // no longer guarantees a failed job. Page-capping happens in the poller
+    // after download (lib/bookkeeping/receipt-pdf.ts) — this walk only sees
+    // Gmail part metadata, never bytes.
+    expect(isReceiptMime("application/pdf")).toBe(true)
+  })
+
+  it("still rejects image/heic — sharp 0.33.5 cannot decode it", () => {
+    // sharp reports heif with fileSuffix ['.avif'] only, and there is no
+    // document-block escape hatch for HEIC the way there is for PDF.
     expect(isReceiptMime("image/heic")).toBe(false)
     expect(isReceiptMime("image/heif")).toBe(false)
   })
@@ -32,6 +38,7 @@ describe("countUnusableReceiptAttachments — mime arm", () => {
       mimeType: "multipart/mixed",
       parts: [
         { mimeType: "text/plain", body: { size: 10, data: "aGk" } },
+        // The PDF is now scannable, so only the HEIC is counted here.
         { mimeType: "application/pdf", filename: "invoice.pdf", body: { size: 2048, attachmentId: "a1" } },
         { mimeType: "image/heic", filename: "IMG_1.heic", body: { size: 2048, attachmentId: "a2" } },
         { mimeType: "image/jpeg", filename: "ok.jpg", body: { size: 2048, attachmentId: "a3" } },
@@ -39,7 +46,7 @@ describe("countUnusableReceiptAttachments — mime arm", () => {
         { mimeType: "text/calendar", filename: "invite.ics", body: { size: 512, attachmentId: "a4" } },
       ],
     }
-    expect(countUnusableReceiptAttachments(payload).unsupportedMime).toBe(2)
+    expect(countUnusableReceiptAttachments(payload).unsupportedMime).toBe(1)
     expect(countUnusableReceiptAttachments(undefined).unsupportedMime).toBe(0)
   })
 })
@@ -50,10 +57,13 @@ describe("countUnusableReceiptAttachments", () => {
   // so a coach who emails one high-res phone photo used to get a run reporting
   // "attachmentless" that then settled the message permanently. Nothing,
   // anywhere, said a receipt had been dropped.
+  // HEIC is the unreadable-mime stand-in throughout this block. It used to be
+  // PDF, but PDF became scannable when the vision path learned document
+  // blocks — the double-count guard being tested here is mime-agnostic.
   const payload = {
     mimeType: "multipart/mixed",
     parts: [
-      { mimeType: "application/pdf", filename: "invoice.pdf", body: { size: 2048, attachmentId: "a1" } },
+      { mimeType: "image/heic", filename: "IMG_1.heic", body: { size: 2048, attachmentId: "a1" } },
       { mimeType: "image/jpeg", filename: "huge.jpg", body: { size: MAX_ATTACHMENT_BYTES + 1, attachmentId: "a2" } },
       { mimeType: "image/png", filename: "also-huge.png", body: { size: MAX_ATTACHMENT_BYTES * 3, attachmentId: "a3" } },
       { mimeType: "image/jpeg", filename: "fine.jpg", body: { size: 2048, attachmentId: "a4" } },
@@ -65,7 +75,20 @@ describe("countUnusableReceiptAttachments", () => {
     expect(countUnusableReceiptAttachments(payload)).toEqual({ unsupportedMime: 1, oversized: 2 })
   })
 
-  it("never double-counts: an oversized PDF is unsupported-mime only", () => {
+  it("never double-counts: an oversized HEIC is unsupported-mime only", () => {
+    expect(
+      countUnusableReceiptAttachments({
+        mimeType: "multipart/mixed",
+        parts: [
+          { mimeType: "image/heic", filename: "big.heic", body: { size: MAX_ATTACHMENT_BYTES + 1, attachmentId: "a1" } },
+        ],
+      }),
+    ).toEqual({ unsupportedMime: 1, oversized: 0 })
+  })
+
+  it("an oversized PDF is now counted as oversized, not unsupported", () => {
+    // The mime is readable now, so the size arm is the one that must fire —
+    // otherwise a too-big PDF would be reported under the wrong reason.
     expect(
       countUnusableReceiptAttachments({
         mimeType: "multipart/mixed",
@@ -73,7 +96,7 @@ describe("countUnusableReceiptAttachments", () => {
           { mimeType: "application/pdf", filename: "big.pdf", body: { size: MAX_ATTACHMENT_BYTES + 1, attachmentId: "a1" } },
         ],
       }),
-    ).toEqual({ unsupportedMime: 1, oversized: 0 })
+    ).toEqual({ unsupportedMime: 0, oversized: 1 })
   })
 
   it("ignores non-receipt parts and inline bodies; undefined payload → zeros", () => {
@@ -109,11 +132,10 @@ describe("collectReceiptAttachments", () => {
         { mimeType: "text/calendar", filename: "invite.ics", body: { size: 100, attachmentId: "a3" } },
       ],
     }
-    // The PDF sits ahead of the jpeg on purpose: it must NOT occupy index 0 of
-    // the returned array (external_ref index) now that it is unscannable.
     expect(collectReceiptAttachments(payload)).toEqual([
       // Walk positions: root 0, multipart/alternative 1, its two children 2-3,
-      // the pdf 4, this jpeg 5, this png 6.
+      // the pdf 4, the jpeg 5, the png 6. The .ics is not receipt-shaped.
+      { filename: "invoice.pdf", mimeType: "application/pdf", attachmentId: "a1", size: 2048, refKey: "p4" },
       { filename: "scan.jpg", mimeType: "image/jpeg", attachmentId: "a1b", size: 2048, refKey: "p5" },
       { filename: "receipt", mimeType: "image/png", attachmentId: "a2", size: 100, refKey: "p6" },
     ])
@@ -142,22 +164,25 @@ describe("collectReceiptAttachments", () => {
     ).toEqual(["p1"])
   })
 
-  it("refKey does NOT move when the mime allow-list moves (no re-ingest on widening)", () => {
+  it("refKey did NOT move when the mime allow-list widened (no re-ingest)", () => {
     // The killer scenario for an array-index key: a mail whose PDF sits ahead
-    // of the jpeg. Under an index key the jpeg is 'gmail:m:0' today and would
-    // become 'gmail:m:1' the day application/pdf becomes scannable — the
-    // already-ingested receipt would no longer match its stored external_ref
-    // and would be re-ingested (duplicate document + a second vision spend).
+    // of the jpeg. Under an index key the jpeg was 'gmail:m:0' while PDF was
+    // unscannable and would have become 'gmail:m:1' the day PDF was added —
+    // the already-ingested receipt would stop matching its stored external_ref
+    // and be re-ingested (duplicate document + a second vision spend).
+    //
+    // This is no longer hypothetical: PDF IS scannable now, so both parts come
+    // back, and the jpeg's key is still its partId.
     const parts = [
       { partId: "1", mimeType: "application/pdf", filename: "i.pdf", body: { size: 10, attachmentId: "p" } },
       { partId: "2", mimeType: "image/jpeg", filename: "r.jpg", body: { size: 10, attachmentId: "j" } },
     ]
-    const jpegOnly = collectReceiptAttachments({ mimeType: "multipart/mixed", parts })
+    const widened = collectReceiptAttachments({ mimeType: "multipart/mixed", parts })
+    expect(widened.map((a) => a.refKey)).toEqual(["1", "2"])
+    // The pre-widening world (jpeg alone in the readable set) gave the jpeg
+    // the same key — which is the property that prevented the re-ingest.
+    const jpegOnly = collectReceiptAttachments({ mimeType: "multipart/mixed", parts: [parts[1]] })
     expect(jpegOnly.map((a) => a.refKey)).toEqual(["2"])
-    // Simulate the widened world by dropping the unreadable part from the tree:
-    // the jpeg's key is unchanged either way.
-    const bothReadable = collectReceiptAttachments({ mimeType: "multipart/mixed", parts: [parts[1]] })
-    expect(bothReadable.map((a) => a.refKey)).toEqual(["2"])
   })
 
   it("drops oversized (>10MB) and zero-size attachments; undefined payload → []", () => {

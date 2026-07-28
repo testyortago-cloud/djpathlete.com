@@ -25,6 +25,15 @@ vi.mock("@/lib/gmail/client", () => {
 })
 vi.mock("@/lib/bookkeeping/receipt-ingest", () => ({ ingestReceiptDocument: vi.fn() }))
 vi.mock("@/lib/audit/record", () => ({ recordAudit: vi.fn() }))
+// Real page counting drives pdf.js, which never settles under jsdom — every
+// test with a PDF fixture would hang to the 5s timeout. Page counting is
+// covered for real against Chromium-printed PDFs in
+// __tests__/lib/bookkeeping/receipt-pdf.test.ts; what matters here is how the
+// poller REACTS to the verdict, so only that one function is stubbed.
+vi.mock("@/lib/bookkeeping/receipt-pdf", async (orig) => {
+  const actual = await orig<typeof import("@/lib/bookkeeping/receipt-pdf")>()
+  return { ...actual, pdfRejectionReasonForBuffer: vi.fn().mockResolvedValue(null) }
+})
 
 import { isCronSkipped, getSetting, setSetting } from "@/lib/db/system-settings"
 import { logCronStart, logCronEnd } from "@/lib/db/cron-runs"
@@ -33,6 +42,7 @@ import {
   GmailNotConnectedError, getAccessTokenForConnection, listLabels, listMessages, getMessage, getAttachment,
 } from "@/lib/gmail/client"
 import { ingestReceiptDocument } from "@/lib/bookkeeping/receipt-ingest"
+import { pdfRejectionReasonForBuffer } from "@/lib/bookkeeping/receipt-pdf"
 import { recordAudit } from "@/lib/audit/record"
 import {
   POST, MAX_MESSAGES_PER_RUN, MAX_MESSAGE_ATTEMPTS, MAX_LIST_PAGES, SETTLED_IDS_KEY,
@@ -51,13 +61,18 @@ const books = [
   { id: BOOK, name: "Darren — DJP Athlete", book_kind: "business", is_primary: true, owner_label: "Darren", sort_order: 0, archived_at: null },
 ]
 
-// format=full payload: an inline text part (no attachmentId), an
-// application/pdf the scanner cannot decode (must be counted, never ingested,
-// and must NOT take the jpeg's external_ref key), the real jpeg receipt, and a
-// calendar invite the mime filter must drop entirely. partIds are Gmail's real
-// shape — they are the external_ref key, so 'receipt.jpg' is always
-// 'gmail:<id>:2' no matter what the mime allow-list does.
+// format=full payload: an inline text part (no attachmentId), an image/heic the
+// scanner cannot decode (must be counted, never ingested, and must NOT take the
+// jpeg's external_ref key), the real jpeg receipt, and a calendar invite the
+// mime filter must drop entirely. partIds are Gmail's real shape — they are the
+// external_ref key, so 'receipt.jpg' is always 'gmail:<id>:2' no matter what the
+// mime allow-list does.
 // collectReceiptAttachments is REAL in this suite (separate pure module).
+//
+// The unreadable slot held an application/pdf until PDFs became scannable via
+// document blocks. HEIC replaced it so every test built on this fixture keeps
+// testing what it was written to test — an undecodable attachment alongside a
+// good one. PDF ingestion has its own tests below.
 const fullMessage = (id: string) => ({
   id,
   threadId: `t-${id}`,
@@ -65,9 +80,22 @@ const fullMessage = (id: string) => ({
     mimeType: "multipart/mixed",
     parts: [
       { partId: "0", mimeType: "text/plain", body: { size: 20, data: "aGk" } },
-      { partId: "1", mimeType: "application/pdf", filename: "invoice.pdf", body: { size: 4096, attachmentId: `att-${id}-pdf` } },
+      { partId: "1", mimeType: "image/heic", filename: "IMG_1.heic", body: { size: 4096, attachmentId: `att-${id}-heic` } },
       { partId: "2", mimeType: "image/jpeg", filename: "receipt.jpg", body: { size: 4096, attachmentId: `att-${id}-jpg` } },
       { partId: "3", mimeType: "text/calendar", filename: "invite.ics", body: { size: 512, attachmentId: `att-${id}-ics` } },
+    ],
+  },
+})
+
+/** A single in-cap PDF invoice — the path that did not exist before document
+ *  blocks. */
+const pdfMessage = (id: string) => ({
+  id,
+  threadId: `t-${id}`,
+  payload: {
+    mimeType: "multipart/mixed",
+    parts: [
+      { partId: "0", mimeType: "application/pdf", filename: "invoice.pdf", body: { size: 4096, attachmentId: `att-${id}-pdf` } },
     ],
   },
 })
@@ -218,7 +246,7 @@ describe("POST /api/admin/internal/bookkeeping-gmail-receipts", () => {
     expect(listLabels).not.toHaveBeenCalled()
   })
 
-  it("happy path: jpeg ingested as gmail:<id>:<partId>, pdf reported unsupported, ics filtered, audit recorded", async () => {
+  it("happy path: jpeg ingested as gmail:<id>:<partId>, heic reported unsupported, ics filtered, audit recorded", async () => {
     const res = await POST(makeRequest() as never)
     expect(res.status).toBe(200)
     expect(await res.json()).toMatchObject({
@@ -229,7 +257,7 @@ describe("POST /api/admin/internal/bookkeeping-gmail-receipts", () => {
     expect(logCronStart).toHaveBeenCalledWith(expect.anything(), "bookkeepingGmailReceiptsCron")
     expect((listMessages as ReturnType<typeof vi.fn>).mock.calls[0][1]).toMatchObject({ labelIds: ["L1"] })
     expect(getAttachment).toHaveBeenCalledWith("tok", "m1", "att-m1-jpg")
-    expect(getAttachment).not.toHaveBeenCalledWith("tok", "m1", "att-m1-pdf")
+    expect(getAttachment).not.toHaveBeenCalledWith("tok", "m1", "att-m1-heic")
     expect(ingestReceiptDocument).toHaveBeenCalledTimes(1)
     expect((ingestReceiptDocument as ReturnType<typeof vi.fn>).mock.calls[0][0]).toMatchObject({
       bookId: BOOK, externalRef: "gmail:m1:2", uploadedBy: null,
@@ -305,12 +333,62 @@ describe("POST /api/admin/internal/bookkeeping-gmail-receipts", () => {
     expect((getMessage as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[1])).toEqual(["b25", "withImage"])
   })
 
-  // ── Review finding: a message we could not read must never just vanish ──
-  it("a pdf-only email is recorded as NEEDS MANUAL UPLOAD, not counted as attachmentless", async () => {
+  // ── PDF receipts: the path document blocks unlocked ──
+  it("ingests an in-cap PDF invoice", async () => {
+    ;(getMessage as ReturnType<typeof vi.fn>).mockImplementation(async (_t: string, id: string) => pdfMessage(id))
+    const json = await (await POST(makeRequest() as never)).json()
+    expect(json).toMatchObject({
+      ingested: 1, unsupported_attachments: 0, needs_manual_upload: 0, attachmentless: 0, failed: 0,
+    })
+    expect((ingestReceiptDocument as ReturnType<typeof vi.fn>).mock.calls[0][0]).toMatchObject({
+      externalRef: "gmail:m1:0",
+      mimeType: "application/pdf",
+      originalFilename: "invoice.pdf",
+    })
+    expect(settings[GMAIL_UNREADABLE_IDS_KEY] ?? []).toEqual([])
+  })
+
+  it("an over-cap PDF is recorded as needs-manual-upload and never ingested", async () => {
+    ;(getMessage as ReturnType<typeof vi.fn>).mockImplementation(async (_t: string, id: string) => pdfMessage(id))
+    ;(pdfRejectionReasonForBuffer as ReturnType<typeof vi.fn>).mockResolvedValue(
+      "This PDF has 40 pages — that looks like a statement, not a receipt. Use Import statement instead.",
+    )
+    const json = await (await POST(makeRequest() as never)).json()
+    expect(json).toMatchObject({
+      ingested: 0, unsupported_attachments: 1, needs_manual_upload: 1, failed: 0,
+    })
+    expect(ingestReceiptDocument).not.toHaveBeenCalled()
+    expect(settings[GMAIL_UNREADABLE_IDS_KEY]).toEqual(["m1"])
+  })
+
+  it("a malformed PDF is reported, not thrown — siblings still ingest", async () => {
+    // pdfRejectionReasonForBuffer never throws by design; a 500 here would
+    // leave the sibling jpeg's document written with the message unsettled.
     ;(getMessage as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "m1", threadId: "t1",
       payload: { mimeType: "multipart/mixed", parts: [
-        { partId: "0", mimeType: "application/pdf", filename: "invoice.pdf", body: { size: 4096, attachmentId: "att-m1-pdf" } },
+        { partId: "0", mimeType: "application/pdf", filename: "broken.pdf", body: { size: 4096, attachmentId: "att-m1-pdf" } },
+        { partId: "1", mimeType: "image/jpeg", filename: "receipt.jpg", body: { size: 4096, attachmentId: "att-m1-jpg" } },
+      ] },
+    })
+    ;(pdfRejectionReasonForBuffer as ReturnType<typeof vi.fn>).mockResolvedValue(
+      "Couldn't read that PDF. Try re-exporting it, or upload a photo of the receipt.",
+    )
+    const res = await POST(makeRequest() as never)
+    expect(res.status).toBe(200)
+    const json = await res.json()
+    expect(json).toMatchObject({ ingested: 1, unsupported_attachments: 1, failed: 0 })
+    expect((ingestReceiptDocument as ReturnType<typeof vi.fn>).mock.calls[0][0]).toMatchObject({
+      externalRef: "gmail:m1:1", mimeType: "image/jpeg",
+    })
+  })
+
+  // ── Review finding: a message we could not read must never just vanish ──
+  it("a heic-only email is recorded as NEEDS MANUAL UPLOAD, not counted as attachmentless", async () => {
+    ;(getMessage as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "m1", threadId: "t1",
+      payload: { mimeType: "multipart/mixed", parts: [
+        { partId: "0", mimeType: "image/heic", filename: "IMG_1.heic", body: { size: 4096, attachmentId: "att-m1-heic" } },
       ] },
     })
     const json = await (await POST(makeRequest() as never)).json()
@@ -346,15 +424,16 @@ describe("POST /api/admin/internal/bookkeeping-gmail-receipts", () => {
     ;(getMessage as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "m1", threadId: "t1",
       payload: { mimeType: "multipart/mixed", parts: [
-        { partId: "0", mimeType: "application/pdf", filename: "invoice.pdf", body: { size: 4096, attachmentId: "att-m1-pdf" } },
+        { partId: "0", mimeType: "image/heic", filename: "IMG_1.heic", body: { size: 4096, attachmentId: "att-m1-heic" } },
       ] },
     })
     await POST(makeRequest() as never)
     expect(settings[SETTLED_IDS_KEY]).toEqual(["m1"])
     expect(settings[GMAIL_SCANNABLE_MIMES_KEY]).toBe([...SCANNABLE_MIMES].join(","))
 
-    // Simulate a future release that taught the vision path to read PDFs: the
-    // fingerprint no longer matches what we settled under.
+    // Simulate a future release that taught the vision path a new format: the
+    // fingerprint no longer matches what we settled under. (This is exactly
+    // what shipping application/pdf did to the real stored fingerprint.)
     settings[GMAIL_SCANNABLE_MIMES_KEY] = "image/jpeg"
     const second = await (await POST(makeRequest() as never)).json()
     expect(second.reconsidered).toBe(1)

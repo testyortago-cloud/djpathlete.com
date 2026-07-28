@@ -24,6 +24,7 @@ import {
   collectReceiptAttachments, countUnusableReceiptAttachments, SCANNABLE_MIMES,
 } from "@/lib/bookkeeping/receipt-attachments"
 import { ingestReceiptDocument } from "@/lib/bookkeeping/receipt-ingest"
+import { isPdfMime, pdfRejectionReasonForBuffer } from "@/lib/bookkeeping/receipt-pdf"
 import {
   GMAIL_SETTLED_IDS_KEY, GMAIL_UNREADABLE_IDS_KEY, GMAIL_SCANNABLE_MIMES_KEY,
   GMAIL_MESSAGE_ATTEMPTS_KEY, GMAIL_RECEIPT_LABEL_KEY, GMAIL_RECEIPTS_CRON_KEY,
@@ -289,6 +290,24 @@ export async function POST(request: NextRequest) {
           }
           try {
             const buffer = await getAttachment(accessToken, messageId, att.attachmentId)
+
+            // Same page cap as the upload button, applied here because this is
+            // the first point that has bytes (collectReceiptAttachments sees
+            // only part metadata). An over-cap or malformed PDF behaves exactly
+            // like a pre-PDF-support attachment did: counted, recorded as
+            // needing manual upload, never ingested. pdfRejectionReasonForBuffer
+            // never throws, so a corrupt PDF cannot 500 the run and strand this
+            // message's sibling attachments.
+            if (isPdfMime(att.mimeType)) {
+              const reason = await pdfRejectionReasonForBuffer(buffer)
+              if (reason) {
+                unsupportedAttachments++
+                needsManualUpload++
+                markUnreadable(messageId)
+                continue
+              }
+            }
+
             await ingestReceiptDocument({
               bookId: book.id,
               buffer,

@@ -36,18 +36,20 @@ beforeEach(() => {
 })
 
 describe("EmailReceiptsClient empty state", () => {
-  // The empty state used to instruct the coach to "Label a receipt email with
-  // an attached PDF or image". SCANNABLE_MIMES deliberately excludes
-  // application/pdf, so following that instruction imported NOTHING and the
-  // message was then permanently settled — the receipt just vanished.
-  it("never promises PDF support, and names the formats the poller can actually read", () => {
+  // The empty state once instructed the coach to "Label a receipt email with an
+  // attached PDF or image" while SCANNABLE_MIMES excluded application/pdf, so
+  // following that instruction imported NOTHING and the message was then
+  // permanently settled — the receipt just vanished. PDF is genuinely supported
+  // now, so the guard is no longer "never promise PDF" but "the promise on
+  // screen matches the allow-list", which is what readableFormatLabel enforces.
+  it("names exactly the formats the poller can actually read", () => {
     render(<EmailReceiptsClient {...base} />)
     const body = document.body.textContent ?? ""
-    expect(body).toContain("JPEG, PNG or WEBP")
-    expect(body).not.toMatch(/PDF or image/i)
-    // PDF may only be mentioned as an exclusion.
-    expect(body).toMatch(/PDF attachments[^.]*aren't imported/i)
-    expect(SCANNABLE_MIMES).not.toContain("application/pdf")
+    expect(body).toContain("JPEG, PNG, WEBP or PDF")
+    expect(SCANNABLE_MIMES).toContain("application/pdf")
+    // HEIC is the format that still cannot be read, and it must be named as
+    // an exclusion so a labeled iPhone photo is not silently lost.
+    expect(body).toMatch(/HEIC[^.]*aren't imported/i)
   })
 
   it("derives the format list from SCANNABLE_MIMES so the copy cannot drift from the code", () => {

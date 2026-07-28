@@ -27,27 +27,36 @@ export interface ReceiptAttachmentRef {
 
 /** Mimes the receipt vision path can actually decode.
  *
- *  functions/src/receipt-scan.ts pipes EVERY ingested buffer through
- *  `sharp(buffer)` (resizeReceiptForVision). The pinned sharp 0.33.5 reports
- *  `format.pdf.input = {file:false,buffer:false,stream:false}` and `format.heif`
- *  with `fileSuffix ['.avif']` only — so an `application/pdf` or `image/heic`
- *  attachment would ingest, burn its external_ref, queue a receipt_scan job,
- *  and fail with "unsupported image format": a blank review row nobody can
- *  explain. This is exactly the allow-list the shipped photo-upload route
- *  already enforces (app/api/admin/bookkeeping/receipts/upload/route.ts:23), so
- *  both ingest paths now promise only what the scanner can keep.
+ *  Two decode paths sit behind this list. Images are resized by `sharp`
+ *  (resizeReceiptForVision); PDFs bypass sharp entirely and go to Claude as a
+ *  base64 document block (functions/src/receipt-scan.ts:buildReceiptVisionPayload),
+ *  which reads both the text layer and the page images.
  *
- *  DEVIATION from design §3.3 ("mime `image/*` or `application/pdf`") —
- *  recorded loudly rather than silently: unscannable receipt-shaped
- *  attachments are COUNTED into the poller's cron detail
- *  (`unsupported_attachments`) instead of ingested, so "I emailed a PDF and
- *  nothing happened" is observable, AND recorded on the review surface as
- *  "needs manual upload". Widening this back to PDF requires a PDF branch in
- *  the vision path first (Anthropic document block, or rasterize page 1 before
- *  sharp) — the poller re-opens already-seen PDF mails on its own, because it
- *  fingerprints this array into system_settings and drops every
- *  unreadable-settled message id the moment the fingerprint changes. */
-export const SCANNABLE_MIMES: readonly string[] = ["image/jpeg", "image/png", "image/webp"]
+ *  PDF was excluded here until that branch existed, because the pinned sharp
+ *  0.33.5 reports `format.pdf.input = {file:false,buffer:false,stream:false}` —
+ *  an ingested PDF would burn its external_ref, queue a receipt_scan job, and
+ *  fail with "unsupported image format": a blank review row nobody can explain.
+ *
+ *  Still excluded: `image/heic` / `image/heif` (sharp's pinned build lists
+ *  heif with `fileSuffix ['.avif']` only, and there is no document-block
+ *  escape hatch for it). Those are COUNTED into the poller's cron detail
+ *  (`unsupported_attachments`) and recorded on the review surface as "needs
+ *  manual upload", so "I emailed it and nothing happened" stays observable.
+ *
+ *  Page-capping is NOT done here — this walk sees only Gmail part metadata,
+ *  never bytes. The poller applies pdfRejectionReasonForBuffer after download
+ *  (lib/bookkeeping/receipt-pdf.ts), the same gate the upload button uses.
+ *
+ *  Changing this array changes the poller's mime fingerprint, which re-opens
+ *  every message settled only because its attachments were unreadable. That is
+ *  intended: adding PDF here is what makes already-labeled PDF receipt mail get
+ *  picked up. */
+export const SCANNABLE_MIMES: readonly string[] = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "application/pdf",
+]
 
 export function isReceiptMime(mime: string): boolean {
   return SCANNABLE_MIMES.includes(mime.toLowerCase())
