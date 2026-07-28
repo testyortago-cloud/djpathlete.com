@@ -590,20 +590,36 @@ async function getClientDetails(clientName: string): Promise<string> {
       if (profileParts.length > 0) clientSections.push(`Profile: ${profileParts.join(", ")}`)
     }
 
-    // Assigned programs
+    // Assigned programs.
+    //
+    // current_week MUST be included. It is the athlete's real position in the
+    // program (the same field the shared athlete card renders), and it moves
+    // only when they actually complete work — not with the calendar. Without
+    // it the model has nothing but `assigned` to reason from, so it silently
+    // answers "what week is X on?" with (today - assigned)/7 and states the
+    // guess as fact: a client sitting on week 3 of a 10-week block six weeks
+    // after assignment got reported as "~Week 6".
     const { data: assignments } = await supabase
       .from("program_assignments")
-      .select("status, created_at, programs(name)")
+      .select("status, created_at, current_week, total_weeks, programs(name, duration_weeks)")
       .eq("user_id", client.id)
       .order("created_at", { ascending: false })
       .limit(5)
 
     if (assignments && assignments.length > 0) {
       const programLines = assignments.map((a) => {
-        const prog = a.programs as unknown as { name: string } | null
-        return `  ${prog?.name ?? "Unknown"} (${a.status}, assigned ${new Date(a.created_at).toLocaleDateString()})`
+        const prog = a.programs as unknown as { name: string; duration_weeks: number | null } | null
+        const totalWeeks = a.total_weeks ?? prog?.duration_weeks ?? null
+        const week =
+          a.current_week != null
+            ? `, on week ${a.current_week}${totalWeeks ? ` of ${totalWeeks}` : ""}`
+            : ""
+        return `  ${prog?.name ?? "Unknown"} (${a.status}${week}, assigned ${new Date(a.created_at).toLocaleDateString()})`
       })
-      clientSections.push(`Programs:\n${programLines.join("\n")}`)
+      clientSections.push(
+        `Programs:\n${programLines.join("\n")}\n` +
+          "  NOTE: the week shown above is the athlete's ACTUAL recorded progress. Never infer a program week from the assigned date — elapsed time and progress diverge whenever training is paused or inconsistent. If no week is shown, say it is not recorded rather than estimating one.",
+      )
     } else {
       clientSections.push("Programs: None assigned")
     }
