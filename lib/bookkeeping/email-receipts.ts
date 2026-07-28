@@ -42,7 +42,12 @@ export function rowFromEmailDocument(
   accounts: BookkeepingAccount[],
 ): ReceiptBatchRow {
   const base: ReceiptBatchRow = {
-    ...newReceiptRow(doc.id, doc.original_filename ?? "Email receipt", null),
+    ...newReceiptRow(
+      doc.id,
+      doc.original_filename ?? "Email receipt",
+      null,
+      doc.mime_type === "application/pdf",
+    ),
     documentId: doc.id,
     status: "scanned",
     included: true,

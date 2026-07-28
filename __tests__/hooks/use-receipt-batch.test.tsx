@@ -69,6 +69,35 @@ describe("addFiles", () => {
     })
     expect(hook.result.current.files).toHaveLength(15) // duplicate silently skipped
   })
+
+  it("accepts PDFs and reports wrong-type files separately from over-cap drops", () => {
+    const { hook } = renderBatch()
+    const files = [
+      makeFile("a.jpg"),
+      new File(["x"], "invoice.pdf", { type: "application/pdf" }),
+      new File(["x"], "notes.docx", { type: "application/msword" }),
+    ]
+    let outcome!: { dropped: string[]; rejected: string[] }
+    act(() => {
+      outcome = hook.result.current.addFiles(files)
+    })
+    expect(hook.result.current.files.map((f) => f.name)).toEqual(["a.jpg", "invoice.pdf"])
+    // Distinct reasons: "not a receipt file" must never surface as "batch full".
+    expect(outcome.rejected).toEqual(["notes.docx"])
+    expect(outcome.dropped).toEqual([])
+  })
+
+  it("flags PDF rows as isPdf when the scan starts", async () => {
+    const { hook } = renderBatch()
+    fetchMock.mockResolvedValue(uploadOk("j1", "d1"))
+    act(() => {
+      hook.result.current.addFiles([new File(["x"], "invoice.pdf", { type: "application/pdf" })])
+    })
+    await act(async () => {
+      await hook.result.current.startScan()
+    })
+    expect(hook.result.current.rows[0]).toMatchObject({ fileName: "invoice.pdf", isPdf: true })
+  })
 })
 
 describe("startScan + review transition", () => {

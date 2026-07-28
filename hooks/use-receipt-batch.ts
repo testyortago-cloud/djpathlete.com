@@ -14,6 +14,8 @@ import {
   MAX_BATCH_SIZE,
   applyScanResult,
   detectWithinBatchDuplicates,
+  isAcceptedReceiptFile,
+  isPdfFile,
   newReceiptRow,
   parseAmountCents,
   rowValidationError,
@@ -84,10 +86,17 @@ export function useReceiptBatch({ bookId, accounts, onAllPosted }: UseReceiptBat
   useEffect(() => () => stopAllListeners(), [])
 
   const addFiles = useCallback(
-    (incoming: FileList | File[]): { dropped: string[] } => {
+    (incoming: FileList | File[]): { dropped: string[]; rejected: string[] } => {
       const dropped: string[] = []
+      const rejected: string[] = []
       const next = [...files]
       for (const f of Array.from(incoming)) {
+        // Type-checked here, not by the input's `accept` attribute: dropped
+        // files never pass through it.
+        if (!isAcceptedReceiptFile(f)) {
+          rejected.push(f.name)
+          continue
+        }
         if (next.some((e) => e.name === f.name && e.size === f.size)) continue
         if (next.length >= MAX_BATCH_SIZE) {
           dropped.push(f.name)
@@ -96,7 +105,9 @@ export function useReceiptBatch({ bookId, accounts, onAllPosted }: UseReceiptBat
         next.push(f)
       }
       setFiles(next)
-      return { dropped }
+      // Two distinct reasons a file did not make it in — the caller reports
+      // them separately so "wrong type" never reads as "batch full".
+      return { dropped, rejected }
     },
     [files],
   )
@@ -156,7 +167,9 @@ export function useReceiptBatch({ bookId, accounts, onAllPosted }: UseReceiptBat
           }
         }
       }
-      const initial = files.map((f) => newReceiptRow(crypto.randomUUID(), f.name, makeThumbUrl(f)))
+      const initial = files.map((f) =>
+        newReceiptRow(crypto.randomUUID(), f.name, makeThumbUrl(f), isPdfFile(f)),
+      )
       setRows(initial)
       setPhase("scanning")
       setUploading(true)

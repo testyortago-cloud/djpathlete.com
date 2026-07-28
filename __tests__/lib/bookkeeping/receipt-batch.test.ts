@@ -4,6 +4,8 @@ import {
   applyScanResult,
   batchTotals,
   detectWithinBatchDuplicates,
+  isAcceptedReceiptFile,
+  isPdfFile,
   newReceiptRow,
   parseAmountCents,
   resolveExpenseAccount,
@@ -32,6 +34,42 @@ function row(over: Partial<ReceiptBatchRow>): ReceiptBatchRow {
 describe("MAX_BATCH_SIZE", () => {
   it("is 15 per the spec", () => {
     expect(MAX_BATCH_SIZE).toBe(15)
+  })
+})
+
+describe("isAcceptedReceiptFile", () => {
+  const f = (name: string, type: string) => new File(["x"], name, { type })
+  it("accepts the four supported types", () => {
+    expect(isAcceptedReceiptFile(f("a.jpg", "image/jpeg"))).toBe(true)
+    expect(isAcceptedReceiptFile(f("a.png", "image/png"))).toBe(true)
+    expect(isAcceptedReceiptFile(f("a.webp", "image/webp"))).toBe(true)
+    expect(isAcceptedReceiptFile(f("a.pdf", "application/pdf"))).toBe(true)
+  })
+  it("accepts by extension when a drop gives no mime", () => {
+    expect(isAcceptedReceiptFile(f("invoice.PDF", ""))).toBe(true)
+    expect(isAcceptedReceiptFile(f("receipt.JPEG", ""))).toBe(true)
+  })
+  it("rejects everything else", () => {
+    expect(isAcceptedReceiptFile(f("notes.docx", "application/msword"))).toBe(false)
+    expect(isAcceptedReceiptFile(f("book.csv", "text/csv"))).toBe(false)
+    expect(isAcceptedReceiptFile(f("IMG_1.heic", "image/heic"))).toBe(false)
+  })
+})
+
+describe("isPdfFile", () => {
+  it("detects PDFs by mime or extension, and only PDFs", () => {
+    expect(isPdfFile(new File(["x"], "a.pdf", { type: "application/pdf" }))).toBe(true)
+    expect(isPdfFile(new File(["x"], "a.PDF", { type: "" }))).toBe(true)
+    expect(isPdfFile(new File(["x"], "a.jpg", { type: "image/jpeg" }))).toBe(false)
+  })
+})
+
+describe("newReceiptRow isPdf", () => {
+  it("defaults to false", () => {
+    expect(newReceiptRow("c1", "r.jpg", null).isPdf).toBe(false)
+  })
+  it("carries the flag when set", () => {
+    expect(newReceiptRow("c1", "invoice.pdf", null, true).isPdf).toBe(true)
   })
 })
 

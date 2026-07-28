@@ -8,6 +8,29 @@ import type { BookkeepingAccount } from "@/types/database"
 
 export const MAX_BATCH_SIZE = 15
 
+/** Mime-or-extension accept list, client side.
+ *
+ *  The click path is filtered by the file input's `accept` attribute, but
+ *  DROPPED files bypass it entirely — a drag-and-drop of anything at all hands
+ *  us the raw File. So the real gate lives here and both paths run through it.
+ *
+ *  Deliberately separate from lib/bookkeeping/receipt-pdf.ts, which does the
+ *  server-side equivalent: that module requires `pdf-parse` and must never
+ *  reach the browser bundle. */
+const ACCEPTED_RECEIPT_MIMES = ["image/jpeg", "image/png", "image/webp", "application/pdf"]
+const ACCEPTED_RECEIPT_EXTENSIONS = /\.(jpe?g|png|webp|pdf)$/i
+
+export function isAcceptedReceiptFile(file: File): boolean {
+  return (
+    ACCEPTED_RECEIPT_MIMES.includes(file.type.trim().toLowerCase()) ||
+    ACCEPTED_RECEIPT_EXTENSIONS.test(file.name)
+  )
+}
+
+export function isPdfFile(file: File): boolean {
+  return file.type.trim().toLowerCase() === "application/pdf" || /\.pdf$/i.test(file.name)
+}
+
 /** Shape of the completed job's `result` — mirrors ReceiptScanResult
  *  (functions/src/ai/receipt-schema.ts) field-for-field. */
 export interface ReceiptResult {
@@ -58,6 +81,9 @@ export interface ReceiptBatchRow {
   previewUrl: string | null
   /** Local object URL of the picked file (thumbnail; preview fallback). */
   thumbUrl: string | null
+  /** PDF rows cannot render in an <img> — a blob URL of a PDF is a
+   *  broken-image box. The review surfaces swap in a file tile and an iframe. */
+  isPdf: boolean
 }
 
 export function todayIso(): string {
@@ -98,7 +124,12 @@ export function parseAmountCents(amount: string): number | null {
   return Number.isFinite(cents) && cents > 0 ? cents : null
 }
 
-export function newReceiptRow(clientId: string, fileName: string, thumbUrl: string | null): ReceiptBatchRow {
+export function newReceiptRow(
+  clientId: string,
+  fileName: string,
+  thumbUrl: string | null,
+  isPdf = false,
+): ReceiptBatchRow {
   return {
     clientId,
     fileName,
@@ -117,6 +148,7 @@ export function newReceiptRow(clientId: string, fileName: string, thumbUrl: stri
     error: null,
     previewUrl: null,
     thumbUrl,
+    isPdf,
   }
 }
 
