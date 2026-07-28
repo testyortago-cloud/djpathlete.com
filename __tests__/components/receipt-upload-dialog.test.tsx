@@ -50,11 +50,73 @@ function pickFiles(files: File[]) {
   fireEvent.change(input, { target: { files } })
 }
 
+function makePdf(name = "invoice.pdf"): File {
+  return new File([new Uint8Array([1, 2, 3])], name, { type: "application/pdf" })
+}
+
+function dropFiles(files: File[]) {
+  const zone = screen.getByTestId("receipt-dropzone")
+  fireEvent.drop(zone, { dataTransfer: { files, types: ["Files"] } })
+}
+
+describe("ReceiptUploadDialog drag and drop", () => {
+  it("adds dropped files to the batch", () => {
+    renderDialog()
+    dropFiles([makeFile("dropped.jpg")])
+    expect(screen.getByText("dropped.jpg")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /upload & scan/i })).toBeEnabled()
+  })
+
+  it("accepts a dropped PDF", () => {
+    renderDialog()
+    dropFiles([makePdf()])
+    expect(screen.getByText("invoice.pdf")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /upload & scan/i })).toBeEnabled()
+  })
+
+  it("rejects a dropped non-receipt file and adds nothing", () => {
+    renderDialog()
+    dropFiles([new File(["x"], "notes.docx", { type: "application/msword" })])
+    expect(screen.queryByText("notes.docx")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /upload & scan/i })).toBeDisabled()
+  })
+
+  it("keeps the good files from a mixed drop", () => {
+    renderDialog()
+    dropFiles([makeFile("a.jpg"), new File(["x"], "notes.docx", { type: "application/msword" }), makePdf()])
+    expect(screen.getByText("a.jpg")).toBeInTheDocument()
+    expect(screen.getByText("invoice.pdf")).toBeInTheDocument()
+    expect(screen.queryByText("notes.docx")).not.toBeInTheDocument()
+  })
+
+  it("lets a second batch be dropped once files are staged", () => {
+    renderDialog()
+    pickFiles([makeFile("first.jpg")])
+    dropFiles([makeFile("second.jpg")])
+    expect(screen.getByText("first.jpg")).toBeInTheDocument()
+    expect(screen.getByText("second.jpg")).toBeInTheDocument()
+  })
+
+  it("advertises PDF support in the copy and the accept attribute", () => {
+    renderDialog()
+    expect(screen.getByText(/JPG, PNG, WEBP, or PDF/i)).toBeInTheDocument()
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    expect(input.getAttribute("accept")).toContain("application/pdf")
+  })
+
+  it("keeps the dropzone reachable by keyboard", () => {
+    renderDialog()
+    const zone = screen.getByTestId("receipt-dropzone").firstElementChild as HTMLElement
+    expect(zone).toHaveAttribute("role", "button")
+    expect(zone).toHaveAttribute("tabindex", "0")
+  })
+})
+
 describe("ReceiptUploadDialog (batch)", () => {
   it("renders the multi-select upload phase with the batch copy", () => {
     renderDialog()
     expect(screen.getByText(/upload receipt photos/i)).toBeInTheDocument()
-    expect(screen.getByText(/up to 15 photos/i)).toBeInTheDocument()
+    expect(screen.getByText(/up to 15 files/i)).toBeInTheDocument()
     const input = document.querySelector('input[type="file"]') as HTMLInputElement
     expect(input).toHaveAttribute("multiple")
     expect(screen.getByRole("button", { name: /upload & scan/i })).toBeDisabled()

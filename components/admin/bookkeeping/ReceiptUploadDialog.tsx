@@ -7,7 +7,7 @@
 // Orchestration lives in useReceiptBatch; this file is phase markup only.
 import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
-import { Camera, CheckCircle2, ImagePlus, Loader2, XCircle } from "lucide-react"
+import { Camera, CheckCircle2, FileText, ImagePlus, Loader2, XCircle } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -19,7 +19,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { formatCents } from "@/lib/bookkeeping/money"
-import { MAX_BATCH_SIZE, type ReceiptBatchRow } from "@/lib/bookkeeping/receipt-batch"
+import { MAX_BATCH_SIZE, isPdfFile, type ReceiptBatchRow } from "@/lib/bookkeeping/receipt-batch"
 import { useReceiptBatch } from "@/hooks/use-receipt-batch"
 import { ReceiptBatchReview } from "@/components/admin/bookkeeping/ReceiptBatchReview"
 import type { BookkeepingAccount } from "@/types/database"
@@ -66,6 +66,7 @@ export function ReceiptUploadDialog({
     },
   })
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [dragActive, setDragActive] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const batchRef = useRef(batch)
   batchRef.current = batch
@@ -95,13 +96,34 @@ export function ReceiptUploadDialog({
     onOpenChange(newOpen)
   }
 
-  function handleFilesPicked(list: FileList | null) {
+  function handleFilesPicked(list: FileList | File[] | null) {
     if (!list || list.length === 0) return
-    const { dropped } = batch.addFiles(list)
+    const { dropped, rejected } = batch.addFiles(list)
+    if (rejected.length > 0) {
+      toast.error(`Not a receipt file: ${rejected.join(", ")} — use JPG, PNG, WEBP, or PDF.`)
+    }
     if (dropped.length > 0) {
       toast.info(`Only ${MAX_BATCH_SIZE} receipts per batch — not added: ${dropped.join(", ")}`)
     }
     if (fileInputRef.current) fileInputRef.current.value = ""
+  }
+
+  // Dropped files never pass through the input's `accept` filter, so the type
+  // check lives in addFiles (lib/bookkeeping/receipt-batch.ts). preventDefault
+  // on dragover is what stops the browser from navigating to the dropped file.
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault()
+    setDragActive(false)
+    handleFilesPicked(e.dataTransfer?.files ?? null)
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault()
+    setDragActive(true)
+  }
+
+  function openPicker() {
+    fileInputRef.current?.click()
   }
 
   async function handleCancelRemaining() {
@@ -240,56 +262,87 @@ export function ReceiptUploadDialog({
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/jpeg,image/png,image/webp"
+            accept="image/jpeg,image/png,image/webp,application/pdf"
             multiple
             className="hidden"
             onChange={(e) => handleFilesPicked(e.target.files)}
           />
 
-          {batch.files.length === 0 ? (
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="w-full rounded-xl border-2 border-dashed border-border hover:border-primary/40 bg-muted/20 p-8 flex flex-col items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <ImagePlus className="size-6" />
-              <span className="text-sm font-medium">Choose photos</span>
-            </button>
-          ) : (
-            <div className="space-y-2">
-              <div className="grid grid-cols-3 gap-2">
-                {batch.files.map((file, index) => (
-                  <div key={`${file.name}-${file.size}`} className="relative rounded-lg border border-border overflow-hidden bg-muted/20">
-                    <div className="aspect-square flex items-center justify-center">
-                      <Camera className="size-5 text-muted-foreground/40" />
-                    </div>
-                    <p className="text-[10px] text-muted-foreground truncate px-1.5 pb-1">{file.name}</p>
-                    <button
-                      type="button"
-                      aria-label={`Remove ${file.name}`}
-                      onClick={() => batch.removeFile(index)}
-                      className="absolute top-1 right-1 size-5 rounded-full bg-background/90 border border-border flex items-center justify-center text-muted-foreground hover:text-destructive"
-                    >
-                      <XCircle className="size-3.5" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={batch.files.length >= MAX_BATCH_SIZE}
+          <div
+            data-testid="receipt-dropzone"
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+            onDragEnter={handleDragOver}
+            onDragLeave={() => setDragActive(false)}
+          >
+            {batch.files.length === 0 ? (
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={openPicker}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault()
+                    openPicker()
+                  }
+                }}
+                className={cn(
+                  "w-full cursor-pointer rounded-xl border-2 border-dashed bg-muted/20 p-8 flex flex-col items-center gap-2 transition-colors",
+                  dragActive
+                    ? "border-primary bg-primary/5 text-foreground"
+                    : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground",
+                )}
               >
-                <ImagePlus className="size-3.5 mr-1.5" />
-                Add more
-              </Button>
-            </div>
-          )}
+                <ImagePlus className="size-6" />
+                <span className="text-sm font-medium">
+                  {dragActive ? "Drop to add" : "Drag receipts here or choose files"}
+                </span>
+              </div>
+            ) : (
+              <div
+                className={cn(
+                  "space-y-2 rounded-xl border-2 border-dashed p-2 transition-colors",
+                  dragActive ? "border-primary bg-primary/5" : "border-transparent",
+                )}
+              >
+                <div className="grid grid-cols-3 gap-2">
+                  {batch.files.map((file, index) => (
+                    <div key={`${file.name}-${file.size}`} className="relative rounded-lg border border-border overflow-hidden bg-muted/20">
+                      <div className="aspect-square flex items-center justify-center">
+                        {isPdfFile(file) ? (
+                          <FileText className="size-5 text-muted-foreground/40" />
+                        ) : (
+                          <Camera className="size-5 text-muted-foreground/40" />
+                        )}
+                      </div>
+                      <p className="text-[10px] text-muted-foreground truncate px-1.5 pb-1">{file.name}</p>
+                      <button
+                        type="button"
+                        aria-label={`Remove ${file.name}`}
+                        onClick={() => batch.removeFile(index)}
+                        className="absolute top-1 right-1 size-5 rounded-full bg-background/90 border border-border flex items-center justify-center text-muted-foreground hover:text-destructive"
+                      >
+                        <XCircle className="size-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={openPicker}
+                  disabled={batch.files.length >= MAX_BATCH_SIZE}
+                >
+                  <ImagePlus className="size-3.5 mr-1.5" />
+                  Add more
+                </Button>
+              </div>
+            )}
+          </div>
 
           <p className="text-xs text-muted-foreground">
-            JPG, PNG, or WEBP. Max 10 MB each, up to {MAX_BATCH_SIZE} photos.
+            JPG, PNG, WEBP, or PDF. Max 10 MB each, up to {MAX_BATCH_SIZE} files.
           </p>
         </div>
 
