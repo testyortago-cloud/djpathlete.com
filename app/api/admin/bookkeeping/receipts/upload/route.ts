@@ -4,6 +4,7 @@ import { z } from "zod"
 import { auth } from "@/lib/auth"
 import { findDocumentBySha256, getBook, listAccounts } from "@/lib/db/bookkeeping"
 import { ingestReceiptDocument } from "@/lib/bookkeeping/receipt-ingest"
+import { isPdfMime, isPdfUpload, pdfRejectionReasonForBuffer } from "@/lib/bookkeeping/receipt-pdf"
 import { recordAudit } from "@/lib/audit/record"
 
 /**
@@ -20,10 +21,20 @@ import { recordAudit } from "@/lib/audit/record"
  */
 
 const MAX_SIZE = 10 * 1024 * 1024 // 10 MB
-const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"]
+const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"]
 
-function resolveImageMime(file: File): string {
-  if (ALLOWED_TYPES.includes(file.type)) return file.type
+/**
+ * Resolve the mime we STORE and hand to the scan job.
+ *
+ * The image-only predecessor defaulted every unrecognized file to
+ * "image/jpeg". A PDF stored under that mime breaks twice, far from the
+ * cause: sharp cannot decode it in the vision job, and GCS then serves an
+ * image content type to the review iframe, which renders nothing. PDF is
+ * therefore resolved FIRST and explicitly.
+ */
+function resolveReceiptMime(file: File): string {
+  if (isPdfUpload(file.type, file.name)) return "application/pdf"
+  if (ALLOWED_IMAGE_TYPES.includes(file.type)) return file.type
   const n = file.name.toLowerCase()
   if (n.endsWith(".png")) return "image/png"
   if (n.endsWith(".webp")) return "image/webp"
@@ -60,10 +71,11 @@ export async function POST(request: Request) {
     }
 
     const nameLower = file.name.toLowerCase()
-    const isImage = ALLOWED_TYPES.includes(file.type) || /\.(jpe?g|png|webp)$/i.test(nameLower)
-    if (!isImage) {
+    const isImage = ALLOWED_IMAGE_TYPES.includes(file.type) || /\.(jpe?g|png|webp)$/i.test(nameLower)
+    const isPdf = isPdfUpload(file.type, file.name)
+    if (!isImage && !isPdf) {
       return NextResponse.json(
-        { error: "Invalid file type. Upload a JPG, PNG, or WEBP receipt photo." },
+        { error: "Invalid file type. Upload a JPG, PNG, WEBP, or PDF receipt." },
         { status: 400 },
       )
     }
@@ -76,6 +88,17 @@ export async function POST(request: Request) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer())
+    const mimeType = resolveReceiptMime(file)
+
+    // Page-cap PDFs before ANY write. storeStatementFile puts bytes in the
+    // bucket before the bookkeeping_documents row that references them, so a
+    // later rejection would leave an orphan object the retention cron can
+    // never find — billed forever, and for a receipt, undeleted PII.
+    if (isPdfMime(mimeType)) {
+      const reason = await pdfRejectionReasonForBuffer(buffer)
+      if (reason) return NextResponse.json({ error: reason }, { status: 400 })
+    }
+
     const sha256 = createHash("sha256").update(buffer).digest("hex")
     const dup = await findDocumentBySha256(bookId, sha256)
 
@@ -85,7 +108,6 @@ export async function POST(request: Request) {
     }
     const accounts = accountRows.map((a) => ({ name: a.name, account_type: a.account_type }))
 
-    const mimeType = resolveImageMime(file)
     const { documentId, jobId, logId } = await ingestReceiptDocument({
       bookId,
       buffer,
