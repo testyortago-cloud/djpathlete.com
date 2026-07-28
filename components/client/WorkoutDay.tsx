@@ -39,6 +39,7 @@ import { CelebrationOverlay } from "@/components/client/CelebrationOverlay"
 import { ExerciseSwapSheet } from "@/components/client/ExerciseSwapSheet"
 import { ExerciseVideoUpload } from "@/components/client/ExerciseVideoUpload"
 import { formReviewCardState } from "@/lib/workout/form-review"
+import { resolveSharedNote } from "@/lib/workout/shared-note"
 import { extractYouTubeId } from "@/lib/youtube"
 import type {
   Exercise,
@@ -1098,24 +1099,20 @@ export function WorkoutDay({
   const groups = groupExercisesByTag(exercises)
   let exerciseIndex = 0
 
-  // Detect shared note — if all non-null notes are identical, show once in header
-  const allNotes = exercises.map((e) => e.programExercise.notes).filter(Boolean)
-  const uniqueNotes = new Set(allNotes)
-  const sharedNote = uniqueNotes.size === 1 ? allNotes[0] : null
+  // Show a note in the header only when it is genuinely day-wide — every
+  // exercise repeats it. A note on one exercise stays on that exercise's card.
+  const sharedNote = resolveSharedNote(exercises.map((e) => e.programExercise.notes))
 
   return (
     <div className="bg-white rounded-xl border border-border overflow-hidden">
       <div className="bg-surface px-4 py-3 border-b border-border">
-        <h3 className="flex items-center gap-1.5 text-sm font-semibold text-primary">
-          {sharedNote ? (
-            <>
-              <Lightbulb className="size-3.5 shrink-0 text-amber-500" strokeWidth={2} />
-              {sharedNote}
-            </>
-          ) : (
-            (dayLabel ?? `Day ${day}`)
-          )}
-        </h3>
+        <h3 className="text-sm font-semibold text-primary">{dayLabel ?? `Day ${day}`}</h3>
+        {sharedNote && (
+          <p className="mt-1.5 flex items-start gap-1.5 text-xs italic leading-relaxed text-foreground/70 whitespace-pre-line">
+            <Lightbulb className="mt-0.5 size-3.5 shrink-0 text-amber-500" strokeWidth={2} />
+            {sharedNote}
+          </p>
+        )}
       </div>
 
       <div className="divide-y divide-border">
@@ -1175,6 +1172,7 @@ export function WorkoutDay({
                   userId={userId}
                   displayWeek={displayWeek}
                   onLogged={() => handleExerciseLogged(item.exercise.id)}
+                  hideNotes={!!sharedNote}
                   programContext={programContext}
                 />
               </motion.div>
