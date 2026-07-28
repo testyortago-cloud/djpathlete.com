@@ -57,6 +57,39 @@ export async function resizeReceiptForVision(buffer: Buffer): Promise<{ data: st
   return { data: out.toString("base64"), media_type: "image/jpeg" }
 }
 
+/** Vision payload for one receipt, branched on the stored mime.
+ *
+ *  PDFs go to Claude as a document block — it reads both the text layer and
+ *  the page images, which is why this path exists instead of rasterizing page
+ *  1 before sharp. sharp cannot decode PDF at all (pinned 0.33.5 reports
+ *  format.pdf.input all-false), so routing a PDF into resizeReceiptForVision
+ *  fails with "unsupported image format" and leaves a blank review row that
+ *  nobody can explain. The upload route and the Gmail poller both guarantee
+ *  a PDF arriving here is within MAX_RECEIPT_PDF_PAGES. */
+export async function buildReceiptVisionPayload(
+  buffer: Buffer,
+  mimeType: string,
+): Promise<{
+  images?: Array<{ media_type: string; data: string }>
+  documents?: Array<{ media_type: string; data: string }>
+}> {
+  if (mimeType.trim().toLowerCase() === "application/pdf") {
+    return { documents: [{ media_type: "application/pdf", data: buffer.toString("base64") }] }
+  }
+  const image = await resizeReceiptForVision(buffer)
+  return { images: [image] }
+}
+
+/** Source-aware user message. The PDF wording matters: an invoice may run
+ *  several pages whose line items each look like an amount, and the row wants
+ *  the single grand total. */
+export function receiptUserMessage(accountsBlock: string, isPdf: boolean): string {
+  const instruction = isPdf
+    ? 'Read the attached receipt PDF and extract the fields. It may be an invoice spanning several pages — report the single grand total for the whole document, not a line item. If it is actually a multi-transaction statement rather than one receipt, set confidence to "low" and say so in warnings.'
+    : "Read the attached receipt image and extract the fields."
+  return `${accountsBlock}\n\n${instruction}`
+}
+
 /** Coalesce every field (RTDB drops null leaves) so downstream always sees a full object. */
 export function coalesceReceiptResult(r: Partial<ReceiptScanResult> | null | undefined): ReceiptScanResult {
   return {
@@ -183,14 +216,14 @@ export async function handleReceiptScan(jobId: string): Promise<void> {
     const bucketName = process.env.FIREBASE_PRIVATE_BUCKET
     if (!bucketName) throw new Error("FIREBASE_PRIVATE_BUCKET not set")
     const [buffer] = await getStorage().bucket(bucketName).file(input.storagePath).download()
-    const image = await resizeReceiptForVision(buffer)
+    const payload = await buildReceiptVisionPayload(buffer, input.mimeType ?? "")
 
-    const userMessage = `${renderAccounts(input.accounts ?? [])}\n\nRead the attached receipt image and extract the fields.`
+    const userMessage = receiptUserMessage(renderAccounts(input.accounts ?? []), !!payload.documents)
     const res = await callAgent<ReceiptScanResult>(
       RECEIPT_SCAN_PROMPT.replace("<name>", input.bookName),
       userMessage,
       receiptScanSchema,
-      { model: MODEL_SONNET, images: [image] },
+      { model: MODEL_SONNET, ...payload },
     )
     const result = coalesceReceiptResult(res.content)
 

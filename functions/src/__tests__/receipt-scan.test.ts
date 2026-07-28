@@ -1,5 +1,54 @@
 import { describe, it, expect } from "vitest"
-import { resizeReceiptForVision, coalesceReceiptResult, documentBackfillPayload } from "../receipt-scan.js"
+import {
+  resizeReceiptForVision,
+  coalesceReceiptResult,
+  documentBackfillPayload,
+  buildReceiptVisionPayload,
+  receiptUserMessage,
+} from "../receipt-scan.js"
+
+describe("buildReceiptVisionPayload", () => {
+  it("sends a PDF as a document block and never touches sharp", async () => {
+    // These bytes are not a decodable image. If the mimeType branch were lost
+    // and this fell through to resizeReceiptForVision, sharp would reject with
+    // "unsupported image format" and this test would fail — which is the
+    // point: it cannot pass without the branch.
+    const pdf = Buffer.from("%PDF-1.4\nnot an image at all\n%%EOF")
+    const payload = await buildReceiptVisionPayload(pdf, "application/pdf")
+    expect(payload.images).toBeUndefined()
+    expect(payload.documents).toEqual([
+      { media_type: "application/pdf", data: pdf.toString("base64") },
+    ])
+  })
+
+  it("still resizes images through sharp", async () => {
+    const sharp = (await import("sharp")).default
+    const jpeg = await sharp({
+      create: { width: 2400, height: 1800, channels: 3, background: { r: 10, g: 20, b: 30 } },
+    })
+      .jpeg()
+      .toBuffer()
+    const payload = await buildReceiptVisionPayload(jpeg, "image/jpeg")
+    expect(payload.documents).toBeUndefined()
+    expect(payload.images?.[0].media_type).toBe("image/jpeg")
+    // Proof it went through the resizer rather than being passed through raw.
+    expect(Buffer.from(payload.images![0].data, "base64").length).toBeLessThan(jpeg.length)
+  })
+})
+
+describe("receiptUserMessage", () => {
+  it("tells the model to find one grand total in a multi-page PDF", () => {
+    const msg = receiptUserMessage("## Expense categories\nFuel", true)
+    expect(msg).toMatch(/pdf/i)
+    expect(msg).toMatch(/grand total/i)
+    expect(msg).toContain("## Expense categories\nFuel")
+  })
+  it("keeps the image wording for photos", () => {
+    const msg = receiptUserMessage("## Expense categories\nFuel", false)
+    expect(msg).toMatch(/image/i)
+    expect(msg).not.toMatch(/grand total/i)
+  })
+})
 
 describe("resizeReceiptForVision", () => {
   it("produces a base64 jpeg under the vision size budget", async () => {
