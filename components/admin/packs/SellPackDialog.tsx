@@ -48,6 +48,9 @@ export function SellPackDialog({
   const [submitting, setSubmitting] = useState(false)
   const [createdLink, setCreatedLink] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  // Someone other than the client is paying (a parent with no account here).
+  const [billToOther, setBillToOther] = useState(false)
+  const [billToEmail, setBillToEmail] = useState("")
 
   useEffect(() => {
     if (!open) return
@@ -76,6 +79,18 @@ export function SellPackDialog({
           ? { clientUserId, paymentMethod: "cash", owed: true }
           : { clientUserId, paymentMethod }
       if (programId !== "none") body.programId = programId
+
+      // Omitted rather than sent empty: "" would fail the .email() validator
+      // and break every ordinary sale.
+      const trimmedBillTo = billToEmail.trim()
+      if (paymentMethod === "stripe" && billToOther) {
+        if (!trimmedBillTo) {
+          toast.error("Enter the billing email, or untick “Someone else is paying”")
+          return
+        }
+        body.billToEmail = trimmedBillTo
+      }
+
       if (mode === "catalogue") {
         if (!productId) {
           toast.error("Pick a pack")
@@ -150,6 +165,8 @@ export function SellPackDialog({
     if (next) {
       setCreatedLink(null)
       setCopied(false)
+      setBillToOther(false)
+      setBillToEmail("")
     }
   }
 
@@ -163,8 +180,12 @@ export function SellPackDialog({
           </DialogHeader>
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Send this link to the client (WhatsApp, text, email). It&apos;s addressed to their email, so their own
-              card details come up — not yours. Don&apos;t pay through it yourself.
+              Send this link to whoever is paying (WhatsApp, text, email). It&apos;s addressed to their email, so their
+              own card details come up — not yours. Don&apos;t pay through it yourself.
+            </p>
+            <p className="text-sm">
+              <span className="text-muted-foreground">Billed to </span>
+              <span className="font-medium text-foreground">{billToEmail.trim() || "the client"}</span>
             </p>
             <div className="flex gap-2">
               <Input readOnly value={createdLink} onFocus={(e) => e.currentTarget.select()} />
@@ -270,6 +291,36 @@ export function SellPackDialog({
                 Sessions can be used right away. The pack shows an &quot;owes payment&quot; badge until you mark it
                 paid (e.g. when the Venmo arrives).
               </p>
+            )}
+            {paymentMethod === "stripe" && (
+              <div className="space-y-2 rounded-md border border-border p-3">
+                <label htmlFor="billToOther" className="flex items-center gap-2 text-sm">
+                  <input
+                    id="billToOther"
+                    type="checkbox"
+                    checked={billToOther}
+                    onChange={(e) => setBillToOther(e.target.checked)}
+                    className="size-4 rounded border-border"
+                  />
+                  Someone else is paying
+                </label>
+                {billToOther && (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="billTo">Billing email</Label>
+                    <Input
+                      id="billTo"
+                      type="email"
+                      value={billToEmail}
+                      onChange={(e) => setBillToEmail(e.target.value)}
+                      placeholder="parent@example.com"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      The payment page and the receipt go to this address. The pack still belongs to the client, and
+                      they&apos;re CC&apos;d if you email the link.
+                    </p>
+                  </div>
+                )}
+              </div>
             )}
           </div>
 

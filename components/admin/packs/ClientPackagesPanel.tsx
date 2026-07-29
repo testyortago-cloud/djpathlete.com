@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { Ticket, Plus, Undo2, Link2, Trash2, BadgeCheck } from "lucide-react"
+import { Ticket, Plus, Undo2, Link2, Trash2, BadgeCheck, Mail, UserPen } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   AlertDialog,
@@ -91,6 +91,51 @@ export function ClientPackagesPanel({
       }
     } catch {
       toast.error("Network error — could not get the payment link")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function emailPaymentLink(packId: string) {
+    setBusy(true)
+    try {
+      const res = await fetch(`/api/admin/session-packs/${packId}/email-link`, { method: "POST" })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(d.error ?? "Could not email the payment link")
+        return
+      }
+      toast.success(`Payment link emailed to ${d.sentTo}`)
+      router.refresh()
+    } catch {
+      toast.error("Network error — the link was not emailed")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function changeBillTo(packId: string, current: string | null) {
+    const next = window.prompt(
+      "Email the payment link should be addressed to (leave blank to bill the client). This re-issues the link, so the old one stops working.",
+      current ?? "",
+    )
+    if (next === null) return
+    setBusy(true)
+    try {
+      const res = await fetch(`/api/admin/session-packs/${packId}/bill-to`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ billToEmail: next.trim() || null }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(d.error ?? "Could not change the billing email")
+        return
+      }
+      toast.success(next.trim() ? `Now billed to ${next.trim()}` : "Now billed to the client")
+      router.refresh()
+    } catch {
+      toast.error("Network error — the billing email was not changed")
     } finally {
       setBusy(false)
     }
@@ -220,14 +265,23 @@ export function ClientPackagesPanel({
                       <Link2 className="size-3.5" />
                       Copy payment link
                     </Button>
+                    <Button size="sm" variant="outline" onClick={() => emailPaymentLink(p.id)} disabled={busy}>
+                      <Mail className="size-3.5" />
+                      Email link
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => changeBillTo(p.id, p.bill_to_email)} disabled={busy}>
+                      <UserPen className="size-3.5" />
+                      Change billing email
+                    </Button>
                     <Button size="sm" variant="ghost" onClick={() => markPaid(p.id)} disabled={busy}>
                       <BadgeCheck className="size-3.5" />
                       Mark paid (received offline)
                     </Button>
                   </div>
                   <p className="text-xs text-muted-foreground mt-1.5">
-                    Send this link to the client — it&apos;s addressed to their email. The pack shows as paid
-                    automatically once they pay, or mark it paid yourself if the money came another way.
+                    Billed to <span className="text-foreground">{p.bill_to_email ?? "the client"}</span>
+                    {p.bill_to_emailed_at ? ` · link emailed ${fmtDate(p.bill_to_emailed_at)}` : ""}. The pack shows as
+                    paid automatically once they pay, or mark it paid yourself if the money came another way.
                   </p>
                 </div>
               )}
