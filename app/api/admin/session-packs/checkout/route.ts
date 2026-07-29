@@ -94,6 +94,9 @@ export async function POST(request: Request) {
         validityDays,
         productId,
         stripePriceId,
+        // Optional: address the link to a payer with no account (a parent).
+        // Falls through to the household payer, then the client, when absent.
+        billToEmail: input.billToEmail ?? null,
         // The link is sent to and paid by the CLIENT — land them on their own
         // packs page, never the coach's admin client page.
         returnUrl: input.returnUrl ?? "/client/sessions",
@@ -113,6 +116,8 @@ export async function POST(request: Request) {
           now,
           stripeSessionId: checkout.id,
           notes: input.notes ?? null,
+          // Persisted so a re-minted link keeps the same addressee.
+          billToEmail: input.billToEmail ?? null,
         }),
       )
       return NextResponse.json({ url: checkout.url, packageId: pkg.id })

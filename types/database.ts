@@ -2855,6 +2855,9 @@ export interface ClientPackage {
   status: ClientPackageStatus
   last_reminded_threshold: PackReminderThreshold | null
   notes: string | null
+  /** Overrides the Stripe checkout addressee. Null = household payer, else the trainee. */
+  bill_to_email: string | null
+  bill_to_emailed_at: string | null
   created_by: string | null
   created_at: string
   updated_at: string

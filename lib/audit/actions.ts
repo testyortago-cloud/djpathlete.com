@@ -218,6 +218,8 @@ export const AUDIT_ACTIONS = [
   { slug: "pack.expired", category: "system", description: "Session pack expired" },
   { slug: "pack.deleted", category: "commerce", description: "Session pack deleted by admin" },
   { slug: "pack.payment_link_refreshed", category: "commerce", description: "Session pack payment link retrieved/regenerated" },
+  { slug: "pack.payment_link_emailed", category: "commerce", description: "Session pack payment link emailed to the payer" },
+  { slug: "pack.bill_to_changed", category: "commerce", description: "Session pack billing email changed (payment link re-issued)" },
   { slug: "pack.marked_paid", category: "commerce", description: "Session pack manually marked paid (offline payment received)" },
   { slug: "session.slot_created", category: "admin_write", description: "Recurring session slot created" },
   { slug: "session.slot_updated", category: "admin_write", description: "Recurring session slot updated" },

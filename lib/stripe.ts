@@ -408,6 +408,8 @@ export async function createPackCheckoutSession(opts: {
   validityDays: number | null
   productId: string | null
   stripePriceId?: string | null
+  /** Explicit addressee (e.g. a parent with no account). Beats the household payer. */
+  billToEmail?: string | null
   returnUrl?: string
   cancelUrl?: string
 }): Promise<Stripe.Checkout.Session> {
@@ -435,21 +437,27 @@ export async function createPackCheckoutSession(opts: {
   // account lives in the browser that opens the link (the coach's own
   // card/email when he previews it).
   //
-  // Household billing: resolveBillingUserId returns the "Charges paid by"
-  // payer, else the client themselves. The pack is still FOR the trainee —
-  // metadata.clientUserId below is unchanged and is what the webhook credits.
-  // Only the addressee changes. Before this, a parent/spouse set as payer
-  // opened the link and found the trainee's email locked in (Stripe makes a
-  // provided customer_email read-only), so the receipt landed in the wrong
-  // inbox. Memberships and no-show/late-cancel fees already resolve the payer;
-  // pack checkout was the one money path that did not.
-  let customerEmail: string | undefined
-  try {
-    const billingUserId = await resolveBillingUserId(opts.clientUserId)
-    const payer = await getUserById(billingUserId)
-    customerEmail = payer?.email ?? undefined
-  } catch {
-    // Non-fatal — checkout still works, just without the prefilled email.
+  // Addressee precedence: explicit per-pack override → household payer → the
+  // client themselves.
+  //
+  // `billToEmail` covers the payer who has no account at all (a parent paying
+  // for a junior athlete). The household payer covers one who does:
+  // resolveBillingUserId returns the "Charges paid by" user, else the client.
+  //
+  // The pack is still FOR the trainee — metadata.clientUserId below is
+  // unchanged and is what the webhook credits. Only the addressee changes.
+  // Before any of this, a parent opened the link and found the trainee's email
+  // locked in (Stripe makes a provided customer_email read-only), so the
+  // receipt landed in the wrong inbox.
+  let customerEmail: string | undefined = opts.billToEmail ?? undefined
+  if (!customerEmail) {
+    try {
+      const billingUserId = await resolveBillingUserId(opts.clientUserId)
+      const payer = await getUserById(billingUserId)
+      customerEmail = payer?.email ?? undefined
+    } catch {
+      // Non-fatal — checkout still works, just without the prefilled email.
+    }
   }
 
   return stripe.checkout.sessions.create({

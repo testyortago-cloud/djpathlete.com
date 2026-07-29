@@ -29,6 +29,8 @@ export const sellPackSchema = z
     programId: z.string().uuid().optional(),
     returnUrl: z.string().optional(),
     notes: z.string().optional(),
+    /** Address the Stripe link to someone else (e.g. a parent with no account). */
+    billToEmail: z.string().email().optional(),
   })
   .refine((d) => !!d.productId || !!d.adhoc, { message: "Provide productId or adhoc pack" })
 

@@ -83,6 +83,8 @@ export function buildPackageInsert(opts: {
   now: Date
   stripeSessionId?: string | null
   notes?: string | null
+  /** Addressee for this pack's Stripe link; null = household payer, else the client. */
+  billToEmail?: string | null
 }): Omit<ClientPackage, "id" | "created_at" | "updated_at"> {
   const purchasedAt = opts.now.toISOString()
   const paymentStatus: PackPaymentStatus =
@@ -110,6 +112,10 @@ export function buildPackageInsert(opts: {
     status: "active",
     last_reminded_threshold: null,
     notes: opts.notes ?? null,
+    bill_to_email: opts.billToEmail ?? null,
+    // Never pre-stamped: a non-null value here would make the UI claim a link
+    // was emailed that never was.
+    bill_to_emailed_at: null,
     created_by: opts.createdBy,
   }
 }

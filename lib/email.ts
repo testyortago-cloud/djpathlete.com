@@ -2468,3 +2468,72 @@ export async function sendFeeChargedToPayerEmail(opts: {
     console.error("[sendFeeChargedToPayerEmail] resend error:", error)
   }
 }
+
+/**
+ * Send a session-pack payment link to whoever is paying.
+ *
+ * `to` is the pack's bill-to address — typically a parent with no account here.
+ * The client is CC'd so they can see what was sent on their behalf, dropped
+ * when it would duplicate `to` (the same guard the ADMIN_CC callsites use).
+ *
+ * Throws on failure: the coach is usually standing in front of the client and
+ * must know at once if the link never went out.
+ */
+export async function sendPackPaymentLinkEmail(opts: {
+  to: string
+  ccClientEmail: string | null
+  clientName: string
+  packLabel: string
+  amountCents: number
+  url: string
+}) {
+  const amount = `$${(opts.amountCents / 100).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`
+
+  const html = emailLayout(`
+    ${heroBanner("Payment Request", `Training sessions for ${opts.clientName}`)}
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td style="padding:48px 48px 52px;">
+
+          <p style="margin:0 0 32px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:15px; color:#5c5750; line-height:1.8;">
+            Here's the secure payment link for ${opts.clientName}'s training sessions. Payment is handled by Stripe — we never see your card details.
+          </p>
+
+          ${infoCard([
+            { label: "For", value: opts.clientName },
+            { label: "Package", value: opts.packLabel },
+            { label: "Amount", value: amount },
+          ])}
+
+          <div style="margin:32px 0 0;">
+            ${ctaButton(opts.url, "Pay now")}
+          </div>
+
+          <p style="margin:28px 0 0; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:13px; color:#a09b94; line-height:1.8;">
+            If the button doesn't work, paste this into your browser:<br />
+            <span style="color:#5c5750; word-break:break-all;">${opts.url}</span>
+          </p>
+
+        </td>
+      </tr>
+    </table>
+  `)
+
+  const cc = opts.ccClientEmail && opts.ccClientEmail !== opts.to ? opts.ccClientEmail : undefined
+
+  const { error } = await resend.emails.send({
+    from: FROM_EMAIL,
+    to: opts.to,
+    cc,
+    subject: `Payment link — ${opts.packLabel} for ${opts.clientName}`,
+    html,
+  })
+  if (error) {
+    console.error("[sendPackPaymentLinkEmail] resend error:", error)
+    throw new Error("Failed to send the payment link email")
+  }
+}
