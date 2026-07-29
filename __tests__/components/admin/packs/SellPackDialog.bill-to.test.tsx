@@ -98,10 +98,12 @@ describe("<SellPackDialog> — bill to someone else", () => {
     expect(await screen.findByText("dad@example.com")).toBeInTheDocument()
   })
 
-  it("says the client is billed when no address was given", async () => {
+  it("does not claim the client is billed when no address was given", async () => {
     await openDialog()
     submit()
-    expect(await screen.findByText("the client")).toBeInTheDocument()
+    // A household payer may be set, which this component can't see — so the
+    // fallback must stay vague rather than assert the wrong person.
+    expect(await screen.findByText("the client's billing contact")).toBeInTheDocument()
   })
 
   it("hides the billing-email field until the box is ticked", async () => {

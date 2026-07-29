@@ -279,7 +279,8 @@ export function ClientPackagesPanel({
                     </Button>
                   </div>
                   <p className="text-xs text-muted-foreground mt-1.5">
-                    Billed to <span className="text-foreground">{p.bill_to_email ?? "the client"}</span>
+                    Billed to{" "}
+                    <span className="text-foreground">{p.bill_to_email ?? "the client's billing contact"}</span>
                     {p.bill_to_emailed_at ? ` · link emailed ${fmtDate(p.bill_to_emailed_at)}` : ""}. The pack shows as
                     paid automatically once they pay, or mark it paid yourself if the money came another way.
                   </p>

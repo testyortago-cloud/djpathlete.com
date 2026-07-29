@@ -209,7 +209,12 @@ export function SellPackDialog({
             </p>
             <p className="text-sm">
               <span className="text-muted-foreground">Billed to </span>
-              <span className="font-medium text-foreground">{billToEmail.trim() || "the client"}</span>
+              {/* Without an override the addressee is the client's household
+                  payer when one is set, else the client — this component can't
+                  tell which, so it must not claim "the client". */}
+              <span className="font-medium text-foreground">
+                {billToEmail.trim() || "the client's billing contact"}
+              </span>
             </p>
             <div className="flex gap-2">
               <Input readOnly value={createdLink} onFocus={(e) => e.currentTarget.select()} />
