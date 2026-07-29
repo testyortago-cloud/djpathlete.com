@@ -2,8 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
-import { rtdb } from "@/lib/firebase"
-import { ref, onValue, off } from "firebase/database"
+import { subscribeToJob, type JobSnapshot } from "@/lib/firebase/job-subscription"
 import { Upload, Loader2, CheckCircle2, XCircle, AlertTriangle, FileText, Brain, ListChecks } from "lucide-react"
 import {
   Dialog,
@@ -43,15 +42,10 @@ const STMT_STEPS = [
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function mapProgressToStep(progress?: {
-  status: string
-  current_step: number
-  total_steps: number
-  detail?: string
-}): { step: number; detail: string | null } {
+function mapProgressToStep(progress?: JobSnapshot["progress"]): { step: number; detail: string | null } {
   if (!progress) return { step: 0, detail: null }
   const idx = STMT_STEPS.findIndex((s) => s.key === progress.status)
-  return { step: idx >= 0 ? idx + 1 : progress.current_step, detail: progress.detail ?? null }
+  return { step: idx >= 0 ? idx + 1 : (progress.current_step ?? 0), detail: progress.detail ?? null }
 }
 
 /** Firebase RTDB drops empty arrays AND `null` leaf values, so `result.rows`/
@@ -200,12 +194,12 @@ export function StatementImportDialog({
   const [confirmNonBusiness, setConfirmNonBusiness] = useState(false)
   const isNonBusinessBook = bookKind === "household" || !bookIsPrimary
 
-  const jobRefRef = useRef<ReturnType<typeof ref> | null>(null)
+  const unsubscribeRef = useRef<(() => void) | null>(null)
 
   function stopListening() {
-    if (jobRefRef.current) {
-      off(jobRefRef.current)
-      jobRefRef.current = null
+    if (unsubscribeRef.current) {
+      unsubscribeRef.current()
+      unsubscribeRef.current = null
     }
   }
 
@@ -364,15 +358,9 @@ export function StatementImportDialog({
           toast.info(`You may have already uploaded this file on ${formatOccurredOn(String(data.duplicateUploadHint).slice(0, 10))}`)
         }
 
-        const jobRef = ref(rtdb, `ai_jobs/${data.jobId}`)
-        jobRefRef.current = jobRef
-
-        onValue(
-          jobRef,
-          (snapshot) => {
-            const jobData = snapshot.val()
-            if (!jobData) return
-
+        unsubscribeRef.current = subscribeToJob(
+          data.jobId,
+          (jobData) => {
             if (jobData.progress) {
               const { step: mappedStep, detail } = mapProgressToStep(jobData.progress)
               setProgressStep(mappedStep)
@@ -394,7 +382,7 @@ export function StatementImportDialog({
             }
           },
           (err) => {
-            console.error("[StatementImportDialog] RTDB listener error:", err)
+            console.error("[StatementImportDialog] job listener error:", err)
             stopListening()
             setError("Lost connection to import updates")
             setIsImporting(false)

@@ -5,8 +5,7 @@
 // fans them out and aggregates state. Pure decisions (dupes, sorting,
 // validation, totals) live in lib/bookkeeping/receipt-batch.ts.
 import { useCallback, useEffect, useRef, useState } from "react"
-import { ref, onValue, off } from "firebase/database"
-import { rtdb } from "@/lib/firebase"
+import { subscribeToJob } from "@/lib/firebase/job-subscription"
 import { useAiJobsDock } from "@/hooks/use-ai-jobs-dock"
 import { summarizeApiError } from "@/lib/errors/humanize"
 import { receiptSourceRef } from "@/lib/bookkeeping/receipts"
@@ -62,7 +61,7 @@ export function useReceiptBatch({ bookId, accounts, onAllPosted }: UseReceiptBat
   rowsRef.current = rows
   const accountsRef = useRef(accounts)
   accountsRef.current = accounts
-  const listenersRef = useRef(new Map<string, ReturnType<typeof ref>>())
+  const listenersRef = useRef(new Map<string, () => void>())
   const cancelRequestedRef = useRef(false)
   const scanInFlightRef = useRef(false)
   // The upload POST currently on the wire. Cancel aborts it — without this a
@@ -75,15 +74,15 @@ export function useReceiptBatch({ bookId, accounts, onAllPosted }: UseReceiptBat
   }
 
   function stopJob(jobId: string) {
-    const jobRef = listenersRef.current.get(jobId)
-    if (jobRef) {
-      off(jobRef)
+    const unsubscribe = listenersRef.current.get(jobId)
+    if (unsubscribe) {
+      unsubscribe()
       listenersRef.current.delete(jobId)
     }
   }
 
   function stopAllListeners() {
-    for (const jobRef of listenersRef.current.values()) off(jobRef)
+    for (const unsubscribe of listenersRef.current.values()) unsubscribe()
     listenersRef.current.clear()
   }
 
@@ -121,15 +120,9 @@ export function useReceiptBatch({ bookId, accounts, onAllPosted }: UseReceiptBat
   }, [])
 
   function listenToJob(clientId: string, jobId: string) {
-    const jobRef = ref(rtdb, `ai_jobs/${jobId}`)
-    listenersRef.current.set(jobId, jobRef)
-    onValue(
-      jobRef,
-      (snapshot) => {
-        const jobData = snapshot.val() as
-          | { status?: string; result?: unknown; error?: string }
-          | null
-        if (!jobData) return
+    const unsubscribe = subscribeToJob(
+      jobId,
+      (jobData) => {
         if (jobData.status === "completed") {
           stopJob(jobId)
           setRows((prev) =>
@@ -153,6 +146,9 @@ export function useReceiptBatch({ bookId, accounts, onAllPosted }: UseReceiptBat
         patchRow(clientId, { status: "scan_failed", error: "Lost connection to scan updates" })
       },
     )
+    // Safe to register after subscribing: Firestore delivers snapshots
+    // asynchronously, so no callback can run before this line.
+    listenersRef.current.set(jobId, unsubscribe)
   }
 
   const startScan = useCallback(

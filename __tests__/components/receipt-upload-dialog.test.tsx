@@ -1,14 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react"
 
-const listeners = new Map<string, { cb: (snap: { val: () => unknown }) => void }>()
-vi.mock("@/lib/firebase", () => ({ rtdb: {} }))
-vi.mock("firebase/database", () => ({
-  ref: vi.fn((_db: unknown, path: string) => ({ path })),
-  onValue: vi.fn((r: { path: string }, cb: (snap: { val: () => unknown }) => void) => {
-    listeners.set(r.path, { cb })
+// Firestore-backed job watching (see lib/firebase/job-subscription) — RTDB's
+// websocket does not reliably deliver to the browser.
+const listeners = new Map<string, { cb: (job: unknown) => void }>()
+vi.mock("@/lib/firebase/job-subscription", () => ({
+  subscribeToJob: vi.fn((jobId: string, onData: (job: unknown) => void) => {
+    listeners.set(jobId, { cb: onData })
+    return () => listeners.delete(jobId)
   }),
-  off: vi.fn(),
 }))
 vi.mock("@/hooks/use-ai-jobs-dock", () => ({ useAiJobsDock: () => ({ addJob: vi.fn() }) }))
 
@@ -141,17 +141,15 @@ describe("ReceiptUploadDialog (batch)", () => {
     })
     pickFiles([makeFile("a.jpg")])
     fireEvent.click(screen.getByRole("button", { name: /upload & scan/i }))
-    await waitFor(() => expect(listeners.has("ai_jobs/j1")).toBe(true))
+    await waitFor(() => expect(listeners.has("j1")).toBe(true))
     expect(screen.getByText(/scanned 0 of 1/i)).toBeInTheDocument()
 
     // Preview fetch for the auto-expanded editor
     fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ url: "https://signed/img" }) })
     act(() => {
-      listeners.get("ai_jobs/j1")!.cb({
-        val: () => ({
-          status: "completed",
-          result: { vendor: "Chevron", amount_cents: 4512, occurred_on: "2026-07-01", suggested_category: "Fuel" },
-        }),
+      listeners.get("j1")!.cb({
+        status: "completed",
+        result: { vendor: "Chevron", amount_cents: 4512, occurred_on: "2026-07-01", suggested_category: "Fuel" },
       })
     })
     await waitFor(() => expect(screen.getByLabelText(/counterparty/i)).toHaveValue("Chevron"))
@@ -167,7 +165,7 @@ describe("ReceiptUploadDialog (batch)", () => {
     })
     pickFiles([makeFile("a.jpg")])
     fireEvent.click(screen.getByRole("button", { name: /upload & scan/i }))
-    await waitFor(() => expect(listeners.has("ai_jobs/j1")).toBe(true))
+    await waitFor(() => expect(listeners.has("j1")).toBe(true))
     fireEvent.keyDown(document.body, { key: "Escape" })
     expect(props.onOpenChange).not.toHaveBeenCalledWith(false)
   })
@@ -181,14 +179,12 @@ describe("ReceiptUploadDialog (batch)", () => {
     })
     pickFiles([makeFile("a.jpg")])
     fireEvent.click(screen.getByRole("button", { name: /upload & scan/i }))
-    await waitFor(() => expect(listeners.has("ai_jobs/j1")).toBe(true))
+    await waitFor(() => expect(listeners.has("j1")).toBe(true))
     fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ url: "https://signed/img" }) })
     act(() => {
-      listeners.get("ai_jobs/j1")!.cb({
-        val: () => ({
-          status: "completed",
-          result: { vendor: "Chevron", amount_cents: 4512, occurred_on: "2026-07-01", suggested_category: "Fuel" },
-        }),
+      listeners.get("j1")!.cb({
+        status: "completed",
+        result: { vendor: "Chevron", amount_cents: 4512, occurred_on: "2026-07-01", suggested_category: "Fuel" },
       })
     })
     await waitFor(() => expect(screen.getByRole("button", { name: /post 1 receipt/i })).toBeEnabled())
@@ -214,12 +210,12 @@ describe("ReceiptUploadDialog (batch)", () => {
       .mockResolvedValueOnce({ ok: true, status: 202, json: async () => ({ jobId: "j2", documentId: "d2", duplicateUploadHint: null }) })
     pickFiles([makeFile("a.jpg"), makeFile("b.jpg")])
     fireEvent.click(screen.getByRole("button", { name: /upload & scan/i }))
-    await waitFor(() => expect(listeners.has("ai_jobs/j2")).toBe(true))
+    await waitFor(() => expect(listeners.has("j2")).toBe(true))
     act(() => {
-      listeners.get("ai_jobs/j1")!.cb({ val: () => ({ status: "completed", result: { vendor: "Chevron", amount_cents: 4512, occurred_on: "2026-07-01", suggested_category: "Fuel" } }) })
+      listeners.get("j1")!.cb({ status: "completed", result: { vendor: "Chevron", amount_cents: 4512, occurred_on: "2026-07-01", suggested_category: "Fuel" } })
     })
     act(() => {
-      listeners.get("ai_jobs/j2")!.cb({ val: () => ({ status: "completed", result: { vendor: "HEB", amount_cents: 2000, occurred_on: "2026-07-02", suggested_category: "Fuel" } }) })
+      listeners.get("j2")!.cb({ status: "completed", result: { vendor: "HEB", amount_cents: 2000, occurred_on: "2026-07-02", suggested_category: "Fuel" } })
     })
     await waitFor(() => expect(screen.getByRole("button", { name: /post 2 receipts/i })).toBeEnabled())
     fetchMock
@@ -240,10 +236,10 @@ describe("ReceiptUploadDialog (batch)", () => {
     fetchMock.mockResolvedValueOnce({ ok: true, status: 202, json: async () => ({ jobId: "j9", documentId: "d9", duplicateUploadHint: null }) })
     pickFiles([makeFile("c.jpg")])
     fireEvent.click(screen.getByRole("button", { name: /upload & scan/i }))
-    await waitFor(() => expect(listeners.has("ai_jobs/j9")).toBe(true))
+    await waitFor(() => expect(listeners.has("j9")).toBe(true))
     fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ url: "https://signed/img" }) })
     act(() => {
-      listeners.get("ai_jobs/j9")!.cb({ val: () => ({ status: "completed", result: { vendor: "HEB", amount_cents: 2000, occurred_on: "2026-07-02", suggested_category: "Fuel" } }) })
+      listeners.get("j9")!.cb({ status: "completed", result: { vendor: "HEB", amount_cents: 2000, occurred_on: "2026-07-02", suggested_category: "Fuel" } })
     })
     await waitFor(() => expect(screen.getByRole("button", { name: /post 1 receipt/i })).toBeEnabled())
     fireEvent.click(screen.getByRole("button", { name: /^cancel$/i }))

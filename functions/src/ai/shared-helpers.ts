@@ -141,18 +141,41 @@ export function applyPoolFilter<T extends { id: string }>(
 
 // ─── Firebase Job Progress ─────────────────────────────────────────────────
 
+/**
+ * Publish job progress to BOTH Firestore and RTDB.
+ *
+ * Firestore is the transport browsers actually receive: RTDB's
+ * `wss://*.firebaseio.com` stream silently fails to deliver in some
+ * browser/network setups (see JobsNotificationDock, which was migrated to
+ * Firestore for exactly this reason). Progress written only to RTDB left the
+ * import dialogs frozen at "Step 0 of 3" while the job ran to completion.
+ *
+ * The two writes are independent — a failure of one must neither block nor
+ * hide the other, so neither is allowed to throw out of here.
+ */
 export function createJobProgressUpdater(firebaseJobId: string | undefined, totalSteps: number) {
   return async function updateJobProgress(step: string, currentStep: number, detail?: string) {
     if (!firebaseJobId) return
-    try {
-      const { getDatabase } = await import("firebase-admin/database")
-      const rtdb = getDatabase()
-      await rtdb.ref(`ai_jobs/${firebaseJobId}`).update({
-        progress: { status: step, current_step: currentStep, total_steps: totalSteps, detail: detail ?? null },
-        updatedAt: Date.now(),
-      })
-    } catch (e) {
-      console.warn(`[shared] Failed to update RTDB progress:`, e)
+    const progress = { status: step, current_step: currentStep, total_steps: totalSteps, detail: detail ?? null }
+
+    const [firestoreResult, rtdbResult] = await Promise.allSettled([
+      (async () => {
+        const { getFirestore } = await import("firebase-admin/firestore")
+        // set/merge rather than update: never throw merely because the doc
+        // is not there yet.
+        await getFirestore().collection("ai_jobs").doc(firebaseJobId).set({ progress }, { merge: true })
+      })(),
+      (async () => {
+        const { getDatabase } = await import("firebase-admin/database")
+        await getDatabase().ref(`ai_jobs/${firebaseJobId}`).update({ progress, updatedAt: Date.now() })
+      })(),
+    ])
+
+    if (firestoreResult.status === "rejected") {
+      console.warn(`[shared] Failed to update Firestore progress:`, firestoreResult.reason)
+    }
+    if (rtdbResult.status === "rejected") {
+      console.warn(`[shared] Failed to update RTDB progress:`, rtdbResult.reason)
     }
   }
 }

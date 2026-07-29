@@ -1,17 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { renderHook, act, waitFor } from "@testing-library/react"
 
-const listeners = new Map<string, { cb: (snap: { val: () => unknown }) => void; err: (e: unknown) => void }>()
-const offSpy = vi.fn()
-vi.mock("@/lib/firebase", () => ({ rtdb: {} }))
-vi.mock("firebase/database", () => ({
-  ref: vi.fn((_db: unknown, path: string) => ({ path })),
-  onValue: vi.fn(
-    (r: { path: string }, cb: (snap: { val: () => unknown }) => void, err: (e: unknown) => void) => {
-      listeners.set(r.path, { cb, err })
-    },
-  ),
-  off: (...args: unknown[]) => offSpy(...args),
+// Jobs are watched over Firestore, not RTDB — RTDB's websocket silently fails
+// to deliver in some browsers, which froze the scan dialog at step 0.
+const listeners = new Map<string, { cb: (job: unknown) => void; err: (e: unknown) => void }>()
+const unsubscribeSpy = vi.fn()
+vi.mock("@/lib/firebase/job-subscription", () => ({
+  subscribeToJob: vi.fn((jobId: string, onData: (job: unknown) => void, onError: (e: unknown) => void) => {
+    listeners.set(jobId, { cb: onData, err: onError })
+    return () => {
+      unsubscribeSpy(jobId)
+      listeners.delete(jobId)
+    }
+  }),
 }))
 const addJobSpy = vi.fn()
 vi.mock("@/hooks/use-ai-jobs-dock", () => ({ useAiJobsDock: () => ({ addJob: addJobSpy }) }))
@@ -28,16 +29,16 @@ function makeFile(name: string, bytes = [1, 2, 3]): File {
 }
 
 function fireJob(jobId: string, payload: unknown) {
-  const l = listeners.get(`ai_jobs/${jobId}`)
+  const l = listeners.get(jobId)
   if (!l) throw new Error(`no listener for ${jobId}`)
-  act(() => l.cb({ val: () => payload }))
+  act(() => l.cb(payload))
 }
 
 const fetchMock = vi.fn()
 
 beforeEach(() => {
   listeners.clear()
-  offSpy.mockClear()
+  unsubscribeSpy.mockClear()
   addJobSpy.mockClear()
   fetchMock.mockReset()
   vi.stubGlobal("fetch", fetchMock)
@@ -175,7 +176,7 @@ describe("startScan + review transition", () => {
       await hook.result.current.startScan()
     })
     fireJob("j1", { status: "failed", error: "Model refused" })
-    act(() => listeners.get("ai_jobs/j2")!.err(new Error("boom")))
+    act(() => listeners.get("j2")!.err(new Error("boom")))
     await waitFor(() => expect(hook.result.current.phase).toBe("review")) // d1/d2 stored → manual rows
     const [a, b] = hook.result.current.rows
     expect(a.status).toBe("scan_failed")
@@ -234,9 +235,11 @@ describe("cancelRemaining", () => {
     const cancelCall = fetchMock.mock.calls.find((c) => String(c[0]).includes("/generate/cancel"))
     expect(cancelCall).toBeTruthy()
     expect(JSON.parse((cancelCall![1] as RequestInit).body as string)).toEqual({ jobId: "j1" })
-    fireJob("j1", { status: "cancelled" })
+    // No fireJob: cancel detaches the listener and settles the row itself, so
+    // there is deliberately no server message left to deliver.
     await waitFor(() => expect(hook.result.current.phase).toBe("review")) // d1 stored → manual row
     expect(hook.result.current.rows[0].status).toBe("cancelled")
+    expect(listeners.has("j1")).toBe(false)
   })
 
   // The test above hand-fires the RTDB "cancelled" event. Production often
@@ -392,7 +395,7 @@ describe("reset", () => {
     act(() => {
       hook.result.current.reset()
     })
-    expect(offSpy).toHaveBeenCalled()
+    expect(unsubscribeSpy).toHaveBeenCalled()
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:mock")
     expect(hook.result.current.phase).toBe("select")
     expect(hook.result.current.files).toHaveLength(0)
