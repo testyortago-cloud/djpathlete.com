@@ -2,8 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
-import { rtdb } from "@/lib/firebase"
-import { ref, onValue, off } from "firebase/database"
+import { subscribeToJob, type JobSnapshot } from "@/lib/firebase/job-subscription"
 import { Upload, Loader2, CheckCircle2, XCircle, FileText, Brain, ListChecks, ShoppingCart } from "lucide-react"
 import {
   Dialog,
@@ -55,15 +54,10 @@ const AMZ_STEPS = [
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function mapProgressToStep(progress?: {
-  status: string
-  current_step: number
-  total_steps: number
-  detail?: string
-}): { step: number; detail: string | null } {
+function mapProgressToStep(progress?: JobSnapshot["progress"]): { step: number; detail: string | null } {
   if (!progress) return { step: 0, detail: null }
   const idx = AMZ_STEPS.findIndex((s) => s.key === progress.status)
-  return { step: idx >= 0 ? idx + 1 : progress.current_step, detail: progress.detail ?? null }
+  return { step: idx >= 0 ? idx + 1 : (progress.current_step ?? 0), detail: progress.detail ?? null }
 }
 
 /** Shape of a row inside the completed job's `result.rows` — the shipped
@@ -172,12 +166,12 @@ export function AmazonImportDialog({ bookId, accounts, open, onOpenChange, onSav
   // rejected_closed > 0.
   const [rejectedClosedCount, setRejectedClosedCount] = useState(0)
 
-  const jobRefRef = useRef<ReturnType<typeof ref> | null>(null)
+  const jobUnsubRef = useRef<(() => void) | null>(null)
 
   function stopListening() {
-    if (jobRefRef.current) {
-      off(jobRefRef.current)
-      jobRefRef.current = null
+    if (jobUnsubRef.current) {
+      jobUnsubRef.current()
+      jobUnsubRef.current = null
     }
   }
 
@@ -312,15 +306,9 @@ export function AmazonImportDialog({ bookId, accounts, open, onOpenChange, onSav
           )
         }
 
-        const jobRef = ref(rtdb, `ai_jobs/${data.jobId}`)
-        jobRefRef.current = jobRef
-
-        onValue(
-          jobRef,
-          (snapshot) => {
-            const jobData = snapshot.val()
-            if (!jobData) return
-
+        jobUnsubRef.current = subscribeToJob(
+          data.jobId,
+          (jobData) => {
             if (jobData.progress) {
               const { step: mappedStep, detail } = mapProgressToStep(jobData.progress)
               setProgressStep(mappedStep)
@@ -342,7 +330,7 @@ export function AmazonImportDialog({ bookId, accounts, open, onOpenChange, onSav
             }
           },
           (err) => {
-            console.error("[AmazonImportDialog] RTDB listener error:", err)
+            console.error("[AmazonImportDialog] job listener error:", err)
             stopListening()
             setError("Lost connection to import updates")
             setIsImporting(false)

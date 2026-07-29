@@ -6,8 +6,7 @@ import { toast } from "sonner"
 import { COACH_EMAIL } from "@/lib/constants"
 import Link from "next/link"
 import { motion, AnimatePresence } from "framer-motion"
-import { rtdb } from "@/lib/firebase"
-import { ref, onValue, off } from "firebase/database"
+import { subscribeToJob, type JobSnapshot } from "@/lib/firebase/job-subscription"
 import {
   Sparkles,
   Loader2,
@@ -454,12 +453,12 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
     setGoals((prev) => (prev.includes(goal) ? prev.filter((g) => g !== goal) : [...prev, goal]))
   }
 
-  const jobRefRef = useRef<ReturnType<typeof ref> | null>(null)
+  const jobUnsubRef = useRef<(() => void) | null>(null)
 
   function stopListening() {
-    if (jobRefRef.current) {
-      off(jobRefRef.current)
-      jobRefRef.current = null
+    if (jobUnsubRef.current) {
+      jobUnsubRef.current()
+      jobUnsubRef.current = null
     }
     if (unsubRef.current) {
       unsubRef.current()
@@ -497,15 +496,10 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
     }
   }
 
-  function mapProgressToStep(progress?: {
-    status: string
-    current_step: number
-    total_steps: number
-    detail?: string
-  }): { step: number; detail: string | null } {
+  function mapProgressToStep(progress?: JobSnapshot["progress"]): { step: number; detail: string | null } {
     if (!progress) return { step: 0, detail: null }
     const idx = GENERATION_STEPS.findIndex((s) => s.key === progress.status)
-    return { step: idx >= 0 ? idx + 1 : progress.current_step, detail: progress.detail ?? null }
+    return { step: idx >= 0 ? idx + 1 : (progress.current_step ?? 0), detail: progress.detail ?? null }
   }
 
   // ─── Submit ───────────────────────────────────────────────────────────────
@@ -577,9 +571,6 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
         setElapsedSeconds(0)
         timerRef.current = setInterval(() => setElapsedSeconds((s) => s + 1), 1000)
 
-        // Listen to RTDB job node for real-time progress
-        const jobRef = ref(rtdb, `ai_jobs/${data.jobId}`)
-        jobRefRef.current = jobRef
         lastRtdbUpdateRef.current = Date.now()
 
         const stopTimer = () => {
@@ -631,12 +622,9 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
           }
         }, 15000)
 
-        onValue(
-          jobRef,
-          (snapshot) => {
-            const jobData = snapshot.val()
-            if (!jobData) return
-
+        jobUnsubRef.current = subscribeToJob(
+          data.jobId,
+          (jobData) => {
             lastRtdbUpdateRef.current = Date.now()
 
             // Update step progress from orchestrator
@@ -649,12 +637,19 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
             if (jobData.status === "completed" && jobData.result) {
               stopListening()
               stopTimer()
+              const jobResult = jobData.result as {
+                program_id: string
+                validation?: unknown
+                token_usage?: { agent1: number; agent2: number; agent3: number; agent4: number; total: number }
+                duration_ms?: number
+                retries?: number
+              }
               setResult({
-                program_id: jobData.result.program_id,
-                validation: safeValidation(jobData.result.validation),
-                token_usage: jobData.result.token_usage ?? { agent1: 0, agent2: 0, agent3: 0, agent4: 0, total: 0 },
-                duration_ms: jobData.result.duration_ms ?? 0,
-                retries: jobData.result.retries ?? 0,
+                program_id: jobResult.program_id,
+                validation: safeValidation(jobResult.validation),
+                token_usage: jobResult.token_usage ?? { agent1: 0, agent2: 0, agent3: 0, agent4: 0, total: 0 },
+                duration_ms: jobResult.duration_ms ?? 0,
+                retries: jobResult.retries ?? 0,
               })
               setIsGenerating(false)
               toast.success("Program generated successfully!")
@@ -673,7 +668,7 @@ export function AiGenerateDialog({ open, onOpenChange }: AiGenerateDialogProps) 
             }
           },
           (err) => {
-            console.error("[AiGenerateDialog] RTDB listener error:", err)
+            console.error("[AiGenerateDialog] job listener error:", err)
             stopListening()
             stopTimer()
             setError("Lost connection to generation updates")

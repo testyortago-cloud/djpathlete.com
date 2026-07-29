@@ -4,8 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import Link from "next/link"
-import { rtdb } from "@/lib/firebase"
-import { ref, onValue, off } from "firebase/database"
+import { subscribeToJob, type JobSnapshot } from "@/lib/firebase/job-subscription"
 import {
   FileSpreadsheet,
   Loader2,
@@ -49,15 +48,10 @@ const IMPORT_STEPS = [
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function mapProgressToStep(progress?: {
-  status: string
-  current_step: number
-  total_steps: number
-  detail?: string
-}): { step: number; detail: string | null } {
+function mapProgressToStep(progress?: JobSnapshot["progress"]): { step: number; detail: string | null } {
   if (!progress) return { step: 0, detail: null }
   const idx = IMPORT_STEPS.findIndex((s) => s.key === progress.status)
-  return { step: idx >= 0 ? idx + 1 : progress.current_step, detail: progress.detail ?? null }
+  return { step: idx >= 0 ? idx + 1 : (progress.current_step ?? 0), detail: progress.detail ?? null }
 }
 
 /** Firebase RTDB drops empty arrays, so matched/created/counts may be undefined after round-trip */
@@ -122,12 +116,12 @@ export function ExcelImportDialog({ open, onOpenChange, clients }: ExcelImportDi
   const [error, setError] = useState<string | null>(null)
   const [showAssign, setShowAssign] = useState(false)
 
-  const jobRefRef = useRef<ReturnType<typeof ref> | null>(null)
+  const jobUnsubRef = useRef<(() => void) | null>(null)
 
   function stopListening() {
-    if (jobRefRef.current) {
-      off(jobRefRef.current)
-      jobRefRef.current = null
+    if (jobUnsubRef.current) {
+      jobUnsubRef.current()
+      jobUnsubRef.current = null
     }
   }
 
@@ -219,15 +213,9 @@ export function ExcelImportDialog({ open, onOpenChange, clients }: ExcelImportDi
         setActiveJobId(data.jobId)
         addJob({ jobId: data.jobId, kind: "excel_import", label: "Excel import" })
 
-        const jobRef = ref(rtdb, `ai_jobs/${data.jobId}`)
-        jobRefRef.current = jobRef
-
-        onValue(
-          jobRef,
-          (snapshot) => {
-            const jobData = snapshot.val()
-            if (!jobData) return
-
+        jobUnsubRef.current = subscribeToJob(
+          data.jobId,
+          (jobData) => {
             if (jobData.progress) {
               const { step, detail } = mapProgressToStep(jobData.progress)
               setProgressStep(step)
@@ -236,9 +224,10 @@ export function ExcelImportDialog({ open, onOpenChange, clients }: ExcelImportDi
 
             if (jobData.status === "completed" && jobData.result) {
               stopListening()
+              const jobResult = jobData.result as { program_id: string; report?: unknown }
               setResult({
-                program_id: jobData.result.program_id,
-                report: safeReport(jobData.result.report),
+                program_id: jobResult.program_id,
+                report: safeReport(jobResult.report),
               })
               setIsImporting(false)
               toast.success("Program imported successfully!")
@@ -255,7 +244,7 @@ export function ExcelImportDialog({ open, onOpenChange, clients }: ExcelImportDi
             }
           },
           (err) => {
-            console.error("[ExcelImportDialog] RTDB listener error:", err)
+            console.error("[ExcelImportDialog] job listener error:", err)
             stopListening()
             setError("Lost connection to import updates")
             setIsImporting(false)
