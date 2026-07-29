@@ -9,13 +9,20 @@ const CLIENT = "11111111-1111-4111-8111-111111111111"
 
 /** Bodies of every POST to the sell-a-pack endpoint. */
 let checkoutBodies: Record<string, unknown>[] = []
+/** URLs of every POST to the email-the-link endpoint. */
+let emailLinkCalls: string[] = []
 
 function mockFetch() {
   checkoutBodies = []
+  emailLinkCalls = []
   vi.spyOn(global, "fetch").mockImplementation((async (url: string, init?: RequestInit) => {
+    if (String(url).includes("/email-link")) {
+      emailLinkCalls.push(String(url))
+      return new Response(JSON.stringify({ ok: true, sentTo: "dad@example.com" }), { status: 200 })
+    }
     if (String(url).includes("/checkout")) {
       checkoutBodies.push(JSON.parse(String(init?.body)))
-      return new Response(JSON.stringify({ url: "https://stripe.test/cs_1" }), { status: 200 })
+      return new Response(JSON.stringify({ url: "https://stripe.test/cs_1", packageId: "pack-1" }), { status: 200 })
     }
     return new Response(JSON.stringify({ products: [], programs: [] }), { status: 200 })
   }) as unknown as typeof fetch)
@@ -100,5 +107,20 @@ describe("<SellPackDialog> — bill to someone else", () => {
   it("hides the billing-email field until the box is ticked", async () => {
     await openDialog()
     expect(screen.queryByLabelText(/billing email/i)).not.toBeInTheDocument()
+  })
+
+  it("emails the link for the pack it just created", async () => {
+    const checkbox = await openDialog()
+    fireEvent.click(checkbox)
+    fireEvent.change(screen.getByLabelText(/billing email/i), { target: { value: "dad@example.com" } })
+    submit()
+
+    fireEvent.click(await screen.findByRole("button", { name: /email this link/i }))
+
+    // Must target the pack just sold, not some other id — this is the primary
+    // flow: sell, then send it to the parent without leaving the dialog.
+    await waitFor(() => expect(emailLinkCalls).toHaveLength(1))
+    expect(emailLinkCalls[0]).toBe("/api/admin/session-packs/pack-1/email-link")
+    expect(await screen.findByRole("button", { name: /emailed/i })).toBeInTheDocument()
   })
 })

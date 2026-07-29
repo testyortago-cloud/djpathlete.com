@@ -47,6 +47,8 @@ export function SellPackDialog({
   const [paymentMethod, setPaymentMethod] = useState<"stripe" | "cash" | "cash_owed" | "comp">("stripe")
   const [submitting, setSubmitting] = useState(false)
   const [createdLink, setCreatedLink] = useState<string | null>(null)
+  const [createdPackId, setCreatedPackId] = useState<string | null>(null)
+  const [emailed, setEmailed] = useState(false)
   const [copied, setCopied] = useState(false)
   // Someone other than the client is paying (a parent with no account here).
   const [billToOther, setBillToOther] = useState(false)
@@ -127,6 +129,7 @@ export function SellPackDialog({
         // Never navigate there ourselves: opening checkout in the coach's own
         // browser makes Stripe Link autofill the coach's email and card.
         setCreatedLink(data.url as string)
+        setCreatedPackId((data.packageId as string) ?? null)
         try {
           await navigator.clipboard.writeText(data.url as string)
           setCopied(true)
@@ -157,6 +160,25 @@ export function SellPackDialog({
     }
   }
 
+  async function emailLink() {
+    if (!createdPackId) return
+    setSubmitting(true)
+    try {
+      const res = await fetch(`/api/admin/session-packs/${createdPackId}/email-link`, { method: "POST" })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(d.error ?? "Could not email the link")
+        return
+      }
+      setEmailed(true)
+      toast.success(`Payment link emailed to ${d.sentTo}`)
+    } catch {
+      toast.error("Network error — the link was not emailed")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   function handleOpenChange(next: boolean) {
     setOpen(next)
     // Reset on OPEN, not close — clearing during close would swap the link
@@ -164,6 +186,8 @@ export function SellPackDialog({
     // through the exit animation).
     if (next) {
       setCreatedLink(null)
+      setCreatedPackId(null)
+      setEmailed(false)
       setCopied(false)
       setBillToOther(false)
       setBillToEmail("")
@@ -193,6 +217,11 @@ export function SellPackDialog({
                 {copied ? "Copied" : "Copy"}
               </Button>
             </div>
+            {createdPackId && (
+              <Button type="button" variant="outline" onClick={emailLink} disabled={submitting} className="w-full">
+                {emailed ? "Emailed ✓" : "Email this link"}
+              </Button>
+            )}
             <p className="text-xs text-muted-foreground">
               The pack shows as &quot;awaiting payment&quot; until they pay, then flips to paid automatically. You can
               re-copy this link any time from the pack&apos;s &quot;Copy payment link&quot; button.

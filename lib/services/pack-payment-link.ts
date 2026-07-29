@@ -109,6 +109,17 @@ export async function changePackBillTo(
       }
     }
     if (existing.status === "open") {
+      // DETACH BEFORE EXPIRING. Expiring fires `checkout.session.expired`, and
+      // handleSessionPackExpired cancels whatever pack still points at that
+      // session id — a pending pack with no check-ins is exactly this one. If
+      // that webhook beat our repoint below, changing the billing email would
+      // silently cancel the pack. Nulling the id first means the webhook finds
+      // no pack and no-ops.
+      //
+      // Deliberately not the other order (mint first, expire last): a failure
+      // there would leave an orphaned OPEN link whose payment no webhook could
+      // match — money taken, no credits. A detached pack is merely re-mintable.
+      await updateClientPackage(pack.id, { stripe_session_id: null })
       try {
         await stripe.checkout.sessions.expire(pack.stripe_session_id)
       } catch (err) {

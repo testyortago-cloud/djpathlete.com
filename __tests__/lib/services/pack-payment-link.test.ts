@@ -135,7 +135,28 @@ describe("changePackBillTo", () => {
     const r = await changePackBillTo(unaddressed, "dad@example.com")
     expect(r).toMatchObject({ ok: false, status: 502 })
     expect(createPackCheckoutSessionMock).not.toHaveBeenCalled()
-    expect(updateClientPackageMock).not.toHaveBeenCalled()
+    // The detach may have landed, but the address must NOT have changed.
+    for (const [, patch] of updateClientPackageMock.mock.calls) {
+      expect(patch).not.toHaveProperty("bill_to_email")
+    }
+  })
+
+  it("detaches the pack from the old session BEFORE expiring it", async () => {
+    retrieveMock.mockResolvedValue({ status: "open", url: "https://stripe.test/cs_old" })
+    const order: string[] = []
+    updateClientPackageMock.mockImplementation(async (_id: string, patch: Record<string, unknown>) => {
+      order.push(patch.stripe_session_id === null ? "detach" : "repoint")
+    })
+    expireMock.mockImplementation(async () => {
+      order.push("expire")
+    })
+
+    await changePackBillTo(unaddressed, "dad@example.com")
+
+    // Expiring fires checkout.session.expired, and handleSessionPackExpired
+    // cancels whatever pending pack still points at that session id. Expiring
+    // while attached loses the pack to a webhook race.
+    expect(order).toEqual(["detach", "expire", "repoint"])
   })
 
   it("clears the address back to null", async () => {
