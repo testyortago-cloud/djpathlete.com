@@ -4,6 +4,7 @@ import { getSubmissionById, setCurrentVersion } from "@/lib/db/team-video-submis
 import { createVersion, nextVersionNumber } from "@/lib/db/team-video-versions"
 import { buildVersionPath, createUploadUrl } from "@/lib/storage/team-videos"
 import { createVersionSchema } from "@/lib/validators/team-video"
+import { uploadBlockedReason } from "@/lib/team-videos/workflow"
 import { withAudit } from "@/lib/audit/with-audit"
 
 export const POST = withAudit(
@@ -32,12 +33,12 @@ export const POST = withAudit(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
-  // Only allowed when revision was requested or submission is still a draft
-  if (submission.status !== "revision_requested" && submission.status !== "draft") {
-    return NextResponse.json(
-      { error: "Cannot upload a new version in current state" },
-      { status: 409 },
-    )
+  // Open until sign-off — an editor can deliver a new cut whenever the
+  // submission isn't approved or locked. The refusal reuses the same sentence
+  // the editor UI shows, so the two can't drift.
+  const blocked = uploadBlockedReason(submission.status)
+  if (blocked) {
+    return NextResponse.json({ error: blocked }, { status: 409 })
   }
 
   let body: unknown

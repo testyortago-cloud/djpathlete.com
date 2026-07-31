@@ -14,8 +14,13 @@ const MAX_IMAGES = 10
 
 interface Props {
   submissionId: string
-  /** Show the "Darren requested a revision" banner. */
-  showRevisionBanner?: boolean
+  /**
+   * Ribbon copy above the picker, varying by status. Comes from
+   * editorWorkflowState().uploadPrompt. Pass null to render no ribbon.
+   */
+  prompt?: string | null
+  /** Amber alert styling. Off for the neutral "you may upload" states. */
+  urgent?: boolean
 }
 
 interface SelectedImage {
@@ -25,7 +30,8 @@ interface SelectedImage {
 
 export function PhotoRevisionUploadZone({
   submissionId,
-  showRevisionBanner = true,
+  prompt = null,
+  urgent = false,
 }: Props) {
   const router = useRouter()
   const [images, setImages] = useState<SelectedImage[]>([])
@@ -138,15 +144,21 @@ export function PhotoRevisionUploadZone({
 
   return (
     <div className="space-y-3">
-      {showRevisionBanner && (
-        <div className="flex items-center gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2">
-          <AlertTriangle
-            className="size-4 text-warning shrink-0"
-            strokeWidth={1.5}
-          />
-          <p className="text-sm font-medium text-warning">
-            Darren requested a revision. Upload a new set of photos to address
-            the open comments.
+      {prompt && (
+        <div
+          className={`flex items-center gap-2 rounded-md border px-3 py-2 ${
+            urgent ? "border-warning/40 bg-warning/10" : "border-border bg-muted/30"
+          }`}
+        >
+          {urgent ? (
+            <AlertTriangle className="size-4 text-warning shrink-0" strokeWidth={1.5} />
+          ) : (
+            <Upload className="size-4 text-muted-foreground shrink-0" strokeWidth={1.5} />
+          )}
+          <p
+            className={`text-sm font-medium ${urgent ? "text-warning" : "text-muted-foreground"}`}
+          >
+            {prompt}
           </p>
         </div>
       )}

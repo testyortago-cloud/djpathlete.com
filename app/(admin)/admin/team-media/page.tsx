@@ -1,5 +1,6 @@
 import { requireAdmin } from "@/lib/auth-helpers"
 import { listAllSubmissions } from "@/lib/db/team-video-submissions"
+import { countOpenNotesOnCurrentVersions } from "@/lib/db/team-video-comments"
 import { TeamVideoTable } from "@/components/admin/team-videos/TeamVideoTable"
 
 export const metadata = { title: "Team Media" }
@@ -7,6 +8,9 @@ export const metadata = { title: "Team Media" }
 export default async function TeamVideosPage() {
   await requireAdmin()
   const submissions = await listAllSubmissions()
+  const openNotes = Object.fromEntries(
+    await countOpenNotesOnCurrentVersions(submissions.map((s) => s.id)),
+  )
 
   return (
     <div className="space-y-6 p-6">
@@ -16,7 +20,7 @@ export default async function TeamVideosPage() {
           Review videos and images submitted by your editor team.
         </p>
       </header>
-      <TeamVideoTable submissions={submissions} />
+      <TeamVideoTable submissions={submissions} openNotes={openNotes} />
     </div>
   )
 }

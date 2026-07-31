@@ -147,6 +147,63 @@ export async function reopenComment(id: string): Promise<void> {
   if (error) throw error
 }
 
+/**
+ * Open-note counts on each submission's CURRENT version, keyed by submission id.
+ *
+ * Powers the "notes not sent" flag on the admin list without an N+1. Scoped to
+ * the current version deliberately — notes on a superseded cut have already
+ * been seen and acted on, so counting them would flag healthy submissions.
+ *
+ * Two queries, not a JOIN, for the same reason as listCommentsForSubmission:
+ * no dependency on PostgREST embedding for this relation.
+ */
+export async function countOpenNotesOnCurrentVersions(
+  submissionIds: string[],
+): Promise<Map<string, number>> {
+  const counts = new Map<string, number>()
+  if (submissionIds.length === 0) return counts
+
+  const supabase = getClient()
+  const { data: vRows, error: vErr } = await supabase
+    .from("team_video_versions")
+    .select("id, submission_id, version_number")
+    .in("submission_id", submissionIds)
+  if (vErr) throw vErr
+
+  // Highest version_number wins — the same "current version" rule as
+  // getCurrentVersion(), so the list and the review page can't disagree.
+  const currentBySubmission = new Map<string, { id: string; n: number }>()
+  for (const row of (vRows ?? []) as Array<{
+    id: string
+    submission_id: string
+    version_number: number
+  }>) {
+    const prev = currentBySubmission.get(row.submission_id)
+    if (!prev || row.version_number > prev.n) {
+      currentBySubmission.set(row.submission_id, { id: row.id, n: row.version_number })
+    }
+  }
+
+  const versionIds = Array.from(currentBySubmission.values()).map((v) => v.id)
+  if (versionIds.length === 0) return counts
+
+  const { data: cRows, error: cErr } = await supabase
+    .from("team_video_comments")
+    .select("version_id")
+    .in("version_id", versionIds)
+    .eq("status", "open")
+  if (cErr) throw cErr
+
+  const perVersion = new Map<string, number>()
+  for (const row of (cRows ?? []) as Array<{ version_id: string }>) {
+    perVersion.set(row.version_id, (perVersion.get(row.version_id) ?? 0) + 1)
+  }
+  for (const [submissionId, current] of currentBySubmission) {
+    counts.set(submissionId, perVersion.get(current.id) ?? 0)
+  }
+  return counts
+}
+
 export async function countOpenCommentsForVersion(versionId: string): Promise<number> {
   const supabase = getClient()
   const { count, error } = await supabase

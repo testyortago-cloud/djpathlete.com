@@ -5,6 +5,7 @@ import { createVersion, nextVersionNumber } from "@/lib/db/team-video-versions"
 import { createImagesForVersion } from "@/lib/db/team-submission-images"
 import { buildImagePath, createImageUploadUrls } from "@/lib/storage/team-videos"
 import { createPhotoVersionSchema } from "@/lib/validators/team-video"
+import { uploadBlockedReason } from "@/lib/team-videos/workflow"
 import { isTeamImagesEnabled } from "@/lib/team-images/feature-flag"
 import { withAudit } from "@/lib/audit/with-audit"
 
@@ -41,11 +42,10 @@ export const POST = withAudit(
   if (submission.kind !== "image_set") {
     return NextResponse.json({ error: "Submission is not a photo set" }, { status: 409 })
   }
-  if (submission.status !== "revision_requested" && submission.status !== "draft") {
-    return NextResponse.json(
-      { error: "Cannot upload a new version in current state" },
-      { status: 409 },
-    )
+  // Open until sign-off — see lib/team-videos/workflow.ts for the policy.
+  const blocked = uploadBlockedReason(submission.status)
+  if (blocked) {
+    return NextResponse.json({ error: blocked }, { status: 409 })
   }
 
   let body: unknown

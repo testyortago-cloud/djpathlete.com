@@ -18,7 +18,9 @@ const DrawingCanvas = dynamic(
   { ssr: false },
 )
 import { StatusActions } from "./StatusActions"
+import { UnsentFeedbackBanner } from "./UnsentFeedbackBanner"
 import { CommentEditor } from "./CommentEditor"
+import { unsentFeedback } from "@/lib/team-videos/workflow"
 import { DrawingToolbar } from "./DrawingToolbar"
 import { PinCommentPopover } from "./PinCommentPopover"
 import { ImageSetViewer, type ViewerImage } from "./ImageSetViewer"
@@ -96,6 +98,19 @@ export function ReviewSurface({
     () => comments.filter((c) => c.version_id === selectedVersionId),
     [comments, selectedVersionId],
   )
+
+  // Notes written on the CURRENT cut that the editor was never pinged about.
+  // Scoped to the current version on purpose: once a newer cut lands, older
+  // open notes have already been seen and acted on — nagging would be a lie.
+  const feedback = useMemo(() => {
+    const openOnCurrent = comments.filter(
+      (c) => c.version_id === version?.id && c.status === "open",
+    ).length
+    return unsentFeedback({
+      status: submission.status,
+      openCommentsOnCurrentVersion: openOnCurrent,
+    })
+  }, [comments, version?.id, submission.status])
 
   // Drawing-mode state
   const [drawingMode, setDrawingMode] = useState(false)
@@ -307,7 +322,7 @@ export function ReviewSurface({
   return (
     <div className="space-y-4 p-6">
       <Button asChild variant="ghost" size="sm">
-        <Link href="/admin/team-videos">
+        <Link href="/admin/team-media">
           <ArrowLeft className="mr-1 size-4" /> Back
         </Link>
       </Button>
@@ -341,6 +356,13 @@ export function ReviewSurface({
         />
       </header>
 
+      {feedback.unsent && feedback.message && (
+        <UnsentFeedbackBanner
+          submissionId={submission.id}
+          message={feedback.message}
+        />
+      )}
+
       {!viewingCurrent && (
         <div className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2">
           <p className="font-mono text-[10px] tracking-[0.18em] uppercase text-warning">
@@ -366,8 +388,17 @@ export function ReviewSurface({
               renderOverlay={renderOverlay}
             />
           ) : (
-            <div className="rounded-md border border-dashed bg-muted/40 p-12 text-center text-sm text-muted-foreground">
-              {version ? "Video upload not finalized." : "No video uploaded yet."}
+            <div className="space-y-1 rounded-md border border-dashed bg-muted/40 p-12 text-center">
+              <p className="font-body text-sm text-primary">
+                {version
+                  ? "An upload was started but never finished."
+                  : "No video uploaded yet."}
+              </p>
+              <p className="font-body text-xs text-muted-foreground">
+                {version
+                  ? "Nothing to fix here — your editor can upload again from their side and it'll replace this."
+                  : "You'll see it here as soon as your editor sends one."}
+              </p>
             </div>
           )}
 

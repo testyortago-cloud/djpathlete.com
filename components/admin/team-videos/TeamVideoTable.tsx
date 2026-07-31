@@ -1,7 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import Link from "next/link"
+import { AlertTriangle } from "lucide-react"
+import { unsentFeedback } from "@/lib/team-videos/workflow"
 import type { TeamVideoSubmission, TeamVideoSubmissionStatus } from "@/types/database"
 
 const ALL: TeamVideoSubmissionStatus[] = [
@@ -31,13 +33,51 @@ const STATUS_PILL: Record<TeamVideoSubmissionStatus, string> = {
   locked: "bg-muted text-muted-foreground border-border",
 }
 
-export function TeamVideoTable({ submissions }: { submissions: TeamVideoSubmission[] }) {
+interface Props {
+  submissions: TeamVideoSubmission[]
+  /**
+   * Open notes on each submission's current cut, keyed by submission id.
+   * Drives the "notes not sent" flag — a submission can sit for weeks with
+   * feedback the editor was never told about.
+   */
+  openNotes?: Record<string, number>
+}
+
+export function TeamVideoTable({ submissions, openNotes = {} }: Props) {
   const [filter, setFilter] = useState<TeamVideoSubmissionStatus | "all">("all")
   const filtered =
     filter === "all" ? submissions : submissions.filter((s) => s.status === filter)
 
+  const stuck = useMemo(
+    () =>
+      submissions.filter(
+        (s) =>
+          unsentFeedback({
+            status: s.status,
+            openCommentsOnCurrentVersion: openNotes[s.id] ?? 0,
+          }).unsent,
+      ),
+    [submissions, openNotes],
+  )
+
   return (
     <div className="space-y-4">
+      {stuck.length > 0 && (
+        <div className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2.5">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" strokeWidth={1.5} />
+          <p className="font-body text-sm text-warning">
+            <span className="font-medium">
+              {stuck.length === 1
+                ? "1 submission has notes you haven't sent"
+                : `${stuck.length} submissions have notes you haven't sent`}
+            </span>{" "}
+            <span className="text-muted-foreground">
+              — open {stuck.length === 1 ? "it" : "them"} and hit &quot;Send notes to
+              editor&quot; so a new version can land.
+            </span>
+          </p>
+        </div>
+      )}
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
@@ -87,7 +127,7 @@ export function TeamVideoTable({ submissions }: { submissions: TeamVideoSubmissi
               <tr key={s.id} className="border-b last:border-0 hover:bg-muted/40">
                 <td className="px-4 py-3">
                   <Link
-                    href={`/admin/team-videos/${s.id}`}
+                    href={`/admin/team-media/${s.id}`}
                     className="font-medium hover:underline"
                   >
                     {s.title}
@@ -103,11 +143,24 @@ export function TeamVideoTable({ submissions }: { submissions: TeamVideoSubmissi
                   </span>
                 </td>
                 <td className="px-4 py-3">
-                  <span
-                    className={`rounded-full border px-2 py-0.5 text-xs ${STATUS_PILL[s.status]}`}
-                  >
-                    {STATUS_LABEL[s.status]}
-                  </span>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span
+                      className={`rounded-full border px-2 py-0.5 text-xs ${STATUS_PILL[s.status]}`}
+                    >
+                      {STATUS_LABEL[s.status]}
+                    </span>
+                    {unsentFeedback({
+                      status: s.status,
+                      openCommentsOnCurrentVersion: openNotes[s.id] ?? 0,
+                    }).unsent && (
+                      <span
+                        className="rounded-full border border-warning/30 bg-warning/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide text-warning"
+                        title="You've left notes on this cut but your editor hasn't been notified"
+                      >
+                        Notes not sent
+                      </span>
+                    )}
+                  </div>
                 </td>
                 <td className="px-4 py-3 text-muted-foreground">
                   {new Date(s.updated_at).toLocaleDateString("en-US")}

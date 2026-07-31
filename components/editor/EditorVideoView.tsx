@@ -21,6 +21,8 @@ const DrawingCanvas = dynamic(
 import { useVisibleAnnotations } from "@/hooks/useVideoOverlay"
 import { RevisionUploadZone } from "@/components/editor/RevisionUploadZone"
 import { PhotoRevisionUploadZone } from "@/components/editor/PhotoRevisionUploadZone"
+import { SubmissionStatusPanel } from "@/components/editor/SubmissionStatusPanel"
+import { editorWorkflowState } from "@/lib/team-videos/workflow"
 import {
   VersionHistoryList,
   type VersionRow,
@@ -51,6 +53,7 @@ export function EditorVideoView({
 }: Props) {
   const router = useRouter()
   const playerRef = useRef<TeamVideoPlayerHandle>(null)
+  const threadRef = useRef<HTMLElement>(null)
   const [currentTime, setCurrentTime] = useState(0)
   const [newCommentText, setNewCommentText] = useState("")
   const [postingTopLevel, setPostingTopLevel] = useState(false)
@@ -100,7 +103,24 @@ export function EditorVideoView({
     )
   }
 
-  const canRevise = submission.status === "revision_requested"
+  // Open notes on the CURRENT cut — that's what the editor is being asked to
+  // fix. Notes on superseded versions are history, not a to-do list.
+  const openCommentCount = useMemo(
+    () =>
+      comments.filter((c) => c.version_id === version?.id && c.status === "open").length,
+    [comments, version?.id],
+  )
+
+  const workflow = useMemo(
+    () =>
+      editorWorkflowState({
+        status: submission.status,
+        openCommentCount,
+        hasVersion: version !== null,
+        kind: submission.kind,
+      }),
+    [submission.status, submission.kind, openCommentCount, version],
+  )
 
   async function postEditorComment(input: {
     parentId?: string
@@ -177,6 +197,15 @@ export function EditorVideoView({
         )}
       </header>
 
+      <SubmissionStatusPanel
+        state={workflow}
+        openCommentCount={openCommentCount}
+        locked={submission.status === "locked"}
+        onViewNotes={() =>
+          threadRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+        }
+      />
+
       <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
         <div className="space-y-4">
           {selectedSignedUrl ? (
@@ -191,16 +220,41 @@ export function EditorVideoView({
               renderOverlay={renderOverlay}
             />
           ) : (
-            <div className="rounded-md border border-dashed bg-muted/40 p-12 text-center text-sm text-muted-foreground">
-              No video uploaded yet.
+            <div className="space-y-1 rounded-md border border-dashed bg-muted/40 p-12 text-center">
+              <p className="font-body text-sm text-primary">
+                {submission.kind === "image_set"
+                  ? version
+                    ? "Photo previews aren't shown on this page"
+                    : "No photos uploaded yet"
+                  : version
+                    ? "Your last upload didn't finish."
+                    : "No video uploaded yet."}
+              </p>
+              <p className="font-body text-xs text-muted-foreground">
+                {submission.kind === "image_set"
+                  ? version
+                    ? "Darren's notes and your version history are below."
+                    : "Upload a photo set below to send it to Darren."
+                  : version
+                    ? "Upload it again below — the unfinished one will be replaced."
+                    : "Upload a cut below to send it to Darren."}
+              </p>
             </div>
           )}
 
-          {canRevise && viewingCurrent && (
+          {workflow.canUpload && viewingCurrent && (
             submission.kind === "image_set" ? (
-              <PhotoRevisionUploadZone submissionId={submission.id} />
+              <PhotoRevisionUploadZone
+                submissionId={submission.id}
+                prompt={workflow.uploadPrompt}
+                urgent={workflow.tone === "action"}
+              />
             ) : (
-              <RevisionUploadZone submissionId={submission.id} />
+              <RevisionUploadZone
+                submissionId={submission.id}
+                prompt={workflow.uploadPrompt}
+                urgent={workflow.tone === "action"}
+              />
             )
           )}
 
@@ -214,7 +268,7 @@ export function EditorVideoView({
           />
         </div>
 
-        <aside className="space-y-3">
+        <aside ref={threadRef} className="space-y-3 scroll-mt-4">
           <CommentThread
             comments={comments}
             canWrite={false}

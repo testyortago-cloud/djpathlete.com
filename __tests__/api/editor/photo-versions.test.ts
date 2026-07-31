@@ -55,13 +55,31 @@ describe("POST photo-versions", () => {
     expect(res.status).toBe(409)
   })
 
-  it("409 wrong status", async () => {
+  it("409 once approved, with a reason that names the way out", async () => {
     ;(auth as ReturnType<typeof vi.fn>).mockResolvedValue({ user: { id: "u1", role: "editor" } })
     ;(getSubmissionById as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "sub1", submitted_by: "u1", kind: "image_set", status: "approved",
     })
     const res = await POST(req({ images: [{ filename: "a.jpg", mimeType: "image/jpeg", sizeBytes: 1000, position: 0 }] }), { params })
     expect(res.status).toBe(409)
+    expect((await res.json()).error).toContain("reopen")
+    expect(createVersion).not.toHaveBeenCalled()
+  })
+
+  it("allows a new photo set while Darren is still reviewing", async () => {
+    // Matches the video gate: `submitted` no longer strands the editor.
+    ;(auth as ReturnType<typeof vi.fn>).mockResolvedValue({ user: { id: "u1", role: "editor" } })
+    ;(getSubmissionById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "sub1", submitted_by: "u1", kind: "image_set", status: "submitted",
+    })
+    ;(nextVersionNumber as ReturnType<typeof vi.fn>).mockResolvedValue(2)
+    ;(createVersion as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "v2" })
+    ;(createImagesForVersion as ReturnType<typeof vi.fn>).mockResolvedValue([{ id: "img1" }])
+    ;(createImageUploadUrls as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { storagePath: "team-videos/sub1/v2/0_a.jpg", uploadUrl: "https://put", expiresInSeconds: 900 },
+    ])
+    const res = await POST(req({ images: [{ filename: "a.jpg", mimeType: "image/jpeg", sizeBytes: 1000, position: 0 }] }), { params })
+    expect(res.status).toBe(201)
   })
 
   it("happy path creates v2 with new images", async () => {
