@@ -283,72 +283,84 @@ export async function POST(request: NextRequest) {
         oversizedAttachments += unusable.oversized
         const attachments = collectReceiptAttachments(full.payload)
 
+        /** Body fallback shared by the no-attachments branch AND the
+         *  every-attachment-rejected branch (the fal shape — a Stripe invoice
+         *  email whose attached PDF fails the page/parse gate but whose body
+         *  carries the amounts). Ingests the body once, idempotent on
+         *  gmail:<id>:body; the caller decides settle/flag/attempts from the
+         *  outcome. */
+        const tryBodyFallback = async (): Promise<"ingested" | "skipped" | "none" | "overcap" | "failed"> => {
+          const body = findReceiptBody(full!.payload)
+          if (!body) return "none"
+          if (body.size > MAX_BODY_BYTES) return "overcap"
+          const externalRef = `gmail:${messageId}:body`
+          const existingRefs = new Set(await listExternalRefsWithPrefix(`gmail:${messageId}:`))
+          if (existingRefs.has(externalRef)) return "skipped"
+          try {
+            const buffer = body.data
+              ? decodeBodyData(body.data)
+              : await getAttachment(accessToken, messageId, body.attachmentId!)
+            const subject = messageSubject(full!.payload)
+            await ingestReceiptDocument({
+              bookId: book.id,
+              buffer,
+              mimeType: body.mimeType,
+              originalFilename: `${(subject ?? "Email receipt").slice(0, 120)}${body.mimeType === "text/html" ? ".html" : ".txt"}`,
+              uploadedBy: null,
+              externalRef,
+              accounts,
+              bookName: book.name,
+              bookKind: book.book_kind,
+            })
+            bodyIngested++
+            return "ingested"
+          } catch (bodyErr) {
+            // Leaves the message unsettled via failedHere — retried next run,
+            // poisoned at the cap.
+            failedHere++
+            noteFailure(externalRef, bodyErr)
+            return "failed"
+          }
+        }
+
         if (attachments.length === 0) {
-          const body = findReceiptBody(full.payload)
-          if (body && body.size <= MAX_BODY_BYTES) {
-            // Body-only receipt (spec 2026-08-02, supersedes C-7): the raw body
-            // IS the receipt document; the scan job reads it as text. Settles
-            // CLEAN even when unreadable attachments exist (B-4) — the receipt
-            // is captured, so no manual-upload flag and no fingerprint re-open.
-            const externalRef = `gmail:${messageId}:body`
-            const existingRefs = new Set(await listExternalRefsWithPrefix(`gmail:${messageId}:`))
-            if (existingRefs.has(externalRef)) {
-              skipped++
-              settle(messageId)
-              continue
-            }
-            try {
-              const buffer = body.data
-                ? decodeBodyData(body.data)
-                : await getAttachment(accessToken, messageId, body.attachmentId!)
-              const subject = messageSubject(full.payload)
-              await ingestReceiptDocument({
-                bookId: book.id,
-                buffer,
-                mimeType: body.mimeType,
-                originalFilename: `${(subject ?? "Email receipt").slice(0, 120)}${body.mimeType === "text/html" ? ".html" : ".txt"}`,
-                uploadedBy: null,
-                externalRef,
-                accounts,
-                bookName: book.name,
-                bookKind: book.book_kind,
-              })
-              bodyIngested++
-              settle(messageId)
-              continue
-            } catch (bodyErr) {
-              // Falls through to the attempts block at the bottom of the
-              // message loop — unsettled, retried next run, poisoned at the cap.
-              failedHere++
-              noteFailure(externalRef, bodyErr)
-            }
-          } else if (body) {
-            // Over-cap body — pathological; record as needing manual handling.
-            needsManualUpload++
-            markUnreadable(messageId)
-            settle(messageId)
-            continue
-          } else if (unusable.unsupportedMime + unusable.oversized > 0) {
-            // The email DID carry a receipt — we just cannot read it (HEIC,
-            // or over the caps) and there is no body to fall back on.
-            needsManualUpload++
-            markUnreadable(messageId)
-            settle(messageId)
-            continue
-          } else {
-            // Nothing usable at all (empty body, no attachments).
-            attachmentless++
+          // Body-only receipt (spec 2026-08-02, supersedes C-7): the raw body
+          // IS the receipt document; the scan job reads it as text. Settles
+          // CLEAN even when unreadable attachments exist (B-4) — the receipt
+          // is captured, so no manual-upload flag and no fingerprint re-open.
+          const outcome = await tryBodyFallback()
+          if (outcome === "ingested" || outcome === "skipped") {
+            if (outcome === "skipped") skipped++
             settle(messageId)
             continue
           }
+          if (outcome !== "failed") {
+            if (outcome === "overcap" || unusable.unsupportedMime + unusable.oversized > 0) {
+              // The email DID carry a receipt — we just cannot read it (HEIC,
+              // an over-cap body, or over the caps) and nothing else worked.
+              needsManualUpload++
+              markUnreadable(messageId)
+            } else {
+              // Nothing usable at all (empty body, no attachments).
+              attachmentless++
+            }
+            settle(messageId)
+            continue
+          }
+          // "failed" falls through to the attempts block below.
         } else {
           // Idempotency is PER ATTACHMENT, not per message: a run that ingested
           // part 1 and then died on part 2 must retry only part 2 next hour.
           const existingRefs = new Set(await listExternalRefsWithPrefix(`gmail:${messageId}:`))
+          // capturedHere: attachments that ingested now OR in an earlier run —
+          // either way the receipt is on file and the body must not double it.
+          let capturedHere = 0
+          let rejectedHere = 0
           for (const att of attachments) {
             const externalRef = `gmail:${messageId}:${att.refKey}`
             if (existingRefs.has(externalRef)) {
               skipped++
+              capturedHere++
               continue
             }
             try {
@@ -356,17 +368,17 @@ export async function POST(request: NextRequest) {
 
               // Same page cap as the upload button, applied here because this is
               // the first point that has bytes (collectReceiptAttachments sees
-              // only part metadata). An over-cap or malformed PDF behaves exactly
-              // like a pre-PDF-support attachment did: counted, recorded as
-              // needing manual upload, never ingested. pdfRejectionReasonForBuffer
-              // never throws, so a corrupt PDF cannot 500 the run and strand this
-              // message's sibling attachments.
+              // only part metadata). pdfRejectionReasonForBuffer never throws,
+              // so a corrupt PDF cannot 500 the run and strand this message's
+              // sibling attachments. The manual-upload flagging is deferred
+              // below: when EVERY attachment is rejected, the body gets a shot
+              // first (2026-08-02 amendment — attachments win only when one
+              // actually ingests).
               if (isPdfMime(att.mimeType)) {
                 const reason = await pdfRejectionReasonForBuffer(buffer)
                 if (reason) {
                   unsupportedAttachments++
-                  needsManualUpload++
-                  markUnreadable(messageId)
+                  rejectedHere++
                   continue
                 }
               }
@@ -383,6 +395,7 @@ export async function POST(request: NextRequest) {
                 bookKind: book.book_kind,
               })
               ingested++
+              capturedHere++
             } catch (attErr) {
               // One bad part must not abort the run and strand its siblings — a
               // 500 here would leave the sibling documents written while the
@@ -390,6 +403,23 @@ export async function POST(request: NextRequest) {
               failedHere++
               noteFailure(externalRef, attErr)
             }
+          }
+
+          if (rejectedHere > 0) {
+            const bodyOutcome =
+              capturedHere === 0 && failedHere === 0 ? await tryBodyFallback() : "none"
+            if (bodyOutcome === "ingested" || bodyOutcome === "skipped") {
+              // Receipt captured via the body — settle clean (B-4), no
+              // manual-upload flag, no fingerprint re-open.
+              if (bodyOutcome === "skipped") skipped++
+            } else if (bodyOutcome !== "failed") {
+              // Rejected attachments with no fallback: keep the pre-amendment
+              // accounting — one manual-upload flag per rejected part, and the
+              // unreadable mark so a future format widening re-opens it.
+              needsManualUpload += rejectedHere
+              markUnreadable(messageId)
+            }
+            // "failed" → the attempts block below keeps the message unsettled.
           }
         }
       }

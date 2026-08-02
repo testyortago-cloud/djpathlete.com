@@ -415,6 +415,47 @@ export async function listPendingEmailReceiptDocuments(): Promise<BookkeepingDoc
       .order("id", { ascending: false })
       .range(f, t) as never)
 }
+/** Cheap head-count twin of listPendingEmailReceiptDocuments — the Accounting
+ *  header badge. Same three filters; count only, no rows. */
+export async function countPendingEmailReceiptDocuments(): Promise<number> {
+  const { count, error } = await db().from("bookkeeping_documents")
+    .select("id", { count: "exact", head: true })
+    .eq("kind", "receipt")
+    .like("external_ref", "gmail:%")
+    .is("posted_count", null)
+  if (error) throw error
+  return count ?? 0
+}
+/** Move an email-ingested document to the book it is being posted into. The
+ *  poller has to pick SOME book at ingest time (the primary business book);
+ *  the human picking a different book at review is the correction. Guarded to
+ *  gmail-ref, never-posted documents so a photo-flow doc or an already-posted
+ *  doc can never silently change tax context. Returns false when the guard
+ *  rejects. */
+export async function rehomeEmailReceiptDocument(id: string, bookId: string): Promise<boolean> {
+  const { data, error } = await db().from("bookkeeping_documents")
+    .update({ book_id: bookId, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .like("external_ref", "gmail:%")
+    .is("posted_count", null)
+    .select("id")
+  if (error) throw error
+  return (data ?? []).length > 0
+}
+/** Ignore = "reviewed, posted nothing": posted_count 0 drops the row out of
+ *  listPendingEmailReceiptDocuments (the pending filter is IS NULL — see the
+ *  design amendment above) while the document itself stays for retention.
+ *  Same guard as rehome; returns false when nothing matched. */
+export async function ignoreEmailReceiptDocument(id: string): Promise<boolean> {
+  const { data, error } = await db().from("bookkeeping_documents")
+    .update({ posted_count: 0, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .like("external_ref", "gmail:%")
+    .is("posted_count", null)
+    .select("id")
+  if (error) throw error
+  return (data ?? []).length > 0
+}
 export async function linkDocumentBatch(id: string, bookId: string, importBatchId: string, postedCount: number): Promise<void> {
   const { error } = await db().from("bookkeeping_documents")
     .update({ import_batch_id: importBatchId, posted_count: postedCount, updated_at: new Date().toISOString() })

@@ -248,6 +248,7 @@ export const AUDIT_ACTIONS = [
   { slug: "bookkeeping.receipt_cash_recorded", category: "commerce", description: "Cash receipt recorded to the ledger" },
   { slug: "bookkeeping.receipt_uploaded", category: "commerce", description: "Receipt image / Amazon CSV uploaded" },
   { slug: "bookkeeping.receipt_imported", category: "commerce", description: "Receipt posted to the ledger" },
+  { slug: "bookkeeping.receipt_ignored", category: "commerce", description: "Email receipt dismissed from review without posting" },
   { slug: "bookkeeping.report_exported", category: "admin_read_sensitive", description: "Bookkeeping report exported" },
   { slug: "bookkeeping.report_emailed", category: "commerce", description: "Accountant pack emailed" },
   { slug: "bookkeeping.home_office_percent_set", category: "commerce", description: "Home-office share percentage set for the deduction proposal" },

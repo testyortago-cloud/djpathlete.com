@@ -5,7 +5,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 const calls: { method: string; args: unknown[] }[] = []
 function makeBuilder() {
   const builder: Record<string, unknown> = {}
-  for (const m of ["select", "eq", "like", "or", "is", "order", "range"]) {
+  for (const m of ["select", "eq", "like", "or", "is", "order", "range", "update"]) {
     builder[m] = (...args: unknown[]) => {
       calls.push({ method: m, args })
       return builder
@@ -18,7 +18,13 @@ function makeBuilder() {
 }
 vi.mock("@/lib/supabase", () => ({ createServiceRoleClient: () => ({ from: () => makeBuilder() }) }))
 
-import { listExternalRefsWithPrefix, listPendingEmailReceiptDocuments } from "@/lib/db/bookkeeping"
+import {
+  countPendingEmailReceiptDocuments,
+  ignoreEmailReceiptDocument,
+  listExternalRefsWithPrefix,
+  listPendingEmailReceiptDocuments,
+  rehomeEmailReceiptDocument,
+} from "@/lib/db/bookkeeping"
 
 beforeEach(() => {
   calls.length = 0
@@ -77,5 +83,38 @@ describe("listExternalRefsWithPrefix", () => {
     expect(orders.length).toBeGreaterThan(0)
     expect(orders[0].args[0]).toBe("external_ref")
     expect(has("range", 0, 999)).toBe(true)
+  })
+})
+
+describe("countPendingEmailReceiptDocuments", () => {
+  it("uses the SAME three pending filters as the list, as a head-only count", async () => {
+    await countPendingEmailReceiptDocuments()
+    expect(has("eq", "kind", "receipt")).toBe(true)
+    expect(has("like", "external_ref", "gmail:%")).toBe(true)
+    expect(has("is", "posted_count", null)).toBe(true)
+    const select = calls.find((c) => c.method === "select")
+    expect(select?.args[1]).toMatchObject({ count: "exact", head: true })
+    // No row fetch — a badge must not pull the whole queue.
+    expect(calls.some((c) => c.method === "range")).toBe(false)
+  })
+})
+
+describe("ignoreEmailReceiptDocument / rehomeEmailReceiptDocument guards", () => {
+  it("ignore writes posted_count 0 ONLY to a gmail-ref, never-posted document", async () => {
+    await ignoreEmailReceiptDocument("d1")
+    const update = calls.find((c) => c.method === "update")
+    expect(update?.args[0]).toMatchObject({ posted_count: 0 })
+    expect(has("eq", "id", "d1")).toBe(true)
+    expect(has("like", "external_ref", "gmail:%")).toBe(true)
+    expect(has("is", "posted_count", null)).toBe(true)
+  })
+
+  it("rehome moves book_id under the same guard — photo docs and posted docs can never move", async () => {
+    await rehomeEmailReceiptDocument("d1", "b2")
+    const update = calls.find((c) => c.method === "update")
+    expect(update?.args[0]).toMatchObject({ book_id: "b2" })
+    expect(has("eq", "id", "d1")).toBe(true)
+    expect(has("like", "external_ref", "gmail:%")).toBe(true)
+    expect(has("is", "posted_count", null)).toBe(true)
   })
 })

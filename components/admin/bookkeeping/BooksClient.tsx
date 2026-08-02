@@ -64,11 +64,14 @@ export function BooksClient({
   initialBookId,
   initialAccounts,
   initialFilters,
+  emailReceiptsPending = 0,
 }: {
   books: BookkeepingBook[]
   initialBookId: string
   initialAccounts: BookkeepingAccount[]
   initialFilters?: BooksClientInitialFilters
+  /** Open email-receipt review rows — the header badge that says "go look". */
+  emailReceiptsPending?: number
 }) {
   const [bookId, setBookId] = useState(initialBookId)
   // Deep-link hydration (5b): useState initializers only — no effect, no reset
@@ -254,6 +257,14 @@ export function BooksClient({
             >
               <Mail className="size-4" />
               Email Receipts
+              {emailReceiptsPending > 0 && (
+                <span
+                  aria-label={`${emailReceiptsPending} receipts waiting for review`}
+                  className="ml-0.5 inline-flex min-w-5 items-center justify-center rounded-full bg-error px-1.5 py-0.5 text-[11px] font-semibold leading-none text-white tabular-nums"
+                >
+                  {emailReceiptsPending > 99 ? "99+" : emailReceiptsPending}
+                </span>
+              )}
             </Link>
             <Link
               href="/admin/books/reports"

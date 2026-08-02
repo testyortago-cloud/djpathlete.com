@@ -3,8 +3,10 @@ import {
   rowFromEmailDocument,
   SCAN_INCOMPLETE_MESSAGE,
   buildForwarderQuery,
+  bucketEmailReceiptRows,
   GMAIL_RECEIPT_FORWARDERS_KEY,
 } from "@/lib/bookkeeping/email-receipts"
+import { newReceiptRow, type ReceiptBatchRow } from "@/lib/bookkeeping/receipt-batch"
 import type { BookkeepingAccount, BookkeepingDocument } from "@/types/database"
 
 const ACCOUNTS = [
@@ -140,5 +142,56 @@ describe("buildForwarderQuery", () => {
 
   it("exports the settings key the migration seeds", () => {
     expect(GMAIL_RECEIPT_FORWARDERS_KEY).toBe("bookkeeping_gmail_receipt_forwarders")
+  })
+})
+
+describe("bucketEmailReceiptRows", () => {
+  const mkRow = (over: Partial<ReceiptBatchRow>): ReceiptBatchRow => ({
+    ...newReceiptRow(over.clientId ?? "r1", over.fileName ?? "r.pdf", null),
+    status: "scanned",
+    counterparty: "Vercel Inc.",
+    amount: "20",
+    occurredOn: "2026-07-18",
+    result: {
+      vendor: "Vercel Inc.", amount_cents: 2000, occurred_on: "2026-07-18",
+      suggested_category: null, business_purpose_hint: null, currency: "USD",
+      confidence: "high", warnings: [],
+    },
+    ...over,
+  })
+
+  it("clean scans go to review; failed, low-confidence and warned scans go to attention", () => {
+    const clean = mkRow({ clientId: "a" })
+    const failed = mkRow({ clientId: "b", status: "scan_failed", result: null, counterparty: "x1" })
+    const low = mkRow({
+      clientId: "c", counterparty: "x2",
+      result: { ...mkRow({}).result!, confidence: "low" },
+    })
+    const warned = mkRow({
+      clientId: "d", counterparty: "x3",
+      result: { ...mkRow({}).result!, warnings: ["might be a statement"] },
+    })
+    const buckets = bucketEmailReceiptRows([clean, failed, low, warned])
+    expect(buckets.review.map((r) => r.clientId)).toEqual(["a"])
+    expect(buckets.attention.map((r) => r.clientId)).toEqual(["b", "c", "d"])
+    expect(buckets.duplicates).toEqual([])
+  })
+
+  it("the LATER vendor+amount+date twin goes to duplicates, mapped to the earlier card", () => {
+    const first = mkRow({ clientId: "inv" })
+    const twin = mkRow({ clientId: "rcpt" })
+    const other = mkRow({ clientId: "other", counterparty: "Supabase", amount: "34.35" })
+    const buckets = bucketEmailReceiptRows([first, twin, other])
+    expect(buckets.review.map((r) => r.clientId)).toEqual(["inv", "other"])
+    expect(buckets.duplicates.map((r) => r.clientId)).toEqual(["rcpt"])
+    expect(buckets.duplicateOf).toEqual({ rcpt: "inv" })
+  })
+
+  it("attention outranks duplicates — an uncertain twin still needs the human first", () => {
+    const first = mkRow({ clientId: "inv" })
+    const lowTwin = mkRow({ clientId: "rcpt", result: { ...mkRow({}).result!, confidence: "low" } })
+    const buckets = bucketEmailReceiptRows([first, lowTwin])
+    expect(buckets.attention.map((r) => r.clientId)).toEqual(["rcpt"])
+    expect(buckets.duplicates).toEqual([])
   })
 })

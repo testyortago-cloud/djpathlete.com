@@ -2,7 +2,9 @@
 // the system_settings key names the poller and the review page BOTH read (the
 // route is a server module the page must not import, so the shared constants
 // live here).
-import { applyScanResult, newReceiptRow, type ReceiptBatchRow } from "@/lib/bookkeeping/receipt-batch"
+import {
+  applyScanResult, detectWithinBatchDuplicates, newReceiptRow, type ReceiptBatchRow,
+} from "@/lib/bookkeeping/receipt-batch"
 import type { BookkeepingAccount, BookkeepingDocument } from "@/types/database"
 
 /** Durable "this message needs no further work" marker set (jsonb string array). */
@@ -53,6 +55,47 @@ export function buildForwarderQuery(stored: unknown, since?: unknown): string | 
       ? ` after:${since.trim().replace(/-/g, "/")}`
       : ""
   return `(${clauses.join(" OR ")}) -in:sent${sinceClause}`
+}
+
+/** Triage buckets for the email-receipts board. One row lands in exactly one
+ *  column; priority attention > duplicates > review, because a failed or
+ *  low-confidence read needs the human regardless of whether it also looks
+ *  like a twin. */
+export interface EmailReceiptBuckets {
+  review: ReceiptBatchRow[]
+  attention: ReceiptBatchRow[]
+  duplicates: ReceiptBatchRow[]
+  /** clientId → clientId of the EARLIER row it matches (card hint). */
+  duplicateOf: Record<string, string>
+}
+
+/** Board triage. "Duplicates" reuses the photo-batch matcher (normalized
+ *  vendor + cents + date): a Vercel email carries BOTH an invoice PDF and a
+ *  receipt PDF for one payment, and a double-forwarded email lands twice —
+ *  the later twin goes to the duplicates column so the reviewer posts one and
+ *  ignores the rest instead of double-counting an expense. */
+export function bucketEmailReceiptRows(rows: ReceiptBatchRow[]): EmailReceiptBuckets {
+  const dupOf = detectWithinBatchDuplicates(rows)
+  const out: EmailReceiptBuckets = { review: [], attention: [], duplicates: [], duplicateOf: {} }
+  rows.forEach((row, i) => {
+    const needsLook =
+      row.status === "scan_failed" ||
+      row.status === "post_failed" ||
+      row.result?.confidence === "low" ||
+      (row.result?.warnings.length ?? 0) > 0
+    if (needsLook) {
+      out.attention.push(row)
+      return
+    }
+    const earlier = dupOf[i]
+    if (earlier != null) {
+      out.duplicates.push(row)
+      out.duplicateOf[row.clientId] = rows[earlier].clientId
+      return
+    }
+    out.review.push(row)
+  })
+  return out
 }
 
 /** Shown on the row when the vision job never wrote scan_result. */

@@ -9,6 +9,7 @@ import {
   insertReceiptEntry,
   updateDocumentRetainUntil,
   linkDocumentBatch,
+  rehomeEmailReceiptDocument,
 } from "@/lib/db/bookkeeping"
 import { recordAudit } from "@/lib/audit/record"
 import { PERIOD_CLOSED_MESSAGE } from "@/lib/bookkeeping/period-close"
@@ -29,7 +30,17 @@ export async function POST(request: Request) {
 
     const doc = await getDocument(d.document_id)
     if (!doc) return NextResponse.json({ error: "document not found" }, { status: 404 })
-    if (doc.book_id !== d.book_id) return NextResponse.json({ error: "document not in book" }, { status: 409 })
+    if (doc.book_id !== d.book_id) {
+      // Email-ingested receipts land in the primary business book only because
+      // the poller has to pick one; the reviewer choosing another book is the
+      // correction, so the document follows the entry. The DAL guard restricts
+      // this to gmail-ref, never-posted documents — photo-flow docs (uploaded
+      // inside a book's own UI) and posted docs keep the hard 409.
+      const rehomed = (doc.external_ref ?? "").startsWith("gmail:") && doc.posted_count == null
+        ? await rehomeEmailReceiptDocument(d.document_id, d.book_id)
+        : false
+      if (!rehomed) return NextResponse.json({ error: "document not in book" }, { status: 409 })
+    }
 
     if (d.account_id) {
       const account = await getAccount(d.account_id)

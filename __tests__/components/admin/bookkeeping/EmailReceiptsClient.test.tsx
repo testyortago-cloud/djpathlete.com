@@ -1,14 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render, screen } from "@testing-library/react"
+import { render, screen, fireEvent, waitFor } from "@testing-library/react"
 import { EmailReceiptsClient, readableFormatLabel } from "@/components/admin/bookkeeping/EmailReceiptsClient"
 import { SCANNABLE_MIMES } from "@/lib/bookkeeping/receipt-attachments"
-import type { BookkeepingAccount, BookkeepingDocument } from "@/types/database"
+import type { BookkeepingAccount, BookkeepingBook, BookkeepingDocument } from "@/types/database"
 
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
 
 const accounts = [
   { id: "equip", book_id: "b1", name: "Equipment", account_type: "expense", requires_business_purpose: false },
 ] as BookkeepingAccount[]
+
+const books = [
+  { id: "b1", name: "Darren — DJP Athlete", book_kind: "business", is_primary: true },
+  { id: "b2", name: "Spouse — Business", book_kind: "business", is_primary: false },
+  { id: "b3", name: "Household & Personal", book_kind: "household", is_primary: false },
+] as BookkeepingBook[]
 
 const doc = (over: Partial<BookkeepingDocument> = {}) =>
   ({
@@ -22,9 +28,17 @@ const doc = (over: Partial<BookkeepingDocument> = {}) =>
     ...over,
   }) as unknown as BookkeepingDocument
 
+const scanResult = (over: Record<string, unknown> = {}) => ({
+  vendor: "Home Depot", amount_cents: 12555, occurred_on: "2026-07-20",
+  suggested_category: "Equipment", business_purpose_hint: null,
+  currency: "USD", confidence: "high", warnings: [],
+  ...over,
+})
+
 const base = {
   documents: [] as BookkeepingDocument[],
-  accounts,
+  books,
+  accountsByBook: { b1: accounts, b2: [] as BookkeepingAccount[], b3: [] as BookkeepingAccount[] },
   connectionStatus: "connected" as string | null,
   label: "DJP Receipts",
   pollerEnabled: true,
@@ -106,28 +120,77 @@ describe("EmailReceiptsClient unreadable backlog", () => {
   })
 })
 
-describe("EmailReceiptsClient rows", () => {
-  // Migration 00193: documents with scan_result IS NULL must read as
-  // "scan failed — retry" so an ingested-but-never-scanned receipt cannot hide
-  // behind a blank but confident-looking "scanned" row.
-  it("flags an ingested-but-unscanned document as scan failed", () => {
-    render(<EmailReceiptsClient {...base} documents={[doc()]} />)
-    expect(screen.getByText("Scan failed — retry")).toBeInTheDocument()
-    expect(screen.getByText(/Scan didn't finish/)).toBeInTheDocument()
-    // Still postable by hand.
-    expect(screen.getByRole("button", { name: /Post/ })).toBeEnabled()
+describe("EmailReceiptsClient board", () => {
+  it("renders the three triage columns and a back link to Accounting", () => {
+    render(<EmailReceiptsClient {...base} documents={[doc({ scan_result: scanResult() })]} />)
+    expect(screen.getByRole("heading", { name: "For review" })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "Needs a look" })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "Possible duplicates" })).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: /Accounting/ })).toHaveAttribute("href", "/admin/books")
   })
 
-  it("a real scan renders no failure banner", () => {
-    const scanned = doc({
-      scan_result: {
-        vendor: "Home Depot", amount_cents: 12555, occurred_on: "2026-07-20",
-        suggested_category: "Equipment", business_purpose_hint: null,
-        currency: "USD", confidence: "high", warnings: [],
-      },
-    } as Partial<BookkeepingDocument>)
-    render(<EmailReceiptsClient {...base} documents={[scanned]} />)
+  // Migration 00193: documents with scan_result IS NULL must read as
+  // "scan failed" so an ingested-but-never-scanned receipt cannot hide behind
+  // a blank but confident-looking card. It lands in the attention column; the
+  // full retry message lives in the detail dialog.
+  it("flags an ingested-but-unscanned document as scan failed in Needs a look", () => {
+    render(<EmailReceiptsClient {...base} documents={[doc()]} />)
+    expect(screen.getByText("scan failed")).toBeInTheDocument()
+    fireEvent.click(screen.getByTitle("Open details"))
+    expect(screen.getByText("Scan failed — retry")).toBeInTheDocument()
+    expect(screen.getByText(/Scan didn't finish/)).toBeInTheDocument()
+  })
+
+  it("a clean high-confidence scan lands in For review with amount and vendor on the card", () => {
+    render(<EmailReceiptsClient {...base} documents={[doc({ scan_result: scanResult() })]} />)
     expect(screen.queryByText("Scan failed — retry")).not.toBeInTheDocument()
+    expect(screen.getByText("Home Depot")).toBeInTheDocument()
+    expect(screen.getByText("$125.55")).toBeInTheDocument()
+    // The full editor is dialog-only now.
+    fireEvent.click(screen.getByTitle("Open details"))
     expect(screen.getByDisplayValue("125.55")).toBeInTheDocument()
+  })
+
+  it("the later of two vendor+amount+date twins lands in Possible duplicates with a twin chip", () => {
+    render(
+      <EmailReceiptsClient
+        {...base}
+        documents={[
+          doc({ id: "d1", scan_result: scanResult() }),
+          doc({ id: "d2", external_ref: "gmail:m2:1", original_filename: "receipt-copy.pdf", scan_result: scanResult() }),
+        ]}
+      />,
+    )
+    expect(screen.getByText(/twin of/)).toBeInTheDocument()
+  })
+
+  it("posts with the document's own book by default", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ inserted: 1 }) })
+    vi.stubGlobal("fetch", fetchMock)
+    render(<EmailReceiptsClient {...base} documents={[doc({ scan_result: scanResult() })]} />)
+    fireEvent.click(screen.getByRole("button", { name: /Post/ }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe("/api/admin/bookkeeping/receipts/commit")
+    expect(JSON.parse((init as RequestInit).body as string)).toMatchObject({ book_id: "b1", document_id: "d1" })
+    await waitFor(() => expect(screen.queryByText("Home Depot")).not.toBeInTheDocument())
+  })
+
+  it("Ignore calls the ignore endpoint and removes the card without posting", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ignored: true }) })
+    vi.stubGlobal("fetch", fetchMock)
+    render(<EmailReceiptsClient {...base} documents={[doc({ scan_result: scanResult() })]} />)
+    fireEvent.click(screen.getByRole("button", { name: /Ignore/ }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe("/api/admin/bookkeeping/receipts/ignore")
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({ document_id: "d1" })
+    await waitFor(() => expect(screen.queryByText("Home Depot")).not.toBeInTheDocument())
+  })
+
+  it("every card carries a book picker naming the target book", () => {
+    render(<EmailReceiptsClient {...base} documents={[doc({ scan_result: scanResult() })]} />)
+    const trigger = screen.getByLabelText("Book for receipt.jpg")
+    expect(trigger).toHaveTextContent("Darren — DJP Athlete")
   })
 })

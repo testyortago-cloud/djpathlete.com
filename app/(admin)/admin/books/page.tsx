@@ -1,4 +1,4 @@
-import { listBooks, listAccounts } from "@/lib/db/bookkeeping"
+import { listBooks, listAccounts, countPendingEmailReceiptDocuments } from "@/lib/db/bookkeeping"
 import { BooksClient, type BooksClientInitialFilters } from "@/components/admin/bookkeeping/BooksClient"
 
 export const metadata = { title: "Accounting — Admin" }
@@ -14,7 +14,7 @@ export default async function BooksPage({
   searchParams: Promise<{ book_id?: string; account_id?: string; direction?: string; from?: string; to?: string; source?: string; q?: string }>
 }) {
   const sp = await searchParams
-  const books = await listBooks()
+  const [books, emailReceiptsPending] = await Promise.all([listBooks(), countPendingEmailReceiptDocuments()])
   const linked = sp.book_id ? books.find((b) => b.id === sp.book_id) : undefined
   const active = linked ?? books.find((b) => b.is_primary) ?? books[0]
   const accounts = active ? await listAccounts(active.id) : []
@@ -33,6 +33,7 @@ export default async function BooksPage({
       initialBookId={active?.id ?? ""}
       initialAccounts={accounts}
       initialFilters={initialFilters}
+      emailReceiptsPending={emailReceiptsPending}
     />
   )
 }

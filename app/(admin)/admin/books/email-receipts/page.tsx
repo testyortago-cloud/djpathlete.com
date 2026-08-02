@@ -21,13 +21,15 @@ export default async function EmailReceiptsPage() {
     getSetting<boolean>(GMAIL_RECEIPTS_CRON_KEY, false),
     getSetting<unknown>(GMAIL_UNREADABLE_IDS_KEY, []),
   ])
-  // The poller always ingests into the primary business book.
-  const book = books.find((b) => b.is_primary && b.book_kind === "business") ?? null
-  const accounts = book ? await listAccounts(book.id) : []
+  // The poller ingests into the primary business book, but the reviewer can
+  // post any card into any book — so every book's categories ride along.
+  const accountLists = await Promise.all(books.map((b) => listAccounts(b.id)))
+  const accountsByBook = Object.fromEntries(books.map((b, i) => [b.id, accountLists[i]]))
   return (
     <EmailReceiptsClient
       documents={documents}
-      accounts={accounts}
+      books={books}
+      accountsByBook={accountsByBook}
       connectionStatus={conn?.status ?? null}
       label={label}
       pollerEnabled={pollerEnabled === true}

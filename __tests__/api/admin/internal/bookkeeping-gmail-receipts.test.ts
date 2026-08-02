@@ -666,6 +666,37 @@ describe("POST /api/admin/internal/bookkeeping-gmail-receipts", () => {
     )
   })
 
+  it("fal shape: EVERY attachment rejected (page cap) + readable body → body ingested, settled clean, no manual flag", async () => {
+    const falMessage = (id: string) => ({
+      id,
+      threadId: `t-${id}`,
+      payload: {
+        mimeType: "multipart/mixed",
+        parts: [
+          { partId: "0", mimeType: "text/html", body: { size: 900, data: "aGk" } },
+          { partId: "1", mimeType: "application/pdf", filename: "invoice.pdf", body: { size: 4096, attachmentId: `att-${id}-pdf` } },
+        ],
+      },
+    })
+    ;(getMessage as ReturnType<typeof vi.fn>).mockImplementation(async (_t: string, id: string) => falMessage(id))
+    ;(pdfRejectionReasonForBuffer as ReturnType<typeof vi.fn>).mockResolvedValueOnce("pdf_too_long")
+    const res = await POST(makeRequest() as never)
+    const json = await res.json()
+    expect(json.body_ingested).toBe(1)
+    expect(json.ingested).toBe(0)
+    expect(json.unsupported_attachments).toBe(1)
+    expect(json.needs_manual_upload).toBe(0)
+    expect(json.unreadable_backlog).toBe(0)
+    const refs = (ingestReceiptDocument as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0].externalRef)
+    expect(refs).toEqual(["gmail:m1:body"])
+
+    // Settled clean — the second run skips without refetching or re-ingesting.
+    vi.mocked(ingestReceiptDocument).mockClear()
+    const res2 = await POST(makeRequest() as never)
+    expect((await res2.json()).skipped).toBe(1)
+    expect(ingestReceiptDocument).not.toHaveBeenCalled()
+  })
+
   it("label missing but forwarders configured → still runs (label_missing noted, not degraded)", async () => {
     settings[GMAIL_RECEIPT_FORWARDERS_KEY] = ["yortago@gmail.com"]
     ;(listLabels as ReturnType<typeof vi.fn>).mockResolvedValue([{ id: "INBOX", name: "INBOX" }])
