@@ -49,8 +49,9 @@ import {
 } from "@/app/api/admin/internal/bookkeeping-gmail-receipts/route"
 import {
   GMAIL_UNREADABLE_IDS_KEY, GMAIL_SCANNABLE_MIMES_KEY, GMAIL_MESSAGE_ATTEMPTS_KEY,
+  GMAIL_RECEIPT_FORWARDERS_KEY,
 } from "@/lib/bookkeeping/email-receipts"
-import { SCANNABLE_MIMES, MAX_ATTACHMENT_BYTES } from "@/lib/bookkeeping/receipt-attachments"
+import { SCANNABLE_MIMES, MAX_ATTACHMENT_BYTES, MAX_BODY_BYTES } from "@/lib/bookkeeping/receipt-attachments"
 
 const TOKEN = "test-cron-token"
 const AUTH = `Bearer ${TOKEN}`
@@ -101,16 +102,19 @@ const pdfMessage = (id: string) => ({
 })
 
 /** One image the scanner CAN read but that is over the size cap — dropped by
- *  collectReceiptAttachments and invisible to a mime-only unsupported count. */
+ *  collectReceiptAttachments and invisible to a mime-only unsupported count.
+ *  No inline text/plain filler here (unlike fullMessage): findReceiptBody
+ *  would treat one as the body-ingest fallback and this fixture exists to
+ *  test the WITHOUT-a-body oversize-accounting path specifically — the
+ *  body-present case has its own dedicated test (B-4). */
 const oversizedImageMessage = (id: string) => ({
   id,
   threadId: `t-${id}`,
   payload: {
     mimeType: "multipart/mixed",
     parts: [
-      { partId: "0", mimeType: "text/plain", body: { size: 20, data: "aGk" } },
       {
-        partId: "1", mimeType: "image/jpeg", filename: "huge.jpg",
+        partId: "0", mimeType: "image/jpeg", filename: "huge.jpg",
         body: { size: MAX_ATTACHMENT_BYTES + 1, attachmentId: `att-${id}-big` },
       },
     ],
@@ -301,36 +305,33 @@ describe("POST /api/admin/internal/bookkeeping-gmail-receipts", () => {
     expect(getMessage).toHaveBeenCalledTimes(MAX_MESSAGES_PER_RUN)
   })
 
-  // ── Review finding 1 (Critical): nothing-usable messages must not starve ──
-  it("body-only messages settle durably so an older attachment message is not starved forever", async () => {
-    // 26 body-only HTML receipts (newest-first, Gmail's list order) sitting in
-    // front of ONE older email that actually carries the receipt image.
-    const bodyOnlyIds = Array.from({ length: MAX_MESSAGES_PER_RUN + 1 }, (_, i) => `b${i}`)
-    const ids = [...bodyOnlyIds, "withImage"]
-    ;(listMessages as ReturnType<typeof vi.fn>).mockResolvedValue({ messages: ids.map((id) => ({ id, threadId: `t-${id}` })) })
-    ;(getMessage as ReturnType<typeof vi.fn>).mockImplementation(async (_tok: string, id: string) =>
-      id === "withImage" ? fullMessage(id) : bodyOnlyMessage(id),
+  it("body-only messages ingest their html body once, settle, and never starve older messages", async () => {
+    ;(getMessage as ReturnType<typeof vi.fn>).mockImplementation(async (_t: string, id: string) =>
+      id === "m-body" ? bodyOnlyMessage(id) : fullMessage(id),
     )
-
-    const first = await (await POST(makeRequest() as never)).json()
-    expect(first.processed).toBe(MAX_MESSAGES_PER_RUN)
-    expect(first.attachmentless).toBe(MAX_MESSAGES_PER_RUN)
-    expect(first.ingested).toBe(0)
-    // The whole first batch is now durably settled — it must never be fetched again.
-    expect(settings[SETTLED_IDS_KEY]).toEqual(bodyOnlyIds.slice(0, MAX_MESSAGES_PER_RUN))
-
-    ;(getMessage as ReturnType<typeof vi.fn>).mockClear()
-    ;(ingestReceiptDocument as ReturnType<typeof vi.fn>).mockClear()
-
-    const second = await (await POST(makeRequest() as never)).json()
-    expect(second.skipped).toBe(MAX_MESSAGES_PER_RUN)
-    expect(second.ingested).toBe(1)
-    expect(second.more_pending).toBe(false)
-    expect((ingestReceiptDocument as ReturnType<typeof vi.fn>).mock.calls[0][0]).toMatchObject({
-      externalRef: "gmail:withImage:2",
+    ;(listMessages as ReturnType<typeof vi.fn>).mockResolvedValue({
+      messages: [{ id: "m-body", threadId: "t1" }, { id: "m-old", threadId: "t2" }],
     })
-    // The settled set never re-fetches what it already answered for.
-    expect((getMessage as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[1])).toEqual(["b25", "withImage"])
+
+    const res1 = await POST(makeRequest() as never)
+    const json1 = await res1.json()
+    expect(json1.body_ingested).toBe(1)
+    expect(json1.ingested).toBe(1) // m-old's jpeg
+    const bodyCall = (ingestReceiptDocument as ReturnType<typeof vi.fn>).mock.calls
+      .map((c) => c[0])
+      .find((a) => a.externalRef === "gmail:m-body:body")
+    expect(bodyCall).toMatchObject({ mimeType: "text/html", uploadedBy: null })
+    // "aGk" base64url → "hi": the RAW body bytes are the stored evidence
+    expect(Buffer.isBuffer(bodyCall.buffer) && bodyCall.buffer.toString("utf8")).toBe("hi")
+
+    // Second run: both settled — no refetch, no re-ingest.
+    vi.mocked(getMessage).mockClear()
+    vi.mocked(ingestReceiptDocument).mockClear()
+    const res2 = await POST(makeRequest() as never)
+    const json2 = await res2.json()
+    expect(json2.skipped).toBe(2)
+    expect(getMessage).not.toHaveBeenCalled()
+    expect(ingestReceiptDocument).not.toHaveBeenCalled()
   })
 
   // ── PDF receipts: the path document blocks unlocked ──
@@ -564,5 +565,104 @@ describe("POST /api/admin/internal/bookkeeping-gmail-receipts", () => {
       expect.anything(), "run-1", "failed",
       expect.objectContaining({ message: expect.stringContaining("listLabels") }),
     )
+  })
+
+  it("a message WITH a scannable attachment never body-scans (attachments win — no double ingest)", async () => {
+    // fullMessage carries an inline text/plain part AND the jpeg.
+    await POST(makeRequest() as never)
+    const refs = (ingestReceiptDocument as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0].externalRef)
+    expect(refs).toEqual(["gmail:m1:2"]) // the jpeg only — no :body ref
+  })
+
+  it("uses the Subject as the body document's filename, with a fallback", async () => {
+    const withSubject = {
+      ...bodyOnlyMessage("m-body"),
+      payload: {
+        ...bodyOnlyMessage("m-body").payload,
+        headers: [{ name: "Subject", value: "Your receipt from Vercel Inc. #2090-9787" }],
+      },
+    }
+    ;(getMessage as ReturnType<typeof vi.fn>).mockResolvedValue(withSubject)
+    ;(listMessages as ReturnType<typeof vi.fn>).mockResolvedValue({ messages: [{ id: "m-body", threadId: "t1" }] })
+    await POST(makeRequest() as never)
+    expect((ingestReceiptDocument as ReturnType<typeof vi.fn>).mock.calls[0][0].originalFilename).toBe(
+      "Your receipt from Vercel Inc. #2090-9787.html",
+    )
+  })
+
+  it("unreadable attachment + readable body → body ingested, NOT flagged needs-manual-upload (B-4)", async () => {
+    const heicPlusBody = (id: string) => ({
+      id, threadId: `t-${id}`,
+      payload: {
+        mimeType: "multipart/mixed",
+        parts: [
+          { partId: "0", mimeType: "text/html", body: { size: 900, data: "aGk" } },
+          { partId: "1", mimeType: "image/heic", filename: "IMG_1.heic", body: { size: 4096, attachmentId: `att-${id}-heic` } },
+        ],
+      },
+    })
+    ;(getMessage as ReturnType<typeof vi.fn>).mockImplementation(async (_t: string, id: string) => heicPlusBody(id))
+    const res = await POST(makeRequest() as never)
+    const json = await res.json()
+    expect(json.body_ingested).toBe(1)
+    expect(json.needs_manual_upload).toBe(0)
+    expect(json.unreadable_backlog).toBe(0)
+    expect(json.unsupported_attachments).toBe(1) // still counted as a part
+  })
+
+  it("an over-cap body is recorded as needs-manual-upload, never ingested", async () => {
+    const hugeBody = (id: string) => ({
+      id, threadId: `t-${id}`,
+      payload: { mimeType: "text/html", body: { size: MAX_BODY_BYTES + 1, data: "aGk" } },
+    })
+    ;(getMessage as ReturnType<typeof vi.fn>).mockImplementation(async (_t: string, id: string) => hugeBody(id))
+    const res = await POST(makeRequest() as never)
+    const json = await res.json()
+    expect(json.body_ingested).toBe(0)
+    expect(json.needs_manual_upload).toBe(1)
+    expect(ingestReceiptDocument).not.toHaveBeenCalled()
+  })
+
+  it("a failed body ingest stays unsettled and retries next run (attempts machinery)", async () => {
+    ;(getMessage as ReturnType<typeof vi.fn>).mockImplementation(async (_t: string, id: string) => bodyOnlyMessage(id))
+    ;(ingestReceiptDocument as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("bucket down"))
+    const res1 = await POST(makeRequest() as never)
+    expect((await res1.json()).failed).toBe(1)
+
+    vi.mocked(ingestReceiptDocument).mockClear()
+    await POST(makeRequest() as never)
+    // retried, succeeded (default mock), settled now
+    expect(ingestReceiptDocument).toHaveBeenCalledTimes(1)
+  })
+
+  it("forwarder watch: lists by from:/to: query, unions + dedupes with the label listing", async () => {
+    settings[GMAIL_RECEIPT_FORWARDERS_KEY] = ["yortago@gmail.com", "testyortago@gmail.com"]
+    ;(listMessages as ReturnType<typeof vi.fn>).mockImplementation(async (_t: string, opts: { labelIds?: string[]; q?: string }) =>
+      opts.q
+        ? { messages: [{ id: "m1", threadId: "t1" }, { id: "m-fwd", threadId: "t9" }] } // m1 overlaps the label source
+        : { messages: [{ id: "m1", threadId: "t1" }] },
+    )
+    const res = await POST(makeRequest() as never)
+    const json = await res.json()
+    const qCall = (listMessages as ReturnType<typeof vi.fn>).mock.calls.find((c) => c[1]?.q)
+    expect(qCall?.[1].q).toBe(
+      "(from:yortago@gmail.com OR to:yortago@gmail.com OR from:testyortago@gmail.com OR to:testyortago@gmail.com) -in:sent",
+    )
+    expect(json.listed).toBe(2) // m1 counted once
+    expect(json.forwarder_listed).toBe(1) // only m-fwd is forwarder-first
+    expect(json.processed).toBe(2)
+  })
+
+  it("label missing but forwarders configured → still runs (label_missing noted, not degraded)", async () => {
+    settings[GMAIL_RECEIPT_FORWARDERS_KEY] = ["yortago@gmail.com"]
+    ;(listLabels as ReturnType<typeof vi.fn>).mockResolvedValue([{ id: "INBOX", name: "INBOX" }])
+    ;(listMessages as ReturnType<typeof vi.fn>).mockImplementation(async (_t: string, opts: { q?: string }) =>
+      opts.q ? { messages: [{ id: "m1", threadId: "t1" }] } : { messages: [] },
+    )
+    const res = await POST(makeRequest() as never)
+    const json = await res.json()
+    expect(json.fetch_status).toBe("ok")
+    expect(json.label_missing).toBe(true)
+    expect(json.ingested).toBe(1)
   })
 })

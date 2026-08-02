@@ -22,13 +22,14 @@ import {
 } from "@/lib/gmail/client"
 import {
   collectReceiptAttachments, countUnusableReceiptAttachments, SCANNABLE_MIMES,
+  findReceiptBody, decodeBodyData, messageSubject, MAX_BODY_BYTES,
 } from "@/lib/bookkeeping/receipt-attachments"
 import { ingestReceiptDocument } from "@/lib/bookkeeping/receipt-ingest"
 import { isPdfMime, pdfRejectionReasonForBuffer } from "@/lib/bookkeeping/receipt-pdf"
 import {
   GMAIL_SETTLED_IDS_KEY, GMAIL_UNREADABLE_IDS_KEY, GMAIL_SCANNABLE_MIMES_KEY,
   GMAIL_MESSAGE_ATTEMPTS_KEY, GMAIL_RECEIPT_LABEL_KEY, GMAIL_RECEIPTS_CRON_KEY,
-  DEFAULT_GMAIL_RECEIPT_LABEL,
+  DEFAULT_GMAIL_RECEIPT_LABEL, buildForwarderQuery, GMAIL_RECEIPT_FORWARDERS_KEY,
 } from "@/lib/bookkeeping/email-receipts"
 import { recordAudit } from "@/lib/audit/record"
 
@@ -140,7 +141,12 @@ export async function POST(request: NextRequest) {
 
     const labels = await listLabels(accessToken)
     const label = labels.find((l) => l.name === labelName)
-    if (!label) {
+    const forwarderQuery = buildForwarderQuery(
+      await getSetting<unknown>(GMAIL_RECEIPT_FORWARDERS_KEY, []),
+    )
+    // Degraded ONLY when NEITHER source exists — a missing label with a
+    // configured forwarder watch is a note, not an outage.
+    if (!label && !forwarderQuery) {
       const detail = { fetch_status: "degraded", fetch_detail: "label_not_found", label: labelName }
       await logCronEnd(supabase, runId, "success", detail)
       return NextResponse.json({ ok: true, ...detail })
@@ -177,6 +183,7 @@ export async function POST(request: NextRequest) {
     let processed = 0
     let skipped = 0
     let ingested = 0
+    let bodyIngested = 0
     let attachmentless = 0
     let unsupportedAttachments = 0
     let oversizedAttachments = 0
@@ -186,31 +193,42 @@ export async function POST(request: NextRequest) {
     const failures: string[] = []
     let more_pending = false
 
-    // Label-only listing, no date bound (Decision C-8) — the label is the
-    // coach's explicit opt-in set; per-message skip keeps re-polls cheap.
-    // Bounded twice: we stop as soon as we have more unsettled ids than one
-    // run can consume, and hard-stop at MAX_LIST_PAGES either way.
+    // Two listing sources, unioned + deduped: the coach's explicit label set,
+    // and the forwarder watch (Decision B-2). Bounded twice ACROSS BOTH: stop
+    // as soon as we have more unsettled ids than one run can consume, and
+    // hard-stop at MAX_LIST_PAGES total.
+    const sources: Array<{ labelIds?: string[]; q?: string }> = []
+    if (label) sources.push({ labelIds: [label.id] })
+    if (forwarderQuery) sources.push({ q: forwarderQuery })
+
     const messageIds: string[] = []
-    let pageToken: string | undefined
+    const listedIds = new Set<string>()
     let pages = 0
     let unsettledSeen = 0
-    do {
-      const page = await listMessages(accessToken, { labelIds: [label.id], pageToken })
-      for (const m of page.messages ?? []) {
-        messageIds.push(m.id)
-        if (!settled.has(m.id)) unsettledSeen++
-      }
-      pageToken = page.nextPageToken
-      pages++
-      if (unsettledSeen > MAX_MESSAGES_PER_RUN) {
-        more_pending = true
-        break
-      }
-      if (pages >= MAX_LIST_PAGES) {
-        if (pageToken) more_pending = true
-        break
-      }
-    } while (pageToken)
+    let forwarderListed = 0
+    listing: for (const [sourceIndex, source] of sources.entries()) {
+      let pageToken: string | undefined
+      do {
+        const page = await listMessages(accessToken, { ...source, pageToken })
+        for (const m of page.messages ?? []) {
+          if (listedIds.has(m.id)) continue
+          listedIds.add(m.id)
+          messageIds.push(m.id)
+          if (source.q) forwarderListed++
+          if (!settled.has(m.id)) unsettledSeen++
+        }
+        pageToken = page.nextPageToken
+        pages++
+        if (unsettledSeen > MAX_MESSAGES_PER_RUN) {
+          more_pending = true
+          break listing
+        }
+        if (pages >= MAX_LIST_PAGES) {
+          if (pageToken || sourceIndex < sources.length - 1) more_pending = true
+          break listing
+        }
+      } while (pageToken)
+    }
 
     /** Settle + reset the retry counter. */
     const settle = (messageId: string) => {
@@ -264,68 +282,112 @@ export async function POST(request: NextRequest) {
         const attachments = collectReceiptAttachments(full.payload)
 
         if (attachments.length === 0) {
-          if (unusable.unsupportedMime + unusable.oversized > 0) {
-            // The email DID carry a receipt — we just cannot read it (PDF/HEIC,
-            // or over the 10MB cap). Settled so it never starves the budget,
-            // but recorded so the review surface can say "upload these by
-            // photo" and so a future SCANNABLE_MIMES change re-opens it.
+          const body = findReceiptBody(full.payload)
+          if (body && body.size <= MAX_BODY_BYTES) {
+            // Body-only receipt (spec 2026-08-02, supersedes C-7): the raw body
+            // IS the receipt document; the scan job reads it as text. Settles
+            // CLEAN even when unreadable attachments exist (B-4) — the receipt
+            // is captured, so no manual-upload flag and no fingerprint re-open.
+            const externalRef = `gmail:${messageId}:body`
+            const existingRefs = new Set(await listExternalRefsWithPrefix(`gmail:${messageId}:`))
+            if (existingRefs.has(externalRef)) {
+              skipped++
+              settle(messageId)
+              continue
+            }
+            try {
+              const buffer = body.data
+                ? decodeBodyData(body.data)
+                : await getAttachment(accessToken, messageId, body.attachmentId!)
+              const subject = messageSubject(full.payload)
+              await ingestReceiptDocument({
+                bookId: book.id,
+                buffer,
+                mimeType: body.mimeType,
+                originalFilename: `${(subject ?? "Email receipt").slice(0, 120)}${body.mimeType === "text/html" ? ".html" : ".txt"}`,
+                uploadedBy: null,
+                externalRef,
+                accounts,
+                bookName: book.name,
+                bookKind: book.book_kind,
+              })
+              bodyIngested++
+              settle(messageId)
+              continue
+            } catch (bodyErr) {
+              // Falls through to the attempts block at the bottom of the
+              // message loop — unsettled, retried next run, poisoned at the cap.
+              failedHere++
+              noteFailure(externalRef, bodyErr)
+            }
+          } else if (body) {
+            // Over-cap body — pathological; record as needing manual handling.
             needsManualUpload++
             markUnreadable(messageId)
+            settle(messageId)
+            continue
+          } else if (unusable.unsupportedMime + unusable.oversized > 0) {
+            // The email DID carry a receipt — we just cannot read it (HEIC,
+            // or over the caps) and there is no body to fall back on.
+            needsManualUpload++
+            markUnreadable(messageId)
+            settle(messageId)
+            continue
           } else {
-            // Body-only email — produces nothing, v1 by design (Decision C-7).
+            // Nothing usable at all (empty body, no attachments).
             attachmentless++
-          }
-          settle(messageId)
-          continue
-        }
-
-        // Idempotency is PER ATTACHMENT, not per message: a run that ingested
-        // part 1 and then died on part 2 must retry only part 2 next hour.
-        const existingRefs = new Set(await listExternalRefsWithPrefix(`gmail:${messageId}:`))
-        for (const att of attachments) {
-          const externalRef = `gmail:${messageId}:${att.refKey}`
-          if (existingRefs.has(externalRef)) {
-            skipped++
+            settle(messageId)
             continue
           }
-          try {
-            const buffer = await getAttachment(accessToken, messageId, att.attachmentId)
-
-            // Same page cap as the upload button, applied here because this is
-            // the first point that has bytes (collectReceiptAttachments sees
-            // only part metadata). An over-cap or malformed PDF behaves exactly
-            // like a pre-PDF-support attachment did: counted, recorded as
-            // needing manual upload, never ingested. pdfRejectionReasonForBuffer
-            // never throws, so a corrupt PDF cannot 500 the run and strand this
-            // message's sibling attachments.
-            if (isPdfMime(att.mimeType)) {
-              const reason = await pdfRejectionReasonForBuffer(buffer)
-              if (reason) {
-                unsupportedAttachments++
-                needsManualUpload++
-                markUnreadable(messageId)
-                continue
-              }
+        } else {
+          // Idempotency is PER ATTACHMENT, not per message: a run that ingested
+          // part 1 and then died on part 2 must retry only part 2 next hour.
+          const existingRefs = new Set(await listExternalRefsWithPrefix(`gmail:${messageId}:`))
+          for (const att of attachments) {
+            const externalRef = `gmail:${messageId}:${att.refKey}`
+            if (existingRefs.has(externalRef)) {
+              skipped++
+              continue
             }
+            try {
+              const buffer = await getAttachment(accessToken, messageId, att.attachmentId)
 
-            await ingestReceiptDocument({
-              bookId: book.id,
-              buffer,
-              mimeType: att.mimeType,
-              originalFilename: att.filename,
-              uploadedBy: null,
-              externalRef,
-              accounts,
-              bookName: book.name,
-              bookKind: book.book_kind,
-            })
-            ingested++
-          } catch (attErr) {
-            // One bad part must not abort the run and strand its siblings — a
-            // 500 here would leave the sibling documents written while the
-            // message never gets retried. Count it, keep going, stay unsettled.
-            failedHere++
-            noteFailure(externalRef, attErr)
+              // Same page cap as the upload button, applied here because this is
+              // the first point that has bytes (collectReceiptAttachments sees
+              // only part metadata). An over-cap or malformed PDF behaves exactly
+              // like a pre-PDF-support attachment did: counted, recorded as
+              // needing manual upload, never ingested. pdfRejectionReasonForBuffer
+              // never throws, so a corrupt PDF cannot 500 the run and strand this
+              // message's sibling attachments.
+              if (isPdfMime(att.mimeType)) {
+                const reason = await pdfRejectionReasonForBuffer(buffer)
+                if (reason) {
+                  unsupportedAttachments++
+                  needsManualUpload++
+                  markUnreadable(messageId)
+                  continue
+                }
+              }
+
+              await ingestReceiptDocument({
+                bookId: book.id,
+                buffer,
+                mimeType: att.mimeType,
+                originalFilename: att.filename,
+                uploadedBy: null,
+                externalRef,
+                accounts,
+                bookName: book.name,
+                bookKind: book.book_kind,
+              })
+              ingested++
+            } catch (attErr) {
+              // One bad part must not abort the run and strand its siblings — a
+              // 500 here would leave the sibling documents written while the
+              // message never gets retried. Count it, keep going, stay unsettled.
+              failedHere++
+              noteFailure(externalRef, attErr)
+            }
           }
         }
       }
@@ -353,16 +415,17 @@ export async function POST(request: NextRequest) {
 
     const detail = {
       fetch_status: "ok", label: labelName,
+      ...(label ? {} : { label_missing: true }),
       listed: messageIds.length, processed, skipped, attachmentless,
       unsupported_attachments: unsupportedAttachments,
       oversized_attachments: oversizedAttachments,
       needs_manual_upload: needsManualUpload,
       unreadable_backlog: unreadable.size,
-      poisoned, reconsidered, ingested, failed,
+      poisoned, reconsidered, ingested, body_ingested: bodyIngested, forwarder_listed: forwarderListed, failed,
       ...(failures.length > 0 ? { failures } : {}),
       more_pending,
     }
-    if (ingested > 0) {
+    if (ingested + bodyIngested > 0) {
       void recordAudit({
         action: "bookkeeping.gmail_receipt_ingested",
         category: "commerce",
