@@ -49,7 +49,7 @@ import {
 } from "@/app/api/admin/internal/bookkeeping-gmail-receipts/route"
 import {
   GMAIL_UNREADABLE_IDS_KEY, GMAIL_SCANNABLE_MIMES_KEY, GMAIL_MESSAGE_ATTEMPTS_KEY,
-  GMAIL_RECEIPT_FORWARDERS_KEY,
+  GMAIL_RECEIPT_FORWARDERS_KEY, GMAIL_RECEIPT_FORWARDERS_SINCE_KEY,
 } from "@/lib/bookkeeping/email-receipts"
 import { SCANNABLE_MIMES, MAX_ATTACHMENT_BYTES, MAX_BODY_BYTES } from "@/lib/bookkeeping/receipt-attachments"
 
@@ -651,6 +651,19 @@ describe("POST /api/admin/internal/bookkeeping-gmail-receipts", () => {
     expect(json.listed).toBe(2) // m1 counted once
     expect(json.forwarder_listed).toBe(1) // only m-fwd is forwarder-first
     expect(json.processed).toBe(2)
+  })
+
+  it("forwarder query is bounded with after: when the since setting is set (backlog guard)", async () => {
+    settings[GMAIL_RECEIPT_FORWARDERS_KEY] = ["yortago@gmail.com"]
+    settings[GMAIL_RECEIPT_FORWARDERS_SINCE_KEY] = "2026-08-02"
+    ;(listMessages as ReturnType<typeof vi.fn>).mockImplementation(async (_t: string, opts: { q?: string }) =>
+      opts.q ? { messages: [{ id: "m-fwd", threadId: "t9" }] } : { messages: [] },
+    )
+    await POST(makeRequest() as never)
+    const qCall = (listMessages as ReturnType<typeof vi.fn>).mock.calls.find((c) => c[1]?.q)
+    expect(qCall?.[1].q).toBe(
+      "(from:yortago@gmail.com OR to:yortago@gmail.com) -in:sent after:2026/08/02",
+    )
   })
 
   it("label missing but forwarders configured → still runs (label_missing noted, not degraded)", async () => {

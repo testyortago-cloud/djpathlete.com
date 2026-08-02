@@ -30,6 +30,7 @@ import {
   GMAIL_SETTLED_IDS_KEY, GMAIL_UNREADABLE_IDS_KEY, GMAIL_SCANNABLE_MIMES_KEY,
   GMAIL_MESSAGE_ATTEMPTS_KEY, GMAIL_RECEIPT_LABEL_KEY, GMAIL_RECEIPTS_CRON_KEY,
   DEFAULT_GMAIL_RECEIPT_LABEL, buildForwarderQuery, GMAIL_RECEIPT_FORWARDERS_KEY,
+  GMAIL_RECEIPT_FORWARDERS_SINCE_KEY,
 } from "@/lib/bookkeeping/email-receipts"
 import { recordAudit } from "@/lib/audit/record"
 
@@ -143,6 +144,7 @@ export async function POST(request: NextRequest) {
     const label = labels.find((l) => l.name === labelName)
     const forwarderQuery = buildForwarderQuery(
       await getSetting<unknown>(GMAIL_RECEIPT_FORWARDERS_KEY, []),
+      await getSetting<unknown>(GMAIL_RECEIPT_FORWARDERS_SINCE_KEY, null),
     )
     // Degraded ONLY when NEITHER source exists — a missing label with a
     // configured forwarder watch is a note, not an outage.

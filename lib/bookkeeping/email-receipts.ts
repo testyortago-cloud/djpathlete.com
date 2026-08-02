@@ -26,13 +26,21 @@ export const DEFAULT_GMAIL_RECEIPT_LABEL = "DJP Receipts"
  *  (00196; Decision B-2). Admin-editable jsonb string array. */
 export const GMAIL_RECEIPT_FORWARDERS_KEY = "bookkeeping_gmail_receipt_forwarders"
 
+/** Forwarder-watch cutoff date (YYYY-MM-DD; 00197). The forwarder query only
+ *  sees mail AFTER this date so flipping the poller on cannot walk years of
+ *  mailbox history into the review queue. The LABEL source is deliberately
+ *  unbounded — labeling old mail "DJP Receipts" stays the explicit opt-in
+ *  backfill path (Decision C-8). */
+export const GMAIL_RECEIPT_FORWARDERS_SINCE_KEY = "bookkeeping_gmail_receipt_forwarders_since"
+
 /** Gmail search query for the forwarder watch, or null when no valid address.
  *  from: catches manual forwards (sender = forwarder account); to: catches
  *  Gmail auto-forwards (original sender preserved, To: = forwarder account);
  *  -in:sent excludes the coach's own outgoing mail to those addresses.
- *  Takes the RAW settings value: non-arrays, non-strings and anything not
- *  email-shaped are dropped so a malformed row can never inject query syntax. */
-export function buildForwarderQuery(stored: unknown): string | null {
+ *  Takes the RAW settings values: non-arrays, non-strings and anything not
+ *  email-shaped are dropped so a malformed row can never inject query syntax;
+ *  `since` must be a strict YYYY-MM-DD or it is ignored (unbounded). */
+export function buildForwarderQuery(stored: unknown, since?: unknown): string | null {
   if (!Array.isArray(stored)) return null
   const addresses = stored
     .filter((v): v is string => typeof v === "string")
@@ -40,7 +48,11 @@ export function buildForwarderQuery(stored: unknown): string | null {
     .filter((a) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(a))
   if (addresses.length === 0) return null
   const clauses = addresses.flatMap((a) => [`from:${a}`, `to:${a}`])
-  return `(${clauses.join(" OR ")}) -in:sent`
+  const sinceClause =
+    typeof since === "string" && /^\d{4}-\d{2}-\d{2}$/.test(since.trim())
+      ? ` after:${since.trim().replace(/-/g, "/")}`
+      : ""
+  return `(${clauses.join(" OR ")}) -in:sent${sinceClause}`
 }
 
 /** Shown on the row when the vision job never wrote scan_result. */

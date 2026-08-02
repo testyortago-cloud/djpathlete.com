@@ -121,6 +121,23 @@ describe("buildForwarderQuery", () => {
     expect(buildForwarderQuery(["%%%"])).toBeNull()
   })
 
+  it("bounds the query with after: (slash form) when a valid since date is set — the backlog guard", () => {
+    expect(buildForwarderQuery(["yortago@gmail.com"], "2026-08-02")).toBe(
+      "(from:yortago@gmail.com OR to:yortago@gmail.com) -in:sent after:2026/08/02",
+    )
+    expect(buildForwarderQuery(["yortago@gmail.com"], " 2026-08-02 ")).toBe(
+      "(from:yortago@gmail.com OR to:yortago@gmail.com) -in:sent after:2026/08/02",
+    )
+  })
+
+  it("ignores an absent or malformed since date (unbounded — old behavior)", () => {
+    const unbounded = "(from:yortago@gmail.com OR to:yortago@gmail.com) -in:sent"
+    expect(buildForwarderQuery(["yortago@gmail.com"], null)).toBe(unbounded)
+    expect(buildForwarderQuery(["yortago@gmail.com"], "02-08-2026")).toBe(unbounded)
+    expect(buildForwarderQuery(["yortago@gmail.com"], "2026/08/02")).toBe(unbounded)
+    expect(buildForwarderQuery(["yortago@gmail.com"], 20260802)).toBe(unbounded)
+  })
+
   it("exports the settings key the migration seeds", () => {
     expect(GMAIL_RECEIPT_FORWARDERS_KEY).toBe("bookkeeping_gmail_receipt_forwarders")
   })
