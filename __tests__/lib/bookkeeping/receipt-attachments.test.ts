@@ -2,8 +2,12 @@ import { describe, it, expect } from "vitest"
 import {
   collectReceiptAttachments,
   countUnusableReceiptAttachments,
+  decodeBodyData,
+  findReceiptBody,
   isReceiptMime,
   MAX_ATTACHMENT_BYTES,
+  MAX_BODY_BYTES,
+  messageSubject,
 } from "@/lib/bookkeeping/receipt-attachments"
 
 describe("isReceiptMime", () => {
@@ -200,5 +204,65 @@ describe("collectReceiptAttachments", () => {
       }),
     ).toEqual([])
     expect(collectReceiptAttachments(undefined)).toEqual([])
+  })
+})
+
+describe("findReceiptBody", () => {
+  it("prefers the first text/html part over text/plain, walking nested multipart/alternative", () => {
+    const payload = {
+      mimeType: "multipart/alternative",
+      parts: [
+        { mimeType: "text/plain", body: { size: 20, data: "cGxhaW4" } },
+        { mimeType: "text/html", body: { size: 900, data: "PGI-aHRtbDwvYj4" } },
+      ],
+    }
+    expect(findReceiptBody(payload)).toEqual({ mimeType: "text/html", size: 900, data: "PGI-aHRtbDwvYj4" })
+  })
+
+  it("falls back to text/plain when no html part exists (single-part message: payload IS the body)", () => {
+    expect(findReceiptBody({ mimeType: "text/plain", body: { size: 5, data: "aGVsbG8" } })).toEqual({
+      mimeType: "text/plain", size: 5, data: "aGVsbG8",
+    })
+  })
+
+  it("skips text parts that are ATTACHMENTS (filename set) — a notes.html attachment is not the body", () => {
+    const payload = {
+      mimeType: "multipart/mixed",
+      parts: [
+        { mimeType: "text/html", filename: "notes.html", body: { size: 100, attachmentId: "a1" } },
+        { mimeType: "text/plain", body: { size: 20, data: "cGxhaW4" } },
+      ],
+    }
+    expect(findReceiptBody(payload)).toEqual({ mimeType: "text/plain", size: 20, data: "cGxhaW4" })
+  })
+
+  it("carries an attachmentId ref when Gmail did not inline the part; null for empty/absent bodies", () => {
+    expect(
+      findReceiptBody({
+        mimeType: "multipart/alternative",
+        parts: [{ mimeType: "text/html", body: { size: 300000, attachmentId: "big-body" } }],
+      }),
+    ).toEqual({ mimeType: "text/html", size: 300000, attachmentId: "big-body" })
+    expect(findReceiptBody({ mimeType: "text/html", body: { size: 0 } })).toBeNull()
+    expect(findReceiptBody(undefined)).toBeNull()
+  })
+})
+
+describe("decodeBodyData", () => {
+  it("decodes unpadded base64url (-/_ alphabet) to the original bytes", () => {
+    const bytes = Buffer.from([0xfb, 0xff, 0xef, 0x01, 0x3e])
+    const b64url = bytes.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "")
+    expect(decodeBodyData(b64url).equals(bytes)).toBe(true)
+  })
+})
+
+describe("messageSubject", () => {
+  it("reads the Subject header case-insensitively, trimmed; null when absent or blank", () => {
+    expect(
+      messageSubject({ headers: [{ name: "SUBJECT", value: "  Your receipt from Vercel Inc. #2090-9787 " }] }),
+    ).toBe("Your receipt from Vercel Inc. #2090-9787")
+    expect(messageSubject({ headers: [{ name: "Subject", value: "   " }] })).toBeNull()
+    expect(messageSubject({ headers: [] })).toBeNull()
+    expect(messageSubject(undefined)).toBeNull()
   })
 })

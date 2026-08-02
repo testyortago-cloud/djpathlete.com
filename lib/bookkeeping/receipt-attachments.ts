@@ -136,3 +136,63 @@ export function collectReceiptAttachments(
   walk(payload)
   return out
 }
+
+/** Body-size ceiling for the body-ingest fallback (Decision spec §4.2). A body
+ *  over this is pathological, never a real receipt — recorded as unreadable. */
+export const MAX_BODY_BYTES = 2 * 1024 * 1024
+
+export interface ReceiptBodyRef {
+  mimeType: "text/html" | "text/plain"
+  /** base64url bytes when Gmail inlined the part… */
+  data?: string
+  /** …or an attachment pointer when it didn't (rare, very large bodies). */
+  attachmentId?: string
+  size: number
+}
+
+/** The message BODY: first text/html part, else first text/plain — the body
+ *  fallback of Decision B-3 (attachments win; callers only reach for this when
+ *  collectReceiptAttachments returned nothing). Parts with a filename are
+ *  attachments, not the body, and are skipped. */
+export function findReceiptBody(payload: GmailMessagePart | undefined): ReceiptBodyRef | null {
+  let html: ReceiptBodyRef | null = null
+  let plain: ReceiptBodyRef | null = null
+  const walk = (part: GmailMessagePart | undefined) => {
+    if (!part) return
+    const mime = (part.mimeType ?? "").toLowerCase()
+    if ((mime === "text/html" || mime === "text/plain") && !part.filename) {
+      const size = part.body?.size ?? 0
+      const data = part.body?.data
+      const attachmentId = part.body?.attachmentId
+      if (size > 0 && (data || attachmentId)) {
+        const ref: ReceiptBodyRef = {
+          mimeType: mime as "text/html" | "text/plain",
+          size,
+          ...(data ? { data } : {}),
+          ...(!data && attachmentId ? { attachmentId } : {}),
+        }
+        if (mime === "text/html") html = html ?? ref
+        else plain = plain ?? ref
+      }
+    }
+    for (const child of part.parts ?? []) walk(child)
+  }
+  walk(payload)
+  return html ?? plain
+}
+
+/** Gmail base64url (unpadded, -/_ alphabet) → Buffer. Same normalization the
+ *  Gmail client's getAttachment applies; duplicated here because this module
+ *  must stay zero-IO / browser-safe (no lib/gmail/client import chain). */
+export function decodeBodyData(data: string): Buffer {
+  const normalized = data.replace(/-/g, "+").replace(/_/g, "/")
+  const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), "=")
+  return Buffer.from(padded, "base64")
+}
+
+/** Trimmed Subject header off a format=full payload — the body document's
+ *  display filename. Null when absent/blank (caller falls back). */
+export function messageSubject(payload: GmailMessagePart | undefined): string | null {
+  const value = payload?.headers?.find((h) => h.name.toLowerCase() === "subject")?.value?.trim()
+  return value ? value : null
+}
