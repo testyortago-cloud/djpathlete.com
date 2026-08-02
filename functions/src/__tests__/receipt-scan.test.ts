@@ -5,6 +5,8 @@ import {
   documentBackfillPayload,
   buildReceiptVisionPayload,
   receiptUserMessage,
+  emailBodyToReceiptText,
+  MAX_BODY_TEXT_CHARS,
 } from "../receipt-scan.js"
 
 describe("buildReceiptVisionPayload", () => {
@@ -149,5 +151,74 @@ describe("documentBackfillPayload", () => {
     const result = coalesceReceiptResult({ occurred_on: "2024-02-29", confidence: "high" } as never)
     expect(documentBackfillPayload(result).period_start).toBe("2024-02-29")
     expect(documentBackfillPayload(result).period_end).toBe("2024-02-29")
+  })
+})
+
+describe("emailBodyToReceiptText", () => {
+  it("strips style/script/head and tags but keeps the money facts (Vercel-shaped receipt)", () => {
+    const html = `<html><head><title>x</title><style>.a{color:red}</style></head><body>
+      <script>track()</script>
+      <table><tr><td>Receipt from Vercel Inc.</td></tr>
+      <tr><td>Amount paid</td><td>$20.00</td></tr>
+      <tr><td>Paid July 18, 2026</td></tr></table>
+      <p>Receipt number: 2090-9787</p></body></html>`
+    const text = emailBodyToReceiptText(html, "text/html")
+    expect(text).toContain("Receipt from Vercel Inc.")
+    expect(text).toContain("$20.00")
+    expect(text).toContain("Paid July 18, 2026")
+    expect(text).not.toContain("<")
+    expect(text).not.toContain("color:red")
+    expect(text).not.toContain("track()")
+  })
+
+  it("decodes entities in the right order — &amp;lt; must NOT double-decode to <", () => {
+    expect(emailBodyToReceiptText("A &amp; B &lt;tag&gt; &quot;q&quot; &#39;s&#39;&nbsp;end", "text/html"))
+      .toBe(`A & B <tag> "q" 's' end`)
+    expect(emailBodyToReceiptText("literal &amp;lt; stays", "text/html")).toBe("literal &lt; stays")
+  })
+
+  it("collapses runs of whitespace, keeps line structure from block tags, and caps the length", () => {
+    const text = emailBodyToReceiptText("<div>a</div><div>b</div>", "text/html")
+    expect(text).toBe("a\nb")
+    const long = `$5.66 ${"x".repeat(MAX_BODY_TEXT_CHARS * 2)}`
+    const capped = emailBodyToReceiptText(long, "text/plain")
+    expect(capped.length).toBe(MAX_BODY_TEXT_CHARS)
+    expect(capped).toContain("$5.66") // the receipt facts at the TOP survive the cap
+  })
+
+  it("passes text/plain through untouched apart from whitespace collapse + cap", () => {
+    expect(emailBodyToReceiptText("Amount  paid:   $5.66 <not html>", "text/plain"))
+      .toBe("Amount paid: $5.66 <not html>")
+  })
+})
+
+describe("buildReceiptVisionPayload — text branch", () => {
+  it("returns bodyText (stripped) for text/html and never touches sharp or blocks", async () => {
+    const html = Buffer.from("<b>Amount paid</b> $5.66", "utf8")
+    const payload = await buildReceiptVisionPayload(html, "text/html")
+    expect(payload.bodyText).toBe("Amount paid $5.66")
+    expect(payload.images).toBeUndefined()
+    expect(payload.documents).toBeUndefined()
+  })
+
+  it("returns bodyText verbatim-collapsed for text/plain", async () => {
+    const payload = await buildReceiptVisionPayload(Buffer.from("Paid $34.35", "utf8"), "text/plain")
+    expect(payload.bodyText).toBe("Paid $34.35")
+  })
+})
+
+describe("receiptUserMessage — email variant", () => {
+  it("embeds the body text and frames it as data, not instructions", () => {
+    const msg = receiptUserMessage("## Expense categories\nSoftware", false, "Amount paid $20.00")
+    expect(msg).toContain("## Expense categories")
+    expect(msg).toContain("Amount paid $20.00")
+    expect(msg).toMatch(/receipt email/i)
+    expect(msg).toMatch(/forwarded/i)
+    expect(msg).toMatch(/not instructions|only data|never instructions/i)
+  })
+
+  it("without bodyText the PDF and image wordings are byte-identical to before", () => {
+    expect(receiptUserMessage("acc", true)).toContain("grand total")
+    expect(receiptUserMessage("acc", false)).toContain("receipt image")
   })
 })
