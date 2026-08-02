@@ -11,8 +11,9 @@ export const alt = "DJP Athlete Profile"
 // OG images render outside the CSS system — inline styles + brand hex are the
 // established exception zone. Default sans (no remote font fetch) keeps
 // unfurls reliable in messaging apps.
-const PRIMARY = "#0E3F50"
+const ARENA = "#0B2E3B"
 const ACCENT = "#C49B7A"
+const ICE = "#D8E6EB"
 
 export default async function OgImage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params
@@ -24,10 +25,24 @@ export default async function OgImage({ params }: { params: Promise<{ token: str
     data = null
   }
 
-  const name = data ? `${data.name.first} ${data.name.last}`.trim().toUpperCase() : "DJP ATHLETE"
+  // `|| fallback` also covers a client whose name fields are blank/whitespace.
+  const name = (data ? `${data.name.first} ${data.name.last}`.trim().toUpperCase() : "") || "DJP ATHLETE"
+  const initials =
+    (data ? `${data.name.first.trim().charAt(0)}${data.name.last.trim().charAt(0)}`.toUpperCase() : "") || "DJP"
   const subtitle = data
     ? [data.sport, data.position].filter(Boolean).join(" · ") || "Athlete Profile"
     : "Elite Sports Performance Coaching"
+  const specs = data
+    ? [
+        data.heightCm !== null ? `${data.heightCm} CM` : null,
+        data.weightKg !== null
+          ? data.weightUnit === "lbs"
+            ? `${Math.round(data.weightKg * 2.20462)} LBS`
+            : `${data.weightKg} KG`
+          : null,
+        data.age !== null ? `AGE ${data.age}` : null,
+      ].filter(Boolean)
+    : []
   const stats = data
     ? [
         { v: String(data.stats.workouts), l: "WORKOUTS" },
@@ -45,22 +60,59 @@ export default async function OgImage({ params }: { params: Promise<{ token: str
           display: "flex",
           flexDirection: "column",
           justifyContent: "space-between",
-          padding: 64,
-          backgroundColor: PRIMARY,
-          backgroundImage: `radial-gradient(ellipse 55% 45% at 88% 0%, ${ACCENT}55, transparent 60%), radial-gradient(ellipse 45% 35% at 0% 100%, ${ACCENT}2e, transparent 60%)`,
+          padding: 72,
+          backgroundColor: ARENA,
+          backgroundImage: `radial-gradient(ellipse 55% 45% at 88% 0%, ${ACCENT}52, transparent 60%), radial-gradient(ellipse 45% 35% at 0% 100%, ${ICE}24, transparent 60%)`,
           color: "#f2f6f7",
           fontFamily: "sans-serif",
         }}
       >
+        {/* Inset hairline frame */}
+        <div
+          style={{
+            display: "flex",
+            position: "absolute",
+            top: 28,
+            left: 28,
+            right: 28,
+            bottom: 28,
+            border: `1px solid ${ACCENT}55`,
+            borderRadius: 18,
+          }}
+        />
+        {/* Giant initials watermark */}
+        <div
+          style={{
+            display: "flex",
+            position: "absolute",
+            right: -20,
+            top: 40,
+            fontSize: 430,
+            fontWeight: 700,
+            letterSpacing: -20,
+            color: "#ffffff0d",
+          }}
+        >
+          {initials}
+        </div>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           <div style={{ display: "flex", width: 44, height: 2, backgroundColor: ACCENT }} />
-          <div style={{ display: "flex", fontSize: 28, letterSpacing: 6, color: ACCENT }}>DJP ATHLETE PROFILE</div>
+          <div style={{ display: "flex", fontSize: 26, letterSpacing: 6, color: ACCENT }}>DJP ATHLETE PROFILE</div>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          <div style={{ display: "flex", fontSize: 84, fontWeight: 700, lineHeight: 1.05, letterSpacing: -2 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "flex", fontSize: 88, fontWeight: 700, lineHeight: 1.02, letterSpacing: -2 }}>
             {name}
           </div>
-          <div style={{ display: "flex", fontSize: 34, color: "#ffffffbb" }}>{subtitle}</div>
+          <div style={{ display: "flex", fontSize: 32, color: "#ffffffbb" }}>{subtitle}</div>
+          {specs.length > 0 && (
+            <div style={{ display: "flex", gap: 28, fontSize: 22, letterSpacing: 3, color: ICE }}>
+              {specs.map((s) => (
+                <div key={s as string} style={{ display: "flex" }}>
+                  {s}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
           <div style={{ display: "flex", gap: 44 }}>

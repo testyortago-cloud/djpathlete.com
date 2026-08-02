@@ -1,5 +1,12 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Pin the Turbopack workspace root. Without this, a stray package-lock.json
+  // in the user's home directory makes Turbopack infer C:\Users\<user> as the
+  // root and park its dev cache there — which then serves stale CSS/JS across
+  // sessions no matter how often the project's .next is cleared.
+  turbopack: {
+    root: import.meta.dirname,
+  },
   // Keep gRPC-based Google SDKs unbundled on the server. Webpack bundling
   // produces duplicate copies of @grpc/grpc-js, which breaks internal
   // `instanceof ChannelCredentials` checks and surfaces in production as
