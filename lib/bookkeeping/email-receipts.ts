@@ -22,6 +22,27 @@ export const GMAIL_RECEIPTS_CRON_KEY = "cron_bookkeeping_gmail_receipts_enabled"
 export const GMAIL_RECEIPT_LABEL_KEY = "bookkeeping_gmail_receipt_label"
 export const DEFAULT_GMAIL_RECEIPT_LABEL = "DJP Receipts"
 
+/** Addresses whose mail (from: OR to:) the poller ingests without the label
+ *  (00196; Decision B-2). Admin-editable jsonb string array. */
+export const GMAIL_RECEIPT_FORWARDERS_KEY = "bookkeeping_gmail_receipt_forwarders"
+
+/** Gmail search query for the forwarder watch, or null when no valid address.
+ *  from: catches manual forwards (sender = forwarder account); to: catches
+ *  Gmail auto-forwards (original sender preserved, To: = forwarder account);
+ *  -in:sent excludes the coach's own outgoing mail to those addresses.
+ *  Takes the RAW settings value: non-arrays, non-strings and anything not
+ *  email-shaped are dropped so a malformed row can never inject query syntax. */
+export function buildForwarderQuery(stored: unknown): string | null {
+  if (!Array.isArray(stored)) return null
+  const addresses = stored
+    .filter((v): v is string => typeof v === "string")
+    .map((a) => a.trim().toLowerCase())
+    .filter((a) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(a))
+  if (addresses.length === 0) return null
+  const clauses = addresses.flatMap((a) => [`from:${a}`, `to:${a}`])
+  return `(${clauses.join(" OR ")}) -in:sent`
+}
+
 /** Shown on the row when the vision job never wrote scan_result. */
 export const SCAN_INCOMPLETE_MESSAGE =
   "Scan didn't finish — the AI never returned a result for this attachment. Fill the fields in from the image below and post it manually."

@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest"
-import { rowFromEmailDocument, SCAN_INCOMPLETE_MESSAGE } from "@/lib/bookkeeping/email-receipts"
+import {
+  rowFromEmailDocument,
+  SCAN_INCOMPLETE_MESSAGE,
+  buildForwarderQuery,
+  GMAIL_RECEIPT_FORWARDERS_KEY,
+} from "@/lib/bookkeeping/email-receipts"
 import type { BookkeepingAccount, BookkeepingDocument } from "@/types/database"
 
 const ACCOUNTS = [
@@ -78,5 +83,30 @@ describe("rowFromEmailDocument", () => {
   it("falls back to a friendly file name when the document has none", () => {
     const row = rowFromEmailDocument({ ...DOC, original_filename: null } as BookkeepingDocument, ACCOUNTS)
     expect(row.fileName).toBe("Email receipt")
+  })
+})
+
+describe("buildForwarderQuery", () => {
+  it("builds from: OR to: per address with -in:sent (manual forward = From, auto-forward = original From but To stays)", () => {
+    expect(buildForwarderQuery(["yortago@gmail.com", "testyortago@gmail.com"])).toBe(
+      "(from:yortago@gmail.com OR to:yortago@gmail.com OR from:testyortago@gmail.com OR to:testyortago@gmail.com) -in:sent",
+    )
+  })
+
+  it("normalizes case/whitespace and drops non-strings and non-email garbage (query-injection guard)", () => {
+    expect(
+      buildForwarderQuery(["  Yortago@Gmail.com ", 42, null, "not an email", "a@b OR is:starred"]),
+    ).toBe("(from:yortago@gmail.com OR to:yortago@gmail.com) -in:sent")
+  })
+
+  it("returns null for empty/invalid input so the poller skips the forwarder source entirely", () => {
+    expect(buildForwarderQuery([])).toBeNull()
+    expect(buildForwarderQuery("yortago@gmail.com")).toBeNull() // not an array
+    expect(buildForwarderQuery(undefined)).toBeNull()
+    expect(buildForwarderQuery(["%%%"])).toBeNull()
+  })
+
+  it("exports the settings key the migration seeds", () => {
+    expect(GMAIL_RECEIPT_FORWARDERS_KEY).toBe("bookkeeping_gmail_receipt_forwarders")
   })
 })
