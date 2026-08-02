@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { subscribeToJob, type JobSnapshot } from "@/lib/firebase/job-subscription"
-import { Upload, Loader2, CheckCircle2, XCircle, FileText, Brain, ListChecks, ShoppingCart } from "lucide-react"
+import { Upload, Loader2, CheckCircle2, XCircle, FileText, Brain, ListChecks, ShoppingCart, AlertTriangle } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -88,6 +88,11 @@ function safeResultRows(v: unknown): JobResultRow[] {
   }))
 }
 
+/** RTDB drops empty arrays, so an absent `warnings` means "none". */
+function safeResultWarnings(v: unknown): string[] {
+  return Array.isArray(v) ? (v as string[]) : []
+}
+
 interface DraftRow extends JobResultRow {
   source_ref: string
   include: boolean
@@ -158,6 +163,10 @@ export function AmazonImportDialog({ bookId, accounts, open, onOpenChange, onSav
   const [error, setError] = useState<string | null>(null)
 
   const [rows, setRows] = useState<DraftRow[]>([])
+  // Order lines the parser had to drop (cancelled orders, unreadable amounts,
+  // the 500-row cap). They must be visible on the review screen — a silent
+  // under-import reads as a complete one.
+  const [warnings, setWarnings] = useState<string[]>([])
   const [posting, setPosting] = useState(false)
   // D-4 follow-up: closed-month rejections must not vanish with a transient
   // toast. This dialog has no persistent post-commit result screen (it just
@@ -192,6 +201,7 @@ export function AmazonImportDialog({ bookId, accounts, open, onOpenChange, onSav
     setProgressDetail(null)
     setError(null)
     setRows([])
+    setWarnings([])
     setPosting(false)
     setRejectedClosedCount(0)
   }
@@ -239,8 +249,9 @@ export function AmazonImportDialog({ bookId, accounts, open, onOpenChange, onSav
   }
 
   function handleJobCompleted(result: unknown, uploadRefs: string[]) {
-    const r = (result ?? {}) as { rows?: unknown }
+    const r = (result ?? {}) as { rows?: unknown; warnings?: unknown }
     const resultRows = safeResultRows(r.rows)
+    setWarnings(safeResultWarnings(r.warnings))
 
     if (resultRows.length === 0) {
       setIsImporting(false)
@@ -617,6 +628,20 @@ export function AmazonImportDialog({ bookId, accounts, open, onOpenChange, onSav
               <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3 flex items-start gap-2">
                 <XCircle className="size-4 text-destructive shrink-0 mt-0.5" />
                 <p className="text-xs text-destructive/80">{error}</p>
+              </div>
+            )}
+
+            {warnings.length > 0 && (
+              <div className="rounded-xl border border-warning/40 bg-warning/5 p-3 space-y-1">
+                <div className="flex items-center gap-2 text-sm font-medium text-warning">
+                  <AlertTriangle className="size-4" />
+                  {warnings.length} warning{warnings.length === 1 ? "" : "s"}
+                </div>
+                <ul className="text-xs text-warning/90 space-y-1 list-disc pl-5">
+                  {warnings.map((w, i) => (
+                    <li key={i}>{w}</li>
+                  ))}
+                </ul>
               </div>
             )}
 
