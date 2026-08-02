@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { cn } from "@/lib/utils"
-import { formatCents } from "@/lib/bookkeeping/money"
+import { parseDollarsToCents, centsToDollarInput } from "@/lib/bookkeeping/money"
 import { formatOccurredOn } from "@/lib/bookkeeping/format"
 import { accountRequiresBusinessPurpose } from "@/lib/bookkeeping/receipts"
 import { useAiJobsDock } from "@/hooks/use-ai-jobs-dock"
@@ -98,6 +98,21 @@ interface DraftRow extends JobResultRow {
   include: boolean
   accountId: string
   businessPurpose: string
+  /** The coach-editable money field; `amount_cents` stays the parsed truth.
+   *  Twin of StatementImportDialog's amountInput. */
+  amountInput: string
+}
+
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+
+/** What still stops a ticked row from posting — the commit route requires a
+ *  YYYY-MM-DD date and a non-negative integer amount. */
+function rowBlocker(row: DraftRow): string | null {
+  if (!ISO_DATE_RE.test(row.occurred_on)) return "needs a date"
+  const cents = parseDollarsToCents(row.amountInput)
+  if (cents === null) return "amount isn't a number"
+  if (cents === 0) return "amount is $0.00"
+  return null
 }
 
 /** Case-insensitive match against an expense account. Every Amazon row
@@ -123,6 +138,7 @@ function zipRowsToRefs(rows: JobResultRow[], refs: string[], accounts: Bookkeepi
     include: !r.is_transfer,
     accountId: resolveExpenseAccount(r.suggested_category, accounts),
     businessPurpose: "",
+    amountInput: centsToDollarInput(r.amount_cents),
   }))
 }
 
@@ -364,15 +380,41 @@ export function AmazonImportDialog({ bookId, accounts, open, onOpenChange, onSav
     setRows((list) => list.map((r) => (r.source_ref === sourceRef ? { ...r, ...patch } : r)))
   }
 
+  /** Money edits keep the raw text AND re-derive amount_cents (string-split
+   *  cents — never parseFloat), so what posts is what the coach can see.
+   *  Unparseable text leaves the last good cents and rowBlocker() stops the
+   *  post, so a typo can't post a stale amount. */
+  function updateAmount(sourceRef: string, raw: string) {
+    const cents = parseDollarsToCents(raw)
+    updateRow(sourceRef, cents === null ? { amountInput: raw } : { amountInput: raw, amount_cents: cents })
+  }
+
   const includedRows = rows.filter((r) => r.include)
   const expenseAccounts = accounts.filter((a) => a.account_type === "expense")
   const purposeMissingRows = includedRows.filter(
     (r) => rowRequiresBusinessPurpose(r, accounts) && r.businessPurpose.trim().length === 0,
   )
+  const blockedRows = includedRows.filter((r) => rowBlocker(r) !== null)
+  const allIncluded = rows.length > 0 && rows.every((r) => r.include)
+
+  /** Why the Post button is disabled, in the coach's words — a greyed button
+   *  with no explanation reads as a broken screen. */
+  const postBlockedReason: string | null =
+    includedRows.length === 0
+      ? "Nothing is ticked yet — tick a row's checkbox on the left to post it."
+      : blockedRows.length > 0
+        ? `${blockedRows.length} ticked row${blockedRows.length === 1 ? "" : "s"} still ${blockedRows.length === 1 ? "needs" : "need"} a valid date and amount.`
+        : purposeMissingRows.length > 0
+          ? `Add a business purpose for ${purposeMissingRows.length} ${purposeMissingRows.length === 1 ? "entry" : "entries"} in a sensitive category (Meals/Travel/Vehicle).`
+          : null
 
   async function commit() {
     if (includedRows.length === 0) {
       toast.error("Select at least one entry to post")
+      return
+    }
+    if (blockedRows.length > 0) {
+      toast.error("Fix the flagged date/amount fields before posting")
       return
     }
     if (purposeMissingRows.length > 0) {
@@ -559,32 +601,65 @@ export function AmazonImportDialog({ bookId, accounts, open, onOpenChange, onSav
 
   // Review grid
   if (step === "review") {
-    const renderRow = (row: DraftRow) => (
+    const renderRow = (row: DraftRow) => {
+      const blocker = row.include ? rowBlocker(row) : null
+      return (
       <tr
         key={row.source_ref}
         className={cn("border-b border-border last:border-b-0", row.confidence === "low" && "bg-warning/5")}
       >
-        <td className="px-2 py-2">
+        <td className="px-2 py-2 align-top">
           <Checkbox
             checked={row.include}
             onCheckedChange={(v) => updateRow(row.source_ref, { include: v === true })}
             aria-label={`Include ${row.description}`}
           />
         </td>
-        <td className="px-2 py-2 whitespace-nowrap">{formatOccurredOn(row.occurred_on)}</td>
-        <td className="px-2 py-2">
-          {row.description}
-          {row.confidence === "low" && <span className="ml-1.5 text-[10px] text-warning">low confidence</span>}
+        <td className="px-2 py-2 align-top">
+          <input
+            type="date"
+            value={row.occurred_on}
+            onChange={(e) => updateRow(row.source_ref, { occurred_on: e.currentTarget.value })}
+            className="border-border w-32 rounded-md border bg-transparent px-1.5 py-1 text-xs"
+            aria-label={`Date for ${row.description}`}
+          />
+        </td>
+        <td className="px-2 py-2 align-top">
+          <input
+            type="text"
+            value={row.description}
+            onChange={(e) => updateRow(row.source_ref, { description: e.currentTarget.value })}
+            className="border-border w-full min-w-40 rounded-md border bg-transparent px-1.5 py-1 text-xs"
+            aria-label={`Description for ${row.description}`}
+          />
+          {row.confidence === "low" && <span className="text-[10px] text-warning">low confidence</span>}
           {row.is_transfer && (
             <span className="ml-1.5 text-[10px] text-muted-foreground">excluded — transfer/payment</span>
           )}
         </td>
-        <td className="px-2 py-2 text-right font-mono text-error">−{formatCents(row.amount_cents)}</td>
-        <td className="px-2 py-2">
+        <td className="px-2 py-2 align-top">
+          <div className="flex items-center justify-end gap-1">
+            <span className="font-mono text-xs text-error">−$</span>
+            <input
+              type="text"
+              inputMode="decimal"
+              value={row.amountInput}
+              onChange={(e) => updateAmount(row.source_ref, e.currentTarget.value)}
+              className={cn(
+                "w-24 rounded-md border bg-transparent px-1.5 py-1 text-right font-mono text-xs",
+                blocker && blocker !== "needs a date" ? "border-warning" : "border-border",
+              )}
+              aria-label={`Amount for ${row.description}`}
+            />
+          </div>
+          {blocker && <p className="mt-1 text-right text-[11px] text-warning">{blocker}</p>}
+        </td>
+        <td className="px-2 py-2 align-top">
+          {/* Never disabled: picking the right category is usually what a
+              coach does BEFORE ticking a row the AI excluded. */}
           <select
             value={row.accountId}
             onChange={(e) => updateRow(row.source_ref, { accountId: e.currentTarget.value })}
-            disabled={!row.include}
             className="border-border rounded-md border bg-transparent px-1.5 py-1 text-xs"
             aria-label={`Category for ${row.description}`}
           >
@@ -600,7 +675,6 @@ export function AmazonImportDialog({ bookId, accounts, open, onOpenChange, onSav
               type="text"
               value={row.businessPurpose}
               onChange={(e) => updateRow(row.source_ref, { businessPurpose: e.currentTarget.value })}
-              disabled={!row.include}
               placeholder="Business purpose (required)"
               aria-label={`Business purpose for ${row.description}`}
               className={cn(
@@ -611,7 +685,8 @@ export function AmazonImportDialog({ bookId, accounts, open, onOpenChange, onSav
           )}
         </td>
       </tr>
-    )
+      )
+    }
 
     return (
       <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -619,7 +694,8 @@ export function AmazonImportDialog({ bookId, accounts, open, onOpenChange, onSav
           <DialogHeader>
             <DialogTitle>Review Amazon import</DialogTitle>
             <DialogDescription>
-              Uncheck anything that shouldn&apos;t post. Nothing is saved until you post below.
+              Every field is editable — fix a date, description, amount or category, then tick the rows that should
+              post. Nothing is saved until you post below.
             </DialogDescription>
           </DialogHeader>
 
@@ -649,7 +725,13 @@ export function AmazonImportDialog({ bookId, accounts, open, onOpenChange, onSav
               <table className="w-full text-xs">
                 <thead className="sticky top-0 bg-surface">
                   <tr className="border-b border-border">
-                    <th className="px-2 py-2 text-left font-medium text-muted-foreground w-8" />
+                    <th className="px-2 py-2 text-left font-medium text-muted-foreground w-8">
+                      <Checkbox
+                        checked={allIncluded}
+                        onCheckedChange={(v) => setRows((list) => list.map((r) => ({ ...r, include: v === true })))}
+                        aria-label={allIncluded ? "Untick every row" : "Tick every row"}
+                      />
+                    </th>
                     <th className="px-2 py-2 text-left font-medium text-muted-foreground">Date</th>
                     <th className="px-2 py-2 text-left font-medium text-muted-foreground">Description</th>
                     <th className="px-2 py-2 text-right font-medium text-muted-foreground">Amount</th>
@@ -660,14 +742,9 @@ export function AmazonImportDialog({ bookId, accounts, open, onOpenChange, onSav
               </table>
             </div>
 
-            {purposeMissingRows.length > 0 && (
-              <p className="text-xs text-warning">
-                Add a business purpose for {purposeMissingRows.length}{" "}
-                {purposeMissingRows.length === 1 ? "entry" : "entries"} in a sensitive category (Meals/Travel/Vehicle)
-                before posting.
-              </p>
-            )}
           </div>
+
+          {postBlockedReason && <p className="text-sm text-muted-foreground">{postBlockedReason}</p>}
 
           {rejectedClosedCount > 0 && (
             <p className="text-sm font-medium text-warning">
@@ -681,7 +758,7 @@ export function AmazonImportDialog({ bookId, accounts, open, onOpenChange, onSav
             <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={posting}>
               Cancel
             </Button>
-            <Button onClick={commit} disabled={posting || includedRows.length === 0 || purposeMissingRows.length > 0}>
+            <Button onClick={commit} disabled={posting || postBlockedReason !== null}>
               {posting ? "Posting…" : `Post ${includedRows.length} ${includedRows.length === 1 ? "entry" : "entries"}`}
             </Button>
           </DialogFooter>

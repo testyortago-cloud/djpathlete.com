@@ -17,7 +17,7 @@ import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
-import { formatCents } from "@/lib/bookkeeping/money"
+import { formatCents, parseDollarsToCents, centsToDollarInput } from "@/lib/bookkeeping/money"
 import { formatOccurredOn } from "@/lib/bookkeeping/format"
 import { useAiJobsDock } from "@/hooks/use-ai-jobs-dock"
 import { summarizeApiError } from "@/lib/errors/humanize"
@@ -82,10 +82,24 @@ function buildDraftRows(annotated: AnnotatedStatementRow[], accounts: Bookkeepin
     ...a.row,
     include: a.defaultInclude,
     accountId: resolveAccount(a.row, accounts),
+    amountInput: centsToDollarInput(a.row.amount_cents),
     possibleDuplicate: a.possibleDuplicate,
     reason: a.reason,
     newCandidate: a.newCandidate,
   }))
+}
+
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+
+/** What still stops a ticked row from posting: the commit route requires a
+ *  YYYY-MM-DD date and a non-negative integer amount, so an amount the coach
+ *  half-typed ("12.", "") must block the post rather than post a stale value. */
+function rowBlocker(row: DraftRow): string | null {
+  if (!ISO_DATE_RE.test(row.occurred_on)) return "needs a date"
+  const cents = parseDollarsToCents(row.amountInput)
+  if (cents === null) return "amount isn't a number"
+  if (cents === 0) return "amount is $0.00"
+  return null
 }
 
 function rowFlag(row: DraftRow): { label: string; tone: "warning" | "muted" } | null {
@@ -105,6 +119,10 @@ type JobResultRow = Omit<DedupeInputRow, "source_ref" | "transferSuspect">
 interface DraftRow extends DedupeInputRow {
   include: boolean
   accountId: string
+  /** The coach-editable money field. `amount_cents` stays the parsed truth and
+   *  is re-derived on every keystroke that parses; this holds the raw text so
+   *  a half-typed "12." doesn't get silently rewritten under the cursor. */
+  amountInput: string
   possibleDuplicate: boolean
   reason: string | null
   newCandidate: boolean
@@ -405,11 +423,37 @@ export function StatementImportDialog({
     setRows((list) => list.map((r) => (r.source_ref === sourceRef ? { ...r, ...patch } : r)))
   }
 
+  /** Money edits keep the raw text AND re-derive amount_cents, so what posts is
+   *  always what the coach can see in the box (string-split cents — never
+   *  parseFloat). Unparseable text leaves the last good cents in place and
+   *  rowBlocker() stops the post, so a typo can't post a stale amount. */
+  function updateAmount(sourceRef: string, raw: string) {
+    const cents = parseDollarsToCents(raw)
+    updateRow(sourceRef, cents === null ? { amountInput: raw } : { amountInput: raw, amount_cents: cents })
+  }
+
   const includedRows = rows.filter((r) => r.include)
+  const blockedRows = includedRows.filter((r) => rowBlocker(r) !== null)
+  const allIncluded = rows.length > 0 && rows.every((r) => r.include)
+
+  /** Why the Post button is disabled, in the coach's words. A gate that just
+   *  greys the button out is indistinguishable from a broken screen. */
+  const postBlockedReason: string | null =
+    includedRows.length === 0
+      ? "Nothing is ticked yet — tick a row's checkbox on the left to post it."
+      : blockedRows.length > 0
+        ? `${blockedRows.length} ticked row${blockedRows.length === 1 ? "" : "s"} still ${blockedRows.length === 1 ? "needs" : "need"} a valid date and amount.`
+        : isNonBusinessBook && !confirmNonBusiness
+          ? "Confirm the non-business book above before posting."
+          : null
 
   async function commit() {
     if (includedRows.length === 0) {
       toast.error("Select at least one entry to post")
+      return
+    }
+    if (blockedRows.length > 0) {
+      toast.error("Fix the flagged date/amount fields before posting")
       return
     }
     if (isNonBusinessBook && !confirmNonBusiness) return
@@ -598,32 +642,62 @@ export function StatementImportDialog({
 
     const renderRow = (row: DraftRow) => {
       const eligible = accounts.filter((a) => a.account_type === row.direction)
+      const blocker = row.include ? rowBlocker(row) : null
       return (
         <tr
           key={row.source_ref}
           className={cn("border-b border-border last:border-b-0", row.confidence === "low" && "bg-warning/5")}
         >
-          <td className="px-2 py-2">
+          <td className="px-2 py-2 align-top">
             <Checkbox
               checked={row.include}
               onCheckedChange={(v) => updateRow(row.source_ref, { include: v === true })}
               aria-label={`Include ${row.description}`}
             />
           </td>
-          <td className="px-2 py-2 whitespace-nowrap">{formatOccurredOn(row.occurred_on)}</td>
-          <td className="px-2 py-2">
-            {row.description}
-            {row.confidence === "low" && <span className="ml-1.5 text-[10px] text-warning">low confidence</span>}
+          <td className="px-2 py-2 align-top">
+            <input
+              type="date"
+              value={row.occurred_on}
+              onChange={(e) => updateRow(row.source_ref, { occurred_on: e.currentTarget.value })}
+              className="border-border w-32 rounded-md border bg-transparent px-1.5 py-1 text-xs"
+              aria-label={`Date for ${row.description}`}
+            />
           </td>
-          <td className={cn("px-2 py-2 text-right font-mono", row.direction === "income" ? "text-success" : "text-error")}>
-            {row.direction === "income" ? "+" : "−"}
-            {formatCents(row.amount_cents)}
+          <td className="px-2 py-2 align-top">
+            <input
+              type="text"
+              value={row.description}
+              onChange={(e) => updateRow(row.source_ref, { description: e.currentTarget.value })}
+              className="border-border w-full min-w-40 rounded-md border bg-transparent px-1.5 py-1 text-xs"
+              aria-label={`Description for ${row.description}`}
+            />
+            {row.confidence === "low" && <span className="text-[10px] text-warning">low confidence</span>}
           </td>
-          <td className="px-2 py-2">
+          <td className="px-2 py-2 align-top">
+            <div className="flex items-center justify-end gap-1">
+              <span className={cn("font-mono text-xs", row.direction === "income" ? "text-success" : "text-error")}>
+                {row.direction === "income" ? "+$" : "−$"}
+              </span>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={row.amountInput}
+                onChange={(e) => updateAmount(row.source_ref, e.currentTarget.value)}
+                className={cn(
+                  "w-24 rounded-md border bg-transparent px-1.5 py-1 text-right font-mono text-xs",
+                  blocker && blocker !== "needs a date" ? "border-warning" : "border-border",
+                )}
+                aria-label={`Amount for ${row.description}`}
+              />
+            </div>
+          </td>
+          <td className="px-2 py-2 align-top">
+            {/* Never disabled: picking the right category is usually what a
+                coach does BEFORE ticking a row the AI excluded. */}
             <select
               value={row.accountId}
               onChange={(e) => updateRow(row.source_ref, { accountId: e.currentTarget.value })}
-              disabled={!row.include}
               className="border-border rounded-md border bg-transparent px-1.5 py-1 text-xs"
               aria-label={`Category for ${row.description}`}
             >
@@ -635,8 +709,9 @@ export function StatementImportDialog({
               ))}
             </select>
           </td>
-          <td className="px-2 py-2 max-w-48">
+          <td className="px-2 py-2 max-w-48 align-top">
             <RowFlagCell row={row} />
+            {blocker && <p className="text-[11px] text-warning">{blocker}</p>}
           </td>
         </tr>
       )
@@ -648,7 +723,8 @@ export function StatementImportDialog({
           <DialogHeader>
             <DialogTitle>Review statement import</DialogTitle>
             <DialogDescription>
-              Uncheck anything that shouldn&apos;t post. Nothing is saved until you post below.
+              Every field is editable — fix a date, description, amount or category, then tick the rows that should
+              post. Nothing is saved until you post below.
             </DialogDescription>
           </DialogHeader>
 
@@ -714,7 +790,13 @@ export function StatementImportDialog({
               <table className="w-full text-xs">
                 <thead className="sticky top-0 bg-surface">
                   <tr className="border-b border-border">
-                    <th className="px-2 py-2 text-left font-medium text-muted-foreground w-8" />
+                    <th className="px-2 py-2 text-left font-medium text-muted-foreground w-8">
+                      <Checkbox
+                        checked={allIncluded}
+                        onCheckedChange={(v) => setRows((list) => list.map((r) => ({ ...r, include: v === true })))}
+                        aria-label={allIncluded ? "Untick every row" : "Tick every row"}
+                      />
+                    </th>
                     <th className="px-2 py-2 text-left font-medium text-muted-foreground">Date</th>
                     <th className="px-2 py-2 text-left font-medium text-muted-foreground">Description</th>
                     <th className="px-2 py-2 text-right font-medium text-muted-foreground">Amount</th>
@@ -777,13 +859,15 @@ export function StatementImportDialog({
             </p>
           )}
 
+          {postBlockedReason && <p className="text-sm text-muted-foreground">{postBlockedReason}</p>}
+
           <DialogFooter>
             <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={posting}>
               Cancel
             </Button>
             <Button
               onClick={commit}
-              disabled={posting || includedRows.length === 0 || (isNonBusinessBook && !confirmNonBusiness)}
+              disabled={posting || postBlockedReason !== null}
             >
               {posting ? "Posting…" : `Post ${includedRows.length} ${includedRows.length === 1 ? "entry" : "entries"}`}
             </Button>
