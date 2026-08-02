@@ -107,7 +107,9 @@ describe("GET /api/admin/bookkeeping/documents/[id]/download", () => {
     expect(res.status).toBe(200)
     const json = await res.json()
     expect(json).toEqual({ url: "https://signed.example/x.csv" })
-    expect(signStatementDownloadMock).toHaveBeenCalledWith("bookkeeping/x.csv")
+    // 1-hour TTL: the review previews park longer than the old 5-minute
+    // default; expired links rendered ExpiredToken errors in the dialog.
+    expect(signStatementDownloadMock).toHaveBeenCalledWith("bookkeeping/x.csv", 3600)
     expect(recordAuditMock).toHaveBeenCalledWith(expect.objectContaining({
       action: "bookkeeping.document_downloaded",
       category: "admin_read_sensitive",

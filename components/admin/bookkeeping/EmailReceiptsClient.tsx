@@ -81,6 +81,15 @@ export function EmailReceiptsClient({
   const patchRow = (clientId: string, patch: Partial<ReceiptBatchRow>) =>
     setRows((prev) => prev.map((r) => (r.clientId === clientId ? { ...r, ...patch } : r)))
 
+  // Signed preview links expire (1h server-side). A cached URL from an earlier
+  // open can outlive its token in a parked tab and render an ExpiredToken
+  // error where the receipt should be — so every dialog open drops the cache
+  // and lets ReceiptRowEditor fetch a fresh link.
+  const openDetails = (clientId: string) => {
+    patchRow(clientId, { previewUrl: null })
+    setOpenRowId(clientId)
+  }
+
   // Categories are per book, so switching the book re-resolves the AI's
   // suggested category against the NEW book's accounts (name match, else
   // Uncategorized) — a stale account id from another book would 409 on post.
@@ -97,7 +106,7 @@ export function EmailReceiptsClient({
     const invalid = rowValidationError(row, accountsForRow(row))
     if (invalid) {
       toast.error(invalid)
-      setOpenRowId(row.clientId)
+      openDetails(row.clientId)
       return
     }
     patchRow(row.clientId, { status: "posting", error: null })
@@ -305,7 +314,7 @@ export function EmailReceiptsClient({
                           <div className="flex items-start justify-between gap-2">
                             <button
                               type="button"
-                              onClick={() => setOpenRowId(row.clientId)}
+                              onClick={() => openDetails(row.clientId)}
                               className="min-w-0 text-left"
                               title="Open details"
                             >
