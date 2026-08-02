@@ -15,6 +15,9 @@ const mocks = vi.hoisted(() => ({
   getActiveAssignmentWithProgram: vi.fn(),
   getCompletedAssignments: vi.fn(),
   getExerciseNamesByIds: vi.fn(),
+  listCompletedSessionSummaries: vi.fn(),
+  getPerformanceAssessmentsByClient: vi.fn(),
+  getAssessmentExercises: vi.fn(),
 }))
 
 vi.mock("@/lib/db/users", () => ({ getUserById: mocks.getUserById }))
@@ -22,6 +25,11 @@ vi.mock("@/lib/db/client-profiles", () => ({ getProfileByUserId: mocks.getProfil
 vi.mock("@/lib/db/workout-sessions", () => ({
   getCompletedSessionCount: mocks.getCompletedSessionCount,
   getTotalVolumeKg: mocks.getTotalVolumeKg,
+  listCompletedSessionSummaries: mocks.listCompletedSessionSummaries,
+}))
+vi.mock("@/lib/db/performance-assessments", () => ({
+  getPerformanceAssessmentsByClient: mocks.getPerformanceAssessmentsByClient,
+  getAssessmentExercises: mocks.getAssessmentExercises,
 }))
 vi.mock("@/lib/db/progress", () => ({ getWorkoutStreak: mocks.getWorkoutStreak }))
 vi.mock("@/lib/db/achievements", () => ({
@@ -92,6 +100,18 @@ function armHappyPath() {
     { updated_at: "2026-04-15T00:00:00Z", programs: { name: "Pre-Season Speed" } },
   ])
   mocks.getExerciseNamesByIds.mockResolvedValue({ e1: "Back Squat" })
+  mocks.listCompletedSessionSummaries.mockResolvedValue([
+    { session_date: "2026-06-10", volume_load_kg: 3000 },
+    { session_date: "2026-06-24", volume_load_kg: 4000 },
+  ])
+  mocks.getPerformanceAssessmentsByClient.mockResolvedValue([
+    { id: "as1", title: "Mid-Season Testing", status: "completed", is_template: false, updated_at: "2026-07-10T00:00:00Z", admin_notes: "coach-only" },
+    { id: "as2", title: "Draft Battery", status: "in_progress", is_template: false, updated_at: "2026-07-20T00:00:00Z" },
+  ])
+  mocks.getAssessmentExercises.mockResolvedValue([
+    { exercise_id: "e1", custom_name: null, result_value: 140, result_unit: "kg", order_index: 1, admin_notes: "form broke on rep 2", video_path: "private/clip.mp4", youtube_url: null },
+    { exercise_id: null, custom_name: "Lane Agility", result_value: null, result_unit: "s", order_index: 2 },
+  ])
 }
 
 beforeEach(() => {
@@ -147,6 +167,20 @@ describe("getAthleteProfileData", () => {
       testType: "cmj", resultValue: 48, resultUnit: "cm", customName: null,
       bodyWeightKg: null, testDate: "2026-06-01",
     })
+  })
+
+  it("aggregates monthly training and scrubs assessments to completed batteries with name/value/unit only", async () => {
+    armHappyPath()
+    const d = await getAthleteProfileData("u1")
+    const june = d!.monthlyTraining.find((m) => m.month === "2026-06")
+    expect(june).toMatchObject({ sessions: 2, volumeKg: 7000 })
+
+    // Only the COMPLETED battery survives, and only its measured item —
+    // admin_notes / video_path must never reach the public payload.
+    expect(d!.assessments).toHaveLength(1)
+    expect(d!.assessments[0].title).toBe("Mid-Season Testing")
+    expect(d!.assessments[0].items).toEqual([{ name: "Back Squat", value: 140, unit: "kg" }])
+    expect(JSON.stringify(d!.assessments)).not.toMatch(/coach-only|form broke|clip\.mp4/)
   })
 
   it("returns null for non-clients, inactive users, and missing users", async () => {

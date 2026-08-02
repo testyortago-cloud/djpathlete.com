@@ -155,6 +155,33 @@ export async function getCompletedSessionCount(userId: string): Promise<number> 
   return count ?? 0
 }
 
+/**
+ * Completed-session summaries (date + volume) for aggregate charts.
+ * Paginates past the PostgREST ~1000-row cap; oldest first.
+ */
+export async function listCompletedSessionSummaries(
+  userId: string,
+): Promise<{ session_date: string; volume_load_kg: number | null }[]> {
+  const supabase = getClient()
+  const PAGE = 1000
+  let from = 0
+  const rows: { session_date: string; volume_load_kg: number | null }[] = []
+  for (;;) {
+    const { data, error } = await supabase
+      .from("workout_sessions")
+      .select("session_date, volume_load_kg")
+      .eq("user_id", userId)
+      .eq("status", "completed")
+      .order("session_date", { ascending: true })
+      .range(from, from + PAGE - 1)
+    if (error) return rows
+    rows.push(...((data ?? []) as { session_date: string; volume_load_kg: number | null }[]))
+    if (!data || data.length < PAGE) break
+    from += PAGE
+  }
+  return rows
+}
+
 /** Lifetime volume (kg) across completed sessions. Paginates past the PostgREST ~1000-row cap. */
 export async function getTotalVolumeKg(userId: string): Promise<number> {
   const supabase = getClient()

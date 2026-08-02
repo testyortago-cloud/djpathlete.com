@@ -1,6 +1,8 @@
 import { getUserById } from "@/lib/db/users"
 import { getProfileByUserId } from "@/lib/db/client-profiles"
-import { getCompletedSessionCount, getTotalVolumeKg } from "@/lib/db/workout-sessions"
+import { getCompletedSessionCount, getTotalVolumeKg, listCompletedSessionSummaries } from "@/lib/db/workout-sessions"
+import { getPerformanceAssessmentsByClient, getAssessmentExercises } from "@/lib/db/performance-assessments"
+import { buildMonthlyTraining, type MonthlyTraining } from "./monthly"
 import { getWorkoutStreak } from "@/lib/db/progress"
 import { getAchievements, getAchievementsByType } from "@/lib/db/achievements"
 import { getPRsByUser, listByUser as listTests } from "@/lib/db/performance-tests"
@@ -42,6 +44,16 @@ export interface RadarTestPoint {
   testDate: string
 }
 
+/**
+ * Scrubbed projection of a completed assessment battery. admin_notes,
+ * video_path/youtube_url and message threads must never reach the public card.
+ */
+export interface PublicAssessment {
+  title: string
+  date: string
+  items: { name: string; value: number | null; unit: string | null }[]
+}
+
 export interface AthleteProfileData {
   name: { first: string; last: string }
   avatarUrl: string | null
@@ -68,6 +80,8 @@ export interface AthleteProfileData {
   career: { name: string; completedAt: string }[]
   badges: Badge[]
   milestones: { title: string; description: string | null; type: string; earnedAt: string }[]
+  monthlyTraining: MonthlyTraining[]
+  assessments: PublicAssessment[]
 }
 
 /** Age in whole years from an ISO date (public card shows age, never the DOB). */
@@ -94,6 +108,44 @@ function settle<T>(r: PromiseSettledResult<T>, fallback: T): T {
 const MAX_RECORDS = 6
 const MAX_MILESTONES = 8
 const MAX_CAREER = 8
+const MAX_ASSESSMENTS = 3
+const MAX_ASSESSMENT_ITEMS = 8
+
+/**
+ * COMPLETED assessment batteries only, scrubbed to name/value/unit. Items
+ * without a logged result are dropped; a battery left with no measured items
+ * is dropped whole (an empty panel reads as broken, not premium).
+ */
+async function loadPublicAssessments(clientUserId: string): Promise<PublicAssessment[]> {
+  const all = await getPerformanceAssessmentsByClient(clientUserId)
+  const completed = (all ?? [])
+    .filter((a: { status: string; is_template: boolean }) => a.status === "completed" && !a.is_template)
+    .slice(0, MAX_ASSESSMENTS)
+
+  const out: PublicAssessment[] = []
+  for (const a of completed as { id: string; title: string; updated_at: string }[]) {
+    const exercises = await getAssessmentExercises(a.id).catch(() => [])
+    const withResults = (exercises as {
+      exercise_id: string | null
+      custom_name: string | null
+      result_value: number | null
+      result_unit: string | null
+      order_index: number
+    }[]).filter((e) => e.result_value !== null)
+    const ids = withResults.map((e) => e.exercise_id).filter((id): id is string => id !== null)
+    const names = await getExerciseNamesByIds(ids).catch(() => ({}) as Record<string, string>)
+    const items = withResults
+      .sort((x, y) => x.order_index - y.order_index)
+      .slice(0, MAX_ASSESSMENT_ITEMS)
+      .map((e) => ({
+        name: e.custom_name ?? (e.exercise_id ? (names[e.exercise_id] ?? "Exercise") : "Exercise"),
+        value: e.result_value,
+        unit: e.result_unit,
+      }))
+    if (items.length > 0) out.push({ title: a.title, date: a.updated_at, items })
+  }
+  return out
+}
 
 /**
  * Assembles everything the public card shows. Returns null when the user must
@@ -122,6 +174,7 @@ export async function getAthleteProfileData(clientUserId: string): Promise<Athle
   const [
     workoutsR, streakR, volumeR, prAchievementsR, fieldPRsR, testsR,
     trainingSessionsR, readinessR, assignmentR, completedR, allAchievementsR,
+    sessionSummariesR, assessmentsR,
   ] = await Promise.allSettled([
     getCompletedSessionCount(clientUserId),
     getWorkoutStreak(clientUserId),
@@ -134,6 +187,8 @@ export async function getAthleteProfileData(clientUserId: string): Promise<Athle
     getActiveAssignmentWithProgram(clientUserId),
     getCompletedAssignments(clientUserId),
     getAchievements(clientUserId),
+    listCompletedSessionSummaries(clientUserId),
+    loadPublicAssessments(clientUserId),
   ])
 
   const prAchievements = settle(prAchievementsR, [] as Achievement[])
@@ -225,5 +280,7 @@ export async function getAthleteProfileData(clientUserId: string): Promise<Athle
       .map((c) => ({ name: c.programs?.name ?? "Program", completedAt: c.updated_at })),
     badges,
     milestones,
+    monthlyTraining: buildMonthlyTraining(settle(sessionSummariesR, [])),
+    assessments: settle(assessmentsR, [] as PublicAssessment[]),
   }
 }

@@ -9,6 +9,8 @@ export interface TestProgression {
   unit: string
   /** Chronological result values (oldest → newest) for the sparkline. */
   points: number[]
+  /** Same series with dates, for the detailed trend charts' tooltips. */
+  series: { date: string; value: number }[]
   first: number
   latest: number
   latestDate: string
@@ -58,6 +60,7 @@ export function buildProgressions(tests: RadarTestPoint[]): TestProgression[] {
         last.testType === "custom" ? (last.customName ?? "Custom") : (TEST_TYPE_LABELS[last.testType] ?? last.testType),
       unit: last.resultUnit,
       points: sorted.map((t) => t.resultValue),
+      series: sorted.map((t) => ({ date: t.testDate, value: t.resultValue })),
       first,
       latest: last.resultValue,
       latestDate: last.testDate,

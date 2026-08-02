@@ -506,6 +506,12 @@
     background: var(--background);
     color: var(--foreground);
   }
+  /* Print every tab stacked: inactive force-mounted panels are hidden via the
+     `hidden` attribute and/or a data-state class — both are display rules, so
+     visibility overrides alone can't undo them. */
+  .athlete-arena .arena-tab-panel {
+    display: block !important;
+  }
 }
 
 /* Print: when a `.print-document` is present, print only it and strip app chrome

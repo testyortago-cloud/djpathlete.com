@@ -1,9 +1,8 @@
 import { ArrowDownRight, ArrowUpRight } from "lucide-react"
 import { FadeIn } from "@/components/shared/FadeIn"
-import { buildProgressions } from "@/lib/profile-share/progression"
 import { SectionHeading } from "./SectionHeading"
 import { Sparkline } from "./Sparkline"
-import type { RadarTestPoint } from "@/lib/profile-share/data"
+import type { TestProgression } from "@/lib/profile-share/progression"
 
 const MONTH_YEAR = new Intl.DateTimeFormat("en-GB", { month: "short", year: "numeric", timeZone: "UTC" })
 
@@ -41,8 +40,7 @@ function TrendChip({ pct, first, latest }: { pct: number | null; first: number; 
  * Per-test progression rows — the coaching-results section. Self-hides unless
  * some test type has ≥2 logged results (one point is a record, not progress).
  */
-export function ProgressionSection({ tests }: { tests: RadarTestPoint[] }) {
-  const progressions = buildProgressions(tests)
+export function ProgressionSection({ progressions }: { progressions: TestProgression[] }) {
   if (progressions.length === 0) return null
 
   return (

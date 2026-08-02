@@ -45,6 +45,17 @@ const base: AthleteProfileData = {
     { id: "iron_streak", name: "Iron Streak", description: "18 consecutive training days", icon: "Flame", tier: "gold" },
   ],
   milestones: [{ title: "100 Workouts", description: null, type: "milestone", earnedAt: "2026-02-01T00:00:00Z" }],
+  monthlyTraining: [
+    { month: "2026-06", label: "Jun", sessions: 14, volumeKg: 52000 },
+    { month: "2026-07", label: "Jul", sessions: 16, volumeKg: 58500 },
+  ],
+  assessments: [
+    {
+      title: "Mid-Season Testing",
+      date: "2026-07-10T00:00:00Z",
+      items: [{ name: "Back Squat", value: 140, unit: "kg" }],
+    },
+  ],
 }
 
 describe("AthleteProfileCard", () => {
@@ -53,7 +64,8 @@ describe("AthleteProfileCard", () => {
     expect(screen.getByText(/Marcus/)).toBeInTheDocument()
     expect(screen.getByText(/Point Guard/)).toBeInTheDocument()
     expect(screen.getByText(/188/)).toBeInTheDocument()
-    expect(screen.getByText(/Back Squat/)).toBeInTheDocument()
+    // Appears in gym records AND the assessment battery — both intended.
+    expect(screen.getAllByText(/Back Squat/).length).toBeGreaterThanOrEqual(2)
     expect(screen.getByText(/Off-Season Power Block/)).toBeInTheDocument()
     expect(screen.getByText(/Iron Streak/)).toBeInTheDocument()
     expect(screen.getByText(/100 Workouts/)).toBeInTheDocument()
@@ -61,7 +73,7 @@ describe("AthleteProfileCard", () => {
     expect(screen.getByText(/Training with DJP since Mar 2024/)).toBeInTheDocument()
   })
 
-  it("hides empty sections but always renders hero + stats", () => {
+  it("hides empty sections and their tabs but always renders hero + stats", () => {
     render(
       <AthleteProfileCard
         data={{
@@ -73,6 +85,8 @@ describe("AthleteProfileCard", () => {
           career: [],
           badges: [],
           milestones: [],
+          monthlyTraining: [],
+          assessments: [],
         }}
       />,
     )
@@ -82,6 +96,19 @@ describe("AthleteProfileCard", () => {
     expect(screen.queryByText(/Current Program/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/Achievements/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/Career/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument()
+  })
+
+  it("groups the card into tabs and keeps every panel's content in the DOM (print shows all)", () => {
+    render(<AthleteProfileCard data={base} />)
+    const tabNames = screen.getAllByRole("tab").map((t) => t.textContent)
+    expect(tabNames).toEqual(["Progress", "Performance", "Program", "Awards"])
+    // Force-mounted panels: content from every tab is present even though
+    // only the first is visible on screen.
+    expect(screen.getByText(/Mid-Season Testing/)).toBeInTheDocument()
+    expect(screen.getByText(/Training Load/)).toBeInTheDocument()
+    expect(screen.getByText(/Off-Season Power Block/)).toBeInTheDocument()
+    expect(screen.getByText(/Iron Streak/)).toBeInTheDocument()
   })
 
   it("omits physical pills that are null", () => {
@@ -111,8 +138,9 @@ describe("AthleteProfileCard", () => {
       />,
     )
     expect(screen.getByText(/Performance Progression/i)).toBeInTheDocument()
-    expect(screen.getByText(/10m Sprint/)).toBeInTheDocument()
-    expect(screen.getByText(/1\.8 s/)).toBeInTheDocument()
+    // Progression panel + Test Trends small-multiple — both render the series.
+    expect(screen.getAllByText(/10m Sprint/).length).toBeGreaterThanOrEqual(2)
+    expect(screen.getAllByText(/1\.8 s/).length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText("10%")).toBeInTheDocument()
   })
 
