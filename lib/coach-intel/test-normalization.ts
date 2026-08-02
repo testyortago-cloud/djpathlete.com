@@ -37,6 +37,14 @@ export const RADAR_CATEGORIES: Record<RadarCategory, TestType[]> = {
   Mobility: ["sit_reach"],
 }
 
+/**
+ * Which way "better" points for a test type — sprints improve downward,
+ * jumps upward. null for custom/unknown types: no judgment can be made.
+ */
+export function testDirection(testType: TestType): "higher" | "lower" | null {
+  return REFERENCE_RANGES[testType]?.direction ?? null
+}
+
 export function normalize(testType: TestType, value: number, bodyWeightKg?: number | null): number | null {
   const r = REFERENCE_RANGES[testType]
   if (!r) return null

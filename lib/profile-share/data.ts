@@ -36,6 +36,8 @@ export interface FieldRecord {
 export interface RadarTestPoint {
   testType: TestType
   resultValue: number
+  resultUnit: string
+  customName: string | null
   bodyWeightKg: number | null
   testDate: string
 }
@@ -202,6 +204,8 @@ export async function getAthleteProfileData(clientUserId: string): Promise<Athle
     radarTests: tests.map((t) => ({
       testType: t.test_type,
       resultValue: t.result_value,
+      resultUnit: t.result_unit,
+      customName: t.custom_name ?? null,
       bodyWeightKg: t.body_weight_kg ?? null,
       testDate: t.test_date,
     })),

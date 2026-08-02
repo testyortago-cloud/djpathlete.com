@@ -96,4 +96,37 @@ describe("AthleteProfileCard", () => {
     expect(screen.getByText(/185 LBS/)).toBeInTheDocument()
     expect(screen.getByText(/309 lbs/)).toBeInTheDocument() // 140 kg back squat
   })
+
+  it("renders performance progression with direction-aware improvement when a test has 2+ results", () => {
+    render(
+      <AthleteProfileCard
+        data={{
+          ...base,
+          radarTests: [
+            // Faster sprint: raw -10% must render as ↑10% improvement.
+            { testType: "sprint_10m", resultValue: 2.0, resultUnit: "s", customName: null, bodyWeightKg: null, testDate: "2026-01-01" },
+            { testType: "sprint_10m", resultValue: 1.8, resultUnit: "s", customName: null, bodyWeightKg: null, testDate: "2026-03-01" },
+          ],
+        }}
+      />,
+    )
+    expect(screen.getByText(/Performance Progression/i)).toBeInTheDocument()
+    expect(screen.getByText(/10m Sprint/)).toBeInTheDocument()
+    expect(screen.getByText(/1\.8 s/)).toBeInTheDocument()
+    expect(screen.getByText("10%")).toBeInTheDocument()
+  })
+
+  it("hides performance progression when no test type has 2+ results", () => {
+    render(
+      <AthleteProfileCard
+        data={{
+          ...base,
+          radarTests: [
+            { testType: "cmj", resultValue: 48, resultUnit: "cm", customName: null, bodyWeightKg: null, testDate: "2026-06-01" },
+          ],
+        }}
+      />,
+    )
+    expect(screen.queryByText(/Performance Progression/i)).not.toBeInTheDocument()
+  })
 })

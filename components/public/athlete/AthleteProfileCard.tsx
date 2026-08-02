@@ -2,6 +2,7 @@ import type { AthleteProfileData } from "@/lib/profile-share/data"
 import { AthleteHero } from "./AthleteHero"
 import { StatTiles } from "./StatTiles"
 import { RecordsSection } from "./RecordsSection"
+import { ProgressionSection } from "./ProgressionSection"
 import { AthleteRadarSection } from "./AthleteRadarSection"
 import { ProgramSection } from "./ProgramSection"
 import { BadgesSection } from "./BadgesSection"
@@ -48,6 +49,7 @@ export function AthleteProfileCard({ data }: { data: AthleteProfileData }) {
       <div className="relative z-10 mx-auto w-full max-w-4xl flex-1 px-4 md:px-6">
         <StatTiles stats={data.stats} />
         {hasRecords && <RecordsSection gym={data.gymRecords} field={data.fieldRecords} weightUnit={data.weightUnit} />}
+        <ProgressionSection tests={data.radarTests} />
         <AthleteRadarSection tests={data.radarTests} />
         {hasProgram && <ProgramSection program={data.program} career={data.career} />}
         {hasBadges && <BadgesSection badges={data.badges} milestones={data.milestones} />}

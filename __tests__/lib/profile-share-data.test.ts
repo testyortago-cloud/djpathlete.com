@@ -75,7 +75,8 @@ function armHappyPath() {
   ])
   mocks.listTests.mockResolvedValue([
     {
-      test_type: "cmj", result_value: 48, test_date: "2026-06-01", body_weight_kg: null,
+      test_type: "cmj", result_value: 48, result_unit: "cm", custom_name: null,
+      test_date: "2026-06-01", body_weight_kg: null,
       // Private fields that must NOT survive into the public object.
       notes: "internal coach note", video_url: "https://storage.example/form-check.mp4",
       created_by: "coach-1", client_user_id: "u1",
@@ -132,12 +133,20 @@ describe("getAthleteProfileData", () => {
     expect(d!.stats.prCount).toBe(6)
   })
 
-  it("scrubs radar test rows down to the four public keys", async () => {
+  it("scrubs radar test rows down to the six public keys", async () => {
     armHappyPath()
     const d = await getAthleteProfileData("u1")
     expect(d!.radarTests).toHaveLength(1)
-    expect(Object.keys(d!.radarTests[0]).sort()).toEqual(["bodyWeightKg", "resultValue", "testDate", "testType"])
-    expect(d!.radarTests[0]).toEqual({ testType: "cmj", resultValue: 48, bodyWeightKg: null, testDate: "2026-06-01" })
+    // Widened 2026-08-02 for the card's progression section (unit + custom
+    // name were already public via fieldRecords). notes / video_url /
+    // created_by / client_user_id must never appear here.
+    expect(Object.keys(d!.radarTests[0]).sort()).toEqual([
+      "bodyWeightKg", "customName", "resultUnit", "resultValue", "testDate", "testType",
+    ])
+    expect(d!.radarTests[0]).toEqual({
+      testType: "cmj", resultValue: 48, resultUnit: "cm", customName: null,
+      bodyWeightKg: null, testDate: "2026-06-01",
+    })
   })
 
   it("returns null for non-clients, inactive users, and missing users", async () => {
