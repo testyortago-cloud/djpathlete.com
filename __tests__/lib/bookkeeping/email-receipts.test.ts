@@ -84,6 +84,21 @@ describe("rowFromEmailDocument", () => {
     const row = rowFromEmailDocument({ ...DOC, original_filename: null } as BookkeepingDocument, ACCOUNTS)
     expect(row.fileName).toBe("Email receipt")
   })
+
+  it("marks text/html and text/plain documents isBody (iframe preview), never images/PDFs", () => {
+    const html = rowFromEmailDocument({ ...DOC, mime_type: "text/html" } as BookkeepingDocument, ACCOUNTS)
+    expect(html.isBody).toBe(true)
+    expect(html.isPdf).toBe(false)
+    expect(
+      rowFromEmailDocument({ ...DOC, mime_type: "text/plain" } as BookkeepingDocument, ACCOUNTS).isBody,
+    ).toBe(true)
+    expect(
+      rowFromEmailDocument({ ...DOC, mime_type: "image/jpeg" } as BookkeepingDocument, ACCOUNTS).isBody,
+    ).toBe(false)
+    expect(
+      rowFromEmailDocument({ ...DOC, mime_type: "application/pdf" } as BookkeepingDocument, ACCOUNTS).isBody,
+    ).toBe(false)
+  })
 })
 
 describe("buildForwarderQuery", () => {

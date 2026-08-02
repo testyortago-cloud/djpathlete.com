@@ -84,6 +84,10 @@ export interface ReceiptBatchRow {
   /** PDF rows cannot render in an <img> — a blob URL of a PDF is a
    *  broken-image box. The review surfaces swap in a file tile and an iframe. */
   isPdf: boolean
+  /** Email-body document (text/html | text/plain). Renders in a SANDBOXED
+   *  iframe — never in <img> (broken image) and never unsandboxed (third-party
+   *  email HTML must not script). */
+  isBody: boolean
 }
 
 export function todayIso(): string {
@@ -149,6 +153,7 @@ export function newReceiptRow(
     previewUrl: null,
     thumbUrl,
     isPdf,
+    isBody: false,
   }
 }
 

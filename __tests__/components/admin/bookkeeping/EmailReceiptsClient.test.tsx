@@ -48,8 +48,15 @@ describe("EmailReceiptsClient empty state", () => {
     expect(body).toContain("JPEG, PNG, WEBP or PDF")
     expect(SCANNABLE_MIMES).toContain("application/pdf")
     // HEIC is the format that still cannot be read, and it must be named as
-    // an exclusion so a labeled iPhone photo is not silently lost.
-    expect(body).toMatch(/HEIC[^.]*aren't imported/i)
+    // still needing a manual photo upload so a labeled iPhone photo is not
+    // silently lost.
+    expect(body).toMatch(/HEIC[^.]*photo upload/i)
+  })
+
+  it("tells the coach forwarding a body-only email now works", () => {
+    render(<EmailReceiptsClient {...base} />)
+    expect(screen.getByText(/forward a receipt email/i)).toBeInTheDocument()
+    expect(screen.queryByText(/aren't imported|aren&apos;t imported/i)).not.toBeInTheDocument()
   })
 
   it("derives the format list from SCANNABLE_MIMES so the copy cannot drift from the code", () => {
@@ -90,12 +97,12 @@ describe("EmailReceiptsClient poller flag honesty", () => {
 describe("EmailReceiptsClient unreadable backlog", () => {
   it("tells the coach about labeled emails the poller could not read", () => {
     render(<EmailReceiptsClient {...base} needsManualUpload={3} />)
-    expect(screen.getByText(/3 labeled emails carried an attachment/)).toBeInTheDocument()
+    expect(screen.getByText(/3 labeled emails carried a receipt/)).toBeInTheDocument()
   })
 
   it("shows nothing when there is no backlog", () => {
     render(<EmailReceiptsClient {...base} />)
-    expect(screen.queryByText(/carried an attachment/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/carried a receipt/)).not.toBeInTheDocument()
   })
 })
 

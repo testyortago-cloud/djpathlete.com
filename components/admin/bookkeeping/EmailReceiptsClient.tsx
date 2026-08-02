@@ -135,8 +135,9 @@ export function EmailReceiptsClient({
           <CardContent className="py-4 text-sm text-warning flex items-start gap-2">
             <AlertTriangle className="size-4 mt-0.5 shrink-0" />
             <span>
-              {needsManualUpload} labeled email{needsManualUpload === 1 ? "" : "s"} carried an attachment this importer
-              can&apos;t read — a HEIC photo, a PDF over 10 pages, or a file over 10&nbsp;MB. Nothing was imported from{" "}
+              {needsManualUpload} labeled email{needsManualUpload === 1 ? "" : "s"} carried a receipt this importer
+              can&apos;t read — a HEIC photo, a PDF over 10 pages, a file over 10&nbsp;MB, or an email body too large
+              to parse. Nothing was imported from{" "}
               {needsManualUpload === 1 ? "it" : "them"}. Open{" "}
               {needsManualUpload === 1 ? "that email" : "those emails"} and photo-upload the receipt from{" "}
               <Link href="/admin/books" className="underline">
@@ -163,9 +164,11 @@ export function EmailReceiptsClient({
               </p>
             ) : (
               <p className="text-sm text-muted-foreground max-w-xl mx-auto">
-                No email receipts pending. Label an email that has a {formats} attachment with &lsquo;{label}&rsquo;
-                {pollerEnabled ? " and it appears within the hour" : ""}. HEIC photos, PDFs over 10 pages and body-only
-                emails (no attachment) aren&apos;t imported — photo-upload those from{" "}
+                No email receipts pending. Forward a receipt email to the connected Gmail from a watched address
+                (Settings &rsaquo; <span className="font-mono text-xs">bookkeeping_gmail_receipt_forwarders</span>),
+                or label any email &lsquo;{label}&rsquo;
+                {pollerEnabled ? " — it appears within the hour" : ""}. A {formats} attachment or the email body
+                itself both import. HEIC photos and PDFs over 10 pages still need a photo upload from{" "}
                 <Link href="/admin/books" className="underline text-primary">
                   Accounting
                 </Link>

@@ -72,6 +72,7 @@ export function rowFromEmailDocument(
     documentId: doc.id,
     status: "scanned",
     included: true,
+    isBody: doc.mime_type === "text/html" || doc.mime_type === "text/plain",
   }
   if (!doc.scan_result) {
     return { ...base, status: "scan_failed", included: false, error: SCAN_INCOMPLETE_MESSAGE }

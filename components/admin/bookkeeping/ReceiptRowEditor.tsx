@@ -57,11 +57,15 @@ export function ReceiptRowEditor({ row, accounts, disabled, onEdit, onPreviewLoa
   const purposeRequired = selectedAccount ? accountRequiresBusinessPurpose(selectedAccount) : false
   const purposeMissing = selectedAccount ? businessPurposeMissing(selectedAccount, row.businessPurpose) : false
   const result = row.result
-  const imageSrc = row.isPdf ? null : (row.previewUrl ?? row.thumbUrl)
+  const imageSrc = row.isPdf || row.isBody ? null : (row.previewUrl ?? row.thumbUrl)
   // Only the signed URL is framed. A blob object URL is not reliably
   // renderable in an iframe, and the GCS object carries contentType
   // application/pdf, so the browser's native viewer handles the signed one.
   const pdfSrc = row.isPdf ? row.previewUrl : null
+  // Email-body receipts: framed like PDFs but fully sandboxed — the content is
+  // third-party HTML and must not run scripts. bg-white because email HTML
+  // assumes a white canvas in both app themes.
+  const bodySrc = row.isBody ? row.previewUrl : null
 
   return (
     <div className="space-y-4 pt-3">
@@ -92,7 +96,25 @@ export function ReceiptRowEditor({ row, accounts, disabled, onEdit, onPreviewLoa
         </div>
       )}
 
-      {pdfSrc ? (
+      {bodySrc ? (
+        <div className="space-y-1.5">
+          <iframe
+            src={bodySrc}
+            sandbox=""
+            title={`Receipt email — ${row.fileName}`}
+            className="w-full h-80 rounded-lg border border-border bg-white"
+          />
+          <a
+            href={bodySrc}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-primary underline underline-offset-2"
+          >
+            <FileText className="size-3" />
+            Open in new tab
+          </a>
+        </div>
+      ) : pdfSrc ? (
         <div className="space-y-1.5">
           <iframe
             src={pdfSrc}
