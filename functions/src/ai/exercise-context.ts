@@ -36,10 +36,15 @@ export function filterByDifficultyScore(
 export function filterByDifficultyLevel(
   exercises: CompressedExercise[],
   clientDifficulty: string,
+  unlockedIds?: Set<string>,
 ): CompressedExercise[] {
   const clientIdx = DIFFICULTY_LEVELS.indexOf(clientDifficulty as DifficultyLevel)
   if (clientIdx === -1) return exercises
   return exercises.filter((ex) => {
+    // The coach named this exercise. clientDifficulty is frequently a fallback
+    // guess ("beginner" whenever no profile exists), and an explicit
+    // instruction outranks a guess.
+    if (unlockedIds?.has(ex.id)) return true
     const exIdx = DIFFICULTY_LEVELS.indexOf(ex.difficulty as DifficultyLevel)
     if (exIdx === -1) return true
     return exIdx <= clientIdx
@@ -66,6 +71,7 @@ export function filterByProgressionPhase(
   exercises: CompressedExercise[],
   clientDifficulty: string,
   weekNumber: number,
+  unlockedIds?: Set<string>,
 ): CompressedExercise[] {
   const normalized = clientDifficulty === "elite" ? "advanced" : clientDifficulty
   const clientIdx = DIFFICULTY_LEVELS.indexOf(normalized as DifficultyLevel)
@@ -75,6 +81,10 @@ export function filterByProgressionPhase(
   const progressionMaxIdx = progressionUnlocked ? Math.min(clientIdx + 1, DIFFICULTY_LEVELS.length - 1) : clientIdx
 
   return exercises.filter((ex) => {
+    // Runs per week inside the orchestrator loop; without this an unlocked
+    // exercise would be admitted by the input filters and then pruned back out
+    // of weeks 1-2.
+    if (unlockedIds?.has(ex.id)) return true
     const exIdx = DIFFICULTY_LEVELS.indexOf(ex.difficulty as DifficultyLevel)
     if (exIdx === -1) return true
 
@@ -105,11 +115,16 @@ export function filterByProgressionPhase(
 export function filterByAvailableEquipment(
   exercises: CompressedExercise[],
   availableEquipment: string[],
+  unlockedIds?: Set<string>,
 ): CompressedExercise[] {
   if (availableEquipment.length >= FULL_GYM_THRESHOLD) return exercises
 
   const equipmentSet = new Set(availableEquipment.map(normalizeEquipment))
   return exercises.filter((ex) => {
+    // The coach named this exercise. availableEquipment is a profile guess and
+    // is empty whenever no profile exists — which silently reduces the library
+    // to bodyweight-only. An explicit instruction outranks that guess.
+    if (unlockedIds?.has(ex.id)) return true
     if (ex.is_bodyweight) return true
     if (!ex.equipment_required || ex.equipment_required.length === 0) return true
     return ex.equipment_required.every((eq) => equipmentSet.has(normalizeEquipment(eq)))

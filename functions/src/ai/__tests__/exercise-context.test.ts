@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest"
 import {
   filterByDifficultyLevel,
+  filterByDifficultyScore,
   filterByProgressionPhase,
   filterByAvailableEquipment,
 } from "../exercise-context.js"
@@ -159,5 +160,52 @@ describe("filterByProgressionPhase — earned progression", () => {
       const result = filterByProgressionPhase(exercises, "elite", 1)
       expect(result).toHaveLength(5)
     })
+  })
+})
+
+// ─── Coach-instruction unlocks ──────────────────────────────────────────────
+// Reproduces the production failure: no client profile, so availableEquipment
+// is [] and clientDifficulty defaults to "beginner". A barbell/intermediate
+// lift the coach explicitly named is cut twice over unless it is unlocked.
+
+describe("unlockedIds bypass for coach-named exercises", () => {
+  const BACK_SQUAT = {
+    ...mk("bs", "intermediate", 6),
+    equipment_required: ["barbell"],
+  } as unknown as CompressedExercise
+  const PUSH_UP = {
+    ...mk("pu", "beginner", 2),
+    equipment_required: [],
+    is_bodyweight: true,
+  } as unknown as CompressedExercise
+  const LIB = [BACK_SQUAT, PUSH_UP]
+  const UNLOCKED = new Set(["bs"])
+
+  it("equipment filter drops the named lift without an unlock", () => {
+    expect(filterByAvailableEquipment(LIB, []).map((e) => e.id)).toEqual(["pu"])
+  })
+
+  it("equipment filter keeps the named lift when unlocked", () => {
+    expect(filterByAvailableEquipment(LIB, [], UNLOCKED).map((e) => e.id)).toEqual(["bs", "pu"])
+  })
+
+  it("difficulty-tier filter drops the named lift without an unlock", () => {
+    expect(filterByDifficultyLevel(LIB, "beginner").map((e) => e.id)).toEqual(["pu"])
+  })
+
+  it("difficulty-tier filter keeps the named lift when unlocked", () => {
+    expect(filterByDifficultyLevel(LIB, "beginner", UNLOCKED).map((e) => e.id)).toEqual(["bs", "pu"])
+  })
+
+  it("per-week progression filter keeps the named lift in week 1", () => {
+    expect(filterByProgressionPhase(LIB, "beginner", 1).map((e) => e.id)).toEqual(["pu"])
+    expect(filterByProgressionPhase(LIB, "beginner", 1, UNLOCKED).map((e) => e.id)).toEqual(["bs", "pu"])
+  })
+
+  it("assessment score filter is NOT bypassable — it is measured evidence", () => {
+    // There is deliberately no unlockedIds parameter on filterByDifficultyScore:
+    // a coach-named lift above the client's ASSESSED ceiling must still be cut.
+    expect(filterByDifficultyScore(LIB, 4).map((e) => e.id)).toEqual(["pu"])
+    expect(filterByDifficultyScore).toHaveLength(2)
   })
 })
