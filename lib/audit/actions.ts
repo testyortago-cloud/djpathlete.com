@@ -265,6 +265,8 @@ export const AUDIT_ACTIONS = [
   { slug: "bookkeeping.finding_dismissed", category: "commerce", description: "Insight finding dismissed from the insights page" },
   { slug: "bookkeeping.finding_undismissed", category: "commerce", description: "Insight finding dismissal removed — finding restored" },
   { slug: "bookkeeping.payout_synced", category: "commerce", description: "Nightly cron ingested Stripe payouts into the payout mirror" },
+  { slug: "bookkeeping.setup_manual_check_set", category: "admin_write", description: "Setup-checklist manual item checked or unchecked" },
+  { slug: "bookkeeping.tour_completed", category: "admin_write", description: "Books cross-page tour completed" },
 ] as const satisfies readonly AuditActionDef[]
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number]["slug"]
