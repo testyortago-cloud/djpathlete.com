@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
-import { Plus, Upload, BookOpen, Banknote, Camera, ShoppingCart, BarChart3, Lightbulb, Package, Tags, FilterX, Mail } from "lucide-react"
+import { Plus, Upload, BookOpen, Banknote, Camera, ShoppingCart, BarChart3, Lightbulb, Package, Tags, FilterX, Mail, ScanSearch } from "lucide-react"
 import { toast } from "sonner"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
@@ -14,6 +14,7 @@ import { StatementImportDialog } from "@/components/admin/bookkeeping/StatementI
 import { ReceiptCashDialog } from "@/components/admin/bookkeeping/ReceiptCashDialog"
 import { ReceiptUploadDialog } from "@/components/admin/bookkeeping/ReceiptUploadDialog"
 import { AmazonImportDialog } from "@/components/admin/bookkeeping/AmazonImportDialog"
+import { DuplicateScanDialog } from "@/components/admin/bookkeeping/DuplicateScanDialog"
 import { CloseMonthCard } from "@/components/admin/bookkeeping/CloseMonthCard"
 import { formatCents } from "@/lib/bookkeeping/money"
 import { PERIOD_PRESET_LABELS, presetRange, type PeriodPreset } from "@/lib/bookkeeping/period"
@@ -96,6 +97,7 @@ export function BooksClient({
   const [cashReceiptOpen, setCashReceiptOpen] = useState(false)
   const [uploadReceiptOpen, setUploadReceiptOpen] = useState(false)
   const [amazonOpen, setAmazonOpen] = useState(false)
+  const [dupScanOpen, setDupScanOpen] = useState(false)
   const [closes, setCloses] = useState<BookkeepingPeriodClose[]>([])
 
   const fetchEntries = useCallback(async () => {
@@ -406,6 +408,10 @@ export function BooksClient({
               <ShoppingCart className="size-4" />
               Import Amazon
             </Button>
+            <Button size="sm" variant="outline" onClick={() => setDupScanOpen(true)}>
+              <ScanSearch className="size-4" />
+              Find duplicates
+            </Button>
           </div>
 
           {/* Filter bar — labeled controls; the period preset drives from/to */}
@@ -597,6 +603,13 @@ export function BooksClient({
         open={amazonOpen}
         onOpenChange={setAmazonOpen}
         onSaved={fetchEntries}
+      />
+      <DuplicateScanDialog
+        bookId={bookId}
+        accounts={accounts}
+        open={dupScanOpen}
+        onOpenChange={setDupScanOpen}
+        onEntriesChanged={fetchEntries}
       />
     </div>
   )
