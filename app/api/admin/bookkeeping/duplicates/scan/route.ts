@@ -18,7 +18,10 @@ import { withTimeout } from "@/lib/with-timeout"
 // 25-pair scan (2026-08-03) and degraded every large scan to heuristic-only.
 export const maxDuration = 60
 
-const bodySchema = z.object({ book_id: z.string().uuid() })
+// candidates_only: fast pairing-only phase (no AI call, no log row) so the
+// dialog can show the heuristic list instantly and run the slow AI leg with
+// real progress on top of visible content.
+const bodySchema = z.object({ book_id: z.string().uuid(), candidates_only: z.boolean().optional() })
 
 const verdictSchema = z.object({
   verdicts: z.array(
@@ -69,6 +72,10 @@ export async function POST(request: Request) {
     const { pairs, truncated } = findCandidatePairs(entries, new Set(dismissed))
     if (pairs.length === 0) {
       return NextResponse.json({ pairs: [], ai: "skipped", truncated })
+    }
+    if (parsed.data.candidates_only) {
+      const heuristic: ScanResponsePair[] = pairs.map((p) => ({ ...p, verdict: null }))
+      return NextResponse.json({ pairs: heuristic, ai: "pending", truncated })
     }
 
     const startTime = Date.now()

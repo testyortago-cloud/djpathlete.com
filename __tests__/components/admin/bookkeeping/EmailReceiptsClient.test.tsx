@@ -188,9 +188,10 @@ describe("EmailReceiptsClient board", () => {
     await waitFor(() => expect(screen.queryByText("Home Depot")).not.toBeInTheDocument())
   })
 
-  it("every card carries a book picker naming the target book", () => {
+  it("every card carries a labeled book picker naming the target book", () => {
     render(<EmailReceiptsClient {...base} documents={[doc({ scan_result: scanResult() })]} />)
-    const trigger = screen.getByLabelText("Book for receipt.jpg")
+    const trigger = screen.getByLabelText("Post into book for receipt.jpg")
     expect(trigger).toHaveTextContent("Darren — DJP Athlete")
+    expect(screen.getByText("Post into book")).toBeInTheDocument() // visible label, not just aria
   })
 })

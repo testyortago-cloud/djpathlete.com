@@ -11,6 +11,7 @@ import { toast } from "sonner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Progress } from "@/components/ui/progress"
 import { formatCents } from "@/lib/bookkeeping/money"
 import type { DuplicateScanEntry, MemoSimilarity } from "@/lib/bookkeeping/duplicate-scan"
 import type { BookkeepingAccount } from "@/types/database"
@@ -42,6 +43,15 @@ const SOURCE_LABELS: Record<string, string> = {
 const DOCUMENT_LINK_LABELS: Record<string, string> = {
   receipt: "View receipt",
   statement_import: "View statement",
+}
+
+function sortPairs(ps: ScanPair[]): ScanPair[] {
+  return [...ps].sort(
+    (p, q) =>
+      (p.verdict ? CONFIDENCE_RANK[p.verdict.confidence] : 3) -
+        (q.verdict ? CONFIDENCE_RANK[q.verdict.confidence] : 3) ||
+      p.a.occurred_on.localeCompare(q.a.occurred_on),
+  )
 }
 
 // Hoisted to module scope (fix, controller-flagged): a component defined
@@ -127,6 +137,11 @@ export function DuplicateScanDialog({
   onEntriesChanged: () => void
 }) {
   const [loading, setLoading] = useState(false)
+  // AI verdict phase: heuristic pairs are already on screen, verdicts pending.
+  // Actions stay locked while true — a delete mid-review would be resurrected
+  // in the UI by the in-flight response (computed before the delete).
+  const [reviewing, setReviewing] = useState(false)
+  const [elapsed, setElapsed] = useState(0)
   const [pairs, setPairs] = useState<ScanPair[]>([])
   const [ai, setAi] = useState<AiStatus>("ok")
   const [truncated, setTruncated] = useState(false)
@@ -141,44 +156,84 @@ export function DuplicateScanDialog({
   // state (or toasting) if a newer invocation superseded this one.
   const scanRequestIdRef = useRef(0)
 
+  // Two-phase scan: candidates_only returns the heuristic pairs in well under
+  // a second, so the list is on screen while the slow AI verdict leg (up to
+  // ~50s on a full 40-pair scan) runs with visible progress instead of a
+  // frozen "loading" line. A phase-2 failure keeps the heuristic list and
+  // degrades to the same "AI unavailable" banner the server fallback uses.
   const scan = useCallback(async () => {
     const requestId = ++scanRequestIdRef.current
     setLoading(true)
+    setReviewing(false)
     setScanned(false)
     setConfirming(null)
+    let showedHeuristics = false
     try {
+      const candRes = await fetch("/api/admin/bookkeeping/duplicates/scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ book_id: bookId, candidates_only: true }),
+      })
+      const cand = await candRes.json().catch(() => ({}))
+      if (requestId !== scanRequestIdRef.current) return // a newer scan superseded this one
+      if (!candRes.ok) {
+        toast.error(cand.error ?? "Scan failed")
+        return
+      }
+      const candidates = cand.pairs as ScanPair[]
+      setPairs(sortPairs(candidates))
+      setAi("ok")
+      setTruncated(Boolean(cand.truncated))
+      setScanned(true)
+      if (candidates.length === 0) return // nothing for AI to judge
+      setLoading(false)
+      setReviewing(true)
+      showedHeuristics = true
+
       const res = await fetch("/api/admin/bookkeeping/duplicates/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ book_id: bookId }),
       })
       const data = await res.json().catch(() => ({}))
-      if (requestId !== scanRequestIdRef.current) return // a newer scan superseded this one
+      if (requestId !== scanRequestIdRef.current) return
       if (!res.ok) {
-        toast.error(data.error ?? "Scan failed")
+        setAi("unavailable")
         return
       }
-      const sorted = [...(data.pairs as ScanPair[])].sort(
-        (p, q) =>
-          (p.verdict ? CONFIDENCE_RANK[p.verdict.confidence] : 3) -
-            (q.verdict ? CONFIDENCE_RANK[q.verdict.confidence] : 3) ||
-          p.a.occurred_on.localeCompare(q.a.occurred_on),
-      )
-      setPairs(sorted)
+      setPairs(sortPairs(data.pairs as ScanPair[]))
       setAi(data.ai as AiStatus)
       setTruncated(Boolean(data.truncated))
-      setScanned(true)
     } catch {
       if (requestId !== scanRequestIdRef.current) return
-      toast.error("Scan failed")
+      if (showedHeuristics) setAi("unavailable")
+      else toast.error("Scan failed")
     } finally {
-      if (requestId === scanRequestIdRef.current) setLoading(false)
+      if (requestId === scanRequestIdRef.current) {
+        setLoading(false)
+        setReviewing(false)
+      }
     }
   }, [bookId])
 
   useEffect(() => {
     if (open && bookId) void scan()
   }, [open, bookId, scan])
+
+  useEffect(() => {
+    if (!reviewing) return
+    setElapsed(0)
+    const started = Date.now()
+    const t = setInterval(() => setElapsed(Math.round((Date.now() - started) / 1000)), 500)
+    return () => clearInterval(t)
+  }, [reviewing])
+
+  // Duration estimate for the progress bar: ~1.5s of verdict streaming per
+  // pair on top of a fixed base, capped just under the route's 50s AI budget.
+  // The bar parks at 95% rather than lying about completion.
+  const estimateSeconds = Math.min(55, 6 + pairs.length * 1.5)
+  const progressPct = reviewing ? Math.min(95, Math.round((elapsed / estimateSeconds) * 100)) : 0
+  const actionsLocked = busy || reviewing
 
   function accountName(id: string | null): string | null {
     if (!id) return null
@@ -234,10 +289,25 @@ export function DuplicateScanDialog({
           <DialogTitle>Duplicate scan</DialogTitle>
         </DialogHeader>
 
-        {loading && <p className="text-sm text-muted-foreground">Scanning the ledger — AI is reviewing candidate pairs…</p>}
+        {loading && <p className="text-sm text-muted-foreground">Scanning the ledger for candidate pairs…</p>}
 
         {!loading && scanned && (
           <div className="space-y-4">
+            {reviewing && (
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between gap-2 text-sm">
+                  <span className="text-foreground">
+                    AI is reviewing {pairs.length} candidate {pairs.length === 1 ? "pair" : "pairs"}…
+                  </span>
+                  <span className="font-mono text-xs tabular-nums text-muted-foreground">{elapsed}s</span>
+                </div>
+                <Progress value={progressPct} />
+                <p className="text-xs text-muted-foreground">
+                  Heuristic matches are shown below in the meantime — Delete and “Not a duplicate” unlock once the AI
+                  verdicts land.
+                </p>
+              </div>
+            )}
             {ai === "unavailable" && (
               <p className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-foreground">
                 AI unavailable — showing raw heuristic matches (same amount, same direction, within 7 days). Review with extra care.
@@ -279,7 +349,7 @@ export function DuplicateScanDialog({
                           accountName={accountName(p.a.account_id)}
                           confirmKey={`${p.pair_id}:${p.a.id}`}
                           confirming={confirming}
-                          busy={busy}
+                          busy={actionsLocked}
                           onConfirmChange={setConfirming}
                           onDelete={(id) => void deleteEntry(id)}
                         />
@@ -288,12 +358,12 @@ export function DuplicateScanDialog({
                           accountName={accountName(p.b.account_id)}
                           confirmKey={`${p.pair_id}:${p.b.id}`}
                           confirming={confirming}
-                          busy={busy}
+                          busy={actionsLocked}
                           onConfirmChange={setConfirming}
                           onDelete={(id) => void deleteEntry(id)}
                         />
                       </div>
-                      <Button size="sm" variant="ghost" disabled={busy} onClick={() => void dismissPair(p)}>
+                      <Button size="sm" variant="ghost" disabled={actionsLocked} onClick={() => void dismissPair(p)}>
                         Not a duplicate
                       </Button>
                     </li>
@@ -308,7 +378,7 @@ export function DuplicateScanDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Close
           </Button>
-          <Button onClick={() => void scan()} disabled={loading}>
+          <Button onClick={() => void scan()} disabled={loading || reviewing}>
             Scan again
           </Button>
         </DialogFooter>

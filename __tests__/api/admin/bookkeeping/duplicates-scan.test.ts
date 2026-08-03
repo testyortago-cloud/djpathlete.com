@@ -86,6 +86,22 @@ describe("POST /api/admin/bookkeeping/duplicates/scan", () => {
     expect(createGenerationLogMock).not.toHaveBeenCalled()
   })
 
+  it("candidates_only returns verdict-null heuristic pairs with NO AI call and NO log row", async () => {
+    listEntriesForDuplicateScanMock.mockResolvedValue([
+      scanEntry(ID_A),
+      scanEntry(ID_B, { occurred_on: "2026-07-02" }),
+    ])
+    const res = await POST(req({ book_id: BOOK_ID, candidates_only: true }))
+    const body = await res.json()
+    expect(res.status).toBe(200)
+    expect(body.ai).toBe("pending")
+    expect(body.pairs).toHaveLength(1)
+    expect(body.pairs[0].pair_id).toBe(pairId(ID_A, ID_B))
+    expect(body.pairs[0].verdict).toBeNull()
+    expect(callAgentMock).not.toHaveBeenCalled()
+    expect(createGenerationLogMock).not.toHaveBeenCalled()
+  })
+
   it("keeps AI-confirmed pairs, drops cleared pairs, keeps model-omitted pairs with verdict null", async () => {
     // Three candidate pairs from two amount-groups: (A,B) confirmed, (C,D) cleared,
     // (A2,B2)… use a third group omitted by the model.

@@ -61,9 +61,16 @@ beforeEach(() => {
   vi.stubGlobal("fetch", fetchMock)
 })
 
+// The dialog scans in two phases: candidates_only (fast heuristic list) then
+// the full AI call. Phase 1 echoes the same pairs verdict-stripped.
 function mockScan(pairs: unknown[], ai = "ok", truncated = false) {
   fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
     if (String(url).includes("/duplicates/scan")) {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { candidates_only?: boolean }
+      if (body.candidates_only) {
+        const heuristic = (pairs as Record<string, unknown>[]).map((p) => ({ ...p, verdict: null }))
+        return new Response(JSON.stringify({ pairs: heuristic, ai: "pending", truncated }), { status: 200 })
+      }
       return new Response(JSON.stringify({ pairs, ai, truncated }), { status: 200 })
     }
     throw new Error(`unexpected fetch ${url} ${init?.method}`)
@@ -105,6 +112,34 @@ describe("<DuplicateScanDialog>", () => {
     expect(link).toHaveAttribute("href", `/api/admin/bookkeeping/documents/${DOC_ID}/download?redirect=1`)
     expect(link).toHaveAttribute("target", "_blank")
     expect(screen.getAllByRole("link")).toHaveLength(1)
+  })
+
+  it("shows heuristic pairs with a progress strip and LOCKED actions while the AI verdict call is in flight", async () => {
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (String(url).includes("/duplicates/scan")) {
+        const body = JSON.parse(String(init?.body ?? "{}")) as { candidates_only?: boolean }
+        if (body.candidates_only) {
+          const p = pair(scanEntry(ID_A), scanEntry(ID_B, { occurred_on: "2026-07-02" }), { verdict: null })
+          return new Response(JSON.stringify({ pairs: [p], ai: "pending", truncated: false }), { status: 200 })
+        }
+        return new Promise<Response>(() => {}) // AI leg never resolves in this test
+      }
+      throw new Error(`unexpected fetch ${url}`)
+    })
+    renderDialog()
+    expect(await screen.findByText(/AI is reviewing 1 candidate pair/)).toBeInTheDocument()
+    expect(screen.getByText(/Heuristic match — same amount/)).toBeInTheDocument()
+    for (const name of [/^Delete$/, /Not a duplicate/, /Scan again/]) {
+      expect(screen.getAllByRole("button", { name })[0]).toBeDisabled()
+    }
+  })
+
+  it("unlocks actions and swaps in verdicts when the AI phase completes", async () => {
+    mockScan([pair(scanEntry(ID_A), scanEntry(ID_B, { occurred_on: "2026-07-02" }))])
+    renderDialog()
+    expect(await screen.findByText(/same purchase twice/)).toBeInTheDocument()
+    expect(screen.queryByText(/AI is reviewing/)).not.toBeInTheDocument()
+    expect(screen.getAllByRole("button", { name: /^Delete$/ })[0]).toBeEnabled()
   })
 
   it("shows the empty state when the scan finds nothing", async () => {

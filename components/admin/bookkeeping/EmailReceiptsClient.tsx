@@ -353,18 +353,21 @@ export function EmailReceiptsClient({
                             <p className="text-xs text-error">{row.error}</p>
                           )}
 
-                          <Select value={bookForRow(row)} disabled={busy} onValueChange={(v) => changeBook(row, v)}>
-                            <SelectTrigger aria-label={`Book for ${row.fileName}`} className="h-8 w-full text-xs">
-                              <SelectValue placeholder="Book" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {books.map((b) => (
-                                <SelectItem key={b.id} value={b.id}>
-                                  {b.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <div className="space-y-1">
+                            <p className="text-[11px] font-medium leading-none text-muted-foreground">Post into book</p>
+                            <Select value={bookForRow(row)} disabled={busy} onValueChange={(v) => changeBook(row, v)}>
+                              <SelectTrigger aria-label={`Post into book for ${row.fileName}`} className="h-8 w-full text-xs">
+                                <SelectValue placeholder="Book" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {books.map((b) => (
+                                  <SelectItem key={b.id} value={b.id}>
+                                    {b.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
 
                           <div className="flex items-center justify-end gap-1.5 pt-0.5">
                             <Button
