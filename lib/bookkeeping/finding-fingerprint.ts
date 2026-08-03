@@ -3,7 +3,8 @@
 // (income-sync) and an amount-bearing hash would resurface every dismissal
 // within a day. Keys per finder (design §2.1): watchlist → account uuid;
 // substantiation_gap/uncategorized/watchdog → entry uuid;
-// vendor → normalizeCounterparty(vendor key); year_end → literal flag id.
+// vendor → normalizeCounterparty(vendor key); year_end → literal flag id;
+// duplicate → sorted entry uuid pair.
 // Client-safe: zero IO, imported by both the routes and InsightsClient.
 //
 // The union is exactly the set of finders that HAVE a dismiss control. The
@@ -22,8 +23,14 @@ export type FinderKind =
   | "vendor"
   | "year_end"
   | "watchdog"
+  | "duplicate"
 
 export function findingFingerprint(finder: FinderKind, key: string): string {
   const stableKey = finder === "vendor" ? (normalizeCounterparty(key) ?? key) : key
   return `${finder}:${stableKey}`
+}
+
+/** Pair fingerprint for the ledger duplicate scan — order-independent, identity only. */
+export function duplicatePairFingerprint(idA: string, idB: string): string {
+  return findingFingerprint("duplicate", [idA, idB].sort().join("|"))
 }
