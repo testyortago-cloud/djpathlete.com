@@ -7,6 +7,7 @@ import { toast } from "sonner"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
+import { BooksTour } from "@/components/admin/bookkeeping/BooksTour"
 import type { DeductionFindings, HomeOfficeCandidate } from "@/lib/bookkeeping/deduction-finder"
 import { findingFingerprint } from "@/lib/bookkeeping/finding-fingerprint"
 import { formatCents } from "@/lib/bookkeeping/money"
@@ -460,7 +461,7 @@ export function InsightsClient({
   ) : null
 
   return (
-    <div className="space-y-6">
+    <div data-tour="insights" className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <Link
@@ -1108,7 +1109,7 @@ export function InsightsClient({
 
                 {/* Rolling tax forecast (Phase 6b, D-8/D-9 — business books only) */}
                 {data && forecastForBook && active.book.book_kind === "business" ? (
-                  <div className="rounded-lg border border-border bg-card p-4 overflow-x-auto">
+                  <div data-tour="tax" className="rounded-lg border border-border bg-card p-4 overflow-x-auto">
                     <div className="flex items-center gap-2 mb-1">
                       <h2 className="text-sm font-heading text-primary">Rolling tax forecast</h2>
                       <span className="inline-flex items-center rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent">
@@ -1199,6 +1200,7 @@ export function InsightsClient({
           </TabsContent>
         </Tabs>
       )}
+      <BooksTour />
     </div>
   )
 }

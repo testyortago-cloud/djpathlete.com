@@ -16,6 +16,8 @@ import { ReceiptUploadDialog } from "@/components/admin/bookkeeping/ReceiptUploa
 import { AmazonImportDialog } from "@/components/admin/bookkeeping/AmazonImportDialog"
 import { DuplicateScanDialog } from "@/components/admin/bookkeeping/DuplicateScanDialog"
 import { SetupBanner, SetupPanel } from "@/components/admin/bookkeeping/SetupPanel"
+import { BooksTour } from "@/components/admin/bookkeeping/BooksTour"
+import { startBooksTour } from "@/hooks/use-page-tour"
 import { CloseMonthCard } from "@/components/admin/bookkeeping/CloseMonthCard"
 import { formatCents } from "@/lib/bookkeeping/money"
 import { PERIOD_PRESET_LABELS, presetRange, type PeriodPreset } from "@/lib/bookkeeping/period"
@@ -257,6 +259,7 @@ export function BooksClient({
           <div className="flex flex-wrap items-center gap-2">
             <Link
               href="/admin/books/email-receipts"
+              data-tour="email-chip"
               className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground shadow-xs transition-colors hover:border-accent hover:text-accent"
             >
               <Mail className="size-4" />
@@ -385,7 +388,7 @@ export function BooksClient({
           />
 
           {/* Toolbar */}
-          <div className="flex flex-wrap items-center gap-2">
+          <div data-tour="toolbar" className="flex flex-wrap items-center gap-2">
             <Button size="sm" onClick={openAddEntry}>
               <Plus className="size-4" />
               Add entry
@@ -410,7 +413,7 @@ export function BooksClient({
               <ShoppingCart className="size-4" />
               Import Amazon
             </Button>
-            <Button size="sm" variant="outline" onClick={() => setDupScanOpen(true)}>
+            <Button size="sm" variant="outline" data-tour="find-duplicates" onClick={() => setDupScanOpen(true)}>
               <ScanSearch className="size-4" />
               Find duplicates
             </Button>
@@ -422,7 +425,7 @@ export function BooksClient({
           <SetupBanner onOpen={() => setSetupOpen(true)} />
 
           {/* Filter bar — labeled controls; the period preset drives from/to */}
-          <div className="rounded-lg border border-border bg-card p-3">
+          <div data-tour="filters" className="rounded-lg border border-border bg-card p-3">
             <div className="flex flex-wrap items-end gap-3">
               <label className="flex flex-col gap-1">
                 <span className="text-xs font-medium text-muted-foreground">Period</span>
@@ -526,7 +529,7 @@ export function BooksClient({
             />
           ) : (
             <>
-              <div className="rounded-lg border border-border bg-card p-4 space-y-4 overflow-x-auto">
+              <div data-tour="ledger" className="rounded-lg border border-border bg-card p-4 space-y-4 overflow-x-auto">
                 <LedgerTable rows={data.rows} accounts={accounts} onChanged={fetchEntries} onEdit={openEditEntry} />
                 <div className="flex items-center justify-between border-t border-border pt-3 text-sm text-muted-foreground">
                 <p>
@@ -621,9 +624,12 @@ export function BooksClient({
       <SetupPanel
         open={setupOpen}
         onOpenChange={setSetupOpen}
-        // wired to startBooksTour in Task 5
-        onStartTour={() => {}}
+        onStartTour={() => {
+          setSetupOpen(false)
+          startBooksTour()
+        }}
       />
+      <BooksTour />
     </div>
   )
 }

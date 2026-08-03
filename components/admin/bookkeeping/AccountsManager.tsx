@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { StatementsList } from "@/components/admin/bookkeeping/StatementsList"
+import { BooksTour } from "@/components/admin/bookkeeping/BooksTour"
 import type { BookkeepingBook, BookkeepingAccount, BookkeepingDocument, LedgerAccountType } from "@/types/database"
 
 interface NewAccountForm {
@@ -276,7 +277,7 @@ export function AccountsManager({
   const expenseAccounts = accounts.filter((a) => a.account_type === "expense")
 
   return (
-    <div className="space-y-6">
+    <div data-tour="accounts" className="space-y-6">
       <div>
         <Link
           href="/admin/books"
@@ -415,6 +416,7 @@ export function AccountsManager({
           </TabsContent>
         </Tabs>
       )}
+      <BooksTour />
     </div>
   )
 }

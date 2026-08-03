@@ -18,6 +18,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
+import { BooksTour } from "@/components/admin/bookkeeping/BooksTour"
 import { ReceiptRowEditor } from "@/components/admin/bookkeeping/ReceiptRowEditor"
 import { bucketEmailReceiptRows, rowFromEmailDocument } from "@/lib/bookkeeping/email-receipts"
 import { SCANNABLE_MIMES } from "@/lib/bookkeeping/receipt-attachments"
@@ -283,21 +284,11 @@ export function EmailReceiptsClient({
           </CardContent>
         </Card>
       ) : (
-        <div className="grid items-start gap-4 lg:grid-cols-3">
-          {columns.map((col) => (
-            <section
-              key={col.key}
-              aria-label={col.title}
-              className={`rounded-xl border border-border border-t-2 ${col.accentClass} bg-muted/30`}
-            >
-              <header className="flex items-center gap-2 px-3 pt-3 pb-1">
-                <col.icon className="size-4 text-muted-foreground" />
-                <h2 className="text-sm font-heading font-semibold text-foreground">{col.title}</h2>
-                <span className="ml-auto inline-flex min-w-6 justify-center rounded-full border border-border bg-card px-1.5 py-0.5 text-xs font-semibold tabular-nums text-muted-foreground">
-                  {col.rows.length}
-                </span>
-              </header>
-              <p className="px-3 pb-2 text-xs text-muted-foreground">{col.hint}</p>
+        <div data-tour="email-board" className="grid items-start gap-4 lg:grid-cols-3">
+          {columns.map((col) => {
+            // Extracted so the first column's list can carry the tour target
+            // without duplicating the card markup across a conditional.
+            const cardList = (
               <div className="max-h-[62vh] space-y-2 overflow-y-auto px-2 pb-2">
                 {col.rows.length === 0 ? (
                   <div className="rounded-lg border border-dashed border-border py-6 text-center text-xs text-muted-foreground">
@@ -391,8 +382,25 @@ export function EmailReceiptsClient({
                   })
                 )}
               </div>
-            </section>
-          ))}
+            )
+            return (
+              <section
+                key={col.key}
+                aria-label={col.title}
+                className={`rounded-xl border border-border border-t-2 ${col.accentClass} bg-muted/30`}
+              >
+                <header className="flex items-center gap-2 px-3 pt-3 pb-1">
+                  <col.icon className="size-4 text-muted-foreground" />
+                  <h2 className="text-sm font-heading font-semibold text-foreground">{col.title}</h2>
+                  <span className="ml-auto inline-flex min-w-6 justify-center rounded-full border border-border bg-card px-1.5 py-0.5 text-xs font-semibold tabular-nums text-muted-foreground">
+                    {col.rows.length}
+                  </span>
+                </header>
+                <p className="px-3 pb-2 text-xs text-muted-foreground">{col.hint}</p>
+                {col.key === "review" ? <div data-tour="email-post">{cardList}</div> : cardList}
+              </section>
+            )
+          })}
         </div>
       )}
 
@@ -454,6 +462,7 @@ export function EmailReceiptsClient({
           )}
         </DialogContent>
       </Dialog>
+      <BooksTour />
     </div>
   )
 }

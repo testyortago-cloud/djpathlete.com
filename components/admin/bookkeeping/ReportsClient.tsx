@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { EmptyState } from "@/components/ui/empty-state"
 import { EmailPackDialog } from "@/components/admin/bookkeeping/EmailPackDialog"
+import { BooksTour } from "@/components/admin/bookkeeping/BooksTour"
 import { formatCents } from "@/lib/bookkeeping/money"
 import { feeLineDisplay, netAfterFeesDisplay } from "@/lib/bookkeeping/fee-lines"
 import type { StripeFeeWindow } from "@/lib/bookkeeping/payout-fees"
@@ -95,7 +96,7 @@ export function ReportsClient({
   const qboDisabled = !active || active.row_count === 0
 
   return (
-    <div className="space-y-6">
+    <div data-tour="reports" className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <Link
@@ -199,8 +200,8 @@ export function ReportsClient({
             </table>
           </div>
 
-          {/* Export row */}
-          <div className="flex flex-wrap items-center gap-2">
+          {/* Export row — the accountant pack + email-to-accountant live here */}
+          <div data-tour="accountant" className="flex flex-wrap items-center gap-2">
             {qboDisabled ? (
               <Button size="sm" variant="outline" disabled>
                 <Download className="size-4" />
@@ -353,6 +354,7 @@ export function ReportsClient({
           defaultRecipient={defaultAccountantEmail}
         />
       ) : null}
+      <BooksTour />
     </div>
   )
 }

@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { BooksTour } from "@/components/admin/bookkeeping/BooksTour"
 import { depreciationSchedule } from "@/lib/bookkeeping/depreciation"
 import { formatCents } from "@/lib/bookkeeping/money"
 import { formatOccurredOn } from "@/lib/bookkeeping/format"
@@ -339,7 +340,7 @@ export function AssetsClient({ books, initialBookId, initialAssets }: {
   }
 
   return (
-    <div className="space-y-6">
+    <div data-tour="assets" className="space-y-6">
       <div>
         <Link
           href="/admin/books"
@@ -394,6 +395,7 @@ export function AssetsClient({ books, initialBookId, initialAssets }: {
           </TabsContent>
         </Tabs>
       )}
+      <BooksTour />
     </div>
   )
 }
