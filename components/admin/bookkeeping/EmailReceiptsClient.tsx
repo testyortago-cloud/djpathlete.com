@@ -122,7 +122,7 @@ export function EmailReceiptsClient({
           occurred_on: row.occurredOn,
           counterparty: row.counterparty || null,
           business_purpose: row.businessPurpose || null,
-          memo: null,
+          memo: row.memo.trim() || null,
           source_ref: receiptSourceRef(doc.id),
         }),
       })

@@ -12,6 +12,7 @@ import {
   Unplug,
   X,
   PenSquare,
+  Paperclip,
 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -47,6 +48,7 @@ interface ThreadMessage {
   references: string | null
   bodyText: string
   bodyHtml: string
+  attachments: { attachmentId: string; filename: string; mimeType: string; sizeBytes: number }[]
 }
 
 interface DecodedThread {
@@ -581,15 +583,32 @@ function MessageCard({
         </div>
         <p className="text-xs text-muted-foreground shrink-0">{formatFullDate(message.internalDate, message.date)}</p>
       </div>
+      {message.attachments.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {message.attachments.map((att) => (
+            <a
+              key={att.attachmentId}
+              href={`/api/admin/inbox/messages/${encodeURIComponent(message.id)}/attachment?attachmentId=${encodeURIComponent(att.attachmentId)}&name=${encodeURIComponent(att.filename)}&mime=${encodeURIComponent(att.mimeType)}`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/50 px-2 py-1 text-xs text-foreground hover:bg-muted"
+            >
+              <Paperclip className="size-3" />
+              <span className="max-w-56 truncate">{att.filename}</span>
+              {att.sizeBytes > 0 && <span className="text-muted-foreground">{formatBytes(att.sizeBytes)}</span>}
+            </a>
+          ))}
+        </div>
+      )}
       <div className="mt-3 text-sm leading-relaxed text-foreground">
-        {message.bodyText ? (
+        {message.bodyHtml ? (
+          // HTML first: the text/plain twin of a commercial email is raw
+          // <https://…> tracking URLs (owner report, 2026-08-03). Sandboxed
+          // iframe, NOT dangerouslySetInnerHTML — third-party email HTML must
+          // never script (email-body receipts precedent).
+          <EmailHtmlFrame html={message.bodyHtml} />
+        ) : message.bodyText ? (
           <pre className="whitespace-pre-wrap break-words font-body">{message.bodyText}</pre>
-        ) : message.bodyHtml ? (
-          <div
-            className="prose prose-sm max-w-none [&_a]:text-accent [&_a]:underline"
-            // eslint-disable-next-line react/no-danger
-            dangerouslySetInnerHTML={{ __html: sanitizeHtml(message.bodyHtml) }}
-          />
         ) : (
           <p className="text-muted-foreground italic">{message.snippet || "(empty message)"}</p>
         )}
@@ -642,16 +661,30 @@ function formatFullDate(internalDate: string, fallback: string): string {
   })
 }
 
-// Tiny defensive sanitizer so we don't render <script> from message HTML.
-// Gmail messages come from the user's own mailbox, but inbound HTML is still
-// untrusted relative to our admin chrome. For a beefier solution, swap in
-// DOMPurify; for now we strip script/style/iframe and inline event handlers.
-function sanitizeHtml(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[\s\S]*?<\/style>/gi, "")
-    .replace(/<iframe[\s\S]*?<\/iframe>/gi, "")
-    .replace(/\son\w+\s*=\s*"[^"]*"/gi, "")
-    .replace(/\son\w+\s*=\s*'[^']*'/gi, "")
-    .replace(/\son\w+\s*=\s*[^\s>]+/gi, "")
+// Sandboxed email HTML renderer. No allow-scripts — third-party mail can
+// never execute; allow-same-origin exists ONLY so the parent can measure the
+// document for auto-height (nothing inside can script against that origin);
+// links escape via <base target="_blank"> + allow-popups. Remote images may be
+// CSP-blocked — that is a feature (tracking pixels), not a bug.
+function EmailHtmlFrame({ html }: { html: string }) {
+  const [height, setHeight] = useState(480)
+  return (
+    <iframe
+      title="Email message"
+      sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+      srcDoc={`<base target="_blank">${html}`}
+      className="w-full rounded-md border border-border bg-white"
+      style={{ height }}
+      onLoad={(e) => {
+        const doc = e.currentTarget.contentDocument
+        if (doc?.body) setHeight(Math.min(Math.max(doc.body.scrollHeight + 32, 160), 1600))
+      }}
+    />
+  )
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }

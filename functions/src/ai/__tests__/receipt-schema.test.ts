@@ -6,7 +6,7 @@ describe("receiptScanSchema", () => {
     const r = receiptScanSchema.safeParse({
       vendor: "Whole Foods", amount_cents: 4212, occurred_on: "2026-07-18",
       suggested_category: "Meals (business purpose)", business_purpose_hint: "team lunch",
-      currency: "usd", confidence: "high", warnings: [],
+      memo: "Catered team lunch order", currency: "usd", confidence: "high", warnings: [],
     })
     expect(r.success).toBe(true)
   })

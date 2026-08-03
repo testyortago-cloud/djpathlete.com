@@ -340,7 +340,7 @@ export function useReceiptBatch({ bookId, accounts, onAllPosted }: UseReceiptBat
               occurred_on: row.occurredOn,
               counterparty: row.counterparty.trim() || null,
               business_purpose: row.businessPurpose.trim() || null,
-              memo: null,
+              memo: row.memo.trim() || null,
               source_ref: receiptSourceRef(row.documentId),
             }),
           })

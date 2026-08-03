@@ -39,6 +39,8 @@ export interface ReceiptResult {
   occurred_on: string | null
   suggested_category: string | null
   business_purpose_hint: string | null
+  /** Short "what was bought" line (item summary / plan name / invoice period). */
+  memo: string | null
   currency: string | null
   confidence: "low" | "medium" | "high"
   warnings: string[]
@@ -76,6 +78,8 @@ export interface ReceiptBatchRow {
   /** "" = Uncategorized. */
   accountId: string
   businessPurpose: string
+  /** Ledger memo — what was bought. Scan-prefilled, reviewer-editable. */
+  memo: string
   error: string | null
   /** Signed download URL, cached after the row editor's first fetch. */
   previewUrl: string | null
@@ -106,6 +110,7 @@ export function safeReceiptResult(v: unknown): ReceiptResult {
     occurred_on: r.occurred_on ?? null,
     suggested_category: r.suggested_category ?? null,
     business_purpose_hint: r.business_purpose_hint ?? null,
+    memo: r.memo ?? null,
     currency: r.currency ?? null,
     confidence: r.confidence === "medium" || r.confidence === "high" ? r.confidence : "low",
     warnings: Array.isArray(r.warnings) ? r.warnings : [],
@@ -149,6 +154,7 @@ export function newReceiptRow(
     occurredOn: todayIso(),
     accountId: "",
     businessPurpose: "",
+    memo: "",
     error: null,
     previewUrl: null,
     thumbUrl,
@@ -173,6 +179,7 @@ export function applyScanResult(
     occurredOn: result.occurred_on ?? todayIso(),
     accountId: resolveExpenseAccount(result.suggested_category, accounts),
     businessPurpose: result.business_purpose_hint ?? "",
+    memo: result.memo ?? "",
     error: null,
   }
 }

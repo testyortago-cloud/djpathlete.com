@@ -198,6 +198,17 @@ export function ReceiptRowEditor({ row, accounts, disabled, onEdit, onPreviewLoa
       </div>
 
       <div className="space-y-2">
+        <Label htmlFor={`ru-memo-${row.clientId}`}>Memo (what was bought)</Label>
+        <Input
+          id={`ru-memo-${row.clientId}`}
+          value={row.memo}
+          disabled={disabled}
+          onChange={(e) => onEdit({ memo: e.target.value })}
+          placeholder="e.g. Claude Pro subscription Jul 2026"
+        />
+      </div>
+
+      <div className="space-y-2">
         <Label htmlFor={`ru-category-${row.clientId}`}>Category</Label>
         <Select
           value={row.accountId || "none"}

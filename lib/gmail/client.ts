@@ -1,8 +1,9 @@
 // lib/gmail/client.ts
 // Thin Gmail REST API wrapper used by /api/admin/inbox/* routes. Each call
 // takes an access token (callers refresh via getAccessTokenForConnection
-// below). Message bodies are decoded from base64url; multipart messages walk
-// to the first text/plain or text/html part.
+// below). Message bodies are decoded from base64url; multipart messages take
+// the LARGEST text/plain and text/html parts (forwards bury the real body
+// behind an empty compose part). Attachment metadata is collected per message.
 
 import {
   getPlatformConnection, connectPlatform, setConnectionError, clearConnectionError,
@@ -53,6 +54,13 @@ export interface ListThreadsResponse {
   resultSizeEstimate?: number
 }
 
+export interface DecodedAttachment {
+  attachmentId: string
+  filename: string
+  mimeType: string
+  sizeBytes: number
+}
+
 export interface DecodedMessage {
   id: string
   threadId: string
@@ -69,6 +77,7 @@ export interface DecodedMessage {
   references: string | null
   bodyText: string
   bodyHtml: string
+  attachments: DecodedAttachment[]
 }
 
 export interface DecodedThread {
@@ -395,18 +404,39 @@ function findHeader(headers: GmailHeader[] | undefined, name: string): string | 
   return null
 }
 
+// LARGEST matching part, never the first: a manual forward's own empty
+// compose <div> sits before the real forwarded body in the MIME tree — the
+// receipts poller shipped this exact first-match bug (largest-body-part fix,
+// 2026-08-03) and the inbox reader walks the same trees.
 function walkParts(part: GmailMessagePart | undefined, mime: "text/plain" | "text/html"): string {
   if (!part) return ""
+  let best = ""
   if (part.mimeType === mime && part.body?.data) {
-    return base64UrlDecode(part.body.data)
+    best = base64UrlDecode(part.body.data)
   }
   if (part.parts) {
     for (const child of part.parts) {
       const found = walkParts(child, mime)
-      if (found) return found
+      if (found.length > best.length) best = found
     }
   }
-  return ""
+  return best
+}
+
+/** Parts with a filename + attachmentId are real attachments (inline bodies
+ *  carry data instead). Nested walk — forwards bury them a level down. */
+function collectAttachments(part: GmailMessagePart | undefined, out: DecodedAttachment[] = []): DecodedAttachment[] {
+  if (!part) return out
+  if (part.filename && part.body?.attachmentId) {
+    out.push({
+      attachmentId: part.body.attachmentId,
+      filename: part.filename,
+      mimeType: part.mimeType ?? "application/octet-stream",
+      sizeBytes: part.body.size ?? 0,
+    })
+  }
+  for (const child of part.parts ?? []) collectAttachments(child, out)
+  return out
 }
 
 export function decodeMessage(msg: GmailMessage): DecodedMessage {
@@ -444,6 +474,7 @@ export function decodeMessage(msg: GmailMessage): DecodedMessage {
     references,
     bodyText,
     bodyHtml,
+    attachments: collectAttachments(msg.payload),
   }
 }
 

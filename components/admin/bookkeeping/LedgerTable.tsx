@@ -106,7 +106,15 @@ export function LedgerTable({
           <TableRow key={row.id}>
             <TableCell>{formatOccurredOn(row.occurred_on)}</TableCell>
             <TableCell>
-              <div className="font-medium">{row.memo || "—"}</div>
+              {/* Receipt-scanned entries pre-memo-field carry only a
+                  business_purpose — surface it instead of a bare dash. */}
+              {row.memo ? (
+                <div className="font-medium">{row.memo}</div>
+              ) : row.business_purpose ? (
+                <div className="font-normal italic text-muted-foreground">{row.business_purpose}</div>
+              ) : (
+                <div className="font-medium">—</div>
+              )}
               {row.counterparty ? (
                 <div className="text-xs text-muted-foreground">{row.counterparty}</div>
               ) : null}

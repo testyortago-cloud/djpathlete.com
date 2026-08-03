@@ -9,6 +9,7 @@ export const receiptScanSchema = z.object({
   occurred_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   suggested_category: z.string().nullable().optional(),
   business_purpose_hint: z.string().nullable().optional(),
+  memo: z.string().nullable().optional(),
   currency: z.string().nullable().optional(),
   confidence: z.enum(["low", "medium", "high"]),
   warnings: z.array(z.string()),

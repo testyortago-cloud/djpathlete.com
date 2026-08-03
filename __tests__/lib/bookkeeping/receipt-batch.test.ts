@@ -81,6 +81,7 @@ describe("safeReceiptResult", () => {
       occurred_on: null,
       suggested_category: null,
       business_purpose_hint: null,
+      memo: null,
       currency: null,
       confidence: "low",
       warnings: [],
@@ -94,12 +95,14 @@ describe("safeReceiptResult", () => {
       occurred_on: "2026-07-01",
       suggested_category: "Fuel",
       business_purpose_hint: "Drive to facility",
+      memo: "Unleaded fill-up",
       currency: "usd",
       confidence: "bogus",
       warnings: ["glare"],
     })
     expect(r.vendor).toBe("Chevron")
     expect(r.amount_cents).toBe(4512)
+    expect(r.memo).toBe("Unleaded fill-up")
     expect(r.confidence).toBe("low")
     expect(r.warnings).toEqual(["glare"])
   })
@@ -142,6 +145,7 @@ describe("applyScanResult", () => {
       occurred_on: "2026-07-01",
       suggested_category: "Fuel",
       business_purpose_hint: "Drive to facility",
+      memo: "Unleaded fill-up",
       currency: "usd",
       confidence: "high",
       warnings: [],
@@ -152,6 +156,7 @@ describe("applyScanResult", () => {
     expect(out.occurredOn).toBe("2026-07-01")
     expect(out.accountId).toBe("exp1")
     expect(out.businessPurpose).toBe("Drive to facility")
+    expect(out.memo).toBe("Unleaded fill-up")
     expect(out.result?.confidence).toBe("high")
   })
   it("defaults a null-heavy result to blank fields and today's date", () => {
@@ -159,6 +164,7 @@ describe("applyScanResult", () => {
     expect(out.status).toBe("scanned")
     expect(out.counterparty).toBe("")
     expect(out.amount).toBe("")
+    expect(out.memo).toBe("")
     expect(out.occurredOn).toMatch(/^\d{4}-\d{2}-\d{2}$/)
     expect(out.accountId).toBe("")
   })
