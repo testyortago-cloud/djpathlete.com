@@ -43,6 +43,15 @@ import {
   buildPoolPatternSection,
 } from "./shared-helpers.js"
 import type { ProfileAnalysis } from "./types.js"
+import {
+  SELECTOR_CHUNK_THRESHOLD,
+  buildAlreadySelectedSection,
+  dayLabel,
+  dayScopedSkeleton,
+  mergeAssignments,
+  shouldChunkSelector,
+  type PickedExercise,
+} from "./selector-chunking.js"
 import { z } from "zod"
 
 const MAX_RETRIES = 2
@@ -934,88 +943,142 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
   const coachInstructionsSection = buildCoachInstructionsSection(request.admin_instructions)
   const poolNote = buildPoolNote(poolIds, filtered.length, poolMode, poolIds?.length)
 
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    let feedbackSection = ""
-    if (attempt > 0 && assignment) {
-      // Verify the previous attempt's dedup compliance against prior weeks
-      const dedupResult = verifyWeekAgainstExisting(assignment.assignments, skeleton.weeks[0], priorContext)
-      const withinResult = verifyWithinWeekDuplicates(assignment.assignments, skeleton.weeks[0])
+  // Stable across attempts AND day-chunks: the multi-KB blocks (library, prior
+  // context) live in the cached prefix so Anthropic prefix caching pays on
+  // every later call; the small skeleton rides the variable suffix. (2026-08-03:
+  // a 60-slot single-call selector burned all attempts and the 450s budget —
+  // big weeks now run one day per call, see selector-chunking.ts.)
+  const selectorCachedPrefix = `Constraints:\n${constraintsContext}\n\nExercise Library (${filtered.length} exercises):\n${exerciseLibrary}\n\n${priorContext.prompt_text}${coachInstructionsSection}${poolNote}\n\nIMPORTANT: EVERY working exercise (compounds, accessories, isolations) MUST be DIFFERENT from prior weeks. Use the AVOID list above — do NOT reuse any exercise_id from that list. For compound slots, pick a DIFFERENT exercise that trains the SAME movement pattern and muscles. WARM-UP and COOL-DOWN slots may stay consistent.`
 
-      const crossWeekIssues = dedupResult.issues.filter((i) => i.severity === "error").map((i) => `- ${i.message}`)
-      const withinWeekIssues = withinResult.issues.map((i) => `- ${i.message}`)
+  type WeekScope = (typeof skeleton.weeks)[number]
 
-      const sections: string[] = []
-      if (withinWeekIssues.length > 0) {
-        sections.push(
-          `WITHIN-WEEK DUPLICATES DETECTED — the same exercise was used multiple times in the SAME week:\n${withinWeekIssues.join("\n")}\n\nEvery working slot must have a UNIQUE exercise_id. Replace duplicates with DIFFERENT exercises that still match each slot's movement_pattern, target_muscles, and role — vary by equipment (dumbbell→cable→machine), stance (bilateral→unilateral), angle, or training intent.`,
-        )
+  const runSelectorPass = async (
+    passSkeleton: typeof skeleton,
+    weekScope: WeekScope,
+    alreadySection: string,
+    passLabel: string,
+  ): Promise<ExerciseAssignment> => {
+    const labelSuffix = passLabel ? ` — ${passLabel}` : ""
+    let passAssignment: ExerciseAssignment | null = null
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      let feedbackSection = ""
+      if (attempt > 0 && passAssignment) {
+        // Verify the previous attempt's dedup compliance against prior weeks
+        const dedupResult = verifyWeekAgainstExisting(passAssignment.assignments, weekScope, priorContext)
+        const withinResult = verifyWithinWeekDuplicates(passAssignment.assignments, weekScope)
+
+        const crossWeekIssues = dedupResult.issues.filter((i) => i.severity === "error").map((i) => `- ${i.message}`)
+        const withinWeekIssues = withinResult.issues.map((i) => `- ${i.message}`)
+
+        const sections: string[] = []
+        if (withinWeekIssues.length > 0) {
+          sections.push(
+            `WITHIN-WEEK DUPLICATES DETECTED — the same exercise was used multiple times in the SAME week:\n${withinWeekIssues.join("\n")}\n\nEvery working slot must have a UNIQUE exercise_id. Replace duplicates with DIFFERENT exercises that still match each slot's movement_pattern, target_muscles, and role — vary by equipment (dumbbell→cable→machine), stance (bilateral→unilateral), angle, or training intent.`,
+          )
+        }
+        if (crossWeekIssues.length > 0) {
+          sections.push(
+            `CROSS-WEEK REPETITION DETECTED — you MUST choose DIFFERENT exercises than prior weeks:\n${crossWeekIssues.join("\n")}\n\nSelect alternatives from the library that STILL MATCH the slot's movement_pattern, target_muscles, and role — but use a different exercise_id. Do NOT pick random exercises just to avoid repetition. Vary by equipment (dumbbell→cable→machine), angle, or stance while keeping the same training purpose.`,
+          )
+        }
+        if (sections.length > 0) feedbackSection = `\n\n${sections.join("\n\n")}`
       }
-      if (crossWeekIssues.length > 0) {
-        sections.push(
-          `CROSS-WEEK REPETITION DETECTED — you MUST choose DIFFERENT exercises than prior weeks:\n${crossWeekIssues.join("\n")}\n\nSelect alternatives from the library that STILL MATCH the slot's movement_pattern, target_muscles, and role — but use a different exercise_id. Do NOT pick random exercises just to avoid repetition. Vary by equipment (dumbbell→cable→machine), angle, or stance while keeping the same training purpose.`,
+
+      const selectorVariableSuffix = `Program Skeleton (Week ${newWeekNumber}${passLabel ? `, ${passLabel}` : ""}):\n${JSON.stringify(passSkeleton)}${alreadySection}${feedbackSection}\n\nBegin.`
+
+      // Outside the try: a spent budget must end the loop, not become another attempt.
+      deadline?.assertLive(`exercise selector${labelSuffix} (attempt ${attempt + 1}/${MAX_RETRIES + 1})`)
+      try {
+        console.log(`[week-orchestrator] Exercise selector${labelSuffix} attempt ${attempt + 1}/${MAX_RETRIES + 1}...`)
+        const selectorResult = await callAgent<ExerciseAssignment>(
+          EXERCISE_SELECTOR_PROMPT,
+          selectorVariableSuffix,
+          exerciseAssignmentSchema,
+          { cacheSystemPrompt: true, cachedUserPrefix: selectorCachedPrefix, signal: deadline?.signal },
         )
+        tokenUsage.selector += selectorResult.tokens_used
+        tokenUsage.cache_creation += selectorResult.cache_creation_tokens ?? 0
+        tokenUsage.cache_read += selectorResult.cache_read_tokens ?? 0
+        passAssignment = selectorResult.content
+
+        // Strip hallucinated exercise IDs
+        const validCount = passAssignment.assignments.length
+        passAssignment.assignments = passAssignment.assignments.filter((a) => exerciseIdSet.has(a.exercise_id))
+        const strippedCount = validCount - passAssignment.assignments.length
+        if (strippedCount > 0) {
+          console.warn(`[week-orchestrator] Stripped ${strippedCount} hallucinated exercise IDs`)
+        }
+
+        // Verify dedup compliance — both cross-week AND within-week duplicates
+        const dedupResult = verifyWeekAgainstExisting(passAssignment.assignments, weekScope, priorContext)
+        const withinResult = verifyWithinWeekDuplicates(passAssignment.assignments, weekScope)
+        console.log(`[week-orchestrator] Dedup verification${labelSuffix}: ${dedupResult.summary} | ${withinResult.summary}`)
+
+        if (dedupResult.pass && withinResult.pass) break
+
+        // If dedup fails but no retries left, accept the result with a warning
+        if (attempt === MAX_RETRIES) {
+          console.warn(
+            `[week-orchestrator] Dedup still failing after ${MAX_RETRIES + 1} attempts${labelSuffix} — accepting with repetition warnings (within-week: ${withinResult.issues.length}, cross-week errors: ${dedupResult.issues.filter((i) => i.severity === "error").length})`,
+          )
+          break
+        }
+
+        console.log(`[week-orchestrator] Dedup failed, retrying...`)
+      } catch (agentError) {
+        // An abort is terminal — swallowing it here would start another attempt
+        // with no time left, which is how runs used to overrun the platform kill.
+        if (isAbortError(agentError)) throw agentError
+        console.error(
+          `[week-orchestrator] Selector${labelSuffix} attempt ${attempt + 1} error:`,
+          agentError instanceof Error ? agentError.message : agentError,
+        )
+        if (attempt === MAX_RETRIES) {
+          throw new Error(
+            `Exercise selection failed after ${MAX_RETRIES + 1} attempts: ${agentError instanceof Error ? agentError.message : "Unknown error"}`,
+          )
+        }
       }
-      if (sections.length > 0) feedbackSection = `\n\n${sections.join("\n\n")}`
     }
+    if (!passAssignment) {
+      throw new Error("Failed to generate exercise assignments")
+    }
+    return passAssignment
+  }
 
-    // Stable prefix — identical across the 3 attempts. Cache it.
-    const selectorStablePrefix = `Program Skeleton (Week ${newWeekNumber}):\n${JSON.stringify(skeleton)}\n\nConstraints:\n${constraintsContext}\n\nExercise Library (${filtered.length} exercises):\n${exerciseLibrary}\n\n${priorContext.prompt_text}${coachInstructionsSection}${poolNote}\n\nIMPORTANT: EVERY working exercise (compounds, accessories, isolations) MUST be DIFFERENT from prior weeks. Use the AVOID list above — do NOT reuse any exercise_id from that list. For compound slots, pick a DIFFERENT exercise that trains the SAME movement pattern and muscles. WARM-UP and COOL-DOWN slots may stay consistent.`
-    // Variable suffix — feedback only present on retries.
-    const selectorVariableSuffix = feedbackSection.trim() || "Begin."
-
-    // Outside the try: a spent budget must end the loop, not become another attempt.
-    deadline?.assertLive(`exercise selector (attempt ${attempt + 1}/${MAX_RETRIES + 1})`)
-    try {
-      console.log(`[week-orchestrator] Exercise selector attempt ${attempt + 1}/${MAX_RETRIES + 1}...`)
-      const selectorResult = await callAgent<ExerciseAssignment>(
-        EXERCISE_SELECTOR_PROMPT,
-        selectorVariableSuffix,
-        exerciseAssignmentSchema,
-        { cacheSystemPrompt: true, cachedUserPrefix: selectorStablePrefix, signal: deadline?.signal },
+  const selectionWeek = skeleton.weeks[0]
+  if (selectionWeek && shouldChunkSelector(totalSlots, selectionWeek.days.length, isSingleDay)) {
+    // Per-day chunks: each call is small enough to finish fast, and earlier
+    // days' picks ride into later chunks so cross-day variety survives the
+    // split. The whole-week post-hoc dedup below still runs on the merge.
+    console.log(
+      `[week-orchestrator] ${totalSlots} slots > ${SELECTOR_CHUNK_THRESHOLD} — chunking the selector across ${selectionWeek.days.length} days`,
+    )
+    const nameById = new Map(filtered.map((e) => [e.id, e.name] as const))
+    const picked: PickedExercise[] = []
+    const chunks: ExerciseAssignment[] = []
+    for (let i = 0; i < selectionWeek.days.length; i++) {
+      const day = selectionWeek.days[i]
+      const label = `${dayLabel(day.day_of_week)} (day ${i + 1} of ${selectionWeek.days.length})`
+      await updateJobProgress(
+        "selecting_exercises",
+        4,
+        `Selecting exercises — ${label}, ${day.slots.length} slots`,
       )
-      tokenUsage.selector += selectorResult.tokens_used
-      tokenUsage.cache_creation += selectorResult.cache_creation_tokens ?? 0
-      tokenUsage.cache_read += selectorResult.cache_read_tokens ?? 0
-      assignment = selectorResult.content
-
-      // Strip hallucinated exercise IDs
-      const validCount = assignment.assignments.length
-      assignment.assignments = assignment.assignments.filter((a) => exerciseIdSet.has(a.exercise_id))
-      const strippedCount = validCount - assignment.assignments.length
-      if (strippedCount > 0) {
-        console.warn(`[week-orchestrator] Stripped ${strippedCount} hallucinated exercise IDs`)
-      }
-
-      // Verify dedup compliance — both cross-week AND within-week duplicates
-      const dedupResult = verifyWeekAgainstExisting(assignment.assignments, skeleton.weeks[0], priorContext)
-      const withinResult = verifyWithinWeekDuplicates(assignment.assignments, skeleton.weeks[0])
-      console.log(`[week-orchestrator] Dedup verification: ${dedupResult.summary} | ${withinResult.summary}`)
-
-      if (dedupResult.pass && withinResult.pass) break
-
-      // If dedup fails but no retries left, accept the result with a warning
-      if (attempt === MAX_RETRIES) {
-        console.warn(
-          `[week-orchestrator] Dedup still failing after ${MAX_RETRIES + 1} attempts — accepting with repetition warnings (within-week: ${withinResult.issues.length}, cross-week errors: ${dedupResult.issues.filter((i) => i.severity === "error").length})`,
-        )
-        break
-      }
-
-      console.log(`[week-orchestrator] Dedup failed, retrying...`)
-    } catch (agentError) {
-      // An abort is terminal — swallowing it here would start another attempt
-      // with no time left, which is how runs used to overrun the platform kill.
-      if (isAbortError(agentError)) throw agentError
-      console.error(
-        `[week-orchestrator] Selector attempt ${attempt + 1} error:`,
-        agentError instanceof Error ? agentError.message : agentError,
-      )
-      if (attempt === MAX_RETRIES) {
-        throw new Error(
-          `Exercise selection failed after ${MAX_RETRIES + 1} attempts: ${agentError instanceof Error ? agentError.message : "Unknown error"}`,
-        )
+      const scoped = dayScopedSkeleton(skeleton, day)
+      const chunk = await runSelectorPass(scoped, scoped.weeks[0], buildAlreadySelectedSection(picked), label)
+      chunks.push(chunk)
+      for (const a of chunk.assignments) {
+        picked.push({
+          exercise_id: a.exercise_id,
+          exercise_name: nameById.get(a.exercise_id) ?? null,
+          day_of_week: day.day_of_week,
+        })
       }
     }
+    assignment = mergeAssignments(chunks)
+  } else {
+    assignment = await runSelectorPass(skeleton, skeleton.weeks[0], "", "")
   }
 
   if (!assignment) {
