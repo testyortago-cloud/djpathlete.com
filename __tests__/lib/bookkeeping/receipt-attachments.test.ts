@@ -208,7 +208,7 @@ describe("collectReceiptAttachments", () => {
 })
 
 describe("findReceiptBody", () => {
-  it("prefers the first text/html part over text/plain, walking nested multipart/alternative", () => {
+  it("prefers text/html over text/plain, walking nested multipart/alternative", () => {
     const payload = {
       mimeType: "multipart/alternative",
       parts: [
@@ -234,6 +234,29 @@ describe("findReceiptBody", () => {
       ],
     }
     expect(findReceiptBody(payload)).toEqual({ mimeType: "text/plain", size: 20, data: "cGxhaW4" })
+  })
+
+  it("picks the LARGEST html part — a forward's empty compose body must not shadow the forwarded receipt", () => {
+    // 2026-08-03 prod: three forwarded receipt emails each ingested a 27-byte
+    // "<div dir=\"ltr\"><br></div>" compose body while the real Verizon/receipt
+    // HTML sat deeper in the tree (Gmail expands a forwarded-as-attachment
+    // message/rfc822 into child parts). First-found lost to the empty outer
+    // part every time; largest-wins reads the receipt.
+    const payload = {
+      mimeType: "multipart/mixed",
+      parts: [
+        { mimeType: "text/html", body: { size: 27, data: "PGRpdj48YnI-PC9kaXY-" } },
+        {
+          mimeType: "message/rfc822",
+          filename: "forwarded.eml",
+          parts: [
+            { mimeType: "text/plain", body: { size: 500, data: "cGxhaW4" } },
+            { mimeType: "text/html", body: { size: 48000, data: "cmVjZWlwdA" } },
+          ],
+        },
+      ],
+    }
+    expect(findReceiptBody(payload)).toEqual({ mimeType: "text/html", size: 48000, data: "cmVjZWlwdA" })
   })
 
   it("carries an attachmentId ref when Gmail did not inline the part; null for empty/absent bodies", () => {

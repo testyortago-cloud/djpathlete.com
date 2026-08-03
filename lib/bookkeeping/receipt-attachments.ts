@@ -150,10 +150,18 @@ export interface ReceiptBodyRef {
   size: number
 }
 
-/** The message BODY: first text/html part, else first text/plain — the body
- *  fallback of Decision B-3 (attachments win; callers only reach for this when
- *  collectReceiptAttachments returned nothing). Parts with a filename are
- *  attachments, not the body, and are skipped. */
+/** The message BODY: LARGEST text/html part, else largest text/plain — the
+ *  body fallback of Decision B-3 (attachments win; callers only reach for this
+ *  when collectReceiptAttachments returned nothing). Parts with a filename are
+ *  attachments, not the body, and are skipped.
+ *
+ *  Largest, not first (2026-08-03): a manual forward's own compose body is a
+ *  ~27-byte empty <div> that sits FIRST in the part tree, while the forwarded
+ *  receipt's real HTML lives deeper (Gmail expands message/rfc822 attachments
+ *  into child parts this walk already visits). First-found ingested the empty
+ *  div three times in prod and the scan honestly reported "email_text is
+ *  empty"; the receipt was on file 27 bytes big. Size comes from Gmail part
+ *  metadata, so picking the max costs no extra IO. */
 export function findReceiptBody(payload: GmailMessagePart | undefined): ReceiptBodyRef | null {
   let html: ReceiptBodyRef | null = null
   let plain: ReceiptBodyRef | null = null
@@ -171,8 +179,11 @@ export function findReceiptBody(payload: GmailMessagePart | undefined): ReceiptB
           ...(data ? { data } : {}),
           ...(!data && attachmentId ? { attachmentId } : {}),
         }
-        if (mime === "text/html") html = html ?? ref
-        else plain = plain ?? ref
+        if (mime === "text/html") {
+          if (!html || size > html.size) html = ref
+        } else if (!plain || size > plain.size) {
+          plain = ref
+        }
       }
     }
     for (const child of part.parts ?? []) walk(child)
