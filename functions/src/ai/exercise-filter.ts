@@ -14,6 +14,46 @@ const POOL_PREFERENCE_BOOST = 40
  *  (clientUsage penalty is 50). */
 const FAVORITE_BOOST = 30
 
+/** Score offset applied per (run, exercise) so tie groups reshuffle each run. */
+const JITTER_RANGE = 8
+
+/**
+ * Neutral relevance used when an exercise has no embedding similarity — e.g. a
+ * preferred-pool entry injected after the semantic search missed it.
+ */
+const NEUTRAL_SIMILARITY = 0.5
+
+/** Embedding similarity is 0..1; scale it into the same range as the boosts. */
+const SIMILARITY_SCALE = 100
+
+function hashString(s: string): number {
+  let h = 2166136261 >>> 0
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i)
+    h = Math.imul(h, 16777619) >>> 0
+  }
+  return h >>> 0
+}
+
+function mulberry32(a: number): number {
+  let t = (a += 0x6d2b79f5)
+  t = Math.imul(t ^ (t >>> 15), t | 1)
+  t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+}
+
+/**
+ * Deterministic per-(seed, exercise) score offset in [-range, +range].
+ *
+ * Large enough to reshuffle near-ties — which is most of the list once base
+ * scores cluster — small enough that a genuine relevance gap still wins. With
+ * no seed this returns 0, so unseeded callers keep their previous ordering.
+ */
+export function seededJitter(seed: string | undefined, exerciseId: string, range = JITTER_RANGE): number {
+  if (!seed) return 0
+  return (mulberry32(hashString(`${seed}:${exerciseId}`)) - 0.5) * 2 * range
+}
+
 /**
  * Apply usage-history penalties and a diversity boost to a base score.
  * - Used by this coach in last 60 days → -30
@@ -55,6 +95,12 @@ export interface FilterOptions {
   favoriteIds?: Set<string>
   /** MMR balance: 1.0 = pure relevance, 0.0 = pure diversity. Default 0.7. */
   mmrLambda?: number
+  /**
+   * Per-run seed (the ai_generation_log row id). Drives deterministic tie-break
+   * jitter so two identical requests produce different programs while any single
+   * run stays reproducible from its logged id.
+   */
+  seed?: string
 }
 
 // ─── Related movement patterns ──────────────────────────────────────────────
@@ -371,28 +417,30 @@ export function scoreAndFilterExercises(
     }
   }
 
-  const sorted = [...exercises].sort((a, b) => {
-    return (exerciseMaxScores.get(b.id) ?? 0) - (exerciseMaxScores.get(a.id) ?? 0)
-  })
-
   // Hard-prune excluded IDs (used for cross-week dedup defense in depth)
   const excludeIds = options?.excludeIds
-  const sortedAfterExclude = excludeIds && excludeIds.size > 0 ? sorted.filter((e) => !excludeIds.has(e.id)) : sorted
+  const candidates = excludeIds && excludeIds.size > 0 ? exercises.filter((e) => !excludeIds.has(e.id)) : exercises
 
-  const cutoff = Math.min(maxExercises, sortedAfterExclude.length)
-  let filtered = sortedAfterExclude.slice(0, cutoff)
+  const scoredAll = candidates.map((e) => ({
+    exercise: e,
+    score: (exerciseMaxScores.get(e.id) ?? 0) + seededJitter(options?.seed, e.id),
+  }))
+  scoredAll.sort((a, b) => b.score - a.score)
+  const sortedAfterExclude = scoredAll.map((s) => s.exercise)
+
+  const cutoff = Math.min(maxExercises, scoredAll.length)
+  const lambda = options?.mmrLambda
+  // MMR must SELECT the survivors, not reorder an already-truncated list.
+  // Passing k === list length made diversifyByMMR return its input untouched,
+  // so this diversification never actually ran.
+  const useMMR = lambda !== undefined && lambda < 1.0 && scoredAll.length > cutoff
+  let filtered = useMMR
+    ? diversifyByMMR(scoredAll, cutoff, lambda)
+    : scoredAll.slice(0, cutoff).map((s) => s.exercise)
+
   // When pool is active, never fall back to unfiltered — use whatever the pool has.
   // Fall back to the exclude-pruned set so excludeIds is always respected.
   if (!isPool && filtered.length < MIN_EXERCISES) filtered = sortedAfterExclude
-
-  const lambda = options?.mmrLambda
-  if (lambda !== undefined && lambda < 1.0 && filtered.length > MIN_EXERCISES) {
-    const scoredFiltered = filtered.map((e) => ({
-      exercise: e,
-      score: exerciseMaxScores.get(e.id) ?? 0,
-    }))
-    filtered = diversifyByMMR(scoredFiltered, filtered.length, lambda)
-  }
 
   // Ensure pattern balance — pass the exclude-pruned set so balance top-ups never re-introduce excluded exercises
   filtered = ensurePatternBalance(filtered, sortedAfterExclude, skeleton, equipment, difficulty, { poolActive: isPool })
@@ -439,7 +487,10 @@ export async function semanticFilterExercises(
   // Scale match_count per slot based on library size — more exercises = wider net
   const matchCountPerSlot = Math.max(30, Math.min(60, Math.round(exercises.length * 0.05)))
 
-  const matchedIds = new Set<string>()
+  // match_exercises returns (id, similarity). Keeping the similarity is what
+  // gives the ranker a real relevance signal — discarding it left every
+  // exercise on an identical base score, so ordering collapsed to DB order.
+  const matchScores = new Map<string, number>()
   for (const slot of slotGroups.values()) {
     try {
       const queryText = slotToText(slot)
@@ -452,7 +503,9 @@ export async function semanticFilterExercises(
       for (const match of data ?? []) {
         // When pool is active, only accept matches that are in the pool
         if (poolIdSet && !poolIdSet.has(match.id)) continue
-        matchedIds.add(match.id)
+        const similarity = typeof match.similarity === "number" ? match.similarity : 0
+        const prev = matchScores.get(match.id)
+        if (prev === undefined || similarity > prev) matchScores.set(match.id, similarity)
       }
     } catch (err) {
       console.warn(
@@ -463,13 +516,13 @@ export async function semanticFilterExercises(
   }
 
   console.log(
-    `[semanticFilter] ${matchedIds.size} unique matches from ${slotGroups.size} slot groups (${matchCountPerSlot}/slot)${isPool ? " [pool]" : ""}`,
+    `[semanticFilter] ${matchScores.size} unique matches from ${slotGroups.size} slot groups (${matchCountPerSlot}/slot)${isPool ? " [pool]" : ""}`,
   )
 
   // When pool is active, don't fall back for "too few" matches — use whatever matched
   const minRequired = isPool ? 1 : MIN_EXERCISES
-  if (matchedIds.size < minRequired) {
-    console.log(`[semanticFilter] Only ${matchedIds.size} matches — falling back to heuristic filter`)
+  if (matchScores.size < minRequired) {
+    console.log(`[semanticFilter] Only ${matchScores.size} matches — falling back to heuristic filter`)
     return scoreAndFilterExercises(exercises, skeleton, equipment, analysis, {
       poolActive: isPool,
       coachUsage: options?.coachUsage,
@@ -478,10 +531,11 @@ export async function semanticFilterExercises(
       preferredIds: options?.preferredIds,
       favoriteIds: options?.favoriteIds,
       mmrLambda: options?.mmrLambda,
+      seed: options?.seed,
     })
   }
 
-  let filtered = exercises.filter((ex) => matchedIds.has(ex.id))
+  let filtered = exercises.filter((ex) => matchScores.has(ex.id))
 
   if (options?.excludeIds && options.excludeIds.size > 0) {
     const before = filtered.length
@@ -492,28 +546,13 @@ export async function semanticFilterExercises(
   const coachUsage = options?.coachUsage ?? new Map<string, number>()
   const clientUsage = options?.clientUsage ?? new Map<string, number>()
   const preferredIds = options?.preferredIds
-  const hasPreferred = preferredIds && preferredIds.size > 0
+  const hasPreferred = !!preferredIds && preferredIds.size > 0
   const favoriteIds = options?.favoriteIds
-  const hasFavorites = favoriteIds && favoriteIds.size > 0
-  if (coachUsage.size > 0 || clientUsage.size > 0 || hasPreferred || hasFavorites) {
-    const scored = filtered.map((ex) => {
-      let score = applyUsagePenalty(50, ex.id, coachUsage, clientUsage)
-      if (hasPreferred && preferredIds!.has(ex.id)) score += POOL_PREFERENCE_BOOST
-      if (hasFavorites && favoriteIds!.has(ex.id)) score += FAVORITE_BOOST
-      return { ex, score }
-    })
-    scored.sort((a, b) => b.score - a.score)
-    filtered = scored.map((s) => s.ex)
-    console.log(
-      `[semanticFilter] Applied usage-aware re-ranking (coach: ${coachUsage.size}, client: ${clientUsage.size}${
-        hasPreferred ? `, pool preferred: ${preferredIds!.size}` : ""
-      }${hasFavorites ? `, favorites: ${favoriteIds!.size}` : ""})`,
-    )
-  }
+  const hasFavorites = !!favoriteIds && favoriteIds.size > 0
 
-  // Inject any missing preferred-pool exercises into the candidate set —
-  // semantic search may have ranked them out, but in preferred mode we want
-  // the AI to see them. They go to the front of the list.
+  // Inject any missing preferred-pool exercises into the candidate set BEFORE
+  // scoring — semantic search may have ranked them out, but in preferred mode
+  // we want the AI to see them and the boost to act on them.
   if (hasPreferred) {
     const inFiltered = new Set(filtered.map((e) => e.id))
     const missingPreferred = exercises.filter((e) => preferredIds!.has(e.id) && !inFiltered.has(e.id))
@@ -523,23 +562,38 @@ export async function semanticFilterExercises(
     }
   }
 
-  if (filtered.length > maxExercises) filtered = filtered.slice(0, maxExercises)
+  // Embedding similarity is the relevance term. A preferred-pool injection that
+  // never matched has no similarity, so it falls back to the neutral midpoint.
+  const scoredAll = filtered.map((e) => ({
+    exercise: e,
+    score:
+      applyUsagePenalty(
+        (matchScores.get(e.id) ?? NEUTRAL_SIMILARITY) * SIMILARITY_SCALE,
+        e.id,
+        coachUsage,
+        clientUsage,
+      ) +
+      (hasPreferred && preferredIds!.has(e.id) ? POOL_PREFERENCE_BOOST : 0) +
+      (hasFavorites && favoriteIds!.has(e.id) ? FAVORITE_BOOST : 0) +
+      seededJitter(options?.seed, e.id),
+  }))
+  scoredAll.sort((a, b) => b.score - a.score)
 
+  const cutoff = Math.min(maxExercises, scoredAll.length)
   const lambda = options?.mmrLambda
-  if (lambda !== undefined && lambda < 1.0 && filtered.length > MIN_EXERCISES) {
-    // Synthetic relevance score: in the semantic path, true scores live in the
-    // embedding distance, so we use a constant and let MMR balance against
-    // diversity using the usage-penalty signal.
-    const baseScore = 50
-    const scoredFiltered = filtered.map((e) => ({
-      exercise: e,
-      score:
-        applyUsagePenalty(baseScore, e.id, coachUsage, clientUsage) +
-        (hasPreferred && preferredIds!.has(e.id) ? POOL_PREFERENCE_BOOST : 0) +
-        (hasFavorites && favoriteIds!.has(e.id) ? FAVORITE_BOOST : 0),
-    }))
-    filtered = diversifyByMMR(scoredFiltered, filtered.length, lambda)
-  }
+  // MMR must SELECT the survivors, not reorder an already-truncated list.
+  const useMMR = lambda !== undefined && lambda < 1.0 && scoredAll.length > cutoff
+  filtered = useMMR
+    ? diversifyByMMR(scoredAll, cutoff, lambda)
+    : scoredAll.slice(0, cutoff).map((s) => s.exercise)
+
+  console.log(
+    `[semanticFilter] Ranked ${scoredAll.length} candidates by similarity` +
+      `${options?.seed ? " (seeded)" : ""}${useMMR ? ` + MMR lambda=${lambda}` : ""} -> ${filtered.length}` +
+      ` (coach usage: ${coachUsage.size}, client usage: ${clientUsage.size}` +
+      `${hasPreferred ? `, pool preferred: ${preferredIds!.size}` : ""}` +
+      `${hasFavorites ? `, favorites: ${favoriteIds!.size}` : ""})`,
+  )
 
   // Ensure pattern balance — when pool active, only pulls from pool exercises.
   // Build balancePool so excludeIds are never re-introduced via pattern-balance backfill.

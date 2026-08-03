@@ -1,5 +1,11 @@
 import { describe, it, expect, vi } from "vitest"
-import { applyUsagePenalty, scoreAndFilterExercises, diversifyByMMR, semanticFilterExercises } from "../exercise-filter.js"
+import {
+  applyUsagePenalty,
+  scoreAndFilterExercises,
+  diversifyByMMR,
+  semanticFilterExercises,
+  seededJitter,
+} from "../exercise-filter.js"
 import type { CompressedExercise, ProgramSkeleton, ProfileAnalysis } from "../types.js"
 
 // Stub out Supabase and embeddings so semanticFilterExercises can run in unit tests.
@@ -203,5 +209,120 @@ describe("favoriteIds soft boost", () => {
       favoriteIds: new Set(["not-in-library"]),
     })
     expect(result.some((e) => e.id === "not-in-library")).toBe(false)
+  })
+})
+
+// ─── Run-to-run variation ───────────────────────────────────────────────────
+
+describe("seededJitter", () => {
+  it("returns 0 with no seed, so unseeded callers keep their previous ordering", () => {
+    expect(seededJitter(undefined, "ex-1")).toBe(0)
+  })
+
+  it("is deterministic for the same (seed, exercise)", () => {
+    expect(seededJitter("run-a", "ex-1")).toBe(seededJitter("run-a", "ex-1"))
+  })
+
+  it("differs across seeds and across exercises", () => {
+    expect(seededJitter("run-a", "ex-1")).not.toBe(seededJitter("run-b", "ex-1"))
+    expect(seededJitter("run-a", "ex-1")).not.toBe(seededJitter("run-a", "ex-2"))
+  })
+
+  it("stays inside the requested range", () => {
+    for (let i = 0; i < 300; i++) {
+      expect(Math.abs(seededJitter("s", `ex-${i}`, 8))).toBeLessThanOrEqual(8)
+    }
+  })
+})
+
+/**
+ * 600 candidates → getMaxExercises caps at 90 (15% of 600), so truncation
+ * genuinely happens and MMR has a selection to make. Muscles and equipment
+ * vary so candidates are not interchangeable — with a uniform fixture MMR
+ * would correctly return the same set and prove nothing.
+ *
+ * This is the regression guard for diversifyByMMR having been called with
+ * k === input length, which made it return its input untouched at BOTH call
+ * sites while the helper's own unit tests kept passing.
+ */
+const MUSCLES = ["chest", "shoulders", "triceps", "lats", "biceps", "traps"]
+const EQUIP = [[], ["dumbbell"], ["cable_machine"], ["resistance_band"]]
+const MANY = Array.from({ length: 600 }, (_, i) =>
+  ex(`ex-${i}`, {
+    movement_pattern: i % 2 === 0 ? "push" : "pull",
+    primary_muscles: [MUSCLES[i % MUSCLES.length]],
+    equipment_required: EQUIP[i % EQUIP.length],
+    is_bodyweight: EQUIP[i % EQUIP.length].length === 0,
+  }),
+)
+
+const distinctMuscles = (list: CompressedExercise[]) => new Set(list.map((e) => e.primary_muscles[0])).size
+const distinctEquipment = (list: CompressedExercise[]) => new Set(list.map((e) => e.equipment_required.join("+"))).size
+
+describe("MMR at the call site (regression: diversifyByMMR was a no-op)", () => {
+  it("truncates, so there is actually a selection to make", () => {
+    expect(scoreAndFilterExercises(MANY, SKELETON, [], ANALYSIS).length).toBeLessThan(MANY.length)
+  })
+
+  it("changes which exercises survive truncation at the production lambda", () => {
+    const plain = scoreAndFilterExercises(MANY, SKELETON, [], ANALYSIS)
+    const mmr = scoreAndFilterExercises(MANY, SKELETON, [], ANALYSIS, { mmrLambda: 0.7 })
+    expect(mmr.map((e) => e.id)).not.toEqual(plain.map((e) => e.id))
+  })
+
+  it("yields a broader spread of muscles and equipment than pure relevance", () => {
+    const plain = scoreAndFilterExercises(MANY, SKELETON, [], ANALYSIS)
+    const mmr = scoreAndFilterExercises(MANY, SKELETON, [], ANALYSIS, { mmrLambda: 0.7 })
+    expect(distinctMuscles(mmr)).toBeGreaterThanOrEqual(distinctMuscles(plain))
+    expect(distinctEquipment(mmr)).toBeGreaterThanOrEqual(distinctEquipment(plain))
+    expect(distinctMuscles(mmr) + distinctEquipment(mmr)).toBeGreaterThan(
+      distinctMuscles(plain) + distinctEquipment(plain),
+    )
+  })
+
+  it("surfaces the off-pattern candidates that pure relevance ranks out", () => {
+    // The skeleton only asks for "push". Pure relevance fills the cutoff with
+    // push work; a diversity-weighted selection must still surface "pull".
+    const mmr = scoreAndFilterExercises(MANY, SKELETON, [], ANALYSIS, { mmrLambda: 0.2 })
+    expect(mmr.some((e) => e.movement_pattern === "pull")).toBe(true)
+  })
+})
+
+describe("seeded selection changes run to run", () => {
+  it("produces identical output for the same seed", () => {
+    const a = scoreAndFilterExercises(MANY, SKELETON, [], ANALYSIS, { seed: "run-a" })
+    const b = scoreAndFilterExercises(MANY, SKELETON, [], ANALYSIS, { seed: "run-a" })
+    expect(a.map((e) => e.id)).toEqual(b.map((e) => e.id))
+  })
+
+  it("produces a different selection for a different seed", () => {
+    const a = scoreAndFilterExercises(MANY, SKELETON, [], ANALYSIS, { seed: "run-a" })
+    const b = scoreAndFilterExercises(MANY, SKELETON, [], ANALYSIS, { seed: "run-b" })
+    expect(a.map((e) => e.id)).not.toEqual(b.map((e) => e.id))
+  })
+
+  it("is a no-op without a seed (two unseeded runs match)", () => {
+    const a = scoreAndFilterExercises(MANY, SKELETON, [], ANALYSIS)
+    const b = scoreAndFilterExercises(MANY, SKELETON, [], ANALYSIS)
+    expect(a.map((e) => e.id)).toEqual(b.map((e) => e.id))
+  })
+})
+
+describe("semanticFilterExercises uses the similarity match_exercises returns", () => {
+  it("ranks by similarity rather than the order exercises arrive in", async () => {
+    const lib = [ex("low", {}), ex("high", {}), ex("mid", {})]
+    // Deliberately inverted vs. array order: "high" is last-but-one in input.
+    const sims: Record<string, number> = { low: 0.2, mid: 0.5, high: 0.95 }
+
+    const { getSupabase } = await import("../../lib/supabase.js")
+    vi.mocked(getSupabase).mockReturnValue({
+      rpc: vi.fn().mockResolvedValue({
+        data: lib.map((e) => ({ id: e.id, similarity: sims[e.id] })),
+        error: null,
+      }),
+    } as never)
+
+    const result = await semanticFilterExercises(lib, SKELETON, [], ANALYSIS, { poolActive: true })
+    expect(result.map((e) => e.id)).toEqual(["high", "mid", "low"])
   })
 })
