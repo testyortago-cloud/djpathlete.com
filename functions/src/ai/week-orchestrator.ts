@@ -6,6 +6,7 @@ import { profileAnalysisSchema, programSkeletonSchema, exerciseAssignmentSchema 
 import { EXERCISE_SELECTOR_PROMPT, WEEK_PROFILE_ANALYZER_PROMPT } from "./prompts.js"
 import { validateProgram } from "./validate.js"
 import { formatExerciseLibrary, filterByDifficultyLevel, filterByProgressionPhase } from "./exercise-context.js"
+import { extractInstructionIntent, resolveIntentToExerciseIds } from "./instruction-intent.js"
 import { getExercisesForAI } from "./program-chat-tools.js"
 import {
   buildPriorContextFromExistingExercises,
@@ -734,6 +735,18 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
   const combinedInstructions = [request.admin_instructions, policyInstructions].filter(Boolean).join("\n\n")
   const coachInstructionsSectionForAnalyzer = buildCoachInstructionsSection(combinedInstructions)
 
+  // Coach instructions become concrete unlock/ban sets against the FULL library,
+  // before any filtering narrows it — the exercises a coach names are exactly the
+  // ones the profile-derived filters tend to remove.
+  const instructionIntent = await extractInstructionIntent(combinedInstructions)
+  const intentResolution = resolveIntentToExerciseIds(instructionIntent, allExercises)
+  const unlockedIds = intentResolution.unlockedIds
+  const effectiveEquipment = [...new Set([...availableEquipment, ...instructionIntent.required_equipment])]
+  console.log(
+    `[week-orchestrator] Instruction intent: ${unlockedIds.size} unlocked, ${intentResolution.bannedIds.size} banned` +
+      (intentResolution.unmatched.length > 0 ? `, unmatched: ${intentResolution.unmatched.join("; ")}` : ""),
+  )
+
   const analyzerMessage = `## Client Profile
 ${profileContext}
 
@@ -816,9 +829,16 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
   // exercises in weeks 1-2; low-score intermediates unlock from week 3.
   // Skipped in strict pool mode: the coach hand-picked these exact exercises for
   // this client, so pruning them by difficulty would starve an already-small pool.
-  let exercisesForSelection = poolActive ? allExercises : filterByDifficultyLevel(allExercises, clientDifficultyLevel)
+  let exercisesForSelection = poolActive
+    ? allExercises
+    : filterByDifficultyLevel(allExercises, clientDifficultyLevel, unlockedIds)
   if (!poolActive) {
-    exercisesForSelection = filterByProgressionPhase(exercisesForSelection, clientDifficultyLevel, newWeekNumber)
+    exercisesForSelection = filterByProgressionPhase(
+      exercisesForSelection,
+      clientDifficultyLevel,
+      newWeekNumber,
+      unlockedIds,
+    )
   }
   console.log(
     `[week-orchestrator] Difficulty filter (${clientDifficultyLevel}, week ${newWeekNumber}): ${allExercises.length} -> ${exercisesForSelection.length}${poolActive ? " (skipped — strict pool)" : ""}`,
@@ -837,10 +857,15 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
   // (often empty) equipment profile of an unassigned template program.
   {
     const beforeCount = exercisesForSelection.length
-    exercisesForSelection = filterCandidateEquipment(exercisesForSelection, availableEquipment, poolActive)
+    exercisesForSelection = filterCandidateEquipment(
+      exercisesForSelection,
+      effectiveEquipment,
+      poolActive,
+      unlockedIds,
+    )
     if (exercisesForSelection.length !== beforeCount) {
       console.log(
-        `[week-orchestrator] Equipment filter: ${beforeCount} -> ${exercisesForSelection.length} (available: ${availableEquipment.length > 0 ? availableEquipment.join(", ") : "none/bodyweight-only"})`,
+        `[week-orchestrator] Equipment filter: ${beforeCount} -> ${exercisesForSelection.length} (available: ${effectiveEquipment.length > 0 ? effectiveEquipment.join(", ") : "none/bodyweight-only"})`,
       )
     } else if (poolActive) {
       console.log(
@@ -871,7 +896,11 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
 
   // Cross-day variety exclusion — relaxed in strict pool mode so a small curated
   // pool can recur across days instead of being starved to one or two candidates.
-  const excludeIds = resolveCrossDayExcludeIds(priorContext, VARIETY_ROLES, poolActive)
+  // Cross-day variety exclusions, plus anything the coach explicitly banned.
+  const excludeIds = new Set([
+    ...resolveCrossDayExcludeIds(priorContext, VARIETY_ROLES, poolActive),
+    ...intentResolution.bannedIds,
+  ])
   console.log(
     `[week-orchestrator] excludeIds: ${excludeIds.size} ids hard-pruned from candidate library${poolActive ? " (cross-day exclusion relaxed for strict pool)" : ""}`,
   )
@@ -890,27 +919,25 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
     }
   }
 
+  const filterOptions = {
+    poolActive,
+    coachUsage,
+    clientUsage,
+    excludeIds,
+    preferredIds,
+    favoriteIds,
+    mmrLambda: 0.7,
+    // The job id is unique per generation, so pressing "AI Fill Week" twice
+    // gives different exercise choices. week-generation.ts always supplies one;
+    // the fallback is stable-by-design for direct invocations (tests), where
+    // reproducibility is worth more than variety.
+    seed: firebaseJobId ?? `${request.program_id}:w${newWeekNumber}`,
+  }
   let filtered: CompressedExercise[]
   try {
-    filtered = await semanticFilterExercises(exercisesForSelection, skeleton, availableEquipment, analysis, {
-      poolActive,
-      coachUsage,
-      clientUsage,
-      excludeIds,
-      preferredIds,
-      favoriteIds,
-      mmrLambda: 0.7,
-    })
+    filtered = await semanticFilterExercises(exercisesForSelection, skeleton, effectiveEquipment, analysis, filterOptions)
   } catch {
-    filtered = scoreAndFilterExercises(exercisesForSelection, skeleton, availableEquipment, analysis, {
-      poolActive,
-      coachUsage,
-      clientUsage,
-      excludeIds,
-      preferredIds,
-      favoriteIds,
-      mmrLambda: 0.7,
-    })
+    filtered = scoreAndFilterExercises(exercisesForSelection, skeleton, effectiveEquipment, analysis, filterOptions)
   }
   // Last-resort guard in strict pool mode. After the architect is told the
   // pool's patterns AND uncovered slots are remapped above, this should never

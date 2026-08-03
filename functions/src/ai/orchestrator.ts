@@ -31,6 +31,7 @@ import {
 } from "./exercise-context.js"
 import { getCoachRecentUsageFromFn, getClientRecentUsageFromFn, recordUsageFromFn, getClientFavoriteExerciseIds } from "./usage-history.js"
 import { getCoachPolicyFromFn, formatCoachPolicyAsInstructions } from "./coach-policy.js"
+import { extractInstructionIntent, resolveIntentToExerciseIds } from "./instruction-intent.js"
 import { getExercisesForAI } from "./program-chat-tools.js"
 import {
   buildPriorWeekContext,
@@ -341,7 +342,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     await onProgress?.("Analyzing client profile", 1, 5)
     console.log("[orchestrator:sync] Running Agent 1 + exercise fetch...")
     const favoritesEnabled = await getSetting<boolean>("exercise_favorites_ai_enabled", true)
-    const [agent1Result, allExercises, coachUsage, clientUsage, favoriteIds] = await Promise.all([
+    const [agent1Result, allExercises, coachUsage, clientUsage, favoriteIds, instructionIntent] = await Promise.all([
       callAgent<ProfileAnalysis>(augmentedAgent1Prompt, agent1UserMessage, profileAnalysisSchema, {
         model: MODEL_SONNET,
         cacheSystemPrompt: true,
@@ -360,6 +361,8 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
       favoritesEnabled && request.client_id
         ? getClientFavoriteExerciseIds(request.client_id).catch(() => new Set<string>())
         : Promise.resolve(new Set<string>()),
+      // Runs in parallel with Agent 1, so it costs no extra wall-clock.
+      extractInstructionIntent(combinedInstructions),
     ])
     tokenUsage.agent1 = agent1Result.tokens_used
     tokenUsage.cache_creation += agent1Result.cache_creation_tokens ?? 0
@@ -403,6 +406,17 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     const analysis = agent1Result.content
     const allCompressed = allExercises // already compressed from getExercisesForAI
 
+    // Coach instructions become concrete unlock/ban sets against the FULL
+    // library, before any filtering narrows it. Resolving after filtering would
+    // be pointless — the exercises the coach named are exactly the ones the
+    // profile-derived filters tend to remove.
+    const intentResolution = resolveIntentToExerciseIds(instructionIntent, allCompressed)
+    const unlockedIds = intentResolution.unlockedIds
+    console.log(
+      `[orchestrator:sync] Instruction intent: ${unlockedIds.size} unlocked, ${intentResolution.bannedIds.size} banned` +
+        (intentResolution.unmatched.length > 0 ? `, unmatched: ${intentResolution.unmatched.join("; ")}` : ""),
+    )
+
     // Apply exercise pool filter — preferred (default) biases without hard
     // restricting; strict mode keeps the legacy "only this pool" behavior.
     const poolIds = request.pool_exercise_ids
@@ -418,7 +432,11 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     // Also skipped in strict pool mode — the coach hand-picked these exact
     // exercises, so difficulty pruning would starve the curated pool.
     const clientDifficultyLevel = profile?.experience_level ?? (request.ignore_profile ? "elite" : "beginner")
-    let compressed = poolActive ? poolFiltered : filterByDifficultyLevel(poolFiltered, clientDifficultyLevel)
+    let compressed = poolActive
+      ? poolFiltered
+      : filterByDifficultyLevel(poolFiltered, clientDifficultyLevel, unlockedIds)
+    // NOT unlockable: an assessment ceiling is measured evidence, unlike the
+    // "beginner" default above, which is only a fallback when no profile exists.
     if (!poolActive && assessmentContext)
       compressed = filterByDifficultyScore(compressed, assessmentContext.maxDifficultyScore)
 
@@ -439,15 +457,24 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     // Skipped in strict pool mode — honor the coach's curated pool over the
     // (often empty) equipment profile.
     const availableEquipment = request.equipment_override ?? profile?.available_equipment ?? []
+    // Equipment the coach explicitly asked for counts as available. The profile
+    // list is a guess and is EMPTY whenever no profile exists, which silently
+    // reduces the whole library to bodyweight-only.
+    const effectiveEquipment = [...new Set([...availableEquipment, ...instructionIntent.required_equipment])]
     if (!poolActive) {
       const beforeCount = compressed.length
-      compressed = filterByAvailableEquipment(compressed, availableEquipment)
+      compressed = filterByAvailableEquipment(compressed, effectiveEquipment, unlockedIds)
       if (compressed.length !== beforeCount) {
         console.log(
-          `[orchestrator:sync] Equipment filter: ${beforeCount} → ${compressed.length} (available: ${availableEquipment.length > 0 ? availableEquipment.join(", ") : "none/bodyweight-only"})`,
+          `[orchestrator:sync] Equipment filter: ${beforeCount} → ${compressed.length} (available: ${effectiveEquipment.length > 0 ? effectiveEquipment.join(", ") : "none/bodyweight-only"})`,
         )
       }
     }
+
+    // Unlocked exercises the ASSESSMENT ceiling still removed — reported to the
+    // coach rather than silently dropped.
+    const survivingIds = new Set(compressed.map((e) => e.id))
+    const blockedByAssessment = [...unlockedIds].filter((id) => !survivingIds.has(id))
 
     console.log(
       `[orchestrator:sync] Exercise filtering: ${allCompressed.length} total → ${compressed.length} after all filters (level: ${clientDifficultyLevel})${poolActive ? ` [pool: ${poolIds!.length}]` : ""}`,
@@ -466,9 +493,14 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     // profile against exercises the coach deliberately put in the pool — treat
     // the pool's own equipment as available so input filters and validateProgram
     // agree (the input equipment filter is skipped above for the same reason).
+    // Same reasoning applies to coach-unlocked exercises: if validateProgram
+    // does not treat their equipment as available it raises hard
+    // equipment_violation errors against the very exercises the input filter
+    // was told to admit, and every retry reproduces them.
+    const unlockedEquipment = compressed.filter((e) => unlockedIds.has(e.id)).flatMap((e) => e.equipment_required)
     const validatorEquipment = poolActive
-      ? [...new Set([...availableEquipment, ...compressed.flatMap((e) => e.equipment_required)])]
-      : availableEquipment
+      ? [...new Set([...effectiveEquipment, ...compressed.flatMap((e) => e.equipment_required)])]
+      : [...new Set([...effectiveEquipment, ...unlockedEquipment])]
 
     if (request.split_type) analysis.recommended_split = request.split_type as typeof analysis.recommended_split
     if (request.periodization)
@@ -578,23 +610,23 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
       }
     }
 
+    const filterOptions = {
+      poolActive,
+      coachUsage,
+      clientUsage,
+      preferredIds,
+      favoriteIds,
+      excludeIds: intentResolution.bannedIds,
+      // The generation-log id is unique per run and already persisted, so two
+      // identical requests diverge while any single run stays reproducible.
+      seed: log.id,
+      mmrLambda: 0.7,
+    }
     let filtered: CompressedExercise[]
     try {
-      filtered = await semanticFilterExercises(compressed, skeleton, availableEquipment, analysis, {
-        poolActive,
-        coachUsage,
-        clientUsage,
-        preferredIds,
-        favoriteIds,
-      })
+      filtered = await semanticFilterExercises(compressed, skeleton, effectiveEquipment, analysis, filterOptions)
     } catch {
-      filtered = scoreAndFilterExercises(compressed, skeleton, availableEquipment, analysis, {
-        poolActive,
-        coachUsage,
-        clientUsage,
-        preferredIds,
-        favoriteIds,
-      })
+      filtered = scoreAndFilterExercises(compressed, skeleton, effectiveEquipment, analysis, filterOptions)
     }
     const poolNote = buildPoolNote(poolIds, filtered.length, poolMode, poolIds?.length)
 
@@ -651,7 +683,9 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
       // Per-week progression filter — tightens library for early weeks.
       // Skipped in strict pool mode (mirrors the input-filter skips): pruning
       // the curated pool per week can empty it entirely for beginner clients.
-      const thisWeekLibrary = poolActive ? filtered : filterByProgressionPhase(filtered, clientDifficultySync, weekNum)
+      const thisWeekLibrary = poolActive
+        ? filtered
+        : filterByProgressionPhase(filtered, clientDifficultySync, weekNum, unlockedIds)
       const thisWeekLibraryText = formatExerciseLibrary(thisWeekLibrary)
 
       // Check cancellation between weeks
@@ -802,6 +836,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
               analysis.difficulty_ceiling,
               slotInWeek,
               compressed.map((e) => ({ id: e.id, difficulty: e.difficulty, difficulty_score: e.difficulty_score })),
+              unlockedIds,
             )
             if (!ceilingCheck.ok) {
               for (const v of ceilingCheck.violations) {
@@ -896,6 +931,24 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
         type: "warning",
         category: "exercise_repetition",
         message: syncRepetitionReport.summary,
+      })
+    }
+
+    // Tell the coach when an instruction could not be honoured, instead of
+    // silently producing a program that ignores it.
+    for (const phrase of intentResolution.unmatched) {
+      validation.issues.push({
+        type: "warning",
+        category: "instruction_unmatched",
+        message: `You asked for "${phrase}" but no exercise in the library matches it.`,
+      })
+    }
+    for (const id of blockedByAssessment) {
+      const blocked = allCompressed.find((e) => e.id === id)
+      validation.issues.push({
+        type: "warning",
+        category: "instruction_blocked_by_assessment",
+        message: `"${blocked?.name ?? id}" was requested but exceeds this client's assessed difficulty ceiling.`,
       })
     }
 
@@ -997,6 +1050,16 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
         retries,
         cache_creation_tokens: tokenUsage.cache_creation,
         cache_read_tokens: tokenUsage.cache_read,
+        // What the coach's instructions actually did to the candidate library.
+        instruction_intent: {
+          required_equipment: instructionIntent.required_equipment,
+          excluded_equipment: instructionIntent.excluded_equipment,
+          unlocked_count: unlockedIds.size,
+          banned_count: intentResolution.bannedIds.size,
+          unmatched: intentResolution.unmatched,
+          blocked_by_assessment: blockedByAssessment.length,
+        },
+        selection_seed: log.id,
       },
     })
 

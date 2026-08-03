@@ -256,9 +256,10 @@ export function filterCandidateEquipment(
   exercises: CompressedExercise[],
   availableEquipment: string[],
   poolActive: boolean,
+  unlockedIds?: Set<string>,
 ): CompressedExercise[] {
   if (poolActive) return exercises
-  return filterByAvailableEquipment(exercises, availableEquipment)
+  return filterByAvailableEquipment(exercises, availableEquipment, unlockedIds)
 }
 
 /**
