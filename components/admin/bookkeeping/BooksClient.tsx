@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
-import { Plus, Upload, BookOpen, Banknote, Camera, ShoppingCart, BarChart3, Lightbulb, Package, Tags, FilterX, Mail, ScanSearch } from "lucide-react"
+import { Plus, Upload, BookOpen, Banknote, Camera, ShoppingCart, BarChart3, Lightbulb, Package, Tags, FilterX, Mail, ScanSearch, CircleHelp } from "lucide-react"
 import { toast } from "sonner"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
@@ -15,6 +15,7 @@ import { ReceiptCashDialog } from "@/components/admin/bookkeeping/ReceiptCashDia
 import { ReceiptUploadDialog } from "@/components/admin/bookkeeping/ReceiptUploadDialog"
 import { AmazonImportDialog } from "@/components/admin/bookkeeping/AmazonImportDialog"
 import { DuplicateScanDialog } from "@/components/admin/bookkeeping/DuplicateScanDialog"
+import { SetupBanner, SetupPanel } from "@/components/admin/bookkeeping/SetupPanel"
 import { CloseMonthCard } from "@/components/admin/bookkeeping/CloseMonthCard"
 import { formatCents } from "@/lib/bookkeeping/money"
 import { PERIOD_PRESET_LABELS, presetRange, type PeriodPreset } from "@/lib/bookkeeping/period"
@@ -98,6 +99,7 @@ export function BooksClient({
   const [uploadReceiptOpen, setUploadReceiptOpen] = useState(false)
   const [amazonOpen, setAmazonOpen] = useState(false)
   const [dupScanOpen, setDupScanOpen] = useState(false)
+  const [setupOpen, setSetupOpen] = useState(false)
   const [closes, setCloses] = useState<BookkeepingPeriodClose[]>([])
 
   const fetchEntries = useCallback(async () => {
@@ -412,7 +414,12 @@ export function BooksClient({
               <ScanSearch className="size-4" />
               Find duplicates
             </Button>
+            <Button size="sm" variant="outline" aria-label="Accounting setup and tour" onClick={() => setSetupOpen(true)}>
+              <CircleHelp className="size-4" />
+            </Button>
           </div>
+
+          <SetupBanner onOpen={() => setSetupOpen(true)} />
 
           {/* Filter bar — labeled controls; the period preset drives from/to */}
           <div className="rounded-lg border border-border bg-card p-3">
@@ -610,6 +617,12 @@ export function BooksClient({
         open={dupScanOpen}
         onOpenChange={setDupScanOpen}
         onEntriesChanged={fetchEntries}
+      />
+      <SetupPanel
+        open={setupOpen}
+        onOpenChange={setSetupOpen}
+        // wired to startBooksTour in Task 5
+        onStartTour={() => {}}
       />
     </div>
   )
