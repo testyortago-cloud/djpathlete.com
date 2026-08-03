@@ -16,6 +16,7 @@ import { ReceiptUploadDialog } from "@/components/admin/bookkeeping/ReceiptUploa
 import { AmazonImportDialog } from "@/components/admin/bookkeeping/AmazonImportDialog"
 import { DuplicateScanDialog } from "@/components/admin/bookkeeping/DuplicateScanDialog"
 import { SetupBanner, SetupPanel } from "@/components/admin/bookkeeping/SetupPanel"
+import { TaxStrip } from "@/components/admin/bookkeeping/TaxStrip"
 import { BooksTour } from "@/components/admin/bookkeeping/BooksTour"
 import { startBooksTour } from "@/hooks/use-page-tour"
 import { CloseMonthCard } from "@/components/admin/bookkeeping/CloseMonthCard"
@@ -377,6 +378,8 @@ export function BooksClient({
               <p className="mt-1 text-xs text-muted-foreground">Click to show everything</p>
             </button>
           </div>
+
+          <TaxStrip bookId={bookId} />
 
           <CloseMonthCard
             bookId={bookId}

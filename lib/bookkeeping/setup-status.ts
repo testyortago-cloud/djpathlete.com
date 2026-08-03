@@ -80,8 +80,9 @@ export function computeSetupItems(s: SetupStatusSources): SetupItem[] {
       key: "tax_rate",
       title: "Enter the tax rate from your accountant",
       why: "One number — used to estimate how much tax to set aside as the year goes.",
+      // The books-page tax strip offers inline entry — fix it where you see it.
+      href: "/admin/books",
       status: s.taxRatePercent !== null ? "done" : "todo",
-      href: "/admin/books/insights",
     },
     {
       key: "accountant_email",
