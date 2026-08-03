@@ -25,6 +25,20 @@ describe("computeSetupItems", () => {
     expect(items).toHaveLength(11)
     expect(new Set(items.map((i) => i.key)).size).toBe(11)
   })
+  it("splits into exactly 6 plain basics (first) and 5 advanced extras", () => {
+    const items = computeSetupItems(allDone())
+    const basics = items.filter((i) => !i.advanced).map((i) => i.key)
+    const advanced = items.filter((i) => i.advanced).map((i) => i.key)
+    expect(basics).toEqual([
+      "gmail_connected", "income_sync", "tax_rate",
+      "accountant_email", "first_statement", "categories_reviewed",
+    ])
+    expect(advanced).toEqual([
+      "email_receipts_cron", "forwarders", "gmail_label", "quarterly_pack", "housekeeping",
+    ])
+    // Basics render before advanced — the panel's collapsed section relies on it.
+    expect(items.findIndex((i) => i.advanced)).toBe(6)
+  })
   it("no gmail connection → only gmail_connected flips", () => {
     const items = byKey(allDone({ gmailConnected: false }))
     expect(items.gmail_connected.status).toBe("todo")

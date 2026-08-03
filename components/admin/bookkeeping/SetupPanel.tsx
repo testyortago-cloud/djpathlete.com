@@ -134,6 +134,48 @@ function StatusIcon({ status }: { status: SetupItem["status"] }) {
   return <Circle aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
 }
 
+function ItemRow({
+  item,
+  onToggleManual,
+  onNavigate,
+}: {
+  item: SetupItem
+  onToggleManual: (item: SetupItem, checked: boolean) => Promise<void>
+  onNavigate: () => void
+}) {
+  return (
+    <li className="flex items-start gap-3 rounded-md border border-border bg-background p-3">
+      <StatusIcon status={item.status} />
+      <div className="min-w-0 flex-1 space-y-0.5">
+        <p className="text-sm font-medium text-foreground">{item.title}</p>
+        <p className="text-xs text-muted-foreground">{item.why}</p>
+        {item.detail && (
+          <p className={`text-xs ${item.status === "attention" ? "text-warning" : "text-muted-foreground"}`}>
+            {item.detail}
+          </p>
+        )}
+      </div>
+      {item.manual ? (
+        <Checkbox
+          aria-label={`Mark “${item.title}” ${item.status === "done" ? "not done" : "done"}`}
+          checked={item.status === "done"}
+          onCheckedChange={(checked) => void onToggleManual(item, checked === true)}
+          className="mt-0.5"
+        />
+      ) : item.status !== "done" ? (
+        <Link
+          href={item.href}
+          aria-label={`Fix: ${item.title}`}
+          onClick={onNavigate}
+          className="mt-0.5 shrink-0 text-xs text-primary underline underline-offset-2"
+        >
+          Fix this
+        </Link>
+      ) : null}
+    </li>
+  )
+}
+
 export function SetupPanel({
   open,
   onOpenChange,
@@ -144,13 +186,15 @@ export function SetupPanel({
   onStartTour: () => void
 }) {
   const { status, setStatus, failed, load } = useSetupStatus(open)
+  const [showAdvanced, setShowAdvanced] = useState(false)
 
   const applyManualStatus = useCallback(
     (key: string, itemStatus: SetupItem["status"]) => {
       setStatus((prev) => {
         if (!prev) return prev
         const items = prev.items.map((i) => (i.key === key ? { ...i, status: itemStatus } : i))
-        return { ...prev, items, doneCount: items.filter((i) => i.status === "done").length }
+        // Counts mirror the server: basics only — advanced extras never nag.
+        return { ...prev, items, doneCount: items.filter((i) => !i.advanced && i.status === "done").length }
       })
     },
     [setStatus],
@@ -172,12 +216,15 @@ export function SetupPanel({
   }
 
   const items = status?.items ?? []
-  // "To do" before "Needs attention": actionable gaps first, unverifiable ones
-  // (e.g. a cron that has never run) after, finished items last.
+  // Basics carry the checklist; advanced extras sit in a collapsed section —
+  // "basic only" (owner, 2026-08-03). Within basics: "To do" before "Needs
+  // attention" (actionable gaps first), finished items last.
+  const basics = items.filter((i) => !i.advanced)
+  const advanced = items.filter((i) => i.advanced)
   const groups = [
-    { label: "To do", items: items.filter((i) => i.status === "todo") },
-    { label: "Needs attention", items: items.filter((i) => i.status === "attention") },
-    { label: "Done", items: items.filter((i) => i.status === "done") },
+    { label: "To do", items: basics.filter((i) => i.status === "todo") },
+    { label: "Needs attention", items: basics.filter((i) => i.status === "attention") },
+    { label: "Done", items: basics.filter((i) => i.status === "done") },
   ].filter((g) => g.items.length > 0)
 
   return (
@@ -215,39 +262,31 @@ export function SetupPanel({
                 <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{group.label}</p>
                 <ul className="space-y-2">
                   {group.items.map((item) => (
-                    <li key={item.key} className="flex items-start gap-3 rounded-md border border-border bg-background p-3">
-                      <StatusIcon status={item.status} />
-                      <div className="min-w-0 flex-1 space-y-0.5">
-                        <p className="text-sm font-medium text-foreground">{item.title}</p>
-                        <p className="text-xs text-muted-foreground">{item.why}</p>
-                        {item.detail && (
-                          <p className={`text-xs ${item.status === "attention" ? "text-warning" : "text-muted-foreground"}`}>
-                            {item.detail}
-                          </p>
-                        )}
-                      </div>
-                      {item.manual ? (
-                        <Checkbox
-                          aria-label={`Mark “${item.title}” ${item.status === "done" ? "not done" : "done"}`}
-                          checked={item.status === "done"}
-                          onCheckedChange={(checked) => void toggleManual(item, checked === true)}
-                          className="mt-0.5"
-                        />
-                      ) : item.status !== "done" ? (
-                        <Link
-                          href={item.href}
-                          aria-label={`Fix: ${item.title}`}
-                          onClick={() => onOpenChange(false)}
-                          className="mt-0.5 shrink-0 text-xs text-primary underline underline-offset-2"
-                        >
-                          Fix this
-                        </Link>
-                      ) : null}
-                    </li>
+                    <ItemRow key={item.key} item={item} onToggleManual={toggleManual} onNavigate={() => onOpenChange(false)} />
                   ))}
                 </ul>
               </div>
             ))}
+
+            {advanced.length > 0 && (
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAdvanced((v) => !v)}
+                  className="text-xs font-medium uppercase tracking-wider text-muted-foreground underline-offset-2 hover:underline"
+                >
+                  Optional extras ({advanced.filter((i) => i.status === "done").length} of {advanced.length} on)
+                  {showAdvanced ? " — hide" : " — show"}
+                </button>
+                {showAdvanced && (
+                  <ul className="space-y-2">
+                    {advanced.map((item) => (
+                      <ItemRow key={item.key} item={item} onToggleManual={toggleManual} onNavigate={() => onOpenChange(false)} />
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
           </div>
         )}
 

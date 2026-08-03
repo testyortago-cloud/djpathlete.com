@@ -66,6 +66,18 @@ describe("<SetupPanel>", () => {
       expect(JSON.parse(String((patch?.[1] as RequestInit).body))).toEqual({ key: "categories_reviewed", checked: true })
     })
   })
+  it("advanced items hide behind the collapsed Optional extras section", async () => {
+    mockStatus([
+      item("tax_rate", "todo"),
+      item("housekeeping", "todo", { advanced: true, title: "Automatic cleanup" }),
+    ])
+    render(<SetupPanel open onOpenChange={() => {}} onStartTour={() => {}} />)
+    expect(await screen.findByText("Title tax_rate")).toBeInTheDocument()
+    expect(screen.queryByText("Automatic cleanup")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /optional extras/i }))
+    expect(screen.getByText("Automatic cleanup")).toBeInTheDocument()
+  })
+
   it("footer offers the tour and fires onStartTour", async () => {
     mockStatus([item("a", "done")])
     const onStartTour = vi.fn()

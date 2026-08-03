@@ -49,10 +49,13 @@ export async function GET() {
       statementEntryExists,
       manualChecks,
     })
+    // Banner counts cover the BASICS only — advanced extras never nag from
+    // the banner ("basic only", owner 2026-08-03). The panel still shows all.
+    const basics = items.filter((i) => !i.advanced)
     return NextResponse.json({
       items,
-      doneCount: items.filter((i) => i.status === "done").length,
-      totalCount: items.length,
+      doneCount: basics.filter((i) => i.status === "done").length,
+      totalCount: basics.length,
       tourCompletedAt,
     })
   } catch (error) {

@@ -10,6 +10,10 @@ export interface SetupItem {
   detail?: string
   href: string
   manual?: boolean
+  /** Advanced items live in the panel's collapsed "Optional extras" section
+   *  and NEVER count toward the banner — the owner asked for "basic only"
+   *  (2026-08-03): the default view is six plain steps, no plumbing jargon. */
+  advanced?: boolean
 }
 
 export interface SetupStatusSources {
@@ -55,92 +59,98 @@ export function computeSetupItems(s: SetupStatusSources): SetupItem[] {
     ...(s.flags.retention ? [] : ["retention"]),
     ...(s.flags.receiptWatchdog ? [] : ["receipt watchdog"]),
   ]
+  // Basics first (plain-English, jargon-free), then the advanced extras.
   return [
     {
       key: "gmail_connected",
       title: "Connect Gmail",
-      why: "Powers the inbox and automatic email-receipt ingestion.",
+      why: "Lets the app read emailed receipts and show your inbox.",
       status: s.gmailConnected ? "done" : "todo",
       href: "/admin/inbox",
     },
     {
-      key: "gmail_label",
-      title: "Create the receipt label in Gmail",
-      why: "The poller backfills anything you label — the opt-in path for old receipts.",
-      status: labelStatus,
-      detail:
-        labelStatus === "attention"
-          ? "The email-receipts cron hasn't run yet, so the label can't be verified."
-          : labelStatus === "todo"
-            ? "The last cron run reported the label missing in the connected mailbox."
-            : undefined,
-      href: "/admin/books/email-receipts",
-    },
-    {
-      key: "forwarders",
-      title: "Add receipt forwarder addresses",
-      why: "Mail from (or to) these addresses is ingested automatically — no labeling needed.",
-      status: forwarderCount > 0 ? "done" : "todo",
-      href: "/admin/books/email-receipts",
-    },
-    {
-      key: "email_receipts_cron",
-      title: "Turn on email-receipt ingestion",
-      why: "The hourly poll that reads receipts out of Gmail.",
-      status: s.flags.gmailReceipts ? "done" : "todo",
-      href: "/admin/books/email-receipts",
-    },
-    {
       key: "income_sync",
-      title: "Turn on platform income sync",
-      why: "Nightly sync of Stripe income and payout fees into the ledger.",
+      title: "Auto-record your Stripe income",
+      why: "Money paid through the site lands in the books every night — card fees included.",
       status: offSyncs.length === 0 ? "done" : "todo",
-      detail: offSyncs.length ? `Off: ${offSyncs.join(", ")}.` : undefined,
+      detail: offSyncs.length ? `Still off: ${offSyncs.join(" and ")}.` : undefined,
       href: "/admin/books",
     },
     {
       key: "tax_rate",
-      title: "Set your safe-harbor tax rate",
-      why: "Your CPA's effective rate drives the rolling tax forecast — without it there is no estimate.",
+      title: "Enter the tax rate from your accountant",
+      why: "One number — used to estimate how much tax to set aside as the year goes.",
       status: s.taxRatePercent !== null ? "done" : "todo",
       href: "/admin/books/insights",
     },
     {
       key: "accountant_email",
-      title: "Set your accountant's email",
-      why: "Where report packs and the quarterly close email go.",
+      title: "Add your accountant's email",
+      why: "So reports can be emailed straight to them.",
       status: s.accountantEmail.trim() ? "done" : "todo",
       href: "/admin/books/reports",
     },
     {
-      key: "quarterly_pack",
-      title: "Turn on the quarterly accountant pack",
-      why: "Emails your accountant a full pack each quarter (needs the email above).",
-      status: s.flags.quarterlyPack ? "done" : "todo",
-      href: "/admin/books/reports",
-    },
-    {
-      key: "housekeeping",
-      title: "Turn on receipt housekeeping",
-      why: "Retention pruning and the stuck-receipt watchdog.",
-      status: offHousekeeping.length === 0 ? "done" : "todo",
-      detail: offHousekeeping.length ? `Off: ${offHousekeeping.join(", ")}.` : undefined,
-      href: "/admin/books",
-    },
-    {
       key: "first_statement",
-      title: "Import your first bank statement",
-      why: "Statements catch every expense that never had a receipt.",
+      title: "Upload a bank statement",
+      why: "Catches spending that never had a receipt.",
       status: s.statementEntryExists ? "done" : "todo",
       href: "/admin/books",
     },
     {
       key: "categories_reviewed",
-      title: "Review expense categories per book",
-      why: "Each book is its own tax context — check the category list fits before bulk-importing.",
+      title: "Check your expense categories",
+      why: "Make sure the category list fits how you actually spend.",
       status: has(s.manualChecks, "categories_reviewed") ? "done" : "todo",
       href: "/admin/books/accounts",
       manual: true,
+    },
+    {
+      key: "email_receipts_cron",
+      title: "Automatic email-receipt reading",
+      why: "Checks Gmail every hour for new receipts.",
+      status: s.flags.gmailReceipts ? "done" : "todo",
+      href: "/admin/books/email-receipts",
+      advanced: true,
+    },
+    {
+      key: "forwarders",
+      title: "Receipt forwarding addresses",
+      why: "Emails from these addresses are read automatically.",
+      status: forwarderCount > 0 ? "done" : "todo",
+      href: "/admin/books/email-receipts",
+      advanced: true,
+    },
+    {
+      key: "gmail_label",
+      title: "Gmail label for old receipts",
+      why: "Put the DJP Receipts label on any old email in Gmail and it gets pulled into the books. New receipts don't need this.",
+      status: labelStatus,
+      detail:
+        labelStatus === "attention"
+          ? "Can't check yet — the hourly email check hasn't run."
+          : labelStatus === "todo"
+            ? "There's no label called DJP Receipts in your Gmail yet — create one there to use this."
+            : undefined,
+      href: "/admin/books/email-receipts",
+      advanced: true,
+    },
+    {
+      key: "quarterly_pack",
+      title: "Quarterly email to your accountant",
+      why: "Sends them a full report pack every three months.",
+      status: s.flags.quarterlyPack ? "done" : "todo",
+      href: "/admin/books/reports",
+      advanced: true,
+    },
+    {
+      key: "housekeeping",
+      title: "Automatic cleanup",
+      why: "Tidies old receipt files and flags stuck ones.",
+      status: offHousekeeping.length === 0 ? "done" : "todo",
+      detail: offHousekeeping.length ? `Still off: ${offHousekeeping.join(" and ")}.` : undefined,
+      href: "/admin/books",
+      advanced: true,
     },
   ]
 }

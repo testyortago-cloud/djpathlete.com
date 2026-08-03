@@ -43,12 +43,12 @@ describe("GET /api/admin/bookkeeping/setup-status", () => {
     authMock.mockResolvedValue({ user: { id: "u", role: "client" } })
     expect((await GET()).status).toBe(403)
   })
-  it("returns 11 items with counts from real evaluation (unconfigured system → 0 done)", async () => {
+  it("returns 11 items but banner counts cover the 6 BASICS only (unconfigured system → 0 done)", async () => {
     const res = await GET()
     const body = await res.json()
     expect(res.status).toBe(200)
     expect(body.items).toHaveLength(11)
-    expect(body.totalCount).toBe(11)
+    expect(body.totalCount).toBe(6) // advanced extras never nag from the banner
     expect(body.doneCount).toBe(0)
     expect(body.tourCompletedAt).toBeNull()
   })
