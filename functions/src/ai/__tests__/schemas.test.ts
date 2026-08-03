@@ -211,4 +211,39 @@ describe("validateAssignmentAgainstCeiling — difficulty ceiling enforcement", 
     expect(result.ok).toBe(false)
     expect(result.violations[0]).toMatch(/score.*7.*exceeds/i)
   })
+
+  // Without this exemption, unlocking a coach-named lift through the input
+  // filters just moves the rejection to the validator: the selector picks it,
+  // the ceiling flags it, all retries produce the same output, generation fails.
+  it("exempts a coach-unlocked exercise from the tier ceiling", () => {
+    const assignment = {
+      assignments: [{ slot_id: "s1", exercise_id: "i-easy", exercise_name: "i-easy", notes: null }],
+      substitution_notes: [],
+    }
+    expect(validateAssignmentAgainstCeiling(assignment, ceiling, slotInWeek, exerciseLibrary).ok).toBe(false)
+    expect(
+      validateAssignmentAgainstCeiling(assignment, ceiling, slotInWeek, exerciseLibrary, new Set(["i-easy"])).ok,
+    ).toBe(true)
+  })
+
+  it("exempts a coach-unlocked exercise from the max_score ceiling too", () => {
+    const assignment = {
+      assignments: [{ slot_id: "s3", exercise_id: "i-hard", exercise_name: "i-hard", notes: null }],
+      substitution_notes: [],
+    }
+    expect(
+      validateAssignmentAgainstCeiling(assignment, ceiling, slotInWeek, exerciseLibrary, new Set(["i-hard"])).ok,
+    ).toBe(true)
+  })
+
+  it("still flags a non-unlocked exercise when other exercises are unlocked", () => {
+    const assignment = {
+      assignments: [{ slot_id: "s1", exercise_id: "i-easy", exercise_name: "i-easy", notes: null }],
+      substitution_notes: [],
+    }
+    expect(
+      validateAssignmentAgainstCeiling(assignment, ceiling, slotInWeek, exerciseLibrary, new Set(["something-else"]))
+        .ok,
+    ).toBe(false)
+  })
 })

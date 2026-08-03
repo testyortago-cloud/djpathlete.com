@@ -74,17 +74,49 @@ export async function lookupClientProfile(clientId: string, clientName: string) 
 
 // ─── Helper: compress exercises from DB ─────────────────────────────────────
 
-export async function getExercisesForAI(): Promise<CompressedExercise[]> {
-  const supabase = getSupabase()
-  const { data: exercises } = await supabase
-    .from("exercises")
-    .select(
-      "id, name, category, difficulty, difficulty_score, muscle_group, movement_pattern, primary_muscles, secondary_muscles, force_type, laterality, equipment_required, is_bodyweight, training_intent, sport_tags, plane_of_motion, joints_loaded",
-    )
-    .eq("is_active", true)
-    .limit(1000)
+const EXERCISE_AI_COLUMNS =
+  "id, name, category, difficulty, difficulty_score, muscle_group, movement_pattern, primary_muscles, secondary_muscles, force_type, laterality, equipment_required, is_bodyweight, training_intent, sport_tags, plane_of_motion, joints_loaded"
 
-  return (exercises ?? []).map((ex) => ({
+/** PostgREST caps a single response; page past it with a keyset cursor. */
+const EXERCISE_PAGE_SIZE = 1000
+
+/**
+ * Read the full active exercise library for AI generation.
+ *
+ * Ordered by id so the candidate ranker's seeded jitter is the ONLY source of
+ * run-to-run variation — an unordered read makes ordering (and therefore the
+ * model's position bias) arbitrary. Paginated because a bare .limit(1000)
+ * silently truncates: the library is already at 92% of that cap, and exercises
+ * past it would just vanish from generation with no error.
+ */
+async function fetchExercisePage(cursor: string | null) {
+  const supabase = getSupabase()
+  let query = supabase
+    .from("exercises")
+    .select(EXERCISE_AI_COLUMNS)
+    .eq("is_active", true)
+    .order("id", { ascending: true })
+    .limit(EXERCISE_PAGE_SIZE)
+  if (cursor) query = query.gt("id", cursor)
+
+  const { data, error } = await query
+  if (error) throw new Error(`Failed to fetch exercises: ${error.message}`)
+  return data ?? []
+}
+
+export async function getExercisesForAI(): Promise<CompressedExercise[]> {
+  const exercises: Awaited<ReturnType<typeof fetchExercisePage>> = []
+  let cursor: string | null = null
+
+  for (;;) {
+    const page = await fetchExercisePage(cursor)
+    if (page.length === 0) break
+    exercises.push(...page)
+    if (page.length < EXERCISE_PAGE_SIZE) break
+    cursor = page[page.length - 1].id as string
+  }
+
+  return exercises.map((ex) => ({
     id: ex.id,
     name: ex.name,
     category: ex.category ?? [],

@@ -224,6 +224,7 @@ export function validateAssignmentAgainstCeiling(
   difficultyCeiling: DifficultyCeilingWeek[],
   slotInWeek: Map<string, number>,
   exerciseLibrary: Array<{ id: string; difficulty: string; difficulty_score: number | null | undefined }>,
+  unlockedIds?: Set<string>,
 ): ValidatorResult {
   const ceilingByWeek = new Map<number, DifficultyCeilingWeek>()
   for (const c of difficultyCeiling) ceilingByWeek.set(c.week_number, c)
@@ -233,6 +234,11 @@ export function validateAssignmentAgainstCeiling(
 
   const violations: string[] = []
   for (const a of assignment.assignments) {
+    // The coach explicitly named this exercise. Agent 1 derives
+    // difficulty_ceiling from the client profile, so without this exemption the
+    // ceiling rejects the very exercise the input filters were told to admit —
+    // three identical retries, then a failed generation.
+    if (unlockedIds?.has(a.exercise_id)) continue
     const weekNum = slotInWeek.get(a.slot_id)
     if (weekNum === undefined) continue
     const ceiling = ceilingByWeek.get(weekNum)
