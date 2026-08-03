@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest"
 import {
+  DUE_INVOICE_WARNING,
   MAX_BATCH_SIZE,
   applyScanResult,
   batchTotals,
@@ -82,10 +83,17 @@ describe("safeReceiptResult", () => {
       suggested_category: null,
       business_purpose_hint: null,
       memo: null,
+      payment_status: null,
       currency: null,
       confidence: "low",
       warnings: [],
     })
+  })
+
+  it("clamps a garbage payment_status to null, keeps valid values", () => {
+    expect(safeReceiptResult({ payment_status: "maybe", confidence: "low", warnings: [] }).payment_status).toBeNull()
+    expect(safeReceiptResult({ payment_status: "due", confidence: "low", warnings: [] }).payment_status).toBe("due")
+    expect(safeReceiptResult({ payment_status: "paid", confidence: "low", warnings: [] }).payment_status).toBe("paid")
   })
 
   it("passes through a complete result and clamps bad confidence", () => {
@@ -167,6 +175,14 @@ describe("applyScanResult", () => {
     expect(out.memo).toBe("")
     expect(out.occurredOn).toMatch(/^\d{4}-\d{2}-\d{2}$/)
     expect(out.accountId).toBe("")
+  })
+  it("appends the due-invoice warning when payment_status is 'due' — and ONLY then", () => {
+    const due = applyScanResult(row({}), { payment_status: "due", confidence: "high", warnings: ["existing"] }, accounts)
+    expect(due.result?.warnings).toEqual(["existing", DUE_INVOICE_WARNING])
+    const paid = applyScanResult(row({}), { payment_status: "paid", confidence: "high", warnings: [] }, accounts)
+    expect(paid.result?.warnings).toEqual([])
+    const unknown = applyScanResult(row({}), { confidence: "high", warnings: [] }, accounts)
+    expect(unknown.result?.warnings).toEqual([])
   })
 })
 

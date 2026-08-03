@@ -41,6 +41,10 @@ export interface ReceiptResult {
   business_purpose_hint: string | null
   /** Short "what was bought" line (item summary / plan name / invoice period). */
   memo: string | null
+  /** "paid" = document proves a completed payment; "due" = it only requests
+   *  one (invoice). Vendors email BOTH for a single charge — posting the due
+   *  twin double-counts the expense. */
+  payment_status: "paid" | "due" | null
   currency: string | null
   confidence: "low" | "medium" | "high"
   warnings: string[]
@@ -111,6 +115,7 @@ export function safeReceiptResult(v: unknown): ReceiptResult {
     suggested_category: r.suggested_category ?? null,
     business_purpose_hint: r.business_purpose_hint ?? null,
     memo: r.memo ?? null,
+    payment_status: r.payment_status === "paid" || r.payment_status === "due" ? r.payment_status : null,
     currency: r.currency ?? null,
     confidence: r.confidence === "medium" || r.confidence === "high" ? r.confidence : "low",
     warnings: Array.isArray(r.warnings) ? r.warnings : [],
@@ -163,13 +168,22 @@ export function newReceiptRow(
   }
 }
 
+/** Synthesized client-side from payment_status — a deterministic field beats
+ *  hoping the model volunteers a warning. Rides the existing warnings plumbing:
+ *  count badges, the row editor's warning list, and the email board's
+ *  "Needs a look" bucket all light up with zero extra wiring. */
+export const DUE_INVOICE_WARNING =
+  "This looks like an invoice that is DUE — not proof of payment. The paid receipt usually arrives separately; post only one."
+
 /** Fold a completed scan's raw RTDB result into the row's editable fields. */
 export function applyScanResult(
   row: ReceiptBatchRow,
   raw: unknown,
   accounts: BookkeepingAccount[],
 ): ReceiptBatchRow {
-  const result = safeReceiptResult(raw)
+  const base = safeReceiptResult(raw)
+  const result =
+    base.payment_status === "due" ? { ...base, warnings: [...base.warnings, DUE_INVOICE_WARNING] } : base
   return {
     ...row,
     status: "scanned",

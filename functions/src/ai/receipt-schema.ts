@@ -10,6 +10,7 @@ export const receiptScanSchema = z.object({
   suggested_category: z.string().nullable().optional(),
   business_purpose_hint: z.string().nullable().optional(),
   memo: z.string().nullable().optional(),
+  payment_status: z.enum(["paid", "due"]).nullable().optional(),
   currency: z.string().nullable().optional(),
   confidence: z.enum(["low", "medium", "high"]),
   warnings: z.array(z.string()),

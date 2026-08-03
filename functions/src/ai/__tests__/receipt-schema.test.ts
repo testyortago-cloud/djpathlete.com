@@ -25,4 +25,9 @@ describe("receiptScanSchema", () => {
   it("rejects a bad date shape", () => {
     expect(receiptScanSchema.safeParse({ occurred_on: "07/18/2026", confidence: "low", warnings: [] }).success).toBe(false)
   })
+  it("accepts paid/due payment_status and rejects anything else", () => {
+    expect(receiptScanSchema.safeParse({ payment_status: "due", confidence: "low", warnings: [] }).success).toBe(true)
+    expect(receiptScanSchema.safeParse({ payment_status: "paid", confidence: "low", warnings: [] }).success).toBe(true)
+    expect(receiptScanSchema.safeParse({ payment_status: "pending", confidence: "low", warnings: [] }).success).toBe(false)
+  })
 })

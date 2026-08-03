@@ -129,6 +129,10 @@ describe("<DuplicateScanDialog>", () => {
     renderDialog()
     expect(await screen.findByText(/AI is reviewing 1 candidate pair/)).toBeInTheDocument()
     expect(screen.getByText(/Heuristic match — same amount/)).toBeInTheDocument()
+    // Provisional copy while verdicts are pending — never the definitive
+    // "suspected duplicate pairs" line under a still-running progress bar.
+    expect(screen.getByText(/possible match found so far/)).toBeInTheDocument()
+    expect(screen.queryByText(/suspected duplicate/)).not.toBeInTheDocument()
     for (const name of [/^Delete$/, /Not a duplicate/, /Scan again/]) {
       expect(screen.getAllByRole("button", { name })[0]).toBeDisabled()
     }

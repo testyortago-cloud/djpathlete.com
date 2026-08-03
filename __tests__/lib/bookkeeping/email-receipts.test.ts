@@ -154,7 +154,8 @@ describe("bucketEmailReceiptRows", () => {
     occurredOn: "2026-07-18",
     result: {
       vendor: "Vercel Inc.", amount_cents: 2000, occurred_on: "2026-07-18",
-      suggested_category: null, business_purpose_hint: null, currency: "USD",
+      suggested_category: null, business_purpose_hint: null, memo: null,
+      payment_status: null, currency: "USD",
       confidence: "high", warnings: [],
     },
     ...over,
@@ -175,6 +176,19 @@ describe("bucketEmailReceiptRows", () => {
     expect(buckets.review.map((r) => r.clientId)).toEqual(["a"])
     expect(buckets.attention.map((r) => r.clientId)).toEqual(["b", "c", "d"])
     expect(buckets.duplicates).toEqual([])
+  })
+
+  it("a scan marked payment_status 'due' (vendor invoice, not a paid receipt) lands in attention via the synthesized warning", () => {
+    const dueDoc = {
+      ...DOC,
+      id: "d0000000-0000-4000-8000-000000000009",
+      scan_result: { ...(DOC.scan_result as Record<string, unknown>), payment_status: "due" },
+    } as unknown as BookkeepingDocument
+    const row = rowFromEmailDocument(dueDoc, ACCOUNTS)
+    expect(row.result?.warnings.some((w) => w.includes("DUE"))).toBe(true)
+    const buckets = bucketEmailReceiptRows([row])
+    expect(buckets.attention.map((r) => r.clientId)).toEqual([dueDoc.id])
+    expect(buckets.review).toEqual([])
   })
 
   it("the LATER vendor+amount+date twin goes to duplicates, mapped to the earlier card", () => {

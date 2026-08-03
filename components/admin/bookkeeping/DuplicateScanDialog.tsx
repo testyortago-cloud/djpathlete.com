@@ -92,33 +92,40 @@ function EntryCard({
         </p>
       )}
       {accountName && <p className="text-xs text-muted-foreground">{accountName}</p>}
-      {entry.document_id && (
-        // Durable admin route (302 → fresh signature per hit), never a raw
-        // signed URL — a kept-open tab must not rot into GCS ExpiredToken XML.
-        <a
-          href={`/api/admin/bookkeeping/documents/${entry.document_id}/download?redirect=1`}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-1 text-xs text-primary underline underline-offset-2"
-        >
-          <FileText className="size-3" />
-          {DOCUMENT_LINK_LABELS[entry.source] ?? "View document"}
-        </a>
-      )}
-      {isConfirming ? (
-        <div className="flex gap-2 pt-1">
-          <Button size="sm" variant="destructive" disabled={busy} onClick={() => onDelete(entry.id)}>
-            Confirm delete
-          </Button>
-          <Button size="sm" variant="outline" disabled={busy} onClick={() => onConfirmChange(null)}>
-            Keep
-          </Button>
+      {/* One aligned actions row: document link left, delete controls right.
+          The link and Button are both inline-flex — as loose siblings they
+          crowd onto one misaligned line (owner report, 2026-08-03). */}
+      <div className="flex items-center gap-2 pt-1.5">
+        {entry.document_id && (
+          // Durable admin route (302 → fresh signature per hit), never a raw
+          // signed URL — a kept-open tab must not rot into GCS ExpiredToken XML.
+          <a
+            href={`/api/admin/bookkeeping/documents/${entry.document_id}/download?redirect=1`}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-primary underline underline-offset-2"
+          >
+            <FileText className="size-3" />
+            {DOCUMENT_LINK_LABELS[entry.source] ?? "View document"}
+          </a>
+        )}
+        <div className="ml-auto flex gap-2">
+          {isConfirming ? (
+            <>
+              <Button size="sm" variant="destructive" disabled={busy} onClick={() => onDelete(entry.id)}>
+                Confirm delete
+              </Button>
+              <Button size="sm" variant="outline" disabled={busy} onClick={() => onConfirmChange(null)}>
+                Keep
+              </Button>
+            </>
+          ) : (
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => onConfirmChange(confirmKey)}>
+              Delete
+            </Button>
+          )}
         </div>
-      ) : (
-        <Button size="sm" variant="outline" disabled={busy} onClick={() => onConfirmChange(confirmKey)}>
-          Delete
-        </Button>
-      )}
+      </div>
     </div>
   )
 }
@@ -324,10 +331,14 @@ export function DuplicateScanDialog({
             ) : (
               <>
                 <p className="text-sm text-muted-foreground">
-                  {pairs.length} suspected duplicate {pairs.length === 1 ? "pair" : "pairs"}. Deleting an entry removes it from the
-                  ledger; “Not a duplicate” hides the pair from every future scan.
+                  {reviewing
+                    ? `${pairs.length} possible ${pairs.length === 1 ? "match" : "matches"} found so far — the AI verdict will trim this list to the real duplicates.`
+                    : `${pairs.length} suspected duplicate ${pairs.length === 1 ? "pair" : "pairs"}. Deleting an entry removes it from the ledger; “Not a duplicate” hides the pair from every future scan.`}
                 </p>
-                <ul className="space-y-3">
+                {/* Dimmed while verdicts are pending — an undimmed list under a
+                    progress bar reads as "results AND still scanning?" (owner
+                    report, 2026-08-03). */}
+                <ul className={`space-y-3 ${reviewing ? "opacity-60" : ""}`}>
                   {pairs.map((p) => (
                     <li key={p.pair_id} className="rounded-lg border border-border bg-card p-3 space-y-2">
                       <div className="flex flex-wrap items-center gap-2">
