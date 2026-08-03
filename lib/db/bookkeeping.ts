@@ -376,6 +376,18 @@ export async function listEntriesForDuplicateScan(bookId: string): Promise<Dupli
       .range(f, t) as never)
 }
 
+/** True if ANY ledger entry came from a statement import (setup checklist). */
+export async function hasStatementImportEntries(): Promise<boolean> {
+  const { data, error } = await db()
+    .from("bookkeeping_ledger_entries")
+    .select("id")
+    .eq("source", "statement_import")
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  return data !== null
+}
+
 export async function createDocument(input: NewDocument): Promise<BookkeepingDocument> {
   const { data, error } = await db().from("bookkeeping_documents").insert(input).select().single()
   if (error) throw error

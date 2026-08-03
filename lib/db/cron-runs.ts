@@ -44,6 +44,26 @@ export async function logCronEnd(
   if (error) console.error(`[cron_runs] logCronEnd(${id}) failed:`, error.message)
 }
 
+/** Latest run (any status) for one cron, else null. Setup checklist reads
+ *  bookkeepingGmailReceiptsCron's detail.label_missing telemetry through this. */
+export async function latestCronRun(
+  supabase: SupabaseClient,
+  cron_name: string,
+): Promise<CronRun | null> {
+  const { data, error } = await supabase
+    .from("cron_runs")
+    .select("*")
+    .eq("cron_name", cron_name)
+    .order("started_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) {
+    console.error(`[cron_runs] latestCronRun(${cron_name}) failed:`, error.message)
+    return null
+  }
+  return (data as CronRun) ?? null
+}
+
 export interface LastSuccess {
   cron_name: string
   last_success_at: string | null
