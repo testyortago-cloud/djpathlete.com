@@ -119,6 +119,7 @@ export async function POST(request: Request) {
         return [{ ...p, verdict: v ? { is_duplicate: v.is_duplicate, confidence: v.confidence, reason: v.reason } : null }]
       })
 
+      // Paid verdicts must never be discarded: log update failures are non-fatal.
       await updateGenerationLog(logId, {
         status: "completed",
         output_summary: { candidate_pairs: pairs.length, flagged: result.length },
@@ -127,7 +128,7 @@ export async function POST(request: Request) {
         cache_read_tokens: cache_read_tokens ?? null,
         duration_ms: Date.now() - startTime,
         completed_at: new Date().toISOString(),
-      })
+      }).catch((e) => console.error("bookkeeping duplicate scan — log update failed:", e))
 
       return NextResponse.json({ pairs: result, ai: "ok", truncated })
     } catch (err) {

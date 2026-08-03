@@ -31,7 +31,7 @@ interface ScanPair {
 }
 type AiStatus = "ok" | "skipped" | "unavailable"
 
-const CONFIDENCE_RANK: Record<string, number> = { high: 0, medium: 1, low: 2 }
+const CONFIDENCE_RANK: Record<"high" | "medium" | "low", number> = { high: 0, medium: 1, low: 2 }
 const SOURCE_LABELS: Record<string, string> = {
   manual: "Manual",
   platform_import: "Platform",
@@ -115,11 +115,12 @@ export function DuplicateScanDialog({
   const [scanned, setScanned] = useState(false)
   const [busy, setBusy] = useState(false)
   const [confirming, setConfirming] = useState<string | null>(null) // `${pair_id}:${entry_id}`
-  // Request-id guard against double-fire / stale responses (fix,
-  // controller-flagged): React dev-mode double-invokes effects, and every
-  // scan is a real paid AI call. Mirrors fetchRequestIdRef in BooksClient.tsx
-  // — bump the ref per invocation, bail before applying state (or toasting)
-  // if a newer invocation superseded this one by the time the response lands.
+  // Request-id guard against stale-response state clobbering (fix,
+  // controller-flagged): prevents a superseded invocation from applying
+  // response state after a newer scan starts. (React dev-mode double-fire
+  // of effects is noted; the spend risk is dev-only.) Mirrors fetchRequestIdRef
+  // in BooksClient.tsx — bump the ref per invocation, bail before applying
+  // state (or toasting) if a newer invocation superseded this one.
   const scanRequestIdRef = useRef(0)
 
   const scan = useCallback(async () => {
@@ -226,7 +227,7 @@ export function DuplicateScanDialog({
             )}
             {truncated && (
               <p className="text-sm text-muted-foreground">
-                Showing the first 40 candidate pairs — resolve these, then scan again for the rest.
+                Candidate list capped at 40 pairs — resolve these, then scan again for the rest.
               </p>
             )}
 
