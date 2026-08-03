@@ -20,6 +20,14 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
     const url = await signStatementDownload(doc.storage_path, 3600)
     void recordAudit({ action: "bookkeeping.document_downloaded", category: "admin_read_sensitive", outcome: "success",
       target: { type: "bookkeeping_document", id }, request })
+    // redirect=1: durable href mode. New-tab / history / bookmarked opens hit
+    // THIS admin-gated route and get 302'd to a signature minted per hit, so
+    // the link a coach keeps open overnight can never rot into GCS
+    // ExpiredToken XML (2026-08-03 report — a raw signed URL reopened after
+    // its TTL). JSON stays the default for fetch-then-embed callers.
+    if (new URL(request.url).searchParams.get("redirect") === "1") {
+      return NextResponse.redirect(url, 302)
+    }
     return NextResponse.json({ url })
   } catch (error) {
     console.error("Download bookkeeping document error:", error)

@@ -66,6 +66,13 @@ export function ReceiptRowEditor({ row, accounts, disabled, onEdit, onPreviewLoa
   // third-party HTML and must not run scripts. bg-white because email HTML
   // assumes a white canvas in both app themes.
   const bodySrc = row.isBody ? row.previewUrl : null
+  // New-tab opens get the DURABLE admin route (302 → fresh signature per hit),
+  // never the raw signed URL: a raw URL kept in a tab or history rots into
+  // GCS ExpiredToken XML after its TTL (2026-08-03 report). The iframes keep
+  // the signed URL — they are re-fetched on every dialog open.
+  const openInNewTabHref = row.documentId
+    ? `/api/admin/bookkeeping/documents/${row.documentId}/download?redirect=1`
+    : null
 
   return (
     <div className="space-y-4 pt-3">
@@ -105,7 +112,7 @@ export function ReceiptRowEditor({ row, accounts, disabled, onEdit, onPreviewLoa
             className="w-full h-80 rounded-lg border border-border bg-white"
           />
           <a
-            href={bodySrc}
+            href={openInNewTabHref ?? bodySrc}
             target="_blank"
             rel="noreferrer"
             className="inline-flex items-center gap-1 text-xs text-primary underline underline-offset-2"
@@ -123,7 +130,7 @@ export function ReceiptRowEditor({ row, accounts, disabled, onEdit, onPreviewLoa
           />
           {/* Fallback for a browser that refuses to frame the signed URL. */}
           <a
-            href={pdfSrc}
+            href={openInNewTabHref ?? pdfSrc}
             target="_blank"
             rel="noreferrer"
             className="inline-flex items-center gap-1 text-xs text-primary underline underline-offset-2"

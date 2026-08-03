@@ -116,4 +116,18 @@ describe("GET /api/admin/bookkeeping/documents/[id]/download", () => {
       target: { type: "bookkeeping_document", id: DOC_ID },
     }))
   })
+  it("redirect=1 302-redirects to a freshly signed url (durable href for new-tab opens)", async () => {
+    getDocumentMock.mockResolvedValue({ id: DOC_ID, storage_path: "bookkeeping/x.pdf" })
+    signStatementDownloadMock.mockResolvedValue("https://signed.example/x.pdf")
+    const res = await GET_DOWNLOAD(new Request("http://x/api?redirect=1") as never, { params: Promise.resolve({ id: DOC_ID }) })
+    // A 302 per hit means the link in a tab/history/bookmark can never rot —
+    // every open mints a fresh signature (the 2026-08-03 ExpiredToken report
+    // came from a raw signed GCS URL reopened after its TTL).
+    expect(res.status).toBe(302)
+    expect(res.headers.get("location")).toBe("https://signed.example/x.pdf")
+    expect(signStatementDownloadMock).toHaveBeenCalledWith("bookkeeping/x.pdf", 3600)
+    expect(recordAuditMock).toHaveBeenCalledWith(expect.objectContaining({
+      action: "bookkeeping.document_downloaded",
+    }))
+  })
 })
